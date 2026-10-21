@@ -95,7 +95,7 @@ describe("responsive shell contract", () => {
     expect(detail).toContain("content-detail");
     expect(detail).toContain("@5xl/workspace:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]");
     expect(detail).toContain("@5xl/workspace:col-span-2");
-    expect(source("app/app/patients/provision/patient-provisioning-workspace.tsx")).toContain('<Panel className="max-w-4xl">');
+    expect(source("app/app/patients/provision/patient-provisioning-workspace.tsx")).not.toContain("เพิ่มผู้ป่วยรายบุคคล");
     const assigned = source("app/app/patients/assigned/assigned-patient-directory-view.tsx");
     expect(assigned).toContain("@5xl/workspace:col-span-3");
     expect(assigned).not.toMatch(/\slg:col-span-3/);

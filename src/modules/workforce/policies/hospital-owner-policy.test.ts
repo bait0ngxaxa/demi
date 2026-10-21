@@ -32,7 +32,7 @@ function createActor(overrides: Partial<ActorContext> = {}): ActorContext {
 
 describe("Hospital Owner policy", () => {
   it("allows an exact active Hospital Owner for each bounded capability", () => {
-    for (const capability of Object.values(HOSPITAL_OWNER_CAPABILITIES)) {
+    for (const capability of Object.values(HOSPITAL_OWNER_CAPABILITIES).filter((value) => value !== HOSPITAL_OWNER_CAPABILITIES.reportExportGrant)) {
       expect(
         decideHospitalOwnerPolicy({
           actor: createActor(),

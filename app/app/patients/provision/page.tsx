@@ -20,7 +20,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 import { PatientProvisioningWorkspace } from "./patient-provisioning-workspace";
 
 export const metadata: Metadata = {
-  title: "เพิ่มผู้ป่วย",
+  title: "นำเข้าผู้ป่วย",
 };
 
 type PatientProvisioningPageProps = {
@@ -58,13 +58,13 @@ export default async function PatientProvisioningPage({
     return (
       <div className="content-workspace">
         <PageHeader
-          breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "เพิ่มผู้ป่วย" }]}
-          description="เพิ่มผู้ป่วยได้เฉพาะในโรงพยาบาลที่บัญชีนี้มีขอบเขตใช้งานอยู่"
-          title="เพิ่มผู้ป่วย"
+          breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "นำเข้าผู้ป่วย" }]}
+          description="นำเข้าผู้ป่วยได้เฉพาะในโรงพยาบาลที่บัญชีนี้มีขอบเขตใช้งานอยู่"
+          title="นำเข้าผู้ป่วย"
         />
         <Alert className="mt-6" variant="warning">
           <p className="font-semibold">ไม่พบโรงพยาบาลที่เปิดให้ดำเนินการ</p>
-          <p className="mt-1">ขณะนี้บัญชีนี้ไม่มีขอบเขตโรงพยาบาลที่ใช้งานได้สำหรับเพิ่มผู้ป่วย กรุณาติดต่อผู้ดูแลโรงพยาบาลเพื่อตรวจสอบสิทธิ์และความสัมพันธ์ปัจจุบัน</p>
+          <p className="mt-1">ขณะนี้บัญชีนี้ไม่มีขอบเขตโรงพยาบาลที่ใช้งานได้สำหรับนำเข้าผู้ป่วย กรุณาติดต่อผู้ดูแลโรงพยาบาลเพื่อตรวจสอบสิทธิ์และความสัมพันธ์ปัจจุบัน</p>
         </Alert>
         <Link className={buttonClassName({ className: "mt-5", variant: "secondary" })} href="/app">
           กลับพื้นที่ทำงาน

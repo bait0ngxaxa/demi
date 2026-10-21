@@ -251,7 +251,7 @@ export async function assertPatientActivationActorInDatabase(
     where: {
       userId: actorUserId,
       hospitalId: targetHospitalId,
-      membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+      membershipType: MembershipType.OWNER,
       status: MembershipStatus.ACTIVE,
       hospital: { status: HospitalStatus.ACTIVE },
     },

@@ -154,8 +154,8 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
       expect(workforce(parentMember, WORKFORCE_CAPABILITIES.osmRead, childId)).toBe(false);
     });
 
-    it("keeps a Parent ก-15 grant exact-Parent: no Child workbook and no RPT-32", () => {
-      expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, parentId)).toBe(true);
+    it("rejects obsolete Parent ก-15 grants for every Hospital", () => {
+      expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, parentId)).toBe(false);
       expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
       expect(networkAllowed(parentMemberWithGrant, NETWORK.export)).toBe(false);
     });
@@ -187,13 +187,13 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
   describe("active Child MEMBER", () => {
     it("allows own Child capabilities where that operation's policy allows", () => {
       expect(patientRead(childMember, childId)).toBe(true);
-      expect(workforce(childMember, WORKFORCE_CAPABILITIES.osmRead, childId)).toBe(true);
+      expect(workforce(childMember, WORKFORCE_CAPABILITIES.osmRead, childId)).toBe(false);
       expect(workforce(childMember, WORKFORCE_CAPABILITIES.create, childId)).toBe(false);
     });
 
-    it("exports the own Child workbook only with that exact Child's ก-15 grant", () => {
+    it("rejects obsolete Child delegated export grants", () => {
       expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
-      expect(hospitalReport(childMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
+      expect(hospitalReport(childMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
     });
 
     it("denies using the membership or grant to read/export another Hospital", () => {

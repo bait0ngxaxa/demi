@@ -251,7 +251,7 @@ function ApprovedRequestNextStep({
         className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4"
         href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}
       >
-        ไปหน้าเพิ่มหรือนำเข้าผู้ป่วย
+        ไปหน้านำเข้าผู้ป่วย
       </Link>
     </div>
   );

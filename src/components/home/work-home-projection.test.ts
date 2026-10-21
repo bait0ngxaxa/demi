@@ -101,7 +101,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: "/app/patients/assigned",
-    tiles: [screeningAt(hospitalA), followupAt(hospitalA), withHospital("/app/patients/provision", hospitalA)],
+    tiles: [screeningAt(hospitalA), followupAt(hospitalA)],
     shared: [],
   },
   {
@@ -111,7 +111,7 @@ const cases: Case[] = [
     requested: hospitalB.toUpperCase(),
     scope: "hospital", selected: hospitalB,
     hero: "/app/patients/assigned",
-    tiles: [screeningAt(hospitalB), followupAt(hospitalB), withHospital("/app/patients/provision", hospitalB)],
+    tiles: [screeningAt(hospitalB), followupAt(hospitalB)],
     shared: [],
   },
   {
@@ -120,13 +120,8 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: withHospital("/app/patients", hospitalA),
-    tiles: [
-      withHospital("/app/patients", hospitalA),
-      withHospital("/app/patients/provision", hospitalA),
-      withHospital("/app/patients/activation", hospitalA),
-      withHospital("/app/workforce", hospitalA),
-    ],
-    shared: ["/app/patients/access-requests", "/app/patients/service-requests"],
+    tiles: [withHospital("/app/patients", hospitalA)],
+    shared: [],
   },
   {
     name: "Hospital OWNER",
@@ -172,7 +167,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: "/app/patients/assigned",
-    tiles: [screeningAt(hospitalA), followupAt(hospitalA), withHospital("/app/patients/provision", hospitalA)],
+    tiles: [screeningAt(hospitalA), followupAt(hospitalA)],
     shared: [],
   },
   {
@@ -187,13 +182,8 @@ const cases: Case[] = [
     scope: "hospital", selected: hospitalA,
     hero: withHospital("/app/patients", hospitalA),
     // OSM task tiles belong to the OSM Hospital only; they never appear under another Hospital's chip.
-    tiles: [
-      withHospital("/app/patients", hospitalA),
-      withHospital("/app/patients/provision", hospitalA),
-      withHospital("/app/patients/activation", hospitalA),
-      withHospital("/app/workforce", hospitalA),
-    ],
-    shared: ["/app/patients/access-requests", "/app/patients/service-requests"],
+    tiles: [withHospital("/app/patients", hospitalA)],
+    shared: [],
   },
 ];
 

@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { findPatientDirectory, getPatientDirectoryDetail, listPatientDirectoryScopes } from "@/modules/patient-directory/services/patient-directory-query-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -78,7 +78,7 @@ async function createHospitalActor(input: {
     data: {
       userId: user.id,
       hospitalId: input.hospitalId,
-      membershipType: input.membershipType ?? MembershipType.MEMBER,
+      membershipType: input.membershipType ?? MembershipType.OWNER,
       profession: input.profession ?? null,
       status: membershipStatus,
     },
@@ -93,7 +93,7 @@ async function createHospitalActor(input: {
       hospitalMemberships: [
         {
           hospitalId: input.hospitalId,
-          membershipType: input.membershipType ?? MembershipType.MEMBER,
+          membershipType: input.membershipType ?? MembershipType.OWNER,
           profession: input.profession ?? null,
           status: membershipStatus,
           hospitalStatus: input.hospitalStatus ?? hospital.status,

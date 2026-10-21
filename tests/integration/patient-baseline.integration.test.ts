@@ -12,7 +12,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -68,7 +68,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
   await prisma.hospitalMembership.create({
     data: {

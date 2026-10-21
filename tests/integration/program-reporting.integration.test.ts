@@ -21,7 +21,7 @@ import {
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -90,7 +90,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
 
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
   await prisma.hospitalMembership.create({

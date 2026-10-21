@@ -1,26 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { unstable_rethrow, useRouter } from "next/navigation";
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LocalNavigation } from "@/components/ui/local-navigation";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import {
   connectionFailureMessage,
-  submitPreservingInput,
   unknownOutcomeMessage,
-  useMutationActionState,
 } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
 import type {
   PatientImportClassification,
@@ -56,18 +52,14 @@ import {
 } from "@/modules/patient-provisioning/import/patient-import-template-contract";
 import {
   confirmPatientImportAction,
-  provisionPatientAction,
   previewPatientImportAction,
 } from "@/modules/patient-provisioning/transport/server-actions";
 import {
   initialPatientImportActionState,
   initialPatientImportPreviewActionState,
-  initialPatientProvisionActionState,
   type PatientImportActionState,
   type PatientImportPreviewBinding,
   type PatientImportPreviewActionState,
-  type PatientProvisionActionState,
-  type PatientProvisionResultState,
 } from "@/modules/patient-provisioning/transport/action-state";
 import { downloadPatientImportFailedRows } from "@/modules/patient-provisioning/transport/patient-import-failed-rows-client";
 
@@ -79,7 +71,6 @@ type PatientProvisioningWorkspaceProps = {
   canAssignOsm?: boolean;
 };
 
-type ProvisioningMode = "SINGLE" | "EXCEL";
 
 const importUnconfirmedGuidance =
   "กด “ตรวจสอบและแสดงตัวอย่าง” กับไฟล์เดิมอีกครั้ง ระบบจะแสดงรายการที่บันทึกไปแล้วเป็น “มีอยู่แล้ว” ก่อนให้ยืนยันนำเข้าใหม่";
@@ -183,60 +174,6 @@ function formatFileSize(size: number): string {
 }
 
 const useCommittedLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
-
-/** One hydrated single-provisioning request and the Hospital it was submitted for. */
-type ProvisionSubmission = { hospitalId: string; formData: FormData };
-
-const provisionDraftFields = ["targetHospitalId", "givenName", "familyName", "nationalId", "hospitalNumber"] as const;
-
-function provisionFormValue(formData: FormData, field: string): string {
-  const value = formData.get(field);
-  return typeof value === "string" ? value : "";
-}
-
-/** True when the form still holds what was submitted, so a reset cannot discard a newer draft. */
-function isSameProvisionDraft(form: HTMLFormElement, submitted: FormData): boolean {
-  const current = new FormData(form);
-  return provisionDraftFields.every(
-    (field) => provisionFormValue(current, field) === provisionFormValue(submitted, field),
-  );
-}
-
-/**
- * What a settled single-provisioning request proves. `UNAVAILABLE` can follow a committed write,
- * so it, a returned `IDLE`, a thrown request (`null`) and a success for another Hospital stay
- * unconfirmed.
- */
-function classifyProvisionResult(
-  result: PatientProvisionActionState | null,
-  submittedHospitalId: string,
-): "CREATED" | "ALREADY_PROVISIONED" | "CONFLICT" | "FORBIDDEN" | "REJECTED" | "UNCONFIRMED" {
-  if (result?.status === "SUCCESS") {
-    return result.result.hospitalId === submittedHospitalId ? result.result.outcome : "UNCONFIRMED";
-  }
-
-  if (result?.status !== "ERROR") {
-    return "UNCONFIRMED";
-  }
-
-  switch (result.code) {
-    case "CONFLICT":
-      return "CONFLICT";
-    case "FORBIDDEN":
-      return "FORBIDDEN";
-    case "INVALID_INPUT":
-      return "REJECTED";
-    default:
-      return "UNCONFIRMED";
-  }
-}
-
-function fieldError(
-  state: PatientProvisionActionState,
-  field: "nationalId" | "givenName" | "familyName" | "hospitalNumber",
-): string | null {
-  return state.status === "ERROR" ? state.fieldErrors?.[field] ?? null : null;
-}
 
 function createPatientImportFormData(
   file: File,
@@ -383,79 +320,6 @@ function classifyImportResult(
   return hasAttentionRows ? "NOT_IMPORTED" : "NO_CHANGE";
 }
 
-function ProvisionContinuation({
-  result,
-}: {
-  result: PatientProvisionResultState;
-}): React.JSX.Element {
-  const canManageActivation =
-    result.accountStatus === "PROVISIONED" && result.canManagePatientActivation;
-
-  if (!result.canOpenPatientDetail && !canManageActivation) {
-    return (
-      <p className="mt-3 text-sm leading-6 text-muted">
-        ขณะนี้บัญชีนี้ยังไม่มีสิทธิ์ดำเนินการต่อในรายละเอียดหรือการเปิดใช้งานของผู้ป่วยรายนี้
-      </p>
-    );
-  }
-
-  return (
-    <>
-      {result.canOpenPatientDetail ? (
-        <Link
-          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href={`/app/patients/${encodeURIComponent(result.relationshipId)}`}
-        >
-          เปิดข้อมูลผู้ป่วย
-        </Link>
-      ) : null}
-      {canManageActivation ? (
-        <Link
-          className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-          href={`/app/patients/activation?hospitalId=${encodeURIComponent(result.hospitalId)}`}
-        >
-          จัดการการเปิดใช้งานบัญชีผู้ป่วย
-        </Link>
-      ) : null}
-    </>
-  );
-}
-
-function ProvisionResult({
-  state,
-}: {
-  state: PatientProvisionActionState;
-}): React.JSX.Element | null {
-  if (state.status !== "SUCCESS") {
-    return null;
-  }
-
-  if (state.result.outcome === "ALREADY_PROVISIONED") {
-    return (
-      <Alert className="mt-4" variant="neutral">
-        <p className="font-semibold">ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว</p>
-        <p className="mt-1 text-muted">ระบบไม่สร้างข้อมูลซ้ำ และไม่เปลี่ยนแปลงบัญชีเดิม</p>
-        <ProvisionContinuation result={state.result} />
-      </Alert>
-    );
-  }
-
-  const accountMessage =
-    state.result.accountStatus === "ACTIVE"
-      ? "เชื่อมกับบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว โดยคงสถานะและการยืนยันตัวตนเดิมไว้"
-      : "สร้างข้อมูลผู้ป่วยแล้ว บัญชีอยู่ในสถานะรอเปิดใช้งานและยังเข้าสู่ระบบไม่ได้";
-
-  return (
-    <Alert className="mt-4" variant="success">
-      <p className="font-semibold">เพิ่มข้อมูลผู้ป่วยแล้ว</p>
-      <p className="mt-1 text-muted">{accountMessage}</p>
-      <p className="mt-1 text-muted">ระบบไม่ได้สร้างหรือแสดงรหัสผ่านให้ผู้ดำเนินการ</p>
-      <ProvisionContinuation result={state.result} />
-    </Alert>
-  );
-}
-
-/** One batch-level statement of what an import saves, instead of a warning on every row. */
 function PatientImportSavedFieldsNote({ className }: { className?: string }): React.JSX.Element {
   return (
     <div className={className}>
@@ -1082,119 +946,8 @@ export function PatientProvisioningWorkspace({
   canAssignOsm = false,
 }: PatientProvisioningWorkspaceProps): React.JSX.Element {
   const router = useRouter();
-  const provisionFormRef = useRef<HTMLFormElement>(null);
   const mountedRef = useRef(false);
   const activeHospitalIdRef = useRef(selectedHospitalId);
-  const provisionInFlightRef = useRef(false);
-  /**
-   * The unconfirmed request; it is only re-sent unchanged, by the user. The page keys this
-   * component by Hospital, so a remount would discard it: Hospital and mode switches stay
-   * locked until it is resolved.
-   */
-  const unconfirmedProvisionRef = useRef<ProvisionSubmission | null>(null);
-  const [unconfirmedProvision, setUnconfirmedProvision] = useState<ProvisionSubmission | null>(null);
-  const [provisionErrorHospitalId, setProvisionErrorHospitalId] = useState<string | null>(null);
-
-  const recordUnconfirmedProvision = useCallback((submission: ProvisionSubmission | null): void => {
-    unconfirmedProvisionRef.current = submission;
-    setUnconfirmedProvision(submission);
-  }, []);
-
-  /**
-   * Awaits one submission. Its Toast, form reset and unconfirmed record are decided here, never
-   * from retained action state, and only while this page still shows the submitted Hospital.
-   */
-  const runProvision = useCallback(async (
-    previous: PatientProvisionActionState,
-    submission: ProvisionSubmission,
-  ): Promise<PatientProvisionActionState> => {
-    let response: PatientProvisionActionState | null = null;
-    try {
-      response = await provisionPatientAction(previous, submission.formData);
-    } catch (error) {
-      unstable_rethrow(error);
-    } finally {
-      provisionInFlightRef.current = false;
-    }
-
-    const result = response;
-    const verdict = classifyProvisionResult(result, submission.hospitalId);
-    if (verdict === "UNCONFIRMED" || result === null) {
-      if (mountedRef.current) {
-        recordUnconfirmedProvision(submission);
-      }
-      return initialPatientProvisionActionState;
-    }
-
-    if (!mountedRef.current) {
-      return result;
-    }
-
-    recordUnconfirmedProvision(null);
-    if (result.status === "ERROR") {
-      setProvisionErrorHospitalId(submission.hospitalId);
-    }
-    if (activeHospitalIdRef.current !== submission.hospitalId) {
-      return result;
-    }
-
-    if (verdict === "CREATED") {
-      notify.success("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    } else if (verdict === "CONFLICT") {
-      notify.warning("ข้อมูลผู้ป่วยขัดแย้งกับข้อมูลเดิม กรุณาตรวจสอบ");
-    } else if (verdict === "FORBIDDEN") {
-      notify.error("ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้");
-    }
-
-    const form = provisionFormRef.current;
-    if (result.status === "SUCCESS" && form && isSameProvisionDraft(form, submission.formData)) {
-      form.reset();
-    }
-    return result;
-  }, [recordUnconfirmedProvision]);
-
-  const [provisionState, dispatchProvision, provisionPending] = useMutationActionState<
-    PatientProvisionActionState,
-    ProvisionSubmission
-  >(runProvision, initialPatientProvisionActionState);
-
-  /**
-   * Acquires the single-flight lock synchronously, so a rapid second submit never reaches the
-   * Server Action. While a request is unconfirmed, only that exact submission may be re-sent.
-   */
-  const sendProvision = useCallback((submission: ProvisionSubmission, resend: boolean): void => {
-    const unconfirmed = unconfirmedProvisionRef.current;
-    if (provisionInFlightRef.current || (resend ? unconfirmed !== submission : unconfirmed !== null)) {
-      return;
-    }
-
-    provisionInFlightRef.current = true;
-    dispatchProvision(submission);
-  }, [dispatchProvision]);
-
-  const submitProvision = useCallback((formData: FormData): void => {
-    sendProvision({ hospitalId: provisionFormValue(formData, "targetHospitalId"), formData }, false);
-  }, [sendProvision]);
-
-  function handleProvisionSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    submitPreservingInput(submitProvision)(event);
-  }
-
-  function resendProvision(): void {
-    const unconfirmed = unconfirmedProvisionRef.current;
-    if (unconfirmed) {
-      startTransition(() => sendProvision(unconfirmed, true));
-    }
-  }
-
-  const provisionFeedback =
-    (provisionState.status === "SUCCESS" && provisionState.result.hospitalId === selectedHospitalId) ||
-    (provisionState.status === "ERROR" && provisionErrorHospitalId === selectedHospitalId)
-      ? provisionState
-      : initialPatientProvisionActionState;
-  const provisionUnconfirmed = unconfirmedProvision?.hospitalId === selectedHospitalId;
-  /** A Hospital or mode switch would hide the recovery alert or remount it away. */
-  const provisionLocked = provisionPending || unconfirmedProvision !== null;
   const importInFlightRef = useRef(false);
   /**
    * Rows may have been saved by an unconfirmed confirmation. File, date, mode and Hospital stay
@@ -1217,7 +970,6 @@ export function PatientProvisioningWorkspace({
   const [previewPending, startPreviewTransition] = useTransition();
   const [importPending, startImportTransition] = useTransition();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
-  const [mode, setMode] = useState<ProvisioningMode>("SINGLE");
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const importContextVersion = useRef(0);
   const previousHospitalId = useRef(selectedHospitalId);
@@ -1265,7 +1017,6 @@ export function PatientProvisioningWorkspace({
     previewState.status === "SUCCESS" &&
     previewState.preview.targetHospitalId === selectedHospitalId &&
     previewState.preview.effectiveDate === (effectiveDate.trim() || null);
-  const activeMode: ProvisioningMode = selectedScope.canBulkImport ? mode : "SINGLE";
   const reviewPreview =
     previewIsCurrent && previewState.status === "SUCCESS" ? previewState.preview : null;
   const importSummary = importState.status === "SUCCESS" ? importState.summary : null;
@@ -1496,26 +1247,11 @@ export function PatientProvisioningWorkspace({
     element?.focus({ preventScroll: false });
   }
 
-  function changeMode(nextMode: ProvisioningMode): void {
-    if (
-      provisionInFlightRef.current ||
-      unconfirmedProvisionRef.current !== null ||
-      importInFlightRef.current ||
-      importUnconfirmedRef.current
-    ) {
-      return;
-    }
-
-    setMode(nextMode);
-  }
-
   function changeHospital(hospitalId: string): void {
     if (
       previewPending ||
       importPending ||
       hospitalSwitching ||
-      provisionInFlightRef.current ||
-      unconfirmedProvisionRef.current !== null ||
       importInFlightRef.current ||
       importUnconfirmedRef.current
     ) {
@@ -1538,10 +1274,10 @@ export function PatientProvisioningWorkspace({
   return (
     <div>
       <PageHeader
-        actions={<StatusBadge variant="info">เพิ่มผู้ป่วย</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่มหรือนำเข้าผู้ป่วย" }]}
-        description="เพิ่มข้อมูลผู้ป่วยเข้าสู่ DEMI โดยไม่สร้างบัญชีซ้ำ และไม่รับรหัสผ่านจากผู้ดำเนินการ"
-        title="เพิ่มหรือนำเข้าผู้ป่วย"
+        actions={<StatusBadge variant="info">นำเข้าผู้ป่วย</StatusBadge>}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าผู้ป่วย" }]}
+        description="นำเข้ารายชื่อผู้ป่วยจาก Excel ของโรงพยาบาลที่คุณเป็นเจ้าของ รองรับตั้งแต่ 1 รายการต่อไฟล์"
+        title="นำเข้าผู้ป่วย"
       />
 
       <div className="pt-8">
@@ -1553,7 +1289,7 @@ export function PatientProvisioningWorkspace({
               </label>
               <Select
                 className="mt-2 max-w-xl"
-                disabled={previewPending || importLocked || hospitalSwitching || provisionLocked}
+                disabled={previewPending || importLocked || hospitalSwitching}
                 id="targetHospitalId"
                 onChange={(event) => changeHospital(event.target.value)}
                 value={selectedHospitalId}
@@ -1575,7 +1311,7 @@ export function PatientProvisioningWorkspace({
             </div>
           )}
           <p className="mt-2 text-sm leading-6 text-muted">
-              เพิ่มผู้ป่วยได้เฉพาะโรงพยาบาลที่เลือก
+              นำเข้าผู้ป่วยได้เฉพาะโรงพยาบาลที่เลือก
           </p>
         </Panel>
 
@@ -1597,68 +1333,11 @@ export function PatientProvisioningWorkspace({
                 ไฟล์นี้ใช้ได้กับโรงพยาบาลนี้เท่านั้น หากแก้ไขหัวตารางหรือเพิ่มคอลัมน์ ระบบจะไม่รับไฟล์
               </p>
             </div>
-            <LocalNavigation
-              ariaLabel="รูปแบบการเพิ่มผู้ป่วย"
-              items={[
-                { label: "เพิ่มรายบุคคล", value: "SINGLE" },
-                { label: "นำเข้าจาก Excel", value: "EXCEL" },
-              ]}
-              disabled={provisionLocked || importLocked}
-              onChange={changeMode}
-              value={activeMode}
-            />
           </div>
         ) : null}
 
         <div className="mt-6">
-          {activeMode === "SINGLE" ? (
-          <Panel className="max-w-4xl">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มผู้ป่วยรายบุคคล</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                ใช้กรอกข้อมูลที่จำเป็นเพื่อเพิ่มผู้ป่วยในโรงพยาบาลนี้
-              </p>
-            </div>
-            <form
-              action={submitProvision}
-              className="mt-6 space-y-4"
-              onSubmit={handleProvisionSubmit}
-              ref={provisionFormRef}
-            >
-              <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>ชื่อ</span>
-                  <Input aria-invalid={Boolean(fieldError(provisionFeedback, "givenName"))} name="givenName" required type="text" />
-                  {fieldError(provisionFeedback, "givenName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "givenName")}</span> : null}
-                </label>
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>นามสกุล</span>
-                  <Input aria-invalid={Boolean(fieldError(provisionFeedback, "familyName"))} name="familyName" required type="text" />
-                  {fieldError(provisionFeedback, "familyName") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "familyName")}</span> : null}
-                </label>
-              </div>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>เลขบัตรประชาชน</span>
-                <Input aria-invalid={Boolean(fieldError(provisionFeedback, "nationalId"))} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
-                {fieldError(provisionFeedback, "nationalId") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "nationalId")}</span> : null}
-              </label>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>HN ของโรงพยาบาลนี้ <span className="font-normal text-muted">(ไม่บังคับ)</span></span>
-                <Input aria-invalid={Boolean(fieldError(provisionFeedback, "hospitalNumber"))} maxLength={64} name="hospitalNumber" type="text" />
-                {fieldError(provisionFeedback, "hospitalNumber") ? <span className="block text-xs font-normal text-danger">{fieldError(provisionFeedback, "hospitalNumber")}</span> : null}
-              </label>
-              {provisionFeedback.status === "ERROR" ? <Alert className="mt-2" variant="danger">{provisionFeedback.message}</Alert> : null}
-              <UnknownOutcomeAlert active={provisionUnconfirmed} className="mt-2" recovery={{ kind: "resend", onResend: resendProvision, resending: provisionPending }} />
-              <Button className="w-full" disabled={provisionPending || provisionUnconfirmed} loading={provisionPending} type="submit">
-                {provisionPending ? "กำลังบันทึก..." : "เพิ่มผู้ป่วย"}
-              </Button>
-            </form>
-            <ProvisionResult state={provisionFeedback} />
-          </Panel>
-          ) : null}
-
-          {selectedScope.canBulkImport && activeMode === "EXCEL" ? (
+          {selectedScope.canBulkImport ? (
             <Panel>
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">นำเข้าผู้ป่วยจาก Excel</h2>

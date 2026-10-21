@@ -13,7 +13,7 @@ const requestId = "22222222-2222-4222-8222-222222222222";
 const nationalId = "1000000000009";
 const actor: ActorContext = {
   userId: "reviewer", personId: "person", roles: [Role.HOSPITAL],
-  hospitalMemberships: [{ hospitalId, membershipType: MembershipType.MEMBER, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }],
+  hospitalMemberships: [{ hospitalId, membershipType: MembershipType.OWNER, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }],
   osmHospitalRelationships: [],
 };
 
@@ -28,7 +28,7 @@ describe("Hospital access request locator", () => {
     }));
   });
 
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows exact %s and returns only safe locator data", async (membershipType) => {
+  it.each([MembershipType.OWNER])("allows exact %s and returns only safe locator data", async (membershipType) => {
     const result = await locateHospitalPatientAccessRequest({ ...actor, hospitalMemberships: [{ ...actor.hospitalMemberships[0], membershipType }] }, { hospitalId, nationalId });
     expect(result).toEqual({ requestId, status: "PENDING" });
     expect(mocks.request).toHaveBeenCalledWith({

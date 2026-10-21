@@ -7,7 +7,6 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 import type {
   ActorContext,
   ActorHospitalMembership,
-  ActorOsmHospitalRelationship,
 } from "@/modules/auth/types/actor-context";
 
 export const PATIENT_PROVISIONING_CAPABILITY = "patient:provision" as const;
@@ -17,7 +16,7 @@ export type PatientProvisioningCapability = typeof PATIENT_PROVISIONING_CAPABILI
 export type PatientProvisioningPolicyDecision =
   | {
       allowed: true;
-      reason: "active_direct_hospital_scope" | "active_osm_hospital_scope";
+      reason: "active_direct_hospital_scope";
     }
   | {
       allowed: false;
@@ -26,30 +25,19 @@ export type PatientProvisioningPolicyDecision =
         | "invalid_capability"
         | "invalid_target_hospital"
         | "supported_role_required"
-        | "active_direct_hospital_scope_required"
-        | "active_osm_hospital_scope_required";
+        | "active_direct_hospital_scope_required";
     };
 
 function isActiveDirectHospitalScope(
   membership: Pick<ActorHospitalMembership, "membershipType" | "status" | "hospitalStatus">,
 ): boolean {
   const directMembership =
-    membership.membershipType === MembershipType.OWNER ||
-    membership.membershipType === MembershipType.MEMBER;
+    membership.membershipType === MembershipType.OWNER;
 
   return (
     directMembership &&
     membership.status === MembershipStatus.ACTIVE &&
     membership.hospitalStatus === HospitalStatus.ACTIVE
-  );
-}
-
-function isActiveOsmHospitalScope(
-  relationship: Pick<ActorOsmHospitalRelationship, "status" | "hospitalStatus">,
-): boolean {
-  return (
-    relationship.status === MembershipStatus.ACTIVE &&
-    relationship.hospitalStatus === HospitalStatus.ACTIVE
   );
 }
 
@@ -62,19 +50,6 @@ export function hasDirectHospitalProvisioningScope(
       actor.hospitalMemberships.some(
         (membership) =>
           membership.hospitalId === targetHospitalId && isActiveDirectHospitalScope(membership),
-      ),
-  );
-}
-
-export function hasOsmHospitalProvisioningScope(
-  actor: ActorContext | null | undefined,
-  targetHospitalId: string,
-): boolean {
-  return Boolean(
-    actor?.roles.includes(Role.OSM) &&
-      actor.osmHospitalRelationships.some(
-        (relationship) =>
-          relationship.hospitalId === targetHospitalId && isActiveOsmHospitalScope(relationship),
       ),
   );
 }
@@ -98,20 +73,12 @@ export function decidePatientProvisioningPolicy(input: {
 
   const targetHospitalId = input.targetHospitalId.trim();
 
-  if (!input.actor.roles.includes(Role.HOSPITAL) && !input.actor.roles.includes(Role.OSM)) {
+  if (!input.actor.roles.includes(Role.HOSPITAL)) {
     return { allowed: false, reason: "supported_role_required" };
   }
 
   if (hasDirectHospitalProvisioningScope(input.actor, targetHospitalId)) {
     return { allowed: true, reason: "active_direct_hospital_scope" };
-  }
-
-  if (hasOsmHospitalProvisioningScope(input.actor, targetHospitalId)) {
-    return { allowed: true, reason: "active_osm_hospital_scope" };
-  }
-
-  if (input.actor.roles.includes(Role.OSM)) {
-    return { allowed: false, reason: "active_osm_hospital_scope_required" };
   }
 
   return { allowed: false, reason: "active_direct_hospital_scope_required" };
@@ -143,5 +110,4 @@ export function assertPatientBulkProvisioningPolicy(input: {
 
 export const patientProvisioningPolicyInternals = {
   isActiveDirectHospitalScope,
-  isActiveOsmHospitalScope,
 };

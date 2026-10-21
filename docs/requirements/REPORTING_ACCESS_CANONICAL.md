@@ -1,5 +1,7 @@
 # ข้อกำหนดปัจจุบัน: Reporting Access
 
+> **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
+
 - **สถานะ:** `CONFIRMED_OWNER_REQUIREMENT` สำหรับ OR-RPT-01–05; เอกสารนี้เป็นแหล่งความจริงปัจจุบันด้าน product intent
 - **ปรับปรุง:** 2026-10-17
 - **ขอบเขต:** การอ่านและส่งออกผลรายงานของ Hospital; ไม่อนุมัติ runtime changes หรือการเปิดเผย field ที่ยังไม่ยืนยัน และไม่ถือ implementation evidence เป็น real-data release approval

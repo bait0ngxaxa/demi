@@ -41,8 +41,7 @@ export function decidePatientAccessRequestPolicy(input: {
   const hasDirectReviewMembership = input.actor.hospitalMemberships.some(
     (membership) =>
       membership.hospitalId === hospitalId &&
-      (membership.membershipType === MembershipType.OWNER ||
-        membership.membershipType === MembershipType.MEMBER) &&
+      membership.membershipType === MembershipType.OWNER &&
       membership.status === MembershipStatus.ACTIVE &&
       membership.hospitalStatus === HospitalStatus.ACTIVE,
   );

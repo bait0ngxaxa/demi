@@ -28,7 +28,7 @@ function actorWith(
       ? [
           {
             hospitalId: targetHospitalId,
-            membershipType: MembershipType.MEMBER,
+            membershipType: MembershipType.OWNER,
             profession: null,
             status: MembershipStatus.ACTIVE,
             hospitalStatus: HospitalStatus.ACTIVE,
@@ -64,7 +64,7 @@ function createDatabase(options: {
         findFirst: vi.fn(async () =>
           options.membership === false
             ? null
-            : { membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE },
+            : { membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE },
         ),
       },
     } as unknown as PatientRosterImportDatabase,
@@ -73,7 +73,7 @@ function createDatabase(options: {
 }
 
 describe("resolvePatientImportTemplateTarget", () => {
-  it("resolves the hospital code and name for a direct member of an active hospital", async () => {
+  it("resolves the hospital code and name for a direct Owner of an active hospital", async () => {
     const { database } = createDatabase();
 
     await expect(resolvePatientImportTemplateTarget(actorWith(), hospitalId, database)).resolves.toEqual({
@@ -83,7 +83,7 @@ describe("resolvePatientImportTemplateTarget", () => {
     });
   });
 
-  it("allows OWNER as well as MEMBER", async () => {
+  it("allows direct OWNER", async () => {
     const { database } = createDatabase();
 
     await expect(

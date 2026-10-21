@@ -81,7 +81,7 @@ async function createHospitalActor(input: {
     select: { id: true },
   });
   const membershipStatus = input.membershipStatus ?? MembershipStatus.ACTIVE;
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
 
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
   await prisma.hospitalMembership.create({

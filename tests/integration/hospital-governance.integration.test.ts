@@ -24,7 +24,7 @@ import {
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { listWorkforce } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 

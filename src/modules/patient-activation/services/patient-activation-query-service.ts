@@ -245,7 +245,7 @@ export async function listPatientActivationScopes(
         memberships: {
           some: {
             userId: actor.userId,
-            membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+            membershipType: MembershipType.OWNER,
             status: MembershipStatus.ACTIVE,
           },
         },

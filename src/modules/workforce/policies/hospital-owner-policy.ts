@@ -10,7 +10,7 @@ export const HOSPITAL_OWNER_CAPABILITIES = {
   readGovernance: "hospital-owner:read-governance",
   promote: "hospital-owner:promote",
   demote: "hospital-owner:demote",
-  // Customer decision E1 (ก-15): OWNER grants/revokes report export for a MEMBER.
+  // Historical capability retained only to reject stale callers.
   reportExportGrant: "hospital-owner:report-export-grant",
   // ADR-0016: OWNER grants/revokes read-only network Patient access for a MEMBER.
   networkPatientReadGrant: "hospital-owner:network-patient-read-grant",
@@ -47,7 +47,7 @@ export function decideHospitalOwnerPolicy(input: {
 
   if (
     typeof input.capability !== "string" ||
-    !capabilityValues.has(input.capability as HospitalOwnerCapability)
+    (!capabilityValues.has(input.capability as HospitalOwnerCapability) || input.capability === HOSPITAL_OWNER_CAPABILITIES.reportExportGrant)
   ) {
     return { allowed: false, reason: "invalid_capability" };
   }

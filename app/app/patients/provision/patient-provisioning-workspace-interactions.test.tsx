@@ -41,7 +41,6 @@ import { PATIENT_IMPORT_CONTRACT_VERSION } from "@/modules/patient-provisioning/
 import type {
   PatientImportActionState,
   PatientImportPreviewBinding,
-  PatientProvisionActionState,
 } from "@/modules/patient-provisioning/transport/action-state";
 import type {
   PatientImportPreviewRow,
@@ -245,7 +244,6 @@ async function openReviewDialog(): Promise<HTMLDivElement> {
   }
 
   await act(async () => {
-    button(mounted, "นำเข้าจาก Excel").click();
   });
 
   const fileInput = mounted.querySelector<HTMLInputElement>("#patient-import-file");
@@ -359,48 +357,10 @@ describe("Patient import review dialog interactions", () => {
     expect(button(mounted, "ตรวจสอบและแสดงตัวอย่าง").disabled).toBe(false);
   });
 
-  it("keeps typed patient details after a rejected single provisioning", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue({ status: "ERROR", code: "INVALID_INPUT", message: "เลขบัตรประชาชนไม่ถูกต้อง" });
-    const givenName = mounted.querySelector<HTMLInputElement>('input[name="givenName"]')!;
-    const familyName = mounted.querySelector<HTMLInputElement>('input[name="familyName"]')!;
-    const nationalId = mounted.querySelector<HTMLInputElement>('input[name="nationalId"]')!;
-    givenName.value = "สมชาย";
-    familyName.value = "ใจดี";
-    nationalId.value = "1234567890123";
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(mocks.provision).toHaveBeenCalledTimes(1);
-    expect(mounted.textContent).toContain("เลขบัตรประชาชนไม่ถูกต้อง");
-    expect(givenName.value).toBe("สมชาย");
-    expect(nationalId.value).toBe("1234567890123");
-  });
 });
 
 const otherHospitalId = "55555555-5555-4555-8555-555555555555";
 const otherScope = { ...scope, hospitalId: otherHospitalId, hospitalName: "โรงพยาบาลอื่น" };
-const relationshipId = "44444444-4444-4444-8444-444444444444";
-
-function provisionSuccess(
-  outcome: "CREATED" | "ALREADY_PROVISIONED",
-  resultHospitalId = hospitalId,
-): PatientProvisionActionState {
-  return {
-    status: "SUCCESS",
-    result: {
-      outcome,
-      relationshipId,
-      hospitalId: resultHospitalId,
-      accountStatus: "PROVISIONED",
-      reusedExistingUser: false,
-      canOpenPatientDetail: true,
-      canManagePatientActivation: true,
-    },
-  };
-}
 
 /** Keyed by Hospital like `page.tsx`, so a Hospital change remounts the Workspace. */
 function renderWorkspace(selectedHospitalId: string): void {
@@ -416,28 +376,6 @@ function renderWorkspace(selectedHospitalId: string): void {
   });
 }
 
-function patientInput(mounted: HTMLElement, name: string): HTMLInputElement {
-  const found = mounted.querySelector<HTMLInputElement>(`input[name="${name}"]`);
-  if (!found) {
-    throw new Error(`Missing input: ${name}`);
-  }
-  return found;
-}
-
-function fillPatient(mounted: HTMLElement, nationalId = "1234567890123"): void {
-  patientInput(mounted, "givenName").value = "สมชาย";
-  patientInput(mounted, "familyName").value = "ใจดี";
-  patientInput(mounted, "nationalId").value = nationalId;
-}
-
-function provisionCall(index: number): FormData {
-  const formData = mocks.provision.mock.calls[index]?.[1];
-  if (!(formData instanceof FormData)) {
-    throw new Error(`Missing provisioning call ${index}`);
-  }
-  return formData;
-}
-
 function allNotifications(): number {
   return (
     mocks.notifySuccess.mock.calls.length +
@@ -448,353 +386,6 @@ function allNotifications(): number {
 }
 
 const unconfirmedText = "ระบบยังยืนยันผลการดำเนินการไม่ได้";
-
-describe("Single Patient provisioning Toast feedback", () => {
-  it("emits one success Toast for a created Patient, resets the form and keeps continuation links", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue(provisionSuccess("CREATED"));
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
-    expect(mocks.notifySuccess).toHaveBeenCalledWith("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(allNotifications()).toBe(1);
-    expect(patientInput(mounted, "nationalId").value).toBe("");
-    expect(mounted.querySelector(`a[href="/app/patients/${relationshipId}"]`)?.textContent).toBe("เปิดข้อมูลผู้ป่วย");
-    expect(mounted.querySelector(`a[href="/app/patients/activation?hospitalId=${hospitalId}"]`)).not.toBeNull();
-
-    renderWorkspace(hospitalId);
-    await act(async () => {
-      button(mounted, "นำเข้าจาก Excel").click();
-    });
-    await act(async () => {
-      button(mounted, "เพิ่มรายบุคคล").click();
-    });
-
-    expect(mounted.textContent).toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not claim a new Patient for an already provisioned result", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue(provisionSuccess("ALREADY_PROVISIONED"));
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.textContent).toContain("ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว");
-    expect(mounted.textContent).not.toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(mounted.querySelector(`a[href="/app/patients/${relationshipId}"]`)).not.toBeNull();
-  });
-
-  it("keeps validation inline without a Toast", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue({
-      status: "ERROR",
-      code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบข้อมูลผู้ป่วยให้ถูกต้อง",
-      fieldErrors: { nationalId: "เลขบัตรประชาชนต้องมี 13 หลัก" },
-    });
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.textContent).toContain("เลขบัตรประชาชนต้องมี 13 หลัก");
-    expect(patientInput(mounted, "nationalId").getAttribute("aria-invalid")).toBe("true");
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-  });
-
-  it.each([
-    ["CONFLICT", "warning", "ข้อมูลผู้ป่วยขัดแย้งกับข้อมูลเดิม กรุณาตรวจสอบ"],
-    ["FORBIDDEN", "error", "ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้"],
-  ] as const)("maps a confirmed %s refusal to its static %s Toast and keeps the inline message", async (code, level, toast) => {
-    const mounted = container!;
-    const channel = level === "warning" ? mocks.notifyWarning : mocks.notifyError;
-    const inlineMessage = "ข้อความจากเซิร์ฟเวอร์ที่แสดงในหน้า";
-    mocks.provision.mockResolvedValue({ status: "ERROR", code, message: inlineMessage });
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(channel).toHaveBeenCalledTimes(1);
-    expect(channel).toHaveBeenCalledWith(toast);
-    expect(allNotifications()).toBe(1);
-    expect(mounted.textContent).toContain(inlineMessage);
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-    expect(button(mounted, "เพิ่มผู้ป่วย").disabled).toBe(false);
-  });
-
-  it("treats a returned UNAVAILABLE as unconfirmed without a Toast or a failure claim", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue({
-      status: "ERROR",
-      code: "UNAVAILABLE",
-      message: "ระบบไม่พร้อมดำเนินการในขณะนี้ กรุณาลองใหม่อีกครั้ง",
-    });
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.textContent).not.toContain("ระบบไม่พร้อมดำเนินการในขณะนี้");
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-    expect(button(mounted, "เพิ่มผู้ป่วย").disabled).toBe(true);
-  });
-
-  it("recovers a thrown request only by re-sending the exact original payload", async () => {
-    const mounted = container!;
-    mocks.provision.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    fillPatient(mounted);
-    patientInput(mounted, "hospitalNumber").value = "HN-001";
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-    expect(button(mounted, "เพิ่มผู้ป่วย").disabled).toBe(true);
-    await act(async () => {
-      mounted.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(mocks.provision).toHaveBeenCalledTimes(1);
-
-    patientInput(mounted, "nationalId").value = "9999999999999";
-    mocks.provision.mockResolvedValueOnce(provisionSuccess("ALREADY_PROVISIONED"));
-    await act(async () => {
-      button(mounted, "ตรวจสอบผลด้วยคำขอเดิม").click();
-    });
-
-    expect(mocks.provision).toHaveBeenCalledTimes(2);
-    expect(provisionCall(1)).toBe(provisionCall(0));
-    expect(provisionCall(1).get("nationalId")).toBe("1234567890123");
-    expect(provisionCall(1).get("hospitalNumber")).toBe("HN-001");
-    expect(allNotifications()).toBe(0);
-    expect(mounted.textContent).not.toContain(unconfirmedText);
-    expect(mounted.textContent).toContain("ผู้ป่วยรายนี้มีข้อมูลในโรงพยาบาลแล้ว");
-    expect(patientInput(mounted, "nationalId").value).toBe("9999999999999");
-  });
-
-  it("dispatches one Server Action for a rapid double submit", async () => {
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      const form = mounted.querySelector("form")!;
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(mocks.provision).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      pending.resolve(provisionSuccess("CREATED"));
-      await pending.promise;
-    });
-    expect(mocks.provision).toHaveBeenCalledTimes(1);
-    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
-  });
-
-  it("blocks the Hospital selector while a request is in flight", async () => {
-    renderWorkspace(hospitalId);
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-    const selector = mounted.querySelector<HTMLSelectElement>("#targetHospitalId")!;
-    expect(selector.disabled).toBe(true);
-
-    await act(async () => {
-      pending.resolve(provisionSuccess("CREATED"));
-      await pending.promise;
-    });
-    expect(selector.disabled).toBe(false);
-  });
-
-  it("discards a response that settles after the Hospital key remounts the Workspace", async () => {
-    renderWorkspace(hospitalId);
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-    const formBeforeSwitch = mounted.querySelector("form");
-    renderWorkspace(otherHospitalId);
-    expect(mounted.querySelector("form")).not.toBe(formBeforeSwitch);
-    expect(patientInput(mounted, "nationalId").value).toBe("");
-    fillPatient(mounted, "1111111111111");
-
-    await act(async () => {
-      pending.resolve(provisionSuccess("CREATED"));
-      await pending.promise;
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(patientInput(mounted, "nationalId").value).toBe("1111111111111");
-    expect(mounted.textContent).not.toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(mounted.querySelector('a[href^="/app/patients/activation"]')).toBeNull();
-    expect(mounted.querySelector(`a[href="/app/patients/${relationshipId}"]`)).toBeNull();
-
-    renderWorkspace(hospitalId);
-    expect(mounted.textContent).not.toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(allNotifications()).toBe(0);
-  });
-
-  it("locks Hospital and mode switches until an unconfirmed outcome is resolved", async () => {
-    renderWorkspace(hospitalId);
-    const mounted = container!;
-    mocks.provision.mockResolvedValueOnce({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" });
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    const selector = mounted.querySelector<HTMLSelectElement>("#targetHospitalId")!;
-    expect(selector.disabled).toBe(true);
-    await act(async () => {
-      selector.value = otherHospitalId;
-      selector.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-    expect(mocks.push).not.toHaveBeenCalled();
-
-    const excelMode = button(mounted, "นำเข้าจาก Excel");
-    expect(excelMode.disabled).toBe(true);
-    await act(async () => {
-      excelMode.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-    expect(button(mounted, "ตรวจสอบผลด้วยคำขอเดิม").disabled).toBe(false);
-
-    mocks.provision.mockResolvedValueOnce(provisionSuccess("ALREADY_PROVISIONED"));
-    await act(async () => {
-      button(mounted, "ตรวจสอบผลด้วยคำขอเดิม").click();
-    });
-
-    expect(provisionCall(1)).toBe(provisionCall(0));
-    expect(mounted.textContent).not.toContain(unconfirmedText);
-    expect(selector.disabled).toBe(false);
-    expect(button(mounted, "นำเข้าจาก Excel").disabled).toBe(false);
-  });
-
-  it("locks the mode switch while a request is in flight so its recovery alert cannot be hidden", async () => {
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-    await act(async () => {
-      button(mounted, "นำเข้าจาก Excel").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(button(mounted, "นำเข้าจาก Excel").disabled).toBe(true);
-    expect(mounted.querySelector('input[name="nationalId"]')).not.toBeNull();
-
-    await act(async () => {
-      pending.resolve({ status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" });
-      await pending.promise;
-    });
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-  });
-
-  it("treats a returned IDLE as unconfirmed without a Toast", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue({ status: "IDLE" });
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-    expect(button(mounted, "เพิ่มผู้ป่วย").disabled).toBe(true);
-  });
-
-  it("keeps a draft edited while the request was pending", async () => {
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-    patientInput(mounted, "nationalId").value = "2222222222222";
-
-    await act(async () => {
-      pending.resolve(provisionSuccess("CREATED"));
-      await pending.promise;
-    });
-
-    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
-    expect(mounted.textContent).toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(patientInput(mounted, "nationalId").value).toBe("2222222222222");
-    expect(patientInput(mounted, "givenName").value).toBe("สมชาย");
-  });
-
-  it("treats a success for a different Hospital as unconfirmed", async () => {
-    const mounted = container!;
-    mocks.provision.mockResolvedValue(provisionSuccess("CREATED", otherHospitalId));
-    fillPatient(mounted);
-
-    await act(async () => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-
-    expect(allNotifications()).toBe(0);
-    expect(mounted.textContent).not.toContain("เพิ่มข้อมูลผู้ป่วยแล้ว");
-    expect(mounted.querySelector('[role="alert"]')?.textContent).toContain(unconfirmedText);
-    expect(patientInput(mounted, "nationalId").value).toBe("1234567890123");
-  });
-
-  it("suppresses feedback for a response that arrives after unmount", async () => {
-    const mounted = container!;
-    const pending = deferred<PatientProvisionActionState>();
-    mocks.provision.mockReturnValue(pending.promise);
-    fillPatient(mounted);
-
-    act(() => {
-      button(mounted, "เพิ่มผู้ป่วย").click();
-    });
-    act(() => root?.unmount());
-    root = null;
-
-    await act(async () => {
-      pending.resolve(provisionSuccess("CREATED"));
-      await pending.promise;
-    });
-    expect(allNotifications()).toBe(0);
-  });
-});
-
-type ImportRowResult = PatientImportResultSummary["rows"][number]["result"];
 
 function importPreview(
   classifications: readonly PatientImportPreviewRow["classification"][],
@@ -808,6 +399,8 @@ function importPreview(
 }
 
 /** A summary whose counts are derived from its rows, as the import service builds it. */
+type ImportRowResult = PatientImportResultSummary["rows"][number]["result"];
+
 function importResult(
   results: readonly ImportRowResult[],
   overrides: Partial<PatientImportResultSummary> = {},
@@ -1120,7 +713,6 @@ describe("Excel Patient import confirmation Toast feedback", () => {
       confirmButton(mounted).click();
     });
     expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
-    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(false);
 
     await act(async () => {
       button(mounted, "ยกเลิก").click();
@@ -1230,13 +822,11 @@ describe("Excel Patient import unconfirmed outcome", () => {
     expect(mounted.querySelector<HTMLInputElement>("#patient-import-file")?.disabled).toBe(true);
     expect(effectiveDateInput(mounted).disabled).toBe(true);
     expect(button(mounted, "ล้างไฟล์").disabled).toBe(true);
-    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(true);
     const selector = mounted.querySelector<HTMLSelectElement>("#targetHospitalId")!;
     expect(selector.disabled).toBe(true);
     await act(async () => {
       selector.value = otherHospitalId;
       selector.dispatchEvent(new Event("change", { bubbles: true }));
-      button(mounted, "เพิ่มรายบุคคล").dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mounted.textContent).toContain("patients.xlsx");
@@ -1271,7 +861,6 @@ describe("Excel Patient import unconfirmed outcome", () => {
     expect(confirmCall(1).get("previewBinding")).toBe("fresh-binding");
     expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
     expect(mocks.notifySuccess).toHaveBeenCalledWith("นำเข้าข้อมูลผู้ป่วยแล้ว");
-    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(false);
     expect(selector.disabled).toBe(false);
   });
 });
@@ -1288,7 +877,6 @@ describe("Excel Patient import concurrency and context", () => {
       confirm.click();
     });
     expect(mocks.confirmImport).toHaveBeenCalledTimes(1);
-    expect(button(mounted, "เพิ่มรายบุคคล").disabled).toBe(true);
 
     await act(async () => {
       pending.resolve(importResult(["IMPORTED", "INVALID"]));

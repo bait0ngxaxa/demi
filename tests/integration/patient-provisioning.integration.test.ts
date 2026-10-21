@@ -12,12 +12,10 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
-import {
-  importPatientProvisioning,
+import { importPatientProvisioning,
   previewPatientProvisioning,
-  provisionPatient,
-  type ProvisionPatientInput,
-} from "@/modules/patient-provisioning/services/patient-provisioning-service";
+  type ProvisionPatientInput } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 import {
@@ -102,7 +100,7 @@ async function createActor(input: {
   await prisma.userRole.create({ data: { userId: user.id, role: roles[0] } });
 
   const relationshipStatus = input.relationshipStatus ?? MembershipStatus.ACTIVE;
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   const hospital = await prisma.hospital.findUniqueOrThrow({
     where: { id: input.hospitalId },
     select: { status: true },
@@ -353,29 +351,11 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(await prisma.person.count()).toBe(2);
   });
 
-  it("allows OSM single provisioning through its active Hospital relationship and reuses a PROVISIONED User", async () => {
-    const hospital = await createHospital("INTEGRATION-PATIENT-OSM-SINGLE");
+  it("denies OSM patient creation through the internal import row boundary", async () => {
+    const hospital = await createHospital("INTEGRATION-PATIENT-OSM-DENIED");
     const { actor } = await createActor({ kind: "OSM", hospitalId: hospital.id });
-    const person = await prisma.person.create({
-      data: {
-        identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIds.osm }),
-        givenName: "อสม.",
-        familyName: "เดิม",
-      },
-      select: { id: true },
-    });
-    const user = await prisma.user.create({
-      data: { personId: person.id, status: UserStatus.PROVISIONED },
-      select: { id: true },
-    });
-
-    const result = await provisionPatient(
-      actor,
-      patientInput(nationalIds.osm, hospital.id, { givenName: "อสม.", familyName: "เดิม" }),
-    );
-
-    expect(result).toMatchObject({ outcome: "CREATED", userId: user.id, accountStatus: UserStatus.PROVISIONED, reusedExistingUser: true });
-    expect(await prisma.userRole.findUnique({ where: { userId_role: { userId: user.id, role: Role.PATIENT } } })).not.toBeNull();
+    await expect(provisionPatient(actor, patientInput(nationalIds.osm, hospital.id))).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await prisma.patientProfile.count()).toBe(0);
   });
 
   it("is idempotent for an exact duplicate without duplicating records or audit events", async () => {

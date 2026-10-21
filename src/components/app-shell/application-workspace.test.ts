@@ -111,7 +111,7 @@ describe("application workspace projection", () => {
     ]);
   });
 
-  it("gives an ordinary Hospital member only the OSM-scoped workforce entry", () => {
+  it("gives an ordinary Hospital member only patient care", () => {
     const projection = projectApplicationWorkspace(
       actor({
         roles: [Role.HOSPITAL],
@@ -125,12 +125,12 @@ describe("application workspace projection", () => {
       ({ href }) => href === `/app/workforce?hospitalId=${hospitalId}`,
     );
 
-    expect(workforceAction?.description).toContain("เพิ่ม อสม.");
-    expect(workforceAction?.description).not.toContain("เจ้าของโดยตรง");
+    expect(workforceAction).toBeUndefined();
+
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
-    expect(hrefs).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
-    expect(hrefs).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
-    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/access-requests", "/app/patients/service-requests"]);
+    expect(hrefs).not.toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
+    expect(hrefs).not.toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
+    expect(projection.requestActions.map(({ href }) => href)).toEqual([]);
     expect(projection.supportingActions).toHaveLength(0);
   });
 
@@ -151,7 +151,7 @@ describe("application workspace projection", () => {
     const hrefs = (projection.hospitals[0]?.actions ?? []).map(({ href }) => href);
 
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
-    expect(hrefs).toEqual([`/app/patients/provision?hospitalId=${hospitalId}`]);
+    expect(hrefs).toEqual([]);
   });
 
   it("keeps PATIENT landing explicit without inventing Patient data links", () => {
@@ -218,7 +218,7 @@ describe("application workspace projection", () => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [hospitalId, secondId].map((id) => ({ hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE })) }), [workspace(), workspace({ hospitalId: secondId })]);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals.map(({ actions }) => actions.map(({ href }) => href))).toEqual([
-      [`/app/patients/provision?hospitalId=${hospitalId}`], [`/app/patients/provision?hospitalId=${secondId}`],
+      [], [],
     ]);
     expect(projection.requestActions).toHaveLength(0);
     expect(projection.supportingActions).toHaveLength(0);
@@ -251,7 +251,7 @@ describe("application workspace projection", () => {
       projection.hospitals[1]?.actions
         .filter(({ category }) => category === "administration")
         .map(({ href }) => href),
-    ).toEqual([`/app/workforce?hospitalId=${secondId}`]);
+    ).toEqual([]);
     expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${secondId}`);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals[1]?.contextLabel).toContain("สมาชิกโรงพยาบาล");

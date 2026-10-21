@@ -17,7 +17,7 @@ const OSM_TASK_INTENTS = new Set([
   "OPEN_OSM_ASSIGNED_PATIENTS",
   "START_OSM_SCREENING",
   "START_OSM_FOLLOWUP",
-  "OPEN_PATIENT_PROVISIONING",
+  "OPEN_WORK_WORKSPACE",
 ]);
 
 function isUriIntent(action: LineMenuAction, intent: string): boolean {

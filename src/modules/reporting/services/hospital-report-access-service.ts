@@ -37,7 +37,7 @@ export type HospitalReportingHospital = {
 export type HospitalReportingAccessContext = {
   actor: ActorContext;
   hospital: HospitalReportingHospital;
-  accessBasis: "OWNER" | "MEMBER_EXPORT_GRANT";
+  accessBasis: "OWNER";
 };
 
 function getDatabase(database?: HospitalReportAccessDatabase): HospitalReportAccessDatabase {
@@ -104,7 +104,7 @@ export async function resolveHospitalReportingAccessContext(
 
   try {
     const db = getDatabase(database);
-    // At most one non-ENDED membership exists per person and Hospital; the grant is read here, not from the session.
+    // Rebuild authority from the persisted exact membership; historical grants confer no authority.
     const membership = await db.hospitalMembership.findFirst({
       where: {
         userId: actor.userId,
@@ -162,7 +162,7 @@ export async function resolveHospitalReportingAccessContext(
     return {
       actor,
       hospital: membership.hospital,
-      accessBasis: decision.reason === "active_direct_hospital_owner" ? "OWNER" : "MEMBER_EXPORT_GRANT",
+      accessBasis: "OWNER",
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
@@ -170,44 +170,14 @@ export async function resolveHospitalReportingAccessContext(
   }
 }
 
-/** E1: Hospitals where the actor is an ACTIVE MEMBER holding an OWNER-granted report export. */
+/** Historical MEMBER export grants no longer authorize any report access. */
 export async function listHospitalReportExportGrantHospitals(
   actor: ActorContext | null | undefined,
-  database?: HospitalReportAccessDatabase,
+  _database?: HospitalReportAccessDatabase,
 ): Promise<HospitalReportingHospital[]> {
   validateActor(actor);
-
-  if (!actor.roles.includes(Role.HOSPITAL)) {
-    return [];
-  }
-
-  try {
-    const memberships = await getDatabase(database).hospitalMembership.findMany({
-      where: {
-        userId: actor.userId,
-        membershipType: MembershipType.MEMBER,
-        status: MembershipStatus.ACTIVE,
-        reportExportGrantedAt: { not: null },
-        user: {
-          is: {
-            status: UserStatus.ACTIVE,
-            roles: { some: { role: Role.HOSPITAL } },
-          },
-        },
-        hospital: { is: { status: HospitalStatus.ACTIVE } },
-      },
-      orderBy: [{ hospital: { name: "asc" } }, { hospitalId: "asc" }],
-      select: {
-        hospital: {
-          select: { id: true, hospitalCode: true, name: true, status: true },
-        },
-      },
-    });
-
-    return memberships.map(({ hospital }) => hospital);
-  } catch {
-    throw new InfrastructureError("Hospital report export access could not be loaded");
-  }
+  void _database;
+  return [];
 }
 
 export const hospitalReportAccessInternals = {

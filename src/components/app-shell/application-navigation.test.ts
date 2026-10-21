@@ -106,7 +106,7 @@ const personalSections = [
 ] as const;
 const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/family", "/app/settings", "/app/support"]] as const;
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
-const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup", "/app/patients/provision"]] as const;
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
 const ownerAdministration = ["/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
@@ -119,26 +119,23 @@ const ownerSections = (areas: boolean) => [
   ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
 ] as const;
-const memberSections = (reporting: readonly string[]) => [
+const memberSections = () => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/patients"]],
-  staffRegistration,
-  ["review-queue", "คำขอรอตรวจ", ["/app/patients/access-requests", "/app/patients/service-requests"]],
-  ["reports-info", "รายงานและข้อมูล", [...reporting, "/app/hospitals/content", "/app/hospitals/contacts"]],
-  ["administration", "บริหารโรงพยาบาล", ["/app/workforce"]],
+  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
 ] as const;
 
 /** Every href each actor saw before UI-4 (frozen from the previous projection); only the password item may go. */
 const previousHrefs: Record<string, readonly string[]> = {
   patient: ["/app/personal", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/family", "/app/settings", "/app/support"],
-  osm: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/patients/provision", "/app/family", "/app/settings", "/app/support"],
-  member: ["/app", "/app/workforce", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/family", "/app/settings", "/app/support"],
-  memberExport: ["/app", "/app/workforce", "/app/hospitals/contacts", "/app/hospitals/content", "/app/hospitals/reporting/export", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/family", "/app/settings", "/app/support"],
+  osm: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
+  member: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
+  memberExport: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
   owner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog", "/app/family", "/app/settings", "/app/support"],
   admin: ["/app", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family"],
   adminOwner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family", "/app/settings", "/app/support"],
-  osmPatient: ["/app/personal", "/app", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/patients/provision", "/app/family", "/app/settings", "/app/support"],
+  osmPatient: ["/app/personal", "/app", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
 };
 
 type Case = {
@@ -165,13 +162,13 @@ const cases: Case[] = [
     name: "member",
     subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }),
     workspaces: [workspace(hospitalId, parentId)],
-    expected: { work: memberSections([]) },
+    expected: { work: memberSections() },
   },
   {
     name: "memberExport",
     subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER, { reportExportGranted: true })] }),
     workspaces: [workspace(hospitalId, parentId)],
-    expected: { work: memberSections(["/app/hospitals/reporting/export"]) },
+    expected: { work: memberSections() },
   },
   {
     name: "owner",
@@ -415,11 +412,11 @@ describe("application navigation visibility (unchanged policies)", () => {
   });
 
   it("keeps Patient provisioning and activation as separate registration items", () => {
-    const registration = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }))
+    const registration = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }))
       .find(({ id }) => id === "registration");
 
     expect(registration?.items.map(({ href, label }) => [href, label])).toEqual([
-      ["/app/patients/provision", "เพิ่มหรือนำเข้า"],
+      ["/app/patients/provision", "นำเข้าผู้ป่วย"],
       ["/app/patients/activation", "เปิดใช้งานบัญชี"],
     ]);
   });
@@ -427,7 +424,7 @@ describe("application navigation visibility (unchanged policies)", () => {
   it("does not grant Hospital-only activation or directory navigation to an OSM provisioning actor", () => {
     const groups = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }));
 
-    expect(groups.find(({ id }) => id === "care")?.items.find(({ href }) => href === "/app/patients/provision")?.label).toBe("เพิ่มผู้ป่วย");
+    expect(groups.find(({ id }) => id === "care")?.items.find(({ href }) => href === "/app/patients/provision")?.label).toBeUndefined();
     expect(groups.some(({ id }) => id === "registration")).toBe(false);
     expect(allHrefs(groups)).not.toContain("/app/patients");
     expect(allHrefs(groups)).not.toContain("/app/patients/activation");
@@ -463,6 +460,6 @@ describe("application navigation active state", () => {
 
     expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "task=screening&hospitalId=x", care)]).toEqual(["/app/patients/assigned?task=screening"]);
     expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "page=2", care)]).toEqual(["/app/patients/assigned"]);
-    expect([...resolveActiveNavigationHrefs("/app/patients/provision", "", care)]).toEqual(["/app/patients/provision"]);
+    expect([...resolveActiveNavigationHrefs("/app/patients/provision", "", care)]).toEqual([]);
   });
 });

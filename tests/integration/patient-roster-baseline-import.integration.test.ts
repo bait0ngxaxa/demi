@@ -32,13 +32,11 @@ import {
 } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
 import { PATIENT_IMPORT_TEMPLATE_COLUMNS } from "@/modules/patient-provisioning/import/patient-import-template-contract";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "@/modules/patient-provisioning/import/patient-import-contract";
-import {
-  importPatientProvisioning,
+import { importPatientProvisioning,
   previewPatientProvisioning,
-  provisionPatient,
   type PatientProvisioningServiceDependencies,
-  type ProvisionPatientInput,
-} from "@/modules/patient-provisioning/services/patient-provisioning-service";
+  type ProvisionPatientInput } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import {
   createPatientImportPreviewBinding,
   hashPatientImportFile,

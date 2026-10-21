@@ -52,7 +52,7 @@ import {
   recordPatientProgramServiceOneFloatingChart,
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -123,7 +123,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   const hospital = await prisma.hospital.findUniqueOrThrow({
     where: { id: input.hospitalId },
     select: { status: true },

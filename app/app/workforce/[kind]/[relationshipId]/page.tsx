@@ -216,15 +216,6 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           />
         )}
 
-        {detail.viewerScope === "OWNER" && detail.reportExportGrant && detail.relationshipStatus !== "ENDED" ? (
-          <ReportExportGrantControl
-            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
-            grant={detail.reportExportGrant}
-            relationshipId={detail.relationshipId}
-            targetHospitalId={detail.hospital.id}
-          />
-        ) : null}
-
         {detail.viewerScope === "OWNER" && detail.networkPatientReadGrant && detail.relationshipStatus !== "ENDED" ? (
           <ReportExportGrantControl
             expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}

@@ -23,14 +23,8 @@ export const WORKFORCE_CAPABILITIES = {
 export type WorkforceCapability =
   (typeof WORKFORCE_CAPABILITIES)[keyof typeof WORKFORCE_CAPABILITIES];
 
-// ADR-0008 amendment 2026-10-14 (D1): an ACTIVE direct MEMBER may provision and read OSM only.
-const MEMBER_OSM_CAPABILITIES: ReadonlySet<WorkforceCapability> = new Set<WorkforceCapability>([
-  WORKFORCE_CAPABILITIES.osmProvision,
-  WORKFORCE_CAPABILITIES.osmRead,
-]);
-
 export type WorkforcePolicyDecision =
-  | { allowed: true; reason: "active_hospital_owner" | "active_hospital_member_osm_access" }
+  | { allowed: true; reason: "active_hospital_owner" }
   | {
       allowed: false;
       reason:
@@ -69,7 +63,6 @@ export function decideWorkforcePolicy(input: {
   }
 
   const targetHospitalId = input.targetHospitalId;
-  const capability = input.capability as WorkforceCapability;
   const memberships = input.actor.hospitalMemberships.filter(
     (candidate) =>
       candidate.hospitalId === targetHospitalId && candidate.status === MembershipStatus.ACTIVE,
@@ -86,19 +79,7 @@ export function decideWorkforcePolicy(input: {
     return { allowed: true, reason: "active_hospital_owner" };
   }
 
-  const memberMembership = memberships.find(
-    (candidate) => candidate.membershipType === MembershipType.MEMBER,
-  );
-
-  if (!memberMembership || !MEMBER_OSM_CAPABILITIES.has(capability)) {
-    return { allowed: false, reason: "active_owner_membership_required" };
-  }
-
-  if (memberMembership.hospitalStatus !== HospitalStatus.ACTIVE) {
-    return { allowed: false, reason: "active_hospital_required" };
-  }
-
-  return { allowed: true, reason: "active_hospital_member_osm_access" };
+  return { allowed: false, reason: "active_owner_membership_required" };
 }
 
 export function assertWorkforcePolicy(input: {

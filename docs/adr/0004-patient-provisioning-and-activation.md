@@ -1,5 +1,7 @@
 # ADR-0004: Patient Provisioning and First-Time Activation
 
+> **Current decision — 2026-10-21:** [ADR-0019](0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
+
 - Status: Accepted
 - Date: 2026-08-12
 

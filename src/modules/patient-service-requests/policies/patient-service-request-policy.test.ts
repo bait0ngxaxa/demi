@@ -61,7 +61,7 @@ describe("Patient service request policy", () => {
     ).toBe(false);
   });
 
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])(
+  it.each([MembershipType.OWNER])(
     "allows direct Hospital %s to review requests",
     (membershipType) => {
       expect(

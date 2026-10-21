@@ -10,13 +10,11 @@ import {
   patientImportFileSchema,
   patientImportConfirmSchema,
   patientImportEffectiveDateSchema,
-  patientProvisionFormSchema,
 } from "../schemas/patient-provisioning-schemas";
 import { PATIENT_IMPORT_CONTRACT_VERSION } from "../import/patient-import-contract";
 import { resolvePatientImportTemplateTarget } from "../services/patient-import-template-service";
 import {
   PatientProvisioningConflictError,
-  provisionPatient,
 } from "../services/patient-provisioning-service";
 import {
   importPatientRoster,
@@ -28,7 +26,6 @@ import {
   hashPatientImportFile,
   PatientImportPreviewBindingError,
 } from "./patient-import-file-binding";
-import { projectPatientProvisionContinuation } from "./patient-provisioning-continuation";
 import type {
   PatientImportActionState,
   PatientImportPreviewActionState,
@@ -110,7 +107,7 @@ function mapPatientError(error: unknown): {
     }
 
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
-      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์เพิ่มผู้ป่วยในโรงพยาบาลนี้" };
+      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์นำเข้าผู้ป่วยในโรงพยาบาลนี้" };
     }
 
     if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
@@ -142,91 +139,16 @@ function mapPatientImportError(error: unknown): {
   };
 }
 
-function mapFieldErrors(
-  issues: readonly { path: readonly unknown[] }[],
-): Partial<Record<"nationalId" | "givenName" | "familyName" | "hospitalNumber", string>> {
-  const fieldErrors: Partial<
-    Record<"nationalId" | "givenName" | "familyName" | "hospitalNumber", string>
-  > = {};
-  const messages: Record<"nationalId" | "givenName" | "familyName" | "hospitalNumber", string> = {
-    nationalId: "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง",
-    givenName: "กรุณากรอกชื่อ",
-    familyName: "กรุณากรอกนามสกุล",
-    hospitalNumber: "HN ยาวเกินจำนวนที่รองรับ",
-  };
-
-  for (const issue of issues) {
-    const field = issue.path[0];
-
-    if (
-      (field === "nationalId" ||
-        field === "givenName" ||
-        field === "familyName" ||
-        field === "hospitalNumber") &&
-      !fieldErrors[field]
-    ) {
-      fieldErrors[field] = messages[field];
-    }
-  }
-
-  return fieldErrors;
-}
-
-function getPatientFormInput(formData: FormData) {
-  return {
-    nationalId: getString(formData, "nationalId"),
-    givenName: getString(formData, "givenName"),
-    familyName: getString(formData, "familyName"),
-    hospitalNumber: getString(formData, "hospitalNumber"),
-    targetHospitalId: getString(formData, "targetHospitalId"),
-  };
-}
-
 export async function provisionPatientAction(
   _previousState: PatientProvisionActionState,
   formData: FormData,
 ): Promise<PatientProvisionActionState> {
-  try {
-    const actor = await getProtectedApplicationActor();
-    const parsed = patientProvisionFormSchema.safeParse(getPatientFormInput(formData));
-
-    if (!parsed.success) {
-      return {
-        status: "ERROR",
-        code: "INVALID_INPUT",
-        message: "กรุณาตรวจสอบข้อมูลผู้ป่วยให้ถูกต้อง",
-        fieldErrors: mapFieldErrors(parsed.error.issues),
-      };
-    }
-
-    const result = await provisionPatient(actor, {
-      identity: {
-        namespace: "thai-national-id",
-        value: parsed.data.nationalId,
-      },
-      givenName: parsed.data.givenName,
-      familyName: parsed.data.familyName,
-      hospitalNumber: parsed.data.hospitalNumber,
-      targetHospitalId: parsed.data.targetHospitalId,
-    });
-
-    revalidatePath("/app/patients/provision");
-    const continuation = projectPatientProvisionContinuation(actor, result.hospitalId);
-
-    return {
-      status: "SUCCESS",
-      result: {
-        outcome: result.outcome,
-        relationshipId: result.relationshipId,
-        hospitalId: result.hospitalId,
-        accountStatus: result.accountStatus,
-        reusedExistingUser: result.reusedExistingUser,
-        ...continuation,
-      },
-    };
-  } catch (error: unknown) {
-    return { status: "ERROR", ...mapPatientError(error) };
-  }
+  void formData;
+  return {
+    status: "ERROR",
+    code: "FORBIDDEN",
+    message: "ใช้การนำเข้าผู้ป่วยจาก Excel เท่านั้น",
+  };
 }
 
 function getImportRequest(formData: FormData): {

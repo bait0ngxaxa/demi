@@ -124,10 +124,10 @@ describe("E1 MEMBER report export grant", () => {
     };
   }
 
-  it("allows export only", () => {
+  it("denies obsolete delegated export", () => {
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
-      allowed: true,
-      reason: "active_member_report_export_grant",
+      allowed: false,
+      reason: "active_direct_owner_required",
     });
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.dashboardRead).allowed).toBe(false);
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.rowRead).allowed).toBe(false);

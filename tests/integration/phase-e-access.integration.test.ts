@@ -16,7 +16,7 @@ import { assignOsmToPatient } from "@/modules/patient-assignment/services/patien
 import { correctPatientName, PatientNameCorrectionRequiresAdminError } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
   PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE,
@@ -30,7 +30,7 @@ import {
 } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
-import { promoteHospitalOwner, setHospitalMembershipReportExportGrant, suspendHospitalMembership } from "@/modules/workforce/services/workforce-service";
+import { promoteHospitalOwner, setHospitalMembershipReportExportGrant } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
@@ -149,41 +149,23 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   afterEach(async () => { vi.unstubAllEnvs(); await cleanup(); });
   afterAll(async () => { await db.$disconnect(); });
 
-  it("E1: a MEMBER exports only with the OWNER grant, every export is audited, and revoke/suspend apply on the next request", async () => {
+  it("E1 superseded: MEMBER export is denied even with a historical persisted grant", async () => {
     const f = await fixture();
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
-
     const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId, hospitalId: f.hospitalId } });
-    const granted = await setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: true });
-    await expect(setHospitalMembershipReportExportGrant(f.member, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: granted.updatedAt.toISOString(), granted: false })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: false })).rejects.toBeInstanceOf(ConflictError);
-
-    const exported = await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId });
-    expect(exported.buffer.byteLength).toBeGreaterThan(0);
-    const exportAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } });
-    expect(exportAudit).toMatchObject({ resourceType: "Hospital", resourceId: f.hospitalId });
-    expect(exportAudit.metadata).toMatchObject({ accessBasis: "MEMBER_EXPORT_GRANT", generatedAt: exported.generatedAt.toISOString() });
-    await expect(getHospitalReportingDatasetForExport(f.member, { hospitalId: f.hospitalId }, { database: db })).resolves.toBeDefined();
-
-    await setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: granted.updatedAt.toISOString(), granted: false });
+    await db.hospitalMembership.update({ where: { id: membership.id }, data: { reportExportGrantedAt: now, reportExportGrantedByUserId: f.owner.userId } });
     await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
-    expect(await db.auditEvent.count({ where: { action: { in: ["hospital_membership.report_export_granted", "hospital_membership.report_export_revoked"] }, actorUserId: f.owner.userId } })).toBe(2);
-
-    const regranted = await setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: (await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).updatedAt.toISOString(), granted: true });
-    await suspendHospitalMembership(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: regranted.updatedAt.toISOString() });
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(NotFoundError);
-
+    await expect(getHospitalReportingDatasetForExport(f.member, { hospitalId: f.hospitalId }, { database: db })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: true })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ reportExportGrantedAt: now });
+    expect(await db.auditEvent.count({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).toBe(0);
     expect((await exportHospitalReportingWorkbook(f.owner, { hospitalId: f.hospitalId })).buffer.byteLength).toBeGreaterThan(0);
-    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.owner.userId } })).metadata).toMatchObject({ accessBasis: "OWNER" });
   });
 
-  it("E1: the database keeps grants MEMBER-only and promotion clears a grant", async () => {
+  it("keeps historical grants MEMBER-only and clears them on promotion", async () => {
     const f = await fixture();
-    const ownerMembership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.owner.userId } });
-    await expect(db.hospitalMembership.update({ where: { id: ownerMembership.id }, data: { reportExportGrantedAt: now, reportExportGrantedByUserId: f.owner.userId } })).rejects.toThrow();
     const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId } });
-    const granted = await setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: true });
-    await promoteHospitalOwner(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: granted.updatedAt.toISOString() });
+    const historical = await db.hospitalMembership.update({ where: { id: membership.id }, data: { reportExportGrantedAt: now, reportExportGrantedByUserId: f.owner.userId } });
+    await promoteHospitalOwner(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: historical.updatedAt.toISOString() });
     expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ membershipType: "OWNER", reportExportGrantedAt: null, reportExportGrantedByUserId: null });
   });
 

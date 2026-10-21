@@ -14,7 +14,7 @@ import { getPatientEvidenceArtifactAccess, listPatientEvidenceArtifacts } from "
 import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -70,7 +70,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
   await prisma.hospitalMembership.create({
     data: {

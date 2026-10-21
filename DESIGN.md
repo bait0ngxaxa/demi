@@ -260,7 +260,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 
 ### Local Navigation
 
-ใช้ segmented button group (`aria-pressed`) สำหรับการเปลี่ยน execution mode ภายใน operation เดียว เช่น “เพิ่มรายบุคคล / นำเข้าจาก Excel” ไม่สร้าง sidebar route ซ้ำ
+ใช้ segmented button group (`aria-pressed`) เมื่อ operation เดียวมีหลายมุมมองจริง ไม่สร้าง sidebar route ซ้ำ; การนำเข้าผู้ป่วยใช้ Excel เท่านั้น ไม่มีโหมดเพิ่มรายบุคคล
 
 ## Do's and Don'ts
 

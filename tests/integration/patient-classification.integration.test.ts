@@ -19,13 +19,11 @@ import {
 } from "@/modules/patient-classification/services/patient-classification-query-service";
 import { setPatientClassification } from "@/modules/patient-classification/services/patient-classification-service";
 import { findPatientDirectory } from "@/modules/patient-directory/services/patient-directory-query-service";
-import {
-  importPatientProvisioning,
+import { importPatientProvisioning,
   previewPatientProvisioning,
-  provisionPatient,
   type PatientProvisioningServiceDependencies,
-  type ProvisionPatientInput,
-} from "@/modules/patient-provisioning/services/patient-provisioning-service";
+  type ProvisionPatientInput } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import { readTemplateCandidates, type ImportTestHospital } from "./support/patient-import-template-upload";
@@ -101,7 +99,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: input.userStatus ?? UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   const membershipStatus = input.membershipStatus ?? MembershipStatus.ACTIVE;
 
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });

@@ -26,7 +26,7 @@ const thaiLabelLines: Readonly<Record<string, readonly string[]>> = {
   "ผู้ป่วยที่ดูแล": ["ผู้ป่วย", "ที่ดูแล"],
   "คัดกรองผู้ป่วย": ["คัดกรอง", "ผู้ป่วย"],
   "บันทึกติดตาม": ["บันทึก", "ติดตาม"],
-  "เพิ่มผู้ป่วย": ["เพิ่ม", "ผู้ป่วย"],
+  "งานทั้งหมด": ["งาน", "ทั้งหมด"],
   "จัดการบัญชี": ["จัดการ", "บัญชี"],
 };
 
@@ -40,7 +40,7 @@ const OSM_TASK_INTENTS = new Set([
   "OPEN_OSM_ASSIGNED_PATIENTS",
   "START_OSM_SCREENING",
   "START_OSM_FOLLOWUP",
-  "OPEN_PATIENT_PROVISIONING",
+  "OPEN_WORK_WORKSPACE",
 ]);
 
 type FontWeight = "Medium" | "Semi-Bold" | "Bold";

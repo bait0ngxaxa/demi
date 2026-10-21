@@ -27,8 +27,7 @@ function hasActiveDirectHospitalScope(
       actor.hospitalMemberships.some(
         (membership) =>
           membership.hospitalId === targetHospitalId &&
-          (membership.membershipType === MembershipType.OWNER ||
-            membership.membershipType === MembershipType.MEMBER) &&
+          membership.membershipType === MembershipType.OWNER &&
           membership.status === MembershipStatus.ACTIVE &&
           membership.hospitalStatus === HospitalStatus.ACTIVE,
       ),

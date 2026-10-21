@@ -66,11 +66,6 @@ const actor = {
   osmHospitalRelationships: [],
 } satisfies ActorContext;
 
-const memberActor = {
-  ...actor,
-  hospitalMemberships: [{ ...actor.hospitalMemberships[0], membershipType: MembershipType.MEMBER }],
-} satisfies ActorContext;
-
 function inputFor(nationalId: string, overrides: Partial<ProvisionPatientInput> = {}): ProvisionPatientInput {
   return {
     identity: { namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId },
@@ -807,17 +802,10 @@ describe("Patient roster import orchestration (re-validates and commits READY ro
     expect(provisionPatientInTransaction).not.toHaveBeenCalled();
   });
 
-  it("lets a MEMBER import: import scope is direct membership, not OWNER", async () => {
-    const { database } = createDatabase({ actorRole: MembershipType.MEMBER });
-    const summary = await importPatientRoster(
-      memberActor,
-      targetHospitalId,
-      [createCandidate()],
-      { database, now: () => now },
-      options,
-    );
-
-    expect(summary.imported).toBe(1);
+  it("denies MEMBER import before provisioning", async () => {
+    const member = { ...actor, hospitalMemberships: actor.hospitalMemberships.map((membership) => ({ ...membership, membershipType: MembershipType.MEMBER })) };
+    await expect(importPatientRoster(member, targetHospitalId, [createCandidate()], { database: createDatabase().database })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(provisionPatientInTransaction).not.toHaveBeenCalled();
   });
 
   it("previews without writing", async () => {

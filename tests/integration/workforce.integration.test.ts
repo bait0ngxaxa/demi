@@ -351,10 +351,8 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     expect(result.activationToken).toBeNull();
     expect(result.relationshipStatus).toBe(MembershipStatus.ACTIVE);
     expect(provisionIdentity).not.toHaveBeenCalled();
-    expect(await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: true } })).toEqual([
-      { role: Role.PATIENT },
-      { role: Role.HOSPITAL },
-    ]);
+    // Role preservation is a set invariant; an unordered SQL query has no stable row order.
+    expect(new Set((await prisma.userRole.findMany({ where: { userId: user.id }, select: { role: true } })).map(({ role }) => role))).toEqual(new Set([Role.PATIENT, Role.HOSPITAL]));
     expect(await prisma.workforceActivation.count({ where: { userId: user.id } })).toBe(0);
     expect(await prisma.person.findUnique({ where: { id: person.id }, select: { givenName: true } })).toEqual({
       givenName: null,

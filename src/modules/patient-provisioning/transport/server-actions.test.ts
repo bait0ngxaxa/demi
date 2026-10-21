@@ -14,7 +14,6 @@ import {
   PATIENT_IMPORT_TEMPLATE_MISMATCH_MESSAGE,
 } from "../import/patient-import-template-contract";
 import type { PatientImportResultSummary } from "../services/patient-roster-import-types";
-import type { PatientProvisionActionState } from "./action-state";
 import {
   createPatientImportPreviewBinding,
   hashPatientImportFile,
@@ -197,88 +196,10 @@ describe("patient import Server Actions", () => {
     });
   });
 
-  async function provisionSinglePatient(): Promise<PatientProvisionActionState> {
-    const formData = new FormData();
-    formData.set("nationalId", "1000000000009");
-    formData.set("givenName", "สมชาย");
-    formData.set("familyName", "ผู้ป่วย");
-    formData.set("hospitalNumber", "HN-001");
-    formData.set("targetHospitalId", hospitalId);
-
-    return provisionPatientAction({ status: "IDLE" }, formData);
-  }
-
-  it("preserves the authoritative single-provisioning relationship ID", async () => {
-    const result = await provisionSinglePatient();
-
-    expect(result).toEqual({
-      status: "SUCCESS",
-      result: {
-        outcome: "CREATED",
-        relationshipId,
-        hospitalId,
-        accountStatus: "PROVISIONED",
-        reusedExistingUser: false,
-        canOpenPatientDetail: true,
-        canManagePatientActivation: true,
-      },
-    });
-  });
-
-  it("does not collapse provisioning, read, and activation authority for an OSM-only actor", async () => {
-    mockedActor.mockResolvedValue(osmOnlyActor);
-
-    const result = await provisionSinglePatient();
-
-    expect(result).toMatchObject({
-      status: "SUCCESS",
-      result: {
-        relationshipId,
-        hospitalId,
-        canOpenPatientDetail: false,
-        canManagePatientActivation: false,
-      },
-    });
-  });
-
-  it("uses direct Hospital scope for a multi-role actor", async () => {
-    mockedActor.mockResolvedValue(multiRoleActor);
-
-    const result = await provisionSinglePatient();
-
-    expect(result).toMatchObject({
-      status: "SUCCESS",
-      result: {
-        canOpenPatientDetail: true,
-        canManagePatientActivation: true,
-      },
-    });
-  });
-
-  it("applies the same server-derived capabilities to an existing relationship", async () => {
-    mockedActor.mockResolvedValue(osmOnlyActor);
-    mockedProvisionPatient.mockResolvedValue({
-      outcome: "ALREADY_PROVISIONED",
-      personId: "66666666-6666-4666-8666-666666666666",
-      userId: "77777777-7777-4777-8777-777777777777",
-      patientProfileId: "88888888-8888-4888-8888-888888888888",
-      relationshipId,
-      hospitalId,
-      accountStatus: "ACTIVE",
-      reusedExistingUser: true,
-    });
-
-    const result = await provisionSinglePatient();
-
-    expect(result).toMatchObject({
-      status: "SUCCESS",
-      result: {
-        outcome: "ALREADY_PROVISIONED",
-        accountStatus: "ACTIVE",
-        canOpenPatientDetail: false,
-        canManagePatientActivation: false,
-      },
-    });
+  it.each([actor, osmOnlyActor, multiRoleActor])("rejects the legacy manual action without provisioning", async (subject) => {
+    mockedActor.mockResolvedValue(subject);
+    await expect(provisionPatientAction({ status: "IDLE" }, new FormData())).resolves.toMatchObject({ status: "ERROR", code: "FORBIDDEN" });
+    expect(mockedProvisionPatient).not.toHaveBeenCalled();
   });
 
   it("resolves the hospital on the server, parses against it and returns a binding for the preview file bytes", async () => {

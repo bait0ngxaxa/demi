@@ -42,7 +42,7 @@ describe("bounded Hospital request list", () => {
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 21,
     }));
     expect(mocks.memberships).toHaveBeenCalledWith({
-      where: { userId: actor.userId, membershipType: { in: ["OWNER", "MEMBER"] }, status: "ACTIVE", hospital: { status: "ACTIVE" } },
+      where: { userId: actor.userId, membershipType: "OWNER", status: "ACTIVE", hospital: { status: "ACTIVE" } },
       select: { hospitalId: true },
     });
     expect(page).not.toHaveProperty("total");

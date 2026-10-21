@@ -44,7 +44,7 @@ import {
 import { resolvePatientProgramAccessContext } from "@/modules/patient-program/services/patient-program-access-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { PatientProvisioningConflictError } from "@/modules/patient-provisioning/services/patient-provisioning-transaction";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { getOwnPatientAppointmentDetail, getOwnPatientAppointmentHistory, getOwnPatientCareJourney } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
 import { createPatientServiceRequest, listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";

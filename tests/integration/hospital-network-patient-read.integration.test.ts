@@ -20,7 +20,7 @@ import {
 } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import {
   promoteHospitalOwner,
   setHospitalMembershipNetworkPatientReadGrant,

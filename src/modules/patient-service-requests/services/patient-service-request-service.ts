@@ -189,7 +189,7 @@ async function assertPersistedHospitalReviewer(
     where: {
       userId: actorUserId,
       hospitalId,
-      membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+      membershipType: MembershipType.OWNER,
       status: MembershipStatus.ACTIVE,
       hospital: { status: HospitalStatus.ACTIVE },
     },
@@ -634,7 +634,7 @@ export async function listHospitalPatientServiceRequests(
     const memberships = await database.hospitalMembership.findMany({
       where: {
         userId: actor.userId,
-        membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+        membershipType: MembershipType.OWNER,
         status: MembershipStatus.ACTIVE,
         hospital: { status: HospitalStatus.ACTIVE },
       },

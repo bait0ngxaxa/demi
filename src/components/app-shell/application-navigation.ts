@@ -14,7 +14,6 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
   hasDirectHospitalProvisioningScope,
-  hasOsmHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
@@ -113,31 +112,6 @@ function canReadHospitalReports(actor: ActorContext): boolean {
         hospitalStatus: membership.hospitalStatus,
       },
     }).allowed,
-  );
-}
-
-// E1: export-only entry for a MEMBER holding an OWNER grant (OWNERs export from the report page).
-function canOnlyExportHospitalReports(actor: ActorContext): boolean {
-  return !canReadHospitalReports(actor) && actor.hospitalMemberships.some((membership) =>
-    decideHospitalReportPolicy({
-      actor,
-      capability: HOSPITAL_REPORT_CAPABILITIES.export,
-      target: {
-        hospitalId: membership.hospitalId,
-        hospitalStatus: membership.hospitalStatus,
-      },
-    }).allowed,
-  );
-}
-
-function canProvisionPatients(actor: ActorContext): boolean {
-  return (
-    actor.hospitalMemberships.some(({ hospitalId }) =>
-      hasDirectHospitalProvisioningScope(actor, hospitalId),
-    ) ||
-    actor.osmHospitalRelationships.some(({ hospitalId }) =>
-      hasOsmHospitalProvisioningScope(actor, hospitalId),
-    )
   );
 }
 
@@ -305,8 +279,6 @@ function projectWorkSections(
   const directProvisioning = actor.hospitalMemberships.some(({ hospitalId }) =>
     hasDirectHospitalProvisioningScope(actor, hospitalId),
   );
-  // An OSM-only provisioner adds patients as part of care; direct Hospital staff register them.
-  const osmOnlyProvisioning = !directProvisioning && canProvisionPatients(actor);
   const governance = projectPlatformGovernanceNavigation(actor);
   const hospitalAdministration = compact([
     canManageWorkforce(actor) && { href: "/app/workforce", label: "บุคลากร", match: "prefix" },
@@ -327,12 +299,11 @@ function projectWorkSections(
       assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่รับผิดชอบ", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
-      osmOnlyProvisioning && { href: "/app/patients/provision", label: "เพิ่มผู้ป่วย", match: "prefix" },
       canReadPatients(actor) && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
       canAssignOsm(actor) && { href: "/app/patients/assign-osm", label: "มอบหมาย อสม.", match: "prefix" },
     ])),
     ...section("registration", "work", compact([
-      directProvisioning && { href: "/app/patients/provision", label: "เพิ่มหรือนำเข้า", match: "prefix" },
+      directProvisioning && { href: "/app/patients/provision", label: "นำเข้าผู้ป่วย", match: "prefix" },
       canActivatePatients(actor) && { href: "/app/patients/activation", label: "เปิดใช้งานบัญชี", match: "prefix" },
     ])),
     ...section("review-queue", "work", compact([
@@ -342,9 +313,7 @@ function projectWorkSections(
       governance.onboarding,
     ])),
     ...section("reports-info", "work", compact([
-      canReadHospitalReports(actor)
-        ? { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" }
-        : canOnlyExportHospitalReports(actor) && { href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" },
+      canReadHospitalReports(actor) && { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" },
       canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/areas", label: "เขตความรับผิดชอบ", match: "exact", prefetch: false },
       hasActiveWorkHospital(actor) && { href: "/app/hospitals/content", label: "ข่าวสารและความรู้", match: "prefix" },
       canReadWorkHospitalContacts(actor) && { href: "/app/hospitals/contacts", label: "ติดต่อโรงพยาบาล", match: "exact" },

@@ -40,7 +40,7 @@ function actor(
 }
 
 describe("Patient access request review policy", () => {
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])(
+  it.each([MembershipType.OWNER])(
     "allows active direct Hospital %s membership for its exact active Hospital",
     (membershipType) => {
       expect(

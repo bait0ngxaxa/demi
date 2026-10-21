@@ -58,3 +58,5 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 - [ADR-0016 — Read-only network Patient access](./0016-network-patient-read.md): Parent OWNER (and granted MEMBERs) read Child Patients read-only with audit; Parent reports follow the network; supersedes ADR-0013 H5.
 - [ADR-0017 — Retire Hospital Master](./0017-retire-hospital-master.md): ADMIN registers every Hospital; Master seed/reconcile and `Hospital.parentHospitalId` removed; hierarchy service projects the network.
 - [ADR-0018 — Parent-led Child onboarding](./0018-parent-led-child-onboarding.md): ADMIN bulk-registers Parents from CSV; public onboarding is Parent-only; Parent OWNERs create Children and invite their first OWNER through the workforce activation link (`CHILD_OWNER_ONBOARDING`); partially supersedes ADR-0003/0015/0016; resolves WB-PD-12.
+
+- [ADR-0019 — Owner-only administration and Excel-only patient onboarding](./0019-owner-administration-and-import-only-roster.md): supersedes MEMBER OSM administration, delegated report export and manual patient registration.

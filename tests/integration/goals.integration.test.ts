@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import {
   getGoalPlanDetail,
   getGoalPlanOverview,
@@ -65,7 +65,7 @@ async function createHospitalActor(input: {
     data: { personId: person.id, status: UserStatus.ACTIVE },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   const membershipStatus = input.membershipStatus ?? MembershipStatus.ACTIVE;
   await prisma.userRole.create({ data: { userId: user.id, role: Role.HOSPITAL } });
   await prisma.hospitalMembership.create({

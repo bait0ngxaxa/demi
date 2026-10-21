@@ -28,7 +28,7 @@ const osmQuickActions = [
   { type: "uri", intent: "OPEN_OSM_ASSIGNED_PATIENTS", label: "ผู้ป่วยที่ดูแล" },
   { type: "uri", intent: "START_OSM_SCREENING", label: "คัดกรองผู้ป่วย" },
   { type: "uri", intent: "START_OSM_FOLLOWUP", label: "บันทึกติดตาม" },
-  { type: "uri", intent: "OPEN_PATIENT_PROVISIONING", label: "เพิ่มผู้ป่วย" },
+  { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
 ] as const;
 
 function roleLabel(role: MenuRole | undefined): string {
@@ -57,7 +57,6 @@ describe("DEMI shared Rich Menu catalog", () => {
       } else if (role === "OSM") {
         expect(direct?.actions).toEqual([
           ...osmQuickActions,
-          { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
           manageAccount,
         ]);
       } else {
@@ -104,7 +103,6 @@ describe("DEMI shared Rich Menu catalog", () => {
         : selected === "OSM"
           ? [
             ...osmQuickActions,
-            { type: "uri" as const, intent: "OPEN_WORK_WORKSPACE" as const, label: "งานทั้งหมด" },
             ...switchDefinitions,
             manageAccount,
           ]
@@ -214,7 +212,7 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(bounds[3]).toEqual({ x: 100, y: 1360, width: 2300, height: 326 });
   });
 
-  it("keeps OSM tasks in a 2×2 grid and gives four navigation actions a 2×2 footer", () => {
+  it("keeps OSM tasks in a 2×2 grid and gives three navigation actions a footer", () => {
     const menu = LINE_RICH_MENU_BY_KEY.get("OSM_PATIENT_OSM_HOSPITAL");
     if (!menu) throw new Error("Missing multi-role OSM menu");
     const bounds = getLineMenuAreaBounds(menu);
@@ -224,10 +222,9 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(new Set(primaryGrid.map(({ x }) => x)).size).toBe(2);
     expect(new Set(primaryGrid.map(({ y }) => y)).size).toBe(2);
     expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 682, 682]);
-    expect(new Set(footer.map(({ x }) => x)).size).toBe(2);
-    expect(new Set(footer.map(({ y }) => y)).size).toBe(2);
-    expect(footer.map(({ y }) => y)).toEqual([1050, 1050, 1376, 1376]);
-    expect(footer.every(({ width, height }) => width === 1194 && height === 310)).toBe(true);
+    expect(footer).toHaveLength(3);
+    expect(footer.map(({ y }) => y)).toEqual([1050, 1050, 1050]);
+    expect(footer.every(({ height }) => height === 636)).toBe(true);
   });
 
   it("keeps four Patient multi-role navigation actions in a 2×2 footer", () => {

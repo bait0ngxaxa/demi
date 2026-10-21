@@ -98,7 +98,6 @@ export function decidePatientServiceRequestPolicy(
     !hasPlatformAdminRole &&
     isActiveHospitalMembership(input.actor, targetHospitalId, [
       MembershipType.OWNER,
-      MembershipType.MEMBER,
     ])
   ) {
     return { allowed: true, reason: "hospital_reviewer" };

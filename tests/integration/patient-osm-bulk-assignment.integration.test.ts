@@ -18,7 +18,7 @@ import {
   assignOsmToPatient,
   assignOsmToPatients,
 } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();

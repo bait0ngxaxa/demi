@@ -485,18 +485,19 @@ async function assertOwnerInDatabase(
   ]);
 }
 
-// ADR-0008 amendment 2026-10-14 (D1): an ACTIVE MEMBER may provision OSM only.
+// Owner-only Hospital administration supersedes ADR-0008 D1.
 async function assertWorkforceProvisionerInDatabase(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
   targetHospitalId: string,
-  kind: WorkforceKind,
+  _kind: WorkforceKind,
 ): Promise<void> {
+  void _kind;
   await assertHospitalActorInDatabase(
     transaction,
     actorUserId,
     targetHospitalId,
-    kind === "OSM" ? [MembershipType.OWNER, MembershipType.MEMBER] : [MembershipType.OWNER],
+    [MembershipType.OWNER],
   );
 }
 
@@ -1297,15 +1298,14 @@ export async function listWorkforceHospitals(
       throw new ForbiddenError();
     }
 
-    // ADR-0008 amendment 2026-10-14 (D1): MEMBER scope is limited to OSM; scope is returned
-    // so callers can hide staff management, but every operation re-checks on the server.
+    // Only direct OWNER Hospitals are workforce management contexts.
     const hospitals = await database.hospital.findMany({
       where: {
         status: HospitalStatus.ACTIVE,
         memberships: {
           some: {
             userId: actor.userId,
-            membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+            membershipType: MembershipType.OWNER,
             status: MembershipStatus.ACTIVE,
           },
         },
@@ -1487,7 +1487,7 @@ function toReportExportGrantDetail(
   viewerScope: WorkforceViewerScope,
   grant: MembershipGrantKind = "REPORT_EXPORT",
 ): WorkforceDetail["reportExportGrant"] {
-  if (kind !== "staff") return null;
+  if (kind !== "staff" || grant === "REPORT_EXPORT") return null;
   const membership = record as WorkforceMembershipDetailRecord;
   if (membership.membershipType !== MembershipType.MEMBER) return null;
   if (grant === "NETWORK_PATIENT_READ" && membership.hospital.serviceAreaEligibility?.kind !== "PARENT") return null;
@@ -1592,12 +1592,10 @@ export async function getWorkforceDetail(
   }
 
   try {
-    // Staff detail stays OWNER-only; OSM detail is also readable by an ACTIVE MEMBER (read-only).
+    // Workforce management projections require persisted direct OWNER authority.
     const scopedHospital = activeHospitalActorWhere(
       actor.userId,
-      parsed.data.kind === "osm"
-        ? [MembershipType.OWNER, MembershipType.MEMBER]
-        : [MembershipType.OWNER],
+      [MembershipType.OWNER],
     );
     const record =
       parsed.data.kind === "staff"
@@ -2307,34 +2305,10 @@ export async function setHospitalMembershipReportExportGrant(
   input: unknown,
   dependencies: WorkforceServiceDependencies = {},
 ): Promise<WorkforceReportExportGrantMutationResult> {
-  const parsed = hospitalMembershipReportExportGrantSchema.safeParse(input);
-
-  if (!parsed.success) {
-    throw new ValidationError("Report export grant data is invalid");
-  }
-
-  assertHospitalOwnerPolicy({
-    actor,
-    capability: HOSPITAL_OWNER_CAPABILITIES.reportExportGrant,
-    targetHospitalId: parsed.data.targetHospitalId,
-  });
-
-  if (!actor) {
-    throw new ForbiddenError();
-  }
-
-  try {
-    return await runSerializable(
-      getDatabase(dependencies),
-      async (transaction) => {
-        await assertOwnerInDatabase(transaction, actor.userId, parsed.data.targetHospitalId);
-        return setMembershipGrantInTransaction(transaction, parsed.data, actor.userId, "REPORT_EXPORT");
-      },
-      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
-    );
-  } catch (error: unknown) {
-    throw normalizeDatabaseError(error, "Report export grant could not be changed");
-  }
+  void actor;
+  void input;
+  void dependencies;
+  throw new ForbiddenError("Member report export delegation is no longer supported");
 }
 
 /** ADR-0016: the Parent OWNER grants or revokes read-only network Patient access for a Parent MEMBER. */
@@ -3323,8 +3297,12 @@ async function assertActivationContextAuthority(
   activation: Pick<WorkforceActivationClaimTarget, "hospitalId" | "relationshipKind" | "createdByUserId" | "user">,
 ): Promise<void> {
   if (!activation.hospitalId || (activation.relationshipKind !== "OSM" && activation.relationshipKind !== "HOSPITAL_MEMBER")) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
-  await assertWorkforceProvisionerInDatabase(transaction, activation.createdByUserId, activation.hospitalId,
-    activation.user.memberships.some(({ status }) => status === MembershipStatus.PROVISIONED) ? "HOSPITAL_MEMBER" : activation.relationshipKind);
+  // Claiming an existing OSM invitation is target-user self-service. Preserve the former
+  // issuer trust boundary here only; all issuance and regeneration now require OWNER.
+  const legacyOsmClaim = activation.relationshipKind === "OSM" &&
+    !activation.user.memberships.some(({ status }) => status === MembershipStatus.PROVISIONED);
+  await assertHospitalActorInDatabase(transaction, activation.createdByUserId, activation.hospitalId,
+    legacyOsmClaim ? [MembershipType.OWNER, MembershipType.MEMBER] : [MembershipType.OWNER]);
 }
 
 /**
@@ -3863,12 +3841,27 @@ export async function revokeIssuedWorkforceActivation(
       async (transaction) => {
         const activation = await transaction.workforceActivation.findUnique({
           where: { id: activationId.data },
-          select: { id: true, purpose: true, createdByUserId: true, claimedAt: true, usedAt: true, revokedAt: true },
+          select: { id: true, userId: true, purpose: true, hospitalId: true, relationshipId: true, createdByUserId: true, claimedAt: true, usedAt: true, revokedAt: true },
         });
 
         if (!activation || activation.createdByUserId !== actor.userId) {
           throw new ForbiddenError();
         }
+
+        if (!activation.hospitalId) throw new ForbiddenError();
+        let authorityHospitalId = activation.hospitalId;
+        if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
+          if (!activation.relationshipId) throw new ForbiddenError();
+          const context = await assertChildOwnerInvitationContext(transaction, {
+            membershipId: activation.relationshipId,
+            childHospitalId: activation.hospitalId,
+            userId: activation.userId,
+            expectedStatus: MembershipStatus.PROVISIONED,
+          });
+          authorityHospitalId = context.parentHospitalId;
+        }
+        assertActorPolicy(actor, WORKFORCE_CAPABILITIES.activationRevoke, authorityHospitalId);
+        await assertOwnerInDatabase(transaction, actor.userId, authorityHospitalId);
 
         if (activation.usedAt || activation.revokedAt) {
           return;

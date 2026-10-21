@@ -1,42 +1,26 @@
 import "server-only";
 
 import {
-  Prisma,
   Role,
   UserStatus,
   type PrismaClient,
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import {
-  DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
-  runSerializableTransaction,
-} from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
-  ApplicationError,
   ForbiddenError,
   InfrastructureError,
-  ValidationError,
 } from "@/shared/errors/application-error";
 
 import {
-  assertPatientBulkProvisioningPolicy,
-  assertPatientProvisioningPolicy,
   hasDirectHospitalProvisioningScope,
-  hasOsmHospitalProvisioningScope,
-  PATIENT_PROVISIONING_CAPABILITY,
   patientProvisioningPolicyInternals,
 } from "../policies/patient-provisioning-policy";
-import {
-  patientProvisionInputSchema,
-  type ProvisionPatientInput,
-} from "../schemas/patient-provisioning-schemas";
+import type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 import {
   PatientProvisioningConflictError,
   patientProvisioningTransactionInternals,
-  provisionPatientInTransaction,
-  type PatientProvisioningAuthorizationMode,
   type PatientProvisioningResult,
 } from "./patient-provisioning-transaction";
 import {
@@ -89,86 +73,15 @@ export type PatientProvisioningScope = {
   canBulkImport: boolean;
 };
 
-function getDatabase(
-  dependencies: PatientProvisioningServiceDependencies,
-): PatientDatabase {
-  return dependencies.database ?? getPrisma();
-}
-
-function isKnownRequestError(error: unknown, code: string): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
-}
-
-function normalizeDatabaseError(error: unknown): ApplicationError {
-  if (error instanceof ApplicationError) {
-    return error;
-  }
-
-  if (isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034")) {
-    return new PatientProvisioningConflictError(
-      "RECONCILIATION_REQUIRED",
-      "Patient provisioning conflicted with another request",
-    );
-  }
-
-  return new InfrastructureError("Patient provisioning could not be completed");
-}
-
-async function provisionPatientWithAuthorizationMode(
-  actor: ActorContext | null | undefined,
-  input: ProvisionPatientInput,
-  dependencies: PatientProvisioningServiceDependencies = {},
-  authorizationMode: PatientProvisioningAuthorizationMode,
-): Promise<PatientProvisioningResult> {
-  const parsed = patientProvisionInputSchema.safeParse(input);
-
-  if (!parsed.success) {
-    throw new ValidationError("Patient provisioning data is invalid");
-  }
-
-  if (authorizationMode === "BULK") {
-    assertPatientBulkProvisioningPolicy({
-      actor,
-      capability: PATIENT_PROVISIONING_CAPABILITY,
-      targetHospitalId: parsed.data.targetHospitalId,
-    });
-  } else {
-    assertPatientProvisioningPolicy({
-      actor,
-      capability: PATIENT_PROVISIONING_CAPABILITY,
-      targetHospitalId: parsed.data.targetHospitalId,
-    });
-  }
-
-  if (!actor) {
-    throw new ForbiddenError();
-  }
-
-  try {
-    const result = await runSerializableTransaction(
-      getDatabase(dependencies),
-      (transaction) =>
-        provisionPatientInTransaction(
-          transaction,
-          actor,
-          parsed.data,
-          authorizationMode,
-        ),
-      dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
-    );
-
-    return result;
-  } catch (error: unknown) {
-    throw normalizeDatabaseError(error);
-  }
-}
-
 export async function provisionPatient(
   actor: ActorContext | null | undefined,
   input: ProvisionPatientInput,
   dependencies: PatientProvisioningServiceDependencies = {},
 ): Promise<PatientProvisioningResult> {
-  return provisionPatientWithAuthorizationMode(actor, input, dependencies, "SINGLE");
+  void actor;
+  void input;
+  void dependencies;
+  throw new ForbiddenError("ใช้การนำเข้าผู้ป่วยจาก Excel เท่านั้น");
 }
 
 export async function listPatientProvisioningScopes(
@@ -189,13 +102,6 @@ export async function listPatientProvisioningScopes(
           select: {
             hospitalId: true,
             membershipType: true,
-            status: true,
-            hospital: { select: { hospitalCode: true, name: true, status: true } },
-          },
-        },
-        osmHospitalRelationships: {
-          select: {
-            hospitalId: true,
             status: true,
             hospital: { select: { hospitalCode: true, name: true, status: true } },
           },
@@ -227,27 +133,6 @@ export async function listPatientProvisioningScopes(
           hospitalCode: membership.hospital.hospitalCode,
           hospitalName: membership.hospital.name,
           canBulkImport: true,
-        });
-      }
-    }
-
-    if (roles.has(Role.OSM)) {
-      for (const relationship of currentActor.osmHospitalRelationships) {
-        if (
-          !patientProvisioningPolicyInternals.isActiveOsmHospitalScope({
-            status: relationship.status,
-            hospitalStatus: relationship.hospital.status,
-          })
-        ) {
-          continue;
-        }
-
-        const existing = scopes.get(relationship.hospitalId);
-        scopes.set(relationship.hospitalId, {
-          hospitalId: relationship.hospitalId,
-          hospitalCode: relationship.hospital.hospitalCode,
-          hospitalName: relationship.hospital.name,
-          canBulkImport: existing?.canBulkImport ?? false,
         });
       }
     }
@@ -293,7 +178,6 @@ export const patientProvisioningInternals = {
   assertReusableUser: patientProvisioningTransactionInternals.assertReusableUser,
   classifyExistingPatient: patientRosterImportInternals.classifyExistingPatient,
   hasDirectHospitalProvisioningScope,
-  hasOsmHospitalProvisioningScope,
   classificationImportReason: patientRosterImportInternals.classificationImportReason,
   readPatientClassificationImportState:
     patientRosterImportInternals.readPatientClassificationImportState,

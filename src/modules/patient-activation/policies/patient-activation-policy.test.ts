@@ -19,7 +19,7 @@ function createActor(overrides: Partial<ActorContext> = {}): ActorContext {
     hospitalMemberships: [
       {
         hospitalId,
-        membershipType: MembershipType.MEMBER,
+        membershipType: MembershipType.OWNER,
         profession: null,
         status: MembershipStatus.ACTIVE,
         hospitalStatus: HospitalStatus.ACTIVE,
@@ -39,7 +39,7 @@ const targetPatient = {
 };
 
 describe("patient activation issuance policy", () => {
-  it("allows an active Hospital direct member for a provisioned Patient", () => {
+  it("allows an active Hospital direct Owner for a provisioned Patient", () => {
     expect(
       canIssuePatientActivation(createActor(), targetPatient, hospitalId),
     ).toBe(true);

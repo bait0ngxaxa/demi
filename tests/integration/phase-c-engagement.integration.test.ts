@@ -12,7 +12,7 @@ import { getNotificationSchedulerReadiness } from "@/modules/notification-schedu
 import { runNotificationSchedulerTick } from "@/modules/notification-scheduler/services/notification-scheduler-tick-service";
 import { createSupportReport, getOwnerSupportReport, listOwnerSupportReports, SupportReportRateLimitError, updateOwnerSupportReportStatus } from "@/modules/support/services/support-report-service";
 import { updateOwnContactEmail } from "@/modules/account-settings/services/contact-setting-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ConflictError, ValidationError } from "@/shared/errors/application-error";
 
 // Runs before each delivery-time source revalidation, letting a test advance its clock while one notification is processed.

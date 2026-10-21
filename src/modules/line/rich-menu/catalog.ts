@@ -47,7 +47,7 @@ const osmQuickActions: readonly LineMenuAction[] = [
   { type: "uri", intent: "OPEN_OSM_ASSIGNED_PATIENTS", label: "ผู้ป่วยที่ดูแล" },
   { type: "uri", intent: "START_OSM_SCREENING", label: "คัดกรองผู้ป่วย" },
   { type: "uri", intent: "START_OSM_FOLLOWUP", label: "บันทึกติดตาม" },
-  { type: "uri", intent: "OPEN_PATIENT_PROVISIONING", label: "เพิ่มผู้ป่วย" },
+  { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
 ];
 
 const workspaceSwitchActions = (
@@ -79,7 +79,6 @@ const singleRoleActions = (role: OperationalLineRole): LineMenuAction[] => {
   if (role === "OSM") {
     return [
       ...osmQuickActions,
-      { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
       accountAction,
     ];
   }
@@ -113,7 +112,6 @@ const roleMenuActions = (
   if (role === "OSM") {
     return [
       ...osmQuickActions,
-      { type: "uri", intent: "OPEN_WORK_WORKSPACE", label: "งานทั้งหมด" },
       ...switches,
       accountAction,
     ];

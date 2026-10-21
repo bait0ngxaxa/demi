@@ -3,6 +3,7 @@ import "server-only";
 import {
   HospitalStatus,
   MembershipStatus,
+  MembershipType,
   Prisma,
   Role,
   UserStatus,
@@ -23,7 +24,6 @@ import {
 
 import {
   assertPatientBulkProvisioningPolicy,
-  assertPatientProvisioningPolicy,
   PATIENT_PROVISIONING_CAPABILITY,
   patientProvisioningPolicyInternals,
 } from "../policies/patient-provisioning-policy";
@@ -89,16 +89,9 @@ function assertActorPolicy(
   targetHospitalId: string,
   authorizationMode: PatientProvisioningAuthorizationMode,
 ): void {
-  if (authorizationMode === "BULK") {
-    assertPatientBulkProvisioningPolicy({
-      actor,
-      capability: PATIENT_PROVISIONING_CAPABILITY,
-      targetHospitalId,
-    });
-    return;
-  }
+  if (authorizationMode !== "BULK") throw new ForbiddenError();
 
-  assertPatientProvisioningPolicy({
+  assertPatientBulkProvisioningPolicy({
     actor,
     capability: PATIENT_PROVISIONING_CAPABILITY,
     targetHospitalId,
@@ -133,24 +126,17 @@ export async function assertPatientProvisioningActorInDatabase(
   }
 
   const hasHospitalRole = actor.roles.some(({ role }) => role === Role.HOSPITAL);
-  const hasOsmRole =
-    authorizationMode === "SINGLE" && actor.roles.some(({ role }) => role === Role.OSM);
+  if (authorizationMode !== "BULK") throw new ForbiddenError();
 
   const directMembership = hasHospitalRole
     ? await database.hospitalMembership.findFirst({
         where: {
           userId: actorUserId,
           hospitalId: targetHospitalId,
+          membershipType: MembershipType.OWNER,
           status: MembershipStatus.ACTIVE,
         },
         select: { membershipType: true, status: true },
-      })
-    : null;
-
-  const osmRelationship = hasOsmRole
-    ? await database.osmHospitalRelationship.findFirst({ where: { userId: actorUserId,
-            hospitalId: targetHospitalId, status: { not: "ENDED" } },
-        select: { status: true },
       })
     : null;
 
@@ -162,16 +148,7 @@ export async function assertPatientProvisioningActorInDatabase(
         hospitalStatus: hospital.status,
       }),
   );
-  const hasOsmScope = Boolean(
-    osmRelationship &&
-      patientProvisioningPolicyInternals.isActiveOsmHospitalScope({
-        status: osmRelationship.status,
-        hospitalStatus: hospital.status,
-      }),
-  );
-
-  const authorized =
-    authorizationMode === "BULK" ? hasDirectScope : hasDirectScope || hasOsmScope;
+  const authorized = hasDirectScope;
 
   if (!authorized) {
     throw new ForbiddenError();

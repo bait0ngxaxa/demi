@@ -15,7 +15,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore } from "@/modules/auth/services/actor-context-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { completePatientActivation, getPatientActivationDetails, issuePatientActivation } from "@/modules/patient-activation/services/patient-activation-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
 import {
@@ -222,7 +222,7 @@ async function provisionPendingOsm(
   owner: TestActor,
   hospitalId: string,
   sequence: number,
-): Promise<{ userId: string; token: string; nationalId: string }> {
+): Promise<{ userId: string; relationshipId: string; token: string; nationalId: string }> {
   const nationalId = nationalIdFor(sequence);
   const result = await provisionOsm(owner.actor, {
     nationalId,
@@ -231,7 +231,7 @@ async function provisionPendingOsm(
     targetHospitalId: hospitalId,
   });
 
-  return { userId: result.userId, token: result.activationToken!, nationalId };
+  return { userId: result.userId, relationshipId: result.relationshipId, token: result.activationToken!, nationalId };
 }
 
 async function createPatientIdentity(
@@ -643,197 +643,28 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     });
   });
 
-  describe("MEMBER OSM provisioning (ADR-0008 amendment D1)", () => {
-    async function setup() {
-      const hospital = await createHospital("V2-MEMBER");
+  describe("OWNER-only OSM administration supersedes ADR-0008 D1", () => {
+    it("denies MEMBER provisioning, listing, regeneration and slips", async () => {
+      const hospital = await createHospital("V2-MEMBER-DENIED");
       const owner = await createMember(hospital.id, MembershipType.OWNER, 1);
       const member = await createMember(hospital.id, MembershipType.MEMBER, 2);
-
-      return { hospital, owner, member };
-    }
-
-    it("lets an ACTIVE MEMBER provision an OSM and issue or regenerate its activation", async () => {
-      const { hospital, member } = await setup();
-      const created = await provisionOsm(member.actor, {
-        nationalId: nationalIdFor(300),
-        givenName: "สมชาย",
-        familyName: "ใจดีมาก",
-        targetHospitalId: hospital.id,
-      });
-
-      expect(created.activationToken).toBeTruthy();
-      expect(await auditCount("osm_relationship.provisioned")).toBe(1);
-
-      const regenerated = await regenerateWorkforceActivation(member.actor, {
-        userId: created.userId,
-        targetHospitalId: hospital.id,
-        kind: "OSM",
-        mode: "REMOTE",
-      });
-      expect(regenerated.activationToken).not.toBe(created.activationToken);
-      await expect(
-        regenerateWorkforceActivation(member.actor, {
-          userId: created.userId,
-          targetHospitalId: hospital.id,
-          kind: "OSM",
-          mode: "ASSISTED",
-        }),
-      ).resolves.toMatchObject({ activationMode: "ASSISTED" });
-    });
-
-    it("denies a MEMBER staff provisioning, suspend, restore, revoke, reset and detail of staff", async () => {
-      const { hospital, owner, member } = await setup();
-      const osm = await createActiveOsm(hospital.id, 301);
-      const pending = await provisionPendingOsm(owner, hospital.id, 302);
-      const relationship = await prisma.osmHospitalRelationship.findFirstOrThrow({
-        where: { userId: osm.userId },
-        select: { id: true, updatedAt: true },
-      });
-
-      await expect(
-        provisionHospitalMember(member.actor, {
-          nationalId: nationalIdFor(303),
-          givenName: "สมชาย",
-          familyName: "บุคลากร",
-          targetHospitalId: hospital.id,
-          profession: "NURSE",
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(
-        suspendOsmRelationship(member.actor, {
-          relationshipId: relationship.id,
-          targetHospitalId: hospital.id,
-          expectedUpdatedAt: relationship.updatedAt.toISOString(),
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(
-        revokeWorkforceActivation(member.actor, {
-          userId: pending.userId,
-          targetHospitalId: hospital.id,
-          kind: "OSM",
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(
-        issueWorkforcePasswordReset(member.actor, { userId: osm.userId, targetHospitalId: hospital.id }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(
-        regenerateWorkforceActivation(member.actor, {
-          userId: pending.userId,
-          targetHospitalId: hospital.id,
-          kind: "HOSPITAL_MEMBER",
-          mode: "REMOTE",
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      expect(await prisma.person.count({ where: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIdFor(303) }) } })).toBe(0);
-      expect(
-        await prisma.osmHospitalRelationship.findUniqueOrThrow({
-          where: { id: relationship.id },
-          select: { status: true },
-        }),
-      ).toEqual({ status: MembershipStatus.ACTIVE });
-      expect(
-        await prisma.workforceActivation.findFirstOrThrow({
-          where: { userId: pending.userId },
-          select: { revokedAt: true },
-        }),
-      ).toEqual({ revokedAt: null });
-    });
-
-    it("re-checks the MEMBER relationship in the database, not only the supplied actor context", async () => {
-      const { hospital, member } = await setup();
-      await prisma.hospitalMembership.updateMany({
-        where: { userId: member.userId },
-        data: { status: MembershipStatus.SUSPENDED },
-      });
-
-      await expect(
-        provisionOsm(member.actor, {
-          nationalId: nationalIdFor(310),
-          givenName: "สมชาย",
-          familyName: "ใจดีมาก",
-          targetHospitalId: hospital.id,
-        }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      expect(await prisma.osmHospitalRelationship.count()).toBe(0);
-    });
-
-    it("gives a MEMBER the OSM roster and read-only OSM detail, but no staff data", async () => {
-      const { hospital, owner, member } = await setup();
-      await provisionPendingOsm(owner, hospital.id, 320);
-      const osm = await createActiveOsm(hospital.id, 321);
-      await provisionHospitalMember(owner.actor, {
-        nationalId: nationalIdFor(322),
-        givenName: "สมชาย",
-        familyName: "บุคลากร",
-        targetHospitalId: hospital.id,
-        profession: "DOCTOR",
-      });
-
-      const list = await listWorkforce(member.actor, { targetHospitalId: hospital.id });
-      const ownerList = await listWorkforce(owner.actor, { targetHospitalId: hospital.id });
-      const hospitals = await listWorkforceHospitals(member.actor);
-
-      expect(list.viewerScope).toBe("MEMBER");
-      expect(list.rows.every((row) => row.kind === "OSM")).toBe(true);
-      expect(list.rows).toHaveLength(2);
-      expect(ownerList.viewerScope).toBe("OWNER");
-      expect(ownerList.rows.some((row) => row.kind === "HOSPITAL_MEMBER")).toBe(true);
-      expect(hospitals).toEqual([
-        { id: hospital.id, hospitalCode: "V2-MEMBER", name: hospital.name, scope: "MEMBER" },
-      ]);
-
-      const relationship = await prisma.osmHospitalRelationship.findFirstOrThrow({
-        where: { userId: osm.userId },
-        select: { id: true },
-      });
-      const detail = await getWorkforceDetail(member.actor, { kind: "osm", relationshipId: relationship.id });
-      expect(detail.viewerScope).toBe("MEMBER");
-      expect(detail.actions).toEqual({
-        updateProfession: false,
-        suspend: false,
-        restore: false,
-        resetPassword: false,
-      });
-
-      const staff = await prisma.hospitalMembership.findFirstOrThrow({
-        where: { hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: "DOCTOR" },
-        select: { id: true },
-      });
-      await expect(
-        getWorkforceDetail(member.actor, { kind: "staff", relationshipId: staff.id }),
-      ).rejects.toBeDefined();
-      const ownerDetail = await getWorkforceDetail(owner.actor, { kind: "osm", relationshipId: relationship.id });
-      expect(ownerDetail.actions.resetPassword).toBe(false);
-    });
-
-    it("lets a MEMBER undo only the assisted token it just issued", async () => {
-      const { hospital, owner, member } = await setup();
-      const pending = await provisionPendingOsm(owner, hospital.id, 330);
-      const issued = await regenerateWorkforceActivation(member.actor, {
-        userId: pending.userId,
-        targetHospitalId: hospital.id,
-        kind: "OSM",
-        mode: "ASSISTED",
-      });
-
-      await expect(
-        revokeIssuedWorkforceActivation(owner.actor, { activationId: issued.activationId }),
-      ).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await revokeIssuedWorkforceActivation(member.actor, { activationId: issued.activationId });
-
-      expect(
-        await prisma.workforceActivation.findUniqueOrThrow({
-          where: { id: issued.activationId },
-          select: { revokedAt: true },
-        }),
-      ).toEqual({ revokedAt: expect.any(Date) });
-      await expect(
-        completeWorkforceActivation(issued.activationToken, {
-          nationalId: pending.nationalId,
-          password: PASSWORD,
-          passwordConfirmation: PASSWORD,
-        }),
-      ).rejects.toMatchObject({ code: "CONFLICT" });
+      const pending = await provisionPendingOsm(owner, hospital.id, 300);
+      await expect(provisionOsm(member.actor, { nationalId: nationalIdFor(301), givenName: "ห้าม", familyName: "สร้าง", targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(listWorkforce(member.actor, { targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(getWorkforceDetail(member.actor, { kind: "osm", relationshipId: pending.relationshipId })).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(regenerateWorkforceActivation(member.actor, { kind: "OSM", userId: pending.userId, targetHospitalId: hospital.id, mode: "REMOTE" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(issueWorkforceActivationSlips(member.actor, { kind: "OSM", userIds: [pending.userId], targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(listWorkforceHospitals(member.actor)).resolves.toEqual([]);
+      const relationship = await prisma.osmHospitalRelationship.findFirstOrThrow({ where: { userId: pending.userId, hospitalId: hospital.id } });
+      await expect(suspendOsmRelationship(member.actor, { relationshipId: relationship.id, targetHospitalId: hospital.id, expectedUpdatedAt: relationship.updatedAt.toISOString() })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(revokeWorkforceActivation(member.actor, { kind: "OSM", userId: pending.userId, targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      const activation = await prisma.workforceActivation.findFirstOrThrow({ where: { userId: pending.userId, revokedAt: null } });
+      await prisma.workforceActivation.update({ where: { id: activation.id }, data: { createdByUserId: member.userId } });
+      await expect(revokeIssuedWorkforceActivation(member.actor, { activationId: activation.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(revokeIssuedWorkforceActivation({ ...member.actor, hospitalMemberships: owner.actor.hospitalMemberships }, { activationId: activation.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(previewWorkforceActivation(pending.token)).resolves.toBeDefined();
+      await completeWorkforceActivation(pending.token, { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provisioner(randomUUID()) });
+      expect(await prisma.osmHospitalRelationship.findUniqueOrThrow({ where: { id: pending.relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     });
   });
 
@@ -973,7 +804,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
           targetHospitalId: hospital.id,
           rows: [osmRow(1701)],
         }),
-      ).resolves.toMatchObject({ rows: [{ status: "created" }] });
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
     });
   });
 
@@ -1151,31 +982,31 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     });
 
     it("uses a bounded, constant number of real SQL queries as page depth changes", async () => {
-      const { hospital, member } = await setup();
+      const { hospital, owner } = await setup();
       const traced = new PrismaClient({ log: [{ emit: "event", level: "query" }] });
       const queries: string[] = [];
       traced.$on("query", ({ query }) => queries.push(query));
       try {
-        const first = await listWorkforce(member.actor, { targetHospitalId: hospital.id }, traced);
+        const first = await listWorkforce(owner.actor, { targetHospitalId: hospital.id }, traced);
         const firstCount = queries.length;
         queries.length = 0;
-        const next = await listWorkforce(member.actor, { targetHospitalId: hospital.id, osmCursor: first.pageInfo.osmNextCursor ?? undefined }, traced);
+        const next = await listWorkforce(owner.actor, { targetHospitalId: hospital.id, osmCursor: first.pageInfo.osmNextCursor ?? undefined, staffCursor: first.pageInfo.staffNextCursor ?? undefined }, traced);
         expect(firstCount).toBeLessThanOrEqual(12);
         expect(queries.length).toBe(firstCount);
-        expect(next.rows.every(({ kind }) => kind === "OSM")).toBe(true);
-        console.info(`Workforce directory SQL queries per MEMBER page: ${firstCount}; fixture: 200 staff / 300 OSM`);
+        expect(next.rows.length).toBeLessThanOrEqual(50);
+        console.info(`Workforce directory SQL queries per OWNER page: ${firstCount}; fixture: 200 staff / 300 OSM`);
       } finally { await traced.$disconnect(); }
     });
 
     it("applies search/status/Hospital scope on every page and denies mismatched cursors", async () => {
-      const { hospital, other, owner, member } = await setup();
-      const page = await listWorkforce(member.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED" });
-      expect(page.rows).toHaveLength(25);
-      expect(page.rows.every(({ kind, displayName }) => kind === "OSM" && displayName === "ชื่อซ้ำ นามซ้ำ")).toBe(true);
-      expect(page.pageInfo.staffNextCursor).toBeNull();
+      const { hospital, other, owner } = await setup();
+      const page = await listWorkforce(owner.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED" });
+      expect(page.rows).toHaveLength(50);
+      expect(page.rows.every(({ displayName }) => displayName === "ชื่อซ้ำ นามซ้ำ")).toBe(true);
+      expect(page.pageInfo.staffNextCursor).toBeTruthy();
       const cursor = page.pageInfo.osmNextCursor;
       expect(cursor).toBeTruthy();
-      const next = await listWorkforce(member.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED", osmCursor: cursor ?? undefined });
+      const next = await listWorkforce(owner.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED", osmCursor: cursor ?? undefined, staffCursor: page.pageInfo.staffNextCursor ?? undefined });
       expect(next.rows.some(({ id }) => page.rows.some((row) => row.id === id))).toBe(false);
       for (const input of [
         { targetHospitalId: other.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED" as const, osmCursor: cursor ?? undefined },
@@ -1183,9 +1014,9 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "ACTIVE" as const, osmCursor: cursor ?? undefined },
         { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED" as const, staffCursor: cursor ?? undefined },
       ]) await expect(listWorkforce(owner.actor, input)).rejects.toMatchObject({ code: "VALIDATION" });
-      expect((await listWorkforce(member.actor, { targetHospitalId: hospital.id, search: "ไม่พบแน่นอน" })).rows).toHaveLength(0);
-      await prisma.hospitalMembership.updateMany({ where: { userId: member.userId }, data: { status: MembershipStatus.SUSPENDED } });
-      await expect(listWorkforce(member.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED", osmCursor: cursor ?? undefined })).rejects.toBeDefined();
+      expect((await listWorkforce(owner.actor, { targetHospitalId: hospital.id, search: "ไม่พบแน่นอน" })).rows).toHaveLength(0);
+      await prisma.hospitalMembership.updateMany({ where: { userId: owner.userId }, data: { status: MembershipStatus.SUSPENDED } });
+      await expect(listWorkforce(owner.actor, { targetHospitalId: hospital.id, search: "ชื่อซ้ำ นามซ้ำ", status: "PROVISIONED", osmCursor: cursor ?? undefined })).rejects.toBeDefined();
     });
   });
 
@@ -1199,11 +1030,11 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     }
 
     it("issues fresh 72-hour REMOTE tokens, revokes the previous ones, and stores only digests", async () => {
-      const { hospital, member } = await setup();
+      const { hospital, owner } = await setup();
       const now = new Date("2026-10-14T03:00:00.000Z");
       const people = [] as { userId: string; token: string; nationalId: string }[];
       for (const sequence of [2000, 2001, 2002]) {
-        const created = await provisionOsm(member.actor, {
+        const created = await provisionOsm(owner.actor, {
           nationalId: nationalIdFor(sequence),
           givenName: "สมชาย",
           familyName: "ใจดีมาก",
@@ -1213,7 +1044,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       }
 
       const result = await issueWorkforceActivationSlips(
-        member.actor,
+        owner.actor,
         { targetHospitalId: hospital.id, kind: "OSM", userIds: people.map(({ userId }) => userId) },
         { now: () => now },
       );
@@ -1332,11 +1163,11 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
           kind: "OSM",
           userIds: [inFlight.userId],
         }),
-      ).resolves.toMatchObject({ slips: [], failures: [{ userId: inFlight.userId, reason: "IN_USE" }] });
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
     });
 
     it("shows pending and expired people with the latest expiry, and never marks active people pending", async () => {
-      const { hospital, owner, member } = await setup();
+      const { hospital, owner } = await setup();
       const fresh = await provisionPendingOsm(owner, hospital.id, 2300);
       const stale = await provisionPendingOsm(owner, hospital.id, 2301);
       const revoked = await provisionPendingOsm(owner, hospital.id, 2302);
@@ -1350,7 +1181,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         data: { revokedAt: new Date() },
       });
 
-      const list = await listWorkforce(member.actor, { targetHospitalId: hospital.id });
+      const list = await listWorkforce(owner.actor, { targetHospitalId: hospital.id });
       const byUser = new Map(list.rows.map((row) => [row.userId, row]));
 
       expect(byUser.get(fresh.userId)).toMatchObject({ activationStatus: "PENDING", activationRequired: true });

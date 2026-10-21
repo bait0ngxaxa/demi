@@ -42,7 +42,7 @@ const hospitalActor: ActorContext = {
   hospitalMemberships: [
     {
       hospitalId,
-      membershipType: MembershipType.MEMBER,
+      membershipType: MembershipType.OWNER,
       profession: null,
       status: MembershipStatus.ACTIVE,
       hospitalStatus: HospitalStatus.ACTIVE,
@@ -83,7 +83,7 @@ function createTransaction(): Prisma.TransactionClient {
     },
     hospitalMembership: {
       findFirst: vi.fn().mockResolvedValue({
-        membershipType: MembershipType.MEMBER,
+        membershipType: MembershipType.OWNER,
         status: MembershipStatus.ACTIVE,
       }),
     },

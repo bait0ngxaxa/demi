@@ -31,7 +31,7 @@ import {
   recordPatientProgramServiceOneFloatingChart,
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import { submitScreening } from "@/modules/screening/services/screening-service";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";

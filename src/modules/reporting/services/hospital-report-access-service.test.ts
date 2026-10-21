@@ -139,11 +139,11 @@ describe("Hospital reporting access service", () => {
     const grantedRow: MembershipRow = { hospital, membershipType: MembershipType.MEMBER, profession: null, reportExportGrantedAt: new Date("2026-10-16T00:00:00.000Z") };
     const ungrantedRow: MembershipRow = { ...grantedRow, reportExportGrantedAt: null };
 
-    it("allows a granted ACTIVE MEMBER to export, recording the access basis", async () => {
+    it("denies a persisted obsolete MEMBER grant", async () => {
       const { database: db } = database(grantedRow);
       await expect(
         resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
-      ).resolves.toMatchObject({ hospital, accessBasis: "MEMBER_EXPORT_GRANT" });
+      ).rejects.toBeInstanceOf(ForbiddenError);
     });
 
     it("denies a granted ACTIVE MEMBER the INCLUDE_ENDED cohort", async () => {
@@ -199,18 +199,10 @@ describe("Hospital reporting access service", () => {
       ).resolves.toMatchObject({ accessBasis: "OWNER" });
     });
 
-    it("lists only ACTIVE MEMBER memberships holding the grant", async () => {
+    it("does not list obsolete MEMBER export grants", async () => {
       const { database: db, findMany } = database(grantedRow);
-      await expect(listHospitalReportExportGrantHospitals(memberActor, db)).resolves.toEqual([hospital]);
-      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({
-          userId: actorUserId,
-          membershipType: MembershipType.MEMBER,
-          status: MembershipStatus.ACTIVE,
-          reportExportGrantedAt: { not: null },
-          hospital: { is: { status: HospitalStatus.ACTIVE } },
-        }),
-      }));
+      await expect(listHospitalReportExportGrantHospitals(memberActor, db)).resolves.toEqual([]);
+      expect(findMany).not.toHaveBeenCalled();
     });
   });
 

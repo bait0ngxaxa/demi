@@ -5,7 +5,6 @@ import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-works
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
   hasDirectHospitalProvisioningScope,
-  hasOsmHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
@@ -131,10 +130,7 @@ function projectHospitalActions(
     actions.push({
       href: withHospitalContext("/app/workforce", hospitalId),
       label: "จัดการบุคลากร",
-      description:
-        workforceDecision.reason === "active_hospital_owner"
-          ? "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
-          : "เพิ่ม อสม. และดูแลการเปิดใช้งานบัญชี อสม. ในโรงพยาบาลที่คุณเป็นสมาชิกโดยตรง",
+      description: "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง",
       category: "administration",
     });
   }
@@ -148,14 +144,11 @@ function projectHospitalActions(
     });
   }
 
-  if (
-    hasDirectHospitalProvisioningScope(actor, hospitalId) ||
-    hasOsmHospitalProvisioningScope(actor, hospitalId)
-  ) {
+  if (hasDirectHospitalProvisioningScope(actor, hospitalId)) {
     actions.push({
       href: withHospitalContext("/app/patients/provision", hospitalId),
-      label: hasDirectHospitalProvisioningScope(actor, hospitalId) ? "เพิ่มหรือนำเข้าผู้ป่วย" : "เพิ่มผู้ป่วย",
-      description: "เพิ่มผู้ป่วยในโรงพยาบาลนี้ตามสิทธิ์ปัจจุบัน",
+      label: "นำเข้าผู้ป่วย",
+      description: "นำเข้ารายชื่อผู้ป่วยจาก Excel ในโรงพยาบาลนี้",
       category: "patient",
     });
   }
@@ -271,18 +264,6 @@ function projectHospitalActions(
         prefetch: false,
       });
     }
-  } else if (decideHospitalReportPolicy({
-    actor,
-    capability: HOSPITAL_REPORT_CAPABILITIES.export,
-    target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
-  }).allowed) {
-    actions.push({
-      href: "/app/hospitals/reporting/export",
-      label: "ส่งออกรายงาน",
-      description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาลตามสิทธิ์ที่เจ้าของโรงพยาบาลให้ไว้",
-      category: "administration",
-      prefetch: false,
-    });
   }
 
   return actions;

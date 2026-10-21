@@ -1,5 +1,18 @@
 # DEMI Project Context
 
+## Current language — Owner administration and care (2026-10-21)
+
+Current authority: [ADR-0019](./adr/0019-owner-administration-and-import-only-roster.md). Earlier status addenda are historical wherever they confer MEMBER/OSM administrative authority.
+
+**Hospital administrative control plane:** Hospital administration and patient roster onboarding owned by the active direct Hospital OWNER. MEMBER and OSM relationships confer no independent administrative authority.
+
+**Patient care operational plane:** Resource-scoped clinical and field care performed by authorized Hospital staff and assigned OSM; care authority is independent of administrative ownership.
+
+**Patient roster onboarding:** Introducing patient identities and their Hospital care relationships through the Hospital OWNER's Excel roster import, including a roster of one patient. Manual registration is retired.
+
+**Historical delegated export grant:** A retained past delegation record that no longer grants MEMBER Hospital report access or export authority.
+
+
 ## Authoritative Project Delivery Contract
 
 DEMI is one production-ready MVP codebase. Deployment and verification environments do not define separate runtime behavior or authorization modes; all approved features use normal server-side business rules and persistence. Synthetic fixtures belong in tests and controlled test databases. Production-ready code does not imply that unresolved clinical requirements, Security/Privacy/Data Controller approvals, or deployment acceptance are complete; keep unconfirmed capabilities bounded and explicitly out of scope.

@@ -23,7 +23,7 @@ import {
   findAssignedPatientDirectory,
   getPatientDirectoryDetail,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();

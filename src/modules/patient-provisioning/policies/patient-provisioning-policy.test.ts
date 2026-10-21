@@ -18,7 +18,7 @@ function hospitalActor(overrides: Partial<ActorContext> = {}): ActorContext {
     hospitalMemberships: [
       {
         hospitalId: "00000000-0000-4000-8000-000000000010",
-        membershipType: MembershipType.MEMBER,
+        membershipType: MembershipType.OWNER,
         profession: null,
         status: MembershipStatus.ACTIVE,
         hospitalStatus: HospitalStatus.ACTIVE,
@@ -30,7 +30,7 @@ function hospitalActor(overrides: Partial<ActorContext> = {}): ActorContext {
 }
 
 describe("patient provisioning policy", () => {
-  it("allows direct active Hospital scope without inspecting profession or requiring OWNER", () => {
+  it("allows direct active Hospital scope for an OWNER without inspecting profession", () => {
     expect(
       decidePatientProvisioningPolicy({
         actor: hospitalActor(),
@@ -40,7 +40,7 @@ describe("patient provisioning policy", () => {
     ).toEqual({ allowed: true, reason: "active_direct_hospital_scope" });
   });
 
-  it("allows an active OSM-Hospital relationship for single provisioning", () => {
+  it("denies an active OSM-Hospital relationship for provisioning", () => {
     const actor = hospitalActor({
       roles: [Role.OSM],
       hospitalMemberships: [],
@@ -59,7 +59,7 @@ describe("patient provisioning policy", () => {
         capability: PATIENT_PROVISIONING_CAPABILITY,
         targetHospitalId: "00000000-0000-4000-8000-000000000010",
       }),
-    ).toEqual({ allowed: true, reason: "active_osm_hospital_scope" });
+    ).toMatchObject({ allowed: false });
   });
 
   it("denies inactive relationships and an OSM bulk import scope", () => {

@@ -212,11 +212,11 @@ describe("workforce policy: ACTIVE MEMBER OSM access (ADR-0008 amendment D1)", (
   }
 
   it.each([WORKFORCE_CAPABILITIES.osmProvision, WORKFORCE_CAPABILITIES.osmRead])(
-    "allows an ACTIVE direct MEMBER for %s with a distinct reason",
+    "denies an ACTIVE direct MEMBER for %s",
     (capability) => {
       expect(
         decideWorkforcePolicy({ actor: memberActor(), capability, targetHospitalId: hospitalId }),
-      ).toEqual({ allowed: true, reason: "active_hospital_member_osm_access" });
+      ).toEqual({ allowed: false, reason: "active_owner_membership_required" });
     },
   );
 

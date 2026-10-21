@@ -15,7 +15,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import {
   demoteHospitalOwner,
   getWorkforceDetail,

@@ -98,7 +98,7 @@ async function createHospitalActor(input: {
     },
     select: { id: true },
   });
-  const membershipType = input.membershipType ?? MembershipType.MEMBER;
+  const membershipType = input.membershipType ?? MembershipType.OWNER;
   const membershipStatus = input.membershipStatus ?? MembershipStatus.ACTIVE;
   const roles = [Role.HOSPITAL, ...(input.extraRoles ?? [])];
 
@@ -316,7 +316,7 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     await prisma.$disconnect();
   });
 
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])("locates an exact-Hospital request for %s without changing state or creating domain records", async (membershipType) => {
+  it.each([MembershipType.OWNER])("locates an exact-Hospital request for %s without changing state or creating domain records", async (membershipType) => {
     const hospital = await createHospital("LOOKUP-EXACT");
     const { actor } = await createHospitalActor({ hospitalId: hospital.id, membershipType });
     const request = await submitAccessRequest(nationalId, hospital.id);
@@ -473,7 +473,7 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     await expect(reviewPatientAccessRequest(owner.actor, reviewInput)).resolves.toMatchObject({ status: "REJECTED" });
   });
 
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows exact active Hospital %s to review a request", async (membershipType) => {
+  it.each([MembershipType.OWNER])("allows exact active Hospital %s to review a request", async (membershipType) => {
     const hospital = await createHospital(`CORE-ACCESS-${membershipType}`);
     const reviewer = await createHospitalActor({ hospitalId: hospital.id, membershipType });
     const request = await submitAccessRequest(nationalId, hospital.id);
@@ -658,7 +658,7 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
 
   it("records withdrawal requested through the Hospital before activation issuance", async () => {
     const hospital = await createHospital("CORE-ACCESS-WITHDRAW");
-    const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER });
+    const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const request = await submitAccessRequest(nationalId, hospital.id);
 
     await withdrawPatientAccessRequestByHospital(member.actor, { requestId: request.id });
@@ -838,7 +838,8 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     const own = await listOwnPatientServiceRequests(patientActorA);
     expect(own).toHaveLength(1);
     expect(own[0]?.requests.map(({ requestId }) => requestId)).toEqual([requestA.requestId]);
-    const hospitalList = await listHospitalPatientServiceRequests(memberA.actor);
+    await expect(listHospitalPatientServiceRequests(memberA.actor)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    const hospitalList = await listHospitalPatientServiceRequests(ownerA.actor);
     expect(hospitalList.requests).toHaveLength(2);
     await expect(listHospitalPatientServiceRequests(ownerB.actor)).resolves.toMatchObject({ requests: [], nextCursor: null });
   });
@@ -858,7 +859,7 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
       await expect(listHospitalPatientServiceRequests(denied)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(reviewPatientServiceRequest(denied, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
-    await prisma.hospitalMembership.create({ data: { userId: member.userId, hospitalId: otherHospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
+    await prisma.hospitalMembership.create({ data: { userId: member.userId, hospitalId: otherHospital.id, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE } });
     const otherPatient = await createActivePatient({ hospitalId: otherHospital.id });
     const otherOwner = await createHospitalActor({ hospitalId: otherHospital.id, membershipType: MembershipType.OWNER });
     const otherOffering = await enableService(otherOwner.actor, otherHospital.id);
@@ -925,16 +926,17 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
 
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).rejects.toMatchObject({ code: "CONFLICT" });
-    await reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "APPROVE");
+    await expect(reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await reviewPatientServiceRequest(owner.actor, { requestId: request.requestId }, "APPROVE");
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).rejects.toMatchObject({ code: "CONFLICT" });
-    await reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "START");
+    await reviewPatientServiceRequest(owner.actor, { requestId: request.requestId }, "START");
     await expect(withdrawOwnPatientServiceRequest(patientActor, { requestId: request.requestId })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
     expect(await prisma.patientProgram.count()).toBe(0);
     expect(await prisma.patientOsmAssignment.count()).toBe(0);
     expect(await prisma.screeningAssessment.count()).toBe(0);
     expect(await prisma.patientFollowup.count()).toBe(0);
-    await expect(reviewPatientServiceRequest(member.actor, { requestId: request.requestId }, "START")).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(reviewPatientServiceRequest(owner.actor, { requestId: request.requestId }, "START")).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await prisma.auditEvent.count({ where: { resourceId: request.requestId, action: "PATIENT_SERVICE_REQUEST_STARTED" } })).toBe(1);
   });
 
