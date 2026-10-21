@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { hospitalNameSchema, optionalHospitalCodeSchema } from "@/modules/hospital-governance/schemas/hospital-governance-schemas";
+import { hospitalNameSchema } from "@/modules/hospital-governance/schemas/hospital-governance-schemas";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { personNameSchema, workforceActivationModeSchema } from "@/modules/workforce/schemas/workforce-schemas";
 
@@ -28,7 +28,6 @@ const childOwnerInvitee = {
 };
 export const childFacilityCreateSchema = serviceAreaParentSchema.extend({
   name: hospitalNameSchema,
-  hospitalCode: optionalHospitalCodeSchema,
   ...childOwnerInvitee,
   // Rendered per request; a replay returns the Child it already created.
   submissionNonce: z.uuid(),

@@ -144,15 +144,13 @@ export async function createNetworkHospitalAction(
 ): Promise<HospitalNetworkActionState> {
   return run(
     (actor) => createHospital(actor, {
-      hospitalCode: getString(formData, "hospitalCode"),
       name: getString(formData, "name"),
-      networkRole: getString(formData, "networkRole"),
       submissionNonce: getString(formData, "submissionNonce"),
     }),
-    "เพิ่มโรงพยาบาลแล้ว ผู้รับผิดชอบสมัครใช้งานผ่านขั้นตอนขึ้นทะเบียนได้ทันที",
+    "เพิ่มโรงพยาบาลแม่ข่ายแล้ว ผู้รับผิดชอบสมัครใช้งานผ่านขั้นตอนขึ้นทะเบียนได้ทันที",
     {
-      CONFLICT: "มีโรงพยาบาลที่ใช้รหัสนี้อยู่แล้ว หรือแบบฟอร์มนี้ถูกส่งไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
-      INVALID_INPUT: "กรุณากรอกชื่อและเลือกประเภท หากระบุรหัสเอง ใช้ได้เฉพาะ A-Z, 0-9, - หรือ _ ไม่เกิน 32 ตัว",
+      CONFLICT: "แบบฟอร์มนี้ถูกส่งไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+      INVALID_INPUT: "กรุณากรอกชื่อโรงพยาบาล (ไม่เกิน 200 ตัวอักษร)",
     },
     ["/app/admin/hospitals"],
   );
@@ -281,8 +279,8 @@ export async function adminEndServiceAreaAction(
 const NETWORK_PATHS = ["/app/hospitals/network", "/app/hospitals/areas"] as const;
 
 const childOwnerInviteeCopy: ErrorCopy = {
-  INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: ชื่อหน่วยบริการ (ไม่เกิน 200 ตัวอักษร) รหัส (A-Z, 0-9, - หรือ _) เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",
-  CONFLICT: "ดำเนินการไม่ได้ อาจมีรหัสนี้อยู่แล้ว บัญชีของผู้ถูกเชิญต้องตรวจสอบโดยผู้ดูแลระบบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: ชื่อหน่วยบริการ (ไม่เกิน 200 ตัวอักษร) เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",
+  CONFLICT: "ดำเนินการไม่ได้ บัญชีของผู้ถูกเชิญต้องตรวจสอบโดยผู้ดูแลระบบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
   NOT_FOUND: "หน่วยบริการนี้ไม่ได้อยู่ในเครือข่ายของคุณแล้ว กรุณาโหลดหน้าใหม่",
 };
 
@@ -331,7 +329,6 @@ export async function createChildFacilityAction(
     const result = await createChildFacility(actor, {
       ...inviteeInput(formData),
       name: getString(formData, "name"),
-      hospitalCode: getString(formData, "hospitalCode"),
       submissionNonce: getString(formData, "submissionNonce"),
     });
     return { invitation: result.invitation, message: `สร้าง ${result.child.name} (${result.child.hospitalCode}) ในเครือข่ายแล้ว · รอเปิดใช้งาน` };
@@ -459,7 +456,7 @@ const bulkFileErrorCopy = {
   EMPTY: "ไม่พบข้อมูลในไฟล์",
   TOO_LARGE: "ไฟล์มีขนาดใหญ่เกินไป",
   MALFORMED: "ไฟล์ CSV มีเครื่องหมายคำพูดไม่ครบหรือผิดรูปแบบ",
-  HEADER: "บรรทัดแรกของไฟล์ต้องเป็น name,hospitalCode",
+  HEADER: "บรรทัดแรกของไฟล์ต้องเป็นหัวคอลัมน์ name เพียงคอลัมน์เดียว กรุณาใช้ไฟล์ตัวอย่าง",
   NO_ROWS: "ไม่พบรายการโรงพยาบาลในไฟล์",
   TOO_MANY_ROWS: "นำเข้าได้ครั้งละไม่เกิน 200 รายการ",
 } as const;
@@ -488,7 +485,7 @@ function toBulkErrorState(error: unknown, csvText: string, submissionNonce: stri
     };
   }
   const state = toErrorState(error, {
-    CONFLICT: "ไฟล์นี้ถูกส่งไปแล้วด้วยข้อมูลอื่น หรือมีรหัสซ้ำกับรายการที่เพิ่งเพิ่ม กรุณาโหลดหน้าใหม่แล้วตรวจสอบอีกครั้ง",
+    CONFLICT: "ไฟล์นี้ถูกส่งไปแล้วด้วยข้อมูลอื่น หรือข้อมูลเปลี่ยนไประหว่างนำเข้า กรุณาโหลดหน้าใหม่แล้วตรวจสอบอีกครั้ง",
   });
   return { status: "ERROR", message: state.status === "ERROR" ? state.message : "ระบบไม่พร้อมดำเนินการในขณะนี้" };
 }

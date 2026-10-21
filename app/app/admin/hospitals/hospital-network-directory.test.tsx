@@ -41,6 +41,9 @@ describe("Hospital governance directory views", () => {
     expect(markup).toContain("นำเข้าโรงพยาบาลแม่ข่ายจากไฟล์");
     expect(markup).toContain(`<input type="hidden" name="submissionNonce" value="${bulkNonce}"/>`);
     expect(markup).toContain('name="file"');
+    expect(markup).toContain('href="/templates/hospital-parent-import-template.csv"');
+    // ADR-0018 amendment: the single-registration form no longer offers a network role choice.
+    expect(markup).not.toContain('name="networkRole"');
   });
 
   it("lists only PENDING Hospitals for bulk retirement", () => {

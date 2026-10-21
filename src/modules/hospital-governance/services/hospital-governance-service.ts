@@ -390,23 +390,18 @@ function generateHospitalCode(): string {
   return `H-${suffix}`;
 }
 
-/** The requested code when free, else a generated `H-XXXXXX`; also used for Parent-registered Children (ADR-0018). */
-export async function resolveNewHospitalCode(
-  transaction: Prisma.TransactionClient,
-  requested: string | undefined,
-): Promise<string> {
-  const candidates = requested ? [requested] : Array.from({ length: GENERATED_CODE_ATTEMPTS }, generateHospitalCode);
-  for (const hospitalCode of candidates) {
+/** A free generated `H-XXXXXX` code; every registration path uses it (ADMIN single/bulk, Parent-created Children). */
+export async function generateUniqueHospitalCode(transaction: Prisma.TransactionClient): Promise<string> {
+  for (let attempt = 0; attempt < GENERATED_CODE_ATTEMPTS; attempt += 1) {
+    const hospitalCode = generateHospitalCode();
     const existing = await transaction.hospital.findUnique({ where: { hospitalCode }, select: { id: true } });
     if (!existing) return hospitalCode;
   }
-  throw new ConflictError(requested ? "A Hospital with this code already exists" : "A unique Hospital code could not be generated");
+  throw new ConflictError("A unique Hospital code could not be generated");
 }
 
 type HospitalRegistrationInput = {
-  hospitalCode?: string;
   name: string;
-  networkRole: "PARENT" | "CHILD";
   submissionNonce: string;
 };
 
@@ -435,8 +430,7 @@ async function findReplayedRegistration(
   if (
     existing.registeredByUserId !== actorUserId ||
     existing.name !== input.name ||
-    existing.serviceAreaEligibility?.kind !== input.networkRole ||
-    (input.hospitalCode !== undefined && existing.hospitalCode !== input.hospitalCode)
+    existing.serviceAreaEligibility?.kind !== "PARENT"
   ) {
     throw new ConflictError("This registration submission was already used for a different Hospital");
   }
@@ -445,8 +439,9 @@ async function findReplayedRegistration(
 }
 
 /**
- * ADR-0015/0017: Platform ADMIN registers every Hospital. It starts PENDING_VERIFICATION so the
- * onboarding approval stays the only activation path. Idempotent per submission nonce (N1-D5).
+ * ADR-0017/0018: Platform ADMIN registers Parent Hospitals (role PARENT); Child facilities are created by their
+ * Parent OWNER. It starts PENDING_VERIFICATION so the onboarding approval stays the only activation path.
+ * Idempotent per submission nonce (N1-D5).
  */
 export async function createHospital(
   actor: ActorContext | null | undefined,
@@ -474,7 +469,7 @@ export async function createHospital(
           return replayed;
         }
 
-        const hospitalCode = await resolveNewHospitalCode(transaction, parsed.data.hospitalCode);
+        const hospitalCode = await generateUniqueHospitalCode(transaction);
 
         const created = await transaction.hospital.create({
           data: {
@@ -485,7 +480,7 @@ export async function createHospital(
             registeredByUserId: currentActor.userId,
             serviceAreaEligibility: {
               create: {
-                kind: parsed.data.networkRole,
+                kind: "PARENT",
                 verifiedAt: new Date(),
                 classifiedByUserId: currentActor.userId,
               },
@@ -503,7 +498,7 @@ export async function createHospital(
             metadata: {
               hospitalCode: created.hospitalCode,
               toStatus: created.status,
-              networkRole: parsed.data.networkRole,
+              networkRole: "PARENT",
             },
           },
           transaction,
@@ -920,7 +915,7 @@ export async function renameHospital(
   }
 }
 
-export type HospitalBulkRowStatus = "OK" | "INVALID" | "DUPLICATE_CODE_IN_FILE" | "CODE_EXISTS" | "SIMILAR_NAME";
+export type HospitalBulkRowStatus = "OK" | "INVALID" | "SIMILAR_NAME";
 
 export type HospitalBulkSimilarMatch = {
   source: "EXISTING" | "FILE";
@@ -933,14 +928,13 @@ export type HospitalBulkSimilarMatch = {
 export type HospitalBulkPreviewRow = {
   rowNumber: number;
   name: string;
-  hospitalCode: string | null;
   status: HospitalBulkRowStatus;
   similarTo: HospitalBulkSimilarMatch[];
 };
 
 export type HospitalBulkRegistrationResult = { hospitals: HospitalGovernanceProjection[]; replayed: boolean };
 
-const BLOCKING_ROW_STATUSES: readonly HospitalBulkRowStatus[] = ["INVALID", "DUPLICATE_CODE_IN_FILE", "CODE_EXISTS"];
+const BLOCKING_ROW_STATUSES: readonly HospitalBulkRowStatus[] = ["INVALID"];
 
 /** O1-A: nothing was registered. `rows` is the re-evaluated preview; `fileError` a file-level problem. */
 export class HospitalBulkRegistrationRejectedError extends ValidationError {
@@ -969,20 +963,15 @@ function readRegistrationRows(csvText: string): HospitalRegistrationCsvRow[] {
 }
 
 /**
- * Per-row preview status. Blocking: invalid, a code repeated in the file, a code already registered. Not blocking but
- * needing explicit confirmation: a name equal (whitespace/case-normalised) to an existing Hospital or another row.
+ * Per-row preview status. Blocking: an invalid row. Not blocking but needing explicit confirmation: a name equal
+ * (whitespace/case-normalised) to an existing Hospital or another row. Codes are always generated at apply.
  */
 async function evaluateRegistrationRows(
   database: Pick<Prisma.TransactionClient, "hospital">,
   rows: readonly HospitalRegistrationCsvRow[],
 ): Promise<HospitalBulkPreviewRow[]> {
-  const codeCounts = new Map<string, number>();
-  for (const row of rows) {
-    if (row.valid && row.hospitalCode) codeCounts.set(row.hospitalCode, (codeCounts.get(row.hospitalCode) ?? 0) + 1);
-  }
   // Whole registry by design: similarity is a normalised comparison, not an indexed lookup (ADMIN-only, bounded).
   const existing = await database.hospital.findMany({ select: { hospitalCode: true, name: true, status: true } });
-  const existingCodes = new Set(existing.map(({ hospitalCode }) => hospitalCode));
   const existingByName = new Map<string, HospitalBulkSimilarMatch[]>();
   for (const hospital of existing) {
     const key = normalizeHospitalName(hospital.name);
@@ -996,20 +985,16 @@ async function evaluateRegistrationRows(
   }
 
   return rows.map((row) => {
-    if (!row.valid) return { rowNumber: row.rowNumber, name: row.name, hospitalCode: row.hospitalCode, status: "INVALID", similarTo: [] };
+    if (!row.valid) return { rowNumber: row.rowNumber, name: row.name, status: "INVALID", similarTo: [] };
     const key = normalizeHospitalName(row.name);
     const similarTo = [
       ...(existingByName.get(key) ?? []),
       ...(fileByName.get(key) ?? [])
         .filter(({ rowNumber }) => rowNumber !== row.rowNumber)
-        .map((other): HospitalBulkSimilarMatch => ({ source: "FILE", name: other.name, hospitalCode: other.hospitalCode, status: null })),
+        .map((other): HospitalBulkSimilarMatch => ({ source: "FILE", name: other.name, hospitalCode: null, status: null })),
     ];
-    const status: HospitalBulkRowStatus = row.hospitalCode && (codeCounts.get(row.hospitalCode) ?? 0) > 1
-      ? "DUPLICATE_CODE_IN_FILE"
-      : row.hospitalCode && existingCodes.has(row.hospitalCode)
-        ? "CODE_EXISTS"
-        : similarTo.length > 0 ? "SIMILAR_NAME" : "OK";
-    return { rowNumber: row.rowNumber, name: row.name, hospitalCode: row.hospitalCode, status, similarTo };
+    const status: HospitalBulkRowStatus = similarTo.length > 0 ? "SIMILAR_NAME" : "OK";
+    return { rowNumber: row.rowNumber, name: row.name, status, similarTo };
   });
 }
 
@@ -1044,8 +1029,7 @@ async function findReplayedBulkRegistration(
     return hospital &&
       hospital.registeredByUserId === actorUserId &&
       hospital.name === row.name &&
-      hospital.serviceAreaEligibility?.kind === "PARENT" &&
-      (row.hospitalCode === null || hospital.hospitalCode === row.hospitalCode)
+      hospital.serviceAreaEligibility?.kind === "PARENT"
       ? hospital
       : null;
   });
@@ -1122,15 +1106,10 @@ export async function applyHospitalBulkRegistration(
           throw new HospitalBulkRegistrationRejectedError({ rows: evaluated, unconfirmedRowNumbers });
         }
 
-        // A generated code must not take a code another row of this file asks for.
-        const requestedCodes = new Set(rows.flatMap(({ hospitalCode }) => (hospitalCode ? [hospitalCode] : [])));
         const verifiedAt = new Date();
         const created: HospitalGovernanceProjection[] = [];
         for (const [index, row] of rows.entries()) {
-          let hospitalCode = await resolveNewHospitalCode(transaction, row.hospitalCode ?? undefined);
-          while (!row.hospitalCode && requestedCodes.has(hospitalCode)) {
-            hospitalCode = await resolveNewHospitalCode(transaction, undefined);
-          }
+          const hospitalCode = await generateUniqueHospitalCode(transaction);
           const hospital = await transaction.hospital.create({
             data: {
               hospitalCode,

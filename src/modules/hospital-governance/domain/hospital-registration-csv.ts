@@ -1,11 +1,12 @@
-import { hospitalNameSchema, optionalHospitalCodeSchema } from "../schemas/hospital-governance-schemas";
+import { hospitalNameSchema } from "../schemas/hospital-governance-schemas";
 
 /** O1-A: one file registers at most 200 Parent Hospitals. */
 export const HOSPITAL_BULK_REGISTRATION_LIMIT = 200;
-/** 200 rows of a 200-character Thai name and a 32-character code fit well inside this (UTF-8). */
+/** 200 rows of a 200-character Thai name fit well inside this (UTF-8). */
 export const HOSPITAL_BULK_REGISTRATION_MAX_BYTES = 256 * 1024;
 
-const HEADER = ["name", "hospitalCode"] as const;
+// Hospital codes are always generated, so the file names Hospitals only.
+const HEADER = ["name"] as const;
 
 export type HospitalRegistrationCsvError =
   | "EMPTY"
@@ -100,13 +101,12 @@ export type HospitalRegistrationCsvRow = {
   /** Line of the record in the file (the header is line 1). */
   rowNumber: number;
   name: string;
-  hospitalCode: string | null;
   valid: boolean;
 };
 
 /**
- * Parses `name,hospitalCode` rows. Blank lines are skipped; a row with the wrong number of fields or an invalid name
- * or code is kept and marked invalid so the preview can show it. File-level problems throw.
+ * Parses `name` rows. Blank lines are skipped; a row with extra fields or an invalid name is kept and marked invalid so
+ * the preview can show it. File-level problems throw.
  */
 export function parseHospitalRegistrationCsv(text: string): HospitalRegistrationCsvRow[] {
   // String#trim also strips a BOM.
@@ -123,14 +123,12 @@ export function parseHospitalRegistrationCsv(text: string): HospitalRegistration
   body.forEach((record, offset) => {
     if (record.every((value) => value.trim() === "")) return;
     const rowNumber = offset + 2;
-    const [rawName = "", rawCode = ""] = record;
+    const [rawName = ""] = record;
     const name = hospitalNameSchema.safeParse(rawName);
-    const code = optionalHospitalCodeSchema.safeParse(rawCode);
     rows.push({
       rowNumber,
       name: name.success ? name.data : rawName.trim(),
-      hospitalCode: code.success ? code.data ?? null : rawCode.trim() || null,
-      valid: record.length === HEADER.length && name.success && code.success,
+      valid: record.length === HEADER.length && name.success,
     });
   });
 

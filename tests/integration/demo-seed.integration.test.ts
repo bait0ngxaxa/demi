@@ -11,7 +11,7 @@ import { hashIdentityReference } from "@/modules/identity/services/identity-serv
 
 import { assertDemoSeedAllowed } from "../../scripts/demo-guard.mjs";
 import { DEMO_ACCOUNT_LIST, demoNationalId } from "../../scripts/demo/demo-identities";
-import { countDemoData, resetDemoScenario, seedDemoScenario } from "../../scripts/demo/demo-scenario";
+import { countDemoData, DEMO_CHILDREN, resetDemoScenario, seedDemoScenario } from "../../scripts/demo/demo-scenario";
 
 /**
  * P1 Part C: the demo seed is repeatable, reset removes only demo data, and the guard fails closed. The Supabase
@@ -91,6 +91,8 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
   });
 
   it("seeds a complete scenario twice with the same result, then reset removes only demo data", async () => {
+    const onboardingAudits = { where: { action: { startsWith: "hospital_onboarding." } } };
+    const onboardingAuditsBefore = await prisma.auditEvent.count(onboardingAudits);
     const first = await seedDemoScenario(dependencies);
 
     // Every account exists, has a provider identity and resolves as an authorized actor.
@@ -120,7 +122,11 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     expect(liveAuthUsers.size).toBe(DEMO_ACCOUNT_LIST.length);
 
     // Child A workbook rounds 1–6 and Before/After for the completed Program, read as the OWNER sees it.
-    const childA = await prisma.hospital.findUniqueOrThrow({ where: { hospitalCode: `DEMOP-${suffix}-CA` }, select: { id: true, status: true } });
+    const demoParentRow = await prisma.hospital.findUniqueOrThrow({ where: { hospitalCode: `DEMOP-${suffix}` }, select: { id: true } });
+    const childA = await prisma.hospital.findFirstOrThrow({
+      where: { registeredForParentHospitalId: demoParentRow.id, name: DEMO_CHILDREN[0].name }, select: { id: true, status: true, hospitalCode: true },
+    });
+    expect(childA.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
     expect(childA.status).toBe(HospitalStatus.ACTIVE);
     const ownerA = await prisma.hospitalMembership.findFirstOrThrow({ where: { hospitalId: childA.id, membershipType: "OWNER" }, select: { userId: true } });
     const ownerActor = await resolveActorAccessByUserId(ownerA.userId);
@@ -172,9 +178,9 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     const removed = await resetDemoScenario({ deleteAuthUser });
     expect(removed).toMatchObject({ hospitals: 4, accounts: DEMO_ACCOUNT_LIST.length, relationships: 14 });
     // Parent-created Children (the seeded ones and the extra one) are gone; the pre-ADR-0018 rows remain pending.
-    expect(await prisma.hospital.count({
-      where: { OR: [{ id: createdChild.child.id }, { hospitalCode: { in: [`DEMOP-${suffix}-CA`, `DEMOP-${suffix}-CB`] } }] },
-    })).toBe(0);
+    expect(await prisma.hospital.count({ where: { OR: [{ id: createdChild.child.id }, { registeredForParentHospitalId: demoParent.id }] } })).toBe(0);
+    // No demo onboarding audit is left behind (they carry no actor, only the application id).
+    expect(await prisma.auditEvent.count(onboardingAudits)).toBe(onboardingAuditsBefore);
     expect(Object.values(await countDemoData()).every((count) => count === 0)).toBe(true);
     expect(liveAuthUsers.size).toBe(0);
     const hospitals = await prisma.hospital.findMany({ where: { id: { in: hospitalIds } }, select: { status: true } });

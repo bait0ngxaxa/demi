@@ -23,12 +23,10 @@ import {
 const rowStatusCopy: Record<HospitalBulkRegistrationPreviewRowState["status"], { label: string; variant: StatusVariant }> = {
   OK: { label: "พร้อมเพิ่ม", variant: "success" },
   INVALID: { label: "ข้อมูลไม่ถูกต้อง", variant: "danger" },
-  DUPLICATE_CODE_IN_FILE: { label: "รหัสซ้ำในไฟล์", variant: "danger" },
-  CODE_EXISTS: { label: "รหัสนี้มีในระบบแล้ว", variant: "danger" },
   SIMILAR_NAME: { label: "ชื่อใกล้เคียง · ต้องยืนยัน", variant: "warning" },
 };
 
-const BLOCKING = new Set<HospitalBulkRegistrationPreviewRowState["status"]>(["INVALID", "DUPLICATE_CODE_IN_FILE", "CODE_EXISTS"]);
+const BLOCKING = new Set<HospitalBulkRegistrationPreviewRowState["status"]>(["INVALID"]);
 
 function SimilarMatches({ row }: { row: HospitalBulkRegistrationPreviewRowState }): React.JSX.Element | null {
   if (row.similarTo.length === 0) return null;
@@ -46,7 +44,7 @@ function SimilarMatches({ row }: { row: HospitalBulkRegistrationPreviewRowState 
 }
 
 /**
- * O1-A: ADMIN imports Parent Hospitals from a UTF-8 CSV (`name,hospitalCode`). Preview first; apply creates every row
+ * O1-A: ADMIN imports Parent Hospitals from a UTF-8 CSV with one `name` column (codes are generated). Preview first; apply creates every row
  * as a pending Parent in one transaction or none. The server re-parses and re-evaluates the file at apply.
  */
 export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce: string }): React.JSX.Element {
@@ -76,9 +74,25 @@ export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce:
     <Panel aria-labelledby="bulk-hospital-heading">
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="bulk-hospital-heading">นำเข้าโรงพยาบาลแม่ข่ายจากไฟล์</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ไฟล์ .csv แบบ UTF-8 บรรทัดแรกเป็น <code className="rounded bg-surface-muted px-1">name,hospitalCode</code> ไม่เกิน 200 รายการ
-        เว้นรหัสว่างเพื่อให้ระบบสร้างให้ ทุกรายการจะเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน รพ.สต. และหน่วยบริการลูกข่ายให้แม่ข่ายสร้างเอง
+        ทุกรายการจะเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน ระบบสร้างรหัสโรงพยาบาลให้เอง นำเข้าได้ครั้งละไม่เกิน 200 รายการ รพ.สต. และหน่วยบริการลูกข่ายให้แม่ข่ายสร้างเอง
       </p>
+      <div className="mt-4 rounded-control border border-border bg-surface-muted/50 p-4 text-sm leading-6 text-text">
+        <p className="font-semibold">วิธีเตรียมไฟล์</p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>
+            <a
+              className="font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              download
+              href="/templates/hospital-parent-import-template.csv"
+            >
+              ดาวน์โหลดไฟล์ตัวอย่าง (.csv)
+            </a>{" "}
+            แล้วเปิดด้วย Excel หรือ Google Sheets ห้ามแก้หรือลบบรรทัดหัวตาราง
+          </li>
+          <li>กรอกชื่อโรงพยาบาลแม่ข่ายในคอลัมน์ <code>name</code> บรรทัดละหนึ่งแห่ง ตั้งแต่บรรทัดที่ 2 (ไม่เกิน 200 ตัวอักษร เช่น โรงพยาบาลขอนแก่น)</li>
+          <li>บันทึกเป็น CSV แบบ UTF-8 (ใน Excel เลือก “CSV UTF-8 (Comma delimited)”) แล้วอัปโหลดด้านล่าง</li>
+        </ol>
+      </div>
       <form action={previewDispatch} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
         <div className="min-w-0 flex-1">
@@ -104,13 +118,12 @@ export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce:
           <input name="submissionNonce" type="hidden" value={current.submissionNonce} />
           {current.message ? <Alert className="mb-3" role="alert" variant="warning">{current.message}</Alert> : null}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-left text-sm">
+            <table className="w-full min-w-[28rem] text-left text-sm">
               <caption className="sr-only">ผลตรวจสอบไฟล์ก่อนนำเข้า</caption>
               <thead className="border-b border-border text-text-muted">
                 <tr>
                   <th className="py-2 pr-3 font-semibold" scope="col">บรรทัด</th>
                   <th className="py-2 pr-3 font-semibold" scope="col">ชื่อโรงพยาบาล</th>
-                  <th className="py-2 pr-3 font-semibold" scope="col">รหัส</th>
                   <th className="py-2 font-semibold" scope="col">ผลตรวจสอบ</th>
                 </tr>
               </thead>
@@ -119,7 +132,6 @@ export function HospitalBulkRegistration({ submissionNonce }: { submissionNonce:
                   <tr key={row.rowNumber}>
                     <td className="py-2 pr-3 align-top tabular-nums">{row.rowNumber}</td>
                     <td className="py-2 pr-3 align-top break-words">{row.name || "-"}<SimilarMatches row={row} /></td>
-                    <td className="py-2 pr-3 align-top">{row.hospitalCode ?? <span className="text-text-muted">สร้างอัตโนมัติ</span>}</td>
                     <td className="py-2 align-top">
                       <StatusBadge variant={rowStatusCopy[row.status].variant}>{rowStatusCopy[row.status].label}</StatusBadge>
                       {row.status === "SIMILAR_NAME" ? (

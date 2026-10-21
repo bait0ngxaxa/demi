@@ -263,7 +263,7 @@ describe("A RETIRED Hospital is withdrawn everywhere (N1-D3)", () => {
 describe("Idempotent registration (N1-D5)", () => {
   it("returns the same Hospital for a replayed nonce and refuses any other use of it", async () => {
     const submissionNonce = randomUUID();
-    const input = { name: "รพ.สต.ส่งซ้ำ", networkRole: "CHILD", submissionNonce };
+    const input = { name: "โรงพยาบาลส่งซ้ำ", submissionNonce };
     const first = await registerHospital(admin, input);
     const replayed = await registerHospital(admin, input);
     expect(replayed).toEqual(first);
@@ -273,16 +273,16 @@ describe("Idempotent registration (N1-D5)", () => {
     expect(await db.auditEvent.count({ where: { action: "hospital.created", resourceId: first.id } })).toBe(1);
 
     await expect(registerHospital(admin, { ...input, name: "ชื่ออื่น" })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(registerHospital(admin, { ...input, networkRole: "PARENT" })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(registerHospital(admin, { ...input, hospitalCode: "OTHER-CODE" })).rejects.toMatchObject({ code: "CONFLICT" });
+    // A code is never accepted from the client (always generated).
+    await expect(registerHospital(admin, { ...input, hospitalCode: "OTHER-CODE" })).rejects.toMatchObject({ code: "VALIDATION" });
     const otherAdmin = await user([Role.ADMIN]);
     await expect(registerHospital(otherAdmin, input)).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(registerHospital(admin, { name: "x", networkRole: "CHILD" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(registerHospital(admin, { name: "x" })).rejects.toMatchObject({ code: "VALIDATION" });
     expect(await db.hospital.count({ where: { registeredByUserId: { in: userIds } } })).toBe(1);
   });
 
   it("creates exactly one row for a concurrent double submit", async () => {
-    const input = { name: "รพ.สต.กดซ้ำพร้อมกัน", networkRole: "PARENT", submissionNonce: randomUUID() };
+    const input = { name: "โรงพยาบาลกดซ้ำพร้อมกัน", submissionNonce: randomUUID() };
     const results = await Promise.allSettled([registerHospital(admin, input), registerHospital(admin, input)]);
     expect(await db.hospital.count({ where: { registrationNonce: input.submissionNonce } })).toBe(1);
     const fulfilled = results.filter((result) => result.status === "fulfilled");

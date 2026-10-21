@@ -167,18 +167,19 @@ afterEach(async () => {
 });
 
 describe("O1-A: ADMIN bulk Parent registration", () => {
-  it("previews and applies a 3-row file as PENDING Parents on the public list; a replay creates nothing", async () => {
+  it("previews and applies a 3-row file as PENDING Parents with generated codes on the public list; a replay creates nothing", async () => {
     const suffix = randomUUID().slice(0, 8).toUpperCase();
-    const csvText = `﻿name,hospitalCode\r\n"โรงพยาบาลบี, สาขา ${suffix}",B-${suffix}\r\nโรงพยาบาลเอ ${suffix},\r\nโรงพยาบาลซี ${suffix},C-${suffix}\r\n`;
+    const csvText = `﻿name\r\n"โรงพยาบาลบี, สาขา ${suffix}"\r\nโรงพยาบาลเอ ${suffix}\r\nโรงพยาบาลซี ${suffix}\r\n`;
     const preview = await previewHospitalBulkRegistration(admin, { csvText });
     expect(preview.map(({ rowNumber, status }) => [rowNumber, status])).toEqual([[2, "OK"], [3, "OK"], [4, "OK"]]);
-    expect(preview[0]).toMatchObject({ name: `โรงพยาบาลบี, สาขา ${suffix}`, hospitalCode: `B-${suffix}` });
+    expect(preview[0]).toEqual({ rowNumber: 2, name: `โรงพยาบาลบี, สาขา ${suffix}`, status: "OK", similarTo: [] });
 
     const submissionNonce = randomUUID();
     const applied = await applyHospitalBulkRegistration(admin, { csvText, submissionNonce, confirmedRowNumbers: [] });
     expect(applied.replayed).toBe(false);
     expect(applied.hospitals).toHaveLength(3);
-    expect(applied.hospitals[1]?.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
+    for (const hospital of applied.hospitals) expect(hospital.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
+    expect(new Set(applied.hospitals.map(({ hospitalCode }) => hospitalCode)).size).toBe(3);
     const ids = applied.hospitals.map(({ id }) => id);
     expect(await db.hospital.findMany({
       where: { id: { in: ids } }, orderBy: { name: "asc" },
@@ -197,38 +198,33 @@ describe("O1-A: ADMIN bulk Parent registration", () => {
     expect(await db.hospital.count({ where: { registeredByUserId: admin.userId } })).toBe(3);
     // Same nonce, different content.
     await expect(applyHospitalBulkRegistration(admin, {
-      csvText: `name,hospitalCode\nอื่น ${suffix},\n`, submissionNonce, confirmedRowNumbers: [],
+      csvText: `name\nอื่น ${suffix}\n`, submissionNonce, confirmedRowNumbers: [],
     })).rejects.toMatchObject({ code: "CONFLICT" });
     // Same nonce, another ADMIN.
     await expect(applyHospitalBulkRegistration(await user([Role.ADMIN]), { csvText, submissionNonce, confirmedRowNumbers: [] }))
       .rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  it("changes nothing for a file with an invalid row, a repeated code or an existing code", async () => {
-    const existing = await hospital(HospitalStatus.PENDING_VERIFICATION);
+  it("changes nothing for a file with an invalid row or a wrong header", async () => {
     const suffix = randomUUID().slice(0, 8).toUpperCase();
-    const cases = [
-      [`name,hospitalCode\nดี ${suffix},\n,X-${suffix}\n`, "INVALID"],
-      [`name,hospitalCode\nหนึ่ง ${suffix},D-${suffix}\nสอง ${suffix},d-${suffix}\n`, "DUPLICATE_CODE_IN_FILE"],
-      [`name,hospitalCode\nสาม ${suffix},${existing.hospitalCode}\n`, "CODE_EXISTS"],
-    ] as const;
-    for (const [csvText, status] of cases) {
+    for (const csvText of [`name\nดี ${suffix}\n${"ก".repeat(201)}\n`, `name\nดี ${suffix}\nมีรหัส ${suffix},X-1\n`]) {
       const error = await applyHospitalBulkRegistration(admin, { csvText, submissionNonce: randomUUID(), confirmedRowNumbers: [2, 3] })
         .catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(HospitalBulkRegistrationRejectedError);
-      expect((error as HospitalBulkRegistrationRejectedError).rows.map((row) => row.status)).toContain(status);
+      expect((error as HospitalBulkRegistrationRejectedError).rows.map((row) => row.status)).toEqual(["OK", "INVALID"]);
     }
     expect(await db.hospital.count({ where: { registeredByUserId: admin.userId } })).toBe(0);
-    await expect(applyHospitalBulkRegistration(admin, { csvText: "code,name\nx,y\n", submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
+    // Codes are always generated: the earlier two-column layout is a header error.
+    await expect(applyHospitalBulkRegistration(admin, { csvText: "name,hospitalCode\nx,y\n", submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
       .rejects.toMatchObject({ fileError: "HEADER" });
-    await expect(applyHospitalBulkRegistration(admin, { csvText: "name,hospitalCode\n\"unterminated,\n", submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
+    await expect(applyHospitalBulkRegistration(admin, { csvText: "name\n\"unterminated\n", submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
       .rejects.toMatchObject({ fileError: "MALFORMED" });
   });
 
   it("requires explicit confirmation for a name similar to an existing Hospital or another row", async () => {
     const existing = await hospital(HospitalStatus.ACTIVE);
     const spaced = existing.name.replace("แม่ข่าย", "แม่ข่าย  ").toUpperCase();
-    const csvText = `name,hospitalCode\n${spaced},\nเดี่ยว ${randomUUID().slice(0, 6)},\n`;
+    const csvText = `name\n${spaced}\nเดี่ยว ${randomUUID().slice(0, 6)}\n`;
     const preview = await previewHospitalBulkRegistration(admin, { csvText });
     expect(preview[0]).toMatchObject({ status: "SIMILAR_NAME", similarTo: [{ source: "EXISTING", name: existing.name, hospitalCode: existing.hospitalCode }] });
     expect(preview[1]?.status).toBe("OK");
@@ -240,13 +236,13 @@ describe("O1-A: ADMIN bulk Parent registration", () => {
     expect(applied.hospitals).toHaveLength(2);
 
     const twinName = `แฝด ${randomUUID().slice(0, 4)}`;
-    expect((await previewHospitalBulkRegistration(admin, { csvText: `name,hospitalCode\n${twinName},\n ${twinName} ,\n` }))
+    expect((await previewHospitalBulkRegistration(admin, { csvText: `name\n${twinName}\n ${twinName} \n` }))
       .map(({ status, similarTo }) => [status, similarTo.map(({ source }) => source)])).toEqual([["SIMILAR_NAME", ["FILE"]], ["SIMILAR_NAME", ["FILE"]]]);
   });
 
   it("is ADMIN-only", async () => {
     const { parentOwner } = await setup();
-    const csvText = "name,hospitalCode\nห้าม,\n";
+    const csvText = "name\nห้าม\n";
     await expect(previewHospitalBulkRegistration(parentOwner, { csvText })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(applyHospitalBulkRegistration(parentOwner, { csvText, submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -291,10 +287,12 @@ describe("O1-B: public onboarding is for Parents only", () => {
 describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
   it("creates, attaches and invites in one transaction; activation makes the Child ACTIVE and only then readable", async () => {
     const { parent, parentOwner } = await setup();
-    const input = childInput(parent.id, { hospitalCode: ` co-${randomUUID().slice(0, 6)} ` });
+    const input = childInput(parent.id);
+    // The code is always generated; the Parent cannot choose one.
+    await expect(createChildFacility(parentOwner, { ...input, submissionNonce: randomUUID(), hospitalCode: "MINE-1" })).rejects.toMatchObject({ code: "VALIDATION" });
     const created = await createChildFacility(parentOwner, input);
     const activationToken = token(created.invitation);
-    expect(created.child).toMatchObject({ hospitalCode: String(input.hospitalCode).trim().toUpperCase(), name: input.name });
+    expect(created.child).toMatchObject({ hospitalCode: expect.stringMatching(/^H-[2-9A-HJKMNP-Z]{6}$/u), name: input.name });
 
     const child = await db.hospital.findUniqueOrThrow({
       where: { id: created.child.id },

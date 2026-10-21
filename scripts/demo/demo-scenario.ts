@@ -72,7 +72,7 @@ export type DemoScenarioDependencies = {
   deleteAuthUser?: (authSubject: string) => Promise<void>;
   /** Asia/Bangkok service date treated as today (YYYY-MM-DD); defaults to the current date. */
   today?: string;
-  /** Demo Parent hospital code (its Parent-created Children use `<code>-CA`, `<code>-CB`); defaults to `DEMO`. Created when missing. */
+  /** Demo Parent hospital code; defaults to `DEMO`. Created when missing. Its Parent-created Children get generated codes. */
   parentHospitalCode?: string;
   /** Called with a short step name (no data) as the seed advances. */
   onProgress?: (step: string) => void;
@@ -128,12 +128,12 @@ async function defaultDeleteAuthUser(authSubject: string): Promise<void> {
 const DEMO_PARENT_NAME = "โรงพยาบาลแม่ข่ายทดสอบ (เดโม)";
 
 /**
- * ADR-0018: demo Child facilities are created by the demo Parent OWNER (never onboarded publicly) with these code
- * suffixes. Reset deletes them; the pre-ADR-0018 `<code>-A`/`<code>-B` rows are left untouched (O-D9).
+ * ADR-0018: demo Child facilities are created by the demo Parent OWNER (never onboarded publicly) and get generated
+ * codes. Reset deletes them; the pre-ADR-0018 `<code>-A`/`<code>-B` rows are left untouched (O-D9).
  */
-const DEMO_CHILDREN = [
-  { suffix: "-CA", name: "รพ.สต.ทดสอบ A (เดโม)" },
-  { suffix: "-CB", name: "รพ.สต.ทดสอบ B (เดโม)" },
+export const DEMO_CHILDREN = [
+  { name: "รพ.สต.ทดสอบ A (เดโม)" },
+  { name: "รพ.สต.ทดสอบ B (เดโม)" },
 ] as const;
 
 /**
@@ -243,14 +243,13 @@ async function createDemoChild(
   const created = await createChildFacility(parentOwner, {
     parentHospitalId: parent.id,
     name: child.name,
-    hospitalCode: `${parent.hospitalCode}${child.suffix}`,
     nationalId,
     givenName: owner.givenName,
     familyName: owner.familyName,
     mode: "REMOTE",
     submissionNonce: randomUUID(),
   });
-  if (created.invitation.status !== "ACTIVATION_LINK") throw new Error(`Demo Child ${child.suffix} owner did not receive an activation link`);
+  if (created.invitation.status !== "ACTIVATION_LINK") throw new Error(`Demo Child ${child.name} owner did not receive an activation link`);
   const { userId } = await completeWorkforceActivation(
     created.invitation.activationToken,
     { nationalId, password: dependencies.password, passwordConfirmation: dependencies.password },
@@ -839,6 +838,8 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
 
   await database().$transaction(async (tx) => {
     const programIds = (await tx.patientProgram.findMany({ where: relationship, select: { id: true } })).map((row) => row.id);
+    // Onboarding audits carry the application id and no actor, so they are matched by application.
+    const applicationIds = (await tx.hospitalOnboardingApplication.findMany({ where: { hospitalId: { in: hospitalIds } }, select: { id: true } })).map((row) => row.id);
     const appointmentIds = (await tx.patientAppointment.findMany({ where: relationship, select: { id: true } })).map((row) => row.id);
     const medicationIds = (await tx.personalMedication.findMany({ where: profile, select: { id: true } })).map((row) => row.id);
     const caregiverRelationshipIds = (await tx.caregiverRelationship.findMany({
@@ -935,7 +936,7 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
       where: {
         OR: [
           { actorUserId: users },
-          { resourceId: { in: [...userIds, ...personIds, ...profileIds, ...hospitalIds, ...relationshipIds, ...programIds, ...appointmentIds] } },
+          { resourceId: { in: [...userIds, ...personIds, ...profileIds, ...hospitalIds, ...relationshipIds, ...programIds, ...appointmentIds, ...applicationIds] } },
         ],
       },
     });

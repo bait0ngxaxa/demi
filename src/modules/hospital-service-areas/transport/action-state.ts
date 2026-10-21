@@ -28,8 +28,7 @@ export const initialChildOwnerInvitationActionState: ChildOwnerInvitationActionS
 export type HospitalBulkRegistrationPreviewRowState = {
   rowNumber: number;
   name: string;
-  hospitalCode: string | null;
-  status: "OK" | "INVALID" | "DUPLICATE_CODE_IN_FILE" | "CODE_EXISTS" | "SIMILAR_NAME";
+  status: "OK" | "INVALID" | "SIMILAR_NAME";
   similarTo: { source: "EXISTING" | "FILE"; name: string; hospitalCode: string | null; status: string | null }[];
 };
 

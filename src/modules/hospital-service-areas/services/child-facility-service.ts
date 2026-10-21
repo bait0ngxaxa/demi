@@ -17,7 +17,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
-import { resolveNewHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
+import { generateUniqueHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import type { ActivationCredentialGenerator } from "@/modules/workforce/services/activation-token-service";
@@ -238,12 +238,12 @@ async function endOpenOwnerInvitation(
 }
 
 /**
- * N1-D5 replay for a Parent-registered Child: the same OWNER, Parent, name, code and invitee identity return the
+ * N1-D5 replay for a Parent-registered Child: the same OWNER, Parent, name and invitee identity return the
  * Child already created; any other use of the nonce is a conflict. Returns null while the nonce is unused.
  */
 async function findReplayedChild(
   database: Pick<Prisma.TransactionClient, "hospital">,
-  input: { submissionNonce: string; parentHospitalId: string; name: string; hospitalCode?: string; nationalId: string },
+  input: { submissionNonce: string; parentHospitalId: string; name: string; nationalId: string },
   actorUserId: string,
 ): Promise<ChildFacilityCreateResult | null> {
   const existing = await database.hospital.findUnique({
@@ -265,7 +265,6 @@ async function findReplayedChild(
     existing.registeredByUserId !== actorUserId ||
     existing.registeredForParentHospitalId !== input.parentHospitalId ||
     existing.name !== input.name ||
-    (input.hospitalCode !== undefined && existing.hospitalCode !== input.hospitalCode) ||
     existing.memberships[0]?.user.person.identityKeyHash !== identityKeyHash
   ) {
     throw new ConflictError("This submission was already used for a different facility");
@@ -294,7 +293,7 @@ export async function createChildFacility(
       const replayed = await findReplayedChild(tx, data, actor.userId);
       if (replayed) return replayed;
 
-      const hospitalCode = await resolveNewHospitalCode(tx, data.hospitalCode);
+      const hospitalCode = await generateUniqueHospitalCode(tx);
       const child = await tx.hospital.create({
         data: {
           hospitalCode,

@@ -122,17 +122,10 @@ export default async function HospitalNetworkPage({
                 submitLabel="สร้างลูกข่ายและเชิญผู้ดูแล"
                 submitVariant="primary"
               >
-                <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)]">
-                  <div className="min-w-0">
-                    <label className="text-sm font-semibold text-text" htmlFor="create-child-name">ชื่อหน่วยบริการ</label>
-                    <Input className="mt-2" id="create-child-name" maxLength={200} name="name" required />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="text-sm font-semibold text-text" htmlFor="create-child-code">
-                      รหัส <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
-                    </label>
-                    <Input autoCapitalize="characters" className="mt-2" id="create-child-code" maxLength={32} name="hospitalCode" />
-                  </div>
+                <div className="max-w-xl min-w-0">
+                  <label className="text-sm font-semibold text-text" htmlFor="create-child-name">ชื่อหน่วยบริการ</label>
+                  <Input className="mt-2" id="create-child-name" maxLength={200} name="name" required />
+                  <p className="mt-1 text-xs text-text-muted">ระบบสร้างรหัสหน่วยบริการให้อัตโนมัติ</p>
                 </div>
                 <h3 className="mt-6 text-base font-semibold text-text">ผู้ดูแลคนแรก</h3>
                 <div className="mt-3">

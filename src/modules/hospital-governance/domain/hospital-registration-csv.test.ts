@@ -39,26 +39,29 @@ describe("parseCsv", () => {
 });
 
 describe("parseHospitalRegistrationCsv", () => {
-  it("validates rows with the registration schema and numbers them by file line", () => {
-    expect(parseHospitalRegistrationCsv("name,hospitalCode\n  โรงพยาบาลเอ  , a-1 \n\nโรงพยาบาลบี,\n,X\nสาม,รหัสไทย\nสี่,A,extra\n")).toEqual([
-      { rowNumber: 2, name: "โรงพยาบาลเอ", hospitalCode: "A-1", valid: true },
-      { rowNumber: 4, name: "โรงพยาบาลบี", hospitalCode: null, valid: true },
-      { rowNumber: 5, name: "", hospitalCode: "X", valid: false },
-      { rowNumber: 6, name: "สาม", hospitalCode: "รหัสไทย", valid: false },
-      { rowNumber: 7, name: "สี่", hospitalCode: "A", valid: false },
+  it("validates name rows with the registration schema and numbers them by file line", () => {
+    const longName = "ก".repeat(201);
+    expect(parseHospitalRegistrationCsv(`name\n  โรงพยาบาลเอ  \n\n"โรงพยาบาลบี, สาขา 2"\n" "\nสาม,A-1\n${longName}\n`)).toEqual([
+      { rowNumber: 2, name: "โรงพยาบาลเอ", valid: true },
+      { rowNumber: 4, name: "โรงพยาบาลบี, สาขา 2", valid: true },
+      // Line 5 holds only whitespace: in a one-column file it is a blank line and is skipped.
+      // Hospital codes are always generated; a second column makes the row invalid.
+      { rowNumber: 6, name: "สาม", valid: false },
+      { rowNumber: 7, name: longName, valid: false },
     ]);
   });
 
   it("rejects file-level problems", () => {
     expect(reasonOf(() => parseHospitalRegistrationCsv("﻿  \n"))).toBe("EMPTY");
-    expect(reasonOf(() => parseHospitalRegistrationCsv("hospitalCode,name\nA,B\n"))).toBe("HEADER");
-    expect(reasonOf(() => parseHospitalRegistrationCsv("name\nA\n"))).toBe("HEADER");
-    expect(reasonOf(() => parseHospitalRegistrationCsv("name,hospitalCode\n\n,\n"))).toBe("NO_ROWS");
-    const tooMany = `name,hospitalCode\n${Array.from({ length: HOSPITAL_BULK_REGISTRATION_LIMIT + 1 }, (_, index) => `รพ ${index},`).join("\n")}`;
+    expect(reasonOf(() => parseHospitalRegistrationCsv("ชื่อ\nA\n"))).toBe("HEADER");
+    // The earlier two-column template is refused rather than half-read.
+    expect(reasonOf(() => parseHospitalRegistrationCsv("name,hospitalCode\nA,B\n"))).toBe("HEADER");
+    expect(reasonOf(() => parseHospitalRegistrationCsv("name\n\n \n"))).toBe("NO_ROWS");
+    const tooMany = `name\n${Array.from({ length: HOSPITAL_BULK_REGISTRATION_LIMIT + 1 }, (_, index) => `รพ ${index}`).join("\n")}`;
     expect(reasonOf(() => parseHospitalRegistrationCsv(tooMany))).toBe("TOO_MANY_ROWS");
-    const exactly = `name,hospitalCode\n${Array.from({ length: HOSPITAL_BULK_REGISTRATION_LIMIT }, (_, index) => `รพ ${index},`).join("\n")}`;
+    const exactly = `name\n${Array.from({ length: HOSPITAL_BULK_REGISTRATION_LIMIT }, (_, index) => `รพ ${index}`).join("\n")}`;
     expect(parseHospitalRegistrationCsv(exactly)).toHaveLength(HOSPITAL_BULK_REGISTRATION_LIMIT);
-    expect(reasonOf(() => parseHospitalRegistrationCsv(`name,hospitalCode\n${"ก".repeat(90_000)},\n`))).toBe("TOO_LARGE");
+    expect(reasonOf(() => parseHospitalRegistrationCsv(`name\n${"ก".repeat(90_000)}\n`))).toBe("TOO_LARGE");
   });
 });
 

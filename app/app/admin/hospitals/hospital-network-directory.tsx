@@ -3,7 +3,6 @@ import Link from "next/link";
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type { HospitalNetworkDirectoryEntry } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { createNetworkHospitalAction } from "@/modules/hospital-service-areas/transport/server-actions";
@@ -67,44 +66,24 @@ function HospitalLine({ hospital }: { hospital: HospitalNetworkDirectoryEntry })
 function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): React.JSX.Element {
   return (
     <Panel aria-labelledby="create-hospital-heading">
-      <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาล</h2>
+      <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาลแม่ข่าย</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        โรงพยาบาลที่เพิ่มจะอยู่ในสถานะรอขึ้นทะเบียน ผู้รับผิดชอบสมัครใช้งานผ่านหน้าขึ้นทะเบียนโรงพยาบาล และเมื่อได้รับอนุมัติจะเป็นเจ้าของโรงพยาบาลคนแรก
+        โรงพยาบาลที่เพิ่มเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน ผู้รับผิดชอบสมัครใช้งานผ่านหน้าขึ้นทะเบียนโรงพยาบาล และเมื่อได้รับอนุมัติจะเป็นเจ้าของโรงพยาบาลคนแรก
+        รพ.สต. และหน่วยบริการลูกข่ายให้เจ้าของโรงพยาบาลแม่ข่ายสร้างเองที่หน้าจัดการลูกข่าย
       </p>
       <NetworkMutationForm
         action={createNetworkHospitalAction}
         className="mt-5"
         // N1-D5: rendered per request, so the refresh after a successful registration brings a new nonce.
         hidden={{ submissionNonce }}
-        submitLabel="เพิ่มโรงพยาบาล"
+        submitLabel="เพิ่มโรงพยาบาลแม่ข่าย"
         submitVariant="primary"
       >
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_minmax(0,14rem)]">
-          <div className="min-w-0">
-            <label className="text-sm font-semibold text-text" htmlFor="create-hospital-code">
-              รหัส <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
-            </label>
-            <Input
-              aria-describedby="create-hospital-code-hint"
-              autoCapitalize="characters"
-              className="mt-2"
-              id="create-hospital-code"
-              maxLength={32}
-              name="hospitalCode"
-            />
-            <p className="mt-1 text-xs text-text-muted" id="create-hospital-code-hint">เว้นว่างเพื่อให้ระบบสร้างให้</p>
-          </div>
+        <div className="max-w-xl">
           <div className="min-w-0">
             <label className="text-sm font-semibold text-text" htmlFor="create-hospital-name">ชื่อโรงพยาบาล</label>
             <Input className="mt-2" id="create-hospital-name" maxLength={200} name="name" required />
-          </div>
-          <div className="min-w-0">
-            <label className="text-sm font-semibold text-text" htmlFor="create-hospital-role">ประเภท</label>
-            <Select className="mt-2" defaultValue="" id="create-hospital-role" name="networkRole" required>
-              <option disabled value="">เลือกประเภท</option>
-              <option value="PARENT">โรงพยาบาลแม่ข่าย</option>
-              <option value="CHILD">รพ.สต. / หน่วยบริการลูกข่าย</option>
-            </Select>
+            <p className="mt-1 text-xs text-text-muted">ระบบสร้างรหัสโรงพยาบาลให้อัตโนมัติ</p>
           </div>
         </div>
       </NetworkMutationForm>
