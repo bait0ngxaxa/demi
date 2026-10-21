@@ -65,19 +65,26 @@ export function HospitalNetworkSection({
           แม่ข่ายเลือกลูกข่ายเข้าเครือข่ายได้เอง และดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว ลูกข่ายจะถูกเลือกได้เมื่อขึ้นทะเบียนใช้งานแล้ว
           {hasActiveAreas ? " โรงพยาบาลนี้ยังมีความสัมพันธ์ในเครือข่ายอยู่ จึงต้องนำออกหรือโอนก่อนเปลี่ยนประเภท" : ""}
         </p>
-        <NetworkMutationForm
-          action={setNetworkRoleAction}
-          className="mt-4 max-w-md"
-          hidden={{ hospitalId: hospital.id }}
-          submitLabel="บันทึกประเภท"
-        >
-          <label className="sr-only" htmlFor="network-role">ประเภทในเครือข่าย</label>
-          <Select defaultValue={network.role ?? "NONE"} id="network-role" name="kind">
-            <option value="PARENT">โรงพยาบาลแม่ข่าย</option>
-            <option value="CHILD">รพ.สต. / หน่วยบริการลูกข่าย</option>
-            <option value="NONE">ไม่อยู่ในเครือข่าย</option>
-          </Select>
-        </NetworkMutationForm>
+        {hospital.status === "RETIRED" ? (
+          // N1-D3: the role stays as it was while the Hospital is withdrawn; restore it to change the role.
+          <p className="mt-4 text-sm leading-6 text-text-muted">
+            โรงพยาบาลนี้ถูกถอนออกจากรายชื่อ ต้องคืนสู่รายชื่อรอสมัครก่อนจึงจะเปลี่ยนประเภทได้
+          </p>
+        ) : (
+          <NetworkMutationForm
+            action={setNetworkRoleAction}
+            className="mt-4 max-w-md"
+            hidden={{ hospitalId: hospital.id }}
+            submitLabel="บันทึกประเภท"
+          >
+            <label className="sr-only" htmlFor="network-role">ประเภทในเครือข่าย</label>
+            <Select defaultValue={network.role ?? "NONE"} id="network-role" name="kind">
+              <option value="PARENT">โรงพยาบาลแม่ข่าย</option>
+              <option value="CHILD">รพ.สต. / หน่วยบริการลูกข่าย</option>
+              <option value="NONE">ไม่อยู่ในเครือข่าย</option>
+            </Select>
+          </NetworkMutationForm>
+        )}
       </Panel>
 
       {network.role === "PARENT" ? (

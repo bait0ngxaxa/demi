@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 
-import { listAvailableHospitalMaster } from "@/modules/hospital-onboarding/services/hospital-master-service";
+import { listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
 
 import { HospitalOnboardingForm } from "./onboarding-form";
 
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default async function HospitalOnboardingPage() {
   await connection();
-  const hospitals = await listAvailableHospitalMaster();
+  const hospitals = await listOnboardingHospitals();
 
   return (
     <main className="min-h-svh bg-canvas text-ink">

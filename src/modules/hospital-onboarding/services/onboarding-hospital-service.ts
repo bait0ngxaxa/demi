@@ -7,7 +7,7 @@ import { InfrastructureError, NotFoundError, ValidationError } from "@/shared/er
 
 import { hospitalCodeSchema } from "../schemas/hospital-onboarding-schemas";
 
-export type HospitalMasterRecord = {
+export type OnboardingHospitalOption = {
   id: string;
   hospitalCode: string;
   name: string;
@@ -15,18 +15,18 @@ export type HospitalMasterRecord = {
   networkRole: HospitalServiceAreaFacilityKind | null;
 };
 
-export type HospitalMasterDatabase = Pick<PrismaClient, "hospital"> | Prisma.TransactionClient;
+export type OnboardingHospitalDatabase = Pick<PrismaClient, "hospital"> | Prisma.TransactionClient;
 
-const hospitalMasterSelect = {
+const onboardingHospitalSelect = {
   id: true,
   hospitalCode: true,
   name: true,
   serviceAreaEligibility: { select: { kind: true } },
 } satisfies Prisma.HospitalSelect;
 
-function toHospitalMasterRecord(
-  hospital: Prisma.HospitalGetPayload<{ select: typeof hospitalMasterSelect }>,
-): HospitalMasterRecord {
+function toOnboardingHospitalOption(
+  hospital: Prisma.HospitalGetPayload<{ select: typeof onboardingHospitalSelect }>,
+): OnboardingHospitalOption {
   return {
     id: hospital.id,
     hospitalCode: hospital.hospitalCode,
@@ -35,26 +35,30 @@ function toHospitalMasterRecord(
   };
 }
 
-export async function listAvailableHospitalMaster(
-  database: HospitalMasterDatabase = getPrisma(),
-): Promise<HospitalMasterRecord[]> {
+/**
+ * Public onboarding list: ADMIN-registered Hospitals still waiting for their first OWNER (PENDING_VERIFICATION).
+ * ACTIVE, SUSPENDED and RETIRED Hospitals are never offered.
+ */
+export async function listOnboardingHospitals(
+  database: OnboardingHospitalDatabase = getPrisma(),
+): Promise<OnboardingHospitalOption[]> {
   try {
     const hospitals = await database.hospital.findMany({
       where: { status: HospitalStatus.PENDING_VERIFICATION },
       orderBy: [{ name: "asc" }, { id: "asc" }],
-      select: hospitalMasterSelect,
+      select: onboardingHospitalSelect,
     });
 
-    return hospitals.map(toHospitalMasterRecord);
+    return hospitals.map(toOnboardingHospitalOption);
   } catch {
-    throw new InfrastructureError("Hospital master data could not be loaded");
+    throw new InfrastructureError("Hospital list could not be loaded");
   }
 }
 
-export async function findHospitalMasterByCode(
+export async function findOnboardingHospitalByCode(
   hospitalCode: string,
-  database: HospitalMasterDatabase = getPrisma(),
-): Promise<HospitalMasterRecord> {
+  database: OnboardingHospitalDatabase = getPrisma(),
+): Promise<OnboardingHospitalOption> {
   const parsedCode = hospitalCodeSchema.safeParse(hospitalCode);
 
   if (!parsedCode.success) {
@@ -62,21 +66,21 @@ export async function findHospitalMasterByCode(
   }
 
   try {
-    const hospital = await database.hospital.findUnique({
-      where: { hospitalCode: parsedCode.data },
-      select: hospitalMasterSelect,
+    const hospital = await database.hospital.findFirst({
+      where: { hospitalCode: parsedCode.data, status: HospitalStatus.PENDING_VERIFICATION },
+      select: onboardingHospitalSelect,
     });
 
     if (!hospital) {
       throw new NotFoundError("Selected hospital is not available");
     }
 
-    return toHospitalMasterRecord(hospital);
+    return toOnboardingHospitalOption(hospital);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       throw error;
     }
 
-    throw new InfrastructureError("Hospital master data could not be loaded");
+    throw new InfrastructureError("Hospital list could not be loaded");
   }
 }

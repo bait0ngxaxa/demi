@@ -42,6 +42,7 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 | ~~WB-PD-09~~ | แก้ชื่อ-สกุลผู้ป่วย | **ปิด (E3 / ก-19):** OWNER แก้ได้เมื่อผู้ป่วยผูก รพ. เดียว; มิฉะนั้น “กรุณาติดต่อผู้ดูแลระบบ” และ ADMIN แก้ (§ฉ) | ลูกค้า | OWNER-04 |
 | ~~WB-PD-10~~ | Mapping ครั้งที่ 1–6 + default WB-DF-01..05 | **ปิด (D1–D5):** mapping ยืนยันพร้อมการแก้รายการต่อครั้งตาม §จ | ลูกค้า | Phase A / D |
 | ~~WB-PD-11~~ | วันเวลาที่อนุมัติคำขอเลื่อนนัด | **ปิด (ก-23):** เลือกเวลาอื่นได้และยังเรียกว่า "อนุมัติ" = พฤติกรรมปัจจุบัน (ตัวเลือก 1 ใน §ง) | ลูกค้า | WB-DF-06, APT-04 |
+| WB-PD-12 | คำเชิญ OWNER รายโรงพยาบาลแทนรายชื่อสาธารณะ (N1-D6) | ตัดสินว่าจะแทนหน้า "เลือกโรงพยาบาลแล้วสมัคร" ด้วยคำเชิญเจ้าของโรงพยาบาลที่ ADMIN ออกให้รายโรงพยาบาลหรือไม่ — ยังไม่ทำ (ดู Phase N1 ด้านล่าง) | Product Owner / ลูกค้า | `/hospital/onboarding`, ADR-0003 |
 
 ## ค. การนำ Phase A ไปใช้ (WB-DF-01..05, WB-PD-01/10)
 
@@ -190,6 +191,19 @@ Confirmed baseline: one ACTIVE operational Parent per Child, end with confirmati
 - ขอบเขตข้อมูล (2026-10-20): เมื่อกดเข้าไปที่คนไข้ลูกข่าย แม่ข่ายเห็นข้อมูลทั้งหมดเท่าที่บุคลากรลูกข่ายเห็นในหน้าคนไข้ (ข้อมูลคนไข้ โปรแกรม บันทึกการดูแล ฯลฯ) แต่เป็นอ่านอย่างเดียว ไม่มีปุ่ม/การกระทำที่แก้ไขข้อมูล
 
 Open: operational editable fields; Patient disclosure/real-data rules; management UI, selected-area workflow and approved reporting integration/UAT. The full responsibility-area/Patient-access flow is not complete. Phase H implementation and out-of-scope statements above are historical where contradicted by this amendment.
+
+## Phase N1 — Hospital registry hardening (Product Owner, 2026-10-21)
+
+Approved defaults recorded with the implementation; [ADR-0017](../adr/0017-retire-hospital-master.md) amendment 2026-10-21. Not a UAT sign-off.
+
+| ID | การตัดสินใจ | สถานะ |
+| --- | --- | --- |
+| N1-D1 | สถานะ `RETIRED` = “ถอนออกจากรายชื่อ”: ถอนได้เฉพาะโรงพยาบาลที่ `PENDING_VERIFICATION` (ACTIVE/SUSPENDED ใช้การระงับเดิม) ต้องมีเหตุผล (ไม่เกิน 500 ตัวอักษร); คืนสู่รายชื่อรอสมัคร (RETIRED → PENDING_VERIFICATION) ได้โดย ADMIN พร้อมเหตุผลและ audit; ไม่มีการลบจริง เหตุผลทุกครั้งเก็บใน `HospitalRetirementEvent` แบบ append-only | Implemented |
+| N1-D2 | ถอนไม่ได้ขณะมีคำขอขึ้นทะเบียนรอพิจารณา ADMIN ต้องปฏิเสธคำขอผ่านขั้นตอนเดิมก่อน (ไม่ปฏิเสธอัตโนมัติ) | Implemented |
+| N1-D3 | โรงพยาบาลที่ RETIRED ไม่แสดงในหน้าขึ้นทะเบียนสาธารณะ สมัครและอนุมัติไม่ได้ ไม่ถูกเพิ่มเป็นลูกข่าย ไม่เป็นปลายทางโอน และเปลี่ยน/ล้างประเภทในเครือข่ายไม่ได้; รหัสยังสงวนไว้; ADMIN เห็นในตัวกรอง “ถอนแล้ว”; รายงานไม่นับ | Implemented |
+| N1-D4 | ถอนหลายแห่งในครั้งเดียว (ไม่เกิน 100 แห่ง เหตุผลเดียวกัน) ใน transaction เดียว audit ทีละแห่ง และเป็น all-or-nothing: ถ้ามีแห่งใดถอนไม่ได้ จะไม่เปลี่ยนอะไรและแจ้งชื่อแห่งนั้น | Implemented |
+| N1-D5 | การเพิ่มโรงพยาบาลเป็น idempotent ด้วย submission nonce จากฟอร์ม: ADMIN คนเดิมส่ง nonce เดิมพร้อมชื่อ/ประเภทเดิมได้โรงพยาบาลเดิม มิฉะนั้นเป็น CONFLICT | Implemented |
+| N1-D6 | → **WB-PD-12 (pending, ไม่ทำในเฟสนี้):** แทนรายชื่อสาธารณะ “เลือกโรงพยาบาลแล้วสมัคร” ด้วยคำเชิญ OWNER รายโรงพยาบาลที่ ADMIN ออกให้ เหตุผล: ADMIN ลงทะเบียนทุกโรงพยาบาลเองแล้ว และรายชื่อสาธารณะเป็นช่องทางแอบอ้างเป็นเจ้าของโรงพยาบาลได้ แม้จะมี ADMIN ตรวจก่อนอนุมัติ | Pending |
 
 ## ฌ. Customer answers round 2 (2026-10-17)
 

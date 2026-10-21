@@ -108,6 +108,8 @@ enum HospitalStatus {
   PENDING_VERIFICATION
   ACTIVE
   SUSPENDED
+  // Phase N1: an unclaimed Hospital withdrawn from the onboarding list; never deleted, restorable to PENDING.
+  RETIRED
 }
 
 enum HospitalContentStatus {
@@ -413,6 +415,9 @@ model User {
   serviceAreasCreated HospitalServiceArea[] @relation("ServiceAreaCreator")
   serviceAreasEnded HospitalServiceArea[] @relation("ServiceAreaEnder")
   networkRolesClassified HospitalServiceAreaEligibility[] @relation("NetworkRoleClassifier")
+  hospitalsRetired Hospital[] @relation("HospitalRetiredBy")
+  hospitalsRegistered Hospital[] @relation("HospitalRegisteredBy")
+  hospitalRetirementEvents HospitalRetirementEvent[] @relation("HospitalRetirementActor")
   id          String     @id @default(uuid()) @db.Uuid
   personId    String     @unique @db.Uuid
   authSubject String?    @unique @db.VarChar(255)
@@ -519,6 +524,16 @@ model Hospital {
   status          HospitalStatus @default(PENDING_VERIFICATION)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+  // Set exactly while status = RETIRED (CHECK "Hospital_retirement_consistency").
+  retiredAt       DateTime?      @db.Timestamptz(3)
+  retiredByUserId String?        @db.Uuid
+  retiredReason   String?        @db.VarChar(500)
+  // Client submission nonce of the ADMIN registration (N1-D5); NULL for Hospitals registered before it.
+  registrationNonce  String?     @unique @db.Uuid
+  registeredByUserId String?     @db.Uuid
+  retirementEvents HospitalRetirementEvent[]
+  retiredBy    User? @relation("HospitalRetiredBy", fields: [retiredByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  registeredBy User? @relation("HospitalRegisteredBy", fields: [registeredByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   memberships              HospitalMembership[]
   osmHospitalRelationships OsmHospitalRelationship[] @relation("OsmHospitalRelationships")
@@ -532,6 +547,25 @@ model Hospital {
   supportReports           SupportReport[]
 
   @@index([status, name])
+}
+
+enum HospitalRetirementEventKind {
+  RETIRED
+  RESTORED
+}
+
+// Append-only (trigger "HospitalRetirementEvent_append_only"): the reason of every retire/restore decision.
+model HospitalRetirementEvent {
+  id          String                      @id @default(uuid()) @db.Uuid
+  hospitalId  String                      @db.Uuid
+  kind        HospitalRetirementEventKind
+  reason      String                      @db.VarChar(500)
+  actorUserId String                      @db.Uuid
+  createdAt   DateTime                    @default(now()) @db.Timestamptz(3)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actor    User     @relation("HospitalRetirementActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([hospitalId, createdAt])
 }
 
 // Network role set only by an audited Platform ADMIN decision (ADR-0015), never inferred from names/codes/hierarchy.

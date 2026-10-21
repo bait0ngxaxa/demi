@@ -78,6 +78,7 @@ const directory: GlobalReportingDirectory = {
     [HospitalStatus.ACTIVE]: 1,
     [HospitalStatus.PENDING_VERIFICATION]: 0,
     [HospitalStatus.SUSPENDED]: 0,
+    [HospitalStatus.RETIRED]: 0,
   },
 };
 const hierarchy: HospitalHierarchyContext = {

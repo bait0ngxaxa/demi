@@ -10,6 +10,10 @@
 
 ---
 
+## Current decision addendum — Hospital registry (2026-10-21)
+
+[ADR-0017](../adr/0017-retire-hospital-master.md) (amended 2026-10-21, Phase N1) is the current Hospital identity model and supersedes every Hospital Master statement in §9.2, §9.3, §19.9 and decisions 30–31 below. Platform ADMIN registers each Hospital as `PENDING_VERIFICATION` with a network role in `/app/admin/hospitals`, idempotently per form submission nonce; there is no Master dataset, seed or `npm run db:seed`, and `Hospital.parentHospitalId` no longer exists. The public onboarding page lists only PENDING Hospitals; approval activates the chosen Hospital and creates its first OWNER. Platform ADMIN can retire an unclaimed PENDING Hospital (`RETIRED`, with a reason, never deleted, restorable to PENDING; refused while an onboarding application is pending), and a RETIRED Hospital is outside onboarding, the network and reports. PostgreSQL triggers keep an area's Parent at role PARENT and its Child at role CHILD.
+
 ## Current decision addendum — operational service areas (2026-10-20)
 
 [ADR-0014](../adr/0014-operational-hospital-service-areas.md) separates OWNER-managed operational service-area lifecycle from official Hospital identity/hierarchy. Only H1 operational self-management prohibition/canonical-only equivalence is superseded; H2–H5 and existing direct-work/Patient/report policies remain unchanged. Eligibility needs explicit trusted-source attestation and fails closed when missing. Phase A has no UI or network Patient authority. See [handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md). [ADR-0015](../adr/0015-admin-governed-hospital-network.md) moves network roles, Hospital registration/rename and cross-Parent transfer to audited Platform ADMIN services and drops the canonical-placement candidate boundary. [ADR-0016](../adr/0016-network-patient-read.md) makes the active network the only cross-Hospital authority: read-only, audited Parent access to Child Patients (OWNER, or OWNER-granted MEMBER) and network-scoped Parent reports; canonical `parentHospitalId` grants nothing. [ADR-0017](../adr/0017-retire-hospital-master.md) retires Hospital Master entirely (seed, reconciliation and the column).
@@ -514,7 +518,7 @@ Hospital representative
         ↓
 Hospital signup
         ↓
-Select/match hospital from trusted hospital master
+Select an ADMIN-registered PENDING Hospital (ADR-0017; formerly the trusted hospital master)
         ↓
 Resolve/reuse applicant Person + User
         ↓
@@ -528,6 +532,8 @@ Hospital ACTIVE
         ↓
 Applicant becomes HOSPITAL + OWNER
 ```
+
+> **Superseded (ADR-0017):** Hospital identity now comes from Platform ADMIN registration; the two paragraphs below record the original Master design.
 
 Hospital identity must come from a controlled canonical Hospital Master entry instead of applicant-controlled free-text organization creation. `hospitalCode` เป็น stable canonical business identifier และต้อง unique เมื่อกลายเป็น `Hospital`
 
@@ -555,8 +561,8 @@ Approval เป็น consistency-critical Application Service operation โด�
 
 ```text
 guard PENDING application
-+ validate canonical hospital match / unique hospitalCode
-+ activate the canonical Hospital Master row as Hospital ACTIVE (or create only when a future master boundary requires a new operational row)
++ validate the selected Hospital is still PENDING_VERIFICATION / unique hospitalCode
++ activate the ADMIN-registered Hospital row as Hospital ACTIVE (ADR-0017; originally the canonical Hospital Master row)
 + reuse applicant Person/User
 + assign or reuse HOSPITAL role
 + create ACTIVE OWNER membership
@@ -1145,7 +1151,7 @@ Server Action
         ↓
 Hospital Onboarding Application Service
         ↓
-Policy + Identity/Auth Services + Hospital Master Boundary
+Policy + Identity/Auth Services + ADMIN-registered Hospital registry (ADR-0017)
         ↓
 Prisma transaction / PostgreSQL
         ↕ explicit compensation only when required
@@ -1156,9 +1162,9 @@ Supabase Auth provisioning primitive
 - Admin review/approve/reject derives Platform `ADMIN` authority from server-resolved `ActorContext`
 - Application Service owns duplicate/conflict rules, lifecycle guards, policy and transaction orchestration
 - Server Action is not the business source of truth and no `/api/v1` endpoint is added without an identified consumer
-- Hospital Master provider remains replaceable and unresolved; the approved controlled v2 seed data is the current input for the MVP adapter and deployment environments
-- Phase 3B resolves the MVP schema gaps with unique `Hospital.hospitalCode`, optional non-authoritative parent reference, separate onboarding application history, review attribution and a database partial unique guard for one pending claim per Hospital
-- The approved 78-record normalized Hospital Master is committed as the JSON seed input; `npm run db:seed` imports it idempotently with stable `hospitalCode` upserts, does not delete unrelated rows, and preserves an existing `ACTIVE` status. The external provider and long-term production update ownership remain unresolved and replaceable.
+- *Superseded (ADR-0017):* Hospital Master provider remains replaceable and unresolved; the approved controlled v2 seed data is the current input for the MVP adapter and deployment environments
+- Phase 3B resolves the MVP schema gaps with unique `Hospital.hospitalCode`, optional non-authoritative parent reference (*dropped by ADR-0017*), separate onboarding application history, review attribution and a database partial unique guard for one pending claim per Hospital
+- *Superseded (ADR-0017):* The approved 78-record normalized Hospital Master is committed as the JSON seed input; `npm run db:seed` imports it idempotently with stable `hospitalCode` upserts, does not delete unrelated rows, and preserves an existing `ACTIVE` status. The seed, the script and `npm run db:seed` were removed; Platform ADMIN registration is the only source of Hospitals.
 
 ## 19.10 Phase 4A Workforce Provisioning and Activation Contract
 
@@ -1336,8 +1342,8 @@ The following decisions are accepted for project initialization:
 27. HTTP APIs are introduced incrementally for identified consumers rather than generated for every Server Action.
 28. Native mobile applications are future clients and will use HTTP APIs without depending on Server Actions.
 29. Future native authentication, offline behavior, synchronization, push notifications, and native framework choices remain unresolved.
-30. Phase 3B Hospital Onboarding matches a controlled canonical Hospital Master entry by stable `hospitalCode`; applicant-controlled free text is not organization authority.
-31. The authoritative external Hospital Master provider remains unresolved and is isolated behind a replaceable boundary; the approved v2 Hospital Master seed is used without binding the application to an external provider.
+30. Hospital Onboarding selects an ADMIN-registered `PENDING_VERIFICATION` Hospital by stable `hospitalCode`; applicant-controlled free text is not organization authority. (Phase 3B matched a canonical Hospital Master entry; superseded by ADR-0017.)
+31. There is no external Hospital Master provider: Platform ADMIN registration is the source of Hospitals and an unclaimed Hospital can be retired (`RETIRED`, restorable). (Originally an unresolved replaceable Master boundary with the v2 seed; superseded by ADR-0017.)
 32. MVP Hospital verification is a manual Platform `ADMIN` decision.
 33. Hospital Onboarding Application lifecycle is separate from Hospital lifecycle and uses only `PENDING`, `APPROVED`, and `REJECTED`.
 34. Phase 3B reuses Phase 2.1 National-ID/password identity and authentication architecture; it does not create a parallel login or mandatory email identifier.
@@ -1378,7 +1384,7 @@ They require confirmed business requirements:
 - Can OSM transfer or reassign a patient?
 - Can patients change their hospital affiliation?
 - What evidence is required to verify a hospital signup?
-- Which external source/provider is authoritative for the Hospital Master, and who owns production imports/updates?
+- ~~Which external source/provider is authoritative for the Hospital Master, and who owns production imports/updates?~~ Closed by ADR-0017 (ADMIN registration). Open instead: should ADMIN-issued per-Hospital OWNER invitations replace the public "choose a Hospital and apply" list (WB-PD-12)?
 - What is the self-service reapplication rule after a rejected hospital application?
 - How are competing hospital claims and existing non-active/provider-conflicting applicant accounts reconciled?
 - Will hospital verification ever be automated, and by which approved mechanism?

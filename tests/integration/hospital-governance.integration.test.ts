@@ -53,9 +53,15 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.hospitalServiceAreaEligibility.deleteMany();
+  // Disposable integration DB only: retirement history is append-only outside this cleanup session.
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+    await tx.hospitalRetirementEvent.deleteMany();
+  });
   await prisma.userRole.deleteMany();
-  await prisma.user.deleteMany();
+  // Hospitals reference their registering/retiring ADMIN, so they go before Users.
   await prisma.hospital.deleteMany();
+  await prisma.user.deleteMany();
   await prisma.person.deleteMany();
 }
 
@@ -319,6 +325,8 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
       "hospitalCode",
       "id",
       "name",
+      "retiredAt",
+      "retiredReason",
       "status",
       "updatedAt",
     ]);
@@ -406,7 +414,7 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
 
   it("registers and renames a Hospital with audit, leaving activation to onboarding (ADR-0015)", async () => {
     const admin = await createAdmin();
-    const created = await registerHospital(admin.actor, { hospitalCode: " new-parent_1 ", name: " โรงพยาบาลแม่ข่ายใหม่ ", networkRole: "PARENT" });
+    const created = await registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: " new-parent_1 ", name: " โรงพยาบาลแม่ข่ายใหม่ ", networkRole: "PARENT" });
     expect(created).toMatchObject({
       hospitalCode: "NEW-PARENT_1",
       name: "โรงพยาบาลแม่ข่ายใหม่",
@@ -419,20 +427,20 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
       serviceAreaEligibility: { kind: "PARENT", classifiedByUserId: admin.userId },
     });
     await expect(
-      registerHospital(admin.actor, { hospitalCode: "NEW-PARENT_1", name: "ซ้ำ", networkRole: "CHILD" }),
+      registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: "NEW-PARENT_1", name: "ซ้ำ", networkRole: "CHILD" }),
     ).rejects.toBeInstanceOf(ConflictError);
-    const generated = await registerHospital(admin.actor, { hospitalCode: " ", name: "รพ.สต.รหัสอัตโนมัติ", networkRole: "CHILD" });
+    const generated = await registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: " ", name: "รพ.สต.รหัสอัตโนมัติ", networkRole: "CHILD" });
     expect(generated.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
-    expect((await registerHospital(admin.actor, { name: "รพ.สต.ไม่ส่งรหัส", networkRole: "CHILD" })).hospitalCode)
+    expect((await registerHospital(admin.actor, { submissionNonce: randomUUID(), name: "รพ.สต.ไม่ส่งรหัส", networkRole: "CHILD" })).hospitalCode)
       .not.toBe(generated.hospitalCode);
     await expect(
-      registerHospital(admin.actor, { hospitalCode: "รหัสไทย", name: "x", networkRole: "CHILD" }),
+      registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: "รหัสไทย", name: "x", networkRole: "CHILD" }),
     ).rejects.toBeInstanceOf(ValidationError);
     await expect(
-      registerHospital(admin.actor, { hospitalCode: "OK1", name: "x", networkRole: "CHILD", parentHospitalId: created.id }),
+      registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: "OK1", name: "x", networkRole: "CHILD", parentHospitalId: created.id }),
     ).rejects.toBeInstanceOf(ValidationError);
     await expect(
-      registerHospital(admin.actor, { hospitalCode: "OK2", name: "x" }),
+      registerHospital(admin.actor, { submissionNonce: randomUUID(), hospitalCode: "OK2", name: "x" }),
     ).rejects.toBeInstanceOf(ValidationError);
 
     const renamed = await renameHospital(admin.actor, {
@@ -467,7 +475,7 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
 
     const owner = await createOwner((await createHospital("OWNED")).id);
     await expect(
-      registerHospital(owner.actor, { hospitalCode: "DENIED1", name: "x", networkRole: "CHILD" }),
+      registerHospital(owner.actor, { submissionNonce: randomUUID(), hospitalCode: "DENIED1", name: "x", networkRole: "CHILD" }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     await prisma.user.update({ where: { id: admin.userId }, data: { status: UserStatus.SUSPENDED } });
     await expect(

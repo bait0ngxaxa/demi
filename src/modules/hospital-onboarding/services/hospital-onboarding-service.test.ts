@@ -18,8 +18,13 @@ function createDatabase(overrides: {
   existingPerson?: boolean;
   existingApplication?: boolean;
   applicationCreate?: () => Promise<{ id: string }>;
+  /** Hospital status re-read inside the application transaction (a concurrent retire). */
+  statusAtCommit?: HospitalStatus;
 } = {}): HospitalOnboardingDatabase {
   const transaction = {
+    hospital: {
+      findUnique: vi.fn().mockResolvedValue({ status: overrides.statusAtCommit ?? HospitalStatus.PENDING_VERIFICATION }),
+    },
     person: {
       create: vi.fn().mockResolvedValue({ id: personId }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -128,6 +133,20 @@ describe("hospital onboarding application service", () => {
 
     expect(deleteProviderIdentity).toHaveBeenCalledWith(providerSubject);
     expect(database.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses and compensates when the Hospital was retired before the application committed", async () => {
+    const applicationCreate = vi.fn().mockResolvedValue({ id: applicationId });
+    const database = createDatabase({ statusAtCommit: HospitalStatus.RETIRED, applicationCreate });
+    const provisionIdentity = vi.fn().mockResolvedValue({ userId, authSubject: providerSubject });
+    const deleteProviderIdentity = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      submitHospitalOnboarding(validInput, { database, provisionIdentity, deleteProviderIdentity }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(applicationCreate).not.toHaveBeenCalled();
+    expect(deleteProviderIdentity).toHaveBeenCalledWith(providerSubject);
   });
 
   it("does not allow a second pending application for a hospital", async () => {

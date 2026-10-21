@@ -45,6 +45,16 @@ async function authorize(
   return membership.hospital;
 }
 
+/**
+ * SQLSTATE 23514 raised by the network role triggers (migration 20261031110000); both messages name the
+ * network role. Prisma 6 surfaces a trigger error on an ORM write as an unknown request error whose message
+ * carries the PostgreSQL code and text.
+ */
+function isNetworkRoleCheckViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientUnknownRequestError &&
+    error.message.includes('code: "23514"') && /network role/iu.test(error.message);
+}
+
 export async function operation<T>(database: PrismaClient, work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
   try {
     // No automatic replay: callers must reload after a conflict. Entire state + audit rolls back.
@@ -52,6 +62,7 @@ export async function operation<T>(database: PrismaClient, work: (tx: Prisma.Tra
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError("Service area changed concurrently; reload before retrying");
+    if (isNetworkRoleCheckViolation(error)) throw new ConflictError("Network roles changed concurrently; reload before retrying");
     throw new InfrastructureError("Hospital service area operation could not be completed");
   }
 }

@@ -2,9 +2,9 @@ import { HospitalStatus } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  listAvailableHospitalMaster,
-  type HospitalMasterDatabase,
-} from "./hospital-master-service";
+  listOnboardingHospitals,
+  type OnboardingHospitalDatabase,
+} from "./onboarding-hospital-service";
 
 describe("public onboarding Hospital projection", () => {
   it("returns only pending Hospital identities with their ADMIN-set network role", async () => {
@@ -12,9 +12,9 @@ describe("public onboarding Hospital projection", () => {
       { id: "hospital-child-id", hospitalCode: "CHILD-001", name: "รพ.สต.ลูกข่าย", serviceAreaEligibility: { kind: "CHILD" } },
       { id: "hospital-other-id", hospitalCode: "OTHER-001", name: "โรงพยาบาลอื่น", serviceAreaEligibility: null },
     ]);
-    const database = { hospital: { findMany } } as unknown as HospitalMasterDatabase;
+    const database = { hospital: { findMany } } as unknown as OnboardingHospitalDatabase;
 
-    await expect(listAvailableHospitalMaster(database)).resolves.toEqual([
+    await expect(listOnboardingHospitals(database)).resolves.toEqual([
       { id: "hospital-child-id", hospitalCode: "CHILD-001", name: "รพ.สต.ลูกข่าย", networkRole: "CHILD" },
       { id: "hospital-other-id", hospitalCode: "OTHER-001", name: "โรงพยาบาลอื่น", networkRole: null },
     ]);

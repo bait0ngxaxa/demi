@@ -8,6 +8,17 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import type { HospitalNetworkDirectoryEntry } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { createNetworkHospitalAction } from "@/modules/hospital-service-areas/transport/server-actions";
 
+import { PendingHospitalRetirement } from "./pending-hospital-retirement";
+
+/** Directory views: the network (without RETIRED), the public onboarding list, and withdrawn Hospitals. */
+export const HOSPITAL_DIRECTORY_FILTERS = [
+  { value: "network", label: "เครือข่าย" },
+  { value: "pending", label: "รอขึ้นทะเบียน" },
+  { value: "retired", label: "ถอนแล้ว" },
+] as const;
+
+export type HospitalDirectoryFilter = (typeof HOSPITAL_DIRECTORY_FILTERS)[number]["value"];
+
 export function hospitalStatusLabel(status: HospitalNetworkDirectoryEntry["status"]): string {
   switch (status) {
     case "ACTIVE":
@@ -16,6 +27,8 @@ export function hospitalStatusLabel(status: HospitalNetworkDirectoryEntry["statu
       return "ถูกระงับ";
     case "PENDING_VERIFICATION":
       return "รอขึ้นทะเบียน";
+    case "RETIRED":
+      return "ถอนออกจากรายชื่อ";
   }
 }
 
@@ -27,6 +40,8 @@ export function hospitalStatusVariant(status: HospitalNetworkDirectoryEntry["sta
       return "danger";
     case "PENDING_VERIFICATION":
       return "warning";
+    case "RETIRED":
+      return "neutral";
   }
 }
 
@@ -48,7 +63,7 @@ function HospitalLine({ hospital }: { hospital: HospitalNetworkDirectoryEntry })
   );
 }
 
-function CreateHospitalPanel(): React.JSX.Element {
+function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): React.JSX.Element {
   return (
     <Panel aria-labelledby="create-hospital-heading">
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาล</h2>
@@ -58,7 +73,8 @@ function CreateHospitalPanel(): React.JSX.Element {
       <NetworkMutationForm
         action={createNetworkHospitalAction}
         className="mt-5"
-        hidden={{}}
+        // N1-D5: rendered per request, so the refresh after a successful registration brings a new nonce.
+        hidden={{ submissionNonce }}
         submitLabel="เพิ่มโรงพยาบาล"
         submitVariant="primary"
       >
@@ -95,8 +111,90 @@ function CreateHospitalPanel(): React.JSX.Element {
   );
 }
 
+function DirectoryFilterNavigation({ filter }: { filter: HospitalDirectoryFilter }): React.JSX.Element {
+  return (
+    <nav aria-label="มุมมองรายชื่อโรงพยาบาล" className="flex w-fit max-w-full flex-wrap gap-1 rounded-panel bg-surface-muted p-1">
+      {HOSPITAL_DIRECTORY_FILTERS.map((item) => {
+        const selected = item.value === filter;
+        return (
+          <Link
+            aria-current={selected ? "page" : undefined}
+            className={`inline-flex min-h-11 items-center rounded-control px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring ${
+              selected ? "bg-surface text-brand-strong shadow-surface" : "text-text-muted hover:bg-surface/70 hover:text-text"
+            }`}
+            href={item.value === "network" ? "/app/admin/hospitals" : `/app/admin/hospitals?status=${item.value}`}
+            key={item.value}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function RetiredHospitalList({ hospitals }: { hospitals: readonly HospitalNetworkDirectoryEntry[] }): React.JSX.Element {
+  return (
+    <Panel aria-labelledby="retired-hospitals-heading">
+      <h2 className="text-lg font-semibold" id="retired-hospitals-heading">
+        ถอนออกจากรายชื่อแล้ว ({hospitals.length.toLocaleString("th-TH")})
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-text-muted">
+        ไม่แสดงในหน้าขึ้นทะเบียนสาธารณะและไม่อยู่ในเครือข่าย ข้อมูลยังอยู่ครบ รหัสโรงพยาบาลยังสงวนไว้ และคืนสู่รายชื่อรอสมัครได้จากหน้ารายละเอียด
+      </p>
+      {hospitals.length === 0 ? (
+        <p className="mt-4 text-sm text-text-muted">ไม่มี</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-border border-t border-border">
+          {hospitals.map((hospital) => (
+            <li className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2" key={hospital.id}>
+              <span className="min-w-0 break-words">
+                <span className="font-medium text-text">{hospital.name}</span>{" "}
+                <span className="text-sm text-text-muted">({hospital.hospitalCode}) · {networkRoleLabel(hospital.role)}</span>
+              </span>
+              <Link
+                className="text-sm font-semibold text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                href={`/app/admin/hospitals/${hospital.id}#hospital-retirement-heading`}
+              >
+                คืนสู่รายชื่อรอสมัคร
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 /** ADR-0015: the operational network (not canonical Master placement) is the authoritative structure. */
-export function HospitalNetworkDirectory({ hospitals }: { hospitals: readonly HospitalNetworkDirectoryEntry[] }): React.JSX.Element {
+export function HospitalNetworkDirectory({
+  filter,
+  hospitals: allHospitals,
+  submissionNonce,
+}: {
+  filter: HospitalDirectoryFilter;
+  hospitals: readonly HospitalNetworkDirectoryEntry[];
+  submissionNonce: string;
+}): React.JSX.Element {
+  if (filter !== "network") {
+    return (
+      <div className="space-y-6 pt-8">
+        <DirectoryFilterNavigation filter={filter} />
+        {filter === "pending" ? (
+          <PendingHospitalRetirement
+            hospitals={allHospitals
+              .filter(({ status }) => status === "PENDING_VERIFICATION")
+              .map(({ id, hospitalCode, name, role }) => ({ id, hospitalCode, name, roleLabel: networkRoleLabel(role) }))}
+          />
+        ) : (
+          <RetiredHospitalList hospitals={allHospitals.filter(({ status }) => status === "RETIRED")} />
+        )}
+      </div>
+    );
+  }
+
+  // N1-D3: a RETIRED Hospital is outside the network; it is listed only under "ถอนแล้ว".
+  const hospitals = allHospitals.filter(({ status }) => status !== "RETIRED");
   const parents = hospitals.filter(({ role }) => role === "PARENT");
   const childrenByParent = new Map<string, HospitalNetworkDirectoryEntry[]>();
   for (const hospital of hospitals) {
@@ -109,7 +207,9 @@ export function HospitalNetworkDirectory({ hospitals }: { hospitals: readonly Ho
 
   return (
     <div className="space-y-6 pt-8">
-      <CreateHospitalPanel />
+      <CreateHospitalPanel submissionNonce={submissionNonce} />
+
+      <DirectoryFilterNavigation filter={filter} />
 
       <section aria-labelledby="network-directory-heading" className="space-y-4">
         <h2 className="text-xl font-semibold tracking-[-0.02em]" id="network-directory-heading">

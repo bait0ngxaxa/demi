@@ -43,6 +43,7 @@ import {
 
 import { HospitalGovernanceControls } from "./hospital-governance-controls";
 import { HospitalNetworkSection } from "./hospital-network-section";
+import { HospitalRetirementSection } from "./hospital-retirement-section";
 
 export const metadata: Metadata = {
   title: "รายละเอียดการกำกับดูแลโรงพยาบาล",
@@ -123,6 +124,8 @@ function statusLabel(status: HospitalStatus): string {
       return "ถูกระงับ";
     case HospitalStatus.PENDING_VERIFICATION:
       return "รอยืนยันการขึ้นทะเบียน";
+    case HospitalStatus.RETIRED:
+      return "ถอนออกจากรายชื่อ";
   }
 }
 
@@ -134,6 +137,8 @@ function statusVariant(status: HospitalStatus): StatusVariant {
       return "danger";
     case HospitalStatus.PENDING_VERIFICATION:
       return "warning";
+    case HospitalStatus.RETIRED:
+      return "neutral";
   }
 }
 
@@ -247,6 +252,8 @@ export default async function HospitalGovernanceDetailPage({
 
         <HospitalNetworkSection hospital={hospital} network={network} />
 
+        <HospitalRetirementSection hospital={hospital} />
+
         <Alert variant={hospital.status === HospitalStatus.SUSPENDED ? "warning" : "info"}>
           <p className="font-semibold">ขอบเขตการเปลี่ยนสถานะ</p>
           <p className="mt-1">
@@ -264,7 +271,9 @@ export default async function HospitalGovernanceDetailPage({
           <Alert variant="neutral">
             <p className="font-semibold">ยังไม่อยู่ในวงจรการระงับ/คืนสถานะ</p>
             <p className="mt-1">
-              โรงพยาบาลนี้ยังอยู่ในขั้นตอนลงทะเบียน จึงยังไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้
+              {hospital.status === HospitalStatus.RETIRED
+                ? "โรงพยาบาลนี้ถูกถอนออกจากรายชื่อรอสมัคร จึงไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้"
+                : "โรงพยาบาลนี้ยังอยู่ในขั้นตอนลงทะเบียน จึงยังไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้"}
             </p>
           </Alert>
         )}

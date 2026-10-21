@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -11,7 +13,7 @@ import {
 import { listHospitalNetworkDirectoryForAdmin } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { HospitalNetworkDirectory } from "./hospital-network-directory";
+import { HOSPITAL_DIRECTORY_FILTERS, HospitalNetworkDirectory, type HospitalDirectoryFilter } from "./hospital-network-directory";
 
 export const metadata: Metadata = {
   title: "การกำกับดูแลโรงพยาบาล",
@@ -32,19 +34,28 @@ async function requirePlatformAdmin() {
   }
 }
 
-export default async function HospitalGovernanceDirectoryPage(): Promise<React.JSX.Element> {
+function parseFilter(value: string | string[] | undefined): HospitalDirectoryFilter {
+  return HOSPITAL_DIRECTORY_FILTERS.find((item) => item.value === value)?.value ?? "network";
+}
+
+export default async function HospitalGovernanceDirectoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string | string[] }>;
+}): Promise<React.JSX.Element> {
   await connection();
   const actor = await requirePlatformAdmin();
   const network = await listHospitalNetworkDirectoryForAdmin(actor);
+  const { status } = await searchParams;
 
   return (
     <div>
       <PageHeader
         breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "การกำกับดูแลโรงพยาบาล" }]}
-        description="เพิ่มโรงพยาบาล กำหนดแม่ข่าย–ลูกข่าย ตรวจสอบสถานะ และโอนย้ายลูกข่ายระหว่างแม่ข่าย"
+        description="เพิ่มโรงพยาบาล กำหนดแม่ข่าย–ลูกข่าย ตรวจสอบสถานะ โอนย้ายลูกข่ายระหว่างแม่ข่าย และถอนโรงพยาบาลที่ไม่ใช้งานออกจากรายชื่อรอสมัคร"
         title="การกำกับดูแลโรงพยาบาล"
       />
-      <HospitalNetworkDirectory hospitals={network} />
+      <HospitalNetworkDirectory filter={parseFilter(status)} hospitals={network} submissionNonce={randomUUID()} />
     </div>
   );
 }

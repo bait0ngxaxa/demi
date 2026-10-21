@@ -23,6 +23,7 @@ function statusLabel(status: HospitalHierarchyUnit["status"]): string {
     case "ACTIVE": return "ใช้งานอยู่";
     case "SUSPENDED": return "ถูกระงับ";
     case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
+    case "RETIRED": return "ถอนออกจากรายชื่อ";
   }
 }
 
@@ -31,6 +32,7 @@ function statusVariant(status: HospitalHierarchyUnit["status"]): StatusVariant {
     case "ACTIVE": return "success";
     case "SUSPENDED": return "danger";
     case "PENDING_VERIFICATION": return "warning";
+    case "RETIRED": return "neutral";
   }
 }
 

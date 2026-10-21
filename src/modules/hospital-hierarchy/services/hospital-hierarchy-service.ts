@@ -192,6 +192,8 @@ export async function getHospitalHierarchyDirectory(
     if (!actor) throw new ForbiddenError();
     await revalidatePlatformAdmin(actor, database);
     const hospitals = await database.hospital.findMany({
+      // Phase N1: a RETIRED Hospital was withdrawn before it was ever used; reports leave it out.
+      where: { status: { not: HospitalStatus.RETIRED } },
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }, { id: "asc" }],
       select: {
         ...unitSelect,

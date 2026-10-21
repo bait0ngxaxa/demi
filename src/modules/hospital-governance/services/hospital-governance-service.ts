@@ -2,11 +2,19 @@ import "server-only";
 
 import { randomInt } from "node:crypto";
 
-import { HospitalStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
+import {
+  HospitalOnboardingApplicationStatus,
+  HospitalRetirementEventKind,
+  HospitalStatus,
+  Prisma,
+  Role,
+  UserStatus,
+  type PrismaClient,
+} from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { recordAuditEvent, recordAuditEvents } from "@/modules/audit/services/audit-service";
 import {
   ApplicationError,
   ConflictError,
@@ -22,10 +30,12 @@ import {
   type HospitalGovernanceCapability,
 } from "../policies/hospital-governance-policy";
 import {
+  hospitalGovernanceBulkRetireSchema,
   hospitalGovernanceCreateSchema,
   hospitalGovernanceHospitalIdSchema,
   hospitalGovernanceMutationSchema,
   hospitalGovernanceRenameSchema,
+  hospitalGovernanceRetirementSchema,
   type HospitalGovernanceMutationInput,
 } from "../schemas/hospital-governance-schemas";
 
@@ -38,6 +48,8 @@ export type HospitalGovernanceProjection = {
   status: HospitalStatus;
   createdAt: Date;
   updatedAt: Date;
+  retiredAt: Date | null;
+  retiredReason: string | null;
 };
 
 export type HospitalGovernanceServiceDependencies = {
@@ -55,6 +67,8 @@ const hospitalGovernanceSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
+  retiredAt: true,
+  retiredReason: true,
 } satisfies Prisma.HospitalSelect;
 
 type HospitalGovernanceRecord = Prisma.HospitalGetPayload<{
@@ -124,6 +138,8 @@ function toProjection(record: HospitalGovernanceRecord): HospitalGovernanceProje
     status: record.status,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    retiredAt: record.retiredAt,
+    retiredReason: record.retiredReason,
   };
 }
 
@@ -352,11 +368,6 @@ export async function restoreHospital(
   );
 }
 
-/**
- * ADR-0015: Platform ADMIN registers a facility without a Master file change. It starts
- * PENDING_VERIFICATION so the existing onboarding approval stays the only activation path.
- * Canonical placement (`parentHospitalId`) remains owned by Master reconciliation.
- */
 // Unambiguous characters only (no 0/O, 1/I/L) so a generated code can be read aloud or typed back.
 const GENERATED_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const GENERATED_CODE_ATTEMPTS = 5;
@@ -381,6 +392,51 @@ async function resolveNewHospitalCode(
   throw new ConflictError(requested ? "A Hospital with this code already exists" : "A unique Hospital code could not be generated");
 }
 
+type HospitalRegistrationInput = {
+  hospitalCode?: string;
+  name: string;
+  networkRole: "PARENT" | "CHILD";
+  submissionNonce: string;
+};
+
+/**
+ * N1-D5: a replayed nonce returns the Hospital it created when the same ADMIN sent the same registration;
+ * any other use of the nonce is a conflict. Returns null while the nonce is unused.
+ */
+async function findReplayedRegistration(
+  database: Pick<Prisma.TransactionClient, "hospital">,
+  input: HospitalRegistrationInput,
+  actorUserId: string,
+): Promise<HospitalGovernanceProjection | null> {
+  const existing = await database.hospital.findUnique({
+    where: { registrationNonce: input.submissionNonce },
+    select: {
+      ...hospitalGovernanceSelect,
+      registeredByUserId: true,
+      serviceAreaEligibility: { select: { kind: true } },
+    },
+  });
+
+  if (!existing) {
+    return null;
+  }
+
+  if (
+    existing.registeredByUserId !== actorUserId ||
+    existing.name !== input.name ||
+    existing.serviceAreaEligibility?.kind !== input.networkRole ||
+    (input.hospitalCode !== undefined && existing.hospitalCode !== input.hospitalCode)
+  ) {
+    throw new ConflictError("This registration submission was already used for a different Hospital");
+  }
+
+  return toProjection(existing);
+}
+
+/**
+ * ADR-0015/0017: Platform ADMIN registers every Hospital. It starts PENDING_VERIFICATION so the
+ * onboarding approval stays the only activation path. Idempotent per submission nonce (N1-D5).
+ */
 export async function createHospital(
   actor: ActorContext | null | undefined,
   input: unknown,
@@ -393,12 +449,19 @@ export async function createHospital(
   }
 
   const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.create);
+  const database = getDatabase(dependencies);
 
   try {
     return await runSerializable(
-      getDatabase(dependencies),
+      database,
       async (transaction) => {
         await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+
+        const replayed = await findReplayedRegistration(transaction, parsed.data, currentActor.userId);
+
+        if (replayed) {
+          return replayed;
+        }
 
         const hospitalCode = await resolveNewHospitalCode(transaction, parsed.data.hospitalCode);
 
@@ -407,6 +470,8 @@ export async function createHospital(
             hospitalCode,
             name: parsed.data.name,
             status: HospitalStatus.PENDING_VERIFICATION,
+            registrationNonce: parsed.data.submissionNonce,
+            registeredByUserId: currentActor.userId,
             serviceAreaEligibility: {
               create: {
                 kind: parsed.data.networkRole,
@@ -439,7 +504,329 @@ export async function createHospital(
       0,
     );
   } catch (error: unknown) {
+    if (isRetryableTransactionError(error)) {
+      // A concurrent submit of the same nonce may have won: answer with its Hospital when it matches.
+      let replayed: HospitalGovernanceProjection | null;
+
+      try {
+        replayed = await findReplayedRegistration(database, parsed.data, currentActor.userId);
+      } catch (replayError: unknown) {
+        throw normalizeDatabaseError(replayError, "Hospital registration could not be completed");
+      }
+
+      if (replayed) {
+        return replayed;
+      }
+    }
+
     throw normalizeDatabaseError(error, "Hospital registration could not be completed");
+  }
+}
+
+export type HospitalRetirementIneligibility = "NOT_FOUND" | "NOT_PENDING" | "PENDING_APPLICATION";
+
+export type HospitalRetirementIneligibleHospital = {
+  hospitalId: string;
+  hospitalCode: string | null;
+  name: string | null;
+  reason: HospitalRetirementIneligibility;
+};
+
+/** N1-D2/D4: nothing was retired; names every selected Hospital that blocked the operation. */
+export class HospitalRetirementIneligibleError extends ConflictError {
+  readonly ineligible: readonly HospitalRetirementIneligibleHospital[];
+
+  constructor(ineligible: readonly HospitalRetirementIneligibleHospital[]) {
+    super("Some selected Hospitals cannot be retired");
+    this.name = "HospitalRetirementIneligibleError";
+    this.ineligible = ineligible;
+  }
+}
+
+type RetirementTarget = {
+  hospitalIds: readonly string[];
+  reason: string;
+  /** Single-Hospital operation only (optimistic concurrency). */
+  expectedUpdatedAt?: string;
+};
+
+async function retireHospitalsInTransaction(
+  transaction: Prisma.TransactionClient,
+  target: RetirementTarget,
+  actorUserId: string,
+): Promise<HospitalGovernanceProjection[]> {
+  await assertPlatformAdminInDatabase(transaction, actorUserId);
+
+  const hospitalIds = [...target.hospitalIds];
+  const current = await transaction.hospital.findMany({
+    where: { id: { in: hospitalIds } },
+    select: {
+      ...hospitalGovernanceSelect,
+      onboardingApplications: {
+        where: { status: HospitalOnboardingApplicationStatus.PENDING },
+        take: 1,
+        select: { id: true },
+      },
+    },
+  });
+  const byId = new Map(current.map((hospital) => [hospital.id, hospital]));
+  let expectedUpdatedAt: Date | undefined;
+
+  if (target.expectedUpdatedAt !== undefined) {
+    const single = byId.get(hospitalIds[0] ?? "");
+
+    if (!single) {
+      throw new NotFoundError("The Hospital was not found");
+    }
+
+    expectedUpdatedAt = parseExpectedUpdatedAt(target.expectedUpdatedAt);
+
+    if (single.updatedAt.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new ConflictError("The Hospital changed before this operation");
+    }
+  }
+
+  const ineligible: HospitalRetirementIneligibleHospital[] = [];
+
+  for (const hospitalId of hospitalIds) {
+    const hospital = byId.get(hospitalId);
+    const reason: HospitalRetirementIneligibility | null = !hospital
+      ? "NOT_FOUND"
+      : hospital.status !== HospitalStatus.PENDING_VERIFICATION
+        ? "NOT_PENDING"
+        : hospital.onboardingApplications.length > 0
+          ? "PENDING_APPLICATION"
+          : null;
+
+    if (reason) {
+      ineligible.push({
+        hospitalId,
+        hospitalCode: hospital?.hospitalCode ?? null,
+        name: hospital?.name ?? null,
+        reason,
+      });
+    }
+  }
+
+  if (ineligible.length > 0) {
+    throw new HospitalRetirementIneligibleError(ineligible);
+  }
+
+  const retiredAt = new Date();
+  const updated = await transaction.hospital.updateMany({
+    where: {
+      id: { in: hospitalIds },
+      status: HospitalStatus.PENDING_VERIFICATION,
+      ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+    },
+    data: {
+      status: HospitalStatus.RETIRED,
+      retiredAt,
+      retiredByUserId: actorUserId,
+      retiredReason: target.reason,
+    },
+  });
+
+  if (updated.count !== hospitalIds.length) {
+    throw new ConflictError("A selected Hospital changed before this operation");
+  }
+
+  await transaction.hospitalRetirementEvent.createMany({
+    data: hospitalIds.map((hospitalId) => ({
+      hospitalId,
+      kind: HospitalRetirementEventKind.RETIRED,
+      reason: target.reason,
+      actorUserId,
+      createdAt: retiredAt,
+    })),
+  });
+
+  await recordAuditEvents(
+    hospitalIds.map((hospitalId) => ({
+      actorUserId,
+      action: "hospital.retired",
+      resourceType: "Hospital",
+      resourceId: hospitalId,
+      metadata: {
+        hospitalCode: byId.get(hospitalId)?.hospitalCode ?? null,
+        fromStatus: HospitalStatus.PENDING_VERIFICATION,
+        toStatus: HospitalStatus.RETIRED,
+        reasonStored: true,
+      },
+    })),
+    transaction,
+  );
+
+  const result = await transaction.hospital.findMany({
+    where: { id: { in: hospitalIds } },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    select: hospitalGovernanceSelect,
+  });
+
+  return result.map(toProjection);
+}
+
+/** N1-D1: withdraw one unclaimed (PENDING_VERIFICATION) Hospital from the onboarding list. Nothing is deleted. */
+export async function retireHospital(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalGovernanceProjection> {
+  const parsed = hospitalGovernanceRetirementSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital retirement data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.retire);
+
+  try {
+    const [retired] = await runSerializable(
+      getDatabase(dependencies),
+      (transaction) =>
+        retireHospitalsInTransaction(
+          transaction,
+          {
+            hospitalIds: [parsed.data.hospitalId],
+            reason: parsed.data.reason,
+            expectedUpdatedAt: parsed.data.expectedUpdatedAt,
+          },
+          currentActor.userId,
+        ),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+
+    if (!retired) {
+      throw new InfrastructureError("The retired Hospital could not be read");
+    }
+
+    return retired;
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital retirement could not be completed");
+  }
+}
+
+/** N1-D4: retire up to 100 unclaimed Hospitals with one shared reason, all-or-nothing. */
+export async function retireHospitals(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalGovernanceProjection[]> {
+  const parsed = hospitalGovernanceBulkRetireSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital bulk retirement data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.retire);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      (transaction) =>
+        retireHospitalsInTransaction(
+          transaction,
+          { hospitalIds: parsed.data.hospitalIds, reason: parsed.data.reason },
+          currentActor.userId,
+        ),
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital bulk retirement could not be completed");
+  }
+}
+
+/** N1-D1: put a RETIRED Hospital back on the onboarding list (PENDING_VERIFICATION). */
+export async function restoreRetiredHospital(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalGovernanceServiceDependencies = {},
+): Promise<HospitalGovernanceProjection> {
+  const parsed = hospitalGovernanceRetirementSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Hospital restore data is invalid");
+  }
+
+  const currentActor = getMutationActor(actor, HOSPITAL_GOVERNANCE_CAPABILITIES.restoreRetired);
+
+  try {
+    return await runSerializable(
+      getDatabase(dependencies),
+      async (transaction) => {
+        await assertPlatformAdminInDatabase(transaction, currentActor.userId);
+
+        const current = await transaction.hospital.findUnique({
+          where: { id: parsed.data.hospitalId },
+          select: hospitalGovernanceSelect,
+        });
+
+        if (!current) {
+          throw new NotFoundError("The Hospital was not found");
+        }
+
+        if (current.updatedAt.getTime() !== parseExpectedUpdatedAt(parsed.data.expectedUpdatedAt).getTime()) {
+          throw new ConflictError("The Hospital changed before this operation");
+        }
+
+        if (current.status !== HospitalStatus.RETIRED) {
+          throw new ConflictError("The Hospital is not in the requested lifecycle state");
+        }
+
+        const updated = await transaction.hospital.updateMany({
+          where: { id: current.id, status: HospitalStatus.RETIRED, updatedAt: current.updatedAt },
+          data: {
+            status: HospitalStatus.PENDING_VERIFICATION,
+            retiredAt: null,
+            retiredByUserId: null,
+            retiredReason: null,
+          },
+        });
+
+        if (updated.count !== 1) {
+          throw new ConflictError("The Hospital changed before this operation");
+        }
+
+        await transaction.hospitalRetirementEvent.create({
+          data: {
+            hospitalId: current.id,
+            kind: HospitalRetirementEventKind.RESTORED,
+            reason: parsed.data.reason,
+            actorUserId: currentActor.userId,
+          },
+        });
+
+        const result = await transaction.hospital.findUnique({
+          where: { id: current.id },
+          select: hospitalGovernanceSelect,
+        });
+
+        if (!result) {
+          throw new InfrastructureError("The updated Hospital could not be read");
+        }
+
+        await recordAuditEvent(
+          {
+            actorUserId: currentActor.userId,
+            action: "hospital.retired_restored",
+            resourceType: "Hospital",
+            resourceId: result.id,
+            metadata: {
+              hospitalCode: result.hospitalCode,
+              fromStatus: HospitalStatus.RETIRED,
+              toStatus: HospitalStatus.PENDING_VERIFICATION,
+              reasonStored: true,
+            },
+          },
+          transaction,
+        );
+
+        return toProjection(result);
+      },
+      dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "Hospital restore could not be completed");
   }
 }
 

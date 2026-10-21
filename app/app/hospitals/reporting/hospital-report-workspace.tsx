@@ -80,14 +80,16 @@ function hierarchyStatusLabel(status: HospitalHierarchyContext["hospital"]["stat
     case "ACTIVE": return "ใช้งานอยู่";
     case "SUSPENDED": return "ถูกระงับ";
     case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
+    case "RETIRED": return "ถอนออกจากรายชื่อ";
   }
 }
 
-function hierarchyStatusVariant(status: HospitalHierarchyContext["hospital"]["status"]): "success" | "danger" | "warning" {
+function hierarchyStatusVariant(status: HospitalHierarchyContext["hospital"]["status"]): "success" | "danger" | "warning" | "neutral" {
   switch (status) {
     case "ACTIVE": return "success";
     case "SUSPENDED": return "danger";
     case "PENDING_VERIFICATION": return "warning";
+    case "RETIRED": return "neutral";
   }
 }
 

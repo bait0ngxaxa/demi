@@ -26,6 +26,8 @@ export type HospitalNetworkRoleProjection = {
 export type HospitalServiceAreaTransferResult = { ended: HospitalServiceAreaProjection; created: HospitalServiceAreaProjection };
 
 const roleSelect = { hospitalId: true, kind: true, verifiedAt: true, classifiedByUserId: true } satisfies Prisma.HospitalServiceAreaEligibilitySelect;
+// N1-D3: a RETIRED Hospital's network role is frozen until it is restored.
+const RETIRED_ROLE_CONFLICT = "A retired Hospital's network role cannot be changed";
 
 /** Platform ADMIN only (ADR-0015). Context check first, persisted ADMIN proof inside the transaction. */
 async function authorizeAdmin(
@@ -75,8 +77,9 @@ export async function setHospitalNetworkRole(
   const { hospitalId, kind } = parsed.data;
   return operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkRoleManage);
-    const hospital = await tx.hospital.findUnique({ where: { id: hospitalId }, select: { serviceAreaEligibility: { select: { kind: true } } } });
+    const hospital = await tx.hospital.findUnique({ where: { id: hospitalId }, select: { status: true, serviceAreaEligibility: { select: { kind: true } } } });
     if (!hospital) throw new NotFoundError();
+    if (hospital.status === HospitalStatus.RETIRED) throw new ConflictError(RETIRED_ROLE_CONFLICT);
     const fromKind = hospital.serviceAreaEligibility?.kind ?? null;
     if (fromKind && fromKind !== kind && await hasActiveAreas(tx, hospitalId, fromKind)) {
       throw new ConflictError("End or transfer active service areas before changing the network role");
@@ -102,8 +105,9 @@ export async function clearHospitalNetworkRole(
   const { hospitalId } = parsed.data;
   await operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkRoleManage);
-    const role = await tx.hospitalServiceAreaEligibility.findUnique({ where: { hospitalId }, select: { kind: true } });
+    const role = await tx.hospitalServiceAreaEligibility.findUnique({ where: { hospitalId }, select: { kind: true, hospital: { select: { status: true } } } });
     if (!role) throw new NotFoundError();
+    if (role.hospital.status === HospitalStatus.RETIRED) throw new ConflictError(RETIRED_ROLE_CONFLICT);
     if (await hasActiveAreas(tx, hospitalId, role.kind)) {
       throw new ConflictError("End or transfer active service areas before clearing the network role");
     }

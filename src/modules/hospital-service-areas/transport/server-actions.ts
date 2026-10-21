@@ -4,7 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { createHospital, renameHospital } from "@/modules/hospital-governance/services/hospital-governance-service";
+import {
+  createHospital,
+  HospitalRetirementIneligibleError,
+  renameHospital,
+  restoreRetiredHospital,
+  retireHospital,
+  retireHospitals,
+  type HospitalRetirementIneligibility,
+} from "@/modules/hospital-governance/services/hospital-governance-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -23,7 +31,18 @@ function getString(formData: FormData, field: string): string {
   return typeof value === "string" ? value : "";
 }
 
+const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, string> = {
+  NOT_FOUND: "ไม่พบในระบบแล้ว",
+  NOT_PENDING: "ไม่ได้อยู่ในสถานะรอขึ้นทะเบียน",
+  PENDING_APPLICATION: "มีคำขอขึ้นทะเบียนรอพิจารณา ต้องปฏิเสธคำขอก่อน",
+};
+
 function toErrorState(error: unknown, copy: ErrorCopy): HospitalNetworkActionState {
+  if (error instanceof HospitalRetirementIneligibleError) {
+    const names = error.ineligible.map(({ hospitalCode, name, reason }) =>
+      `${name ?? "โรงพยาบาลที่เลือก"}${hospitalCode ? ` (${hospitalCode})` : ""}: ${retirementIneligibilityCopy[reason]}`);
+    return { status: "ERROR", code: "CONFLICT", message: `ยังไม่ได้ถอนโรงพยาบาลใด เนื่องจาก ${names.join(" · ")}` };
+  }
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { status: "ERROR", code: "INVALID_INPUT", message: copy.INVALID_INPUT ?? "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง" };
@@ -108,10 +127,11 @@ export async function createNetworkHospitalAction(
       hospitalCode: getString(formData, "hospitalCode"),
       name: getString(formData, "name"),
       networkRole: getString(formData, "networkRole"),
+      submissionNonce: getString(formData, "submissionNonce"),
     }),
     "เพิ่มโรงพยาบาลแล้ว ผู้รับผิดชอบสมัครใช้งานผ่านขั้นตอนขึ้นทะเบียนได้ทันที",
     {
-      CONFLICT: "มีโรงพยาบาลที่ใช้รหัสนี้อยู่แล้ว",
+      CONFLICT: "มีโรงพยาบาลที่ใช้รหัสนี้อยู่แล้ว หรือแบบฟอร์มนี้ถูกส่งไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
       INVALID_INPUT: "กรุณากรอกชื่อและเลือกประเภท หากระบุรหัสเอง ใช้ได้เฉพาะ A-Z, 0-9, - หรือ _ ไม่เกิน 32 ตัว",
     },
     ["/app/admin/hospitals"],
@@ -135,6 +155,55 @@ export async function renameHospitalAction(
   );
 }
 
+// Phase N1: withdraw unclaimed Hospitals from the onboarding list and put them back. Nothing is deleted.
+
+export async function retireHospitalAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  const hospitalId = getString(formData, "hospitalId");
+  return run(
+    (actor) => retireHospital(actor, {
+      hospitalId,
+      expectedUpdatedAt: getString(formData, "expectedUpdatedAt"),
+      reason: getString(formData, "reason"),
+    }),
+    "ถอนโรงพยาบาลออกจากรายชื่อรอสมัครแล้ว",
+    { INVALID_INPUT: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)" },
+    ["/app/admin/hospitals", `/app/admin/hospitals/${hospitalId}`],
+  );
+}
+
+export async function retireHospitalsAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  const hospitalIds = formData.getAll("hospitalId").filter((value): value is string => typeof value === "string");
+  return run(
+    (actor) => retireHospitals(actor, { hospitalIds, reason: getString(formData, "reason") }),
+    `ถอนโรงพยาบาล ${hospitalIds.length.toLocaleString("th-TH")} แห่งออกจากรายชื่อรอสมัครแล้ว`,
+    { INVALID_INPUT: "กรุณาเลือกโรงพยาบาล 1–100 แห่งและระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)" },
+    ["/app/admin/hospitals"],
+  );
+}
+
+export async function restoreRetiredHospitalAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  const hospitalId = getString(formData, "hospitalId");
+  return run(
+    (actor) => restoreRetiredHospital(actor, {
+      hospitalId,
+      expectedUpdatedAt: getString(formData, "expectedUpdatedAt"),
+      reason: getString(formData, "reason"),
+    }),
+    "คืนโรงพยาบาลสู่รายชื่อรอสมัครแล้ว",
+    { INVALID_INPUT: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)" },
+    ["/app/admin/hospitals", `/app/admin/hospitals/${hospitalId}`],
+  );
+}
+
 export async function setNetworkRoleAction(
   _previous: HospitalNetworkActionState,
   formData: FormData,
@@ -147,7 +216,7 @@ export async function setNetworkRoleAction(
       : setHospitalNetworkRole(actor, { hospitalId, kind }),
     "บันทึกประเภทในเครือข่ายแล้ว",
     {
-      CONFLICT: "เปลี่ยนประเภทไม่ได้ขณะที่ยังมีความสัมพันธ์แม่ข่าย–ลูกข่ายอยู่ กรุณานำออกหรือโอนก่อน",
+      CONFLICT: "เปลี่ยนประเภทไม่ได้ขณะที่ยังมีความสัมพันธ์แม่ข่าย–ลูกข่ายอยู่ หรือโรงพยาบาลถูกถอนออกจากรายชื่อ กรุณาโหลดหน้าใหม่แล้วตรวจสอบ",
       NOT_FOUND: "โรงพยาบาลนี้ยังไม่ได้กำหนดประเภท",
     },
     ["/app/admin/hospitals", `/app/admin/hospitals/${hospitalId}`],

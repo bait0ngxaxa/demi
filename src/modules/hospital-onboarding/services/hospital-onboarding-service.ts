@@ -381,7 +381,17 @@ export async function submitHospitalOnboarding(
   }
 
   try {
+    // Serializable with the status re-read: a concurrent ADMIN retire (N1-D2/D3) and this submit cannot both commit.
     const application = await database.$transaction(async (transaction) => {
+      const current = await transaction.hospital.findUnique({
+        where: { id: hospital.id },
+        select: { status: true },
+      });
+
+      if (current?.status !== HospitalStatus.PENDING_VERIFICATION) {
+        throw new ConflictError("The selected hospital is not available for onboarding");
+      }
+
       const created = await transaction.hospitalOnboardingApplication.create({
         data: {
           hospitalId: hospital.id,
@@ -406,7 +416,7 @@ export async function submitHospitalOnboarding(
       );
 
       return created;
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     return {
       applicationId: application.id,

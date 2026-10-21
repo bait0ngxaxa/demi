@@ -51,6 +51,7 @@ const directory: GlobalReportingDirectory = {
     [HospitalStatus.ACTIVE]: 1,
     [HospitalStatus.PENDING_VERIFICATION]: 1,
     [HospitalStatus.SUSPENDED]: 1,
+    [HospitalStatus.RETIRED]: 0,
   },
 };
 

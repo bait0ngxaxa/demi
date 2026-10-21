@@ -348,7 +348,7 @@ async function migratePopulated(environment, runtime) {
         where: { hospitalCode: "KANG" },
         select: { id: true },
       });
-      await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE } });
+      await prisma.hospital.update({ where: { id: hospital.id }, data: { status: HospitalStatus.ACTIVE }, select: { id: true } });
       await prisma.hospitalContact.create({
         data: { hospitalId: hospital.id, addressText: "ที่อยู่ก่อนการย้ายฐานข้อมูล", phoneNumber: "02-123-4567" },
       });

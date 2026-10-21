@@ -13,6 +13,7 @@ const hospitalStatusLabels: Record<HospitalStatus, string> = {
   [HospitalStatus.ACTIVE]: "ใช้งาน",
   [HospitalStatus.SUSPENDED]: "ถูกระงับการใช้งาน",
   [HospitalStatus.PENDING_VERIFICATION]: "รอยืนยันการขึ้นทะเบียน",
+  [HospitalStatus.RETIRED]: "ถอนออกจากรายชื่อ",
 };
 
 export function PatientSelfRelationshipNavigation({

@@ -27,15 +27,18 @@ export function NetworkMutationForm({
   confirmation,
   hidden,
   pendingLabel = "กำลังบันทึก...",
+  submitDisabled = false,
   submitLabel,
   submitVariant = "secondary",
 }: {
   action: NetworkAction;
   children?: ReactNode;
   className?: string;
-  confirmation?: { title: string; description: string; confirmLabel: string; destructive?: boolean };
+  confirmation?: { title: string; description: string; details?: ReactNode; confirmLabel: string; destructive?: boolean };
   hidden: Record<string, string>;
   pendingLabel?: string;
+  /** Client-side guard only (e.g. nothing selected); the server still validates every request. */
+  submitDisabled?: boolean;
   submitLabel: string;
   submitVariant?: ButtonVariant;
 }): React.JSX.Element {
@@ -60,7 +63,7 @@ export function NetworkMutationForm({
       {children}
       <Button
         className={children ? "mt-3" : undefined}
-        disabled={pending || unknownOutcome}
+        disabled={pending || unknownOutcome || submitDisabled}
         loading={pending}
         size="compact"
         type="submit"
@@ -79,6 +82,7 @@ export function NetworkMutationForm({
           confirmation={{
             title: confirmation.title,
             description: confirmation.description,
+            details: confirmation.details,
             confirmLabel: confirmation.confirmLabel,
             confirmVariant: confirmation.destructive ? "destructive" : "default",
           }}

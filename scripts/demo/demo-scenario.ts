@@ -885,6 +885,8 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     // Demo-attributed network history references demo users; purge only those rows (migration 20261030130000).
     await tx.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
     await tx.hospitalServiceArea.deleteMany({ where: { OR: [{ createdByUserId: users }, { endedByUserId: users }] } });
+    // Retire/restore history of the demo Hospitals or by demo users (append-only outside this setting; 20261031110000).
+    await tx.hospitalRetirementEvent.deleteMany({ where: { OR: [{ hospitalId: { in: hospitalIds } }, { actorUserId: users }] } });
     await tx.hospitalMembership.deleteMany({ where: { OR: [{ userId: users }, { hospitalId: { in: hospitalIds } }] } });
     await tx.hospitalOnboardingApplication.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
     await tx.userContactSetting.deleteMany({ where: { userId: users } });
@@ -900,7 +902,10 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.userRole.deleteMany({ where: { userId: users } });
     await tx.user.deleteMany({ where: { id: users } });
     await tx.person.deleteMany({ where: { id: { in: personIds } } });
-    await tx.hospital.updateMany({ where: { id: { in: hospitalIds } }, data: { status: HospitalStatus.PENDING_VERIFICATION } });
+    await tx.hospital.updateMany({
+      where: { id: { in: hospitalIds } },
+      data: { status: HospitalStatus.PENDING_VERIFICATION, retiredAt: null, retiredByUserId: null, retiredReason: null },
+    });
   }, { timeout: 120_000, maxWait: 10_000, isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
   for (const authSubject of scope.authSubjects) await deleteAuthUser(authSubject);

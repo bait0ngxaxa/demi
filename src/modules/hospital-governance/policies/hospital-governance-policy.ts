@@ -12,6 +12,9 @@ export const HOSPITAL_GOVERNANCE_CAPABILITIES = {
   restore: "hospital:restore",
   create: "hospital:create",
   rename: "hospital:rename",
+  // Phase N1: withdraw an unclaimed Hospital from the onboarding list, and put it back.
+  retire: "hospital:retire",
+  restoreRetired: "hospital:restore-retired",
   // ADR-0015: Platform ADMIN governs network roles and cross-Parent area transfers.
   networkRoleManage: "hospital-network:role:manage",
   networkAreaGovern: "hospital-network:area:govern",

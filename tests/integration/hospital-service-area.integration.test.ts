@@ -185,10 +185,11 @@ describe("Hospital operational service areas / PostgreSQL", () => {
       await expect(attach()).rejects.toMatchObject({ code: "VALIDATION" });
     }
     await db.hospital.update({ where: { id: childId }, data: { status: "ACTIVE" } });
-    // Drifted fixture: the Child already manages an operational area, so nesting is refused.
+    // Nesting cannot drift in any more: PostgreSQL refuses a CHILD as an area Parent (migration 20261031110000).
     const grandChild = await hospital("CHILD");
-    await db.hospitalServiceArea.create({ data: { parentHospitalId: childId, childHospitalId: grandChild, createdByUserId: owner.userId } });
-    await expect(attach()).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(db.hospitalServiceArea.create({ data: { parentHospitalId: childId, childHospitalId: grandChild, createdByUserId: owner.userId } }))
+      .rejects.toThrow(/23514/u);
+    expect(await attach()).toMatchObject({ parentHospitalId: parentId, childHospitalId: childId, endedAt: null });
   });
 
   it("denies MEMBER, Child-only OWNER, unrelated OWNER and ADMIN/OSM/PATIENT-only", async () => {
@@ -235,7 +236,9 @@ describe("Hospital operational service areas / PostgreSQL", () => {
   it("enforces immutable identities, terminal history, lifecycle checks, restrictive FK and no hard-delete in PostgreSQL", async () => {
     const area = await attach();
     await expect(db.hospitalServiceArea.create({ data: { parentHospitalId: parentId, childHospitalId: parentId, createdByUserId: owner.userId } })).rejects.toThrow();
-    await expect(db.hospitalServiceArea.create({ data: { parentHospitalId: parentId, childHospitalId: randomUUID(), createdByUserId: owner.userId } })).rejects.toMatchObject({ code: "P2003" });
+    // An unknown facility has no network role, so the role trigger refuses it before the FK check runs.
+    await expect(db.hospitalServiceArea.create({ data: { parentHospitalId: parentId, childHospitalId: randomUUID(), createdByUserId: owner.userId } })).rejects.toThrow(/23514/u);
+    await expect(db.hospitalServiceArea.create({ data: { parentHospitalId: parentId, childHospitalId: await hospital("CHILD"), createdByUserId: randomUUID() } })).rejects.toMatchObject({ code: "P2003" });
     await expect(db.hospitalServiceArea.update({ where: { id: area.id }, data: { childHospitalId: randomUUID() } })).rejects.toThrow();
     await expect(db.hospitalServiceArea.update({ where: { id: area.id }, data: { endedAt: new Date() } })).rejects.toThrow();
     await expect(db.hospitalServiceArea.delete({ where: { id: area.id } })).rejects.toThrow();

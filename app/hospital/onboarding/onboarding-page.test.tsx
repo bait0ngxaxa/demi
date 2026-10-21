@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
-vi.mock("@/modules/hospital-onboarding/services/hospital-master-service", () => ({
-  listAvailableHospitalMaster: mocks.listHospitals,
+vi.mock("@/modules/hospital-onboarding/services/onboarding-hospital-service", () => ({
+  listOnboardingHospitals: mocks.listHospitals,
 }));
 vi.mock("./onboarding-form", () => ({ HospitalOnboardingForm: () => null }));
 

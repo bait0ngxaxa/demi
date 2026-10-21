@@ -44,6 +44,8 @@ function createHospital(status: HospitalStatus): HospitalGovernanceProjection {
     status,
     createdAt: new Date("2026-08-01T04:00:00.000Z"),
     updatedAt,
+    retiredAt: null,
+    retiredReason: null,
   };
 }
 
@@ -129,6 +131,8 @@ describe("hospital governance service", () => {
       "hospitalCode",
       "id",
       "name",
+      "retiredAt",
+      "retiredReason",
       "status",
       "updatedAt",
     ]);

@@ -37,6 +37,7 @@ function getStatusCounts(directory: HospitalHierarchyDirectory): Readonly<Record
     [HospitalStatus.ACTIVE]: 0,
     [HospitalStatus.PENDING_VERIFICATION]: 0,
     [HospitalStatus.SUSPENDED]: 0,
+    [HospitalStatus.RETIRED]: 0,
   };
   for (const hospital of getUnits(directory)) counts[hospital.status] += 1;
   return counts;
