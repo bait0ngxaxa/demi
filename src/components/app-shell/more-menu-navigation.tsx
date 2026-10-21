@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { classNames } from "@/components/ui/class-names";
 
 import { confirmMobileNavigation } from "./mobile-navigation-guard";
-import { getMoreNavigationIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
+import { getNavigationItemIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
 import { compareNavigationSections } from "./navigation-sections";
 import { resolveActiveNavigationHrefs } from "./navigation-state";
 import type {
@@ -69,7 +69,7 @@ export function MoreMenuNavigation({
                           active ? "bg-surface text-brand-strong" : "bg-surface-muted text-text-muted",
                         )}
                       >
-                        <MobileNavigationGlyph icon={getMoreNavigationIcon(item.href)} />
+                        <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       </span>
                       <span className="min-w-0 flex-1">{item.label}</span>
                       <svg

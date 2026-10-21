@@ -1,4 +1,6 @@
+import { getCustomerMenuIcon } from "./customer-navigation";
 import type { MobileNavigationIcon } from "./mobile-tab-projection";
+import type { ApplicationNavigationItem } from "./navigation-types";
 
 const iconPaths: Record<MobileNavigationIcon, React.ReactNode> = {
   home: (
@@ -227,6 +229,11 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/admin/hospitals") || pathname.startsWith("/app/hospitals")) return "hospital";
 
   return "default";
+}
+
+/** UI-01: a customer menu item uses its menu entry's icon rather than one derived from its href. */
+export function getNavigationItemIcon(item: ApplicationNavigationItem): MobileNavigationIcon {
+  return item.menuId ? getCustomerMenuIcon(item.menuId) : getMoreNavigationIcon(item.href);
 }
 
 export function MobileNavigationGlyph({

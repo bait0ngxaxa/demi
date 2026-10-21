@@ -5,6 +5,7 @@ import { HomeHospitalContact } from "@/components/home/home-hospital-contact";
 import { HomeHero, HomeNextAppointment } from "@/components/home/home-hero";
 import { HomeHospitalChip, type HomeHospitalOption } from "@/components/home/home-hospital-chip";
 import { HomeShortcutGrid, type HomeShortcut } from "@/components/home/home-shortcut-grid";
+import { HomeSupportLink } from "@/components/home/home-top-menu";
 import type { HospitalContentPatientListItem } from "@/modules/hospital-content/types/hospital-content-patient-projections";
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
 
@@ -26,51 +27,26 @@ function getPersistedDisplayName(patient: PatientPresentation): string | null {
   return name || null;
 }
 
-function createShortcuts(
-  selectedHospital: PatientHomeRelationship | null,
-  hasHospitalContact: boolean,
-): HomeShortcut[] {
-  const relationshipId = selectedHospital?.relationshipId;
-  const personalSelection = relationshipId
-    ? `?hospital=${encodeURIComponent(relationshipId)}`
-    : "";
-  const shortcuts: HomeShortcut[] = [
-    {
-      href: relationshipId
-        ? `/app/personal/care/${encodeURIComponent(relationshipId)}`
-        : "/app/personal/care",
-      icon: "care",
-      label: "การดูแล",
-    },
-    {
-      href: relationshipId
-        ? `/app/personal/appointments/${encodeURIComponent(relationshipId)}`
-        : "/app/personal/appointments",
-      icon: "appointments",
-      label: "นัดหมาย",
-    },
-    { href: "/app/personal/medications", icon: "medications", label: "ยาของฉัน" },
-    { href: "/app/personal/wellness", icon: "wellness", label: "บันทึกสุขภาพ" },
-    { href: "/app/personal/measurements", icon: "measurements", label: "ตัวฉันตอนนี้" },
-    { href: "/app/personal/services", icon: "services", label: "ขอรับบริการ" },
-    { href: "/app/family", icon: "family", label: "ครอบครัว" },
-  ];
-
-  if (relationshipId && hasHospitalContact) {
-    shortcuts.push({
-      href: `/app/personal${personalSelection}#personal-hospital-contact`,
-      icon: "hospital",
-      label: "ติดต่อ รพ.",
-    });
+/** The selected Hospital narrows the same deep links the former shortcuts used; other entries keep their href. */
+function withSelectedHospital(shortcut: HomeShortcut, relationshipId: string | null): HomeShortcut {
+  if (!relationshipId) {
+    return shortcut;
+  }
+  if (shortcut.href === "/app/personal/appointments") {
+    return { ...shortcut, href: `/app/personal/appointments/${encodeURIComponent(relationshipId)}` };
+  }
+  if (shortcut.href === "/app/personal#personal-hospital-contact") {
+    return { ...shortcut, href: `/app/personal?hospital=${encodeURIComponent(relationshipId)}#personal-hospital-contact` };
   }
 
-  return shortcuts;
+  return shortcut;
 }
 
 export function PatientPersonalHome({
   activeHospitals,
   knowledgeFailed = false,
   knowledgeItems,
+  menu = [],
   newsFailed = false,
   newsItems,
   nextAppointment,
@@ -80,6 +56,8 @@ export function PatientPersonalHome({
   activeHospitals?: readonly HomeHospitalOption[];
   knowledgeFailed?: boolean;
   knowledgeItems?: readonly HospitalContentPatientListItem[];
+  /** UI-01 top-menu entries from the navigation projection (`projectHomeTopMenu`). */
+  menu?: readonly HomeShortcut[];
   newsFailed?: boolean;
   newsItems?: readonly HospitalContentPatientListItem[];
   nextAppointment?: { href: string; scheduledAt: Date } | null | "UNAVAILABLE";
@@ -99,8 +77,6 @@ export function PatientPersonalHome({
   }
 
   const currentHospital = selectedHospital ?? null;
-  const hasHospitalContact = currentHospital?.hospitalContact.status === "AVAILABLE";
-  const shortcuts = createShortcuts(currentHospital, hasHospitalContact);
   const displayName = getPersistedDisplayName(patient);
   const retryHref = `/app/personal${currentHospital ? `?hospital=${encodeURIComponent(currentHospital.relationshipId)}` : ""}`;
 
@@ -125,7 +101,7 @@ export function PatientPersonalHome({
       >
         <HomeNextAppointment nextAppointment={nextAppointment ?? null} />
       </HomeHero>
-      <HomeShortcutGrid shortcuts={shortcuts} />
+      <HomeShortcutGrid shortcuts={menu.map((shortcut) => withSelectedHospital(shortcut, currentHospital?.relationshipId ?? null))} />
       {/* Two columns once the workspace is at least 64rem wide; one column below (UI-4.1). */}
       <div className="grid min-w-0 gap-x-8 @5xl/workspace:grid-cols-2">
         <HomeContentSection
@@ -153,7 +129,15 @@ export function PatientPersonalHome({
       </div>
       {currentHospital?.hospitalContact.status === "AVAILABLE" ? (
         <HomeHospitalContact contact={currentHospital.hospitalContact.contact} hospitalName={currentHospital.hospitalName} />
+      ) : currentHospital ? (
+        // The ติดต่อเรา menu opens this anchor, so a Hospital without a shown contact still says so here.
+        <section aria-labelledby="personal-hospital-contact-heading" className="mt-8 min-w-0 border-t border-border pt-6" id="personal-hospital-contact">
+          <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="personal-hospital-contact-heading">ติดต่อโรงพยาบาล</h2>
+          <p className="mt-1 break-words text-sm leading-6 text-text-muted">{currentHospital.hospitalName}</p>
+          <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลติดต่อ</p>
+        </section>
       ) : null}
+      <HomeSupportLink />
     </div>
   );
 }

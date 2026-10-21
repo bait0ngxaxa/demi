@@ -132,21 +132,28 @@ describe("Patient Personal pages", () => {
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue(profileOnlyContext.hospitalRelationships);
   });
 
-  it("renders the selected Hospital home with eight shortcuts, local content sections and a contact anchor", async () => {
+  it("renders the selected Hospital home with the five customer top-menu entries, local content sections and a contact anchor", async () => {
     const markup = renderToStaticMarkup(await PersonalHomePage());
 
     expect(markup).toContain("สวัสดี, สมชาย ใจดี");
     expect(markup).toContain("โรงพยาบาล ก");
     expect(markup).not.toContain("โรงพยาบาล ข");
     expect(markup).not.toContain("HN-001");
-    expect(markup).toContain('href="/app/personal/care/44444444-4444-4444-8444-444444444444"');
-    expect(markup).toContain('href="/app/personal/appointments/44444444-4444-4444-8444-444444444444"');
-    expect(markup).toContain('href="/app/personal/medications"');
-    expect(markup).toContain('href="/app/personal/wellness"');
-    expect(markup).toContain('href="/app/personal/measurements"');
-    expect(markup).toContain('href="/app/personal/services"');
-    expect(markup).toContain('href="/app/family"');
-    expect(markup).toContain('href="/app/personal?hospital=44444444-4444-4444-8444-444444444444#personal-hospital-contact"');
+    // UI-01 top menu, in the customer's order and wording, narrowed to the selected Hospital where it applies.
+    const topMenu = markup.slice(markup.indexOf('id="personal-shortcuts-heading"'), markup.indexOf('id="personal-home-news-heading"'));
+    expect(Array.from(topMenu.matchAll(/href="([^"]+)"/gu), (match) => match[1])).toEqual([
+      "/app/personal/appointments/44444444-4444-4444-8444-444444444444",
+      "/app/family",
+      "/app/personal/medications",
+      "/app/personal/wellness",
+      "/app/personal?hospital=44444444-4444-4444-8444-444444444444#personal-hospital-contact",
+    ]);
+    for (const label of ["ประวัติการนัดหมาย", "ครอบครัวของฉัน", "ยา", "Food &amp; Finess", "ติดต่อเรา"]) {
+      expect(topMenu).toContain(label);
+    }
+    expect(markup).toContain('id="personal-hospital-contact"');
+    expect(markup).toContain('href="/app/support"');
+    expect(markup).toContain("แจ้งปัญหาการใช้งาน");
     expect(markup).toContain('id="personal-home-news-heading"');
     expect(markup).toContain('id="personal-home-knowledge-heading"');
     expect(markup).toContain("ยังไม่มีข้อมูลติดต่อ");
@@ -164,7 +171,8 @@ describe("Patient Personal pages", () => {
       limit: 3,
     });
     const links = markup.match(/<a\b[^>]*>/gu) ?? [];
-    expect(links.length).toBeGreaterThanOrEqual(9);
+    // Five top-menu entries, two "all" links and the issue report link.
+    expect(links.length).toBeGreaterThanOrEqual(8);
     for (const link of links) expect(link).toContain('data-prefetch="false"');
     expect(getPatientPersonalHomePageContext).toHaveBeenCalledOnce();
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
@@ -185,8 +193,10 @@ describe("Patient Personal pages", () => {
 
     expect(markup).toContain('name="hospital"');
     expect(markup).toContain('value="55555555-5555-4555-8555-555555555555" selected=""');
-    expect(markup).toContain('href="/app/personal/care/55555555-5555-4555-8555-555555555555"');
-    expect(markup).not.toContain("personal-hospital-contact");
+    expect(markup).toContain('href="/app/personal/appointments/55555555-5555-4555-8555-555555555555"');
+    expect(markup).toContain('href="/app/personal?hospital=55555555-5555-4555-8555-555555555555#personal-hospital-contact"');
+    // No contact is shown for this Hospital, so the ติดต่อเรา anchor says so instead of landing nowhere.
+    expect(markup).toContain('id="personal-hospital-contact"');
     expect(homeServices.nextAppointment).toHaveBeenCalledWith(completeContext.actor, secondRelationship.relationshipId);
     expect(homeServices.content).toHaveBeenCalledWith(completeContext.actor, {
       category: "NEWS",
@@ -244,7 +254,7 @@ describe("Patient Personal pages", () => {
       expect(markup).not.toContain("ยังไม่มีข่าวสารจาก");
       expect(markup).toContain("ยังไม่มีสื่อความรู้จากโรงพยาบาล ก");
       expect(markup).toContain("สวัสดี, สมชาย ใจดี");
-      expect(markup).toContain('href="/app/personal/care/44444444-4444-4444-8444-444444444444"');
+      expect(markup).toContain('href="/app/personal/appointments/44444444-4444-4444-8444-444444444444"');
     });
 
     it("shows that the next appointment could not load while the rest of the home renders", async () => {
@@ -295,11 +305,11 @@ describe("Patient Personal pages", () => {
 
     expect(markup).toContain("สวัสดี");
     expect(markup).toContain("ยังไม่มีโรงพยาบาลที่พร้อมใช้งาน");
-    expect(markup).toContain('href="/app/personal/care"');
+    // Without an active Hospital the entries stay generic; no Hospital affiliation or contact is invented.
     expect(markup).toContain('href="/app/personal/appointments"');
-    expect(markup).toContain('href="/app/personal/services"');
-    expect(markup).not.toContain('href="/app/personal/care/');
-    expect(markup).not.toContain("personal-hospital-contact");
+    expect(markup).toContain('href="/app/personal#personal-hospital-contact"');
+    expect(markup).not.toContain('href="/app/personal/appointments/');
+    expect(markup).not.toContain('id="personal-hospital-contact"');
     expect(homeServices.nextAppointment).not.toHaveBeenCalled();
     expect(homeServices.content).not.toHaveBeenCalled();
   });

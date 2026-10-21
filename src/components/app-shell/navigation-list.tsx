@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { LoadingSpinner } from "@/components/ui/button";
 import { classNames } from "@/components/ui/class-names";
 
-import { getMoreNavigationIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
+import { getNavigationItemIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
 import { compareNavigationSections } from "./navigation-sections";
 import {
   getWorkspaceContextForPathname,
@@ -120,7 +120,7 @@ export function NavigationList({
                       prefetch={item.prefetch}
                       onNavigate={onNavigate ? (event) => onNavigate(event, item.href) : undefined}
                     >
-                      <MobileNavigationGlyph icon={getMoreNavigationIcon(item.href)} />
+                      <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       {collapsed ? null : <span className="min-w-0 flex-1">{item.label}</span>}
                       <NavigationPendingHint />
                     </Link>

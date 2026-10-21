@@ -5,6 +5,8 @@ import type { ApplicationWorkspaceContext, NavigationSectionId } from "./navigat
  * Work Home grid) renders sections in this order; `account` is last and the sidebar pins it to the bottom.
  */
 export const NAVIGATION_SECTION_ORDER: readonly NavigationSectionId[] = [
+  "primary",
+  "top-menu",
   "home",
   "care",
   "health-records",
@@ -24,8 +26,11 @@ export function getNavigationSectionLabel(
   administrationScope: NavigationAdministrationScope = "hospital",
 ): string | null {
   switch (id) {
+    case "primary":
     case "home":
       return null;
+    case "top-menu":
+      return "เมนูด่วน";
     case "care":
       return workspace === "personal" ? "การดูแลของฉัน" : "ดูแลผู้ป่วย";
     case "health-records":

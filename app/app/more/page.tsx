@@ -62,10 +62,16 @@ export default async function MorePage({ searchParams }: MorePageProps): Promise
     : [];
   const moreGroups = projectMoreNavigation(navigation, primaryTabs);
   const displayName = await getActorDisplayName(actor);
+  // UI-01: the Patient reaches this hub from the Personal โปรไฟล์ tab; Work roles keep เพิ่มเติม.
+  const isProfileHub = navigation.some(({ id, workspace }) => id === "primary" && workspace === selectedWorkspace);
 
   return (
     <div className="content-workspace break-words">
-      <PageHeader description="เมนูและการตั้งค่าบัญชีของคุณ" title="เพิ่มเติม" />
+      {isProfileHub ? (
+        <PageHeader description="บัญชี การตั้งค่า และเมนูอื่นตามสิทธิ์ของคุณ" title="โปรไฟล์" />
+      ) : (
+        <PageHeader description="เมนูและการตั้งค่าบัญชีของคุณ" title="เพิ่มเติม" />
+      )}
 
       <section aria-label="บัญชีผู้ใช้" className="border-b border-border py-6">
         <p className="text-lg font-semibold text-text">{displayName}</p>
