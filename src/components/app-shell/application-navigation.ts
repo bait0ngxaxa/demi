@@ -116,6 +116,20 @@ function canReadHospitalReports(actor: ActorContext): boolean {
   );
 }
 
+// Export-only entry for a MEMBER (OWNERs export from the report page).
+function canOnlyExportHospitalReports(actor: ActorContext): boolean {
+  return !canReadHospitalReports(actor) && actor.hospitalMemberships.some((membership) =>
+    decideHospitalReportPolicy({
+      actor,
+      capability: HOSPITAL_REPORT_CAPABILITIES.export,
+      target: {
+        hospitalId: membership.hospitalId,
+        hospitalStatus: membership.hospitalStatus,
+      },
+    }).allowed,
+  );
+}
+
 function canActivatePatients(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     hasPatientActivationHospitalScope(actor, hospitalId),
@@ -314,7 +328,9 @@ function projectWorkSections(
       governance.onboarding,
     ])),
     ...section("reports-info", "work", compact([
-      canReadHospitalReports(actor) && { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" },
+      canReadHospitalReports(actor)
+        ? { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" }
+        : canOnlyExportHospitalReports(actor) && { href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" },
       canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/areas", label: "เขตความรับผิดชอบ", match: "exact", prefetch: false },
       hasActiveWorkHospital(actor) && { href: "/app/hospitals/content", label: "ข่าวสารและความรู้", match: "prefix" },
       canReadWorkHospitalContacts(actor) && { href: "/app/hospitals/contacts", label: "ติดต่อโรงพยาบาล", match: "exact" },

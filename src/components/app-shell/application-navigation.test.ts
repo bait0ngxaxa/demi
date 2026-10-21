@@ -123,7 +123,8 @@ const ownerSections = (areas: boolean) => [
 const memberSections = () => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/patients"]],
-  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]],
+  // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
+  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
 ] as const;
 

@@ -14,7 +14,7 @@ import {
   HOSPITAL_REPORT_CAPABILITIES,
 } from "../policies/hospital-report-policy";
 import {
-  listHospitalReportExportGrantHospitals,
+  listHospitalReportMemberExportHospitals,
   listHospitalReportingHospitals,
   resolveHospitalReportingAccessContext,
   type HospitalReportAccessDatabase,
@@ -131,7 +131,7 @@ describe("Hospital reporting access service", () => {
     });
   });
 
-  describe("E1 report export grant for MEMBER staff", () => {
+  describe("report export for MEMBER staff (no OWNER grant required)", () => {
     const memberActor: ActorContext = {
       ...actor,
       hospitalMemberships: [{ ...actor.hospitalMemberships[0]!, membershipType: MembershipType.MEMBER }],
@@ -139,14 +139,17 @@ describe("Hospital reporting access service", () => {
     const grantedRow: MembershipRow = { hospital, membershipType: MembershipType.MEMBER, profession: null, reportExportGrantedAt: new Date("2026-10-16T00:00:00.000Z") };
     const ungrantedRow: MembershipRow = { ...grantedRow, reportExportGrantedAt: null };
 
-    it("denies a persisted obsolete MEMBER grant", async () => {
-      const { database: db } = database(grantedRow);
-      await expect(
-        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
-      ).rejects.toBeInstanceOf(ForbiddenError);
-    });
+    it.each([["with", grantedRow], ["without", ungrantedRow]] as const)(
+      "allows an ACTIVE MEMBER %s a historical grant to export, recording the access basis",
+      async (_label, row) => {
+        const { database: db } = database(row);
+        await expect(
+          resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+        ).resolves.toMatchObject({ hospital, accessBasis: "MEMBER" });
+      },
+    );
 
-    it("denies a granted ACTIVE MEMBER the INCLUDE_ENDED cohort", async () => {
+    it("denies an ACTIVE MEMBER the INCLUDE_ENDED cohort", async () => {
       const { database: db } = database(grantedRow);
 
       await expect(
@@ -154,26 +157,18 @@ describe("Hospital reporting access service", () => {
       ).rejects.toBeInstanceOf(ForbiddenError);
     });
 
-    it("uses the database grant, not a stale session flag", async () => {
-      const { database: db } = database(ungrantedRow);
-      const staleSessionActor: ActorContext = {
-        ...memberActor,
-        hospitalMemberships: [{ ...memberActor.hospitalMemberships[0]!, reportExportGranted: true }],
-      };
-      await expect(
-        resolveHospitalReportingAccessContext(staleSessionActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
-      ).rejects.toBeInstanceOf(ForbiddenError);
-    });
-
-    it("refuses a MEMBER export without the grant with 403 semantics", async () => {
+    it("uses the persisted membership type, not a stale session OWNER claim", async () => {
       const { database: db } = database(ungrantedRow);
       await expect(
-        resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+        resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db, "INCLUDE_ENDED"),
       ).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(
+        resolveHospitalReportingAccessContext(actor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
+      ).resolves.toMatchObject({ accessBasis: "MEMBER" });
     });
 
     it.each([HOSPITAL_REPORT_CAPABILITIES.dashboardRead, HOSPITAL_REPORT_CAPABILITIES.rowRead])(
-      "keeps %s hidden from a granted MEMBER",
+      "keeps %s hidden from a MEMBER",
       async (capability) => {
         const { database: db } = database(grantedRow);
         await expect(
@@ -182,7 +177,7 @@ describe("Hospital reporting access service", () => {
       },
     );
 
-    it("loses the grant effect when the membership is no longer ACTIVE (query returns nothing)", async () => {
+    it("loses export when the membership is no longer ACTIVE (query returns nothing)", async () => {
       const { database: db } = database(null);
       await expect(
         resolveHospitalReportingAccessContext(memberActor, hospitalId, HOSPITAL_REPORT_CAPABILITIES.export, db),
@@ -199,10 +194,17 @@ describe("Hospital reporting access service", () => {
       ).resolves.toMatchObject({ accessBasis: "OWNER" });
     });
 
-    it("does not list obsolete MEMBER export grants", async () => {
-      const { database: db, findMany } = database(grantedRow);
-      await expect(listHospitalReportExportGrantHospitals(memberActor, db)).resolves.toEqual([]);
-      expect(findMany).not.toHaveBeenCalled();
+    it("lists every ACTIVE MEMBER membership, without a grant filter", async () => {
+      const { database: db, findMany } = database(ungrantedRow);
+      await expect(listHospitalReportMemberExportHospitals(memberActor, db)).resolves.toEqual([hospital]);
+      const where = (findMany.mock.calls[0]?.[0] as { where: Record<string, unknown> }).where;
+      expect(where).toMatchObject({
+        userId: actorUserId,
+        membershipType: MembershipType.MEMBER,
+        status: MembershipStatus.ACTIVE,
+        hospital: { is: { status: HospitalStatus.ACTIVE } },
+      });
+      expect(where).not.toHaveProperty("reportExportGrantedAt");
     });
   });
 

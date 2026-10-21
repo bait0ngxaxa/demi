@@ -3,6 +3,8 @@
 - Status: Accepted — latest confirmed Product Owner decision, 2026-10-21
 - Supersedes administrative authority in ADR-0004, ADR-0008 (including 2026-10-14 D1), ADR-0011 and the E1 MEMBER delegated Hospital export decision.
 
+> **Amendment — 2026-10-21 (Product Owner):** MEMBER report export is restored and needs no OWNER grant. Every ACTIVE MEMBER of an ACTIVE Hospital may export that Hospital's ACTIVE-cohort workbook (`/app/hospitals/reporting/export`, audit `accessBasis: MEMBER`). The dashboard, row reads, the `INCLUDE_ENDED` cohort, network/Parent-to-Child reports and grant management stay OWNER-only; historical `reportExportGranted` values have no effect. The sentences below that deny MEMBER export are superseded.
+
 OWNER is the Hospital administrative control plane. MEMBER and OSM are the patient care operational plane. Care relationships must not independently confer roster, workforce, invitation, approval or administrative reporting authority. Historical decision text is retained under visible superseding notices.
 
 Only an ACTIVE direct OWNER of the exact ACTIVE Hospital may import patients, manage workforce/OSM and caregiver assignments, issue patient activation invitations, review account-access/service requests, manage Hospital settings/catalogs/areas and use Hospital administrative reports/exports. The persisted actor User must be ACTIVE. Holding OSM or PATIENT alongside HOSPITAL does not remove direct OWNER authority. Another Hospital, Parent or Child membership does not imply direct authority. Existing separately authorized Platform ADMIN recovery/governance and explicit network policies remain separate boundaries.

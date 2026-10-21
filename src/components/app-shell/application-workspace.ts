@@ -264,6 +264,18 @@ function projectHospitalActions(
         prefetch: false,
       });
     }
+  } else if (decideHospitalReportPolicy({
+    actor,
+    capability: HOSPITAL_REPORT_CAPABILITIES.export,
+    target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
+  }).allowed) {
+    // The export page lists every Hospital where the actor is a MEMBER, so it is a shared (uncategorized) action.
+    actions.push({
+      href: "/app/hospitals/reporting/export",
+      label: "ส่งออกรายงาน",
+      description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาล (Excel) ของผู้ป่วยที่ยังอยู่ในการดูแล",
+      prefetch: false,
+    });
   }
 
   return actions;

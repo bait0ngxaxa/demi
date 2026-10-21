@@ -50,7 +50,6 @@ import { resolveOwnPatientContext } from "@/modules/patient-self/services/patien
 import { createPatientServiceRequest, listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { getHospitalReportingPage } from "@/modules/reporting/services/hospital-report-query-service";
 import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
-import { setHospitalMembershipReportExportGrant } from "@/modules/workforce/services/workforce-service";
 import { resolveScreeningAccessContext } from "@/modules/screening/services/screening-access-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -260,27 +259,19 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     }
   });
 
-  it("prevents report export grants from including ended relationships while keeping ACTIVE exports consistent", async () => {
+  it("keeps ended relationships out of MEMBER exports while keeping ACTIVE exports consistent", async () => {
     const f = await fixture();
     const program = await openPatientProgram(f.owner, { patientHospitalRelationshipId: f.relationshipId }, dependencies);
     await db.patientProgram.update({ where: { id: program.patientProgramId }, data: { status: "COMPLETED", completedAt: now } });
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getHospitalReportingPage(f.otherOwner, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }, { database: db }))
       .rejects.toBeInstanceOf(NotFoundError);
 
-    const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId, hospitalId: f.hospitalId } });
-    await setHospitalMembershipReportExportGrant(f.owner, {
-      relationshipId: membership.id,
-      targetHospitalId: f.hospitalId,
-      expectedUpdatedAt: membership.updatedAt.toISOString(),
-      granted: true,
-    });
-
+    // Product Owner decision 2026-10-21: an ACTIVE MEMBER exports without an OWNER grant.
     const exported = await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId });
     expect(exported.buffer.byteLength).toBeGreaterThan(0);
     expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).metadata)
-      .toMatchObject({ accessBasis: "MEMBER_EXPORT_GRANT", cohort: "ACTIVE", programCount: 0 });
+      .toMatchObject({ accessBasis: "MEMBER", cohort: "ACTIVE", programCount: 0 });
 
     await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }))
       .rejects.toBeInstanceOf(ForbiddenError);

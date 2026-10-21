@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { listHospitalReportExportGrantHospitals } from "@/modules/reporting/services/hospital-report-access-service";
+import { listHospitalReportMemberExportHospitals } from "@/modules/reporting/services/hospital-report-access-service";
 import {
   getHospitalReportExportPreview,
   type HospitalReportExportPreview,
@@ -17,7 +17,7 @@ import { ExportButton } from "../hospital-report-workspace";
 
 export const metadata: Metadata = { title: "ส่งออกรายงานโรงพยาบาล" };
 
-/** Customer decision E1 (ก-15): export-only entry for MEMBER staff holding an OWNER grant. */
+/** Export-only entry for ACTIVE MEMBER staff (Product Owner decision 2026-10-21, no OWNER grant). */
 export default async function HospitalReportExportPage({
   searchParams,
 }: {
@@ -26,11 +26,11 @@ export default async function HospitalReportExportPage({
   await connection();
   if (Object.keys(await searchParams).length > 0) notFound();
 
-  let hospitals: Awaited<ReturnType<typeof listHospitalReportExportGrantHospitals>>;
+  let hospitals: Awaited<ReturnType<typeof listHospitalReportMemberExportHospitals>>;
   let previews: HospitalReportExportPreview[];
   try {
     const actor = await getProtectedApplicationActor();
-    hospitals = await listHospitalReportExportGrantHospitals(actor);
+    hospitals = await listHospitalReportMemberExportHospitals(actor);
     previews = await Promise.all(hospitals.map((hospital) => getHospitalReportExportPreview(actor, { hospitalId: hospital.id })));
   } catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
@@ -44,7 +44,7 @@ export default async function HospitalReportExportPage({
     <div className="min-w-0 max-w-3xl space-y-6">
       <PageHeader
         title="ส่งออกรายงานโรงพยาบาล"
-        description="เจ้าของโรงพยาบาลให้สิทธิ์คุณดาวน์โหลดไฟล์รายงาน (Excel) ทุกการส่งออกถูกบันทึกไว้ กรุณาใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล"
+        description="สมาชิกโรงพยาบาลดาวน์โหลดไฟล์รายงาน (Excel) ของผู้ป่วยที่ยังอยู่ในการดูแลได้ ทุกการส่งออกถูกบันทึกไว้ กรุณาใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล"
       />
       <ul className="space-y-4">
         {hospitals.map((hospital, index) => (

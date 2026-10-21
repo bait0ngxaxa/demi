@@ -19,7 +19,7 @@ export type HospitalReportPolicyTarget = {
 };
 
 export type HospitalReportPolicyDecision =
-  | { allowed: true; reason: "active_direct_hospital_owner" }
+  | { allowed: true; reason: "active_direct_hospital_owner" | "active_hospital_member_export" }
   | {
       allowed: false;
       reason:
@@ -69,10 +69,15 @@ export function decideHospitalReportPolicy(input: {
   const ownerMembership = activeMemberships.find(
     (candidate) => candidate.membershipType === MembershipType.OWNER,
   );
+  // Product Owner decision 2026-10-21 (amends ADR-0019): every ACTIVE MEMBER may export the
+  // ACTIVE cohort without a grant; the dashboard, row reads and INCLUDE_ENDED stay OWNER-only.
+  const exportMembership = input.capability === HOSPITAL_REPORT_CAPABILITIES.export
+    ? activeMemberships.find((candidate) => candidate.membershipType === MembershipType.MEMBER)
+    : undefined;
   if (input.cohort === "INCLUDE_ENDED" && !ownerMembership) {
     return { allowed: false, reason: "active_direct_owner_required" };
   }
-  const membership = ownerMembership;
+  const membership = ownerMembership ?? exportMembership;
 
   if (!membership) {
     return { allowed: false, reason: "active_direct_owner_required" };
@@ -87,7 +92,7 @@ export function decideHospitalReportPolicy(input: {
 
   return {
     allowed: true,
-    reason: "active_direct_hospital_owner",
+    reason: ownerMembership ? "active_direct_hospital_owner" : "active_hospital_member_export",
   };
 }
 

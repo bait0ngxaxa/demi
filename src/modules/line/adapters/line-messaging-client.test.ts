@@ -64,7 +64,8 @@ describe("DEMI LINE Messaging API boundary", () => {
     ]);
   });
 
-  it("projects OSM work entry as safe directories and leaves provisioning scope to the existing server workflow", () => {
+  // ADR-0019: every OSM menu has four primary care actions and no patient import entry.
+  it("projects OSM work entry as safe directories without an OWNER-only import action", () => {
     const osmMenu = LINE_RICH_MENU_BY_KEY.get("OSM_PATIENT_OSM_HOSPITAL");
     if (!osmMenu) throw new Error("Expected the OSM multi-role menu");
 
@@ -74,7 +75,6 @@ describe("DEMI LINE Messaging API boundary", () => {
       { type: "uri", label: "ผู้ป่วยที่ดูแล", uri: "https://demi.example.org/app/patients/assigned" },
       { type: "uri", label: "คัดกรองผู้ป่วย", uri: "https://demi.example.org/app/patients/assigned?task=screening" },
       { type: "uri", label: "บันทึกติดตาม", uri: "https://demi.example.org/app/patients/assigned?task=followup" },
-      { type: "uri", label: "เพิ่มผู้ป่วย", uri: "https://demi.example.org/app/patients/provision" },
       { type: "uri", label: "งานทั้งหมด", uri: "https://demi.example.org/app" },
       { type: "richmenuswitch", label: "ข้อมูลของฉัน", richMenuAliasId: "d17j1_p_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
       { type: "richmenuswitch", label: "งานโรงพยาบาล", richMenuAliasId: "d17j1_h_poh", data: LINE_WORKSPACE_SWITCH_MARKER },

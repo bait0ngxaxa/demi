@@ -26,8 +26,12 @@ const operations: { name: string; allows: (subject: ActorContext, targetHospital
   { name: "patient activation", allows: (subject, targetHospitalId) => decidePatientActivationIssuePolicy({ actor: subject, targetHospitalId, capability: PATIENT_ACTIVATION_ISSUE_CAPABILITY }).allowed },
   { name: "account request review", allows: (subject, targetHospitalId) => decidePatientAccessRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY }).allowed },
   ...[PATIENT_SERVICE_REQUEST_CAPABILITIES.review, PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability }).allowed })),
-  ...Object.values(HOSPITAL_REPORT_CAPABILITIES).map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideHospitalReportPolicy({ actor: subject, capability, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed })),
+  // Report export is not OWNER-only (Product Owner decision 2026-10-21); it is covered separately below.
+  ...[HOSPITAL_REPORT_CAPABILITIES.dashboardRead, HOSPITAL_REPORT_CAPABILITIES.rowRead].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideHospitalReportPolicy({ actor: subject, capability, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed })),
 ];
+
+const allowsExport = (subject: ActorContext, targetHospitalId: string): boolean =>
+  decideHospitalReportPolicy({ actor: subject, capability: HOSPITAL_REPORT_CAPABILITIES.export, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed;
 
 describe.each(operations)("Owner administration: $name", ({ allows }) => {
   it("retains direct OWNER authority for a multi-role identity", () => {
@@ -56,5 +60,32 @@ describe.each(operations)("Owner administration: $name", ({ allows }) => {
   it("denies a suspended Hospital", () => {
     const subject = actor();
     expect(allows({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, hospitalStatus: HospitalStatus.SUSPENDED })) }, hospitalId)).toBe(false);
+  });
+});
+
+describe("Report export: OWNER and every ACTIVE MEMBER of the exact Hospital", () => {
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows an ACTIVE %s of the exact Hospital", (membershipType) => {
+    expect(allowsExport(actor(membershipType), hospitalId)).toBe(true);
+    expect(allowsExport({ ...actor(membershipType), hospitalMemberships: actor(membershipType).hospitalMemberships.map((membership) => ({ ...membership, reportExportGranted: false })) }, hospitalId)).toBe(true);
+  });
+
+  it("does not inherit export from a membership at another Hospital", () => {
+    for (const membershipType of [MembershipType.OWNER, MembershipType.MEMBER]) {
+      expect(allowsExport(actor(membershipType), otherHospitalId)).toBe(false);
+    }
+  });
+
+  it.each([Role.OSM, Role.PATIENT, Role.ADMIN])("denies %s-only identities", (role) => {
+    expect(allowsExport({ ...actor(MembershipType.MEMBER), roles: [role] }, hospitalId)).toBe(false);
+  });
+
+  it.each([MembershipStatus.SUSPENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.ENDED])("denies a %s MEMBER", (status) => {
+    const subject = actor(MembershipType.MEMBER);
+    expect(allowsExport({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, status })) }, hospitalId)).toBe(false);
+  });
+
+  it("denies a MEMBER of a suspended Hospital", () => {
+    const subject = actor(MembershipType.MEMBER);
+    expect(allowsExport({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, hospitalStatus: HospitalStatus.SUSPENDED })) }, hospitalId)).toBe(false);
   });
 });

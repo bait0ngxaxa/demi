@@ -154,8 +154,9 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
       expect(workforce(parentMember, WORKFORCE_CAPABILITIES.osmRead, childId)).toBe(false);
     });
 
-    it("rejects obsolete Parent ก-15 grants for every Hospital", () => {
-      expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, parentId)).toBe(false);
+    // Product Owner decision 2026-10-21: a MEMBER exports its own Hospital only; grants add nothing.
+    it("exports only its own Parent Hospital, never a Child or the network", () => {
+      expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, parentId)).toBe(true);
       expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
       expect(networkAllowed(parentMemberWithGrant, NETWORK.export)).toBe(false);
     });
@@ -191,9 +192,10 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
       expect(workforce(childMember, WORKFORCE_CAPABILITIES.create, childId)).toBe(false);
     });
 
-    it("rejects obsolete Child delegated export grants", () => {
-      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
-      expect(hospitalReport(childMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
+    it("exports its own Child Hospital with or without a historical grant", () => {
+      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
+      expect(hospitalReport(childMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
+      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, childId)).toBe(false);
     });
 
     it("denies using the membership or grant to read/export another Hospital", () => {
@@ -230,8 +232,8 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
       expect(networkAllowed(subject, NETWORK.export)).toBe(false);
     });
 
-    it("denies a revoked ก-15 grant", () => {
-      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
+    it("does not depend on a ก-15 grant: revoking one leaves own-Hospital export unchanged", () => {
+      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
     });
   });
 

@@ -121,7 +121,7 @@ const cases: Case[] = [
     scope: "hospital", selected: hospitalA,
     hero: withHospital("/app/patients", hospitalA),
     tiles: [withHospital("/app/patients", hospitalA)],
-    shared: [],
+    shared: ["/app/hospitals/reporting/export"],
   },
   {
     name: "Hospital OWNER",
@@ -183,7 +183,7 @@ const cases: Case[] = [
     hero: withHospital("/app/patients", hospitalA),
     // OSM task tiles belong to the OSM Hospital only; they never appear under another Hospital's chip.
     tiles: [withHospital("/app/patients", hospitalA)],
-    shared: [],
+    shared: ["/app/hospitals/reporting/export"],
   },
 ];
 

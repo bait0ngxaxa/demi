@@ -80,7 +80,9 @@ describe("/app/more page", () => {
     expect(html).toContain("สมชาย ใจดี");
     expect(html).toContain("อสม.");
     expect(html).toContain('data-full-width="true"');
-    expect(html).toContain("href=\"/app/patients/provision\"");
+    // ADR-0019: OSM work menus never offer patient import; the work menu is still projected.
+    expect(html).toContain('href="/app/hospitals/content"');
+    expect(html).not.toContain("/app/patients/provision");
     expect(dependencies.actor).toHaveBeenCalledTimes(1);
     expect(dependencies.displayName).toHaveBeenCalledWith(expect.objectContaining({ personId: "33333333-3333-4333-8333-333333333333" }));
   });
@@ -92,14 +94,14 @@ describe("/app/more page", () => {
     expect(html).toContain('href="/app/more?workspace=personal"');
     expect(html).toContain('href="/app/more?workspace=work"');
     expect(html).toContain("href=\"/app/personal/profile\"");
-    expect(html).not.toContain("href=\"/app/patients/provision\"");
+    expect(html).not.toContain('href="/app/hospitals/content"');
   });
 
   it("rejects duplicate workspace query values and defaults dual-workspace actors to Work", async () => {
     const html = await renderPage(actor([Role.PATIENT, Role.OSM]), ["personal", "work"]);
 
     expect(html).toContain('href="/app/more?workspace=personal"');
-    expect(html).toContain('href="/app/patients/provision"');
+    expect(html).toContain('href="/app/hospitals/content"');
     expect(html).not.toContain('href="/app/personal/profile"');
   });
 });

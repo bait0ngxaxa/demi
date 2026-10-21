@@ -108,7 +108,7 @@ describe("Hospital reporting policy", () => {
   });
 });
 
-describe("E1 MEMBER report export grant", () => {
+describe("MEMBER report export (no OWNER grant required)", () => {
   function grantedMember(overrides: { status?: MembershipStatus; granted?: boolean; hospitalStatus?: HospitalStatus } = {}): ActorContext {
     const actor = hospitalOwnerActor({
       membershipType: MembershipType.MEMBER,
@@ -124,24 +124,33 @@ describe("E1 MEMBER report export grant", () => {
     };
   }
 
-  it("denies obsolete delegated export", () => {
+  it("allows export only, with or without a historical grant", () => {
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
-      allowed: false,
-      reason: "active_direct_owner_required",
+      allowed: true,
+      reason: "active_hospital_member_export",
+    });
+    expect(decide(grantedMember({ granted: false }), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
+      allowed: true,
+      reason: "active_hospital_member_export",
     });
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.dashboardRead).allowed).toBe(false);
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.rowRead).allowed).toBe(false);
   });
 
   it.each([MembershipStatus.SUSPENDED, MembershipStatus.ENDED, MembershipStatus.PROVISIONED])(
-    "denies a %s membership even with the grant",
+    "denies a %s membership",
     (status) => {
       expect(decide(grantedMember({ status }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
     },
   );
 
-  it("denies without the grant, for another Hospital, or for an inactive Hospital", () => {
-    expect(decide(grantedMember({ granted: false }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+  it("denies the INCLUDE_ENDED cohort, another Hospital, or an inactive Hospital", () => {
+    expect(decideHospitalReportPolicy({
+      actor: grantedMember({ granted: false }),
+      capability: HOSPITAL_REPORT_CAPABILITIES.export,
+      cohort: "INCLUDE_ENDED",
+      target: { hospitalId: hospitalAId, hospitalStatus: HospitalStatus.ACTIVE },
+    })).toEqual({ allowed: false, reason: "active_direct_owner_required" });
     expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export, hospitalBId).allowed).toBe(false);
     expect(decide(grantedMember({ hospitalStatus: HospitalStatus.SUSPENDED }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
   });

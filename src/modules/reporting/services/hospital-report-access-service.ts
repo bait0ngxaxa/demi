@@ -37,7 +37,7 @@ export type HospitalReportingHospital = {
 export type HospitalReportingAccessContext = {
   actor: ActorContext;
   hospital: HospitalReportingHospital;
-  accessBasis: "OWNER";
+  accessBasis: "OWNER" | "MEMBER";
 };
 
 function getDatabase(database?: HospitalReportAccessDatabase): HospitalReportAccessDatabase {
@@ -104,7 +104,7 @@ export async function resolveHospitalReportingAccessContext(
 
   try {
     const db = getDatabase(database);
-    // Rebuild authority from the persisted exact membership; historical grants confer no authority.
+    // Rebuild authority from the persisted exact membership; historical export grants confer nothing extra.
     const membership = await db.hospitalMembership.findFirst({
       where: {
         userId: actor.userId,
@@ -152,7 +152,7 @@ export async function resolveHospitalReportingAccessContext(
     });
 
     if (!decision.allowed) {
-      // MEMBER dashboard/row reads stay hidden as before; a MEMBER export without the grant is a 403.
+      // MEMBER dashboard/row reads stay hidden; a MEMBER INCLUDE_ENDED export is a 403.
       if (membership.membershipType === MembershipType.MEMBER && capability !== HOSPITAL_REPORT_CAPABILITIES.export) {
         throw new NotFoundError();
       }
@@ -162,7 +162,7 @@ export async function resolveHospitalReportingAccessContext(
     return {
       actor,
       hospital: membership.hospital,
-      accessBasis: "OWNER",
+      accessBasis: decision.reason === "active_direct_hospital_owner" ? "OWNER" : "MEMBER",
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
@@ -170,14 +170,43 @@ export async function resolveHospitalReportingAccessContext(
   }
 }
 
-/** Historical MEMBER export grants no longer authorize any report access. */
-export async function listHospitalReportExportGrantHospitals(
+/** Hospitals where the actor is an ACTIVE MEMBER, which may export without an OWNER grant. */
+export async function listHospitalReportMemberExportHospitals(
   actor: ActorContext | null | undefined,
-  _database?: HospitalReportAccessDatabase,
+  database?: HospitalReportAccessDatabase,
 ): Promise<HospitalReportingHospital[]> {
   validateActor(actor);
-  void _database;
-  return [];
+
+  if (!actor.roles.includes(Role.HOSPITAL)) {
+    return [];
+  }
+
+  try {
+    const memberships = await getDatabase(database).hospitalMembership.findMany({
+      where: {
+        userId: actor.userId,
+        membershipType: MembershipType.MEMBER,
+        status: MembershipStatus.ACTIVE,
+        user: {
+          is: {
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.HOSPITAL } },
+          },
+        },
+        hospital: { is: { status: HospitalStatus.ACTIVE } },
+      },
+      orderBy: [{ hospital: { name: "asc" } }, { hospitalId: "asc" }],
+      select: {
+        hospital: {
+          select: { id: true, hospitalCode: true, name: true, status: true },
+        },
+      },
+    });
+
+    return memberships.map(({ hospital }) => hospital);
+  } catch {
+    throw new InfrastructureError("Hospital report export access could not be loaded");
+  }
 }
 
 export const hospitalReportAccessInternals = {

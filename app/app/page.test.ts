@@ -119,7 +119,8 @@ describe("application home workspace routing", () => {
     return { ...patientActor, roles, hospitalMemberships: [{ hospitalId, membershipType, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] };
   }
 
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])("prioritizes patient care and keeps scoped staff operations for %s", async (type) => {
+  it("prioritizes patient care and keeps direct administration for OWNER", async () => {
+    const type = MembershipType.OWNER;
     const html = await renderHome(staff(type));
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html.indexOf(`/app/patients?hospitalId=${hospitalId}`)).toBeLessThan(html.indexOf("ข้อมูลบัญชีและสิทธิ์"));
@@ -127,10 +128,9 @@ describe("application home workspace routing", () => {
     expect(html).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
     expect(html).toContain('href="/app/patients/service-requests"');
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลที่เลือก");
-    // ADR-0008 amendment (D1): a MEMBER reaches workforce only for OSM, with a scoped note.
     expect(section(html, "work-home-menu-heading")).toContain(`/app/workforce?hospitalId=${hospitalId}`);
-    expect(html.includes("สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น")).toBe(type === MembershipType.MEMBER);
-    expect(html.includes("เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้")).toBe(type === MembershipType.OWNER);
+    expect(html).not.toContain("สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น");
+    expect(html).toContain("เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้");
     // The hero is the first care action of the selected Hospital, as a link without counts.
     expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
     expect(html.includes('href="/app/patients/service-catalog"')).toBe(type === MembershipType.OWNER);
@@ -138,7 +138,7 @@ describe("application home workspace routing", () => {
       expect(html.includes(`href="/app/hospitals/${path}?hospitalId=${hospitalId}"`)).toBe(type === MembershipType.OWNER);
     }
     expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
-    expect(html.includes("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง")).toBe(type === MembershipType.MEMBER);
+    expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
     expect(html).not.toMatch(/งานถัดไป|งานค้าง|วันนี้|เปอร์เซ็นต์/);
     expect(html).toContain("focus-visible:ring-focus-ring");
@@ -152,10 +152,25 @@ describe("application home workspace routing", () => {
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
   });
 
+  // ADR-0019: import, activation, workforce and request review are OWNER-only; every MEMBER may
+  // still export reports (Product Owner decision 2026-10-21).
+  it("shows a MEMBER patient care and report export, without OWNER administration or request review", async () => {
+    const html = await renderHome(staff(MembershipType.MEMBER));
+    expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
+    expect(section(html, "work-home-menu-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
+    for (const ownerOnly of ["/app/patients/provision", "/app/patients/activation", "/app/workforce", "/app/patients/service-requests", "/app/patients/access-requests", "/app/patients/service-catalog", `/app/hospitals/reporting?hospitalId=${hospitalId}`]) {
+      expect(html).not.toContain(ownerOnly);
+    }
+    expect(section(html, "work-home-shared-heading")).toContain('href="/app/hospitals/reporting/export"');
+    expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
+    expect(html).not.toContain("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง");
+    expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
+  });
+
   it("shows OSM assigned care first without general directory or bulk import", async () => {
     const html = await renderHome({ ...patientActor, roles: [Role.OSM], osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] });
     expect(html).toContain('href="/app/patients/assigned"');
-    expect(html.indexOf('href="/app/patients/assigned"')).toBeLessThan(html.indexOf(`/app/patients/provision?hospitalId=${hospitalId}`));
+    expect(html).not.toContain("/app/patients/provision");
     expect(section(html, "work-home-heading")).toContain('href="/app/patients/assigned"');
     const grid = section(html, "work-home-menu-heading");
     expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);

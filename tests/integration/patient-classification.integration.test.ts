@@ -338,10 +338,15 @@ describe("Phase 16D.3 Patient classification PostgreSQL workflow", () => {
       hospitalId: hospitalB.id,
       membershipType: MembershipType.MEMBER,
     });
+    // ADR-0019: only an OWNER provisions; the MEMBER below keeps its classification care scope.
+    const ownerB = await createHospitalActor({
+      hospitalId: hospitalB.id,
+      membershipType: MembershipType.OWNER,
+    });
     const input = patientInput("1000000000106", hospitalA.id);
     const patientInA = await provisionPatient(owner.actor, input, importDependencies());
     const patientInB = await provisionPatient(
-      member.actor,
+      ownerB.actor,
       { ...input, targetHospitalId: hospitalB.id },
       importDependencies(),
     );

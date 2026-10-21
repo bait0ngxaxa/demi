@@ -130,7 +130,7 @@ describe("application workspace projection", () => {
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
-    expect(projection.requestActions.map(({ href }) => href)).toEqual([]);
+    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/hospitals/reporting/export"]);
     expect(projection.supportingActions).toHaveLength(0);
   });
 
