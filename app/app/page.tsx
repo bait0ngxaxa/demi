@@ -222,11 +222,10 @@ export default async function ApplicationPage(
       {home.tiles.length > 0 ? (
         <>
           <HomeShortcutGrid heading="เมนูงาน" headingId="work-home-menu-heading" shortcuts={home.tiles} />
+          {/* ADR-0019: only a direct OWNER has administration actions. */}
           {selectedHospital?.actions.some(({ category }) => category === "administration") ? (
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              {selectedHospital.administrationScope === "OWNER"
-                ? "บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้"
-                : "จัดการ อสม. · สิทธิ์สมาชิกโดยตรง สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น การบริหารบุคลากรและการจัดการอื่นเป็นสิทธิ์ของเจ้าของโรงพยาบาล"}
+              บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
             </p>
           ) : null}
         </>

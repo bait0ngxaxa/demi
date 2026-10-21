@@ -120,7 +120,7 @@ describe("persisted Owner administration", () => {
     await expect(assertPatientActivationActorInDatabase(db, subject.userId, hospital.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("rejects stale OWNER snapshots and persisted historical export grants", async () => {
+  it("rejects stale OWNER snapshots, and historical export grants add nothing", async () => {
     await db.hospitalMembership.updateMany({ where: { userId: member.userId }, data: { reportExportGrantedAt: new Date(), reportExportGrantedByUserId: owner.userId } });
     const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
     await expect(resolvePatientImportTemplateTarget(staleOwner, hospital.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -130,7 +130,10 @@ describe("persisted Owner administration", () => {
     await expect(listWorkforceHospitals(staleOwner)).resolves.toEqual([]);
     await expect(locateHospitalPatientAccessRequest(staleOwner, { hospitalId: hospital.id, nationalId: "1000000000009" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listHospitalPatientServiceRequests(staleOwner)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // A MEMBER exports as MEMBER (2026-10-21); the stale OWNER claim never unlocks OWNER-only report scopes.
+    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export)).resolves.toMatchObject({ accessBasis: "MEMBER" });
+    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export, undefined, "INCLUDE_ENDED")).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.dashboardRead)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("revalidates user, membership and Hospital suspension against the database", async () => {

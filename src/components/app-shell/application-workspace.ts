@@ -47,7 +47,6 @@ export type ApplicationWorkspaceAction = {
 export type ApplicationHospitalWorkspace = ActorHospitalWorkspace & {
   actions: readonly ApplicationWorkspaceAction[];
   contextLabel: string;
-  administrationScope: "OWNER" | "MEMBER";
 };
 
 /** STAFF-04 work-area selector group: the actor's own direct work contexts under one parent network. */
@@ -299,14 +298,6 @@ export function projectApplicationWorkspace(
   const hospitals = projected.map((workspace) => ({
     ...workspace,
     contextLabel: workspaceContextLabel(actor, workspace.hospitalId),
-    administrationScope: actor.hospitalMemberships.some(
-      (membership) =>
-        membership.hospitalId === workspace.hospitalId &&
-        membership.membershipType === "OWNER" &&
-        membership.status === MembershipStatus.ACTIVE,
-    )
-      ? ("OWNER" as const)
-      : ("MEMBER" as const),
     actions: workspace.actions.filter((action) => Boolean(action.category)),
   }));
 

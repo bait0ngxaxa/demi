@@ -543,8 +543,12 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     expect(JSON.stringify(exportAudit?.metadata)).not.toContain("SYNTHETIC_PRIVATE_NOTE");
 
     await expect(getHospitalReportingPage(memberA.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
-    // E1 (ก-15): a MEMBER of this Hospital without the OWNER export grant is refused with 403 semantics.
-    await expect(getHospitalReportingDatasetForExport(memberA.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(ForbiddenError);
+    // Product Owner decision 2026-10-21: a MEMBER of this Hospital exports the ACTIVE cohort without a grant,
+    // while the INCLUDE_ENDED cohort stays OWNER-only with 403 semantics.
+    await expect(getHospitalReportingDatasetForExport(memberA.actor, { hospitalId: hospitalA.id }))
+      .resolves.toMatchObject({ cohort: "ACTIVE", hospital: { id: hospitalA.id } });
+    await expect(getHospitalReportingDatasetForExport(memberA.actor, { hospitalId: hospitalA.id, cohort: "INCLUDE_ENDED" }))
+      .rejects.toBeInstanceOf(ForbiddenError);
     await expect(getHospitalReportingPage(ownerB.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingPage(osm.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingPage(admin.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);

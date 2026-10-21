@@ -149,15 +149,18 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   afterEach(async () => { vi.unstubAllEnvs(); await cleanup(); });
   afterAll(async () => { await db.$disconnect(); });
 
-  it("E1 superseded: MEMBER export is denied even with a historical persisted grant", async () => {
+  it("E1 superseded (2026-10-21): every ACTIVE MEMBER exports without a grant; grant management stays retired", async () => {
     const f = await fixture();
     const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId, hospitalId: f.hospitalId } });
+    expect(membership.reportExportGrantedAt).toBeNull();
+    expect((await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).buffer.byteLength).toBeGreaterThan(0);
     await db.hospitalMembership.update({ where: { id: membership.id }, data: { reportExportGrantedAt: now, reportExportGrantedByUserId: f.owner.userId } });
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(getHospitalReportingDatasetForExport(f.member, { hospitalId: f.hospitalId }, { database: db })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getHospitalReportingDatasetForExport(f.member, { hospitalId: f.hospitalId }, { database: db })).resolves.toMatchObject({ cohort: "ACTIVE" });
+    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: true })).rejects.toBeInstanceOf(ForbiddenError);
     expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ reportExportGrantedAt: now });
-    expect(await db.auditEvent.count({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).toBe(0);
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).metadata)
+      .toMatchObject({ accessBasis: "MEMBER", cohort: "ACTIVE" });
     expect((await exportHospitalReportingWorkbook(f.owner, { hospitalId: f.hospitalId })).buffer.byteLength).toBeGreaterThan(0);
   });
 

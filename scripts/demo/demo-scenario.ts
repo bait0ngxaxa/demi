@@ -4,7 +4,8 @@
  *
  * Data is created through the domain services the Server Actions call (each action is parse → service →
  * revalidate; the CLI has no Next request context for the action wrapper), with actors resolved from the
- * database by the production resolver and fresh nonces. Direct Prisma writes are limited to:
+ * database by the production resolver and fresh nonces. Patients enter only through the strict Excel import
+ * (ADR-0019): each is a generated hospital template file parsed and imported by the import services. Direct Prisma writes are limited to:
  * - a second Platform ADMIN when the environment already has one (no service adds a second ADMIN);
  * - reset, which deletes demo-tagged rows and returns the demo hospitals to PENDING_VERIFICATION.
  */
@@ -42,7 +43,6 @@ import { createPatientBaseline } from "@/modules/patient-baseline/services/patie
 import { createPatientFinalAssessment } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
 import { currentBuddhistYear } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 import { updatePatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
-import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
@@ -52,13 +52,18 @@ import {
   recordPatientProgramServiceOneRoutine,
 } from "@/modules/patient-program/services/patient-program-service-one-service";
 import { recordPatientProgramRoundReview, recordPatientProgramRoundVitals } from "@/modules/patient-program-rounds/services/round-service";
-import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
+import { readPatientImportFile } from "@/modules/patient-provisioning/adapters/excel-patient-import-adapter";
+import type { PatientImportFieldKey } from "@/modules/patient-provisioning/import/patient-import-contract";
+import { createPatientImportTemplateWorkbook } from "@/modules/patient-provisioning/import/patient-import-template";
+import { PATIENT_IMPORT_TEMPLATE_COLUMNS } from "@/modules/patient-provisioning/import/patient-import-template-contract";
+import { findPatientImportDataWorksheet } from "@/modules/patient-provisioning/import/patient-import-template-validation";
+import { importPatientProvisioning } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { createOwnPatientSelfMeasurement } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import { bootstrapPlatformAdmin } from "@/modules/platform-admin-bootstrap/services/platform-admin-bootstrap-service";
 import { getHospitalReportingDatasetForExport, getParentChildHospitalReportingPage } from "@/modules/reporting/services/hospital-report-query-service";
 import { submitScreening } from "@/modules/screening/services/screening-service";
 import { createSupportReport } from "@/modules/support/services/support-report-service";
-import { completeWorkforceActivation, provisionHospitalMember, provisionOsm, setHospitalMembershipReportExportGrant } from "@/modules/workforce/services/workforce-service";
+import { completeWorkforceActivation, provisionHospitalMember, provisionOsm } from "@/modules/workforce/services/workforce-service";
 import { toServiceDateOnly } from "@/shared/time/service-date";
 
 import { DEMO_ACCOUNT_LIST, DEMO_ACCOUNTS, demoNationalId, demoPhone, type DemoAccount, type DemoAccountKey } from "./demo-identities";
@@ -279,20 +284,53 @@ async function seedWorkforce(
   return { userId: provisioned.userId, relationshipId: provisioned.relationshipId };
 }
 
+/** Imports one Patient as a one-row hospital template file, exactly as an OWNER upload is parsed and confirmed. */
+async function importDemoPatient(
+  owner: ActorContext,
+  hospital: HospitalRef,
+  row: Partial<Record<PatientImportFieldKey, string>> & { hospitalNumber: string },
+): Promise<string> {
+  const workbook = await createPatientImportTemplateWorkbook({ hospitalCode: hospital.hospitalCode, hospitalName: hospital.name });
+  const worksheet = findPatientImportDataWorksheet(workbook);
+  if (!worksheet) throw new Error("Demo patient template has no patient worksheet");
+  for (const column of PATIENT_IMPORT_TEMPLATE_COLUMNS) {
+    worksheet.getCell(`${column.column}3`).value = row[column.field] ?? null;
+  }
+  const bytes = new Uint8Array(await workbook.xlsx.writeBuffer());
+  const { candidates } = await readPatientImportFile(
+    { name: "demo-patient.xlsx", size: bytes.byteLength, arrayBuffer: async () => bytes.slice().buffer },
+    { hospitalId: hospital.id, hospitalCode: hospital.hospitalCode, hospitalName: hospital.name },
+  );
+  const summary = await importPatientProvisioning(owner, hospital.id, candidates);
+  if (summary.imported !== 1) throw new Error(`Demo patient import failed: ${summary.rows[0]?.result ?? "NO_ROW"}`);
+  const relationship = await database().patientHospitalRelationship.findFirstOrThrow({
+    where: { hospitalId: hospital.id, hospitalNumber: row.hospitalNumber },
+    select: { id: true },
+  });
+  return relationship.id;
+}
+
 async function seedPatient(
   key: DemoAccountKey,
-  hospitalId: string,
+  hospital: HospitalRef,
   staffActor: ActorContext,
   dependencies: DemoScenarioDependencies,
   options: { hospitalNumber?: string; activate?: boolean } = {},
 ): Promise<PatientRef> {
   const account = DEMO_ACCOUNTS[key];
-  const provisioned = await provisionPatient(staffActor, {
-    identity: { namespace: "thai-national-id", value: demoNationalId(account.index) },
+  const hospitalId = hospital.id;
+  // The hospital profile (contact, area, emergency contact) is part of the imported row.
+  const relationshipId = await importDemoPatient(staffActor, hospital, {
+    nationalId: demoNationalId(account.index),
     givenName: account.givenName,
     familyName: account.familyName,
     hospitalNumber: options.hospitalNumber ?? `DEMO-${String(account.index).padStart(4, "0")}`,
-    targetHospitalId: hospitalId,
+    phoneNumber: demoPhone(account.index),
+    province: "ทดสอบจังหวัด",
+    district: "ทดสอบอำเภอ",
+    emergencyContactName: `ทดสอบญาติของ${account.givenName.replace("ทดสอบ", "")}`,
+    emergencyContactPhone: demoPhone(account.index + 50),
+    emergencyContactRelationship: "บุตร",
   });
   const user = await database().user.findFirstOrThrow({
     where: { person: { identityKeyHash: identityHash(account) } },
@@ -307,16 +345,7 @@ async function seedPatient(
       { provisionIdentity: provisioner(dependencies) },
     );
   }
-  await updateStaffPatientHospitalProfile(staffActor, provisioned.relationshipId, {
-    expectedVersion: 0,
-    phoneNumber: demoPhone(account.index),
-    province: "ทดสอบจังหวัด",
-    district: "ทดสอบอำเภอ",
-    emergencyContactName: `ทดสอบญาติของ${account.givenName.replace("ทดสอบ", "")}`,
-    emergencyContactPhone: demoPhone(account.index + 50),
-    emergencyContactRelationship: "บุตร",
-  });
-  return { key, userId: user.id, relationshipId: provisioned.relationshipId, hospitalId };
+  return { key, userId: user.id, relationshipId, hospitalId };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -585,30 +614,26 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   const ownerB = await actorOf(childBOwnerId);
 
   progress("บุคลากรและ อสม.");
-  const memberExport = await seedWorkforce("MEMBER", DEMO_ACCOUNTS.memberExport, childA.id, ownerA, dependencies);
+  // Every ACTIVE MEMBER exports reports (2026-10-21); memberExport is kept so existing demo logins stay stable.
+  await seedWorkforce("MEMBER", DEMO_ACCOUNTS.memberExport, childA.id, ownerA, dependencies);
   await seedWorkforce("MEMBER", DEMO_ACCOUNTS.member, childA.id, ownerA, dependencies);
   const osmA1 = await seedWorkforce("OSM", DEMO_ACCOUNTS.osmA1, childA.id, ownerA, dependencies);
   const osmA2 = await seedWorkforce("OSM", DEMO_ACCOUNTS.osmA2, childA.id, ownerA, dependencies);
   const osmB1 = await seedWorkforce("OSM", DEMO_ACCOUNTS.osmB1, childB.id, ownerB, dependencies);
   const osmB2 = await seedWorkforce("OSM", DEMO_ACCOUNTS.osmB2, childB.id, ownerB, dependencies);
 
-  const grantTarget = await database().hospitalMembership.findUniqueOrThrow({ where: { id: memberExport.relationshipId }, select: { updatedAt: true } });
-  await setHospitalMembershipReportExportGrant(ownerA, {
-    relationshipId: memberExport.relationshipId, targetHospitalId: childA.id, expectedUpdatedAt: grantTarget.updatedAt.toISOString(), granted: true,
-  });
-
   progress("ผู้ป่วยและการเปิดใช้งานบัญชี");
   // Patients (Child A provisioned by its OWNER, Child B by its OWNER).
   const patients = {} as Record<DemoAccountKey, PatientRef>;
   for (const key of ["patientA1", "patientA2", "patientA3", "patientA4", "patientA5", "patientA6"] as const) {
-    patients[key] = await seedPatient(key, childA.id, ownerA, dependencies);
+    patients[key] = await seedPatient(key, childA, ownerA, dependencies);
   }
   for (const key of ["patientB1", "patientB2", "patientB3", "patientB4", "patientB5", "patientB6"] as const) {
-    patients[key] = await seedPatient(key, childB.id, ownerB, dependencies);
+    patients[key] = await seedPatient(key, childB, ownerB, dependencies);
   }
   // Multi-role: an OSM and a Hospital MEMBER who are also Patients at the other Child.
-  const osmPatient = await seedPatient("osmA1", childB.id, ownerB, dependencies, { activate: false });
-  const memberPatient = await seedPatient("member", childB.id, ownerB, dependencies, { activate: false });
+  const osmPatient = await seedPatient("osmA1", childB, ownerB, dependencies, { activate: false });
+  const memberPatient = await seedPatient("member", childB, ownerB, dependencies, { activate: false });
 
   const assign = async (owner: ActorContext, patient: PatientRef, osmUserId: string) =>
     assignOsmToPatient(owner, { patientHospitalRelationshipId: patient.relationshipId, osmUserId }, clock(addDays(today, -120), "08:00"));

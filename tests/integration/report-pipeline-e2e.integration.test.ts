@@ -9,15 +9,17 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { exportHospitalReportingWorkbook } from "@/modules/reporting/services/hospital-report-workbook-service";
 import { getHospitalReportExportPreview } from "@/modules/reporting/services/hospital-report-query-service";
 import { currentBuddhistYear } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
-import { ForbiddenError } from "@/shared/errors/application-error";
 import { toServiceDateOnly } from "@/shared/time/service-date";
+
+import { createTemplateUpload, type ImportTestHospital, type TemplateRow } from "./support/patient-import-template-upload";
 
 /**
  * P1 Part D: proves the Hospital workbook export end to end. Every care record is written through the Server
  * Actions the UI posts to; only the authentication boundary (session → actor) and Next's cache revalidation
  * are replaced. The actor is still resolved from the database by the production resolver, so roles,
  * memberships and OSM relationships are checked exactly as in a signed-in request. Fixtures that have no
- * UI path in this flow (the Hospital, its OWNER and its OSM account) are created directly.
+ * UI path in this flow (the Hospital, its OWNER and its OSM account) are created directly. Patients enter through
+ * the strict Excel import (ADR-0019), the only roster creation workflow.
  */
 const session = vi.hoisted(() => ({ userId: null as string | null }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -30,7 +32,7 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
   },
 }));
 
-const { provisionPatientAction } = await import("@/modules/patient-provisioning/transport/server-actions");
+const { confirmPatientImportAction, previewPatientImportAction } = await import("@/modules/patient-provisioning/transport/server-actions");
 const { savePatientHealthHistoryAction } = await import("@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions");
 const { assignOsmToPatientAction } = await import("@/modules/patient-assignment/transport/server-actions");
 const { createPatientBaselineAction } = await import("@/modules/patient-baseline/transport/server-actions");
@@ -64,6 +66,32 @@ function expectSuccess(state: ActionResult, step: string): Record<string, unknow
   expect({ step, status: state.status, error: state.status === "SUCCESS" ? undefined : state.message })
     .toEqual({ step, status: "SUCCESS", error: undefined });
   return state.result ?? {};
+}
+
+/** Uploads one hospital-bound template, previews it and confirms it, exactly as the import page posts. */
+async function importPatients(hospital: ImportTestHospital, rows: readonly TemplateRow[]): Promise<void> {
+  const upload = await createTemplateUpload(hospital, rows);
+  const data = new FormData();
+  data.set("file", new File([await upload.arrayBuffer()], upload.name));
+  data.set("targetHospitalId", hospital.id);
+  const preview = await previewPatientImportAction(data);
+  if (preview.status !== "SUCCESS") throw new Error(`Patient import preview failed: ${preview.status}`);
+  expect(preview.preview.rows.map(({ classification }) => classification)).toEqual(rows.map(() => "READY"));
+  data.set("previewTargetHospitalId", hospital.id);
+  data.set("fileFingerprint", preview.preview.fileFingerprint);
+  data.set("previewBinding", preview.preview.previewBinding);
+  data.set("importContractVersion", preview.preview.importContractVersion);
+  const confirmed = await confirmPatientImportAction(data);
+  if (confirmed.status !== "SUCCESS") throw new Error(`Patient import confirmation failed: ${confirmed.status}`);
+  expect(confirmed.summary).toMatchObject({ imported: rows.length });
+}
+
+async function relationshipIdOf(hospitalId: string, givenName: string): Promise<string> {
+  const relationship = await prisma.patientHospitalRelationship.findFirstOrThrow({
+    where: { hospitalId, patientProfile: { person: { givenName } } },
+    select: { id: true },
+  });
+  return relationship.id;
 }
 
 function signIn(userId: string): void {
@@ -142,12 +170,14 @@ describe("report pipeline end to end (P1 Part D)", () => {
   let osmUserId: string;
   let memberUserId: string;
   let hospitalId: string;
+  let importHospital: ImportTestHospital;
 
   beforeAll(async () => {
     const hospital = await prisma.hospital.create({
       data: { hospitalCode: `PIPELINE-${suffix}`, name: `โรงพยาบาลทดสอบ Pipeline ${suffix}`, status: HospitalStatus.ACTIVE },
-      select: { id: true },
+      select: { id: true, hospitalCode: true, name: true },
     });
+    importHospital = hospital;
     hospitalId = hospital.id;
     hospitalIds.push(hospital.id);
     ownerUserId = await createAccount(Role.HOSPITAL, "ทดสอบเจ้าของ", hospitalId);
@@ -164,23 +194,23 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const today = toServiceDateOnly(new Date());
     const diagnosisYear = currentBuddhistYear() - 4;
 
-    // Hospital staff provisions both Patients.
+    // The Hospital OWNER imports both Patients in one Excel file.
     signIn(ownerUserId);
-    const programPatient = expectSuccess(await provisionPatientAction(IDLE, form({
-      nationalId: syntheticNationalId(Number.parseInt(suffix, 16) % 1_000_000),
-      givenName: "ทดสอบสมชาย",
-      familyName: `รายงาน${suffix}`,
-      hospitalNumber: `HN-${suffix}`,
-      targetHospitalId: hospitalId,
-    })), "provision Program Patient");
-    const relationshipId = String(programPatient.relationshipId);
-    const outsidePatient = expectSuccess(await provisionPatientAction(IDLE, form({
-      nationalId: syntheticNationalId((Number.parseInt(suffix, 16) % 1_000_000) + 1),
-      givenName: "ทดสอบนอกโปรแกรม",
-      familyName: `รายงาน${suffix}`,
-      targetHospitalId: hospitalId,
-    })), "provision outside Patient");
-    const outsideRelationshipId = String(outsidePatient.relationshipId);
+    await importPatients(importHospital, [
+      {
+        nationalId: syntheticNationalId(Number.parseInt(suffix, 16) % 1_000_000),
+        givenName: "ทดสอบสมชาย",
+        familyName: `รายงาน${suffix}`,
+        hospitalNumber: `HN-${suffix}`,
+      },
+      {
+        nationalId: syntheticNationalId((Number.parseInt(suffix, 16) % 1_000_000) + 1),
+        givenName: "ทดสอบนอกโปรแกรม",
+        familyName: `รายงาน${suffix}`,
+      },
+    ]);
+    const relationshipId = await relationshipIdOf(hospitalId, "ทดสอบสมชาย");
+    const outsideRelationshipId = await relationshipIdOf(hospitalId, "ทดสอบนอกโปรแกรม");
 
     expectSuccess(await savePatientHealthHistoryAction(relationshipId, IDLE, form({
       expectedVersion: 0,
@@ -335,10 +365,11 @@ describe("report pipeline end to end (P1 Part D)", () => {
       relationships: 2,
       relationshipsWithoutProgram: 1,
     });
-    // The preview is authorized exactly like the export: a MEMBER without the OWNER grant is refused.
+    // The preview is authorized exactly like the export: every ACTIVE MEMBER may export (2026-10-21).
     const member = await resolveActorAccessByUserId(memberUserId);
     if (member.status !== "AUTHORIZED") throw new Error("MEMBER must resolve");
-    await expect(getHospitalReportExportPreview(member.actor, { hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getHospitalReportExportPreview(member.actor, { hospitalId }))
+      .resolves.toEqual(await getHospitalReportExportPreview(owner.actor, { hospitalId }));
 
     const { buffer } = await exportHospitalReportingWorkbook(owner.actor, { hospitalId });
     const workbook = new ExcelJS.Workbook();
