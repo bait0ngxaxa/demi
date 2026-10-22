@@ -809,14 +809,23 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     await expect(
       createFollowupForProgram(fixture.osm.actor, followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, followedPlan: undefined })),
     ).rejects.toBeInstanceOf(ValidationError);
-    const blank = await createFollowupForProgram(
+    // "เกิดอะไรขึ้นบ้าง?" is required: a blank answer would leave the step TODO on an immutable Follow-up.
+    for (const reflectionNote of [null, "   "]) {
+      await expect(
+        createFollowupForProgram(fixture.osm.actor, followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, reflectionNote })),
+      ).rejects.toBeInstanceOf(ValidationError);
+    }
+    const round3Followup = await createFollowupForProgram(
       fixture.osm.actor,
-      followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, followedPlan: false, reflectionNote: null, heightCm: 158 }),
+      followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, followedPlan: false, reflectionNote: "ลืมเดิน", heightCm: 158 }),
     );
-    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("TODO");
+    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("DONE");
     const round3 = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "3");
     expect(round3.vitals).toMatchObject({ heightCm: 158 });
-    expect(round3.planReview).toEqual({ followedPlan: false, reflectionNote: null, expertAdvice: null });
+    expect(round3.planReview).toEqual({ followedPlan: false, reflectionNote: "ลืมเดิน", expertAdvice: null });
+    // A row without the answer (written before the rule) stays TODO under R2-F.
+    await prisma.patientFollowup.update({ where: { id: round3Followup.followupId }, data: { reflectionNote: null } });
+    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("TODO");
 
     await skipRestAndComplete(fixture, 3);
     await createFollowupForProgram(
@@ -839,7 +848,7 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     ).toEqual({ followedPlan: false, reflectionNote: "ฝนตกเดินไม่ได้", expertAdvice: "เดินในบ้านแทน" });
 
     // A Follow-up recorded before R2 (no followedPlan) keeps the D5 rule.
-    await prisma.patientFollowup.update({ where: { id: blank.followupId }, data: { followedPlan: null } });
+    await prisma.patientFollowup.update({ where: { id: round3Followup.followupId }, data: { followedPlan: null } });
     expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("DONE");
   });
 

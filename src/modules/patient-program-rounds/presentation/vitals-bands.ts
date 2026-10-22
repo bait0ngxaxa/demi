@@ -6,12 +6,12 @@ export type VitalsBand = {
   variant: StatusVariant;
 };
 
-/** ค่าน้ำตาล มก./ดล. (booklet labels): <70, 70-130, >130-180, >180-250, >250. */
+/** ค่าน้ำตาล มก./ดล. (booklet labels and colours): <70, 70-130, >130-180, >180-250, >250. */
 const BLOOD_SUGAR_BANDS: readonly (VitalsBand & { upTo: number })[] = [
-  { upTo: 70, label: "น้อยกว่า 70", variant: "danger" },
+  { upTo: 70, label: "น้อยกว่า 70", variant: "info" },
   { upTo: 130, label: "71 - 130", variant: "success" },
   { upTo: 180, label: "131 - 180", variant: "warning" },
-  { upTo: 250, label: "181 - 250", variant: "danger" },
+  { upTo: 250, label: "181 - 250", variant: "orange" },
 ];
 const BLOOD_SUGAR_TOP_BAND: VitalsBand = { label: "250 ขึ้นไป", variant: "danger" };
 
@@ -30,11 +30,11 @@ export function bloodSugarBand(value: number | null | undefined): VitalsBand | n
   return band ? { label: band.label, variant: band.variant } : BLOOD_SUGAR_TOP_BAND;
 }
 
-/** ความดัน มม.ปรอท (booklet labels); each band starts at its systolic or diastolic lower bound. */
+/** ความดัน มม.ปรอท (booklet labels and colours); each band starts at its systolic or diastolic lower bound. */
 const BLOOD_PRESSURE_BANDS: readonly (VitalsBand & { systolicFrom: number; diastolicFrom: number })[] = [
-  { systolicFrom: 120, diastolicFrom: 80, label: "120/80 - 129/84", variant: "success" },
-  { systolicFrom: 130, diastolicFrom: 85, label: "130/85 - 139/89", variant: "warning" },
-  { systolicFrom: 140, diastolicFrom: 90, label: "140/90 - 179/109", variant: "danger" },
+  { systolicFrom: 120, diastolicFrom: 80, label: "120/80 - 129/84", variant: "info" },
+  { systolicFrom: 130, diastolicFrom: 85, label: "130/85 - 139/89", variant: "success" },
+  { systolicFrom: 140, diastolicFrom: 90, label: "140/90 - 179/109", variant: "orange" },
   { systolicFrom: 180, diastolicFrom: 110, label: "180/110 ขึ้นไป", variant: "danger" },
 ];
 

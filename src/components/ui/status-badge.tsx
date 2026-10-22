@@ -2,12 +2,13 @@ import type { ComponentPropsWithoutRef } from "react";
 
 import { classNames } from "./class-names";
 
-export type StatusVariant = "neutral" | "success" | "warning" | "danger" | "info";
+export type StatusVariant = "neutral" | "success" | "warning" | "orange" | "danger" | "info";
 
 const variantClasses: Record<StatusVariant, string> = {
   neutral: "bg-surface-muted text-text-muted",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
+  orange: "bg-orange-soft text-orange",
   danger: "bg-danger-soft text-danger",
   info: "bg-info-soft text-info",
 };

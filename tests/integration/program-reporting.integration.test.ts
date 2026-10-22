@@ -263,7 +263,7 @@ function followupInput(
     diastolicBloodPressure: null,
     bloodSugar: null,
     followedPlan: true,
-    reflectionNote: null,
+    reflectionNote: "ทำตามแผนได้",
     generalNote: null,
     serviceDate: "2026-08-01",
     planAdjusted: false,

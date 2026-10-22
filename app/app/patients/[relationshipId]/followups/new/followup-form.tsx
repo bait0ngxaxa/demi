@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
+import { VITALS_MEASUREMENT_LABELS } from "@/modules/patient-program-rounds/domain/round-steps";
 import { buildRoundReturnQuery } from "@/modules/patient-program-rounds/presentation/round-return-path";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -283,6 +285,9 @@ export function FollowupForm({
   const [expertAdvice, setExpertAdvice] = useState("");
   const [hasObstacle, setHasObstacle] = useState<YesNoDraft>("");
   const [obstacleNote, setObstacleNote] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+  const missingVitalsConfirmedRef = useRef(false);
+  const [missingVitalsPrompt, setMissingVitalsPrompt] = useState<string[] | null>(null);
   const selectedGoalPlan = useMemo(
     () => goalPlans.find((plan) => plan.goalPlanId === goalPlanId) ?? null,
     [goalPlanId, goalPlans],
@@ -336,13 +341,30 @@ export function FollowupForm({
         }];
       })
     : [];
-  const measurementCount = [
-    weight,
-    waistCircumference,
-    systolicBloodPressure,
-    diastolicBloodPressure,
-    bloodSugar,
-  ].filter(Boolean).length;
+  const measurements: readonly [string, string][] = [
+    [VITALS_MEASUREMENT_LABELS.weight, weight],
+    [VITALS_MEASUREMENT_LABELS.waistCircumference, waistCircumference],
+    [VITALS_MEASUREMENT_LABELS.bloodSugar, bloodSugar],
+    [VITALS_MEASUREMENT_LABELS.systolicBloodPressure, systolicBloodPressure],
+    [VITALS_MEASUREMENT_LABELS.diastolicBloodPressure, diastolicBloodPressure],
+  ];
+  const measurementCount = measurements.filter(([, value]) => value !== "").length;
+
+  // A Program Follow-up is immutable: confirm before saving without every round vital, because the
+  // round's vitals step will then need a skip reason.
+  function confirmMissingVitals(event: FormEvent<HTMLFormElement>): void {
+    if (!programId || missingVitalsConfirmedRef.current) {
+      missingVitalsConfirmedRef.current = false;
+      return;
+    }
+
+    const missing = measurements.filter(([, value]) => value === "").map(([label]) => label);
+
+    if (missing.length > 0) {
+      event.preventDefault();
+      setMissingVitalsPrompt(missing);
+    }
+  }
 
   return (
     <div className="max-w-5xl">
@@ -377,7 +399,7 @@ export function FollowupForm({
         title="บันทึกการติดตามผล"
       />
 
-      <form action={action} className="space-y-6 pt-8">
+      <form action={action} className="space-y-6 pt-8" onSubmit={confirmMissingVitals} ref={formRef}>
         {scope.kind === "program" ? (
           <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
         ) : (
@@ -636,6 +658,7 @@ export function FollowupForm({
                   id="followup-reflection"
                   maxLength={2_000}
                   onChange={(event) => setReflectionNote(event.target.value)}
+                  required
                   value={reflectionNote}
                 />
               </label>
@@ -863,6 +886,23 @@ export function FollowupForm({
           </div>
         </Panel>
       </form>
+      <ConfirmDialog
+        confirmLabel="บันทึกต่อ"
+        description={`ยังไม่ได้กรอก: ${missingVitalsPrompt?.join(", ") ?? ""}`}
+        details={
+          <p>
+            การติดตามผลแก้ไขภายหลังไม่ได้ หากบันทึกต่อ ขั้นตอน “ข้อมูลทั่วไปและสัญญาณชีพ” ของครั้งนี้จะต้องระบุเหตุผลที่ข้าม
+          </p>
+        }
+        onCancel={() => setMissingVitalsPrompt(null)}
+        onConfirm={() => {
+          setMissingVitalsPrompt(null);
+          missingVitalsConfirmedRef.current = true;
+          formRef.current?.requestSubmit();
+        }}
+        open={missingVitalsPrompt !== null}
+        title="บันทึกโดยไม่มีค่าสุขภาพครบ?"
+      />
     </div>
   );
 }

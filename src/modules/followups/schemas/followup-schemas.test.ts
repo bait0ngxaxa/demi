@@ -53,6 +53,12 @@ describe("Follow-up schemas", () => {
       followupProgramCreateRequestSchema.safeParse({ ...programInput, heightCm: 158.5, expertAdvice: "เดินในบ้านแทน" }).success,
     ).toBe(true);
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, expertAdvice: "x".repeat(1_001) }).success).toBe(false);
+    // R2-F: "เกิดอะไรขึ้นบ้าง?" is required and non-blank for Program Follow-ups only.
+    for (const reflectionNote of [undefined, null, "", "   \t "]) {
+      expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, reflectionNote }).success).toBe(false);
+    }
+    expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, reflectionNote: "x".repeat(2_001) }).success).toBe(false);
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), reflectionNote: null }).success).toBe(true);
     // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, not a Follow-up field.
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidenceScore: 7 }).success).toBe(false);
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidencePlan: "x" }).success).toBe(false);

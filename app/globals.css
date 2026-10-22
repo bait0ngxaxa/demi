@@ -23,6 +23,8 @@
   --success-soft: #e0f1e9;
   --warning: #805313;
   --warning-soft: #fff3d6;
+  --orange: #9b4410;
+  --orange-soft: #fde4d2;
   --info: #315f74;
   --info-soft: #e5f0f4;
   --focus-ring: #126759;
@@ -79,6 +81,8 @@
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-orange: var(--orange);
+  --color-orange-soft: var(--orange-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --color-focus-ring: var(--focus-ring);

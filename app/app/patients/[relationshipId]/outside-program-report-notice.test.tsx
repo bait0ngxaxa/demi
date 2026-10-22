@@ -61,3 +61,13 @@ describe("relationship-scope care forms (P1 Part D)", () => {
     expect(followup(true)).not.toContain(NOTICE);
   });
 });
+
+describe("Program Follow-up form (R2-F)", () => {
+  const reflection = (markup: string) => /<textarea[^>]*id="followup-reflection"[^>]*>/.exec(markup)?.[0] ?? "";
+
+  it("requires “เกิดอะไรขึ้นบ้าง?” only in a Program", () => {
+    expect(followup(true)).toContain("เกิดอะไรขึ้นบ้าง?");
+    expect(reflection(followup(true))).toContain('required=""');
+    expect(reflection(followup(false))).not.toContain("required");
+  });
+});

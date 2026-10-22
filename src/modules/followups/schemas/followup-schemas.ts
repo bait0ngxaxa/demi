@@ -120,7 +120,13 @@ export const followupCreateRequestSchema = followupPayloadSchema
 // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, so Program Follow-ups do not take one.
 export const followupProgramCreateRequestSchema = followupPayloadSchema
   .omit({ confidenceScore: true, confidencePlan: true })
-  .extend({ patientProgramId: patientProgramIdSchema, followedPlan: z.boolean() })
+  .extend({
+    patientProgramId: patientProgramIdSchema,
+    followedPlan: z.boolean(),
+    // R2-F: "เกิดอะไรขึ้นบ้าง?" is required, otherwise the round's plan review can never be done
+    // (Follow-ups are immutable).
+    reflectionNote: z.string().trim().min(1, "กรุณากรอก “เกิดอะไรขึ้นบ้าง?”").max(FOLLOWUP_NOTE_MAX_LENGTH),
+  })
   .strict()
   .superRefine(refineObstacleNote);
 
