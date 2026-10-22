@@ -17,7 +17,7 @@ export type ChildOwnerInvitationActionState =
       message: string;
       completedAt: number;
       invitation:
-        | { kind: "ACTIVATION_LINK"; activationToken: string; activationExpiresAt: string; activationMode: "REMOTE" | "ASSISTED" }
+        | { kind: "ACTIVATION_LINK"; activationToken: string; activationUrl: string; activationExpiresAt: string; activationMode: "REMOTE" | "ASSISTED" }
         | { kind: "AWAITING_ACCEPTANCE" }
         | { kind: "ALREADY_ISSUED" };
     }

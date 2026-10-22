@@ -31,7 +31,7 @@ import type {
   WorkforceBulkActionState,
   WorkforceBulkRowResultState,
 } from "@/modules/workforce/transport/action-state";
-import { WorkforceWorkspace } from "./workforce-workspace";
+import { WorkforceImportWorkspace } from "./workforce-import-workspace";
 
 const hospitalA = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -113,23 +113,21 @@ async function renderWorkspace(selectedHospitalId = hospitalA.id): Promise<void>
   if (!hospital) throw new Error("Test Hospital is missing");
   await act(async () => {
     root.render(
-      createElement(WorkforceWorkspace, {
+      createElement(WorkforceImportWorkspace, {
         hospitals: [hospitalA, hospitalB],
         selectedHospitalId,
-        workforce: {
-          hospital,
-          viewerScope: "OWNER",
-          rows: [],
-          pageInfo: {
-            pageSize: 25,
-            serverTime: 1791849600000,
-            search: "",
-            status: null,
-            staffCursor: null,
-            osmCursor: null,
-            staffNextCursor: null,
-            osmNextCursor: null,
-          },
+        hospitalName: hospital.name,
+        rows: [],
+        serverTime: 1791849600000,
+        pageInfo: {
+          pageSize: 25,
+          serverTime: 1791849600000,
+          search: "",
+          status: null,
+          staffCursor: null,
+          osmCursor: null,
+          staffNextCursor: null,
+          osmNextCursor: null,
         },
       }),
     );

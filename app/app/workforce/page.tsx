@@ -10,14 +10,14 @@ import {
 } from "@/modules/workforce/services/workforce-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { WorkforceWorkspace } from "./workforce-workspace";
+import { WorkforceWorkspace, type WorkforceTab } from "./workforce-workspace";
 
 export const metadata: Metadata = {
   title: "จัดการบุคลากรโรงพยาบาล",
 };
 
 type WorkforcePageProps = {
-  searchParams: Promise<{ hospitalId?: string | string[]; search?: string | string[]; status?: string | string[]; staffCursor?: string | string[]; osmCursor?: string | string[] }>;
+  searchParams: Promise<{ hospitalId?: string | string[]; search?: string | string[]; status?: string | string[]; tab?: string | string[]; staffCursor?: string | string[]; osmCursor?: string | string[] }>;
 };
 
 async function resolveActor() {
@@ -51,15 +51,19 @@ export default async function WorkforcePage({ searchParams }: WorkforcePageProps
   const requestedHospitalId = Array.isArray(params.hospitalId)
     ? params.hospitalId[0]
     : params.hospitalId;
+  const firstHospital = hospitals[0];
+  if (!firstHospital) redirect("/app");
   const selectedHospitalId = hospitals.some(({ id }) => id === requestedHospitalId)
-    ? requestedHospitalId!
-    : hospitals[0].id;
+    ? requestedHospitalId ?? firstHospital.id
+    : firstHospital.id;
   const scalar = (value: string | string[] | undefined): string | undefined => Array.isArray(value) ? value[0] : value;
   const status = scalar(params.status);
+  const requestedTab = scalar(params.tab);
+  const tab: WorkforceTab = requestedTab === "osm" || requestedTab === "pending" ? requestedTab : "staff";
   const workforce = await listWorkforce(actor, {
     targetHospitalId: selectedHospitalId,
     search: scalar(params.search),
-    status: status === "PROVISIONED" || status === "INVITED" || status === "ACTIVE" || status === "SUSPENDED" ? status : undefined,
+    status: status === "PROVISIONED" || status === "INVITED" || status === "ACTIVE" || status === "SUSPENDED" || status === "ENDED" ? status : undefined,
     staffCursor: scalar(params.staffCursor), osmCursor: scalar(params.osmCursor),
   });
 
@@ -69,6 +73,7 @@ export default async function WorkforcePage({ searchParams }: WorkforcePageProps
       hospitals={hospitals}
       selectedHospitalId={selectedHospitalId}
       workforce={workforce}
+      tab={tab}
     />
   );
 }

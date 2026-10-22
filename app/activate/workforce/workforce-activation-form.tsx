@@ -112,7 +112,9 @@ export function WorkforceActivationForm(): React.JSX.Element {
     return (
       <div className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950">
         <p className="font-semibold">ไม่พบลิงก์เปิดใช้งาน</p>
-        <p className="mt-1">ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
+        <p className="mt-1">
+          ลิงก์เปิดใช้งานใช้ได้ครั้งเดียวต่อการเปิดลิงก์ หากกลับมาหน้านี้ให้เปิดลิงก์ต้นฉบับจากข้อความหรือสแกน QR อีกครั้ง หรือขอลิงก์ใหม่จากโรงพยาบาล
+        </p>
       </div>
     );
   }

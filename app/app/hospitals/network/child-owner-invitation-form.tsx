@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { ActivationPresentation, buildActivationUrl } from "@/components/workforce/activation-presentation";
+import { ActivationPresentation } from "@/components/workforce/activation-presentation";
 import {
   initialChildOwnerInvitationActionState,
   type ChildOwnerInvitationActionState,
@@ -89,14 +89,14 @@ export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitatio
   return (
     <div className="mt-4">
       <ActivationPresentation
+        activationUrl={invitation.activationUrl}
         expiresAt={invitation.activationExpiresAt}
         title={state.message}
-        token={invitation.activationToken}
       />
       {invitation.activationMode === "ASSISTED" ? (
         <Button
           className="mt-3"
-          onClick={() => window.location.assign(buildActivationUrl(invitation.activationToken))}
+          onClick={() => window.location.assign(invitation.activationUrl)}
           size="compact"
           type="button"
         >

@@ -13,6 +13,7 @@ export type WorkforceProvisionResultState = {
   relationshipStatus: "PROVISIONED" | "INVITED" | "ACTIVE" | "SUSPENDED" | "ENDED";
   activationRequired: boolean;
   activationToken: string | null;
+  activationUrl: string | null;
   activationExpiresAt: string | null;
   activationMode: WorkforceActivationMode | null;
   reusedExistingUser: boolean;
@@ -24,6 +25,7 @@ export type WorkforceActivationResultState = {
   hospitalId: string;
   kind: WorkforceKind;
   activationToken: string;
+  activationUrl: string;
   activationExpiresAt: string;
   activationMode: WorkforceActivationMode;
 };
@@ -89,6 +91,7 @@ export type WorkforceErrorCode =
   | "INVALID_INPUT"
   | "FORBIDDEN"
   | "CONFLICT"
+  | "CONFIGURATION"
   | "UNAVAILABLE";
 
 export type WorkforceProvisionActionState =

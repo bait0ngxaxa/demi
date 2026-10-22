@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  createWorkforceActivationUrlBuilder,
+  isApplicationPublicOriginConfigurationError,
+} from "@/lib/env/server";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
@@ -142,7 +146,21 @@ function mapCompletionError(error: unknown): {
   };
 }
 
-function toProvisionResultState(result: Awaited<ReturnType<typeof provisionHospitalMember>>): WorkforceProvisionResultState {
+const CONFIGURED_ACTIVATION_ORIGIN_MESSAGE =
+  "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ";
+
+function isConfiguredActivationOriginError(error: unknown): boolean {
+  return isApplicationPublicOriginConfigurationError(error);
+}
+
+function toProvisionResultState(
+  result: Awaited<ReturnType<typeof provisionHospitalMember>>,
+  urls: ReturnType<typeof createWorkforceActivationUrlBuilder> | null,
+): WorkforceProvisionResultState {
+  if (result.activationToken && !urls) {
+    throw new Error("Activation URL builder is required when provisioning returns a token");
+  }
+
   return {
     kind: result.kind,
     userId: result.userId,
@@ -152,6 +170,7 @@ function toProvisionResultState(result: Awaited<ReturnType<typeof provisionHospi
     relationshipStatus: result.relationshipStatus,
     activationRequired: result.activationRequired,
     activationToken: result.activationToken,
+    activationUrl: result.activationToken && urls ? urls.build(result.activationToken) : null,
     activationExpiresAt: result.activationExpiresAt?.toISOString() ?? null,
     activationMode: result.activationMode,
     reusedExistingUser: result.reusedExistingUser,
@@ -323,10 +342,17 @@ export async function provisionHospitalMemberAction(
 
   try {
     const actor = await getProtectedApplicationActor();
-    const result = await provisionHospitalMember(actor, parsed.data);
+    const deferActivation = getString(formData, "deferActivation") === "true";
+    const urls = deferActivation ? null : createWorkforceActivationUrlBuilder();
+    const result = deferActivation
+      ? await provisionHospitalMember(actor, parsed.data, undefined, { issueInitialActivation: false })
+      : await provisionHospitalMember(actor, parsed.data);
     revalidatePath("/app/workforce");
-    return { status: "SUCCESS", result: toProvisionResultState(result) };
+    return { status: "SUCCESS", result: toProvisionResultState(result, urls) };
   } catch (error: unknown) {
+    if (isConfiguredActivationOriginError(error)) {
+      return { status: "ERROR", code: "CONFIGURATION", message: CONFIGURED_ACTIVATION_ORIGIN_MESSAGE };
+    }
     return { status: "ERROR", ...mapWorkforceError(error) };
   }
 }
@@ -353,10 +379,17 @@ export async function provisionOsmAction(
 
   try {
     const actor = await getProtectedApplicationActor();
-    const result = await provisionOsm(actor, parsed.data);
+    const deferActivation = getString(formData, "deferActivation") === "true";
+    const urls = deferActivation ? null : createWorkforceActivationUrlBuilder();
+    const result = deferActivation
+      ? await provisionOsm(actor, parsed.data, undefined, { issueInitialActivation: false })
+      : await provisionOsm(actor, parsed.data);
     revalidatePath("/app/workforce");
-    return { status: "SUCCESS", result: toProvisionResultState(result) };
+    return { status: "SUCCESS", result: toProvisionResultState(result, urls) };
   } catch (error: unknown) {
+    if (isConfiguredActivationOriginError(error)) {
+      return { status: "ERROR", code: "CONFIGURATION", message: CONFIGURED_ACTIVATION_ORIGIN_MESSAGE };
+    }
     return { status: "ERROR", ...mapWorkforceError(error) };
   }
 }
@@ -607,6 +640,7 @@ function getActivationRequest(formData: FormData, mode: "REMOTE" | "ASSISTED") {
 
 function toActivationResultState(
   result: Awaited<ReturnType<typeof regenerateWorkforceActivation>>,
+  urls: ReturnType<typeof createWorkforceActivationUrlBuilder>,
 ): WorkforceActivationActionState {
   return {
     status: "SUCCESS",
@@ -615,6 +649,7 @@ function toActivationResultState(
       hospitalId: result.hospitalId,
       kind: result.kind,
       activationToken: result.activationToken,
+      activationUrl: urls.build(result.activationToken),
       activationExpiresAt: result.activationExpiresAt.toISOString(),
       activationMode: result.activationMode,
     },
@@ -640,10 +675,14 @@ export async function regenerateWorkforceActivationAction(
 
   try {
     const actor = await getProtectedApplicationActor();
+    const urls = createWorkforceActivationUrlBuilder();
     const result = await regenerateWorkforceActivation(actor, parsed.data);
     revalidatePath("/app/workforce");
-    return toActivationResultState(result);
+    return toActivationResultState(result, urls);
   } catch (error: unknown) {
+    if (isConfiguredActivationOriginError(error)) {
+      return { status: "ERROR", code: "CONFIGURATION", message: CONFIGURED_ACTIVATION_ORIGIN_MESSAGE };
+    }
     return { status: "ERROR", ...mapWorkforceError(error) };
   }
 }
@@ -669,6 +708,7 @@ export async function startAssistedWorkforceActivationAction(
 
   try {
     actor = await getProtectedApplicationActor();
+    const urls = createWorkforceActivationUrlBuilder();
     const result = await regenerateWorkforceActivation(actor, parsed.data);
 
     try {
@@ -692,8 +732,11 @@ export async function startAssistedWorkforceActivationAction(
     }
 
     revalidatePath("/app/workforce");
-    return toActivationResultState(result);
+    return toActivationResultState(result, urls);
   } catch (error: unknown) {
+    if (isConfiguredActivationOriginError(error)) {
+      return { status: "ERROR", code: "CONFIGURATION", message: CONFIGURED_ACTIVATION_ORIGIN_MESSAGE };
+    }
     return { status: "ERROR", ...mapWorkforceError(error) };
   }
 }

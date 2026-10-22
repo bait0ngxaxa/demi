@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  createWorkforceActivationUrlBuilder,
+  isApplicationPublicOriginConfigurationError,
+} from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -300,6 +304,7 @@ async function runInvitation(
 ): Promise<ChildOwnerInvitationActionState> {
   try {
     const actor = await getProtectedApplicationActor();
+    const urls = createWorkforceActivationUrlBuilder();
     const { invitation, message } = await work(actor);
     for (const path of NETWORK_PATHS) revalidatePath(path, "page");
     return {
@@ -310,12 +315,20 @@ async function runInvitation(
         ? {
             kind: "ACTIVATION_LINK",
             activationToken: invitation.activationToken,
+            activationUrl: urls.build(invitation.activationToken),
             activationExpiresAt: invitation.activationExpiresAt.toISOString(),
             activationMode: invitation.activationMode,
           }
         : { kind: invitation.status },
     };
   } catch (error: unknown) {
+    if (isApplicationPublicOriginConfigurationError(error)) {
+      return {
+        status: "ERROR",
+        code: "UNAVAILABLE",
+        message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      };
+    }
     const state = toErrorState(error, copy);
     return state.status === "ERROR" ? state : { status: "ERROR", code: "UNAVAILABLE", message: "ระบบไม่พร้อมดำเนินการในขณะนี้" };
   }

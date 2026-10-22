@@ -314,6 +314,7 @@ export function classifyWorkforceState(state: TypedWorkforceState, confirmsReque
     case "FORBIDDEN":
       return "FORBIDDEN";
     case "INVALID_INPUT":
+    case "CONFIGURATION":
       return "REJECTED";
     default:
       return "UNCONFIRMED";

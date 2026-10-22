@@ -128,6 +128,7 @@ function createOwnerGovernanceFormData(): FormData {
 describe("workforce Server Actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
   });
 
   it("rejects malformed staff transport input before resolving the actor", async () => {
@@ -184,11 +185,74 @@ describe("workforce Server Actions", () => {
       status: "SUCCESS",
       result: {
         activationToken: "one-time-token",
+        activationUrl: "https://demi.example/activate/workforce#one-time-token",
         accountStatus: UserStatus.PROVISIONED,
       },
     });
     expect(JSON.stringify(result)).not.toContain("ADMIN");
     expect(JSON.stringify(result)).not.toContain("GLOBAL");
+  });
+
+  it("fails closed with the configured-origin error before issuing an initial link", async () => {
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "");
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
+    mockedProvisionHospitalMember.mockResolvedValue({
+      kind: "HOSPITAL_MEMBER",
+      userId: "user-1",
+      personId: "person-1",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      accountStatus: UserStatus.PROVISIONED,
+      relationshipStatus: MembershipStatus.PROVISIONED,
+      activationRequired: true,
+      activationToken: "one-time-token",
+      activationExpiresAt: new Date("2026-08-14T12:00:00.000Z"),
+      activationMode: "REMOTE",
+      reusedExistingUser: false,
+      idempotent: false,
+    });
+
+    const result = await provisionHospitalMemberAction(initialWorkforceProvisionActionState, createStaffFormData());
+
+    expect(result).toMatchObject({
+      status: "ERROR",
+      code: "CONFIGURATION",
+      message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+    });
+    expect(mockedProvisionHospitalMember).not.toHaveBeenCalled();
+  });
+
+  it("can provision a relationship without issuing activation for the separate delivery step", async () => {
+    const actor = { userId: "owner-1" } as never;
+    mockedGetProtectedApplicationActor.mockResolvedValue(actor);
+    mockedProvisionHospitalMember.mockResolvedValue({
+      kind: "HOSPITAL_MEMBER",
+      userId: "user-1",
+      personId: "person-1",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      relationshipId: "22222222-2222-4222-8222-222222222222",
+      accountStatus: UserStatus.PROVISIONED,
+      relationshipStatus: MembershipStatus.PROVISIONED,
+      activationRequired: true,
+      activationToken: null,
+      activationExpiresAt: null,
+      activationMode: null,
+      reusedExistingUser: false,
+      idempotent: false,
+    });
+    const formData = createStaffFormData();
+    formData.set("deferActivation", "true");
+
+    const result = await provisionHospitalMemberAction(initialWorkforceProvisionActionState, formData);
+
+    expect(mockedProvisionHospitalMember).toHaveBeenCalledWith(actor, {
+      nationalId: "1000000000009",
+      givenName: "สมชาย",
+      familyName: "บุคลากร",
+      targetHospitalId: "11111111-1111-4111-8111-111111111111",
+      profession: "NURSE",
+    }, undefined, { issueInitialActivation: false });
+    expect(result).toMatchObject({ status: "SUCCESS", result: { activationToken: null, activationUrl: null } });
   });
 
   it("passes the ephemeral token, national ID and purpose to the completion service and redirects to login", async () => {
@@ -336,8 +400,26 @@ describe("workforce Server Actions", () => {
     });
     expect(result).toMatchObject({
       status: "SUCCESS",
-      result: { activationToken: "new-one-time-token", activationMode: "REMOTE" },
+      result: {
+        activationToken: "new-one-time-token",
+        activationUrl: "https://demi.example/activate/workforce#new-one-time-token",
+        activationMode: "REMOTE",
+      },
     });
+  });
+
+  it("returns a configuration error before regenerating when the public origin is missing", async () => {
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "");
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "OSM");
+
+    const result = await regenerateWorkforceActivationAction(initialWorkforceActivationActionState, formData);
+
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFIGURATION", message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ" });
+    expect(mockedRegenerateWorkforceActivation).not.toHaveBeenCalled();
   });
 
   it("starts assisted activation through the protected action and signs out only after issuing", async () => {
@@ -373,7 +455,11 @@ describe("workforce Server Actions", () => {
     expect(mockedSignOutCurrentSession).toHaveBeenCalledOnce();
     expect(result).toMatchObject({
       status: "SUCCESS",
-      result: { activationToken: "assisted-one-time-token", activationMode: "ASSISTED" },
+      result: {
+        activationToken: "assisted-one-time-token",
+        activationUrl: "https://demi.example/activate/workforce#assisted-one-time-token",
+        activationMode: "ASSISTED",
+      },
     });
   });
 

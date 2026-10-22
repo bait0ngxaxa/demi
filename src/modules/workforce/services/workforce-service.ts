@@ -128,6 +128,10 @@ export type WorkforceServiceDependencies = {
   transactionRetries?: number;
 };
 
+export type WorkforceProvisionOptions = {
+  issueInitialActivation?: boolean;
+};
+
 export type WorkforceProvisioningResult = {
   kind: WorkforceKind;
   userId: string;
@@ -174,6 +178,7 @@ export type WorkforceListResult = {
   hospital: Omit<WorkforceHospital, "scope">;
   viewerScope: WorkforceViewerScope;
   rows: WorkforceListRow[];
+  pendingCount: number;
   pageInfo: {
     pageSize: number;
     serverTime: number;
@@ -202,6 +207,8 @@ export type WorkforceDetail = {
   relationshipStatus: MembershipStatus;
   accountStatus: UserStatus;
   activationRequired: boolean;
+  activationInProgress: boolean;
+  activationLinkUsable: boolean;
   activationExpiresAt: Date | null;
   activationMode: WorkforceActivationModeValue | null;
   currentAssignmentCount: number | null;
@@ -311,6 +318,7 @@ const workforceActivationSelect = {
 const workforceDetailActivationSelect = {
   mode: true,
   expiresAt: true,
+  claimedAt: true,
 } satisfies Prisma.WorkforceActivationSelect;
 
 const workforceMembershipDetailSelect = {
@@ -1097,6 +1105,7 @@ async function createOrReuseWorkforceIdentity(
     profession: HospitalMemberProvisionInput["profession"] | null;
     now: Date;
     dependencies: WorkforceServiceDependencies;
+    issueInitialActivation: boolean;
   },
 ): Promise<WorkforceIdentity> {
   await assertWorkforceProvisionerInDatabase(
@@ -1157,7 +1166,7 @@ async function createOrReuseWorkforceIdentity(
   }
 
   const activation =
-    user.status === UserStatus.PROVISIONED
+    input.issueInitialActivation && user.status === UserStatus.PROVISIONED
       ? await issueInitialActivation(transaction, {
           userId: user.id,
           createdByUserId: input.actorUserId,
@@ -1213,6 +1222,7 @@ async function provisionWorkforce(
   kind: WorkforceKind,
   input: HospitalMemberProvisionInput | OsmProvisionInput,
   dependencies: WorkforceServiceDependencies,
+  options: WorkforceProvisionOptions = {},
 ): Promise<WorkforceProvisioningResult> {
   const database = getDatabase(dependencies);
   const targetHospitalId = input.targetHospitalId;
@@ -1236,6 +1246,7 @@ async function provisionWorkforce(
             kind === "OSM" || !("profession" in input) ? null : input.profession,
           now: getNow(dependencies),
           dependencies,
+          issueInitialActivation: options.issueInitialActivation !== false,
         }),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
@@ -1253,6 +1264,7 @@ export async function provisionHospitalMember(
   actor: ActorContext | null | undefined,
   input: HospitalMemberProvisionInput,
   dependencies: WorkforceServiceDependencies = {},
+  options: WorkforceProvisionOptions = {},
 ): Promise<WorkforceProvisioningResult> {
   const parsed = hospitalMemberProvisionSchema.safeParse(input);
 
@@ -1260,13 +1272,14 @@ export async function provisionHospitalMember(
     throw new ValidationError("Hospital member data is invalid");
   }
 
-  return provisionWorkforce(actor, "HOSPITAL_MEMBER", parsed.data, dependencies);
+  return provisionWorkforce(actor, "HOSPITAL_MEMBER", parsed.data, dependencies, options);
 }
 
 export async function provisionOsm(
   actor: ActorContext | null | undefined,
   input: OsmProvisionInput,
   dependencies: WorkforceServiceDependencies = {},
+  options: WorkforceProvisionOptions = {},
 ): Promise<WorkforceProvisioningResult> {
   const parsed = osmProvisionSchema.safeParse(input);
 
@@ -1274,7 +1287,7 @@ export async function provisionOsm(
     throw new ValidationError("OSM data is invalid");
   }
 
-  return provisionWorkforce(actor, "OSM", parsed.data, dependencies);
+  return provisionWorkforce(actor, "OSM", parsed.data, dependencies, options);
 }
 
 export async function listWorkforceHospitals(
@@ -1395,6 +1408,7 @@ async function findDetailActivation(
   return database.workforceActivation.findFirst({
     where: {
       userId,
+      purpose: WorkforceActivationPurpose.ACTIVATION,
       usedAt: null,
       revokedAt: null,
     },
@@ -1538,6 +1552,18 @@ function toWorkforceDetail(
     relationshipStatus,
     accountStatus,
     activationRequired: relationshipStatus !== MembershipStatus.ENDED && accountStatus === UserStatus.PROVISIONED,
+    activationInProgress: Boolean(
+      relationshipStatus !== MembershipStatus.ENDED &&
+      accountStatus === UserStatus.PROVISIONED &&
+      activation?.claimedAt,
+    ),
+    activationLinkUsable: Boolean(
+      relationshipStatus !== MembershipStatus.ENDED &&
+      accountStatus === UserStatus.PROVISIONED &&
+      activation &&
+      !activation.claimedAt &&
+      activation.expiresAt > new Date(),
+    ),
     activationExpiresAt: activation?.expiresAt ?? null,
     activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
     currentAssignmentCount: kind === "osm" ? currentAssignmentCount : null,
@@ -1736,7 +1762,7 @@ export async function listWorkforce(
       throw new NotFoundError("The selected Hospital was not found");
     }
 
-    const [staffPage, osmPage] = await Promise.all([
+    const [staffPage, osmPage, pendingStaffCount, pendingOsmCount] = await Promise.all([
       // A MEMBER never receives the staff roster.
       viewerScope === "MEMBER"
         ? Promise.resolve([])
@@ -1776,6 +1802,24 @@ export async function listWorkforce(
           },
         },
       }),
+      viewerScope === "MEMBER" || parsed.data.status === MembershipStatus.ENDED
+        ? Promise.resolve(0)
+        : database.hospitalMembership.count({
+            where: {
+              hospitalId: hospital.id,
+              status: parsed.data.status ?? { not: MembershipStatus.ENDED },
+              user: { status: UserStatus.PROVISIONED, person: nameFilter },
+            },
+          }),
+      parsed.data.status === MembershipStatus.ENDED
+        ? Promise.resolve(0)
+        : database.osmHospitalRelationship.count({
+            where: {
+              hospitalId: hospital.id,
+              status: parsed.data.status ?? { not: MembershipStatus.ENDED },
+              user: { status: UserStatus.PROVISIONED, person: nameFilter },
+            },
+          }),
     ]);
 
     const memberships = staffPage.slice(0, pageSize);
@@ -1871,7 +1915,7 @@ export async function listWorkforce(
       }),
     ];
 
-    return { hospital, viewerScope, rows, pageInfo: {
+    return { hospital, viewerScope, rows, pendingCount: pendingStaffCount + pendingOsmCount, pageInfo: {
       pageSize, serverTime: Date.now(), search: parsed.data.search ?? "", status: parsed.data.status ?? null,
       staffCursor: viewerScope === "OWNER" ? parsed.data.staffCursor ?? null : null,
       osmCursor: parsed.data.osmCursor ?? null,
@@ -4042,7 +4086,7 @@ export async function provisionWorkforceBulk(
             actorUserId: actor.userId, kind, hospitalId: targetHospitalId,
             nationalId: validated.data.nationalId, givenName: validated.data.givenName, familyName: validated.data.familyName,
             profession: "profession" in validated.data ? hospitalMemberProvisionSchema.shape.profession.parse(validated.data.profession) : null,
-            now: getNow(dependencies), dependencies,
+            now: getNow(dependencies), dependencies, issueInitialActivation: true,
           });
           outcome = { rowNumber, status: !identity.relationshipCreated && !identity.relationshipChanged ? "existing" : "created",
             userId: identity.userId, relationshipId: identity.relationshipId, activationRequired: identity.userStatus === UserStatus.PROVISIONED };

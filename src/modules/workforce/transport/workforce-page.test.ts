@@ -76,4 +76,26 @@ describe("Workforce page Hospital context", () => {
     expect(invalidHospital.key).toBe(hospitals[0].id);
     expect(invalidHospital.key).not.toBe("not-authorized");
   });
+
+  it("loads the requested roster tab on the server while retaining search, status and cursors", async () => {
+    const page = await WorkforcePage({
+      searchParams: Promise.resolve({
+        hospitalId: hospitals[1].id,
+        tab: "osm",
+        search: "สมชาย",
+        status: "PROVISIONED",
+        staffCursor: "staff-cursor",
+        osmCursor: "osm-cursor",
+      }),
+    });
+
+    expect(page.props).toMatchObject({ tab: "osm", selectedHospitalId: hospitals[1].id });
+    expect(mockedListWorkforce).toHaveBeenCalledWith({ userId: "actor" }, {
+      targetHospitalId: hospitals[1].id,
+      search: "สมชาย",
+      status: "PROVISIONED",
+      staffCursor: "staff-cursor",
+      osmCursor: "osm-cursor",
+    });
+  });
 });

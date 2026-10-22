@@ -3,1268 +3,99 @@
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-  type FormEvent,
-} from "react";
+import { useTransition } from "react";
 
-import { ActivationPresentation, buildActivationUrl } from "@/components/workforce/activation-presentation";
-import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
-import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import { notify } from "@/components/ui/notify";
-import {
-  classifyWorkforceState,
-  formString,
-  standardNotice,
-  useScopedMutation,
-  useScopedMutationSession,
-  type MutationNotice,
-  type MutationVerdict,
-} from "./scoped-mutation";
-import {
-  initialWorkforceActivationActionState,
-  initialWorkforceBulkActionState,
-  initialWorkforceProvisionActionState,
-  type WorkforceActivationActionState,
-  type WorkforceActivationResultState,
-  type WorkforceBulkActionState,
-  type WorkforceProvisionActionState,
-  type WorkforceProvisionResultState,
-} from "@/modules/workforce/transport/action-state";
-import {
-  provisionHospitalMemberAction,
-  provisionOsmAction,
-  provisionWorkforceBulkAction,
-  regenerateWorkforceActivationAction,
-  startAssistedWorkforceActivationAction,
-} from "@/modules/workforce/transport/server-actions";
-import type { WorkforceKind } from "@/modules/workforce/schemas/workforce-schemas";
+import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { Input } from "@/components/ui/input";
 import type {
   WorkforceHospital,
   WorkforceListResult,
   WorkforceListRow,
 } from "@/modules/workforce/services/workforce-service";
 
-const professionLabels = {
-  DOCTOR: "แพทย์",
-  NURSE: "พยาบาล",
-  COORDINATOR: "ผู้ประสานงาน",
-  OTHER: "อื่น ๆ",
-} as const;
+export type WorkforceTab = "staff" | "osm" | "pending";
 
 type WorkforceWorkspaceProps = {
   hospitals: WorkforceHospital[];
   selectedHospitalId: string;
   workforce: WorkforceListResult;
+  tab: WorkforceTab;
 };
 
-type SingleProvisionKind = "HOSPITAL_MEMBER" | "OSM";
+const kindName = (row: WorkforceListRow): string => row.kind === "OSM"
+  ? "อสม."
+  : `บุคลากรโรงพยาบาล · ${row.profession ? {
+      DOCTOR: "แพทย์",
+      NURSE: "พยาบาล",
+      COORDINATOR: "ผู้ประสานงาน",
+      OTHER: "อื่น ๆ",
+    }[row.profession] : "ยังไม่ระบุวิชาชีพ"}`;
 
-type ProvisionSubmission = {
-  id: number;
-  kind: SingleProvisionKind;
-  hospitalId: string;
-  status: "PENDING" | "SUCCESS" | "ERROR" | "UNCONFIRMED" | "STALE";
-  state?: WorkforceProvisionActionState;
-};
-
-type ConfirmedProvisionResult = {
-  submissionId: number;
-  result: WorkforceProvisionResultState;
-  credentialDelivered: boolean;
-};
-
-type ConfirmedActivationResult = {
-  submissionId: number;
-  result: WorkforceActivationResultState;
-  credentialDelivered: boolean;
-};
-
-type ProvisionServerAction = (
-  previousState: WorkforceProvisionActionState,
-  formData: FormData,
-) => Promise<WorkforceProvisionActionState>;
-
-function provisionResultKey(kind: SingleProvisionKind, hospitalId: string): string {
-  return JSON.stringify([kind, hospitalId]);
-}
-
-function isSameProvisionDraft(
-  form: HTMLFormElement,
-  submitted: FormData,
-  isHospitalMember: boolean,
-): boolean {
-  const current = new FormData(form);
-  const fields = ["targetHospitalId", "givenName", "familyName", "nationalId"];
-  if (isHospitalMember) fields.push("profession");
-  return fields.every((field) => current.get(field) === submitted.get(field));
-}
-
-function formatDate(date: string | Date | null): string {
-  if (!date) {
-    return "-";
+function statusFor(row: WorkforceListRow): { label: string; variant: StatusVariant } {
+  if (row.relationshipStatus === "ENDED") return { label: "นำออกจากระบบถาวรแล้ว", variant: "neutral" };
+  if (row.accountStatus === "SUSPENDED" || row.relationshipStatus === "SUSPENDED") {
+    return { label: "ถูกระงับ", variant: "danger" };
   }
-
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(date));
-}
-
-function ProvisionContinuation({
-  result,
-}: {
-  result: WorkforceProvisionResultState;
-}): React.JSX.Element {
-  const workforceKind = result.kind === "OSM" ? "osm" : "staff";
-  const linkClassName =
-    "inline-flex min-h-10 items-center justify-center rounded-control border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
-
-  return (
-    <div className="mt-4 border-t border-border pt-4">
-      <p className="text-sm font-semibold text-text">ดำเนินการต่อในโรงพยาบาลนี้</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Link
-          className={linkClassName}
-          href={`/app/workforce/${workforceKind}/${encodeURIComponent(result.relationshipId)}`}
-        >
-          ดูรายละเอียดความสัมพันธ์
-        </Link>
-        <Link
-          className={linkClassName}
-          href={`/app/patients?hospitalId=${encodeURIComponent(result.hospitalId)}`}
-        >
-          เปิดพื้นที่ผู้ป่วย
-        </Link>
-        <Link
-          className={linkClassName}
-          href={`/app/workforce?hospitalId=${encodeURIComponent(result.hospitalId)}`}
-        >
-          จัดการบุคลากรต่อ
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function ProvisionResult({
-  result,
-  credentialDelivered,
-  onCredentialDelivered,
-}: {
-  result: WorkforceProvisionResultState;
-  credentialDelivered: boolean;
-  onCredentialDelivered: () => void;
-}): React.JSX.Element {
-  const activationToken = result.activationToken;
-  const identityLabel = result.kind === "OSM" ? " อสม." : "บุคลากร";
-  const readyTitle = result.idempotent ? `ข้อมูล${identityLabel}พร้อมแล้ว` : "เพิ่มสิทธิ์เรียบร้อยแล้ว";
-
-  if (!activationToken) {
-    return (
-      <div>
-        <Alert variant="success">
-          <p className="font-semibold">{readyTitle}</p>
-          <p className="mt-1 text-muted">
-            {result.accountStatus === "ACTIVE"
-              ? "ผู้ใช้นี้มีบัญชี DEMI ที่เปิดใช้งานอยู่แล้ว ไม่ต้องเปิดใช้งานบัญชีอีกครั้ง"
-              : "ระบบบันทึกข้อมูลแล้ว กรุณาออกลิงก์เปิดใช้งานใหม่จากรายการเมื่อจำเป็น"}
-          </p>
-        </Alert>
-        <ProvisionContinuation result={result} />
-      </div>
-    );
+  if (row.accountStatus === "ACTIVE" && row.relationshipStatus === "ACTIVE") {
+    return { label: "พร้อมใช้งาน", variant: "success" };
   }
-
-  return (
-    <div>
-      <ActivationPresentation
-        token={activationToken}
-        expiresAt={result.activationExpiresAt}
-        title={
-          result.idempotent
-            ? `ข้อมูล${identityLabel}พร้อมแล้ว · รอเปิดใช้งาน`
-            : "สร้างบุคลากรแล้ว · รอเปิดใช้งาน"
-        }
-      />
-      {credentialDelivered ? (
-        <p className="mt-3 text-sm text-muted">
-          ยืนยันการจัดการลิงก์แล้ว สามารถเพิ่มรายการประเภทเดียวกันได้
-        </p>
-      ) : (
-        <div className="mt-4 border-t border-border pt-4">
-          <p className="text-sm leading-6 text-text">
-            โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนเพิ่มรายการชนิดเดียวกันครั้งถัดไปหรือออกจากหน้านี้
-          </p>
-          <Button
-            className="mt-3"
-            onClick={onCredentialDelivered}
-            size="compact"
-            type="button"
-            variant="secondary"
-          >
-            ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว
-          </Button>
-        </div>
-      )}
-      <ProvisionContinuation result={result} />
-    </div>
-  );
-}
-
-function ActivationResult({ result }: { result: WorkforceActivationResultState }): React.JSX.Element {
-  return (
-    <ActivationPresentation
-      token={result.activationToken}
-      expiresAt={result.activationExpiresAt}
-      title="ออกลิงก์เปิดใช้งานใหม่แล้ว"
-    />
-  );
-}
-
-const MAX_SLIP_SELECTION = 50;
-const MAX_BULK_ROWS = 50;
-const INITIAL_BULK_ROWS = 5;
-
-const bulkReasonLabels = {
-  INVALID_ROW: "ข้อมูลในแถวไม่ถูกต้อง",
-  CONFLICT: "ขัดแย้งกับข้อมูลเดิม",
-  UNAVAILABLE: "ระบบไม่พร้อม ลองใหม่ได้",
-} as const;
-
-/** A confirmed bulk result is per row, not all-or-nothing, so the Toast follows the row outcomes. */
-function bulkRequestMatches(state: WorkforceBulkActionState, formData: FormData): boolean {
-  return (
-    state.status === "SUCCESS" &&
-    state.result.rows.length > 0 &&
-    state.result.hospitalId === formString(formData, "targetHospitalId") &&
-    state.result.kind === formString(formData, "kind")
-  );
-}
-
-function bulkNotice(
-  verdict: MutationVerdict,
-  state: WorkforceBulkActionState,
-  formData: FormData,
-): MutationNotice | null {
-  const isStaff = formString(formData, "kind") !== "OSM";
-
-  if (verdict === "SUCCESS" && state.status === "SUCCESS") {
-    const invalid = state.result.rows.filter((row) => row.status === "invalid").length;
-
-    if (invalid === 0) {
-      return { level: "success", message: isStaff ? "บันทึกรายการบุคลากรแล้ว" : "บันทึกรายการ อสม. แล้ว" };
-    }
-
-    return {
-      level: "warning",
-      message:
-        invalid === state.result.rows.length
-          ? "ไม่มีรายการที่บันทึกสำเร็จ กรุณาตรวจสอบข้อมูลรายแถว"
-          : "บันทึกได้บางรายการ กรุณาตรวจสอบผลรายแถว",
-    };
+  if (row.accountStatus === "INVITED" || row.relationshipStatus === "INVITED") {
+    return { label: "รอตอบรับคำเชิญ", variant: "neutral" };
   }
-
-  if (verdict === "CONFLICT") {
-    return { level: "warning", message: "ไม่สามารถบันทึกรายการได้ กรุณาตรวจสอบรายการล่าสุด" };
-  }
-
-  if (verdict === "FORBIDDEN") {
-    return {
-      level: "error",
-      message: isStaff ? "ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้" : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้",
-    };
-  }
-
-  return null;
+  return { label: row.activationStatus === "IN_PROGRESS" ? "กำลังเปิดใช้งาน" : "รอเปิดใช้งาน", variant: "warning" };
 }
 
-function activationRequestMatches(state: WorkforceActivationActionState, formData: FormData): boolean {
-  return (
-    state.status === "SUCCESS" &&
-    state.result.userId === formString(formData, "userId") &&
-    state.result.hospitalId === formString(formData, "targetHospitalId") &&
-    state.result.kind === formString(formData, "kind")
-  );
-}
-
-function PendingActivationGroup({
-  title,
-  kind,
-  rows,
-  hospitalId,
-  remoteAction,
-  remotePending,
-  remoteBlocked,
-  anyPending,
-}: {
-  title: string;
-  kind: WorkforceKind;
-  rows: WorkforceListRow[];
-  hospitalId: string;
-  remoteAction: (formData: FormData) => void;
-  remotePending: boolean;
-  remoteBlocked: boolean;
-  anyPending: boolean;
-}): React.JSX.Element {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const slipFormId = `slip-form-${kind}`;
-  const allSelected = rows.length > 0 && selected.size >= Math.min(rows.length, MAX_SLIP_SELECTION);
-
-  function toggle(userId: string): void {
-    setSelected((current) => {
-      const next = new Set(current);
-
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else if (next.size < MAX_SLIP_SELECTION) {
-        next.add(userId);
-      }
-
-      return next;
-    });
-  }
-
-  return (
-    <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
-        <h3 className="text-lg font-semibold tracking-[-0.02em]">{title}</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() =>
-              setSelected(
-                allSelected
-                  ? new Set()
-                  : new Set(rows.slice(0, MAX_SLIP_SELECTION).map(({ userId }) => userId)),
-              )
-            }
-            size="compact"
-            type="button"
-            variant="secondary"
-          >
-            {allSelected ? "ยกเลิกการเลือก" : "เลือกทั้งหมด"}
-          </Button>
-          {/* Opens the print page in a new tab; credentials are only in that one response. */}
-          <form action="/app/workforce/slips" id={slipFormId} method="post" target="_blank">
-            <input name="targetHospitalId" type="hidden" value={hospitalId} />
-            <input name="kind" type="hidden" value={kind} />
-            <Button
-              disabled={anyPending || selected.size === 0}
-              size="compact"
-              type="submit"
-            >
-              ออกลิงก์ใหม่และพิมพ์ใบ ({selected.size})
-            </Button>
-          </form>
-        </div>
-      </div>
-      {rows.length > MAX_SLIP_SELECTION ? (
-        <p className="border-b border-line px-4 py-3 text-xs leading-5 text-muted sm:px-6">
-          พิมพ์ได้ครั้งละไม่เกิน {MAX_SLIP_SELECTION} คน
-        </p>
-      ) : null}
-      <ul>
-        {rows.map((row) => (
-          <li
-            className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-            key={row.userId}
-          >
-            <label className="flex min-w-0 items-start gap-3">
-              <input
-                checked={selected.has(row.userId)}
-                className="mt-1 h-5 w-5 shrink-0"
-                disabled={anyPending}
-                form={slipFormId}
-                name="userId"
-                onChange={() => toggle(row.userId)}
-                type="checkbox"
-                value={row.userId}
-              />
-              <span className="min-w-0">
-                <span className="block font-semibold text-ink">{row.displayName}</span>
-                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                  <StatusBadge variant={row.activationStatus === "PENDING" ? "warning" : "danger"}>
-                    {row.activationStatus === "PENDING" ? "รอเปิดใช้งาน" : "ลิงก์หมดอายุ"}
-                  </StatusBadge>
-                  <span>
-                    {row.activationExpiresAt
-                      ? `ลิงก์ล่าสุดหมดอายุ ${formatDate(row.activationExpiresAt)}`
-                      : "ยังไม่มีลิงก์ที่ใช้งานได้"}
-                  </span>
-                </span>
-              </span>
-            </label>
-            <form action={remoteAction}>
-              <input name="userId" type="hidden" value={row.userId} />
-              <input name="targetHospitalId" type="hidden" value={hospitalId} />
-              <input name="kind" type="hidden" value={row.kind} />
-              <Button
-                disabled={remoteBlocked}
-                loading={remotePending}
-                size="compact"
-                type="submit"
-                variant="secondary"
-              >
-                ออกลิงก์ใหม่
-              </Button>
-            </form>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function PendingActivationSection({
-  rows,
-  hospitalId,
-  remoteAction,
-  remotePending,
-  remoteBlocked,
-  anyPending,
-}: {
-  rows: WorkforceListRow[];
-  hospitalId: string;
-  remoteAction: (formData: FormData) => void;
-  remotePending: boolean;
-  remoteBlocked: boolean;
-  anyPending: boolean;
-}): React.JSX.Element | null {
-  const pending = rows.filter(
-    (row) => row.activationStatus !== null && row.activationStatus !== "IN_PROGRESS" && row.membershipType !== "OWNER",
-  );
-
-  if (pending.length === 0) {
-    return null;
-  }
-
-  const groups = [
-    ["บุคลากรโรงพยาบาลที่รอเปิดใช้งาน", "HOSPITAL_MEMBER"],
-    ["อสม. ที่รอเปิดใช้งาน", "OSM"],
-  ] as const;
-
-  return (
-    <section className="mt-8 scroll-mt-24" id="workforce-pending" tabIndex={-1}>
-      <h2 className="text-xl font-semibold tracking-[-0.02em]">รอเปิดใช้งาน</h2>
-      <p className="mt-2 text-sm leading-6 text-muted">
-        เลือกรายชื่อเพื่อพิมพ์ใบเปิดใช้งาน ระบบจะออกลิงก์ใหม่ให้ทุกคนที่เลือกและยกเลิกลิงก์เดิม
-        ลิงก์ใช้ได้ 72 ชั่วโมงและใช้ได้ครั้งเดียว ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเอง
-      </p>
-      <div className="mt-4 grid gap-6 @5xl/workspace:grid-cols-2">
-        {groups.map(([title, kind]) => {
-          const groupRows = pending.filter((row) => row.kind === kind);
-
-          return groupRows.length > 0 ? (
-            <PendingActivationGroup
-              anyPending={anyPending}
-              hospitalId={hospitalId}
-              key={`${kind}:${groupRows.map((row) => row.id).join(",")}`}
-              kind={kind}
-              remoteAction={remoteAction}
-              remoteBlocked={remoteBlocked}
-              remotePending={remotePending}
-              rows={groupRows}
-              title={title}
-            />
-          ) : null;
-        })}
-      </div>
-    </section>
-  );
-}
-
-function BulkAddPanel({
-  hospitalId,
-  serverTime,
-  canAddStaff,
-  state,
-  action,
-  pending,
-  anyPending,
-  unknownOutcome,
-  outcomeHospitalId,
-}: {
-  hospitalId: string;
-  serverTime: number;
-  canAddStaff: boolean;
-  state: WorkforceBulkActionState;
-  action: (formData: FormData) => void;
-  pending: boolean;
-  anyPending: boolean;
-  unknownOutcome: boolean;
-  /** Hospital the retained outcome was submitted for; a different Hospital must not show it. */
-  outcomeHospitalId: string | null;
-}): React.JSX.Element {
-  const [kind, setKind] = useState<WorkforceKind>(canAddStaff ? "HOSPITAL_MEMBER" : "OSM");
-  const [rowCount, setRowCount] = useState(INITIAL_BULK_ROWS);
-  const [formRows, setFormRows] = useState(() => Array.from({ length: MAX_BULK_ROWS }, () => ({ nationalId: "", givenName: "", familyName: "", profession: "" })));
-  function updateRow(index: number, field: keyof (typeof formRows)[number], value: string): void {
-    setFormRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
-  }
-  const [submissionId, setSubmissionId] = useState("");
-  const [showOutcome, setShowOutcome] = useState(true);
-  const clock = useRef({ serverTime, receivedAt: 0 });
-  const storageKey = `demi:workforce-bulk:${hospitalId}:${kind}`;
-  useEffect(() => {
-    let active = true;
-    queueMicrotask(() => {
-      if (!active) return;
-      clock.current = { serverTime, receivedAt: performance.now() };
-      let stored: string | null = null;
-      try { stored = sessionStorage.getItem(storageKey); } catch { /* Storage may be unavailable. */ }
-      const issuedAt = Number(stored?.split(".")[0]);
-      const key = stored && issuedAt <= serverTime + 60_000 && issuedAt > serverTime - 30 * 24 * 60 * 60 * 1000
-        ? stored : `${serverTime}.${crypto.randomUUID()}`;
-      try { sessionStorage.setItem(storageKey, key); } catch { /* In-page retries still use this key. */ }
-      setSubmissionId(key);
-    });
-    return () => { active = false; };
-  }, [storageKey, serverTime]);
-  function startNewSubmission(): void {
-    const key = `${Math.floor(clock.current.serverTime + performance.now() - clock.current.receivedAt)}.${crypto.randomUUID()}`;
-    try { sessionStorage.setItem(storageKey, key); } catch { /* Keep the key in component state. */ }
-    setSubmissionId(key);
-    setShowOutcome(false);
-  }
-  const outcomeVisible = showOutcome && (outcomeHospitalId === null || outcomeHospitalId === hospitalId);
-  const duplicateRows = new Set(outcomeVisible && state.status === "ERROR" ? (state.duplicateRowNumbers ?? []) : []);
-  const result =
-    outcomeVisible && state.status === "SUCCESS" && state.result.hospitalId === hospitalId && state.result.kind === kind
-      ? state.result
-      : null;
-  const counts = {
-    created: result?.rows.filter(({ status }) => status === "created").length ?? 0,
-    existing: result?.rows.filter(({ status }) => status === "existing").length ?? 0,
-    invalid: result?.rows.filter(({ status }) => status === "invalid").length ?? 0,
-  };
-
-  return (
-    <Panel className="mt-6">
-      <details>
-        <summary className="cursor-pointer text-xl font-semibold tracking-[-0.02em]">
-          เพิ่มหลายคน
-        </summary>
-        <p className="mt-2 text-sm leading-6 text-muted">
-          เพิ่มได้ครั้งละไม่เกิน {MAX_BULK_ROWS} คน ครั้งละหนึ่งประเภท ระบบบันทึกทีละแถว แถวที่มีอยู่แล้วจะไม่ถูกสร้างซ้ำ
-          เลขบัตรประชาชนต้องไม่ซ้ำกันในรายการที่ส่ง หลังบันทึกให้พิมพ์ใบเปิดใช้งานจากส่วน &quot;รอเปิดใช้งาน&quot;
-        </p>
-        <form action={action} className="mt-6 space-y-4" onSubmit={() => setShowOutcome(true)}>
-          <input name="submissionId" type="hidden" value={submissionId} />
-          <input name="targetHospitalId" type="hidden" value={hospitalId} />
-          <label className="block max-w-xs space-y-2 text-sm font-semibold">
-            <span>ประเภท</span>
-            <Select
-              name="kind"
-              onChange={(event) => { setKind(event.target.value === "OSM" ? "OSM" : "HOSPITAL_MEMBER"); setSubmissionId(""); setShowOutcome(false); }}
-              disabled={anyPending}
-              value={kind}
-            >
-              {canAddStaff ? <option value="HOSPITAL_MEMBER">บุคลากรโรงพยาบาล</option> : null}
-              <option value="OSM">อสม.</option>
-            </Select>
-          </label>
-          <div className="space-y-3">
-            {Array.from({ length: rowCount }, (_, index) => (
-              <div
-                className={`grid gap-3 rounded-control border p-3 sm:grid-cols-2 ${
-                  duplicateRows.has(index + 1) ? "border-danger" : "border-border"
-                } ${kind === "HOSPITAL_MEMBER" ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
-                key={index}
-              >
-                <label className="space-y-1 text-xs font-semibold">
-                  <span>แถว {index + 1} · เลขบัตรประชาชน</span>
-                  <Input disabled={anyPending} value={formRows[index].nationalId} onChange={(event) => updateRow(index, "nationalId", event.target.value)} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" type="text" />
-                </label>
-                <label className="space-y-1 text-xs font-semibold">
-                  <span>ชื่อ</span>
-                  <Input disabled={anyPending} value={formRows[index].givenName} onChange={(event) => updateRow(index, "givenName", event.target.value)} maxLength={120} name="givenName" type="text" />
-                </label>
-                <label className="space-y-1 text-xs font-semibold">
-                  <span>นามสกุล</span>
-                  <Input disabled={anyPending} value={formRows[index].familyName} onChange={(event) => updateRow(index, "familyName", event.target.value)} maxLength={120} name="familyName" type="text" />
-                </label>
-                {kind === "HOSPITAL_MEMBER" ? (
-                  <label className="space-y-1 text-xs font-semibold">
-                    <span>วิชาชีพ</span>
-                    <Select disabled={anyPending} value={formRows[index].profession} onChange={(event) => updateRow(index, "profession", event.target.value)} name="profession">
-                      <option value="">เลือกวิชาชีพ</option>
-                      {Object.entries(professionLabels).map(([value, label]) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </Select>
-                  </label>
-                ) : null}
-              </div>
-            ))}
-          </div>
-          {rowCount < MAX_BULK_ROWS ? (
-            <Button
-              disabled={anyPending}
-              onClick={() => setRowCount((count) => Math.min(MAX_BULK_ROWS, count + 5))}
-              size="compact"
-              type="button"
-              variant="secondary"
-            >
-              เพิ่มแถว
-            </Button>
-          ) : null}
-          {outcomeVisible && state.status === "ERROR" && state.code !== "UNAVAILABLE" ? <Alert variant="danger">{state.message}</Alert> : null}
-          {result ? (
-            <Alert variant={counts.invalid > 0 ? "warning" : "success"}>
-              <p className="font-semibold">
-                สร้างใหม่ {counts.created} · มีอยู่แล้ว {counts.existing} · ไม่สำเร็จ {counts.invalid}
-              </p>
-              <ul className="mt-2 space-y-1 text-sm">
-                {result.rows.map((row) => (
-                  <li key={row.rowNumber}>
-                    แถว {row.rowNumber}:{" "}
-                    {row.status === "invalid"
-                      ? `ไม่สำเร็จ · ${bulkReasonLabels[row.reason]}`
-                      : row.status === "created"
-                        ? "สร้างแล้ว"
-                        : "มีอยู่ในโรงพยาบาลนี้แล้ว"}
-                  </li>
-                ))}
-              </ul>
-            </Alert>
-          ) : null}
-          <p className="text-sm leading-6 text-muted">
-            หากคำขอขาดการเชื่อมต่อ ให้ส่งข้อมูลเดิมอีกครั้งเพื่อรับผลของรายการเดิม ผลที่บันทึกแล้วจะไม่ถูกสร้างซ้ำ
-            หากแก้ข้อมูล ให้เริ่มรายการใหม่ ผลสำเร็จของรายการเดิมยังคงอยู่ รหัสรายการใช้ได้ 30 วัน
-            หากโหลดหน้าใหม่ ให้กรอกข้อมูลเดิมอีกครั้ง รหัสรายการเดิมจะยังอยู่ในแท็บนี้เมื่อเบราว์เซอร์รองรับ
-          </p>
-          {unknownOutcome && !pending ? (
-            <Alert role="alert" variant="warning">
-              ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณากด “บันทึกทั้งหมด” อีกครั้งโดยไม่แก้ข้อมูล เพื่อรับผลของรายการเดิม
-            </Alert>
-          ) : null}
-          <Button disabled={anyPending} onClick={startNewSubmission} type="button" variant="secondary">เริ่มรายการใหม่หลังแก้ข้อมูล</Button>
-          <Button className="w-full" disabled={anyPending || !submissionId} loading={pending} type="submit">
-            {pending ? "กำลังบันทึก..." : "บันทึกทั้งหมด"}
-          </Button>
-        </form>
-      </details>
-    </Panel>
-  );
-}
-
-function WorkforceRow({
-  row,
-  hospitalId,
-  remoteAction,
-  remotePending,
-  remoteBlocked,
-  assistedAction,
-  assistedPending,
-  assistedBlocked,
-}: {
-  row: WorkforceListRow;
-  hospitalId: string;
-  remoteAction: (formData: FormData) => void;
-  remotePending: boolean;
-  remoteBlocked: boolean;
-  assistedAction: (formData: FormData) => void;
-  assistedPending: boolean;
-  assistedBlocked: boolean;
-}): React.JSX.Element {
-  const isActive = row.accountStatus === "ACTIVE" && row.relationshipStatus === "ACTIVE";
-  const isSuspended =
-    row.accountStatus === "SUSPENDED" || row.relationshipStatus === "SUSPENDED";
-  const isInvited = row.accountStatus === "INVITED" || row.relationshipStatus === "INVITED";
-  const isEnded = row.relationshipStatus === "ENDED";
-  const statusLabel = isEnded ? "นำออกจากระบบถาวรแล้ว" : isActive
-    ? "พร้อมใช้งาน"
-    : isSuspended
-      ? "ถูกระงับ"
-      : isInvited
-        ? "อยู่ระหว่างเชิญ"
-        : "รอเปิดใช้งาน";
-  const statusVariant = isEnded ? "neutral" : isActive
-    ? "success"
-    : isSuspended
-      ? "danger"
-      : isInvited
-        ? "neutral"
-        : "warning";
-
-  return (
-    <li className="border-t border-line px-4 py-5 first:border-t-0 sm:px-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="font-semibold text-ink">{row.displayName}</p>
-          <p className="mt-1 text-sm text-muted">
-            {row.kind === "OSM"
-              ? "อสม."
-              : row.membershipType === "OWNER"
-                ? "เจ้าของโรงพยาบาล"
-                : `บุคลากรโรงพยาบาล · ${row.profession ? professionLabels[row.profession] : "ยังไม่ระบุวิชาชีพ"}`}
-          </p>
-        </div>
-        <StatusBadge variant={statusVariant}>
-          {statusLabel}
-        </StatusBadge>
-      </div>
-
-      <Link
-        className="mt-4 inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-        href={`/app/workforce/${row.kind === "OSM" ? "osm" : "staff"}/${encodeURIComponent(row.id)}`}
-      >
-        ดูรายละเอียดความสัมพันธ์
-      </Link>
-
-      {!isEnded && row.activationRequired && row.membershipType !== "OWNER" ? (
-        <div className="mt-4 flex flex-col gap-3 rounded-control bg-surface-muted px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs leading-5 text-muted">
-            <p>{row.activationStatus === "IN_PROGRESS" ? "กำลังเปิดใช้งานหรือรอตรวจสอบผล กรุณาติดต่อผู้ดูแลหากค้างนาน" : "บัญชีและความสัมพันธ์ยังไม่เปิดใช้งาน"}</p>
-            <p>
-              {row.activationExpiresAt
-                ? `ลิงก์ล่าสุดหมดอายุ ${formatDate(row.activationExpiresAt)}`
-                : "ยังไม่มีลิงก์ที่พร้อมใช้งาน"}
-            </p>
-            <p>ลิงก์เดิมแสดงซ้ำไม่ได้ การออกลิงก์ใหม่หรือเริ่มแบบช่วยเหลือจะยกเลิกลิงก์เดิมที่ยังใช้ได้</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <form action={remoteAction}>
-              <input name="userId" type="hidden" value={row.userId} />
-              <input name="targetHospitalId" type="hidden" value={hospitalId} />
-              <input name="kind" type="hidden" value={row.kind} />
-              <Button
-                disabled={remoteBlocked || row.activationStatus === "IN_PROGRESS"}
-                loading={remotePending}
-                size="compact"
-                type="submit"
-                variant="secondary"
-              >
-                {remotePending ? "กำลังออกลิงก์..." : "ออกลิงก์ใหม่"}
-              </Button>
-            </form>
-            <form action={assistedAction}>
-              <input name="userId" type="hidden" value={row.userId} />
-              <input name="targetHospitalId" type="hidden" value={hospitalId} />
-              <input name="kind" type="hidden" value={row.kind} />
-              <Button
-                disabled={assistedBlocked || row.activationStatus === "IN_PROGRESS"}
-                loading={assistedPending}
-                size="compact"
-                type="submit"
-              >
-                {assistedPending ? "กำลังเตรียมการช่วยเหลือ..." : "เริ่มแบบช่วยเหลือ"}
-              </Button>
-            </form>
-          </div>
-        </div>
-      ) : null}
-    </li>
-  );
+function directoryHref(
+  selectedHospitalId: string,
+  tab: WorkforceTab,
+  search: string,
+  status: string | null,
+  cursors: { staffCursor: string | null; osmCursor: string | null },
+): string {
+  const params = new URLSearchParams({ hospitalId: selectedHospitalId, tab });
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  if (cursors.staffCursor) params.set("staffCursor", cursors.staffCursor);
+  if (cursors.osmCursor) params.set("osmCursor", cursors.osmCursor);
+  return `/app/workforce?${params.toString()}`;
 }
 
 export function WorkforceWorkspace({
   hospitals,
   selectedHospitalId,
   workforce,
+  tab,
 }: WorkforceWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
-  const activeHospitalIdRef = useRef(selectedHospitalId);
-  useLayoutEffect(() => {
-    activeHospitalIdRef.current = selectedHospitalId;
-  }, [selectedHospitalId]);
-  const mountedRef = useRef(false);
-  const provisionSubmissionIdRef = useRef(0);
-  const provisionInFlightRef = useRef<ProvisionSubmission | null>(null);
-  const staffProvisionRef = useRef<ProvisionSubmission | null>(null);
-  const osmProvisionRef = useRef<ProvisionSubmission | null>(null);
-  const staffFormRef = useRef<HTMLFormElement>(null);
-  const osmFormRef = useRef<HTMLFormElement>(null);
-  const [staffProvision, setStaffProvision] = useState<ProvisionSubmission | null>(null);
-  const [osmProvision, setOsmProvision] = useState<ProvisionSubmission | null>(null);
-  const [confirmedProvisionResults, setConfirmedProvisionResults] = useState<
-    Map<string, ConfirmedProvisionResult>
-  >(() => new Map());
-  const confirmedProvisionResultsRef = useRef(confirmedProvisionResults);
-  const [confirmedActivations, setConfirmedActivations] = useState<Map<string, ConfirmedActivationResult>>(
-    () => new Map(),
-  );
-  const confirmedActivationsRef = useRef(confirmedActivations);
-  const actionsBlockedRef = useRef(false);
-  const handoffRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const updateProvision = useCallback((kind: SingleProvisionKind, next: ProvisionSubmission | null): void => {
-    if (kind === "HOSPITAL_MEMBER") {
-      staffProvisionRef.current = next;
-      setStaffProvision(next);
-      return;
-    }
-
-    osmProvisionRef.current = next;
-    setOsmProvision(next);
-  }, []);
-
-  const rememberConfirmedProvisionResult = useCallback((
-    submission: ProvisionSubmission,
-    result: WorkforceProvisionResultState,
-  ): void => {
-    const scopeKey = provisionResultKey(submission.kind, submission.hospitalId);
-    const next = new Map(confirmedProvisionResultsRef.current);
-    next.set(scopeKey, {
-      submissionId: submission.id,
-      result,
-      credentialDelivered: false,
-    });
-    confirmedProvisionResultsRef.current = next;
-    setConfirmedProvisionResults(next);
-  }, []);
-
-  const markCredentialDelivered = useCallback((
-    kind: SingleProvisionKind,
-    hospitalId: string,
-    submissionId: number,
-  ): void => {
-    const scopeKey = provisionResultKey(kind, hospitalId);
-    const current = confirmedProvisionResultsRef.current.get(scopeKey);
-    if (
-      !current ||
-      current.submissionId !== submissionId ||
-      !current.result.activationToken ||
-      current.credentialDelivered
-    ) {
-      return;
-    }
-
-    const next = new Map(confirmedProvisionResultsRef.current);
-    next.set(scopeKey, { ...current, credentialDelivered: true });
-    confirmedProvisionResultsRef.current = next;
-    setConfirmedProvisionResults(next);
-  }, []);
-
-  const needsCredentialDelivery = useCallback((kind: SingleProvisionKind, hospitalId: string): boolean => {
-    const scopeKey = provisionResultKey(kind, hospitalId);
-    const current = confirmedProvisionResultsRef.current.get(scopeKey);
-    return Boolean(current?.result.activationToken && !current.credentialDelivered);
-  }, []);
-
-  const handleProvisionResponse = useCallback((
-    submission: ProvisionSubmission,
-    result: WorkforceProvisionActionState,
-    formData: FormData,
-  ): void => {
-    const currentSubmission =
-      submission.kind === "HOSPITAL_MEMBER" ? staffProvisionRef.current : osmProvisionRef.current;
-    const inFlight = provisionInFlightRef.current;
-
-    if (
-      !mountedRef.current ||
-      currentSubmission?.id !== submission.id ||
-      inFlight?.id !== submission.id ||
-      inFlight.status !== "PENDING"
-    ) {
-      return;
-    }
-
-    const resultMatchesSubmission =
-      result.status === "SUCCESS" &&
-      result.result.kind === submission.kind &&
-      result.result.hospitalId === submission.hospitalId;
-    const unconfirmed =
-      result.status === "IDLE" ||
-      (result.status === "ERROR" && result.code === "UNAVAILABLE") ||
-      (result.status === "SUCCESS" && !resultMatchesSubmission);
-    const contextMatches = activeHospitalIdRef.current === submission.hospitalId;
-
-    if (resultMatchesSubmission) {
-      rememberConfirmedProvisionResult(submission, result.result);
-    }
-
-    if (!contextMatches) {
-      const staleResult: ProvisionSubmission = {
-        ...submission,
-        status: unconfirmed ? "UNCONFIRMED" : resultMatchesSubmission ? "SUCCESS" : "STALE",
-      };
-      updateProvision(submission.kind, staleResult);
-      provisionInFlightRef.current = staleResult;
-      return;
-    }
-
-    if (unconfirmed) {
-      const unconfirmedSubmission: ProvisionSubmission = {
-        ...submission,
-        status: "UNCONFIRMED",
-      };
-      updateProvision(submission.kind, unconfirmedSubmission);
-      provisionInFlightRef.current = unconfirmedSubmission;
-      return;
-    }
-
-    if (result.status === "SUCCESS" && resultMatchesSubmission) {
-      if (submission.kind === "HOSPITAL_MEMBER") {
-        notify.success("บันทึกข้อมูลบุคลากรโรงพยาบาลแล้ว");
-        if (staffFormRef.current && isSameProvisionDraft(staffFormRef.current, formData, true)) {
-          staffFormRef.current.reset();
-        }
-      } else {
-        notify.success("บันทึกข้อมูล อสม. แล้ว");
-        if (osmFormRef.current && isSameProvisionDraft(osmFormRef.current, formData, false)) {
-          osmFormRef.current.reset();
-        }
-      }
-
-      const successfulSubmission: ProvisionSubmission = { ...submission, status: "SUCCESS" };
-      updateProvision(submission.kind, successfulSubmission);
-      provisionInFlightRef.current = successfulSubmission;
-      return;
-    }
-
-    if (result.status !== "ERROR") {
-      return;
-    }
-
-    if (result.code === "CONFLICT") {
-      notify.warning(
-        submission.kind === "HOSPITAL_MEMBER"
-          ? "ไม่สามารถเพิ่มบุคลากรได้ กรุณาตรวจสอบรายการล่าสุด"
-          : "ไม่สามารถเพิ่ม อสม. ได้ กรุณาตรวจสอบรายการล่าสุด",
-      );
-    } else if (result.code === "FORBIDDEN") {
-      notify.error(
-        submission.kind === "HOSPITAL_MEMBER"
-          ? "ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้"
-          : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้",
-      );
-    }
-
-    const failedSubmission: ProvisionSubmission = {
-      ...submission,
-      status: "ERROR",
-      state: result,
-    };
-    updateProvision(submission.kind, failedSubmission);
-    provisionInFlightRef.current = failedSubmission;
-  }, [rememberConfirmedProvisionResult, updateProvision]);
-
-  const staffProvisionAction = useCallback<ProvisionServerAction>(async (previousState, formData) => {
-    const submission = provisionInFlightRef.current;
-    const result = await provisionHospitalMemberAction(previousState, formData);
-    if (submission?.kind === "HOSPITAL_MEMBER") {
-      handleProvisionResponse(submission, result, formData);
-    }
-    return result;
-  }, [handleProvisionResponse]);
-
-  const osmProvisionAction = useCallback<ProvisionServerAction>(async (previousState, formData) => {
-    const submission = provisionInFlightRef.current;
-    const result = await provisionOsmAction(previousState, formData);
-    if (submission?.kind === "OSM") {
-      handleProvisionResponse(submission, result, formData);
-    }
-    return result;
-  }, [handleProvisionResponse]);
-
-  const [, staffAction, staffPending, staffUnknown] = useMutationActionState<
-    WorkforceProvisionActionState,
-    FormData
-  >(staffProvisionAction, initialWorkforceProvisionActionState);
-  const [, osmAction, osmPending, osmUnknown] = useMutationActionState<
-    WorkforceProvisionActionState,
-    FormData
-  >(osmProvisionAction, initialWorkforceProvisionActionState);
-  // Remote and assisted issuance share one session so only one credential request can run at a time.
-  const activationSession = useScopedMutationSession<WorkforceActivationActionState>({ scope: selectedHospitalId });
-  const bulkSession = useScopedMutationSession<WorkforceBulkActionState>({
-    scope: selectedHospitalId,
-    lockOnUnconfirmed: false,
-  });
-
-  const rememberConfirmedActivation = useCallback((submissionId: number, result: WorkforceActivationResultState): void => {
-    const next = new Map(confirmedActivationsRef.current);
-    next.set(result.hospitalId, { submissionId, result, credentialDelivered: false });
-    confirmedActivationsRef.current = next;
-    setConfirmedActivations(next);
-  }, []);
-
-  const markActivationDelivered = useCallback((hospitalId: string, submissionId: number): void => {
-    const current = confirmedActivationsRef.current.get(hospitalId);
-    if (!current || current.submissionId !== submissionId || current.credentialDelivered) {
-      return;
-    }
-
-    const next = new Map(confirmedActivationsRef.current);
-    next.set(hospitalId, { ...current, credentialDelivered: true });
-    confirmedActivationsRef.current = next;
-    setConfirmedActivations(next);
-  }, []);
-
-  const hasUndeliveredActivation = useCallback((hospitalId: string): boolean => {
-    const current = confirmedActivationsRef.current.get(hospitalId);
-    return Boolean(current && !current.credentialDelivered);
-  }, []);
-
-  const hasUndeliveredCredential = useCallback((hospitalId: string): boolean => (
-    hasUndeliveredActivation(hospitalId) ||
-    needsCredentialDelivery("HOSPITAL_MEMBER", hospitalId) ||
-    needsCredentialDelivery("OSM", hospitalId)
-  ), [hasUndeliveredActivation, needsCredentialDelivery]);
-
-  const {
-    state: remoteState,
-    action: remoteAction,
-    pending: remotePending,
-    unknownOutcome: remoteThrown,
-  } = useScopedMutation(activationSession, {
-    kind: "remote",
-    action: regenerateWorkforceActivationAction,
-    initialState: initialWorkforceActivationActionState,
-    classify: (state, formData) => classifyWorkforceState(state, activationRequestMatches(state, formData)),
-    notice: standardNotice({
-      success: "ออกลิงก์เปิดใช้งานใหม่แล้ว",
-      conflict: "ไม่สามารถออกลิงก์ใหม่ได้ กรุณาตรวจสอบสถานะล่าสุด",
-      forbidden: "ไม่มีสิทธิ์ออกลิงก์เปิดใช้งานใหม่",
-    }),
-    onSettled: ({ submissionId, state, verdict }) => {
-      if (verdict === "SUCCESS" && state.status === "SUCCESS") {
-        rememberConfirmedActivation(submissionId, state.result);
-      }
-    },
-    // A new link may revoke one that has not been handed over (Staff, OSM or remote), and no request runs while another is open.
-    isBlocked: () => actionsBlockedRef.current || hasUndeliveredCredential(activeHospitalIdRef.current),
-  });
-  const {
-    state: assistedState,
-    action: assistedAction,
-    pending: assistedPending,
-    unknownOutcome: assistedThrown,
-  } = useScopedMutation(activationSession, {
-    kind: "assisted",
-    action: startAssistedWorkforceActivationAction,
-    initialState: initialWorkforceActivationActionState,
-    classify: (state, formData) => classifyWorkforceState(state, activationRequestMatches(state, formData)),
-    // Success is deliberately silent: the handoff navigation is the feedback, and a Toast would be discarded with the page.
-    notice: standardNotice({
-      conflict: "ไม่สามารถเริ่มการเปิดใช้งานแบบช่วยเหลือได้ กรุณาตรวจสอบสถานะล่าสุด",
-      forbidden: "ไม่มีสิทธิ์เริ่มการเปิดใช้งานแบบช่วยเหลือ",
-    }),
-    // The handoff reloads the page and discards every in-memory credential that is still waiting for delivery.
-    isBlocked: () => actionsBlockedRef.current || hasUndeliveredCredential(activeHospitalIdRef.current),
-  });
-  const {
-    state: bulkState,
-    action: bulkAction,
-    pending: bulkPending,
-    unknownOutcome: bulkThrown,
-  } = useScopedMutation(bulkSession, {
-    kind: "bulk",
-    action: provisionWorkforceBulkAction,
-    initialState: initialWorkforceBulkActionState,
-    classify: (state, formData) => classifyWorkforceState(state, bulkRequestMatches(state, formData)),
-    notice: bulkNotice,
-    // Replaying the same submission after an unconfirmed outcome stays allowed; only live work blocks it.
-    isBlocked: () => actionsBlockedRef.current,
-  });
-  const latestActivation = activationSession.latest;
-  const remoteUnknown =
-    remoteThrown || (latestActivation?.kind === "remote" && latestActivation.status === "UNCONFIRMED");
-  const assistedUnknown =
-    assistedThrown || (latestActivation?.kind === "assisted" && latestActivation.status === "UNCONFIRMED");
-  const assistedHandoffStarted =
-    latestActivation?.kind === "assisted" && latestActivation.status === "SUCCESS";
-  const bulkUnknown = bulkThrown || bulkSession.latest?.status === "UNCONFIRMED";
-
-  useEffect(() => {
-    const markThrownOutcome = (
-      kind: SingleProvisionKind,
-      unknownOutcome: boolean,
-      current: ProvisionSubmission | null,
-    ): void => {
-      if (!unknownOutcome || current?.status !== "PENDING") return;
-
-      const operationRef = kind === "HOSPITAL_MEMBER" ? staffProvisionRef : osmProvisionRef;
-      if (operationRef.current?.id !== current.id) return;
-
-      const unresolved: ProvisionSubmission = { ...current, status: "UNCONFIRMED" };
-      updateProvision(kind, unresolved);
-      if (provisionInFlightRef.current?.id === current.id) {
-        provisionInFlightRef.current = unresolved;
-      }
-    };
-
-    markThrownOutcome("HOSPITAL_MEMBER", staffUnknown, staffProvision);
-    markThrownOutcome("OSM", osmUnknown, osmProvision);
-  }, [osmProvision, osmUnknown, staffProvision, staffUnknown, updateProvision]);
-
-  const isOwner = workforce.viewerScope === "OWNER";
   const pageInfo = workforce.pageInfo;
-  function directoryHref(kind: "HOSPITAL_MEMBER" | "OSM"): string {
-    const params = new URLSearchParams({ hospitalId: selectedHospitalId });
-    if (pageInfo.search) params.set("search", pageInfo.search);
-    if (pageInfo.status) params.set("status", pageInfo.status);
-    const staff = kind === "HOSPITAL_MEMBER" ? pageInfo.staffNextCursor : pageInfo.staffCursor;
-    const osm = kind === "OSM" ? pageInfo.osmNextCursor : pageInfo.osmCursor;
-    if (staff && isOwner) params.set("staffCursor", staff);
-    if (osm) params.set("osmCursor", osm);
-    return `/app/workforce?${params.toString()}`;
-  }
-
-  useEffect(() => {
-    // Hand the device over once per confirmed submission; retained action state never replays it.
-    if (
-      latestActivation?.kind !== "assisted" ||
-      latestActivation.status !== "SUCCESS" ||
-      latestActivation.state?.status !== "SUCCESS" ||
-      handoffRef.current === latestActivation.id
-    ) {
-      return;
-    }
-
-    handoffRef.current = latestActivation.id;
-    window.location.replace(buildActivationUrl(latestActivation.state.result.activationToken));
-  }, [latestActivation]);
-
-  const staffRows = workforce.rows.filter((row) => row.kind === "HOSPITAL_MEMBER");
-  const osmRows = workforce.rows.filter((row) => row.kind === "OSM");
-  const remoteConfirmed = confirmedActivations.get(selectedHospitalId);
-  const currentStaffProvision =
-    staffProvision?.hospitalId === selectedHospitalId ? staffProvision : null;
-  const currentOsmProvision = osmProvision?.hospitalId === selectedHospitalId ? osmProvision : null;
-  const staffConfirmedResult = confirmedProvisionResults.get(
-    provisionResultKey("HOSPITAL_MEMBER", selectedHospitalId),
-  );
-  const osmConfirmedResult = confirmedProvisionResults.get(provisionResultKey("OSM", selectedHospitalId));
-  const staffResult =
-    staffConfirmedResult?.result ?? null;
-  const osmResult =
-    osmConfirmedResult?.result ?? null;
-  const staffCredentialNeedsDelivery = Boolean(
-    staffConfirmedResult?.result.activationToken && !staffConfirmedResult.credentialDelivered,
-  );
-  const osmCredentialNeedsDelivery = Boolean(
-    osmConfirmedResult?.result.activationToken && !osmConfirmedResult.credentialDelivered,
-  );
-  const staffError =
-    currentStaffProvision?.status === "ERROR" && currentStaffProvision.state?.status === "ERROR"
-      ? currentStaffProvision.state
-      : null;
-  const osmError =
-    currentOsmProvision?.status === "ERROR" && currentOsmProvision.state?.status === "ERROR"
-      ? currentOsmProvision.state
-      : null;
-  const staffUnknownHospitalId = staffUnknown
-    ? staffProvision?.hospitalId ?? selectedHospitalId
-    : staffProvision?.status === "UNCONFIRMED"
-      ? staffProvision.hospitalId
-      : null;
-  const osmUnknownHospitalId = osmUnknown
-    ? osmProvision?.hospitalId ?? selectedHospitalId
-    : osmProvision?.status === "UNCONFIRMED"
-      ? osmProvision.hospitalId
-      : null;
-  const staffUnknownForCurrentHospital = staffUnknownHospitalId === selectedHospitalId;
-  const osmUnknownForCurrentHospital = osmUnknownHospitalId === selectedHospitalId;
-  const singleProvisionPending =
-    staffPending ||
-    osmPending ||
-    staffProvision?.status === "PENDING" ||
-    osmProvision?.status === "PENDING";
-  // Preserve the existing cross-workflow lock while a request or an unknown outcome is active.
-  const actionsBlocked =
-    singleProvisionPending ||
-    remotePending ||
-    assistedPending ||
-    bulkPending ||
-    staffUnknownHospitalId !== null ||
-    osmUnknownHospitalId !== null ||
-    remoteUnknown ||
-    assistedUnknown ||
-    assistedHandoffStarted;
-  useLayoutEffect(() => {
-    actionsBlockedRef.current = actionsBlocked;
-  }, [actionsBlocked]);
-  const remoteCredentialNeedsDelivery = Boolean(remoteConfirmed && !remoteConfirmed.credentialDelivered);
-  const anyCredentialNeedsDelivery =
-    remoteCredentialNeedsDelivery || staffCredentialNeedsDelivery || osmCredentialNeedsDelivery;
-  const remoteBlocked = actionsBlocked || anyCredentialNeedsDelivery;
-  const assistedBlocked = actionsBlocked || anyCredentialNeedsDelivery;
-
-  function dispatchProvision(
-    kind: SingleProvisionKind,
-    formData: FormData,
-    dispatch: (payload: FormData) => void,
-  ): void {
-    const previous = provisionInFlightRef.current;
-    if (
-      actionsBlocked ||
-      (previous?.status !== undefined &&
-        (previous.status === "PENDING" || previous.status === "UNCONFIRMED"))
-    ) {
-      return;
-    }
-
-    const targetHospitalId = formData.get("targetHospitalId");
-    const hospitalId =
-      typeof targetHospitalId === "string" && targetHospitalId.length > 0
-        ? targetHospitalId
-        : activeHospitalIdRef.current;
-    if (needsCredentialDelivery(kind, hospitalId)) return;
-
-    const submission: ProvisionSubmission = {
-      id: provisionSubmissionIdRef.current + 1,
-      kind,
-      hospitalId,
-      status: "PENDING",
-    };
-    provisionSubmissionIdRef.current = submission.id;
-    provisionInFlightRef.current = submission;
-    updateProvision(kind, submission);
-    dispatch(formData);
-  }
-
-  function submitStaffProvision(event: FormEvent<HTMLFormElement>): void {
-    submitPreservingInput((formData) =>
-      dispatchProvision("HOSPITAL_MEMBER", formData, staffAction),
-    )(event);
-  }
-
-  function submitOsmProvision(event: FormEvent<HTMLFormElement>): void {
-    submitPreservingInput((formData) => dispatchProvision("OSM", formData, osmAction))(event);
-  }
-  const staleUnknownProvisions = [
-    { kind: "HOSPITAL_MEMBER" as const, hospitalId: staffUnknownHospitalId },
-    { kind: "OSM" as const, hospitalId: osmUnknownHospitalId },
-  ].filter(
-    (item): item is { kind: SingleProvisionKind; hospitalId: string } =>
-      item.hospitalId !== null && item.hospitalId !== selectedHospitalId,
-  );
+  const rows = workforce.rows.filter((row) => {
+    if (tab === "staff") return row.kind === "HOSPITAL_MEMBER";
+    if (tab === "osm") return row.kind === "OSM";
+    return row.activationRequired;
+  });
+  const selectedTitle = tab === "staff" ? "บุคลากรโรงพยาบาล" : tab === "osm" ? "อสม." : "รอเปิดใช้งาน";
+  const importParams = new URLSearchParams({ hospitalId: selectedHospitalId });
+  if (pageInfo.search) importParams.set("search", pageInfo.search);
+  if (pageInfo.status) importParams.set("status", pageInfo.status);
+  if (pageInfo.staffCursor) importParams.set("staffCursor", pageInfo.staffCursor);
+  if (pageInfo.osmCursor) importParams.set("osmCursor", pageInfo.osmCursor);
+  const importHref = `/app/workforce/import?${importParams.toString()}`;
+  const addHref = `/app/workforce/new?hospitalId=${encodeURIComponent(selectedHospitalId)}&step=1`;
 
   return (
     <div className="content-workspace break-words">
       <PageHeader
-        actions={
-          <StatusBadge variant="info">{isOwner ? "เจ้าของโรงพยาบาล" : "สมาชิกโรงพยาบาล"}</StatusBadge>
-        }
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "จัดการบุคลากร" }]}
-        description={
-          isOwner
-            ? "เพิ่มบุคลากรและ อสม. รวมถึงจัดการบทบาทเจ้าของโรงพยาบาลและสมาชิกในโรงพยาบาลที่คุณดูแล"
-            : "เพิ่ม อสม. และดูแลการเปิดใช้งานบัญชี อสม. ของโรงพยาบาลที่คุณเป็นสมาชิก"
-        }
+        actions={<Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มบุคลากร / อสม.</Link>}
+        breadcrumbs={[
+          { label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` },
+          { label: "จัดการบุคลากร" },
+        ]}
+        description="จัดการรายชื่อบุคลากรโรงพยาบาลและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของ"
         title="จัดการบุคลากรโรงพยาบาล"
       />
 
@@ -1275,321 +106,125 @@ export function WorkforceWorkspace({
           </label>
           <Select
             className="mt-2 max-w-xl"
+            disabled={hospitalSwitching}
             id="targetHospitalId"
-            disabled={hospitalSwitching || singleProvisionPending || remotePending || assistedPending || bulkPending}
             onChange={(event) => {
-              const hospitalId = event.target.value;
-              if (provisionInFlightRef.current?.status === "PENDING" || remotePending || assistedPending || bulkPending) return;
-              startHospitalSwitch(() => {
-                router.push(`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`);
-              });
+              const params = new URLSearchParams({ hospitalId: event.target.value, tab });
+              if (pageInfo.search) params.set("search", pageInfo.search);
+              if (pageInfo.status) params.set("status", pageInfo.status);
+              startHospitalSwitch(() => router.push(`/app/workforce?${params.toString()}`));
             }}
             value={selectedHospitalId}
           >
             {hospitals.map((hospital) => (
-              <option key={hospital.id} value={hospital.id}>
-                {hospital.name}
-              </option>
+              <option key={hospital.id} value={hospital.id}>{hospital.name}</option>
             ))}
           </Select>
           {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น ใช้สิทธิ์{isOwner ? "เจ้าของ" : "สมาชิก"}โรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
+            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น ใช้สิทธิ์เจ้าของโรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
         </Panel>
 
-        <nav aria-label="ส่วนงานบุคลากรโรงพยาบาล" className="mt-5 flex flex-wrap gap-2">
-          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-roster" prefetch={false}>รายชื่อในโรงพยาบาล</Link>
-          <Link className={buttonClassName({ variant: "secondary", className: "whitespace-normal" })} href="#workforce-provision" prefetch={false}>{isOwner ? "แบบฟอร์มเพิ่มบุคลากรและ อสม." : "แบบฟอร์มเพิ่ม อสม."}</Link>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Link className={buttonClassName({ variant: "secondary" })} href={importHref}>นำเข้าหลายคน / พิมพ์ใบ</Link>
+          <Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มบุคลากร / อสม.</Link>
+        </div>
+
+        <nav aria-label="ประเภทบุคลากร" className="mt-6 flex flex-wrap gap-2 border-b border-line">
+          {([
+            ["staff", "บุคลากร"],
+            ["osm", "อสม."],
+            ["pending", `รอเปิดใช้งาน (${workforce.pendingCount})`],
+          ] as const).map(([value, label]) => (
+            <Link
+              aria-current={tab === value ? "page" : undefined}
+              className={`inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-semibold ${tab === value ? "border-action-primary text-brand-strong" : "border-transparent text-text-muted hover:text-text"}`}
+              href={directoryHref(selectedHospitalId, value, pageInfo.search, pageInfo.status, {
+                staffCursor: pageInfo.staffCursor,
+                osmCursor: pageInfo.osmCursor,
+              })}
+              key={value}
+            >
+              {label}
+            </Link>
+          ))}
         </nav>
 
-        {staleUnknownProvisions.map(({ kind, hospitalId }) => {
-          const previousHospitalName = hospitals.find((hospital) => hospital.id === hospitalId)?.name;
-          return (
-            <div className="mt-6" key={`${kind}-${hospitalId}`}>
-              <UnknownOutcomeAlert
-                active
-                recovery={{
-                  kind: "note",
-                  message: `ผลการเพิ่มข้อมูล${kind === "OSM" ? " อสม." : "บุคลากร"}ของ${previousHospitalName ?? "โรงพยาบาลเดิม"}ยังยืนยันไม่ได้`,
-                  note:
-                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ กรุณากลับไปตรวจสอบรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
-                }}
-              />
-              <p className="mt-3 text-sm">
-                <Link
-                  className="font-semibold underline underline-offset-4"
-                  href={`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`}
-                >
-                  กลับไปตรวจสอบรายชื่อโรงพยาบาลเดิม
-                </Link>
-              </p>
-            </div>
-          );
-        })}
-
-        <UnknownOutcomeAlert
-          active={remoteUnknown}
-          className="mt-6"
-          recovery={{
-            kind: "reload",
-            label: "โหลดสถานะบุคลากรล่าสุด",
-            message:
-              "ระบบอาจออกลิงก์ใหม่แล้ว แต่ลิงก์นั้นแสดงซ้ำไม่ได้ โหลดสถานะล่าสุดก่อน หากต้องการลิงก์ทดแทน ให้เลือกออกลิงก์ใหม่จากรายชื่อด้วยตนเอง ซึ่งจะยกเลิกลิงก์เดิมที่ยังใช้ได้",
-          }}
-        />
-        <UnknownOutcomeAlert
-          active={assistedUnknown}
-          className="mt-6"
-          recovery={{
-            kind: "note",
-            message: "ระบบยังยืนยันผลการเปิดใช้งานแบบช่วยเหลือไม่ได้",
-            note:
-              "ลิงก์ที่ออกแล้วแสดงซ้ำไม่ได้ และการเริ่มใหม่จะยกเลิกลิงก์เดิม หากถูกออกจากระบบ ให้เข้าสู่ระบบด้วยบัญชีที่มีสิทธิ์ แล้วตรวจสอบรายชื่อก่อนตัดสินใจออกลิงก์ทดแทน",
-          }}
-        />
-        {assistedHandoffStarted ? (
-          <Alert className="mt-6" variant="info">
-            ออกลิงก์เปิดใช้งานแล้ว กำลังส่งต่ออุปกรณ์ให้ผู้ใช้งาน
-          </Alert>
-        ) : null}
-        {assistedState.status === "ERROR" ? <Alert className="mt-6" variant="danger">{assistedState.message}</Alert> : null}
-        {remoteState.status === "ERROR" && remoteState.code !== "UNAVAILABLE" ? <Alert className="mt-6" variant="danger">{remoteState.message}</Alert> : null}
-        {remoteConfirmed ? (
-          <section className="mt-6">
-            <ActivationResult result={remoteConfirmed.result} />
-            {remoteConfirmed.credentialDelivered ? (
-              <p className="mt-3 text-sm text-muted">ยืนยันการจัดการลิงก์แล้ว สามารถออกลิงก์ให้รายอื่นได้</p>
-            ) : (
-              <div className="mt-4 border-t border-border pt-4">
-                <p className="text-sm leading-6 text-text">
-                  โปรดคัดลอกหรือส่งมอบลิงก์นี้ก่อนออกลิงก์ใหม่ ลิงก์เดิมแสดงซ้ำไม่ได้
-                </p>
-                <Button
-                  className="mt-3"
-                  onClick={() => markActivationDelivered(selectedHospitalId, remoteConfirmed.submissionId)}
-                  size="compact"
-                  type="button"
-                  variant="secondary"
-                >
-                  ยืนยันว่าได้คัดลอกหรือส่งมอบลิงก์แล้ว
-                </Button>
-              </div>
-            )}
-          </section>
-        ) : null}
-
         <Panel className="mt-6">
-          <Form action="/app/workforce" className="flex flex-wrap items-end gap-3">
+          <Form action="/app/workforce" className="grid gap-4 sm:grid-cols-[1fr_16rem_auto] sm:items-end">
             <input name="hospitalId" type="hidden" value={selectedHospitalId} />
-            <label className="min-w-0 flex-1 space-y-2 text-sm font-semibold">
-              <span>ค้นหาชื่อหรือนามสกุล</span>
-              <Input defaultValue={pageInfo.search} key={pageInfo.search} maxLength={120} name="search" type="search" />
+            <input name="tab" type="hidden" value={tab} />
+            <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-search">
+              <span>ค้นหาชื่อ</span>
+              <Input defaultValue={pageInfo.search} id="workforce-search" maxLength={120} name="search" type="search" />
             </label>
-            <label className="space-y-2 text-sm font-semibold">
+            <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-status">
               <span>สถานะความสัมพันธ์</span>
-              <Select name="status" defaultValue={pageInfo.status ?? ""} key={pageInfo.status ?? "all"}>
+              <Select defaultValue={pageInfo.status ?? ""} id="workforce-status" name="status">
                 <option value="">ทุกสถานะ</option>
                 <option value="PROVISIONED">รอเปิดใช้งาน</option>
                 <option value="INVITED">รอตอบรับ</option>
                 <option value="ACTIVE">ใช้งานอยู่</option>
-                <option value="SUSPENDED">ระงับ</option>
-                <option value="ENDED">นำออกจากระบบถาวร</option>
+                <option value="SUSPENDED">ถูกระงับ</option>
+                <option value="ENDED">นำออกแล้ว</option>
               </Select>
             </label>
-            <PendingSubmitButton pendingLabel="กำลังค้นหา...">ค้นหา</PendingSubmitButton>
+            <Button type="submit">ค้นหา</Button>
           </Form>
-          <p className="mt-3 text-sm text-muted">แสดงครั้งละไม่เกิน {pageInfo.pageSize} รายการต่อประเภท รวมรายการรอเปิดใช้งานเฉพาะหน้านี้</p>
+          <p className="mt-3 text-sm text-muted">แสดงครั้งละไม่เกิน {pageInfo.pageSize} รายการต่อประเภท</p>
         </Panel>
 
-        <PendingActivationSection
-          anyPending={actionsBlocked}
-          hospitalId={selectedHospitalId}
-          remoteAction={remoteAction}
-          remoteBlocked={remoteBlocked}
-          remotePending={remotePending}
-          rows={workforce.rows}
-        />
-
-        <div className={`mt-8 grid scroll-mt-24 gap-6 ${isOwner ? "@5xl/workspace:grid-cols-2" : ""}`} id="workforce-roster" tabIndex={-1}>
-          {(isOwner
-            ? ([
-                ["บุคลากรโรงพยาบาล", staffRows],
-                ["อสม.", osmRows],
-              ] as const)
-            : ([["อสม.", osmRows]] as const)
-          ).map(([title, rows]) => (
-            <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface" key={title}>
-              <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
-                <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
-                <StatusBadge>{rows.length} รายการ</StatusBadge>
-              </div>
-              {rows.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm leading-6 text-muted sm:px-6">ไม่พบรายการในหน้านี้หรือไม่ตรงกับการค้นหา</p>
-              ) : (
-                <ul>
-                  {rows.map((row) => (
-                    <WorkforceRow
-                      assistedAction={assistedAction}
-                      assistedBlocked={assistedBlocked}
-                      assistedPending={assistedPending}
-                      hospitalId={selectedHospitalId}
-                      key={`${row.kind}-${row.id}`}
-                      remoteAction={remoteAction}
-                      remoteBlocked={remoteBlocked}
-                      remotePending={remotePending}
-                      row={row}
-                    />
-                  ))}
-                </ul>
-              )}
-              <nav aria-label={`หน้ารายชื่อ${title}`} className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-4 sm:px-6">
-                {(title === "อสม." ? pageInfo.osmNextCursor : pageInfo.staffNextCursor) ? (
-                  <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(title === "อสม." ? "OSM" : "HOSPITAL_MEMBER")}>หน้าถัดไป</Link>
-                ) : <span className="text-sm text-muted">สิ้นสุดรายการ</span>}
-                <Link className="text-sm font-semibold underline" href={`/app/workforce?${new URLSearchParams({ hospitalId: selectedHospitalId, search: pageInfo.search, ...(pageInfo.status ? { status: pageInfo.status } : {}) }).toString()}`}>กลับหน้าแรก</Link>
-              </nav>
-            </section>
-          ))}
-        </div>
-
-        <div className={`mt-6 grid scroll-mt-24 gap-6 ${isOwner ? "@5xl/workspace:grid-cols-2" : ""}`} id="workforce-provision" tabIndex={-1}>
-          {isOwner ? (
-          <Panel>
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่มบุคลากรโรงพยาบาล</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                เพิ่มสมาชิกและเลือกวิชาชีพ วิชาชีพไม่ให้สิทธิ์เจ้าของโรงพยาบาล การเปลี่ยนบทบาทเจ้าของทำในรายละเอียดความสัมพันธ์ตามสิทธิ์
-              </p>
-            </div>
-            <form action={staffAction} className="mt-6 space-y-4" onSubmit={submitStaffProvision} ref={staffFormRef}>
-              <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>ชื่อ</span>
-                  <Input name="givenName" required type="text" />
-                </label>
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>นามสกุล</span>
-                  <Input name="familyName" required type="text" />
-                </label>
-              </div>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>เลขบัตรประชาชน</span>
-                <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
-              </label>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>วิชาชีพ</span>
-                <Select defaultValue="" name="profession" required>
-                  <option disabled value="">เลือกวิชาชีพ</option>
-                  {Object.entries(professionLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </Select>
-              </label>
-              {staffError ? <Alert className="mt-2" variant="danger">{staffError.message}</Alert> : null}
-              {staffResult && staffConfirmedResult ? (
-                <ProvisionResult
-                  credentialDelivered={staffConfirmedResult.credentialDelivered}
-                  onCredentialDelivered={() =>
-                    markCredentialDelivered(
-                      "HOSPITAL_MEMBER",
-                      selectedHospitalId,
-                      staffConfirmedResult.submissionId,
-                    )
-                  }
-                  result={staffResult}
-                />
-              ) : null}
-              <UnknownOutcomeAlert
-                active={staffUnknownForCurrentHospital}
-                recovery={{
-                  kind: "reload",
-                  label: "ตรวจสอบรายชื่อบุคลากร",
-                  message:
-                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
-                }}
-              />
-              <Button
-                className="w-full"
-                disabled={actionsBlocked || staffCredentialNeedsDelivery}
-                loading={staffPending}
-                type="submit"
-              >
-                {staffPending ? "กำลังบันทึก..." : "เพิ่มบุคลากร"}
-              </Button>
-            </form>
-          </Panel>
-          ) : null}
-
-          <Panel>
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">เพิ่ม อสม.</h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                สร้างเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ ยังไม่มีการกำหนดพื้นที่หรือผู้ป่วย
-              </p>
-            </div>
-            <form action={osmAction} className="mt-6 space-y-4" onSubmit={submitOsmProvision} ref={osmFormRef}>
-              <input name="targetHospitalId" type="hidden" value={selectedHospitalId} />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>ชื่อ</span>
-                  <Input name="givenName" required type="text" />
-                </label>
-                <label className="space-y-2 text-sm font-semibold">
-                  <span>นามสกุล</span>
-                  <Input name="familyName" required type="text" />
-                </label>
-              </div>
-              <label className="block space-y-2 text-sm font-semibold">
-                <span>เลขบัตรประชาชน</span>
-                <Input inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
-              </label>
-              <div className="min-h-12 rounded-control border border-dashed border-border bg-surface-muted px-4 py-3 text-sm leading-6 text-text-muted">
-                ระบบจะกำหนดบทบาท อสม. และสถานะความสัมพันธ์ให้ตามขั้นตอนนี้
-              </div>
-              {osmError ? <Alert className="mt-2" variant="danger">{osmError.message}</Alert> : null}
-              {osmResult && osmConfirmedResult ? (
-                <ProvisionResult
-                  credentialDelivered={osmConfirmedResult.credentialDelivered}
-                  onCredentialDelivered={() =>
-                    markCredentialDelivered("OSM", selectedHospitalId, osmConfirmedResult.submissionId)
-                  }
-                  result={osmResult}
-                />
-              ) : null}
-              <UnknownOutcomeAlert
-                active={osmUnknownForCurrentHospital}
-                recovery={{
-                  kind: "reload",
-                  label: "ตรวจสอบรายชื่อ อสม.",
-                  message:
-                    "บัญชีและความสัมพันธ์อาจถูกสร้างแล้ว แต่ลิงก์เปิดใช้งานเดิมเรียกคืนไม่ได้ โหลดรายชื่อล่าสุดก่อน หากต้องการลิงก์ใหม่ ให้เลือกออกลิงก์ใหม่จากรายการด้วยตนเอง",
-                }}
-              />
-              <Button
-                className="w-full"
-                disabled={actionsBlocked || osmCredentialNeedsDelivery}
-                loading={osmPending}
-                type="submit"
-              >
-                {osmPending ? "กำลังบันทึก..." : "เพิ่ม อสม."}
-              </Button>
-            </form>
-          </Panel>
-        </div>
-
-        <BulkAddPanel
-          action={bulkAction}
-          serverTime={pageInfo.serverTime}
-          anyPending={actionsBlocked}
-          canAddStaff={isOwner}
-          hospitalId={selectedHospitalId}
-          outcomeHospitalId={bulkSession.latest?.scope ?? null}
-          pending={bulkPending}
-          state={bulkState}
-          unknownOutcome={bulkUnknown}
-        />
+        <section className="mt-6 min-w-0 overflow-hidden rounded-panel border border-border bg-surface" aria-labelledby="workforce-roster-heading">
+          <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]" id="workforce-roster-heading">{selectedTitle}</h2>
+            <StatusBadge>{rows.length} รายการ</StatusBadge>
+          </div>
+          {rows.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm leading-6 text-muted sm:px-6">
+              {tab === "pending" ? "ไม่มีรายชื่อที่รอเปิดใช้งาน" : "ไม่พบรายการในหน้านี้หรือไม่ตรงกับการค้นหา"}
+            </p>
+          ) : (
+            <ul>
+              {rows.map((row) => {
+                const status = statusFor(row);
+                const kindPath = row.kind === "OSM" ? "osm" : "staff";
+                return (
+                  <li className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={`${row.kind}-${row.id}`}>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink">{row.displayName}</p>
+                      <p className="mt-1 text-sm text-muted">{kindName(row)}</p>
+                      {row.activationExpiresAt ? (
+                        <p className="mt-1 text-xs text-muted">ลิงก์ล่าสุดหมดอายุ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(row.activationExpiresAt)}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
+                      <Link
+                        className={buttonClassName({ variant: "secondary", size: "compact" })}
+                        href={`/app/workforce/${kindPath}/${encodeURIComponent(row.id)}`}
+                      >
+                        ดูรายละเอียด
+                      </Link>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <nav aria-label={`หน้ารายชื่อ${selectedTitle}`} className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-4 sm:px-6">
+            {tab !== "osm" && pageInfo.staffNextCursor ? (
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: pageInfo.staffNextCursor, osmCursor: pageInfo.osmCursor })}>หน้าถัดไป · บุคลากร</Link>
+            ) : null}
+            {tab !== "staff" && pageInfo.osmNextCursor ? (
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: pageInfo.staffCursor, osmCursor: pageInfo.osmNextCursor })}>หน้าถัดไป · อสม.</Link>
+            ) : null}
+            {(!pageInfo.staffNextCursor || tab === "osm") && (!pageInfo.osmNextCursor || tab === "staff") ? <span className="text-sm text-muted">สิ้นสุดรายการ</span> : null}
+            {(pageInfo.staffCursor || pageInfo.osmCursor) ? (
+              <Link className="text-sm font-semibold underline" href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: null, osmCursor: null })}>กลับหน้าแรก</Link>
+            ) : null}
+          </nav>
+        </section>
       </div>
     </div>
   );

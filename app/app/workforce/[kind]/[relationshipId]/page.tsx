@@ -24,6 +24,7 @@ import { OsmRelationshipControls } from "./osm-relationship-controls";
 import { WorkforceReleaseControl } from "./workforce-release-control";
 import { StaffMembershipControls } from "./staff-membership-controls";
 import { ReportExportGrantControl } from "./report-export-grant-control";
+import { WorkforceActivationControl } from "./workforce-activation-control";
 
 export const metadata: Metadata = {
   title: "รายละเอียดความสัมพันธ์บุคลากร",
@@ -180,6 +181,25 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
               <p className="mt-1 text-sm">ลิงก์ล่าสุดหมดอายุ: {formatDate(detail.activationExpiresAt)}</p>
             ) : null}
           </Alert>
+        ) : null}
+
+        {detail.viewerScope === "OWNER" && detail.activationRequired && detail.relationshipStatus !== "ENDED" ? (
+          detail.activationInProgress ? (
+            <Alert variant="warning">
+              <p className="font-semibold">กำลังเปิดใช้งานบัญชี</p>
+              <p className="mt-1">มีการเปิดลิงก์แล้วและกำลังตรวจสอบผล กรุณารอหรือติดต่อผู้ดูแลระบบหากค้างนาน</p>
+            </Alert>
+          ) : detail.kind === "staff" && detail.membershipType === "OWNER" ? null : (
+          <WorkforceActivationControl
+            key={`${detail.hospital.id}:${detail.relationshipId}`}
+            activationLinkUsable={detail.activationLinkUsable}
+            hospitalId={detail.hospital.id}
+            kind={isStaff ? "HOSPITAL_MEMBER" : "OSM"}
+            maskedName={`${Array.from(detail.displayName)[0] ?? "*"}***`}
+            relationshipId={detail.relationshipId}
+            userId={detail.userId}
+          />
+          )
         ) : null}
 
         {detail.viewerScope === "MEMBER" ? (

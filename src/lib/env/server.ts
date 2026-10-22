@@ -108,6 +108,27 @@ export function getApplicationPublicOrigin(): string {
   return url.origin;
 }
 
+export function isApplicationPublicOriginConfigurationError(error: unknown): boolean {
+  return error instanceof Error && (
+    error.message === "Application public origin is unavailable" ||
+    error.message === "Application public origin must be canonical HTTPS"
+  );
+}
+
+/** Creates the canonical workforce activation URL builder from the configured public origin. */
+export function createWorkforceActivationUrlBuilder(): {
+  origin: string;
+  build: (token: string) => string;
+} {
+  const origin = getApplicationPublicOrigin();
+  const activationPath = new URL("/activate/workforce", origin).toString();
+
+  return {
+    origin,
+    build: (token: string) => `${activationPath}#${encodeURIComponent(token)}`,
+  };
+}
+
 let cachedServerEnv: ServerEnv | undefined;
 let cachedSupabaseAdminEnv: SupabaseAdminEnv | undefined;
 let cachedPatientEvidenceStorageEnv: PatientEvidenceStorageEnv | undefined;

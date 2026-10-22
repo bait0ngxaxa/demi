@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 
-import { getApplicationPublicOrigin } from "@/lib/env/server";
+import { createWorkforceActivationUrlBuilder } from "@/lib/env/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { workforceActivationSlipRequestSchema } from "@/modules/workforce/schemas/workforce-schemas";
@@ -68,13 +68,13 @@ async function readSlipForm(request: Request): Promise<FormData> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let origin: string;
+  let urls: ReturnType<typeof createWorkforceActivationUrlBuilder>;
   try {
-    origin = getApplicationPublicOrigin();
+    urls = createWorkforceActivationUrlBuilder();
   } catch {
     return htmlError("ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับใบเปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ", 503);
   }
-  if (!isSameOriginRequest(request, origin)) {
+  if (!isSameOriginRequest(request, urls.origin)) {
     return htmlError("คำขอไม่ถูกต้อง", 403);
   }
 
@@ -105,7 +105,7 @@ export async function POST(request: Request): Promise<Response> {
         hospitalName: slip.hospitalName,
         expiresAt: slip.activationExpiresAt,
         qrDataUrl: await QRCode.toDataURL(
-          `${origin}/activate/workforce#${encodeURIComponent(slip.activationToken)}`,
+          urls.build(slip.activationToken),
           { errorCorrectionLevel: "M", margin: 1, width: 300 },
         ),
       })),
