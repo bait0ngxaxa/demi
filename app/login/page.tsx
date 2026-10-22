@@ -57,17 +57,12 @@ export default async function LoginPage({
 
         <div className="relative mt-14 max-w-xl lg:my-auto lg:py-16">
           <h1 className="max-w-lg text-balance text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">
-            เข้าถึงงานที่ได้รับอนุญาตอย่างมั่นใจ
+            ระบบบริการสุขภาพสำหรับโรงพยาบาล อสม. และผู้ป่วย
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-brand-pale sm:text-lg sm:leading-8">
-            DEMI ตรวจสอบบัญชีและสิทธิ์เข้าใช้งาน
-            ก่อนเปิดพื้นที่ทำงานทุกครั้ง
+            ติดตามการดูแล นัดหมาย และงานที่รับผิดชอบได้ในที่เดียว
           </p>
         </div>
-
-        <p className="relative mt-12 hidden max-w-md text-sm leading-6 text-brand-pale/80 lg:block">
-          ระบบบริการสุขภาพสำหรับงานที่ได้รับมอบหมายอย่างชัดเจน
-        </p>
       </section>
 
       <section className="flex px-6 py-10 sm:px-10 lg:min-h-svh lg:items-center lg:px-14 xl:px-20">
@@ -91,21 +86,6 @@ export default async function LoginPage({
           <p className="mt-4 text-sm leading-6 text-muted">
             ลืมรหัสผ่าน? ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
           </p>
-
-          <section aria-labelledby="patient-access-request-heading" className="mt-7 border-t border-line pt-6">
-            <h3 className="text-base font-semibold text-ink" id="patient-access-request-heading">
-              สำหรับผู้ป่วยที่ยังไม่มีบัญชี DEMI
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              ส่งคำขอให้โรงพยาบาลตรวจสอบก่อน การส่งคำขอยังไม่สร้างหรือเปิดใช้งานบัญชี
-            </p>
-            <Link
-              className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-[12px] border border-line-strong bg-white px-4 py-2 text-center text-sm font-semibold text-ink transition-colors hover:border-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-              href="/patient/access-request"
-            >
-              ส่งคำขอใช้บัญชี DEMI
-            </Link>
-          </section>
 
           <p className="mt-6 border-t border-line pt-6 text-center text-sm leading-6 text-muted">
             ต้องการใช้ DEMI ในนามโรงพยาบาล?{" "}

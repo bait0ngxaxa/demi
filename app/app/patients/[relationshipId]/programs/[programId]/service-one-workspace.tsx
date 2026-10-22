@@ -723,7 +723,6 @@ function FloatingChartCard({
                       </output>
                     </div>
                     <input
-                      aria-describedby={`${id}-ticks`}
                       aria-valuetext={`${scores[field]} คะแนน`}
                       className="mt-2 h-11 w-full cursor-pointer accent-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
                       disabled={pending || unknownOutcome}
@@ -731,15 +730,18 @@ function FloatingChartCard({
                       max={5}
                       min={-5}
                       name={field}
-                      onChange={(event) => setScores((current) => ({ ...current, [field]: Number(event.currentTarget.value) }))}
+                      onChange={(event) => { const value = Number(event.currentTarget.value); setScores((current) => ({ ...current, [field]: value })); }}
                       required
                       step={1}
                       type="range"
                       value={scores[field]}
                     />
-                    <div className="flex justify-between text-xs tabular-nums text-text-muted" id={`${id}-ticks`}>
-                      <span>−5</span><span>0</span><span>5</span>
-                    </div>
+                    <ScoreScale
+                      disabled={pending || unknownOutcome}
+                      label={label}
+                      onSelect={(value) => setScores((current) => ({ ...current, [field]: value }))}
+                      value={scores[field]}
+                    />
                   </div>
                 );
               })}
@@ -747,31 +749,32 @@ function FloatingChartCard({
 
             <fieldset className="space-y-3 border-t border-border pt-4">
               <legend className="font-semibold text-text">ไม้บรรทัดวัดทุกข์สุข</legend>
-              <div className="flex justify-between px-1 text-xs tabular-nums text-text-muted">
-                <span className="flex flex-col items-center gap-1"><RulerFace mood="sad" />−5</span>
-                <span className="flex flex-col items-center gap-1"><RulerFace mood="neutral" />0</span>
-                <span className="flex flex-col items-center gap-1"><RulerFace mood="happy" />5</span>
+              <div aria-hidden="true" className="grid grid-cols-11 justify-items-center">
+                <span className="col-start-1"><RulerFace mood="sad" /></span>
+                <span className="col-start-6"><RulerFace mood="neutral" /></span>
+                <span className="col-start-11"><RulerFace mood="happy" /></span>
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <label className="sr-only" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>ไม้บรรทัดวัดทุกข์สุข</label>
-                <input
-                  aria-valuetext={`${scores.wellbeingScore} คะแนน`}
-                  className="h-11 w-full cursor-pointer accent-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                  disabled={pending || unknownOutcome}
-                  id={`service-one-floating-${roundNumber}-wellbeingScore`}
-                  max={5}
-                  min={-5}
-                  name="wellbeingScore"
-                  onChange={(event) => setScores((current) => ({ ...current, wellbeingScore: Number(event.currentTarget.value) }))}
-                  required
-                  step={1}
-                  type="range"
-                  value={scores.wellbeingScore}
-                />
-                <output className="min-w-8 text-right text-sm font-semibold tabular-nums text-brand-strong" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>
-                  {scores.wellbeingScore}
-                </output>
-              </div>
+              <label className="sr-only" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>ไม้บรรทัดวัดทุกข์สุข</label>
+              <input
+                aria-valuetext={`${scores.wellbeingScore} คะแนน`}
+                className="h-11 w-full cursor-pointer accent-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                disabled={pending || unknownOutcome}
+                id={`service-one-floating-${roundNumber}-wellbeingScore`}
+                max={5}
+                min={-5}
+                name="wellbeingScore"
+                onChange={(event) => { const value = Number(event.currentTarget.value); setScores((current) => ({ ...current, wellbeingScore: value })); }}
+                required
+                step={1}
+                type="range"
+                value={scores.wellbeingScore}
+              />
+              <ScoreScale
+                disabled={pending || unknownOutcome}
+                label="ไม้บรรทัดวัดทุกข์สุข"
+                onSelect={(value) => setScores((current) => ({ ...current, wellbeingScore: value }))}
+                value={scores.wellbeingScore}
+              />
             </fieldset>
 
             <div className="space-y-3 border-t border-border pt-4">
@@ -822,6 +825,48 @@ function FloatingChartCard({
         roundNumber={roundNumber}
       />
     </ActivityCard>
+  );
+}
+
+const SCORE_SCALE = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5] as const;
+
+/** The booklet's numbered −5…5 scale under each slider; tapping a number sets that score. */
+function ScoreScale({
+  disabled,
+  label,
+  onSelect,
+  value,
+}: {
+  disabled: boolean;
+  label: string;
+  onSelect: (value: number) => void;
+  value: number;
+}): React.JSX.Element {
+  return (
+    <div aria-label={`เลือกคะแนน${label}`} className="grid grid-cols-11" role="group">
+      {SCORE_SCALE.map((score) => {
+        const selected = score === value;
+        const anchor = score === -5 || score === 0 || score === 5;
+
+        return (
+          <button
+            aria-label={`${score} คะแนน`}
+            aria-pressed={selected}
+            className={`mx-auto flex min-h-11 w-full max-w-11 items-center justify-center rounded-full tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring disabled:cursor-not-allowed ${
+              selected
+                ? "bg-brand-soft font-bold text-brand-strong"
+                : `hover:bg-brand-soft ${anchor ? "text-sm font-bold text-text" : "text-xs text-text-muted"}`
+            }`}
+            disabled={disabled}
+            key={score}
+            onClick={() => onSelect(score)}
+            type="button"
+          >
+            {score < 0 ? `−${-score}` : score}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

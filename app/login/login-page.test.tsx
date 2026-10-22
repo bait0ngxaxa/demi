@@ -22,15 +22,16 @@ describe("Login page assisted recovery guidance", () => {
     mocks.resolveCurrentActorAccess.mockResolvedValue({ status: "UNAUTHENTICATED" });
   });
 
-  it("keeps account recovery unavailable and distinguishes a Patient request from activation", async () => {
+  it("keeps account recovery unavailable and points first-time users to registration only", async () => {
     const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
 
     expect(markup).toContain("ลืมรหัสผ่าน?");
     expect(markup).toContain("ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ");
     expect(markup).not.toContain("โรงพยาบาลจะตรวจสอบตัวตน");
     expect(markup).not.toContain("ออกลิงก์กู้คืนบัญชี");
-    expect(markup).toContain("ส่งคำขอใช้บัญชี DEMI");
-    expect(markup).toContain('href="/patient/access-request"');
+    expect(markup).toContain('href="/register"');
+    expect(markup).not.toContain('href="/patient/access-request"');
+    expect(markup).not.toContain("มั่นใจ");
     expect(markup).toContain("ขอใช้งาน DEMI สำหรับโรงพยาบาล");
     expect(markup).not.toContain('href="/recover"');
     expect(markup).not.toContain("ส่งอีเมลกู้คืน");
