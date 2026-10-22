@@ -48,6 +48,16 @@ import { clearProgramRoundCompletions } from "./support/program-rounds";
 const prisma = getPrisma();
 let sequence = 0;
 const previousCursorSecret = process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
+const floatingChartScores = {
+  familyScore: -5,
+  eatingScore: -4,
+  workScore: -3,
+  healthScore: -2,
+  financeScore: -1,
+  travelScore: 0,
+  exerciseScore: 1,
+  wellbeingScore: 5,
+};
 
 async function clearDatabase(): Promise<void> {
   await clearProgramRoundCompletions();
@@ -350,7 +360,12 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     );
     await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, programId));
     await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, programId, "PROMS"));
-    await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, summary: "ลอยจม" });
+    await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, {
+      patientProgramId: programId,
+      roundNumber: 1,
+      ...floatingChartScores,
+      summary: "ลอยจม",
+    });
     await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, ...routineTable() });
 
     const ready = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "1");
@@ -416,6 +431,15 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     await expectSequenced(recordPatientProgramServiceOneConfidence(actor, { patientProgramId: programId, roundNumber: 2, score: 5 }));
     await expectSequenced(recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 2, ...routineTable() }));
     await expectSequenced(recordPatientProgramServiceOneDreamCard(actor, { patientProgramId: programId, roundNumber: 3, ...dreamCard() }));
+    for (const roundNumber of [2, 3, 5, 6]) {
+      await expect(
+        recordPatientProgramServiceOneFloatingChart(actor, {
+          patientProgramId: programId,
+          roundNumber,
+          ...floatingChartScores,
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
+    }
     await expectSequenced(createGoalPlanForProgram(actor, goalInput(programId)));
     await expectSequenced(createFollowupForProgram(actor, followupInput(programId)), "ต้องจบบริการครั้งที่ 2 ก่อน จึงจะบันทึกครั้งที่ 3 ได้");
     await expectSequenced(
@@ -452,6 +476,11 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     const programId = fixture.programId;
 
     const first = await recordPatientProgramServiceOneConfidence(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, score: 3 });
+    const roundOneChart = await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, {
+      patientProgramId: programId,
+      roundNumber: 1,
+      ...floatingChartScores,
+    });
     await skipRestAndComplete(fixture, 1);
     const second = await recordPatientProgramServiceOneConfidence(fixture.osm.actor, { patientProgramId: programId, roundNumber: 2, score: 8 });
 
@@ -467,7 +496,12 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
 
     // Tools a round does not list are rejected by the service and by the database.
     await expect(
-      recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, { patientProgramId: programId, roundNumber: 2, summary: null }),
+      recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, {
+        patientProgramId: programId,
+        roundNumber: 2,
+        ...floatingChartScores,
+        summary: null,
+      }),
     ).rejects.toBeInstanceOf(ValidationError);
     await expect(
       prisma.patientProgramServiceOneDreamCard.create({ data: { patientProgramId: programId, roundNumber: 1, recordedByUserId: fixture.osm.userId } }),
@@ -500,6 +534,21 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
         data: { weeklyGoal: null },
       }),
     ).rejects.toThrow();
+
+    await skipRestAndComplete(fixture, 3);
+    const roundFourScores = { ...floatingChartScores, familyScore: 5, wellbeingScore: -5 };
+    const roundFourChart = await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, {
+      patientProgramId: programId,
+      roundNumber: 4,
+      ...roundFourScores,
+    });
+    expect(roundFourChart.recordId).not.toBe(roundOneChart.recordId);
+    const roundFour = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "4");
+    expect(roundFour.serviceOne.floatingChart).toMatchObject({
+      recorded: true,
+      scores: roundFourScores,
+      roundOneScores: floatingChartScores,
+    });
   });
 
   it("requires a reason to skip, shows it, lets a recording replace it and freezes it after completion (SR-D3)", async () => {
@@ -962,5 +1011,59 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
         data: { preferredName: " padded " },
       }),
     ).rejects.toThrow();
+
+    await prisma.patientProgramServiceOneFloatingChart.create({
+      data: {
+        patientProgramId: fixture.programId,
+        roundNumber: 1,
+        recordedByUserId: fixture.osm.userId,
+        summary: "สรุป legacy",
+      },
+    });
+    expect(await stepStatus(fixture, 1, "FLOATING_CHART")).toBe("DONE");
+    await expect(
+      prisma.patientProgramServiceOneFloatingChart.create({
+        data: {
+          patientProgramId: fixture.programId,
+          roundNumber: 4,
+          recordedByUserId: fixture.osm.userId,
+          familyScore: 0,
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.patientProgramServiceOneFloatingChart.create({
+        data: {
+          patientProgramId: fixture.programId,
+          roundNumber: 4,
+          recordedByUserId: fixture.osm.userId,
+          familyScore: 6,
+          eatingScore: 0,
+          workScore: 0,
+          healthScore: 0,
+          financeScore: 0,
+          travelScore: 0,
+          exerciseScore: 0,
+          wellbeingScore: 0,
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      prisma.patientProgramServiceOneFloatingChart.create({
+        data: {
+          patientProgramId: fixture.programId,
+          roundNumber: 4,
+          recordedByUserId: fixture.osm.userId,
+          familyScore: -5,
+          eatingScore: -5,
+          workScore: 0,
+          healthScore: 0,
+          financeScore: 0,
+          travelScore: 0,
+          exerciseScore: 5,
+          wellbeingScore: 5,
+        },
+      }),
+    ).resolves.toMatchObject({ familyScore: -5, wellbeingScore: 5 });
   });
 });

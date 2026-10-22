@@ -11,6 +11,10 @@ import {
 } from "@/modules/patient-program-rounds/presentation/round-labels";
 import { RoundProgressSummary } from "@/modules/patient-program-rounds/presentation/round-progress";
 import { RoundVitalsValues } from "@/modules/patient-program-rounds/presentation/round-vitals-display";
+import {
+  FloatingChartComparison,
+  FloatingChartVisualization,
+} from "@/modules/patient-program/presentation/floating-chart-display";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 import { PatientSelfHospitalContext } from "./patient-self-care-presentation";
@@ -61,6 +65,24 @@ export function PatientSelfProgramRoundsView({
                   </p>
                   <RoundVitalsValues vitals={round.vitals} />
                 </div>
+              ) : null}
+
+              {round.serviceOne.floatingChart.recorded ? (
+                <section aria-label="กราฟวัดลอยจม" className="mt-4 space-y-4 border-t border-border pt-4">
+                  <h3 className="font-semibold text-text">กราฟวัดลอยจม</h3>
+                  <FloatingChartVisualization scores={round.serviceOne.floatingChart.scores} />
+                  {round.serviceOne.floatingChart.summary ? (
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-text">
+                      {round.serviceOne.floatingChart.summary}
+                    </p>
+                  ) : null}
+                  {round.roundNumber === 4 && round.serviceOne.floatingChart.scores ? (
+                    <FloatingChartComparison
+                      currentScores={round.serviceOne.floatingChart.scores}
+                      roundOneScores={round.serviceOne.floatingChart.roundOneScores}
+                    />
+                  ) : null}
+                </section>
               ) : null}
 
               {round.status.state === "LOCKED" ? null : (

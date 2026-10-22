@@ -46,7 +46,7 @@ const detail: PatientProgramDetail = {
     roundNumber: 1,
     listedTools: ["routine", "floatingChart", "confidence"],
     routine: { ...activity, routineDate: null, entries: [], evidence: null },
-    floatingChart: { ...activity, summary: null, evidence: null },
+    floatingChart: { ...activity, summary: null, scores: null, roundOneScores: null, evidence: null },
     dreamCard: { ...activity, description: null, dream: null, obstacle: null, weeklyGoal: null, evidence: null },
     confidence: { ...activity, score: null, improvementPlan: null },
   }],

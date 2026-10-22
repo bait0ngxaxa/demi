@@ -16,6 +16,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
+  FLOATING_CHART_SCORE_FIELDS,
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
   patientProgramServiceOneFloatingChartRequestSchema,
@@ -110,6 +111,14 @@ const floatingChartMutationSelect = {
   recordedByUserId: true,
   recordedAt: true,
   summary: true,
+  familyScore: true,
+  eatingScore: true,
+  workScore: true,
+  healthScore: true,
+  financeScore: true,
+  travelScore: true,
+  exerciseScore: true,
+  wellbeingScore: true,
 } satisfies Prisma.PatientProgramServiceOneFloatingChartSelect;
 
 const dreamCardMutationSelect = {
@@ -635,7 +644,10 @@ async function recordFloatingChartInTransaction(
   });
 
   if (existing) {
-    if (existing.summary !== input.summary) {
+    if (
+      existing.summary !== input.summary ||
+      FLOATING_CHART_SCORE_FIELDS.some((field) => existing[field] !== input[field])
+    ) {
       throw new ConflictError("กราฟวัดลอยจมถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
     }
 
@@ -657,6 +669,14 @@ async function recordFloatingChartInTransaction(
       recordedByUserId: access.actor.userId,
       recordedAt: now,
       summary: input.summary,
+      familyScore: input.familyScore,
+      eatingScore: input.eatingScore,
+      workScore: input.workScore,
+      healthScore: input.healthScore,
+      financeScore: input.financeScore,
+      travelScore: input.travelScore,
+      exerciseScore: input.exerciseScore,
+      wellbeingScore: input.wellbeingScore,
     },
     select: floatingChartMutationSelect,
   });

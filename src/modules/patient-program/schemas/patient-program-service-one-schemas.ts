@@ -11,6 +11,21 @@ export const ROUTINE_MAX_ENTRIES = 24;
 export const ROUTINE_TIME_MAX_LENGTH = 20;
 export const ROUTINE_TEXT_MAX_LENGTH = 500;
 
+export const FLOATING_CHART_DIMENSIONS = [
+  { field: "familyScore", label: "ครอบครัว" },
+  { field: "eatingScore", label: "การกิน" },
+  { field: "workScore", label: "การงาน" },
+  { field: "healthScore", label: "สุขภาพ" },
+  { field: "financeScore", label: "การเงิน" },
+  { field: "travelScore", label: "เดินทาง" },
+  { field: "exerciseScore", label: "ออกกำลังกาย" },
+] as const;
+
+export const FLOATING_CHART_SCORE_FIELDS = [
+  ...FLOATING_CHART_DIMENSIONS.map(({ field }) => field),
+  "wellbeingScore",
+] as const;
+
 const optionalTextSchema = z
   .string()
   .trim()
@@ -20,8 +35,21 @@ const optionalTextSchema = z
   .transform((value) => value?.trim() || null);
 
 const confidenceScoreSchema = z.number().int().min(0).max(10);
+const floatingChartScoreSchema = z.number().int().min(-5).max(5);
+const floatingChartScoresSchema = z.object({
+  familyScore: floatingChartScoreSchema,
+  eatingScore: floatingChartScoreSchema,
+  workScore: floatingChartScoreSchema,
+  healthScore: floatingChartScoreSchema,
+  financeScore: floatingChartScoreSchema,
+  travelScore: floatingChartScoreSchema,
+  exerciseScore: floatingChartScoreSchema,
+  wellbeingScore: floatingChartScoreSchema,
+}).strict();
 /** SR-D8: Service 1 tools are recorded per round; the service checks that the round lists the tool. */
 const serviceOneRoundNumberSchema = z.number().int().min(1).max(6);
+
+export type PatientProgramServiceOneFloatingChartScores = z.output<typeof floatingChartScoresSchema>;
 
 export const patientProgramServiceOneActivitySchema = z.enum([
   "ROUTINE",
@@ -77,8 +105,8 @@ export const patientProgramServiceOneRoutineRequestSchema = z
   })
   .strict();
 
-export const patientProgramServiceOneFloatingChartRequestSchema = z
-  .object({
+export const patientProgramServiceOneFloatingChartRequestSchema = floatingChartScoresSchema
+  .extend({
     patientProgramId: patientProgramIdSchema,
     roundNumber: serviceOneRoundNumberSchema,
     summary: optionalTextSchema,

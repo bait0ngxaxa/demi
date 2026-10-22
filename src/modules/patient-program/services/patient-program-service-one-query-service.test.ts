@@ -4,6 +4,7 @@ import {
   toPatientProgramServiceOneProjection,
   toPatientProgramServiceOneReportProjection,
   toPatientProgramServiceOneRounds,
+  withoutPatientProgramServiceOneRecorders,
   type PatientProgramServiceOneRecord,
 } from "./patient-program-service-one-query-service";
 
@@ -16,6 +17,26 @@ const recordedByUser = {
     givenName: "สมชาย",
     familyName: "ผู้บันทึก",
   },
+};
+const roundOneScores = {
+  familyScore: -5,
+  eatingScore: -4,
+  workScore: -3,
+  healthScore: -2,
+  financeScore: -1,
+  travelScore: 0,
+  exerciseScore: 1,
+  wellbeingScore: 5,
+};
+const roundFourScores = {
+  familyScore: 5,
+  eatingScore: 4,
+  workScore: 3,
+  healthScore: 2,
+  financeScore: 1,
+  travelScore: 0,
+  exerciseScore: -1,
+  wellbeingScore: -5,
 };
 
 function record(overrides: Partial<PatientProgramServiceOneRecord> = {}): PatientProgramServiceOneRecord {
@@ -40,7 +61,15 @@ describe("Patient Program Service 1 read projection (SR-D8)", () => {
   it("returns empty structural progress before any activity is recorded", () => {
     expect(toPatientProgramServiceOneProjection(record(), 1)).toEqual({
       routine: { recorded: false, recordedAt: null, recordedBy: null, routineDate: null, entries: [], evidence: null },
-      floatingChart: { recorded: false, recordedAt: null, recordedBy: null, summary: null, evidence: null },
+      floatingChart: {
+        recorded: false,
+        recordedAt: null,
+        recordedBy: null,
+        summary: null,
+        scores: null,
+        roundOneScores: null,
+        evidence: null,
+      },
       dreamCard: {
         recorded: false,
         recordedAt: null,
@@ -95,6 +124,82 @@ describe("Patient Program Service 1 read projection (SR-D8)", () => {
       [5, ["routine"]],
       [6, ["confidence"]],
     ]);
+  });
+
+  it("projects a round 4 chart beside round 1 scores without merging the wellbeing ruler", () => {
+    const source = record({
+      serviceOneFloatingCharts: [
+        {
+          roundNumber: 1,
+          summary: null,
+          recordedAt,
+          recordedByUser,
+          ...roundOneScores,
+          serviceOneArtifactAssociation: null,
+        },
+        {
+          roundNumber: 4,
+          summary: "บันทึกรอบสี่",
+          recordedAt,
+          recordedByUser,
+          ...roundFourScores,
+          serviceOneArtifactAssociation: null,
+        },
+      ],
+    });
+
+    expect(toPatientProgramServiceOneProjection(source, 4).floatingChart).toMatchObject({
+      recorded: true,
+      scores: roundFourScores,
+      roundOneScores,
+    });
+    expect(toPatientProgramServiceOneProjection(source, 1).floatingChart.roundOneScores).toBeNull();
+  });
+
+  it("keeps a legacy summary-only chart recorded with no score data", () => {
+    const projection = toPatientProgramServiceOneProjection(
+      record({
+        serviceOneFloatingCharts: [{
+          roundNumber: 1,
+          summary: "สรุปเดิม",
+          recordedAt,
+          recordedByUser,
+          familyScore: null,
+          eatingScore: null,
+          workScore: null,
+          healthScore: null,
+          financeScore: null,
+          travelScore: null,
+          exerciseScore: null,
+          wellbeingScore: null,
+          serviceOneArtifactAssociation: null,
+        }],
+      }),
+      1,
+    );
+
+    expect(projection.floatingChart).toMatchObject({ recorded: true, summary: "สรุปเดิม", scores: null });
+  });
+
+  it("hides Service 1 recorder names while preserving the patient-readable scores", () => {
+    const projection = toPatientProgramServiceOneProjection(
+      record({
+        serviceOneFloatingCharts: [{
+          roundNumber: 1,
+          summary: null,
+          recordedAt,
+          recordedByUser,
+          ...roundOneScores,
+          serviceOneArtifactAssociation: null,
+        }],
+      }),
+      1,
+    );
+
+    expect(withoutPatientProgramServiceOneRecorders(projection).floatingChart).toMatchObject({
+      recordedBy: null,
+      scores: roundOneScores,
+    });
   });
 
   it("reports round 1 for the Before columns and round 3 for the dream card (R1-E)", () => {

@@ -66,7 +66,20 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
  * patient-program-rounds.integration.test.ts.
  */
 const recordPatientProgramServiceOneRoutine = inRound(withDefaults(serviceOne.recordPatientProgramServiceOneRoutine, routineTable()), () => 1);
-const recordPatientProgramServiceOneFloatingChart = inRound(serviceOne.recordPatientProgramServiceOneFloatingChart, () => 1);
+const floatingChartScores = {
+  familyScore: -2,
+  eatingScore: -1,
+  workScore: 0,
+  healthScore: 1,
+  financeScore: 2,
+  travelScore: 3,
+  exerciseScore: 4,
+  wellbeingScore: -5,
+};
+const recordPatientProgramServiceOneFloatingChart = inRound(
+  withDefaults(serviceOne.recordPatientProgramServiceOneFloatingChart, floatingChartScores),
+  () => 1,
+);
 const recordPatientProgramServiceOneConfidence = inRound(serviceOne.recordPatientProgramServiceOneConfidence, () => 1);
 const recordPatientProgramServiceOneDreamCard = inRound(
   withDefaults(serviceOne.recordPatientProgramServiceOneDreamCard, { weeklyGoal: dreamCard().weeklyGoal }),

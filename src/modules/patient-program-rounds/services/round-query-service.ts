@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   PatientProgramStatus,
+  Role,
   type PatientProgramRoundToolCode,
   type Prisma,
   type PrismaClient,
@@ -20,6 +21,7 @@ import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patien
 import {
   patientProgramServiceOneSelect,
   toPatientProgramServiceOneProjection,
+  withoutPatientProgramServiceOneRecorders,
   type PatientProgramServiceOneProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import {
@@ -318,6 +320,7 @@ export type ProgramRoundRecord = Prisma.PatientProgramGetPayload<{
 export type RoundReadOptions = { recorderNames: boolean };
 
 const STAFF_READ: RoundReadOptions = { recorderNames: true };
+const PATIENT_SELF_READ: RoundReadOptions = { recorderNames: false };
 
 function getDatabase(
   dependencies: PatientProgramRoundQueryDependencies,
@@ -697,22 +700,6 @@ export function buildProgramRoundsOverview(
   };
 }
 
-function withoutServiceOneRecorders(
-  projection: PatientProgramServiceOneProjection,
-  options: RoundReadOptions,
-): PatientProgramServiceOneProjection {
-  if (options.recorderNames) {
-    return projection;
-  }
-
-  return {
-    routine: { ...projection.routine, recordedBy: null },
-    floatingChart: { ...projection.floatingChart, recordedBy: null },
-    dreamCard: { ...projection.dreamCard, recordedBy: null },
-    confidence: { ...projection.confidence, recordedBy: null },
-  };
-}
-
 function toScreeningLink(screening: ReturnType<typeof screeningFor>) {
   return screening ? { id: screening.id, combined: screening.instrument === "COMBINED" } : null;
 }
@@ -760,7 +747,9 @@ export function buildProgramRoundDetail(
       status.writable &&
       followup === null &&
       program.followups.length === toFollowupRoundNumber(roundNumber) - 1,
-    serviceOne: withoutServiceOneRecorders(toPatientProgramServiceOneProjection(program, roundNumber), options),
+    serviceOne: options.recorderNames
+      ? toPatientProgramServiceOneProjection(program, roundNumber)
+      : withoutPatientProgramServiceOneRecorders(toPatientProgramServiceOneProjection(program, roundNumber)),
     screenings: {
       PAM: toScreeningLink(screeningFor(program, "PAM")),
       PROMS: toScreeningLink(screeningFor(program, "PROMS")),
@@ -851,6 +840,7 @@ export async function getProgramRoundsOverview(
       database,
       access.patient.patientHospitalRelationshipId,
       normalizedProgramId,
+      access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
     );
 
     return { ...overview, patientDisplayName: access.patient.displayName };
@@ -904,6 +894,7 @@ export async function getProgramRoundDetail(
           capability: PATIENT_PROGRAM_MANAGE_CAPABILITY,
           target: access.target,
         }).allowed,
+        options: access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
       },
     );
   } catch (error: unknown) {

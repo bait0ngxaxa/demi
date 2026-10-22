@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  Role,
   PatientProgramStatus,
   Prisma,
   type PrismaClient,
@@ -27,6 +28,7 @@ import {
 import {
   patientProgramServiceOneSelect,
   toPatientProgramServiceOneRounds,
+  withoutPatientProgramServiceOneRecorders,
   type PatientProgramServiceOneRoundProjection,
 } from "./patient-program-service-one-query-service";
 
@@ -218,11 +220,15 @@ export async function getPatientProgramDetail(
       throw new NotFoundError();
     }
 
+    const serviceOne = toPatientProgramServiceOneRounds(record);
+
     return {
       ...toProjection(record),
       patient: access.patient,
       canManage: getCanManage(access.actor, access.target),
-      serviceOne: toPatientProgramServiceOneRounds(record),
+      serviceOne: access.actor.roles.includes(Role.PATIENT)
+        ? serviceOne.map(withoutPatientProgramServiceOneRecorders)
+        : serviceOne,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

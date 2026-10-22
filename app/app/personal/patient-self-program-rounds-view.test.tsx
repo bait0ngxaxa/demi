@@ -30,7 +30,38 @@ const record = {
   ],
   screeningAssessments: [],
   serviceOneRoutines: [],
-  serviceOneFloatingCharts: [],
+  serviceOneFloatingCharts: [
+    {
+      roundNumber: 1,
+      summary: null,
+      recordedAt: new Date("2026-10-20T00:00:00Z"),
+      recordedByUser: recorder,
+      familyScore: -5,
+      eatingScore: -4,
+      workScore: -3,
+      healthScore: -2,
+      financeScore: -1,
+      travelScore: 0,
+      exerciseScore: 1,
+      wellbeingScore: 5,
+      serviceOneArtifactAssociation: null,
+    },
+    {
+      roundNumber: 4,
+      summary: null,
+      recordedAt: new Date("2026-10-20T00:00:00Z"),
+      recordedByUser: recorder,
+      familyScore: 5,
+      eatingScore: 4,
+      workScore: 3,
+      healthScore: 2,
+      financeScore: 1,
+      travelScore: 0,
+      exerciseScore: -1,
+      wellbeingScore: -5,
+      serviceOneArtifactAssociation: null,
+    },
+  ],
   serviceOneDreamCards: [],
   serviceOneConfidences: [],
   goalPlans: [],
@@ -72,6 +103,11 @@ describe("Patient SELF round history", () => {
     expect(markup).toContain("เสร็จแล้ว");
     expect(markup).toContain("กำลังทำ");
     expect(markup).toContain("เหตุผลที่ข้าม: ผู้ป่วยปฏิเสธ");
+    expect(markup).toContain("คะแนนอารมณ์");
+    expect(markup).toContain("ครอบครัว");
+    expect(markup).toContain("ไม้บรรทัดวัดทุกข์สุข");
+    expect(markup).toContain("เปรียบเทียบกับครั้งที่ 1");
+    expect(markup).toContain("ครั้งที่ 4");
     // The Follow-up is not linked to a plan, so the plan review is not done.
     expect(markup).toMatch(/ทบทวนแผนสุขภาพ<\/span><\/span><span[^>]*>ยังไม่ได้บันทึก/u);
     expect(markup).not.toContain("สมศรี");

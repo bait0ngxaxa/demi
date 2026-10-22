@@ -35,10 +35,17 @@ import type {
   PatientProgramServiceOneRoundProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import {
+  FLOATING_CHART_DIMENSIONS,
   ROUTINE_MAX_ENTRIES,
   type PatientProgramServiceOneActivity,
   type PatientProgramServiceOneArtifactActivity,
+  type PatientProgramServiceOneFloatingChartScores,
 } from "@/modules/patient-program/schemas/patient-program-service-one-schemas";
+
+import {
+  FloatingChartComparison,
+  FloatingChartVisualization,
+} from "@/modules/patient-program/presentation/floating-chart-display";
 
 type ServiceOneActivityKey = PatientProgramServiceOneActivity;
 
@@ -658,6 +665,16 @@ function FloatingChartCard({
   roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
+  const [scores, setScores] = useState<PatientProgramServiceOneFloatingChartScores>({
+    familyScore: 0,
+    eatingScore: 0,
+    workScore: 0,
+    healthScore: 0,
+    financeScore: 0,
+    travelScore: 0,
+    exerciseScore: 0,
+    wellbeingScore: 0,
+  });
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramServiceOneActionState, FormData>(
     recordPatientProgramServiceOneFloatingChartAction,
     initialPatientProgramServiceOneActionState,
@@ -675,29 +692,114 @@ function FloatingChartCard({
     }
   }, [nextHref, router, state]);
 
+  const recordedResult = activity.recorded ? (
+    <div className="mt-5 space-y-4">
+      <RecordedMeta activity={activity} />
+      <FloatingChartVisualization scores={activity.scores} />
+      {roundNumber === 4 && activity.scores ? (
+        <FloatingChartComparison currentScores={activity.scores} roundOneScores={activity.roundOneScores} />
+      ) : null}
+    </div>
+  ) : null;
+
   return (
-    <ActivityCard activity={activity} description="บันทึกกราฟวัดลอยจมพร้อมสรุปสั้น ๆ ได้ถ้าจำเป็น" id="FLOATING_CHART" title="กราฟวัดลอยจม">
-      {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
-          <input name="patientProgramId" type="hidden" value={programId} />
-          <input name="roundNumber" type="hidden" value={roundNumber} />
-          <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-floating-summary">
-            <span>สรุป (ไม่บังคับ)</span>
-            <textarea
-              className={`${inputClassName} min-h-28 py-3`}
-              disabled={pending || unknownOutcome}
-              id="service-one-floating-summary"
-              maxLength={2000}
-              name="summary"
-              placeholder="เขียนสรุปจากกิจกรรมนี้ได้ถ้าจำเป็น"
-              rows={4}
-            />
-            <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
-          </label>
-          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
-            {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
-          </Button>
-        </form>
+    <ActivityCard activity={activity} description="ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย" id="FLOATING_CHART" title="กราฟวัดลอยจม">
+      {activity.recorded ? recordedResult : canManage ? (
+        <div className={roundNumber === 4 ? "mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]" : "mt-5"}>
+          <form className="space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
+            <input name="patientProgramId" type="hidden" value={programId} />
+            <input name="roundNumber" type="hidden" value={roundNumber} />
+            <fieldset className="space-y-4">
+              <legend className="mb-3 text-sm font-semibold leading-6 text-text">ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย</legend>
+              {FLOATING_CHART_DIMENSIONS.map(({ field, label }) => {
+                const id = `service-one-floating-${roundNumber}-${field}`;
+
+                return (
+                  <div className="border-b border-border pb-3 last:border-0" key={field}>
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="text-sm font-semibold text-text" htmlFor={id}>{label}</label>
+                      <output className="min-w-8 text-right text-sm font-semibold tabular-nums text-brand-strong" htmlFor={id}>
+                        {scores[field]}
+                      </output>
+                    </div>
+                    <input
+                      aria-describedby={`${id}-ticks`}
+                      aria-valuetext={`${scores[field]} คะแนน`}
+                      className="mt-2 h-11 w-full cursor-pointer accent-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                      disabled={pending || unknownOutcome}
+                      id={id}
+                      max={5}
+                      min={-5}
+                      name={field}
+                      onChange={(event) => setScores((current) => ({ ...current, [field]: Number(event.currentTarget.value) }))}
+                      required
+                      step={1}
+                      type="range"
+                      value={scores[field]}
+                    />
+                    <div className="flex justify-between text-xs tabular-nums text-text-muted" id={`${id}-ticks`}>
+                      <span>−5</span><span>0</span><span>5</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </fieldset>
+
+            <fieldset className="space-y-3 border-t border-border pt-4">
+              <legend className="font-semibold text-text">ไม้บรรทัดวัดทุกข์สุข</legend>
+              <div className="flex justify-between px-1 text-xs tabular-nums text-text-muted">
+                <span className="flex flex-col items-center gap-1"><RulerFace mood="sad" />−5</span>
+                <span className="flex flex-col items-center gap-1"><RulerFace mood="neutral" />0</span>
+                <span className="flex flex-col items-center gap-1"><RulerFace mood="happy" />5</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="sr-only" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>ไม้บรรทัดวัดทุกข์สุข</label>
+                <input
+                  aria-valuetext={`${scores.wellbeingScore} คะแนน`}
+                  className="h-11 w-full cursor-pointer accent-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                  disabled={pending || unknownOutcome}
+                  id={`service-one-floating-${roundNumber}-wellbeingScore`}
+                  max={5}
+                  min={-5}
+                  name="wellbeingScore"
+                  onChange={(event) => setScores((current) => ({ ...current, wellbeingScore: Number(event.currentTarget.value) }))}
+                  required
+                  step={1}
+                  type="range"
+                  value={scores.wellbeingScore}
+                />
+                <output className="min-w-8 text-right text-sm font-semibold tabular-nums text-brand-strong" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>
+                  {scores.wellbeingScore}
+                </output>
+              </div>
+            </fieldset>
+
+            <div className="space-y-3 border-t border-border pt-4">
+              <h4 className="font-semibold text-text">กราฟวัดลอยจม</h4>
+              <FloatingChartVisualization scores={scores} />
+            </div>
+
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`service-one-floating-${roundNumber}-summary`}>
+              <span>สรุป (ไม่บังคับ)</span>
+              <textarea
+                className={`${inputClassName} min-h-28 py-3`}
+                disabled={pending || unknownOutcome}
+                id={`service-one-floating-${roundNumber}-summary`}
+                maxLength={2000}
+                name="summary"
+                placeholder="เขียนสรุปจากกิจกรรมนี้ได้ถ้าจำเป็น"
+                rows={4}
+              />
+              <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
+            </label>
+            <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
+              {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
+            </Button>
+          </form>
+          {roundNumber === 4 ? (
+            <FloatingChartComparison currentScores={scores} roundOneScores={activity.roundOneScores} />
+          ) : null}
+        </div>
       ) : (
         <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
@@ -720,6 +822,19 @@ function FloatingChartCard({
         roundNumber={roundNumber}
       />
     </ActivityCard>
+  );
+}
+
+function RulerFace({ mood }: { mood: "sad" | "neutral" | "happy" }): React.JSX.Element {
+  const mouthPath = mood === "sad" ? "M7 18 Q12 13 17 18" : mood === "happy" ? "M7 15 Q12 21 17 15" : "M7 16 H17";
+
+  return (
+    <svg aria-hidden="true" className="h-6 w-6" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" fill="var(--brand-pale)" r="10" stroke="var(--brand-strong)" strokeWidth="1.5" />
+      <circle cx="8.5" cy="10" fill="var(--brand-strong)" r="1" />
+      <circle cx="15.5" cy="10" fill="var(--brand-strong)" r="1" />
+      <path d={mouthPath} stroke="var(--brand-strong)" strokeLinecap="round" strokeWidth="1.5" />
+    </svg>
   );
 }
 
@@ -1026,6 +1141,17 @@ export function PatientProgramServiceOneWorkspace({
                 );
               })}
             </dl>
+            {round.floatingChart.recorded ? (
+              <div className="mt-4 space-y-4 border-t border-border pt-4">
+                <FloatingChartVisualization scores={round.floatingChart.scores} />
+                {round.roundNumber === 4 && round.floatingChart.scores ? (
+                  <FloatingChartComparison
+                    currentScores={round.floatingChart.scores}
+                    roundOneScores={round.floatingChart.roundOneScores}
+                  />
+                ) : null}
+              </div>
+            ) : null}
           </li>
         ))}
       </ul>

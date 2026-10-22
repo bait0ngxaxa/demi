@@ -9,6 +9,7 @@ import {
   type ProgramRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { isPerRoundToolInRound } from "@/modules/patient-program-rounds/domain/round-steps";
+import type { PatientProgramServiceOneFloatingChartScores } from "../schemas/patient-program-service-one-schemas";
 
 const recordedByUserSelect = {
   select: {
@@ -56,6 +57,14 @@ export const patientProgramServiceOneSelect = {
     select: {
       roundNumber: true,
       summary: true,
+      familyScore: true,
+      eatingScore: true,
+      workScore: true,
+      healthScore: true,
+      financeScore: true,
+      travelScore: true,
+      exerciseScore: true,
+      wellbeingScore: true,
       recordedAt: true,
       recordedByUser: recordedByUserSelect,
       serviceOneArtifactAssociation: artifactAssociationSelect,
@@ -123,6 +132,9 @@ export type PatientProgramServiceOneProjection = {
   };
   floatingChart: PatientProgramServiceOneActivityProjection & {
     summary: string | null;
+    scores: PatientProgramServiceOneFloatingChartScores | null;
+    /** Round 1 scores, included only for the round 4 comparison. */
+    roundOneScores: PatientProgramServiceOneFloatingChartScores | null;
     evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   dreamCard: PatientProgramServiceOneActivityProjection & {
@@ -144,6 +156,18 @@ export type PatientProgramServiceOneRoundProjection = PatientProgramServiceOnePr
   /** Tools this round's checklist lists (SR-D8). */
   listedTools: readonly ("routine" | "floatingChart" | "dreamCard" | "confidence")[];
 };
+
+export function withoutPatientProgramServiceOneRecorders<
+  T extends PatientProgramServiceOneProjection,
+>(projection: T): T {
+  return {
+    ...projection,
+    routine: { ...projection.routine, recordedBy: null },
+    floatingChart: { ...projection.floatingChart, recordedBy: null },
+    dreamCard: { ...projection.dreamCard, recordedBy: null },
+    confidence: { ...projection.confidence, recordedBy: null },
+  };
+}
 
 function toDisplayName(person: {
   givenName: string | null;
@@ -214,12 +238,42 @@ function inRound<T extends { roundNumber: number }>(records: readonly T[] | unde
   return records?.find((record) => record.roundNumber === roundNumber) ?? null;
 }
 
+function toFloatingChartScores(
+  record: PatientProgramServiceOneRecord["serviceOneFloatingCharts"][number] | null,
+): PatientProgramServiceOneFloatingChartScores | null {
+  if (
+    !record ||
+    record.familyScore === null ||
+    record.eatingScore === null ||
+    record.workScore === null ||
+    record.healthScore === null ||
+    record.financeScore === null ||
+    record.travelScore === null ||
+    record.exerciseScore === null ||
+    record.wellbeingScore === null
+  ) {
+    return null;
+  }
+
+  return {
+    familyScore: record.familyScore,
+    eatingScore: record.eatingScore,
+    workScore: record.workScore,
+    healthScore: record.healthScore,
+    financeScore: record.financeScore,
+    travelScore: record.travelScore,
+    exerciseScore: record.exerciseScore,
+    wellbeingScore: record.wellbeingScore,
+  };
+}
+
 export function toPatientProgramServiceOneProjection(
   record: PatientProgramServiceOneRecord | null | undefined,
   roundNumber: number,
 ): PatientProgramServiceOneProjection {
   const routine = inRound(record?.serviceOneRoutines, roundNumber);
   const floatingChart = inRound(record?.serviceOneFloatingCharts, roundNumber);
+  const roundOneFloatingChart = inRound(record?.serviceOneFloatingCharts, 1);
   const dreamCard = inRound(record?.serviceOneDreamCards, roundNumber);
   const confidence = inRound(record?.serviceOneConfidences, roundNumber);
 
@@ -233,6 +287,8 @@ export function toPatientProgramServiceOneProjection(
     floatingChart: {
       ...toActivityProjection(floatingChart),
       summary: floatingChart?.summary ?? null,
+      scores: toFloatingChartScores(floatingChart),
+      roundOneScores: roundNumber === 4 ? toFloatingChartScores(roundOneFloatingChart) : null,
       evidence: toEvidenceProjection(floatingChart),
     },
     dreamCard: {
@@ -289,8 +345,10 @@ export const patientProgramServiceOneQueryInternals = {
   toActivityProjection,
   toDisplayName,
   toEvidenceProjection,
+  toFloatingChartScores,
   toPatientProgramServiceOneProjection,
   toPatientProgramServiceOneReportProjection,
   toPatientProgramServiceOneRounds,
   toRecordedBy,
+  withoutPatientProgramServiceOneRecorders,
 };

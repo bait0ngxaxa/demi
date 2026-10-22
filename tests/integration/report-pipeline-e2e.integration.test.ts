@@ -56,6 +56,16 @@ const hospitalIds: string[] = [];
 const userIds: string[] = [];
 const personIds: string[] = [];
 const IDLE = { status: "IDLE" } as never;
+const floatingChartScores = {
+  familyScore: -5,
+  eatingScore: -4,
+  workScore: -3,
+  healthScore: -2,
+  financeScore: -1,
+  travelScore: 0,
+  exerciseScore: 1,
+  wellbeingScore: 5,
+};
 
 type ActionResult = { status: string; result?: Record<string, unknown>; message?: string };
 
@@ -294,7 +304,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
       instrument: "PROMS",
       "proms-1": 5, "proms-2": 4, "proms-3": 5, "proms-4": 5,
     })), "round 1 PROMs");
-    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneFloatingChartAction(IDLE, form({ patientProgramId: programId, roundNumber: 1, summary: "ทดสอบกราฟวัดลอยจม" })), "floating chart");
+    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneFloatingChartAction(IDLE, form({ patientProgramId: programId, roundNumber: 1, ...floatingChartScores, summary: "ทดสอบกราฟวัดลอยจม" })), "floating chart");
     await routine(1);
     // R1-E: the round 1 ruler (5) is the report's Before score, not the Baseline score (6).
     await ruler(1, 5);
@@ -364,7 +374,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
       ]),
     })), "round 4 adjusted Goal Plan v2");
     const adjustedPlanId = String(adjustedPlan.goalPlanId);
-    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneFloatingChartAction(IDLE, form({ patientProgramId: programId, roundNumber: 4, summary: "ทดสอบกราฟครั้งที่ 4" })), "round 4 floating chart");
+    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneFloatingChartAction(IDLE, form({ patientProgramId: programId, roundNumber: 4, ...floatingChartScores, summary: "ทดสอบกราฟครั้งที่ 4" })), "round 4 floating chart");
     await ruler(4, 7);
     await routine(4);
     await completeRound(4);

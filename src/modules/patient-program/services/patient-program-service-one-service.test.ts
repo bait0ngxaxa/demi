@@ -36,6 +36,16 @@ const actorUserId = "44444444-4444-4444-8444-444444444444";
 const personId = "55555555-5555-4555-8555-555555555555";
 const recordId = "66666666-6666-4666-8666-666666666666";
 const recordedAt = new Date("2026-08-20T05:00:00.000Z");
+const floatingChartScores = {
+  familyScore: -2,
+  eatingScore: 1,
+  workScore: 0,
+  healthScore: 3,
+  financeScore: -1,
+  travelScore: 2,
+  exerciseScore: 5,
+  wellbeingScore: -5,
+};
 
 const actor: ActorContext = {
   userId: actorUserId,
@@ -140,6 +150,7 @@ function createDatabase(input: {
         recordedByUserId: actorUserId,
         recordedAt,
         summary: "สรุป",
+        ...floatingChartScores,
       }),
     },
     patientProgramServiceOneDreamCard: {
@@ -292,12 +303,13 @@ describe("Patient Program Service 1 service", () => {
       recordedByUserId: actorUserId,
       recordedAt,
       summary: "สรุป",
+      ...floatingChartScores,
     };
     const { database, transaction } = createDatabase({ floatingChart: existing });
 
     const result = await recordPatientProgramServiceOneFloatingChart(
       actor,
-      { patientProgramId: programId, roundNumber: 1, summary: "  สรุป  " },
+      { patientProgramId: programId, roundNumber: 1, ...floatingChartScores, summary: "  สรุป  " },
       { database, now: () => new Date("2026-08-21T05:00:00.000Z") },
     );
 
@@ -315,18 +327,41 @@ describe("Patient Program Service 1 service", () => {
       recordedByUserId: actorUserId,
       recordedAt,
       summary: "ข้อมูลเดิม",
+      ...floatingChartScores,
     };
     const { database, transaction } = createDatabase({ floatingChart: existing });
 
     await expect(
       recordPatientProgramServiceOneFloatingChart(
         actor,
-        { patientProgramId: programId, roundNumber: 1, summary: "ข้อมูลใหม่" },
+        { patientProgramId: programId, roundNumber: 1, ...floatingChartScores, summary: "ข้อมูลใหม่" },
         { database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
     expect(transaction.patientProgramServiceOneFloatingChart.create).not.toHaveBeenCalled();
     expect(mockedAudit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repeated floating-chart submission when any score differs", async () => {
+    const existing = {
+      id: recordId,
+      patientProgramId: programId,
+      roundNumber: 1,
+      recordedByUserId: actorUserId,
+      recordedAt,
+      summary: null,
+      ...floatingChartScores,
+    };
+    const { database, transaction } = createDatabase({ floatingChart: existing });
+
+    await expect(
+      recordPatientProgramServiceOneFloatingChart(
+        actor,
+        { patientProgramId: programId, roundNumber: 1, ...floatingChartScores, wellbeingScore: 4 },
+        { database },
+      ),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(transaction.patientProgramServiceOneFloatingChart.create).not.toHaveBeenCalled();
   });
 
   it("rejects Service 1 writes after Program completion and on a completion race", async () => {

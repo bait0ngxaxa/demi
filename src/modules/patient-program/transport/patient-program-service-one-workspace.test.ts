@@ -65,7 +65,7 @@ type ServiceOne = PatientProgramServiceOneProjection;
 function serviceOne(overrides: Partial<ServiceOne> = {}): ServiceOne {
   return {
     routine: { ...activity(), routineDate: null, entries: [], evidence: null },
-    floatingChart: { ...activity(), summary: null, evidence: null },
+    floatingChart: { ...activity(), summary: null, scores: null, roundOneScores: null, evidence: null },
     dreamCard: { ...activity(), description: null, dream: null, obstacle: null, weeklyGoal: null, evidence: null },
     confidence: { ...activity(), score: null, improvementPlan: null },
     ...overrides,
@@ -138,6 +138,17 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     for (const label of ["วัน เดือน ปี", "เวลา", "กิจวัตรประจำวัน", "การปรับพฤติกรรม"]) {
       expect(table).toContain(label);
     }
+
+    const floatingChart = renderStep("floatingChart", serviceOne());
+    for (const field of ["familyScore", "eatingScore", "workScore", "healthScore", "financeScore", "travelScore", "exerciseScore", "wellbeingScore"]) {
+      expect(floatingChart).toContain(`name="${field}"`);
+    }
+    for (const label of ["ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย", "คะแนนอารมณ์", "ไม้บรรทัดวัดทุกข์สุข", "ครอบครัว", "การกิน", "การงาน", "สุขภาพ", "การเงิน", "เดินทาง", "ออกกำลังกาย"]) {
+      expect(floatingChart).toContain(label);
+    }
+    expect(floatingChart).toMatch(/max="5"/u);
+    expect(floatingChart).toMatch(/min="-5"/u);
+    expect(floatingChart).toContain("กราฟวัดลอยจม");
   });
 
   it("renders recorded results and read-only steps without controls", () => {
@@ -155,7 +166,7 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
           associatedAt: evidenceAssociatedAt,
         },
       },
-      floatingChart: { ...activity(true), summary: "สรุปกราฟ", evidence: null },
+      floatingChart: { ...activity(true), summary: "สรุปกราฟ", scores: null, roundOneScores: null, evidence: null },
       confidence: { ...activity(true), score: 7, improvementPlan: "แผนพัฒนา" },
     });
 
@@ -166,6 +177,7 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     expect(routine).toContain("ตื่นนอน");
     expect(routine).toContain("เดิน 15 นาที");
     expect(renderStep("floatingChart", recorded, false)).toContain("สรุปกราฟ");
+    expect(renderStep("floatingChart", recorded, false)).toContain("บันทึกครั้งนี้ยังไม่มีคะแนนจากแบบฟอร์มนี้");
     // A dream card recorded before R2 still renders its free-text description.
     expect(
       renderStep(

@@ -7,6 +7,7 @@ import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/ro
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
+  FLOATING_CHART_SCORE_FIELDS,
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneArtifactAssociationRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
@@ -94,7 +95,12 @@ function buildRoutineInput(formData: FormData): unknown {
 }
 
 function buildFloatingChartInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "summary"]))) {
+  if (
+    hasUnexpectedOrDuplicateFields(
+      formData,
+      new Set(["patientProgramId", "roundNumber", "summary", ...FLOATING_CHART_SCORE_FIELDS]),
+    )
+  ) {
     return null;
   }
 
@@ -102,6 +108,7 @@ function buildFloatingChartInput(formData: FormData): unknown {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
     summary: getSingleString(formData, "summary"),
+    ...Object.fromEntries(FLOATING_CHART_SCORE_FIELDS.map((field) => [field, getSingleInteger(formData, field)])),
   };
 }
 

@@ -98,6 +98,16 @@ type HospitalRef = { id: string; hospitalCode: string; name: string };
 type PatientRef = { key: DemoAccountKey; userId: string; relationshipId: string; hospitalId: string };
 
 const FAMILY_ENABLED = { enabled: true } as const;
+const DEMO_FLOATING_CHART_SCORES = {
+  familyScore: 2,
+  eatingScore: -1,
+  workScore: 3,
+  healthScore: 1,
+  financeScore: 0,
+  travelScore: -2,
+  exerciseScore: 4,
+  wellbeingScore: 1,
+} as const;
 
 const database = (): PrismaClient => getPrisma();
 const at = (day: string, time = "10:00"): Date => new Date(`${day}T${time}:00+07:00`);
@@ -511,7 +521,12 @@ async function seedProgram(input: {
   }, clock(startDay, "10:00"));
   await submitScreening(osmActor, screeningInput(relationshipId, programId, 2, "PAM"), clock(startDay, "10:10"));
   await submitScreening(osmActor, screeningInput(relationshipId, programId, 2, "PROMS"), clock(startDay, "10:12"));
-  await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 1, summary: "ทดสอบ: กราฟวัดลอยจม" }, clock(startDay, "10:20"));
+  await recordPatientProgramServiceOneFloatingChart(osmActor, {
+    patientProgramId: programId,
+    roundNumber: 1,
+    ...DEMO_FLOATING_CHART_SCORES,
+    summary: "ทดสอบ: กราฟวัดลอยจม",
+  }, clock(startDay, "10:20"));
   await routine(1, startDay);
   await ruler(1, startDay, 6);
   if (stage === "ROUND_1") return { programId, finalDay: null };
@@ -551,7 +566,14 @@ async function seedProgram(input: {
     patientProgramId: programId, sourceFollowupId: adjustingFollowupId, submissionNonce: randomUUID(), items: PLAN_V2,
     booklet: bookletPlan("ทดสอบ: ช่วงเทศกาลควบคุมอาหารได้ยาก"),
   }, clock(day(42), "11:30"));
-  await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 4, summary: "ทดสอบ: กราฟวัดลอยจมครั้งที่ 4" }, clock(day(42), "10:20"));
+  await recordPatientProgramServiceOneFloatingChart(osmActor, {
+    patientProgramId: programId,
+    roundNumber: 4,
+    ...DEMO_FLOATING_CHART_SCORES,
+    familyScore: 1,
+    wellbeingScore: 2,
+    summary: "ทดสอบ: กราฟวัดลอยจมครั้งที่ 4",
+  }, clock(day(42), "10:20"));
   await ruler(4, day(42), 8);
   await routine(4, day(42));
   if (stage === "ROUND_4") return { programId, finalDay: null };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FLOATING_CHART_SCORE_FIELDS,
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
   patientProgramServiceOneFloatingChartRequestSchema,
@@ -8,6 +9,16 @@ import {
 } from "./patient-program-service-one-schemas";
 
 const patientProgramId = "11111111-1111-4111-8111-111111111111";
+const floatingChartScores = {
+  familyScore: -5,
+  eatingScore: -4,
+  workScore: -3,
+  healthScore: -2,
+  financeScore: -1,
+  travelScore: 0,
+  exerciseScore: 5,
+  wellbeingScore: 4,
+};
 
 describe("Patient Program Service 1 schemas", () => {
   it("normalizes optional reflection text and accepts a routine record", () => {
@@ -19,9 +30,10 @@ describe("Patient Program Service 1 schemas", () => {
       patientProgramServiceOneFloatingChartRequestSchema.parse({
         patientProgramId,
         roundNumber: 4,
+        ...floatingChartScores,
         summary: "  สรุปจากกราฟ  ",
       }),
-    ).toEqual({ patientProgramId, roundNumber: 4, summary: "สรุปจากกราฟ" });
+    ).toEqual({ patientProgramId, roundNumber: 4, ...floatingChartScores, summary: "สรุปจากกราฟ" });
     expect(
       patientProgramServiceOneDreamCardRequestSchema.parse({
         patientProgramId,
@@ -31,6 +43,37 @@ describe("Patient Program Service 1 schemas", () => {
         weeklyGoal: " เดินวันละ 10 นาที ",
       }),
     ).toEqual({ patientProgramId, roundNumber: 3, dream: "อยากไปเที่ยวทะเล", obstacle: null, weeklyGoal: "เดินวันละ 10 นาที" });
+  });
+
+  it.each(FLOATING_CHART_SCORE_FIELDS)("requires an integer from −5 to 5 for %s", (field) => {
+    const input = { patientProgramId, roundNumber: 1, ...floatingChartScores };
+    const missing = { ...input };
+    delete missing[field];
+
+    expect(patientProgramServiceOneFloatingChartRequestSchema.safeParse(missing).success).toBe(false);
+    for (const value of [1.5, -6, 6]) {
+      expect(
+        patientProgramServiceOneFloatingChartRequestSchema.safeParse({ ...input, [field]: value }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("accepts the minimum, water line and maximum scores with no summary", () => {
+    const parsed = patientProgramServiceOneFloatingChartRequestSchema.parse({
+      patientProgramId,
+      roundNumber: 1,
+      familyScore: -5,
+      eatingScore: 0,
+      workScore: 5,
+      healthScore: -5,
+      financeScore: 0,
+      travelScore: 5,
+      exerciseScore: -5,
+      wellbeingScore: 0,
+    });
+
+    expect(parsed).toMatchObject({ patientProgramId, roundNumber: 1, summary: null });
+    expect(parsed.wellbeingScore).toBe(0);
   });
 
   it("requires the dream and this week's small goal (R2-G)", () => {
@@ -82,6 +125,7 @@ describe("Patient Program Service 1 schemas", () => {
       patientProgramServiceOneFloatingChartRequestSchema.safeParse({
         patientProgramId,
         roundNumber: 1,
+        ...floatingChartScores,
         summary: "x".repeat(2_001),
       }).success,
     ).toBe(false);

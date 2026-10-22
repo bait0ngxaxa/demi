@@ -1660,6 +1660,14 @@ model PatientProgramServiceOneFloatingChart {
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
   summary          String?  @db.VarChar(2000)
+  familyScore      Int?     @db.SmallInt
+  eatingScore      Int?     @db.SmallInt
+  workScore        Int?     @db.SmallInt
+  healthScore      Int?     @db.SmallInt
+  financeScore     Int?     @db.SmallInt
+  travelScore      Int?     @db.SmallInt
+  exerciseScore    Int?     @db.SmallInt
+  wellbeingScore   Int?     @db.SmallInt
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneFloatingChartRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
