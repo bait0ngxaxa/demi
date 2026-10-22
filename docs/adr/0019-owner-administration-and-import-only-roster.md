@@ -16,3 +16,7 @@ Historical reportExportGranted data and audits are retained but never authorize 
 Every OSM Rich Menu has four primary actions: ผู้ป่วยที่ดูแล, คัดกรองผู้ป่วย, บันทึกติดตาม and งานทั้งหมด. Account management, aliases and native role switching are preserved. Generic HOSPITAL menus contain no OWNER-only action. No new LIFF application, live Provider mutation or deployment is needed.
 
 See [capability classification](../requirements/OWNER_ADMINISTRATION_AND_CARE.md) and [verification evidence](../phases/OWNER_ADMINISTRATION_IMPLEMENTATION.md).
+
+## Cross-reference — ADR-0020 self-registration (2026-10-22)
+
+[ADR-0020](0020-self-registration-by-national-id.md) adds public first-time registration for records already provisioned by an OWNER. Provisioning authority, patient Excel import, invite links, assisted activation, slips and child-owner onboarding retain their current rules. An ACTIVE direct OWNER controls the Hospital's self-registration switch and can review self-registration dates in the roster.

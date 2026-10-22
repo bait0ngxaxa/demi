@@ -79,6 +79,15 @@ export default async function LoginPage({
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
 
+          <p className="mt-5 text-sm leading-6 text-muted">
+            <Link
+              className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              href="/register"
+            >
+              ลงทะเบียนครั้งแรก (บุคลากร / อสม. / ผู้ป่วย)
+            </Link>
+          </p>
+
           <p className="mt-4 text-sm leading-6 text-muted">
             ลืมรหัสผ่าน? ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
           </p>

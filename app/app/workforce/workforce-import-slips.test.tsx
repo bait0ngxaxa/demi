@@ -27,6 +27,7 @@ const rows: WorkforceListRow[] = [
     activationStatus: "PENDING",
     activationExpiresAt: new Date("2026-10-23T00:00:00.000Z"),
     activationMode: "REMOTE",
+    selfRegisteredAt: null,
   },
   {
     id: "expired-relationship",
@@ -41,6 +42,7 @@ const rows: WorkforceListRow[] = [
     activationStatus: "EXPIRED",
     activationExpiresAt: new Date("2026-10-20T00:00:00.000Z"),
     activationMode: "REMOTE",
+    selfRegisteredAt: null,
   },
 ];
 
@@ -81,6 +83,7 @@ async function render(): Promise<void> {
         serverTime: 1791849600000,
         search: "",
         status: null,
+        selfRegistration: "ALL",
         staffCursor: null,
         osmCursor: null,
         staffNextCursor: null,

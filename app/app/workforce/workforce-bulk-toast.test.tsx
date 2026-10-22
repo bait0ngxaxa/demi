@@ -124,6 +124,7 @@ async function renderWorkspace(selectedHospitalId = hospitalA.id): Promise<void>
           serverTime: 1791849600000,
           search: "",
           status: null,
+          selfRegistration: "ALL",
           staffCursor: null,
           osmCursor: null,
           staffNextCursor: null,

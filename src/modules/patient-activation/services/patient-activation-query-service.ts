@@ -4,6 +4,7 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
+  PatientActivationPurpose,
   Prisma,
   Role,
   UserStatus,
@@ -381,7 +382,7 @@ export async function findPatientActivationCandidates(
 
     const userIds = candidates.map(({ user }) => user.id);
     const activations = await db.patientActivation.findMany({
-      where: { userId: { in: userIds } },
+      where: { userId: { in: userIds }, purpose: PatientActivationPurpose.ACTIVATION },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         userId: true,

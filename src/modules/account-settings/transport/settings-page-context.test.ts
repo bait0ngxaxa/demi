@@ -14,6 +14,9 @@ vi.mock("@/modules/appointments/services/appointment-line-notification-preferenc
 vi.mock("@/modules/medications/services/medication-line-reminder-preference-service", () => ({
   getOwnMedicationLineReminderPreference: () => Promise.resolve({ enabled: false }),
 }));
+vi.mock("@/modules/hospital-settings/services/hospital-self-registration-settings-service", () => ({
+  listOwnedHospitalSelfRegistrationSettings: () => Promise.resolve([]),
+}));
 
 import { getSettingsPageContext } from "./settings-page-context";
 

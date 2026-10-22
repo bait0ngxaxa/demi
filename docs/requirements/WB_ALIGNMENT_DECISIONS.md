@@ -44,6 +44,22 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 | ~~WB-PD-11~~ | วันเวลาที่อนุมัติคำขอเลื่อนนัด | **ปิด (ก-23):** เลือกเวลาอื่นได้และยังเรียกว่า "อนุมัติ" = พฤติกรรมปัจจุบัน (ตัวเลือก 1 ใน §ง) | ลูกค้า | WB-DF-06, APT-04 |
 | WB-PD-12 | คำเชิญ OWNER รายโรงพยาบาลแทนรายชื่อสาธารณะ (N1-D6) | **ปิดแล้วโดย [ADR-0018](../adr/0018-parent-led-child-onboarding.md) (Product Owner, 2026-10-21):** แม่ข่ายยังสมัครผ่านหน้าขึ้นทะเบียนสาธารณะ (ซึ่งแสดงเฉพาะแม่ข่าย) ส่วนลูกข่ายใช้คำเชิญจาก OWNER แม่ข่าย ADMIN นำเข้าแม่ข่ายจากไฟล์ได้ | Product Owner / ลูกค้า | `/hospital/onboarding`, `/app/hospitals/network`, ADR-0003, ADR-0018 |
 
+## SR-1. การลงทะเบียนเองด้วยเลขบัตร (Product Owner, 2026-10-22)
+
+คำตัดสินนี้บันทึกใน [ADR-0020](../adr/0020-self-registration-by-national-id.md) และยอมรับความเสี่ยงโดยตรงว่าเลขบัตรไม่ใช่หลักฐานความเป็นเจ้าของบัญชี
+
+| Decision | ข้อกำหนดที่นำไปใช้ |
+| --- | --- |
+| SR-D1 — Eligibility | ตรวจที่ lookup และ completion: User ยัง PROVISIONED และไม่เคยมี credential, ไม่มี claim/quarantine ค้าง, ไม่มี OWNER membership หรือ ADMIN, และมี relationship PROVISIONED ที่เข้าเกณฑ์ (MEMBER/OSM/Patient ที่ยังไม่สิ้นสุด) ใน Hospital ACTIVE ที่เปิด switch และ record อายุไม่เกิน 30 วัน; ทุกกรณีที่ไม่เข้าเกณฑ์ตอบ NOT_FOUND เหมือนกัน |
+| SR-D2 — Hospital setting | switch “อนุญาตให้ลงทะเบียนเองด้วยเลขบัตร” ค่าเริ่มต้นเปิด; แก้ได้เฉพาะ OWNER โดยมี audit; ปิดแล้วมีผลทันที |
+| SR-D3 — Rate limits | บันทึกขีดจำกัดแบบ persisted ต่อ IP hash, national-ID hash และยอดรวม; เมื่อเกินให้ข้อความ retry ทั่วไปโดยไม่บอกผลการค้นหา |
+| SR-D4 — Completion evidence | หลังสำเร็จ roster แสดงวันที่ลงทะเบียนเองและ OWNER ตรวจกรองได้; audit `self_registration.*` ไม่มี PII; ใช้ roster badge เพราะยังไม่มี in-app inbox สำหรับเหตุการณ์นี้ |
+| SR-D5 — Active account | แจ้ง “บัญชีนี้เปิดใช้งานแล้ว” พร้อมลิงก์ `/login`, `/recover` และข้อความให้ติดต่อโรงพยาบาลทันทีหากไม่ใช่เจ้าของ |
+| SR-D6 — Pre-password disclosure | แสดงเฉพาะชื่อที่ mask แล้ว ห้ามแสดงชื่อโรงพยาบาล HN บทบาท หรือช่องทางติดต่อ |
+| SR-D7 — Public responses | ผลธุรกิจมี FOUND, NOT_FOUND และ ALREADY_ACTIVE; unknown/ineligible ใช้ข้อความและ status เดียวกัน; rate-limit ใช้ข้อความ “ลองใหม่ภายหลัง” |
+
+**ก-25 / production gate:** ผล found/not-found เปิดเผยว่าบุคคลถูกลงทะเบียนไว้กับโรงพยาบาล และกรณีผู้ป่วยเปิดเผยการเข้าร่วมโครงการ NCD ซึ่งเป็นข้อมูลสุขภาพตาม PDPA ม.26. หน่วยงานพันธมิตรต้องรับทราบความเสี่ยงและอนุมัติก่อนใช้ข้อมูลจริง บันทึกเป็น RELEASE_GATE G-01. Risk acceptance ของ Product Owner ไม่ถือเป็นการอนุมัติจากหน่วยงาน.
+
 ## ค. การนำ Phase A ไปใช้ (WB-DF-01..05, WB-PD-01/10)
 
 บันทึกการตัดสินใจเชิงออกแบบที่ทำเพื่อให้ defaults ข้างต้นทำงานได้ ซึ่งไม่ได้ระบุไว้ชัดใน register:

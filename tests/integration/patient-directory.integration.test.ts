@@ -296,6 +296,7 @@ describe("Phase 6B.1 Patient directory PostgreSQL workflow", () => {
       "hospitalNumber",
       "patientHospitalRelationshipId",
       "patientProfileId",
+      "selfRegisteredAt",
     ]);
     expect(JSON.stringify(firstPage)).not.toContain("identityKeyHash");
     expect(JSON.stringify(firstPage)).not.toContain("authSubject");

@@ -109,12 +109,16 @@ export default async function PatientDirectoryPage({
     requestedClassification === "RISK" || requestedClassification === "DIABETES"
       ? requestedClassification
       : "ALL";
+  const selfRegistrationFilter = firstSearchParam(params.selfRegistration) === "SELF_REGISTERED"
+    ? "SELF_REGISTERED"
+    : "ALL";
   const queryInput = {
     targetHospitalId: selectedScope.hospitalId,
     lookupType: requestedLookupType ?? "NAME",
     value: requestedValue,
     page: firstSearchParam(params.page) ?? "1",
     classification: classificationFilter,
+    selfRegistration: selfRegistrationFilter,
   };
 
   let result: PatientDirectoryPage | null = null;
@@ -146,6 +150,7 @@ export default async function PatientDirectoryPage({
       key={selectedScope.hospitalId}
       errorMessage={errorMessage}
       classificationFilter={result?.classificationFilter ?? classificationFilter}
+      selfRegistrationFilter={result?.selfRegistrationFilter ?? selfRegistrationFilter}
       lookupType={result?.lookupType ?? lookupType}
       result={result}
       classificationCounts={classificationCounts}

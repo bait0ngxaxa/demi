@@ -12,6 +12,7 @@ import {
   PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH,
   PATIENT_DIRECTORY_NAME_MAX_LENGTH,
   type PatientDirectoryClassificationFilter,
+  type PatientDirectorySelfRegistrationFilter,
   type PatientDirectoryLookupType,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import { getPatientClassificationLabel } from "@/modules/patient-classification/presentation/patient-classification-labels";
@@ -30,6 +31,7 @@ type PatientDirectoryViewProps = {
   result: PatientDirectoryPage | null;
   errorMessage: string | null;
   classificationFilter: PatientDirectoryClassificationFilter;
+  selfRegistrationFilter: PatientDirectorySelfRegistrationFilter;
   classificationCounts: PatientClassificationCounts;
   /** Active OWNER of the selected Hospital: may open the bulk OSM assignment page. */
   canAssignOsm?: boolean;
@@ -41,6 +43,7 @@ function directoryUrl(input: {
   value: string;
   page: number;
   classification: PatientDirectoryClassificationFilter;
+  selfRegistration: PatientDirectorySelfRegistrationFilter;
 }): string {
   const params = new URLSearchParams({
     hospitalId: input.hospitalId,
@@ -58,6 +61,7 @@ function directoryUrl(input: {
   if (input.classification !== "ALL") {
     params.set("classification", input.classification);
   }
+  if (input.selfRegistration !== "ALL") params.set("selfRegistration", input.selfRegistration);
 
   return `/app/patients?${params.toString()}`;
 }
@@ -86,6 +90,11 @@ function PatientDirectoryList({
                     {item.displayName}
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-text-muted">{item.hospital.name}</p>
+                  {item.selfRegisteredAt ? (
+                    <StatusBadge className="mt-2" variant="info">
+                      ลงทะเบียนเองเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(item.selfRegisteredAt)}
+                    </StatusBadge>
+                  ) : null}
                 </div>
                 <dl className="shrink-0 text-sm leading-6 sm:text-right">
                   <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
@@ -133,6 +142,7 @@ function PatientDirectoryPagination({
               value: result.value,
               page: result.page - 1,
               classification: result.classificationFilter,
+              selfRegistration: result.selfRegistrationFilter,
             })}
           >
             ก่อนหน้า
@@ -151,6 +161,7 @@ function PatientDirectoryPagination({
               value: result.value,
               page: result.page + 1,
               classification: result.classificationFilter,
+              selfRegistration: result.selfRegistrationFilter,
             })}
           >
             ถัดไป
@@ -173,6 +184,7 @@ export function PatientDirectoryView({
   result,
   errorMessage,
   classificationFilter,
+  selfRegistrationFilter,
   classificationCounts,
   canAssignOsm = false,
 }: PatientDirectoryViewProps): React.JSX.Element {
@@ -244,13 +256,20 @@ export function PatientDirectoryView({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ค้นหาชื่อจากบางส่วน หรือค้นหา HN แบบตรงตัวภายในโรงพยาบาลที่เลือก
           </p>
-          <Form action="" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_auto] @5xl/workspace:items-end">
+          <Form action="" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_13rem_auto] @5xl/workspace:items-end">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} key={lookupType} name="lookupType">
                 <option value="NAME">ชื่อผู้ป่วย</option>
                 <option value="HOSPITAL_NUMBER">HN</option>
+              </Select>
+            </label>
+            <label className="block space-y-2 text-sm font-semibold">
+              <span>ลงทะเบียนด้วยตนเอง</span>
+              <Select defaultValue={selfRegistrationFilter} key={selfRegistrationFilter} name="selfRegistration">
+                <option value="ALL">ทั้งหมด</option>
+                <option value="SELF_REGISTERED">ลงทะเบียนเองแล้ว</option>
               </Select>
             </label>
             <label className="block space-y-2 text-sm font-semibold">
@@ -336,7 +355,7 @@ export function PatientDirectoryView({
           </section>
         ) : null}
 
-        {result && (result.value || result.classificationFilter !== "ALL") ? (
+        {result && (result.value || result.classificationFilter !== "ALL" || result.selfRegistrationFilter !== "ALL") ? (
           <Link
             className="inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
             href={`/app/patients?hospitalId=${encodeURIComponent(result.hospital.hospitalId)}`}

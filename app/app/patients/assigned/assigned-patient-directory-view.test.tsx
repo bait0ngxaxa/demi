@@ -13,6 +13,7 @@ const result: PatientAssignedDirectoryPage = {
     hospital: { id: "hospital-1", name: "โรงพยาบาล ก" },
     hospitalNumber: "HN-001",
     classification: null,
+    selfRegisteredAt: null,
     activeProgramId: null,
   }],
   lookupType: "NAME",

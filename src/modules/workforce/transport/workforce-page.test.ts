@@ -84,6 +84,7 @@ describe("Workforce page Hospital context", () => {
         tab: "osm",
         search: "สมชาย",
         status: "PROVISIONED",
+        selfRegistration: "SELF_REGISTERED",
         staffCursor: "staff-cursor",
         osmCursor: "osm-cursor",
       }),
@@ -94,6 +95,7 @@ describe("Workforce page Hospital context", () => {
       targetHospitalId: hospitals[1].id,
       search: "สมชาย",
       status: "PROVISIONED",
+      selfRegistration: "SELF_REGISTERED",
       staffCursor: "staff-cursor",
       osmCursor: "osm-cursor",
     });

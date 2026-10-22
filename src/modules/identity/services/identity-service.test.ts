@@ -8,6 +8,7 @@ import {
   createPerson,
   findPersonByIdentity,
   hashIdentityReference,
+  identityKeyHashesMatch,
   resolvePerson,
   type IdentityStore,
   type PersonRecord,
@@ -43,6 +44,12 @@ function createMemoryStore(): IdentityStore {
 }
 
 describe("identity service", () => {
+  it("compares equal-length keyed identity hashes in constant time", () => {
+    expect(identityKeyHashesMatch("a".repeat(64), "a".repeat(64))).toBe(true);
+    expect(identityKeyHashesMatch("a".repeat(64), "b".repeat(64))).toBe(false);
+    expect(identityKeyHashesMatch("short", "a".repeat(64))).toBe(false);
+  });
+
   it("uses a deterministic keyed HMAC lookup key", () => {
     const identity = { namespace: "Trusted-Registry", value: " person-a " };
     const expected = createHmac(

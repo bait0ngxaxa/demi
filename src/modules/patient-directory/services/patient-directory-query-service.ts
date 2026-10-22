@@ -67,6 +67,7 @@ export type PatientDirectoryItem = {
   };
   hospitalNumber: string | null;
   classification: PatientClassificationType | null;
+  selfRegisteredAt: Date | null;
 };
 
 export type PatientProfileDetail = {
@@ -100,6 +101,7 @@ export type PatientDirectoryPage = {
   hasPreviousPage: boolean;
   hasNextPage: boolean;
   classificationFilter: PatientDirectoryClassificationFilter;
+  selfRegistrationFilter: "ALL" | "SELF_REGISTERED";
 };
 
 /** Lets the follow-up task open the active Program, as the follow-up history CTA does. */
@@ -132,6 +134,7 @@ export type PatientDirectoryQueryDependencies = {
 export const patientDirectorySelect = {
   id: true,
   hospitalNumber: true,
+  selfRegisteredAt: true,
   hospital: {
     select: {
       id: true,
@@ -166,6 +169,7 @@ const assignedPatientDirectorySelect = {
 export const patientDetailSelect = {
   id: true,
   hospitalNumber: true,
+  selfRegisteredAt: true,
   hospital: {
     select: {
       id: true,
@@ -221,6 +225,7 @@ export type PatientDirectoryDetailRecord = Prisma.PatientHospitalRelationshipGet
 type PatientDirectoryRecordLike = {
   id: string;
   hospitalNumber: string | null;
+  selfRegisteredAt: Date | null;
   hospital: { id: string; name: string };
   patientProfile: {
     id: string;
@@ -307,6 +312,7 @@ function buildPatientRelationshipWhere(
     ...(input.lookupType === "HOSPITAL_NUMBER" && input.value
       ? { hospitalNumber: input.value }
       : {}),
+    ...(input.selfRegistration === "SELF_REGISTERED" ? { selfRegisteredAt: { not: null } } : {}),
   };
 }
 
@@ -378,6 +384,7 @@ export function toPatientDirectoryItem(record: PatientDirectoryRecordLike): Pati
     hospital: record.hospital,
     hospitalNumber: record.hospitalNumber,
     classification: record.patientProfile.patientClassification?.classification ?? null,
+    selfRegisteredAt: record.selfRegisteredAt,
   };
 }
 
@@ -531,6 +538,7 @@ export async function findPatientDirectory(
       total,
       totalPages,
       classificationFilter: parsed.classification ?? "ALL",
+      selfRegistrationFilter: parsed.selfRegistration ?? "ALL",
       hasPreviousPage: page > 1,
       hasNextPage: page < totalPages,
     };

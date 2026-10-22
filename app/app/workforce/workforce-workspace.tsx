@@ -54,11 +54,13 @@ function directoryHref(
   tab: WorkforceTab,
   search: string,
   status: string | null,
+  selfRegistration: "ALL" | "SELF_REGISTERED",
   cursors: { staffCursor: string | null; osmCursor: string | null },
 ): string {
   const params = new URLSearchParams({ hospitalId: selectedHospitalId, tab });
   if (search) params.set("search", search);
   if (status) params.set("status", status);
+  if (selfRegistration !== "ALL") params.set("selfRegistration", selfRegistration);
   if (cursors.staffCursor) params.set("staffCursor", cursors.staffCursor);
   if (cursors.osmCursor) params.set("osmCursor", cursors.osmCursor);
   return `/app/workforce?${params.toString()}`;
@@ -112,6 +114,7 @@ export function WorkforceWorkspace({
               const params = new URLSearchParams({ hospitalId: event.target.value, tab });
               if (pageInfo.search) params.set("search", pageInfo.search);
               if (pageInfo.status) params.set("status", pageInfo.status);
+              if (pageInfo.selfRegistration !== "ALL") params.set("selfRegistration", pageInfo.selfRegistration);
               startHospitalSwitch(() => router.push(`/app/workforce?${params.toString()}`));
             }}
             value={selectedHospitalId}
@@ -140,7 +143,7 @@ export function WorkforceWorkspace({
             <Link
               aria-current={tab === value ? "page" : undefined}
               className={`inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-semibold ${tab === value ? "border-action-primary text-brand-strong" : "border-transparent text-text-muted hover:text-text"}`}
-              href={directoryHref(selectedHospitalId, value, pageInfo.search, pageInfo.status, {
+              href={directoryHref(selectedHospitalId, value, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, {
                 staffCursor: pageInfo.staffCursor,
                 osmCursor: pageInfo.osmCursor,
               })}
@@ -152,7 +155,7 @@ export function WorkforceWorkspace({
         </nav>
 
         <Panel className="mt-6">
-          <Form action="/app/workforce" className="grid gap-4 sm:grid-cols-[1fr_16rem_auto] sm:items-end">
+          <Form action="/app/workforce" className="grid gap-4 sm:grid-cols-[1fr_16rem_16rem_auto] sm:items-end">
             <input name="hospitalId" type="hidden" value={selectedHospitalId} />
             <input name="tab" type="hidden" value={tab} />
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-search">
@@ -168,6 +171,13 @@ export function WorkforceWorkspace({
                 <option value="ACTIVE">ใช้งานอยู่</option>
                 <option value="SUSPENDED">ถูกระงับ</option>
                 <option value="ENDED">นำออกแล้ว</option>
+              </Select>
+            </label>
+            <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-self-registration">
+              <span>ลงทะเบียนด้วยตนเอง</span>
+              <Select defaultValue={pageInfo.selfRegistration} id="workforce-self-registration" name="selfRegistration">
+                <option value="ALL">ทุกคน</option>
+                <option value="SELF_REGISTERED">ลงทะเบียนเองแล้ว</option>
               </Select>
             </label>
             <Button type="submit">ค้นหา</Button>
@@ -197,6 +207,9 @@ export function WorkforceWorkspace({
                       {row.activationExpiresAt ? (
                         <p className="mt-1 text-xs text-muted">ลิงก์ล่าสุดหมดอายุ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(row.activationExpiresAt)}</p>
                       ) : null}
+                      {row.selfRegisteredAt ? (
+                        <p className="mt-1 text-xs font-medium text-brand-strong">ลงทะเบียนเองเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(row.selfRegisteredAt)}</p>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
                       <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
@@ -214,14 +227,14 @@ export function WorkforceWorkspace({
           )}
           <nav aria-label={`หน้ารายชื่อ${selectedTitle}`} className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-4 sm:px-6">
             {tab !== "osm" && pageInfo.staffNextCursor ? (
-              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: pageInfo.staffNextCursor, osmCursor: pageInfo.osmCursor })}>หน้าถัดไป · บุคลากร</Link>
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: pageInfo.staffNextCursor, osmCursor: pageInfo.osmCursor })}>หน้าถัดไป · บุคลากร</Link>
             ) : null}
             {tab !== "staff" && pageInfo.osmNextCursor ? (
-              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: pageInfo.staffCursor, osmCursor: pageInfo.osmNextCursor })}>หน้าถัดไป · อสม.</Link>
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: pageInfo.staffCursor, osmCursor: pageInfo.osmNextCursor })}>หน้าถัดไป · อสม.</Link>
             ) : null}
             {(!pageInfo.staffNextCursor || tab === "osm") && (!pageInfo.osmNextCursor || tab === "staff") ? <span className="text-sm text-muted">สิ้นสุดรายการ</span> : null}
             {(pageInfo.staffCursor || pageInfo.osmCursor) ? (
-              <Link className="text-sm font-semibold underline" href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, { staffCursor: null, osmCursor: null })}>กลับหน้าแรก</Link>
+              <Link className="text-sm font-semibold underline" href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: null, osmCursor: null })}>กลับหน้าแรก</Link>
             ) : null}
           </nav>
         </section>

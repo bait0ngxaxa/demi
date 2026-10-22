@@ -11,6 +11,7 @@ function render(canAssignOsm?: boolean): string {
       canAssignOsm={canAssignOsm}
       classificationCounts={{ total: 0, risk: 0, diabetes: 0, unclassified: 0 }}
       classificationFilter="ALL"
+      selfRegistrationFilter="ALL"
       errorMessage={null}
       lookupType="NAME"
       result={null}

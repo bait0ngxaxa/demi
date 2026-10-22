@@ -16,9 +16,9 @@ const scope = scopes[1];
 
 describe("Hospital patient operations navigation", () => {
   it("returns the directory to the selected Hospital without changing relationship destinations", () => {
-    const html = renderToStaticMarkup(<PatientDirectoryView scopes={scopes} selectedScope={scope} classificationFilter="ALL" classificationCounts={{ total: 1, risk: 0, diabetes: 0, unclassified: 1 }} lookupType="NAME" value="" errorMessage={null} result={{
-      hospital: scope, items: [{ patientHospitalRelationshipId: "exact-relationship", patientProfileId: "patient-profile", displayName: "ผู้ป่วย", hospital: { id: scope.hospitalId, name: scope.hospitalName }, hospitalNumber: "HN-B", classification: null }],
-      lookupType: "NAME", value: "", classificationFilter: "ALL", page: 1, pageSize: 25, total: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+    const html = renderToStaticMarkup(<PatientDirectoryView scopes={scopes} selectedScope={scope} classificationFilter="ALL" selfRegistrationFilter="ALL" classificationCounts={{ total: 1, risk: 0, diabetes: 0, unclassified: 1 }} lookupType="NAME" value="" errorMessage={null} result={{
+      hospital: scope, items: [{ patientHospitalRelationshipId: "exact-relationship", patientProfileId: "patient-profile", displayName: "ผู้ป่วย", hospital: { id: scope.hospitalId, name: scope.hospitalName }, hospitalNumber: "HN-B", classification: null, selfRegisteredAt: null }],
+      lookupType: "NAME", value: "", classificationFilter: "ALL", selfRegistrationFilter: "ALL", page: 1, pageSize: 25, total: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
     }} />);
     expect(html).toContain(`href="/app#hospital-workspace-${scope.hospitalId}"`);
     expect(html).toContain('href="/app/patients/exact-relationship"');

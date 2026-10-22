@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 };
 
 type WorkforcePageProps = {
-  searchParams: Promise<{ hospitalId?: string | string[]; search?: string | string[]; status?: string | string[]; tab?: string | string[]; staffCursor?: string | string[]; osmCursor?: string | string[] }>;
+  searchParams: Promise<{ hospitalId?: string | string[]; search?: string | string[]; status?: string | string[]; selfRegistration?: string | string[]; tab?: string | string[]; staffCursor?: string | string[]; osmCursor?: string | string[] }>;
 };
 
 async function resolveActor() {
@@ -64,6 +64,7 @@ export default async function WorkforcePage({ searchParams }: WorkforcePageProps
     targetHospitalId: selectedHospitalId,
     search: scalar(params.search),
     status: status === "PROVISIONED" || status === "INVITED" || status === "ACTIVE" || status === "SUSPENDED" || status === "ENDED" ? status : undefined,
+    selfRegistration: scalar(params.selfRegistration) === "SELF_REGISTERED" ? "SELF_REGISTERED" : "ALL",
     staffCursor: scalar(params.staffCursor), osmCursor: scalar(params.osmCursor),
   });
 

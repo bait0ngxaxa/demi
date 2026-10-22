@@ -223,6 +223,12 @@ enum WorkforceActivationPurpose {
   ACTIVATION
   RESET
   CHILD_OWNER_ONBOARDING
+  SELF_REGISTRATION
+}
+
+enum PatientActivationPurpose {
+  ACTIVATION
+  SELF_REGISTRATION
 }
 
 enum AppointmentType {
@@ -555,6 +561,7 @@ model Hospital {
   hospitalCode    String         @unique @db.VarChar(32)
   name            String         @db.VarChar(200)
   status          HospitalStatus @default(PENDING_VERIFICATION)
+  selfRegistrationEnabled Boolean @default(true)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   // Set exactly while status = RETIRED (CHECK "Hospital_retirement_consistency").
@@ -731,6 +738,7 @@ model HospitalMembership {
   membershipType MembershipType
   profession     Profession?
   status         MembershipStatus @default(PROVISIONED)
+  selfRegisteredAt DateTime?      @db.Timestamptz(3)
   // Customer decision E1 (ก-15): OWNER-granted report export for a MEMBER; both set or both null (SQL CHECK).
   reportExportGrantedAt       DateTime? @db.Timestamptz(3)
   reportExportGrantedByUserId String?   @db.Uuid
@@ -970,6 +978,7 @@ model PatientHospitalRelationship {
   hospitalNumber   String?  @db.VarChar(64)
   /// Phase F (ก-18): care with this Hospital ended; terminal, history retained. See activePatientHospitalRelationshipWhere.
   endedAt          DateTime?
+  selfRegisteredAt DateTime? @db.Timestamptz(3)
   endedByUserId    String?  @db.Uuid
   endReason        String?  @db.VarChar(500)
   createdAt        DateTime @default(now())
@@ -1861,6 +1870,8 @@ model PatientActivation {
   id              String   @id @default(uuid()) @db.Uuid
   userId          String   @db.Uuid
   hospitalId      String   @db.Uuid
+  purpose         PatientActivationPurpose @default(ACTIVATION)
+  selfRegistrationRelationships Json? @db.JsonB
   patientAccessRequestId String? @unique @db.Uuid
   tokenHash       String   @unique @db.VarChar(64)
   expiresAt       DateTime
@@ -1889,6 +1900,7 @@ model OsmHospitalRelationship {
   userId     String           @db.Uuid
   hospitalId String           @db.Uuid
   status     MembershipStatus @default(PROVISIONED)
+  selfRegisteredAt DateTime?  @db.Timestamptz(3)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
@@ -1942,6 +1954,7 @@ model WorkforceActivation {
   tokenHash       String                  @unique @db.VarChar(64)
   mode            WorkforceActivationMode @default(REMOTE)
   purpose         WorkforceActivationPurpose @default(ACTIVATION)
+  selfRegistrationRelationships Json? @db.JsonB
   failedVerificationCount Int             @default(0)
   expiresAt       DateTime
   claimedAt       DateTime?
@@ -2230,4 +2243,15 @@ model LineWorkflowRateLimitBucket {
 
   @@id([category, keyHash, windowStart], map: "LineWorkflowRateLimitBucket_pkey")
   @@index([expiresAt], map: "LineWorkflowRateLimitBucket_expiresAt_idx")
+}
+
+model PublicSelfRegistrationRateLimitBucket {
+  category   String   @db.VarChar(16)
+  keyHash    String   @db.VarChar(64)
+  windowStart DateTime @db.Timestamptz(3)
+  expiresAt  DateTime @db.Timestamptz(3)
+  hitCount   Int      @default(1)
+
+  @@id([category, keyHash, windowStart], map: "PublicSelfRegistrationRateLimitBucket_pkey")
+  @@index([expiresAt], map: "PublicSelfRegistrationRateLimitBucket_expiresAt_idx")
 }

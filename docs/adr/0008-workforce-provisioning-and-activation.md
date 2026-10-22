@@ -421,3 +421,7 @@ is enforced by Patient provisioning and Patient activation (ADR-0004 amendment):
 `PROVISIONED` User with pending workforce authority, so neither flow can invalidate or capture the other's
 first credential. See the [remediation handoff](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md) for the
 state table, evidence and open decisions.
+
+## Cross-reference — ADR-0020 self-registration exception (2026-10-22)
+
+[ADR-0020](0020-self-registration-by-national-id.md) adds one Product Owner risk-accepted public first-credential path for eligible pre-provisioned MEMBER, OSM and Patient relationships. It is implemented through purpose-bound activation capabilities and rechecks the existing ownership/quarantine gates at completion. This exception does not change invite or assisted activation, does not authorize general national-ID ownership proof, and does not change credential recovery.

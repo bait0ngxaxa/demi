@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { selfRegistrationListFilterSchema } from "@/modules/self-registration/domain/self-registration-schemas";
 
 export const PATIENT_DIRECTORY_PAGE_SIZE = 25;
 export const PATIENT_DIRECTORY_NAME_MAX_LENGTH = 120;
@@ -24,6 +25,7 @@ export const patientDirectoryQuerySchema = z
     targetHospitalId: z.uuid(),
     lookupType: patientDirectoryLookupTypeSchema,
     classification: patientDirectoryClassificationFilterSchema.optional(),
+    selfRegistration: selfRegistrationListFilterSchema.optional(),
     value: optionalLookupValueSchema,
     page: z.coerce
       .number()
@@ -86,5 +88,6 @@ export type PatientDirectoryLookupType = z.infer<typeof patientDirectoryLookupTy
 export type PatientDirectoryClassificationFilter = z.infer<
   typeof patientDirectoryClassificationFilterSchema
 >;
+export type PatientDirectorySelfRegistrationFilter = z.infer<typeof selfRegistrationListFilterSchema>;
 export type PatientDirectoryQueryInput = z.infer<typeof patientDirectoryQuerySchema>;
 export type PatientAssignedDirectoryQueryInput = z.infer<typeof patientAssignedDirectoryQuerySchema>;

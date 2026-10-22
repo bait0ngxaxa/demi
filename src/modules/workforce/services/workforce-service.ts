@@ -28,6 +28,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
   activatePendingChildOwner,
@@ -107,6 +108,12 @@ import {
   maskPersonName,
   WORKFORCE_MAX_FAILED_VERIFICATIONS,
 } from "./activation-identity";
+import { assertCurrentSelfRegistrationEligibility } from "@/modules/self-registration/services/self-registration-eligibility";
+import {
+  SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS,
+  selfRegistrationRelationshipsSchema,
+  type SelfRegistrationRelationship,
+} from "@/modules/self-registration/domain/self-registration-schemas";
 
 export type WorkforceDatabase = PrismaClient;
 
@@ -172,6 +179,7 @@ export type WorkforceListRow = {
   activationStatus: WorkforceActivationStatus | null;
   activationExpiresAt: Date | null;
   activationMode: WorkforceActivationModeValue | null;
+  selfRegisteredAt: Date | null;
 };
 
 export type WorkforceListResult = {
@@ -184,6 +192,7 @@ export type WorkforceListResult = {
     serverTime: number;
     search: string;
     status: MembershipStatus | null;
+    selfRegistration: "ALL" | "SELF_REGISTERED";
     staffCursor: string | null;
     osmCursor: string | null;
     staffNextCursor: string | null;
@@ -303,6 +312,10 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const INITIAL_ACTIVATION_PURPOSES: readonly WorkforceActivationPurpose[] = [
   WorkforceActivationPurpose.ACTIVATION,
   WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+];
+const FIRST_CREDENTIAL_PURPOSES: readonly WorkforceActivationPurpose[] = [
+  ...INITIAL_ACTIVATION_PURPOSES,
+  WorkforceActivationPurpose.SELF_REGISTRATION,
 ];
 const workforceActivationSelect = {
   id: true,
@@ -553,6 +566,7 @@ async function findCurrentActivation(
   return transaction.workforceActivation.findFirst({
     where: {
       userId,
+      purpose: { in: [...INITIAL_ACTIVATION_PURPOSES] },
       usedAt: null,
       revokedAt: null,
     },
@@ -567,7 +581,7 @@ async function assertInitialCredentialStateInDatabase(
   permittedClaimId?: string,
 ): Promise<void> {
   const unsafe = await transaction.workforceActivation.findFirst({ where: {
-    userId, purpose: { in: [...INITIAL_ACTIVATION_PURPOSES] },
+    userId, purpose: { in: [...FIRST_CREDENTIAL_PURPOSES] },
     ...(permittedClaimId ? { id: { not: permittedClaimId } } : {}),
     OR: [{ claimedAt: { not: null }, usedAt: null }, { usedAt: { not: null } }],
   }, select: { id: true, claimedAt: true, usedAt: true } });
@@ -1717,6 +1731,7 @@ export async function listWorkforce(
   };
   const pageWhere = (cursor: { createdAt: Date; id: string } | null) => ({
     status: parsed.data.status,
+    ...(parsed.data.selfRegistration === "SELF_REGISTERED" ? { selfRegisteredAt: { not: null } } : {}),
     user: { person: nameFilter },
     ...(cursor ? { OR: [
       { createdAt: { gt: cursor.createdAt } },
@@ -1777,6 +1792,7 @@ export async function listWorkforce(
               membershipType: true,
               profession: true,
               status: true,
+              selfRegisteredAt: true,
               user: {
                 select: {
                   status: true,
@@ -1794,6 +1810,7 @@ export async function listWorkforce(
           createdAt: true,
           userId: true,
           status: true,
+          selfRegisteredAt: true,
           user: {
             select: {
               status: true,
@@ -1891,6 +1908,7 @@ export async function listWorkforce(
           activationStatus: toActivationStatus(membership.user.status, membership.userId, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
+          selfRegisteredAt: membership.selfRegisteredAt,
         };
       }),
       ...osmRelationships.map((relationship) => {
@@ -1911,12 +1929,14 @@ export async function listWorkforce(
           activationStatus: toActivationStatus(relationship.user.status, relationship.userId, activation),
           activationExpiresAt: activation?.expiresAt ?? null,
           activationMode: activation ? toWorkforceActivationMode(activation.mode) : null,
+          selfRegisteredAt: relationship.selfRegisteredAt,
         };
       }),
     ];
 
     return { hospital, viewerScope, rows, pendingCount: pendingStaffCount + pendingOsmCount, pageInfo: {
       pageSize, serverTime: Date.now(), search: parsed.data.search ?? "", status: parsed.data.status ?? null,
+      selfRegistration: parsed.data.selfRegistration ?? "ALL",
       staffCursor: viewerScope === "OWNER" ? parsed.data.staffCursor ?? null : null,
       osmCursor: parsed.data.osmCursor ?? null,
       staffNextCursor: staffPage.length > pageSize ? writeWorkforceCursor(memberships.at(-1), "HOSPITAL_MEMBER", parsed.data) : null,
@@ -3238,6 +3258,7 @@ const workforceActivationClaimTargetSelect = {
   purpose: true,
   operationState: true,
   hospitalId: true, relationshipId: true, relationshipKind: true, createdByUserId: true, reconciliationRequiredAt: true,
+  selfRegistrationRelationships: true,
   expiresAt: true,
   claimedAt: true,
   usedAt: true,
@@ -3284,6 +3305,17 @@ function isActivationTargetEligible(
   activation: WorkforceActivationClaimTarget,
   allowMappedSubject = false,
 ): boolean {
+  if (activation.purpose === WorkforceActivationPurpose.SELF_REGISTRATION) {
+    return activation.selfRegistrationRelationships !== null &&
+      activation.user.status === UserStatus.PROVISIONED &&
+      (allowMappedSubject || activation.user.authSubject === null) &&
+      !activation.user.roles.some(({ role }) => role === Role.ADMIN) &&
+      !activation.user.memberships.some(({ membershipType, status }) =>
+        membershipType === MembershipType.OWNER &&
+        (status === MembershipStatus.ACTIVE || status === MembershipStatus.PROVISIONED),
+      ) &&
+      selfRegistrationRelationshipsSchema.safeParse(activation.selfRegistrationRelationships).success;
+  }
   if (!activation.hospitalId || !activation.relationshipId) return false;
   if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
     return activation.relationshipKind === CHILD_OWNER_RELATIONSHIP_KIND &&
@@ -3357,6 +3389,7 @@ async function assertActivationContext(
   transaction: Prisma.TransactionClient,
   activation: WorkforceActivationClaimTarget,
 ): Promise<ChildOwnerInvitationContext | null> {
+  if (activation.purpose === WorkforceActivationPurpose.SELF_REGISTRATION) return null;
   if (activation.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
     await assertActivationContextAuthority(transaction, activation);
     return null;
@@ -3380,7 +3413,7 @@ async function assertActivationContext(
 export async function previewWorkforceActivation(
   token: string,
   dependencies: WorkforceServiceDependencies = {},
-): Promise<{ maskedName: string; purpose: WorkforceActivationPurpose }> {
+): Promise<{ maskedName: string; purpose: Exclude<WorkforceActivationPurpose, "SELF_REGISTRATION"> }> {
   const parsedToken = workforceActivationTokenSchema.safeParse(token);
 
   if (!parsedToken.success) {
@@ -3397,6 +3430,7 @@ export async function previewWorkforceActivation(
 
     if (
       !activation ||
+      activation.purpose === WorkforceActivationPurpose.SELF_REGISTRATION ||
       !isActivationUsable(activation, [activation.purpose], now) ||
       !isActivationTargetEligible(activation)
     ) {
@@ -3435,6 +3469,12 @@ async function claimWorkforceActivation(
     const claim = await runSerializable(
       database,
       async (transaction): Promise<ActivationClaim | null> => {
+        const initialActivation = await transaction.workforceActivation.findUnique({
+          where: { tokenHash },
+          select: { userId: true },
+        });
+        if (!initialActivation) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+        await lockFirstCredentialOperation(transaction, initialActivation.userId);
         const activation = await transaction.workforceActivation.findUnique({
           where: { tokenHash },
           select: workforceActivationClaimTargetSelect,
@@ -3449,6 +3489,13 @@ async function claimWorkforceActivation(
 
         await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
         await assertActivationContext(transaction, activation);
+        if (activation.purpose === WorkforceActivationPurpose.SELF_REGISTRATION) {
+          await assertCurrentSelfRegistrationEligibility(transaction, {
+            userId: activation.userId,
+            relationships: activation.selfRegistrationRelationships,
+            now,
+          });
+        }
 
         if (!matchesPersonNationalId(activation.user.person.identityKeyHash, nationalId)) {
           await recordFailedVerification(transaction, activation, now);
@@ -3549,17 +3596,18 @@ async function finalizeWorkforceActivationLocally(
         where: { id: claim.userId },
         select: { id: true, status: true, authSubject: true },
       });
+      const selfRegistration = activation?.purpose === WorkforceActivationPurpose.SELF_REGISTRATION;
 
       if (
         !activation ||
-        !INITIAL_ACTIVATION_PURPOSES.includes(activation.purpose) ||
+        (!selfRegistration && !INITIAL_ACTIVATION_PURPOSES.includes(activation.purpose)) ||
         activation.operationState !== WorkforceActivationOperationState.PROVIDER_CONFIRMED ||
         activation.userId !== claim.userId ||
         activation.claimedAt?.getTime() !== claim.claimedAt.getTime() ||
         activation.usedAt ||
         activation.revokedAt ||
         activation.expiresAt <= now ||
-        !activation.hospitalId ||
+        (!selfRegistration && !activation.hospitalId) ||
         activation.reconciliationRequiredAt ||
         !isActivationTargetEligible(activation, true) ||
         !user ||
@@ -3572,8 +3620,74 @@ async function finalizeWorkforceActivationLocally(
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
       const childOwnerContext = await assertActivationContext(transaction, activation);
 
-      if (childOwnerContext && activation.relationshipId) {
+      let selfRegistrationRelationships: SelfRegistrationRelationship[] = [];
+      if (selfRegistration) {
+        const eligibility = await assertCurrentSelfRegistrationEligibility(transaction, {
+          userId: claim.userId,
+          relationships: activation.selfRegistrationRelationships,
+          now,
+          expectedAuthSubject: authSubject,
+          ignoreActivation: { kind: "WORKFORCE", id: activation.id },
+        });
+        selfRegistrationRelationships = eligibility.relationships;
+        const eligibleCreatedAt = {
+          gte: new Date(now.getTime() - SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS),
+          lte: now,
+        };
+        const staffRelationships = selfRegistrationRelationships.filter(({ kind }) => kind === "HOSPITAL_MEMBER");
+        const osmRelationships = selfRegistrationRelationships.filter(({ kind }) => kind === "OSM");
+        const patientRelationships = selfRegistrationRelationships.filter(({ kind }) => kind === "PATIENT");
+        const activatedStaff = staffRelationships.length
+          ? await transaction.hospitalMembership.updateMany({
+              where: {
+                id: { in: staffRelationships.map(({ id }) => id) },
+                userId: claim.userId,
+                membershipType: MembershipType.MEMBER,
+                status: MembershipStatus.PROVISIONED,
+                selfRegisteredAt: null,
+                createdAt: eligibleCreatedAt,
+                hospital: { status: HospitalStatus.ACTIVE, selfRegistrationEnabled: true },
+              },
+              data: { status: MembershipStatus.ACTIVE, selfRegisteredAt: now },
+            })
+          : { count: 0 };
+        const activatedOsm = osmRelationships.length
+          ? await transaction.osmHospitalRelationship.updateMany({
+              where: {
+                id: { in: osmRelationships.map(({ id }) => id) },
+                userId: claim.userId,
+                status: MembershipStatus.PROVISIONED,
+                selfRegisteredAt: null,
+                createdAt: eligibleCreatedAt,
+                hospital: { status: HospitalStatus.ACTIVE, selfRegistrationEnabled: true },
+              },
+              data: { status: MembershipStatus.ACTIVE, selfRegisteredAt: now },
+            })
+          : { count: 0 };
+        const markedPatients = patientRelationships.length
+          ? await transaction.patientHospitalRelationship.updateMany({
+              where: {
+                id: { in: patientRelationships.map(({ id }) => id) },
+                endedAt: null,
+                selfRegisteredAt: null,
+                createdAt: eligibleCreatedAt,
+                hospital: { status: HospitalStatus.ACTIVE, selfRegistrationEnabled: true },
+              },
+              data: { selfRegisteredAt: now },
+            })
+          : { count: 0 };
+        if (
+          activatedStaff.count !== staffRelationships.length ||
+          activatedOsm.count !== osmRelationships.length ||
+          markedPatients.count !== patientRelationships.length
+        ) {
+          throw new ConflictError("Self-registration relationships changed before completion");
+        }
+      } else if (childOwnerContext && activation.relationshipId) {
         // ADR-0018 (O-D3): the only activation that may complete while its Hospital is still PENDING_VERIFICATION.
+        if (!activation.hospitalId) {
+          throw new ConflictError("Child OWNER activation Hospital context is missing");
+        }
         await activatePendingChildOwner(transaction, {
           membershipId: activation.relationshipId,
           childHospitalId: activation.hospitalId,
@@ -3583,6 +3697,9 @@ async function finalizeWorkforceActivationLocally(
           actorUserId: null,
         });
       } else {
+        if (!activation.hospitalId) {
+          throw new ConflictError("Workforce activation Hospital context is missing");
+        }
         const activatedMemberships = await transaction.hospitalMembership.updateMany({
           where: {
             userId: claim.userId,
@@ -3636,19 +3753,40 @@ async function finalizeWorkforceActivationLocally(
         throw new ConflictError("Workforce activation credential changed during completion");
       }
 
-      await recordAuditEvent(
-        {
-          actorUserId: null,
-          action: "workforce_activation.completed",
-          resourceType: "User",
-          resourceId: claim.userId,
-          metadata: {
-            status: UserStatus.ACTIVE,
-            source: "workforce_activation",
+      if (selfRegistration) {
+        const relationshipsByHospital = new Map<string, number>();
+        for (const relationship of selfRegistrationRelationships) {
+          relationshipsByHospital.set(relationship.hospitalId, (relationshipsByHospital.get(relationship.hospitalId) ?? 0) + 1);
+        }
+        for (const [hospitalId, relationshipCount] of relationshipsByHospital) {
+          await recordAuditEvent({
+            actorUserId: null,
+            action: "self_registration.completed",
+            resourceType: "Hospital",
+            resourceId: hospitalId,
+            metadata: {
+              relationshipCount,
+              purpose: selfRegistrationRelationships.some(({ kind }) => kind === "PATIENT")
+                ? "COMBINED"
+                : "WORKFORCE",
+            },
+          }, transaction);
+        }
+      } else {
+        await recordAuditEvent(
+          {
+            actorUserId: null,
+            action: "workforce_activation.completed",
+            resourceType: "User",
+            resourceId: claim.userId,
+            metadata: {
+              status: UserStatus.ACTIVE,
+              source: "workforce_activation",
+            },
           },
-        },
-        transaction,
-      );
+          transaction,
+        );
+      }
     },
     dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
   );
@@ -3764,6 +3902,33 @@ export async function completeWorkforceActivation(
   input: WorkforceActivationCompletionInput,
   dependencies: WorkforceServiceDependencies = {},
 ): Promise<{ userId: string }> {
+  return completeWorkforceActivationForPurposes(
+    token,
+    input,
+    INITIAL_ACTIVATION_PURPOSES,
+    dependencies,
+  );
+}
+
+export async function completeWorkforceSelfRegistration(
+  token: string,
+  input: WorkforceActivationCompletionInput,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<{ userId: string }> {
+  return completeWorkforceActivationForPurposes(
+    token,
+    input,
+    [WorkforceActivationPurpose.SELF_REGISTRATION],
+    dependencies,
+  );
+}
+
+async function completeWorkforceActivationForPurposes(
+  token: string,
+  input: WorkforceActivationCompletionInput,
+  purposes: readonly WorkforceActivationPurpose[],
+  dependencies: WorkforceServiceDependencies,
+): Promise<{ userId: string }> {
   const parsedToken = workforceActivationTokenSchema.safeParse(token);
   const parsedInput = workforceActivationCompletionSchema.safeParse(input);
 
@@ -3773,7 +3938,7 @@ export async function completeWorkforceActivation(
 
   const claim = await claimWorkforceActivation(
     parsedToken.data,
-    INITIAL_ACTIVATION_PURPOSES,
+    purposes,
     parsedInput.data.nationalId,
     dependencies,
   );

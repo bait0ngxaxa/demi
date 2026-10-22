@@ -92,6 +92,7 @@ export const patientActivationLookupSchema = z
 
 export const patientActivationCompletionSchema = z
   .object({
+    nationalId: thaiNationalIdSchema.optional(),
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
   })

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
+import { selfRegistrationListFilterSchema } from "@/modules/self-registration/domain/self-registration-schemas";
 
 export const personNameSchema = z.string().trim().min(1).max(120);
 
@@ -39,6 +40,7 @@ export const workforceListSchema = z
     osmCursor: z.string().max(2048).optional(),
     search: z.string().trim().max(120).optional(),
     status: z.enum(["PROVISIONED", "INVITED", "ACTIVE", "SUSPENDED", "ENDED"]).optional(),
+    selfRegistration: selfRegistrationListFilterSchema.optional(),
     pageSize: z.number().int().min(1).max(50).optional(),
   })
   .strict();

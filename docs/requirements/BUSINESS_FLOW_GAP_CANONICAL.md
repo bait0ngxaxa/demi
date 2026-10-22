@@ -2,6 +2,8 @@
 
 > **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
 
+> **Amendment — 2026-10-22:** [ADR-0020](../adr/0020-self-registration-by-national-id.md) adds a risk-accepted first-credential flow for eligible OWNER-pre-provisioned MEMBER, OSM and Patient records. See ACCOUNT-11, SR-D1..SR-D7 in [WB_ALIGNMENT_DECISIONS.md](./WB_ALIGNMENT_DECISIONS.md), and the agency acknowledgement gate G-01 before real-data production use.
+
 **Program:** Business Flow Closure Program
 **Current phase:** BF-GAP-01R — Customer Whiteboard Inventory Correction
 **Record date:** 2026-10-12 (Asia/Bangkok)
@@ -370,6 +372,7 @@ The following tables use the fields: ID; domain; customer actor; whiteboard inte
 | ACCOUNT-08 | Personal email setting | P, O, S, H | Profile/Settings includes “อีเมล”; WB-DF-15 makes it contact-only. | Active user edits a validated email with version-based concurrency and audit; value is stored separately from auth identity, remains unverified, and is never used for login or recovery. | New; Phase C UserContactSetting, contact-setting-service.ts and /app/settings. | **IMPLEMENTED** — contact-only email, no verification, no auth-provider or recovery integration. | Contact settings; BF-GAP-06.
 | ACCOUNT-09 | Privacy Policy view | P; O/S/H only when same User/Person has persisted PATIENT role and exact own Patient SELF relationship | Profile/Settings includes “นโยบายคุ้มครองข้อมูลส่วนบุคคล” as a distinct customer information view; viewing is not consent. | Requires a current policy document/version and view/readback if governance requires it; viewing does not constitute consent. | New; E14, repository route/model search. | **MISSING** (P1 re-audit 2026-10-20) — No in-app Privacy Policy view exists. Product work F-02 (view + version shown, placeholder text); the policy text is agency-owned (G-01). Viewing is not consent. Before P1: MISSING — no in-app Privacy Policy view route/content capability was found. This is separate from Terms and both disclosure consents. | Privacy transparency and separately scoped consent processing. BF-GAP-06. |
 | ACCOUNT-10 | Marketing-purpose disclosure consent | P; O/S/H only when same User/Person has persisted PATIENT role and exact own Patient SELF relationship; controller authority is separate | Whiteboard item “ยินยอมเปิดเผยข้อมูลเพื่อวัตถุประสงค์ทางการตลาด” explicitly requests marketing-purpose disclosure consent. | Requires purpose/controller, document/version, affirmative evidence, actor/time/scope, withdrawal/re-consent, processing effect, retention and audit. | New; W2 reviewer-supplied evidence; E14. | **MISSING** (P1 re-audit 2026-10-20) — No marketing-purpose consent screen or versioned record exists. Product work F-02 (opt-in screen + versioned record, default off, placeholder text); the wording and legal basis are agency-owned (G-01). Before P1: REQUIREMENT_GATED — customer intent exists; legal/controller and operational semantics are not established. Keep distinct from health-data disclosure consent and ordinary preferences. | Marketing-purpose processing gate, only if separately approved. BF-GAP-06. |
+| ACCOUNT-11 | First-time self-registration by national ID | P, O, S, H; only a matching pre-provisioned eligible record | A provisioned MEMBER, OSM or Patient can enter national ID on `/register`, confirm a masked name, and set the first password; no invite link required. | Server rechecks eligibility and exact bound relationships at lookup/completion; single-use 10-minute hashed capability, global/IP/ID persisted rate limits, OWNER switch/audit, self-registration date/filter in rosters, and no-PII audit. | New; SR-1 / [ADR-0020](../adr/0020-self-registration-by-national-id.md); unit and PostgreSQL integration coverage. | **IMPLEMENTED** — Explicit Product Owner risk acceptance. Invite and assisted activation remain. National ID is not ownership proof; any person with an ID-card copy may register first. A found/not-found result reveals provisioning and, for Patients, NCD enrollment (PDPA §26). Partner-agency acknowledgement is required under G-01 before real-data production. See SR-D1..SR-D7 in [WB_ALIGNMENT_DECISIONS.md](./WB_ALIGNMENT_DECISIONS.md). | First credential; see ADR-0008/0012 exception notes. BF-GAP-06. |
 | SUPPORT-01 | Report app problem | P, O, S, H | “แจ้งปัญหาการใช้งาน App” submits a problem report to the selected current Hospital; OWNER can track and resolve it. | Category + message (≤1,000 characters), no-health-information warning, own Hospital selection, 5 reports/user/Bangkok day; OWNER transitions NEW → ACKNOWLEDGED → RESOLVED with audit. | P17A SUPPORT-01 (NEW DOMAIN, historical); E14; Phase C SupportReport service, actions and owner inbox. | **VERIFIED_COMPLETE** (P1 re-audit 2026-10-20) — Problem reports go to the selected current Hospital's OWNER inbox with monotonic statuses, per-user rate limit and audit (WB-DF-14). Evidence: `tests/integration/phase-c-engagement.integration.test.ts` ("routes reports from patient, OSM and staff to the hospital owner and audits status transitions"); `tests/integration/phase-c-engagement.integration.test.ts` ("rate limits reports per user and keeps contact email separate from authentication"). Before P1: IMPLEMENTED for WB-DF-14 — persistence, per-user rate limit, exact active membership/relationship scope, owner inbox, monotonic status transitions and audit. No health attachment is accepted. | Support operations and app reliability; not a clinical audit channel. BF-GAP-06.
 | NOTIF-01 | Scheduled medication reminder time-slot intent | P; O/S/H in the same user eligible Patient SELF context | WB-DF-13 binds the time slots to the Patient active medication schedules and LINE. | Four editable presets in add-medication; local Asia/Bangkok occurrence; opt-in required; current Patient role, medication status, LINE binding and preference rechecked before push. | P17A NOTIF-01 (REQUIREMENT NEEDED, historical); E11/E15; approved WB-DF-13; Phase C medication reminder outbox/worker. | **VERIFIED_COMPLETE** (P1 re-audit 2026-10-20) — Active medication schedules are the LINE reminder source (WB-DF-13) with generic text and idempotent delivery per schedule/date/time. Evidence: `tests/integration/phase-c-engagement.integration.test.ts` ("materializes one Bangkok 07:00 occurrence and concurrent drains send one generic LINE message"). Before P1: IMPLEMENTED for approved mapping — generic reminder text contains no medication name; delivery is bounded, retryable and idempotent per schedule/date/time. Real-device receipt remains NOTIF-08 evidence. | Medication schedule → NOTIF-03 occurrence → LINE preference and delivery. BF-GAP-06.
 | NOTIF-02 | Appointment event source | P, O, S, H | Appointment lifecycle change may create an eligible notification event. | Source appointment event/outbox with bounded type and current state; notification event must not change appointment authority. | New split from P17A NOTIF-01; E7/E15, Phase 17J.4B. | **VERIFIED_COMPLETE** (P1 re-audit 2026-10-20) — Appointment create/reschedule/cancel emits one canonical notification intent through the outbox; the activation flag is configuration (off by default; demo steps in `docs/operations/DEMO_ENVIRONMENT.md`). Evidence: `tests/integration/appointments.integration.test.ts` ("persists only canonical appointment events and makes Hospital cancellation approval emit one cancellation intent"); `tests/integration/appointments.integration.test.ts` ("keeps disabled-period mutations silent and suppresses pending work across an OFF cutover"). Before P1: PARTIAL — unchanged in Phase C — appointment LINE notification source/outbox/worker exists; activation flag is OFF by default and real delivery is not claimed. The Phase C medication reminder outbox does not activate or alter appointment notifications. | Appointment acknowledgement/cancellation/reschedule decisions. BF-GAP-06. |
@@ -392,24 +395,24 @@ Capability rows are counted once by unique ID; rows shared across actors are inc
 
 | Summary | Count |
 | --- | ---: |
-| Unique atomic capability records | 145 |
-| คนทั่วไป / ผู้ป่วย (P) | 86 |
-| อสม. (O) | 104 |
-| เจ้าหน้าที่ รพ./รพ.สต. (S) | 106 |
-| แอดมิน รพ. (H) | 119 |
+| Unique atomic capability records | 146 |
+| คนทั่วไป / ผู้ป่วย (P) | 87 |
+| อสม. (O) | 105 |
+| เจ้าหน้าที่ รพ./รพ.สต. (S) | 107 |
+| แอดมิน รพ. (H) | 120 |
 | Platform ADMIN-only preservation rows outside the four groups | 1 |
 | Parent OWNER exact-Child preservation row outside whiteboard operations | 1 |
 
-| Current status (recounted 2026-10-21, Phase R1: CARE-11 → VERIFIED_COMPLETE) | Count |
+| Current status (recounted 2026-10-22, SR-1 adds ACCOUNT-11) | Count |
 | --- | ---: |
 | VERIFIED_COMPLETE | 97 |
-| IMPLEMENTED | 25 |
+| IMPLEMENTED | 26 |
 | PARTIAL | 6 |
 | MISSING | 5 |
 | CONTENT_PENDING | 5 |
 | AGENCY_GOVERNED | 2 |
 | SUPERSEDED | 5 |
-| **Total** | **145** |
+| **Total** | **146** |
 
 BF-GAP-01R does not mark a capability VERIFIED_COMPLETE based on a prior phase label alone; each VERIFIED_COMPLETE row is bounded to the evidence stated in its row.
 
@@ -552,6 +555,8 @@ The initial BF-GAP-00/01 inventory introduced 82 new stable IDs. BF-GAP-01R adds
 ## 15. Next step
 
 The current phase is **BF-GAP-01R — Customer Whiteboard Inventory Correction**; BF-GAP-02 has **NOT STARTED**. After review accepts this corrected register, next is **BF-GAP-02 Runtime Crosswalk & Evidence Verification**, then **BF-GAP-03 Core Care / Service Journey**. No implementation sequence is established.
+
+**SR-1 inventory addition (2026-10-22):** ACCOUNT-11 adds one new stable ID to the prior cumulative inventory of 95, for 96 new IDs in total; ACCOUNT-03..11 are now the account-row range. The existing 93 whiteboard capabilities and two reporting-preservation rows retain their classifications. See [ADR-0020](../adr/0020-self-registration-by-national-id.md); this row does not imply partner-agency approval or customer UAT.
 
 **Product Owner direction (2026-10-12):** the Definition of Done for closing business-flow gaps is the customer workbook `docs/Dashboard App Demi.xlsx` populated from approved operational sources. The column crosswalk, Owner/Clinical decision sheet and slice plan are in [BF-GAP-WB-00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md). Its recommendations are not approvals; BR-01..08 and CL-01..07 remain OPEN until confirmed.
 

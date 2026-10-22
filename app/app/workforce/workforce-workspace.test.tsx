@@ -23,6 +23,7 @@ const row: WorkforceListRow = {
   activationStatus: null,
   activationExpiresAt: null,
   activationMode: null,
+  selfRegisteredAt: null,
 };
 
 function render(rows: WorkforceListRow[] = [row], tab: "staff" | "osm" | "pending" = "staff", pageInfo?: Partial<WorkforceListResult["pageInfo"]>): string {
@@ -36,6 +37,7 @@ function render(rows: WorkforceListRow[] = [row], tab: "staff" | "osm" | "pendin
       serverTime: 1791849600000,
       search: "สม",
       status: "PROVISIONED",
+      selfRegistration: "ALL",
       staffCursor: "staff-cursor",
       osmCursor: "osm-cursor",
       staffNextCursor: "staff-next",

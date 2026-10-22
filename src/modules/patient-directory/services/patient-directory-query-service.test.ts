@@ -237,6 +237,7 @@ describe("Patient directory query boundary", () => {
     const item = patientDirectoryInternals.toPatientDirectoryItem({
       id: relationshipId,
       hospitalNumber: "HN-001",
+      selfRegisteredAt: null,
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       patientProfile: {
         id: patientProfileId,
@@ -251,12 +252,14 @@ describe("Patient directory query boundary", () => {
       hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
       hospitalNumber: "HN-001",
       classification: null,
+      selfRegisteredAt: null,
     });
     expect(Object.keys(patientDirectoryInternals.patientDirectorySelect).sort()).toEqual([
       "hospital",
       "hospitalNumber",
       "id",
       "patientProfile",
+      "selfRegisteredAt",
     ]);
     expect(JSON.stringify(item)).not.toContain("identityKeyHash");
     expect(JSON.stringify(item)).not.toContain("authSubject");

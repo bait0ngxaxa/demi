@@ -27,6 +27,7 @@ const patients = [1, 2, 3].map((index) => ({
   hospital: { id: hospitalId, name: scope.hospitalName },
   hospitalNumber: index === 3 ? null : `HN-${index}`,
   classification: null,
+  selfRegisteredAt: null,
 }));
 const view = {
   hospital: scope,

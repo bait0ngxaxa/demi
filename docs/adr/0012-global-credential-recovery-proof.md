@@ -52,3 +52,7 @@ nor a workforce activation token, nor staff attestation or the national ID, esta
 global credential for authority the other domain already holds. Patient activation is now refused for
 `PROVISIONED` Users with pending workforce authority. Patient-only activation still has no independent
 owner proof and remains an undecided SECURITY_GATED item. No recovery path is added.
+
+## Cross-reference — ADR-0020 self-registration exception (2026-10-22)
+
+[ADR-0020](0020-self-registration-by-national-id.md) records the Product Owner's explicit risk acceptance for a narrowly scoped first credential by national ID. This is an exception to the first-credential rule only for eligible pre-provisioned records through `/register`; it does not establish a general ownership proof, authorize recovery, or alter the recovery restrictions and quarantine rules in this ADR. Partner-agency acknowledgement of the patient enrollment disclosure remains a production gate.

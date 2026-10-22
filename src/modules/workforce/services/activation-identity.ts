@@ -1,9 +1,7 @@
 import "server-only";
 
-import { timingSafeEqual } from "node:crypto";
-
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
-import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
 
 export const WORKFORCE_MAX_FAILED_VERIFICATIONS = 5;
 
@@ -34,11 +32,9 @@ export function matchesPersonNationalId(
   personIdentityKeyHash: string,
   nationalId: string,
 ): boolean {
-  const expected = Buffer.from(personIdentityKeyHash, "utf8");
-  const actual = Buffer.from(
-    hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId }),
-    "utf8",
-  );
-
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
+  const suppliedIdentityHash = hashIdentityReference({
+    namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
+    value: nationalId,
+  });
+  return identityKeyHashesMatch(personIdentityKeyHash, suppliedIdentityHash);
 }

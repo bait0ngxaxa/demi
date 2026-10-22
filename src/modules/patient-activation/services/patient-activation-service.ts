@@ -6,6 +6,7 @@ import {
   MembershipType,
   PatientAccessRequestResolution,
   PatientAccessRequestStatus,
+  PatientActivationPurpose,
   Prisma,
   Role,
   UserStatus,
@@ -22,6 +23,9 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
+import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce-authority";
 import {
   ApplicationError,
@@ -52,6 +56,11 @@ import {
   hashPatientActivationToken,
   type PatientActivationCredentialGenerator,
 } from "./activation-token-service";
+import { assertCurrentSelfRegistrationEligibility } from "@/modules/self-registration/services/self-registration-eligibility";
+import {
+  SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS,
+  type SelfRegistrationRelationship,
+} from "@/modules/self-registration/domain/self-registration-schemas";
 
 export type PatientActivationDatabase = PrismaClient;
 export type PatientActivationAuthorizationDatabase =
@@ -389,6 +398,7 @@ async function findCurrentPatientActivation(
   return transaction.patientActivation.findFirst({
     where: {
       userId,
+      purpose: PatientActivationPurpose.ACTIVATION,
       usedAt: null,
       revokedAt: null,
     },
@@ -1055,6 +1065,7 @@ export async function getPatientActivationDetails(
     const activation = await getDatabase(dependencies).patientActivation.findUnique({
       where: { tokenHash },
       select: {
+        purpose: true,
         hospitalId: true,
         expiresAt: true,
         claimedAt: true,
@@ -1089,7 +1100,7 @@ export async function getPatientActivationDetails(
       },
     });
 
-    if (!activation) {
+    if (!activation || activation.purpose !== PatientActivationPurpose.ACTIVATION) {
       throw new ConflictError(GENERIC_ACTIVATION_ERROR);
     }
 
@@ -1136,6 +1147,8 @@ export async function getPatientActivationDetails(
 
 async function claimPatientActivation(
   token: string,
+  expectedPurpose: PatientActivationPurpose,
+  nationalId: string | undefined,
   dependencies: PatientActivationServiceDependencies,
 ): Promise<PatientActivationClaim> {
   const tokenHash = hashPatientActivationToken(token);
@@ -1149,13 +1162,22 @@ async function claimPatientActivation(
     >(
       database,
       async (transaction) => {
-        const activation = await transaction.patientActivation.findUnique({
+        const initialActivation = await transaction.patientActivation.findUnique({
           where: { tokenHash },
+          select: { id: true, userId: true },
+        });
+        if (!initialActivation) throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+        await lockFirstCredentialOperation(transaction, initialActivation.userId);
+
+        const activation = await transaction.patientActivation.findUnique({
+          where: { id: initialActivation.id },
           select: {
             id: true,
             userId: true,
             hospitalId: true,
             patientAccessRequestId: true,
+            purpose: true,
+            selfRegistrationRelationships: true,
             expiresAt: true,
             claimedAt: true,
             claimExpiresAt: true,
@@ -1174,8 +1196,38 @@ async function claimPatientActivation(
             )
           : null;
 
-        if (!activation || !target || activation.usedAt || activation.revokedAt) {
+        if (!activation || activation.purpose !== expectedPurpose || !target || activation.usedAt || activation.revokedAt) {
           throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+        }
+
+        const otherClaim = await transaction.patientActivation.findFirst({
+          where: {
+            userId: activation.userId,
+            id: { not: activation.id },
+            claimedAt: { not: null },
+            usedAt: null,
+          },
+          select: { id: true },
+        });
+        if (otherClaim) throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+
+        let selfRegistrationIdentityHash: string | null = null;
+        if (expectedPurpose === PatientActivationPurpose.SELF_REGISTRATION) {
+          if (!nationalId) throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+          const eligibility = await assertCurrentSelfRegistrationEligibility(transaction, {
+            userId: activation.userId,
+            relationships: activation.selfRegistrationRelationships,
+            now,
+          });
+          const suppliedIdentityHash = hashIdentityReference({
+            namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
+            value: nationalId,
+          });
+          if (!identityKeyHashesMatch(eligibility.identityKeyHash, suppliedIdentityHash) ||
+            !eligibility.relationships.every(({ kind }) => kind === "PATIENT")) {
+            throw new ConflictError(GENERIC_ACTIVATION_ERROR);
+          }
+          selfRegistrationIdentityHash = suppliedIdentityHash;
         }
 
         if (
@@ -1185,7 +1237,8 @@ async function claimPatientActivation(
           !target.hasPatientRole ||
           !target.patientProfileId ||
           !target.hasHospitalRelationship ||
-          target.hasWorkforceAuthority
+          (expectedPurpose === PatientActivationPurpose.ACTIVATION && target.hasWorkforceAuthority) ||
+          (expectedPurpose === PatientActivationPurpose.SELF_REGISTRATION && !selfRegistrationIdentityHash)
         ) {
           throw new ConflictError(GENERIC_ACTIVATION_ERROR);
         }
@@ -1394,6 +1447,8 @@ async function finalizePatientActivationLocally(
           userId: true,
           hospitalId: true,
           patientAccessRequestId: true,
+          purpose: true,
+          selfRegistrationRelationships: true,
           expiresAt: true,
           claimedAt: true,
           claimExpiresAt: true,
@@ -1426,9 +1481,40 @@ async function finalizePatientActivationLocally(
         !target.hasPatientRole ||
         !target.patientProfileId ||
         !target.hasHospitalRelationship ||
-        target.hasWorkforceAuthority
+        (activation.purpose === PatientActivationPurpose.ACTIVATION && target.hasWorkforceAuthority)
       ) {
         throw new ConflictError("Patient activation state changed before completion");
+      }
+
+      let selfRegistrationRelationships: SelfRegistrationRelationship[] = [];
+      if (activation.purpose === PatientActivationPurpose.SELF_REGISTRATION) {
+        const eligibility = await assertCurrentSelfRegistrationEligibility(transaction, {
+          userId: claim.userId,
+          relationships: activation.selfRegistrationRelationships,
+          now,
+          expectedAuthSubject: authSubject,
+          ignoreActivation: { kind: "PATIENT", id: activation.id },
+        });
+        if (!eligibility.relationships.every(({ kind }) => kind === "PATIENT")) {
+          throw new ConflictError("Patient self-registration scope changed before completion");
+        }
+        selfRegistrationRelationships = eligibility.relationships;
+        const relationships = await transaction.patientHospitalRelationship.updateMany({
+          where: {
+            id: { in: selfRegistrationRelationships.map(({ id }) => id) },
+            endedAt: null,
+            selfRegisteredAt: null,
+            createdAt: {
+              gte: new Date(now.getTime() - SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS),
+              lte: now,
+            },
+            hospital: { status: HospitalStatus.ACTIVE, selfRegistrationEnabled: true },
+          },
+          data: { selfRegisteredAt: now },
+        });
+        if (relationships.count !== selfRegistrationRelationships.length) {
+          throw new ConflictError("Patient relationship changed before self-registration completion");
+        }
       }
 
       const activatedUser = await transaction.user.updateMany({
@@ -1500,21 +1586,37 @@ async function finalizePatientActivationLocally(
         );
       }
 
-      await recordAuditEvent(
-        {
-          actorUserId: null,
-          action: "patient_activation.completed",
-          resourceType: "User",
-          resourceId: claim.userId,
-          metadata: {
-            hospitalId: claim.hospitalId,
-            patientProfileId: target.patientProfileId,
-            source: "patient_activation",
-            status: UserStatus.ACTIVE,
+      if (activation.purpose === PatientActivationPurpose.SELF_REGISTRATION) {
+        const relationshipsByHospital = new Map<string, number>();
+        for (const relationship of selfRegistrationRelationships) {
+          relationshipsByHospital.set(relationship.hospitalId, (relationshipsByHospital.get(relationship.hospitalId) ?? 0) + 1);
+        }
+        for (const [hospitalId, relationshipCount] of relationshipsByHospital) {
+          await recordAuditEvent({
+            actorUserId: null,
+            action: "self_registration.completed",
+            resourceType: "Hospital",
+            resourceId: hospitalId,
+            metadata: { relationshipCount, purpose: "PATIENT" },
+          }, transaction);
+        }
+      } else {
+        await recordAuditEvent(
+          {
+            actorUserId: null,
+            action: "patient_activation.completed",
+            resourceType: "User",
+            resourceId: claim.userId,
+            metadata: {
+              hospitalId: claim.hospitalId,
+              patientProfileId: target.patientProfileId,
+              source: "patient_activation",
+              status: UserStatus.ACTIVE,
+            },
           },
-        },
-        transaction,
-      );
+          transaction,
+        );
+      }
     },
     dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
   );
@@ -1577,6 +1679,33 @@ export async function completePatientActivation(
   input: PatientActivationCompletionInput,
   dependencies: PatientActivationServiceDependencies = {},
 ): Promise<{ userId: string; hospitalId: string }> {
+  return completePatientActivationForPurpose(
+    token,
+    input,
+    PatientActivationPurpose.ACTIVATION,
+    dependencies,
+  );
+}
+
+export async function completePatientSelfRegistration(
+  token: string,
+  input: PatientActivationCompletionInput & { nationalId: string },
+  dependencies: PatientActivationServiceDependencies = {},
+): Promise<{ userId: string; hospitalId: string }> {
+  return completePatientActivationForPurpose(
+    token,
+    input,
+    PatientActivationPurpose.SELF_REGISTRATION,
+    dependencies,
+  );
+}
+
+async function completePatientActivationForPurpose(
+  token: string,
+  input: PatientActivationCompletionInput,
+  purpose: PatientActivationPurpose,
+  dependencies: PatientActivationServiceDependencies,
+): Promise<{ userId: string; hospitalId: string }> {
   const parsedToken = patientActivationTokenSchema.safeParse(token);
   const parsedInput = patientActivationCompletionSchema.safeParse(input);
 
@@ -1584,7 +1713,16 @@ export async function completePatientActivation(
     throw new ValidationError("Patient activation data is invalid");
   }
 
-  const claim = await claimPatientActivation(parsedToken.data, dependencies);
+  if (purpose === PatientActivationPurpose.SELF_REGISTRATION && !parsedInput.data.nationalId) {
+    throw new ValidationError("Patient self-registration requires national ID verification");
+  }
+
+  const claim = await claimPatientActivation(
+    parsedToken.data,
+    purpose,
+    parsedInput.data.nationalId,
+    dependencies,
+  );
   const provisionIdentity = dependencies.provisionIdentity ?? provisionPasswordAuthIdentity;
   let provisionedIdentity: ProvisionPasswordAuthIdentityResult;
 

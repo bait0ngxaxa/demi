@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { Prisma, type PrismaClient } from "@prisma/client";
 
@@ -58,6 +58,12 @@ export function hashIdentityReference(input: IdentityReference): string {
   return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
     .update(`${normalized.namespace}\u0000${normalized.value}`, "utf8")
     .digest("hex");
+}
+
+export function identityKeyHashesMatch(expectedHash: string, actualHash: string): boolean {
+  const expected = Buffer.from(expectedHash, "utf8");
+  const actual = Buffer.from(actualHash, "utf8");
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 export function createIdentityStore(database: IdentityDatabase): IdentityStore {
