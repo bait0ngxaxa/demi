@@ -14,6 +14,8 @@ vi.mock("@/modules/account-security/transport/server-actions", () => ({
   issuePatientAccountRecoveryAction: vi.fn(),
   checkPatientAccountRecoveryAction: vi.fn(),
   completePatientAccountRecoveryAction: vi.fn(),
+  checkMediatedPasswordResetAction: vi.fn(),
+  completeMediatedPasswordResetAction: vi.fn(),
 }));
 vi.mock("@/modules/patient-hospital-profile/transport/server-actions", () => ({
   updateOwnPatientHospitalProfileAction: vi.fn(),
@@ -81,28 +83,28 @@ describe("account security form presentation", () => {
     expect(markup).not.toContain("targetUserId");
   });
 
-  it("shows the independent account ownership restriction without issuer controls", () => {
+  it("routes account support to the mediated reset entry point without issuer controls", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientAccountRecoveryPanel, {
         relationshipId: profile.relationshipId,
       }),
     );
 
-    expect(markup).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(markup).toContain("ยืนยันตัวตน");
     expect(markup).not.toContain('name="nationalId"');
     expect(markup).not.toContain('name="nationalIdConfirmation"');
     expect(markup).not.toContain("<form");
-    expect(markup).toContain("บัญชี DEMI เดียว");
+    expect(markup).toContain("/app/users/patient/");
     expect(markup).not.toContain("อีเมล");
     expect(markup).not.toContain("SMS");
     expect(markup).not.toContain("LINE");
   });
 
-  it("blocks legacy recovery links without requesting a password", () => {
+  it("shows the hospital recovery instructions when no reset token is present", () => {
     const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm));
 
-    expect(markup).toContain("ยังไม่สามารถกู้คืนรหัสผ่านได้");
-    expect(markup).toContain("ลิงก์กู้คืนที่มีอยู่ใช้เปลี่ยนรหัสผ่านไม่ได้");
+    expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลคุณ");
+    expect(markup).toContain("วิดีโอคอล");
     expect(markup).not.toContain("<form");
     expect(markup).not.toContain('name="newPassword"');
     expect(markup).not.toContain("providerAlias");

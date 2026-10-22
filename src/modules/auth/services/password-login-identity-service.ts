@@ -19,6 +19,7 @@ export type ResolvedPasswordLoginIdentity = {
 export type PasswordLoginUserRecord = {
   id: string;
   authSubject: string | null;
+  providerLoginAlias?: string | null;
 };
 
 export type PasswordLoginIdentityStore = {
@@ -42,6 +43,7 @@ const prismaPasswordLoginIdentityStore: PasswordLoginIdentityStore = {
         select: {
           id: true,
           authSubject: true,
+          providerLoginAlias: true,
         },
       });
     } catch {
@@ -79,6 +81,6 @@ export async function resolvePasswordLoginIdentity(
 
   return {
     authSubject: user.authSubject,
-    providerLoginAlias: createProviderLoginAlias(user.id),
+    providerLoginAlias: user.providerLoginAlias ?? createProviderLoginAlias(user.id),
   };
 }

@@ -35,8 +35,8 @@ The partner agency must acknowledge this disclosure and its risks before product
 
 - Owners can leave self-registration enabled or disable it in Hospital settings. Turning it off blocks new lookups and completion for that Hospital.
 - An ID card copy can be used by another person to establish the first credential; the accepted risk is not eliminated by the checksum, masked name, rate limits or short-lived capability.
-- Existing first-credential and recovery restrictions continue for every flow outside this capability. National ID is not a general ownership proof and this decision does not restore password recovery.
-- Users who already have credentials are directed to login/recovery and advised to contact the Hospital immediately if the account is not theirs.
+- Existing first-credential and recovery restrictions continue for every flow outside this capability. National ID is not a general ownership proof. The narrow OWNER/ADMIN-mediated reset exception is recorded in the REC-1 cross-reference below.
+- Users who already have credentials are directed to login; a forgotten password or suspected takeover is handled through the verified Hospital reset process in REC-1.
 
 ## Addendum UM-1 — OWNER user management and suspected takeover (Product Owner, 2026-10-22)
 
@@ -44,7 +44,7 @@ Decisions UM-D1..UM-D7 are recorded in [WB_ALIGNMENT_DECISIONS.md](../requiremen
 
 - **Delete vs remove.** "ลบรายการ" hard-deletes only a never-activated, data-free, single-Hospital record (the usual cause is a wrong national ID, which is never editable). The check is one query per kind backed by a registry that classifies every relation of User, Person, PatientProfile, PatientHospitalRelationship, HospitalMembership and OsmHospitalRelationship; an unknown relation or a refused foreign key makes the record not deletable. An unmodified Excel import snapshot counts as part of the record (UM-D7). Every other case uses the existing ENDED release or Phase F end of care.
 - **Suspected takeover.** Because a national ID is not ownership proof, an OWNER can report "บัญชีนี้ไม่ใช่เจ้าของจริง". One transaction sets the User to `SUSPENDED` (every access path requires ACTIVE, so access stops on the next request), suspends this Hospital's ACTIVE staff/OSM relationships, revokes unused activation links, unlinks a LINE binding made after the first credential and records `UserTakeoverLock` plus an audit. Provider session revocation then runs outside database locks through a Supabase admin ban, the only provider path that does not need the user's JWT; issued access tokens stay valid until they expire but are refused by the application. A non-confirmed provider result leaves the lock in `RECONCILIATION_REQUIRED` and the action can be repeated.
-- **Boundaries.** A Patient relationship has no suspension state, so the account lock is the block for Patients; `activePatientHospitalRelationshipWhere` is unchanged. The lock is global, so an OWNER may only lock a Person related to that Hospital alone (the E3 rule), never their own account or an OWNER membership. The lock is terminal for OWNERs: ACCOUNT-04 (Phase I) recovery does not exist yet, so restoring the real owner requires a platform ADMIN.
+- **Boundaries.** A Patient relationship has no suspension state, so the account lock is the block for Patients; `activePatientHospitalRelationshipWhere` is unchanged. The lock is global, so an OWNER may only lock a Person related to that Hospital alone (the E3 rule), never their own account or an OWNER membership. A suspected-takeover lock is now recoverable through REC-1; an OWNER target or another out-of-scope account must be reset by a platform ADMIN.
 
 ## Addendum RA-1 — Retire patient account-access requests (Product Owner, 2026-10-22)
 
@@ -55,3 +55,7 @@ Every Patient must first be added to the Hospital roster by its OWNER through Ex
 The public `/patient/access-request` page, OWNER `/app/patients/access-requests` workspace, and their services, actions, schemas, and policy are removed. No redirect is added; removed paths resolve through the normal 404.
 
 No destructive migration is made. `PatientAccessRequest`, its enums, columns, and foreign keys remain so existing rows and audits remain readable to DBAs. Existing unresolved rows are left unchanged and inert: no new request is accepted and no application workflow reviews, issues activation from, or advances those rows. Existing activation links remain usable to establish the Patient account; completing a legacy linked activation does not update the retired request. End-of-care continues revoking an unclaimed activation and unlinking it from the request while preserving the request row. The user-record deletion relation registry continues classifying retained request relations as data that blocks hard deletion.
+
+## Cross-reference — REC-1 mediated reset and takeover reclaim (2026-10-22)
+
+[ADR-0012](0012-global-credential-recovery-proof.md) adds a narrowly scoped OWNER/ADMIN-mediated reset for credentialed accounts, including self-registered accounts and suspended accounts under suspected-takeover locks. It requires recorded identity verification, the target's own National ID and a new password, and the existing claim/provider/finalize quarantine. This cross-reference does not make National ID a general ownership proof or enable any other recovery path.

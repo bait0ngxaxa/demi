@@ -1,5 +1,6 @@
 import { HospitalStatus } from "@prisma/client";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
@@ -30,11 +31,6 @@ import {
 } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 
 import { PatientNameCorrectionForm } from "../../../patients/patient-name-correction-form";
-import { WorkforcePasswordResetControl } from "../../../workforce/workforce-password-reset-control";
-import {
-  listHospitalOwnersForPasswordReset,
-  type WorkforceHospitalOwnerForReset,
-} from "@/modules/workforce/services/workforce-service";
 
 import {
   getHospitalNetworkForAdmin,
@@ -219,12 +215,10 @@ export default async function HospitalGovernanceDetailPage({
   const { hn } = await searchParams;
   if (Array.isArray(hn)) notFound();
   let hospital: HospitalGovernanceProjection;
-  let owners: WorkforceHospitalOwnerForReset[] = [];
   let network: HospitalNetworkAdminView;
 
   try {
     hospital = await getHospitalGovernanceDetail(actor, hospitalId);
-    owners = await listHospitalOwnersForPasswordReset(actor, hospitalId);
     network = await getHospitalNetworkForAdmin(actor, hospitalId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
@@ -278,28 +272,15 @@ export default async function HospitalGovernanceDetailPage({
           </Alert>
         )}
 
-        {hospital.status === HospitalStatus.ACTIVE && owners.length > 0 ? (
+        {hospital.status === HospitalStatus.ACTIVE ? (
           <section aria-labelledby="owner-reset-heading" className="space-y-4">
             <h2 className="text-xl font-semibold tracking-[-0.02em]" id="owner-reset-heading">
-              รีเซ็ตรหัสผ่านเจ้าของโรงพยาบาล
+              คืนบัญชีผู้ใช้
             </h2>
             <p className="text-sm leading-6 text-text-muted">
-              การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน สิทธิ์ผู้ดูแลระบบไม่ใช่หลักฐานว่าเป็นเจ้าของบัญชี
+              ผู้ดูแลระบบค้นหาบัญชีด้วยเลขบัตรประชาชนแบบตรงกันได้ และต้องบันทึกวิธียืนยันตัวตนก่อนออกลิงก์รีเซ็ต
             </p>
-            {owners.map((owner) =>
-              !owner.canReset ? (
-                <WorkforcePasswordResetControl
-                  key={owner.userId}
-                  subjectLabel={owner.displayName}
-                  targetHospitalId={hospital.id}
-                  userId={owner.userId}
-                />
-              ) : (
-                <Alert key={owner.userId} variant="neutral">
-                  {owner.displayName} · ยังไม่สามารถรีเซ็ตรหัสผ่านผ่านหน้านี้ได้
-                </Alert>
-              ),
-            )}
+            <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/app/admin/recovery">เปิดเครื่องมือคืนบัญชี</Link>
           </section>
         ) : null}
 

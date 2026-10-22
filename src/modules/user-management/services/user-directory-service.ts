@@ -267,6 +267,8 @@ const TIMELINE_LABELS: Record<string, string> = {
   "patient_activation.completed": "เปิดใช้งานบัญชี",
   "workforce_password_reset.issued": "ออกลิงก์รีเซ็ตรหัสผ่าน",
   "workforce_password_reset.completed": "รีเซ็ตรหัสผ่านแล้ว",
+  "account.password_reset.issued": "ออกลิงก์รีเซ็ตรหัสผ่านแบบยืนยันตัวตน",
+  "account.password_reset.completed": "เปลี่ยนรหัสผ่านและคืนบัญชีแล้ว",
   "hospital_membership.suspended": "ระงับสิทธิ์",
   "osm_relationship.suspended": "ระงับสิทธิ์",
   "hospital_membership.restored": "คืนสิทธิ์",
@@ -280,6 +282,7 @@ const TIMELINE_LABELS: Record<string, string> = {
   "workforce.person_name.corrected": "แก้ไขชื่อ-สกุล",
   "user.takeover_locked": "ล็อกบัญชี: แจ้งว่าไม่ใช่เจ้าของจริง",
   "user.takeover_provider_sessions": "ตรวจสอบการยกเลิกการเข้าสู่ระบบ",
+  "user.takeover_lock_resolved": "คืนสิทธิ์ที่ถูกระงับจากการล็อกบัญชี",
 };
 
 const ADDED_ACTIONS = ["hospital_membership.provisioned", "osm_relationship.provisioned", "patient.provisioned"];
@@ -378,7 +381,7 @@ export async function getHospitalUserDetail(
       const singleHospital = new Set(hospitals).size === 1 && hospitals.includes(record.hospitalId);
       const status = deriveUserDirectoryStatus({ ended: record.ended, relationshipSuspended: record.suspended, userStatus: user.status });
       const takeoverBlock: UserDetail["takeoverBlock"] = user.id === actor.userId ? "SELF"
-        : user.takeoverLock ? "LOCKED"
+          : user.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED ? "LOCKED"
           : record.ended ? "REMOVED"
             : record.ownerMembership ? "OWNER_MEMBERSHIP"
               : user.status !== UserStatus.ACTIVE ? "NOT_ACTIVATED"
@@ -404,7 +407,9 @@ export async function getHospitalUserDetail(
           addedAt: record.createdAt,
           addedByName: added?.actor ? toDisplayName(added.actor.person) : null,
         },
-        takeoverLock: user.takeoverLock ? { lockedAt: user.takeoverLock.lockedAt, providerState: user.takeoverLock.providerState } : null,
+        takeoverLock: user.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED
+          ? { lockedAt: user.takeoverLock.lockedAt, providerState: user.takeoverLock.providerState }
+          : null,
         timeline,
         deletionBlockers: assessment?.blockers ?? ["UNKNOWN_RELATION"],
         singleHospital,

@@ -21,7 +21,7 @@ function createPersonResolver(
 }
 
 function createStore(
-  result: { id: string; authSubject: string | null } | null = {
+  result: { id: string; authSubject: string | null; providerLoginAlias?: string | null } | null = {
     id: userId,
     authSubject: "provider-subject-1",
   },
@@ -79,6 +79,13 @@ describe("password login identity resolution", () => {
       }),
     ).resolves.toBeNull();
     expect(store.findUserByPersonId).not.toHaveBeenCalled();
+  });
+
+  it("uses the canonical alias created by a mediated reset", async () => {
+    await expect(resolvePasswordLoginIdentity(nationalId, {
+      findPerson: createPersonResolver(),
+      store: createStore({ id: userId, authSubject: "provider-subject-2", providerLoginAlias: `${userId}.reset@auth.demi.internal` }),
+    })).resolves.toMatchObject({ providerLoginAlias: `${userId}.reset@auth.demi.internal` });
   });
 
   it.each([

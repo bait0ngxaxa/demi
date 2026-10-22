@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 
 import {
@@ -12,6 +13,14 @@ import {
   getPatientAccountRecoveryAvailability,
   issuePatientAccountRecovery,
 } from "../services/account-recovery-service";
+import {
+  completeMediatedPasswordReset,
+  getMediatedPasswordResetAvailability,
+  issueMediatedPasswordReset,
+  searchMediatedPasswordResetTargets,
+  type MediatedPasswordResetCandidate,
+} from "../services/mediated-password-reset-service";
+import type { MediatedPasswordResetIssueInput } from "../schemas/account-security-schemas";
 import type {
   AccountRecoveryAvailabilityActionState,
   AccountRecoveryCompletionActionState,
@@ -90,5 +99,70 @@ export async function completePatientAccountRecoveryAction(
     };
   } catch {
     return { status: "ERROR", message: genericAccountError };
+  }
+}
+
+export type MediatedPasswordResetIssueActionResult =
+  | { status: "ISSUED"; mode: "IN_PERSON" | "ONLINE"; handoffUrl: string; expiresAt: string }
+  | { status: "ERROR"; message: string };
+
+export async function issueMediatedPasswordResetAction(
+  input: MediatedPasswordResetIssueInput,
+): Promise<MediatedPasswordResetIssueActionResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const recoveryUrls = createApplicationCredentialUrlBuilder("/recover");
+    const result = await issueMediatedPasswordReset(actor, input);
+    revalidatePath("/app/users");
+    return { status: "ISSUED", mode: result.mode, handoffUrl: recoveryUrls.build(result.token), expiresAt: result.expiresAt.toISOString() };
+  } catch {
+    return { status: "ERROR", message: genericAccountError };
+  }
+}
+
+export type MediatedPasswordResetSearchActionResult =
+  | { status: "MATCH"; candidates: MediatedPasswordResetCandidate[] }
+  | { status: "NO_MATCH" }
+  | { status: "ERROR"; message: string };
+
+export async function searchMediatedPasswordResetTargetsAction(
+  nationalId: string,
+): Promise<MediatedPasswordResetSearchActionResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const candidates = await searchMediatedPasswordResetTargets(actor, { nationalId });
+    return candidates.length > 0 ? { status: "MATCH", candidates } : { status: "NO_MATCH" };
+  } catch {
+    return { status: "ERROR", message: genericAccountError };
+  }
+}
+
+export type MediatedPasswordResetAvailabilityActionResult =
+  | { status: "READY"; expiresAt: string; mode: "IN_PERSON" | "ONLINE" }
+  | { status: "INVALID" };
+
+export async function checkMediatedPasswordResetAction(token: string): Promise<MediatedPasswordResetAvailabilityActionResult> {
+  try {
+    const availability = await getMediatedPasswordResetAvailability(token);
+    return { status: "READY", expiresAt: availability.expiresAt.toISOString(), mode: availability.mode };
+  } catch {
+    return { status: "INVALID" };
+  }
+}
+
+export async function completeMediatedPasswordResetAction(
+  _previousState: AccountRecoveryCompletionActionState,
+  formData: FormData,
+): Promise<AccountRecoveryCompletionActionState> {
+  try {
+    await completeMediatedPasswordReset({
+      token: formData.get("token"),
+      nationalId: formData.get("nationalId"),
+      newPassword: formData.get("newPassword"),
+      passwordConfirmation: formData.get("passwordConfirmation"),
+    });
+    return { status: "COMPLETED", message: "รหัสผ่านบัญชี DEMI เปลี่ยนแล้ว เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้" };
+  } catch {
+    return { status: "ERROR", message: "ยืนยันตัวตนไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ครบจำนวนครั้งแล้ว กรุณาติดต่อโรงพยาบาล" };
   }
 }

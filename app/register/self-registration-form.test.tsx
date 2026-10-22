@@ -145,7 +145,7 @@ describe("public self-registration form", () => {
     await submitForm();
 
     expect(container.textContent).toContain("บัญชีนี้เปิดใช้งานแล้ว");
-    expect(container.textContent).toContain("หากไม่ใช่คุณ กรุณาติดต่อโรงพยาบาลทันที");
+    expect(container.textContent).toContain("หากไม่ใช่คุณ กรุณาติดต่อโรงพยาบาลที่ดูแลคุณเพื่อขอรีเซ็ตรหัสผ่านแบบยืนยันตัวตน");
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(container.querySelector('a[href="/recover"]')).not.toBeNull();
   });

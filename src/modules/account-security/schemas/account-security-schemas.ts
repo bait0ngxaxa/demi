@@ -42,6 +42,54 @@ export const accountRecoveryTokenSchema = z
   .length(43)
   .regex(/^[A-Za-z0-9_-]{43}$/u);
 
+export const mediatedPasswordResetModeSchema = z.enum(["IN_PERSON", "ONLINE"]);
+export const credentialRecoveryVerificationMethodSchema = z.enum([
+  "IN_PERSON_ID_CARD",
+  "VIDEO_CALL_FACE_AND_ID_CARD",
+  "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
+]);
+export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "platform_admin"]);
+
+export const mediatedPasswordResetIssueSchema = z
+  .object({
+    hospitalId: z.uuid(),
+    relationshipId: z.uuid().nullable(),
+    targetUserId: z.uuid().optional(),
+    targetKind: mediatedPasswordResetTargetKindSchema,
+    mode: mediatedPasswordResetModeSchema,
+    verificationMethod: credentialRecoveryVerificationMethodSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.targetKind === "platform_admin") {
+      if (!input.targetUserId || input.relationshipId !== null) {
+        context.addIssue({ code: "custom", path: ["targetUserId"], message: "An ADMIN target is required" });
+      }
+    } else if (!input.relationshipId || input.targetUserId !== undefined) {
+      context.addIssue({ code: "custom", path: ["relationshipId"], message: "A target relationship is required" });
+    }
+  });
+
+export const mediatedPasswordResetSearchSchema = z.object({ nationalId: thaiNationalIdSchema }).strict();
+
+export const mediatedPasswordResetCompletionSchema = z
+  .object({
+    token: accountRecoveryTokenSchema,
+    nationalId: thaiNationalIdSchema,
+    newPassword: userOwnedPasswordSchema,
+    passwordConfirmation: userOwnedPasswordSchema,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.newPassword !== input.passwordConfirmation) {
+      context.addIssue({
+        code: "custom",
+        path: ["passwordConfirmation"],
+        message: "Password confirmation does not match",
+      });
+    }
+  });
+
 export const accountRecoveryCompletionSchema = z
   .object({
     token: accountRecoveryTokenSchema,
@@ -68,3 +116,8 @@ export type AccountRecoveryIssueInput = z.infer<typeof accountRecoveryIssueSchem
 export type AccountRecoveryCompletionInput = z.infer<
   typeof accountRecoveryCompletionSchema
 >;
+export type MediatedPasswordResetIssueInput = z.infer<typeof mediatedPasswordResetIssueSchema>;
+export type MediatedPasswordResetMode = z.infer<typeof mediatedPasswordResetModeSchema>;
+export type CredentialRecoveryVerificationMethod = z.infer<typeof credentialRecoveryVerificationMethodSchema>;
+export type MediatedPasswordResetTargetKind = z.infer<typeof mediatedPasswordResetTargetKindSchema>;
+export type MediatedPasswordResetCompletionInput = z.infer<typeof mediatedPasswordResetCompletionSchema>;

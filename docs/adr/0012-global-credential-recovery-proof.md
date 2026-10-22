@@ -1,6 +1,6 @@
 # ADR-0012 — Global credential recovery requires independent owner proof
 
-Status: Accepted security restriction for the workforce v2 remediation; recovery product decision pending.
+Status: Accepted security restriction, amended 2026-10-22 by the REC-1 product decision below.
 Supersedes: ADR-0008 D3 credential-replacement trust and Phase 17E.1 assisted-recovery ownership assumptions.
 
 ## Context
@@ -12,6 +12,10 @@ ownership. Existing verified current-password change provides user-controlled pr
 serve a user who has forgotten that password. No approved universal recovery proof exists.
 
 ## Decision
+
+The original restriction below remains in force for every recovery entry point except the exact
+OWNER/ADMIN-mediated reset flow approved by the dated REC-1 amendment at the end of this ADR.
+That amendment supersedes only the global disable and terminal-takeover clauses it names.
 
 Distinguish Hospital authority to request recovery, authority to supervise/approve assistance,
 actual independent account-owner proof, and permission to replace the global credential. The first
@@ -26,15 +30,13 @@ access even after revocation/expiry, because provider effects cannot be assumed 
 Controlled reconciliation must preserve evidence and may not clear claims solely on ADMIN
 attestation. See the [operation runbook](../phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md).
 
-## Consequences and pending decision
+## Original consequences (before REC-1)
 
-Thai UI explains the unavailable workflow and directs operational escalation without collecting
-additional PII or passwords. Users who cannot supply their current password have no supported
-replacement path until product/security owners approve independent proof and reconciliation
-for users without universal email, phone, smartphone, OTP or external identity. Future recovery
-must bind exact immutable authorization context, reauthorize at completion, serialize per User
-and durably distinguish ambiguous provider effects from local commits. The unavailable feature
-is SECURITY_GATED, never VERIFIED_COMPLETE. Historical decisions/tests remain historical evidence.
+Before the dated amendment, Thai UI explained that recovery was unavailable and directed users to
+operational escalation without collecting additional PII or passwords. This is historical context;
+REC-1 now defines the only approved recovery route. Hospital authority and demographic knowledge
+alone remain insufficient for global credential replacement. Historical decisions/tests remain
+historical evidence.
 
 
 ## Addendum — first credential of an unactivated PATIENT identity
@@ -56,3 +58,65 @@ owner proof and remains an undecided SECURITY_GATED item. No recovery path is ad
 ## Cross-reference — ADR-0020 self-registration exception (2026-10-22)
 
 [ADR-0020](0020-self-registration-by-national-id.md) records the Product Owner's explicit risk acceptance for a narrowly scoped first credential by national ID. This is an exception to the first-credential rule only for eligible pre-provisioned records through `/register`; it does not establish a general ownership proof, authorize recovery, or alter the recovery restrictions and quarantine rules in this ADR. Partner-agency acknowledgement of the patient enrollment disclosure remains a production gate.
+
+## Amendment — REC-1 OWNER/ADMIN-mediated reset and takeover reclaim
+
+Product decision: OWNER, 2026-10-22 17:26 Asia/Bangkok. This amendment is accepted and supersedes
+the original blanket recovery disable only for the paths and policy below. Every other recovery
+entry point remains disabled; self-service reset, OTP, email/SMS recovery, LINE recovery and ADMIN
+self-reset are not approved.
+
+### Approved ceremony
+
+- Reset is available only through an authenticated, active OWNER of the exact ACTIVE Hospital or
+  an authenticated, active platform ADMIN. The issuer must select one recorded verification method:
+  `IN_PERSON_ID_CARD`, `VIDEO_CALL_FACE_AND_ID_CARD`, or
+  `CALLBACK_PHONE_ON_HOSPITAL_RECORD`. For callback, the UI explicitly forbids using a number the
+  requester supplied. No image or National ID value is persisted; the audit stores the method,
+  mode, issuer and outcome without PII.
+- `IN_PERSON` reuses the assisted ceremony, expires after 15 minutes, and requires handing the
+  device to the account owner, who enters their own National ID and sets the password. `ONLINE`
+  issues one single-use bearer link valid for 24 hours; the OWNER delivers it out of band (including
+  LINE chat), and the owner opens it on their own device and enters their own National ID and new
+  password. Five incorrect National IDs revoke either capability.
+- An active direct OWNER may reset a non-self MEMBER, OSM or patient only when all of the target's
+  `HospitalMembership`, `OsmHospitalRelationship` and `PatientHospitalRelationship` rows, including
+  ended rows, are scoped to that one Hospital, the target is not an ADMIN or an OWNER anywhere, and
+  the target has no caregiver relationship or appointment grant. Every other target,
+  including multi-Hospital users, any OWNER and any ADMIN, requires a platform ADMIN; ADMIN may not
+  reset themself. Self-registered and invited active accounts follow the same rules.
+- ADMIN searches by exact National ID using the existing HMAC identity lookup; the lookup is audited
+  without storing the National ID or hash. A Hospital scope is selected and stored with the reset.
+- Workforce targets reuse `WorkforceActivation` with purpose `RESET`; patient-only targets reuse
+  `AccountRecovery`. No third capability/token framework is introduced. Each operation binds target,
+  Hospital, purpose, mode, verification method and issuer. Issuer, active Hospital, scope, target and
+  exact relationship eligibility are re-authorized at completion. Per-User credential operations are
+  serialized. Provider I/O occurs outside database locks.
+
+### Credential replacement and reconciliation
+
+Completion creates a new Supabase Auth identity with an operation-specific internal login alias,
+switches the canonical `User.authSubject` and alias in the finalize transaction, then deletes the old
+identity. Supabase admin `createUser` and `deleteUser` require a server-held service role; neither
+credential nor service key reaches the browser ([createUser](https://supabase.com/docs/reference/javascript/auth-admin-createuser),
+[deleteUser](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser)). DEMI also verifies
+the captured session with Auth `getUser` on every exact-session request
+([getUser](https://supabase.com/docs/reference/javascript/auth-getuser)). Supabase access JWTs can
+remain valid until expiry; old application sessions are refused because their subject no longer maps
+to the canonical User, independently of provider-side token expiry
+([session semantics](https://supabase.com/docs/guides/auth/sessions)).
+
+The existing claim → provider-started → provider-confirmed → finalize state machine is reused. An
+ambiguous create, database switch or old-identity delete leaves the reset claimed in
+`RECONCILIATION_REQUIRED` quarantine. The previous subject is removed only after confirmed provider
+deletion, and quarantine is cleared only after the complete sequence is durably finalized; an ADMIN
+attestation alone never clears it. Two concurrent completions can create at most one credential.
+
+On success, the User is ACTIVE; an UM-1 lock is marked `RESOLVED`, its exact suspended staff/OSM
+relationship snapshot is restored at the lock Hospital, and the lock/audit history is retained.
+LINE bindings created after the lock remain unlinked and require the user to link LINE again. An
+active LINE binding receives `รหัสผ่านบัญชี DEMI ของคุณถูกเปลี่ยนเมื่อ <เวลา> หากไม่ใช่คุณ ติดต่อโรงพยาบาล`.
+
+`/recover` without a token instructs the user to contact their Hospital for an in-person or video
+verification. `/register` tells an already-active requester to contact the Hospital for a verified
+reset. The OWNER guide and remediation runbook define the procedure and reconciliation boundary.

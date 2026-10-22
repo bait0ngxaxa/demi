@@ -35,7 +35,7 @@ export type PasswordAuthProvisioningUser = {
 
 export type PasswordAuthProvisioningStore = {
   findUserById(userId: string): Promise<PasswordAuthProvisioningUser | null>;
-  setAuthSubject(input: { userId: string; authSubject: string }): Promise<boolean>;
+  setAuthSubject(input: { userId: string; authSubject: string; providerLoginAlias: string }): Promise<boolean>;
 };
 
 export type ProvisionPasswordAuthIdentityInput = {
@@ -119,6 +119,7 @@ const prismaPasswordAuthProvisioningStore: PasswordAuthProvisioningStore = {
         },
         data: {
           authSubject: input.authSubject,
+          providerLoginAlias: input.providerLoginAlias,
         },
       });
 
@@ -253,6 +254,7 @@ export async function provisionPasswordAuthIdentity(
     persisted = await store.setAuthSubject({
       userId: user.id,
       authSubject: providerSubject.data,
+      providerLoginAlias,
     });
   } catch (error: unknown) {
     return await compensateProviderAccount(

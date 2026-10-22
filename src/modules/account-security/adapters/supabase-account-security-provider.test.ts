@@ -6,6 +6,8 @@ const {
   mockedGetServerSupabaseClient,
   mockedGetSupabaseAdminClient,
   mockedCreateProviderLoginAlias,
+  mockedCreateProviderResetLoginAlias,
+  mockedGetPrisma,
   authenticatedAuth,
   isolatedAuth,
   adminAuth,
@@ -15,7 +17,7 @@ const {
 } = vi.hoisted(() => {
   const authenticatedAuth = { getUser: vi.fn() };
   const isolatedAuth = { signInWithPassword: vi.fn(), updateUser: vi.fn(), signOut: vi.fn() };
-  const adminAuth = { admin: { updateUserById: vi.fn(), signOut: vi.fn() } };
+  const adminAuth = { admin: { updateUserById: vi.fn(), createUser: vi.fn(), deleteUser: vi.fn(), signOut: vi.fn() } };
   const authenticatedClient = { auth: authenticatedAuth };
   const isolatedClient = { auth: isolatedAuth };
   const adminClient = { auth: adminAuth };
@@ -29,6 +31,8 @@ const {
     mockedGetServerSupabaseClient: vi.fn(async () => authenticatedClient),
     mockedGetSupabaseAdminClient: vi.fn(() => adminClient),
     mockedCreateProviderLoginAlias: vi.fn((id: string) => `${id}@login.demi.invalid`),
+    mockedCreateProviderResetLoginAlias: vi.fn((userId: string, resetId: string) => `${userId}.${resetId}@auth.demi.internal`),
+    mockedGetPrisma: vi.fn(() => ({ user: { findUnique: vi.fn(async () => ({ authSubject: "88888888-8888-4888-8888-888888888888", providerLoginAlias: null })) } })),
     authenticatedAuth,
     isolatedAuth,
     adminAuth,
@@ -43,12 +47,15 @@ vi.mock("@/lib/env/server", () => ({ getServerEnv: mockedGetServerEnv }));
 vi.mock("@/lib/auth/supabase-server", () => ({
   getServerSupabaseClient: mockedGetServerSupabaseClient,
 }));
+vi.mock("@/lib/db/prisma", () => ({ getPrisma: mockedGetPrisma }));
 vi.mock("@/lib/auth/supabase-admin", () => ({ getSupabaseAdminClient: mockedGetSupabaseAdminClient }));
 vi.mock("@/modules/auth/services/provider-login-alias", () => ({
   createProviderLoginAlias: mockedCreateProviderLoginAlias,
+  createProviderResetLoginAlias: mockedCreateProviderResetLoginAlias,
 }));
 
 import {
+  deleteReplacedProviderIdentity,
   replacePasswordAndRevokeRecoverySessions,
   revokeProviderSessionsBySuspension,
   updateAuthenticatedPassword,
@@ -68,6 +75,8 @@ describe("Supabase account security provider boundary", () => {
     mockedGetSupabaseAdminClient.mockReturnValue(adminClient);
     mockedCreateClient.mockReturnValue(isolatedClient);
     mockedCreateProviderLoginAlias.mockImplementation((id) => `${id}@login.demi.invalid`);
+    mockedCreateProviderResetLoginAlias.mockImplementation((userId, resetId) => `${userId}.${resetId}@auth.demi.internal`);
+    mockedGetPrisma.mockImplementation(() => ({ user: { findUnique: vi.fn(async () => ({ authSubject, providerLoginAlias: null })) } }));
     authenticatedAuth.getUser.mockResolvedValue({ data: { user: { id: authSubject } }, error: null });
     isolatedAuth.signInWithPassword.mockResolvedValue({
       data: { user: { id: authSubject }, session: { access_token: "temporary-access-jwt" } },
@@ -144,12 +153,31 @@ describe("Supabase account security provider boundary", () => {
     expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
   });
 
-  it("gates administrative recovery before password replacement or session effects", async () => {
-    await expect(replacePasswordAndRevokeRecoverySessions({ userId: targetUserId, authSubject, newPassword: "new long password" })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(adminAuth.admin.updateUserById).not.toHaveBeenCalled();
-    expect(adminAuth.admin.signOut).not.toHaveBeenCalled();
-    expect(isolatedAuth.signInWithPassword).not.toHaveBeenCalled();
-    expect(mockedCreateClient).not.toHaveBeenCalled();
+  it("creates a new provider identity bound to the reset operation id", async () => {
+    const replacementSubject = "99999999-9999-4999-8999-999999999999";
+    adminAuth.admin.createUser.mockResolvedValue({ data: { user: { id: replacementSubject } }, error: null });
+
+    await expect(replacePasswordAndRevokeRecoverySessions({
+      userId: targetUserId,
+      resetId: "66666666-6666-4666-8666-666666666666",
+      authSubject,
+      newPassword: "new long password",
+    })).resolves.toEqual({
+      authSubject: replacementSubject,
+      providerLoginAlias: `${targetUserId}.66666666-6666-4666-8666-666666666666@auth.demi.internal`,
+    });
+    expect(adminAuth.admin.createUser).toHaveBeenCalledWith({
+      email: `${targetUserId}.66666666-6666-4666-8666-666666666666@auth.demi.internal`,
+      password: "new long password",
+      email_confirm: true,
+    });
+  });
+
+  it("deletes the previous provider identity and treats an ambiguous delete as failure", async () => {
+    adminAuth.admin.deleteUser.mockResolvedValueOnce({ error: null }).mockRejectedValueOnce(new Error("network"));
+    await expect(deleteReplacedProviderIdentity(authSubject)).resolves.toBeUndefined();
+    await expect(deleteReplacedProviderIdentity(authSubject)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    expect(adminAuth.admin.deleteUser).toHaveBeenCalledTimes(2);
   });
 });
 

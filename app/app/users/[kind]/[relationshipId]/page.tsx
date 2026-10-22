@@ -10,6 +10,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getHospitalUserDetail, type UserDetail } from "@/modules/user-management/services/user-directory-service";
+import { getMediatedPasswordResetEligibility } from "@/modules/account-security/services/mediated-password-reset-service";
 import { DELETION_BLOCKER_LABELS } from "@/modules/user-management/transport/action-state";
 import { getWorkforceDetail, type WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
@@ -25,6 +26,7 @@ import { WorkforceManagementControls } from "../../../workforce/[kind]/[relation
 import { ACTIVATION_METHOD_LABELS, USER_KIND_LABELS, USER_STATUS_PRESENTATION } from "../../user-presentation";
 import { UserRecordDeleteControl } from "./user-record-delete-control";
 import { UserTakeoverControl } from "./user-takeover-control";
+import { MediatedPasswordResetControl } from "../../mediated-password-reset-control";
 
 export const metadata: Metadata = {
   title: "จัดการผู้ใช้งาน",
@@ -73,7 +75,7 @@ function ActionSection({ title, children }: { title: string; children: React.Rea
   );
 }
 
-function UserDetailView({ detail, workforce }: { detail: UserDetail; workforce: WorkforceDetail | null }): React.JSX.Element {
+function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: UserDetail; workforce: WorkforceDetail | null; recoveryEligibility: "OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED" }): React.JSX.Element {
   const status = USER_STATUS_PRESENTATION[detail.status];
   const directoryHref = `/app/users?hospitalId=${encodeURIComponent(detail.hospital.id)}&tab=${detail.kind}`;
   const removed = detail.status === "REMOVED";
@@ -92,7 +94,7 @@ function UserDetailView({ detail, workforce }: { detail: UserDetail; workforce: 
         {detail.takeoverLock ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
             <p className="font-semibold">บัญชีถูกล็อก: แจ้งว่าไม่ใช่เจ้าของจริง</p>
-            <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} การคืนบัญชีให้เจ้าของจริงต้องติดต่อผู้ดูแลระบบ</p>
+            <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} ใช้การคืนบัญชีด้านล่างเพื่อยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>
             {lockRetry ? <p className="mt-1">ยังยืนยันการตัดการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ ระบบภายในปิดการเข้าถึงแล้ว กรุณากดยืนยันอีกครั้งด้านล่าง</p> : null}
           </Alert>
         ) : null}
@@ -172,9 +174,6 @@ function UserDetailView({ detail, workforce }: { detail: UserDetail; workforce: 
                   </Link>
                 </Panel>
               ) : null}
-              <Alert variant="info">
-                รีเซ็ตรหัสผ่านโดยโรงพยาบาลยังไม่เปิดใช้งาน เนื่องจากยังไม่มีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแล (ADR-0012)
-              </Alert>
               {!removed ? (
                 <Panel>
                   <h4 className="text-base font-semibold text-text">สิ้นสุดการดูแล (นำออกจากระบบ)</h4>
@@ -185,6 +184,23 @@ function UserDetailView({ detail, workforce }: { detail: UserDetail; workforce: 
               ) : null}
             </ActionSection>
           )}
+
+          <ActionSection title={detail.takeoverLock ? "คืนบัญชีให้เจ้าของจริง" : "รีเซ็ตรหัสผ่าน / คืนบัญชี"}>
+            <Panel>
+              <p className="mb-4 text-sm leading-6 text-text-muted">
+                ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเองและตั้งรหัสผ่านใหม่ เลือกวิธียืนยันตัวตนก่อนออกลิงก์
+              </p>
+              <MediatedPasswordResetControl
+                eligibility={recoveryEligibility}
+                hospitalId={detail.hospital.id}
+                hospitalName={detail.hospital.name}
+                locked={detail.takeoverLock !== null}
+                relationshipId={detail.relationshipId}
+                targetKind={detail.kind}
+                targetName={detail.displayName}
+              />
+            </Panel>
+          </ActionSection>
 
           <ActionSection title="บัญชีนี้ไม่ใช่เจ้าของจริง">
             {detail.takeoverBlock === null || lockRetry ? (
@@ -249,5 +265,11 @@ export default async function UserDetailPage({ params }: UserDetailPageProps): P
     throw error;
   }
 
-  return <UserDetailView detail={detail} workforce={workforce} />;
+  const recoveryEligibility = await getMediatedPasswordResetEligibility(actor, {
+    hospitalId: detail.hospital.id,
+    relationshipId: detail.relationshipId,
+    targetKind: detail.kind,
+  });
+
+  return <UserDetailView detail={detail} workforce={workforce} recoveryEligibility={recoveryEligibility} />;
 }

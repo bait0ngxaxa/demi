@@ -102,6 +102,13 @@ enum LineWebhookEventOutcome {
 
 enum AccountRecoveryDeliveryChannel {
   ASSISTED
+  ONLINE
+}
+
+enum CredentialRecoveryVerificationMethod {
+  IN_PERSON_ID_CARD
+  VIDEO_CALL_FACE_AND_ID_CARD
+  CALLBACK_PHONE_ON_HOSPITAL_RECORD
 }
 
 enum HospitalStatus {
@@ -434,6 +441,7 @@ enum UserTakeoverProviderState {
   PENDING
   CONFIRMED
   RECONCILIATION_REQUIRED
+  RESOLVED
 }
 
 model Person {
@@ -464,6 +472,7 @@ model User {
   id          String     @id @default(uuid()) @db.Uuid
   personId    String     @unique @db.Uuid
   authSubject String?    @unique @db.VarChar(255)
+  providerLoginAlias String? @unique @db.VarChar(255)
   status      UserStatus @default(PROVISIONED)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
@@ -565,6 +574,7 @@ model Hospital {
   serviceAreaAssignments HospitalServiceArea[] @relation("ServiceAreaChild")
   workforceBulkSubmissions WorkforceBulkSubmission[]
   workforceActivationContexts WorkforceActivation[] @relation("WorkforceActivationHospital")
+  accountRecoveries AccountRecovery[] @relation("AccountRecoveryHospital")
   userTakeoverLocks UserTakeoverLock[]
   id              String         @id @default(uuid()) @db.Uuid
   hospitalCode    String         @unique @db.VarChar(32)
@@ -1164,9 +1174,15 @@ model AccountRecovery {
   id                            String                         @id @default(uuid()) @db.Uuid
   targetUserId                  String                         @db.Uuid
   patientHospitalRelationshipId String                         @db.Uuid
+  hospitalId                    String?                        @db.Uuid
   issuedByUserId                String                         @db.Uuid
   tokenHash                     String                         @unique @db.VarChar(64)
   deliveryChannel               AccountRecoveryDeliveryChannel @default(ASSISTED)
+  verificationMethod            CredentialRecoveryVerificationMethod?
+  failedVerificationCount       Int                            @default(0)
+  operationState                WorkforceActivationOperationState @default(NOT_STARTED)
+  previousAuthSubject           String?                        @db.VarChar(255)
+  replacementAuthSubject        String?                        @db.VarChar(255)
   expiresAt                     DateTime
   claimedAt                     DateTime?
   completedAt                   DateTime?
@@ -1177,6 +1193,7 @@ model AccountRecovery {
 
   targetUser   User                        @relation("AccountRecoveryTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
   relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Cascade)
+  hospital     Hospital?                   @relation("AccountRecoveryHospital", fields: [hospitalId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   issuedByUser User                        @relation("AccountRecoveryIssuer", fields: [issuedByUserId], references: [id], onDelete: Restrict)
 
   @@index([targetUserId, createdAt])
@@ -1959,6 +1976,9 @@ model WorkforceActivation {
   relationshipKind String? @db.VarChar(32)
   reconciliationRequiredAt DateTime?
   operationState WorkforceActivationOperationState @default(NOT_STARTED)
+  verificationMethod CredentialRecoveryVerificationMethod?
+  previousAuthSubject String? @db.VarChar(255)
+  replacementAuthSubject String? @db.VarChar(255)
   hospital Hospital? @relation("WorkforceActivationHospital", fields: [hospitalId], references: [id], onDelete: Restrict)
   tokenHash       String                  @unique @db.VarChar(64)
   mode            WorkforceActivationMode @default(REMOTE)
@@ -2011,6 +2031,8 @@ model UserTakeoverLock {
   lockedAt          DateTime                  @db.Timestamptz(3)
   providerState     UserTakeoverProviderState @default(PENDING)
   providerCheckedAt DateTime?                 @db.Timestamptz(3)
+  suspendedMembershipIds String[]              @default([]) @db.Uuid
+  suspendedOsmRelationshipIds String[]         @default([]) @db.Uuid
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
 

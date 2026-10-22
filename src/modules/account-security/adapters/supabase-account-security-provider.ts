@@ -1,15 +1,15 @@
 import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getServerEnv } from "@/lib/env/server";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
+import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
-import { assertIndependentCredentialRecoverySupported } from "@/modules/auth/services/credential-recovery-state";
-
-import { createProviderLoginAlias } from "@/modules/auth/services/provider-login-alias";
+import { createProviderLoginAlias, createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 
 function createIsolatedAuthClient(): SupabaseClient {
   const env = getServerEnv();
@@ -36,9 +36,18 @@ export async function updateAuthenticatedPassword(input: {
       throw new Error("Authenticated provider user could not be confirmed");
     }
 
+    const identity = await getPrisma().user.findUnique({
+      where: { id: input.userId },
+      select: { authSubject: true, providerLoginAlias: true },
+    });
+
+    if (!identity || identity.authSubject !== currentUser.data.user.id) {
+      throw new Error("Authenticated provider identity is no longer current");
+    }
+
     const verifier = createIsolatedAuthClient();
     const verification = await verifier.auth.signInWithPassword({
-      email: createProviderLoginAlias(input.userId),
+      email: identity.providerLoginAlias ?? createProviderLoginAlias(input.userId),
       password: input.currentPassword,
     });
 
@@ -85,14 +94,39 @@ export async function updateAuthenticatedPassword(input: {
   }
 }
 
-/** Defense in depth: no provider administrative replacement until owner-proof policy is supported. */
 export async function replacePasswordAndRevokeRecoverySessions(input: {
   userId: string;
+  resetId: string;
   authSubject: string;
   newPassword: string;
-}): Promise<void> {
-  void input;
-  return assertIndependentCredentialRecoverySupported();
+}): Promise<{ authSubject: string; providerLoginAlias: string }> {
+  const providerLoginAlias = createProviderResetLoginAlias(input.userId, input.resetId);
+
+  try {
+    const { data, error } = await getSupabaseAdminClient().auth.admin.createUser({
+      email: providerLoginAlias,
+      password: input.newPassword,
+      email_confirm: true,
+    });
+
+    const replacementSubject = z.uuid().safeParse(data.user?.id);
+    if (error || !replacementSubject.success || replacementSubject.data === input.authSubject) {
+      throw new Error("Replacement provider identity was not confirmed");
+    }
+
+    return { authSubject: replacementSubject.data, providerLoginAlias };
+  } catch {
+    throw new InfrastructureError("Replacement provider identity requires reconciliation");
+  }
+}
+
+export async function deleteReplacedProviderIdentity(authSubject: string): Promise<void> {
+  try {
+    const { error } = await getSupabaseAdminClient().auth.admin.deleteUser(authSubject);
+    if (error) throw error;
+  } catch {
+    throw new InfrastructureError("Previous provider identity requires reconciliation");
+  }
 }
 
 export type ProviderSessionRevocationOutcome = "CONFIRMED" | "AMBIGUOUS";

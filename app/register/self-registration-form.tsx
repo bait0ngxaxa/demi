@@ -166,7 +166,7 @@ export function SelfRegistrationForm(): React.JSX.Element {
       <section aria-labelledby="already-active-heading" className="mt-7 space-y-4" role="status">
         <div className="rounded-[14px] border border-line bg-surface px-4 py-4 text-sm leading-6 text-ink">
           <h3 className="font-semibold" id="already-active-heading">บัญชีนี้เปิดใช้งานแล้ว</h3>
-          <p className="mt-1">หากไม่ใช่คุณ กรุณาติดต่อโรงพยาบาลทันที</p>
+          <p className="mt-1">หากไม่ใช่คุณ กรุณาติดต่อโรงพยาบาลที่ดูแลคุณเพื่อขอรีเซ็ตรหัสผ่านแบบยืนยันตัวตน</p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm font-semibold">
           <Link className="text-brand-strong underline underline-offset-4" href="/login">เข้าสู่ระบบ</Link>

@@ -45,4 +45,18 @@ describe("Auth-owned current live exact-session verification", () => {
     provider(); mocks.owner.mockResolvedValue({ id: "canonical-owner", status: "SUSPENDED" });
     await expect(getLiveExactSession()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+  it("rejects an old provider session after canonical authSubject switches, even while fake getUser still accepts its JWT", async () => {
+    let canonicalAuthSubject = subject;
+    mocks.owner.mockImplementation(async (query: { where: { authSubject: string } }) =>
+      query.where.authSubject === canonicalAuthSubject ? { id: "canonical-owner", status: "ACTIVE" } : null,
+    );
+    const auth = provider();
+
+    await expect(getLiveExactSession()).resolves.toMatchObject({ userId: "canonical-owner", authSubject: subject });
+    canonicalAuthSubject = randomUUID();
+
+    await expect(getLiveExactSession()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(auth.getUser).toHaveBeenCalledTimes(2);
+    expect(mocks.owner).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ authSubject: subject }) }));
+  });
 });

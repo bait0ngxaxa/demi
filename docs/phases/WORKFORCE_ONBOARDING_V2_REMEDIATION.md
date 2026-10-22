@@ -4,14 +4,54 @@ Reviewed baseline: `e61cd8638ca6be450cdc017fd2405475f059fc74`, branch
 `feat/workforce-onboarding-v2`, comparison `main`. The remediation was verified locally before commit/push, subsequently requested by the user.
 No merge, deployment, production data or production provider operation was performed.
 Historical decisions remain in [ADR-0008](../adr/0008-workforce-provisioning-and-activation.md).
+The original remediation below records the pre-REC-1 security posture. For current reset behavior,
+REC-1 in [ADR-0012](../adr/0012-global-credential-recovery-proof.md) supersedes the blanket
+recovery-disable and terminal-takeover statements while preserving the legacy entry-point guards.
+
+## ขั้นตอนปัจจุบัน: REC-1 รีเซ็ตรหัสผ่าน / คืนบัญชี
+
+ใช้ flow นี้เท่านั้นสำหรับการเปลี่ยนรหัสผ่านที่ผู้ใช้ลืมและการปลดล็อกบัญชีที่สงสัยว่าถูกยึด
+ผู้ดำเนินการต้องตรวจตัวตนก่อนออก capability และเลือกวิธีที่ทำจริงจากรายการคงที่:
+ตรวจบัตรต่อหน้า (`IN_PERSON_ID_CARD`), วิดีโอคอลเห็นใบหน้าและบัตร
+(`VIDEO_CALL_FACE_AND_ID_CARD`) หรือโทรกลับเบอร์ที่โรงพยาบาลมีอยู่ก่อนแล้ว
+(`CALLBACK_PHONE_ON_HOSPITAL_RECORD`) ห้ามใช้เบอร์ที่ผู้ร้องขอแจ้งมา ไม่มีการเก็บภาพหรือเลขบัตร
+
+- OWNER ที่ใช้งานอยู่ของ Hospital ACTIVE ทำได้เฉพาะผู้ใช้อื่นซึ่งไม่ใช่ OWNER/ADMIN และความสัมพันธ์
+  ทุกแถว (รวมแถวที่สิ้นสุดแล้ว) กับ HospitalMembership, OsmHospitalRelationship และ
+  PatientHospitalRelationship อยู่ Hospital เดียวกัน ผู้มี caregiver relationship หรือ grant
+  ต้องให้ platform ADMIN ทำรายการ
+- platform ADMIN ใช้เครื่องมือค้นหาเลขบัตรแบบตรงตัวผ่าน HMAC lookup และทำได้กับเป้าหมายที่อยู่นอก
+  scope OWNER รวมถึง OWNER/ADMIN แต่ห้ามรีเซ็ตบัญชีตนเอง ทุกครั้งต้องเลือก Hospital ACTIVE และระบบ
+  ตรวจ issuer, Hospital, target และความสัมพันธ์ซ้ำเมื่อเจ้าของบัญชีส่งแบบฟอร์ม
+- `IN_PERSON` หมดอายุ 15 นาที: ส่งมอบเครื่องให้เจ้าของบัญชีกรอกเลขบัตรของตนเองและตั้งรหัสผ่าน
+  `ONLINE` หมดอายุ 24 ชั่วโมง: ผู้ดำเนินการส่ง QR/ลิงก์ให้เปิดบนเครื่องของเจ้าของบัญชี ลิงก์ใช้ครั้งเดียว
+  ผิด 5 ครั้งแล้ว capability ถูกเพิกถอน
+- งานบุคลากร/อสม./บัญชีหลายบทบาทใช้ `WorkforceActivation` purpose `RESET`; ผู้ป่วยอย่างเดียวใช้
+  `AccountRecovery` พร้อม Hospital scope ที่บันทึกไว้ การเรียก provider ต้องอยู่นอก DB transaction
+  การ claim ต่อ User ชนะได้ครั้งเดียว ลำดับทำงานคือสร้าง identity ใหม่ → เปลี่ยน canonical
+  `User.authSubject` → ลบ identity เก่า → finalize หากผล provider/ฐานข้อมูลกำกวม ให้คง claim และ
+  `RECONCILIATION_REQUIRED` ไว้ ห้ามแก้ด้วย ADMIN attestation
+- เมื่อสำเร็จ User กลับเป็น ACTIVE และ takeover lock เปลี่ยนเป็น `RESOLVED`; คืนเฉพาะ staff/OSM
+  relationship ID ที่ lock ระงับไว้ LINE ที่เชื่อมหลัง lock คงสถานะ unlink; ถ้ายังมี binding ที่ใช้งาน
+  ส่งข้อความแจ้งเปลี่ยนรหัสผ่านตาม ADR-0012
+
+การเรียก Supabase ที่ใช้คือ Admin `createUser` เพื่อสร้าง credential ใหม่, Admin `deleteUser` เพื่อลบ
+subject เก่า, Admin `updateUserById` สำหรับ provider ban ขณะล็อก และ Auth `getUser` สำหรับตรวจ session
+เอกสารทางการ: [createUser](https://supabase.com/docs/reference/javascript/auth-admin-createuser),
+[deleteUser](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser),
+[updateUserById](https://supabase.com/docs/reference/javascript/auth-admin-updateuserbyid),
+[getUser](https://supabase.com/docs/reference/javascript/auth-getuser),
+[session semantics](https://supabase.com/docs/guides/auth/sessions). JWT เดิมอาจยังใช้ได้จนหมดอายุที่
+Supabase แต่ DEMI ปฏิเสธ session เมื่อ subject เก่าไม่ตรงกับ User mapping ปัจจุบัน โปรดห้ามสรุปว่า
+การลบ identity ทำให้ JWT หมดอายุทันที
 
 ## Findings and implemented boundaries
 
 | Finding | Root cause | Remediation |
 |---|---|---|
-| P0 global recovery | Hospital-local target classification authorized replacement of a global User password; issuer knew the bearer token and National ID. | Disable workforce RESET and Patient assisted recovery issuance, preview and completion on the server, including ADMIN. Remove its provider replacement/retry sink. Thai UI explains that independent owner proof is unavailable. Normal authenticated current-password change remains. |
-| P1 token context | Completion accepted any active workforce relationship instead of the originally authorized one. | No RESET capability can complete. ACTIVATION now persists exact Hospital, relationship ID/kind, User, creator, purpose and expiry; current issuer/target authority is checked before claim/provider start/finalization. Cross-Hospital pending activation and privileged first-time targets fail closed. |
-| P1 provider/database consistency | Provider effects could survive local failure while the reset claim was released for a different password retry. | Remove the unsupported reset execution path; quarantine ambiguous legacy RESETs at global auth reads. Existing initial activation now has durable operation states, conservative ambiguous-outcome handling, verified lost-response handling and guarded compensation only for a newly created identity. |
+| P0 global recovery | Hospital-local target classification authorized replacement of a global User password; issuer knew the bearer token and National ID. | Legacy RESET and Patient assisted recovery endpoints remain disabled. REC-1 adds only the dated OWNER/ADMIN-mediated ceremony with explicit verification, owner-entered National ID, exact scope reauthorization and provider quarantine. Normal authenticated current-password change remains. |
+| P1 token context | Completion accepted any active workforce relationship instead of the originally authorized one. | Legacy RESET capabilities remain unable to complete. REC-1 persists Hospital, relationship ID/kind (or platform ADMIN target), User, issuer, purpose, verification method and expiry; current issuer/target authority is checked before claim/provider start/finalization. Cross-Hospital pending activation and privileged first-time targets fail closed. |
+| P1 provider/database consistency | Provider effects could survive local failure while the reset claim was released for a different password retry. | Ambiguous legacy RESETs remain quarantined. REC-1 uses durable claim/provider/finalize states and quarantines ambiguous outcomes. Existing initial activation keeps guarded compensation only for a newly created identity. |
 | P2 directory | Unbounded staff/OSM reads and activation projection. | Default 25, maximum 50 rows per kind; `(createdAt, id)` keyset cursor, per-page server name/status/Hospital filters, current-page-only ACTIVATION projection, no staff query or staff cursors for MEMBER. |
 | P2 bulk | Individual committed rows had no submission-level receipt; retries reclassified created rows as existing. | Actor-scoped submission key and keyed normalized fingerprint; success/receipt/audit commit together per row. Concurrent/repeated requests return stable original results, partial success survives, transient rows have three attempts maximum. |
 | Activation slips | Request origin/forwarded Host could influence a credential-bearing QR destination. | Use validated canonical `DEMI_LINE_PUBLIC_ORIGIN`, require matching Origin and compatible Sec-Fetch-Site, enforce a 32 KiB actual-body limit, preserve local QR rendering, HTML escaping, no-store/noindex/CSP/referrer protections. |
@@ -21,9 +61,9 @@ ACTIVE identity reuse are preserved. MEMBER retains OSM provisioning/read/activa
 without staff read/provision, lifecycle mutations, general revocation or OWNER governance.
 PATIENT + HOSPITAL/OSM/ADMIN accounts cannot use Patient recovery as a workforce reset bypass.
 Adding workforce authority is blocked while a Patient recovery or legacy global RESET is unresolved.
-Patient-only assisted recovery is also SECURITY_GATED by [ADR-0012](../adr/0012-global-credential-recovery-proof.md).
+Patient-only recovery outside REC-1 remains disabled by [ADR-0012](../adr/0012-global-credential-recovery-proof.md).
 The Phase 17E.1 historical implementation record is preserved; its assisted ownership assumption
-is superseded. No issuer-visible recovery credential can reach a replacement provider operation.
+is superseded. Only the new mediated reset can reach a replacement provider operation.
 
 ## Persistence and compatibility
 
@@ -41,6 +81,10 @@ Forward-only migrations:
 - `20261015140000_global_assisted_recovery_gate`: revoke all unfinished Patient recovery credentials,
   retain claims/hashes, mark claimed outcomes for reconciliation. Auth boundaries quarantine these
   claims even after revocation or expiry.
+- `20261107100000_rec1_mediated_account_recovery`: persist verification method, failed-ID count,
+  reset provider subjects/login alias, takeover relationship snapshot, online delivery mode and
+  `RESOLVED` provider state. This timestamp follows the repository's latest migration on 2026-11-06
+  per the REC-1 decision.
 
 The reviewed `20261014100000_workforce_activation_purpose` migration is unchanged. No reset,
 truncate, destructive recreation, secret persistence or rollback of historical token hashes occurs.
@@ -80,8 +124,9 @@ The trusted operator should:
    expected subject, original issuer/relationship/Hospital authority and lack of completed use.
    Any doubt requires escalation. Do not invent compensation for a global password replacement.
 4. For an ambiguous legacy RESET or AccountRecovery, keep application access quarantined. Provider success cannot be
-   inferred from a DB rollback and a claim cannot be cleared solely on ADMIN authority. Credential
-   replacement/restoration needs the pending independently verified owner-proof decision.
+   inferred from a DB rollback and a claim cannot be cleared solely on ADMIN authority. New REC-1
+   resets also stay quarantined until the full create/switch/delete/finalize sequence is verified;
+   credential replacement/restoration must use the REC-1 identity-verification ceremony.
 5. Record reviewed evidence/outcome through controlled maintenance/audit procedures. No public
    reconciliation endpoint or browser checkbox can unlock a credential. Restore/reissue initial
    activation only after absence/cleanup of the provider effect and local invariants are verified.
@@ -131,18 +176,19 @@ concurrent keys/identities, revocation during processing, mixed outcomes, bounde
 populated legacy tables; existing application tables are not reset. Actual SQL query counts and
 EXPLAIN ANALYZE are checked against the local fixture.
 
-No live Supabase password replacement or session-revocation operation was performed. Provider faults
-are tested through the existing adapter/service seams; PostgreSQL persistence/concurrency tests are
-real. Workforce RESET fault paths are unreachable by design rather than advertised as a working
-distributed reset workflow. Global sign-out invalidates refresh sessions; already-issued access JWTs
-may remain valid until expiry ([Supabase sessions](https://supabase.com/docs/guides/auth/sessions)).
+No live Supabase password replacement or session-revocation operation was performed. REC-1 provider
+calls are tested through the adapter and fake-provider seams; its PostgreSQL persistence/concurrency
+tests are real. Supabase access JWTs may remain valid until expiry after provider identity deletion;
+DEMI rejects the old subject because it no longer maps to the canonical User, and every exact-session
+request checks the provider with `getUser` ([Supabase sessions](https://supabase.com/docs/guides/auth/sessions),
+[getUser](https://supabase.com/docs/reference/javascript/auth-getuser)).
 Issuer sign-out is not target ownership proof or shared-browser history sanitization. Use a clean
 target browser/profile/device for assisted activation; prior issuer application history must not be
 handed to the target.
 
-Pending decisions: independent global recovery proof and controlled recovery process; cross-Hospital
-pending initial-activation trust semantics. These restrictions are SECURITY_GATED and are not
-VERIFIED_COMPLETE. Deferred: universal messaging/OTP/ThaID integrations, background jobs and
+Pending decisions: cross-Hospital pending initial-activation trust semantics. The global mediated
+recovery decision is accepted only within REC-1's scope; other recovery remains disabled. Deferred:
+universal messaging/OTP/ThaID integrations, background jobs and
 snapshot directory semantics. Production rollout, live provider verification, browser/mobile UAT
 and a new independent code review remain separate from local automated evidence.
 
@@ -234,7 +280,7 @@ remediation SHA is available in Git history. The following files form the review
 
 Confirmed findings have an implemented fail-closed remediation and local automated regression
 evidence. The branch remediation patch is ready for a new independent code review, with the
-explicitly unavailable assisted-recovery and cross-Hospital pending activation workflows retained.
+pre-REC-1 assisted-recovery disable and cross-Hospital pending activation workflows retained at that time.
 The candidate security review identified revoked initial claims being skipped by reissuance; a
 failing PostgreSQL reproduction was added and the shared initial-credential guard now blocks it
 across regeneration, printable slips and repeated provisioning. All final relevant tests pass.
@@ -404,8 +450,9 @@ relationship grants no scope and keeps the existing Patient activation behavior 
 - Patient activation (Patient-only) relies on an issuer-delivered token with **no** national-ID or
   other independent owner proof. That pre-existing concern is not resolved here and is not declared
   secure.
-- Activating workforce authority on an unactivated Patient, cross-Hospital first activation, and
-  independent global recovery proof remain undecided. Mixed legacy identities are blocked, never
+- Activating workforce authority on an unactivated Patient and cross-Hospital first activation
+  remain undecided. REC-1 accepts global recovery only through its OWNER/ADMIN-mediated ceremony.
+  Mixed legacy identities are blocked, never
   auto-reconciled; resolution needs the controlled reconciliation procedure above plus an explicit
   product/security decision.
 

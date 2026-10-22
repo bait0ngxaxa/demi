@@ -4,8 +4,8 @@ import {
   MembershipStatus,
   MembershipType,
   Prisma,
-  UserStatus,
   UserTakeoverProviderState,
+  UserStatus,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -134,7 +134,7 @@ export async function lockSuspectedTakeover(
       if (target.user.id === actor.userId) throw new ForbiddenError();
 
       const existing = target.user.takeoverLock;
-      if (existing) {
+      if (existing && existing.providerState !== UserTakeoverProviderState.RESOLVED) {
         if (existing.hospitalId !== targetHospitalId) throw new UserTakeoverRequiresAdminError();
         return { lockId: existing.id, userId: target.user.id, authSubject: target.user.authSubject, providerState: existing.providerState, alreadyLocked: true };
       }
@@ -155,9 +155,13 @@ export async function lockSuspectedTakeover(
       if (suspendedUser.count !== 1) throw new ConflictError("The account changed");
 
       const activeHere = { userId: target.user.id, hospitalId: targetHospitalId, status: MembershipStatus.ACTIVE };
+      const [membershipRows, osmRows] = await Promise.all([
+        transaction.hospitalMembership.findMany({ where: { ...activeHere, membershipType: MembershipType.MEMBER }, select: { id: true } }),
+        transaction.osmHospitalRelationship.findMany({ where: activeHere, select: { id: true } }),
+      ]);
       const [memberships, osmRelationships] = await Promise.all([
-        transaction.hospitalMembership.updateMany({ where: { ...activeHere, membershipType: MembershipType.MEMBER }, data: { status: MembershipStatus.SUSPENDED } }),
-        transaction.osmHospitalRelationship.updateMany({ where: activeHere, data: { status: MembershipStatus.SUSPENDED } }),
+        transaction.hospitalMembership.updateMany({ where: { id: { in: membershipRows.map(({ id }) => id) }, status: MembershipStatus.ACTIVE }, data: { status: MembershipStatus.SUSPENDED } }),
+        transaction.osmHospitalRelationship.updateMany({ where: { id: { in: osmRows.map(({ id }) => id) }, status: MembershipStatus.ACTIVE }, data: { status: MembershipStatus.SUSPENDED } }),
       ]);
       const unused = { userId: target.user.id, usedAt: null, revokedAt: null, claimedAt: null };
       const [workforceActivations, patientActivations] = await Promise.all([
@@ -171,10 +175,31 @@ export async function lockSuspectedTakeover(
         credentialEstablishedAt: credentialEstablishedAt(usedActivationsOf(target.user)),
         now: at,
       });
-      const lock = await transaction.userTakeoverLock.create({
-        data: { userId: target.user.id, hospitalId: targetHospitalId, lockedByUserId: actor.userId, lockedAt: at },
-        select: { id: true },
-      });
+      const lock = existing
+        ? await transaction.userTakeoverLock.update({
+            where: { id: existing.id },
+            data: {
+              hospitalId: targetHospitalId,
+              lockedByUserId: actor.userId,
+              lockedAt: at,
+              providerState: UserTakeoverProviderState.PENDING,
+              providerCheckedAt: null,
+              suspendedMembershipIds: membershipRows.map(({ id }) => id),
+              suspendedOsmRelationshipIds: osmRows.map(({ id }) => id),
+            },
+            select: { id: true },
+          })
+        : await transaction.userTakeoverLock.create({
+            data: {
+              userId: target.user.id,
+              hospitalId: targetHospitalId,
+              lockedByUserId: actor.userId,
+              lockedAt: at,
+              suspendedMembershipIds: membershipRows.map(({ id }) => id),
+              suspendedOsmRelationshipIds: osmRows.map(({ id }) => id),
+            },
+            select: { id: true },
+          });
       await recordAuditEvent({
         actorUserId: actor.userId,
         action: "user.takeover_locked",

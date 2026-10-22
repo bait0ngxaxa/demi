@@ -70,7 +70,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
     <p className="mt-3 text-sm leading-6 text-text">
       ใช้เมื่อสงสัยว่าคนอื่นลงทะเบียนหรือใช้บัญชีนี้แทนเจ้าของจริง ระบบจะล็อกบัญชีทันที ระงับสิทธิ์ในโรงพยาบาลนี้
       ตัดการเข้าสู่ระบบทุกอุปกรณ์ ยกเลิกการเชื่อม LINE ที่เกิดหลังเปิดใช้งาน และบันทึกประวัติไว้
-      <strong> เจ้าของโรงพยาบาลปลดล็อกเองไม่ได้</strong> การคืนบัญชีให้เจ้าของจริงต้องติดต่อผู้ดูแลระบบ
+      <strong> หลังล็อกแล้วให้ใช้ “คืนบัญชีให้เจ้าของจริง” ด้านบน</strong> ระบบจะขอให้ยืนยันตัวตนก่อนตั้งรหัสผ่านใหม่
     </p>
     <form action={action} className="mt-4 space-y-4" onSubmit={submitPreservingInput(action)}>
       <input name="kind" type="hidden" value={kind} />

@@ -102,9 +102,9 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
 
       {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
         <WorkforcePasswordResetControl
+          relationshipId={detail.relationshipId}
+          targetKind={detail.kind === "staff" ? "staff" : "osm"}
           subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
-          targetHospitalId={detail.hospital.id}
-          userId={detail.userId}
         />
       ) : null}
 

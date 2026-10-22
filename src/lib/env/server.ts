@@ -118,6 +118,7 @@ export function isApplicationPublicOriginConfigurationError(error: unknown): boo
 export type ApplicationCredentialPath =
   | "/activate/workforce"
   | "/activate/patient"
+  | "/recover"
   | "/app/family/invitations";
 
 /** Creates a canonical application credential URL builder; request Host is never consulted. */

@@ -10,16 +10,16 @@ import { WorkforcePasswordResetControl } from "./workforce-password-reset-contro
 describe("workforce password reset control", () => {
   const html = renderToStaticMarkup(
     <WorkforcePasswordResetControl
+      relationshipId="33333333-3333-4333-8333-333333333333"
+      targetKind="osm"
       subjectLabel="อสม. รายนี้"
-      targetHospitalId="11111111-1111-4111-8111-111111111111"
-      userId="22222222-2222-4222-8222-222222222222"
     />,
   );
 
-  it("explains the unavailable global recovery boundary in Thai", () => {
+  it("directs callers to the mediated recovery entry point in Thai", () => {
     expect(html).toContain("การกู้คืนรหัสผ่าน");
-    expect(html).toContain("ยังไม่เปิดให้ผู้ดูแลรีเซ็ตรหัสผ่าน");
-    expect(html).toContain("เป็นอิสระจากผู้ดูแล");
+    expect(html).toContain("หน้ารายละเอียดผู้ใช้");
+    expect(html).toContain("วิธียืนยันตัวตน");
     expect(html).toContain("ยืนยันรหัสผ่านปัจจุบัน");
   });
 
@@ -28,5 +28,6 @@ describe("workforce password reset control", () => {
     expect(html).not.toContain('type="checkbox"');
     expect(html).not.toContain('type="password"');
     expect(html).not.toContain('name="userId"');
+    expect(html).toContain("/app/users/osm/33333333-3333-4333-8333-333333333333");
   });
 });

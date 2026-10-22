@@ -16,3 +16,14 @@ export function createProviderLoginAlias(userId: string): string {
 
   return `${parsed.data}@${PROVIDER_LOGIN_DOMAIN}`;
 }
+
+export function createProviderResetLoginAlias(userId: string, resetId: string): string {
+  const parsedUserId = userIdSchema.safeParse(userId);
+  const parsedResetId = userIdSchema.safeParse(resetId);
+
+  if (!parsedUserId.success || !parsedResetId.success) {
+    throw new InfrastructureError("Provider login identity could not be resolved");
+  }
+
+  return `${parsedUserId.data}.${parsedResetId.data}@${PROVIDER_LOGIN_DOMAIN}`;
+}

@@ -58,6 +58,7 @@ describe("password auth identity provisioning", () => {
     expect(store.setAuthSubject).toHaveBeenCalledWith({
       userId,
       authSubject: providerSubject,
+      providerLoginAlias: `${userId}@auth.demi.internal`,
     });
     expect(store.findUserById).toHaveBeenCalledWith(userId);
     expect(JSON.stringify(vi.mocked(store.findUserById).mock.calls)).not.toContain(password);
