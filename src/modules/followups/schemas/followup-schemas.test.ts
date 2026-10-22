@@ -41,12 +41,18 @@ describe("Follow-up schemas", () => {
   });
 
   it("accepts Program scope without accepting a browser-supplied relationship scope", () => {
-    const programInput: Record<string, unknown> = { ...validInput(), patientProgramId: programId };
+    const programInput: Record<string, unknown> = { ...validInput(), patientProgramId: programId, followedPlan: true };
     delete programInput.patientHospitalRelationshipId;
     delete programInput.confidenceScore;
     delete programInput.confidencePlan;
 
     expect(followupProgramCreateRequestSchema.safeParse(programInput).success).toBe(true);
+    // R2-F: ทำตามแผนได้/ไม่ได้ is required for Program Follow-ups; height and expert advice are optional.
+    expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, followedPlan: undefined }).success).toBe(false);
+    expect(
+      followupProgramCreateRequestSchema.safeParse({ ...programInput, heightCm: 158.5, expertAdvice: "เดินในบ้านแทน" }).success,
+    ).toBe(true);
+    expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, expertAdvice: "x".repeat(1_001) }).success).toBe(false);
     // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, not a Follow-up field.
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidenceScore: 7 }).success).toBe(false);
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, confidencePlan: "x" }).success).toBe(false);

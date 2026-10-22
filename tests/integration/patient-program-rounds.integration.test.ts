@@ -31,6 +31,7 @@ import {
 } from "@/modules/patient-program-rounds/services/round-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
+  associatePatientProgramServiceOneArtifact,
   recordPatientProgramServiceOneConfidence,
   recordPatientProgramServiceOneDreamCard,
   recordPatientProgramServiceOneFloatingChart,
@@ -41,6 +42,7 @@ import { getHospitalReportingDatasetForExport } from "@/modules/reporting/servic
 import { submitScreening } from "@/modules/screening/services/screening-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
+import { bookletGoalPayload, dreamCard, routineTable } from "./support/booklet-forms";
 import { clearProgramRoundCompletions } from "./support/program-rounds";
 
 const prisma = getPrisma();
@@ -55,6 +57,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientProgramServiceOneConfidence.deleteMany();
   await prisma.patientProgramServiceOneDreamCard.deleteMany();
   await prisma.patientProgramServiceOneFloatingChart.deleteMany();
+  await prisma.patientProgramServiceOneRoutineEntry.deleteMany();
   await prisma.patientProgramServiceOneRoutine.deleteMany();
   await prisma.patientFollowupActivityProgress.deleteMany();
   await prisma.patientGoalPlan.updateMany({ where: { sourceFollowupId: { not: null } }, data: { sourceFollowupId: null } });
@@ -223,16 +226,17 @@ function reviewInput(
 function screeningInput(
   relationshipId: string,
   programId?: string,
+  instrument: "PAM" | "PROMS" = "PAM",
 ): Record<string, unknown> {
   return {
     patientHospitalRelationshipId: relationshipId,
     ...(programId ? { patientProgramId: programId } : {}),
     submissionNonce: randomUUID(),
+    instrument,
     responses: {
-      pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
-      proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
-      confidenceScore: 7,
-      confidenceImprovementPlan: null,
+      answers: instrument === "PAM"
+        ? { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 }
+        : { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
     },
   };
 }
@@ -254,7 +258,9 @@ function followupInput(programId: string, overrides: Record<string, unknown> = {
     systolicBloodPressure: null,
     diastolicBloodPressure: null,
     bloodSugar: 105,
-    reflectionNote: null,
+    // R2-F: ทบทวนแผนสุขภาพ answered.
+    followedPlan: true,
+    reflectionNote: "ทำตามแผนได้ต่อเนื่อง",
     generalNote: null,
     serviceDate: "2026-08-20",
     planAdjusted: false,
@@ -269,13 +275,7 @@ function goalInput(programId: string, overrides: Record<string, unknown> = {}): 
     patientProgramId: programId,
     submissionNonce: randomUUID(),
     sourceScreeningAssessmentId: null,
-    primaryGoalCode: "weight",
-    primaryGoalNote: null,
-    weeklyNote: null,
-    items: [
-      { activityCode: "stop_sweet", targetDays: 4 },
-      { activityCode: "exercise_walk", targetDays: 3, targetValue: 15, targetUnit: "minutes" },
-    ],
+    ...bookletGoalPayload(),
     ...overrides,
   };
 }
@@ -349,8 +349,9 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
       vitalsInput(programId, { preferredName: " ลุงชาย ", occupation: "ชาวนา", profileVersion: profile?.version ?? null }),
     );
     await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, programId));
+    await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, programId, "PROMS"));
     await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, summary: "ลอยจม" });
-    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1 });
+    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, ...routineTable() });
 
     const ready = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "1");
     // SR-D9/SR-D12: เส้นทางสุขภาพ is derived from round 1 vitals; รู้จักตัวฉันเอง from the preferred name.
@@ -383,7 +384,7 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
 
     // SR-D4: a completed round is read-only (an identical retry stays an idempotent no-op).
     await expect(
-      recordPatientProgramServiceOneRoutine(fixture.owner.actor, { patientProgramId: programId, roundNumber: 1 }),
+      recordPatientProgramServiceOneRoutine(fixture.owner.actor, { patientProgramId: programId, roundNumber: 1, ...routineTable() }),
     ).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
     const currentVersion = (await prisma.patientHospitalProfile.findUniqueOrThrow({
       where: { patientHospitalRelationshipId: fixture.relationshipId },
@@ -413,8 +414,8 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
       "ต้องจบบริการครั้งที่ 1 ก่อน จึงจะบันทึกครั้งที่ 2 ได้",
     );
     await expectSequenced(recordPatientProgramServiceOneConfidence(actor, { patientProgramId: programId, roundNumber: 2, score: 5 }));
-    await expectSequenced(recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 2 }));
-    await expectSequenced(recordPatientProgramServiceOneDreamCard(actor, { patientProgramId: programId, roundNumber: 3, description: null }));
+    await expectSequenced(recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 2, ...routineTable() }));
+    await expectSequenced(recordPatientProgramServiceOneDreamCard(actor, { patientProgramId: programId, roundNumber: 3, ...dreamCard() }));
     await expectSequenced(createGoalPlanForProgram(actor, goalInput(programId)));
     await expectSequenced(createFollowupForProgram(actor, followupInput(programId)), "ต้องจบบริการครั้งที่ 2 ก่อน จึงจะบันทึกครั้งที่ 3 ได้");
     await expectSequenced(
@@ -481,8 +482,24 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     // Round 3 needs its own ความฝันของฉัน.
     await skipRestAndComplete(fixture, 2);
     expect(await stepStatus(fixture, 3, "DREAM_CARD")).toBe("TODO");
-    await recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, description: "อยากเดินได้ไกล" });
+    await expect(
+      recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, dream: "อยากเดินได้ไกล" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    await recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, ...dreamCard("อยากเดินได้ไกล") });
     expect(await stepStatus(fixture, 3, "DREAM_CARD")).toBe("DONE");
+    expect(
+      await prisma.patientProgramServiceOneDreamCard.findFirstOrThrow({
+        where: { patientProgramId: programId, roundNumber: 3 },
+        select: { dream: true, obstacle: true, weeklyGoal: true, description: true },
+      }),
+    ).toEqual({ dream: "อยากเดินได้ไกล", obstacle: null, weeklyGoal: "เดินเล่นกับหลานวันละ 10 นาที", description: null });
+    // The database refuses a booklet card without this week's small goal.
+    await expect(
+      prisma.patientProgramServiceOneDreamCard.update({
+        where: { patientProgramId_roundNumber: { patientProgramId: programId, roundNumber: 3 } },
+        data: { weeklyGoal: null },
+      }),
+    ).rejects.toThrow();
   });
 
   it("requires a reason to skip, shows it, lets a recording replace it and freezes it after completion (SR-D3)", async () => {
@@ -721,6 +738,161 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     expect(await prisma.screeningAssessment.count({ where: { patientProgramId: fixture.programId } })).toBe(1);
     expect(await prisma.screeningAssessment.count({ where: { patientHospitalRelationshipId: fixture.relationshipId } })).toBe(2);
     expect(await prisma.patientProgramRoundActivity.count({ where: { toolCode: "PAM" } })).toBe(1);
+    expect(await prisma.patientProgramRoundActivity.count({ where: { toolCode: "PROMS" } })).toBe(0);
+  });
+
+  it("records and skips PAM and PROMs independently; a legacy combined screening answers both (R2-C)", async () => {
+    const fixture = await createFixture("instruments");
+
+    await skipPatientProgramRoundStep(fixture.osm.actor, {
+      patientProgramId: fixture.programId,
+      roundNumber: 1,
+      stepCode: "PAM",
+      reasonCode: "PATIENT_DECLINED",
+    });
+    await submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, fixture.programId, "PROMS"));
+    expect(await stepStatus(fixture, 1, "PAM")).toBe("SKIPPED");
+    expect(await stepStatus(fixture, 1, "PROMS")).toBe("DONE");
+    await expect(
+      submitScreening(fixture.osm.actor, screeningInput(fixture.relationshipId, fixture.programId, "PROMS")),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(
+      await prisma.patientProgramRoundActivity.findMany({
+        where: { patientProgramId: fixture.programId },
+        select: { toolCode: true, roundNumber: true },
+      }),
+    ).toEqual([{ toolCode: "PROMS", roundNumber: 1 }]);
+
+    // A legacy combined screening (recorded before R2) answers both steps and blocks new results.
+    const legacy = await createFixture("instruments-legacy");
+    await prisma.screeningAssessment.create({
+      data: {
+        patientHospitalRelationshipId: legacy.relationshipId,
+        patientProgramId: legacy.programId,
+        conductedByUserId: legacy.osm.userId,
+        submissionNonce: randomUUID(),
+        instrument: "COMBINED",
+        questionSetKey: "demi-screening",
+        questionSetVersion: "legacy-prototype-v1",
+        scoringVersion: "legacy-prototype-v1",
+        responses: {
+          pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
+          proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
+          confidenceScore: 7,
+          confidenceImprovementPlan: null,
+        },
+        result: { pamTotal: 10, promsTotal: 12, promsMin: 3, combinedTotal: 22, percentage: 50, level: "L3", zone: "YELLOW" },
+      },
+    });
+    expect(await stepStatus(legacy, 1, "PAM")).toBe("DONE");
+    expect(await stepStatus(legacy, 1, "PROMS")).toBe("DONE");
+    for (const instrument of ["PAM", "PROMS"] as const) {
+      await expect(
+        submitScreening(legacy.osm.actor, screeningInput(legacy.relationshipId, legacy.programId, instrument)),
+      ).rejects.toBeInstanceOf(ConflictError);
+    }
+    const dataset = await getHospitalReportingDatasetForExport(legacy.owner.actor, { hospitalId: legacy.hospitalId });
+    expect(dataset.programs.find((program) => program.patientProgramId === legacy.programId)?.screening).toMatchObject({
+      pam: { state: "PRESENT", value: { score: 10 } },
+      proms: { state: "PRESENT", value: { legacyTotal: 12 } },
+    });
+  });
+
+  it("derives ทบทวนแผนสุขภาพ from the R2 answers and stores height and expert advice (R2-D/R2-F)", async () => {
+    const fixture = await createFixture("plan-review");
+    const programId = fixture.programId;
+
+    await recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(programId));
+    await skipRestAndComplete(fixture, 1);
+    const plan = await createGoalPlanForProgram(fixture.osm.actor, goalInput(programId));
+    await skipRestAndComplete(fixture, 2);
+    await expect(
+      createFollowupForProgram(fixture.osm.actor, followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, followedPlan: undefined })),
+    ).rejects.toBeInstanceOf(ValidationError);
+    const blank = await createFollowupForProgram(
+      fixture.osm.actor,
+      followupInput(programId, { sourceGoalPlanId: plan.goalPlanId, followedPlan: false, reflectionNote: null, heightCm: 158 }),
+    );
+    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("TODO");
+    const round3 = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "3");
+    expect(round3.vitals).toMatchObject({ heightCm: 158 });
+    expect(round3.planReview).toEqual({ followedPlan: false, reflectionNote: null, expertAdvice: null });
+
+    await skipRestAndComplete(fixture, 3);
+    await createFollowupForProgram(
+      fixture.osm.actor,
+      followupInput(programId, {
+        sourceGoalPlanId: plan.goalPlanId,
+        followedPlan: false,
+        reflectionNote: "ฝนตกเดินไม่ได้",
+        expertAdvice: "  เดินในบ้านแทน  ",
+      }),
+    );
+    expect(await stepStatus(fixture, 4, "HEALTH_PLAN_REVIEW")).toBe("DONE");
+    // Round 4 keeps the latest height from round 3's Follow-up when it records none.
+    expect((await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, programId, "4")).vitals).toMatchObject({ heightCm: 158 });
+    expect(
+      await prisma.patientFollowup.findFirstOrThrow({
+        where: { patientProgramId: programId, roundNumber: 2 },
+        select: { followedPlan: true, reflectionNote: true, expertAdvice: true },
+      }),
+    ).toEqual({ followedPlan: false, reflectionNote: "ฝนตกเดินไม่ได้", expertAdvice: "เดินในบ้านแทน" });
+
+    // A Follow-up recorded before R2 (no followedPlan) keeps the D5 rule.
+    await prisma.patientFollowup.update({ where: { id: blank.followupId }, data: { followedPlan: null } });
+    expect(await stepStatus(fixture, 3, "HEALTH_PLAN_REVIEW")).toBe("DONE");
+  });
+
+  it("needs a life table row or a photo of the paper page, and attaches the signed plan page (R2-E/R2-G)", async () => {
+    const fixture = await createFixture("life-table");
+    const programId = fixture.programId;
+
+    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, routineDate: "2026-10-20", entries: [] });
+    expect(await stepStatus(fixture, 1, "ROUTINE")).toBe("TODO");
+    const photo = await prisma.patientEvidenceArtifact.create({
+      data: {
+        patientHospitalRelationshipId: fixture.relationshipId,
+        storageObjectKey: `r2/${randomUUID()}.jpg`,
+        mediaType: "image/jpeg",
+        byteSize: 1024,
+        contentSha256: "a".repeat(64),
+        createdByUserId: fixture.osm.userId,
+      },
+      select: { id: true },
+    });
+    await associatePatientProgramServiceOneArtifact(fixture.osm.actor, {
+      patientProgramId: programId,
+      roundNumber: 1,
+      activity: "ROUTINE",
+      patientEvidenceArtifactId: photo.id,
+    });
+    expect(await stepStatus(fixture, 1, "ROUTINE")).toBe("DONE");
+
+    await skipRestAndComplete(fixture, 1);
+    const plan = await createGoalPlanForProgram(fixture.osm.actor, goalInput(programId));
+    const signed = await prisma.patientEvidenceArtifact.create({
+      data: {
+        patientHospitalRelationshipId: fixture.relationshipId,
+        storageObjectKey: `r2/${randomUUID()}.jpg`,
+        mediaType: "image/jpeg",
+        byteSize: 2048,
+        contentSha256: "b".repeat(64),
+        createdByUserId: fixture.osm.userId,
+      },
+      select: { id: true },
+    });
+    await associatePatientProgramServiceOneArtifact(fixture.osm.actor, {
+      patientProgramId: programId,
+      roundNumber: 2,
+      activity: "GOAL_PLAN",
+      patientEvidenceArtifactId: signed.id,
+    });
+    expect(
+      await prisma.patientProgramServiceOneArtifactAssociation.findFirstOrThrow({
+        where: { patientEvidenceArtifactId: signed.id },
+        select: { goalPlanId: true },
+      }),
+    ).toEqual({ goalPlanId: plan.goalPlanId });
   });
 
   it("reports the round 1 ruler as Before, a skipped tool as not done, and round 3 for the dream card (R1-E)", async () => {
@@ -731,11 +903,11 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     await recordPatientProgramServiceOneConfidence(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, score: 4 });
     // The floating chart is skipped with a reason, so it reports as not done.
     await skipPatientProgramRoundStep(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, stepCode: "FLOATING_CHART", reasonCode: "EQUIPMENT_UNAVAILABLE" });
-    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1 });
+    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { patientProgramId: programId, roundNumber: 1, ...routineTable() });
     await skipRestAndComplete(fixture, 1);
     await recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(programId, { roundNumber: 2, weight: 73, heightCm: 163, bloodSugar: 112 }));
     await skipRestAndComplete(fixture, 2);
-    await recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, description: "ความฝัน" });
+    await recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { patientProgramId: programId, roundNumber: 3, ...dreamCard("ความฝัน") });
 
     const dataset = await getHospitalReportingDatasetForExport(fixture.owner.actor, { hospitalId: fixture.hospitalId });
     const row = dataset.programs.find((program) => program.patientProgramId === programId);

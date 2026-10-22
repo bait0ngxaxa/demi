@@ -22,6 +22,7 @@ const GOAL_PLAN_FORM_FIELDS = new Set([
   "primaryGoalNote",
   "weeklyNote",
   "items",
+  "booklet",
 ]);
 
 const GOAL_PLAN_PROGRAM_FORM_FIELDS = new Set([
@@ -33,6 +34,7 @@ const GOAL_PLAN_PROGRAM_FORM_FIELDS = new Set([
   "primaryGoalNote",
   "weeklyNote",
   "items",
+  "booklet",
 ]);
 
 function getSingleString(formData: FormData, field: string): string | undefined {
@@ -76,15 +78,15 @@ function hasUnexpectedOrDuplicateFields(
   return false;
 }
 
-function parseItems(formData: FormData): unknown {
-  const rawItems = getSingleString(formData, "items");
+function parseJsonField(formData: FormData, field: "items" | "booklet"): unknown {
+  const rawValue = getSingleString(formData, field);
 
-  if (rawItems === undefined) {
+  if (rawValue === undefined) {
     return undefined;
   }
 
   try {
-    return JSON.parse(rawItems) as unknown;
+    return JSON.parse(rawValue) as unknown;
   } catch {
     return undefined;
   }
@@ -102,7 +104,8 @@ function buildGoalPlanPayloadInput(formData: FormData): Record<string, unknown> 
     primaryGoalCode: getSingleString(formData, "primaryGoalCode"),
     primaryGoalNote: getOptionalString(formData, "primaryGoalNote"),
     weeklyNote: getOptionalString(formData, "weeklyNote"),
-    items: parseItems(formData),
+    items: parseJsonField(formData, "items"),
+    booklet: parseJsonField(formData, "booklet"),
   } satisfies Record<string, unknown>;
 }
 

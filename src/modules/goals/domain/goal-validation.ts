@@ -1,11 +1,13 @@
 import { ValidationError } from "@/shared/errors/application-error";
+import { serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import {
   goalPlanSubmitRequestSchema,
+  type GoalPlanBookletInput,
   type GoalPlanSubmitRequest,
 } from "../schemas/goal-schemas";
-import { getGoalActivity } from "./goal-templates";
-import type { GoalActivityDefinition, GoalTemplate } from "./goal-templates";
+import { BOOKLET_PRIMARY_GOAL_CODE, getGoalActivity } from "./goal-templates";
+import type { GoalActivityCategory, GoalActivityDefinition, GoalTemplate } from "./goal-templates";
 
 export type ValidatedGoalPlanItem = {
   activityCode: string;
@@ -13,6 +15,24 @@ export type ValidatedGoalPlanItem = {
   targetValue: number | null;
   targetUnit: string | null;
   sortOrder: number;
+};
+
+/** R2-E: the booklet fields of a booklet-v1 plan, as stored on PatientGoalPlan. */
+export type ValidatedGoalPlanBooklet = {
+  goalWeightLossKg: number | null;
+  goalWaistCm: number | null;
+  goalBloodSugarMgDl: number | null;
+  goalHba1cPercent: number | null;
+  goalCustomText: string | null;
+  foodPlanText: string | null;
+  foodStartDate: Date | null;
+  foodNotSet: boolean;
+  exercisePlanText: string | null;
+  exerciseStartDate: Date | null;
+  exerciseNotSet: boolean;
+  problemsAfterOneMonth: string | null;
+  patientSignatureName: string | null;
+  witnessSignatureName: string | null;
 };
 
 export type ValidatedGoalPlan = {
@@ -23,6 +43,8 @@ export type ValidatedGoalPlan = {
   primaryGoalNote: string | null;
   weeklyNote: string | null;
   items: ValidatedGoalPlanItem[];
+  /** Null for the legacy template. */
+  booklet: ValidatedGoalPlanBooklet | null;
 };
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
@@ -85,6 +107,62 @@ function validateActivityCode(template: GoalTemplate, code: string): GoalActivit
   return activity;
 }
 
+const BOOKLET_SECTIONS = [
+  ["food", "FOOD"],
+  ["exercise", "EXERCISE"],
+] as const satisfies readonly (readonly ["food" | "exercise", GoalActivityCategory])[];
+
+/**
+ * R2-E: at least one goal; each section has its text and at least one activity item of its category,
+ * or is marked "ไม่ได้ตั้งเป้า" with neither text, start date nor items.
+ */
+function validateBooklet(
+  booklet: GoalPlanBookletInput,
+  items: readonly { category: GoalActivityCategory }[],
+): ValidatedGoalPlanBooklet {
+  const goals = booklet.goals;
+  const hasGoal =
+    goals.weightLossKg !== null ||
+    goals.waistCm !== null ||
+    goals.bloodSugarMgDl !== null ||
+    goals.hba1cPercent !== null ||
+    goals.customText !== null;
+
+  if (!hasGoal) {
+    throw new ValidationError("เลือกเป้าหมาย “สุขภาพดี” อย่างน้อย 1 ข้อ");
+  }
+
+  for (const [section, category] of BOOKLET_SECTIONS) {
+    const value = booklet[section];
+    const sectionItems = items.filter((item) => item.category === category).length;
+
+    if (value.notSet) {
+      if (value.planText !== null || value.startDate !== null || sectionItems > 0) {
+        throw new ValidationError("A section marked as not set cannot have a plan");
+      }
+    } else if (value.planText === null || sectionItems === 0) {
+      throw new ValidationError("กรอก “โดย ฉันจะ …” และเลือกกิจกรรมอย่างน้อย 1 รายการ หรือเลือก “ไม่ได้ตั้งเป้า”");
+    }
+  }
+
+  return {
+    goalWeightLossKg: goals.weightLossKg,
+    goalWaistCm: goals.waistCm,
+    goalBloodSugarMgDl: goals.bloodSugarMgDl,
+    goalHba1cPercent: goals.hba1cPercent,
+    goalCustomText: goals.customText,
+    foodPlanText: booklet.food.planText,
+    foodStartDate: booklet.food.startDate ? serviceDateToUtcDate(booklet.food.startDate) : null,
+    foodNotSet: booklet.food.notSet,
+    exercisePlanText: booklet.exercise.planText,
+    exerciseStartDate: booklet.exercise.startDate ? serviceDateToUtcDate(booklet.exercise.startDate) : null,
+    exerciseNotSet: booklet.exercise.notSet,
+    problemsAfterOneMonth: booklet.problemsAfterOneMonth,
+    patientSignatureName: booklet.patientSignatureName,
+    witnessSignatureName: booklet.witnessSignatureName,
+  };
+}
+
 export function validateGoalPlanInput(
   input: unknown,
   template: GoalTemplate,
@@ -96,11 +174,24 @@ export function validateGoalPlanInput(
   }
 
   const data: GoalPlanSubmitRequest = parsed.data;
-  validatePrimaryGoal(template, data.primaryGoalCode);
+
+  if (template.booklet) {
+    // A booklet plan has no primary goal or notes of the legacy template.
+    if (data.primaryGoalCode !== undefined || data.primaryGoalNote?.trim() || data.weeklyNote?.trim() || !data.booklet) {
+      throw new ValidationError("Goal Plan data does not match the booklet template");
+    }
+  } else if (data.booklet || data.primaryGoalCode === undefined) {
+    throw new ValidationError("Goal Plan data does not match the template");
+  }
+
+  const primaryGoalCode = template.booklet ? BOOKLET_PRIMARY_GOAL_CODE : (data.primaryGoalCode ?? "");
+  validatePrimaryGoal(template, primaryGoalCode);
 
   const activityCodes = new Set<string>();
+  const categories: { category: GoalActivityCategory }[] = [];
   const items = data.items.map((item, sortOrder) => {
     const activity = validateActivityCode(template, item.activityCode);
+    categories.push({ category: activity.category });
 
     if (activityCodes.has(item.activityCode)) {
       throw new ValidationError("The same activity cannot be selected twice");
@@ -122,10 +213,11 @@ export function validateGoalPlanInput(
     patientHospitalRelationshipId: data.patientHospitalRelationshipId,
     submissionNonce: data.submissionNonce,
     sourceScreeningAssessmentId: data.sourceScreeningAssessmentId ?? null,
-    primaryGoalCode: data.primaryGoalCode,
+    primaryGoalCode,
     primaryGoalNote: normalizeOptionalText(data.primaryGoalNote),
     weeklyNote: normalizeOptionalText(data.weeklyNote),
     items,
+    booklet: template.booklet && data.booklet ? validateBooklet(data.booklet, categories) : null,
   };
 }
 
@@ -133,6 +225,7 @@ export const goalValidationInternals = {
   isStepAligned,
   normalizeOptionalText,
   validateActivityCode,
+  validateBooklet,
   validatePrimaryGoal,
   validateTarget,
 };

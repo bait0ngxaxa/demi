@@ -3,17 +3,16 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type {
   GoalPlanDetail,
   GoalPlanProgramDetail,
-  GoalScreeningContext,
 } from "@/modules/goals/services/goal-query-service";
 import { getGoalTargetUnitLabel } from "@/modules/goals/presentation/goal-labels";
-import {
-  SCREENING_LEVEL_LABELS,
-  SCREENING_ZONE_LABELS,
-} from "@/modules/screening/presentation/screening-labels";
+import { screeningOutcomeBadges } from "@/modules/screening/presentation/screening-labels";
+
+import { EvidenceAttachmentControl } from "../programs/[programId]/service-one-workspace";
+import { GoalPlanBookletView } from "./goal-plan-booklet-view";
 
 export type GoalPlanDetailViewScope =
   | {
@@ -36,17 +35,6 @@ function formatDate(value: Date): string {
   }).format(value);
 }
 
-function zoneVariant(zone: GoalScreeningContext["result"]["zone"]): StatusVariant {
-  if (zone === "RED") {
-    return "danger";
-  }
-
-  if (zone === "YELLOW") {
-    return "warning";
-  }
-
-  return "success";
-}
 
 function isProgramDetail(
   detail: GoalPlanDetail | GoalPlanProgramDetail,
@@ -161,6 +149,27 @@ export function GoalPlanDetailView({
           </Alert>
         ) : null}
 
+        {detail.booklet ? <GoalPlanBookletView booklet={detail.booklet} items={detail.items} /> : null}
+
+        {detail.booklet && scope.kind === "program" && detail.programRoundNumber !== null ? (
+          <Panel>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">รูปหน้าแผนที่ลงชื่อแล้ว</h2>
+            {/* R2-E: an optional photo of the signed booklet page; the server re-checks the round is open. */}
+            <EvidenceAttachmentControl
+              activityKey="GOAL_PLAN"
+              canManage={canCreateInProgram}
+              evidence={detail.signedPageEvidence}
+              label="แผนสุขภาพดีของฉัน"
+              programId={scope.patientProgramId}
+              recorded
+              relationshipId={relationshipId}
+              roundNumber={detail.programRoundNumber}
+            />
+          </Panel>
+        ) : null}
+
+        {detail.booklet ? null : (
+        <>
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -210,16 +219,19 @@ export function GoalPlanDetailView({
             ))}
           </ul>
         </Panel>
+        </>
+        )}
 
         {detail.sourceScreening ? (
           <Panel>
             <h2 className="text-xl font-semibold tracking-[-0.02em]">แบบประเมินที่ใช้เป็นบริบท</h2>
             <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[detail.sourceScreening.result.level]}</StatusBadge>
-                <StatusBadge variant={zoneVariant(detail.sourceScreening.result.zone)}>
-                  {SCREENING_ZONE_LABELS[detail.sourceScreening.result.zone]}
-                </StatusBadge>
+                {screeningOutcomeBadges(detail.sourceScreening.outcome).map((badge) => (
+                  <StatusBadge key={badge.label} variant={badge.variant}>
+                    {badge.label}
+                  </StatusBadge>
+                ))}
               </div>
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 ส่งเมื่อ {formatDate(detail.sourceScreening.submittedAt)} · ใช้เป็นบริบทหรือค่าเริ่มต้นเท่านั้น

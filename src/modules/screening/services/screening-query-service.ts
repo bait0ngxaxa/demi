@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient, type ScreeningInstrument } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -12,18 +12,18 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
+  getInstrumentQuestionSet,
   getQuestionSet,
 } from "../domain/question-sets";
-import { getScoringDefinition } from "../domain/scoring";
+import { parseScreeningOutcome, type ScreeningOutcome } from "../domain/screening-outcome";
 import {
   SCREENING_READ_CAPABILITY,
   SCREENING_SUBMIT_CAPABILITY,
 } from "../policies/screening-policy";
 import {
+  instrumentResponsesSchema,
   screeningIdSchema,
-  screeningResultSchema,
   type ScreeningResponses,
-  type ScreeningResult,
   screeningResponsesSchema,
 } from "../schemas/screening-schemas";
 import {
@@ -42,12 +42,8 @@ export type ScreeningHistoryItem = {
   submittedAt: Date;
   status: "SUBMITTED";
   conductedByDisplayName: string;
-  result: {
-    pamTotal: number;
-    promsTotal: number;
-    level: "L1" | "L2" | "L3" | "L4";
-    zone: "RED" | "YELLOW" | "GREEN";
-  };
+  instrument: ScreeningInstrument;
+  outcome: ScreeningOutcome;
 };
 
 export type ScreeningHistory = {
@@ -58,19 +54,26 @@ export type ScreeningHistory = {
 export type ScreeningSummary = {
   screeningAssessmentId: string;
   submittedAt: Date;
-  result: Pick<ScreeningResult, "level" | "zone">;
+  instrument: ScreeningInstrument;
+  outcome: ScreeningOutcome;
 };
+
+/** Stored answers: the legacy combined set, or one booklet instrument (R2-C). */
+export type ScreeningDetailResponses =
+  | ({ kind: "LEGACY" } & ScreeningResponses)
+  | { kind: "INSTRUMENT"; answers: Record<string, number> };
 
 export type ScreeningDetail = {
   patient: ScreeningPatientSummary;
   screeningAssessmentId: string;
   submittedAt: Date;
   conductedByDisplayName: string;
+  instrument: ScreeningInstrument;
   questionSetKey: string;
   questionSetVersion: string;
   scoringVersion: string;
-  responses: ScreeningResponses;
-  result: NonNullable<ReturnType<typeof screeningResultSchema.parse>>;
+  responses: ScreeningDetailResponses;
+  outcome: ScreeningOutcome;
 };
 
 const SCREENING_HISTORY_LIMIT = 50;
@@ -79,6 +82,8 @@ const SCREENING_SUMMARY_BATCH_LIMIT = 50;
 const screeningHistorySelect = {
   id: true,
   submittedAt: true,
+  instrument: true,
+  scoringVersion: true,
   result: true,
   conductedByUser: {
     select: {
@@ -96,13 +101,14 @@ const screeningDetailSelect = {
   ...screeningHistorySelect,
   questionSetKey: true,
   questionSetVersion: true,
-  scoringVersion: true,
   responses: true,
 } satisfies Prisma.ScreeningAssessmentSelect;
 
 const screeningSummarySelect = {
   id: true,
   submittedAt: true,
+  instrument: true,
+  scoringVersion: true,
   result: true,
 } satisfies Prisma.ScreeningAssessmentSelect;
 
@@ -133,53 +139,58 @@ function toDisplayName(person: {
   return nameParts.join(" ") || "ไม่ระบุชื่อ";
 }
 
-function parsePersistedResult(value: Prisma.JsonValue): NonNullable<ReturnType<typeof screeningResultSchema.parse>> {
-  const parsed = screeningResultSchema.safeParse(value);
+function parsePersistedOutcome(record: {
+  instrument: ScreeningInstrument;
+  scoringVersion: string;
+  result: Prisma.JsonValue;
+}): ScreeningOutcome {
+  const outcome = parseScreeningOutcome(record.instrument, record.scoringVersion, record.result);
 
-  if (!parsed.success) {
+  if (!outcome) {
     throw new InfrastructureError("Persisted Screening result is invalid");
   }
 
-  return parsed.data;
+  return outcome;
 }
 
-function parsePersistedResponses(value: Prisma.JsonValue): ScreeningResponses {
-  const parsed = screeningResponsesSchema.safeParse(value);
+function parsePersistedResponses(
+  instrument: ScreeningInstrument,
+  value: Prisma.JsonValue,
+): ScreeningDetailResponses {
+  if (instrument === "COMBINED") {
+    const parsed = screeningResponsesSchema.safeParse(value);
 
-  if (!parsed.success) {
-    throw new InfrastructureError("Persisted Screening responses are invalid");
+    if (parsed.success) {
+      return { kind: "LEGACY", ...parsed.data };
+    }
+  } else {
+    const parsed = instrumentResponsesSchema.safeParse(value);
+
+    if (parsed.success) {
+      return { kind: "INSTRUMENT", answers: parsed.data.answers };
+    }
   }
 
-  return parsed.data;
+  throw new InfrastructureError("Persisted Screening responses are invalid");
 }
 
 function toSummary(record: ScreeningSummaryRecord): ScreeningSummary {
-  const result = parsePersistedResult(record.result);
-
   return {
     screeningAssessmentId: record.id,
     submittedAt: record.submittedAt,
-    result: {
-      level: result.level,
-      zone: result.zone,
-    },
+    instrument: record.instrument,
+    outcome: parsePersistedOutcome(record),
   };
 }
 
 function toHistoryItem(record: ScreeningHistoryRecord): ScreeningHistoryItem {
-  const result = parsePersistedResult(record.result);
-
   return {
     screeningAssessmentId: record.id,
     submittedAt: record.submittedAt,
     status: "SUBMITTED",
     conductedByDisplayName: toDisplayName(record.conductedByUser.person),
-    result: {
-      pamTotal: result.pamTotal,
-      promsTotal: result.promsTotal,
-      level: result.level,
-      zone: result.zone,
-    },
+    instrument: record.instrument,
+    outcome: parsePersistedOutcome(record),
   };
 }
 
@@ -192,23 +203,30 @@ function toDetail(
     screeningAssessmentId: record.id,
     submittedAt: record.submittedAt,
     conductedByDisplayName: toDisplayName(record.conductedByUser.person),
+    instrument: record.instrument,
     questionSetKey: record.questionSetKey,
     questionSetVersion: record.questionSetVersion,
     scoringVersion: record.scoringVersion,
-    responses: parsePersistedResponses(record.responses),
-    result: parsePersistedResult(record.result),
+    responses: parsePersistedResponses(record.instrument, record.responses),
+    outcome: parsePersistedOutcome(record),
   };
 }
 
 function assertHistoricalDefinitions(detail: ScreeningDetailRecord): void {
-  const questionSet = getQuestionSet(detail.questionSetKey, detail.questionSetVersion);
-  const scoringDefinition = getScoringDefinition(detail.scoringVersion);
+  const questionSet =
+    detail.instrument === "COMBINED"
+      ? getQuestionSet(detail.questionSetKey, detail.questionSetVersion)
+      : getInstrumentQuestionSet(detail.questionSetKey, detail.questionSetVersion);
 
-  if (!questionSet || !scoringDefinition) {
+  if (!questionSet || ("instrument" in questionSet && questionSet.instrument !== detail.instrument)) {
     throw new InfrastructureError("Persisted Screening definitions are unavailable");
   }
 }
 
+/**
+ * The latest readiness screening for Goal Plan context: a PAM, or a legacy combined screening. PROMs
+ * never sources a Goal Plan.
+ */
 export async function getLatestAccessibleScreeningSummary(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
@@ -223,7 +241,10 @@ export async function getLatestAccessibleScreeningSummary(
       database,
     );
     const record = await database.screeningAssessment.findFirst({
-      where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
+      where: {
+        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+        instrument: { in: ["COMBINED", "PAM"] },
+      },
       orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
       select: screeningSummarySelect,
     });
@@ -435,7 +456,7 @@ export async function getScreeningDetail(
 
 export const screeningQueryInternals = {
   parsePersistedResponses,
-  parsePersistedResult,
+  parsePersistedOutcome,
   toSummary,
   toDisplayName,
   toHistoryItem,

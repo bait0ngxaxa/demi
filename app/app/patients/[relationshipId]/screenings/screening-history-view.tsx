@@ -3,16 +3,16 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type {
   ScreeningHistory,
   ScreeningHistoryItem,
 } from "@/modules/screening/services/screening-query-service";
 import {
-  SCREENING_LEVEL_LABELS,
+  SCREENING_INSTRUMENT_LABELS,
   SCREENING_PROTOTYPE_NOTICE_BODY,
   SCREENING_PROTOTYPE_NOTICE_TITLE,
-  SCREENING_ZONE_LABELS,
+  screeningOutcomeBadges,
 } from "@/modules/screening/presentation/screening-labels";
 
 type ScreeningHistoryViewProps = {
@@ -26,17 +26,6 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function zoneVariant(zone: ScreeningHistoryItem["result"]["zone"]): StatusVariant {
-  if (zone === "RED") {
-    return "danger";
-  }
-
-  if (zone === "YELLOW") {
-    return "warning";
-  }
-
-  return "success";
-}
 
 function ScreeningHistoryRow({
   item,
@@ -59,25 +48,30 @@ function ScreeningHistoryRow({
             <p className="mt-1 text-sm leading-6 text-text-muted">
               ผู้ทำแบบประเมิน: {item.conductedByDisplayName}
             </p>
-            <p className="mt-1 text-sm leading-6 text-text-muted">สถานะ: ส่งแล้ว</p>
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              แบบประเมิน: {SCREENING_INSTRUMENT_LABELS[item.instrument]} · สถานะ: ส่งแล้ว
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[item.result.level]}</StatusBadge>
-            <StatusBadge variant={zoneVariant(item.result.zone)}>
-              {SCREENING_ZONE_LABELS[item.result.zone]}
-            </StatusBadge>
+            {screeningOutcomeBadges(item.outcome).map((badge) => (
+              <StatusBadge key={badge.label} variant={badge.variant}>
+                {badge.label}
+              </StatusBadge>
+            ))}
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-text-muted">คะแนนรวม PAM</dt>
-            <dd className="mt-1 font-semibold text-text">{item.result.pamTotal}</dd>
-          </div>
-          <div>
-            <dt className="text-text-muted">คะแนนรวม PROMs</dt>
-            <dd className="mt-1 font-semibold text-text">{item.result.promsTotal}</dd>
-          </div>
-        </dl>
+        {item.outcome.kind === "LEGACY" ? (
+          <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-text-muted">คะแนนรวม PAM</dt>
+              <dd className="mt-1 font-semibold text-text">{item.outcome.pamTotal}</dd>
+            </div>
+            <div>
+              <dt className="text-text-muted">คะแนนรวม PROMs</dt>
+              <dd className="mt-1 font-semibold text-text">{item.outcome.promsTotal}</dd>
+            </div>
+          </dl>
+        ) : null}
       </Link>
     </li>
   );
@@ -107,10 +101,13 @@ export function ScreeningHistoryView({ history }: ScreeningHistoryViewProps): Re
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="info">
-          <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
-          <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
-        </Alert>
+        {/* The prototype notice applies to legacy combined screenings only; booklet forms are the customer's. */}
+        {history.items.some((item) => item.outcome.kind === "LEGACY") ? (
+          <Alert variant="info">
+            <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
+            <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
+          </Alert>
+        ) : null}
 
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

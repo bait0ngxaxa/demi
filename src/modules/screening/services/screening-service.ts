@@ -21,20 +21,12 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import {
-  getQuestionSet,
-  SCREENING_QUESTION_SET_KEY,
-  SCREENING_QUESTION_SET_VERSION,
-} from "../domain/question-sets";
-import { validateScreeningResponses } from "../domain/response-validation";
-import {
-  getScoringDefinition,
-  LEGACY_PROTOTYPE_SCORING_VERSION,
-  type ScreeningScoreResult,
-} from "../domain/scoring";
+import { CURRENT_INSTRUMENT_QUESTION_SETS } from "../domain/question-sets";
+import { validateInstrumentAnswers } from "../domain/response-validation";
+import { CURRENT_INSTRUMENT_SCORING } from "../domain/scoring";
+import { parseScreeningOutcome, type ScreeningOutcome } from "../domain/screening-outcome";
 import { SCREENING_SUBMIT_CAPABILITY } from "../policies/screening-policy";
 import {
-  screeningResultSchema,
   screeningSubmitRequestSchema,
   type ScreeningSubmitRequest,
 } from "../schemas/screening-schemas";
@@ -55,7 +47,8 @@ export type ScreeningSubmissionResult = {
   patientHospitalRelationshipId: string;
   hospitalId: string;
   submittedAt: Date;
-  result: ScreeningScoreResult;
+  instrument: ScreeningSubmitRequest["instrument"];
+  outcome: ScreeningOutcome;
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
@@ -140,35 +133,18 @@ function hasSameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(canonicalizeJson(left)) === JSON.stringify(canonicalizeJson(right));
 }
 
-function getPrototypeDefinitions(): {
-  questionSet: NonNullable<ReturnType<typeof getQuestionSet>>;
-  scoringVersion: string;
-  scoring: NonNullable<ReturnType<typeof getScoringDefinition>>;
-} {
-  const questionSet = getQuestionSet(SCREENING_QUESTION_SET_KEY, SCREENING_QUESTION_SET_VERSION);
-  const scoring = getScoringDefinition(LEGACY_PROTOTYPE_SCORING_VERSION);
-
-  if (!questionSet || !scoring) {
-    throw new InfrastructureError("Screening prototype definitions are unavailable");
-  }
-
-  return {
-    questionSet,
-    scoringVersion: LEGACY_PROTOTYPE_SCORING_VERSION,
-    scoring,
-  };
-}
-
 function toSubmissionResult(input: {
   screeningAssessmentId: string;
   patientHospitalRelationshipId: string;
   hospitalId: string;
   submittedAt: Date;
+  instrument: ScreeningSubmitRequest["instrument"];
+  scoringVersion: string;
   result: unknown;
 }): ScreeningSubmissionResult {
-  const parsedResult = screeningResultSchema.safeParse(input.result);
+  const outcome = parseScreeningOutcome(input.instrument, input.scoringVersion, input.result);
 
-  if (!parsedResult.success) {
+  if (!outcome) {
     throw new InfrastructureError("Persisted Screening result is invalid");
   }
 
@@ -177,7 +153,8 @@ function toSubmissionResult(input: {
     patientHospitalRelationshipId: input.patientHospitalRelationshipId,
     hospitalId: input.hospitalId,
     submittedAt: input.submittedAt,
-    result: parsedResult.data,
+    instrument: input.instrument,
+    outcome,
   };
 }
 
@@ -193,9 +170,11 @@ async function submitInTransaction(
     SCREENING_SUBMIT_CAPABILITY,
     transaction,
   );
-  const { questionSet, scoringVersion, scoring } = getPrototypeDefinitions();
-  const responses = validateScreeningResponses(input.responses, questionSet);
-  const result = scoring.calculate(responses);
+  const questionSet = CURRENT_INSTRUMENT_QUESTION_SETS[input.instrument];
+  const scoring = CURRENT_INSTRUMENT_SCORING[input.instrument];
+  const scoringVersion = scoring.version;
+  const responses = { answers: validateInstrumentAnswers(input.responses, questionSet) };
+  const result = scoring.calculate(responses.answers);
 
   const existing = await transaction.screeningAssessment.findUnique({
     where: { submissionNonce: input.submissionNonce },
@@ -204,6 +183,7 @@ async function submitInTransaction(
       patientHospitalRelationshipId: true,
       conductedByUserId: true,
       patientProgramId: true,
+      instrument: true,
       questionSetKey: true,
       questionSetVersion: true,
       scoringVersion: true,
@@ -218,6 +198,7 @@ async function submitInTransaction(
       existing.patientHospitalRelationshipId === input.patientHospitalRelationshipId &&
       existing.conductedByUserId === actor.userId &&
       (existing.patientProgramId ?? null) === (input.patientProgramId?.toLowerCase() ?? null) &&
+      existing.instrument === input.instrument &&
       existing.questionSetKey === questionSet.key &&
       existing.questionSetVersion === questionSet.version &&
       existing.scoringVersion === scoringVersion &&
@@ -233,6 +214,8 @@ async function submitInTransaction(
       patientHospitalRelationshipId: existing.patientHospitalRelationshipId,
       hospitalId: access.target.hospitalId,
       submittedAt: existing.submittedAt,
+      instrument: input.instrument,
+      scoringVersion: existing.scoringVersion,
       result: existing.result,
     });
   }
@@ -253,13 +236,16 @@ async function submitInTransaction(
       throw new NotFoundError();
     }
 
-    const linked = await transaction.screeningAssessment.findUnique({
-      where: { patientProgramId: programLink.program.id },
+    // R2-C: one result per instrument; a legacy combined screening already answers both.
+    const linked = await transaction.screeningAssessment.findFirst({
+      where: { patientProgramId: programLink.program.id, instrument: { in: ["COMBINED", input.instrument] } },
       select: { id: true },
     });
 
     if (linked) {
-      throw new ConflictError("โปรแกรมนี้มีแบบประเมินที่บันทึกในครั้งที่ 1 แล้ว");
+      throw new ConflictError(
+        `โปรแกรมนี้มีแบบประเมิน ${input.instrument === "PAM" ? "PAM" : "PROMs"} ที่บันทึกในครั้งที่ 1 แล้ว`,
+      );
     }
 
     // SR-D5: the program screening is a round 1 step.
@@ -272,6 +258,7 @@ async function submitInTransaction(
       patientProgramId: programLink?.program.id ?? null,
       conductedByUserId: actor.userId,
       submissionNonce: input.submissionNonce,
+      instrument: input.instrument,
       questionSetKey: questionSet.key,
       questionSetVersion: questionSet.version,
       scoringVersion,
@@ -288,21 +275,18 @@ async function submitInTransaction(
   });
 
   if (programLink) {
-    // One submission answers both PAM and PROMs, so round 1 records both tools against it.
-    for (const toolCode of ["PAM", "PROMS"] as const) {
-      await ensureRoundLedgerEntry(transaction, {
-        patientProgramId: programLink.program.id,
-        patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-        roundNumber: SERVICE_ONE_HOME_ROUND,
-        toolCode,
-        source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, toolCode),
-        mode: "RECORDED",
-        linkedRecordType: "SCREENING_ASSESSMENT",
-        linkedRecordId: assessment.id,
-        recordedByUserId: actor.userId,
-        performedAt: now,
-      });
-    }
+    await ensureRoundLedgerEntry(transaction, {
+      patientProgramId: programLink.program.id,
+      patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      roundNumber: SERVICE_ONE_HOME_ROUND,
+      toolCode: input.instrument,
+      source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, input.instrument),
+      mode: "RECORDED",
+      linkedRecordType: "SCREENING_ASSESSMENT",
+      linkedRecordId: assessment.id,
+      recordedByUserId: actor.userId,
+      performedAt: now,
+    });
   }
 
   await recordAuditEvent(
@@ -316,6 +300,7 @@ async function submitInTransaction(
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
         ...(programLink ? { patientProgramId: programLink.program.id } : {}),
+        instrument: input.instrument,
         questionSetVersion: questionSet.version,
         scoringVersion,
       },
@@ -328,6 +313,8 @@ async function submitInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     hospitalId: access.target.hospitalId,
     submittedAt: assessment.submittedAt,
+    instrument: input.instrument,
+    scoringVersion,
     result: assessment.result,
   });
 }
@@ -360,7 +347,6 @@ export async function submitScreening(
 
 export const screeningServiceInternals = {
   canonicalizeJson,
-  getPrototypeDefinitions,
   hasSameJson,
   isRetryableTransactionError,
   normalizeDatabaseError,

@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { serviceDateToUtcDate } from "@/shared/time/service-date";
 import {
   ApplicationError,
   ConflictError,
@@ -29,8 +30,11 @@ import {
   type PatientProgramServiceOneRoutineRequest,
 } from "../schemas/patient-program-service-one-schemas";
 import {
+  GOAL_PLAN_ROUND,
+  isFollowupRound,
   isProgramRoundNumber,
   roundActivitySourceFor,
+  toFollowupRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
 import {
   isPerRoundToolInRound,
@@ -92,6 +96,11 @@ const routineMutationSelect = {
   roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
+  routineDate: true,
+  entries: {
+    orderBy: { sortOrder: "asc" },
+    select: { timeText: true, activity: true, adjustment: true },
+  },
 } satisfies Prisma.PatientProgramServiceOneRoutineSelect;
 
 const floatingChartMutationSelect = {
@@ -109,7 +118,9 @@ const dreamCardMutationSelect = {
   roundNumber: true,
   recordedByUserId: true,
   recordedAt: true,
-  description: true,
+  dream: true,
+  obstacle: true,
+  weeklyGoal: true,
 } satisfies Prisma.PatientProgramServiceOneDreamCardSelect;
 
 const confidenceMutationSelect = {
@@ -130,6 +141,7 @@ const artifactAssociationSelect = {
   routineId: true,
   floatingChartId: true,
   dreamCardId: true,
+  goalPlanId: true,
   createdAt: true,
 } satisfies Prisma.PatientProgramServiceOneArtifactAssociationSelect;
 
@@ -273,6 +285,10 @@ function getArtifactAssociationActivity(
     return "DREAM_CARD";
   }
 
+  if (association.goalPlanId !== null) {
+    return "GOAL_PLAN";
+  }
+
   throw new InfrastructureError("Service 1 evidence association is invalid");
 }
 
@@ -290,6 +306,8 @@ function getActivityAssociationWhere(
       return { ...base, floatingChartId: activityRecordId };
     case "DREAM_CARD":
       return { ...base, dreamCardId: activityRecordId };
+    case "GOAL_PLAN":
+      return { ...base, goalPlanId: activityRecordId };
   }
 }
 
@@ -308,7 +326,33 @@ async function findActivityRecord(
       return transaction.patientProgramServiceOneFloatingChart.findUnique({ where, select: { id: true } });
     case "DREAM_CARD":
       return transaction.patientProgramServiceOneDreamCard.findUnique({ where, select: { id: true } });
+    case "GOAL_PLAN":
+      // R2-E: the round's plan: the Program's first plan (round 2) or the plan adjusted from the round's
+      // Follow-up.
+      return roundNumber === GOAL_PLAN_ROUND
+        ? transaction.patientGoalPlan.findFirst({
+            where: { patientProgramId, sourceFollowupId: null },
+            orderBy: { roundNumber: "asc" },
+            select: { id: true },
+          })
+        : transaction.patientGoalPlan.findFirst({
+            where: { patientProgramId, sourceFollowup: { roundNumber: toFollowupRoundNumber(roundNumber) } },
+            select: { id: true },
+          });
   }
+}
+
+/** The round an evidence photo belongs to must hold that record: a listed tool, or a plan round (2-6). */
+function assertArtifactActivityInRound(activity: PatientProgramServiceOneArtifactActivity, roundNumber: number): void {
+  if (activity === "GOAL_PLAN") {
+    if (roundNumber !== GOAL_PLAN_ROUND && !isFollowupRound(roundNumber)) {
+      throw new ValidationError("A Goal Plan photo belongs to rounds 2-6");
+    }
+
+    return;
+  }
+
+  assertToolInRound(activity, roundNumber);
 }
 
 const ACTIVITY_TOOL_CODES: Readonly<Record<PatientProgramServiceOneActivity, PerRoundToolCode>> = {
@@ -396,7 +440,7 @@ async function associateArtifactInTransaction(
     throw new ConflictError("หลักฐานรูปนี้ถูกผูกกับกิจกรรม Service 1 อื่นแล้ว");
   }
 
-  assertToolInRound(input.activity, input.roundNumber);
+  assertArtifactActivityInRound(input.activity, input.roundNumber);
   const activityRecord = await findActivityRecord(transaction, input.activity, patientProgramId, input.roundNumber);
 
   if (!activityRecord) {
@@ -422,6 +466,7 @@ async function associateArtifactInTransaction(
       routineId: input.activity === "ROUTINE" ? activityRecord.id : null,
       floatingChartId: input.activity === "FLOATING_CHART" ? activityRecord.id : null,
       dreamCardId: input.activity === "DREAM_CARD" ? activityRecord.id : null,
+      goalPlanId: input.activity === "GOAL_PLAN" ? activityRecord.id : null,
       createdAt: now,
     },
     select: artifactAssociationSelect,
@@ -509,6 +554,14 @@ async function recordRoutineInTransaction(
   });
 
   if (existing) {
+    const sameTable =
+      existing.routineDate?.toISOString().slice(0, 10) === input.routineDate &&
+      JSON.stringify(existing.entries) === JSON.stringify(input.entries);
+
+    if (!sameTable) {
+      throw new ConflictError("ตารางชีวิตของฉันถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
+    }
+
     return toMutationResult(
       "ROUTINE",
       "ALREADY_RECORDED",
@@ -526,6 +579,10 @@ async function recordRoutineInTransaction(
       roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
+      routineDate: serviceDateToUtcDate(input.routineDate),
+      entries: {
+        create: input.entries.map((entry, sortOrder) => ({ sortOrder, ...entry })),
+      },
     },
     select: routineMutationSelect,
   });
@@ -652,7 +709,11 @@ async function recordDreamCardInTransaction(
   });
 
   if (existing) {
-    if (existing.description !== input.description) {
+    if (
+      existing.dream !== input.dream ||
+      existing.obstacle !== input.obstacle ||
+      existing.weeklyGoal !== input.weeklyGoal
+    ) {
       throw new ConflictError("การ์ดความฝันถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");
     }
 
@@ -673,7 +734,9 @@ async function recordDreamCardInTransaction(
       roundNumber: input.roundNumber,
       recordedByUserId: access.actor.userId,
       recordedAt: now,
-      description: input.description,
+      dream: input.dream,
+      obstacle: input.obstacle,
+      weeklyGoal: input.weeklyGoal,
     },
     select: dreamCardMutationSelect,
   });

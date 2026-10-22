@@ -12,6 +12,7 @@ import { currentBuddhistYear } from "@/modules/patient-hospital-profile/schemas/
 import { toServiceDateOnly } from "@/shared/time/service-date";
 
 import { createTemplateUpload, type ImportTestHospital, type TemplateRow } from "./support/patient-import-template-upload";
+import { bookletPlan } from "./support/booklet-forms";
 import { clearProgramRoundCompletions } from "./support/program-rounds";
 
 /**
@@ -142,6 +143,7 @@ async function cleanup(): Promise<void> {
   await clearProgramRoundCompletions((await prisma.patientProgram.findMany({ where: programWhere, select: { id: true } })).map((program) => program.id));
   await prisma.patientProgramRoundActivity.deleteMany({ where: { patientProgram: programWhere } });
   await prisma.patientProgramRoundVitals.deleteMany({ where: { patientProgram: programWhere } });
+  await prisma.patientProgramServiceOneRoutineEntry.deleteMany({ where: { routine: { patientProgram: programWhere } } });
   await prisma.patientProgramServiceOneRoutine.deleteMany({ where: { patientProgram: programWhere } });
   await prisma.patientProgramServiceOneFloatingChart.deleteMany({ where: { patientProgram: programWhere } });
   await prisma.patientProgramServiceOneDreamCard.deleteMany({ where: { patientProgram: programWhere } });
@@ -260,7 +262,12 @@ describe("report pipeline end to end (P1 Part D)", () => {
       })), `round ${roundNumber} ruler`);
     };
     const routine = async (roundNumber: number): Promise<void> => {
-      expectSuccess(await serviceOneActions.recordPatientProgramServiceOneRoutineAction(IDLE, form({ patientProgramId: programId, roundNumber })), `round ${roundNumber} routine`);
+      expectSuccess(await serviceOneActions.recordPatientProgramServiceOneRoutineAction(IDLE, form({
+        patientProgramId: programId,
+        roundNumber,
+        routineDate: today,
+        entries: JSON.stringify([{ timeText: "06:00", activity: "ทดสอบตื่นนอน", adjustment: "ทดสอบเดิน" }]),
+      })), `round ${roundNumber} routine`);
     };
 
     // Round 1 (OSM): vitals with the preferred name, Program screening and the per-round tools.
@@ -272,14 +279,21 @@ describe("report pipeline end to end (P1 Part D)", () => {
         where: { patientHospitalRelationshipId: relationshipId }, select: { version: true },
       }))?.version,
     })), "round 1 vitals");
+    // R2-C: PAM and PROMs are separate screenings of round 1.
     expectSuccess(await submitScreeningAction(IDLE, form({
       patientHospitalRelationshipId: relationshipId,
       patientProgramId: programId,
       submissionNonce: randomUUID(),
+      instrument: "PAM",
       "pam-1": 3, "pam-2": 3, "pam-3": 2, "pam-4": 4, "pam-5": 3,
-      "proms-1": 5, "proms-2": 4, "proms-3": 6, "proms-4": 5,
-      confidenceScore: 7,
-    })), "round 1 screening");
+    })), "round 1 PAM");
+    expectSuccess(await submitScreeningAction(IDLE, form({
+      patientHospitalRelationshipId: relationshipId,
+      patientProgramId: programId,
+      submissionNonce: randomUUID(),
+      instrument: "PROMS",
+      "proms-1": 5, "proms-2": 4, "proms-3": 5, "proms-4": 5,
+    })), "round 1 PROMs");
     expectSuccess(await serviceOneActions.recordPatientProgramServiceOneFloatingChartAction(IDLE, form({ patientProgramId: programId, roundNumber: 1, summary: "ทดสอบกราฟวัดลอยจม" })), "floating chart");
     await routine(1);
     // R1-E: the round 1 ruler (5) is the report's Before score, not the Baseline score (6).
@@ -294,7 +308,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const firstPlan = expectSuccess(await submitGoalPlanForProgramAction(IDLE, form({
       patientProgramId: programId,
       submissionNonce: randomUUID(),
-      primaryGoalCode: "glucose",
+      booklet: JSON.stringify(bookletPlan()),
       items: JSON.stringify([
         { activityCode: "reduce_rice", targetDays: 5 },
         { activityCode: "cardio", targetDays: 3, targetValue: 30, targetUnit: "minutes" },
@@ -315,6 +329,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
       sourceGoalPlanId: input.sourceGoalPlanId,
       serviceDate: today,
       planAdjusted: input.planAdjusted,
+      followedPlan: !input.hasObstacle,
+      reflectionNote: "ทดสอบเกิดอะไรขึ้นบ้าง",
       hasObstacle: input.hasObstacle,
       obstacleNote: input.hasObstacle ? "ทดสอบอุปสรรค" : undefined,
       weight: input.weight,
@@ -331,7 +347,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
     ] });
     await ruler(3, 6);
     // SR-D11: ความฝันของฉัน is recorded in round 3.
-    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneDreamCardAction(IDLE, form({ patientProgramId: programId, roundNumber: 3, description: "ทดสอบการ์ดความฝัน" })), "dream card");
+    expectSuccess(await serviceOneActions.recordPatientProgramServiceOneDreamCardAction(IDLE, form({ patientProgramId: programId, roundNumber: 3, dream: "ทดสอบการ์ดความฝัน", weeklyGoal: "ทดสอบเป้าหมายสัปดาห์นี้" })), "dream card");
     await completeRound(3);
     const adjustingFollowupId = await followup({ sourceGoalPlanId: firstPlanId, bloodSugar: 140, weight: 76, planAdjusted: true, hasObstacle: false, progress: [
       { goalActivityCode: "reduce_rice", status: "DONE", achievedDays: 5 },
@@ -341,7 +357,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
       patientProgramId: programId,
       sourceFollowupId: adjustingFollowupId,
       submissionNonce: randomUUID(),
-      primaryGoalCode: "glucose",
+      booklet: JSON.stringify(bookletPlan({ problemsAfterOneMonth: "ทดสอบปัญหาหลัง 1 เดือน" })),
       items: JSON.stringify([
         { activityCode: "reduce_rice", targetDays: 5 },
         { activityCode: "cardio", targetDays: 4, targetValue: 30, targetUnit: "minutes" },
@@ -388,9 +404,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
     expectSuccess(await submitScreeningAction(IDLE, form({
       patientHospitalRelationshipId: outsideRelationshipId,
       submissionNonce: randomUUID(),
+      instrument: "PAM",
       "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2,
-      "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3,
-      confidenceScore: 5,
     })), "outside-Program screening");
     expectSuccess(await createFollowupAction(IDLE, form({
       patientHospitalRelationshipId: outsideRelationshipId,
@@ -460,7 +475,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
     expect(cells(service, 9, 1, 70)).toEqual([
       1, ...identity, completedOn,
       // Before DTX/BW, PAM, PROMs, confidence ruler, exercise before; After DTX/BW, exercise after; follow-ups > 70%.
-      180, 80, 15, 20, 5, "ไม่มีบันทึก", 118, 72, "ไม่มีบันทึก", 2,
+      // R2: PAM score = the PAM total; PROMs = มีปัญหา/ไม่มีปัญหา (Q6).
+      180, 80, 15, "ไม่มีปัญหา", 5, "ไม่มีบันทึก", 118, 72, "ไม่มีบันทึก", 2,
       // Service 1 marks: floating chart and routine of round 1, dream card of round 3.
       "ทำ", "", "ทำ", "", "ทำ", "",
       // Round 2 first Goal Plan: reduce meal, food change, food days, exercise, exercise days, weekly minutes.

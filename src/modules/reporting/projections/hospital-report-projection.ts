@@ -136,12 +136,16 @@ export type HospitalReportProgramRow = {
     baseline: HospitalReportFact<number>;
     after: HospitalReportFact<number>;
   };
-  /** PAM/PROMs totals from the screening performed from round 1 of this Program. */
-  screening: HospitalReportRecord<{
-    submittedAt: string;
-    pamScore: number;
-    promsScore: number;
-  }>;
+  /**
+   * PAM/PROMs from the screenings performed from round 1 of this Program (R2-C). PAM = total score.
+   * PROMs = มีปัญหา/ไม่มีปัญหา (Q6); a legacy combined screening still reports its PROMs total.
+   */
+  screening: {
+    pam: HospitalReportRecord<{ submittedAt: string; score: number }>;
+    proms: HospitalReportRecord<
+      { submittedAt: string; hasProblem: boolean } | { submittedAt: string; legacyTotal: number }
+    >;
+  };
   illnessDuration: HospitalReportFact<number>;
   /**
    * D9: self-reported PersonalExerciseEntry.durationMinutes, average minutes per week over the 28
@@ -256,7 +260,7 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   pamProms: {
     coverage: "SOURCE_BACKED_PROGRAM_SCOPED",
-    source: "ScreeningAssessment.patientProgramId (screening performed from round 1)",
+    source: "ScreeningAssessment.patientProgramId + instrument (screenings performed from round 1)",
     limitation: "Screenings recorded outside a Program round are not linked to a Program stage and are not reported.",
   },
   weeklyExercise: {

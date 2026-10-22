@@ -8,6 +8,7 @@ import ExcelJS from "exceljs";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { PROMS_RESULT_LABELS } from "@/modules/screening/presentation/screening-labels";
 import { ValidationError } from "@/shared/errors/application-error";
 
 import type {
@@ -216,8 +217,19 @@ function weeklyExerciseCell(program: HospitalReportProgramRow, stage: "before" |
   return fact.state === "RECORDED" ? fact.value : NO_EXERCISE_RECORD_LABEL;
 }
 
-function screeningScoreCell(program: HospitalReportProgramRow, key: "pamScore" | "promsScore"): number | string {
-  return program.screening.state === "MISSING" ? NO_PROGRAM_SCREENING_LABEL : program.screening.value[key];
+/** "PAM score" = the PAM total (R2-C). */
+function pamScoreCell(program: HospitalReportProgramRow): number | string {
+  const pam = program.screening.pam;
+  return pam.state === "MISSING" ? NO_PROGRAM_SCREENING_LABEL : pam.value.score;
+}
+
+/** Q6: PROMs is reported as มีปัญหา/ไม่มีปัญหา, never a total; a legacy combined screening keeps its total. */
+function promsCell(program: HospitalReportProgramRow): number | string {
+  const proms = program.screening.proms;
+
+  if (proms.state === "MISSING") return NO_PROGRAM_SCREENING_LABEL;
+  if ("legacyTotal" in proms.value) return proms.value.legacyTotal;
+  return proms.value.hasProblem ? PROMS_RESULT_LABELS.problem : PROMS_RESULT_LABELS.noProblem;
 }
 
 function rowsPerProgram(program: HospitalReportProgramRow, followupsPerRow: number): number {
@@ -544,8 +556,8 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 8);
     row.getCell(9).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
-    row.getCell(11).value = screeningScoreCell(program, "pamScore");
-    row.getCell(12).value = screeningScoreCell(program, "promsScore");
+    row.getCell(11).value = pamScoreCell(program);
+    row.getCell(12).value = promsCell(program);
     row.getCell(13).value = roundOneConfidenceCell(program);
     row.getCell(14).value = weeklyExerciseCell(program, "before");
     row.getCell(15).value = finalMeasurementCell(program, "bloodSugar");

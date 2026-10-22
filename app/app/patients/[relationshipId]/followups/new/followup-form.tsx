@@ -81,6 +81,12 @@ const OBSTACLE_CHOICES = [
   ["false", "ไม่มีอุปสรรค"],
 ] as const;
 
+/** R2-F: ทบทวนแผนสุขภาพ (booklet). */
+const FOLLOWED_PLAN_CHOICES = [
+  ["true", "ทำตามแผนได้"],
+  ["false", "ทำตามแผนไม่ได้"],
+] as const;
+
 export type FollowupFormScope =
   | {
       kind: "relationship";
@@ -92,6 +98,8 @@ export type FollowupFormScope =
       patientProgramId: string;
       /** R1-D: validated round page to return to after saving (`parseRoundReturnPath`). */
       returnTo?: string | null;
+      /** R2-D: prefills the round's height with the latest recorded height. */
+      latestHeightCm?: number | null;
     };
 
 type FollowupFormProps = {
@@ -268,6 +276,11 @@ export function FollowupForm({
   const [generalNote, setGeneralNote] = useState("");
   const [serviceDate, setServiceDate] = useState(todayServiceDate);
   const [planAdjusted, setPlanAdjusted] = useState<YesNoDraft>("");
+  const [heightCm, setHeightCm] = useState(
+    scope.kind === "program" && scope.latestHeightCm != null ? String(scope.latestHeightCm) : "",
+  );
+  const [followedPlan, setFollowedPlan] = useState<YesNoDraft>("");
+  const [expertAdvice, setExpertAdvice] = useState("");
   const [hasObstacle, setHasObstacle] = useState<YesNoDraft>("");
   const [obstacleNote, setObstacleNote] = useState("");
   const selectedGoalPlan = useMemo(
@@ -382,6 +395,13 @@ export function FollowupForm({
         <input name="systolicBloodPressure" readOnly type="hidden" value={systolicBloodPressure} />
         <input name="diastolicBloodPressure" readOnly type="hidden" value={diastolicBloodPressure} />
         <input name="bloodSugar" readOnly type="hidden" value={bloodSugar} />
+        {programId ? (
+          <>
+            <input name="heightCm" readOnly type="hidden" value={heightCm} />
+            <input name="followedPlan" readOnly type="hidden" value={followedPlan} />
+            <input name="expertAdvice" readOnly type="hidden" value={expertAdvice} />
+          </>
+        ) : null}
         {programId ? null : <input name="confidenceScore" readOnly type="hidden" value={confidenceScore} />}
         <input name="reflectionNote" readOnly type="hidden" value={reflectionNote} />
         {programId ? null : <input name="confidencePlan" readOnly type="hidden" value={confidencePlan} />}
@@ -565,8 +585,77 @@ export function FollowupForm({
                 value={bloodSugar}
               />
             </label>
+            {programId ? (
+              <label className={labelClassName} htmlFor="followup-height">
+                <span>ส่วนสูง (cm)</span>
+                <input
+                  aria-describedby="followup-height-help"
+                  className={inputClassName}
+                  id="followup-height"
+                  max={1_000_000}
+                  min={0}
+                  onChange={(event) => setHeightCm(event.target.value)}
+                  step="any"
+                  type="number"
+                  value={heightCm}
+                />
+                <span className="text-xs font-normal leading-5 text-text-muted" id="followup-height-help">
+                  เติมค่าส่วนสูงล่าสุดให้แล้ว แก้ไขได้หากวัดใหม่ เว้นว่างได้ (ระบบจะใช้ค่าล่าสุด)
+                </span>
+              </label>
+            ) : null}
           </fieldset>
         </Panel>
+
+        {programId ? (
+          <Panel>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">ทบทวนแผนสุขภาพ</h2>
+            <div className="mt-6 grid gap-6">
+              <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+                <legend className="text-sm font-semibold text-text">ทำตามแผนได้หรือไม่</legend>
+                {FOLLOWED_PLAN_CHOICES.map(([value, label]) => (
+                  <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
+                    <input
+                      checked={followedPlan === value}
+                      className="size-5"
+                      name="followedPlanChoice"
+                      onChange={() => setFollowedPlan(value)}
+                      required
+                      type="radio"
+                      value={value}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+              <label className={labelClassName} htmlFor="followup-reflection">
+                <span>เกิดอะไรขึ้นบ้าง?</span>
+                <textarea
+                  className={`${inputClassName} min-h-28 py-3`}
+                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                  id="followup-reflection"
+                  maxLength={2_000}
+                  onChange={(event) => setReflectionNote(event.target.value)}
+                  value={reflectionNote}
+                />
+              </label>
+              <label className={labelClassName} htmlFor="followup-expert-advice">
+                <span>คำแนะนำจากผู้เชี่ยวชาญ (ไม่บังคับ)</span>
+                <textarea
+                  className={`${inputClassName} min-h-28 py-3`}
+                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                  id="followup-expert-advice"
+                  maxLength={1_000}
+                  onChange={(event) => setExpertAdvice(event.target.value)}
+                  value={expertAdvice}
+                />
+              </label>
+              <p className="text-sm leading-6 text-text-muted">
+                ขั้นตอน “ทบทวนแผนสุขภาพ” ของครั้งนี้จะนับว่าบันทึกแล้วเมื่ออ้างอิงแผนเป้าหมาย ตอบว่าทำตามแผนได้หรือไม่ และกรอก “เกิดอะไรขึ้นบ้าง?”
+              </p>
+            </div>
+          </Panel>
+        ) : null}
 
         {selectedGoalPlan ? (
           <Panel>
@@ -661,7 +750,7 @@ export function FollowupForm({
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">
-            {programId ? "สิ่งที่ต้องการสะท้อน / หมายเหตุ" : "ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ"}
+            {programId ? "หมายเหตุ" : "ความมั่นใจ / สิ่งที่ต้องการสะท้อน / หมายเหตุ"}
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
             {programId
@@ -689,6 +778,7 @@ export function FollowupForm({
             </div>
             </>
             )}
+            {programId ? null : (
             <label className={labelClassName} htmlFor="followup-reflection">
               <span>สิ่งที่ต้องการสะท้อน (ไม่บังคับ)</span>
               <textarea
@@ -700,6 +790,7 @@ export function FollowupForm({
                 value={reflectionNote}
               />
             </label>
+            )}
             {programId ? null : (
             <label className={labelClassName} htmlFor="followup-confidence-plan">
               <span>แผนต่อเนื่อง (ไม่บังคับ)</span>

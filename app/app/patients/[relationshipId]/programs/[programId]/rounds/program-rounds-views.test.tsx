@@ -55,7 +55,7 @@ function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
     roundActivities: [],
     roundCompletions: [],
     roundStepSkips: [],
-    screeningAssessment: null,
+    screeningAssessments: [],
     serviceOneRoutines: [],
     serviceOneFloatingCharts: [],
     serviceOneDreamCards: [],
@@ -192,8 +192,35 @@ describe("round stepper (SR-D7)", () => {
 
     expect(markup).toContain("ไม่มีแบบฟอร์มแยก");
     expect(markup).toContain("ครั้งที่ 1");
-    expect(markup).toContain("BMI 27.3");
+    // R2-H/R2-D: the booklet timepoint label and colour bands next to blood sugar and blood pressure.
+    expect(markup).toContain("จุดเริ่มต้น");
+    expect(markup).toContain("ดัชนีมวลกาย (kg/m²)");
+    expect(markup).toContain("27.3");
+    expect(markup).toContain("71 - 130");
+    expect(markup).toContain("130/85 - 139/89");
     expect(markup).not.toContain("รอแบบฟอร์มจากหน่วยงาน");
+  });
+
+  it("records PAM and PROMs as separate steps, each with its own form (R2-C)", () => {
+    const pam = renderDetail(1, "PAM");
+    expect(pam).toContain("instrument=PAM");
+    expect(pam).toContain("ทำแบบประเมิน PAM");
+    expect(pam).not.toContain("instrument=PROMS");
+
+    const answered = renderDetail(1, "PROMS", {
+      screeningAssessments: [{ id: "ffffffff-ffff-4fff-8fff-000000000001", instrument: "PAM", submittedAt: at, conductedByUser: recorder }],
+    });
+    expect(answered).toContain("instrument=PROMS");
+  });
+
+  it("labels the six health path timepoints in round 6 (R2-H)", () => {
+    const markup = renderDetail(6, "HEALTH_PATH_REVIEW", {
+      roundCompletions: [1, 2, 3, 4, 5].map(completion),
+    });
+
+    for (const label of ["จุดเริ่มต้น", "2 สัปดาห์", "1 เดือน", "2 เดือน", "3 เดือน", "6 เดือน"]) {
+      expect(markup).toContain(label);
+    }
   });
 
   it("lists every item on the summary and offers completion only when all are resolved", () => {

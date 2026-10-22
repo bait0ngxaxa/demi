@@ -36,7 +36,10 @@ const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
   "systolicBloodPressure",
   "diastolicBloodPressure",
   "bloodSugar",
+  "heightCm",
   "reflectionNote",
+  "followedPlan",
+  "expertAdvice",
   "generalNote",
   "activityProgress",
 ]);
@@ -179,6 +182,10 @@ export function buildProgramSubmissionInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     ...payload,
+    // R2-D / R2-F: Program Follow-ups only.
+    heightCm: getOptionalNumber(formData, "heightCm"),
+    followedPlan: getRequiredBoolean(formData, "followedPlan"),
+    expertAdvice: getOptionalString(formData, "expertAdvice"),
   } satisfies Record<string, unknown>;
 }
 

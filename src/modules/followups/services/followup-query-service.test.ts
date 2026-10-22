@@ -175,6 +175,9 @@ function createDatabase(overrides: {
               id: programId,
               patientHospitalRelationshipId: relationshipId,
               status: "ACTIVE",
+              initialBaseline: { heightCm: 160 },
+              followups: [],
+              roundVitals: [{ heightCm: 161 }],
             }
           : null;
       }),
@@ -396,6 +399,8 @@ describe("Follow-up query service", () => {
     const context = await getFollowupCreateContextForProgram(actor, programId, undefined, { database });
 
     expect(context.goalPlans).toMatchObject([{ goalPlanId, patientProgramId: programId }]);
+    // R2-D: the latest recorded height (round vitals before the Baseline) prefills the round height.
+    expect(context.latestHeightCm).toBe(161);
     expect(mockedProgramGoalOptions).toHaveBeenCalledWith(
       expect.any(Object),
       programId,

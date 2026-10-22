@@ -143,6 +143,8 @@ function createDatabase(overrides: {
           ? {
               id: screeningId,
               submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+              instrument: "COMBINED",
+              scoringVersion: "legacy-prototype-v1",
               result,
             }
           : overrides.latestScreening,
@@ -152,6 +154,8 @@ function createDatabase(overrides: {
           {
             id: screeningId,
             submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+            instrument: "COMBINED",
+            scoringVersion: "legacy-prototype-v1",
             result,
           },
         ],
@@ -251,7 +255,7 @@ describe("Goal Plan query service", () => {
       roundNumber: 2,
       primaryGoalLabel: "น้ำหนักลด",
       activityCount: 2,
-      sourceScreening: { result: { level: "L3", zone: "YELLOW" } },
+      sourceScreening: { outcome: { kind: "LEGACY", level: "L3", zone: "YELLOW" } },
     });
     expect(overview.items).toHaveLength(1);
     expect(overview.items[0]).not.toHaveProperty("primaryGoalNote");
@@ -331,7 +335,7 @@ describe("Goal Plan query service", () => {
       primaryGoalLabel: "น้ำหนักลด",
       primaryGoalNote: "หมายเหตุเป้าหมาย",
       weeklyNote: "หมายเหตุรายสัปดาห์",
-      sourceScreening: { screeningAssessmentId: screeningId, result: { level: "L3" } },
+      sourceScreening: { screeningAssessmentId: screeningId, outcome: { kind: "LEGACY", level: "L3" } },
       items: [
         { activityCode: "stop_sweet", activityLabel: "ลดหวาน", targetDays: 4 },
         { activityCode: "exercise_walk", targetValue: 15, targetUnit: "minutes" },

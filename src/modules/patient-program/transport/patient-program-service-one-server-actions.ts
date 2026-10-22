@@ -66,14 +66,30 @@ function hasUnexpectedOrDuplicateFields(formData: FormData, allowedFields: Reado
   return false;
 }
 
+function parseJsonField(formData: FormData, field: string): unknown {
+  const raw = getSingleString(formData, field);
+
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function buildRoutineInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "routineDate", "entries"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
+    routineDate: getSingleString(formData, "routineDate"),
+    entries: parseJsonField(formData, "entries"),
   };
 }
 
@@ -90,14 +106,16 @@ function buildFloatingChartInput(formData: FormData): unknown {
 }
 
 function buildDreamCardInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "description"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "dream", "obstacle", "weeklyGoal"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
-    description: getSingleString(formData, "description"),
+    dream: getSingleString(formData, "dream"),
+    obstacle: getSingleString(formData, "obstacle"),
+    weeklyGoal: getSingleString(formData, "weeklyGoal"),
   };
 }
 

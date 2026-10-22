@@ -19,6 +19,8 @@ import { getFollowupDetail, getFollowupHistory } from "@/modules/followups/servi
 import { createFollowup } from "@/modules/followups/services/followup-service";
 import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
 
+import { bookletPlan } from "./support/booklet-forms";
+
 const prisma = getPrisma();
 let sequence = 0;
 
@@ -212,9 +214,7 @@ describe("Phase 9C.0 Follow-up PostgreSQL workflow", () => {
       patientHospitalRelationshipId: patient.relationshipId,
       submissionNonce: randomUUID(),
       sourceScreeningAssessmentId: null,
-      primaryGoalCode: "weight",
-      primaryGoalNote: "เป้าหมายต้นแบบ",
-      weeklyNote: "หมายเหตุแผน",
+      booklet: bookletPlan(),
       items: [
         { activityCode: "stop_sweet", targetDays: 4 },
         { activityCode: "exercise_walk", targetDays: 3, targetValue: 30, targetUnit: "minutes" },

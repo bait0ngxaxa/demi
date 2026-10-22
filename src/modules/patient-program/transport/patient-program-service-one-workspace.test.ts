@@ -64,9 +64,9 @@ type ServiceOne = PatientProgramServiceOneProjection;
 
 function serviceOne(overrides: Partial<ServiceOne> = {}): ServiceOne {
   return {
-    routine: { ...activity(), evidence: null },
+    routine: { ...activity(), routineDate: null, entries: [], evidence: null },
     floatingChart: { ...activity(), summary: null, evidence: null },
-    dreamCard: { ...activity(), description: null, evidence: null },
+    dreamCard: { ...activity(), description: null, dream: null, obstacle: null, weeklyGoal: null, evidence: null },
     confidence: { ...activity(), score: null, improvementPlan: null },
     ...overrides,
   };
@@ -119,7 +119,7 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
 
     const routine = renderStep("routine", serviceOne());
-    expect(routine).toContain("ตารางชีวิตของฉัน (ตารางกิจวัตร)");
+    expect(routine).toContain("ตารางชีวิตของฉัน");
     expect(routine).toContain('name="roundNumber"');
     expect(routine).toContain('value="1"');
     expect(routine).not.toContain("แนบหลักฐานรูป");
@@ -129,7 +129,15 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     expect(ruler).toContain('value="0"');
     expect(ruler).toMatch(/(?:maxLength|maxlength)="2000"/u);
 
-    expect(renderStep("dreamCard", serviceOne(), true, 3)).toContain("ความฝันของฉัน (การ์ดความฝัน)");
+    // R2-G: the booklet's dream card fields and life table columns, verbatim.
+    const dream = renderStep("dreamCard", serviceOne(), true, 3);
+    expect(dream).toContain("ความฝันของฉัน (สิ่งที่อยากทำให้ได้/อยากไป/อยากทำ)");
+    expect(dream).toContain("อุปสรรค (ตอนนี้โรคหรือร่างกายขวางอะไรอยู่)");
+    expect(dream).toContain("เป้าหมายเล็ก ๆ สัปดาห์นี้ (หนึ่งก้าวเล็ก ๆ เพื่อไปสู่ความฝัน)");
+    const table = renderStep("routine", serviceOne(), true, 1);
+    for (const label of ["วัน เดือน ปี", "เวลา", "กิจวัตรประจำวัน", "การปรับพฤติกรรม"]) {
+      expect(table).toContain(label);
+    }
   });
 
   it("renders recorded results and read-only steps without controls", () => {
@@ -137,6 +145,8 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     const recorded = serviceOne({
       routine: {
         ...activity(true),
+        routineDate: new Date("2026-08-16T00:00:00.000Z"),
+        entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: "เดิน 15 นาที" }],
         evidence: {
           artifactId,
           mediaType: "image/jpeg",
@@ -153,14 +163,25 @@ describe("Service 1 per-round tool steps (SR-D8)", () => {
     expect(routine).toContain(`/evidence/${artifactId}/content`);
     expect(routine).toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(evidenceAssociatedAt)}`);
     expect(routine).not.toContain(`แนบแล้วเมื่อ ${formatThaiDateTime(artifactUploadedAt)}`);
+    expect(routine).toContain("ตื่นนอน");
+    expect(routine).toContain("เดิน 15 นาที");
     expect(renderStep("floatingChart", recorded, false)).toContain("สรุปกราฟ");
+    // A dream card recorded before R2 still renders its free-text description.
+    expect(
+      renderStep(
+        "dreamCard",
+        serviceOne({ dreamCard: { ...activity(true), description: "ความฝันเดิม", dream: null, obstacle: null, weeklyGoal: null, evidence: null } }),
+        false,
+        3,
+      ),
+    ).toContain("ความฝันเดิม");
     expect(renderStep("confidence", recorded, false)).toContain("7 / 10");
     expect(renderStep("confidence", serviceOne(), false)).not.toContain("<button");
   });
 
   it("offers the same optimized mobile image guidance after an activity is recorded", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
-    const markup = renderStep("routine", serviceOne({ routine: { ...activity(true), evidence: null } }));
+    const markup = renderStep("routine", serviceOne({ routine: { ...activity(true), routineDate: null, entries: [], evidence: null } }));
 
     expect(markup).toContain('capture="environment"');
     expect(markup).toContain("เลือกรูปได้สูงสุด 25 MB");

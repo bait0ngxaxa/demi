@@ -167,6 +167,17 @@ function createDatabase(input: {
   return { database, transaction };
 }
 
+
+/** R2-G: a dated life table with one row. */
+function routineInput(roundNumber: number): Record<string, unknown> {
+  return {
+    patientProgramId: programId,
+    roundNumber,
+    routineDate: "2026-08-21",
+    entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: "เดิน 15 นาที" }],
+  };
+}
+
 describe("Patient Program Service 1 service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -174,12 +185,48 @@ describe("Patient Program Service 1 service", () => {
     mockedProgramAccess.mockResolvedValue(access);
   });
 
+  it("records the life table date and rows with the routine (R2-G)", async () => {
+    const { database, transaction } = createDatabase();
+
+    await recordPatientProgramServiceOneRoutine(actor, routineInput(1), { database, now: () => recordedAt });
+
+    expect(transaction.patientProgramServiceOneRoutine.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          routineDate: new Date("2026-08-21T00:00:00.000Z"),
+          entries: { create: [{ sortOrder: 0, timeText: "06:00", activity: "ตื่นนอน", adjustment: "เดิน 15 นาที" }] },
+        }),
+      }),
+    );
+  });
+
+  it("refuses a different life table for an already recorded routine", async () => {
+    const { database } = createDatabase({
+      routine: {
+        id: recordId,
+        patientProgramId: programId,
+        roundNumber: 1,
+        recordedByUserId: actorUserId,
+        recordedAt,
+        routineDate: new Date("2026-08-21T00:00:00.000Z"),
+        entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: "เดิน 15 นาที" }],
+      },
+    });
+
+    await expect(recordPatientProgramServiceOneRoutine(actor, routineInput(1), { database })).resolves.toMatchObject({
+      operation: "ALREADY_RECORDED",
+    });
+    await expect(
+      recordPatientProgramServiceOneRoutine(actor, { ...routineInput(1), entries: [] }, { database }),
+    ).rejects.toBeInstanceOf(ConflictError);
+  });
+
   it("records routine once with server provenance and safe audit metadata", async () => {
     const { database, transaction } = createDatabase();
 
     const result = await recordPatientProgramServiceOneRoutine(
       actor,
-      { patientProgramId: programId, roundNumber: 1 },
+      routineInput(1),
       { database, now: () => recordedAt },
     );
 
@@ -199,6 +246,8 @@ describe("Patient Program Service 1 service", () => {
         roundNumber: 1,
         recordedByUserId: actorUserId,
         recordedAt,
+        routineDate: new Date("2026-08-21T00:00:00.000Z"),
+        entries: { create: [{ sortOrder: 0, timeText: "06:00", activity: "ตื่นนอน", adjustment: "เดิน 15 นาที" }] },
       },
       select: expect.anything(),
     });
@@ -291,7 +340,7 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneRoutine(
         actor,
-        { patientProgramId: programId, roundNumber: 1 },
+        routineInput(1),
         { database: completedDatabase.database },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -301,7 +350,7 @@ describe("Patient Program Service 1 service", () => {
     await expect(
       recordPatientProgramServiceOneRoutine(
         actor,
-        { patientProgramId: programId, roundNumber: 1 },
+        routineInput(1),
         { database: raceDatabase.database, transactionRetries: 0 },
       ),
     ).rejects.toBeInstanceOf(ConflictError);
@@ -332,7 +381,7 @@ describe("Patient Program Service 1 service", () => {
 
     const completed = createDatabase({ completedRounds: [1] });
     await expect(
-      recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 1 }, { database: completed.database }),
+      recordPatientProgramServiceOneRoutine(actor, routineInput(1), { database: completed.database }),
     ).rejects.toMatchObject({ name: "RoundConflictError" });
     expect(completed.transaction.patientProgramServiceOneRoutine.create).not.toHaveBeenCalled();
 
@@ -352,7 +401,7 @@ describe("Patient Program Service 1 service", () => {
     const { database, transaction } = createDatabase();
 
     await expect(
-      recordPatientProgramServiceOneRoutine(actor, { patientProgramId: programId, roundNumber: 3 }, { database }),
+      recordPatientProgramServiceOneRoutine(actor, routineInput(3), { database }),
     ).rejects.toBeInstanceOf(ValidationError);
     expect(transaction.patientProgramServiceOneRoutine.create).not.toHaveBeenCalled();
   });

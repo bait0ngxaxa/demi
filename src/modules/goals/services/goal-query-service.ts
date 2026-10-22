@@ -14,6 +14,7 @@ import {
   type PatientProgramCapability,
 } from "@/modules/patient-program/policies/patient-program-policy";
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { GOAL_PLAN_ROUND, toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
 import {
   ApplicationError,
   ConflictError,
@@ -33,6 +34,7 @@ import {
   getGoalTemplate,
   GOAL_TEMPLATE_KEY,
   GOAL_TEMPLATE_VERSION,
+  type GoalActivityCategory,
   type GoalTemplate,
 } from "../domain/goal-templates";
 import { GOAL_PLAN_CAPABILITY, GOAL_READ_CAPABILITY } from "../policies/goal-policy";
@@ -96,10 +98,27 @@ export type GoalPlanItemDetail = {
   goalPlanItemId: string;
   activityCode: string;
   activityLabel: string;
+  activityCategory: GoalActivityCategory;
   targetDays: number;
   targetValue: number | null;
   targetUnit: string | null;
   sortOrder: number;
+};
+
+/** R2-E: the booklet fields of a booklet-v1 plan. Dates are calendar dates (YYYY-MM-DD). */
+export type GoalPlanBookletDetail = {
+  goals: {
+    weightLossKg: number | null;
+    waistCm: number | null;
+    bloodSugarMgDl: number | null;
+    hba1cPercent: number | null;
+    customText: string | null;
+  };
+  food: { notSet: boolean; planText: string | null; startDate: string | null };
+  exercise: { notSet: boolean; planText: string | null; startDate: string | null };
+  problemsAfterOneMonth: string | null;
+  patientSignatureName: string | null;
+  witnessSignatureName: string | null;
 };
 
 export type GoalPlanDetail = {
@@ -117,6 +136,18 @@ export type GoalPlanDetail = {
   templateVersion: string;
   sourceScreening: GoalScreeningContext | null;
   items: GoalPlanItemDetail[];
+  /** Null for legacy-prototype-v1 plans. */
+  booklet: GoalPlanBookletDetail | null;
+  /** Program plans: the round the plan belongs to (2 = first plan; else its Follow-up's round). */
+  programRoundNumber: number | null;
+  /** R2-E: photo of the signed plan page (Program plans only). */
+  signedPageEvidence: {
+    artifactId: string;
+    mediaType: string;
+    byteSize: number;
+    uploadedAt: Date;
+    associatedAt: Date;
+  } | null;
 };
 
 export type GoalPlanProgramDetail = Omit<GoalPlanDetail, "patientProgramId"> & {
@@ -174,6 +205,27 @@ const goalDetailSelect = {
   templateKey: true,
   templateVersion: true,
   sourceScreeningAssessmentId: true,
+  goalWeightLossKg: true,
+  goalWaistCm: true,
+  goalBloodSugarMgDl: true,
+  goalHba1cPercent: true,
+  goalCustomText: true,
+  foodPlanText: true,
+  foodStartDate: true,
+  foodNotSet: true,
+  exercisePlanText: true,
+  exerciseStartDate: true,
+  exerciseNotSet: true,
+  problemsAfterOneMonth: true,
+  patientSignatureName: true,
+  witnessSignatureName: true,
+  sourceFollowup: { select: { roundNumber: true } },
+  serviceOneArtifactAssociation: {
+    select: {
+      createdAt: true,
+      patientEvidenceArtifact: { select: { id: true, mediaType: true, byteSize: true, createdAt: true } },
+    },
+  },
   createdByUser: {
     select: {
       person: {
@@ -327,6 +379,39 @@ function toHistoryItem(
   };
 }
 
+function toDateOnly(value: Date | null): string | null {
+  return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function toBookletDetail(record: GoalDetailRecord, template: GoalTemplate): GoalPlanBookletDetail | null {
+  if (!template.booklet) {
+    return null;
+  }
+
+  return {
+    goals: {
+      weightLossKg: record.goalWeightLossKg,
+      waistCm: record.goalWaistCm,
+      bloodSugarMgDl: record.goalBloodSugarMgDl,
+      hba1cPercent: record.goalHba1cPercent,
+      customText: record.goalCustomText,
+    },
+    food: {
+      notSet: record.foodNotSet === true,
+      planText: record.foodPlanText,
+      startDate: toDateOnly(record.foodStartDate),
+    },
+    exercise: {
+      notSet: record.exerciseNotSet === true,
+      planText: record.exercisePlanText,
+      startDate: toDateOnly(record.exerciseStartDate),
+    },
+    problemsAfterOneMonth: record.problemsAfterOneMonth,
+    patientSignatureName: record.patientSignatureName,
+    witnessSignatureName: record.witnessSignatureName,
+  };
+}
+
 function toDetail(
   record: GoalDetailRecord,
   patient: GoalPatientSummary,
@@ -360,12 +445,28 @@ function toDetail(
         goalPlanItemId: item.id,
         activityCode: item.activityCode,
         activityLabel: activity.label,
+        activityCategory: activity.category,
         targetDays: item.targetDays,
         targetValue: item.targetValue,
         targetUnit: item.targetUnit,
         sortOrder: item.sortOrder,
       };
     }),
+    booklet: toBookletDetail(record, template),
+    programRoundNumber: record.patientProgramId
+      ? record.sourceFollowup
+        ? toProgramRoundNumber(record.sourceFollowup.roundNumber)
+        : GOAL_PLAN_ROUND
+      : null,
+    signedPageEvidence: record.serviceOneArtifactAssociation
+      ? {
+          artifactId: record.serviceOneArtifactAssociation.patientEvidenceArtifact.id,
+          mediaType: record.serviceOneArtifactAssociation.patientEvidenceArtifact.mediaType,
+          byteSize: record.serviceOneArtifactAssociation.patientEvidenceArtifact.byteSize,
+          uploadedAt: record.serviceOneArtifactAssociation.patientEvidenceArtifact.createdAt,
+          associatedAt: record.serviceOneArtifactAssociation.createdAt,
+        }
+      : null,
   };
 }
 
@@ -393,6 +494,7 @@ function toGoalPlanReference(record: GoalPlanReferenceRecord): AccessibleGoalPla
         goalPlanItemId: item.id,
         activityCode: item.activityCode,
         activityLabel: activity.label,
+        activityCategory: activity.category,
         targetDays: item.targetDays,
         targetValue: item.targetValue,
         targetUnit: item.targetUnit,
@@ -580,7 +682,7 @@ export async function getGoalPlanCreateContext(
     );
     const template = getHistoricalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
     const requestedScreeningId = dependencies.requestedScreeningId;
-    const latestScreening =
+    const requestedScreening =
       requestedScreeningId === undefined || requestedScreeningId === null || requestedScreeningId === ""
         ? await getLatestScreening(
             actor,
@@ -593,6 +695,8 @@ export async function getGoalPlanCreateContext(
             requestedScreeningId,
             { database },
           );
+    // R2-C: PROMs never sources a Goal Plan, so a requested PROMs screening is not offered.
+    const latestScreening = requestedScreening?.instrument === "PROMS" ? null : requestedScreening;
 
     return {
       patient: access.patient,
@@ -704,7 +808,7 @@ export async function getGoalPlanCreateContextForProgram(
 
     const template = getHistoricalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION);
     const requestedScreeningId = dependencies.requestedScreeningId;
-    const latestScreening =
+    const requestedScreening =
       requestedScreeningId === undefined || requestedScreeningId === null || requestedScreeningId === ""
         ? await getLatestScreening(access.actor, database, relationshipId)
         : await getAccessibleScreeningSummary(
@@ -713,6 +817,8 @@ export async function getGoalPlanCreateContextForProgram(
             requestedScreeningId,
             { database },
           );
+    // R2-C: PROMs never sources a Goal Plan, so a requested PROMs screening is not offered.
+    const latestScreening = requestedScreening?.instrument === "PROMS" ? null : requestedScreening;
 
     return {
       patientProgramId: normalizedProgramId,

@@ -34,9 +34,10 @@ import type {
   PatientProgramServiceOneProjection,
   PatientProgramServiceOneRoundProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
-import type {
-  PatientProgramServiceOneActivity,
-  PatientProgramServiceOneArtifactActivity,
+import {
+  ROUTINE_MAX_ENTRIES,
+  type PatientProgramServiceOneActivity,
+  type PatientProgramServiceOneArtifactActivity,
 } from "@/modules/patient-program/schemas/patient-program-service-one-schemas";
 
 type ServiceOneActivityKey = PatientProgramServiceOneActivity;
@@ -267,7 +268,7 @@ function EvidencePreview({
   );
 }
 
-function EvidenceAttachmentControl({
+export function EvidenceAttachmentControl({
   activityKey,
   canManage,
   evidence,
@@ -434,6 +435,54 @@ function ActivityCard({
   );
 }
 
+type RoutineEntryDraft = { key: string; timeText: string; activity: string; adjustment: string };
+
+let routineEntryKey = 0;
+
+function emptyRoutineEntry(): RoutineEntryDraft {
+  routineEntryKey += 1;
+  return { key: `routine-entry-${routineEntryKey}`, timeText: "", activity: "", adjustment: "" };
+}
+
+function formatServiceDate(value: Date): string {
+  return new Intl.DateTimeFormat("th-TH", { dateStyle: "long", timeZone: "UTC" }).format(value);
+}
+
+/** R2-G: the recorded life table (read only). */
+function RoutineEntriesView({ activity }: { activity: PatientProgramServiceOneProjection["routine"] }): React.JSX.Element | null {
+  if (activity.routineDate === null) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="text-sm text-text-muted">วัน เดือน ปี: <span className="font-semibold text-text">{formatServiceDate(activity.routineDate)}</span></p>
+      {activity.entries.length > 0 ? (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-left text-sm">
+            <thead className="text-text-muted">
+              <tr>
+                <th className="py-2 pr-3 font-semibold" scope="col">เวลา</th>
+                <th className="py-2 pr-3 font-semibold" scope="col">กิจวัตรประจำวัน</th>
+                <th className="py-2 font-semibold" scope="col">การปรับพฤติกรรม</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {activity.entries.map((entry, index) => (
+                <tr key={`${index}-${entry.activity}`}>
+                  <td className="py-2 pr-3 align-top text-text">{entry.timeText ?? "–"}</td>
+                  <td className="py-2 pr-3 align-top text-text">{entry.activity}</td>
+                  <td className="py-2 align-top text-text">{entry.adjustment ?? "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function RoutineCard({
   activity,
   canManage,
@@ -454,10 +503,15 @@ function RoutineCard({
     recordPatientProgramServiceOneRoutineAction,
     initialPatientProgramServiceOneActionState,
   );
+  const [routineDate, setRoutineDate] = useState("");
+  const [entries, setEntries] = useState<RoutineEntryDraft[]>([emptyRoutineEntry()]);
+  const filledEntries = entries.filter((entry) => entry.activity.trim() !== "");
+  // R2-G: a table saved without rows still needs its photo, so the stepper stays on this step.
+  const awaitsPhoto = filledEntries.length === 0;
 
   useEffect(() => {
     // SR-D7: inside the round stepper a saved result moves on to the next step.
-    if (state.status === "SUCCESS" && nextHref) {
+    if (state.status === "SUCCESS" && nextHref && !awaitsPhoto) {
       router.push(nextHref);
       return;
     }
@@ -465,21 +519,113 @@ function RoutineCard({
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
       router.refresh();
     }
-  }, [nextHref, router, state]);
+  }, [awaitsPhoto, nextHref, router, state]);
+
+  const serializedEntries = filledEntries.map((entry) => ({
+    timeText: entry.timeText.trim() || null,
+    activity: entry.activity.trim(),
+    adjustment: entry.adjustment.trim() || null,
+  }));
+  const locked = pending || unknownOutcome;
+
+  function updateEntry(index: number, next: Partial<RoutineEntryDraft>): void {
+    setEntries((current) => current.map((entry, candidate) => (candidate === index ? { ...entry, ...next } : entry)));
+  }
 
   return (
-    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉัน (ตารางกิจวัตร) ของผู้ป่วยในครั้งนี้" id="ROUTINE" title="ตารางชีวิตของฉัน (ตารางกิจวัตร)">
-      {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
-        <form className="mt-5" action={action} onSubmit={submitPreservingInput(action)}>
+    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉันเป็นรายการ หรือบันทึกวันที่แล้วแนบรูปหน้ากระดาษ" id="ROUTINE" title="ตารางชีวิตของฉัน">
+      {activity.recorded ? (
+        <>
+          <RecordedMeta activity={activity} />
+          <RoutineEntriesView activity={activity} />
+        </>
+      ) : canManage ? (
+        <form className="mt-5 space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <input name="roundNumber" type="hidden" value={roundNumber} />
-          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
-            {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
+          <input name="entries" type="hidden" value={JSON.stringify(serializedEntries)} />
+          <label className="block max-w-xs space-y-2 text-sm font-semibold text-text" htmlFor="service-one-routine-date">
+            <span>วัน เดือน ปี</span>
+            <input
+              className={inputClassName}
+              disabled={locked}
+              id="service-one-routine-date"
+              name="routineDate"
+              onChange={(event) => setRoutineDate(event.target.value)}
+              required
+              type="date"
+              value={routineDate}
+            />
+          </label>
+          <fieldset className="space-y-4" disabled={locked}>
+            <legend className="text-sm font-semibold text-text">รายการ ({entries.length}/{ROUTINE_MAX_ENTRIES})</legend>
+            {entries.map((entry, index) => (
+              <div className="grid gap-3 rounded-control border border-border p-3 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end" key={entry.key}>
+                <label className="block space-y-1 text-xs font-semibold text-text">
+                  <span>เวลา</span>
+                  <input
+                    className={inputClassName}
+                    maxLength={20}
+                    onChange={(event) => updateEntry(index, { timeText: event.target.value })}
+                    placeholder="06:00"
+                    type="text"
+                    value={entry.timeText}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs font-semibold text-text">
+                  <span>กิจวัตรประจำวัน</span>
+                  <input
+                    className={inputClassName}
+                    maxLength={500}
+                    onChange={(event) => updateEntry(index, { activity: event.target.value })}
+                    type="text"
+                    value={entry.activity}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs font-semibold text-text">
+                  <span>การปรับพฤติกรรม</span>
+                  <input
+                    className={inputClassName}
+                    maxLength={500}
+                    onChange={(event) => updateEntry(index, { adjustment: event.target.value })}
+                    type="text"
+                    value={entry.adjustment}
+                  />
+                </label>
+                <Button
+                  disabled={entries.length === 1}
+                  onClick={() => setEntries((current) => current.filter((_, candidate) => candidate !== index))}
+                  size="compact"
+                  type="button"
+                  variant="ghost"
+                >
+                  ลบแถว
+                </Button>
+              </div>
+            ))}
+            <Button
+              disabled={entries.length >= ROUTINE_MAX_ENTRIES}
+              onClick={() => setEntries((current) => [...current, emptyRoutineEntry()])}
+              size="compact"
+              type="button"
+              variant="secondary"
+            >
+              เพิ่มแถว
+            </Button>
+          </fieldset>
+          <p className="text-sm leading-6 text-text-muted">
+            กรอก “กิจวัตรประจำวัน” อย่างน้อย 1 แถว หรือบันทึกเฉพาะวันที่แล้วแนบรูปหน้ากระดาษ แถวที่ไม่มีกิจวัตรจะไม่ถูกบันทึก
+          </p>
+          <Button disabled={locked || routineDate === ""} loading={pending} size="compact" type="submit">
+            {pending ? "กำลังบันทึก…" : filledEntries.length > 0 ? "บันทึกตารางชีวิต" : "บันทึกวันที่ แล้วแนบรูป"}
           </Button>
         </form>
       ) : (
         <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
+      {activity.recorded && activity.routineDate !== null && activity.entries.length === 0 && !activity.evidence ? (
+        <Alert className="mt-4" variant="warning">ยังไม่มีรายการ แนบรูปหน้ากระดาษเพื่อให้ขั้นตอนนี้ครบ</Alert>
+      ) : null}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <EvidenceAttachmentControl
@@ -577,6 +723,13 @@ function FloatingChartCard({
   );
 }
 
+/** R2-G: the booklet's three dream card fields (labels verbatim). */
+const DREAM_CARD_FIELDS = [
+  { name: "dream", label: "ความฝันของฉัน (สิ่งที่อยากทำให้ได้/อยากไป/อยากทำ)", required: true },
+  { name: "obstacle", label: "อุปสรรค (ตอนนี้โรคหรือร่างกายขวางอะไรอยู่)", required: false },
+  { name: "weeklyGoal", label: "เป้าหมายเล็ก ๆ สัปดาห์นี้ (หนึ่งก้าวเล็ก ๆ เพื่อไปสู่ความฝัน)", required: true },
+] as const;
+
 function DreamCard({
   activity,
   canManage,
@@ -611,24 +764,28 @@ function DreamCard({
   }, [nextHref, router, state]);
 
   return (
-    <ActivityCard activity={activity} description="บันทึกความฝันของฉัน (การ์ดความฝัน) พร้อมคำอธิบายสั้น ๆ ได้ถ้าจำเป็น" id="DREAM_CARD" title="ความฝันของฉัน (การ์ดความฝัน)">
+    <ActivityCard activity={activity} description="บันทึกความฝันของฉัน อุปสรรค และเป้าหมายเล็ก ๆ สัปดาห์นี้" id="DREAM_CARD" title="ความฝันของฉัน">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <input name="roundNumber" type="hidden" value={roundNumber} />
-          <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="service-one-dream-description">
-            <span>คำอธิบาย (ไม่บังคับ)</span>
-            <textarea
-              className={`${inputClassName} min-h-28 py-3`}
-              disabled={pending || unknownOutcome}
-              id="service-one-dream-description"
-              maxLength={2000}
-              name="description"
-              placeholder="เขียนคำอธิบายประกอบได้ถ้าจำเป็น"
-              rows={4}
-            />
-            <span className="text-xs font-normal leading-5 text-text-muted">ไม่เกิน 2,000 ตัวอักษร</span>
-          </label>
+          {DREAM_CARD_FIELDS.map((field) => (
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`service-one-dream-${field.name}`} key={field.name}>
+              <span>
+                {field.label}
+                {field.required ? "" : " (ไม่บังคับ)"}
+              </span>
+              <textarea
+                className={`${inputClassName} min-h-24 py-3`}
+                disabled={pending || unknownOutcome}
+                id={`service-one-dream-${field.name}`}
+                maxLength={1000}
+                name={field.name}
+                required={field.required}
+                rows={3}
+              />
+            </label>
+          ))}
           <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
             {pending ? "กำลังบันทึก…" : "บันทึกกิจกรรม"}
           </Button>
@@ -636,11 +793,24 @@ function DreamCard({
       ) : (
         <p className="mt-5 text-sm text-text-muted">ยังไม่มีการบันทึกกิจกรรมนี้ในครั้งนี้</p>
       )}
-      {activity.recorded && activity.description ? (
-        <div className="mt-4 border-t border-border pt-4">
-          <p className="text-sm text-text-muted">คำอธิบายที่บันทึกไว้</p>
-          <p className="mt-1 break-words whitespace-pre-wrap text-text">{activity.description}</p>
-        </div>
+      {activity.recorded ? (
+        <dl className="mt-4 space-y-3 border-t border-border pt-4">
+          {DREAM_CARD_FIELDS.map((field) =>
+            activity[field.name] ? (
+              <div key={field.name}>
+                <dt className="text-sm text-text-muted">{field.label}</dt>
+                <dd className="mt-1 break-words whitespace-pre-wrap text-text">{activity[field.name]}</dd>
+              </div>
+            ) : null,
+          )}
+          {/* Cards recorded before R2 keep their free-text description. */}
+          {activity.description ? (
+            <div>
+              <dt className="text-sm text-text-muted">คำอธิบายที่บันทึกไว้</dt>
+              <dd className="mt-1 break-words whitespace-pre-wrap text-text">{activity.description}</dd>
+            </div>
+          ) : null}
+        </dl>
       ) : null}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
@@ -796,7 +966,7 @@ function toolDetail(round: PatientProgramServiceOneRoundProjection, tool: Servic
     return round.floatingChart.summary;
   }
 
-  return tool === "dreamCard" ? round.dreamCard.description : null;
+  return tool === "dreamCard" ? (round.dreamCard.dream ?? round.dreamCard.description) : null;
 }
 
 /**

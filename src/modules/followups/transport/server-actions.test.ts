@@ -51,6 +51,9 @@ function validProgramFormData(): FormData {
   formData.delete("confidenceScore");
   formData.delete("confidencePlan");
   formData.set("patientProgramId", "33333333-3333-4333-8333-333333333333");
+  formData.set("followedPlan", "false");
+  formData.set("heightCm", "158");
+  formData.set("expertAdvice", "เดินในบ้านแทน");
   return formData;
 }
 
@@ -146,6 +149,9 @@ describe("Follow-up transport", () => {
     const serviceInput = mockedCreateForProgram.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
     expect(serviceInput).toMatchObject({
       patientProgramId: "33333333-3333-4333-8333-333333333333",
+      followedPlan: false,
+      heightCm: 158,
+      expertAdvice: "เดินในบ้านแทน",
     });
     expect(serviceInput).not.toHaveProperty("patientHospitalRelationshipId");
     expect(mockedRevalidatePath).toHaveBeenCalledWith(

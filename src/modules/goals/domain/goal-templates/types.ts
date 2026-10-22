@@ -32,6 +32,8 @@ export type GoalTemplate = {
   key: string;
   version: string;
   label: string;
+  /** R2-E: the plan carries the booklet goals, sections and signatures instead of a primary goal. */
+  booklet?: boolean;
   primaryGoals: readonly GoalPrimaryDefinition[];
   activities: readonly GoalActivityDefinition[];
   activitySuggestions: readonly GoalActivitySuggestion[];

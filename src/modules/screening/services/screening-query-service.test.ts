@@ -10,28 +10,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
-import { questionSetRegistry } from "../domain/question-sets";
-
-const { alternateScoringVersion } = vi.hoisted(() => ({
-  alternateScoringVersion: "customer-approved-test-v1",
-}));
-
-vi.mock("../domain/scoring", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../domain/scoring")>();
-  const prototypeDefinition = actual.getScoringDefinition(actual.LEGACY_PROTOTYPE_SCORING_VERSION);
-
-  if (!prototypeDefinition) {
-    throw new Error("The source registry must contain the prototype scoring definition");
-  }
-
-  return {
-    ...actual,
-    getScoringDefinition: (version: string) => version === alternateScoringVersion
-      ? { ...prototypeDefinition, version }
-      : actual.getScoringDefinition(version),
-  };
-});
-
 import {
   getAccessibleScreeningSummaries,
   getLatestAccessibleScreeningSummary,
@@ -72,19 +50,30 @@ const result = {
   zone: "YELLOW",
 } as const;
 
+const legacyRecord = { instrument: "COMBINED", scoringVersion: "legacy-prototype-v1" } as const;
+
+const legacyOutcome = { kind: "LEGACY", pamTotal: 10, promsTotal: 12, level: "L3", zone: "YELLOW" } as const;
+
 function createDatabase(overrides: {
   hospitalMembership?: boolean;
+  instrument?: "COMBINED" | "PAM" | "PROMS";
   questionSetKey?: string;
   questionSetVersion?: string;
   scoringVersion?: string;
+  responses?: unknown;
+  result?: unknown;
   summaryRecords?: Array<{
     id: string;
     submittedAt: Date;
+    instrument: string;
+    scoringVersion: string;
     result: unknown;
   }>;
   records?: Array<{
     id: string;
     submittedAt: Date;
+    instrument: string;
+    scoringVersion: string;
     result: unknown;
     conductedByUser: { person: { givenName: string | null; familyName: string | null } };
   }>;
@@ -133,16 +122,17 @@ function createDatabase(overrides: {
       findFirst: vi.fn().mockResolvedValue({
         id: screeningId,
         submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+        instrument: overrides.instrument ?? "COMBINED",
         questionSetKey: overrides.questionSetKey ?? "demi-screening",
         questionSetVersion: overrides.questionSetVersion ?? "legacy-prototype-v1",
         scoringVersion: overrides.scoringVersion ?? "legacy-prototype-v1",
-        responses: {
+        responses: overrides.responses ?? {
           pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
           proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
           confidenceScore: 7,
           confidenceImprovementPlan: null,
         },
-        result,
+        result: overrides.result ?? result,
         conductedByUser: { person: { givenName: "ผู้ทำ", familyName: "แบบประเมิน" } },
       }),
     },
@@ -155,18 +145,24 @@ function createDatabase(overrides: {
 }
 
 describe("Screening query service", () => {
-  it("returns only the minimal latest summary through the Screening read boundary", async () => {
-    const { database } = createDatabase();
+  it("returns the latest PAM or legacy summary through the Screening read boundary", async () => {
+    const { database, screeningAssessment } = createDatabase();
 
     const summary = await getLatestAccessibleScreeningSummary(actor, relationshipId, { database });
 
     expect(summary).toEqual({
       screeningAssessmentId: screeningId,
       submittedAt: new Date("2026-08-16T05:00:00.000Z"),
-      result: { level: "L3", zone: "YELLOW" },
+      instrument: "COMBINED",
+      outcome: legacyOutcome,
     });
     expect(summary).not.toHaveProperty("responses");
-    expect(summary).not.toHaveProperty("result.pamTotal");
+    // R2-C: PROMs never sources a Goal Plan.
+    expect(screeningAssessment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { patientHospitalRelationshipId: relationshipId, instrument: { in: ["COMBINED", "PAM"] } },
+      }),
+    );
   });
 
   it("returns deduplicated, relationship-scoped minimal summaries in request order", async () => {
@@ -175,11 +171,13 @@ describe("Screening query service", () => {
         {
           id: screeningId,
           submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          ...legacyRecord,
           result,
         },
         {
           id: secondScreeningId,
           submittedAt: new Date("2026-08-16T06:00:00.000Z"),
+          ...legacyRecord,
           result,
         },
       ],
@@ -199,10 +197,10 @@ describe("Screening query service", () => {
     expect(summaries[0]).toEqual({
       screeningAssessmentId: secondScreeningId,
       submittedAt: new Date("2026-08-16T06:00:00.000Z"),
-      result: { level: "L3", zone: "YELLOW" },
+      instrument: "COMBINED",
+      outcome: legacyOutcome,
     });
     expect(summaries[0]).not.toHaveProperty("responses");
-    expect(summaries[0]).not.toHaveProperty("result.pamTotal");
     expect(screeningAssessment.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -219,6 +217,7 @@ describe("Screening query service", () => {
         {
           id: screeningId,
           submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          ...legacyRecord,
           result,
         },
       ],
@@ -253,6 +252,7 @@ describe("Screening query service", () => {
         {
           id: screeningId,
           submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          ...legacyRecord,
           result: { level: "L3", zone: "YELLOW" },
         },
       ],
@@ -269,6 +269,7 @@ describe("Screening query service", () => {
         {
           id: screeningId,
           submittedAt: new Date("2026-08-16T05:00:00.000Z"),
+          ...legacyRecord,
           result,
           conductedByUser: { person: { givenName: "ผู้ทำ", familyName: "แบบประเมิน" } },
         },
@@ -283,7 +284,8 @@ describe("Screening query service", () => {
         screeningAssessmentId: screeningId,
         status: "SUBMITTED",
         conductedByDisplayName: "ผู้ทำ แบบประเมิน",
-        result: { pamTotal: 10, promsTotal: 12, level: "L3", zone: "YELLOW" },
+        instrument: "COMBINED",
+        outcome: legacyOutcome,
       }),
     ]);
     expect(history.items[0]).not.toHaveProperty("responses");
@@ -301,28 +303,68 @@ describe("Screening query service", () => {
       screeningAssessmentId: screeningId,
       questionSetVersion: "legacy-prototype-v1",
       scoringVersion: "legacy-prototype-v1",
-      responses: { confidenceScore: 7, confidenceImprovementPlan: null },
-      result,
+      responses: { kind: "LEGACY", confidenceScore: 7, confidenceImprovementPlan: null },
+      outcome: legacyOutcome,
     });
   });
 
-  it("resolves persisted definitions through the source registries", async () => {
-    const questionSet = questionSetRegistry[0];
-
-    if (!questionSet) {
-      throw new Error("The source registry must contain the prototype question set");
-    }
-
+  it("maps a booklet PAM result explicitly and never exposes a zone", async () => {
     const { database } = createDatabase({
-      questionSetKey: questionSet.key,
-      questionSetVersion: questionSet.version,
-      scoringVersion: alternateScoringVersion,
+      instrument: "PAM",
+      questionSetKey: "demi-pam",
+      questionSetVersion: "booklet-v1",
+      scoringVersion: "pam-booklet-v1",
+      responses: { answers: { "pam-1": 3, "pam-2": 3, "pam-3": 3, "pam-4": 3, "pam-5": 2 } },
+      result: { total: 14, group: "INTENSIVE" },
     });
 
     const detail = await getScreeningDetail(actor, relationshipId, screeningId, { database });
 
-    expect(detail.questionSetVersion).toBe(questionSet.version);
-    expect(detail.scoringVersion).toBe(alternateScoringVersion);
+    expect(detail).toMatchObject({
+      instrument: "PAM",
+      responses: { kind: "INSTRUMENT", answers: { "pam-5": 2 } },
+      outcome: { kind: "PAM", total: 14, group: "INTENSIVE" },
+    });
+    expect(detail.outcome).not.toHaveProperty("zone");
+  });
+
+  it("maps a booklet PROMs result as a problem flag without a total", async () => {
+    const { database } = createDatabase({
+      instrument: "PROMS",
+      questionSetKey: "demi-proms",
+      questionSetVersion: "booklet-v1",
+      scoringVersion: "proms-booklet-v1",
+      responses: { answers: { "proms-1": 2, "proms-2": 4, "proms-3": 4, "proms-4": 5 } },
+      result: {
+        itemScores: { "proms-1": 2, "proms-2": 4, "proms-3": 4, "proms-4": 5 },
+        hasProblem: true,
+        problemItemKeys: ["proms-1"],
+      },
+    });
+
+    const detail = await getScreeningDetail(actor, relationshipId, screeningId, { database });
+
+    expect(detail.outcome).toEqual({
+      kind: "PROMS",
+      itemScores: { "proms-1": 2, "proms-2": 4, "proms-3": 4, "proms-4": 5 },
+      hasProblem: true,
+      problemItemKeys: ["proms-1"],
+    });
+    expect(detail.outcome).not.toHaveProperty("total");
+  });
+
+  it("fails closed when a booklet instrument row carries a scoring version of another instrument", async () => {
+    const { database } = createDatabase({
+      instrument: "PAM",
+      questionSetKey: "demi-pam",
+      questionSetVersion: "booklet-v1",
+      scoringVersion: "legacy-prototype-v1",
+      responses: { answers: {} },
+    });
+
+    await expect(getScreeningDetail(actor, relationshipId, screeningId, { database })).rejects.toBeInstanceOf(
+      InfrastructureError,
+    );
   });
 
   it.each([

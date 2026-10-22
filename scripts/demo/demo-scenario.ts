@@ -406,14 +406,29 @@ async function seedBaseline(staffActor: ActorContext, relationshipId: string, da
   }, clock(day, "09:00"));
 }
 
-function screeningInput(relationshipId: string, programId: string | undefined, level: number) {
-  const pam = Object.fromEntries([1, 2, 3, 4, 5].map((index) => [`pam-${index}`, Math.min(4, Math.max(1, level + (index % 2)))]));
-  const proms = Object.fromEntries([1, 2, 3, 4].map((index) => [`proms-${index}`, Math.min(6, Math.max(1, level + 2 + (index % 2)))]));
+/** R2-C: PAM (1-4 per item) and PROMs (1-5 per item) are separate screenings. */
+function screeningInput(relationshipId: string, programId: string | undefined, level: number, instrument: "PAM" | "PROMS") {
+  const answers = instrument === "PAM"
+    ? Object.fromEntries([1, 2, 3, 4, 5].map((index) => [`pam-${index}`, Math.min(4, Math.max(1, level + (index % 2)))]))
+    : Object.fromEntries([1, 2, 3, 4].map((index) => [`proms-${index}`, Math.min(5, Math.max(1, level + 1 + (index % 2)))]));
   return {
     patientHospitalRelationshipId: relationshipId,
     ...(programId ? { patientProgramId: programId } : {}),
     submissionNonce: randomUUID(),
-    responses: { pam, proms, confidenceScore: Math.min(10, level + 4), confidenceImprovementPlan: undefined },
+    instrument,
+    responses: { answers },
+  };
+}
+
+/** R2-E: แผน "สุขภาพดี" ของฉัน for the synthetic plans (both sections set; food and exercise items). */
+function bookletPlan(problemsAfterOneMonth: string | null) {
+  return {
+    goals: { weightLossKg: 3, waistCm: null, bloodSugarMgDl: 130, hba1cPercent: 7, customText: null },
+    food: { notSet: false, planText: "ทดสอบ: ลดข้าวและงดหวาน", startDate: null },
+    exercise: { notSet: false, planText: "ทดสอบ: เดินเร็วหลังอาหารเย็น", startDate: null },
+    problemsAfterOneMonth,
+    patientSignatureName: "ทดสอบ: ผู้ป่วย",
+    witnessSignatureName: "ทดสอบ: พยาน",
   };
 }
 
@@ -432,6 +447,9 @@ async function seedProgramFollowup(osmActor: ActorContext, programId: string, vi
     sourceGoalPlanId: goalPlanId,
     serviceDate: spec.day,
     planAdjusted: spec.planAdjusted,
+    // R2-F: ทบทวนแผนสุขภาพ.
+    followedPlan: !spec.obstacle,
+    reflectionNote: spec.obstacle ? "ทดสอบ: ช่วงเทศกาลทำตามแผนได้ไม่ครบ" : "ทดสอบ: ทำตามแผนได้ต่อเนื่อง",
     hasObstacle: spec.obstacle,
     obstacleNote: spec.obstacle ? "ทดสอบ: ช่วงเทศกาลควบคุมอาหารได้ยาก" : null,
     // Every round records all vitals so its vitals step is done.
@@ -472,7 +490,15 @@ async function seedProgram(input: {
   const ruler = (roundNumber: number, onDay: string, score: number) =>
     recordPatientProgramServiceOneConfidence(osmActor, { patientProgramId: programId, roundNumber, score, improvementPlan: "ทดสอบ: เดินหลังอาหารเย็น" }, clock(onDay, "10:35"));
   const routine = (roundNumber: number, onDay: string) =>
-    recordPatientProgramServiceOneRoutine(osmActor, { patientProgramId: programId, roundNumber }, clock(onDay, "10:30"));
+    recordPatientProgramServiceOneRoutine(osmActor, {
+      patientProgramId: programId,
+      roundNumber,
+      routineDate: onDay,
+      entries: [
+        { timeText: "06:00", activity: "ทดสอบ: ตื่นนอน ดื่มน้ำ", adjustment: "ทดสอบ: เดิน 15 นาที" },
+        { timeText: "12:00", activity: "ทดสอบ: อาหารกลางวัน", adjustment: null },
+      ],
+    }, clock(onDay, "10:30"));
 
   // Round 1: vitals with the preferred name, the Program screening and the per-round tools; เส้นทางสุขภาพ is derived.
   const profileVersion = (await database().patientHospitalProfile.findUnique({
@@ -483,7 +509,8 @@ async function seedProgram(input: {
     weight: vitals.weight - 0.5, heightCm: vitals.heightCm, waistCircumference: vitals.waist, systolicBloodPressure: vitals.systolic,
     diastolicBloodPressure: vitals.diastolic, bloodSugar: vitals.dtx - 5, preferredName: "ทดสอบ: ป้าใจดี", profileVersion,
   }, clock(startDay, "10:00"));
-  await submitScreening(osmActor, screeningInput(relationshipId, programId, 2), clock(startDay, "10:10"));
+  await submitScreening(osmActor, screeningInput(relationshipId, programId, 2, "PAM"), clock(startDay, "10:10"));
+  await submitScreening(osmActor, screeningInput(relationshipId, programId, 2, "PROMS"), clock(startDay, "10:12"));
   await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 1, summary: "ทดสอบ: กราฟวัดลอยจม" }, clock(startDay, "10:20"));
   await routine(1, startDay);
   await ruler(1, startDay, 6);
@@ -498,8 +525,7 @@ async function seedProgram(input: {
     diastolicBloodPressure: vitals.diastolic - 1, bloodSugar: vitals.dtx - 12,
   }, clock(round2, "10:00"));
   const planV1 = await createGoalPlanForProgram(osmActor, {
-    patientProgramId: programId, submissionNonce: randomUUID(), primaryGoalCode: "glucose", items: PLAN_V1,
-    weeklyNote: "ทดสอบ: เป้าหมายรายสัปดาห์",
+    patientProgramId: programId, submissionNonce: randomUUID(), items: PLAN_V1, booklet: bookletPlan(null),
   }, clock(round2, "10:30"));
   await ruler(2, round2, 7);
   await routine(2, round2);
@@ -511,7 +537,10 @@ async function seedProgram(input: {
     day: day(28), dtx: vitals.dtx - 20, weight: vitals.weight - 1.5, planAdjusted: false, obstacle: true, progress: [3, 4, 1], plan: PLAN_V1,
   });
   await ruler(3, day(28), 7);
-  await recordPatientProgramServiceOneDreamCard(osmActor, { patientProgramId: programId, roundNumber: 3, description: "ทดสอบ: อยากเล่นกับหลานได้นานขึ้น" }, clock(day(28), "10:25"));
+  await recordPatientProgramServiceOneDreamCard(osmActor, {
+    patientProgramId: programId, roundNumber: 3, dream: "ทดสอบ: อยากเล่นกับหลานได้นานขึ้น",
+    obstacle: "ทดสอบ: เหนื่อยง่าย", weeklyGoal: "ทดสอบ: เดินเล่นกับหลานวันละ 10 นาที",
+  }, clock(day(28), "10:25"));
   await completeRound(3, day(28));
 
   // Round 4: Follow-up 2 adjusts the plan (v2 = แผนสุขภาพดีของฉัน), floating chart, ruler and routine.
@@ -519,8 +548,8 @@ async function seedProgram(input: {
     day: day(42), dtx: vitals.dtx - 28, weight: vitals.weight - 2.5, planAdjusted: true, obstacle: false, progress: [5, 6, 2], plan: PLAN_V1,
   });
   const planV2 = await createGoalPlanForProgram(osmActor, {
-    patientProgramId: programId, sourceFollowupId: adjustingFollowupId, submissionNonce: randomUUID(), primaryGoalCode: "glucose", items: PLAN_V2,
-    weeklyNote: "ทดสอบ: ปรับเพิ่มวันออกกำลังกาย",
+    patientProgramId: programId, sourceFollowupId: adjustingFollowupId, submissionNonce: randomUUID(), items: PLAN_V2,
+    booklet: bookletPlan("ทดสอบ: ช่วงเทศกาลควบคุมอาหารได้ยาก"),
   }, clock(day(42), "11:30"));
   await recordPatientProgramServiceOneFloatingChart(osmActor, { patientProgramId: programId, roundNumber: 4, summary: "ทดสอบ: กราฟวัดลอยจมครั้งที่ 4" }, clock(day(42), "10:20"));
   await ruler(4, day(42), 8);
@@ -596,7 +625,7 @@ async function seedMedication(patientActor: ActorContext, today: string, name: s
 }
 
 async function seedOutsideProgramCare(osmActor: ActorContext, relationshipId: string, day: string): Promise<void> {
-  await submitScreening(osmActor, screeningInput(relationshipId, undefined, 1), clock(day, "10:00"));
+  await submitScreening(osmActor, screeningInput(relationshipId, undefined, 1, "PAM"), clock(day, "10:00"));
   await createFollowup(osmActor, {
     patientHospitalRelationshipId: relationshipId, submissionNonce: randomUUID(), serviceDate: day, planAdjusted: false, hasObstacle: false,
     weight: 66, bloodSugar: 138, activityProgress: [],
@@ -932,6 +961,7 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneArtifactAssociation.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await tx.patientProgramServiceOneRoutineEntry.deleteMany({ where: { routine: program } });
     await tx.patientProgramServiceOneRoutine.deleteMany({ where: program });
     await tx.patientProgramServiceOneFloatingChart.deleteMany({ where: program });
     await tx.patientProgramServiceOneDreamCard.deleteMany({ where: program });

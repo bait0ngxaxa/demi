@@ -70,7 +70,7 @@ export default async function NewGoalPlanPage({
           ? {
               screeningAssessmentId: context.latestScreening.screeningAssessmentId,
               submittedAt: context.latestScreening.submittedAt.toISOString(),
-              result: context.latestScreening.result,
+              outcome: context.latestScreening.outcome,
             }
           : null
       }

@@ -28,6 +28,8 @@ import {
   NotFoundError,
 } from "@/shared/errors/application-error";
 
+import { screeningAnswersInstrument } from "@/modules/screening/domain/screening-outcome";
+
 import { calculateBodyMassIndex } from "../domain/body-mass-index";
 import {
   ADJUSTED_PLAN_ROUND,
@@ -166,7 +168,14 @@ export type ProgramRoundDetail = {
   /** Rounds 3-6: the round is writable and its Follow-up is the next one to record. */
   canStartFollowup: boolean;
   serviceOne: PatientProgramServiceOneProjection;
-  screeningId: string | null;
+  /** R2-C: the Program screening answering each step; a legacy combined screening answers both. */
+  screenings: Readonly<Record<"PAM" | "PROMS", { id: string; combined: boolean } | null>>;
+  /** Rounds 3-6: the round's Follow-up plan review answers (R2-F), when recorded. */
+  planReview: {
+    followedPlan: boolean | null;
+    reflectionNote: string | null;
+    expertAdvice: string | null;
+  } | null;
   goalPlan: {
     /** Round 2: the Program's first Goal Plan. */
     firstGoalPlanId: string | null;
@@ -244,8 +253,9 @@ const programRoundSelect = {
       skippedByUser: recorderSelect,
     },
   },
-  screeningAssessment: {
-    select: { id: true, submittedAt: true, conductedByUser: recorderSelect },
+  screeningAssessments: {
+    orderBy: { submittedAt: "asc" },
+    select: { id: true, instrument: true, submittedAt: true, conductedByUser: recorderSelect },
   },
   ...patientProgramServiceOneSelect,
   goalPlans: {
@@ -280,7 +290,11 @@ const programRoundSelect = {
       recordedAt: true,
       sourceGoalPlanId: true,
       planAdjusted: true,
+      followedPlan: true,
+      reflectionNote: true,
+      expertAdvice: true,
       weight: true,
+      heightCm: true,
       waistCircumference: true,
       systolicBloodPressure: true,
       diastolicBloodPressure: true,
@@ -343,9 +357,22 @@ const PER_ROUND_TOOL_RECORDS = {
   DREAM_CARD: "serviceOneDreamCards",
 } as const satisfies Record<PerRoundToolCode, keyof ProgramRoundRecord>;
 
-/** Which vitals measurements of a record hold a value (a Follow-up has no height). */
+/** Which vitals measurements of a record hold a value. */
 function recordedMeasurements(values: Partial<Record<(typeof VITALS_MEASUREMENTS)[number], number | null>>) {
   return VITALS_MEASUREMENTS.filter((measurement) => values[measurement] != null);
+}
+
+/** R2-C: the screening answering a step; a legacy combined screening answers both PAM and PROMs. */
+function screeningFor(program: ProgramRoundRecord, step: "PAM" | "PROMS") {
+  return program.screeningAssessments.find((screening) => screeningAnswersInstrument(screening.instrument, step)) ?? null;
+}
+
+/**
+ * R2-G: ตารางชีวิตของฉัน is done with at least one row or a photo of the paper page. A routine recorded
+ * before R2 (no date) stays done as recorded.
+ */
+function routineIsComplete(routine: ProgramRoundRecord["serviceOneRoutines"][number]): boolean {
+  return routine.routineDate === null || routine.entries.length > 0 || routine.serviceOneArtifactAssociation !== null;
 }
 
 /** Plain facts for the shared status computation (SR-D1); every view and the completion guard use it. */
@@ -362,7 +389,9 @@ export function buildProgramRoundFacts(
     Object.entries(PER_ROUND_TOOL_RECORDS).map(([tool, key]) => [
       tool,
       Object.fromEntries(
-        program[key].map((record) => [record.roundNumber, evidence(record.recordedAt, record.recordedByUser)]),
+        program[key]
+          .filter((record) => key !== "serviceOneRoutines" || routineIsComplete(record as ProgramRoundRecord["serviceOneRoutines"][number]))
+          .map((record) => [record.roundNumber, evidence(record.recordedAt, record.recordedByUser)]),
       ),
     ]),
   ) as ProgramRoundFacts["tools"];
@@ -381,6 +410,8 @@ export function buildProgramRoundFacts(
       measurements: recordedMeasurements(followup),
       goalPlanLinked: followup.sourceGoalPlanId !== null,
       planAdjusted: followup.planAdjusted,
+      followedPlan: followup.followedPlan,
+      reflectionAnswered: Boolean(followup.reflectionNote?.trim()),
       adjustedPlan: adjusted ? evidence(adjusted.createdAt, adjusted.createdByUser) : null,
     };
   }
@@ -393,9 +424,13 @@ export function buildProgramRoundFacts(
   return {
     programActive: program.status === PatientProgramStatus.ACTIVE,
     preferredName: program.patientHospitalRelationship.hospitalProfile?.preferredName ?? null,
-    screening: program.screeningAssessment
-      ? evidence(program.screeningAssessment.submittedAt, program.screeningAssessment.conductedByUser)
-      : null,
+    screenings: Object.fromEntries(
+      (["PAM", "PROMS"] as const).map((step) => {
+        const screening = screeningFor(program, step);
+
+        return [step, screening ? evidence(screening.submittedAt, screening.conductedByUser) : null];
+      }),
+    ) as ProgramRoundFacts["screenings"],
     roundVitals: Object.fromEntries(
       program.roundVitals.map((vitals): [number, RoundVitalsFact] => [
         vitals.roundNumber,
@@ -435,12 +470,15 @@ export function buildProgramRoundFacts(
   };
 }
 
+/** The height recorded in the latest round up to `upToRound` (rounds 1-2 vitals, rounds 3-6 Follow-ups). */
 function latestHeightCm(program: ProgramRoundRecord, upToRound: number): number | null {
-  for (let index = program.roundVitals.length - 1; index >= 0; index -= 1) {
-    const vitals = program.roundVitals[index];
+  for (let round = upToRound; round >= 1; round -= 1) {
+    const height = isFollowupRound(round)
+      ? findFollowupForRound(program, round)?.heightCm
+      : program.roundVitals.find((vitals) => vitals.roundNumber === round)?.heightCm;
 
-    if (vitals && vitals.roundNumber <= upToRound && vitals.heightCm != null) {
-      return vitals.heightCm;
+    if (height != null) {
+      return height;
     }
   }
 
@@ -618,7 +656,7 @@ function buildExtras(
         performedAt: entry.performedAt,
         recordedByDisplayName: options.recorderNames ? toDisplayName(entry.recordedByUser) : null,
       });
-    } else if (program.screeningAssessment) {
+    } else if (screeningFor(program, toolCode)) {
       extraOptions.push(toolCode);
     }
   }
@@ -675,6 +713,10 @@ function withoutServiceOneRecorders(
   };
 }
 
+function toScreeningLink(screening: ReturnType<typeof screeningFor>) {
+  return screening ? { id: screening.id, combined: screening.instrument === "COMBINED" } : null;
+}
+
 export type RoundPatientContext = {
   displayName: string;
   dateOfBirth?: Date | null;
@@ -719,7 +761,17 @@ export function buildProgramRoundDetail(
       followup === null &&
       program.followups.length === toFollowupRoundNumber(roundNumber) - 1,
     serviceOne: withoutServiceOneRecorders(toPatientProgramServiceOneProjection(program, roundNumber), options),
-    screeningId: program.screeningAssessment?.id ?? null,
+    screenings: {
+      PAM: toScreeningLink(screeningFor(program, "PAM")),
+      PROMS: toScreeningLink(screeningFor(program, "PROMS")),
+    },
+    planReview: followup
+      ? {
+          followedPlan: followup.followedPlan,
+          reflectionNote: followup.reflectionNote,
+          expertAdvice: followup.expertAdvice,
+        }
+      : null,
     goalPlan: {
       firstGoalPlanId: program.goalPlans[0]?.id ?? null,
       currentGoalPlanId: program.goalPlans[program.goalPlans.length - 1]?.id ?? null,

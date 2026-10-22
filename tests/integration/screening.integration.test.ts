@@ -126,22 +126,15 @@ function screeningInput(relationshipId: string, submissionNonce = randomUUID()) 
   return {
     patientHospitalRelationshipId: relationshipId,
     submissionNonce,
+    instrument: "PAM",
     responses: {
-      pam: {
+      answers: {
         "pam-1": 2,
         "pam-2": 2,
         "pam-3": 2,
         "pam-4": 2,
         "pam-5": 2,
       },
-      proms: {
-        "proms-1": 3,
-        "proms-2": 3,
-        "proms-3": 3,
-        "proms-4": 3,
-      },
-      confidenceScore: 7,
-      confidenceImprovementPlan: null,
     },
   };
 }
@@ -192,7 +185,8 @@ describe("Phase 7B.0 Screening PostgreSQL workflow", () => {
     const osmSubmission = await submitScreening(osm.actor, screeningInput(patient.relationshipId));
     const deliberateSecond = await submitScreening(owner.actor, screeningInput(patient.relationshipId));
 
-    expect(osmSubmission.result).toMatchObject({ level: "L3", zone: "YELLOW", percentage: 50 });
+    // R2-A: total 10 is กลุ่มทั่วไป (General).
+    expect(osmSubmission.outcome).toEqual({ kind: "PAM", total: 10, group: "GENERAL" });
     expect(deliberateSecond.screeningAssessmentId).not.toBe(first.screeningAssessmentId);
 
     const history = await getScreeningHistory(owner.actor, patient.relationshipId);
@@ -200,10 +194,12 @@ describe("Phase 7B.0 Screening PostgreSQL workflow", () => {
     expect(history.items.every((item) => item.status === "SUBMITTED")).toBe(true);
 
     const detail = await getScreeningDetail(owner.actor, patient.relationshipId, first.screeningAssessmentId);
-    expect(detail.responses.confidenceImprovementPlan).toBeNull();
-    expect(detail.result).toMatchObject({ pamTotal: 10, promsTotal: 12, level: "L3", zone: "YELLOW" });
-    expect(detail.questionSetVersion).toBe("legacy-prototype-v1");
-    expect(detail.scoringVersion).toBe("legacy-prototype-v1");
+    expect(detail.responses).toEqual({
+      kind: "INSTRUMENT",
+      answers: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
+    });
+    expect(detail.outcome).toEqual({ kind: "PAM", total: 10, group: "GENERAL" });
+    expect(detail).toMatchObject({ instrument: "PAM", questionSetVersion: "booklet-v1", scoringVersion: "pam-booklet-v1" });
     expect(JSON.stringify(detail)).not.toContain("nationalId");
   });
 });

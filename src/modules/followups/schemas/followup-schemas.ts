@@ -12,6 +12,7 @@ import {
 export const FOLLOWUP_NOTE_MAX_LENGTH = 2_000;
 export const FOLLOWUP_ACTIVITY_NOTE_MAX_LENGTH = 1_000;
 export const FOLLOWUP_OBSTACLE_NOTE_MAX_LENGTH = 1_000;
+export const FOLLOWUP_EXPERT_ADVICE_MAX_LENGTH = 1_000;
 export const FOLLOWUP_MAX_PROGRESS_ROWS = 50;
 export const FOLLOWUP_STRUCTURAL_NUMBER_MAX = 1_000_000;
 
@@ -66,8 +67,15 @@ const followupPayloadSchema = z
     systolicBloodPressure: optionalMeasurementSchema,
     diastolicBloodPressure: optionalMeasurementSchema,
     bloodSugar: optionalMeasurementSchema,
+    // R2-D: height recorded in the round; the round otherwise uses the latest recorded height.
+    heightCm: optionalMeasurementSchema,
     confidenceScore: z.number().int().min(0).max(10).nullable().optional(),
+    // R2-F: shown as "เกิดอะไรขึ้นบ้าง?" in Program Follow-ups.
     reflectionNote: optionalNoteSchema,
+    // R2-F: ทำตามแผนได้ / ทำตามแผนไม่ได้ (required for Program Follow-ups below).
+    followedPlan: z.boolean().nullable().optional(),
+    // R2-F / Q5: "คำแนะนำจากผู้เชี่ยวชาญ", optional.
+    expertAdvice: z.string().trim().max(FOLLOWUP_EXPERT_ADVICE_MAX_LENGTH).nullable().optional(),
     confidencePlan: optionalNoteSchema,
     generalNote: optionalNoteSchema,
     activityProgress: z
@@ -112,7 +120,7 @@ export const followupCreateRequestSchema = followupPayloadSchema
 // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, so Program Follow-ups do not take one.
 export const followupProgramCreateRequestSchema = followupPayloadSchema
   .omit({ confidenceScore: true, confidencePlan: true })
-  .extend({ patientProgramId: patientProgramIdSchema })
+  .extend({ patientProgramId: patientProgramIdSchema, followedPlan: z.boolean() })
   .strict()
   .superRefine(refineObstacleNote);
 

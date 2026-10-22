@@ -30,18 +30,20 @@ const actor = {
   osmHospitalRelationships: [],
 } satisfies ActorContext;
 
-function screeningFormData(): FormData {
+function screeningFormData(instrument: "PAM" | "PROMS" = "PAM"): FormData {
   const data = new FormData();
   data.set("patientHospitalRelationshipId", relationshipId);
   data.set("submissionNonce", nonce);
-  for (let index = 1; index <= 5; index += 1) {
-    data.set(`pam-${index}`, "2");
+  data.set("instrument", instrument);
+  if (instrument === "PAM") {
+    for (let index = 1; index <= 5; index += 1) {
+      data.set(`pam-${index}`, "2");
+    }
+  } else {
+    for (let index = 1; index <= 4; index += 1) {
+      data.set(`proms-${index}`, "3");
+    }
   }
-  for (let index = 1; index <= 4; index += 1) {
-    data.set(`proms-${index}`, "3");
-  }
-  data.set("confidenceScore", "7");
-  data.set("confidenceImprovementPlan", "แผนต้นแบบ");
   return data;
 }
 
@@ -54,15 +56,8 @@ describe("Screening Server Action", () => {
       patientHospitalRelationshipId: relationshipId,
       hospitalId: "66666666-6666-4666-8666-666666666666",
       submittedAt: new Date("2026-08-16T05:00:00.000Z"),
-      result: {
-        pamTotal: 10,
-        promsTotal: 12,
-        promsMin: 3,
-        combinedTotal: 22,
-        percentage: 50,
-        level: "L3",
-        zone: "YELLOW",
-      },
+      instrument: "PAM",
+      outcome: { kind: "PAM", total: 10, group: "GENERAL" },
     });
   });
 
@@ -78,18 +73,23 @@ describe("Screening Server Action", () => {
     expect(mockedSubmit).toHaveBeenCalledWith(actor, {
       patientHospitalRelationshipId: relationshipId,
       submissionNonce: nonce,
-      responses: {
-        pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
-        proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
-        confidenceScore: 7,
-        confidenceImprovementPlan: "แผนต้นแบบ",
-      },
+      instrument: "PAM",
+      responses: { answers: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 } },
     });
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}`);
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/screenings`);
   });
 
-  it.each(["missing answer", "duplicate answer", "browser result"]) (
+  it("submits PROMs on its own (R2-C)", async () => {
+    await submitScreeningAction(initialScreeningActionState, screeningFormData("PROMS"));
+
+    expect(mockedSubmit).toHaveBeenCalledWith(actor, expect.objectContaining({
+      instrument: "PROMS",
+      responses: { answers: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 } },
+    }));
+  });
+
+  it.each(["missing answer", "duplicate answer", "browser result", "other instrument answer", "unknown instrument"]) (
     "rejects %s before invoking the service",
     async (caseName) => {
       const data = screeningFormData();
@@ -104,6 +104,14 @@ describe("Screening Server Action", () => {
 
       if (caseName === "browser result") {
         data.set("level", "L4");
+      }
+
+      if (caseName === "other instrument answer") {
+        data.set("proms-1", "3");
+      }
+
+      if (caseName === "unknown instrument") {
+        data.set("instrument", "COMBINED");
       }
 
       const result = await submitScreeningAction(initialScreeningActionState, data);

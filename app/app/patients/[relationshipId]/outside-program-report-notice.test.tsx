@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { getPrototypeQuestionSet } from "@/modules/screening/domain/question-sets";
+import { CURRENT_INSTRUMENT_QUESTION_SETS } from "@/modules/screening/domain/question-sets";
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
@@ -31,7 +31,7 @@ function screening(withProgram: boolean): string {
   return renderToStaticMarkup(createElement(ScreeningForm, {
     patient,
     programId: withProgram ? programId : undefined,
-    questionSet: getPrototypeQuestionSet(),
+    questionSet: CURRENT_INSTRUMENT_QUESTION_SETS.PAM,
     relationshipId,
     submissionNonce: "44444444-4444-4444-8444-444444444444",
   }));

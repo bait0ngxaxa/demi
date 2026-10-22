@@ -30,7 +30,11 @@ import {
 } from "@/shared/errors/application-error";
 
 import { getGoalTemplate, GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION } from "../domain/goal-templates";
-import { validateGoalPlanInput, type ValidatedGoalPlan } from "../domain/goal-validation";
+import {
+  validateGoalPlanInput,
+  type ValidatedGoalPlan,
+  type ValidatedGoalPlanBooklet,
+} from "../domain/goal-validation";
 import { GOAL_PLAN_CAPABILITY } from "../policies/goal-policy";
 import {
   goalPlanProgramSubmitRequestSchema,
@@ -86,6 +90,37 @@ type GoalPlanRetrySnapshot = {
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
 
+/** R2-E: the booklet columns, in the order of ValidatedGoalPlanBooklet. */
+const BOOKLET_COLUMNS = [
+  "goalWeightLossKg",
+  "goalWaistCm",
+  "goalBloodSugarMgDl",
+  "goalHba1cPercent",
+  "goalCustomText",
+  "foodPlanText",
+  "foodStartDate",
+  "foodNotSet",
+  "exercisePlanText",
+  "exerciseStartDate",
+  "exerciseNotSet",
+  "problemsAfterOneMonth",
+  "patientSignatureName",
+  "witnessSignatureName",
+] as const satisfies readonly (keyof ValidatedGoalPlanBooklet)[];
+
+const goalPlanBookletSelect = Object.fromEntries(BOOKLET_COLUMNS.map((column) => [column, true])) as {
+  [Column in (typeof BOOKLET_COLUMNS)[number]]: true;
+};
+
+function bookletSnapshot(values: Partial<Record<keyof ValidatedGoalPlanBooklet, unknown>> | null): string {
+  return JSON.stringify(
+    BOOKLET_COLUMNS.map((column) => {
+      const value = values?.[column] ?? null;
+      return value instanceof Date ? value.toISOString() : value;
+    }),
+  );
+}
+
 const goalPlanRetrySelect = {
   id: true,
   patientHospitalRelationshipId: true,
@@ -100,6 +135,7 @@ const goalPlanRetrySelect = {
   primaryGoalCode: true,
   primaryGoalNote: true,
   weeklyNote: true,
+  ...goalPlanBookletSelect,
   createdAt: true,
   items: {
     orderBy: { sortOrder: "asc" },
@@ -198,6 +234,7 @@ function hasSamePlanPayload(
     existing.primaryGoalCode === input.primaryGoalCode &&
     existing.primaryGoalNote === input.primaryGoalNote &&
     existing.weeklyNote === input.weeklyNote &&
+    bookletSnapshot(existing) === bookletSnapshot(input.booklet) &&
     JSON.stringify(canonicalizeItems(existing.items)) ===
       JSON.stringify(canonicalizeItems(input.items))
   );
@@ -212,12 +249,17 @@ async function assertSourceScreeningIsAccessible(
     return;
   }
 
-  await getAccessibleScreeningSummary(
+  const screening = await getAccessibleScreeningSummary(
     actor,
     input.patientHospitalRelationshipId,
     input.sourceScreeningAssessmentId,
     { database: transaction },
   );
+
+  // R2-C: only a PAM (or a legacy combined screening) sources a Goal Plan.
+  if (screening.instrument === "PROMS") {
+    throw new ValidationError("A PROMs screening cannot source a Goal Plan");
+  }
 }
 
 // The linked Follow-up must belong to the same locked Program, have answered "ปรับแผน",
@@ -412,6 +454,7 @@ async function createInTransaction(
       primaryGoalCode: validated.primaryGoalCode,
       primaryGoalNote: validated.primaryGoalNote,
       weeklyNote: validated.weeklyNote,
+      ...(validated.booklet ?? {}),
       createdAt: now,
       items: {
         create: validated.items.map((item) => ({

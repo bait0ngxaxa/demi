@@ -78,8 +78,11 @@ type NormalizedFollowupRequest = {
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
+  heightCm: number | null;
   confidenceScore: number | null;
   reflectionNote: string | null;
+  followedPlan: boolean | null;
+  expertAdvice: string | null;
   confidencePlan: string | null;
   generalNote: string | null;
   activityProgress: NormalizedFollowupProgress[];
@@ -201,8 +204,11 @@ function normalizeFollowupInput(
     systolicBloodPressure: input.systolicBloodPressure ?? null,
     diastolicBloodPressure: input.diastolicBloodPressure ?? null,
     bloodSugar: input.bloodSugar ?? null,
+    heightCm: input.heightCm ?? null,
     confidenceScore: input.confidenceScore ?? null,
     reflectionNote: nullableText(input.reflectionNote),
+    followedPlan: input.followedPlan ?? null,
+    expertAdvice: nullableText(input.expertAdvice),
     confidencePlan: nullableText(input.confidencePlan),
     generalNote: nullableText(input.generalNote),
     activityProgress: input.activityProgress
@@ -241,6 +247,10 @@ function createFollowupRequestHash(
     confidencePlan: input.confidencePlan,
     generalNote: input.generalNote,
     activityProgress: input.activityProgress,
+    // R2-D/F fields join the hash only when present, so earlier request hashes stay comparable.
+    ...(input.heightCm !== null ? { heightCm: input.heightCm } : {}),
+    ...(input.followedPlan !== null ? { followedPlan: input.followedPlan } : {}),
+    ...(input.expertAdvice !== null ? { expertAdvice: input.expertAdvice } : {}),
   };
 
   return createHash("sha256").update(JSON.stringify(canonicalPayload), "utf8").digest("hex");
@@ -456,8 +466,11 @@ async function createInTransaction(
       systolicBloodPressure: normalized.systolicBloodPressure,
       diastolicBloodPressure: normalized.diastolicBloodPressure,
       bloodSugar: normalized.bloodSugar,
+      heightCm: normalized.heightCm,
       confidenceScore: normalized.confidenceScore,
       reflectionNote: normalized.reflectionNote,
+      followedPlan: normalized.followedPlan,
+      expertAdvice: normalized.expertAdvice,
       confidencePlan: normalized.confidencePlan,
       generalNote: normalized.generalNote,
       createdAt: now,

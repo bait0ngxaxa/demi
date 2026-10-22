@@ -197,9 +197,10 @@ function goldenProgram(): HospitalReportProgramRow {
       baseline: { state: "RECORDED", value: 28.4 },
       after: { state: "RECORDED", value: 26.3 },
     },
+    // A legacy combined screening (legacy-prototype-v1) keeps its PAM and PROMs totals.
     screening: {
-      state: "PRESENT",
-      value: { submittedAt: "2026-07-02T03:00:00.000Z", pamScore: 15, promsScore: 18 },
+      pam: { state: "PRESENT", value: { submittedAt: "2026-07-02T03:00:00.000Z", score: 15 } },
+      proms: { state: "PRESENT", value: { submittedAt: "2026-07-02T03:00:00.000Z", legacyTotal: 18 } },
     },
     illnessDuration: { state: "RECORDED", value: 9 },
     weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "RECORDED", value: 150 } },
@@ -455,5 +456,50 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
     }).toEqual({ SOURCE_READY: 102, DECISION_OPEN: 0, SOURCE_MISSING: 6 });
+  });
+});
+
+/**
+ * R2 golden case: a booklet plan (template booklet-v1, same food and exercise activity codes) and the
+ * booklet screenings. PAM score = the PAM total; PROMs = มีปัญหา/ไม่มีปัญหา (Q6). Every other column
+ * of the row is unchanged from the legacy case above.
+ */
+describe("customer workbook golden columns for the booklet forms (R2)", () => {
+  function bookletProgram(promsHasProblem: boolean): HospitalReportProgramRow {
+    const program = goldenProgram();
+
+    return {
+      ...program,
+      screening: {
+        pam: { state: "PRESENT", value: { submittedAt: "2026-07-02T03:00:00.000Z", score: 12 } },
+        proms: { state: "PRESENT", value: { submittedAt: "2026-07-02T03:10:00.000Z", hasProblem: promsHasProblem } },
+      },
+      goalPlans: {
+        ...program.goalPlans,
+        items: program.goalPlans.items.map((plan) => ({
+          ...plan,
+          primaryGoalCode: "healthy-plan",
+          primaryGoalLabel: "แผน “สุขภาพดี” ของฉัน",
+        })),
+      },
+    };
+  }
+
+  async function serviceSheet(promsHasProblem: boolean): Promise<ExcelJS.Worksheet> {
+    const dataset = { ...goldenDataset(), programs: [bookletProgram(promsHasProblem)] };
+    const generated = await loadWorkbook(await generateHospitalReportWorkbook(dataset, new Date("2026-10-12T03:00:00.000Z")));
+    return sheetOrThrow(generated, "รายงานการจัดบริการ");
+  }
+
+  it("pins PAM score and the PROMs result, and keeps every other service column", async () => {
+    const service = await serviceSheet(true);
+    const expected: readonly ColumnContract[] = SERVICE_ROW_9.map(([column, value, status]): ColumnContract =>
+      column === "K" ? [column, 12, status] : column === "L" ? [column, "มีปัญหา", status] : [column, value, status],
+    );
+
+    for (const [column, value] of expected) {
+      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toEqual(value);
+    }
+    expect(normalizedCell(await serviceSheet(false), "L9")).toBe("ไม่มีปัญหา");
   });
 });

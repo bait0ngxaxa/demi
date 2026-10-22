@@ -21,6 +21,8 @@ import { createGoalPlan } from "@/modules/goals/services/goal-service";
 import { submitScreening } from "@/modules/screening/services/screening-service";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
+import { bookletGoalPayload, bookletPlan, pamScreeningResponses } from "./support/booklet-forms";
+
 const prisma = getPrisma();
 let sequence = 0;
 
@@ -156,23 +158,7 @@ function screeningInput(relationshipId: string) {
   return {
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: randomUUID(),
-    responses: {
-      pam: {
-        "pam-1": 2,
-        "pam-2": 2,
-        "pam-3": 2,
-        "pam-4": 2,
-        "pam-5": 2,
-      },
-      proms: {
-        "proms-1": 3,
-        "proms-2": 3,
-        "proms-3": 3,
-        "proms-4": 3,
-      },
-      confidenceScore: 7,
-      confidenceImprovementPlan: null,
-    },
+    ...pamScreeningResponses(),
   };
 }
 
@@ -181,13 +167,7 @@ function goalInput(relationshipId: string, overrides: Record<string, unknown> = 
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: randomUUID(),
     sourceScreeningAssessmentId: null,
-    primaryGoalCode: "weight",
-    primaryGoalNote: "เป้าหมายต้นแบบ",
-    weeklyNote: "บันทึกรอบต้นแบบ",
-    items: [
-      { activityCode: "stop_sweet", targetDays: 4 },
-      { activityCode: "exercise_walk", targetDays: 3, targetValue: 15, targetUnit: "minutes" },
-    ],
+    ...bookletGoalPayload(),
     ...overrides,
   };
 }
@@ -251,7 +231,7 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
       sourceScreeningAssessmentId: screening.screeningAssessmentId,
       items: [
         { activityCode: "stop_sweet", targetDays: 4 },
-        { activityCode: "exercise_walk", targetDays: 3 },
+        { activityCode: "cardio", targetDays: 3 },
       ],
     });
     expect(await prisma.auditEvent.count({ where: { action: "goal_plan.created" } })).toBe(1);
@@ -259,7 +239,7 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
     await expect(
       createGoalPlan(owner.actor, {
         ...firstInput,
-        primaryGoalNote: "payload เปลี่ยนแปลง",
+        booklet: bookletPlan({ witnessSignatureName: "payload เปลี่ยนแปลง" }),
       }),
     ).rejects.toBeInstanceOf(ConflictError);
 
@@ -273,7 +253,7 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
 
     const second = await createGoalPlan(
       member.actor,
-      goalInput(patient.relationshipId, { primaryGoalCode: "glucose" }),
+      goalInput(patient.relationshipId, { booklet: bookletPlan({ goals: { weightLossKg: null, waistCm: 85, bloodSugarMgDl: null, hba1cPercent: null, customText: null } }) }),
     );
     expect(second.roundNumber).toBe(2);
     expect(
@@ -284,13 +264,22 @@ describe("Phase 8B.0 Goals and Activity Plan PostgreSQL workflow", () => {
     ).toEqual({ sourceScreeningAssessmentId: null });
 
     const firstDetail = await getGoalPlanDetail(owner.actor, patient.relationshipId, first.goalPlanId);
-    expect(firstDetail).toMatchObject({ roundNumber: 1, primaryGoalCode: "weight", primaryGoalNote: "เป้าหมายต้นแบบ" });
+    expect(firstDetail).toMatchObject({
+      roundNumber: 1,
+      templateVersion: "booklet-v1",
+      primaryGoalCode: "healthy-plan",
+      booklet: {
+        goals: { weightLossKg: 3, hba1cPercent: 7 },
+        food: { notSet: false, planText: "งดน้ำหวาน" },
+        witnessSignatureName: "พยานทดสอบ",
+      },
+    });
 
     const overview = await getGoalPlanOverview(owner.actor, patient.relationshipId);
     expect(overview.items.map((item) => item.roundNumber)).toEqual([2, 1]);
     expect(overview.latest?.roundNumber).toBe(2);
-    expect(overview.latestScreening).toMatchObject({ result: { level: "L3", zone: "YELLOW" } });
-    expect(JSON.stringify(overview)).not.toContain("เป้าหมายต้นแบบ");
+    expect(overview.latestScreening).toMatchObject({ instrument: "PAM", outcome: { kind: "PAM", total: 10, group: "GENERAL" } });
+    expect(JSON.stringify(overview)).not.toContain("พยานทดสอบ");
     expect(JSON.stringify(firstDetail)).not.toContain("identityKeyHash");
   });
 

@@ -12,6 +12,7 @@ export type ScreeningActionState =
       result: {
         screeningAssessmentId: ScreeningSubmissionResult["screeningAssessmentId"];
         patientHospitalRelationshipId: ScreeningSubmissionResult["patientHospitalRelationshipId"];
+        instrument: ScreeningSubmissionResult["instrument"];
         submittedAt: string;
       };
     };

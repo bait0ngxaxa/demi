@@ -39,21 +39,43 @@ const confidence = (roundNumber: number, score: number) => ({
 describe("Patient Program Service 1 read projection (SR-D8)", () => {
   it("returns empty structural progress before any activity is recorded", () => {
     expect(toPatientProgramServiceOneProjection(record(), 1)).toEqual({
-      routine: { recorded: false, recordedAt: null, recordedBy: null, evidence: null },
+      routine: { recorded: false, recordedAt: null, recordedBy: null, routineDate: null, entries: [], evidence: null },
       floatingChart: { recorded: false, recordedAt: null, recordedBy: null, summary: null, evidence: null },
-      dreamCard: { recorded: false, recordedAt: null, recordedBy: null, description: null, evidence: null },
+      dreamCard: {
+        recorded: false,
+        recordedAt: null,
+        recordedBy: null,
+        description: null,
+        dream: null,
+        obstacle: null,
+        weeklyGoal: null,
+        evidence: null,
+      },
       confidence: { recorded: false, recordedAt: null, recordedBy: null, score: null, improvementPlan: null },
     });
   });
 
   it("projects only the requested round, so a later round never overwrites round 1", () => {
     const source = record({
-      serviceOneRoutines: [{ roundNumber: 1, recordedAt, recordedByUser, serviceOneArtifactAssociation: null }],
+      serviceOneRoutines: [
+        {
+          roundNumber: 1,
+          recordedAt,
+          recordedByUser,
+          routineDate: new Date("2026-08-16T00:00:00.000Z"),
+          entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: null }],
+          serviceOneArtifactAssociation: null,
+        },
+      ],
       serviceOneConfidences: [confidence(1, 3), confidence(2, 8)],
     });
 
     expect(toPatientProgramServiceOneProjection(source, 1)).toMatchObject({
-      routine: { recorded: true, recordedBy: { displayName: "สมชาย ผู้บันทึก" } },
+      routine: {
+        recorded: true,
+        recordedBy: { displayName: "สมชาย ผู้บันทึก" },
+        entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: null }],
+      },
       confidence: { recorded: true, score: 3 },
     });
     expect(toPatientProgramServiceOneProjection(source, 2)).toMatchObject({
@@ -80,14 +102,23 @@ describe("Patient Program Service 1 read projection (SR-D8)", () => {
       record({
         serviceOneConfidences: [confidence(1, 0), confidence(3, 9)],
         serviceOneDreamCards: [
-          { roundNumber: 3, recordedAt, recordedByUser, description: "ความฝัน", serviceOneArtifactAssociation: null },
+          {
+            roundNumber: 3,
+            recordedAt,
+            recordedByUser,
+            description: null,
+            dream: "ความฝัน",
+            obstacle: null,
+            weeklyGoal: "เดินวันละ 10 นาที",
+            serviceOneArtifactAssociation: null,
+          },
         ],
       }),
     );
 
     expect(projection).toMatchObject({
       confidence: { recorded: true, score: 0, improvementPlan: "แผนสะท้อนผล" },
-      dreamCard: { recorded: true, description: "ความฝัน" },
+      dreamCard: { recorded: true, dream: "ความฝัน", weeklyGoal: "เดินวันละ 10 นาที" },
     });
     expect(JSON.stringify(projection)).not.toContain("clinical");
   });
@@ -101,6 +132,8 @@ describe("Patient Program Service 1 read projection (SR-D8)", () => {
             roundNumber: 2,
             recordedAt,
             recordedByUser,
+            routineDate: null,
+            entries: [],
             serviceOneArtifactAssociation: {
               createdAt: evidenceAssociatedAt,
               patientEvidenceArtifact: {

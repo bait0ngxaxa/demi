@@ -94,6 +94,8 @@ export type FollowupCreateContext = {
 
 export type FollowupProgramCreateContext = FollowupCreateContext & {
   patientProgramId: string;
+  /** R2-D: the latest recorded height of the Program, to prefill the round's height. */
+  latestHeightCm: number | null;
 };
 
 export type FollowupActivityProgressDetail = {
@@ -125,8 +127,12 @@ export type FollowupDetail = {
   systolicBloodPressure: number | null;
   diastolicBloodPressure: number | null;
   bloodSugar: number | null;
+  heightCm: number | null;
   confidenceScore: number | null;
   reflectionNote: string | null;
+  /** R2-F: ทำตามแผนได้/ไม่ได้; null before R2 and outside a Program. */
+  followedPlan: boolean | null;
+  expertAdvice: string | null;
   confidencePlan: string | null;
   generalNote: string | null;
   activityProgress: FollowupActivityProgressDetail[];
@@ -187,8 +193,11 @@ const followupDetailSelect = {
   systolicBloodPressure: true,
   diastolicBloodPressure: true,
   bloodSugar: true,
+  heightCm: true,
   confidenceScore: true,
   reflectionNote: true,
+  followedPlan: true,
+  expertAdvice: true,
   confidencePlan: true,
   generalNote: true,
   createdByUser: {
@@ -469,8 +478,11 @@ function toDetail(
     systolicBloodPressure: record.systolicBloodPressure,
     diastolicBloodPressure: record.diastolicBloodPressure,
     bloodSugar: record.bloodSugar,
+    heightCm: record.heightCm,
     confidenceScore: record.confidenceScore,
     reflectionNote: record.reflectionNote,
+    followedPlan: record.followedPlan,
+    expertAdvice: record.expertAdvice,
     confidencePlan: record.confidencePlan,
     generalNote: record.generalNote,
     activityProgress: toActivityProgress(record.activityProgress, sourceGoalPlan),
@@ -674,7 +686,23 @@ export async function getFollowupCreateContextForProgram(
         patientHospitalRelationshipId: relationshipId,
         status: PatientProgramStatus.ACTIVE,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        initialBaseline: { select: { heightCm: true } },
+        // Follow-ups are rounds 3-6, so the latest one with a height is the latest height (R2-D).
+        followups: {
+          where: { heightCm: { not: null } },
+          orderBy: { roundNumber: "desc" },
+          take: 1,
+          select: { heightCm: true },
+        },
+        roundVitals: {
+          where: { heightCm: { not: null } },
+          orderBy: { roundNumber: "desc" },
+          take: 1,
+          select: { heightCm: true },
+        },
+      },
     });
 
     if (!program) {
@@ -737,6 +765,8 @@ export async function getFollowupCreateContextForProgram(
       goalPlans,
       selectedAppointmentId: requestedId,
       selectedGoalPlanId,
+      latestHeightCm:
+        program.followups[0]?.heightCm ?? program.roundVitals[0]?.heightCm ?? program.initialBaseline?.heightCm ?? null,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {

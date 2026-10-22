@@ -362,6 +362,13 @@ enum PatientProgramRoundStepCode {
   HEALTH_PATH_REVIEW
 }
 
+// R2-C: which instrument a Screening answers. COMBINED = the legacy PAM+PROMs set (satisfies both steps).
+enum ScreeningInstrument {
+  COMBINED
+  PAM
+  PROMS
+}
+
 enum PatientProgramRoundSkipReason {
   PATIENT_DECLINED
   PATIENT_UNABLE
@@ -1182,9 +1189,10 @@ model ScreeningAssessment {
   id                            String   @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String   @db.Uuid
   conductedByUserId             String   @db.Uuid
-  // Set only when the screening is performed from round 1 of a Program (WB-DF-01); one per Program.
-  patientProgramId              String?  @unique @db.Uuid
+  // Set only when the screening is performed from round 1 of a Program (WB-DF-01); one per Program and instrument.
+  patientProgramId              String?  @db.Uuid
   submissionNonce               String   @unique @db.Uuid
+  instrument                    ScreeningInstrument
   questionSetKey                String   @db.VarChar(64)
   questionSetVersion            String   @db.VarChar(64)
   scoringVersion                String   @db.VarChar(64)
@@ -1198,8 +1206,8 @@ model ScreeningAssessment {
   patientProgram              PatientProgram?            @relation("PatientProgramScreening", fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   goalPlansSourced             PatientGoalPlan[]          @relation("GoalPlanSourceScreening")
 
-  // Prisma requires the exact composite relation fields to be unique for the one-to-one Program link.
-  @@unique([patientProgramId, patientHospitalRelationshipId])
+  // R2-C: one PAM and one PROMs per Program; a legacy COMBINED row answers both (enforced in the service).
+  @@unique([patientProgramId, instrument])
   @@index([patientHospitalRelationshipId, submittedAt])
   @@index([conductedByUserId, submittedAt])
 }
@@ -1219,6 +1227,22 @@ model PatientGoalPlan {
   primaryGoalCode               String   @db.VarChar(64)
   primaryGoalNote               String?  @db.VarChar(1000)
   weeklyNote                    String?  @db.VarChar(2000)
+  // R2-E (template booklet-v1): แผน "สุขภาพดี" ของฉัน. Null for legacy-prototype-v1 plans.
+  goalWeightLossKg              Float?
+  goalWaistCm                   Float?
+  goalBloodSugarMgDl            Float?
+  // D8: HbA1c target in %.
+  goalHba1cPercent              Float?
+  goalCustomText                String?  @db.VarChar(1000)
+  foodPlanText                  String?  @db.VarChar(1000)
+  foodStartDate                 DateTime? @db.Date
+  foodNotSet                    Boolean?
+  exercisePlanText              String?  @db.VarChar(1000)
+  exerciseStartDate             DateTime? @db.Date
+  exerciseNotSet                Boolean?
+  problemsAfterOneMonth         String?  @db.VarChar(2000)
+  patientSignatureName          String?  @db.VarChar(200)
+  witnessSignatureName          String?  @db.VarChar(200)
   createdAt                     DateTime @default(now())
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
@@ -1229,6 +1253,7 @@ model PatientGoalPlan {
   items                       PatientGoalItem[]
   followupsSourced             PatientFollowup[]          @relation("PatientFollowupSourceGoalPlan")
   followupsSourcedProgramScoped PatientFollowup[]          @relation("PatientFollowupSourceGoalPlanProgramScoped")
+  serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation? @relation("PatientGoalPlanSignedPageArtifact")
 
   // This composite identity is the target of the linked Follow-up -> Goal Plan FK.
   @@unique([id, patientProgramId, patientHospitalRelationshipId])
@@ -1385,8 +1410,14 @@ model PatientFollowup {
   systolicBloodPressure        Float?
   diastolicBloodPressure       Float?
   bloodSugar                   Float?
+  // R2-D: optional in rounds 3-6; the round falls back to the latest recorded height.
+  heightCm                     Float?
   confidenceScore              Int?
+  // R2-F: shown as "เกิดอะไรขึ้นบ้าง?" in Program Follow-ups.
   reflectionNote               String?  @db.VarChar(2000)
+  // R2-F: ทำตามแผนได้ / ทำตามแผนไม่ได้; null for Follow-ups recorded before R2 (D5 still applies to those).
+  followedPlan                 Boolean?
+  expertAdvice                 String?  @db.VarChar(1000)
   confidencePlan               String?  @db.VarChar(2000)
   generalNote                  String?  @db.VarChar(2000)
   createdAt                    DateTime @default(now()) @db.Timestamptz(3)
@@ -1462,7 +1493,7 @@ model PatientProgram {
   serviceOneDreamCards        PatientProgramServiceOneDreamCard[]
   serviceOneConfidences       PatientProgramServiceOneConfidence[]
   serviceOneArtifactAssociations PatientProgramServiceOneArtifactAssociation[]
-  screeningAssessment         ScreeningAssessment?        @relation("PatientProgramScreening")
+  screeningAssessments        ScreeningAssessment[]       @relation("PatientProgramScreening")
   roundActivities             PatientProgramRoundActivity[]
   roundVitals                 PatientProgramRoundVitals[]
   roundCompletions            PatientProgramRoundCompletion[]
@@ -1594,6 +1625,9 @@ model PatientProgramServiceOneRoutine {
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+  // R2-G: "วัน เดือน ปี" of the life table; null for routines recorded before R2.
+  routineDate      DateTime? @db.Date
+  entries          PatientProgramServiceOneRoutineEntry[]
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneRoutineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
@@ -1602,6 +1636,20 @@ model PatientProgramServiceOneRoutine {
   @@index([recordedByUserId, recordedAt])
   @@unique([id, patientProgramId])
   @@unique([patientProgramId, roundNumber])
+}
+
+// R2-G: one row of ตารางชีวิตของฉัน (1-24 rows per routine, validated in the service).
+model PatientProgramServiceOneRoutineEntry {
+  id         String  @id @default(uuid()) @db.Uuid
+  routineId  String  @db.Uuid
+  sortOrder  Int
+  timeText   String? @db.VarChar(20)
+  activity   String  @db.VarChar(500)
+  adjustment String? @db.VarChar(500)
+
+  routine PatientProgramServiceOneRoutine @relation(fields: [routineId], references: [id], onDelete: Restrict)
+
+  @@unique([routineId, sortOrder])
 }
 
 model PatientProgramServiceOneFloatingChart {
@@ -1629,7 +1677,11 @@ model PatientProgramServiceOneDreamCard {
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
+  // Legacy (before R2) free text; new cards use the three booklet fields below.
   description      String?  @db.VarChar(2000)
+  dream            String?  @db.VarChar(1000)
+  obstacle         String?  @db.VarChar(1000)
+  weeklyGoal       String?  @db.VarChar(1000)
 
   patientProgram PatientProgram @relation(fields: [patientProgramId], references: [id], onDelete: Restrict)
   recordedByUser  User           @relation("PatientProgramServiceOneDreamCardRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
@@ -1684,6 +1736,8 @@ model PatientProgramServiceOneArtifactAssociation {
   routineId                     String?  @db.Uuid
   floatingChartId               String?  @db.Uuid
   dreamCardId                   String?  @db.Uuid
+  // R2-E: photo of the signed แผน "สุขภาพดี" page of a Program Goal Plan.
+  goalPlanId                    String?  @db.Uuid
   createdAt                     DateTime @default(now()) @db.Timestamptz(3)
 
   patientProgram         PatientProgram                         @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
@@ -1691,10 +1745,12 @@ model PatientProgramServiceOneArtifactAssociation {
   routine                PatientProgramServiceOneRoutine?        @relation("PatientProgramServiceOneRoutineArtifact", fields: [routineId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
   floatingChart          PatientProgramServiceOneFloatingChart?  @relation("PatientProgramServiceOneFloatingChartArtifact", fields: [floatingChartId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
   dreamCard             PatientProgramServiceOneDreamCard?       @relation("PatientProgramServiceOneDreamCardArtifact", fields: [dreamCardId, patientProgramId], references: [id, patientProgramId], onDelete: Restrict)
+  goalPlan              PatientGoalPlan?                         @relation("PatientGoalPlanSignedPageArtifact", fields: [goalPlanId, patientProgramId, patientHospitalRelationshipId], references: [id, patientProgramId, patientHospitalRelationshipId], onDelete: Restrict)
 
   @@unique([routineId, patientProgramId])
   @@unique([floatingChartId, patientProgramId])
   @@unique([dreamCardId, patientProgramId])
+  @@unique([goalPlanId, patientProgramId, patientHospitalRelationshipId])
   @@unique([patientEvidenceArtifactId, patientHospitalRelationshipId])
   @@index([patientProgramId, createdAt])
   @@index([patientHospitalRelationshipId, createdAt])

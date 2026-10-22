@@ -5,11 +5,12 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   formatRoundDate,
-  formatRoundNumber,
+  HEALTH_PATH_TIMEPOINT_LABELS,
   roundSkipDescription,
   roundStepStatusLabel,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
 import { RoundProgressSummary } from "@/modules/patient-program-rounds/presentation/round-progress";
+import { RoundVitalsValues } from "@/modules/patient-program-rounds/presentation/round-vitals-display";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 import { PatientSelfHospitalContext } from "./patient-self-care-presentation";
@@ -54,25 +55,12 @@ export function PatientSelfProgramRoundsView({
               {summary ? <RoundProgressSummary round={summary} /> : <h2 className="text-lg font-semibold text-text">{round.title}</h2>}
 
               {round.vitals ? (
-                <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-3">
-                  {[
-                    ["วันที่", formatRoundDate(round.vitals.serviceDate)],
-                    ["น้ำหนัก (kg)", formatRoundNumber(round.vitals.weight)],
-                    ["ส่วนสูง (cm)", formatRoundNumber(round.vitals.heightCm)],
-                    ["BMI (kg/m²)", formatRoundNumber(round.vitals.bmi)],
-                    ["รอบเอว (cm)", formatRoundNumber(round.vitals.waistCircumference)],
-                    ["น้ำตาลในเลือด / DTX (mg/dL)", formatRoundNumber(round.vitals.bloodSugar)],
-                    [
-                      "ความดัน (mmHg)",
-                      `${formatRoundNumber(round.vitals.systolicBloodPressure)} / ${formatRoundNumber(round.vitals.diastolicBloodPressure)}`,
-                    ],
-                  ].map(([label, value]) => (
-                    <div key={label}>
-                      <dt className="text-text-muted">{label}</dt>
-                      <dd className="mt-0.5 font-semibold text-text">{value}</dd>
-                    </div>
-                  ))}
-                </dl>
+                <div className="mt-4 border-t border-border pt-4">
+                  <p className="mb-3 text-sm font-semibold text-text">
+                    {HEALTH_PATH_TIMEPOINT_LABELS[round.roundNumber]}
+                  </p>
+                  <RoundVitalsValues vitals={round.vitals} />
+                </div>
               ) : null}
 
               {round.status.state === "LOCKED" ? null : (

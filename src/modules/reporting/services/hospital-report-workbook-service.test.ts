@@ -104,7 +104,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     roundVitals: { round1: { state: "MISSING" }, round2: { state: "MISSING" } },
     latestHeightCm: { state: "NOT_RECORDED" },
     bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
-    screening: { state: "MISSING" },
+    screening: { pam: { state: "MISSING" }, proms: { state: "MISSING" } },
     illnessDuration: { state: "NOT_RECORDED" },
     weeklyExercise: { before: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     unavailable: {

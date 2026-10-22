@@ -118,7 +118,7 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
     roundVitals: { round1: { state: "MISSING" }, round2: { state: "MISSING" } },
     latestHeightCm: { state: "NOT_RECORDED" },
     bmi: { baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
-    screening: { state: "MISSING" },
+    screening: { pam: { state: "MISSING" }, proms: { state: "MISSING" } },
     illnessDuration: { state: "NOT_RECORDED" },
     weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "NOT_RECORDED" } },
     unavailable: {
@@ -205,7 +205,8 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ไม่มีบันทึกใน Program นี้");
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
-    expect(markup).toContain("แบบประเมิน PAM / PROMs: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
+    expect(markup).toContain("แบบประเมิน PAM: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
+    expect(markup).toContain("แบบประเมิน PROMs: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
     // D8/D9: confidence ruler 0-10 and self-reported exercise (no Final Assessment for After).
     expect(markup).toContain("ไม้บรรทัดวัดใจ (0–10): 6");
     expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: 37.5 นาที (ผู้ป่วยบันทึกเอง)");

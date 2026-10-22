@@ -20,13 +20,14 @@ import {
   ROUND_STEPS,
   VITALS_MEASUREMENTS,
   type ProgramRoundFacts,
+  type RoundFollowupFact,
 } from "./round-steps";
 
 function facts(overrides: Partial<ProgramRoundFacts> = {}): ProgramRoundFacts {
   return {
     programActive: true,
     preferredName: null,
-    screening: null,
+    screenings: { PAM: null, PROMS: null },
     roundVitals: {},
     followups: {},
     tools: { CONFIDENCE_RULER: {}, ROUTINE: {}, FLOATING_CHART: {}, DREAM_CARD: {} },
@@ -42,11 +43,14 @@ const evidence = { at: new Date("2026-10-01T00:00:00.000Z"), byDisplayName: null
 const completed = { completedAt: evidence.at, completedByDisplayName: null };
 const allVitals = { ...evidence, measurements: VITALS_MEASUREMENTS };
 const followupVitals = VITALS_MEASUREMENTS.filter((measurement) => measurement !== "heightCm");
-const followup = (measurements: typeof followupVitals) => ({
+const followup = (measurements: typeof followupVitals): RoundFollowupFact => ({
   ...evidence,
   measurements,
   goalPlanLinked: true,
   planAdjusted: false,
+  // A Follow-up recorded before R2: the plan review keeps the D5 rule.
+  followedPlan: null,
+  reflectionAnswered: false,
   adjustedPlan: null,
 });
 const vitalsStep = (status: ReturnType<typeof computeRoundStatus>) => status.steps.find((step) => step.code === "VITALS");
@@ -200,6 +204,67 @@ describe("vitals step: items 1-7 need every measurement", () => {
 
     const full = computeRoundStatus(facts({ followups: { 5: followup(followupVitals) }, completions: opened, skips: { 5: resolvedOthers } }), 5);
     expect(full.canComplete).toBe(true);
+  });
+});
+
+describe("PAM and PROMs are independent steps (R2-C)", () => {
+  const stepStatus = (status: ReturnType<typeof computeRoundStatus>, code: string) =>
+    status.steps.find((step) => step.code === code)?.status;
+
+  it("records PAM without PROMs and skips PROMs on its own", () => {
+    const pamOnly = computeRoundStatus(facts({ screenings: { PAM: evidence, PROMS: null } }), 1);
+    expect(stepStatus(pamOnly, "PAM")).toBe("DONE");
+    expect(stepStatus(pamOnly, "PROMS")).toBe("TODO");
+
+    const promsSkipped = computeRoundStatus(
+      facts({
+        screenings: { PAM: evidence, PROMS: null },
+        skips: { 1: [{ stepCode: "PROMS", reasonCode: "PATIENT_DECLINED", note: null, at: evidence.at, byDisplayName: null }] },
+      }),
+      1,
+    );
+    expect(stepStatus(promsSkipped, "PAM")).toBe("DONE");
+    expect(stepStatus(promsSkipped, "PROMS")).toBe("SKIPPED");
+
+    const promsOnly = computeRoundStatus(facts({ screenings: { PAM: null, PROMS: evidence } }), 1);
+    expect(stepStatus(promsOnly, "PAM")).toBe("TODO");
+    expect(stepStatus(promsOnly, "PROMS")).toBe("DONE");
+  });
+});
+
+describe("ทบทวนแผนสุขภาพ rounds 3-6 (R2-F)", () => {
+  const opened = { 1: completed, 2: completed };
+  const reviewStatus = (fact: RoundFollowupFact) =>
+    computeRoundStatus(facts({ completions: opened, followups: { 3: fact } }), 3).steps.find(
+      (step) => step.code === "HEALTH_PLAN_REVIEW",
+    )?.status;
+  const r2 = { ...followup(followupVitals), planAdjusted: null };
+
+  it("is DONE with a linked plan, ทำตามแผนได้/ไม่ได้ answered and เกิดอะไรขึ้นบ้าง not blank", () => {
+    expect(reviewStatus({ ...r2, followedPlan: true, reflectionAnswered: true })).toBe("DONE");
+    expect(reviewStatus({ ...r2, followedPlan: false, reflectionAnswered: true })).toBe("DONE");
+  });
+
+  it("stays TODO without เกิดอะไรขึ้นบ้าง or without a linked plan, whatever planAdjusted says", () => {
+    expect(reviewStatus({ ...r2, followedPlan: true, reflectionAnswered: false, planAdjusted: false })).toBe("TODO");
+    expect(reviewStatus({ ...r2, followedPlan: true, reflectionAnswered: true, goalPlanLinked: false })).toBe("TODO");
+  });
+
+  it("keeps the D5 rule for Follow-ups recorded before R2 (no followedPlan)", () => {
+    expect(reviewStatus(followup(followupVitals))).toBe("DONE");
+    expect(reviewStatus({ ...followup(followupVitals), planAdjusted: null })).toBe("TODO");
+  });
+
+  it("still answers round 4's แผนสุขภาพดีของฉัน from planAdjusted", () => {
+    const status = computeRoundStatus(
+      facts({
+        completions: { ...opened, 3: completed },
+        followups: { 4: { ...r2, planAdjusted: false, followedPlan: true, reflectionAnswered: true } },
+      }),
+      4,
+    );
+
+    expect(status.steps.find((step) => step.code === "HEALTHY_PLAN")?.status).toBe("DONE");
   });
 });
 

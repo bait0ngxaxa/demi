@@ -109,6 +109,7 @@ export default async function NewProgramFollowupPage({
         patientProgramId: context.patientProgramId,
         relationshipId,
         returnTo: parseRoundReturnPath(query.returnTo),
+        latestHeightCm: context.latestHeightCm,
       }}
       selectedAppointmentId={context.selectedAppointmentId}
       selectedGoalPlanId={context.selectedGoalPlanId}

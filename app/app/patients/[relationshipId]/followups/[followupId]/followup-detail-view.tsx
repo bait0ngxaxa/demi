@@ -236,6 +236,12 @@ export function FollowupDetailView({
                 {measurementValue(detail.bloodSugar, "DTX / mg%")}
               </dd>
             </div>
+            {detail.heightCm !== null ? (
+              <div>
+                <dt className="text-sm text-text-muted">ส่วนสูง</dt>
+                <dd className="mt-1 font-semibold text-text">{measurementValue(detail.heightCm, "cm")}</dd>
+              </div>
+            ) : null}
           </dl>
           <p className="mt-4 text-sm leading-6 text-text-muted">
             แสดงเฉพาะค่าที่บันทึกไว้ ไม่มีการคำนวณผลหรือคำแนะนำอัตโนมัติ
@@ -275,6 +281,32 @@ export function FollowupDetailView({
             {detail.activityProgress.length === 0 ? (
               <p className="mt-5 text-sm leading-6 text-text-muted">รอบนี้ไม่มีรายการความคืบหน้าที่บันทึกไว้</p>
             ) : null}
+          </Panel>
+        ) : null}
+
+        {detail.followedPlan !== null ? (
+          <Panel>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">ทบทวนแผนสุขภาพ</h2>
+            <dl className="mt-5 grid gap-4 border-y border-border py-5">
+              <div>
+                <dt className="text-sm text-text-muted">ทำตามแผนได้หรือไม่</dt>
+                <dd className="mt-1 font-semibold text-text">
+                  {yesNoValue(detail.followedPlan, "ทำตามแผนได้", "ทำตามแผนไม่ได้")}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-text-muted">เกิดอะไรขึ้นบ้าง?</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
+                  {detail.reflectionNote ?? "ไม่ได้ระบุ"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-sm text-text-muted">คำแนะนำจากผู้เชี่ยวชาญ</dt>
+                <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text">
+                  {detail.expertAdvice ?? "ไม่ได้ระบุ"}
+                </dd>
+              </div>
+            </dl>
           </Panel>
         ) : null}
 

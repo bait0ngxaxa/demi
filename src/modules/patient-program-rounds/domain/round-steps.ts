@@ -62,7 +62,10 @@ export const VITALS_MEASUREMENT_LABELS: Readonly<Record<VitalsMeasurement, strin
   diastolicBloodPressure: "ความดันตัวล่าง",
 };
 
-/** Height is measured in rounds 1-2 only; later rounds use the latest recorded height (WB-DF-05). */
+/**
+ * Height is required in rounds 1-2. Rounds 3-6 may record it in the Follow-up (R2-D) and otherwise use
+ * the latest recorded height (WB-DF-05), so it is never missing there.
+ */
 export function requiredVitalsMeasurements(roundNumber: ProgramRoundNumber): readonly VitalsMeasurement[] {
   return roundNumber <= 2
     ? VITALS_MEASUREMENTS
@@ -171,6 +174,10 @@ export type RoundVitalsFact = RoundStepEvidence & {
 export type RoundFollowupFact = RoundVitalsFact & {
   goalPlanLinked: boolean;
   planAdjusted: boolean | null;
+  /** R2-F: ทำตามแผนได้/ไม่ได้; null for Follow-ups recorded before R2. */
+  followedPlan: boolean | null;
+  /** R2-F: "เกิดอะไรขึ้นบ้าง?" (reflectionNote) is not blank. */
+  reflectionAnswered: boolean;
   /** The Goal Plan adjusted from this Follow-up, if any. */
   adjustedPlan: RoundStepEvidence | null;
 };
@@ -179,7 +186,8 @@ export type RoundFollowupFact = RoundVitalsFact & {
 export type ProgramRoundFacts = {
   programActive: boolean;
   preferredName: string | null;
-  screening: RoundStepEvidence | null;
+  /** R2-C: per instrument; a legacy combined screening fills both. */
+  screenings: Readonly<Record<"PAM" | "PROMS", RoundStepEvidence | null>>;
   /** Rounds 1-2. */
   roundVitals: Partial<Record<ProgramRoundNumber, RoundVitalsFact>>;
   /** Rounds 3-6 (Follow-up k = round k + 2). */
@@ -263,7 +271,7 @@ function stepEvidence(
       return facts.preferredName ? { at: null, byDisplayName: null } : null;
     case "PAM":
     case "PROMS":
-      return facts.screening;
+      return facts.screenings[definition.code];
     case "CONFIDENCE_RULER":
     case "ROUTINE":
     case "FLOATING_CHART":
@@ -278,8 +286,17 @@ function stepEvidence(
         return facts.firstGoalPlan;
       }
 
-      // D5: the round's Follow-up referenced a Goal Plan and answered "ปรับแผน".
-      return followup && followup.goalPlanLinked && followup.planAdjusted !== null ? followup : null;
+      if (!followup || !followup.goalPlanLinked) {
+        return null;
+      }
+
+      // R2-F: ทำตามแผนได้/ไม่ได้ answered and "เกิดอะไรขึ้นบ้าง?" not blank.
+      if (followup.followedPlan !== null) {
+        return followup.reflectionAnswered ? followup : null;
+      }
+
+      // Follow-ups recorded before R2 have no followedPlan and keep D5: "ปรับแผน" answered.
+      return followup.planAdjusted !== null ? followup : null;
     case "HEALTHY_PLAN":
       // Interim rule: false = current plan confirmed; true = a new plan adjusted from that Follow-up.
       if (!followup || followup.planAdjusted === null) {

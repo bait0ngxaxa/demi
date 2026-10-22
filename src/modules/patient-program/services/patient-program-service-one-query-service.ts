@@ -42,6 +42,11 @@ export const patientProgramServiceOneSelect = {
     select: {
       roundNumber: true,
       recordedAt: true,
+      routineDate: true,
+      entries: {
+        orderBy: { sortOrder: "asc" },
+        select: { timeText: true, activity: true, adjustment: true },
+      },
       recordedByUser: recordedByUserSelect,
       serviceOneArtifactAssociation: artifactAssociationSelect,
     },
@@ -61,6 +66,9 @@ export const patientProgramServiceOneSelect = {
     select: {
       roundNumber: true,
       description: true,
+      dream: true,
+      obstacle: true,
+      weeklyGoal: true,
       recordedAt: true,
       recordedByUser: recordedByUserSelect,
       serviceOneArtifactAssociation: artifactAssociationSelect,
@@ -98,9 +106,19 @@ export type PatientProgramServiceOneEvidenceProjection = {
   associatedAt: Date;
 };
 
+/** R2-G: one row of ตารางชีวิตของฉัน. */
+export type PatientProgramServiceOneRoutineEntryProjection = {
+  timeText: string | null;
+  activity: string;
+  adjustment: string | null;
+};
+
 /** The Service 1 results of one round. */
 export type PatientProgramServiceOneProjection = {
   routine: PatientProgramServiceOneActivityProjection & {
+    /** Null for routines recorded before R2. */
+    routineDate: Date | null;
+    entries: readonly PatientProgramServiceOneRoutineEntryProjection[];
     evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   floatingChart: PatientProgramServiceOneActivityProjection & {
@@ -108,7 +126,11 @@ export type PatientProgramServiceOneProjection = {
     evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   dreamCard: PatientProgramServiceOneActivityProjection & {
+    /** Legacy (before R2) free text. */
     description: string | null;
+    dream: string | null;
+    obstacle: string | null;
+    weeklyGoal: string | null;
     evidence: PatientProgramServiceOneEvidenceProjection | null;
   };
   confidence: PatientProgramServiceOneActivityProjection & {
@@ -204,6 +226,8 @@ export function toPatientProgramServiceOneProjection(
   return {
     routine: {
       ...toActivityProjection(routine),
+      routineDate: routine?.routineDate ?? null,
+      entries: routine?.entries ?? [],
       evidence: toEvidenceProjection(routine),
     },
     floatingChart: {
@@ -214,6 +238,9 @@ export function toPatientProgramServiceOneProjection(
     dreamCard: {
       ...toActivityProjection(dreamCard),
       description: dreamCard?.description ?? null,
+      dream: dreamCard?.dream ?? null,
+      obstacle: dreamCard?.obstacle ?? null,
+      weeklyGoal: dreamCard?.weeklyGoal ?? null,
       evidence: toEvidenceProjection(dreamCard),
     },
     confidence: {

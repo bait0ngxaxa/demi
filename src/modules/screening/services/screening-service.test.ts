@@ -31,6 +31,10 @@ const osmUserId = "44444444-4444-4444-8444-444444444444";
 const screeningId = "55555555-5555-4555-8555-555555555555";
 const now = new Date("2026-08-16T05:00:00.000Z");
 
+const pamAnswers = { "pam-1": 3, "pam-2": 3, "pam-3": 3, "pam-4": 3, "pam-5": 2 };
+const pamResult = { total: 14, group: "INTENSIVE" } as const;
+const promsAnswers = { "proms-1": 4, "proms-2": 2, "proms-3": 5, "proms-4": 3 };
+
 function hospitalActor(overrides: Partial<ActorContext> = {}): ActorContext {
   return {
     userId: hospitalUserId,
@@ -54,39 +58,32 @@ function validInput(overrides: Record<string, unknown> = {}) {
   return {
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: "77777777-7777-4777-8777-777777777777",
-    responses: {
-      pam: {
-        "pam-1": 2,
-        "pam-2": 2,
-        "pam-3": 2,
-        "pam-4": 2,
-        "pam-5": 2,
-      },
-      proms: {
-        "proms-1": 3,
-        "proms-2": 3,
-        "proms-3": 3,
-        "proms-4": 3,
-      },
-      confidenceScore: 7,
-      confidenceImprovementPlan: "ขอคำแนะนำเพิ่มเติม",
-    },
+    instrument: "PAM",
+    responses: { answers: pamAnswers },
+    ...overrides,
+  };
+}
+
+function existingPam(overrides: Record<string, unknown> = {}) {
+  return {
+    id: screeningId,
+    patientHospitalRelationshipId: relationshipId,
+    conductedByUserId: hospitalUserId,
+    patientProgramId: null,
+    instrument: "PAM",
+    questionSetKey: "demi-pam",
+    questionSetVersion: "booklet-v1",
+    scoringVersion: "pam-booklet-v1",
+    responses: { answers: pamAnswers },
+    result: pamResult,
+    submittedAt: now,
     ...overrides,
   };
 }
 
 function createDatabase(input: {
-  existing?: {
-    id: string;
-    patientHospitalRelationshipId: string;
-    conductedByUserId: string;
-    questionSetKey: string;
-    questionSetVersion: string;
-    scoringVersion: string;
-    responses: unknown;
-    result: unknown;
-    submittedAt: Date;
-  } | null;
+  existing?: Record<string, unknown> | null;
+  programScreening?: { id: string } | null;
   assignedOsmUserId?: string | null;
 } = {}): { database: ScreeningDatabase; transaction: Record<string, Record<string, ReturnType<typeof vi.fn>>> } {
   const transaction = {
@@ -139,19 +136,12 @@ function createDatabase(input: {
     },
     screeningAssessment: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
-      create: vi.fn().mockResolvedValue({
+      findFirst: vi.fn().mockResolvedValue(input.programScreening ?? null),
+      create: vi.fn(async ({ data }: { data: { result: unknown } }) => ({
         id: screeningId,
         submittedAt: now,
-        result: {
-          pamTotal: 10,
-          promsTotal: 12,
-          promsMin: 3,
-          combinedTotal: 22,
-          percentage: 50,
-          level: "L3",
-          zone: "YELLOW",
-        },
-      }),
+        result: data.result,
+      })),
     },
   };
   const database = {
@@ -169,7 +159,7 @@ describe("Screening submission service", () => {
     mockedAudit.mockResolvedValue(undefined);
   });
 
-  it("rechecks scope, calculates the canonical result, persists a snapshot, and audits", async () => {
+  it("rechecks scope, scores PAM with the booklet groups, persists a snapshot, and audits", async () => {
     const { database, transaction } = createDatabase();
 
     const result = await submitScreening(hospitalActor(), validInput(), {
@@ -181,25 +171,19 @@ describe("Screening submission service", () => {
       screeningAssessmentId: screeningId,
       patientHospitalRelationshipId: relationshipId,
       hospitalId,
-      result: {
-        pamTotal: 10,
-        promsTotal: 12,
-        promsMin: 3,
-        combinedTotal: 22,
-        percentage: 50,
-        level: "L3",
-        zone: "YELLOW",
-      },
+      instrument: "PAM",
+      outcome: { kind: "PAM", total: 14, group: "INTENSIVE" },
     });
     expect(transaction.screeningAssessment.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         patientHospitalRelationshipId: relationshipId,
         conductedByUserId: hospitalUserId,
-        questionSetKey: "demi-screening",
-        questionSetVersion: "legacy-prototype-v1",
-        scoringVersion: "legacy-prototype-v1",
-        responses: expect.objectContaining({ confidenceScore: 7 }),
-        result: expect.objectContaining({ level: "L3", zone: "YELLOW" }),
+        instrument: "PAM",
+        questionSetKey: "demi-pam",
+        questionSetVersion: "booklet-v1",
+        scoringVersion: "pam-booklet-v1",
+        responses: { answers: pamAnswers },
+        result: pamResult,
       }),
       select: { id: true, submittedAt: true, result: true },
     });
@@ -207,103 +191,88 @@ describe("Screening submission service", () => {
       expect.objectContaining({
         action: "screening.submitted",
         resourceType: "ScreeningAssessment",
-        metadata: expect.objectContaining({ hospitalId, questionSetVersion: "legacy-prototype-v1" }),
+        metadata: expect.objectContaining({ hospitalId, instrument: "PAM", questionSetVersion: "booklet-v1" }),
       }),
       expect.anything(),
     );
-    expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("ขอคำแนะนำ");
+    expect(JSON.stringify(mockedAudit.mock.calls[0]?.[0])).not.toContain("answers");
+  });
+
+  it("scores PROMs per item with no total (R2-B)", async () => {
+    const { database, transaction } = createDatabase();
+
+    const result = await submitScreening(
+      hospitalActor(),
+      validInput({ instrument: "PROMS", responses: { answers: promsAnswers } }),
+      { database, now: () => now },
+    );
+
+    expect(result.outcome).toEqual({
+      kind: "PROMS",
+      itemScores: promsAnswers,
+      hasProblem: true,
+      problemItemKeys: ["proms-2"],
+    });
+    expect(transaction.screeningAssessment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          instrument: "PROMS",
+          questionSetKey: "demi-proms",
+          scoringVersion: "proms-booklet-v1",
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ["an unanswered question", validInput({ responses: { answers: { "pam-1": 3, "pam-2": 3, "pam-3": 3, "pam-4": 3 } } })],
+    ["the legacy combined shape", validInput({ responses: { pam: pamAnswers, proms: promsAnswers, confidenceScore: 7 } })],
+    ["no instrument", { ...validInput(), instrument: undefined }],
+  ])("refuses %s", async (_label, input) => {
+    const { database, transaction } = createDatabase();
+
+    await expect(submitScreening(hospitalActor(), input, { database, now: () => now })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
   });
 
   it("returns the existing assessment for the same retry nonce without writing again", async () => {
-    const input = validInput();
-    const { database, transaction } = createDatabase({
-      existing: {
-        id: screeningId,
-        patientHospitalRelationshipId: relationshipId,
-        conductedByUserId: hospitalUserId,
-        questionSetKey: "demi-screening",
-        questionSetVersion: "legacy-prototype-v1",
-        scoringVersion: "legacy-prototype-v1",
-        responses: input.responses,
-        result: {
-          pamTotal: 10,
-          promsTotal: 12,
-          promsMin: 3,
-          combinedTotal: 22,
-          percentage: 50,
-          level: "L3",
-          zone: "YELLOW",
-        },
-        submittedAt: now,
-      },
-    });
+    const { database, transaction } = createDatabase({ existing: existingPam() });
 
-    await expect(submitScreening(hospitalActor(), input, { database, now: () => now })).resolves.toMatchObject({
+    await expect(submitScreening(hospitalActor(), validInput(), { database, now: () => now })).resolves.toMatchObject({
       screeningAssessmentId: screeningId,
+      outcome: { kind: "PAM", total: 14 },
     });
     expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
     expect(mockedAudit).not.toHaveBeenCalled();
   });
 
   it("compares retry snapshots independent of PostgreSQL JSONB key order", async () => {
-    const input = validInput();
     const { database } = createDatabase({
-      existing: {
-        id: screeningId,
-        patientHospitalRelationshipId: relationshipId,
-        conductedByUserId: hospitalUserId,
-        questionSetKey: "demi-screening",
-        questionSetVersion: "legacy-prototype-v1",
-        scoringVersion: "legacy-prototype-v1",
-        responses: {
-          confidenceImprovementPlan: "ขอคำแนะนำเพิ่มเติม",
-          confidenceScore: 7,
-          proms: input.responses.proms,
-          pam: input.responses.pam,
-        },
-        result: {
-          zone: "YELLOW",
-          level: "L3",
-          percentage: 50,
-          combinedTotal: 22,
-          promsMin: 3,
-          promsTotal: 12,
-          pamTotal: 10,
-        },
-        submittedAt: now,
-      },
+      existing: existingPam({
+        responses: { answers: { "pam-5": 2, "pam-4": 3, "pam-3": 3, "pam-2": 3, "pam-1": 3 } },
+        result: { group: "INTENSIVE", total: 14 },
+      }),
     });
 
-    await expect(submitScreening(hospitalActor(), input, { database })).resolves.toMatchObject({
+    await expect(submitScreening(hospitalActor(), validInput(), { database })).resolves.toMatchObject({
       screeningAssessmentId: screeningId,
     });
   });
 
-  it("does not let a reused nonce submit changed responses", async () => {
-    const input = validInput();
-    const { database } = createDatabase({
-      existing: {
-        id: screeningId,
-        patientHospitalRelationshipId: relationshipId,
-        conductedByUserId: hospitalUserId,
-        questionSetKey: "demi-screening",
-        questionSetVersion: "legacy-prototype-v1",
-        scoringVersion: "legacy-prototype-v1",
-        responses: { ...input.responses, confidenceScore: 6 },
-        result: {
-          pamTotal: 10,
-          promsTotal: 12,
-          promsMin: 3,
-          combinedTotal: 22,
-          percentage: 50,
-          level: "L3",
-          zone: "YELLOW",
-        },
-        submittedAt: now,
-      },
-    });
+  it("does not let a reused nonce submit changed responses or another instrument", async () => {
+    const changed = createDatabase({ existing: existingPam({ responses: { answers: { ...pamAnswers, "pam-1": 4 } } }) });
+    await expect(submitScreening(hospitalActor(), validInput(), { database: changed.database })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
 
-    await expect(submitScreening(hospitalActor(), input, { database })).rejects.toBeInstanceOf(ConflictError);
+    const otherInstrument = createDatabase({ existing: existingPam() });
+    await expect(
+      submitScreening(hospitalActor(), validInput({ instrument: "PROMS", responses: { answers: promsAnswers } }), {
+        database: otherInstrument.database,
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 
   it("allows a deliberate second assessment with a new nonce", async () => {
@@ -324,7 +293,7 @@ describe("Screening submission service", () => {
     await expect(
       submitScreening(
         hospitalActor(),
-        { ...validInput(), result: { level: "L4", zone: "GREEN" } },
+        { ...validInput(), result: { total: 20, group: "CHAMPION" } },
         { database },
       ),
     ).rejects.toBeInstanceOf(ValidationError);
@@ -343,8 +312,7 @@ describe("Screening submission service", () => {
         },
       ],
     });
-    const assigned = createDatabase({ assignedOsmUserId: osmUserId });
-    assigned.transaction.user.findUnique.mockResolvedValue({
+    const osmUser = {
       id: osmUserId,
       personId: "66666666-6666-4666-8666-666666666666",
       status: "ACTIVE",
@@ -357,31 +325,20 @@ describe("Screening submission service", () => {
           hospital: { status: HospitalStatus.ACTIVE },
         },
       ],
-    });
+    };
+    const assigned = createDatabase({ assignedOsmUserId: osmUserId });
+    assigned.transaction.user.findUnique.mockResolvedValue(osmUser);
 
     await expect(submitScreening(osm, validInput(), { database: assigned.database })).resolves.toBeDefined();
 
     const unassigned = createDatabase();
-    unassigned.transaction.user.findUnique.mockResolvedValue({
-      id: osmUserId,
-      personId: "66666666-6666-4666-8666-666666666666",
-      status: "ACTIVE",
-      roles: [{ role: Role.OSM }],
-      memberships: [],
-      osmHospitalRelationships: [
-        {
-          hospitalId,
-          status: MembershipStatus.ACTIVE,
-          hospital: { status: HospitalStatus.ACTIVE },
-        },
-      ],
-    });
+    unassigned.transaction.user.findUnique.mockResolvedValue(osmUser);
 
     await expect(submitScreening(osm, validInput({ submissionNonce: "99999999-9999-4999-8999-999999999999" }), { database: unassigned.database })).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
 
-describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
+describe("Screening submission from round 1 of a Program (WB-DF-01, R2-C)", () => {
   const programId = "88888888-8888-4888-8888-888888888888";
 
   function lockedProgram(overrides: { relationshipId?: string } = {}): Record<string, unknown> {
@@ -399,7 +356,6 @@ describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
 
   it("refuses a Program screening once round 1 is completed (SR-D5)", async () => {
     const { database, transaction } = createDatabase();
-    transaction.screeningAssessment.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
     transaction.patientProgramRoundCompletion.findMany.mockResolvedValue([{ roundNumber: 1 }]);
 
     await expect(
@@ -408,37 +364,45 @@ describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
     expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
   });
 
-  it("links the screening to the Program and ledgers PAM and PROMs in round 1", async () => {
+  it.each(["PAM", "PROMS"] as const)("links a %s screening to the Program and ledgers only that step", async (instrument) => {
     const { database, transaction } = createDatabase();
-    // First lookup is the nonce replay check, the second is the one-screening-per-Program check.
-    transaction.screeningAssessment.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+    const answers = instrument === "PAM" ? pamAnswers : promsAnswers;
 
-    await submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), { database, now: () => now });
+    await submitScreening(
+      hospitalActor(),
+      validInput({ patientProgramId: programId, instrument, responses: { answers } }),
+      { database, now: () => now },
+    );
 
     expect(mockedLockProgram).toHaveBeenCalledWith(expect.anything(), hospitalActor(), programId);
+    // One result per instrument; a legacy combined screening already answers both.
+    expect(transaction.screeningAssessment.findFirst).toHaveBeenCalledWith({
+      where: { patientProgramId: programId, instrument: { in: ["COMBINED", instrument] } },
+      select: { id: true },
+    });
     expect(transaction.screeningAssessment.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ patientProgramId: programId }) }),
+      expect.objectContaining({ data: expect.objectContaining({ patientProgramId: programId, instrument }) }),
     );
     const ledgerCalls = transaction.patientProgramRoundActivity.create.mock.calls.map(
       ([arg]) => (arg as { data: Record<string, unknown> }).data,
     );
-    expect(ledgerCalls.map((data) => data.toolCode)).toEqual(["PAM", "PROMS"]);
-    for (const data of ledgerCalls) {
-      expect(data).toMatchObject({
+    expect(ledgerCalls).toEqual([
+      expect.objectContaining({
         patientProgramId: programId,
         patientHospitalRelationshipId: relationshipId,
         roundNumber: 1,
+        toolCode: instrument,
         source: "PLANNED",
         mode: "RECORDED",
         linkedRecordType: "SCREENING_ASSESSMENT",
         linkedRecordId: screeningId,
         recordedByUserId: hospitalUserId,
-      });
-    }
+      }),
+    ]);
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "screening.submitted",
-        metadata: expect.objectContaining({ patientProgramId: programId }) as unknown,
+        metadata: expect.objectContaining({ patientProgramId: programId, instrument }) as unknown,
       }),
       expect.anything(),
     );
@@ -456,11 +420,8 @@ describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
     );
   });
 
-  it("rejects a second screening for the same Program and a Program of another relationship", async () => {
-    const duplicate = createDatabase();
-    duplicate.transaction.screeningAssessment.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: screeningId });
+  it("rejects a second result for the instrument (or a legacy combined one) and a Program of another relationship", async () => {
+    const duplicate = createDatabase({ programScreening: { id: screeningId } });
     await expect(
       submitScreening(hospitalActor(), validInput({ patientProgramId: programId }), {
         database: duplicate.database,
@@ -492,4 +453,3 @@ describe("Screening submission from round 1 of a Program (WB-DF-01)", () => {
     expect(transaction.screeningAssessment.create).not.toHaveBeenCalled();
   });
 });
-

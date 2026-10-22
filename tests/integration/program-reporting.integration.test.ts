@@ -27,6 +27,7 @@ import {
   openFollowupRound,
   openGoalPlanRound,
 } from "./support/program-rounds";
+import { bookletPlan, dreamCard, routineTable, withDefaults } from "./support/booklet-forms";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -34,8 +35,11 @@ const prisma = getPrisma();
 let sequence = 0;
 
 // Phase R1 (SR-D5/SR-D8): writes are placed in their round; sequencing is covered by the rounds tests.
-const recordPatientProgramServiceOneRoutine = inRound(serviceOne.recordPatientProgramServiceOneRoutine, () => 1);
-const recordPatientProgramServiceOneDreamCard = inRound(serviceOne.recordPatientProgramServiceOneDreamCard, () => 3);
+const recordPatientProgramServiceOneRoutine = inRound(withDefaults(serviceOne.recordPatientProgramServiceOneRoutine, routineTable()), () => 1);
+const recordPatientProgramServiceOneDreamCard = inRound(
+  withDefaults(serviceOne.recordPatientProgramServiceOneDreamCard, { weeklyGoal: dreamCard().weeklyGoal }),
+  () => 3,
+);
 const createGoalPlanForProgram = afterOpening(createGoalPlanForProgramService, openGoalPlanRound);
 const createFollowupForProgram = afterOpening(createFollowupForProgramService, openFollowupRound);
 const createPatientFinalAssessment = afterOpening(createPatientFinalAssessmentService, openFinalAssessmentRound);
@@ -48,6 +52,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientProgramServiceOneConfidence.deleteMany();
   await prisma.patientProgramServiceOneDreamCard.deleteMany();
   await prisma.patientProgramServiceOneFloatingChart.deleteMany();
+  await prisma.patientProgramServiceOneRoutineEntry.deleteMany();
   await prisma.patientProgramServiceOneRoutine.deleteMany();
   await prisma.patientFollowupActivityProgress.deleteMany();
   // Adjusted Goal Plans reference Follow-ups that may reference Goal Plans; clear the link first.
@@ -217,14 +222,15 @@ function baselineInput(relationshipId: string): Record<string, unknown> {
   };
 }
 
-function goalInput(patientProgramId: string, primaryGoalCode = "weight"): Record<string, unknown> {
+function goalInput(patientProgramId: string, customGoal = "เป้าหมายของ Program"): Record<string, unknown> {
   return {
     patientProgramId,
     submissionNonce: randomUUID(),
     sourceScreeningAssessmentId: null,
-    primaryGoalCode,
-    primaryGoalNote: "เป้าหมายของ Program",
-    weeklyNote: "บันทึกแผน",
+    booklet: bookletPlan({
+      goals: { weightLossKg: null, waistCm: null, bloodSugarMgDl: null, hba1cPercent: null, customText: customGoal },
+      food: { notSet: true, planText: null, startDate: null },
+    }),
     items: [{ activityCode: "exercise_walk", targetDays: 3, targetValue: 15, targetUnit: "minutes" }],
   };
 }
@@ -234,9 +240,10 @@ function relationshipGoalInput(relationshipId: string): Record<string, unknown> 
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: randomUUID(),
     sourceScreeningAssessmentId: null,
-    primaryGoalCode: "weight",
-    primaryGoalNote: "แผนก่อน Program",
-    weeklyNote: null,
+    booklet: bookletPlan({
+      goals: { weightLossKg: null, waistCm: null, bloodSugarMgDl: null, hba1cPercent: null, customText: "ประวัติแผนก่อน Program" },
+      exercise: { notSet: true, planText: null, startDate: null },
+    }),
     items: [{ activityCode: "stop_sweet", targetDays: 4 }],
   };
 }
@@ -255,6 +262,7 @@ function followupInput(
     systolicBloodPressure: null,
     diastolicBloodPressure: null,
     bloodSugar: null,
+    followedPlan: true,
     reflectionNote: null,
     generalNote: null,
     serviceDate: "2026-08-01",
@@ -336,7 +344,7 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
       patientProgramId: programA.patientProgramId,
     });
     await createGoalPlanForProgram(owner.actor, goalInput(programA.patientProgramId));
-    await createGoalPlanForProgram(owner.actor, goalInput(programA.patientProgramId, "glucose"));
+    await createGoalPlanForProgram(owner.actor, goalInput(programA.patientProgramId, "แผนที่สองของ Program A"));
 
     for (let round = 1; round <= 7; round += 1) {
       await createFollowupForProgram(owner.actor, followupInput(programA.patientProgramId, 60 + round));
@@ -351,11 +359,11 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     const programB = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
     });
-    await createGoalPlanForProgram(owner.actor, goalInput(programB.patientProgramId, "medication"));
+    await createGoalPlanForProgram(owner.actor, goalInput(programB.patientProgramId, "แผนของ Program B"));
     // ความฝันของฉัน is a round 3 result (SR-D11).
     await recordPatientProgramServiceOneDreamCard(owner.actor, {
       patientProgramId: programB.patientProgramId,
-      description: "ข้อมูลของ Program B",
+      dream: "ข้อมูลของ Program B",
     });
     await createFollowupForProgram(owner.actor, followupInput(programB.patientProgramId, 81));
     await createPatientFinalAssessment(
@@ -432,7 +440,7 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
         measurements: { weight: { state: "RECORDED", value: 80 } },
       },
     });
-    expect(programBReport.goalPlans.items.map((item) => item.primaryGoalCode)).toEqual(["medication"]);
+    expect(programBReport.goalPlans.items.map((item) => item.primaryGoalCode)).toEqual(["healthy-plan"]);
     expect(JSON.stringify(programBReport)).not.toContain("ประวัติแผนก่อน Program");
     expect(JSON.stringify(programBReport)).not.toContain("Program A");
     expect(JSON.stringify(programBReport)).not.toContain("hospitalNumber");

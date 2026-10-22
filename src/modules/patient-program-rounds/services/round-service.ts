@@ -480,8 +480,10 @@ async function findReviewTarget(
     return followup ? { linkedRecordId: null } : null;
   }
 
-  const screening = await transaction.screeningAssessment.findUnique({
-    where: { patientProgramId },
+  // R2-C: the reviewed instrument's own screening, or a legacy combined one.
+  const screening = await transaction.screeningAssessment.findFirst({
+    where: { patientProgramId, instrument: { in: ["COMBINED", toolCode] } },
+    orderBy: { submittedAt: "asc" },
     select: { id: true },
   });
 

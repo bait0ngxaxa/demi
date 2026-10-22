@@ -1,22 +1,49 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getCurrentGoalTemplate,
   getGoalActivity,
   getGoalSuggestion,
   getGoalTemplate,
   GOAL_TEMPLATE_KEY,
   GOAL_TEMPLATE_VERSION,
-  getPrototypeGoalTemplate,
+  LEGACY_GOAL_TEMPLATE_VERSION,
+  type GoalTemplate,
 } from ".";
 
-describe("Goals prototype template registry", () => {
-  it("exposes one stable source-defined key and version", () => {
-    const template = getPrototypeGoalTemplate();
+function getPrototypeGoalTemplate(): GoalTemplate {
+  const template = getGoalTemplate(GOAL_TEMPLATE_KEY, LEGACY_GOAL_TEMPLATE_VERSION);
+
+  if (!template) {
+    throw new Error("legacy-prototype-v1 must stay registered");
+  }
+
+  return template;
+}
+
+describe("Goals template registry", () => {
+  it("creates new plans with booklet-v1 and keeps legacy-prototype-v1 readable (R2-E)", () => {
+    const template = getCurrentGoalTemplate();
 
     expect(template.key).toBe(GOAL_TEMPLATE_KEY);
     expect(template.version).toBe(GOAL_TEMPLATE_VERSION);
+    expect(GOAL_TEMPLATE_VERSION).toBe("booklet-v1");
+    expect(template.booklet).toBe(true);
+    expect(template.label).toBe("แผน “สุขภาพดี” ของฉัน");
     expect(getGoalTemplate(GOAL_TEMPLATE_KEY, GOAL_TEMPLATE_VERSION)).toBe(template);
+    expect(getPrototypeGoalTemplate().version).toBe("legacy-prototype-v1");
     expect(getGoalTemplate(GOAL_TEMPLATE_KEY, "unknown-version")).toBeNull();
+  });
+
+  it("keeps the legacy food and exercise activity codes in the booklet sections", () => {
+    const template = getCurrentGoalTemplate();
+    const legacy = getPrototypeGoalTemplate();
+
+    expect(template.activities.every((activity) => activity.category === "FOOD" || activity.category === "EXERCISE")).toBe(true);
+    expect(template.activities).toEqual(
+      legacy.activities.filter((activity) => activity.category === "FOOD" || activity.category === "EXERCISE"),
+    );
+    expect(template.activitySuggestions).toEqual([]);
   });
 
   it("contains the provisional legacy primary goals and activity definitions", () => {

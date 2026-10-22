@@ -9,19 +9,14 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
-import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type {
-  GoalActivityCategory,
   GoalActivityDefinition,
-  GoalPAMLevel,
   GoalTemplate,
 } from "@/modules/goals/domain/goal-templates";
-import {
-  getGoalActivity,
-  getGoalSuggestion,
-} from "@/modules/goals/domain/goal-templates";
+import { BOOKLET_PLAN_TEXT, getGoalActivity } from "@/modules/goals/domain/goal-templates";
 import { getGoalTargetUnitLabel } from "@/modules/goals/presentation/goal-labels";
 import type { GoalPatientSummary } from "@/modules/goals/services/goal-access-service";
 import {
@@ -32,18 +27,13 @@ import {
   submitGoalPlanAction,
   submitGoalPlanForProgramAction,
 } from "@/modules/goals/transport/server-actions";
-import {
-  SCREENING_LEVEL_LABELS,
-  SCREENING_ZONE_LABELS,
-} from "@/modules/screening/presentation/screening-labels";
+import type { ScreeningOutcome } from "@/modules/screening/domain/screening-outcome";
+import { screeningOutcomeBadges } from "@/modules/screening/presentation/screening-labels";
 
 type GoalScreeningContextForForm = {
   screeningAssessmentId: string;
   submittedAt: string;
-  result: {
-    level: GoalPAMLevel;
-    zone: "RED" | "YELLOW" | "GREEN";
-  };
+  outcome: ScreeningOutcome;
 };
 
 export type GoalPlanFormScope =
@@ -64,6 +54,7 @@ export type GoalPlanFormScope =
 type GoalPlanFormProps = {
   scope: GoalPlanFormScope;
   patient: GoalPatientSummary;
+  /** The booklet template (R2-E); new plans are always created with it. */
   template: GoalTemplate;
   latestScreening: GoalScreeningContextForForm | null;
   submissionNonce: string;
@@ -75,14 +66,29 @@ type FormItem = {
   targetValue: string;
 };
 
-const categoryLabels: Record<GoalActivityCategory, string> = {
-  FOOD: "อาหาร",
-  EXERCISE: "กิจกรรมทางกาย",
-  MEASUREMENT: "การติดตาม",
-  REST: "การพักผ่อน",
-};
+type GoalKey = "weightLossKg" | "waistCm" | "bloodSugarMgDl" | "hba1cPercent";
 
-const categoryOrder: readonly GoalActivityCategory[] = ["FOOD", "EXERCISE", "MEASUREMENT", "REST"];
+type SectionKey = "food" | "exercise";
+
+type SectionState = { notSet: boolean; planText: string; startDate: string };
+
+const NUMERIC_GOALS: readonly { key: GoalKey; text: readonly [string, string]; max: number }[] = [
+  { key: "weightLossKg", text: BOOKLET_PLAN_TEXT.weightLoss, max: 200 },
+  { key: "waistCm", text: BOOKLET_PLAN_TEXT.waist, max: 300 },
+  { key: "bloodSugarMgDl", text: BOOKLET_PLAN_TEXT.bloodSugar, max: 1000 },
+  { key: "hba1cPercent", text: BOOKLET_PLAN_TEXT.hba1c, max: 20 },
+];
+
+const SECTIONS: readonly { key: SectionKey; category: "FOOD" | "EXERCISE"; label: string }[] = [
+  { key: "food", category: "FOOD", label: BOOKLET_PLAN_TEXT.food },
+  { key: "exercise", category: "EXERCISE", label: BOOKLET_PLAN_TEXT.exercise },
+];
+
+const fieldBaseClassName =
+  "min-h-12 rounded-control border border-border bg-surface px-4 text-base font-normal text-text outline-none transition-[border-color,box-shadow] focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted";
+const fieldClassName = `${fieldBaseClassName} w-full`;
+const textareaClassName =
+  "min-h-24 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted";
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -91,45 +97,10 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-function zoneVariant(zone: GoalScreeningContextForForm["result"]["zone"]): StatusVariant {
-  if (zone === "RED") {
-    return "danger";
-  }
-
-  if (zone === "YELLOW") {
-    return "warning";
-  }
-
-  return "success";
-}
-
-function getInitialItems(
-  template: GoalTemplate,
-  latestScreening: GoalScreeningContextForForm | null,
-): FormItem[] {
-  const suggestion = latestScreening
-    ? getGoalSuggestion(template, latestScreening.result.level)
-    : null;
-
-  if (!suggestion) {
-    return [];
-  }
-
-  return suggestion.activityCodes.flatMap((activityCode) => {
-    const activity = getGoalActivity(template, activityCode);
-
-    if (!activity) {
-      return [];
-    }
-
-    return [createFormItem(activity, suggestion.defaultTargetDays)];
-  });
-}
-
-function createFormItem(activity: GoalActivityDefinition, defaultTargetDays: number): FormItem {
+function createFormItem(activity: GoalActivityDefinition): FormItem {
   return {
     activityCode: activity.code,
-    targetDays: Math.max(1, Math.min(7, defaultTargetDays || 1)),
+    targetDays: 1,
     targetValue: activity.targetRule ? String(activity.targetRule.defaultValue) : "",
   };
 }
@@ -148,6 +119,11 @@ function isTargetValid(activity: GoalActivityDefinition, item: FormItem): boolea
 
   const steps = (value - rule.min) / rule.step;
   return Math.abs(steps - Math.round(steps)) < Number.EPSILON * 100;
+}
+
+function parseGoalValue(value: string, max: number): number | null {
+  const parsed = Number(value);
+  return value.trim() !== "" && Number.isFinite(parsed) && parsed > 0 && parsed <= max ? parsed : null;
 }
 
 function ActionFeedback({ state }: { state: GoalPlanActionState }): React.JSX.Element | null {
@@ -182,9 +158,7 @@ function ActivityEditor({
   return (
     <li className="border-t border-border pt-5 first:border-t-0 first:pt-0">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 className="font-semibold text-text">{activity.label}</h3>
-        </div>
+        <h4 className="font-semibold text-text">{activity.label}</h4>
         <Button disabled={disabled} onClick={onRemove} size="compact" type="button" variant="ghost">
           นำออก
         </Button>
@@ -210,7 +184,7 @@ function ActivityEditor({
             <span>ค่าเป้าหมาย ({targetUnitLabel})</span>
             <input
               aria-describedby={`${activity.code}-target-help`}
-              className="min-h-12 w-full rounded-control border border-border bg-surface px-4 text-base font-normal text-text outline-none transition-[border-color,box-shadow] focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
+              className={fieldClassName}
               disabled={disabled}
               max={targetRule.max}
               min={targetRule.min}
@@ -223,11 +197,7 @@ function ActivityEditor({
               ช่วงที่กำหนด {targetRule.min}–{targetRule.max} {targetUnitLabel} · ค่าเริ่มต้น {targetRule.defaultValue}
             </span>
           </label>
-        ) : (
-          <p className="text-sm leading-6 text-text-muted sm:col-span-2">
-            กิจกรรมนี้ยังไม่มีการกำหนดค่าเป้าหมายเชิงตัวเลข
-          </p>
-        )}
+        ) : null}
       </div>
     </li>
   );
@@ -250,10 +220,22 @@ export function GoalPlanForm({
     submitAction,
     initialGoalPlanActionState,
   );
-  const [primaryGoalCode, setPrimaryGoalCode] = useState("");
-  const [items, setItems] = useState<FormItem[]>(() => getInitialItems(template, latestScreening));
-  const [primaryGoalNote, setPrimaryGoalNote] = useState("");
-  const [weeklyNote, setWeeklyNote] = useState("");
+  const [goalValues, setGoalValues] = useState<Record<GoalKey, string>>({
+    weightLossKg: "",
+    waistCm: "",
+    bloodSugarMgDl: "",
+    hba1cPercent: "",
+  });
+  const [customGoal, setCustomGoal] = useState("");
+  const [sections, setSections] = useState<Record<SectionKey, SectionState>>({
+    food: { notSet: false, planText: "", startDate: "" },
+    exercise: { notSet: false, planText: "", startDate: "" },
+  });
+  const [items, setItems] = useState<FormItem[]>([]);
+  const [problemsAfterOneMonth, setProblemsAfterOneMonth] = useState("");
+  const [patientSignatureName, setPatientSignatureName] = useState("");
+  const [witnessSignatureName, setWitnessSignatureName] = useState("");
+  const locked = pending || unknownOutcome || state.status === "SUCCESS";
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
@@ -276,42 +258,52 @@ export function GoalPlanForm({
   }, [programId, relationshipId, returnTo, router, state]);
 
   const selectedCodes = useMemo(() => new Set(items.map((item) => item.activityCode)), [items]);
-  const itemsByCategory = useMemo(
-    () =>
-      categoryOrder.map((category) => ({
-        category,
-        activities: template.activities.filter((activity) => activity.category === category),
-      })),
-    [template.activities],
+  const goals = {
+    weightLossKg: parseGoalValue(goalValues.weightLossKg, 200),
+    waistCm: parseGoalValue(goalValues.waistCm, 300),
+    bloodSugarMgDl: parseGoalValue(goalValues.bloodSugarMgDl, 1000),
+    hba1cPercent: parseGoalValue(goalValues.hba1cPercent, 20),
+    customText: customGoal.trim() || null,
+  };
+  const hasGoal = Object.values(goals).some((value) => value !== null);
+  const goalInputsValid = NUMERIC_GOALS.every(
+    ({ key, max }) => goalValues[key].trim() === "" || parseGoalValue(goalValues[key], max) !== null,
   );
-  const formComplete =
-    template.primaryGoals.some((goal) => goal.code === primaryGoalCode) &&
-    items.length > 0 &&
-    items.every((item) => {
-      const activity = getGoalActivity(template, item.activityCode);
-      return Boolean(activity && item.targetDays >= 1 && item.targetDays <= 7 && isTargetValid(activity, item));
-    });
+  const itemsIn = (category: "FOOD" | "EXERCISE") =>
+    items.filter((item) => getGoalActivity(template, item.activityCode)?.category === category);
+  const sectionsComplete = SECTIONS.every(({ key, category }) =>
+    sections[key].notSet ? itemsIn(category).length === 0 : sections[key].planText.trim() !== "" && itemsIn(category).length > 0,
+  );
+  const itemsValid = items.every((item) => {
+    const activity = getGoalActivity(template, item.activityCode);
+    return Boolean(activity && item.targetDays >= 1 && item.targetDays <= 7 && isTargetValid(activity, item));
+  });
+  const formComplete = hasGoal && goalInputsValid && sectionsComplete && items.length > 0 && itemsValid;
 
   function toggleActivity(activity: GoalActivityDefinition): void {
-    setItems((current) => {
-      const existing = current.find((item) => item.activityCode === activity.code);
+    setItems((current) =>
+      current.some((item) => item.activityCode === activity.code)
+        ? current.filter((item) => item.activityCode !== activity.code)
+        : [...current, createFormItem(activity)],
+    );
+  }
 
-      if (existing) {
-        return current.filter((item) => item.activityCode !== activity.code);
-      }
+  function updateSection(key: SectionKey, next: Partial<SectionState>): void {
+    setSections((current) => ({ ...current, [key]: { ...current[key], ...next } }));
+  }
 
-      const suggestion = latestScreening
-        ? getGoalSuggestion(template, latestScreening.result.level)
-        : null;
-      const suggestedDays = suggestion?.defaultTargetDays ?? 1;
+  function setSectionNotSet(key: SectionKey, category: "FOOD" | "EXERCISE", notSet: boolean): void {
+    updateSection(key, notSet ? { notSet, planText: "", startDate: "" } : { notSet });
 
-      return [...current, createFormItem(activity, suggestedDays)];
-    });
+    if (notSet) {
+      setItems((current) =>
+        current.filter((item) => getGoalActivity(template, item.activityCode)?.category !== category),
+      );
+    }
   }
 
   const serializedItems = items.map((item) => {
-    const activity = getGoalActivity(template, item.activityCode);
-    const targetRule = activity?.targetRule;
+    const targetRule = getGoalActivity(template, item.activityCode)?.targetRule;
 
     return {
       activityCode: item.activityCode,
@@ -321,6 +313,22 @@ export function GoalPlanForm({
         : {}),
     };
   });
+  const serializedBooklet = {
+    goals,
+    food: {
+      notSet: sections.food.notSet,
+      planText: sections.food.notSet ? null : sections.food.planText,
+      startDate: sections.food.notSet ? null : sections.food.startDate || null,
+    },
+    exercise: {
+      notSet: sections.exercise.notSet,
+      planText: sections.exercise.notSet ? null : sections.exercise.planText,
+      startDate: sections.exercise.notSet ? null : sections.exercise.startDate || null,
+    },
+    problemsAfterOneMonth: problemsAfterOneMonth || null,
+    patientSignatureName: patientSignatureName || null,
+    witnessSignatureName: witnessSignatureName || null,
+  };
 
   return (
     <div className="max-w-5xl">
@@ -354,7 +362,7 @@ export function GoalPlanForm({
             ? "สร้างแผนสุขภาพรอบใหม่ในโปรแกรมนี้ โดยรอบเดิมจะยังคงเป็นประวัติอ่านได้"
             : "สร้างแผนเป้าหมายและกิจกรรมในประวัติความสัมพันธ์ของโรงพยาบาล"
         }
-        title={scope.kind === "program" ? "สร้างแผนสุขภาพ" : "สร้างแผนเป้าหมาย"}
+        title={template.label}
       />
 
       <form action={action} className="space-y-6 pt-8">
@@ -373,6 +381,7 @@ export function GoalPlanForm({
           value={latestScreening?.screeningAssessmentId ?? ""}
         />
         <input name="items" type="hidden" value={JSON.stringify(serializedItems)} />
+        <input name="booklet" type="hidden" value={JSON.stringify(serializedBooklet)} />
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">
@@ -391,11 +400,6 @@ export function GoalPlanForm({
           <p className="mt-4 text-sm leading-6 text-text-muted">
             HN ของโรงพยาบาลนี้: {patient.hospitalNumber ?? "ไม่ระบุ"}
           </p>
-          {scope.kind === "program" ? (
-            <p className="mt-3 text-sm leading-6 text-text-muted">
-              แผนนี้จะถูกบันทึกเป็นประวัติของโปรแกรมนี้โดยตรง และไม่แก้ไขแผนรอบเดิม
-            </p>
-          ) : null}
           {scope.kind === "program" && scope.sourceFollowupId ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
               แผนนี้สร้างจากการติดตามผลที่เลือก “ปรับแผน” และจะเชื่อมกับการติดตามครั้งนั้น
@@ -409,173 +413,203 @@ export function GoalPlanForm({
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบทจากแบบประเมิน</h2>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  แบบประเมินเป็นบริบทหรือค่าเริ่มต้นเท่านั้น ไม่ได้สร้างหรือบังคับแผนเป้าหมายโดยอัตโนมัติ
+                  แบบประเมินล่าสุดบันทึกเมื่อ {formatDate(latestScreening.submittedAt)} · ใช้เป็นบริบทเท่านั้น
                 </p>
               </div>
-              <StatusBadge variant={zoneVariant(latestScreening.result.zone)}>
-                {SCREENING_LEVEL_LABELS[latestScreening.result.level]} · {SCREENING_ZONE_LABELS[latestScreening.result.zone]}
-              </StatusBadge>
-            </div>
-            <div className="mt-5 rounded-control border border-border bg-surface-muted px-4 py-4">
-              <p className="text-sm leading-6 text-text">
-                แบบประเมินล่าสุดบันทึกเมื่อ {formatDate(latestScreening.submittedAt)}
-              </p>
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                แบบประเมินนี้ใช้เป็นบริบทสำหรับค่าเริ่มต้นของแผนเป้าหมายรอบนี้
-                คุณยังสามารถปรับ เพิ่ม หรือนำกิจกรรมออกก่อนบันทึกได้
-              </p>
+              <div className="flex flex-wrap gap-2">
+                {screeningOutcomeBadges(latestScreening.outcome).map((badge) => (
+                  <StatusBadge key={badge.label} variant={badge.variant}>
+                    {badge.label}
+                  </StatusBadge>
+                ))}
+              </div>
             </div>
           </Panel>
         ) : null}
 
         <Panel>
-          <fieldset disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
-            <legend className="text-xl font-semibold tracking-[-0.02em]">เป้าหมายหลัก</legend>
-            <p className="mt-2 text-sm leading-6 text-text-muted">เลือกเป้าหมายหลักหนึ่งรายการสำหรับแผนเป้าหมายรอบนี้</p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {template.primaryGoals.map((goal) => (
-                <label
-                  className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-control border px-4 py-3 text-sm transition-colors ${
-                    primaryGoalCode === goal.code
-                      ? "border-action-primary bg-brand-soft text-brand-strong"
-                      : "border-border bg-surface hover:border-action-primary hover:bg-brand-soft/50"
-                  }`}
-                  key={goal.code}
-                >
+          <fieldset disabled={locked}>
+            <legend className="text-xl font-semibold tracking-[-0.02em]">{BOOKLET_PLAN_TEXT.goalsHeading}</legend>
+            <div className="mt-5 space-y-4">
+              {NUMERIC_GOALS.map(({ key, text, max }) => (
+                <label className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-text" key={key}>
+                  <span>{text[0]}</span>
                   <input
-                    checked={primaryGoalCode === goal.code}
-                    className="h-4 w-4 accent-brand"
-                    name="primaryGoalCode"
-                    onChange={() => setPrimaryGoalCode(goal.code)}
-                    type="radio"
-                    value={goal.code}
+                    aria-label={`${text[0]} … ${text[1]}`}
+                    className={`${fieldBaseClassName} w-28`}
+                    inputMode="decimal"
+                    max={max}
+                    min={0}
+                    onChange={(event) => setGoalValues((current) => ({ ...current, [key]: event.target.value }))}
+                    step="any"
+                    type="number"
+                    value={goalValues[key]}
                   />
-                  <span>{goal.label}</span>
+                  <span>{text[1]}</span>
                 </label>
               ))}
+              <label className="block space-y-2 text-sm text-text">
+                <span>{BOOKLET_PLAN_TEXT.custom} …</span>
+                <input
+                  className={fieldClassName}
+                  maxLength={1000}
+                  onChange={(event) => setCustomGoal(event.target.value)}
+                  type="text"
+                  value={customGoal}
+                />
+              </label>
             </div>
+            {!hasGoal ? (
+              <p className="mt-4 text-sm text-text-muted">ยังไม่ได้เลือกเป้าหมาย กรอกอย่างน้อย 1 ข้อ</p>
+            ) : null}
           </fieldset>
-          <div className="mt-6 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
-            <label className="block space-y-2 text-sm font-semibold">
-              <span>หมายเหตุเป้าหมายหลัก (ไม่บังคับ)</span>
-              <textarea
-                className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                maxLength={1000}
-                name="primaryGoalNote"
-                onChange={(event) => setPrimaryGoalNote(event.target.value)}
-                placeholder="บันทึกเฉพาะที่จำเป็น"
-                value={primaryGoalNote}
-              />
-            </label>
-            <label className="block space-y-2 text-sm font-semibold">
-              <span>หมายเหตุรายสัปดาห์ (ไม่บังคับ)</span>
-              <textarea
-                className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                maxLength={2000}
-                name="weeklyNote"
-                onChange={(event) => setWeeklyNote(event.target.value)}
-                placeholder="บันทึกเฉพาะที่จำเป็น"
-                value={weeklyNote}
-              />
-            </label>
+        </Panel>
+
+        <Panel>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">{BOOKLET_PLAN_TEXT.planHeading}</h2>
+          <div className="mt-6 space-y-8">
+            {SECTIONS.map(({ key, category, label }) => {
+              const section = sections[key];
+              const sectionItems = itemsIn(category);
+
+              return (
+                <fieldset className="border-t border-border pt-6 first:border-t-0 first:pt-0" disabled={locked} key={key}>
+                  <legend className="text-lg font-semibold text-text">{label}</legend>
+                  <label className="mt-3 flex items-center gap-3 text-sm text-text">
+                    <input
+                      checked={section.notSet}
+                      className="h-4 w-4 accent-brand"
+                      onChange={(event) => setSectionNotSet(key, category, event.target.checked)}
+                      type="checkbox"
+                    />
+                    <span>{BOOKLET_PLAN_TEXT.sectionNotSet}</span>
+                  </label>
+                  {section.notSet ? null : (
+                    <div className="mt-4 space-y-5">
+                      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_14rem]">
+                        <label className="block space-y-2 text-sm font-semibold">
+                          <span>{BOOKLET_PLAN_TEXT.sectionText} …</span>
+                          <textarea
+                            className={textareaClassName}
+                            maxLength={1000}
+                            onChange={(event) => updateSection(key, { planText: event.target.value })}
+                            value={section.planText}
+                          />
+                        </label>
+                        <label className="block space-y-2 text-sm font-semibold">
+                          <span>{BOOKLET_PLAN_TEXT.sectionStart} …</span>
+                          <input
+                            className={fieldClassName}
+                            onChange={(event) => updateSection(key, { startDate: event.target.value })}
+                            type="date"
+                            value={section.startDate}
+                          />
+                        </label>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-text">กิจกรรม (เลือกอย่างน้อย 1 รายการ)</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {template.activities
+                            .filter((activity) => activity.category === category)
+                            .map((activity) => (
+                              <label
+                                className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-control border px-4 py-3 text-sm transition-colors ${
+                                  selectedCodes.has(activity.code)
+                                    ? "border-action-primary bg-brand-soft text-brand-strong"
+                                    : "border-border bg-surface hover:border-action-primary hover:bg-brand-soft/50"
+                                }`}
+                                key={activity.code}
+                              >
+                                <input
+                                  checked={selectedCodes.has(activity.code)}
+                                  className="h-4 w-4 accent-brand"
+                                  onChange={() => toggleActivity(activity)}
+                                  type="checkbox"
+                                />
+                                <span>{activity.label}</span>
+                              </label>
+                            ))}
+                        </div>
+                        {sectionItems.length > 0 ? (
+                          <ul aria-label={`กิจกรรมที่เลือก: ${label}`} className="mt-5 space-y-5">
+                            {sectionItems.map((item) => {
+                              const activity = getGoalActivity(template, item.activityCode);
+
+                              return activity ? (
+                                <ActivityEditor
+                                  activity={activity}
+                                  disabled={locked}
+                                  item={item}
+                                  key={item.activityCode}
+                                  onChange={(next) =>
+                                    setItems((current) =>
+                                      current.map((candidate) =>
+                                        candidate.activityCode === next.activityCode ? next : candidate,
+                                      ),
+                                    )
+                                  }
+                                  onRemove={() => toggleActivity(activity)}
+                                />
+                              ) : null;
+                            })}
+                          </ul>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </fieldset>
+              );
+            })}
           </div>
         </Panel>
 
         <Panel>
-          <div>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">กิจกรรมประจำสัปดาห์</h2>
-            <p className="mt-2 text-sm leading-6 text-text-muted">
-              กิจกรรมและค่าเริ่มต้น (ถ้ามี) มาจากผลการประเมิน
-              สามารถเพิ่มหรือนำกิจกรรมออกเป็นรายรายการ และหากไม่มีผลการประเมินให้เลือกกิจกรรมด้วยตนเอง
+          <fieldset className="space-y-5" disabled={locked}>
+            <label className="block space-y-2 text-sm font-semibold">
+              <span>{BOOKLET_PLAN_TEXT.problemsAfterOneMonth} … (ไม่บังคับ)</span>
+              <textarea
+                className={textareaClassName}
+                maxLength={2000}
+                onChange={(event) => setProblemsAfterOneMonth(event.target.value)}
+                value={problemsAfterOneMonth}
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block space-y-2 text-sm font-semibold">
+                <span>
+                  {BOOKLET_PLAN_TEXT.patientSignature[0]} … {BOOKLET_PLAN_TEXT.patientSignature[1]}
+                </span>
+                <input
+                  className={fieldClassName}
+                  maxLength={200}
+                  onChange={(event) => setPatientSignatureName(event.target.value)}
+                  type="text"
+                  value={patientSignatureName}
+                />
+              </label>
+              <label className="block space-y-2 text-sm font-semibold">
+                <span>
+                  {BOOKLET_PLAN_TEXT.witnessSignature[0]} … {BOOKLET_PLAN_TEXT.witnessSignature[1]}
+                </span>
+                <input
+                  className={fieldClassName}
+                  maxLength={200}
+                  onChange={(event) => setWitnessSignatureName(event.target.value)}
+                  type="text"
+                  value={witnessSignatureName}
+                />
+              </label>
+            </div>
+            <p className="text-xs leading-5 text-text-subtle">
+              พิมพ์ชื่อผู้ป่วยและพยาน รูปหน้าที่ลงชื่อแล้วแนบได้หลังบันทึกแผนในโปรแกรม
             </p>
-          </div>
-
-          <div className="mt-6 space-y-6">
-            {itemsByCategory.map(({ category, activities }) => (
-              <fieldset className="border-t border-border pt-5 first:border-t-0 first:pt-0" disabled={pending || unknownOutcome || state.status === "SUCCESS"} key={category}>
-                <legend className="text-base font-semibold text-text">{categoryLabels[category]}</legend>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {activities.map((activity) => (
-                    <label
-                      className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-control border px-4 py-3 text-sm transition-colors ${
-                        selectedCodes.has(activity.code)
-                          ? "border-action-primary bg-brand-soft text-brand-strong"
-                          : "border-border bg-surface hover:border-action-primary hover:bg-brand-soft/50"
-                      }`}
-                      key={activity.code}
-                    >
-                      <input
-                        checked={selectedCodes.has(activity.code)}
-                        className="h-4 w-4 accent-brand"
-                        onChange={() => toggleActivity(activity)}
-                        type="checkbox"
-                      />
-                      <span>{activity.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ))}
-          </div>
-
-          <div className="mt-7 border-t border-border pt-6">
-            <h3 className="text-base font-semibold text-text">กิจกรรมที่เลือก</h3>
-            {items.length > 0 ? (
-              <ul className="mt-5 space-y-5" aria-label="กิจกรรมที่เลือก">
-                {items.map((item) => {
-                  const activity = getGoalActivity(template, item.activityCode);
-
-                  if (!activity) {
-                    return null;
-                  }
-
-                  return (
-                    <ActivityEditor
-                      activity={activity}
-                      disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                      item={item}
-                      key={item.activityCode}
-                      onChange={(next) =>
-                        setItems((current) =>
-                          current.map((candidate) =>
-                            candidate.activityCode === next.activityCode ? next : candidate,
-                          ),
-                        )
-                      }
-                      onRemove={() => toggleActivity(activity)}
-                    />
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="mt-3 rounded-control border border-dashed border-border px-4 py-4 text-sm leading-6 text-text-muted">
-                ยังไม่ได้เลือกกิจกรรม กรุณาเลือกอย่างน้อยหนึ่งรายการเพื่อบันทึกแผนเป้าหมาย
-              </p>
-            )}
-          </div>
+          </fieldset>
         </Panel>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนส่ง</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            รอบใหม่จะถูกบันทึกเป็นประวัติอีกหนึ่งรายการ และจะไม่แก้ไขแผนเป้าหมายรอบเดิม
-          </p>
-          <dl className="mt-5 grid gap-4 border-y border-border py-5 sm:grid-cols-2">
-            <div>
-              <dt className="text-sm text-text-muted">เป้าหมายหลัก</dt>
-              <dd className="mt-1 font-semibold text-text">
-                {template.primaryGoals.find((goal) => goal.code === primaryGoalCode)?.label ?? "ยังไม่ได้เลือก"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-text-muted">กิจกรรม</dt>
-              <dd className="mt-1 font-semibold text-text">{items.length} รายการ</dd>
-            </div>
-          </dl>
-          <p className="mt-5 text-xs leading-5 text-text-subtle">
-            ตรวจสอบข้อมูลให้เรียบร้อยก่อนส่ง ระบบจะบันทึกเป็นรอบใหม่โดยไม่แก้ไขประวัติเดิม
+            แผนที่บันทึกแล้วแก้ไขไม่ได้ หากต้องการเปลี่ยนให้ปรับแผนจากการติดตามผล
           </p>
           <ActionFeedback state={state} />
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
@@ -583,8 +617,8 @@ export function GoalPlanForm({
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !formComplete} loading={pending} type="submit">
-              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแผนเป้าหมาย"}
+            <Button disabled={locked || !formComplete} loading={pending} type="submit">
+              {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแผน"}
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
@@ -602,4 +636,3 @@ export function GoalPlanForm({
     </div>
   );
 }
-

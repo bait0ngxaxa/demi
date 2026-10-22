@@ -94,7 +94,7 @@ export default async function NewProgramGoalPlanPage({
           ? {
               screeningAssessmentId: context.latestScreening.screeningAssessmentId,
               submittedAt: context.latestScreening.submittedAt.toISOString(),
-              result: context.latestScreening.result,
+              outcome: context.latestScreening.outcome,
             }
           : null
       }

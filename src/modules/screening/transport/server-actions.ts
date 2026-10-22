@@ -7,12 +7,13 @@ import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/ro
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
-  getPrototypeQuestionSet,
-  type ScreeningQuestionSection,
+  CURRENT_INSTRUMENT_QUESTION_SETS,
+  type InstrumentQuestionSet,
 } from "../domain/question-sets";
 import {
+  screeningInstrumentSchema,
   screeningSubmitRequestSchema,
-  type NormalizedScreeningSubmitRequest,
+  type ScreeningSubmitRequest,
 } from "../schemas/screening-schemas";
 import { submitScreening } from "../services/screening-service";
 
@@ -28,15 +29,6 @@ function getSingleString(formData: FormData, field: string): string | undefined 
   return values[0];
 }
 
-function getOptionalString(formData: FormData, field: string): string | undefined {
-  const values = formData.getAll(field);
-
-  if (values.length === 0) {
-    return undefined;
-  }
-
-  return values.length === 1 && typeof values[0] === "string" ? values[0] : undefined;
-}
 
 function getAnswerValue(formData: FormData, key: string): unknown {
   const value = getSingleString(formData, key);
@@ -48,32 +40,22 @@ function getAnswerValue(formData: FormData, key: string): unknown {
   return Number(value);
 }
 
-function buildAnswerMap(
-  formData: FormData,
-  questionSet: ReturnType<typeof getPrototypeQuestionSet>,
-  section: ScreeningQuestionSection,
-): Record<string, unknown> {
+function buildAnswerMap(formData: FormData, questionSet: InstrumentQuestionSet): Record<string, unknown> {
   const answers: Record<string, unknown> = {};
 
   for (const question of questionSet.questions) {
-    if (question.section === section) {
-      answers[question.key] = getAnswerValue(formData, question.key);
-    }
+    answers[question.key] = getAnswerValue(formData, question.key);
   }
 
   return answers;
 }
 
-function containsUnexpectedFields(
-  formData: FormData,
-  questionSet: ReturnType<typeof getPrototypeQuestionSet>,
-): boolean {
+function containsUnexpectedFields(formData: FormData, questionSet: InstrumentQuestionSet): boolean {
   const allowedFields = new Set([
     "patientHospitalRelationshipId",
     "patientProgramId",
     "submissionNonce",
-    "confidenceScore",
-    "confidenceImprovementPlan",
+    "instrument",
     ...questionSet.questions.map((question) => question.key),
   ]);
 
@@ -87,7 +69,13 @@ function containsUnexpectedFields(
 }
 
 function buildSubmissionInput(formData: FormData): unknown {
-  const questionSet = getPrototypeQuestionSet();
+  const instrument = screeningInstrumentSchema.safeParse(getSingleString(formData, "instrument"));
+
+  if (!instrument.success) {
+    return null;
+  }
+
+  const questionSet = CURRENT_INSTRUMENT_QUESTION_SETS[instrument.data];
 
   if (containsUnexpectedFields(formData, questionSet)) {
     return null;
@@ -97,12 +85,8 @@ function buildSubmissionInput(formData: FormData): unknown {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     patientProgramId: getSingleString(formData, "patientProgramId"),
     submissionNonce: getSingleString(formData, "submissionNonce"),
-    responses: {
-      pam: buildAnswerMap(formData, questionSet, "PAM"),
-      proms: buildAnswerMap(formData, questionSet, "PROMs"),
-      confidenceScore: getAnswerValue(formData, "confidenceScore"),
-      confidenceImprovementPlan: getOptionalString(formData, "confidenceImprovementPlan"),
-    },
+    instrument: instrument.data,
+    responses: { answers: buildAnswerMap(formData, questionSet) },
   } satisfies Record<string, unknown>;
 }
 
@@ -114,7 +98,7 @@ function mapScreeningError(error: unknown): {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "กรุณาตอบคำถามทุกข้อ ตรวจสอบคะแนน และลองส่งอีกครั้ง",
+        message: "กรุณาตอบคำถามทุกข้อ แล้วลองส่งอีกครั้ง",
       };
     }
 
@@ -169,13 +153,13 @@ export async function submitScreeningAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตอบคำถามทุกข้อ ตรวจสอบคะแนน และลองส่งอีกครั้ง",
+      message: "กรุณาตอบคำถามทุกข้อ แล้วลองส่งอีกครั้ง",
     };
   }
 
   try {
     const actor = await getProtectedApplicationActor();
-    const input: NormalizedScreeningSubmitRequest = parsed.data;
+    const input: ScreeningSubmitRequest = parsed.data;
     const result = await submitScreening(actor, input);
     revalidateScreeningPaths(input.patientHospitalRelationshipId);
 
@@ -188,6 +172,7 @@ export async function submitScreeningAction(
       result: {
         screeningAssessmentId: result.screeningAssessmentId,
         patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+        instrument: result.instrument,
         submittedAt: result.submittedAt.toISOString(),
       },
     };

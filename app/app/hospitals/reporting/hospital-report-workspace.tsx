@@ -19,6 +19,7 @@ import type {
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
 import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
+import { PROMS_RESULT_LABELS } from "@/modules/screening/presentation/screening-labels";
 import type { HospitalReportCohort, HospitalReportTargetSelection } from "@/modules/reporting/schemas/hospital-report-schemas";
 import type { HospitalReportingHospital } from "@/modules/reporting/services/hospital-report-access-service";
 import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/services/parent-child-hospital-report-access-service";
@@ -54,6 +55,13 @@ function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof H
 // D9: Patient self-reported; "ไม่มีบันทึก" when no entry with a duration falls in the 28-day window.
 function weeklyExerciseText(fact: HospitalReportFact<number>): string {
   return fact.state === "RECORDED" ? `${fact.value.toLocaleString("th-TH")} นาที (ผู้ป่วยบันทึกเอง)` : "ไม่มีบันทึก";
+}
+
+// Q6: PROMs shows มีปัญหา/ไม่มีปัญหา; a legacy combined screening keeps its total.
+function promsReportText(proms: HospitalReportProgramRow["screening"]["proms"]): string {
+  if (proms.state === "MISSING") return "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1";
+  if ("legacyTotal" in proms.value) return `คะแนนรวม ${proms.value.legacyTotal} (ชุดเดิม)`;
+  return proms.value.hasProblem ? PROMS_RESULT_LABELS.problem : PROMS_RESULT_LABELS.noProblem;
 }
 
 function recordText<T>(record: { state: "PRESENT"; value: T } | { state: "MISSING" }): string {
@@ -432,7 +440,8 @@ function ServiceProgram({
           <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
           {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>แบบประเมิน PAM / PROMs: {program.screening.state === "PRESENT" ? `${program.screening.value.pamScore} / ${program.screening.value.promsScore}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
+            <li>แบบประเมิน PAM: {program.screening.pam.state === "PRESENT" ? `คะแนน ${program.screening.pam.value.score}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
+            <li>แบบประเมิน PROMs: {promsReportText(program.screening.proms)}</li>
             <li>ไม้บรรทัดวัดใจ (0–10): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
             <li>เวลาออกกำลังกายต่อสัปดาห์: {weeklyExerciseText(program.weeklyExercise.before)}</li>
           </ul>

@@ -1,62 +1,66 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import type { ScreeningQuestion, ScreeningQuestionSet } from "@/modules/screening/domain/question-sets";
+import type { InstrumentQuestion, InstrumentQuestionSet } from "@/modules/screening/domain/question-sets";
 import {
   initialScreeningActionState,
   type ScreeningActionState,
 } from "@/modules/screening/transport/action-state";
 import { submitScreeningAction } from "@/modules/screening/transport/server-actions";
 import type { ScreeningPatientSummary } from "@/modules/screening/services/screening-access-service";
-import {
-  SCREENING_PROTOTYPE_NOTICE_BODY,
-  SCREENING_PROTOTYPE_NOTICE_TITLE,
-} from "@/modules/screening/presentation/screening-labels";
 
 type ScreeningFormProps = {
   relationshipId: string;
   patient: ScreeningPatientSummary;
-  questionSet: ScreeningQuestionSet;
+  questionSet: InstrumentQuestionSet;
   submissionNonce: string;
   /** Present when the screening is performed from round 1 of a Program (WB-DF-01). */
   programId?: string;
 };
 
-const confidenceScores = Array.from({ length: 11 }, (_, index) => index);
-
-function questionOptionLabel(question: ScreeningQuestion, value: string): string {
-  return question.options.find((option) => String(option.value) === value)?.label ?? "ยังไม่ได้ตอบ";
-}
+/** R2-B: the booklet shows five faces from worst (1) to best (5). */
+const PROMS_FACES: Readonly<Record<number, string>> = { 1: "😣", 2: "🙁", 3: "😐", 4: "🙂", 5: "😄" };
 
 function QuestionGroup({
+  number,
   question,
   value,
   disabled,
+  faces,
   onChange,
 }: {
-  question: ScreeningQuestion;
+  number: number;
+  question: InstrumentQuestion;
   value: string | undefined;
   disabled: boolean;
+  faces: boolean;
   onChange: (value: string) => void;
 }): React.JSX.Element {
   return (
     <fieldset className="border-t border-border pt-5" disabled={disabled}>
       <legend className="w-full text-base font-semibold leading-7 text-text">
-        <span className="block">{question.prompt}</span>
+        <span className="block">
+          {number}. {question.prompt}
+        </span>
+        {question.hint ? <span className="mt-1 block text-sm font-normal text-text-muted">{question.hint}</span> : null}
         <span className="mt-1 block text-xs font-normal text-text-muted">ต้องตอบ</span>
       </legend>
-      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+      {question.guidance ? (
+        <p className="mt-3 rounded-control bg-surface-muted px-3 py-2 text-sm leading-6 text-text-muted">
+          คำแนะนำสำหรับผู้ประเมิน: {question.guidance}
+        </p>
+      ) : null}
+      <div className={`mt-4 grid gap-2 ${faces ? "grid-cols-5" : "sm:grid-cols-2"}`}>
         {question.options.map((option, index) => {
           const optionValue = String(option.value);
           const selected = value === optionValue;
@@ -64,6 +68,8 @@ function QuestionGroup({
           return (
             <label
               className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-control border px-4 py-3 text-sm transition-colors ${
+                faces ? "flex-col justify-center gap-1 px-2 text-center" : ""
+              } ${
                 selected
                   ? "border-action-primary bg-brand-soft text-brand-strong"
                   : "border-border bg-surface hover:border-action-primary hover:bg-brand-soft/50"
@@ -72,16 +78,23 @@ function QuestionGroup({
             >
               <input
                 checked={selected}
-                className="h-4 w-4 accent-brand"
+                className={faces ? "sr-only" : "h-4 w-4 accent-brand"}
                 name={question.key}
                 onChange={() => onChange(optionValue)}
                 required={index === 0}
                 type="radio"
                 value={option.value}
               />
-              <span>
-                {option.value}. {option.label}
-              </span>
+              {faces ? (
+                <>
+                  <span aria-hidden="true" className="text-2xl leading-none">
+                    {PROMS_FACES[option.value]}
+                  </span>
+                  <span className="font-semibold">{option.label}</span>
+                </>
+              ) : (
+                <span>{option.label}</span>
+              )}
             </label>
           );
         })}
@@ -116,40 +129,27 @@ export function ScreeningForm({
     initialScreeningActionState,
   );
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [confidenceScore, setConfidenceScore] = useState("");
-  const [confidencePlan, setConfidencePlan] = useState("");
+  const instrumentLabel = questionSet.instrument === "PAM" ? "PAM" : "PROMs";
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
       router.push(
         programId
-          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1?after=PROMS`
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1?after=${questionSet.instrument}`
           : `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`,
       );
     }
-  }, [programId, relationshipId, router, state]);
+  }, [programId, questionSet.instrument, relationshipId, router, state]);
 
   const questions = questionSet.questions;
-  const pamQuestions = useMemo(
-    () => questions.filter((question) => question.section === "PAM"),
-    [questions],
-  );
-  const promsQuestions = useMemo(
-    () => questions.filter((question) => question.section === "PROMs"),
-    [questions],
-  );
-  const pamAnswered = pamQuestions.filter((question) => Boolean(answers[question.key])).length;
-  const promsAnswered = promsQuestions.filter((question) => Boolean(answers[question.key])).length;
-  const answeredCount = useMemo(
-    () => questions.filter((question) => Boolean(answers[question.key])).length,
-    [answers, questions],
-  );
-  const formComplete = answeredCount === questions.length && confidenceScore !== "";
+  const answeredCount = questions.filter((question) => Boolean(answers[question.key])).length;
+  const formComplete = answeredCount === questions.length;
+  const locked = pending || unknownOutcome || state.status === "SUCCESS";
 
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="info">แบบประเมิน</StatusBadge>}
+        actions={<StatusBadge variant="info">แบบประเมิน {instrumentLabel}</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}/screenings`,
@@ -158,18 +158,14 @@ export function ScreeningForm({
           { label: "แบบประเมินใหม่" },
         ]}
         description="บันทึกคำตอบและผลการประเมินของผู้ป่วยในโรงพยาบาลนี้"
-        title="เริ่มแบบประเมินใหม่"
+        title={questionSet.title}
       />
 
       <form action={action} className="space-y-6 pt-8">
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
         <input name="submissionNonce" type="hidden" value={submissionNonce} />
+        <input name="instrument" type="hidden" value={questionSet.instrument} />
         {programId ? <input name="patientProgramId" type="hidden" value={programId} /> : null}
-
-        <Alert variant="info">
-          <p className="font-semibold">{SCREENING_PROTOTYPE_NOTICE_TITLE}</p>
-          <p className="mt-1">{SCREENING_PROTOTYPE_NOTICE_BODY}</p>
-        </Alert>
 
         {programId ? null : (
           <Alert variant="warning">
@@ -197,88 +193,33 @@ export function ScreeningForm({
 
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 1 — PAM</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง {pamQuestions.length} ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
+            <div className="max-w-3xl space-y-2">
+              {questionSet.intro.map((paragraph) => (
+                <p className="text-sm leading-6 text-text-muted" key={paragraph}>
+                  {paragraph}
+                </p>
+              ))}
+              {questionSet.scaleLabel ? (
+                <p className="text-sm font-semibold leading-6 text-text">{questionSet.scaleLabel}</p>
+              ) : null}
+              <p className="text-sm leading-6 text-text-muted">เลือกคำตอบเดียวในแต่ละข้อ ตอบให้ครบทั้ง {questions.length} ข้อ</p>
             </div>
-            <StatusBadge variant={pamAnswered === pamQuestions.length ? "success" : "neutral"}>
-              {pamAnswered}/{pamQuestions.length}
+            <StatusBadge variant={formComplete ? "success" : "neutral"}>
+              {answeredCount}/{questions.length}
             </StatusBadge>
           </div>
           <div className="mt-6 space-y-6">
-            {pamQuestions.map((question) => (
+            {questions.map((question, index) => (
               <QuestionGroup
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                disabled={locked}
+                faces={questionSet.instrument === "PROMS"}
                 key={question.key}
+                number={index + 1}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
                 value={answers[question.key]}
               />
             ))}
-          </div>
-        </Panel>
-
-        <Panel>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 2 — PROMs</h2>
-              <p className="mt-1 text-sm leading-6 text-text-muted">ตอบคำถามให้ครบทั้ง {promsQuestions.length} ข้อ โดยเลือกคำตอบที่ตรงที่สุด</p>
-            </div>
-            <StatusBadge variant={promsAnswered === promsQuestions.length ? "success" : "neutral"}>
-              {promsAnswered}/{promsQuestions.length}
-            </StatusBadge>
-          </div>
-          <div className="mt-6 space-y-6">
-            {promsQuestions.map((question) => (
-              <QuestionGroup
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                key={question.key}
-                onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
-                question={question}
-                value={answers[question.key]}
-              />
-            ))}
-          </div>
-        </Panel>
-
-        <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ส่วนที่ 3 — ความมั่นใจ</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">
-            ส่วนนี้อาจมีความอ่อนไหว กรุณากรอกเท่าที่จำเป็นต่อการดูแลผู้ป่วย
-          </p>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            <label className="block space-y-2 text-sm font-semibold">
-              <span>ความมั่นใจในการดูแลสุขภาพ (0–10)</span>
-              <Select
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                name="confidenceScore"
-                onChange={(event) => setConfidenceScore(event.target.value)}
-                required
-                value={confidenceScore}
-              >
-                <option disabled value="">
-                  เลือกคะแนน
-                </option>
-                {confidenceScores.map((score) => (
-                  <option key={score} value={score}>
-                    {score}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <label className="block space-y-2 text-sm font-semibold sm:col-span-2">
-              <span>แผนพัฒนาความมั่นใจ (ไม่บังคับ)</span>
-              <textarea
-                className="min-h-28 w-full rounded-control border border-border bg-surface px-4 py-3 text-base font-normal text-text outline-none transition-[border-color,box-shadow] placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted"
-                disabled={pending || unknownOutcome || state.status === "SUCCESS"}
-                maxLength={1000}
-                name="confidenceImprovementPlan"
-                onChange={(event) => setConfidencePlan(event.target.value)}
-                placeholder="บันทึกสั้น ๆ เฉพาะที่จำเป็น"
-                value={confidencePlan}
-              />
-              <span className="block text-xs font-normal text-text-subtle">ไม่เกิน 1,000 ตัวอักษร</span>
-            </label>
           </div>
         </Panel>
 
@@ -286,26 +227,8 @@ export function ScreeningForm({
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนส่ง</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
             ตอบแล้ว {answeredCount}/{questions.length} ข้อ
-            {confidenceScore === "" ? " · ยังไม่ได้เลือกคะแนนความมั่นใจ" : " · คะแนนความมั่นใจพร้อมแล้ว"}
           </p>
-          <div className="mt-5 grid gap-5 border-t border-border pt-5 sm:grid-cols-2">
-            {(["PAM", "PROMs"] as const).map((section) => (
-              <div key={section}>
-                <h3 className="font-semibold text-text">{section}</h3>
-                <ul className="mt-2 space-y-2 text-sm leading-6 text-text-muted">
-                  {(section === "PAM" ? pamQuestions : promsQuestions).map((question) => (
-                    <li className="flex gap-2" key={question.key}>
-                      <span aria-hidden="true">•</span>
-                      <span>
-                        {question.key}: {questionOptionLabel(question, answers[question.key] ?? "")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-          <p className="mt-5 text-xs leading-5 text-text-subtle">
+          <p className="mt-2 text-xs leading-5 text-text-subtle">
             ผลลัพธ์จะคำนวณจากคำตอบที่ส่งเมื่อบันทึกแบบประเมิน
           </p>
           <ActionFeedback state={state} />
@@ -314,7 +237,7 @@ export function ScreeningForm({
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !formComplete} loading={pending} type="submit">
+            <Button disabled={locked || !formComplete} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : "ตรวจสอบและบันทึกแบบประเมิน"}
             </Button>
             <Link

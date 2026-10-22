@@ -65,18 +65,26 @@ const detail = {
   screeningAssessmentId: screeningId,
   submittedAt: new Date("2026-10-19T03:00:00.000Z"),
   conductedByDisplayName: "อสม. ทดสอบ",
+  instrument: "COMBINED",
   questionSetKey: "unknown",
   questionSetVersion: "unknown",
   scoringVersion: "unknown",
-  responses: { pam: {}, proms: {}, confidenceScore: 7, confidenceImprovementPlan: null },
-  result: {
-    level: "L2",
-    zone: "GREEN",
-    pamTotal: 30,
-    promsTotal: 20,
-    promsMin: 2,
-    combinedTotal: 50,
-    percentage: null,
+  responses: { kind: "LEGACY", pam: {}, proms: {}, confidenceScore: 7, confidenceImprovementPlan: null },
+  outcome: { kind: "LEGACY", level: "L2", zone: "GREEN", pamTotal: 30, promsTotal: 20 },
+} as unknown as ScreeningDetail;
+
+const promsDetail = {
+  ...detail,
+  instrument: "PROMS",
+  questionSetKey: "demi-proms",
+  questionSetVersion: "booklet-v1",
+  scoringVersion: "proms-booklet-v1",
+  responses: { kind: "INSTRUMENT", answers: { "proms-1": 2, "proms-2": 4, "proms-3": 4, "proms-4": 5 } },
+  outcome: {
+    kind: "PROMS",
+    itemScores: { "proms-1": 2, "proms-2": 4, "proms-3": 4, "proms-4": 5 },
+    hasProblem: true,
+    problemItemKeys: ["proms-1"],
   },
 } as unknown as ScreeningDetail;
 
@@ -100,6 +108,19 @@ describe("Screening detail fieldwork continuation", () => {
     expect(html).toContain('href="/app/patients/assigned?task=screening"');
     expect(html).toContain("เลือกผู้ป่วยรายถัดไปเพื่อคัดกรอง");
     expect(html).toContain(`href="/app/patients/${relationshipId}/screenings"`);
+  });
+
+  it("shows a PROMs result without a total, the booklet rule and the assessor guidance to staff", async () => {
+    mocks.getActor.mockResolvedValue(hospitalActor);
+    mocks.getScreeningDetail.mockResolvedValue(promsDetail);
+    const html = await render();
+
+    expect(html).toContain("มีปัญหา");
+    expect(html).toContain("คะแนนข้อใดข้อหนึ่ง น้อยกว่าหรือเท่ากับ 2 จัดว่า “มีปัญหา” ทันที (ไม่มีการวัดจากคะแนนรวม)");
+    expect(html).toContain("ดูตามเท่าที่ผู้ป่วย “รู้สึก” ว่าเป็นปัญหา");
+    expect(html).not.toContain("คะแนนรวม PROMs");
+    // PROMs never sources a Goal Plan.
+    expect(html).not.toContain("screeningId=");
   });
 
   it("does not offer the OSM task list without a current OSM scope", async () => {

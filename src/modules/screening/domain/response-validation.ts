@@ -1,84 +1,39 @@
 import { ValidationError } from "@/shared/errors/application-error";
 
-import type { ScreeningQuestionSet } from "./question-sets/types";
-import {
-  screeningResponsesSchema,
-  type ScreeningResponses,
-} from "../schemas/screening-schemas";
+import type { InstrumentQuestionSet } from "./question-sets/types";
+import { instrumentResponsesSchema } from "../schemas/screening-schemas";
 
-function expectedQuestionKeys(questionSet: ScreeningQuestionSet, section: "PAM" | "PROMs"): string[] {
-  return questionSet.questions
-    .filter((question) => question.section === section && question.required)
-    .map((question) => question.key);
-}
-
-function normalizeSection(
-  section: Record<string, number>,
-  expectedKeys: readonly string[],
-  sectionLabel: string,
-): Record<string, number> {
-  const actualKeys = Object.keys(section);
-  const expectedKeySet = new Set(expectedKeys);
-
-  if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key) => !expectedKeySet.has(key))
-  ) {
-    throw new ValidationError(`${sectionLabel} Screening answers are incomplete or invalid`);
-  }
-
-  return Object.fromEntries(expectedKeys.map((key) => [key, section[key]])) as Record<string, number>;
-}
-
-function validateAnswerRanges(
-  responses: Record<string, number>,
-  questionSet: ScreeningQuestionSet,
-): void {
-  const questions = new Map(questionSet.questions.map((question) => [question.key, question]));
-
-  for (const [key, value] of Object.entries(responses)) {
-    const question = questions.get(key);
-
-    if (!question || value < question.minAnswer || value > question.maxAnswer) {
-      throw new ValidationError("Screening answer is outside the selected question set");
-    }
-  }
-}
-
-export function validateScreeningResponses(
+/**
+ * R2-A/B: every question of the instrument must be answered exactly once with one of its options.
+ * Returns the answers in question order.
+ */
+export function validateInstrumentAnswers(
   input: unknown,
-  questionSet: ScreeningQuestionSet,
-): ScreeningResponses {
-  const parsed = screeningResponsesSchema.safeParse(input);
+  questionSet: InstrumentQuestionSet,
+): Record<string, number> {
+  const parsed = instrumentResponsesSchema.safeParse(input);
 
   if (!parsed.success) {
     throw new ValidationError("Screening answers are invalid or incomplete");
   }
 
-  const pam = normalizeSection(
-    parsed.data.pam,
-    expectedQuestionKeys(questionSet, "PAM"),
-    "PAM",
-  );
-  const proms = normalizeSection(
-    parsed.data.proms,
-    expectedQuestionKeys(questionSet, "PROMs"),
-    "PROMs",
-  );
+  const answers = parsed.data.answers;
+  const expectedKeys = questionSet.questions.map((question) => question.key);
+  const actualKeys = Object.keys(answers);
 
-  validateAnswerRanges(pam, questionSet);
-  validateAnswerRanges(proms, questionSet);
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key) => !expectedKeys.includes(key))) {
+    throw new ValidationError("กรุณาตอบแบบประเมินให้ครบทุกข้อ");
+  }
 
-  return {
-    pam,
-    proms,
-    confidenceScore: parsed.data.confidenceScore,
-    confidenceImprovementPlan: parsed.data.confidenceImprovementPlan,
-  };
+  return Object.fromEntries(
+    questionSet.questions.map((question) => {
+      const value = answers[question.key];
+
+      if (value === undefined || !question.options.some((option) => option.value === value)) {
+        throw new ValidationError("Screening answer is outside the selected question set");
+      }
+
+      return [question.key, value];
+    }),
+  );
 }
-
-export const responseValidationInternals = {
-  expectedQuestionKeys,
-  normalizeSection,
-  validateAnswerRanges,
-};

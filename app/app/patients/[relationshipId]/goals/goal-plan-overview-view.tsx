@@ -3,17 +3,13 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import type {
   GoalHistoryItem,
   GoalPlanOverview,
-  GoalScreeningContext,
 } from "@/modules/goals/services/goal-query-service";
 import type { PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
-import {
-  SCREENING_LEVEL_LABELS,
-  SCREENING_ZONE_LABELS,
-} from "@/modules/screening/presentation/screening-labels";
+import { screeningOutcomeBadges } from "@/modules/screening/presentation/screening-labels";
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -22,17 +18,6 @@ function formatDate(value: Date): string {
   }).format(value);
 }
 
-function zoneVariant(zone: GoalScreeningContext["result"]["zone"]): StatusVariant {
-  if (zone === "RED") {
-    return "danger";
-  }
-
-  if (zone === "YELLOW") {
-    return "warning";
-  }
-
-  return "success";
-}
 
 function ScreeningSummary({
   screening,
@@ -45,10 +30,11 @@ function ScreeningSummary({
     <div className="rounded-control border border-border bg-surface-muted px-4 py-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-text">แบบประเมินล่าสุด</span>
-        <StatusBadge variant="info">{SCREENING_LEVEL_LABELS[screening.result.level]}</StatusBadge>
-        <StatusBadge variant={zoneVariant(screening.result.zone)}>
-          {SCREENING_ZONE_LABELS[screening.result.zone]}
-        </StatusBadge>
+        {screeningOutcomeBadges(screening.outcome).map((badge) => (
+          <StatusBadge key={badge.label} variant={badge.variant}>
+            {badge.label}
+          </StatusBadge>
+        ))}
       </div>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ส่งเมื่อ {formatDate(screening.submittedAt)} · ใช้เป็นบริบทหรือค่าเริ่มต้นเท่านั้น
@@ -92,11 +78,13 @@ function HistoryRow({
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             <StatusBadge variant="info">{item.primaryGoalLabel}</StatusBadge>
-            {item.sourceScreening ? (
-              <StatusBadge variant={zoneVariant(item.sourceScreening.result.zone)}>
-                {SCREENING_LEVEL_LABELS[item.sourceScreening.result.level]} · {SCREENING_ZONE_LABELS[item.sourceScreening.result.zone]}
-              </StatusBadge>
-            ) : null}
+            {item.sourceScreening
+              ? screeningOutcomeBadges(item.sourceScreening.outcome).map((badge) => (
+                  <StatusBadge key={badge.label} variant={badge.variant}>
+                    {badge.label}
+                  </StatusBadge>
+                ))
+              : null}
           </div>
         </div>
         <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">

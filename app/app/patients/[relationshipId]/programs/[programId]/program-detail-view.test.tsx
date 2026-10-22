@@ -45,9 +45,9 @@ const detail: PatientProgramDetail = {
   serviceOne: [{
     roundNumber: 1,
     listedTools: ["routine", "floatingChart", "confidence"],
-    routine: { ...activity, evidence: null },
+    routine: { ...activity, routineDate: null, entries: [], evidence: null },
     floatingChart: { ...activity, summary: null, evidence: null },
-    dreamCard: { ...activity, description: null, evidence: null },
+    dreamCard: { ...activity, description: null, dream: null, obstacle: null, weeklyGoal: null, evidence: null },
     confidence: { ...activity, score: null, improvementPlan: null },
   }],
 };

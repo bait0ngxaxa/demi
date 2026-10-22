@@ -15,18 +15,19 @@ import {
   buildRoundAfterStepPath,
   buildRoundStepPath,
   formatRoundDate,
-  formatRoundNumber,
   roundLockedLabel,
   roundSkipDescription,
   roundStepStatusLabel,
   ROUND_STATE_LABELS,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
 import { buildRoundReturnQuery } from "@/modules/patient-program-rounds/presentation/round-return-path";
+import {
+  HealthPathTimeline,
+  RoundVitalsValues,
+} from "@/modules/patient-program-rounds/presentation/round-vitals-display";
 import type {
   ProgramRoundDetail,
-  RoundHealthPathRow,
   RoundPlanItem,
-  RoundVitalsView,
 } from "@/modules/patient-program-rounds/services/round-query-service";
 import { ageInFullYears } from "@/shared/time/age";
 
@@ -71,52 +72,6 @@ function stepBadgeVariant(step: RoundStepState): "success" | "warning" | "neutra
   return step.status === "DONE" ? "success" : step.status === "SKIPPED" ? "warning" : "neutral";
 }
 
-function VitalsList({ vitals }: { vitals: RoundVitalsView }): React.JSX.Element {
-  return (
-    <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-      {[
-        ["วันที่ให้บริการ", formatRoundDate(vitals.serviceDate)],
-        ["น้ำหนัก (kg)", formatRoundNumber(vitals.weight)],
-        ["ส่วนสูง (cm)", formatRoundNumber(vitals.heightCm)],
-        ["BMI (kg/m²)", formatRoundNumber(vitals.bmi)],
-        ["รอบเอว (cm)", formatRoundNumber(vitals.waistCircumference)],
-        ["น้ำตาลในเลือด / DTX (mg/dL)", formatRoundNumber(vitals.bloodSugar)],
-        ["ความดันตัวบน (mmHg)", formatRoundNumber(vitals.systolicBloodPressure)],
-        ["ความดันตัวล่าง (mmHg)", formatRoundNumber(vitals.diastolicBloodPressure)],
-        ["ผู้บันทึก", vitals.recordedByDisplayName ?? "ไม่ระบุ"],
-      ].map(([label, value]) => (
-        <div className="min-w-0" key={label}>
-          <dt className="text-sm text-text-muted">{label}</dt>
-          <dd className="mt-1 break-words font-semibold text-text">{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/** SR-D9: เส้นทางสุขภาพ derived from each round's vitals (no form of its own). */
-function HealthPathTable({ rows }: { rows: readonly RoundHealthPathRow[] }): React.JSX.Element {
-  return (
-    <ul className="divide-y divide-border rounded-control border border-border">
-      {rows.map((row) => (
-        <li className="grid gap-1 px-4 py-3 sm:grid-cols-[7rem_1fr]" key={row.roundNumber}>
-          <span className="font-semibold text-text">ครั้งที่ {row.roundNumber}</span>
-          <span className="text-sm text-text-muted">
-            {row.vitals
-              ? [
-                  `น้ำหนัก ${formatRoundNumber(row.vitals.weight)} kg`,
-                  `BMI ${formatRoundNumber(row.vitals.bmi)}`,
-                  `รอบเอว ${formatRoundNumber(row.vitals.waistCircumference)} cm`,
-                  `น้ำตาล ${formatRoundNumber(row.vitals.bloodSugar)} mg/dL`,
-                  `ความดัน ${formatRoundNumber(row.vitals.systolicBloodPressure)}/${formatRoundNumber(row.vitals.diastolicBloodPressure)} mmHg`,
-                ].join(" · ")
-              : "ยังไม่มีสัญญาณชีพ"}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 function PlanItemList({ items }: { items: readonly RoundPlanItem[] }): React.JSX.Element {
   return (
@@ -138,6 +93,34 @@ function PlanItemList({ items }: { items: readonly RoundPlanItem[] }): React.JSX
         </li>
       ))}
     </ul>
+  );
+}
+
+/** R2-F: ทบทวนแผนสุขภาพ answers of the round's Follow-up. */
+function PlanReviewAnswers({ review }: { review: NonNullable<ProgramRoundDetail["planReview"]> }): React.JSX.Element | null {
+  if (review.followedPlan === null && !review.reflectionNote && !review.expertAdvice) {
+    return null;
+  }
+
+  return (
+    <dl className="grid gap-3 rounded-control border border-border px-4 py-3 text-sm">
+      {review.followedPlan !== null ? (
+        <div>
+          <dt className="text-text-muted">ทบทวนแผนสุขภาพ</dt>
+          <dd className="mt-0.5 font-semibold text-text">{review.followedPlan ? "ทำตามแผนได้" : "ทำตามแผนไม่ได้"}</dd>
+        </div>
+      ) : null}
+      <div>
+        <dt className="text-text-muted">เกิดอะไรขึ้นบ้าง?</dt>
+        <dd className="mt-0.5 whitespace-pre-wrap text-text">{review.reflectionNote ?? "ไม่ได้ระบุ"}</dd>
+      </div>
+      {review.expertAdvice ? (
+        <div>
+          <dt className="text-text-muted">คำแนะนำจากผู้เชี่ยวชาญ</dt>
+          <dd className="mt-0.5 whitespace-pre-wrap text-text">{review.expertAdvice}</dd>
+        </div>
+      ) : null}
+    </dl>
   );
 }
 
@@ -219,7 +202,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
 
         return (
           <div className="space-y-4">
-            <VitalsList vitals={detail.vitals} />
+            <RoundVitalsValues recorder vitals={detail.vitals} />
             {missing.length > 0 ? (
               <Alert variant="warning">
                 ยังขาด: {missing.map((measurement) => VITALS_MEASUREMENT_LABELS[measurement]).join(" · ")}
@@ -297,14 +280,18 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
         </div>
       );
     case "PAM":
-    case "PROMS":
-      if (detail.screeningId) {
+    case "PROMS": {
+      // R2-C: each instrument is recorded (or skipped) on its own; a legacy combined screening answers both.
+      const screening = detail.screenings[step.code];
+      const instrumentLabel = step.code === "PAM" ? "PAM" : "PROMs";
+
+      if (screening) {
         return (
           <Link
             className={linkClassName}
-            href={`/app/patients/${encodeURIComponent(detail.patientHospitalRelationshipId)}/screenings/${encodeURIComponent(detail.screeningId)}`}
+            href={`/app/patients/${encodeURIComponent(detail.patientHospitalRelationshipId)}/screenings/${encodeURIComponent(screening.id)}`}
           >
-            ดูผลแบบประเมิน PAM และ PROMs
+            {screening.combined ? "ดูผลแบบประเมิน PAM และ PROMs (ชุดเดิม)" : `ดูผลแบบประเมิน ${instrumentLabel}`}
           </Link>
         );
       }
@@ -312,25 +299,26 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
       return editable ? (
         <div className="space-y-2">
           <p className="text-sm leading-6 text-text-muted">
-            PAM และ PROMs อยู่ในแบบประเมินชุดเดียวกัน บันทึกครั้งเดียวได้ทั้ง 2 รายการ แล้วระบบจะพากลับมาที่ขั้นตอนถัดไป
+            บันทึกแบบประเมิน {instrumentLabel} แล้วระบบจะพากลับมาที่ขั้นตอนถัดไป
           </p>
           <Link
             className={buttonClassName({ variant: "primary" })}
-            href={`/app/patients/${encodeURIComponent(detail.patientHospitalRelationshipId)}/screenings/new?programId=${encodeURIComponent(detail.patientProgramId)}`}
+            href={`/app/patients/${encodeURIComponent(detail.patientHospitalRelationshipId)}/screenings/new?programId=${encodeURIComponent(detail.patientProgramId)}&instrument=${step.code}`}
           >
-            ทำแบบประเมิน PAM และ PROMs
+            ทำแบบประเมิน {instrumentLabel}
           </Link>
         </div>
       ) : (
-        <p className="text-sm text-text-muted">ยังไม่มีแบบประเมินของครั้งนี้</p>
+        <p className="text-sm text-text-muted">ยังไม่มีแบบประเมิน {instrumentLabel} ของครั้งนี้</p>
       );
+    }
     case "HEALTH_PATH":
       return (
         <div className="space-y-3">
           <p className="text-sm leading-6 text-text-muted">
             จุดเริ่มต้นของเส้นทางสุขภาพมาจากสัญญาณชีพของครั้งนี้ ไม่มีแบบฟอร์มแยก ขั้นตอนนี้เสร็จเมื่อบันทึกสัญญาณชีพแล้ว
           </p>
-          <HealthPathTable rows={detail.healthPath} />
+          <HealthPathTimeline rows={detail.healthPath} />
         </div>
       );
     case "HEALTH_PATH_REVIEW":
@@ -339,7 +327,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
           <p className="text-sm leading-6 text-text-muted">
             ทบทวนสัญญาณชีพและ BMI ของครั้งที่ 1–6 ร่วมกับผู้ป่วย แล้วยืนยันว่าได้ทบทวนแล้ว
           </p>
-          <HealthPathTable rows={detail.healthPath} />
+          <HealthPathTimeline rows={detail.healthPath} />
           {step.status === "DONE" || !editable ? null : detail.vitals ? (
             <RoundReviewButton
               label="ยืนยันว่าได้ทบทวนเส้นทางสุขภาพแล้ว"
@@ -387,10 +375,13 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
               <div className="mt-3"><PlanItemList items={detail.planFollowUp.metItems} /></div>
             </div>
           ) : null}
+          {detail.planReview ? <PlanReviewAnswers review={detail.planReview} /> : null}
           {detail.followupId && step.status !== "DONE" ? (
             <Alert variant="warning">
-              การติดตามผลของครั้งนี้ไม่ได้อ้างอิงแผนสุขภาพ หรือไม่ได้ตอบว่าปรับแผนหรือไม่ จึงยังไม่นับเป็นการทบทวนแผน
-              บันทึกการติดตามผลแก้ไขไม่ได้ หากทบทวนไม่ได้ให้ข้ามพร้อมเหตุผล
+              {detail.planReview?.followedPlan === null
+                ? "การติดตามผลของครั้งนี้ไม่ได้อ้างอิงแผนสุขภาพ หรือไม่ได้ตอบว่าปรับแผนหรือไม่ จึงยังไม่นับเป็นการทบทวนแผน"
+                : "การติดตามผลของครั้งนี้ไม่ได้อ้างอิงแผนสุขภาพ หรือยังไม่ได้ตอบ “เกิดอะไรขึ้นบ้าง?” จึงยังไม่นับเป็นการทบทวนแผน"}
+              {" "}บันทึกการติดตามผลแก้ไขไม่ได้ หากทบทวนไม่ได้ให้ข้ามพร้อมเหตุผล
             </Alert>
           ) : null}
           <FollowupEntry context={context} />

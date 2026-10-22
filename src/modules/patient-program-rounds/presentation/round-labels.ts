@@ -79,3 +79,13 @@ export function buildRoundAfterStepPath(
 }
 
 export { ROUND_SUMMARY_STEP };
+
+/** R2-H: the booklet timepoints of the health path, by round. */
+export const HEALTH_PATH_TIMEPOINT_LABELS: Readonly<Record<1 | 2 | 3 | 4 | 5 | 6, string>> = {
+  1: "จุดเริ่มต้น",
+  2: "2 สัปดาห์",
+  3: "1 เดือน",
+  4: "2 เดือน",
+  5: "3 เดือน",
+  6: "6 เดือน",
+};

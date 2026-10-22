@@ -58,7 +58,7 @@ function program(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
     roundActivities: [],
     roundCompletions: [],
     roundStepSkips: [],
-    screeningAssessment: null,
+    screeningAssessments: [],
     serviceOneRoutines: [],
     serviceOneFloatingCharts: [],
     serviceOneDreamCards: [],
@@ -95,6 +95,12 @@ function tool(roundNumber: number, overrides: Record<string, unknown> = {}): Rec
     serviceOneArtifactAssociation: null,
     summary: null,
     description: null,
+    dream: null,
+    obstacle: null,
+    weeklyGoal: null,
+    // A routine recorded before R2 (no date) stays done as recorded.
+    routineDate: null,
+    entries: [],
     score: 6,
     improvementPlan: null,
     ...overrides,
@@ -130,7 +136,12 @@ function followup(roundNumber: number, overrides: Record<string, unknown> = {}):
     recordedAt: new Date("2026-10-20T04:00:00.000Z"),
     sourceGoalPlanId: planId,
     planAdjusted: false,
+    // Recorded before R2 unless a test sets the plan review answers.
+    followedPlan: null,
+    reflectionNote: null,
+    expertAdvice: null,
     weight: 62,
+    heightCm: null,
     waistCircumference: 79,
     systolicBloodPressure: 118,
     diastolicBloodPressure: 78,
@@ -266,7 +277,9 @@ describe("round detail read model", () => {
     const almost = program({
       roundVitals: [vitals(1)],
       patientHospitalRelationship: { hospitalProfile: { occupation: "ครู", preferredName: "ป้าใจ", version: 2 } },
-      screeningAssessment: { id: "ffffffff-ffff-4fff-8fff-000000000001", submittedAt: at, conductedByUser: recorder },
+      screeningAssessments: [
+        { id: "ffffffff-ffff-4fff-8fff-000000000001", instrument: "COMBINED", submittedAt: at, conductedByUser: recorder },
+      ],
       serviceOneFloatingCharts: [tool(1)],
       serviceOneConfidences: [tool(1)],
     });
@@ -401,9 +414,9 @@ describe("round detail read model", () => {
   });
 
   it("offers extra PAM/PROMs reviews in later rounds only when the screening exists (CARE-13)", () => {
-    const screening = { id: "ffffffff-ffff-4fff-8fff-000000000001", submittedAt: at, conductedByUser: recorder };
+    const screening = { id: "ffffffff-ffff-4fff-8fff-000000000001", instrument: "COMBINED", submittedAt: at, conductedByUser: recorder };
     const record = program({
-      screeningAssessment: screening,
+      screeningAssessments: [screening],
       roundActivities: [{
         id: "a", roundNumber: 5, toolCode: "PAM", source: "EXTRA", mode: "REVIEWED", performedAt: at, recordedByUser: recorder,
       }],
@@ -536,5 +549,90 @@ describe("round queries authorize through the Program read policy", () => {
     await expect(getProgramRoundsOverview(actor, relationshipId, "not-a-uuid", { database })).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+});
+
+describe("Phase R2 round facts", () => {
+  const screening = (instrument: string, id: string) => ({ id, instrument, submittedAt: at, conductedByUser: recorder });
+
+  it("answers PAM and PROMs from their own screenings, and both from a legacy combined one (R2-C)", () => {
+    const pamOnly = buildProgramRoundDetail(
+      program({ screeningAssessments: [screening("PAM", "ffffffff-ffff-4fff-8fff-000000000002")] }),
+      1,
+      patient,
+      staff,
+    );
+    expect(stepStatuses(program({ screeningAssessments: [screening("PAM", "ffffffff-ffff-4fff-8fff-000000000002")] }), 1)).toMatchObject({
+      PAM: "DONE",
+      PROMS: "TODO",
+    });
+    expect(pamOnly.screenings).toEqual({ PAM: { id: "ffffffff-ffff-4fff-8fff-000000000002", combined: false }, PROMS: null });
+
+    const legacy = program({ screeningAssessments: [screening("COMBINED", "ffffffff-ffff-4fff-8fff-000000000001")] });
+    expect(stepStatuses(legacy, 1)).toMatchObject({ PAM: "DONE", PROMS: "DONE" });
+    expect(buildProgramRoundDetail(legacy, 1, patient, staff).screenings.PROMS).toEqual({
+      id: "ffffffff-ffff-4fff-8fff-000000000001",
+      combined: true,
+    });
+  });
+
+  it("counts ตารางชีวิตของฉัน with at least one row or a photo of the paper page (R2-G)", () => {
+    const opened = { roundCompletions: [completion(1), completion(2), completion(3), completion(4)] };
+    const dated = { routineDate: new Date("2026-10-20T00:00:00.000Z") };
+    const status = (routine: Record<string, unknown>) =>
+      stepStatuses(program({ ...opened, serviceOneRoutines: [tool(5, routine)] }), 5).ROUTINE;
+
+    expect(status({ ...dated, entries: [] })).toBe("TODO");
+    expect(status({ ...dated, entries: [{ timeText: "06:00", activity: "ตื่นนอน", adjustment: null }] })).toBe("DONE");
+    expect(
+      status({
+        ...dated,
+        entries: [],
+        serviceOneArtifactAssociation: {
+          createdAt: at,
+          patientEvidenceArtifact: { id: "ffffffff-ffff-4fff-8fff-000000000009", mediaType: "image/jpeg", byteSize: 1, createdAt: at },
+        },
+      }),
+    ).toBe("DONE");
+    // Recorded before R2 (no date): stays done as recorded.
+    expect(status({})).toBe("DONE");
+  });
+
+  it("uses a Follow-up's own height for its round and later rounds, and the latest height otherwise (R2-D)", () => {
+    const record = program({
+      roundCompletions: [completion(1), completion(2), completion(3), completion(4)],
+      roundVitals: [vitals(1, { heightCm: 160 }), vitals(2, { heightCm: 160 })],
+      goalPlans: [goalPlan(1, planId)],
+      followups: [followup(1), followup(2, { heightCm: 158, weight: 60 }), followup(3)],
+    });
+
+    expect(buildProgramRoundDetail(record, 3, patient, staff).vitals).toMatchObject({ heightCm: 160 });
+    expect(buildProgramRoundDetail(record, 4, patient, staff).vitals).toMatchObject({ heightCm: 158, bmi: 24 });
+    expect(buildProgramRoundDetail(record, 5, patient, staff).vitals).toMatchObject({ heightCm: 158 });
+    // The vitals step of rounds 3-6 never needs the round's own height.
+    expect(stepStatuses(record, 5).VITALS).toBe("DONE");
+  });
+
+  it("derives ทบทวนแผนสุขภาพ from the R2 answers and exposes them to the round view (R2-F)", () => {
+    const opened = [completion(1), completion(2)];
+    const answered = program({
+      roundCompletions: opened,
+      goalPlans: [goalPlan(1, planId)],
+      followups: [followup(1, { followedPlan: false, reflectionNote: "ลืมเดินช่วงฝนตก", expertAdvice: "เดินในบ้านแทน" })],
+    });
+
+    expect(stepStatuses(answered, 3).HEALTH_PLAN_REVIEW).toBe("DONE");
+    expect(buildProgramRoundDetail(answered, 3, patient, staff).planReview).toEqual({
+      followedPlan: false,
+      reflectionNote: "ลืมเดินช่วงฝนตก",
+      expertAdvice: "เดินในบ้านแทน",
+    });
+
+    const blank = program({
+      roundCompletions: opened,
+      goalPlans: [goalPlan(1, planId)],
+      followups: [followup(1, { followedPlan: true, reflectionNote: "   " })],
+    });
+    expect(stepStatuses(blank, 3).HEALTH_PLAN_REVIEW).toBe("TODO");
   });
 });

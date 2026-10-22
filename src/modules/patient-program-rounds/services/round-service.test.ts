@@ -102,7 +102,7 @@ function programRecord(overrides: Record<string, unknown> = {}): Record<string, 
     roundActivities: [],
     roundCompletions: [],
     roundStepSkips: [],
-    screeningAssessment: null,
+    screeningAssessments: [],
     serviceOneRoutines: [],
     serviceOneFloatingCharts: [],
     serviceOneDreamCards: [],
@@ -171,7 +171,7 @@ function createDatabase(input: {
       create: vi.fn().mockResolvedValue({ id: recordId }),
     },
     screeningAssessment: {
-      findUnique: vi.fn().mockResolvedValue(input.screening === undefined ? { id: recordId } : input.screening),
+      findFirst: vi.fn().mockResolvedValue(input.screening === undefined ? { id: recordId } : input.screening),
     },
     patientFollowup: {
       findFirst: vi.fn().mockResolvedValue(input.followup ?? null),
@@ -440,7 +440,7 @@ describe("step skips (SR-D3)", () => {
     await expect(skipPatientProgramRoundStep(actor, skip, deps(same.database))).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
 
     const done = createDatabase({
-      program: { screeningAssessment: { id: recordId, submittedAt: now, conductedByUser: recorder } },
+      program: { screeningAssessments: [{ id: recordId, instrument: "COMBINED", submittedAt: now, conductedByUser: recorder }] },
     });
     await expect(skipPatientProgramRoundStep(actor, skip, deps(done.database))).rejects.toMatchObject({
       message: "รายการนี้บันทึกแล้ว จึงไม่ต้องข้าม",

@@ -28,7 +28,7 @@ const record = {
   roundStepSkips: [
     { roundNumber: 3, stepCode: "DREAM_CARD", reasonCode: "PATIENT_DECLINED", note: null, createdAt: new Date("2026-10-20T00:00:00Z"), skippedByUser: recorder },
   ],
-  screeningAssessment: null,
+  screeningAssessments: [],
   serviceOneRoutines: [],
   serviceOneFloatingCharts: [],
   serviceOneDreamCards: [],

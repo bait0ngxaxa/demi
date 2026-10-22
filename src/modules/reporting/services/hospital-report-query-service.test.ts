@@ -112,7 +112,7 @@ function programRecord(input: {
   baseline?: Record<string, unknown> | null;
   finalAssessment?: Record<string, unknown> | null;
   roundVitals?: Record<string, unknown>[];
-  screeningAssessment?: Record<string, unknown> | null;
+  screeningAssessments?: Record<string, unknown>[];
   hospitalNumber?: string;
 }): Record<string, unknown> {
   return {
@@ -147,7 +147,7 @@ function programRecord(input: {
     serviceOneConfidences: [],
     finalAssessment: input.finalAssessment ?? null,
     roundVitals: input.roundVitals ?? [],
-    screeningAssessment: input.screeningAssessment ?? null,
+    screeningAssessments: input.screeningAssessments ?? [],
     goalPlans: [],
     followups: Array.from({ length: input.followupCount ?? 0 }, (_, index) => followupRecord(index + 1)),
   };
@@ -247,7 +247,7 @@ describe("Hospital reporting query service", () => {
     expect(result.page.items[0]?.followups.items[0]?.activityProgress[0]?.activityLabel).toBe("เดินออกกำลังกาย");
     // Programs without round vitals, a program screening or a Final Assessment report them as missing.
     expect(result.page.items[0]?.roundVitals).toEqual({ round1: { state: "MISSING" }, round2: { state: "MISSING" } });
-    expect(result.page.items[0]?.screening).toEqual({ state: "MISSING" });
+    expect(result.page.items[0]?.screening).toEqual({ pam: { state: "MISSING" }, proms: { state: "MISSING" } });
     expect(result.page.items[0]?.bmi).toEqual({ baseline: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } });
     expect(result.page.items[0]?.followups.items[0]).toMatchObject({
       serviceDate: "2026-08-17",
@@ -331,10 +331,14 @@ describe("Hospital reporting query service", () => {
           bloodSugar: 112,
         },
       ],
-      screeningAssessment: {
-        submittedAt: new Date("2026-08-17T03:00:00.000Z"),
-        result: { pamTotal: 15, promsTotal: 18, promsMin: 2, combinedTotal: 33, percentage: 75, level: "L3", zone: "YELLOW" },
-      },
+      screeningAssessments: [
+        {
+          submittedAt: new Date("2026-08-17T03:00:00.000Z"),
+          instrument: "COMBINED",
+          scoringVersion: "legacy-prototype-v1",
+          result: { pamTotal: 15, promsTotal: 18, promsMin: 2, combinedTotal: 33, percentage: 75, level: "L3", zone: "YELLOW" },
+        },
+      ],
       finalAssessment: {
         recordedAt: new Date("2026-09-30T03:00:00.000Z"),
         serviceDate: new Date("2026-09-29T00:00:00.000Z"),
@@ -381,9 +385,39 @@ describe("Hospital reporting query service", () => {
       },
     });
     expect(row?.unavailable).toEqual({ achievementRate: "DERIVATION_UNAPPROVED", outcome: "SOURCE_MISSING" });
+    // A legacy combined screening answers both columns and keeps its PROMs total.
     expect(row?.screening).toEqual({
-      state: "PRESENT",
-      value: { submittedAt: "2026-08-17T03:00:00.000Z", pamScore: 15, promsScore: 18 },
+      pam: { state: "PRESENT", value: { submittedAt: "2026-08-17T03:00:00.000Z", score: 15 } },
+      proms: { state: "PRESENT", value: { submittedAt: "2026-08-17T03:00:00.000Z", legacyTotal: 18 } },
+    });
+  });
+
+  it("reports booklet PAM as its total and PROMs as a problem flag (R2-C, Q6)", async () => {
+    const program = programRecord({
+      id: programA1Id,
+      status: PatientProgramStatus.ACTIVE,
+      screeningAssessments: [
+        {
+          submittedAt: new Date("2026-08-17T03:00:00.000Z"),
+          instrument: "PAM",
+          scoringVersion: "pam-booklet-v1",
+          result: { total: 12, group: "GENERAL" },
+        },
+        {
+          submittedAt: new Date("2026-08-17T03:10:00.000Z"),
+          instrument: "PROMS",
+          scoringVersion: "proms-booklet-v1",
+          result: { itemScores: { "proms-1": 2 }, hasProblem: true, problemItemKeys: ["proms-1"] },
+        },
+      ],
+    });
+    const database = createDatabase({ programs: [program], relationshipCount: 1 });
+
+    const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database });
+
+    expect(result.page.items[0]?.screening).toEqual({
+      pam: { state: "PRESENT", value: { submittedAt: "2026-08-17T03:00:00.000Z", score: 12 } },
+      proms: { state: "PRESENT", value: { submittedAt: "2026-08-17T03:10:00.000Z", hasProblem: true } },
     });
   });
 

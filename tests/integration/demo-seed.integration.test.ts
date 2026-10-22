@@ -138,7 +138,8 @@ describe("synthetic demo seed and reset (P1 Part C)", () => {
     expect(completed.bmi.after).toMatchObject({ state: "RECORDED" });
     expect(completed.weeklyExercise.before).toEqual({ state: "RECORDED", value: 28.8 });
     expect(completed.weeklyExercise.after).toEqual({ state: "RECORDED", value: 28.8 });
-    expect(completed.screening.state).toBe("PRESENT");
+    expect(completed.screening.pam.state).toBe("PRESENT");
+    expect(completed.screening.proms.state).toBe("PRESENT");
     expect(Object.values(completed.serviceOne).every((activity) => activity.state === "PRESENT")).toBe(true);
     expect(dataset.counts.relationshipsWithoutProgram.value).toBe(1);
 

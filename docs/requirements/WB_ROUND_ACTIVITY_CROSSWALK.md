@@ -25,14 +25,14 @@
 | --- | --- | --- | --- |
 | `VITALS` | FORM | 1–6 | ครั้งที่ 1–2: `PatientProgramRoundVitals` ของครั้งนั้นมีน้ำหนัก ส่วนสูง รอบเอว ค่าน้ำตาล ความดันตัวบนและตัวล่างครบ; ครั้งที่ 3–6: Follow-up ของครั้งนั้น (Follow-up k = ครั้งที่ k+2) มีค่าเดียวกันครบยกเว้นส่วนสูง (ใช้ส่วนสูงล่าสุด, WB-DF-05). ถ้าขาดค่าใด ขั้นนี้ยังเป็น TODO และแสดงรายการที่ขาด: ครั้งที่ 1–2 เติมค่าที่ขาดลงบันทึกเดิมได้ (ค่าที่บันทึกแล้วแก้ไม่ได้) ระหว่างที่ครั้งนั้นยังเปิดอยู่; ครั้งที่ 3–6 ข้ามพร้อมเหตุผล. validation ของฟอร์มยังไม่บังคับทุกช่องเหมือนเดิม; ครั้งที่ 1 รับชื่อที่อยากให้เรียกและอาชีพ (ถ้ายังว่าง) ในขั้นนี้ด้วย |
 | `KNOW_SELF` | FORM | 1 | มี `PatientHospitalProfile.preferredName` (SR-D12) |
-| `PAM`, `PROMS` | SCREENING | 1 | มีแบบประเมินที่ผูกกับ Program (ชุดเดียวตอบทั้งสองรายการ) |
+| `PAM`, `PROMS` | SCREENING | 1 | มีแบบประเมินของ instrument นั้นที่ผูกกับ Program; แบบประเมินชุดเดิม (`COMBINED`) ตอบทั้งสองรายการ (R2-C) |
 | `FLOATING_CHART` | PER_ROUND_TOOL | 1, 4 | มีผลของครั้งนั้น |
 | `CONFIDENCE_RULER` | PER_ROUND_TOOL | 1, 2, 3, 4, 6 | มีผลของครั้งนั้น |
-| `ROUTINE` | PER_ROUND_TOOL | 1, 2, 4, 5 | มีผลของครั้งนั้น |
-| `DREAM_CARD` | PER_ROUND_TOOL | 3 | มีผลของครั้งที่ 3 (SR-D11) |
+| `ROUTINE` | PER_ROUND_TOOL | 1, 2, 4, 5 | มีตารางของครั้งนั้นที่มีอย่างน้อย 1 แถว หรือมีรูปหน้ากระดาษ; ตารางก่อน R2 (ไม่มีวันที่) นับตามเดิม (R2-G) |
+| `DREAM_CARD` | PER_ROUND_TOOL | 3 | มีผลของครั้งที่ 3 (SR-D11); ผลใหม่ต้องมีความฝันและเป้าหมายเล็ก ๆ สัปดาห์นี้ (R2-G) |
 | `HEALTH_PATH` | DERIVED | 1 | มีสัญญาณชีพครั้งที่ 1 (SR-D9) |
 | `HEALTH_PLAN_REVIEW` | GOAL_PLAN | 2 | มี Goal Plan แรกของ Program (D4, ชั่วคราว) |
-| `HEALTH_PLAN_REVIEW` | FOLLOWUP_REVIEW | 3–6 | Follow-up ของครั้งนั้นอ้างอิง Goal Plan และตอบ `planAdjusted` (D5, ชั่วคราว) |
+| `HEALTH_PLAN_REVIEW` | FOLLOWUP_REVIEW | 3–6 | Follow-up ของครั้งนั้นอ้างอิง Goal Plan, ตอบ `followedPlan` และ “เกิดอะไรขึ้นบ้าง?” ไม่ว่าง (R2-F); Follow-up ก่อน R2 (`followedPlan` null) ใช้ D5: ตอบ `planAdjusted` |
 | `HEALTHY_PLAN` | GOAL_PLAN | 4 | Follow-up ครั้งที่ 4 ตอบ `planAdjusted=false`, หรือ `true` และมี Goal Plan ที่ปรับจาก Follow-up นั้น (**รอลูกค้ายืนยัน**) |
 | `HEALTH_PATH_REVIEW` | DERIVED | 6 | ผู้บันทึกยืนยันการทบทวน timeline ครั้งที่ 1–6 (ledger `HEALTH_PATH` ครั้งที่ 6) |
 
