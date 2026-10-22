@@ -206,7 +206,7 @@ describe("application workspace projection", () => {
       expect(hospital.actions.every(({ href }) => new URL(href, "https://demi.test").searchParams.get("hospitalId") === hospital.hospitalId)).toBe(true);
       expect(hospital.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${hospital.hospitalId}`);
     }
-    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/access-requests", "/app/patients/service-requests"]);
+    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/service-requests"]);
     expect(projection.supportingActions.map(({ href }) => href)).toEqual([
       "/app/patients/service-catalog",
     ]);

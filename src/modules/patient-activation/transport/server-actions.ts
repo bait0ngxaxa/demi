@@ -210,20 +210,12 @@ export async function issuePatientActivationAction(
   formData: FormData,
 ): Promise<PatientActivationIssueActionState> {
   const reissueValue = getString(formData, "reissue");
-  const patientAccessRequestId = getString(formData, "patientAccessRequestId");
-  const parsed = patientActivationRequestSchema.safeParse(
-    patientAccessRequestId
-      ? {
-          patientAccessRequestId,
-          reissue: false,
-        }
-      : {
-          userId: getString(formData, "userId"),
-          targetHospitalId: getString(formData, "targetHospitalId"),
-          reissue:
-            reissueValue === "true" ? true : reissueValue === "false" ? false : undefined,
-        },
-  );
+  const parsed = patientActivationRequestSchema.safeParse({
+    userId: getString(formData, "userId"),
+    targetHospitalId: getString(formData, "targetHospitalId"),
+    reissue:
+      reissueValue === "true" ? true : reissueValue === "false" ? false : undefined,
+  });
 
   if (!parsed.success) {
     return {
@@ -238,10 +230,6 @@ export async function issuePatientActivationAction(
     const actor = await getProtectedApplicationActor();
     const result = await issuePatientActivation(actor, parsed.data);
     revalidatePath("/app/patients/activation");
-    revalidatePath("/app/patients/access-requests");
-    if (patientAccessRequestId) {
-      revalidatePath(`/app/patients/access-requests/${patientAccessRequestId}`);
-    }
     return {
       status: "SUCCESS",
       result: toIssueResultState(

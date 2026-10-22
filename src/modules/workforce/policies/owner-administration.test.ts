@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { decidePatientProvisioningPolicy, PATIENT_PROVISIONING_CAPABILITY } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { decidePatientActivationIssuePolicy, PATIENT_ACTIVATION_ISSUE_CAPABILITY } from "@/modules/patient-activation/policies/patient-activation-policy";
-import { decidePatientAccessRequestPolicy, PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY } from "@/modules/patient-access-requests/policies/patient-access-request-policy";
 import { decidePatientServiceRequestPolicy, PATIENT_SERVICE_REQUEST_CAPABILITIES } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import { decideHospitalReportPolicy, HOSPITAL_REPORT_CAPABILITIES } from "@/modules/reporting/policies/hospital-report-policy";
 import { decideWorkforcePolicy, WORKFORCE_CAPABILITIES } from "./workforce-policy";
@@ -24,7 +23,6 @@ const operations: { name: string; allows: (subject: ActorContext, targetHospital
   ...Object.values(WORKFORCE_CAPABILITIES).map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideWorkforcePolicy({ actor: subject, targetHospitalId, capability }).allowed })),
   { name: "patient import", allows: (subject, targetHospitalId) => decidePatientProvisioningPolicy({ actor: subject, targetHospitalId, capability: PATIENT_PROVISIONING_CAPABILITY }).allowed },
   { name: "patient activation", allows: (subject, targetHospitalId) => decidePatientActivationIssuePolicy({ actor: subject, targetHospitalId, capability: PATIENT_ACTIVATION_ISSUE_CAPABILITY }).allowed },
-  { name: "account request review", allows: (subject, targetHospitalId) => decidePatientAccessRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY }).allowed },
   ...[PATIENT_SERVICE_REQUEST_CAPABILITIES.review, PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability }).allowed })),
   // Report export is not OWNER-only (Product Owner decision 2026-10-21); it is covered separately below.
   ...[HOSPITAL_REPORT_CAPABILITIES.dashboardRead, HOSPITAL_REPORT_CAPABILITIES.rowRead].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideHospitalReportPolicy({ actor: subject, capability, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed })),

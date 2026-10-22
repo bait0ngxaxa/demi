@@ -21,7 +21,6 @@ import { acceptAppointmentGrant, proposeAppointmentGrant } from "@/modules/famil
 import { listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
 import { resolveFollowupAccessContext } from "@/modules/followups/services/followup-access-service";
 import { resolveGoalAccessContext } from "@/modules/goals/services/goal-access-service";
-import { getHospitalPatientAccessRequestDetail } from "@/modules/patient-access-requests/services/patient-access-request-service";
 import { assignOsmToPatient, assignOsmToPatients } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { PATIENT_BASELINE_READ_CAPABILITY } from "@/modules/patient-baseline/policies/patient-baseline-policy";
 import { resolvePatientBaselineAccessContext } from "@/modules/patient-baseline/services/patient-baseline-access-service";
@@ -290,7 +289,20 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
       submittedByUserId: f.patient.userId, source: "PATIENT_SELF", submissionNonce: randomUUID() } });
     const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: f.hospitalId, code: "SCREENING", enabled: true, createdByUserId: f.owner.userId, updatedByUserId: f.owner.userId } });
     const request = await db.patientServiceRequest.create({ data: { patientHospitalRelationshipId: f.relationshipId, hospitalId: f.hospitalId, offeringId: offering.id, requestedByUserId: f.patient.userId } });
-    const activation = await db.patientActivation.create({ data: { userId: f.patient.userId, hospitalId: f.hospitalId, tokenHash: randomUUID(), expiresAt: new Date(now.getTime() + 86_400_000), createdByUserId: f.owner.userId } });
+    const historicalAccessRequest = await db.patientAccessRequest.create({ data: {
+      hospitalId: f.hospitalId,
+      identityKeyHash: randomUUID(),
+      status: "ACTIVATION_ISSUED",
+      resolvedUserId: f.patient.userId,
+    } });
+    const activation = await db.patientActivation.create({ data: {
+      userId: f.patient.userId,
+      hospitalId: f.hospitalId,
+      patientAccessRequestId: historicalAccessRequest.id,
+      tokenHash: randomUUID(),
+      expiresAt: new Date(now.getTime() + 86_400_000),
+      createdByUserId: f.owner.userId,
+    } });
 
     const result = await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
     expect(result).toMatchObject({ osmAssignmentsEnded: 1, appointmentsCancelled: 1, appointmentRequestsClosed: 2, serviceRequestsClosed: 1, activationsRevoked: 1 });
@@ -302,7 +314,10 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     expect(await db.patientAppointmentRescheduleRequest.count({ where: { appointmentId: future.appointmentId, status: "SUPERSEDED", resolvedByUserId: f.owner.userId } })).toBe(1);
     expect(await db.patientAppointmentCancellationRequest.count({ where: { appointmentId: past.appointmentId, status: "SUPERSEDED" } })).toBe(1);
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: request.id } })).toMatchObject({ status: "REJECTED", reviewedByUserId: f.owner.userId });
-    expect((await db.patientActivation.findUniqueOrThrow({ where: { id: activation.id } })).revokedAt).toEqual(now);
+    expect(await db.patientActivation.findUniqueOrThrow({ where: { id: activation.id }, select: { revokedAt: true, patientAccessRequestId: true } }))
+      .toEqual({ revokedAt: now, patientAccessRequestId: null });
+    expect(await db.patientAccessRequest.findUniqueOrThrow({ where: { id: historicalAccessRequest.id }, select: { status: true } }))
+      .toEqual({ status: "ACTIVATION_ISSUED" });
     expect(await db.auditEvent.count({ where: { action: "appointment.cancelled", resourceId: future.appointmentId } })).toBe(1);
     // No LINE intent is created by the end transaction itself.
     expect(await db.appointmentLineNotification.count({ where: { appointmentId: future.appointmentId, eventKind: "CANCELLED" } })).toBe(0);
@@ -465,12 +480,6 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     await expect(provisioning).rejects.toBeInstanceOf(PatientProvisioningConflictError);
     await expect(provisioning).rejects.toMatchObject({ kind: "ENDED_RELATIONSHIP" });
 
-    const person = await db.person.findUniqueOrThrow({ where: { id: f.patient.personId } });
-    // A request approved before care ended is reconciled as ENDED_RELATIONSHIP (approval of a pending one is refused).
-    const request = await db.patientAccessRequest.create({ data: { hospitalId: f.hospitalId, identityKeyHash: person.identityKeyHash,
-      status: "APPROVED", reviewedByUserId: f.owner.userId, reviewedAt: now } });
-    const detail = await getHospitalPatientAccessRequestDetail(f.owner, { requestId: request.id }, dependencies);
-    expect(detail.reconciliation).toMatchObject({ kind: "ENDED_RELATIONSHIP", personId: person.id });
     expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId } })).toMatchObject({ endedAt: now });
   });
 });

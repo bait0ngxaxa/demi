@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 // Guards docs/requirements/BUSINESS_FLOW_GAP_CANONICAL.md (P1 Part B): one known status token per capability row and
 // a §8.6 summary that matches the rows.
-const STATUSES = ["VERIFIED_COMPLETE", "IMPLEMENTED", "PARTIAL", "MISSING", "CONTENT_PENDING", "AGENCY_GOVERNED", "SUPERSEDED"];
+const STATUSES = ["VERIFIED_COMPLETE", "IMPLEMENTED", "PARTIAL", "MISSING", "CONTENT_PENDING", "AGENCY_GOVERNED", "SUPERSEDED", "RETIRED"];
 const document = readFileSync(resolve(import.meta.dirname, "../docs/requirements/BUSINESS_FLOW_GAP_CANONICAL.md"), "utf8").replace(/\r\n/gu, "\n");
 
 function section(startHeading, endHeading) {

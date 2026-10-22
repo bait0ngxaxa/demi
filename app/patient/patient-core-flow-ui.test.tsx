@@ -2,13 +2,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/modules/patient-access-requests/transport/server-actions", () => ({
-  submitPublicPatientAccessRequestAction: vi.fn(),
-  locateHospitalPatientAccessRequestAction: vi.fn(),
-  reviewPatientAccessRequestAction: vi.fn(),
-  withdrawPatientAccessRequestByHospitalAction: vi.fn(),
-}));
-
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: vi.fn(),
   withdrawOwnPatientServiceRequestAction: vi.fn(),
@@ -18,9 +11,6 @@ vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
 
 import { HospitalServiceCatalogWorkspace } from "../app/patients/service-catalog/hospital-service-catalog-workspace";
 import { PatientServicesWorkspace } from "../app/personal/services/patient-services-workspace";
-import { PatientAccessRequestForm } from "./access-request/patient-access-request-form";
-import { PatientAccessRequestReviewControls } from "../app/patients/access-requests/patient-access-request-review-controls";
-import { PatientAccessRequestLookup } from "../app/patients/access-requests/patient-access-request-lookup";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -28,34 +18,7 @@ const offeringId = "33333333-3333-4333-8333-333333333333";
 const osmRelationshipId = "44444444-4444-4444-8444-444444444444";
 const osmUserId = "55555555-5555-4555-8555-555555555555";
 
-describe("Patient core flow presentation", () => {
-  it("separates lookup from identity verification and requires explicit selection for multiple Hospitals", () => {
-    const markup = renderToStaticMarkup(createElement(PatientAccessRequestLookup, { hospitals: [
-      { id: hospitalId, hospitalCode: "A", name: "โรงพยาบาล ก" },
-      { id: relationshipId, hospitalCode: "B", name: "โรงพยาบาล ข" },
-    ] }));
-    expect(markup).toContain("ค้นหาคำขอด้วยเลขบัตรประชาชน");
-    expect(markup).toContain("การพบคำขอไม่ถือเป็นการยืนยันตัวตน");
-    expect(markup).toMatch(/<option value=""[^>]*selected=""/);
-    expect(markup).not.toMatch(/identityVerified|identityKeyHash|authSubject|\?nationalId|1000000000009/);
-    expect(markup).not.toContain('method="get"');
-  });
-  it("keeps public onboarding separate from Login and recovery, with no prefilled identity", () => {
-    const markup = renderToStaticMarkup(
-      createElement(PatientAccessRequestForm, {
-        hospitals: [{ id: hospitalId, hospitalCode: "TEST-01", name: "โรงพยาบาลทดสอบ" }],
-      }),
-    );
-
-    expect(markup).toContain("โรงพยาบาลจะตรวจสอบข้อมูลและยืนยันตัวตนกับผู้ยื่นโดยตรง");
-    expect(markup).toContain("การทราบเลขบัตรไม่ใช่หลักฐานยืนยันตัวตน");
-    expect(markup).toContain('name="nationalId"');
-    expect(markup).toContain('href="/login"');
-    expect(markup).not.toContain("password");
-    expect(markup).not.toContain("1000000000009");
-    expect(markup).not.toContain("identityKeyHash");
-  });
-
+describe("Patient service request presentation", () => {
   it("uses preference language and avoids exposing the OSM User ID in Patient markup", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientServicesWorkspace, {
@@ -115,15 +78,4 @@ describe("Patient core flow presentation", () => {
     expect(markup).toContain("ไม่สร้าง Program หรือมอบหมาย อสม.");
   });
 
-  it("requires direct National ID verification in Hospital review controls", () => {
-    const markup = renderToStaticMarkup(
-      createElement(PatientAccessRequestReviewControls, { requestId: "77777777-7777-4777-8777-777777777777" }),
-    );
-
-    expect(markup).toContain("เลขบัตรประชาชนที่ตรวจยืนยันโดยตรง");
-    expect(markup).toContain('name="identityVerified"');
-    expect(markup).toContain("ตรวจยืนยันตัวตนกับผู้ยื่นคำขอโดยตรงแล้ว");
-    expect(markup).not.toContain("identityKeyHash");
-    expect(markup).not.toContain("authSubject");
-  });
 });

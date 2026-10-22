@@ -3,7 +3,6 @@ import type { MobileNavigationTab } from "./mobile-tab-projection";
 const assignedPatientPath = "/app/patients/assigned";
 const patientDetailStaticSegments = new Set([
   "assigned",
-  "access-requests",
   "activation",
   "provision",
   "service-catalog",

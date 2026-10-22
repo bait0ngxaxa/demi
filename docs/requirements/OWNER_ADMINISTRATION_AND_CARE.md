@@ -6,7 +6,7 @@ CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้แ
 | --- | --- | --- | --- | --- | --- |
 | Excel v2 import ตั้งแต่ 1 รายการ | Hospital ตนที่ ACTIVE | ปฏิเสธ | ปฏิเสธ | ปฏิเสธ | ไม่เพิ่มสิทธิ์ |
 | บุคลากร/OSM, issuance/regeneration, มอบหมายผู้ดูแล | ตามนโยบายเดิม | ปฏิเสธ | ปฏิเสธ | ปฏิเสธ | recovery เดิมแยกต่างหาก |
-| ออกคำเชิญผู้ป่วย / ตรวจคำขอใช้บัญชี / ตรวจคำขอบริการ | exact scope | ปฏิเสธ | ปฏิเสธ | self-service เดิม | boundary เดิม |
+| ออกคำเชิญผู้ป่วย / ตรวจคำขอบริการ | exact scope | ปฏิเสธ | ปฏิเสธ | self-service เดิม | boundary เดิม |
 | รายงานบริหารและ export | exact scope | ปฏิเสธแม้มี grant เก่า | ปฏิเสธ | ปฏิเสธ | reporting เดิม |
 | ตั้งค่า catalog เนื้อหา พื้นที่และเครือข่าย | นโยบายที่มีอยู่ | ปฏิเสธ | ปฏิเสธ | ปฏิเสธ | governance เดิม |
 | งานดูแลผู้ป่วย | resource policy | resource policy | assignment policy | self-service เดิม | ไม่เพิ่ม clinical scope |
@@ -18,7 +18,7 @@ CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้แ
 
 | กลุ่ม | Classification | ผลตัดสิน |
 | --- | --- | --- |
-| workforce directory/provision/lifecycle/recovery issuance/slips; patient import/activation issuance; access/service review; service catalog; assignment; contact/content management; Hospital report/export | HOSPITAL_ADMINISTRATION | direct OWNER เท่านั้น; historical grant ไม่มีอำนาจ |
+| workforce directory/provision/lifecycle/recovery issuance/slips; patient import/activation issuance; service review; service catalog; assignment; contact/content management; Hospital report/export | HOSPITAL_ADMINISTRATION | direct OWNER เท่านั้น; historical grant ไม่มีอำนาจ |
 | patient-directory, screening, followups, goals, patient-program, baseline, classification, evidence, appointments, hospital-profile care updates | PATIENT_CARE | คง exact patient/Hospital/assignment policy เดิม |
 | exact-Program report ที่ใช้ patient-program read scope | PATIENT_CARE | สรุปการดูแลราย Program ไม่เพิ่ม Hospital administrative report/export |
 | ข้อมูลติดต่อ/ข่าวสารโรงพยาบาลแบบอ่าน | PATIENT_CARE | คง scoped projection เดิม; การแก้ไข OWNER-only |
@@ -30,5 +30,7 @@ CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้แ
 ## Patient onboarding และ LINE
 
 `/app/patients/provision` ใช้ชื่อ “นำเข้าผู้ป่วย” สำหรับ OWNER เท่านั้น ไม่มี single-registration tab/form หรือ generic creation endpoint Excel v2 รักษาการ resolve ตัวตน การตรวจซ้ำ การไม่ overwrite และ transaction/audit เดิม
+
+คำขอใช้บัญชีผู้ป่วยสาธารณะและกล่อง OWNER review ถูกเลิกใช้ตาม [ADR-0020 addendum RA-1](../adr/0020-self-registration-by-national-id.md); ผู้ป่วยต้องมี roster record จาก OWNER ก่อน แล้วจึงลงทะเบียนด้วยเลขบัตรหรือใช้ invite/assisted activation.
 
 OSM ทุก variant มี 4 งานหลัก: ผู้ป่วยที่ดูแล, คัดกรองผู้ป่วย, บันทึกติดตาม, งานทั้งหมด ไม่มี “เพิ่มผู้ป่วย” ภาพและพื้นที่กดใช้ shared layout เดียวกัน PATIENT menu, chooser, alias, native switching และ ordinary web links คงเดิม ไม่แก้ LINE Provider จริงและไม่ deploy

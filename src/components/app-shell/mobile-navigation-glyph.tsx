@@ -202,7 +202,7 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/personal/knowledge") || pathname.startsWith("/app/personal/news")) {
     return "knowledge";
   }
-  if (pathname.startsWith("/app/patients/access-requests") || pathname.startsWith("/app/patients/service-requests")) {
+  if (pathname.startsWith("/app/patients/service-requests")) {
     return "requests";
   }
   if (pathname.startsWith("/app/personal/services") || pathname.startsWith("/app/patients/service-")) {

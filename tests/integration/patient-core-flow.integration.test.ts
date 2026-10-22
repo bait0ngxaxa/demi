@@ -2,8 +2,6 @@ import {
   HospitalStatus,
   MembershipStatus,
   MembershipType,
-  PatientAccessRequestResolution,
-  PatientAccessRequestStatus,
   PatientServiceCode,
   PatientServiceRequestStatus,
   Role,
@@ -16,15 +14,6 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import {
-  listPublicActiveHospitals,
-  locateHospitalPatientAccessRequest,
-  listHospitalPatientAccessRequestLookupHospitals,
-  getHospitalPatientAccessRequestDetail,
-  reviewPatientAccessRequest,
-  submitPublicPatientAccessRequest,
-  withdrawPatientAccessRequestByHospital,
-} from "@/modules/patient-access-requests/services/patient-access-request-service";
-import {
   listManagedHospitalServiceCatalog,
   setHospitalServiceOffering,
 } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
@@ -35,12 +24,6 @@ import {
   reviewPatientServiceRequest,
   withdrawOwnPatientServiceRequest,
 } from "@/modules/patient-service-requests/services/patient-service-request-service";
-import {
-  completePatientActivation,
-  issuePatientActivation,
-} from "@/modules/patient-activation/services/patient-activation-service";
-import { hashPatientActivationToken } from "@/modules/patient-activation/services/activation-token-service";
-import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 
 const prisma = getPrisma();
 const nationalId = "1000000000009";
@@ -258,19 +241,6 @@ async function createOsm(input: {
   };
 }
 
-async function submitAccessRequest(requestedId: string, hospitalId: string) {
-  await submitPublicPatientAccessRequest({ nationalId: requestedId, hospitalId });
-  const identityKeyHash = hashIdentityReference({
-    namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
-    value: requestedId,
-  });
-  return prisma.patientAccessRequest.findFirstOrThrow({
-    where: { identityKeyHash, hospitalId, status: PatientAccessRequestStatus.PENDING },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: { id: true, identityKeyHash: true, status: true },
-  });
-}
-
 async function enableService(
   actor: ActorContext,
   hospitalId: string,
@@ -281,10 +251,6 @@ async function enableService(
     where: { hospitalId_code: { hospitalId, code } },
     select: { id: true },
   });
-}
-
-function activationCredential(token: string) {
-  return () => ({ plaintextToken: token, tokenHash: hashPatientActivationToken(token) });
 }
 
 function requestInput(input: {
@@ -299,7 +265,7 @@ function requestInput(input: {
   };
 }
 
-describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
+describe("Patient service requests PostgreSQL workflow", () => {
   beforeAll(async () => {
     await prisma.$connect();
   });
@@ -316,74 +282,6 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     await prisma.$disconnect();
   });
 
-  it.each([MembershipType.OWNER])("locates an exact-Hospital request for %s without changing state or creating domain records", async (membershipType) => {
-    const hospital = await createHospital("LOOKUP-EXACT");
-    const { actor } = await createHospitalActor({ hospitalId: hospital.id, membershipType });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    const before = await prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id } });
-    const personCount = await prisma.person.count();
-    const userCount = await prisma.user.count();
-    expect(await listHospitalPatientAccessRequestLookupHospitals(actor)).toEqual([{ id: hospital.id, hospitalCode: "LOOKUP-EXACT", name: "โรงพยาบาล LOOKUP-EXACT" }]);
-    const located = await locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId });
-    expect(located).toEqual({ requestId: request.id, status: "PENDING" });
-    expect(JSON.stringify(located)).not.toMatch(/identityKeyHash|authSubject|1000000000009/);
-    expect(await prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id } })).toEqual(before);
-    expect(JSON.stringify(before)).not.toContain(nationalId);
-    expect(await prisma.auditEvent.count()).toBe(0);
-    expect(await prisma.person.count()).toBe(personCount);
-    expect(await prisma.user.count()).toBe(userCount);
-    expect(await prisma.patientProfile.count()).toBe(0);
-    expect(await prisma.patientHospitalRelationship.count()).toBe(0);
-    expect(await prisma.patientActivation.count()).toBe(0);
-    await expect(reviewPatientAccessRequest(actor, { requestId: request.id, decision: "APPROVE", nationalId })).rejects.toMatchObject({ code: "VALIDATION" });
-    expect((await prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id } })).status).toBe("PENDING");
-  });
-
-  it("does not widen lookup through hierarchy or another direct Hospital", async () => {
-    const parent = await createHospital("LOOKUP-PARENT");
-    const child = await createHospital("LOOKUP-CHILD", HospitalStatus.ACTIVE);
-    const { actor } = await createHospitalActor({ hospitalId: parent.id });
-    await submitAccessRequest(nationalId, child.id);
-    await expect(locateHospitalPatientAccessRequest(actor, { hospitalId: child.id, nationalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(await locateHospitalPatientAccessRequest(actor, { hospitalId: parent.id, nationalId })).toBeNull();
-    expect((await listHospitalPatientAccessRequestLookupHospitals(actor)).map(({ id }) => id)).toEqual([parent.id]);
-  });
-
-  it.each([Role.OSM, Role.PATIENT, Role.ADMIN])("denies persisted %s lookup despite stale claimed Hospital scope", async (role) => {
-    const hospital = await createHospital("LOOKUP-ROLE");
-    const { actor, userId } = await createHospitalActor({ hospitalId: hospital.id });
-    await submitAccessRequest(nationalId, hospital.id);
-    await prisma.userRole.deleteMany({ where: { userId } });
-    await prisma.userRole.create({ data: { userId, role } });
-    await expect(locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(listHospitalPatientAccessRequestLookupHospitals(actor)).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it.each(["user", "membership", "hospital"] as const)("denies lookup after persisted %s becomes inactive", async (target) => {
-    const hospital = await createHospital("LOOKUP-INACTIVE");
-    const { actor, userId } = await createHospitalActor({ hospitalId: hospital.id });
-    await submitAccessRequest(nationalId, hospital.id);
-    if (target === "user") await prisma.user.update({ where: { id: userId }, data: { status: "SUSPENDED" } });
-    if (target === "membership") await prisma.hospitalMembership.updateMany({ where: { userId }, data: { status: "SUSPENDED" } });
-    if (target === "hospital") await prisma.hospital.update({ where: { id: hospital.id }, data: { status: "SUSPENDED" } });
-    await expect(locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId })).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  it("locates only current actionable requests and returns no match for a different identity", async () => {
-    const hospital = await createHospital("LOOKUP-STATE");
-    const { actor } = await createHospitalActor({ hospitalId: hospital.id });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    expect(await locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId: "1000000000017" })).toBeNull();
-    for (const status of [PatientAccessRequestStatus.APPROVED, PatientAccessRequestStatus.ACTIVATION_ISSUED]) {
-      await prisma.patientAccessRequest.update({ where: { id: request.id }, data: { status } });
-      expect(await locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId })).toEqual({ requestId: request.id, status });
-    }
-    for (const status of [PatientAccessRequestStatus.COMPLETED, PatientAccessRequestStatus.REJECTED, PatientAccessRequestStatus.WITHDRAWN]) {
-      await prisma.patientAccessRequest.update({ where: { id: request.id }, data: { status } });
-      expect(await locateHospitalPatientAccessRequest(actor, { hospitalId: hospital.id, nationalId })).toBeNull();
-    }
-  });
-
   it("audits the persisted offering row ID on create/update and skips a true no-op", async () => {
     const hospital = await createHospital("CATALOG-AUDIT");
     const { actor } = await createHospitalActor({ hospitalId: hospital.id, membershipType: "OWNER" });
@@ -395,279 +293,6 @@ describe("Phase 17E.3 Patient core flow PostgreSQL workflow", () => {
     expect(events).toHaveLength(2);
     expect(events.every(({ resourceId }) => resourceId === offering.id)).toBe(true);
     expect(JSON.stringify(events)).not.toContain(nationalId);
-  });
-
-  it("stores only the canonical identity hash on public submit and does not provision a Person or User", async () => {
-    const hospital = await createHospital("CORE-ACCESS-PUBLIC");
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    const canonicalHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId });
-
-    expect(request).toMatchObject({ identityKeyHash: canonicalHash, status: PatientAccessRequestStatus.PENDING });
-    expect(request.identityKeyHash).not.toBe(nationalId);
-    expect(await prisma.person.count()).toBe(0);
-    expect(await prisma.user.count()).toBe(0);
-    expect(JSON.stringify(await prisma.auditEvent.findMany({ select: { metadata: true } }))).not.toContain(nationalId);
-  });
-
-  it("lists only active Hospitals and rejects a public request targeting an inactive Hospital", async () => {
-    const activeHospital = await createHospital("CORE-ACCESS-ACTIVE");
-    const inactiveHospital = await createHospital("CORE-ACCESS-INACTIVE", HospitalStatus.SUSPENDED);
-
-    await expect(listPublicActiveHospitals()).resolves.toEqual([
-      expect.objectContaining({ id: activeHospital.id, hospitalCode: "CORE-ACCESS-ACTIVE" }),
-    ]);
-    await expect(submitPublicPatientAccessRequest({ nationalId, hospitalId: inactiveHospital.id })).rejects.toMatchObject({
-      code: "VALIDATION",
-    });
-    expect(await prisma.patientAccessRequest.count()).toBe(0);
-  });
-
-  it("treats repeated open public submissions as idempotent without returning request state", async () => {
-    const hospital = await createHospital("CORE-ACCESS-DUP");
-    const first = await submitPublicPatientAccessRequest({ nationalId, hospitalId: hospital.id });
-    const repeated = await submitPublicPatientAccessRequest({ nationalId, hospitalId: hospital.id });
-
-    expect(first).toBeUndefined();
-    expect(repeated).toBe(first);
-    expect(await prisma.patientAccessRequest.count()).toBe(1);
-  });
-
-  it("keeps concurrent repeated public submissions to one unresolved request", async () => {
-    const hospital = await createHospital("CORE-ACCESS-CONCURRENT-DUP");
-    const results = await Promise.all([
-      submitPublicPatientAccessRequest({ nationalId, hospitalId: hospital.id }),
-      submitPublicPatientAccessRequest({ nationalId, hospitalId: hospital.id }),
-    ]);
-
-    expect(results).toEqual([undefined, undefined]);
-    expect(await prisma.patientAccessRequest.count({ where: { hospitalId: hospital.id } })).toBe(1);
-  });
-
-  it("returns the same service-level result for existing and unknown identities", async () => {
-    const hospital = await createHospital("CORE-ACCESS-ENUMERATION");
-    const existing = await createPatient({ hospitalId: hospital.id, nationalId });
-    const existingResult = await submitPublicPatientAccessRequest({ nationalId, hospitalId: hospital.id });
-    const unknownResult = await submitPublicPatientAccessRequest({ nationalId: "1000000000017", hospitalId: hospital.id });
-
-    expect(existingResult).toBeUndefined();
-    expect(unknownResult).toBe(existingResult);
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: existing.userId }, select: { status: true } })).toEqual({
-      status: UserStatus.PROVISIONED,
-    });
-    expect(await prisma.patientAccessRequest.count()).toBe(2);
-  });
-
-  it("denies access-request review from an unrelated Hospital, OSM, and Platform ADMIN", async () => {
-    const hospital = await createHospital("CORE-ACCESS-REVIEW");
-    const unrelated = await createHospital("CORE-ACCESS-OTHER");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const otherOwner = await createHospitalActor({ hospitalId: unrelated.id, membershipType: MembershipType.OWNER });
-    const osm = await createOsm({ hospitalId: hospital.id });
-    const admin = await createPlatformAdmin();
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    const reviewInput = { requestId: request.id, decision: "REJECT" as const };
-
-    await expect(reviewPatientAccessRequest(otherOwner.actor, reviewInput)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(reviewPatientAccessRequest(osm.actor, reviewInput)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(reviewPatientAccessRequest(admin.actor, reviewInput)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(reviewPatientAccessRequest(owner.actor, reviewInput)).resolves.toMatchObject({ status: "REJECTED" });
-  });
-
-  it.each([MembershipType.OWNER])("allows exact active Hospital %s to review a request", async (membershipType) => {
-    const hospital = await createHospital(`CORE-ACCESS-${membershipType}`);
-    const reviewer = await createHospitalActor({ hospitalId: hospital.id, membershipType });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-
-    await expect(
-      reviewPatientAccessRequest(reviewer.actor, { requestId: request.id, decision: "REJECT" }),
-    ).resolves.toMatchObject({ status: PatientAccessRequestStatus.REJECTED });
-  });
-
-  it("requires the assisted identity input to match before approval", async () => {
-    const hospital = await createHospital("CORE-ACCESS-MISMATCH");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-
-    await expect(
-      reviewPatientAccessRequest(owner.actor, {
-        requestId: request.id,
-        decision: "APPROVE",
-        nationalId: "1000000000017",
-        identityVerified: true,
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id }, select: { status: true } })).resolves.toEqual({
-      status: PatientAccessRequestStatus.PENDING,
-    });
-  });
-
-  it("approves an unprovisioned request without creating a Person or User", async () => {
-    const hospital = await createHospital("CORE-ACCESS-NO-PATIENT");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    const beforePersonCount = await prisma.person.count();
-    const beforeUserCount = await prisma.user.count();
-
-    await expect(
-      reviewPatientAccessRequest(owner.actor, {
-        requestId: request.id,
-        decision: "APPROVE",
-        nationalId,
-        identityVerified: true,
-      }),
-    ).resolves.toMatchObject({ status: PatientAccessRequestStatus.APPROVED });
-    expect(await prisma.person.count()).toBe(beforePersonCount);
-    expect(await prisma.user.count()).toBe(beforeUserCount);
-    await expect(getHospitalPatientAccessRequestDetail(owner.actor, { requestId: request.id })).resolves.toMatchObject({
-      status: PatientAccessRequestStatus.APPROVED,
-      reconciliation: { kind: "NOT_PROVISIONED" },
-    });
-  });
-
-  it("leaves incomplete existing Person state for the controlled provisioning workflow", async () => {
-    const hospital = await createHospital("CORE-ACCESS-PROVISIONING");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const identityKeyHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId });
-    await prisma.person.create({ data: { identityKeyHash, givenName: "สมชาย" } });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-
-    await reviewPatientAccessRequest(owner.actor, {
-      requestId: request.id,
-      decision: "APPROVE",
-      nationalId,
-      identityVerified: true,
-    });
-
-    await expect(getHospitalPatientAccessRequestDetail(owner.actor, { requestId: request.id })).resolves.toMatchObject({
-      status: PatientAccessRequestStatus.APPROVED,
-      reconciliation: { kind: "PROVISIONING_REQUIRED", displayName: "สมชาย" },
-    });
-    expect(await prisma.user.count()).toBe(1);
-    expect(await prisma.patientProfile.count()).toBe(0);
-  });
-
-  it("resolves an already-active exact-Hospital Patient without issuing activation or changing credentials", async () => {
-    const hospital = await createHospital("CORE-ACCESS-ACTIVE-ACCOUNT");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const patient = await createPatient({ hospitalId: hospital.id, nationalId, status: UserStatus.ACTIVE });
-    const before = await prisma.user.findUniqueOrThrow({
-      where: { id: patient.userId },
-      select: { status: true, authSubject: true },
-    });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-
-    await expect(
-      reviewPatientAccessRequest(owner.actor, {
-        requestId: request.id,
-        decision: "APPROVE",
-        nationalId,
-        identityVerified: true,
-      }),
-    ).resolves.toEqual({ status: PatientAccessRequestStatus.COMPLETED, resolution: PatientAccessRequestResolution.ALREADY_ACTIVE });
-    expect(await prisma.patientActivation.count()).toBe(0);
-    expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId }, select: { status: true, authSubject: true } })).toEqual(before);
-    await expect(getHospitalPatientAccessRequestDetail(owner.actor, { requestId: request.id })).resolves.toMatchObject({
-      status: PatientAccessRequestStatus.COMPLETED,
-      resolution: PatientAccessRequestResolution.ALREADY_ACTIVE,
-    });
-    const auditMetadata = await prisma.auditEvent.findMany({ select: { metadata: true } });
-    expect(JSON.stringify(auditMetadata)).not.toContain(nationalId);
-    expect(JSON.stringify(auditMetadata)).not.toContain(request.identityKeyHash);
-  });
-
-  it("reuses PatientActivation and completes the linked access request only after activation succeeds", async () => {
-    const hospital = await createHospital("CORE-ACCESS-ACTIVATION");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const patient = await createPatient({ hospitalId: hospital.id, nationalId });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    await reviewPatientAccessRequest(owner.actor, {
-      requestId: request.id,
-      decision: "APPROVE",
-      nationalId,
-      identityVerified: true,
-    });
-    const token = "phase-17e3-linked-patient-activation-token";
-    const issued = await issuePatientActivation(
-      owner.actor,
-      { patientAccessRequestId: request.id, reissue: false },
-      { generateCredential: activationCredential(token) },
-    );
-
-    expect(issued).toMatchObject({ outcome: "ISSUED", userId: patient.userId, hospitalId: hospital.id });
-    expect(await prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id }, select: { status: true } })).toEqual({
-      status: PatientAccessRequestStatus.ACTIVATION_ISSUED,
-    });
-    expect(await prisma.patientActivation.findUniqueOrThrow({
-      where: { tokenHash: hashPatientActivationToken(token) },
-      select: { patientAccessRequestId: true },
-    })).toEqual({ patientAccessRequestId: request.id });
-
-    await expect(
-      completePatientActivation(
-        token,
-        { password: "correct-horse-battery-12", passwordConfirmation: "correct-horse-battery-12" },
-        {
-          provisionIdentity: async ({ userId }) => {
-            const authSubject = "abcdefab-cdef-4abc-8def-abcdefabcdef";
-            await prisma.user.update({ where: { id: userId }, data: { authSubject } });
-            return { userId, authSubject };
-          },
-        },
-      ),
-    ).resolves.toEqual({ userId: patient.userId, hospitalId: hospital.id });
-    await expect(prisma.patientAccessRequest.findUniqueOrThrow({
-      where: { id: request.id },
-      select: { status: true, resolution: true, completedAt: true },
-    })).resolves.toEqual({
-      status: PatientAccessRequestStatus.COMPLETED,
-      resolution: PatientAccessRequestResolution.ACTIVATION_COMPLETED,
-      completedAt: expect.any(Date),
-    });
-  });
-
-  it("does not mark onboarding complete when activation provider state is ambiguous", async () => {
-    const hospital = await createHospital("CORE-ACCESS-ACTIVATION-AMBIGUOUS");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    await createPatient({ hospitalId: hospital.id, nationalId });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-    await reviewPatientAccessRequest(owner.actor, {
-      requestId: request.id,
-      decision: "APPROVE",
-      nationalId,
-      identityVerified: true,
-    });
-    const token = "phase-17e3-linked-patient-activation-ambiguous";
-    await issuePatientActivation(
-      owner.actor,
-      { patientAccessRequestId: request.id, reissue: false },
-      { generateCredential: activationCredential(token) },
-    );
-
-    await expect(
-      completePatientActivation(
-        token,
-        { password: "correct-horse-battery-12", passwordConfirmation: "correct-horse-battery-12" },
-        { provisionIdentity: async () => { throw new PasswordAuthProvisioningReconciliationError(); } },
-      ),
-    ).rejects.toMatchObject({ requiresReconciliation: true });
-    await expect(prisma.patientAccessRequest.findUniqueOrThrow({
-      where: { id: request.id },
-      select: { status: true, completedAt: true },
-    })).resolves.toEqual({ status: PatientAccessRequestStatus.ACTIVATION_ISSUED, completedAt: null });
-  });
-
-  it("records withdrawal requested through the Hospital before activation issuance", async () => {
-    const hospital = await createHospital("CORE-ACCESS-WITHDRAW");
-    const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const request = await submitAccessRequest(nationalId, hospital.id);
-
-    await withdrawPatientAccessRequestByHospital(member.actor, { requestId: request.id });
-    await expect(prisma.patientAccessRequest.findUniqueOrThrow({ where: { id: request.id }, select: { status: true } })).resolves.toEqual({
-      status: PatientAccessRequestStatus.WITHDRAWN,
-    });
-    await expect(submitAccessRequest(nationalId, hospital.id)).resolves.toMatchObject({
-      status: PatientAccessRequestStatus.PENDING,
-    });
   });
 
   it("enforces OWNER-only exact-Hospital catalog configuration and keeps Hospitals isolated", async () => {

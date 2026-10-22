@@ -60,6 +60,17 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 
 **ก-25 / production gate:** ผล found/not-found เปิดเผยว่าบุคคลถูกลงทะเบียนไว้กับโรงพยาบาล และกรณีผู้ป่วยเปิดเผยการเข้าร่วมโครงการ NCD ซึ่งเป็นข้อมูลสุขภาพตาม PDPA ม.26. หน่วยงานพันธมิตรต้องรับทราบความเสี่ยงและอนุมัติก่อนใช้ข้อมูลจริง บันทึกเป็น RELEASE_GATE G-01. Risk acceptance ของ Product Owner ไม่ถือเป็นการอนุมัติจากหน่วยงาน.
 
+## SR-2. เลิกคำขอใช้บัญชีผู้ป่วย (Product Owner, 2026-10-22)
+
+บันทึกใน [ADR-0020 Addendum RA-1](../adr/0020-self-registration-by-national-id.md) และ supersede ข้อความเรื่อง access request ใน AUTH-04 และ OWNER capability rows.
+
+| Decision | ข้อกำหนดที่นำไปใช้ |
+| --- | --- |
+| SR2-D1 — Patient roster | OWNER ต้องเพิ่มผู้ป่วยด้วย Excel import ก่อน; จากนั้นผู้ป่วยลงทะเบียนด้วยเลขบัตรตาม SR-1 หรือใช้ invite/assisted activation เดิม |
+| SR2-D2 — Retired workflow | ยกเลิก public “ขอใช้บัญชี DEMI” และ OWNER inbox `/app/patients/access-requests`; ไม่มี redirect และไม่มีลิงก์จาก navigation/home/LINE |
+| SR2-D3 — Historical data | ไม่ทำ destructive migration; เก็บ `PatientAccessRequest`, enums, columns, foreign keys และ audit ไว้; unresolved rows คงสถานะเดิมและ inert |
+| SR2-D4 — Existing activation and deletion | activation token เดิมยังเปิดบัญชีได้โดยไม่ขยับ request history; end-of-care ยังคง revoke activation และ unlink request reference; retained request relations remain classified as data by the user-record deletion registry |
+
 ## ค. การนำ Phase A ไปใช้ (WB-DF-01..05, WB-PD-01/10)
 
 บันทึกการตัดสินใจเชิงออกแบบที่ทำเพื่อให้ defaults ข้างต้นทำงานได้ ซึ่งไม่ได้ระบุไว้ชัดใน register:
@@ -159,7 +170,7 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 4. **ผู้ป่วย (เลือก “ประวัติการดูแลเท่านั้น”):** รายการ รพ. ยังแสดงพร้อมป้าย “สิ้นสุดการดูแลแล้ว”; อ่านนัด โปรแกรม/รอบ ติดตาม แผน คัดกรอง Baseline ประวัติสุขภาพ และประวัติคำขอรับบริการได้อย่างเดียว; รับทราบ/ขอเลื่อน/ขอยกเลิกนัด ส่งคำขอรับบริการ แก้ข้อมูลสำหรับ รพ. นั้น และส่งเรื่องแจ้งปัญหาถึง รพ. นั้นไม่ได้; ไม่แสดงความรู้ ข้อมูลติดต่อ และเบอร์ รพ. ในรายละเอียดนัดของ รพ. นั้น. ผู้ป่วยที่ไม่มีความสัมพันธ์ที่ยังดูแลอยู่เลยไม่เปิดรับแจ้งเตือนนัดทาง LINE ได้. ยาและบันทึกส่วนตัว (รวมการเตือนยา) เป็นของบัญชีผู้ป่วย จึงไม่เปลี่ยน.
 5. **LINE (เลือก “ไม่ส่ง”):** ธุรกรรมไม่สร้างข้อความยกเลิกนัด; ข้อความที่ค้างอยู่ถูกตัดตอนส่ง (`AUTHORITY_CHANGED`) เพราะการตรวจซ้ำตอนส่งต้องการความสัมพันธ์ที่ยังไม่สิ้นสุด.
 6. **รายงาน:** cohort เริ่มต้น (`ACTIVE`) ไม่นับความสัมพันธ์ที่สิ้นสุดทั้งจำนวนผู้ป่วยและ Program; OWNER เลือก “รวมผู้ที่สิ้นสุดการดูแล” (`cohort=INCLUDE_ENDED`) ได้ที่หน้ารายงานและการส่งออก Excel ใช้ชุดเดียวกัน (มีหมายเหตุในไฟล์และ `cohort` ใน audit การส่งออก). cohort ไม่ถูกผูกใน cursor ที่ลงนาม (เป็นตัวกรอง ไม่ใช่มิติสิทธิ์; การผูก actor/รพ./page size/operation คงเดิม และ cursor เดิมยาวใกล้เพดาน 512). รายงานแม่ข่าย-ลูกข่าย, ADMIN และ MEMBER ที่ได้สิทธิ์ส่งออกใช้ cohort เริ่มต้น. รายงานราย Program ของผู้ป่วยปิดตามสิทธิ์ผู้ป่วย.
-7. **การรับกลับ (เลือก “คง unique, ปฏิเสธ”):** unique `(patientProfileId, hospitalId)` คงเดิม ความสัมพันธ์ที่สิ้นสุดไม่ถูกเปิดกลับ. การเพิ่มผู้ป่วย (ฟอร์ม/นำเข้า) ที่เลขบัตรตรงกับความสัมพันธ์ที่สิ้นสุด → conflict `ENDED_RELATIONSHIP` (นำเข้าจัดเป็น CONFLICT พร้อมเหตุผล “สิ้นสุดการดูแล… กรุณาติดต่อผู้ดูแลระบบ”); คำขอเข้าถึงของผู้ป่วยแสดง `ENDED_RELATIONSHIP` และอนุมัติไม่ได้. เส้นทางให้ผู้ดูแลระบบรับกลับยังไม่ implement — ต้องมี decision ว่าจะสร้างความสัมพันธ์ใหม่ (ต้องเปลี่ยน unique เป็น partial) หรือเปิดกลับแบบมี audit ก่อนทำ.
+7. **การรับกลับ (เลือก “คง unique, ปฏิเสธ”):** unique `(patientProfileId, hospitalId)` คงเดิม ความสัมพันธ์ที่สิ้นสุดไม่ถูกเปิดกลับ. การเพิ่มผู้ป่วย (ฟอร์ม/นำเข้า) ที่เลขบัตรตรงกับความสัมพันธ์ที่สิ้นสุด → conflict `ENDED_RELATIONSHIP` (นำเข้าจัดเป็น CONFLICT พร้อมเหตุผล “สิ้นสุดการดูแล… กรุณาติดต่อผู้ดูแลระบบ”); account-access request ที่เคยเสนอไว้ถูกเลิกใช้ตาม SR-2. เส้นทางให้ผู้ดูแลระบบรับกลับยังไม่ implement — ต้องมี decision ว่าจะสร้างความสัมพันธ์ใหม่ (ต้องเปลี่ยน unique เป็น partial) หรือเปิดกลับแบบมี audit ก่อนทำ.
 
 ## ซ. Customer decisions Phase H — เขตความรับผิดชอบ (final)
 

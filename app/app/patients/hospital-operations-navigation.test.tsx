@@ -6,7 +6,6 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import { PatientDirectoryView } from "./patient-directory-view";
 import { PatientActivationActionsWorkspace } from "./activation/patient-activation-actions-workspace";
 import { HospitalServiceCatalogWorkspace } from "./service-catalog/hospital-service-catalog-workspace";
-import { HospitalPatientAccessRequestsWorkspace } from "./access-requests/patient-access-requests-workspace";
 
 const scopes = [
   { hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาล ก", hospitalCode: "H-A", access: "DIRECT" as const },
@@ -44,12 +43,4 @@ describe("Hospital patient operations navigation", () => {
     expect(html).not.toContain('href="/app/patients/service-catalog?hospitalId=');
   });
 
-  it("distinguishes the all-authorized-Hospital request queue from exact Hospital lookup", () => {
-    const html = renderToStaticMarkup(<HospitalPatientAccessRequestsWorkspace requests={[]} hospitals={scopes.map((item) => ({ id: item.hospitalId, name: item.hospitalName, hospitalCode: item.hospitalCode }))} />);
-    expect(html).toContain("รวมคำขอจากทุกโรงพยาบาล");
-    expect(html).toContain("ใช้กับการค้นหานั้นเท่านั้น");
-    expect(html).toContain("ยังไม่มีคำขอ");
-    expect(html).toContain('href="/app"');
-    expect(html).not.toContain("งานค้าง");
-  });
 });

@@ -60,8 +60,12 @@ export default async function PatientDetailPage({
   searchParams,
 }: PatientDetailPageProps): Promise<React.JSX.Element> {
   await connection();
-  const actor = await resolveActor();
   const { relationshipId } = await params;
+  if (relationshipId === "access-requests") {
+    notFound();
+  }
+
+  const actor = await resolveActor();
   const query = searchParams ? await searchParams : {};
   const selfMeasurementCursor = typeof query.selfMeasurementCursor === "string"
     ? query.selfMeasurementCursor

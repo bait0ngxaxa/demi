@@ -68,7 +68,7 @@ const followup = "/app/patients/assigned?task=followup";
 const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
 const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
-const ownerRequests = ["/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog"];
+const ownerRequests = ["/app/patients/service-requests", "/app/patients/service-catalog"];
 // UI-4: tiles follow the Work navigation sections (care → registration → reports-info → administration).
 const ownerTiles = (id: string, areas = false) => [
   withHospital("/app/patients", id),

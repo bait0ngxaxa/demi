@@ -12,10 +12,6 @@ import {
   decidePatientServiceRequestPolicy,
 } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import {
-  decidePatientAccessRequestPolicy,
-  PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
-} from "@/modules/patient-access-requests/policies/patient-access-request-policy";
-import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
@@ -158,20 +154,6 @@ function projectHospitalActions(
       label: "เปิดใช้งานบัญชีผู้ป่วย",
       description: "จัดการการเปิดใช้งานบัญชีผู้ป่วยในโรงพยาบาลนี้",
       category: "patient",
-    });
-  }
-
-  if (
-    decidePatientAccessRequestPolicy({
-      actor,
-      capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
-      hospitalId,
-    }).allowed
-  ) {
-    actions.push({
-      href: "/app/patients/access-requests",
-      label: "คำขอใช้บัญชีผู้ป่วย",
-      description: "ตรวจสอบตัวตนและดำเนินคำขอจากโรงพยาบาลที่บัญชีนี้มีสิทธิ์",
     });
   }
 

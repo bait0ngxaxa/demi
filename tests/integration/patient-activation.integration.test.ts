@@ -34,6 +34,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
+  await prisma.patientAccessRequest.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -531,6 +532,51 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       prisma.auditEvent.findMany({ where: { action: "patient_activation.completed" }, select: { metadata: true } }),
     ]);
     expect(JSON.stringify(localState)).not.toContain(password);
+  });
+
+  it("completes a legacy linked activation without changing its retired access-request history", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-RETIRED-REQUEST");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    const token = "patient-activation-retired-request-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    const request = await prisma.patientAccessRequest.create({
+      data: {
+        hospitalId: hospital.id,
+        identityKeyHash: "retired-patient-access-request",
+        status: "ACTIVATION_ISSUED",
+        resolvedUserId: patient.userId,
+      },
+      select: { id: true },
+    });
+    await prisma.patientActivation.update({
+      where: { tokenHash: hashPatientActivationToken(token) },
+      data: { patientAccessRequestId: request.id },
+    });
+
+    await completePatientActivation(
+      token,
+      { password, passwordConfirmation: password },
+      { provisionIdentity: createProvisioner("77777777-7777-4777-8777-777777777777") },
+    );
+
+    await expect(prisma.user.findUniqueOrThrow({ where: { id: patient.userId }, select: { status: true } }))
+      .resolves.toEqual({ status: UserStatus.ACTIVE });
+    await expect(prisma.patientActivation.findUniqueOrThrow({
+      where: { tokenHash: hashPatientActivationToken(token) },
+      select: { usedAt: true, patientAccessRequestId: true },
+    })).resolves.toMatchObject({ usedAt: expect.any(Date), patientAccessRequestId: request.id });
+    await expect(prisma.patientAccessRequest.findUniqueOrThrow({
+      where: { id: request.id },
+      select: { status: true, completedAt: true },
+    })).resolves.toEqual({ status: "ACTIVATION_ISSUED", completedAt: null });
   });
 
   it("releases the claim when provider creation fails so a retry remains safe", async () => {

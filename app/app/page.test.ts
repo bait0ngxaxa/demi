@@ -127,6 +127,7 @@ describe("application home workspace routing", () => {
     expect(html).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(html).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
     expect(html).toContain('href="/app/patients/service-requests"');
+    expect(html).not.toContain('/app/patients/access-requests');
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลที่เลือก");
     expect(section(html, "work-home-menu-heading")).toContain(`/app/workforce?hospitalId=${hospitalId}`);
     expect(html).not.toContain("สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น");
@@ -229,7 +230,7 @@ describe("application home workspace routing", () => {
     const secondId = "55555555-5555-4555-8555-555555555555";
     const html = await renderHome({ ...actor, hospitalMemberships: [...actor.hospitalMemberships, { hospitalId: secondId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] });
     expect(html.match(/href="\/app\/patients\/service-requests"/g)).toHaveLength(1);
-    expect(html.match(/href="\/app\/patients\/access-requests"/g)).toHaveLength(1);
+    expect(html).not.toContain('/app/patients/access-requests');
     expect(html.match(/href="\/app\/patients\/service-catalog"/g)).toHaveLength(1);
     // The grid shows only the selected (default: first) Hospital; the other is a chip option.
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);

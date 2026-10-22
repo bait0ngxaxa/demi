@@ -8,7 +8,6 @@ import { resolvePatientImportTemplateTarget } from "@/modules/patient-provisioni
 import { importPatientRoster, previewPatientRosterImport } from "@/modules/patient-provisioning/services/patient-roster-import-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { assertPatientActivationActorInDatabase } from "@/modules/patient-activation/services/patient-activation-service";
-import { locateHospitalPatientAccessRequest, reviewPatientAccessRequest } from "@/modules/patient-access-requests/services/patient-access-request-service";
 import { listHospitalPatientServiceRequests, reviewPatientServiceRequest } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { HOSPITAL_REPORT_CAPABILITIES } from "@/modules/reporting/policies/hospital-report-policy";
 import { resolveHospitalReportingAccessContext } from "@/modules/reporting/services/hospital-report-access-service";
@@ -128,7 +127,6 @@ describe("persisted Owner administration", () => {
     await expect(regenerateWorkforceActivation(staleOwner, { userId: osm.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listWorkforce(staleOwner, { targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(listWorkforceHospitals(staleOwner)).resolves.toEqual([]);
-    await expect(locateHospitalPatientAccessRequest(staleOwner, { hospitalId: hospital.id, nationalId: "1000000000009" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listHospitalPatientServiceRequests(staleOwner)).rejects.toMatchObject({ code: "FORBIDDEN" });
     // A MEMBER exports as MEMBER (2026-10-21); the stale OWNER claim never unlocks OWNER-only report scopes.
     await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export)).resolves.toMatchObject({ accessBasis: "MEMBER" });
@@ -152,22 +150,18 @@ describe("persisted Owner administration", () => {
     }
   });
 
-  it("rejects stale-owner review mutations and preserves valid Owner reviews", async () => {
+  it("rejects stale-owner service request reviews and preserves valid Owner reviews", async () => {
     const relationship = await db.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalId: hospital.id }, select: { id: true, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } } });
     const requester = relationship.patientProfile.person.user;
     if (!requester) throw new Error("Missing synthetic patient account");
     const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: hospital.id, code: "SCREENING", enabled: true, createdByUserId: owner.userId, updatedByUserId: owner.userId } });
     const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, offeringId: offering.id, requestedByUserId: requester.id } });
-    const accessRequest = await db.patientAccessRequest.create({ data: { hospitalId: hospital.id, identityKeyHash: randomUUID() } });
     const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
     for (const subject of [member, osm, staleOwner]) {
       await expect(reviewPatientServiceRequest(subject, { requestId: serviceRequest.id }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
-      await expect(reviewPatientAccessRequest(subject, { requestId: accessRequest.id, decision: "REJECT" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "PENDING" });
-    expect(await db.patientAccessRequest.findUniqueOrThrow({ where: { id: accessRequest.id } })).toMatchObject({ status: "PENDING" });
     await expect(reviewPatientServiceRequest(owner, { requestId: serviceRequest.id }, "APPROVE")).resolves.toBe("APPROVED");
-    await expect(reviewPatientAccessRequest(owner, { requestId: accessRequest.id, decision: "REJECT" })).resolves.toMatchObject({ status: "REJECTED" });
   });
 
   it("disables legacy manual patient creation even for OWNER", async () => {

@@ -115,7 +115,7 @@ const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
   staffRegistration,
-  ["review-queue", "คำขอรอตรวจ", ["/app/patients/access-requests", "/app/patients/service-requests", "/app/hospitals/support"]],
+  ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
   ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
@@ -134,7 +134,7 @@ const previousHrefs: Record<string, readonly string[]> = {
   osm: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
   member: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
   memberExport: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients", "/app/family", "/app/settings", "/app/support"],
-  owner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/access-requests", "/app/patients/service-requests", "/app/patients/service-catalog", "/app/family", "/app/settings", "/app/support"],
+  owner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/patients/service-requests", "/app/patients/service-catalog", "/app/family", "/app/settings", "/app/support"],
   admin: ["/app", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family"],
   adminOwner: ["/app", "/app/workforce", "/app/hospitals/contact", "/app/hospitals/contacts", "/app/hospitals/knowledge", "/app/hospitals/content", "/app/hospitals/support", "/app/hospitals/reporting", "/app/patients", "/app/patients/provision", "/app/patients/activation", "/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding", "/app/family", "/app/settings", "/app/support"],
   osmPatient: ["/app/personal", "/app", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
@@ -222,6 +222,18 @@ const cases: Case[] = [
 ];
 
 describe("UI-4 task-based navigation per actor", () => {
+  it("does not link the retired patient account-access routes from navigation", () => {
+    const owner = actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)],
+    });
+
+    const hrefs = allHrefs(project(owner));
+
+    expect(hrefs).not.toContain("/patient/access-request");
+    expect(hrefs).not.toContain("/app/patients/access-requests");
+  });
+
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {
     const groups = project(subject, workspaces);
 

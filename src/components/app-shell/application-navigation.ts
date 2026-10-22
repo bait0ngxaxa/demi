@@ -21,10 +21,6 @@ import {
   decidePatientServiceRequestPolicy,
 } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import {
-  decidePatientAccessRequestPolicy,
-  PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
-} from "@/modules/patient-access-requests/policies/patient-access-request-policy";
-import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
@@ -139,16 +135,6 @@ function canActivatePatients(actor: ActorContext): boolean {
 function canReadPatients(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     hasDirectHospitalPatientReadScope(actor, hospitalId),
-  );
-}
-
-function canReviewPatientRequests(actor: ActorContext): boolean {
-  return actor.hospitalMemberships.some(({ hospitalId }) =>
-    decidePatientAccessRequestPolicy({
-      actor,
-      capability: PATIENT_ACCESS_REQUEST_REVIEW_CAPABILITY,
-      hospitalId,
-    }).allowed,
   );
 }
 
@@ -324,7 +310,6 @@ function projectWorkSections(
       canActivatePatients(actor) && { href: "/app/patients/activation", label: "เปิดใช้งานบัญชี", match: "prefix" },
     ])),
     ...section("review-queue", "work", compact([
-      canReviewPatientRequests(actor) && { href: "/app/patients/access-requests", label: "คำขอใช้บัญชี", match: "prefix" },
       canReviewPatientServiceRequests(actor) && { href: "/app/patients/service-requests", label: "คำขอรับบริการ", match: "prefix" },
       isActiveHospitalOwner(actor) && { href: "/app/hospitals/support", label: "กล่องแจ้งปัญหา", match: "prefix" },
       governance.onboarding,

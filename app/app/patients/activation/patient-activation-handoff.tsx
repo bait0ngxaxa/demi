@@ -24,8 +24,6 @@ type PatientActivationHandoffProps = {
   /** Reports whether this handoff holds an unhandled one-time link or an unresolved request. */
   onGuardChange?: (active: boolean) => void;
   candidate?: PatientActivationCandidateState;
-  patientAccessRequestId?: string;
-  linkedOutcome?: "READY_FOR_ACTIVATION" | "ALREADY_ACTIVE";
 };
 
 /** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
@@ -73,27 +71,6 @@ function IssueForm({
         size="compact"
         type="submit"
       >
-        {pending ? `กำลัง${label}...` : label}
-      </Button>
-    </form>
-  );
-}
-
-function LinkedIssueForm({
-  action,
-  pending,
-  requestId,
-  label,
-}: {
-  action: (formData: FormData) => void;
-  pending: boolean;
-  requestId: string;
-  label: string;
-}): React.JSX.Element {
-  return (
-    <form action={action} className="mt-3">
-      <input name="patientAccessRequestId" type="hidden" value={requestId} />
-      <Button disabled={pending} loading={pending} size="compact" type="submit">
         {pending ? `กำลัง${label}...` : label}
       </Button>
     </form>
@@ -247,8 +224,6 @@ function ActivationPresentation({
 export function PatientActivationHandoff({
   onGuardChange,
   candidate,
-  patientAccessRequestId,
-  linkedOutcome,
 }: PatientActivationHandoffProps): React.JSX.Element {
   const mounted = useRef(true);
   const inFlight = useRef(false);
@@ -370,77 +345,6 @@ export function PatientActivationHandoff({
             "ระบบอาจออกลิงก์แล้ว แต่ลิงก์เดิมแสดงซ้ำไม่ได้ โหลดสถานะล่าสุดก่อน หากต้องการลิงก์ทดแทน ให้ค้นหาผู้ป่วยอีกครั้งและเลือกออกลิงก์ใหม่ด้วยตนเอง การออกใหม่จะยกเลิกลิงก์เดิมที่ยังใช้ได้",
         }}
       />
-    );
-  }
-
-  if (patientAccessRequestId) {
-    if (reconciliationRequired) {
-      return (
-        <Alert className="mt-4" variant="danger">
-          <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์</p>
-          <p className="mt-1">คำขอยังคงรอการตรวจสอบ ระบบยังไม่ถือว่าเปิดใช้งานสำเร็จ</p>
-        </Alert>
-      );
-    }
-
-    if (result?.outcome === "ALREADY_ACTIVE") {
-      return (
-        <Alert className="mt-4" variant="success">
-          <p className="font-semibold">บัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
-          <p className="mt-1">ไม่ได้ออกลิงก์เปิดใช้งานหรือเปลี่ยนรหัสผ่าน</p>
-          <p className="mt-1">
-            ผู้ป่วยเข้าสู่ระบบได้ตามปกติ หากลืมรหัสผ่าน ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
-          </p>
-        </Alert>
-      );
-    }
-
-    if (result?.outcome === "ISSUED" && result.activationToken && result.activationUrl) {
-      return issuedLink(result);
-    }
-
-    if (result?.outcome === "ALREADY_ISSUED") {
-      return (
-        <Alert className="mt-4" variant="warning">
-          <p className="font-semibold">มีลิงก์เปิดใช้งานที่ยังใช้ได้แล้ว</p>
-          <p className="mt-1">ลิงก์เดิมแสดงซ้ำไม่ได้ การออกลิงก์ทดแทนจะยกเลิกลิงก์เดิมทันที</p>
-          <p className="mt-1 text-xs leading-5">ลิงก์เดิมหมดอายุ: {formatDate(result.activationExpiresAt)}</p>
-          <IssueForm
-            action={action}
-            hospitalId={result.hospitalId}
-            label="ยกเลิกลิงก์เดิมและออกใหม่"
-            pending={pending}
-            reissue
-            userId={result.userId}
-          />
-          {state.status === "ERROR" ? <p className="mt-3 text-sm text-danger" role="alert">{state.message}</p> : null}
-        </Alert>
-      );
-    }
-
-    if (state.status === "ERROR") {
-      return <Alert className="mt-4" variant="danger">{state.message}</Alert>;
-    }
-
-    return (
-      <div className="mt-4">
-        {linkedOutcome === "ALREADY_ACTIVE" ? (
-          <Alert variant="info">
-            <p className="font-semibold">พบว่าบัญชีผู้ป่วยเปิดใช้งานอยู่แล้ว</p>
-            <p className="mt-1">ยืนยันผลนี้เพื่อปิดคำขอ ระบบจะไม่ออกลิงก์เปิดใช้งานหรือเปลี่ยนรหัสผ่าน</p>
-          </Alert>
-        ) : (
-          <p className="text-sm leading-6 text-text-muted">
-            เปิดใช้งานบัญชีผู้ป่วยจากคำขอนี้ ผู้ป่วยจะตั้งรหัสผ่านด้วยตนเอง
-          </p>
-        )}
-        <LinkedIssueForm
-          action={action}
-          label={linkedOutcome === "ALREADY_ACTIVE" ? "ยืนยันบัญชีที่เปิดใช้งานแล้ว" : "ออกลิงก์เปิดใช้งาน"}
-          pending={pending}
-          requestId={patientAccessRequestId}
-        />
-      </div>
     );
   }
 

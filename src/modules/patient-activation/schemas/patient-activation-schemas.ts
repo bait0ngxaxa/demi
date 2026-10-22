@@ -11,31 +11,10 @@ export const patientActivationRequestSchema = z
   .object({
     userId: z.uuid().optional(),
     targetHospitalId: z.uuid().optional(),
-    patientAccessRequestId: z.uuid().optional(),
     reissue: z.boolean(),
   })
   .strict()
   .superRefine((input, context) => {
-    if (input.patientAccessRequestId) {
-      if (input.userId !== undefined || input.targetHospitalId !== undefined) {
-        context.addIssue({
-          code: "custom",
-          path: ["patientAccessRequestId"],
-          message: "การออก activation จากคำขอต้องให้ระบบ resolve ผู้ป่วยเอง",
-        });
-      }
-
-      if (input.reissue) {
-        context.addIssue({
-          code: "custom",
-          path: ["reissue"],
-          message: "คำขอเปิดใช้งานไม่รองรับการออกซ้ำโดยตรง",
-        });
-      }
-
-      return;
-    }
-
     if (input.userId === undefined) {
       context.addIssue({
         code: "custom",
