@@ -61,25 +61,29 @@ function hasValidThaiNationalIdChecksum(nationalId: string): boolean {
   return digits[12] === expectedCheckDigit;
 }
 
+export const thaiNationalIdFormatSchema = z
+  .string()
+  .max(32)
+  .transform((value) => value.trim())
+  .pipe(
+    z
+      .string()
+      .regex(/^\d{13}$/, "Thai National ID must contain exactly 13 digits")
+      .refine(
+        (nationalId) => /^[1-8]/.test(nationalId),
+        "Thai National ID category digit is invalid",
+      ),
+  );
+
 export function createThaiNationalIdSchema(
   environment?: IdentityEnvironment,
 ): z.ZodType<string> {
-  const nationalIdChecks = z
-    .string()
-    .regex(/^\d{13}$/, "Thai National ID must contain exactly 13 digits")
-    .refine(
-      (nationalId) => /^[1-8]/.test(nationalId),
-      "Thai National ID category digit is invalid",
-    );
-
-  const validatedNationalId = nationalIdChecks.refine(
+  return thaiNationalIdFormatSchema.refine(
     (nationalId) =>
       isTestNationalIdBypassEnabled(environment) ||
       hasValidThaiNationalIdChecksum(nationalId),
     "Thai National ID checksum is invalid",
   );
-
-  return z.string().max(32).transform((value) => value.trim()).pipe(validatedNationalId);
 }
 
 export const thaiNationalIdSchema = createThaiNationalIdSchema();

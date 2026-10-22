@@ -23,6 +23,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 function nationalId(): string {
@@ -35,8 +36,10 @@ function nationalId(): string {
 function setInput(element: HTMLInputElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   if (!setter) throw new Error("Missing input value setter");
-  setter.call(element, value);
-  element.dispatchEvent(new Event("input", { bubbles: true }));
+  act(() => {
+    setter.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 async function render(): Promise<void> {
@@ -57,6 +60,45 @@ async function submitForm(): Promise<void> {
 }
 
 describe("public self-registration form", () => {
+  it("submits a 13-digit synthetic ID so the server can apply the deployment policy", async () => {
+    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "development");
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
+    const fetchMock = vi.fn().mockReturnValue(new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, "5".repeat(13));
+    await submitForm();
+
+    expect(container.textContent).not.toContain("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/self-registration/lookup",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ nationalId: "5".repeat(13) }),
+      }),
+    );
+  });
+
+  it("shows server-side checksum validation when the deployment keeps strict validation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 400,
+      json: async () => ({ message: "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, "5".repeat(13));
+    await submitForm();
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง");
+  });
+
   it("shows only a masked name before password entry", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       json: async () => ({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }),

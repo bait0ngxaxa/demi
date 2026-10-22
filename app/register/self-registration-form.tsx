@@ -4,7 +4,11 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { z } from "zod";
 
-import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
+import { thaiNationalIdFormatSchema } from "@/modules/identity/schemas/identity-schemas";
+
+const lookupValidationErrorSchema = z.object({
+  message: z.literal("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง"),
+}).strict();
 
 const lookupResponseSchema = z.discriminatedUnion("outcome", [
   z.object({ outcome: z.literal("FOUND"), capability: z.string().min(1), maskedName: z.string() }).strict(),
@@ -45,7 +49,7 @@ export function SelfRegistrationForm(): React.JSX.Element {
 
   async function checkNationalId(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    const parsedNationalId = thaiNationalIdSchema.safeParse(nationalId);
+    const parsedNationalId = thaiNationalIdFormatSchema.safeParse(nationalId);
     if (!parsedNationalId.success) {
       setValidationMessage("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง");
       return;
@@ -65,6 +69,15 @@ export function SelfRegistrationForm(): React.JSX.Element {
         body: JSON.stringify({ nationalId: parsedNationalId.data }),
       });
       const body: unknown = await response.json();
+      if (response.status === 400) {
+        const validationError = lookupValidationErrorSchema.safeParse(body);
+        if (validationError.success) {
+          setValidationMessage(validationError.data.message);
+          setOutcome(null);
+          return;
+        }
+      }
+
       const parsed = lookupResponseSchema.safeParse(body);
       if (!parsed.success) {
         setOutcome({ outcome: "RETRY", message: "ลองใหม่ภายหลัง" });
