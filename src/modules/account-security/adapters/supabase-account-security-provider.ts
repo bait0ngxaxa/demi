@@ -2,6 +2,7 @@ import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getServerEnv } from "@/lib/env/server";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { InfrastructureError } from "@/shared/errors/application-error";
@@ -92,4 +93,25 @@ export async function replacePasswordAndRevokeRecoverySessions(input: {
 }): Promise<void> {
   void input;
   return assertIndependentCredentialRecoverySupported();
+}
+
+export type ProviderSessionRevocationOutcome = "CONFIRMED" | "AMBIGUOUS";
+
+/** About 100 years: the provider has no "forever"; the local lock is the authority and is terminal. */
+const SUSPECTED_TAKEOVER_BAN_DURATION = "876000h";
+
+/**
+ * UM-1 suspected takeover: the provider admin API cannot sign another user out by id, so a ban revokes refresh and new
+ * sign-in. Access JWTs already issued stay valid until expiry, but every application request also requires the local
+ * User to be ACTIVE. Anything but an exact confirmation is AMBIGUOUS and the caller keeps the lock in quarantine.
+ */
+export async function revokeProviderSessionsBySuspension(authSubject: string): Promise<ProviderSessionRevocationOutcome> {
+  try {
+    const { data, error } = await getSupabaseAdminClient().auth.admin.updateUserById(authSubject, {
+      ban_duration: SUSPECTED_TAKEOVER_BAN_DURATION,
+    });
+    return !error && data.user?.id === authSubject ? "CONFIRMED" : "AMBIGUOUS";
+  } catch {
+    return "AMBIGUOUS";
+  }
 }

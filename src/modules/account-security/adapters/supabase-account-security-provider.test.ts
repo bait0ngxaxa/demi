@@ -50,6 +50,7 @@ vi.mock("@/modules/auth/services/provider-login-alias", () => ({
 
 import {
   replacePasswordAndRevokeRecoverySessions,
+  revokeProviderSessionsBySuspension,
   updateAuthenticatedPassword,
 } from "./supabase-account-security-provider";
 
@@ -149,5 +150,34 @@ describe("Supabase account security provider boundary", () => {
     expect(adminAuth.admin.signOut).not.toHaveBeenCalled();
     expect(isolatedAuth.signInWithPassword).not.toHaveBeenCalled();
     expect(mockedCreateClient).not.toHaveBeenCalled();
+  });
+});
+
+describe("suspected takeover provider session revocation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetSupabaseAdminClient.mockImplementation(() => adminClient);
+  });
+
+  it("confirms only when the provider returns the exact banned subject", async () => {
+    adminAuth.admin.updateUserById.mockResolvedValueOnce({ data: { user: { id: authSubject } }, error: null });
+
+    await expect(revokeProviderSessionsBySuspension(authSubject)).resolves.toBe("CONFIRMED");
+    expect(adminAuth.admin.updateUserById).toHaveBeenCalledWith(authSubject, { ban_duration: "876000h" });
+  });
+
+  it.each([
+    ["a provider error", { data: { user: null }, error: new Error("unavailable") }],
+    ["a different subject", { data: { user: { id: targetUserId } }, error: null }],
+  ])("reports %s as ambiguous", async (_label, response) => {
+    adminAuth.admin.updateUserById.mockResolvedValueOnce(response);
+
+    await expect(revokeProviderSessionsBySuspension(authSubject)).resolves.toBe("AMBIGUOUS");
+  });
+
+  it("reports a thrown provider call as ambiguous", async () => {
+    adminAuth.admin.updateUserById.mockRejectedValueOnce(new Error("network"));
+
+    await expect(revokeProviderSessionsBySuspension(authSubject)).resolves.toBe("AMBIGUOUS");
   });
 });

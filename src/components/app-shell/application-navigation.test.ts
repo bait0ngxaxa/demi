@@ -110,7 +110,7 @@ const workAccount = ["account", "บัญชีและช่วยเหล�
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
-const ownerAdministration = ["/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
+const ownerAdministration = ["/app/users", "/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
@@ -206,7 +206,7 @@ const cases: Case[] = [
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
-      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/workforce", "/app/hospitals/knowledge", "/app/hospitals/contact", "/app/admin/hospitals", "/app/admin/reporting"]],
+      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/workforce", "/app/hospitals/knowledge", "/app/hospitals/contact", "/app/admin/hospitals", "/app/admin/reporting"]],
       workAccount,
     ] },
   },

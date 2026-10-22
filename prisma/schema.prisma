@@ -430,6 +430,12 @@ enum CaregiverRelationshipStatus {
   WITHDRAWN
 }
 
+enum UserTakeoverProviderState {
+  PENDING
+  CONFIRMED
+  RECONCILIATION_REQUIRED
+}
+
 model Person {
   id              String   @id @default(uuid()) @db.Uuid
   identityKeyHash String   @unique @db.VarChar(64)
@@ -535,6 +541,8 @@ model User {
   supportReportsUpdated SupportReport[] @relation("SupportReportStatusUpdater")
   hospitalOnboardingApplications HospitalOnboardingApplication[] @relation("HospitalOnboardingApplicant")
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
+  takeoverLock        UserTakeoverLock?  @relation("UserTakeoverLockTarget")
+  takeoverLocksIssued UserTakeoverLock[] @relation("UserTakeoverLockActor")
 
   // Supports a composite FK that keeps an invitation bound to this exact User + Person pair.
   @@unique([id, personId])
@@ -557,6 +565,7 @@ model Hospital {
   serviceAreaAssignments HospitalServiceArea[] @relation("ServiceAreaChild")
   workforceBulkSubmissions WorkforceBulkSubmission[]
   workforceActivationContexts WorkforceActivation[] @relation("WorkforceActivationHospital")
+  userTakeoverLocks UserTakeoverLock[]
   id              String         @id @default(uuid()) @db.Uuid
   hospitalCode    String         @unique @db.VarChar(32)
   name            String         @db.VarChar(200)
@@ -1989,6 +1998,28 @@ model HospitalOnboardingApplication {
   @@index([status, createdAt])
   @@index([hospitalId, status])
   @@index([applicantUserId, status])
+}
+
+// UM-1 (UM-D5): an OWNER reported that an account is not used by its real owner. The User is SUSPENDED in the same
+// transaction (every access path requires ACTIVE); this row records the provider session revocation outcome. Terminal:
+// only a platform ADMIN or a future Phase I recovery path resolves it.
+model UserTakeoverLock {
+  id                String                    @id @default(uuid()) @db.Uuid
+  userId            String                    @unique @db.Uuid
+  hospitalId        String                    @db.Uuid
+  lockedByUserId    String                    @db.Uuid
+  lockedAt          DateTime                  @db.Timestamptz(3)
+  providerState     UserTakeoverProviderState @default(PENDING)
+  providerCheckedAt DateTime?                 @db.Timestamptz(3)
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
+
+  user     User     @relation("UserTakeoverLockTarget", fields: [userId], references: [id], onDelete: Restrict)
+  lockedBy User     @relation("UserTakeoverLockActor", fields: [lockedByUserId], references: [id], onDelete: Restrict)
+  hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+
+  @@index([hospitalId, lockedAt])
+  @@index([lockedByUserId])
 }
 
 model AuditEvent {

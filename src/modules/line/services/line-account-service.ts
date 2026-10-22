@@ -351,6 +351,51 @@ async function observeAccountBinding(
     inventory, lineChannelTupleKey(account), now);
 }
 
+/** Local unlink; the menu reconciler performs the queued provider cleanup. */
+function lineBindingUnlinkData(now: Date) {
+  return {
+    unlinkedAt: now,
+    presentationRole: null,
+    presentationRoleSelectedAt: null,
+    lifecycleVersion: { increment: 1 },
+    providerCleanupState: LineProviderCleanupState.PENDING,
+    providerCleanupAttemptCount: 0,
+    providerCleanupLastAttemptAt: null,
+    menuExpectedKey: "UNLINKED",
+    menuSyncState: LineMenuSyncState.UNKNOWN,
+    menuSyncedAt: null,
+  } satisfies Prisma.LineAccountBindingUpdateManyMutationInput;
+}
+
+/**
+ * UM-1 suspected takeover: inside the locking transaction, unlink the User's active LINE binding when it was linked at
+ * or after the first credential (unknown credential time unlinks too). Returns the number of bindings unlinked.
+ */
+export async function unlinkLineBindingForSuspectedTakeover(
+  transaction: Prisma.TransactionClient,
+  input: { userId: string; actorUserId: string; hospitalId: string; credentialEstablishedAt: Date | null; now: Date },
+): Promise<number> {
+  const binding = await transaction.lineAccountBinding.findFirst({
+    where: { userId: input.userId, unlinkedAt: null, ...(input.credentialEstablishedAt ? { linkedAt: { gte: input.credentialEstablishedAt } } : {}) },
+    select: { id: true },
+  });
+  if (!binding) return 0;
+  await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
+  const updated = await transaction.lineAccountBinding.updateMany({
+    where: { id: binding.id, unlinkedAt: null },
+    data: lineBindingUnlinkData(input.now),
+  });
+  if (updated.count !== 1) return 0;
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    action: "line.account.unlinked",
+    resourceType: "LineAccountBinding",
+    resourceId: binding.id,
+    metadata: { reason: "SUSPECTED_TAKEOVER", hospitalId: input.hospitalId },
+  }, transaction);
+  return 1;
+}
+
 export async function unlinkLineAccount(
   input: { intentId: string; challenge: string },
   dependencies: LineAccountDependencies = {},
@@ -373,18 +418,7 @@ export async function unlinkLineAccount(
       await transaction.$queryRaw`SELECT "id" FROM "LineAccountBinding" WHERE "id" = ${binding.id}::uuid FOR UPDATE`;
       const updated = await transaction.lineAccountBinding.update({
         where: { id: binding.id },
-        data: {
-          unlinkedAt: nowOf(dependencies),
-          presentationRole: null,
-          presentationRoleSelectedAt: null,
-          lifecycleVersion: { increment: 1 },
-          providerCleanupState: LineProviderCleanupState.PENDING,
-          providerCleanupAttemptCount: 0,
-          providerCleanupLastAttemptAt: null,
-          menuExpectedKey: "UNLINKED",
-          menuSyncState: LineMenuSyncState.UNKNOWN,
-          menuSyncedAt: null,
-        },
+        data: lineBindingUnlinkData(nowOf(dependencies)),
       });
       if (dependencies.authorizationInventory) {
         await initializeLineTermination(transaction, updated, dependencies.authorizationInventory, nowOf(dependencies));

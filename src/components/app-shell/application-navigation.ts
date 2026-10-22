@@ -296,6 +296,8 @@ function projectWorkSections(
   );
   const governance = projectPlatformGovernanceNavigation(actor);
   const hospitalAdministration = compact([
+    // UM-1: one OWNER directory over staff, OSM and Patients; the workforce entry stays for adding and importing.
+    canManageWorkforce(actor) && { href: "/app/users", label: "จัดการผู้ใช้งาน", match: "prefix" },
     canManageWorkforce(actor) && { href: "/app/workforce", label: "บุคลากร", match: "prefix" },
     canManagePatientServiceCatalog(actor) && { href: "/app/patients/service-catalog", label: "บริการที่เปิดให้ขอ", match: "prefix" },
     canManageHospitalContent(actor) && { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" },

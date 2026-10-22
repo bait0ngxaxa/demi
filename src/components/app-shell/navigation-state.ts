@@ -25,7 +25,7 @@ export function getWorkspaceContextForPathname(
 
   if (
     normalizedPathname === "/app" ||
-    ["/app/admin", "/app/hospitals", "/app/patients", "/app/workforce"].some((basePath) =>
+    ["/app/admin", "/app/hospitals", "/app/patients", "/app/users", "/app/workforce"].some((basePath) =>
       isPathWithin(normalizedPathname, basePath),
     )
   ) {

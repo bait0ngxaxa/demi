@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
-import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
@@ -19,12 +18,7 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import { WorkforcePasswordResetControl } from "../../workforce-password-reset-control";
-import { OsmRelationshipControls } from "./osm-relationship-controls";
-import { WorkforceReleaseControl } from "./workforce-release-control";
-import { StaffMembershipControls } from "./staff-membership-controls";
-import { ReportExportGrantControl } from "./report-export-grant-control";
-import { WorkforceActivationControl } from "./workforce-activation-control";
+import { WorkforceManagementControls } from "./workforce-management-controls";
 
 export const metadata: Metadata = {
   title: "รายละเอียดความสัมพันธ์บุคลากร",
@@ -171,90 +165,7 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           </dl>
         </Panel>
 
-        {detail.activationRequired ? (
-          <Alert variant="warning">
-            <p className="font-semibold">บัญชียังไม่เปิดใช้งาน</p>
-            <p className="mt-1">
-              การเปิดใช้งานบัญชีดำเนินการผ่านลิงก์เฉพาะจากโรงพยาบาล
-            </p>
-            {detail.activationExpiresAt ? (
-              <p className="mt-1 text-sm">ลิงก์ล่าสุดหมดอายุ: {formatDate(detail.activationExpiresAt)}</p>
-            ) : null}
-          </Alert>
-        ) : null}
-
-        {detail.viewerScope === "OWNER" && detail.activationRequired && detail.relationshipStatus !== "ENDED" ? (
-          detail.activationInProgress ? (
-            <Alert variant="warning">
-              <p className="font-semibold">กำลังเปิดใช้งานบัญชี</p>
-              <p className="mt-1">มีการเปิดลิงก์แล้วและกำลังตรวจสอบผล กรุณารอหรือติดต่อผู้ดูแลระบบหากค้างนาน</p>
-            </Alert>
-          ) : detail.kind === "staff" && detail.membershipType === "OWNER" ? null : (
-          <WorkforceActivationControl
-            key={`${detail.hospital.id}:${detail.relationshipId}`}
-            activationLinkUsable={detail.activationLinkUsable}
-            hospitalId={detail.hospital.id}
-            kind={isStaff ? "HOSPITAL_MEMBER" : "OSM"}
-            maskedName={`${Array.from(detail.displayName)[0] ?? "*"}***`}
-            relationshipId={detail.relationshipId}
-            userId={detail.userId}
-          />
-          )
-        ) : null}
-
-        {detail.viewerScope === "MEMBER" ? (
-          <Alert variant="info">
-            <p className="font-semibold">มุมมองสำหรับสมาชิกโรงพยาบาล</p>
-            <p className="mt-1">
-              สมาชิกดูข้อมูล อสม. ได้อย่างเดียว การระงับ คืนสถานะ ยกเลิกลิงก์ และรีเซ็ตรหัสผ่านทำได้เฉพาะเจ้าของโรงพยาบาล
-            </p>
-          </Alert>
-        ) : null}
-
-        {detail.viewerScope !== "OWNER" ? null : isStaff ? (
-          <StaffMembershipControls
-            accountStatus={detail.accountStatus}
-            actions={detail.actions}
-            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
-            membershipType={detail.membershipType}
-            ownerGovernance={detail.ownerGovernance}
-            profession={detail.profession}
-            relationshipId={detail.relationshipId}
-            relationshipStatus={detail.relationshipStatus}
-            targetHospitalId={detail.hospital.id}
-          />
-        ) : (
-          <OsmRelationshipControls
-            accountStatus={detail.accountStatus}
-            actions={detail.actions}
-            currentAssignmentCount={detail.currentAssignmentCount ?? 0}
-            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
-            lifecycleBlockReason={detail.lifecycleBlockReason}
-            relationshipId={detail.relationshipId}
-            relationshipStatus={detail.relationshipStatus}
-            targetHospitalId={detail.hospital.id}
-          />
-        )}
-
-        {detail.viewerScope === "OWNER" && detail.networkPatientReadGrant && detail.relationshipStatus !== "ENDED" ? (
-          <ReportExportGrantControl
-            expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
-            grant={detail.networkPatientReadGrant}
-            kind="NETWORK_PATIENT_READ"
-            relationshipId={detail.relationshipId}
-            targetHospitalId={detail.hospital.id}
-          />
-        ) : null}
-
-        {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
-          <WorkforcePasswordResetControl
-            subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
-            targetHospitalId={detail.hospital.id}
-            userId={detail.userId}
-          />
-        ) : null}
-
-        {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? <WorkforceReleaseControl relationshipId={detail.relationshipId} hospitalId={detail.hospital.id} kind={detail.kind} updatedAt={detail.relationshipUpdatedAt.toISOString()} /> : null}
+        <WorkforceManagementControls detail={detail} />
         <Link
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           href={`/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`}
@@ -264,14 +175,6 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
       </div>
     </div>
   );
-}
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat("th-TH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Bangkok",
-  }).format(value);
 }
 
 async function resolveActor() {

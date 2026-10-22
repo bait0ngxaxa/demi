@@ -496,7 +496,7 @@ async function assertHospitalActorInDatabase(
   }
 }
 
-async function assertOwnerInDatabase(
+export async function assertOwnerInDatabase(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
   targetHospitalId: string,

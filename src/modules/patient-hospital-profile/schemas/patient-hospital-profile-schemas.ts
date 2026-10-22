@@ -90,6 +90,11 @@ export const patientNameCorrectionSchema = z
   })
   .strict();
 
+/** UM-1: a staff (HospitalMembership) or OSM (OsmHospitalRelationship) name-correction target. */
+export const workforceNameCorrectionTargetSchema = z
+  .object({ kind: z.enum(["staff", "osm"]), relationshipId: z.uuid() })
+  .strict();
+
 export const patientNameCorrectionLookupSchema = z
   .object({
     hospitalId: z.string().uuid(),
