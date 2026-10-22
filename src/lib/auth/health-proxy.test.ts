@@ -19,8 +19,14 @@ describe("health probes through Proxy", () => {
     expect(mocks.updateSupabaseSession).not.toHaveBeenCalled();
   });
 
-  it.each(["/api/healthz", "/api/health/live/extra", "/api/internal/scheduler/readiness"])("keeps the session proxy for %s", async (path) => {
+  it.each(["/api/healthz", "/api/health/live/extra"])("passes %s through without a session refresh", async (path) => {
     await proxy(new NextRequest(`https://demi.example.org${path}`));
-    expect(mocks.updateSupabaseSession).toHaveBeenCalledOnce();
+    expect(mocks.updateSupabaseSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session proxy for host-local scheduler readiness", async () => {
+    const request = new NextRequest("https://demi.example.org/api/internal/scheduler/readiness");
+    await proxy(request);
+    expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, null);
   });
 });

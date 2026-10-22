@@ -30,10 +30,11 @@ function slipRequest(
     ["userId", userB],
   ],
   headers: Record<string, string> = { origin: "https://demi.example" },
+  url = "https://demi.example/app/workforce/slips",
 ): Request {
   const body = new URLSearchParams(entries);
 
-  return new Request("https://demi.example/app/workforce/slips", {
+  return new Request(url, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     body,
@@ -108,13 +109,24 @@ describe("activation slips route", () => {
       expect(response.status).toBe(403);
       expect(response.headers.get("cache-control")).toBe("no-store");
     }
+    const crossSiteHtml = await crossSite.text();
+    expect(crossSiteHtml).toContain("คำขอไม่ถูกต้อง");
+    expect(crossSiteHtml).not.toContain("กรุณาเปิดระบบจาก");
     expect(mockedIssueSlips).not.toHaveBeenCalled();
   });
 
   it("requires canonical Origin even with Sec-Fetch-Site", async () => {
-    const response = await POST(slipRequest(undefined, { "sec-fetch-site": "same-origin" }));
+    const response = await POST(slipRequest(
+      undefined,
+      { origin: "https://alternate.example", "sec-fetch-site": "same-origin" },
+      "https://alternate.example/app/workforce/slips",
+    ));
+    const html = await response.text();
 
     expect(response.status).toBe(403);
+    expect(html).toContain("กรุณาเปิดระบบจาก https://demi.example");
+    expect(html).toContain('<a href="https://demi.example">');
+    expect(mockedIssueSlips).not.toHaveBeenCalled();
   });
 
   it("uses the configured QR destination behind proxies and ignores request/forwarded hosts", async () => {

@@ -56,6 +56,9 @@ function result(outcome: string, activationToken: string | null) {
       patientProfileId: "profile-1",
       hospitalId: "hospital-1",
       activationToken,
+      activationUrl: activationToken
+        ? `https://canonical.example/activate/patient#${encodeURIComponent(activationToken)}`
+        : null,
       activationExpiresAt: "2026-10-20T00:00:00.000Z",
     },
   };

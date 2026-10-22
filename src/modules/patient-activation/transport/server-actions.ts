@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 
@@ -152,6 +153,7 @@ function mapCompletionError(error: unknown): {
 
 function toIssueResultState(
   result: Awaited<ReturnType<typeof issuePatientActivation>>,
+  activationUrl: string | null,
 ): PatientActivationIssueResultState {
   return {
     outcome: result.outcome,
@@ -159,6 +161,7 @@ function toIssueResultState(
     patientProfileId: result.patientProfileId,
     hospitalId: result.hospitalId,
     activationToken: result.activationToken,
+    activationUrl,
     activationExpiresAt: result.activationExpiresAt?.toISOString() ?? null,
   };
 }
@@ -231,6 +234,7 @@ export async function issuePatientActivationAction(
   }
 
   try {
+    const activationUrls = createApplicationCredentialUrlBuilder("/activate/patient");
     const actor = await getProtectedApplicationActor();
     const result = await issuePatientActivation(actor, parsed.data);
     revalidatePath("/app/patients/activation");
@@ -238,7 +242,13 @@ export async function issuePatientActivationAction(
     if (patientAccessRequestId) {
       revalidatePath(`/app/patients/access-requests/${patientAccessRequestId}`);
     }
-    return { status: "SUCCESS", result: toIssueResultState(result) };
+    return {
+      status: "SUCCESS",
+      result: toIssueResultState(
+        result,
+        result.activationToken ? activationUrls.build(result.activationToken) : null,
+      ),
+    };
   } catch (error: unknown) {
     return { status: "ERROR", ...mapIssueError(error) };
   }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 
@@ -67,13 +68,14 @@ export async function createCaregiverInvitationAction(
   }
 
   try {
+    const invitationUrls = createApplicationCredentialUrlBuilder("/app/family/invitations");
     const actor = await getProtectedApplicationActor();
     const invitation = await createCaregiverInvitation(actor, parsed.data);
     revalidatePath("/app/family");
 
     return {
       status: "SUCCESS",
-      token: invitation.plaintextToken,
+      invitationUrl: invitationUrls.build(invitation.plaintextToken),
       expiresAt: invitation.expiresAt.toISOString(),
     };
   } catch (error: unknown) {
@@ -215,11 +217,12 @@ export async function reissueCaregiverInvitationLinkAction(
   }
 
   try {
+    const invitationUrls = createApplicationCredentialUrlBuilder("/app/family/invitations");
     const actor = await getProtectedApplicationActor();
     const reissued = await reissueCaregiverInvitationLink(actor, parsed.data.invitationId);
     return {
       status: "SUCCESS",
-      token: reissued.plaintextToken,
+      invitationUrl: invitationUrls.build(reissued.plaintextToken),
       expiresAt: reissued.expiresAt.toISOString(),
     };
   } catch (error: unknown) {

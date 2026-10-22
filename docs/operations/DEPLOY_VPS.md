@@ -20,6 +20,10 @@
 | `<PROD_HOST>` | host ของ `<PROD_ORIGIN>` (ไม่มี `https://`) |
 | `<GIT_SHA>` | commit ที่อนุมัติให้ขึ้น production |
 
+`DEMI_LINE_PUBLIC_ORIGIN` ต้องเป็น origin สาธารณะจริงแบบตรงตัว (`https://` + host, ไม่มี path และไม่มี `/` ปิดท้าย) และต้องตรงกับ origin ที่ตั้งไว้ใน LINE Login, LIFF และ webhook ทุก endpoint ใน production Proxy จะตอบ 308 ไปยัง origin นี้โดยคง path และ query เมื่อ `Host` ไม่ตรง ค่า `Host` ของ request จะไม่ถูกนำไปใช้สร้าง URL ปลายทาง
+
+ข้อยกเว้นของการเปลี่ยน canonical origin มีเฉพาะ `/api/health*` สำหรับ health probes และ `GET /api/internal/scheduler/tick`, `GET /api/internal/scheduler/readiness` ที่ systemd timer เรียกผ่าน `127.0.0.1:3000` เท่านั้น ตัว tick เรียกงาน drain ภายในเอง; timer ปัจจุบันไม่ได้เรียก HMAC drain routes โดยตรง nginx ยังคงตอบ 404 ให้ `/api/internal/*` จากภายนอก
+
 ทุกคำสั่งด้านล่างคัดลอกไปวางได้ แต่ต้องตั้งตัวแปรนี้ก่อนในทุก shell ใหม่:
 
 ```sh
@@ -123,6 +127,8 @@ sudo ufw status
 ```
 
 พอร์ต 3000 bind อยู่ที่ 127.0.0.1 จึงเข้าจากภายนอกไม่ได้ ถึง 443 จะเปิดอยู่ nginx ก็ตอบเฉพาะ connection ที่มี client certificate ของ Cloudflare (ที่อื่นได้ 400) จะจำกัด 80/443 ให้รับเฉพาะ IP ของ Cloudflare ด้วย ufw ซ้อนอีกชั้นก็ได้ (ไม่บังคับ)
+
+ต้องให้ Next.js listen เฉพาะ `127.0.0.1` หลัง nginx และห้ามเปิดพอร์ต 3000 สู่เครือข่ายสาธารณะ เพราะ public self-registration rate limit ใช้ `X-Real-IP` หรือค่าแรกของ `X-Forwarded-For` เป็น client IP โดยเชื่อค่าที่ nginx เขียนทับหลังตรวจ real IP จาก Cloudflare ranges แล้วเท่านั้น
 
 ### 1.8 Release แรก
 

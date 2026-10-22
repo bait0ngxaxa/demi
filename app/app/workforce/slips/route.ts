@@ -30,8 +30,13 @@ const responseHeaders = {
   "X-Robots-Tag": "noindex, nofollow",
 } as const;
 
-function htmlError(message: string, status: number, managementHref?: string): Response {
-  return new Response(renderActivationSlipsError(message, managementHref), { status, headers: responseHeaders });
+function htmlError(
+  message: string,
+  status: number,
+  managementHref?: string,
+  managementLinkLabel?: string,
+): Response {
+  return new Response(renderActivationSlipsError(message, managementHref, managementLinkLabel), { status, headers: responseHeaders });
 }
 
 // Route handlers have no built-in CSRF protection, unlike server actions.
@@ -73,6 +78,17 @@ export async function POST(request: Request): Promise<Response> {
     urls = createWorkforceActivationUrlBuilder();
   } catch {
     return htmlError("ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับใบเปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ", 503);
+  }
+  if (
+    request.headers.get("sec-fetch-site") === "same-origin" &&
+    request.headers.get("origin") !== urls.origin
+  ) {
+    return htmlError(
+      `กรุณาเปิดระบบจาก ${urls.origin}`,
+      403,
+      urls.origin,
+      "เปิดระบบจากที่อยู่นี้",
+    );
   }
   if (!isSameOriginRequest(request, urls.origin)) {
     return htmlError("คำขอไม่ถูกต้อง", 403);

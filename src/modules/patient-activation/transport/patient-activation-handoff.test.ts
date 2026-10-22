@@ -9,15 +9,6 @@ import { PatientActivationHandoff } from "../../../../app/app/patients/activatio
 
 const mockedUseMutationActionState = vi.hoisted(() => vi.fn());
 
-vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>();
-
-  return {
-    ...actual,
-    useSyncExternalStore: () => "https://demi.test",
-  };
-});
-
 vi.mock("@/components/ui/mutation-action-state", () => ({
   useMutationActionState: mockedUseMutationActionState,
 }));
@@ -113,6 +104,7 @@ describe("Patient activation handoff presentation", () => {
           patientProfileId: baseCandidate.patientProfileId,
           hospitalId: baseCandidate.hospitalId,
           activationToken: "raw-token-is-ephemeral",
+          activationUrl: "https://canonical.example/activate/patient#raw-token-is-ephemeral",
           activationExpiresAt: "2026-08-16T12:00:00.000Z",
         },
       },
@@ -122,7 +114,7 @@ describe("Patient activation handoff presentation", () => {
 
     const markup = render(baseCandidate);
 
-    expect(markup).toContain("https://demi.test/activate/patient#raw-token-is-ephemeral");
+    expect(markup).toContain("https://canonical.example/activate/patient#raw-token-is-ephemeral");
     expect(markup).not.toContain("/activate/patient/raw-token-is-ephemeral");
     expect((markup.match(/<form\b/gu) ?? []).length).toBe(1);
   });

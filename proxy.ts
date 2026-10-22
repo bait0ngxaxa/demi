@@ -1,9 +1,10 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { updateSupabaseSession } from "@/lib/auth/supabase-proxy";
+import { getApplicationPublicOrigin } from "@/lib/env/server";
 import { getLineQuickActionReturnPathFromUrl } from "@/modules/line/domain/line-navigation-intents";
 import { classifyLineWorkflowRequest, type LineWorkflowRouteDecision } from "@/modules/line/domain/line-workflow-routes";
-import { updateSupabaseSession } from "@/lib/auth/supabase-proxy";
 
 const lineWorkflowRejectionStatus: Record<Exclude<LineWorkflowRouteDecision, "PASS">, number> = {
   METHOD_NOT_ALLOWED: 405,
@@ -43,11 +44,41 @@ function secureActivationLinkResponse(response: NextResponse, pathname: string):
   return response;
 }
 
-// Probes must answer without a session refresh or valid auth configuration.
-const HEALTH_PATHS = new Set(["/api/health", "/api/health/live"]);
+// Public health probes and these two loopback-only scheduler routes must not be canonicalized.
+// scripts/scheduler-tick.mjs calls tick/readiness on 127.0.0.1; nginx blocks /api/internal/* publicly.
+const HOST_LOCAL_WORKER_ROUTES = new Set([
+  "GET /api/internal/scheduler/tick",
+  "GET /api/internal/scheduler/readiness",
+]);
+
+function isHealthPath(pathname: string): boolean {
+  return pathname.startsWith("/api/health");
+}
+
+function isStaticAssetPath(pathname: string): boolean {
+  return pathname.startsWith("/_next/static/") || pathname === "/_next/image" || pathname === "/favicon.ico" ||
+    /\.(?:svg|png|jpg|jpeg|gif|webp)$/iu.test(pathname);
+}
+
+function redirectNonCanonicalHost(request: NextRequest): NextResponse | null {
+  if (process.env.NODE_ENV !== "production") return null;
+
+  const pathname = request.nextUrl.pathname;
+  if (isHealthPath(pathname) || HOST_LOCAL_WORKER_ROUTES.has(`${request.method} ${pathname}`)) return null;
+
+  const publicOrigin = getApplicationPublicOrigin();
+  const publicHost = new URL(publicOrigin).host.toLowerCase();
+  const requestHost = request.headers.get("host")?.toLowerCase();
+  if (requestHost === publicHost) return null;
+
+  const destination = new URL(`${pathname}${request.nextUrl.search}`, publicOrigin);
+  return NextResponse.redirect(destination, 308);
+}
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  if (HEALTH_PATHS.has(request.nextUrl.pathname)) return NextResponse.next();
+  if (isHealthPath(request.nextUrl.pathname)) return NextResponse.next();
+  const canonicalRedirect = redirectNonCanonicalHost(request);
+  if (canonicalRedirect) return canonicalRedirect;
   const lineWorkflowDecision = classifyLineWorkflowRequest({
     method: request.method,
     pathname: request.nextUrl.pathname,
@@ -65,6 +96,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       },
     }), request.nextUrl.pathname);
   }
+  if (isStaticAssetPath(request.nextUrl.pathname) && !isLineWorkflowPath(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
   const response = await updateSupabaseSession(
     request,
     getLineQuickActionReturnPathFromUrl(request.nextUrl),
@@ -73,10 +107,5 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-    // The MINI namespace is always filtered, including asset-like final segments.
-    "/line/workflow/:path*",
-    "/api/line/workflow/:path*",
-  ],
+  matcher: ["/:path*"],
 };

@@ -159,6 +159,7 @@ describe("Patient activation search and link issuance", () => {
           patientProfileId: "profile-1",
           hospitalId: "hospital-1",
           activationToken: token,
+          activationUrl: `https://canonical.example/activate/patient#${token}`,
           activationExpiresAt: "2026-10-20T00:00:00.000Z",
           ...overrides,
         },
@@ -192,6 +193,7 @@ describe("Patient activation search and link issuance", () => {
       expect(allNotifyText()).not.toContain(token);
       expect(allNotifyText()).not.toContain("สมชาย");
       expect(container.textContent).toContain("ลิงก์เปิดใช้งานพร้อมส่งต่อ");
+      expect(container.textContent).toContain(`https://canonical.example/activate/patient#${token}`);
       expect(container.textContent).toContain(token);
 
       await act(async () => {
@@ -342,6 +344,7 @@ describe("Patient activation search and link issuance", () => {
         patientProfileId: "profile-1",
         hospitalId: "hospital-1",
         activationToken: token,
+        activationUrl: `https://canonical.example/activate/patient#${token}`,
         activationExpiresAt: "2026-10-20T00:00:00.000Z",
       },
     };

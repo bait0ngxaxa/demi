@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ export function WorkforceActivationControl({
   const session = useScopedMutationSession<WorkforceActivationActionState>({ scope: `${hospitalId}:${relationshipId}` });
   const [hasUsableLink, setHasUsableLink] = useState(activationLinkUsable);
   const [handoff, setHandoff] = useState<Extract<WorkforceActivationActionState, { status: "SUCCESS" }>['result'] | null>(null);
+  const navigatedAssistedUrls = useRef<Set<string>>(new Set());
 
   const remote = useScopedMutation(session, {
     kind: "remote",
@@ -78,10 +79,11 @@ export function WorkforceActivationControl({
     notice: activationNotice("assisted"),
     message: conflictMessage,
     onSettled: ({ state, verdict }) => {
-      if (verdict === "SUCCESS" && state.status === "SUCCESS") {
-        setHandoff(state.result);
-        setHasUsableLink(true);
-      }
+      if (verdict !== "SUCCESS" || state.status !== "SUCCESS") return;
+      const { activationUrl } = state.result;
+      if (navigatedAssistedUrls.current.has(activationUrl)) return;
+      navigatedAssistedUrls.current.add(activationUrl);
+      window.location.replace(activationUrl);
     },
     isBlocked: () => handoff !== null,
   });

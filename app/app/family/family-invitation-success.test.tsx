@@ -16,7 +16,7 @@ vi.mock("react", async (importOriginal) => ({
     initial === initialCreateCaregiverInvitationActionState ? harness.creation : initial,
     undefined, false,
   ],
-  useSyncExternalStore: () => "https://demi.example",
+  useSyncExternalStore: () => "https://browser.example",
 }));
 vi.mock("./family-invitation-qr", () => ({
   FamilyInvitationQr: ({ invitationLink }: { invitationLink: string }) => {
@@ -40,13 +40,13 @@ const overview: FamilyManagementOverview = {
   caregiver: { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null },
 };
 const token = "a".repeat(43);
-const link = `https://demi.example/app/family/invitations#${token}`;
+const link = `https://canonical.example/app/family/invitations#${token}`;
 function render(): string { return renderToStaticMarkup(<FamilyManagementWorkspace overview={overview} />); }
 
 describe("Family issuance-only QR and copy transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    harness.creation = { status: "SUCCESS", token, expiresAt: "2026-10-02T00:00:00Z" };
+    harness.creation = { status: "SUCCESS", invitationUrl: link, expiresAt: "2026-10-02T00:00:00Z" };
     harness.qrFailure = false;
     harness.copy = undefined;
     vi.stubGlobal("navigator", { clipboard: { writeText: harness.writeText } });
@@ -82,9 +82,10 @@ describe("Family issuance-only QR and copy transport", () => {
 
   it("uses the new issuance URL instead of retaining the previous secret", () => {
     render();
-    harness.creation = { status: "SUCCESS", token: "b".repeat(43), expiresAt: "2026-10-03T00:00:00Z" };
+    const replacementLink = `https://canonical.example/app/family/invitations#${"b".repeat(43)}`;
+    harness.creation = { status: "SUCCESS", invitationUrl: replacementLink, expiresAt: "2026-10-03T00:00:00Z" };
     const markup = render();
-    expect(harness.qr).toHaveBeenLastCalledWith(link.replace(token, "b".repeat(43)));
+    expect(harness.qr).toHaveBeenLastCalledWith(replacementLink);
     expect(markup).not.toContain(token);
   });
 });

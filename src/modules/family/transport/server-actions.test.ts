@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActor: vi.fn(),
   createInvitation: vi.fn(),
+  reissueInvitation: vi.fn(),
   previewInvitation: vi.fn(),
   acceptInvitation: vi.fn(),
   rejectInvitation: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 }));
 vi.mock("../services/caregiver-relationship-service", () => ({
   createCaregiverInvitation: mocks.createInvitation,
+  reissueCaregiverInvitationLink: mocks.reissueInvitation,
   previewCaregiverInvitation: mocks.previewInvitation,
   acceptCaregiverInvitation: mocks.acceptInvitation,
   rejectCaregiverInvitation: mocks.rejectInvitation,
@@ -32,6 +34,7 @@ import {
   acceptCaregiverInvitationAction,
   createCaregiverInvitationAction,
   previewCaregiverInvitationAction,
+  reissueCaregiverInvitationLinkAction,
   revokePendingCaregiverInvitationAction,
 } from "./server-actions";
 import {
@@ -60,6 +63,43 @@ describe("Family Server Actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getActor.mockResolvedValue(actor);
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://canonical.example");
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("returns a caregiver invitation URL from the configured public origin", async () => {
+    const token = "a".repeat(43);
+    const expiresAt = new Date("2026-10-02T00:00:00.000Z");
+    mocks.createInvitation.mockResolvedValue({ plaintextToken: token, expiresAt });
+
+    const result = await createCaregiverInvitationAction(
+      initialCreateCaregiverInvitationActionState,
+      createFormData({ nationalId: "1000000000009" }),
+    );
+
+    expect(result).toEqual({
+      status: "SUCCESS",
+      invitationUrl: `https://canonical.example/app/family/invitations#${token}`,
+      expiresAt: "2026-10-02T00:00:00.000Z",
+    });
+  });
+
+  it("returns a reissued invitation URL from the configured public origin", async () => {
+    const token = "b".repeat(43);
+    const expiresAt = new Date("2026-10-03T00:00:00.000Z");
+    mocks.reissueInvitation.mockResolvedValue({ plaintextToken: token, expiresAt });
+
+    const result = await reissueCaregiverInvitationLinkAction(
+      initialCreateCaregiverInvitationActionState,
+      createFormData({ invitationId: "33333333-3333-4333-8333-333333333333" }),
+    );
+
+    expect(result).toEqual({
+      status: "SUCCESS",
+      invitationUrl: `https://canonical.example/app/family/invitations#${token}`,
+      expiresAt: "2026-10-03T00:00:00.000Z",
+    });
   });
 
   it("returns the approved generic recipient failure without echoing National ID", async () => {

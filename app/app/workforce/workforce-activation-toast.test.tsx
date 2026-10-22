@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  locationReplace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ unstable_rethrow: vi.fn(), useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
@@ -49,6 +50,8 @@ beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
+let originalLocationDescriptor: PropertyDescriptor | undefined;
+
 beforeEach(() => {
   mocks.remoteAction.mockReset().mockResolvedValue(successResult());
   mocks.assistedAction.mockReset().mockResolvedValue(successResult("ASSISTED"));
@@ -56,6 +59,12 @@ beforeEach(() => {
   mocks.warning.mockReset();
   mocks.error.mockReset();
   mocks.info.mockReset();
+  mocks.locationReplace.mockReset();
+  originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { origin: "https://browser.example", search: "", replace: mocks.locationReplace },
+  });
   vi.stubGlobal("confirm", vi.fn(() => true));
   container = document.createElement("div");
   document.body.append(container);
@@ -65,6 +74,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
   vi.unstubAllGlobals();
 });
 
@@ -135,14 +145,19 @@ describe("workforce detail activation handoff", () => {
     expect(mocks.remoteAction).toHaveBeenCalledOnce();
   });
 
-  it("uses the assisted action and retains the activation URL returned by the server", async () => {
+  it("hands an ASSISTED activation URL to the same device once without rendering a remote handoff", async () => {
     render(false);
     await act(async () => button("ช่วยเปิดใช้งานบนเครื่องนี้").click());
 
     expect(mocks.assistedAction).toHaveBeenCalledOnce();
     expect(mocks.remoteAction).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("เตรียมการเปิดใช้งานแบบช่วยเหลือแล้ว");
-    expect(container.textContent).toContain(ACTIVATION_URL);
+    render(false);
+    expect(mocks.locationReplace).toHaveBeenCalledExactlyOnceWith(ACTIVATION_URL);
+    expect(container.textContent).not.toContain(ACTIVATION_URL);
+    expect(container.textContent).not.toContain("คัดลอกลิงก์");
+    expect(container.textContent).not.toContain("แชร์ลิงก์");
+    expect(container.textContent).not.toContain("เสร็จแล้ว");
+    expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]')).toBeNull();
     expect(mocks.success).not.toHaveBeenCalled();
   });
 

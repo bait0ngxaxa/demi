@@ -112,9 +112,13 @@ ${input.slips.map(renderSlip).join("\n")}
 </html>`;
 }
 
-export function renderActivationSlipsError(message: string, managementHref?: string): string {
+export function renderActivationSlipsError(
+  message: string,
+  managementHref?: string,
+  managementLinkLabel = "กลับไปตรวจสอบสถานะบุคลากร",
+): string {
   const managementLink = managementHref
-    ? `<p><a href="${escapeHtml(managementHref)}">กลับไปตรวจสอบสถานะบุคลากร</a></p>`
+    ? `<p><a href="${escapeHtml(managementHref)}">${escapeHtml(managementLinkLabel)}</a></p>`
     : "";
 
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>ไม่สามารถออกใบเปิดใช้งาน</title></head><body><p>${escapeHtml(message)}</p>${managementLink}</body></html>`;

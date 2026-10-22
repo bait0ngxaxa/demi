@@ -147,3 +147,25 @@ describe("nginx example", () => {
     expect(nginx).not.toMatch(/demi\.example|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b(?<!127\.0\.0\.1)/u);
   });
 });
+
+describe("canonical origin and public client-IP trust boundary", () => {
+  const runbook = read("../docs/operations/DEPLOY_VPS.md");
+  const environmentExample = read("../.env.example");
+
+  it("requires an exact public origin without a trailing slash that matches LINE endpoints", () => {
+    expect(environmentExample).toMatch(/#.*canonical public origin.*no trailing slash.*LINE.*endpoint/iu);
+    expect(runbook).toContain("DEMI_LINE_PUBLIC_ORIGIN");
+    expect(runbook).toContain("ไม่มี `/` ปิดท้าย");
+    expect(runbook).toMatch(/LINE.*endpoint/iu);
+    expect(runbook).toContain("/api/health");
+    expect(runbook).toContain("/api/internal/scheduler/tick");
+    expect(runbook).toContain("/api/internal/scheduler/readiness");
+  });
+
+  it("keeps Next.js loopback-only because public rate limits trust nginx client-IP headers", () => {
+    expect(runbook).toContain("127.0.0.1");
+    expect(runbook).toMatch(/rate limit/iu);
+    expect(runbook).toMatch(/X-Real-IP/iu);
+    expect(runbook).toMatch(/X-Forwarded-For/iu);
+  });
+});

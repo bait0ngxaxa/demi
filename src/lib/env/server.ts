@@ -115,18 +115,31 @@ export function isApplicationPublicOriginConfigurationError(error: unknown): boo
   );
 }
 
+export type ApplicationCredentialPath =
+  | "/activate/workforce"
+  | "/activate/patient"
+  | "/app/family/invitations";
+
+/** Creates a canonical application credential URL builder; request Host is never consulted. */
+export function createApplicationCredentialUrlBuilder(path: ApplicationCredentialPath): {
+  origin: string;
+  build: (token: string) => string;
+} {
+  const origin = getApplicationPublicOrigin();
+  const credentialPath = new URL(path, origin).toString();
+
+  return {
+    origin,
+    build: (token: string) => `${credentialPath}#${encodeURIComponent(token)}`,
+  };
+}
+
 /** Creates the canonical workforce activation URL builder from the configured public origin. */
 export function createWorkforceActivationUrlBuilder(): {
   origin: string;
   build: (token: string) => string;
 } {
-  const origin = getApplicationPublicOrigin();
-  const activationPath = new URL("/activate/workforce", origin).toString();
-
-  return {
-    origin,
-    build: (token: string) => `${activationPath}#${encodeURIComponent(token)}`,
-  };
+  return createApplicationCredentialUrlBuilder("/activate/workforce");
 }
 
 let cachedServerEnv: ServerEnv | undefined;

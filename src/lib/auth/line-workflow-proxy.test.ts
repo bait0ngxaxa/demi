@@ -87,6 +87,6 @@ describe("MINI namespace filtering through Proxy", () => {
   });
 
   it("matches the whole MINI namespace, including asset-like final segments", () => {
-    expect(config.matcher).toEqual(expect.arrayContaining(["/line/workflow/:path*", "/api/line/workflow/:path*"]));
+    expect(config.matcher).toEqual(["/:path*"]);
   });
 });

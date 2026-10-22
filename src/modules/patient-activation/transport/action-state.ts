@@ -11,6 +11,7 @@ export type PatientActivationIssueResultState = {
   patientProfileId: string | null;
   hospitalId: string;
   activationToken: string | null;
+  activationUrl: string | null;
   activationExpiresAt: string | null;
 };
 

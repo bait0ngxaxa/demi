@@ -58,7 +58,7 @@ beforeEach(() => {
   mocks.revokeInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว" });
   mocks.revokeRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยุติความสัมพันธ์ผู้ดูแลแล้ว" });
   mocks.withdrawRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" });
-  mocks.reissueInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", token: "b".repeat(43), expiresAt: "2026-10-17T00:00:00.000Z" });
+  mocks.reissueInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", invitationUrl: `https://canonical.example/app/family/invitations#${"b".repeat(43)}`, expiresAt: "2026-10-17T00:00:00.000Z" });
 
   container = document.createElement("div");
   document.body.append(container);
@@ -159,7 +159,7 @@ describe("Caregiver invitation lost-response recovery", () => {
     expect(mocks.reissueInvitation).toHaveBeenCalledOnce();
     expect(mocks.reissueInvitation.mock.calls[0]?.[1].get("invitationId")).toBe("invitation-1");
     const link = Array.from(container.querySelectorAll<HTMLInputElement>("input[readonly]")).map((input) => input.value);
-    expect(link).toEqual([`${window.location.origin}/app/family/invitations#${"b".repeat(43)}`]);
+    expect(link).toEqual([`https://canonical.example/app/family/invitations#${"b".repeat(43)}`]);
     expect(container.textContent).toContain("คิวอาร์โค้ดคำเชิญ");
     expect(container.textContent).toContain("ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว");
     expect(buttonByText("สร้างคิวอาร์โค้ดใหม่")).toBeDefined();

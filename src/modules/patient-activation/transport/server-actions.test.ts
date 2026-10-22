@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ConflictError } from "@/shared/errors/application-error";
@@ -62,8 +62,13 @@ function createLookupFormData(lookupType = "NATIONAL_ID", value = "1000000000009
 }
 
 describe("patient activation Server Actions", () => {
+  beforeEach(() => {
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("does not resolve an actor for malformed issuance input", async () => {
@@ -234,6 +239,7 @@ describe("patient activation Server Actions", () => {
       result: {
         outcome: "ISSUED",
         activationToken: "raw-token-is-returned-once",
+        activationUrl: "https://demi.example/activate/patient#raw-token-is-returned-once",
         activationExpiresAt: "2026-08-16T00:00:00.000Z",
       },
     });

@@ -4,10 +4,8 @@ import QRCode from "qrcode";
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -36,22 +34,6 @@ class UnconfirmedIssueOutcome extends Error {}
 function formString(formData: FormData, field: string): string {
   const value = formData.get(field);
   return typeof value === "string" ? value : "";
-}
-
-function buildActivationUrl(origin: string, token: string): string {
-  return `${origin}/activate/patient#${encodeURIComponent(token)}`;
-}
-
-function subscribeToBrowserOrigin(): () => void {
-  return () => undefined;
-}
-
-function getBrowserOrigin(): string {
-  return window.location.origin;
-}
-
-function getServerOrigin(): string {
-  return "";
 }
 
 function formatDate(date: string | null): string {
@@ -136,18 +118,7 @@ function ActivationPresentation({
   const [copyError, setCopyError] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrDataUrlFor, setQrDataUrlFor] = useState<string | null>(null);
-  const browserOrigin = useSyncExternalStore(
-    subscribeToBrowserOrigin,
-    getBrowserOrigin,
-    getServerOrigin,
-  );
-  const activationUrl = useMemo(
-    () =>
-      result.activationToken && browserOrigin
-        ? buildActivationUrl(browserOrigin, result.activationToken)
-        : null,
-    [browserOrigin, result.activationToken],
-  );
+  const activationUrl = result.activationUrl;
 
   useEffect(() => {
     if (!activationUrl) {
@@ -318,7 +289,7 @@ export function PatientActivationHandoff({
 
         if (result.result.outcome === "ISSUED") {
           // The one-time token is only shown inline; without it nothing can be handed over.
-          if (!result.result.activationToken) {
+          if (!result.result.activationToken || !result.result.activationUrl) {
             throw new UnconfirmedIssueOutcome();
           }
           if (feedback) {
@@ -358,7 +329,7 @@ export function PatientActivationHandoff({
   const result = state.status === "SUCCESS" ? state.result : null;
   const [handledResult, setHandledResult] = useState<object | null>(null);
   const tokenAwaitingHandoff =
-    result?.outcome === "ISSUED" && Boolean(result.activationToken) && handledResult !== result;
+    result?.outcome === "ISSUED" && Boolean(result.activationToken && result.activationUrl) && handledResult !== result;
   const guardActive = pending || unknownOutcome || tokenAwaitingHandoff;
   const guardCallback = useRef(onGuardChange);
   useEffect(() => {
@@ -424,7 +395,7 @@ export function PatientActivationHandoff({
       );
     }
 
-    if (result?.outcome === "ISSUED" && result.activationToken) {
+    if (result?.outcome === "ISSUED" && result.activationToken && result.activationUrl) {
       return issuedLink(result);
     }
 
@@ -507,7 +478,7 @@ export function PatientActivationHandoff({
     );
   }
 
-  if (result?.outcome === "ISSUED" && result.activationToken) {
+  if (result?.outcome === "ISSUED" && result.activationToken && result.activationUrl) {
     return issuedLink(result);
   }
 

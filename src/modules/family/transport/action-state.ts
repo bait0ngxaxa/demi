@@ -2,7 +2,7 @@ import type { CaregiverInvitationStatus } from "@prisma/client";
 
 export type CreateCaregiverInvitationActionState =
   | { status: "IDLE" }
-  | { status: "SUCCESS"; token: string; expiresAt: string }
+  | { status: "SUCCESS"; invitationUrl: string; expiresAt: string }
   | { status: "ERROR"; message: string };
 
 export type FamilyMutationActionState =

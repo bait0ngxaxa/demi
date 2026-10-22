@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
+  locationReplace: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -88,6 +89,8 @@ beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
+let originalLocationDescriptor: PropertyDescriptor | undefined;
+
 beforeEach(() => {
   mocks.staffAction.mockReset().mockResolvedValue(provisionResult());
   mocks.osmAction.mockReset().mockResolvedValue({ ...provisionResult(), result: { ...provisionResult().result, kind: "OSM" } });
@@ -99,6 +102,12 @@ beforeEach(() => {
   mocks.warning.mockReset();
   mocks.error.mockReset();
   mocks.info.mockReset();
+  mocks.locationReplace.mockReset();
+  originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { origin: "https://browser.example", search: "", replace: mocks.locationReplace },
+  });
   window.sessionStorage.clear();
   container = document.createElement("div");
   document.body.append(container);
@@ -108,6 +117,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
   vi.unstubAllGlobals();
 });
 
@@ -206,7 +216,7 @@ describe("workforce three-step onboarding", () => {
     expect([...mocks.success.mock.calls].flat().join(" ")).not.toContain(TOKEN);
   });
 
-  it("provisions before starting ASSISTED handoff", async () => {
+  it("hands an ASSISTED activation URL to the same device once without rendering a remote handoff", async () => {
     render();
     await stepToDelivery();
     await chooseDelivery("ASSISTED");
@@ -215,8 +225,13 @@ describe("workforce three-step onboarding", () => {
     expect(mocks.staffAction).toHaveBeenCalledOnce();
     expect(mocks.assistedAction).toHaveBeenCalledOnce();
     expect(mocks.remoteAction).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("พร้อมช่วยเปิดใช้งานบนเครื่องนี้");
-    expect(container.textContent).toContain(ACTIVATION_URL);
+    render("HOSPITAL_MEMBER", 3);
+    expect(mocks.locationReplace).toHaveBeenCalledExactlyOnceWith(ACTIVATION_URL);
+    expect(container.textContent).not.toContain(ACTIVATION_URL);
+    expect(container.textContent).not.toContain("คัดลอกลิงก์");
+    expect(container.textContent).not.toContain("แชร์ลิงก์");
+    expect(container.textContent).not.toContain("เสร็จแล้ว");
+    expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]')).toBeNull();
   });
 
   it("does not issue any credential when the OWNER chooses ทำภายหลัง", async () => {

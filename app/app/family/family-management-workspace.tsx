@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useSyncExternalStore } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -37,10 +37,6 @@ import {
 
 import { FamilyInvitationQr } from "./family-invitation-qr";
 
-const noSubscription = (): (() => void) => () => undefined;
-const getBrowserOrigin = (): string => window.location.origin;
-const getServerOrigin = (): string => "";
-
 function PaginationLink({ href }: { href: string }): React.JSX.Element {
   return (
     <Link
@@ -53,30 +49,27 @@ function PaginationLink({ href }: { href: string }): React.JSX.Element {
 }
 
 function InvitationLinkHandoff({
-  token,
+  invitationUrl,
   expiresAt,
   title,
   description,
 }: {
-  token: string;
+  invitationUrl: string;
   expiresAt: string;
   title: string;
   description: string;
 }): React.JSX.Element {
-  const origin = useSyncExternalStore(noSubscription, getBrowserOrigin, getServerOrigin);
   const [copyStatus, setCopyStatus] = useState("");
   const linkInputId = useId();
 
-  const invitationLink = origin ? `${origin}/app/family/invitations#${encodeURIComponent(token)}` : "";
-
   async function copyInvitationLink(): Promise<void> {
-    if (!invitationLink || !navigator.clipboard?.writeText) {
+    if (!navigator.clipboard?.writeText) {
       setCopyStatus("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกจากช่องลิงก์");
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(invitationLink);
+      await navigator.clipboard.writeText(invitationUrl);
       setCopyStatus("คัดลอกลิงก์แล้ว ส่งให้ผู้รับที่ตั้งใจเชื่อมได้เลย");
     } catch {
       setCopyStatus("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกจากช่องลิงก์");
@@ -90,36 +83,32 @@ function InvitationLinkHandoff({
         {description}หมดอายุ {formatFamilyManagementDate(expiresAt)}
         กรุณาส่งให้ผู้รับที่ตั้งใจเชื่อมเท่านั้น
       </p>
-      {invitationLink ? (
-        <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-          <FamilyInvitationQr invitationLink={invitationLink} />
-          <div className="min-w-0 flex-1 space-y-3">
-            <label className="block text-sm font-semibold" htmlFor={linkInputId}>
-              ลิงก์คำเชิญ
-            </label>
-            <input
-              autoComplete="off"
-              className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-              id={linkInputId}
-              readOnly
-              spellCheck={false}
-              type="text"
-              value={invitationLink}
-            />
-            <Button onClick={copyInvitationLink} type="button" variant="secondary">
-              คัดลอกลิงก์
-            </Button>
-            {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
-            <p className="text-sm leading-6">
-              QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
-              ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
-              แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
-            </p>
-          </div>
+      <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+        <FamilyInvitationQr invitationLink={invitationUrl} />
+        <div className="min-w-0 flex-1 space-y-3">
+          <label className="block text-sm font-semibold" htmlFor={linkInputId}>
+            ลิงก์คำเชิญ
+          </label>
+          <input
+            autoComplete="off"
+            className="h-12 w-full rounded-control border border-border bg-surface px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+            id={linkInputId}
+            readOnly
+            spellCheck={false}
+            type="text"
+            value={invitationUrl}
+          />
+          <Button onClick={copyInvitationLink} type="button" variant="secondary">
+            คัดลอกลิงก์
+          </Button>
+          {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
+          <p className="text-sm leading-6">
+            QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
+            ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
+            แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
+          </p>
         </div>
-      ) : (
-        <p className="mt-2" role="status">กำลังเตรียมลิงก์คำเชิญ...</p>
-      )}
+      </div>
     </Alert>
   );
 }
@@ -179,9 +168,9 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
         <InvitationLinkHandoff
           description="QR และลิงก์นี้แสดงครั้งเดียวและ"
           expiresAt={state.expiresAt}
-          key={state.token}
+          key={state.invitationUrl}
           title="สร้างคำเชิญแล้ว"
-          token={state.token}
+          invitationUrl={state.invitationUrl}
         />
       ) : null}
     </Panel>
@@ -242,9 +231,9 @@ function ShowPendingInvitationQr({
         <InvitationLinkHandoff
           description="ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว QR และลิงก์นี้"
           expiresAt={state.expiresAt}
-          key={state.token}
+          key={state.invitationUrl}
           title="คิวอาร์โค้ดคำเชิญ"
-          token={state.token}
+          invitationUrl={state.invitationUrl}
         />
       ) : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}

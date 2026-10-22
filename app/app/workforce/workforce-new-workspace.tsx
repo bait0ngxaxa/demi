@@ -107,6 +107,7 @@ export function WorkforceNewWorkspace({
   const [outcome, setOutcome] = useState<"LATER" | "INVITED" | null>(null);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const handoffContext = useRef<{ maskedName: string } | null>(null);
+  const navigatedAssistedUrls = useRef<Set<string>>(new Set());
 
   const activationSession = useScopedMutationSession<WorkforceActivationActionState>({ scope: selectedHospitalId });
   const remote = useScopedMutation(activationSession, {
@@ -129,10 +130,11 @@ export function WorkforceNewWorkspace({
     classify: (state, formData) => classifyWorkforceState(state, activationMatches(state, formData)),
     notice: standardNotice({ conflict: "เริ่มการช่วยเปิดใช้งานไม่ได้ กรุณาตรวจสอบสถานะล่าสุด", forbidden: "ไม่มีสิทธิ์ช่วยเปิดใช้งานบัญชีนี้" }),
     onSettled: ({ state, verdict }) => {
-      if (verdict === "SUCCESS" && state.status === "SUCCESS") {
-        const context = handoffContext.current;
-        setHandoff({ ...state.result, maskedName: context?.maskedName ?? "* ***" });
-      }
+      if (verdict !== "SUCCESS" || state.status !== "SUCCESS") return;
+      const { activationUrl } = state.result;
+      if (navigatedAssistedUrls.current.has(activationUrl)) return;
+      navigatedAssistedUrls.current.add(activationUrl);
+      window.location.replace(activationUrl);
     },
   });
 
