@@ -51,13 +51,6 @@ const unavailableLabels = {
   DERIVATION_UNAPPROVED: "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง",
 } as const;
 
-const progressStatusLabels = {
-  DONE: "บันทึกว่าทำได้",
-  PARTIAL: "บันทึกว่าทำได้บางส่วน",
-  NOT_DONE: "บันทึกว่ายังทำไม่ได้",
-  NOT_APPLICABLE: "บันทึกว่าไม่เกี่ยวข้อง",
-} as const;
-
 function assertCellText(value: string): string {
   if (value.length > EXCEL_CELL_TEXT_LIMIT) {
     throw new HospitalReportExportLimitError("ข้อความในรายงานยาวเกินขีดจำกัดของ Excel");
@@ -281,24 +274,6 @@ function copyDataStyle(sheet: ExcelJS.Worksheet, rowNumber: number, width: numbe
   }
 }
 
-function styleExtensionHeaders(
-  sheet: ExcelJS.Worksheet,
-  rowNumber: number,
-  sourceColumn: number,
-  columns: readonly { column: number; label: string; width: number }[],
-): void {
-  const sourceStyle = sheet.getRow(rowNumber).getCell(sourceColumn).style;
-  for (const { column, label, width } of columns) {
-    const cell = sheet.getCell(rowNumber, column);
-    cell.value = label;
-    cell.style = {
-      ...sourceStyle,
-      alignment: { ...sourceStyle.alignment, vertical: "middle", wrapText: true },
-    };
-    sheet.getColumn(column).width = width;
-  }
-}
-
 /** Last row of the template's bordered data-entry grid, read before any row is written. */
 function templateDataEndRow(sheet: ExcelJS.Worksheet): number {
   let lastRow = DATA_START_ROW - 1;
@@ -309,13 +284,25 @@ function templateDataEndRow(sheet: ExcelJS.Worksheet): number {
   return lastRow;
 }
 
-/** Notes start after one blank row below both the written rows and the template grid, never inside data cells. */
-function notesAnchorRow(dataRowCount: number, templateEndRow: number): number {
-  return Math.max(DATA_START_ROW + dataRowCount, templateEndRow + 1);
+function insertOverflowRowsBeforeNativeContent(
+  sheet: ExcelJS.Worksheet,
+  dataRowCount: number,
+  templateEndRow: number,
+): number {
+  const templateRowCount = templateEndRow - DATA_START_ROW + 1;
+  const overflowRowCount = Math.max(0, dataRowCount - templateRowCount);
+  if (overflowRowCount > 0) {
+    sheet.spliceRows(
+      templateEndRow + 1,
+      0,
+      ...Array.from({ length: overflowRowCount }, (): [] => []),
+    );
+  }
+  return overflowRowCount;
 }
 
-function clearReportBody(sheet: ExcelJS.Worksheet): void {
-  for (let rowNumber = DATA_START_ROW; rowNumber <= sheet.rowCount; rowNumber += 1) {
+function clearReportBody(sheet: ExcelJS.Worksheet, endRow: number): void {
+  for (let rowNumber = DATA_START_ROW; rowNumber <= endRow; rowNumber += 1) {
     sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell) => {
       cell.value = null;
     });
@@ -324,19 +311,35 @@ function clearReportBody(sheet: ExcelJS.Worksheet): void {
 
 function setHeaderFacts(sheet: ExcelJS.Worksheet, dataset: HospitalReportingDataset): void {
   const hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)}`;
-  sheet.getCell("A1").value = sheet.name === SERVICE_SHEET_NAME
-    ? `Service Process record · ${hospitalLabel}`
-    : hospitalLabel;
-  sheet.getCell("A2").value = "จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล";
+  const classificationUnavailable = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
+  if (sheet.name === SERVICE_SHEET_NAME) {
+    sheet.getCell("A2").value = hospitalLabel;
+    sheet.getCell("A3").value = "จำนวนเคส";
+    sheet.getCell("B3").value = dataset.counts.patientHospitalRelationships.value;
+    sheet.getCell("C3").value = "เบาหวาน (DM)";
+    sheet.getCell("D3").value = classificationUnavailable;
+    sheet.getCell("E3").value = "Program ทั้งหมด";
+    sheet.getCell("F3").value = dataset.counts.programs.total;
+    sheet.getCell("A4").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
+    sheet.getCell("B4").value = dataset.counts.relationshipsWithoutProgram.value;
+    sheet.getCell("C4").value = "กลุ่มเสี่ยง (Pre-DM)";
+    sheet.getCell("D4").value = classificationUnavailable;
+    sheet.getCell("E4").value = "Program ACTIVE / COMPLETED";
+    sheet.getCell("F4").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
+    return;
+  }
+
+  sheet.getCell("A1").value = hospitalLabel;
+  sheet.getCell("A2").value = "จำนวนเคส";
   sheet.getCell("B2").value = dataset.counts.patientHospitalRelationships.value;
   sheet.getCell("C2").value = "เบาหวาน (DM)";
-  sheet.getCell("D2").value = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
+  sheet.getCell("D2").value = classificationUnavailable;
   sheet.getCell("E2").value = "Program ทั้งหมด";
   sheet.getCell("F2").value = dataset.counts.programs.total;
   sheet.getCell("A3").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
   sheet.getCell("B3").value = dataset.counts.relationshipsWithoutProgram.value;
   sheet.getCell("C3").value = "กลุ่มเสี่ยง (Pre-DM)";
-  sheet.getCell("D3").value = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
+  sheet.getCell("D3").value = classificationUnavailable;
   sheet.getCell("E3").value = "Program ACTIVE / COMPLETED";
   sheet.getCell("F3").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
 }
@@ -361,21 +364,16 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
   const groups = programContinuationGroups(programs, DASHBOARD_FOLLOWUPS_PER_ROW);
   const startColumn = 17;
   const followupStartColumn = startColumn + 6;
-  const programIdColumn = 45;
-  const statusColumn = 44;
-  const continuationColumn = 46;
-  styleExtensionHeaders(sheet, 7, 43, [
-    { column: statusColumn, label: "สถานะ Program", width: 18 },
-    { column: programIdColumn, label: "Program ID", width: 40 },
-    { column: continuationColumn, label: "ชุดข้อมูลติดตาม", width: 16 },
-  ]);
+  let programNumber = 0;
 
   groups.forEach(({ program, followups, continuation }, index) => {
     const rowNumber = DATA_START_ROW + index;
-    copyDataStyle(sheet, rowNumber, continuationColumn);
+    copyDataStyle(sheet, rowNumber, 43);
     const row = sheet.getRow(rowNumber);
     const identity = programIdentity(program);
-    row.getCell(1).value = index === 0 || groups[index - 1]?.program.patientProgramId !== program.patientProgramId ? index + 1 : "";
+    const startsProgram = index === 0 || groups[index - 1]?.program.patientProgramId !== program.patientProgramId;
+    if (startsProgram) programNumber += 1;
+    row.getCell(1).value = startsProgram ? programNumber : "";
     row.getCell(2).value = identity[1];
     row.getCell(3).value = identity[2];
     row.getCell(4).value = identity[3];
@@ -428,13 +426,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(41).value = finalMeasurementCell(program, "waistCircumference");
     row.getCell(42).value = finalMeasurementCell(program, "systolicBloodPressure");
     row.getCell(43).value = finalMeasurementCell(program, "diastolicBloodPressure");
-    row.getCell(statusColumn).value = program.lifecycle.status;
-    row.getCell(programIdColumn).value = program.patientProgramId;
-    row.getCell(continuationColumn).value = continuation;
   });
-
-  sheet.getCell("AR6").value = "สถานะและรหัส Program ใช้ระบุแถวต่อเนื่อง";
-  sheet.getCell("AR6").alignment = { wrapText: true, vertical: "middle" };
 }
 
 function serviceOnePresence(
@@ -520,27 +512,17 @@ function writeServiceFollowupCells(
 
 function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
   const groups = programContinuationGroups(programs, SERVICE_FOLLOWUPS_PER_ROW);
-  const statusColumn = 66;
-  const programIdColumn = 67;
-  const followupSetColumn = 68;
-  const goalPlanCountColumn = 69;
-  const followupCountColumn = 70;
-  const appendedHeaders: ReadonlyArray<{ column: number; label: string; width: number }> = [
-    { column: statusColumn, label: "สถานะ Program", width: 18 },
-    { column: programIdColumn, label: "Program ID", width: 40 },
-    { column: followupSetColumn, label: "ชุดข้อมูลติดตาม", width: 16 },
-    { column: goalPlanCountColumn, label: "จำนวน Goal Plan", width: 16 },
-    { column: followupCountColumn, label: "จำนวน Follow-up ทั้งหมด", width: 23 },
-  ];
-  styleExtensionHeaders(sheet, 8, 65, appendedHeaders);
+  let programNumber = 0;
 
   groups.forEach(({ program, followups, continuation }, index) => {
     const rowNumber = DATA_START_ROW + index;
-    copyDataStyle(sheet, rowNumber, followupCountColumn);
+    copyDataStyle(sheet, rowNumber, 65);
     const row = sheet.getRow(rowNumber);
     const identity = programIdentity(program);
     const priorProgramId = groups[index - 1]?.program.patientProgramId;
-    row.getCell(1).value = priorProgramId === program.patientProgramId ? "" : index + 1;
+    const startsProgram = priorProgramId !== program.patientProgramId;
+    if (startsProgram) programNumber += 1;
+    row.getCell(1).value = startsProgram ? programNumber : "";
     row.getCell(2).value = identity[1];
     row.getCell(3).value = identity[2];
     row.getCell(4).value = identity[3];
@@ -572,160 +554,6 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
       writeRoundTwoGoalCells(row, program);
     }
     writeServiceFollowupCells(row, program, followups);
-    row.getCell(statusColumn).value = program.lifecycle.status;
-    row.getCell(programIdColumn).value = program.patientProgramId;
-    row.getCell(followupSetColumn).value = continuation;
-    row.getCell(goalPlanCountColumn).value = program.goalPlans.totalCount;
-    row.getCell(followupCountColumn).value = program.followups.totalCount;
-  });
-}
-
-function goalAndProgressDetailRows(programs: readonly HospitalReportProgramRow[]): Array<readonly (string | number | Date | null)[]> {
-  const rows: Array<readonly (string | number | Date | null)[]> = [];
-  for (const program of programs) {
-    const hospitalNumber = program.patient.hospitalNumber.state === "RECORDED"
-      ? program.patient.hospitalNumber.value
-      : program.patient.hospitalNumber.state === "NOT_RECORDED"
-        ? "ยังไม่บันทึก"
-        : unavailable(program.patient.hospitalNumber.reason);
-
-    for (const plan of program.goalPlans.items) {
-      if (plan.items.length === 0) {
-        rows.push([
-          program.patientProgramId,
-          program.patient.displayName,
-          hospitalNumber,
-          "มี Goal Plan",
-          plan.roundNumber,
-          plan.primaryGoalCode,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-        ]);
-      }
-      for (const item of plan.items) {
-        rows.push([
-          program.patientProgramId,
-          program.patient.displayName,
-          hospitalNumber,
-          "เป้าหมายกิจกรรม",
-          plan.roundNumber,
-          plan.primaryGoalCode,
-          null,
-          null,
-          item.activityCode,
-          item.activityLabel,
-          item.targetDays,
-          factCell(item.targetValue),
-          factCell(item.targetUnit),
-          null,
-        ]);
-      }
-    }
-
-    for (const followup of program.followups.items) {
-      if (followup.activityProgress.length === 0) {
-        rows.push([
-          program.patientProgramId,
-          program.patient.displayName,
-          hospitalNumber,
-          "มี Follow-up",
-          null,
-          null,
-          followup.roundNumber,
-          toExcelDate(followup.recordedAt),
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-        ]);
-      }
-      for (const progress of followup.activityProgress) {
-        rows.push([
-          program.patientProgramId,
-          program.patient.displayName,
-          hospitalNumber,
-          "สถานะกิจกรรมที่บันทึก",
-          null,
-          null,
-          followup.roundNumber,
-          toExcelDate(followup.recordedAt),
-          progress.activityCode,
-          progress.activityLabel,
-          null,
-          null,
-          null,
-          progressStatusLabels[progress.status],
-        ]);
-      }
-    }
-  }
-  return rows;
-}
-
-function appendNotes(sheet: ExcelJS.Worksheet, afterRow: number, notes: readonly string[]): number {
-  let rowNumber = afterRow + 1;
-  for (const note of notes) {
-    copyDataStyle(sheet, rowNumber, Math.max(2, sheet.columnCount));
-    sheet.getCell(rowNumber, 1).value = "หมายเหตุ";
-    sheet.getCell(rowNumber, 2).value = assertCellText(note);
-    rowNumber += 1;
-  }
-  return rowNumber;
-}
-
-function appendDetailTable(
-  sheet: ExcelJS.Worksheet,
-  startRow: number,
-  rows: readonly (readonly (string | number | Date | null)[])[],
-): void {
-  const titleRow = startRow + 1;
-  const headerRow = titleRow + 1;
-  const headers = [
-    "Program ID",
-    "ผู้ป่วย",
-    "Hospital-local ID",
-    "ประเภทข้อมูล",
-    "รอบ Goal Plan",
-    "รหัสเป้าหมายหลัก",
-    "รอบ Follow-up",
-    "วันที่บันทึก Follow-up",
-    "รหัสกิจกรรม",
-    "กิจกรรม/คำอธิบาย",
-    "วันเป้าหมายต่อสัปดาห์",
-    "ค่าที่ตั้งเป้า",
-    "หน่วย",
-    "สถานะที่บันทึก",
-  ];
-  copyDataStyle(sheet, titleRow, headers.length);
-  sheet.getCell(titleRow, 1).value = "รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก (ไม่ใช่คะแนนผลสำเร็จ)";
-
-  const sourceHeaderRow = sheet.getRow(8);
-  const detailHeader = sheet.getRow(headerRow);
-  for (let column = 1; column <= headers.length; column += 1) {
-    const sourceStyle = sourceHeaderRow.getCell(Math.min(column, 65)).style;
-    detailHeader.getCell(column).style = { ...sourceStyle };
-    detailHeader.getCell(column).value = headers[column - 1];
-  }
-  detailHeader.height = 36;
-
-  rows.forEach((values, index) => {
-    const rowNumber = headerRow + 1 + index;
-    copyDataStyle(sheet, rowNumber, headers.length);
-    const row = sheet.getRow(rowNumber);
-    values.forEach((value, columnIndex) => {
-      const cell = row.getCell(columnIndex + 1);
-      cell.value = typeof value === "string" ? assertCellText(value) : value;
-      cell.numFmt = "General";
-      if (value instanceof Date) setExcelDate(row, columnIndex + 1);
-    });
   });
 }
 
@@ -755,36 +583,18 @@ export async function generateHospitalReportWorkbook(
   workbook.modified = generatedAt;
   const dashboardTemplateEndRow = templateDataEndRow(dashboardSheet);
   const serviceTemplateEndRow = templateDataEndRow(serviceSheet);
-  clearReportBody(dashboardSheet);
-  clearReportBody(serviceSheet);
+  const serviceRowCount = programContinuationGroups(dataset.programs, SERVICE_FOLLOWUPS_PER_ROW).length;
+  const serviceOverflowRowCount = insertOverflowRowsBeforeNativeContent(
+    serviceSheet,
+    serviceRowCount,
+    serviceTemplateEndRow,
+  );
+  clearReportBody(dashboardSheet, dashboardTemplateEndRow);
+  clearReportBody(serviceSheet, serviceTemplateEndRow + serviceOverflowRowCount);
   setHeaderFacts(dashboardSheet, dataset);
   setHeaderFacts(serviceSheet, dataset);
   writeDashboardRows(dashboardSheet, dataset.programs);
   writeServiceRows(serviceSheet, dataset.programs);
-
-  const dashboardRowCount = programContinuationGroups(dataset.programs, DASHBOARD_FOLLOWUPS_PER_ROW).length;
-  const serviceRowCount = programContinuationGroups(dataset.programs, SERVICE_FOLLOWUPS_PER_ROW).length;
-  appendNotes(dashboardSheet, notesAnchorRow(dashboardRowCount, dashboardTemplateEndRow), [
-    "จำนวนผู้ป่วยนับตาม Patient-Hospital relationship; จำนวน Program นับตาม PatientProgram และผู้ป่วยที่ไม่มี Program จะไม่มีแถว Program",
-    "ผู้ดูแลที่แสดงเป็นการมอบหมายปัจจุบันของ relationship ณ เวลาที่อ่านข้อมูล ไม่ใช่ผู้ให้บริการย้อนหลังของ Program",
-    "ระหว่างโปรแกรม ครั้งที่ 1 = Service 1, ครั้งที่ 2 = Goal Plan, ครั้งที่ 3–6 = Follow-up ลำดับที่ 1–4; Service 1 และ Goal Plan ยังไม่มีการบันทึกค่าวัดในระบบ",
-    "แถวต่อเนื่องใช้เก็บ Follow-up ทุกครั้ง; ช่องคะแนนความสำเร็จและข้อมูลทางคลินิกที่ยังไม่มีแหล่งหรือสูตรรับรองแสดงสถานะที่ตรงไปตรงมา",
-    "CVD risk score (%) เจ้าหน้าที่กรอกเองที่ Baseline (Before) และ Final Assessment (After) ไม่ได้คำนวณ; HbA1c หน่วย %",
-    dataset.cohort === "INCLUDE_ENDED"
-      ? "ชุดข้อมูลนี้รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว (ประวัติก่อนสิ้นสุดการดูแล)"
-      : "ชุดข้อมูลนี้ไม่รวมผู้ที่สิ้นสุดการดูแลกับโรงพยาบาลแล้ว",
-  ]);
-  const detailStartRow = appendNotes(serviceSheet, notesAnchorRow(serviceRowCount, serviceTemplateEndRow), [
-    "“ทำ” หมายถึงมีบันทึกกิจกรรมนั้นใน DEMI ไม่ยืนยันผลการรักษา: กราฟวัดลอยจมและตารางกิจวัตรใช้ผลของครั้งที่ 1, การ์ดความฝันใช้ผลของครั้งที่ 3; รายการที่ข้ามพร้อมเหตุผลนับเป็น “ไม่ทำ”",
-    "ครั้งที่ 2 ใช้ Goal Plan รอบแรกของ Program: การลดมื้ออาหาร = เป้าหมายลดข้าว/แป้ง, การเปลี่ยนอาหาร = เป้าหมายอาหารอื่น, จำนวนมื้อและจำนวนวันต่อสัปดาห์ = วันเป้าหมายสูงสุดของหมวด, รวมเวลา = ผลรวมวันเป้าหมาย × นาทีต่อครั้ง ของกิจกรรมออกกำลังกาย",
-    "Goal Plan เป็นค่าเป้าหมาย ไม่ใช่ผลที่ทำได้; Follow-up ที่เกิน 4 ครั้งแสดงในแถวต่อเนื่องและตารางรายละเอียดท้ายรายงาน",
-    "วันที่ติดตาม = วันที่ให้บริการ (รายการก่อนมีช่องนี้ใช้วันที่บันทึก); จำนวนวันที่ทำได้ = ผลรวมวันที่ทำได้ใน 7 วันก่อนวันให้บริการ; อัตราความสำเร็จ = จำนวนวันที่ทำได้ ÷ วันเป้าหมายของแผนที่อ้างอิง ไม่นับกิจกรรมที่ไม่เกี่ยวข้อง; >70% นับเฉพาะการติดตามที่คำนวณได้",
-    "ผลลัพธ์ที่ได้ ยังรอรายการคำจาก Owner; ปรับแผนและอุปสรรคมาจากคำตอบในแบบบันทึกการติดตาม (รายการก่อนมีช่องนี้แสดง ไม่ได้บันทึก)",
-    "Program COMPLETED เป็นสถานะ lifecycle ไม่ได้ยืนยันผลลัพธ์ทางคลินิก; generatedAt เป็นเวลาสร้างไฟล์ ไม่ใช่ dataAsOf",
-    "ไม้บรรทัดวัดใจ (Before) = คะแนน 0–10 ของไม้บรรทัดวัดใจครั้งที่ 1; ข้ามหรือไม่มีบันทึก = ยังไม่บันทึก",
-    "เวลาออกกำลังกาย/สัปดาห์ (ผู้ป่วยบันทึกเอง) = นาทีที่ผู้ป่วยบันทึกในบันทึกการออกกำลังกายช่วง 28 วันก่อนวันเริ่ม Program (Before) หรือก่อนวันประเมินหลังจบ (After) ÷ 4; ไม่นับรายการที่ไม่ระบุเวลา; ไม่มีรายการในช่วง = ไม่มีบันทึก",
-  ]);
-  appendDetailTable(serviceSheet, detailStartRow, goalAndProgressDetailRows(dataset.programs));
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
@@ -872,7 +682,6 @@ export async function exportGlobalAdminHospitalReportingWorkbook(
 export const hospitalReportWorkbookInternals = {
   assignmentCell,
   factCell,
-  goalAndProgressDetailRows,
   programContinuationGroups,
   rowsPerProgram,
   setHeaderFacts,

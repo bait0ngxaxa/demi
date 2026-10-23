@@ -153,6 +153,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("A1").value).not.toContain("DEMO-A");
     expect(dashboard.getCell("B2").value).toBe(1);
     expect(dashboard.getCell("D2").value).toContain("นิยาม");
+    expect(dashboard.columnCount).toBe(43);
     expect(dashboard.getCell("B9").value).toBe("สมชาย");
     expect(dashboard.getCell("C9").value).toBe("ใจดี");
     expect(dashboard.getCell("D9").value).toBe("LOCAL-001");
@@ -164,8 +165,10 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("W9").value).toBe(1);
     expect(dashboard.getCell("W10").value).toBe(5);
     expect(dashboard.getCell("AC10").value).toBe(7);
-    expect(dashboard.getCell("AS9").value).toBe(activeProgramId);
-    expect(dashboard.getCell("AS11").value).toBe(completedProgramId);
+    expect(dashboard.getCell("A10").value).toBe("");
+    expect(dashboard.getCell("B10").value).toBe("สมชาย");
+    expect(dashboard.getCell("D10").value).toBe("LOCAL-001");
+    expect(dashboard.getCell("A11").value).toBe(2);
     expect(dashboard.getCell("AI9").value).toBe("ยังดำเนิน Program");
     expect(dashboard.getCell("AI11").value).toBeInstanceOf(Date);
     // D7/D8: CVD not recorded on this Baseline; HbA1c is approved and reported as recorded.
@@ -174,8 +177,11 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("AJ9").value).toBe("ไม่มี Final Assessment");
     expect(dashboard.getCell("W11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
 
-    expect(service.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
-    expect(service.getCell("A1").value).not.toContain("DEMO-A");
+    expect(service.getCell("A1").value).toBe("Service Process record");
+    expect(service.getCell("A2").value).toContain("โรงพยาบาลทดสอบ");
+    expect(service.getCell("A2").value).not.toContain("DEMO-A");
+    expect(service.getCell("B3").value).toBe(1);
+    expect(service.columnCount).toBe(65);
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
     expect(service.getCell("S8").value).toBe("ทำ");
@@ -187,36 +193,25 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("AH9").value).toBeInstanceOf(Date);
     expect(service.getCell("AH10").value).toBeInstanceOf(Date);
     expect(service.getCell("AH11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
-    expect(service.getCell("BN9").value).toBe(PatientProgramStatus.ACTIVE);
+    expect(service.getCell("A10").value).toBe("");
+    expect(service.getCell("B10").value).toBe("สมชาย");
+    expect(service.getCell("D10").value).toBe("LOCAL-001");
+    expect(service.getCell("A11").value).toBe(2);
     // D8/D9: confidence ruler 0-10 from the Baseline; self-reported exercise with no entries.
     expect(service.getCell("M9").value).toBe(6);
     expect(service.getCell("N9").value).toBe("ไม่มีบันทึก");
     expect(service.getCell("Q9").value).toBe("ไม่มี Final Assessment");
 
-    const progressRows: number[] = [];
-    for (let rowNumber = 1; rowNumber <= service.rowCount; rowNumber += 1) {
-      if (service.getCell(rowNumber, 4).value === "สถานะกิจกรรมที่บันทึก") progressRows.push(rowNumber);
-    }
-    expect(progressRows).toHaveLength(7);
-    expect(service.getCell(progressRows.at(-1) ?? 0, 7).value).toBe(7);
-    expect(service.getCell(progressRows.at(-1) ?? 0, 14).value).toBe("บันทึกว่าทำได้บางส่วน");
-
     const serialized = JSON.stringify({ dashboard: dashboard.getSheetValues(), service: service.getSheetValues() });
     expect(serialized).toContain("ไม่มีแหล่งข้อมูลในระบบ");
-    expect(serialized).toContain("ผู้ป่วยบันทึกเอง");
-    expect(serialized).toContain("เป้าหมายกิจกรรม");
-    const serviceText = service.getSheetValues().flat(2).filter((value): value is string => typeof value === "string").join(" ");
-    expect(serviceText).toContain("generatedAt");
-    expect(serviceText).toContain("ไม่ใช่ dataAsOf");
+    expect(serialized).not.toContain("รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก");
+    expect(serialized).not.toContain("generatedAt");
   });
 
-  it("keeps notes and the detail table below the template's data-entry rows when there are few Programs", async () => {
+  it("keeps only the template-native Service Process guidance when there are few Programs", async () => {
     const bytes = await generateHospitalReportWorkbook(dataset(), new Date("2026-10-11T05:00:00.000Z"));
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    const rowsWithText = (sheet: ExcelJS.Worksheet, from: number, to: number, column: number, text: string): number[] =>
-      Array.from({ length: to - from + 1 }, (_, index) => from + index)
-        .filter((rowNumber) => String(sheet.getCell(rowNumber, column).value ?? "").includes(text));
 
     // Template data-entry grids: Dashboard rows 9–29, รายงานการจัดบริการ rows 9–30. This fixture fills 2 and 3 rows.
     for (const [name, gridEnd, dataEnd] of [["Dashboard ภาพรวม", 29, 11], ["รายงานการจัดบริการ", 30, 11]] as const) {
@@ -225,27 +220,46 @@ describe("Hospital reporting customer workbook export", () => {
         const values = (sheet.getRow(rowNumber).values as unknown[]).filter((value) => value !== null && value !== undefined && value !== "");
         expect({ name, rowNumber, values }).toEqual({ name, rowNumber, values: [] });
       }
-      const noteRows = rowsWithText(sheet, 1, sheet.rowCount, 1, "หมายเหตุ");
-      expect(noteRows.length).toBeGreaterThan(0);
-      expect(Math.min(...noteRows)).toBeGreaterThan(gridEnd);
+      for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+        expect(sheet.getCell(rowNumber, 1).value).not.toBe("หมายเหตุ");
+      }
     }
     const service = workbook.getWorksheet("รายงานการจัดบริการ")!;
-    expect(Math.min(...rowsWithText(service, 1, service.rowCount, 1, "รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก"))).toBeGreaterThan(30);
+    expect(service.getCell("AH31").value).toBe("หมายเหตุ");
+    expect(service.getCell("AI35").value).toContain("ติดตามประมาณ 2-4 ครั้ง/โปรแกรม");
+    expect(service.getCell("AH37").value).toContain("ภาพรวมความครบถ้วนการจัดบริการ");
+    expect(JSON.stringify(service.getSheetValues())).not.toContain("รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก");
   });
 
-  it("starts notes right after the data when the Programs outgrow the template grid", async () => {
+  it("continues rows inside the customer columns and shifts native guidance below overflow data", async () => {
     const many = dataset();
     many.programs = Array.from({ length: 25 }, (_, index) =>
       program({ id: `55555555-5555-4555-8555-${String(index + 1).padStart(12, "0")}`, status: PatientProgramStatus.ACTIVE }));
     const bytes = await generateHospitalReportWorkbook(many, new Date("2026-10-11T05:00:00.000Z"));
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-    for (const name of ["Dashboard ภาพรวม", "รายงานการจัดบริการ"]) {
-      const sheet = workbook.getWorksheet(name)!;
-      // Data rows 9–33, one blank row, then the first note.
-      expect(sheet.getCell(33, 2).value).toBe("สมชาย");
-      expect(sheet.getCell(34, 1).value ?? null).toBeNull();
-      expect(sheet.getCell(35, 1).value).toBe("หมายเหตุ");
-    }
+    const dashboard = workbook.getWorksheet("Dashboard ภาพรวม")!;
+    const service = workbook.getWorksheet("รายงานการจัดบริการ")!;
+    expect(dashboard.getCell(33, 2).value).toBe("สมชาย");
+    expect(service.getCell(33, 2).value).toBe("สมชาย");
+    expect(dashboard.columnCount).toBe(43);
+    expect(service.columnCount).toBe(65);
+    expect(service.getCell("AH34").value).toBe("หมายเหตุ");
+    expect(service.getCell("AH40").value).toContain("ภาพรวมความครบถ้วนการจัดบริการ");
+  });
+
+  it("keeps the canonical empty workbook structure when there are no Programs", async () => {
+    const empty = dataset();
+    empty.programs = [];
+    empty.counts.programs = { grain: "PATIENT_PROGRAM", total: 0, active: 0, completed: 0 };
+    const bytes = await generateHospitalReportWorkbook(empty, new Date("2026-10-11T05:00:00.000Z"));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
+    expect(workbook.getWorksheet("Dashboard ภาพรวม")?.columnCount).toBe(43);
+    expect(workbook.getWorksheet("รายงานการจัดบริการ")?.columnCount).toBe(65);
+    expect(workbook.getWorksheet("Dashboard ภาพรวม")?.getCell("A9").value ?? null).toBeNull();
+    expect(workbook.getWorksheet("รายงานการจัดบริการ")?.getCell("A9").value ?? null).toBeNull();
   });
 });

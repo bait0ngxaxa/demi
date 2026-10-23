@@ -392,17 +392,27 @@ function sheetOrThrow(workbook: ExcelJS.Workbook, name: string): ExcelJS.Workshe
 }
 
 describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
+  let generated: ExcelJS.Workbook;
   let dashboard: ExcelJS.Worksheet;
   let service: ExcelJS.Worksheet;
   let template: ExcelJS.Workbook;
 
   beforeAll(async () => {
-    const generated = await loadWorkbook(
+    generated = await loadWorkbook(
       await generateHospitalReportWorkbook(goldenDataset(), new Date("2026-10-12T03:00:00.000Z")),
     );
     dashboard = sheetOrThrow(generated, "Dashboard ภาพรวม");
     service = sheetOrThrow(generated, "รายงานการจัดบริการ");
     template = await loadWorkbook(await readFile(join(process.cwd(), "docs", "Dashboard App Demi.xlsx")));
+  });
+
+  it("matches the customer workbook worksheet and column boundaries exactly", () => {
+    expect(generated.worksheets.map(({ name }) => name)).toEqual([
+      "Dashboard ภาพรวม",
+      "รายงานการจัดบริการ",
+    ]);
+    expect(dashboard.columnCount).toBe(43);
+    expect(service.columnCount).toBe(65);
   });
 
   it("pins every Dashboard ภาพรวม customer column A–AQ and continues the fifth Follow-up", () => {
@@ -424,7 +434,8 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       expect(normalizedCell(service, `${column}10`), `รายงานการจัดบริการ!${column}10`).toEqual(expected);
     }
     expect(normalizedCell(service, "A10")).toBeNull();
-    expect(normalizedCell(service, "BP10")).toBe(2);
+    expect(normalizedCell(service, "B10")).toBe("สมหญิง");
+    expect(normalizedCell(service, "D10")).toBe("HN-0001");
   });
 
   it("never shows an unavailable label in a SOURCE_READY column", () => {
@@ -441,11 +452,40 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     expect(headerValues(service, [5, 6, 7, 8], 65)).toEqual(headerValues(templateService, [5, 6, 7, 8], 65));
   });
 
-  it("identifies the Hospital by name only in both worksheet headers", () => {
+  it("places Hospital, case-count and classification facts in each sheet's native header rows", () => {
     expect(normalizedCell(dashboard, "A1")).toBe("โรงพยาบาล: รพ.สต. ทดสอบ");
-    expect(normalizedCell(service, "A1")).toBe("Service Process record · โรงพยาบาล: รพ.สต. ทดสอบ");
+    expect(normalizedCell(dashboard, "A2")).toBe("จำนวนเคส");
+    expect(normalizedCell(dashboard, "B2")).toBe(1);
+    expect(normalizedCell(dashboard, "C2")).toBe("เบาหวาน (DM)");
+    expect(normalizedCell(dashboard, "C3")).toBe("กลุ่มเสี่ยง (Pre-DM)");
+    expect(normalizedCell(dashboard, "F2")).toBe(1);
+    expect(normalizedCell(dashboard, "B3")).toBe(0);
+
+    expect(normalizedCell(service, "A1")).toBe("Service Process record");
+    expect(normalizedCell(service, "A2")).toBe("โรงพยาบาล: รพ.สต. ทดสอบ");
+    expect(normalizedCell(service, "A3")).toBe("จำนวนเคส");
+    expect(normalizedCell(service, "B3")).toBe(1);
+    expect(normalizedCell(service, "C3")).toBe("เบาหวาน (DM)");
+    expect(normalizedCell(service, "C4")).toBe("กลุ่มเสี่ยง (Pre-DM)");
+    expect(normalizedCell(service, "F3")).toBe(1);
+    expect(normalizedCell(service, "B4")).toBe(0);
     expect(normalizedCell(dashboard, "A1")).not.toContain("GOLD-01");
-    expect(normalizedCell(service, "A1")).not.toContain("GOLD-01");
+    expect(normalizedCell(service, "A2")).not.toContain("GOLD-01");
+  });
+
+  it("keeps native customer notes in place and adds no generated note or detail sections", () => {
+    const templateService = sheetOrThrow(template, "รายงานการจัดบริการ");
+    for (const address of ["AH31", "AI31", "AK32", "AI33", "AI34", "AI35", "AH37"]) {
+      expect(normalizedCell(service, address), address).toEqual(normalizedCell(templateService, address));
+    }
+
+    for (const sheet of [dashboard, service]) {
+      const values = sheet.getSheetValues().flat(2);
+      expect(values).not.toContain("รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก (ไม่ใช่คะแนนผลสำเร็จ)");
+      for (let rowNumber = 1; rowNumber <= sheet.rowCount; rowNumber += 1) {
+        expect(sheet.getCell(rowNumber, 1).value).not.toBe("หมายเหตุ");
+      }
+    }
   });
 
   it("reports the current DoD coverage of the customer columns", () => {
