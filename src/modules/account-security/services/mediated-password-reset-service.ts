@@ -5,7 +5,9 @@ import { z } from "zod";
 
 import {
   AccountRecoveryDeliveryChannel,
+  HospitalServiceAreaFacilityKind,
   HospitalStatus,
+  IdentityAssurance,
   MembershipStatus,
   MembershipType,
   Prisma,
@@ -28,6 +30,7 @@ import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/ide
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { LineMessagingClient } from "@/modules/line/adapters/line-messaging-client";
 import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/line-account-service";
+import { assertChildOwnerInvitationContext } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
@@ -125,8 +128,9 @@ type TargetSnapshot = {
   personId: string;
   authSubject: string | null;
   status: UserStatus;
+  identityAssurance: IdentityAssurance;
   roles: { role: Role }[];
-  memberships: { hospitalId: string; membershipType: MembershipType; status: MembershipStatus }[];
+  memberships: { id: string; hospitalId: string; membershipType: MembershipType; status: MembershipStatus; invitedViaServiceAreaId: string | null }[];
   osmHospitalRelationships: { hospitalId: string }[];
   patientProfileId: string | null;
   takeoverLock: {
@@ -136,6 +140,7 @@ type TargetSnapshot = {
     providerState: UserTakeoverProviderState;
     suspendedMembershipIds: string[];
     suspendedOsmRelationshipIds: string[];
+    heldOwnerMembershipIds: string[];
   } | null;
 };
 
@@ -144,8 +149,9 @@ const targetUserSelect = {
   personId: true,
   authSubject: true,
   status: true,
+  identityAssurance: true,
   roles: { select: { role: true } },
-  memberships: { select: { hospitalId: true, membershipType: true, status: true } },
+  memberships: { select: { id: true, hospitalId: true, membershipType: true, status: true, invitedViaServiceAreaId: true } },
   osmHospitalRelationships: { select: { hospitalId: true } },
   person: { select: { patientProfile: { select: { id: true } } } },
   takeoverLock: {
@@ -156,6 +162,7 @@ const targetUserSelect = {
       providerState: true,
       suspendedMembershipIds: true,
       suspendedOsmRelationshipIds: true,
+      heldOwnerMembershipIds: true,
     },
   },
 } satisfies Prisma.UserSelect;
@@ -168,6 +175,7 @@ function toTargetSnapshot(user: TargetUserPayload): TargetSnapshot {
     personId: user.personId,
     authSubject: user.authSubject,
     status: user.status,
+    identityAssurance: user.identityAssurance,
     roles: user.roles,
     memberships: user.memberships,
     osmHospitalRelationships: user.osmHospitalRelationships,
@@ -252,6 +260,42 @@ async function isOwnerScopedTarget(
   return allHospitals.size > 0 && allHospitals.size === 1 && allHospitals.has(hospitalId);
 }
 
+/** The only REC-1 exception for a non-ACTIVE Hospital: an exact OWNER hold recorded by its unresolved takeover lock. */
+async function isHeldChildOwnerResetTarget(
+  transaction: Prisma.TransactionClient,
+  target: TargetSnapshot,
+  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind">,
+): Promise<boolean> {
+  const lock = target.takeoverLock;
+  if (
+    input.targetKind !== "staff" || !input.relationshipId ||
+    target.identityAssurance !== IdentityAssurance.CAREGIVER_INVITATION || target.status !== UserStatus.SUSPENDED ||
+    !lock || lock.providerState === UserTakeoverProviderState.RESOLVED || lock.hospitalId !== input.hospitalId ||
+    !lock.heldOwnerMembershipIds.includes(input.relationshipId)
+  ) return false;
+
+  const membership = await transaction.hospitalMembership.findFirst({
+    where: {
+      id: input.relationshipId,
+      userId: target.userId,
+      hospitalId: input.hospitalId,
+      membershipType: MembershipType.OWNER,
+      status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
+      invitedByUserId: { not: null },
+      invitedViaServiceAreaId: { not: null },
+    },
+    select: {
+      invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
+      hospital: { select: { status: true, serviceAreaEligibility: { select: { kind: true } } } },
+    },
+  });
+  return Boolean(
+    membership?.invitedViaServiceArea && membership.invitedViaServiceArea.childHospitalId === input.hospitalId &&
+    membership.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
+    (membership.hospital.status === HospitalStatus.PENDING_VERIFICATION || membership.hospital.status === HospitalStatus.ACTIVE)
+  );
+}
+
 async function authorizeIssuerAndTarget(
   transaction: Prisma.TransactionClient,
   issuerUserId: string,
@@ -271,7 +315,7 @@ async function authorizeIssuerAndTarget(
     locateTarget(transaction, input),
   ]);
   if (!issuer || issuer.status !== UserStatus.ACTIVE) throw new ForbiddenError();
-  if (!hospital || hospital.status !== HospitalStatus.ACTIVE || !target) throw new NotFoundError();
+  if (!hospital || !target) throw new NotFoundError();
   if (target.userId === issuerUserId || (expectedTargetUserId && target.userId !== expectedTargetUserId)) {
     throw new ForbiddenError();
   }
@@ -282,6 +326,12 @@ async function authorizeIssuerAndTarget(
   }
 
   const issuerRoles = issuer.roles.map(({ role }) => role);
+  if (await isHeldChildOwnerResetTarget(transaction, target, input)) {
+    if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held child OWNER account");
+    return { target, mode: "ADMIN" };
+  }
+  if (hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
+
   if (input.targetKind === "platform_admin") {
     if (!issuerRoles.includes(Role.ADMIN) || !target.roles.some(({ role }) => role === Role.ADMIN)) throw new ForbiddenError();
     return { target, mode: "ADMIN" };
@@ -665,7 +715,8 @@ async function restoreTakeoverRelationships(
 
   let membershipIds = lock.suspendedMembershipIds;
   let osmIds = lock.suspendedOsmRelationshipIds;
-  if (membershipIds.length === 0 && osmIds.length === 0) {
+  const heldOwnerMembershipIds = lock.heldOwnerMembershipIds;
+  if (membershipIds.length === 0 && osmIds.length === 0 && heldOwnerMembershipIds.length === 0) {
     const latestLockAudit = await transaction.auditEvent.findFirst({
       where: { resourceType: "User", resourceId: target.userId, action: "user.takeover_locked" },
       orderBy: { createdAt: "desc" },
@@ -699,12 +750,71 @@ async function restoreTakeoverRelationships(
     where: { id: lock.id },
     data: { providerState: UserTakeoverProviderState.RESOLVED, providerCheckedAt: now },
   });
+
+  const heldOwnerMembershipsRestored: string[] = [];
+  const heldOwnerMembershipsNotRestored: { membershipId: string; reason: string }[] = [];
+  for (const membershipId of heldOwnerMembershipIds) {
+    const held = await transaction.hospitalMembership.findUnique({
+      where: { id: membershipId },
+      select: { id: true, hospitalId: true, status: true, membershipType: true, userId: true },
+    });
+    if (!held || held.userId !== target.userId || held.hospitalId !== lock.hospitalId || held.membershipType !== MembershipType.OWNER) {
+      heldOwnerMembershipsNotRestored.push({ membershipId, reason: "HELD_MEMBERSHIP_NOT_FOUND" });
+      continue;
+    }
+    if (held.status !== MembershipStatus.PROVISIONED) {
+      heldOwnerMembershipsNotRestored.push({ membershipId, reason: `STATUS_${held.status}` });
+      continue;
+    }
+
+    const competingOpen = await transaction.hospitalMembership.findFirst({
+      where: {
+        hospitalId: held.hospitalId,
+        membershipType: MembershipType.OWNER,
+        status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.INVITED] },
+        id: { not: held.id },
+      },
+      select: { id: true },
+    });
+    if (competingOpen) {
+      heldOwnerMembershipsNotRestored.push({ membershipId, reason: "ANOTHER_OWNER_INVITATION_IS_OPEN" });
+      continue;
+    }
+
+    try {
+      await assertChildOwnerInvitationContext(transaction, {
+        membershipId,
+        childHospitalId: held.hospitalId,
+        userId: target.userId,
+        expectedStatus: MembershipStatus.PROVISIONED,
+      });
+    } catch (error: unknown) {
+      if (!(error instanceof ConflictError)) throw error;
+      heldOwnerMembershipsNotRestored.push({ membershipId, reason: "INVITATION_CONTEXT_NO_LONGER_VALID" });
+      continue;
+    }
+
+    const restored = await transaction.hospitalMembership.updateMany({
+      where: { id: membershipId, userId: target.userId, hospitalId: held.hospitalId, membershipType: MembershipType.OWNER, status: MembershipStatus.PROVISIONED },
+      data: { status: MembershipStatus.INVITED },
+    });
+    if (restored.count === 1) heldOwnerMembershipsRestored.push(membershipId);
+    else heldOwnerMembershipsNotRestored.push({ membershipId, reason: "STATUS_CHANGED_DURING_RESET" });
+  }
+
   await recordAuditEvent({
     actorUserId: null,
     action: "user.takeover_lock_resolved",
     resourceType: "User",
     resourceId: target.userId,
-    metadata: { issuerUserId, hospitalId: lock.hospitalId, membershipsRestored: memberships.count, osmRelationshipsRestored: osmRelationships.count },
+    metadata: {
+      issuerUserId,
+      hospitalId: lock.hospitalId,
+      membershipsRestored: memberships.count,
+      osmRelationshipsRestored: osmRelationships.count,
+      heldOwnerMembershipsRestored: heldOwnerMembershipsRestored.join(","),
+      heldOwnerMembershipsNotRestored: heldOwnerMembershipsNotRestored.map(({ membershipId, reason }) => `${membershipId}:${reason}`).join(","),
+    },
   }, transaction);
 }
 
@@ -1024,9 +1134,10 @@ export async function searchMediatedPasswordResetTargets(
             id: true,
             status: true,
             authSubject: true,
+            identityAssurance: true,
             roles: { select: { role: true } },
             person: { select: { givenName: true, familyName: true } },
-            takeoverLock: { select: { providerState: true } },
+            takeoverLock: { select: { hospitalId: true, providerState: true, heldOwnerMembershipIds: true } },
           } },
           patientProfile: { select: { id: true } },
         },
@@ -1036,17 +1147,42 @@ export async function searchMediatedPasswordResetTargets(
       const takeoverLocked = Boolean(user?.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED);
       const resetEligibleStatus = user?.status === UserStatus.ACTIVE || (user?.status === UserStatus.SUSPENDED && takeoverLocked);
       if (user?.authSubject && user.id !== actor.userId && resetEligibleStatus) {
-        const [memberships, osmRelationships, patientRelationships] = await Promise.all([
+        const [memberships, osmRelationships, patientRelationships, heldOwnerMemberships] = await Promise.all([
           transaction.hospitalMembership.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
           transaction.osmHospitalRelationship.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
           person?.patientProfile
             ? transaction.patientHospitalRelationship.findMany({ where: { patientProfileId: person.patientProfile.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, endedAt: true, hospital: { select: { name: true } } } })
+            : Promise.resolve([]),
+          user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION && takeoverLocked && user.takeoverLock
+            ? transaction.hospitalMembership.findMany({
+                where: {
+                  id: { in: user.takeoverLock.heldOwnerMembershipIds },
+                  userId: user.id,
+                  hospitalId: user.takeoverLock.hospitalId,
+                  membershipType: MembershipType.OWNER,
+                  status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
+                },
+                select: {
+                  id: true,
+                  hospitalId: true,
+                  status: true,
+                  invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
+                  hospital: { select: { name: true, status: true, serviceAreaEligibility: { select: { kind: true } } } },
+                },
+              })
             : Promise.resolve([]),
         ]);
         const displayName = `${user.person.givenName ?? ""} ${user.person.familyName ?? ""}`.trim() || "ไม่พบชื่อผู้ใช้";
         result.push(...memberships.map((row) => ({ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
         result.push(...osmRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "osm" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
         result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? "ENDED" : "ACTIVE" })));
+        result.push(...heldOwnerMemberships.flatMap((row) =>
+          row.invitedViaServiceArea?.childHospitalId === row.hospitalId &&
+          row.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
+          row.hospital.status === HospitalStatus.PENDING_VERIFICATION
+            ? [{ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status }]
+            : []
+        ));
         if (user.roles.some(({ role }) => role === Role.ADMIN)) {
           const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
           result.push(...activeHospitals.map((hospital) => ({

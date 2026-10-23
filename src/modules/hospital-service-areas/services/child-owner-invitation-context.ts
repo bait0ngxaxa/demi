@@ -3,10 +3,12 @@ import "server-only";
 import {
   HospitalServiceAreaFacilityKind,
   HospitalStatus,
+  IdentityAssurance,
   MembershipStatus,
   MembershipType,
   Role,
   UserStatus,
+  UserTakeoverProviderState,
   type Prisma,
 } from "@prisma/client";
 
@@ -58,6 +60,7 @@ export async function assertChildOwnerInvitationContext(
     },
     select: {
       invitedByUserId: true,
+      user: { select: { identityAssurance: true, takeoverLock: { select: { providerState: true } } } },
       invitedViaServiceArea: { select: { id: true, parentHospitalId: true, childHospitalId: true, endedAt: true } },
       hospital: { select: { status: true, serviceAreaEligibility: { select: { kind: true } } } },
     },
@@ -66,6 +69,8 @@ export async function assertChildOwnerInvitationContext(
 
   if (
     !membership?.invitedByUserId ||
+    membership.user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION ||
+    (membership.user.takeoverLock !== null && membership.user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED) ||
     !area ||
     area.childHospitalId !== input.childHospitalId ||
     area.endedAt !== null ||

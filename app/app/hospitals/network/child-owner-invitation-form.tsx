@@ -70,6 +70,14 @@ export function ChildOwnerDeliveryModeField({ idPrefix }: { idPrefix: string }):
 
 export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }> }): React.JSX.Element {
   const invitation = state.invitation;
+  if (invitation.kind === "ADMIN_RESET_REQUIRED") {
+    return (
+      <Alert className="mt-4" variant="warning">
+        <p className="font-semibold">{state.message}</p>
+        <p className="mt-1">รอ platform ADMIN ยืนยันตัวตน บัญชีนี้จะตอบรับคำเชิญหรือเข้าสู่ระบบไม่ได้จนกว่าจะรีเซ็ตรหัสผ่านผ่านการตรวจสอบตัวตน</p>
+      </Alert>
+    );
+  }
   if (invitation.kind === "AWAITING_ACCEPTANCE") {
     return (
       <Alert className="mt-4" variant="success">

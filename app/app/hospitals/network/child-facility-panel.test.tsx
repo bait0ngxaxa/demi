@@ -48,6 +48,20 @@ describe("Parent Child facility panel (ADR-0018 O-D5)", () => {
     expect(markup).not.toContain("ออกลิงก์ใหม่");
   });
 
+  it("shows the platform ADMIN identity hold while preserving the Parent's change action", () => {
+    const markup = renderToStaticMarkup(<ChildFacilityPanel {...base} invitation={{
+      ...base.invitation!,
+      delivery: "ADMIN_RESET_REQUIRED",
+      link: { status: "NONE", expiresAt: null, mode: null },
+    }} />);
+    expect(markup).toContain("รอ platform ADMIN ยืนยันตัวตน");
+    expect(markup).toContain("ยกเลิกคำเชิญ");
+    expect(markup).toContain("เปลี่ยนผู้ถูกเชิญ");
+    expect(markup).toContain("ยกเลิกหน่วยบริการ");
+    expect(markup).not.toContain("ออกลิงก์ใหม่");
+    expect(markup).not.toContain("ยกเลิกลิงก์");
+  });
+
   it("lets the Parent invite someone else after a decline", () => {
     const markup = renderToStaticMarkup(<ChildFacilityPanel {...base} invitation={null} lastDeclinedAt="2026-10-21T05:00:00.000Z" />);
     expect(markup).toContain("ผู้ถูกเชิญปฏิเสธคำเชิญ");

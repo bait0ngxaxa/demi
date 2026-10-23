@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  IdentityAssurance,
   HospitalRetirementEventKind,
   HospitalServiceAreaFacilityKind,
   HospitalStatus,
@@ -8,6 +9,7 @@ import {
   MembershipType,
   Role,
   UserStatus,
+  UserTakeoverProviderState,
   WorkforceActivationPurpose,
   type Prisma,
   type PrismaClient,
@@ -15,6 +17,12 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import {
+  lockCaregiverInvitationIdentityInTransaction,
+  revokeCaregiverInvitationTakeoverSessionsAfterCommit,
+  type CaregiverInvitationTakeoverTask,
+} from "@/modules/account-security/services/caregiver-invitation-takeover-lock";
+import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { generateUniqueHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
@@ -45,6 +53,7 @@ export type ChildFacilityDependencies = {
   database?: PrismaClient;
   now?: () => Date;
   generateCredential?: ActivationCredentialGenerator;
+  revokeProviderSessions?: (authSubject: string) => Promise<ProviderSessionRevocationOutcome>;
 };
 
 /**
@@ -54,6 +63,7 @@ export type ChildFacilityDependencies = {
 export type ChildOwnerInvitationIssue =
   | { status: "ACTIVATION_LINK"; activationToken: string; activationExpiresAt: Date; activationMode: "REMOTE" | "ASSISTED" }
   | { status: "AWAITING_ACCEPTANCE" }
+  | { status: "ADMIN_RESET_REQUIRED" }
   | { status: "ALREADY_ISSUED" };
 
 export type ChildFacility = { id: string; hospitalCode: string; name: string };
@@ -93,7 +103,7 @@ async function inviteChildOwnerInTransaction(
     now: Date;
     generateCredential?: ActivationCredentialGenerator;
   },
-): Promise<ChildOwnerInvitationIssue> {
+): Promise<{ issue: ChildOwnerInvitationIssue; takeoverTask: CaregiverInvitationTakeoverTask | null }> {
   const { user } = await resolveWorkforceGrantee(transaction, { hospitalId: input.childHospitalId, ...input.invitee });
   const open = await transaction.hospitalMembership.findFirst({
     where: { userId: user.id, hospitalId: input.childHospitalId, status: { not: MembershipStatus.ENDED } },
@@ -101,7 +111,8 @@ async function inviteChildOwnerInTransaction(
   });
   if (open) throw new ConflictError("The invitee already has a relationship with this facility");
 
-  const accepting = user.status === UserStatus.ACTIVE;
+  const caregiverClaimed = user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION;
+  const accepting = user.status === UserStatus.ACTIVE && !caregiverClaimed;
   if (!accepting) {
     await transaction.userRole.upsert({
       where: { userId_role: { userId: user.id, role: Role.HOSPITAL } },
@@ -128,9 +139,12 @@ async function inviteChildOwnerInTransaction(
     metadata: { role: Role.HOSPITAL, profession: null, status: membership.status },
   }, transaction);
 
-  const issue: ChildOwnerInvitationIssue = accepting
-    ? { status: "AWAITING_ACCEPTANCE" }
-    : {
+  let takeoverTask: CaregiverInvitationTakeoverTask | null = null;
+  const issue: ChildOwnerInvitationIssue = caregiverClaimed
+    ? { status: "ADMIN_RESET_REQUIRED" }
+    : accepting
+      ? { status: "AWAITING_ACCEPTANCE" }
+      : {
         status: "ACTIVATION_LINK",
         ...(await issueChildOwnerActivation(transaction, {
           userId: user.id,
@@ -144,6 +158,17 @@ async function inviteChildOwnerInTransaction(
         })),
       };
 
+  if (caregiverClaimed) {
+    takeoverTask = await lockCaregiverInvitationIdentityInTransaction(transaction, {
+      userId: user.id,
+      actorUserId: input.actorUserId,
+      hospitalId: input.childHospitalId,
+      now: input.now,
+      heldOwnerMembershipId: membership.id,
+    });
+    if (!takeoverTask) throw new InfrastructureError("The caregiver account could not be quarantined");
+  }
+
   await recordAuditEvent({
     actorUserId: input.actorUserId,
     action: "hospital.child_owner_invited",
@@ -152,11 +177,22 @@ async function inviteChildOwnerInTransaction(
     metadata: {
       parentHospitalId: input.parentHospitalId,
       membershipId: membership.id,
-      delivery: accepting ? "ACCOUNT_ACCEPTANCE" : input.invitee.mode,
+      delivery: caregiverClaimed ? "ADMIN_RESET_REQUIRED" : accepting ? "ACCOUNT_ACCEPTANCE" : input.invitee.mode,
     },
   }, transaction);
 
-  return issue;
+  return { issue, takeoverTask };
+}
+
+async function revokeHeldInviteeSessions(
+  database: PrismaClient,
+  takeoverTask: CaregiverInvitationTakeoverTask | null,
+  dependencies: ChildFacilityDependencies,
+): Promise<void> {
+  if (!takeoverTask) return;
+  await revokeCaregiverInvitationTakeoverSessionsAfterCommit(database, takeoverTask, {
+    revokeProviderSessions: dependencies.revokeProviderSessions,
+  });
 }
 
 const managedChildSelect = {
@@ -188,7 +224,13 @@ async function findManagedChild(
 async function findOpenOwnerInvitation(
   transaction: Prisma.TransactionClient,
   childHospitalId: string,
-): Promise<{ id: string; userId: string; status: MembershipStatus; invitedViaServiceAreaId: string | null } | null> {
+): Promise<{
+  id: string;
+  userId: string;
+  status: MembershipStatus;
+  invitedViaServiceAreaId: string | null;
+  user: { identityAssurance: IdentityAssurance; takeoverLock: { providerState: UserTakeoverProviderState; heldOwnerMembershipIds: string[] } | null };
+} | null> {
   return transaction.hospitalMembership.findFirst({
     where: {
       hospitalId: childHospitalId,
@@ -196,7 +238,10 @@ async function findOpenOwnerInvitation(
       status: { in: OPEN_INVITATION_STATUSES },
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    select: { id: true, userId: true, status: true, invitedViaServiceAreaId: true },
+    select: {
+      id: true, userId: true, status: true, invitedViaServiceAreaId: true,
+      user: { select: { identityAssurance: true, takeoverLock: { select: { providerState: true, heldOwnerMembershipIds: true } } } },
+    },
   });
 }
 
@@ -288,10 +333,10 @@ export async function createChildFacility(
   const now = getNow(dependencies);
 
   try {
-    return await operation(database, async (tx) => {
+    const outcome = await operation(database, async (tx) => {
       await authorize(tx, actor, data.parentHospitalId, HOSPITAL_SERVICE_AREA_CAPABILITIES.childCreate);
       const replayed = await findReplayedChild(tx, data, actor.userId);
-      if (replayed) return replayed;
+      if (replayed) return { result: replayed, takeoverTask: null };
 
       const hospitalCode = await generateUniqueHospitalCode(tx);
       const child = await tx.hospital.create({
@@ -327,7 +372,7 @@ export async function createChildFacility(
         metadata: { parentHospitalId: data.parentHospitalId, childHospitalId: child.id, fromStatus: null, toStatus: "ACTIVE" },
       }, tx);
 
-      const invitation = await inviteChildOwnerInTransaction(tx, {
+      const invited = await inviteChildOwnerInTransaction(tx, {
         actorUserId: actor.userId,
         parentHospitalId: data.parentHospitalId,
         childHospitalId: child.id,
@@ -336,8 +381,10 @@ export async function createChildFacility(
         now,
         generateCredential: dependencies.generateCredential,
       });
-      return { child, invitation };
+      return { result: { child, invitation: invited.issue }, takeoverTask: invited.takeoverTask };
     });
+    await revokeHeldInviteeSessions(database, outcome.takeoverTask, dependencies);
+    return outcome.result;
   } catch (error: unknown) {
     // A concurrent submit of the same nonce may have won: answer with its Child when it matches.
     if (error instanceof ConflictError) {
@@ -369,6 +416,12 @@ export async function issueChildOwnerLink(
     if (!membership || membership.status !== MembershipStatus.PROVISIONED || membership.invitedViaServiceAreaId !== area.id) {
       throw new ConflictError("No owner invitation is waiting for an activation link");
     }
+    if (
+      membership.user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION ||
+      (membership.user.takeoverLock !== null && membership.user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED)
+    ) {
+      throw new ConflictError("This owner invitation is waiting for platform ADMIN identity verification");
+    }
     // The latest issuer becomes the inviter whose Parent authority completion re-checks.
     await tx.hospitalMembership.updateMany({
       where: { id: membership.id, status: MembershipStatus.PROVISIONED },
@@ -388,7 +441,7 @@ export async function issueChildOwnerLink(
   });
 }
 
-/** Revokes the current link of the pending OWNER invitation; the invitation itself stays until changed or cancelled. */
+/** Revokes a pending OWNER link, or ends its unusable held invitation without changing the Child facility. */
 export async function revokeChildOwnerLink(
   actor: ActorContext | null | undefined,
   input: unknown,
@@ -403,6 +456,22 @@ export async function revokeChildOwnerLink(
     const area = await findManagedChild(tx, data.parentHospitalId, data.childHospitalId);
     await assertOwnerInvitationManageable(tx, area);
     const membership = await findOpenOwnerInvitation(tx, area.child.id);
+    const heldForAdminReset = membership !== null &&
+      membership.user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION &&
+      membership.user.takeoverLock !== null &&
+      membership.user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED &&
+      membership.user.takeoverLock.heldOwnerMembershipIds.includes(membership.id);
+    if (heldForAdminReset && membership) {
+      await endOpenOwnerInvitation(tx, {
+        membership,
+        childHospitalId: area.child.id,
+        parentHospitalId: data.parentHospitalId,
+        actorUserId: actor.userId,
+        now,
+        reason: "parent_cancelled_held_invitation",
+      });
+      return;
+    }
     if (!membership || membership.status !== MembershipStatus.PROVISIONED) throw new ConflictError("No activation link is open for this facility");
     await revokeChildOwnerActivation(tx, { membershipId: membership.id, actorUserId: actor.userId, now, source: "parent_revocation" });
   });
@@ -421,7 +490,8 @@ export async function changeChildOwnerInvitee(
   const data = parse(childOwnerInviteeSchema, input);
   const now = getNow(dependencies);
 
-  return operation(getDatabase(dependencies), async (tx) => {
+  const database = getDatabase(dependencies);
+  const outcome = await operation(database, async (tx) => {
     await authorize(tx, actor, data.parentHospitalId, HOSPITAL_SERVICE_AREA_CAPABILITIES.childManage);
     const area = await findManagedChild(tx, data.parentHospitalId, data.childHospitalId);
     await assertOwnerInvitationManageable(tx, area);
@@ -436,6 +506,8 @@ export async function changeChildOwnerInvitee(
       invitee: data, now, generateCredential: dependencies.generateCredential,
     });
   });
+  await revokeHeldInviteeSessions(database, outcome.takeoverTask, dependencies);
+  return outcome.issue;
 }
 
 /** O-D4: a replacement OWNER only for an ACTIVE Child with no ACTIVE OWNER and no open invitation. */
@@ -448,7 +520,8 @@ export async function inviteReplacementChildOwner(
   const data = parse(childOwnerInviteeSchema, input);
   const now = getNow(dependencies);
 
-  return operation(getDatabase(dependencies), async (tx) => {
+  const database = getDatabase(dependencies);
+  const outcome = await operation(database, async (tx) => {
     await authorize(tx, actor, data.parentHospitalId, HOSPITAL_SERVICE_AREA_CAPABILITIES.childManage);
     const area = await findManagedChild(tx, data.parentHospitalId, data.childHospitalId);
     if (area.child.status !== HospitalStatus.ACTIVE || (await hasActiveOwner(tx, area.child.id))) {
@@ -460,6 +533,8 @@ export async function inviteReplacementChildOwner(
       invitee: data, now, generateCredential: dependencies.generateCredential,
     });
   });
+  await revokeHeldInviteeSessions(database, outcome.takeoverTask, dependencies);
+  return outcome.issue;
 }
 
 /**
@@ -483,6 +558,20 @@ export async function cancelPendingChildFacility(
     const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
     if (!now) throw new InfrastructureError();
 
+    const heldOwnerRows = await tx.hospitalMembership.findMany({
+      where: { hospitalId: area.child.id, membershipType: MembershipType.OWNER, status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] } },
+      select: {
+        id: true,
+        user: { select: { identityAssurance: true, takeoverLock: { select: { providerState: true, heldOwnerMembershipIds: true } } } },
+      },
+    });
+    if (heldOwnerRows.some(({ id, user }) =>
+      user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION &&
+      user.takeoverLock !== null && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED &&
+      user.takeoverLock.heldOwnerMembershipIds.includes(id)
+    )) {
+      throw new ConflictError("A held child owner invitation must be resolved before retiring this facility");
+    }
     const open = await tx.hospitalMembership.findMany({
       where: { hospitalId: area.child.id, status: { not: MembershipStatus.ENDED } },
       select: { id: true, status: true },
@@ -575,7 +664,17 @@ export async function listChildOwnerInvitationsForActor(
   dependencies: ChildFacilityDependencies = {},
 ): Promise<ChildOwnerInvitationForActor[]> {
   if (!actor) throw new ForbiddenError();
-  const rows = await getDatabase(dependencies).hospitalMembership.findMany({
+  const database = getDatabase(dependencies);
+  const account = await database.user.findUnique({
+    where: { id: actor.userId },
+    select: { status: true, identityAssurance: true, takeoverLock: { select: { providerState: true } } },
+  });
+  if (
+    !account || account.status !== UserStatus.ACTIVE || account.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION ||
+    (account.takeoverLock !== null && account.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED)
+  ) return [];
+
+  const rows = await database.hospitalMembership.findMany({
     where: {
       userId: actor.userId,
       membershipType: MembershipType.OWNER,
@@ -631,11 +730,19 @@ export async function acceptChildOwnerInvitation(
 
   await operation(getDatabase(dependencies), async (tx) => {
     const membership = await findOwnInvitation(tx, actor, data.membershipId);
-    const [adminRole, inFlightRecovery, ambiguousReset] = await Promise.all([
+    const [identityState, adminRole, inFlightRecovery, ambiguousReset] = await Promise.all([
+      tx.user.findUnique({
+        where: { id: actor.userId },
+        select: { identityAssurance: true, takeoverLock: { select: { providerState: true } } },
+      }),
       tx.userRole.findUnique({ where: { userId_role: { userId: actor.userId, role: Role.ADMIN } }, select: { userId: true } }),
       tx.accountRecovery.findFirst({ where: { targetUserId: actor.userId, ...unreconciledAccountRecoveryWhere }, select: { id: true } }),
       tx.workforceActivation.findFirst({ where: { userId: actor.userId, ...unreconciledWorkforceResetWhere }, select: { id: true } }),
     ]);
+    if (
+      !identityState || identityState.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION ||
+      (identityState.takeoverLock !== null && identityState.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED)
+    ) throw new ConflictError("This account requires identity verification before accepting");
     if (adminRole || inFlightRecovery || ambiguousReset) throw new ConflictError("This account requires reconciliation before accepting");
     const context = await assertChildOwnerInvitationContext(tx, {
       membershipId: membership.id, childHospitalId: membership.hospitalId, userId: actor.userId, expectedStatus: MembershipStatus.INVITED,
@@ -689,7 +796,7 @@ export async function declineChildOwnerInvitation(
 export type ManagedChildOwnerInvitation = {
   membershipId: string;
   inviteeName: string;
-  delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE";
+  delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE" | "ADMIN_RESET_REQUIRED";
   link: { status: "OPEN" | "EXPIRED" | "IN_USE" | "NONE"; expiresAt: Date | null; mode: "REMOTE" | "ASSISTED" | null };
 };
 
@@ -731,7 +838,13 @@ export async function listManagedChildFacilities(
               orderBy: [{ createdAt: "desc" }, { id: "desc" }],
               select: {
                 id: true, status: true, invitationDeclinedAt: true,
-                user: { select: { person: { select: { givenName: true, familyName: true } } } },
+                user: {
+                  select: {
+                    identityAssurance: true,
+                    takeoverLock: { select: { providerState: true, heldOwnerMembershipIds: true } },
+                    person: { select: { givenName: true, familyName: true } },
+                  },
+                },
               },
             },
           },
@@ -750,6 +863,11 @@ export async function listManagedChildFacilities(
       const activeOwner = child.memberships.some(({ status }) => status === MembershipStatus.ACTIVE);
       const declined = child.memberships.find(({ invitationDeclinedAt }) => invitationDeclinedAt !== null);
       const activation = open ? activationByMembership.get(open.id) : undefined;
+      const heldForAdminReset = open !== undefined &&
+        open.user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION &&
+        open.user.takeoverLock !== null &&
+        open.user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED &&
+        open.user.takeoverLock.heldOwnerMembershipIds.includes(open.id);
       const state = child.status === HospitalStatus.PENDING_VERIFICATION
         ? "PENDING_ACTIVATION"
         : child.status !== HospitalStatus.ACTIVE ? "INACTIVE" : activeOwner ? "ACTIVE" : "NO_OWNER";
@@ -762,7 +880,9 @@ export async function listManagedChildFacilities(
         invitation: open ? {
           membershipId: open.id,
           inviteeName: [open.user.person.givenName, open.user.person.familyName].filter(Boolean).join(" "),
-          delivery: open.status === MembershipStatus.INVITED ? "ACCOUNT_ACCEPTANCE" : "ACTIVATION_LINK",
+          delivery: heldForAdminReset
+            ? "ADMIN_RESET_REQUIRED"
+            : open.status === MembershipStatus.INVITED ? "ACCOUNT_ACCEPTANCE" : "ACTIVATION_LINK",
           link: !activation
             ? { status: "NONE", expiresAt: null, mode: null }
             : {

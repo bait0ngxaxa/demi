@@ -29,7 +29,7 @@ export type ChildFacilityPanelProps = {
   state: "PENDING_ACTIVATION" | "ACTIVE" | "NO_OWNER" | "INACTIVE";
   invitation: {
     inviteeName: string;
-    delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE";
+    delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE" | "ADMIN_RESET_REQUIRED";
     link: { status: "OPEN" | "EXPIRED" | "IN_USE" | "NONE"; expiresAt: string | null; mode: "REMOTE" | "ASSISTED" | null };
   } | null;
   lastDeclinedAt: string | null;
@@ -54,8 +54,10 @@ function InvitationSummary({ invitation, lastDeclinedAt }: Pick<ChildFacilityPan
       : null;
   }
   const link = invitation.link;
-  const linkText = invitation.delivery === "ACCOUNT_ACCEPTANCE"
-    ? "รอผู้ถูกเชิญตอบรับในบัญชี DEMI ของตนเอง"
+  const linkText = invitation.delivery === "ADMIN_RESET_REQUIRED"
+    ? "รอ platform ADMIN ยืนยันตัวตน"
+    : invitation.delivery === "ACCOUNT_ACCEPTANCE"
+      ? "รอผู้ถูกเชิญตอบรับในบัญชี DEMI ของตนเอง"
     : link.status === "OPEN"
       ? `ลิงก์ใช้ได้ถึง ${link.expiresAt ? formatDateTime(link.expiresAt) : "-"}${link.mode === "ASSISTED" ? " (เปิดใช้งานต่อหน้า)" : ""}`
       : link.status === "EXPIRED"
@@ -131,6 +133,10 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
               <NetworkMutationForm action={revokeChildOwnerLinkAction} hidden={target} submitLabel="ยกเลิกลิงก์" submitVariant="ghost" />
             ) : null}
           </div>
+        ) : null}
+
+        {ownerManageable && invitation?.delivery === "ADMIN_RESET_REQUIRED" ? (
+          <NetworkMutationForm action={revokeChildOwnerLinkAction} hidden={target} submitLabel="ยกเลิกคำเชิญ" submitVariant="ghost" />
         ) : null}
 
         {ownerManageable && (state === "PENDING_ACTIVATION" || invitation) ? (

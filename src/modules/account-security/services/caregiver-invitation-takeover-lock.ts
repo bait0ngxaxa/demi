@@ -36,7 +36,7 @@ export type CaregiverInvitationTakeoverDependencies = {
  */
 export async function lockCaregiverInvitationIdentityInTransaction(
   transaction: Prisma.TransactionClient,
-  input: { userId: string; actorUserId: string; hospitalId: string; now: Date },
+  input: { userId: string; actorUserId: string; hospitalId: string; now: Date; heldOwnerMembershipId?: string },
 ): Promise<CaregiverInvitationTakeoverTask | null> {
   const user = await transaction.user.findUnique({
     where: { id: input.userId },
@@ -45,12 +45,28 @@ export async function lockCaregiverInvitationIdentityInTransaction(
       status: true,
       authSubject: true,
       identityAssurance: true,
-      takeoverLock: { select: { id: true, providerState: true } },
+      takeoverLock: { select: { id: true, providerState: true, heldOwnerMembershipIds: true } },
       workforceActivations: { where: { usedAt: { not: null } }, select: { purpose: true, mode: true, usedAt: true } },
       patientActivations: { where: { usedAt: { not: null } }, select: { purpose: true, usedAt: true } },
     },
   });
   if (!user || user.identityAssurance !== IdentityAssurance.CAREGIVER_INVITATION) return null;
+
+  if (input.heldOwnerMembershipId) {
+    const heldOwner = await transaction.hospitalMembership.findFirst({
+      where: {
+        id: input.heldOwnerMembershipId,
+        userId: user.id,
+        hospitalId: input.hospitalId,
+        membershipType: MembershipType.OWNER,
+        status: MembershipStatus.PROVISIONED,
+        invitedByUserId: { not: null },
+        invitedViaServiceAreaId: { not: null },
+      },
+      select: { id: true },
+    });
+    if (!heldOwner) throw new InfrastructureError("The held child owner invitation is inconsistent");
+  }
 
   if (user.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED) {
     if (user.status !== UserStatus.SUSPENDED || !user.authSubject) {
@@ -128,6 +144,10 @@ export async function lockCaregiverInvitationIdentityInTransaction(
           providerCheckedAt: null,
           suspendedMembershipIds: membershipRows.map(({ id }) => id),
           suspendedOsmRelationshipIds: osmRows.map(({ id }) => id),
+          heldOwnerMembershipIds: [...new Set([
+            ...user.takeoverLock.heldOwnerMembershipIds,
+            ...(input.heldOwnerMembershipId ? [input.heldOwnerMembershipId] : []),
+          ])],
         },
         select: { id: true },
       })
@@ -139,6 +159,7 @@ export async function lockCaregiverInvitationIdentityInTransaction(
           lockedAt: input.now,
           suspendedMembershipIds: membershipRows.map(({ id }) => id),
           suspendedOsmRelationshipIds: osmRows.map(({ id }) => id),
+          heldOwnerMembershipIds: input.heldOwnerMembershipId ? [input.heldOwnerMembershipId] : [],
         },
         select: { id: true },
       });
@@ -152,6 +173,7 @@ export async function lockCaregiverInvitationIdentityInTransaction(
       hospitalId: input.hospitalId,
       reason: "CAREGIVER_INVITATION_IDENTITY_PROVISIONED",
       relationshipsSuspended: memberships.count + osmRelationships.count,
+      heldOwnerMembershipId: input.heldOwnerMembershipId ?? null,
       activationsRevoked: workforceActivations.count + patientActivations.count,
       lineBindingsUnlinked,
     },

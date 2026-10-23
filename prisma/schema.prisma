@@ -2155,6 +2155,7 @@ model UserTakeoverLock {
   providerCheckedAt DateTime?                 @db.Timestamptz(3)
   suspendedMembershipIds String[]              @default([]) @db.Uuid
   suspendedOsmRelationshipIds String[]         @default([]) @db.Uuid
+  heldOwnerMembershipIds String[]                @default([]) @db.Uuid
   createdAt         DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                  @updatedAt @db.Timestamptz(3)
 

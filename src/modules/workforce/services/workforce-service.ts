@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  IdentityAssurance,
   HospitalStatus,
   MembershipStatus,
   MembershipType,
@@ -1041,7 +1042,7 @@ async function assertSingleHospitalPendingScope(
 
 export type WorkforceGrantee = {
   personId: string;
-  user: { id: string; personId: string; status: UserStatus; authSubject: string | null };
+  user: { id: string; personId: string; status: UserStatus; authSubject: string | null; identityAssurance: IdentityAssurance };
   reusedExistingUser: boolean;
 };
 
@@ -1073,6 +1074,7 @@ export async function resolveWorkforceGrantee(
       personId: true,
       status: true,
       authSubject: true,
+      identityAssurance: true,
     },
   });
   const reusedExistingUser = user !== null;
@@ -1088,6 +1090,7 @@ export async function resolveWorkforceGrantee(
         personId: true,
         status: true,
         authSubject: true,
+        identityAssurance: true,
       },
     });
   }

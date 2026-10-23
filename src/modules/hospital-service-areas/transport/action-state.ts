@@ -19,6 +19,7 @@ export type ChildOwnerInvitationActionState =
       invitation:
         | { kind: "ACTIVATION_LINK"; activationToken: string; activationUrl: string; activationExpiresAt: string; activationMode: "REMOTE" | "ASSISTED" }
         | { kind: "AWAITING_ACCEPTANCE" }
+        | { kind: "ADMIN_RESET_REQUIRED" }
         | { kind: "ALREADY_ISSUED" };
     }
   | Extract<HospitalNetworkActionState, { status: "ERROR" }>;

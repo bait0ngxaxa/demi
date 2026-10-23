@@ -391,7 +391,7 @@ export async function revokeChildOwnerLinkAction(
       parentHospitalId: getString(formData, "parentHospitalId"),
       childHospitalId: getString(formData, "childHospitalId"),
     }),
-    "ยกเลิกลิงก์เปิดใช้งานแล้ว ออกลิงก์ใหม่ได้เมื่อพร้อม",
+    "ยกเลิกลิงก์หรือคำเชิญแล้ว",
     { CONFLICT: "ยกเลิกไม่ได้ ผู้ถูกเชิญอาจกำลังเปิดใช้งานอยู่ กรุณาโหลดหน้าใหม่" },
     NETWORK_PATHS,
   );
