@@ -13,6 +13,7 @@ import type { AppointmentGrantManagement, AppointmentGrantManagementItem } from 
 import type { FamilyRelationshipManagementItem } from "@/modules/family/services/caregiver-relationship-query-service";
 import { acceptAppointmentGrantAction, proposeAppointmentGrantAction, revokeAppointmentGrantAction } from "@/modules/family/transport/appointment-grant-actions";
 import { initialFamilyMutationActionState, type FamilyMutationActionState } from "@/modules/family/transport/action-state";
+import { personalAppointmentHubHref } from "../personal/appointments/personal-appointment-hub-href";
 
 function Feedback({ state }: { state: FamilyMutationActionState }): React.JSX.Element | null {
   if (state.status === "IDLE") return null;
@@ -59,7 +60,7 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
         {pending ? "กำลังบันทึก..." : perspective === "caregiver" ? "ยอมรับสิทธิ์ดูนัดหมาย" : grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย"}
       </Button>
     </form> : null}
-    {perspective === "caregiver" && grant.status === "ACTIVE" ? <Link prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/family/grants/${grant.grantId}/appointments`}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
+    {perspective === "caregiver" && grant.status === "ACTIVE" ? <Link prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={personalAppointmentHubHref({ subject: grant.grantId, tab: "upcoming" })}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
     <Feedback state={state} />
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
   </li>;

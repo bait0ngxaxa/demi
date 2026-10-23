@@ -8,7 +8,10 @@ import PersonalProfilePage from "./profile/page";
 import PersonalCarePage from "./care/page";
 import PersonalAppointmentsPage from "./appointments/page";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
-import { getPatientSelfRelationshipNavigationPageContext } from "@/modules/patient-self/transport/patient-self-care-page-context";
+import {
+  getPatientSelfRelationshipNavigationPageContext,
+  getPersonalAppointmentHubPageContext,
+} from "@/modules/patient-self/transport/patient-self-care-page-context";
 import {
   getPatientPersonalHomePageContext,
   getPatientSelfPageContext,
@@ -25,7 +28,10 @@ vi.mock("@/modules/patient-self/services/patient-self-care-query-service", async
 vi.mock("@/modules/hospital-content/services/hospital-content-patient-query-service", () => ({ listPatientHospitalContent: homeServices.content }));
 vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: ComponentProps<"a"> & { prefetch?: boolean }) => createElement("a", { "data-prefetch": String(prefetch), ...props }) }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: vi.fn() }));
-vi.mock("@/modules/patient-self/transport/patient-self-care-page-context", () => ({ getPatientSelfRelationshipNavigationPageContext: vi.fn() }));
+vi.mock("@/modules/patient-self/transport/patient-self-care-page-context", () => ({
+  getPatientSelfRelationshipNavigationPageContext: vi.fn(),
+  getPersonalAppointmentHubPageContext: vi.fn(),
+}));
 vi.mock("@/modules/patient-self/transport/patient-self-page-context", () => ({
   getPatientPersonalHomePageContext: vi.fn(),
   getPatientSelfPageContext: vi.fn(),
@@ -142,7 +148,7 @@ describe("Patient Personal pages", () => {
     // UI-01 top menu, in the customer's order and wording, narrowed to the selected Hospital where it applies.
     const topMenu = markup.slice(markup.indexOf('id="personal-shortcuts-heading"'), markup.indexOf('id="personal-home-news-heading"'));
     expect(Array.from(topMenu.matchAll(/href="([^"]+)"/gu), (match) => match[1])).toEqual([
-      "/app/personal/appointments/44444444-4444-4444-8444-444444444444",
+      "/app/personal/appointments?subject=me&amp;tab=history&amp;hospital=44444444-4444-4444-8444-444444444444",
       "/app/family",
       "/app/personal/medications",
       "/app/personal/wellness",
@@ -193,7 +199,7 @@ describe("Patient Personal pages", () => {
 
     expect(markup).toContain('name="hospital"');
     expect(markup).toContain('value="55555555-5555-4555-8555-555555555555" selected=""');
-    expect(markup).toContain('href="/app/personal/appointments/55555555-5555-4555-8555-555555555555"');
+    expect(markup).toContain('href="/app/personal/appointments?subject=me&amp;tab=history&amp;hospital=55555555-5555-4555-8555-555555555555"');
     expect(markup).toContain('href="/app/personal?hospital=55555555-5555-4555-8555-555555555555#personal-hospital-contact"');
     // No contact is shown for this Hospital, so the ติดต่อเรา anchor says so instead of landing nowhere.
     expect(markup).toContain('id="personal-hospital-contact"');
@@ -254,7 +260,7 @@ describe("Patient Personal pages", () => {
       expect(markup).not.toContain("ยังไม่มีข่าวสารจาก");
       expect(markup).toContain("ยังไม่มีสื่อความรู้จากโรงพยาบาล ก");
       expect(markup).toContain("สวัสดี, สมชาย ใจดี");
-      expect(markup).toContain('href="/app/personal/appointments/44444444-4444-4444-8444-444444444444"');
+      expect(markup).toContain('href="/app/personal/appointments?subject=me&amp;tab=history&amp;hospital=44444444-4444-4444-8444-444444444444"');
     });
 
     it("shows that the next appointment could not load while the rest of the home renders", async () => {
@@ -306,7 +312,7 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("สวัสดี");
     expect(markup).toContain("ยังไม่มีโรงพยาบาลที่พร้อมใช้งาน");
     // Without an active Hospital the entries stay generic; no Hospital affiliation or contact is invented.
-    expect(markup).toContain('href="/app/personal/appointments"');
+    expect(markup).toContain('href="/app/personal/appointments?tab=history"');
     expect(markup).toContain('href="/app/personal#personal-hospital-contact"');
     expect(markup).not.toContain('href="/app/personal/appointments/');
     expect(markup).not.toContain('id="personal-hospital-contact"');
@@ -330,23 +336,29 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain("grid-cols-4");
   });
 
-  it.each(["care", "appointments"] as const)("continues the selected %s area through each exact Hospital without a competing action", async (area) => {
-    const page = area === "care" ? PersonalCarePage : PersonalAppointmentsPage;
-    const markup = renderToStaticMarkup(await page());
+  it("continues the selected care area through each exact Hospital without a competing action", async () => {
+    const markup = renderToStaticMarkup(await PersonalCarePage());
     expect(markup).toContain('href="/app/personal"');
-    for (const relationship of completeContext.hospitalRelationships) expect(markup).toContain(`href="/app/personal/${area}/${relationship.relationshipId}"`);
-    const otherArea = area === "care" ? "appointments" : "care";
-    expect(markup).not.toContain(`href="/app/personal/${otherArea}/`);
+    for (const relationship of completeContext.hospitalRelationships) expect(markup).toContain(`href="/app/personal/care/${relationship.relationshipId}"`);
+    expect(markup).not.toContain('href="/app/personal/appointments/');
     expect(getPatientSelfRelationshipNavigationPageContext).toHaveBeenCalledOnce();
   });
 
-  it.each(["care", "appointments"] as const)("shows a truthful empty %s selection with a Personal return path", async (area) => {
+  it("shows a truthful empty care selection with a Personal return path", async () => {
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue([]);
-    const page = area === "care" ? PersonalCarePage : PersonalAppointmentsPage;
-    const markup = renderToStaticMarkup(await page());
+    const markup = renderToStaticMarkup(await PersonalCarePage());
     expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
     expect(markup).toContain('href="/app/personal"');
     expect(markup).not.toMatch(/href="\/app\/personal\/(?:care|appointments)\//u);
+  });
+
+  it("shows a truthful empty appointment hub with a Personal return path", async () => {
+    vi.mocked(getPersonalAppointmentHubPageContext).mockResolvedValue({ subjects: [], selected: null, tab: "upcoming", self: null, family: null });
+    const markup = renderToStaticMarkup(await PersonalAppointmentsPage({ searchParams: Promise.resolve({ subject: "me" }) }));
+    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
+    expect(markup).toContain('href="/app/personal"');
+    expect(markup).not.toMatch(/href="\/app\/personal\/appointments\//u);
+    expect(getPersonalAppointmentHubPageContext).toHaveBeenCalledWith({ subject: "me" }, "/app/personal/appointments");
   });
 
   it.each([
@@ -356,6 +368,7 @@ describe("Patient Personal pages", () => {
   ])("explains a denied $title entry instead of redirecting, without Patient data", async ({ page, title }) => {
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
+    vi.mocked(getPersonalAppointmentHubPageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
     const markup = renderToStaticMarkup(await page());
     expect(markup).toContain(`>${title}</h1>`);
     expect(markup).toContain("บัญชีนี้ยังเปิดข้อมูลผู้ป่วยไม่ได้");

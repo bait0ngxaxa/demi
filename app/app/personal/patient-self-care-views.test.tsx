@@ -333,7 +333,7 @@ describe("Patient Personal care read views", () => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
-        detail={{ ...appointment, contactPhones, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
+        detail={{ ...appointment, parentHospitalName: null, contactPhones, relationship: { ...ownRelationship, hospitalStatus: HospitalStatus.ACTIVE } }}
       />,
     );
 
@@ -359,7 +359,7 @@ describe("Patient Personal care read views", () => {
   });
 
   it.each([AppointmentStatus.COMPLETED, AppointmentStatus.CANCELLED, AppointmentStatus.NO_SHOW])("keeps %s factual and separate from Program/Follow-up evidence", (status) => {
-    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, contactPhones, relationship: anotherRelationship, status }} />);
+    const markup = renderToStaticMarkup(<PatientSelfAppointmentDetailView cancellationRequestNonce="nonce" detail={{ ...appointment, parentHospitalName: null, contactPhones, relationship: anotherRelationship, status }} />);
     expect(markup).not.toContain("<button");
     expect(markup).toContain("เป็นประวัติผลนัด ไม่เปิดรับการรับทราบหรือคำขอยกเลิกใหม่");
     if (status === AppointmentStatus.COMPLETED) expect(markup).toContain("สถานะเสร็จสิ้นไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือจบโปรแกรมแล้ว");
@@ -382,6 +382,7 @@ describe("Patient Personal care read views", () => {
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
         detail={{
           contactPhones,
+          parentHospitalName: null,
           ...appointment,
           responsibleDisplayName: "Responsible Person",
           responsibleProfession: profession,
@@ -406,6 +407,7 @@ describe("Patient Personal care read views", () => {
         cancellationRequestNonce="77777777-7777-4777-8777-777777777777"
         detail={{
           contactPhones,
+          parentHospitalName: null,
           ...appointment,
           responsibleDisplayName: null,
           responsibleProfession: null,

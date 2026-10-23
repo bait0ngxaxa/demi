@@ -105,7 +105,7 @@ function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>
 // UI-01: the Patient's customer bottom and top menus first; remaining Personal items stay as secondary sections.
 const personalSections = [
   ["primary", null, ["/app/personal", "/app/personal/measurements", "/app/personal/appointments", "/app/personal/care", "/app/more"]],
-  ["top-menu", "เมนูด่วน", ["/app/personal/appointments", "/app/family", "/app/personal/medications", "/app/personal/wellness", "/app/personal#personal-hospital-contact"]],
+  ["top-menu", "เมนูด่วน", ["/app/personal/appointments?tab=history", "/app/family", "/app/personal/medications", "/app/personal/wellness", "/app/personal#personal-hospital-contact"]],
   ["care", "การดูแลของฉัน", ["/app/personal/services"]],
   ["reports-info", "ข่าวสารและความรู้", ["/app/personal/news", "/app/personal/knowledge"]],
 ] as const;
@@ -521,5 +521,16 @@ describe("application navigation active state", () => {
     expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "task=screening&hospitalId=x", care)]).toEqual(["/app/patients/assigned?task=screening"]);
     expect([...resolveActiveNavigationHrefs("/app/patients/assigned", "page=2", care)]).toEqual(["/app/patients/assigned"]);
     expect([...resolveActiveNavigationHrefs("/app/patients/provision", "", care)]).toEqual([]);
+  });
+
+  it("UI01-G3: highlights only one of นัดหมาย and ประวัติการนัดหมาย for the appointment hub", () => {
+    const items = project(actor({ roles: [Role.PATIENT] }))
+      .filter(({ workspace }) => workspace === "personal")
+      .flatMap((group) => group.items);
+
+    expect([...resolveActiveNavigationHrefs("/app/personal/appointments", "", items)]).toEqual(["/app/personal/appointments"]);
+    expect([...resolveActiveNavigationHrefs("/app/personal/appointments", "subject=me&tab=history", items)])
+      .toEqual(["/app/personal/appointments?tab=history"]);
+    expect([...resolveActiveNavigationHrefs("/app/personal/appointments/rel/appt", "", items)]).toEqual(["/app/personal/appointments"]);
   });
 });

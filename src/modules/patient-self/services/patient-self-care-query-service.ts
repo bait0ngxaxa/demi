@@ -61,6 +61,7 @@ import { z } from "zod";
 import { assertPatientSelfReadPolicy } from "../policies/patient-self-policy";
 import {
   hasOwnPatientAppointmentIdentity,
+  listOwnPatientRelationshipNavigation,
   resolveOwnPatientRelationshipContext,
   type PatientSelfQueryDatabase,
   type PatientSelfRelationshipContext,
@@ -243,7 +244,26 @@ export type PatientSelfAppointmentHistory = {
 
 export type PatientSelfAppointmentDetail = PatientSelfAppointmentItem & {
   relationship: PatientSelfRelationshipContext;
+  /** ADR-0015: the Parent of the relationship Hospital's current active service area, read at request time. */
+  parentHospitalName: string | null;
   contactPhones: AppointmentContactPhones;
+};
+
+export type PatientSelfAppointmentHubTab = "upcoming" | "history";
+
+export type PatientSelfAppointmentHubItem = PatientSelfAppointmentItem & {
+  relationshipId: string;
+  hospitalName: string;
+};
+
+/** AF-4: one list over every own relationship whose care has not ended; ended ones keep their own read-only page. */
+export type PatientSelfAppointmentHub = {
+  tab: PatientSelfAppointmentHubTab;
+  relationships: PatientSelfRelationshipContext[];
+  endedRelationships: PatientSelfRelationshipContext[];
+  selectedRelationshipId: string | null;
+  appointments: PatientSelfAppointmentHubItem[];
+  nextCursor: string | null;
 };
 
 const screeningPatientSelect = {
@@ -375,6 +395,23 @@ const followupDetailSelect = {
 } satisfies Prisma.PatientFollowupSelect;
 
 function appointmentPatientSelect(relationshipId: string) {
+  return appointmentSelect(
+    {
+      hospital: {
+        is: {
+          patientRelationships: { some: { id: relationshipId } },
+        },
+      },
+    },
+    { profession: true },
+  );
+}
+
+/** The responsible person's profession comes from their membership at the appointment's Hospital only. */
+function appointmentSelect<TMembershipSelect extends Prisma.HospitalMembershipSelect>(
+  membershipWhere: Prisma.HospitalMembershipWhereInput,
+  membershipSelect: TMembershipSelect,
+) {
   return {
   id: true,
   type: true,
@@ -388,14 +425,8 @@ function appointmentPatientSelect(relationshipId: string) {
     select: {
       person: { select: { givenName: true, familyName: true } },
       memberships: {
-        where: {
-          hospital: {
-            is: {
-              patientRelationships: { some: { id: relationshipId } },
-            },
-          },
-        },
-        select: { profession: true },
+        where: membershipWhere,
+        select: membershipSelect,
       },
     },
   },
@@ -1204,9 +1235,18 @@ export async function getOwnPatientAppointmentDetail(
       throw new NotFoundError();
     }
 
+    const serviceArea = await database.hospitalServiceArea.findFirst({
+      where: {
+        endedAt: null,
+        child: { is: { patientRelationships: { some: { id: relationship.relationshipId } } } },
+      },
+      select: { parent: { select: { name: true } } },
+    });
+
     return {
       ...toAppointmentItem(record),
       relationship,
+      parentHospitalName: serviceArea?.parent.name ?? null,
       contactPhones: await loadAppointmentContactPhones(database, relationship.relationshipId, "PATIENT_SELF"),
     };
   } catch (error: unknown) {
@@ -1215,6 +1255,137 @@ export async function getOwnPatientAppointmentDetail(
     }
 
     throw new InfrastructureError("Patient appointment could not be loaded");
+  }
+}
+
+const appointmentHubInputSchema = z.object({
+  tab: z.enum(["upcoming", "history"]).catch("upcoming"),
+  hospital: z.string().uuid().transform((value) => value.toLowerCase()).optional().catch(undefined),
+  cursor: z.string().uuid().transform((value) => value.toLowerCase()).optional().catch(undefined),
+});
+
+function appointmentHubTabWhere(
+  tab: PatientSelfAppointmentHubTab,
+  now: Date,
+): Prisma.PatientAppointmentWhereInput {
+  return tab === "upcoming"
+    ? { status: "SCHEDULED", scheduledAt: { gte: now } }
+    : { OR: [{ status: { not: "SCHEDULED" } }, { scheduledAt: { lt: now } }] };
+}
+
+/**
+ * Invalid tab or Hospital values fall back to the default selection; an unknown or out-of-scope cursor
+ * restarts from the first page. Ownership comes only from the actor's own relationships.
+ */
+export async function listOwnPatientAppointmentHub(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientSelfHomeNextAppointmentDependencies = {},
+): Promise<PatientSelfAppointmentHub> {
+  assertPatientSelfReadPolicy({ actor, capability: APPOINTMENT_READ_CAPABILITY });
+  const database = getDatabase(dependencies);
+  const parsed = appointmentHubInputSchema.parse(typeof input === "object" && input !== null ? input : {});
+  const now = dependencies.now ?? new Date();
+
+  if (Number.isNaN(now.getTime())) {
+    throw new InfrastructureError("Current appointment time could not be captured");
+  }
+
+  try {
+    const ownRelationships = await listOwnPatientRelationshipNavigation(actor, { database });
+    const relationships = ownRelationships.filter(({ careEndedAt }) => careEndedAt === null);
+    const endedRelationships = ownRelationships.filter(({ careEndedAt }) => careEndedAt !== null);
+    const selectedRelationshipId = relationships.some(({ relationshipId }) => relationshipId === parsed.hospital)
+      ? parsed.hospital ?? null
+      : null;
+    const scopeIds = selectedRelationshipId
+      ? [selectedRelationshipId]
+      : relationships.map(({ relationshipId }) => relationshipId);
+    const empty = {
+      tab: parsed.tab,
+      relationships,
+      endedRelationships,
+      selectedRelationshipId,
+      appointments: [],
+      nextCursor: null,
+    };
+
+    if (scopeIds.length === 0) {
+      return empty;
+    }
+
+    const where: Prisma.PatientAppointmentWhereInput = {
+      AND: [
+        { patientHospitalRelationshipId: { in: scopeIds } },
+        appointmentHubTabWhere(parsed.tab, now),
+      ],
+    };
+    const ascending = parsed.tab === "upcoming";
+    const anchor = parsed.cursor
+      ? await database.patientAppointment.findFirst({
+          where: { AND: [where, { id: parsed.cursor }] },
+          select: { id: true, scheduledAt: true },
+        })
+      : null;
+    const records = await database.patientAppointment.findMany({
+      where: anchor
+        ? {
+            AND: [
+              where,
+              {
+                OR: [
+                  { scheduledAt: ascending ? { gt: anchor.scheduledAt } : { lt: anchor.scheduledAt } },
+                  { scheduledAt: anchor.scheduledAt, id: ascending ? { gt: anchor.id } : { lt: anchor.id } },
+                ],
+              },
+            ],
+          }
+        : where,
+      orderBy: [{ scheduledAt: ascending ? "asc" : "desc" }, { id: ascending ? "asc" : "desc" }],
+      take: PATIENT_SELF_HISTORY_PAGE_SIZE + 1,
+      select: {
+        // Several Hospitals in one list: memberships carry hospitalId so each row keeps its own Hospital's profession.
+        ...appointmentSelect(
+          { hospital: { is: { patientRelationships: { some: { id: { in: scopeIds } } } } } },
+          { hospitalId: true, profession: true },
+        ),
+        patientHospitalRelationshipId: true,
+        patientHospitalRelationship: { select: { hospitalId: true } },
+      },
+    });
+    const relationshipById = new Map(relationships.map((relationship) => [relationship.relationshipId, relationship]));
+    const pageRecords = records.slice(0, PATIENT_SELF_HISTORY_PAGE_SIZE);
+
+    return {
+      ...empty,
+      appointments: pageRecords.map((record) => {
+        const hospitalId = record.patientHospitalRelationship.hospitalId;
+        const item = toAppointmentItem({
+          ...record,
+          responsibleUser: record.responsibleUser
+            ? {
+                ...record.responsibleUser,
+                memberships: record.responsibleUser.memberships.filter((membership) => membership.hospitalId === hospitalId),
+              }
+            : null,
+        });
+
+        return {
+          ...item,
+          relationshipId: record.patientHospitalRelationshipId,
+          hospitalName: relationshipById.get(record.patientHospitalRelationshipId)?.hospitalName ?? "",
+        };
+      }),
+      nextCursor: records.length > PATIENT_SELF_HISTORY_PAGE_SIZE
+        ? pageRecords[pageRecords.length - 1]?.id ?? null
+        : null,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("Patient appointments could not be loaded");
   }
 }
 

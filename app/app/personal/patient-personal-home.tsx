@@ -9,6 +9,8 @@ import { HomeSupportLink } from "@/components/home/home-top-menu";
 import type { HospitalContentPatientListItem } from "@/modules/hospital-content/types/hospital-content-patient-projections";
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
 
+import { personalAppointmentHubHref } from "./appointments/personal-appointment-hub-href";
+
 type PatientPresentation = {
   person: { givenName: string | null; familyName: string | null };
 };
@@ -32,8 +34,8 @@ function withSelectedHospital(shortcut: HomeShortcut, relationshipId: string | n
   if (!relationshipId) {
     return shortcut;
   }
-  if (shortcut.href === "/app/personal/appointments") {
-    return { ...shortcut, href: `/app/personal/appointments/${encodeURIComponent(relationshipId)}` };
+  if (shortcut.href === "/app/personal/appointments?tab=history") {
+    return { ...shortcut, href: personalAppointmentHubHref({ subject: "me", tab: "history", hospital: relationshipId }) };
   }
   if (shortcut.href === "/app/personal#personal-hospital-contact") {
     return { ...shortcut, href: `/app/personal?hospital=${encodeURIComponent(relationshipId)}#personal-hospital-contact` };

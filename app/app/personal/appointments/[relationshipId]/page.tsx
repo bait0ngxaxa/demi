@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getPatientSelfAppointmentHistoryPageContext } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
 import { PatientSelfAppointmentHistoryView } from "../../patient-self-record-detail-views";
+import { personalAppointmentHubHref } from "../personal-appointment-hub-href";
 
 export const metadata: Metadata = {
   title: "นัดหมาย",
@@ -26,6 +28,11 @@ export default async function PatientSelfAppointmentHistoryPage({
     relationshipId,
     requestedPage,
   );
+
+  // AF-4: ongoing care lives in the hub; a Hospital whose care ended keeps this read-only list (Phase F).
+  if (history.relationship.careEndedAt === null) {
+    redirect(personalAppointmentHubHref({ subject: "me", hospital: history.relationship.relationshipId }));
+  }
 
   return <PatientSelfAppointmentHistoryView history={history} />;
 }

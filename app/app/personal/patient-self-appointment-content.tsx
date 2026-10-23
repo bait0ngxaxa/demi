@@ -20,6 +20,7 @@ import {
 import type {
   PatientSelfAppointmentDetail,
   PatientSelfAppointmentHistory,
+  PatientSelfAppointmentItem,
 } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 import {
@@ -69,6 +70,81 @@ function appointmentLocationLabel(type: AppointmentLocationValue | null): string
   return type ? APPOINTMENT_LOCATION_LABELS[type] : "ไม่ระบุสถานที่";
 }
 
+/** One appointment row; `hospitalName` is shown when the list spans several Hospitals. */
+export function PatientSelfAppointmentRow({
+  appointment,
+  href,
+  hospitalName,
+}: {
+  appointment: PatientSelfAppointmentItem;
+  href: string;
+  hospitalName?: string;
+}): React.JSX.Element {
+  return (
+    <li>
+      <Link
+        className="group block min-w-0 px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
+        href={href}
+        prefetch={false}
+      >
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="break-words font-semibold text-text group-hover:text-brand-strong">
+              {formatPatientDateTime(appointment.scheduledAt)}
+            </p>
+            {hospitalName ? (
+              <p className="mt-1 break-words text-sm font-semibold leading-6 text-text">{hospitalName}</p>
+            ) : null}
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              {APPOINTMENT_TYPE_LABELS[appointment.type as AppointmentTypeValue]} · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
+            </p>
+            {appointment.locationDetail ? (
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                {appointment.locationDetail}
+              </p>
+            ) : null}
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              {appointmentResponsiblePresentation(
+                appointment.responsibleDisplayName,
+                appointment.responsibleProfession,
+              ).heading}: {appointmentResponsiblePresentation(
+                appointment.responsibleDisplayName,
+                appointment.responsibleProfession,
+              ).displayName}
+            </p>
+            {appointment.osmAtCreationDisplayName ? (
+              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+                OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง: {appointment.osmAtCreationDisplayName}
+              </p>
+            ) : null}
+          </div>
+          <StatusBadge variant={appointmentStatusVariant(appointment.status as AppointmentStatusValue)}>
+            {APPOINTMENT_STATUS_LABELS[appointment.status as AppointmentStatusValue]}
+          </StatusBadge>
+        </div>
+        {appointment.durationMinutes !== null ? (
+          <p className="mt-3 break-words text-sm text-text-muted">
+            ระยะเวลา {appointment.durationMinutes} นาที
+          </p>
+        ) : null}
+        {appointment.acknowledgement ? (
+          <p className="mt-2 break-words text-sm text-text-muted">
+            รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
+          </p>
+        ) : (
+          <p className="mt-2 break-words text-sm text-text-muted">ยังไม่มีการรับทราบสำหรับกำหนดการนี้</p>
+        )}
+        {appointment.cancellationRequests[0] ? (
+          <p className="mt-2 break-words text-sm text-text-muted">
+            คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[appointment.cancellationRequests[0].status]}
+          </p>
+        ) : null}
+        <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</p>
+      </Link>
+    </li>
+  );
+}
+
 export function PatientSelfAppointmentHistoryContent({
   history,
   links,
@@ -92,64 +168,11 @@ export function PatientSelfAppointmentHistoryContent({
       {history.appointments.length > 0 ? (
         <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
           {history.appointments.map((appointment) => (
-            <li key={appointment.appointmentId}>
-              <Link
-                className="group block min-w-0 px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-                href={links.detail(relationshipId, appointment.appointmentId)}
-                prefetch={false}
-              >
-                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold text-text group-hover:text-brand-strong">
-                      {formatPatientDateTime(appointment.scheduledAt)}
-                    </p>
-                    <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                      {APPOINTMENT_TYPE_LABELS[appointment.type as AppointmentTypeValue]} · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
-                    </p>
-                    {appointment.locationDetail ? (
-                      <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                        {appointment.locationDetail}
-                      </p>
-                    ) : null}
-                    <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                      {appointmentResponsiblePresentation(
-                        appointment.responsibleDisplayName,
-                        appointment.responsibleProfession,
-                      ).heading}: {appointmentResponsiblePresentation(
-                        appointment.responsibleDisplayName,
-                        appointment.responsibleProfession,
-                      ).displayName}
-                    </p>
-                    {appointment.osmAtCreationDisplayName ? (
-                      <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                        OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง: {appointment.osmAtCreationDisplayName}
-                      </p>
-                    ) : null}
-                  </div>
-                  <StatusBadge variant={appointmentStatusVariant(appointment.status as AppointmentStatusValue)}>
-                    {APPOINTMENT_STATUS_LABELS[appointment.status as AppointmentStatusValue]}
-                  </StatusBadge>
-                </div>
-                {appointment.durationMinutes !== null ? (
-                  <p className="mt-3 break-words text-sm text-text-muted">
-                    ระยะเวลา {appointment.durationMinutes} นาที
-                  </p>
-                ) : null}
-                {appointment.acknowledgement ? (
-                  <p className="mt-2 break-words text-sm text-text-muted">
-                    รับทราบนัดหมายแล้ว · {APPOINTMENT_INTERACTION_SOURCE_LABELS[appointment.acknowledgement.source]}
-                  </p>
-                ) : (
-                  <p className="mt-2 break-words text-sm text-text-muted">ยังไม่มีการรับทราบสำหรับกำหนดการนี้</p>
-                )}
-                {appointment.cancellationRequests[0] ? (
-                  <p className="mt-2 break-words text-sm text-text-muted">
-                    คำขอยกเลิกล่าสุด: {APPOINTMENT_CANCELLATION_REQUEST_STATUS_LABELS[appointment.cancellationRequests[0].status]}
-                  </p>
-                ) : null}
-                <p className="mt-3 text-sm font-semibold text-brand-strong">เปิดรายละเอียดนัดหมาย</p>
-              </Link>
-            </li>
+            <PatientSelfAppointmentRow
+              appointment={appointment}
+              href={links.detail(relationshipId, appointment.appointmentId)}
+              key={appointment.appointmentId}
+            />
           ))}
         </ul>
       ) : (
@@ -181,7 +204,7 @@ export function PatientSelfAppointmentDetailContent({
 }): React.JSX.Element {
   return (
     <>
-      <PatientSelfHospitalContext relationship={detail.relationship} />
+      <PatientSelfHospitalContext parentHospitalName={detail.parentHospitalName} relationship={detail.relationship} />
       <Panel>
         <h2 className="mb-5 text-lg font-semibold">กำหนดการและสถานะนัดหมาย</h2>
         <dl className="grid min-w-0 gap-x-8 gap-y-5 sm:grid-cols-2">

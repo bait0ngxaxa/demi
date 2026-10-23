@@ -345,7 +345,8 @@ const PERSONAL_CUSTOMER_MENU_DESTINATIONS: Readonly<Record<CustomerMenuId, Pick<
   appointments: { href: "/app/personal/appointments", match: "prefix" },
   followup: { href: "/app/personal/care", match: "prefix" },
   profile: { href: "/app/more", match: "exact" },
-  "appointment-history": { href: "/app/personal/appointments", match: "prefix" },
+  // AF-4 / UI01-G3: the hub's history tab; its own query keeps the two appointment entries from highlighting together.
+  "appointment-history": { href: "/app/personal/appointments?tab=history", match: "prefix" },
   family: { href: "/app/family", match: "prefix" },
   medications: { href: "/app/personal/medications", match: "prefix" },
   "food-fitness": { href: "/app/personal/wellness", match: "prefix" },

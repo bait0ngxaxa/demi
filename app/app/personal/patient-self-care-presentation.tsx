@@ -88,8 +88,11 @@ export function displayPatientBloodPressure(
 
 export function PatientSelfHospitalContext({
   relationship,
+  parentHospitalName = null,
 }: {
   relationship: PatientSelfRelationshipContext;
+  /** AF-4: a child facility (e.g. รพ.สต.) is shown with its current network Parent Hospital. */
+  parentHospitalName?: string | null;
 }): React.JSX.Element {
   const hospitalStatusLabel: Record<HospitalStatus, string> = {
     [HospitalStatus.ACTIVE]: "ใช้งาน",
@@ -104,6 +107,7 @@ export function PatientSelfHospitalContext({
         <div className="min-w-0">
           <h2 className="break-words text-xl font-semibold text-text">
             {relationship.hospitalName}
+            {parentHospitalName ? ` · ${parentHospitalName}` : null}
           </h2>
           <dl className="mt-3 grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
             <div className="min-w-0">

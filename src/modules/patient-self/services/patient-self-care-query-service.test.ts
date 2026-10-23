@@ -23,6 +23,7 @@ import {
   getOwnPatientGoalPlanDetail,
   getOwnPatientProgramDetail,
   getOwnPatientProgramRounds,
+  listOwnPatientAppointmentHub,
   patientSelfCareQueryInternals,
   type PatientSelfCareQueryDatabase,
 } from "./patient-self-care-query-service";
@@ -234,6 +235,9 @@ function createDatabase() {
     patientAppointment: {
       findMany: vi.fn().mockResolvedValue([appointmentRecord()]),
       findFirst: vi.fn().mockResolvedValue(appointmentRecord()),
+    },
+    hospitalServiceArea: {
+      findFirst: vi.fn().mockResolvedValue(null),
     },
   } as unknown as PatientSelfCareQueryDatabase;
 
@@ -588,9 +592,23 @@ describe("Patient SELF care read projections", () => {
       }],
     });
     expect(JSON.stringify(detail)).not.toMatch(/responsibleUser|createdBy|internal note/);
+    expect(detail.parentHospitalName).toBeNull();
+    expect(database.hospitalServiceArea.findFirst).toHaveBeenCalledWith({
+      where: { endedAt: null, child: { is: { patientRelationships: { some: { id: relationshipId } } } } },
+      select: { parent: { select: { name: true } } },
+    });
     // E4: the Patient's own view gets the Hospital phone; the Patient phone is never read for it.
     expect(detail.contactPhones).toEqual({ hospitalPhone: "02-000-0000", patientPhone: null });
     expect(database.patientHospitalRelationship.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the current network Parent of a child-facility relationship on the detail", async () => {
+    const database = createDatabase();
+    database.hospitalServiceArea.findFirst = vi.fn().mockResolvedValue({ parent: { name: "โรงพยาบาลแม่ข่าย" } });
+
+    const detail = await getOwnPatientAppointmentDetail(actor(), relationshipId, appointmentId, { database });
+
+    expect(detail.parentHospitalName).toBe("โรงพยาบาลแม่ข่าย");
   });
 
   it("bounds appointment history and reads older pages on request", async () => {
@@ -809,5 +827,147 @@ describe("Patient SELF care read projections", () => {
     ]) {
       expect(appointmentSelector).not.toContain(withheld);
     }
+  });
+});
+
+describe("AF-4 Patient appointment hub", () => {
+  const now = new Date("2026-10-23T00:00:00.000Z");
+  const otherRelationshipId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const endedRelationshipId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  function hubDatabase() {
+    const database = createDatabase();
+    const relationship = (id: string, name: string, endedAt: Date | null) => ({
+      id, hospitalNumber: null, endedAt, hospital: { hospitalCode: name, name, status: HospitalStatus.ACTIVE },
+    });
+    database.person.findFirst = vi.fn().mockResolvedValue({
+      patientProfile: {
+        hospitalRelationships: [
+          relationship(relationshipId, "โรงพยาบาล ก", null),
+          relationship(otherRelationshipId, "รพ.สต. ข", null),
+          relationship(endedRelationshipId, "โรงพยาบาล ค", new Date("2026-01-01T00:00:00.000Z")),
+        ],
+      },
+    });
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue([
+      appointmentRecord({
+        patientHospitalRelationshipId: otherRelationshipId,
+        patientHospitalRelationship: { hospitalId: "hospital-b" },
+        responsibleUser: {
+          person: { givenName: "Care", familyName: "Nurse" },
+          memberships: [
+            { hospitalId: "hospital-a", profession: Profession.DOCTOR },
+            { hospitalId: "hospital-b", profession: Profession.NURSE },
+          ],
+        },
+      }),
+    ]);
+    database.patientAppointment.findFirst = vi.fn().mockResolvedValue(null);
+    return database;
+  }
+
+  it("merges every non-ended own relationship into one upcoming list and lists ended ones separately", async () => {
+    const database = hubDatabase();
+
+    const hub = await listOwnPatientAppointmentHub(actor(), {}, { database, now });
+
+    expect(hub.tab).toBe("upcoming");
+    expect(hub.relationships.map((item) => item.relationshipId)).toEqual([relationshipId, otherRelationshipId]);
+    expect(hub.endedRelationships.map((item) => item.relationshipId)).toEqual([endedRelationshipId]);
+    expect(database.patientAppointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { patientHospitalRelationshipId: { in: [relationshipId, otherRelationshipId] } },
+          { status: "SCHEDULED", scheduledAt: { gte: now } },
+        ],
+      },
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      take: 51,
+    }));
+    expect(hub.appointments).toEqual([expect.objectContaining({
+      appointmentId,
+      relationshipId: otherRelationshipId,
+      hospitalName: "รพ.สต. ข",
+      responsibleProfession: Profession.NURSE,
+    })]);
+    expect(JSON.stringify(hub)).not.toMatch(/hospital-b|hospitalId|responsibleUser/);
+  });
+
+  it("orders history newest first, filters only by an own non-ended Hospital and ignores other values", async () => {
+    const database = hubDatabase();
+
+    const filtered = await listOwnPatientAppointmentHub(
+      actor(),
+      { tab: "history", hospital: otherRelationshipId.toUpperCase() },
+      { database, now },
+    );
+    expect(filtered.selectedRelationshipId).toBe(otherRelationshipId);
+    expect(database.patientAppointment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: {
+        AND: [
+          { patientHospitalRelationshipId: { in: [otherRelationshipId] } },
+          { OR: [{ status: { not: "SCHEDULED" } }, { scheduledAt: { lt: now } }] },
+        ],
+      },
+      orderBy: [{ scheduledAt: "desc" }, { id: "desc" }],
+    }));
+
+    for (const hospital of [endedRelationshipId, foreignRelationshipId, "not-a-uuid"]) {
+      const hub = await listOwnPatientAppointmentHub(actor(), { tab: "bogus", hospital }, { database, now });
+      expect(hub.tab).toBe("upcoming");
+      expect(hub.selectedRelationshipId).toBeNull();
+      expect(database.patientAppointment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([{ patientHospitalRelationshipId: { in: [relationshipId, otherRelationshipId] } }]),
+        }),
+      }));
+    }
+  });
+
+  it("continues after an in-scope cursor and restarts from the first page for an unknown one", async () => {
+    const database = hubDatabase();
+    const anchorAt = new Date("2026-11-01T00:00:00.000Z");
+    database.patientAppointment.findFirst = vi.fn()
+      .mockResolvedValueOnce({ id: appointmentId, scheduledAt: anchorAt })
+      .mockResolvedValueOnce(null);
+    database.patientAppointment.findMany = vi.fn().mockResolvedValue(
+      Array.from({ length: 51 }, (_, index) => appointmentRecord({
+        id: String(index).padStart(8, "0") + "-0000-4000-8000-000000000000",
+        patientHospitalRelationshipId: relationshipId,
+        patientHospitalRelationship: { hospitalId: "hospital-a" },
+      })),
+    );
+
+    const next = await listOwnPatientAppointmentHub(actor(), { cursor: appointmentId }, { database, now });
+    expect(database.patientAppointment.findFirst).toHaveBeenCalledWith({
+      where: { AND: [expect.anything(), { id: appointmentId }] },
+      select: { id: true, scheduledAt: true },
+    });
+    expect(database.patientAppointment.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { AND: [expect.anything(), { OR: [
+        { scheduledAt: { gt: anchorAt } },
+        { scheduledAt: anchorAt, id: { gt: appointmentId } },
+      ] }] },
+    }));
+    expect(next.appointments).toHaveLength(50);
+    expect(next.nextCursor).toBe(next.appointments[49]?.appointmentId);
+
+    await listOwnPatientAppointmentHub(actor(), { cursor: foreignRelationshipId }, { database, now });
+    const lastWhere = vi.mocked(database.patientAppointment.findMany).mock.lastCall?.[0]?.where;
+    expect(lastWhere).toEqual({
+      AND: [
+        { patientHospitalRelationshipId: { in: [relationshipId, otherRelationshipId] } },
+        { status: "SCHEDULED", scheduledAt: { gte: now } },
+      ],
+    });
+  });
+
+  it("denies a caregiver-only actor and reads nothing", async () => {
+    const database = hubDatabase();
+
+    await expect(listOwnPatientAppointmentHub(actor([Role.CAREGIVER]), {}, { database, now }))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(database.person.findFirst).not.toHaveBeenCalled();
+    expect(database.patientAppointment.findMany).not.toHaveBeenCalled();
   });
 });

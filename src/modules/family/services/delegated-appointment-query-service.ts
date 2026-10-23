@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
+import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
@@ -73,6 +74,28 @@ export async function listDelegatedAppointments(
       return { appointments: rows.slice(0, FAMILY_APPOINTMENT_PAGE_SIZE).map((row) => toAppointment(row, grant.patientHospitalRelationship.hospital.name)),
         nextCursor: rows.length > FAMILY_APPOINTMENT_PAGE_SIZE ? rows[FAMILY_APPOINTMENT_PAGE_SIZE - 1]?.id ?? null : null };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  } catch (error: unknown) { rethrowAppointmentGrantError(error); }
+}
+
+/** AF-4 hub switcher: one entry per currently ACTIVE grant held by the actor; empty while the feature is disabled. */
+export type DelegatedAppointmentSubject = {
+  grantId: string; patient: { givenName: string | null; familyName: string | null }; hospitalName: string;
+};
+
+export async function listDelegatedAppointmentSubjects(
+  actor: ActorContext | null | undefined, dependencies: AppointmentGrantDependencies = {},
+): Promise<DelegatedAppointmentSubject[]> {
+  if (!(dependencies.enabled ?? isFamilyDelegatedAppointmentReadEnabled())) return [];
+  assertFamilyAuthenticatedActor(actor);
+  try {
+    const rows = await (dependencies.database ?? getPrisma()).caregiverAppointmentGrant.findMany({
+      where: appointmentGrantCaregiverWhere(actor, "ACTIVE"),
+      select: { id: true, patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
+        patientHospitalRelationship: { select: { hospital: { select: { name: true } } } } },
+      orderBy: [{ acceptedAt: "asc" }, { id: "asc" }], take: FAMILY_APPOINTMENT_PAGE_SIZE,
+    });
+    return rows.map((row) => ({ grantId: row.id, hospitalName: row.patientHospitalRelationship.hospital.name,
+      patient: { givenName: row.patientProfile.person.givenName, familyName: row.patientProfile.person.familyName } }));
   } catch (error: unknown) { rethrowAppointmentGrantError(error); }
 }
 
