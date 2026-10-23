@@ -43,9 +43,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [copyState, setCopyState] = useState("");
   const [busy, setBusy] = useState(false);
+  const navigatedHandoffUrls = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!result || result.status !== "ISSUED" || !handoffUrl) return;
+    if (!result || result.status !== "ISSUED" || result.mode !== "ONLINE" || !handoffUrl) return;
     void QRCode.toDataURL(handoffUrl, { width: 240, margin: 2, errorCorrectionLevel: "M" })
       .then(setQrDataUrl)
       .catch(() => setQrDataUrl(""));
@@ -74,7 +75,13 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
     try {
       const response = await issueMediatedPasswordResetAction(input);
       setResult(response);
-      if (response.status === "ISSUED") {
+      if (response.status === "ISSUED" && response.mode === "IN_PERSON") {
+        // The issuer session is already closed: open the owner's reset page once, without exposing the link.
+        if (!navigatedHandoffUrls.current.has(response.handoffUrl)) {
+          navigatedHandoffUrls.current.add(response.handoffUrl);
+          window.location.replace(response.handoffUrl);
+        }
+      } else if (response.status === "ISSUED") {
         setHandoffUrl(response.handoffUrl);
       }
     } catch {
@@ -127,29 +134,27 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
             <p className="mt-1 text-sm text-text-muted">{props.targetName} · {props.hospitalName}</p>
           </div>
 
-          {result?.status === "ISSUED" ? (
+          {result?.status === "ISSUED" && result.mode === "IN_PERSON" ? (
+            <div className="space-y-2" role="status">
+              <p className="font-semibold">ออกจากระบบบัญชีของคุณแล้ว กำลังเปิดหน้าตั้งรหัสผ่าน…</p>
+              <p className="text-sm leading-6 text-text-muted">ส่งอุปกรณ์ให้เจ้าของบัญชีกรอกเลขบัตรประชาชนและตั้งรหัสผ่านด้วยตนเอง ภายในเวลาที่กำหนด</p>
+            </div>
+          ) : result?.status === "ISSUED" ? (
             <div className="space-y-4" role="status">
               <p className="font-semibold">ออกลิงก์แล้ว หมดอายุ {formatThaiDate(result.expiresAt)}</p>
               <p className="text-sm leading-6 text-text-muted">ลิงก์ใช้ได้ครั้งเดียว ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเองและตั้งรหัสผ่านใหม่ ห้ามส่งต่อให้ผู้อื่น</p>
-              {result.mode === "IN_PERSON" ? (
-                <div className="space-y-3 rounded-lg border border-border p-4">
-                  <p className="text-sm leading-6">ส่งอุปกรณ์ให้เจ้าของบัญชีกรอกข้อมูลและตั้งรหัสผ่านด้วยตนเอง</p>
-                  <a className={buttonClassName({ variant: "primary", size: "compact" })} href={handoffUrl}>ต่อหน้าบนเครื่องนี้</a>
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                {qrDataUrl ? <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-60 w-60" height={240} src={qrDataUrl} unoptimized width={240} /> : null}
+                <label className="grid gap-1 text-sm font-medium">
+                  ลิงก์สำหรับส่งให้เจ้าของบัญชี
+                  <input className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm" readOnly value={handoffUrl} />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => void copyLink()} type="button">คัดลอกลิงก์</button>
+                  <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => void shareLink()} type="button">แชร์ลิงก์</button>
                 </div>
-              ) : (
-                <div className="space-y-3 rounded-lg border border-border p-4">
-                  {qrDataUrl ? <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-60 w-60" height={240} src={qrDataUrl} unoptimized width={240} /> : null}
-                  <label className="grid gap-1 text-sm font-medium">
-                    ลิงก์สำหรับส่งให้เจ้าของบัญชี
-                    <input className="min-h-11 w-full rounded-md border border-border bg-surface px-3 text-sm" readOnly value={handoffUrl} />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => void copyLink()} type="button">คัดลอกลิงก์</button>
-                    <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => void shareLink()} type="button">แชร์ลิงก์</button>
-                  </div>
-                  {copyState ? <p className="text-sm text-text-muted" role="status">{copyState}</p> : null}
-                </div>
-              )}
+                {copyState ? <p className="text-sm text-text-muted" role="status">{copyState}</p> : null}
+              </div>
             </div>
           ) : (
             <form className="space-y-5" onSubmit={(event) => void issueReset(event)}>
@@ -168,7 +173,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
                 <legend className="text-sm font-semibold">เลือกรูปแบบส่งมอบ</legend>
                 <label className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                   <input checked={mode === "IN_PERSON"} name="mode" onChange={() => setMode("IN_PERSON")} type="radio" value="IN_PERSON" />
-                  ต่อหน้าบนเครื่องนี้ · ใช้ได้ 15 นาที
+                  ต่อหน้าบนเครื่องนี้ · ใช้ได้ 15 นาที · ระบบจะออกจากบัญชีของคุณก่อนส่งต่ออุปกรณ์
                 </label>
                 <label className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 py-2 text-sm">
                   <input checked={mode === "ONLINE"} name="mode" onChange={() => setMode("ONLINE")} type="radio" value="ONLINE" />
@@ -184,7 +189,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
             </form>
           )}
 
-          {result?.status === "ISSUED" ? (
+          {result?.status === "ISSUED" && result.mode === "ONLINE" ? (
             <div className="flex justify-end border-t border-border pt-4">
               <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => dialogRef.current?.close()} type="button">เสร็จสิ้น</button>
             </div>

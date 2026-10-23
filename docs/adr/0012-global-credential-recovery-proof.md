@@ -75,16 +75,21 @@ self-reset are not approved.
   requester supplied. No image or National ID value is persisted; the audit stores the method,
   mode, issuer and outcome without PII.
 - `IN_PERSON` reuses the assisted ceremony, expires after 15 minutes, and requires handing the
-  device to the account owner, who enters their own National ID and sets the password. `ONLINE`
+  device to the account owner, who enters their own National ID and sets the password. Issuing it
+  signs the issuer's session out first (if sign-out fails the just-issued reset is revoked and an
+  error is shown) and the device then navigates once to the reset page; no copyable link or QR is
+  shown for `IN_PERSON`. `ONLINE`
   issues one single-use bearer link valid for 24 hours; the OWNER delivers it out of band (including
   LINE chat), and the owner opens it on their own device and enters their own National ID and new
   password. Five incorrect National IDs revoke either capability.
 - An active direct OWNER may reset a non-self MEMBER, OSM or patient only when all of the target's
   `HospitalMembership`, `OsmHospitalRelationship` and `PatientHospitalRelationship` rows, including
   ended rows, are scoped to that one Hospital, the target is not an ADMIN or an OWNER anywhere, and
-  the target has no caregiver relationship or appointment grant. Every other target,
-  including multi-Hospital users, any OWNER and any ADMIN, requires a platform ADMIN; ADMIN may not
-  reset themself. Self-registered and invited active accounts follow the same rules.
+  the target does not itself act as a caregiver (no `CaregiverRelationship` or
+  `CaregiverAppointmentGrant` with the target as `caregiverUserId`). A patient who has caregivers
+  stays OWNER-eligible. Every other target, including multi-Hospital users, caregivers, any OWNER
+  and any ADMIN, requires a platform ADMIN; ADMIN may not reset themself. Self-registered and
+  invited active accounts follow the same rules.
 - ADMIN searches by exact National ID using the existing HMAC identity lookup; the lookup is audited
   without storing the National ID or hash. A Hospital scope is selected and stored with the reset.
 - Workforce targets reuse `WorkforceActivation` with purpose `RESET`; patient-only targets reuse
@@ -97,20 +102,47 @@ self-reset are not approved.
 
 Completion creates a new Supabase Auth identity with an operation-specific internal login alias,
 switches the canonical `User.authSubject` and alias in the finalize transaction, then deletes the old
-identity. Supabase admin `createUser` and `deleteUser` require a server-held service role; neither
-credential nor service key reaches the browser ([createUser](https://supabase.com/docs/reference/javascript/auth-admin-createuser),
-[deleteUser](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser)). DEMI also verifies
+identity. Supabase admin `createUser`, `deleteUser`, `getUserById` and `listUsers` require a
+server-held service role; neither credential nor service key reaches the browser
+([createUser](https://supabase.com/docs/reference/javascript/auth-admin-createuser),
+[deleteUser](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser),
+[getUserById](https://supabase.com/docs/reference/javascript/auth-admin-getuserbyid),
+[listUsers](https://supabase.com/docs/reference/javascript/auth-admin-listusers)). DEMI also verifies
 the captured session with Auth `getUser` on every exact-session request
 ([getUser](https://supabase.com/docs/reference/javascript/auth-getuser)). Supabase access JWTs can
 remain valid until expiry; old application sessions are refused because their subject no longer maps
 to the canonical User, independently of provider-side token expiry
 ([session semantics](https://supabase.com/docs/guides/auth/sessions)).
 
-The existing claim → provider-started → provider-confirmed → finalize state machine is reused. An
-ambiguous create, database switch or old-identity delete leaves the reset claimed in
-`RECONCILIATION_REQUIRED` quarantine. The previous subject is removed only after confirmed provider
-deletion, and quarantine is cleared only after the complete sequence is durably finalized; an ADMIN
-attestation alone never clears it. Two concurrent completions can create at most one credential.
+The existing claim → provider-started → provider-confirmed → finalize state machine is reused. Only
+an ambiguous outcome quarantines; every quarantine and every definite failure has a recovery path:
+
+- A definite `createUser` rejection — an Auth API error with code `weak_password` or
+  `validation_failed` ([error codes](https://supabase.com/docs/guides/auth/debugging/error-codes)) —
+  proves no identity exists. The claim is rolled back in one transaction (failed-ID count kept), the
+  user sees a field error and may retry with the same link until it expires. Transport errors, 5xx,
+  rate limits, `email_exists` and unknown errors stay ambiguous.
+- If issuer or target authorization is lost between claim and switch, the reset is revoked and the
+  claim released (the old identity is still canonical, so the old password keeps working); a created
+  replacement identity is deleted.
+- The switch re-authorizes, changes `User.authSubject`/alias and finalizes in one transaction, which
+  also records the previous identity in `ProviderIdentityCleanup`. Deleting it afterwards is off the
+  user's critical path: on failure the user can still log in with the new password (no User maps to
+  the old subject, so it cannot reach the application), the event
+  `account.password_reset.previous_identity_cleanup_pending` is audited and the idempotent delete is
+  retried on the next reset issue or ADMIN reconcile. A subject that a User maps to is never deleted.
+- An ambiguous create or database step leaves the reset claimed in `RECONCILIATION_REQUIRED`
+  quarantine. A platform ADMIN reconciles it in `/app/admin/recovery`: the provider is checked for
+  the reset's deterministic replacement alias (`listUsers`, all pages) and the previous subject
+  (`getUserById`). If the canonical User already maps to the replacement, the reset is finalized and
+  the previous identity deleted; if it still maps to an existing previous identity, any orphan
+  replacement is deleted and the reset revoked, so the old password works and a new reset can be
+  issued. An unconfirmed probe or any other state keeps the quarantine. Reconciliation is audited
+  (`account.password_reset.reconciled`) and never clears quarantine on attestation alone.
+
+Two concurrent completions can create at most one credential. Events written while serving the
+anonymous link holder (identity check, rollback, revoke, completion, cleanup-pending, LINE notice,
+takeover-lock resolution) record `actorUserId` null and the issuer as `metadata.issuerUserId`.
 
 On success, the User is ACTIVE; an UM-1 lock is marked `RESOLVED`, its exact suspended staff/OSM
 relationship snapshot is restored at the lock Hospital, and the lock/audit history is retained.

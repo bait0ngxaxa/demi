@@ -373,7 +373,7 @@ function lineBindingUnlinkData(now: Date) {
  */
 export async function unlinkLineBindingForSuspectedTakeover(
   transaction: Prisma.TransactionClient,
-  input: { userId: string; actorUserId: string; hospitalId: string; credentialEstablishedAt: Date | null; now: Date },
+  input: { userId: string; actorUserId: string | null; issuerUserId?: string; hospitalId: string; credentialEstablishedAt: Date | null; now: Date },
 ): Promise<number> {
   const binding = await transaction.lineAccountBinding.findFirst({
     where: { userId: input.userId, unlinkedAt: null, ...(input.credentialEstablishedAt ? { linkedAt: { gte: input.credentialEstablishedAt } } : {}) },
@@ -391,7 +391,7 @@ export async function unlinkLineBindingForSuspectedTakeover(
     action: "line.account.unlinked",
     resourceType: "LineAccountBinding",
     resourceId: binding.id,
-    metadata: { reason: "SUSPECTED_TAKEOVER", hospitalId: input.hospitalId },
+    metadata: { reason: "SUSPECTED_TAKEOVER", hospitalId: input.hospitalId, ...(input.issuerUserId ? { issuerUserId: input.issuerUserId } : {}) },
   }, transaction);
   return 1;
 }

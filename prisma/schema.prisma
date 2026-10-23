@@ -2044,6 +2044,27 @@ model UserTakeoverLock {
   @@index([lockedByUserId])
 }
 
+enum ProviderIdentityCleanupReason {
+  PREVIOUS_IDENTITY
+  ORPHAN_REPLACEMENT
+}
+
+// REC-1: a provider identity that no User maps to any more (replaced, or created by a reset that was rolled back) and
+// must still be deleted from Supabase Auth. Written before the delete is attempted; retried until completedAt is set.
+model ProviderIdentityCleanup {
+  id            String                        @id @default(uuid()) @db.Uuid
+  authSubject   String                        @unique @db.VarChar(255)
+  userId        String                        @db.Uuid
+  reason        ProviderIdentityCleanupReason
+  attemptCount  Int                           @default(0)
+  lastAttemptAt DateTime?                     @db.Timestamptz(3)
+  completedAt   DateTime?                     @db.Timestamptz(3)
+  createdAt     DateTime                      @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime                      @updatedAt @db.Timestamptz(3)
+
+  @@index([completedAt, lastAttemptAt])
+}
+
 model AuditEvent {
   id           String   @id @default(uuid()) @db.Uuid
   actorUserId  String?  @db.Uuid

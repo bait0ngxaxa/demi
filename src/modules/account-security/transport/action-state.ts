@@ -25,6 +25,7 @@ export type AccountRecoveryAvailabilityActionState = {
 export type AccountRecoveryCompletionActionState = {
   status: "IDLE" | "COMPLETED" | "ERROR";
   message?: string;
+  fieldErrors?: { newPassword?: string };
 };
 
 export const initialAccountRecoveryCompletionActionState: AccountRecoveryCompletionActionState = {

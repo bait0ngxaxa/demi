@@ -46,6 +46,7 @@ export function PublicAccountRecoveryForm(): React.JSX.Element {
   }, [token]);
 
   const currentAvailability = token && availability?.token === token ? availability.status : "CHECKING";
+  const passwordError = completion.status === "ERROR" ? completion.fieldErrors?.newPassword : undefined;
 
   if (!token) {
     return (
@@ -95,7 +96,18 @@ export function PublicAccountRecoveryForm(): React.JSX.Element {
         </label>
         <label className="grid gap-1 text-sm font-medium">
           รหัสผ่านใหม่
-          <input autoComplete="new-password" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={128} minLength={12} name="newPassword" required type="password" />
+          <input
+            aria-describedby={passwordError ? "recover-new-password-error" : undefined}
+            aria-invalid={passwordError ? true : undefined}
+            autoComplete="new-password"
+            className="min-h-11 rounded-md border border-border bg-surface px-3"
+            maxLength={128}
+            minLength={12}
+            name="newPassword"
+            required
+            type="password"
+          />
+          {passwordError ? <span className="text-sm font-normal text-danger" id="recover-new-password-error">{passwordError}</span> : null}
         </label>
         <label className="grid gap-1 text-sm font-medium">
           ยืนยันรหัสผ่านใหม่

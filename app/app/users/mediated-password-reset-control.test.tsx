@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ issue: vi.fn(), qr: vi.fn() }));
+const mocks = vi.hoisted(() => ({ issue: vi.fn(), qr: vi.fn(), locationReplace: vi.fn() }));
 vi.mock("@/modules/account-security/transport/server-actions", () => ({ issueMediatedPasswordResetAction: mocks.issue }));
 vi.mock("qrcode", () => ({ default: { toDataURL: mocks.qr } }));
 
@@ -12,6 +12,7 @@ import { MediatedPasswordResetControl } from "./mediated-password-reset-control"
 
 let container: HTMLDivElement;
 let root: Root;
+let originalLocationDescriptor: PropertyDescriptor | undefined;
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,6 +25,9 @@ beforeAll(() => {
 beforeEach(() => {
   mocks.issue.mockReset();
   mocks.qr.mockReset().mockResolvedValue("data:image/png;base64,rec1-test");
+  mocks.locationReplace.mockReset();
+  originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
+  Object.defineProperty(window, "location", { configurable: true, value: { origin: "https://demi.example", replace: mocks.locationReplace } });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -32,6 +36,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
 });
 
 async function renderControl(eligibility: "OWNER_ELIGIBLE" | "ADMIN_REQUIRED" = "OWNER_ELIGIBLE"): Promise<void> {
@@ -91,18 +96,23 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(container.querySelector('input[readonly][value*="/recover#"]')).not.toBeNull();
     expect(container.textContent).toContain("คัดลอกลิงก์");
     expect(container.textContent).toContain("แชร์ลิงก์");
+    expect(mocks.locationReplace).not.toHaveBeenCalled();
   });
 
-  it("shows the handoff path for the in-person 15-minute ceremony and hides actions outside OWNER scope", async () => {
+  it("hands the signed-out device straight to the in-person reset page without a copyable link, and hides actions outside OWNER scope", async () => {
     mocks.issue.mockResolvedValue({ status: "ISSUED", mode: "IN_PERSON", handoffUrl: `https://demi.example/recover#${"y".repeat(43)}`, expiresAt: "2026-10-22T03:15:00.000Z" });
     await renderControl();
     click("button");
     click('input[name="verificationMethod"][value="IN_PERSON_ID_CARD"]');
     await submitForm();
 
+    expect(mocks.locationReplace).toHaveBeenCalledOnce();
+    expect(mocks.locationReplace).toHaveBeenCalledWith(`https://demi.example/recover#${"y".repeat(43)}`);
+    expect(mocks.qr).not.toHaveBeenCalled();
+    expect(container.querySelector('a[href*="/recover#"]')).toBeNull();
+    expect(container.querySelector("input[readonly]")).toBeNull();
+    expect(container.textContent).not.toContain("คัดลอกลิงก์");
     expect(container.textContent).toContain("ส่งอุปกรณ์ให้เจ้าของบัญชี");
-    expect(container.querySelector('a[href*="/recover#"]')?.textContent).toContain("ต่อหน้าบนเครื่องนี้");
-    expect(container.textContent).toContain("ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเอง");
 
     await act(async () => root.render(createElement(MediatedPasswordResetControl, {
       hospitalId: "11111111-1111-4111-8111-111111111111",

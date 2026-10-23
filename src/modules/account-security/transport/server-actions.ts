@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
+import { ConflictError, InfrastructureError } from "@/shared/errors/application-error";
 
+import { ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
 import {
   changeAuthenticatedUserPassword,
 } from "../services/password-change-service";
@@ -17,6 +20,8 @@ import {
   completeMediatedPasswordReset,
   getMediatedPasswordResetAvailability,
   issueMediatedPasswordReset,
+  reconcileMediatedPasswordReset,
+  revokeIssuedMediatedPasswordReset,
   searchMediatedPasswordResetTargets,
   type MediatedPasswordResetCandidate,
 } from "../services/mediated-password-reset-service";
@@ -113,6 +118,21 @@ export async function issueMediatedPasswordResetAction(
     const actor = await getProtectedApplicationActor();
     const recoveryUrls = createApplicationCredentialUrlBuilder("/recover");
     const result = await issueMediatedPasswordReset(actor, input);
+
+    // IN_PERSON hands this device to the account owner, so it must not stay signed in as the issuer.
+    if (result.mode === "IN_PERSON") {
+      try {
+        await signOutCurrentSession();
+      } catch {
+        try {
+          await revokeIssuedMediatedPasswordReset(actor, { resetId: result.resetId });
+        } catch {
+          return { status: "ERROR", message: "ระบบไม่สามารถปิดเซสชันของคุณได้ จึงยกเลิกลิงก์รีเซ็ตไม่สำเร็จ ลิงก์จะหมดอายุภายใน 15 นาที" };
+        }
+        return { status: "ERROR", message: "ระบบไม่สามารถส่งต่ออุปกรณ์ให้เจ้าของบัญชีได้ กรุณาลองใหม่อีกครั้ง" };
+      }
+    }
+
     revalidatePath("/app/users");
     return { status: "ISSUED", mode: result.mode, handoffUrl: recoveryUrls.build(result.token), expiresAt: result.expiresAt.toISOString() };
   } catch {
@@ -162,7 +182,37 @@ export async function completeMediatedPasswordResetAction(
       passwordConfirmation: formData.get("passwordConfirmation"),
     });
     return { status: "COMPLETED", message: "รหัสผ่านบัญชี DEMI เปลี่ยนแล้ว เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้" };
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof ProviderIdentityRejectedError) {
+      return error.reason === "PASSWORD_POLICY"
+        ? {
+            status: "ERROR",
+            message: "ยังไม่ได้เปลี่ยนรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่แล้วลองอีกครั้งด้วยลิงก์เดิม",
+            fieldErrors: { newPassword: "รหัสผ่านนี้ไม่ผ่านนโยบายความปลอดภัย กรุณาตั้งรหัสผ่านที่คาดเดายากกว่านี้" },
+          }
+        : { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน กรุณาลองอีกครั้งด้วยลิงก์เดิม" };
+    }
     return { status: "ERROR", message: "ยืนยันตัวตนไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ครบจำนวนครั้งแล้ว กรุณาติดต่อโรงพยาบาล" };
+  }
+}
+
+export type MediatedPasswordResetReconcileActionResult =
+  | { status: "SUCCESS"; outcome: "COMPLETED" | "ROLLED_BACK" }
+  | { status: "ERROR"; message: string };
+
+export async function reconcileMediatedPasswordResetAction(resetId: string): Promise<MediatedPasswordResetReconcileActionResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await reconcileMediatedPasswordReset(actor, { resetId });
+    revalidatePath("/app/admin/recovery");
+    return { status: "SUCCESS", outcome: result.outcome };
+  } catch (error: unknown) {
+    if (error instanceof InfrastructureError) {
+      return { status: "ERROR", message: "ยังยืนยันสถานะกับผู้ให้บริการยืนยันตัวตนไม่ได้ บัญชียังถูกกักไว้ กรุณาลองอีกครั้งภายหลัง" };
+    }
+    if (error instanceof ConflictError) {
+      return { status: "ERROR", message: "สถานะบัญชีกับผู้ให้บริการยืนยันตัวตนไม่ตรงกับผลที่แก้ไขได้อัตโนมัติ บัญชียังถูกกักไว้ ต้องตรวจสอบตามคู่มือ" };
+    }
+    return { status: "ERROR", message: genericAccountError };
   }
 }

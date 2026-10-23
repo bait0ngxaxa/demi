@@ -18,8 +18,9 @@ recovery-disable and terminal-takeover statements while preserving the legacy en
 
 - OWNER ที่ใช้งานอยู่ของ Hospital ACTIVE ทำได้เฉพาะผู้ใช้อื่นซึ่งไม่ใช่ OWNER/ADMIN และความสัมพันธ์
   ทุกแถว (รวมแถวที่สิ้นสุดแล้ว) กับ HospitalMembership, OsmHospitalRelationship และ
-  PatientHospitalRelationship อยู่ Hospital เดียวกัน ผู้มี caregiver relationship หรือ grant
-  ต้องให้ platform ADMIN ทำรายการ
+  PatientHospitalRelationship อยู่ Hospital เดียวกัน ผู้ที่เป็น caregiver เอง (`caregiverUserId` ใน
+  CaregiverRelationship หรือ CaregiverAppointmentGrant) ต้องให้ platform ADMIN ทำรายการ ส่วนผู้ป่วยที่
+  มี caregiver ยังอยู่ใน scope OWNER
 - platform ADMIN ใช้เครื่องมือค้นหาเลขบัตรแบบตรงตัวผ่าน HMAC lookup และทำได้กับเป้าหมายที่อยู่นอก
   scope OWNER รวมถึง OWNER/ADMIN แต่ห้ามรีเซ็ตบัญชีตนเอง ทุกครั้งต้องเลือก Hospital ACTIVE และระบบ
   ตรวจ issuer, Hospital, target และความสัมพันธ์ซ้ำเมื่อเจ้าของบัญชีส่งแบบฟอร์ม
@@ -29,8 +30,12 @@ recovery-disable and terminal-takeover statements while preserving the legacy en
 - งานบุคลากร/อสม./บัญชีหลายบทบาทใช้ `WorkforceActivation` purpose `RESET`; ผู้ป่วยอย่างเดียวใช้
   `AccountRecovery` พร้อม Hospital scope ที่บันทึกไว้ การเรียก provider ต้องอยู่นอก DB transaction
   การ claim ต่อ User ชนะได้ครั้งเดียว ลำดับทำงานคือสร้าง identity ใหม่ → เปลี่ยน canonical
-  `User.authSubject` → ลบ identity เก่า → finalize หากผล provider/ฐานข้อมูลกำกวม ให้คง claim และ
-  `RECONCILIATION_REQUIRED` ไว้ ห้ามแก้ด้วย ADMIN attestation
+  `User.authSubject` และ finalize ใน transaction เดียว (บันทึก identity เก่าใน `ProviderIdentityCleanup`)
+  → ลบ identity เก่า ถ้าลบไม่สำเร็จ reset ยังสำเร็จและระบบ retry การลบภายหลัง ถ้า provider ปฏิเสธชัดเจน
+  (`weak_password`/`validation_failed`) ให้ rollback claim และใช้ลิงก์เดิมได้ ถ้าสิทธิ์หายก่อน switch ให้
+  revoke และลบ identity ใหม่ หากผล provider/ฐานข้อมูลกำกวม ให้คง claim และ `RECONCILIATION_REQUIRED`
+  ไว้จน ADMIN กดตรวจสอบใน `/app/admin/recovery` ซึ่งตัดสินจากสถานะจริงของ provider เท่านั้น ห้ามแก้ด้วย
+  ADMIN attestation
 - เมื่อสำเร็จ User กลับเป็น ACTIVE และ takeover lock เปลี่ยนเป็น `RESOLVED`; คืนเฉพาะ staff/OSM
   relationship ID ที่ lock ระงับไว้ LINE ที่เชื่อมหลัง lock คงสถานะ unlink; ถ้ายังมี binding ที่ใช้งาน
   ส่งข้อความแจ้งเปลี่ยนรหัสผ่านตาม ADR-0012
@@ -124,11 +129,15 @@ The trusted operator should:
    expected subject, original issuer/relationship/Hospital authority and lack of completed use.
    Any doubt requires escalation. Do not invent compensation for a global password replacement.
 4. For an ambiguous legacy RESET or AccountRecovery, keep application access quarantined. Provider success cannot be
-   inferred from a DB rollback and a claim cannot be cleared solely on ADMIN authority. New REC-1
-   resets also stay quarantined until the full create/switch/delete/finalize sequence is verified;
-   credential replacement/restoration must use the REC-1 identity-verification ceremony.
+   inferred from a DB rollback and a claim cannot be cleared solely on ADMIN authority. An
+   ambiguous REC-1 reset is reconciled by the audited ADMIN action in `/app/admin/recovery`, which
+   probes the provider by the reset's replacement alias and previous subject and either finalizes a
+   committed switch or deletes the orphan and revokes; unconfirmed or inconsistent provider state
+   stays quarantined. Credential replacement/restoration must use the REC-1 identity-verification
+   ceremony.
 5. Record reviewed evidence/outcome through controlled maintenance/audit procedures. No public
-   reconciliation endpoint or browser checkbox can unlock a credential. Restore/reissue initial
+   reconciliation endpoint or attestation checkbox can unlock a credential; the REC-1 ADMIN action
+   acts only on confirmed provider state. Restore/reissue initial
    activation only after absence/cleanup of the provider effect and local invariants are verified.
 
 Already-consumed historical RESETs are not automatically reversed. Their audit history must be
