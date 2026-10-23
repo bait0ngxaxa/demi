@@ -291,11 +291,23 @@ describe("Appointment service", () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
+  it("replays an existing education appointment with the pre-rename create fingerprint", async () => {
+    const existing = appointmentRecord({
+      type: "EDUCATION",
+      creationRequestHash: "38a95a9be1762c42bd5ccd40387d6a82be8b2119d023700d8e85847eb693a84f",
+    });
+    const { database, transaction } = createDatabase({ existing });
+
+    await expect(createAppointment(hospitalActor, validInput({ type: "EDUCATION" }), { database }))
+      .resolves.toMatchObject({ appointmentId, status: AppointmentStatus.SCHEDULED });
+    expect(transaction.patientAppointment.create).not.toHaveBeenCalled();
+  });
+
   it("keeps the original create retry idempotent after reschedule", async () => {
     const original = appointmentRecord();
     const rescheduled = appointmentRecord({
       scheduledAt: new Date("2026-08-21T03:30:00.000Z"),
-      type: "CONSULTATION",
+      type: "EDUCATION",
       durationMinutes: 45,
       locationType: "ONLINE",
       locationDetail: "ห้องประชุมออนไลน์",

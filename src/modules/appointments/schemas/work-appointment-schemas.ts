@@ -3,8 +3,8 @@ import { z } from "zod";
 import {
   APPOINTMENT_LOCATION_VALUES,
   APPOINTMENT_STATUS_VALUES,
-  APPOINTMENT_TYPE_VALUES,
 } from "../domain/appointment-definitions";
+import { appointmentTypeSchema } from "./appointment-schemas";
 
 export const WORK_APPOINTMENT_PAGE_SIZE = 25;
 
@@ -25,7 +25,7 @@ export const workAppointmentFiltersSchema = z
     dateFrom: z.iso.date().optional(),
     dateTo: z.iso.date().optional(),
     status: z.enum(APPOINTMENT_STATUS_VALUES).optional(),
-    type: z.enum(APPOINTMENT_TYPE_VALUES).optional(),
+    type: appointmentTypeSchema.optional(),
     locationType: z.enum(APPOINTMENT_LOCATION_VALUES).optional(),
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
   })
@@ -47,7 +47,7 @@ export const workAppointmentQuerySchema = z
     dateFrom: z.iso.date().optional(),
     dateTo: z.iso.date().optional(),
     status: z.enum(APPOINTMENT_STATUS_VALUES).optional(),
-    type: z.enum(APPOINTMENT_TYPE_VALUES).optional(),
+    type: appointmentTypeSchema.optional(),
     locationType: z.enum(APPOINTMENT_LOCATION_VALUES).optional(),
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     cursor: z.string().optional(),

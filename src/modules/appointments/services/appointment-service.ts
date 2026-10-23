@@ -38,7 +38,11 @@ import {
   APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
   APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
 } from "../policies/appointment-policy";
-import type { AppointmentLocationValue } from "../domain/appointment-definitions";
+import {
+  LEGACY_EDUCATION_APPOINTMENT_TYPE,
+  type AppointmentLocationValue,
+  type AppointmentTypeValue,
+} from "../domain/appointment-definitions";
 import {
   getAppointmentLineNotificationRollout,
   type AppointmentLineNotificationRollout,
@@ -115,7 +119,7 @@ export type AppointmentCancellationReviewResult = {
 
 type NormalizedAppointmentFields = {
   scheduledAt: Date;
-  type: AppointmentCreateRequest["type"];
+  type: AppointmentTypeValue;
   responsibleUserId: string | null;
   durationMinutes: number | null;
   locationType: AppointmentLocationValue | null;
@@ -261,7 +265,8 @@ function createAppointmentRequestHash(
     actorUserId: actor.userId,
     patientHospitalRelationshipId,
     scheduledAt: fields.scheduledAt.toISOString(),
-    type: fields.type,
+    // Preserve the immutable fingerprint generated before the database enum was renamed.
+    type: fields.type === "EDUCATION" ? LEGACY_EDUCATION_APPOINTMENT_TYPE : fields.type,
     responsibleUserId: fields.responsibleUserId,
     durationMinutes: fields.durationMinutes,
     locationType: fields.locationType,

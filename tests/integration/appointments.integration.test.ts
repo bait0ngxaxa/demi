@@ -16,6 +16,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { APPOINTMENT_TYPE_VALUES } from "@/modules/appointments/domain/appointment-definitions";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
@@ -38,6 +39,7 @@ import {
   reviewAppointmentCancellationRequest,
   rescheduleAppointment,
   submitAppointmentRescheduleRequest,
+  type AppointmentMutationResult,
 } from "@/modules/appointments/services/appointment-service";
 import { setOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
@@ -225,7 +227,7 @@ function appointmentInput(relationshipId: string, overrides: Record<string, unkn
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: randomUUID(),
     scheduledAt: bangkokIso(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-    type: "CONSULTATION",
+    type: "EDUCATION",
     responsibleUserId: null,
     durationMinutes: 30,
     locationType: "CLINIC",
@@ -369,7 +371,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
 
     const detail = await getAppointmentDetail(owner.actor, patient.relationshipId, first.appointmentId);
     expect(detail).toMatchObject({
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: AppointmentStatus.SCHEDULED,
       responsibleUserId: member.userId,
       responsibleProfession: Profession.NURSE,
@@ -498,6 +500,43 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     }
   });
 
+  it("creates and edits every whiteboard appointment type for direct Hospital staff", async () => {
+    const hospital = await createHospital("TYPE-STAFF");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "appointment-integration", value: "whiteboard-types" },
+      targetHospitalId: hospital.id,
+      givenName: "ประเภทนัด",
+      familyName: "ทดสอบ",
+    });
+    const cases = [
+      ["FOLLOW_UP", "ASSESSMENT"],
+      ["ASSESSMENT", "EDUCATION"],
+      ["EDUCATION", "FOLLOW_UP"],
+    ] as const;
+
+    for (const [createType, editType] of cases) {
+      const created = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { type: createType }));
+      const createdDetail = await getAppointmentDetail(owner.actor, patient.relationshipId, created.appointmentId);
+      expect(createdDetail.type).toBe(createType);
+
+      const matchingWorkList = await listWorkAppointments(owner.actor, {
+        hospitalId: hospital.id,
+        tab: "UPCOMING",
+        type: createType,
+      });
+      expect(matchingWorkList.items.some(({ appointmentId }) => appointmentId === created.appointmentId)).toBe(true);
+
+      await rescheduleAppointment(
+        member.actor,
+        rescheduleInput(patient.relationshipId, created.appointmentId, created.updatedAt, { type: editType }),
+      );
+      const editedDetail = await getAppointmentDetail(member.actor, patient.relationshipId, created.appointmentId);
+      expect(editedDetail.type).toBe(editType);
+    }
+  });
+
   it("enforces direct Hospital scope, exact OSM assignment, and responsible-member validation", async () => {
     const hospital = await createHospital("SCOPE");
     const otherHospital = await createHospital("OTHER");
@@ -577,7 +616,22 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const osmHistory = await getAppointmentHistory(osm.actor, patient.relationshipId);
     expect(osmHistory.canManage).toBe(false);
     expect(osmHistory.canCreate).toBe(true);
-    const osmCreatedAppointment = await createAppointment(osm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT", responsibleUserId: null }));
+    const osmCreatedAppointments: AppointmentMutationResult[] = [];
+    for (const type of APPOINTMENT_TYPE_VALUES) {
+      osmCreatedAppointments.push(await createAppointment(osm.actor, appointmentInput(patient.relationshipId, {
+        type,
+        locationType: "HOME_VISIT",
+        responsibleUserId: null,
+      })));
+    }
+    const [osmCreatedAppointment] = osmCreatedAppointments;
+    if (!osmCreatedAppointment) throw new Error("OSM home-visit appointment was not created");
+    const osmAppointmentRows = await prisma.patientAppointment.findMany({
+      where: { id: { in: osmCreatedAppointments.map(({ appointmentId }) => appointmentId) } },
+      select: { type: true, osmAssignmentIdAtCreation: true },
+    });
+    expect(osmAppointmentRows.map(({ type }) => type).sort()).toEqual([...APPOINTMENT_TYPE_VALUES].sort());
+    expect(osmAppointmentRows.every(({ osmAssignmentIdAtCreation }) => osmAssignmentIdAtCreation === assignment.assignmentId)).toBe(true);
     expect(await prisma.patientAppointment.findUniqueOrThrow({
       where: { id: osmCreatedAppointment.appointmentId },
       select: { osmAssignmentIdAtCreation: true },
@@ -1335,7 +1389,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(calls).toHaveLength(2);
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: retry.retryKey });
-    expect(calls[0]?.text).toBe("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(calls[0]?.text).toBe("มีนัดหมายประเภท ให้ความรู้ อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
     expect(completed.safeOutcome).toBe("DUPLICATE_ACCEPTED");
 
     await prisma.appointmentLineNotification.update({
@@ -1429,7 +1483,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[1]).toEqual(calls[2]);
     expect(calls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: notification.retryKey });
-    expect(calls[0]?.text).toBe("มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(calls[0]?.text).toBe("มีนัดหมายประเภท ให้ความรู้ อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
   });
 
   it("records a permanent provider rejection separately from exhausted transient retries", async () => {
@@ -2218,7 +2272,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       id: randomUUID(),
       patientHospitalRelationshipId: patient.relationshipId,
       createdByUserId: owner.userId,
-      type: "CONSULTATION" as const,
+      type: "EDUCATION" as const,
       scheduledAt: new Date(scheduledAt),
       submissionNonce: randomUUID(),
     }));

@@ -5,6 +5,7 @@ import {
   appointmentRescheduleRequestSchema,
   appointmentTransitionRequestSchema,
 } from "./appointment-schemas";
+import { LEGACY_EDUCATION_APPOINTMENT_TYPE } from "../domain/appointment-definitions";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const appointmentId = "22222222-2222-4222-8222-222222222222";
@@ -29,6 +30,13 @@ function validCreateInput(): Record<string, unknown> {
 describe("Appointment schemas", () => {
   it("accepts the strict provisional create shape with an offset-aware timestamp", () => {
     expect(appointmentCreateRequestSchema.safeParse(validCreateInput()).success).toBe(true);
+  });
+
+  it("normalizes a pre-rename in-flight form value to the current education type", () => {
+    expect(appointmentCreateRequestSchema.parse({
+      ...validCreateInput(),
+      type: LEGACY_EDUCATION_APPOINTMENT_TYPE,
+    }).type).toBe("EDUCATION");
   });
 
   it("rejects unknown fields and client authority fields", () => {

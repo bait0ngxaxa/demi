@@ -337,3 +337,9 @@ Defaults รอลูกค้ายืนยัน (**default, pending customer
 
 - **ข-16** — โรคประจำตัว/ประวัติสุขภาพใช้แบบบันทึกประวัติสุขภาพของ Phase B (WB-DF-10) → PAT-03.
 - **ก-21** — “ยา” = ยาที่ผู้ป่วยบันทึกเอง ไม่มีความหมายของใบสั่งยา/การจ่ายยา → MED-01, MED-02.
+
+## AF-6 — Appointment type alignment (2026-10-23)
+
+| ID | การตัดสินใจ | ผลในระบบ |
+| --- | --- | --- |
+| AF-D3 (appointment; AF-6) | `FOLLOW_UP` = “ติดตาม”; `EDUCATION` = “ให้ความรู้”; เพิ่ม `ASSESSMENT` = “ประเมิน” ตามรายละเอียดใน whiteboard | เปลี่ยน enum label เดิมในฐานข้อมูลโดยคงแถว appointment และ fingerprint เดิม; เพิ่มตัวเลือกทั้งสามใน create/edit, readback, filter และ LINE notification โดยไม่เปลี่ยน authorization หรือเพิ่ม side effect จากประเภทนัด |

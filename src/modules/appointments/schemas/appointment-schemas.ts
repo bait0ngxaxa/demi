@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   APPOINTMENT_LOCATION_VALUES,
+  LEGACY_EDUCATION_APPOINTMENT_TYPE,
   APPOINTMENT_TYPE_VALUES,
 } from "../domain/appointment-definitions";
 
@@ -14,7 +15,10 @@ export const appointmentRelationshipIdSchema = z.string().uuid();
 export const appointmentIdSchema = z.string().uuid();
 export const appointmentSubmissionNonceSchema = z.string().uuid();
 export const appointmentScheduledAtSchema = z.iso.datetime({ offset: true });
-export const appointmentTypeSchema = z.enum(APPOINTMENT_TYPE_VALUES);
+export const appointmentTypeSchema = z.preprocess(
+  (value) => value === LEGACY_EDUCATION_APPOINTMENT_TYPE ? "EDUCATION" : value,
+  z.enum(APPOINTMENT_TYPE_VALUES),
+);
 export const appointmentLocationTypeSchema = z.enum(APPOINTMENT_LOCATION_VALUES);
 
 const appointmentFieldsSchema = {

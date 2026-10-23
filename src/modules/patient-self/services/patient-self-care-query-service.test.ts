@@ -42,7 +42,7 @@ const startedAt = new Date("2026-01-03T00:00:00.000Z");
 function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: appointmentId,
-    type: AppointmentType.CONSULTATION,
+    type: AppointmentType.EDUCATION,
     scheduledAt: recordedAt,
     durationMinutes: 30,
     locationType: AppointmentLocationType.CLINIC,
@@ -540,7 +540,7 @@ describe("Patient SELF care read projections", () => {
     expect(history.appointments).toMatchObject([
       {
         appointmentId,
-        type: AppointmentType.CONSULTATION,
+        type: AppointmentType.EDUCATION,
         scheduledAt: recordedAt,
         durationMinutes: 30,
         locationType: AppointmentLocationType.CLINIC,

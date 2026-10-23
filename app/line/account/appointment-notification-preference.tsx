@@ -2,6 +2,10 @@
 
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import {
+  APPOINTMENT_TYPE_LABELS,
+  APPOINTMENT_TYPE_VALUES,
+} from "@/modules/appointments/domain/appointment-definitions";
 
 import {
   setAppointmentLineNotificationPreferenceAction,
@@ -41,8 +45,10 @@ export function AppointmentNotificationPreference({
         </p>
       </div>
       <div className="type-readable mt-4 space-y-3 text-sm text-muted">
-        <p>ใช้สำหรับแจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัดเท่านั้น ข้อความไม่มีรายละเอียดสุขภาพ</p>
-        <p className="text-ink">ข้อความที่ส่ง: “มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ”</p>
+        <p>ใช้แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัด ข้อความระบุเฉพาะประเภทนัด ไม่มีข้อมูลระบุตัวผู้ป่วยหรือรายละเอียดสุขภาพ</p>
+        <p className="text-ink">
+          ข้อความที่ส่ง: “มีนัดหมายประเภท {APPOINTMENT_TYPE_VALUES.map((type) => APPOINTMENT_TYPE_LABELS[type]).join(" / ")} อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ”
+        </p>
         <p>การเปิดใช้เป็นการอนุญาตให้ระบบพยายามส่งข้อความ ไม่รับประกันว่าข้อความจะถึงหรือแสดงบนอุปกรณ์ คุณปิดได้ทุกเมื่อ</p>
         <p>การเชื่อมบัญชี LINE หรือการเป็นเพื่อนกับ DEMI ไม่ได้เปิดการแจ้งเตือนให้อัตโนมัติ ระบบตรวจสอบบัญชีและสถานะเพื่อนอีกครั้งก่อนพยายามส่ง</p>
       </div>

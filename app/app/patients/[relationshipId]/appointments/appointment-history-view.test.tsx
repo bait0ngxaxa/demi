@@ -20,7 +20,7 @@ const history: AppointmentHistory = {
     {
       appointmentId: "33333333-3333-4333-8333-333333333333",
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: "SCHEDULED",
       durationMinutes: 30,
       locationType: "CLINIC",
@@ -34,7 +34,7 @@ const history: AppointmentHistory = {
     {
       appointmentId: "44444444-4444-4444-8444-444444444444",
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: "SCHEDULED",
       durationMinutes: 30,
       locationType: "CLINIC",
@@ -48,7 +48,7 @@ const history: AppointmentHistory = {
     {
       appointmentId: "55555555-5555-4555-8555-555555555555",
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: "SCHEDULED",
       durationMinutes: 30,
       locationType: "CLINIC",
@@ -62,7 +62,7 @@ const history: AppointmentHistory = {
     {
       appointmentId: "66666666-6666-4666-8666-666666666666",
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: "SCHEDULED",
       durationMinutes: null,
       locationType: null,

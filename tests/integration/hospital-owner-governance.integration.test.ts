@@ -262,7 +262,7 @@ async function createPatientAndAppointment(
     patientHospitalRelationshipId: patient.relationshipId,
     submissionNonce: randomUUID(),
     scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    type: AppointmentType.CONSULTATION,
+    type: AppointmentType.EDUCATION,
     responsibleUserId: null,
     durationMinutes: 30,
     locationType: AppointmentLocationType.CLINIC,

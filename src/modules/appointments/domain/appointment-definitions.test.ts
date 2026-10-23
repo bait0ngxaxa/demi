@@ -1,7 +1,22 @@
 import { Profession } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
-import { appointmentResponsiblePresentation } from "./appointment-definitions";
+import {
+  APPOINTMENT_TYPE_LABELS,
+  APPOINTMENT_TYPE_VALUES,
+  appointmentResponsiblePresentation,
+} from "./appointment-definitions";
+
+describe("appointment type definitions", () => {
+  it("matches the three whiteboard classifications and labels", () => {
+    expect(APPOINTMENT_TYPE_VALUES).toEqual(["FOLLOW_UP", "ASSESSMENT", "EDUCATION"]);
+    expect(APPOINTMENT_TYPE_LABELS).toEqual({
+      FOLLOW_UP: "ติดตาม",
+      ASSESSMENT: "ประเมิน",
+      EDUCATION: "ให้ความรู้",
+    });
+  });
+});
 
 describe("appointment responsible-person presentation", () => {
   it.each([

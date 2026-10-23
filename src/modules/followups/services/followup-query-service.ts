@@ -18,6 +18,7 @@ import {
 } from "@/modules/patient-program/services/patient-program-access-service";
 import { PATIENT_PROGRAM_READ_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import type { AppointmentTypeValue } from "@/modules/appointments/domain/appointment-definitions";
 import {
   ApplicationError,
   ConflictError,
@@ -55,7 +56,7 @@ export type FollowupQueryDependencies = {
 
 export type FollowupAppointmentContext = {
   appointmentId: string;
-  type: "FOLLOW_UP" | "CONSULTATION";
+  type: AppointmentTypeValue;
   scheduledAt: Date;
 };
 
@@ -288,7 +289,7 @@ function toAppointmentContext(
   appointment: {
     id: string;
     patientHospitalRelationshipId: string;
-    type: "FOLLOW_UP" | "CONSULTATION";
+    type: AppointmentTypeValue;
     scheduledAt: Date;
   } | null,
   relationshipId: string,

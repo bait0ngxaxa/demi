@@ -10,6 +10,7 @@ import type {
   WorkAppointmentFilters,
   WorkAppointmentTab,
 } from "../schemas/work-appointment-schemas";
+import { appointmentTypeSchema } from "../schemas/appointment-schemas";
 
 const CURSOR_PREFIX = "workappt_cur_v1_";
 const CURSOR_MAX_LENGTH = 1024;
@@ -41,7 +42,7 @@ const cursorPayloadSchema = z
             dateFrom: z.iso.date().optional(),
             dateTo: z.iso.date().optional(),
             status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED", "NO_SHOW"]).optional(),
-            type: z.enum(["FOLLOW_UP", "CONSULTATION"]).optional(),
+            type: appointmentTypeSchema.optional(),
             locationType: z.enum(["CLINIC", "ONLINE", "HOME_VISIT", "OTHER"]).optional(),
             responsibleUserId: z.uuid().optional(),
           })

@@ -6,6 +6,7 @@ import {
   AppointmentLineNotificationOutcome,
   AppointmentLineNotificationRecipientKind,
   AppointmentLineNotificationState,
+  type AppointmentType,
   HospitalStatus,
   Prisma,
   Role,
@@ -24,7 +25,7 @@ import {
   APPOINTMENT_LINE_NOTIFICATION_LEASE_MS,
   APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS,
   APPOINTMENT_LINE_NOTIFICATION_TERMINAL_RETENTION_MS,
-  APPOINTMENT_LINE_NOTIFICATION_TEXT,
+  appointmentLineNotificationText,
   appointmentLineNotificationRetryDelayMs,
   expectedAppointmentStatusForNotification,
   getAppointmentLineNotificationRollout,
@@ -47,7 +48,7 @@ type SafeSuppressionOutcome =
   | "ROLLOUT_CLOSED";
 
 type CurrentEligibility =
-  | { eligible: true; lineUserId: string }
+  | { eligible: true; lineUserId: string; appointmentType: AppointmentType }
   | { eligible: false; outcome: SafeSuppressionOutcome };
 
 export type AppointmentLineNotificationDrainResult = {
@@ -172,6 +173,7 @@ async function currentEligibility(
         patientHospitalRelationshipId: true,
         updatedAt: true,
         status: true,
+        type: true,
         patientHospitalRelationship: {
           select: {
             id: true,
@@ -288,7 +290,7 @@ async function currentEligibility(
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
     }
 
-    return { eligible: true, lineUserId: bindings[0].lineUserId };
+    return { eligible: true, lineUserId: bindings[0].lineUserId, appointmentType: appointment.type };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
@@ -572,7 +574,7 @@ export async function drainAppointmentLineNotificationOutbox(
     try {
       providerOutcome = await (dependencies.push ?? pushWithLine)(
         finalEligibility.lineUserId,
-        APPOINTMENT_LINE_NOTIFICATION_TEXT,
+        appointmentLineNotificationText(finalEligibility.appointmentType),
         notification.retryKey,
       );
     } catch {

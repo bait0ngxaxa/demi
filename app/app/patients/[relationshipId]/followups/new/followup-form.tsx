@@ -16,6 +16,10 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import {
+  APPOINTMENT_TYPE_LABELS,
+  type AppointmentTypeValue,
+} from "@/modules/appointments/domain/appointment-definitions";
 import { FOLLOWUP_ACHIEVED_DAYS_MAX } from "@/modules/followups/domain/followup-achievement";
 import {
   FOLLOWUP_PROGRESS_STATUS_LABELS,
@@ -43,7 +47,7 @@ type PatientContext = {
 
 type AppointmentOption = {
   appointmentId: string;
-  type: "FOLLOW_UP" | "CONSULTATION";
+  type: AppointmentTypeValue;
   scheduledAt: string;
 };
 
@@ -126,10 +130,6 @@ function formatDate(value: string): string {
     timeStyle: "short",
     timeZone: "Asia/Bangkok",
   }).format(new Date(value));
-}
-
-function appointmentTypeLabel(type: AppointmentOption["type"]): string {
-  return type === "FOLLOW_UP" ? "ติดตามผล" : "ให้คำปรึกษา";
 }
 
 function targetSummary(activity: GoalPlanActivityOption): string {
@@ -497,7 +497,7 @@ export function FollowupForm({
                 <option value="">ไม่เชื่อมโยงนัดหมาย</option>
                 {appointments.map((appointment) => (
                   <option key={appointment.appointmentId} value={appointment.appointmentId}>
-                    {appointmentTypeLabel(appointment.type)} · {formatDate(appointment.scheduledAt)}
+                    {APPOINTMENT_TYPE_LABELS[appointment.type]} · {formatDate(appointment.scheduledAt)}
                   </option>
                 ))}
               </Select>

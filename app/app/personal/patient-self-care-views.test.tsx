@@ -165,7 +165,7 @@ const followupDetail: PatientSelfFollowupDetail = {
 const contactPhones = { hospitalPhone: "021234567", patientPhone: null };
 const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   appointmentId: "66666666-6666-4666-8666-666666666666",
-  type: AppointmentType.CONSULTATION,
+  type: AppointmentType.EDUCATION,
   scheduledAt: recordedAt,
   durationMinutes: 30,
   locationType: AppointmentLocationType.CLINIC,

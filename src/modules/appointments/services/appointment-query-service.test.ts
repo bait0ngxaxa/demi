@@ -48,7 +48,7 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     id: appointmentId,
     patientHospitalRelationshipId: relationshipId,
     responsibleUserId,
-    type: "CONSULTATION",
+    type: "EDUCATION",
     scheduledAt: new Date("2026-08-20T03:30:00.000Z"),
     durationMinutes: 30,
     locationType: "ONLINE",
@@ -160,7 +160,7 @@ describe("Appointment query service", () => {
     expect(history.patient).toMatchObject({ patientHospitalRelationshipId: relationshipId });
     expect(history.items[0]).toMatchObject({
       appointmentId,
-      type: "CONSULTATION",
+      type: "EDUCATION",
       status: AppointmentStatus.SCHEDULED,
       responsibleDisplayName: "สมหญิง ผู้รับผิดชอบ",
       responsibleProfession: Profession.DOCTOR,

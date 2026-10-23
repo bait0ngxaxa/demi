@@ -6,8 +6,15 @@ import {
 } from "@prisma/client";
 import { z } from "zod";
 
-export const APPOINTMENT_LINE_NOTIFICATION_TEXT =
-  "มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ";
+import {
+  APPOINTMENT_TYPE_LABELS,
+  type AppointmentTypeValue,
+} from "./appointment-definitions";
+
+export function appointmentLineNotificationText(type: AppointmentTypeValue): string {
+  return `มีนัดหมายประเภท ${APPOINTMENT_TYPE_LABELS[type]} อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ`;
+}
+
 export const APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS = 3;
 export const APPOINTMENT_LINE_NOTIFICATION_REACHABILITY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 export const LINE_RETRY_KEY_VALIDITY_MS = 24 * 60 * 60 * 1000;

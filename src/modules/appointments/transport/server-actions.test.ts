@@ -392,7 +392,7 @@ describe("Appointment Server Actions", () => {
       }
 
       if (caseName === "duplicate field") {
-        data.append("type", "CONSULTATION");
+        data.append("type", "EDUCATION");
       }
 
       if (caseName === "authority field") {

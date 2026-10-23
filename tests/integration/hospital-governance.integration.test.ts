@@ -286,7 +286,7 @@ async function createTestAppointment(
     patientHospitalRelationshipId: relationshipId,
     submissionNonce: randomUUID(),
     scheduledAt: bangkokIso(new Date(Date.now() + 24 * 60 * 60 * 1000)),
-    type: AppointmentType.CONSULTATION,
+    type: AppointmentType.EDUCATION,
     responsibleUserId: null,
     durationMinutes: 30,
     locationType: AppointmentLocationType.CLINIC,

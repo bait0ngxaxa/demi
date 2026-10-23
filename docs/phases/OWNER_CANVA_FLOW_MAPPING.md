@@ -180,7 +180,7 @@ flowchart TD
 | F-FU-07 | OWNER ที่เป็นผู้ป่วย | `ตนเอง` ("กรณีเจ้าหน้าที่ รพ. เป็นผู้ป่วยเอง") ใต้ ติดตาม/การจัดบริการ | ติดตาม | บริการของตนเอง | เลือก "ตนเอง" → ครั้งที่ | Personal | `/app/personal/care/[relationshipId]/programs/[pid]/rounds` (อ่าน) | `patient-self-program-rounds-view.tsx` | Patient SELF policy | ผู้ป่วยอ่านครั้งที่ 1–6 ของตนได้; เจ้าหน้าที่ที่เป็นผู้ป่วยใน รพ. เดียวกันจะเห็นตนเองในรายชื่อผู้ป่วยของงานด้วย — ไม่มีกฎ conflict-of-interest | UNVERIFIED | — | Q-06: "ตนเอง" = อ่านอย่างเดียวหรือบันทึกเองได้; ห้ามบันทึกตนเองจนกว่าจะมี decision | ต้องการ decision | STAFF-02 | PARTIAL |
 | F-APT-01 | OWNER/MEMBER (OSM ด้วย; Parent reader ตาม ADR-0016 อ่านอย่างเดียว) | `รายการนัดหมาย` (นัดหมาย / ประวัติ / ตอบรับ) | นัดหมาย | รายการนัดข้ามผู้ป่วย | `/app/appointments` → นัดหมาย / ประวัติการนัดหมาย / คำขอที่รอดำเนินการ → รายละเอียดเดิม; คิวคำขอแสดงเฉพาะผู้มี direct Hospital manage scope | `/app/appointments` | ยังคง `/app/patients/[id]/appointments` และรายละเอียดเดิม | `work-appointment-view.tsx`, `work-appointment-query-service.ts` | `listWorkAppointments` ใช้ active direct Hospital scope, OSM assignment ปัจจุบัน หรือ ADR-0016 network child read; scope อยู่ใน Prisma `where`; cursor signed ผูก actor/Hospital/tab/filter | Implemented: filter, stable pagination, request badges/queue และ allowlist ไม่มีเบอร์, HN, เลขบัตรหรือหมายเหตุ; pending queue มีเฉพาะ request ที่ PENDING และเรียง submittedAt เก่าสุดก่อน; network scope ไม่มี create/review | ALIGNED | — | Work hub แสดงนัดหมายใกล้ถึง/ประวัติ/คิวคำขอ; ไม่มี mutation ใหม่ | ตรวจ active Hospital, relationship, membership และ OSM assignment ใน DB; network read-only ตาม ADR-0016 | `tests/integration/appointments.integration.test.ts` (scope, cursor, request lifecycle); `tests/integration/hospital-network-patient-read.integration.test.ts` (network limit) | IMPLEMENTED |
 | F-APT-02 | OWNER/MEMBER/OSM ตาม scope สร้างนัดเดิม | `นัดหมาย` → เลือกผู้ป่วย → ประเภท → ผู้นัด → วันเวลา | นัดหมาย | สร้างนัด | `/app/appointments` → `เลือกผู้ป่วย` (ค้นชื่อ/HN) → ฟอร์มนัดเดิม → บันทึก → กลับ `/app/appointments?hospitalId=…` | `/app/appointments/new` | `/app/patients/[id]/appointments/new?returnTo=/app/appointments` | `patient-picker-view.tsx`, `appointment-form.tsx` | reuse `findPatientDirectory` สำหรับ direct Hospital และ `findAssignedPatientDirectory` สำหรับ OSM; `returnTo` ผ่าน Zod literal `/app/appointments` | Implemented: picker ไม่เปิด Child network write; OSM เลือกได้เฉพาะผู้ป่วยที่ยังได้รับมอบหมายและ policy จำกัดสร้างเฉพาะ home visit | ALIGNED | — | ปุ่ม “สร้างนัด” แสดงเมื่อ selected Hospital มีสิทธิ์ create; คง route/form/policy เดิม | create action ตรวจ policy/scope และ relationship ใน service/transaction; return path ไม่รับ arbitrary URL | `tests/integration/appointments.integration.test.ts`; `src/modules/appointments/services/appointment-service.ts` existing create policy | IMPLEMENTED |
-| F-APT-03 | OWNER/MEMBER | "รายละเอียด: ติดตาม / ประเมิน / ให้ความรู้" | นัดหมาย | ประเภทนัด | เลือก 1 ใน 3 | ฟอร์มนัด | `/appointments/new` | `appointment-form.tsx` | `AppointmentType` = FOLLOW_UP, CONSULTATION (`prisma/schema.prisma` 228) | ไม่มี ประเมิน/ให้ความรู้; WB-00 §3.2 บันทึกว่า "ต้องให้ Owner ตัดสิน" และไม่พบ decision | UNVERIFIED | P2 (ถ้ายืนยัน) | Q-07; ถ้ายืนยันต้องเป็น schema change แยก phase | กระทบ schema/report | — | VERIFIED (ว่าไม่ตรง) |
+| F-APT-03 | OWNER/MEMBER/OSM ตาม scope เดิม | "รายละเอียด: ติดตาม / ประเมิน / ให้ความรู้" | นัดหมาย | ประเภทนัด | เลือก 1 ใน 3 | ฟอร์มนัด | `/appointments/new` | `appointment-form.tsx` | `AppointmentType` = FOLLOW_UP, ASSESSMENT, EDUCATION | ฟอร์มและ readback ใช้ครบสามประเภทและ label ตรง whiteboard; เปลี่ยนชื่อ enum เดิมโดยเก็บข้อมูลนัดไว้ | ALIGNED | — | แสดง “ติดตาม”, “ประเมิน”, “ให้ความรู้” ตามลำดับ; เป็นค่าจัดประเภท ไม่มี side effect เพิ่ม | create/edit ใช้ scope เดิม; OSM สร้างได้เฉพาะเยี่ยมบ้าน; Parent network อ่านอย่างเดียว | `tests/integration/appointments.integration.test.ts`; appointment type/LINE unit tests | IMPLEMENTED (AF-6) |
 | F-APT-04 | OWNER/MEMBER | "เลือกแพทย์ / พยาบาล / อสม." | นัดหมาย | ผู้รับผิดชอบ | เลือกผู้นัด | ฟอร์มนัด | `/appointments/new` | responsible select | WB-DF-07 | นัดคลินิกเลือกแพทย์/พยาบาลได้; อสม. สร้างได้เฉพาะเยี่ยมบ้านของตนเอง | APPROVED_DEVIATION | — | คงไว้ | คง | APT-07 | VERIFIED |
 | F-APT-05 | OWNER/MEMBER | `ประวัติการนัดหมาย` → รายละเอียด (fields) | นัดหมาย | ประวัติ/รายละเอียด | ดูรายการ → รายละเอียด | ต่อผู้ป่วย | `/appointments`, `/appointments/[aid]` | history/detail views | `getAppointmentHistory`, `getAppointmentDetail`, `projectAppointmentContactPhones` | ฟิลด์ครบตาม APT-06/E4 | ALIGNED | — | ทางเข้าเพิ่มจาก F-APT-01 | คง | APT-06/11/12 | VERIFIED |
 | F-APT-06 | OWNER/MEMBER | `ตอบรับนัดหมาย` → Popup ยืนยัน/เลื่อนนัด → กรณีขอเลื่อน | นัดหมาย | ตอบรับ/เลื่อน | เลือกผู้ป่วย → รายละเอียด → ยืนยันหรือขอเลื่อน | ต่อผู้ป่วย | `/appointments/[aid]`, `/[aid]/edit` | `appointment-interaction-controls.tsx`, `reschedule-request-section.tsx` | WB-DF-06, ก-23 | "ตอบรับ" เป็นของผู้ป่วย/อสม.; เจ้าหน้าที่อนุมัติ (= แก้นัด) หรือปฏิเสธ; ไม่มีคิว | JOURNEY_FRAGMENTATION | P2 | คิวคำขอใน F-APT-01 ลิงก์ไปหน้า edit เดิม | คง semantics ก-23 | APT-03/04; UAT A-2 | VERIFIED |
@@ -206,16 +206,16 @@ flowchart TD
 
 | Classification | จำนวน | Flow IDs |
 | --- | ---: | --- |
-| ALIGNED | 12 | F-HOME-07, F-SVC-03, F-FU-03, F-FU-04, F-APT-01, F-APT-02, F-APT-05, F-PROF-02, F-PROF-06, F-USER-03, F-USER-04, F-ADM-02 |
+| ALIGNED | 13 | F-HOME-07, F-SVC-03, F-FU-03, F-FU-04, F-APT-01, F-APT-02, F-APT-03, F-APT-05, F-PROF-02, F-PROF-06, F-USER-03, F-USER-04, F-ADM-02 |
 | NAVIGATION_DRIFT | 9 | F-HOME-01, F-HOME-02, F-HOME-06, F-MEDIA-01, F-SVC-01, F-FU-01, F-PROF-01, F-PROF-05, F-NAV-01 |
 | JOURNEY_FRAGMENTATION | 6 | F-HEALTH-01, F-FU-02, F-FU-05, F-APT-06, F-USER-01, F-NAV-02 |
 | FUNCTIONAL_GAP | 1 | F-PROF-07 |
 | APPROVED_DEVIATION | 12 | F-AUTH-01, F-HOME-04, F-HOME-05, F-MEDIA-02, F-SVC-02, F-SVC-04, F-APT-04, F-PROF-03, F-PROF-04, F-USER-02, F-USER-05, F-ADM-01 |
-| UNVERIFIED | 5 | F-HOME-03, F-HEALTH-02, F-SVC-05, F-FU-07, F-APT-03 |
+| UNVERIFIED | 4 | F-HOME-03, F-HEALTH-02, F-SVC-05, F-FU-07 |
 | BLOCKED | 2 | F-FU-06, F-NAV-03 |
-| **รวม** | **47** | 12 + 9 + 6 + 1 + 12 + 5 + 2 |
+| **รวม** | **47** | 13 + 9 + 6 + 1 + 12 + 4 + 2 |
 
-Severity (ตามคอลัมน์ Sev): **P0 = 0**; **P1 = 3** (F-HOME-02, F-SVC-01, F-FU-01); **P2 = 9** (F-HOME-01, F-HEALTH-01, F-FU-02, F-APT-06, F-PROF-01, F-PROF-07, F-USER-01, F-NAV-02 และ F-APT-03 แบบมีเงื่อนไขถ้าลูกค้ายืนยัน); **P3 = 10** (F-HOME-06, F-MEDIA-01, F-SVC-02 nav, F-SVC-03 nav, F-FU-05, F-PROF-05, F-PROF-06, F-ADM-01 nav, F-ADM-02 nav, F-NAV-01)
+Severity (ตามคอลัมน์ Sev): **P0 = 0**; **P1 = 3** (F-HOME-02, F-SVC-01, F-FU-01); **P2 = 8** (F-HOME-01, F-HEALTH-01, F-FU-02, F-APT-06, F-PROF-01, F-PROF-07, F-USER-01, F-NAV-02); **P3 = 10** (F-HOME-06, F-MEDIA-01, F-SVC-02 nav, F-SVC-03 nav, F-FU-05, F-PROF-05, F-PROF-06, F-ADM-01 nav, F-ADM-02 nav, F-NAV-01)
 
 ---
 
@@ -453,6 +453,8 @@ Completion criteria ของ remediation: ไม่มี policy diff ใน Ph
 
 ## 13. Unresolved questions and verification limitations
 
+Q-07 closed in AF-6: the three appointment classifications and their Thai labels now match the whiteboard; see [WB_ALIGNMENT_DECISIONS.md](../requirements/WB_ALIGNMENT_DECISIONS.md) §AF-6.
+
 | ID | คำถามถึง Product Owner/ลูกค้า | กระทบ |
 | --- | --- | --- |
 | Q-01 | แถบล่างตำแหน่งที่ 3 คือ "นัดหมาย" (หมายเหตุหน้าหลัก) หรือ "การจัดบริการ" (spine)? และ "การจัดบริการ" = ดูผล/เขต/ดาวน์โหลด, "ติดตาม" = บันทึกครั้งที่ 1–6 ใช่หรือไม่? | mobile tabs, Phase 1 |
@@ -461,8 +463,6 @@ Completion criteria ของ remediation: ไม่มี policy diff ใน Ph
 | Q-04 | แสดงเบอร์ อสม.ผู้ดูแลในข้อมูลสุขภาพที่เจ้าหน้าที่เห็นได้หรือไม่ (E4 ครอบคลุมเฉพาะรายละเอียดนัด)? | Phase 2c |
 | Q-05 | ดาวน์โหลด "ทั้งหมด" = ไฟล์รวม รพ.+ลูกข่ายทั้งหมด หรือ "ทุกเขตแยกไฟล์"? (OR-RPT-03 ระบุว่าไม่มี requirement รวม) | reporting, privacy |
 | Q-06 | "ตนเอง" ใต้ ติดตาม/การจัดบริการ: เจ้าหน้าที่ที่เป็นผู้ป่วยบันทึกบริการของตนเองได้หรือไม่ หรืออ่านอย่างเดียว? | conflict-of-interest |
-| Q-07 | ประเภทนัด ติดตาม/ประเมิน/ให้ความรู้ ต้องแทน FOLLOW_UP/CONSULTATION หรือไม่? | schema, report |
-
 **ข้อจำกัดการตรวจสอบ**
 
 - Visual geometry ยืนยันเฉพาะ quadrant "แอดมิน รพ." (และอ้างข้อความของ quadrant อื่นเพื่อเทียบ) จากภาพ export ที่ crop ด้วยตนเอง ลูกศรซ้อนบางเส้น (เพื่อนที่ดูแล → ตอบรับนัดหมาย, ปลายทางของ "ทั้งหมด" กับ "เลือกเขต" ไปยังสอง sheet) เป็น PARTIAL

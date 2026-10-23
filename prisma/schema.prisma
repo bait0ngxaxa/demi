@@ -241,7 +241,8 @@ enum PatientActivationPurpose {
 
 enum AppointmentType {
   FOLLOW_UP
-  CONSULTATION
+  ASSESSMENT
+  EDUCATION
 }
 
 enum AppointmentLocationType {

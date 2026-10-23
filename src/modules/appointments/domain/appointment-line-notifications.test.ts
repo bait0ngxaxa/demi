@@ -5,7 +5,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  APPOINTMENT_LINE_NOTIFICATION_TEXT,
+  appointmentLineNotificationText,
   appointmentLineNotificationRetryDelayMs,
   appointmentLineNotificationSourceKey,
   expectedAppointmentStatusForNotification,
@@ -33,10 +33,17 @@ describe("appointment LINE notification policy", () => {
     });
   });
 
-  it("uses only the approved generic Thai copy and classifies source events", () => {
-    expect(APPOINTMENT_LINE_NOTIFICATION_TEXT).toBe(
-      "มีข้อมูลใน DEMI อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ",
+  it.each([
+    ["FOLLOW_UP", "ติดตาม"],
+    ["ASSESSMENT", "ประเมิน"],
+    ["EDUCATION", "ให้ความรู้"],
+  ] as const)("uses the approved label for LINE messages for %s", (type, label) => {
+    expect(appointmentLineNotificationText(type)).toBe(
+      `มีนัดหมายประเภท ${label} อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ`,
     );
+  });
+
+  it("classifies source events", () => {
     expect(expectedAppointmentStatusForNotification(AppointmentLineNotificationEventKind.CREATED)).toBe("SCHEDULED");
     expect(expectedAppointmentStatusForNotification(AppointmentLineNotificationEventKind.RESCHEDULED)).toBe("SCHEDULED");
     expect(expectedAppointmentStatusForNotification(AppointmentLineNotificationEventKind.CANCELLED)).toBe("CANCELLED");

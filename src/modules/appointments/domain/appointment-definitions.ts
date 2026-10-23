@@ -1,7 +1,10 @@
 import type { Profession } from "@prisma/client";
 
-export const APPOINTMENT_TYPE_VALUES = ["FOLLOW_UP", "CONSULTATION"] as const;
+export const APPOINTMENT_TYPE_VALUES = ["FOLLOW_UP", "ASSESSMENT", "EDUCATION"] as const;
 export type AppointmentTypeValue = (typeof APPOINTMENT_TYPE_VALUES)[number];
+
+/** Legacy wire value retained for requests and create fingerprints made before the rename. */
+export const LEGACY_EDUCATION_APPOINTMENT_TYPE = "CONSULTATION" as const;
 
 export const APPOINTMENT_STATUS_VALUES = [
   "SCHEDULED",
@@ -20,8 +23,9 @@ export const APPOINTMENT_LOCATION_VALUES = [
 export type AppointmentLocationValue = (typeof APPOINTMENT_LOCATION_VALUES)[number];
 
 export const APPOINTMENT_TYPE_LABELS: Record<AppointmentTypeValue, string> = {
-  FOLLOW_UP: "ติดตามผล",
-  CONSULTATION: "ให้คำปรึกษา",
+  FOLLOW_UP: "ติดตาม",
+  ASSESSMENT: "ประเมิน",
+  EDUCATION: "ให้ความรู้",
 };
 
 export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatusValue, string> = {

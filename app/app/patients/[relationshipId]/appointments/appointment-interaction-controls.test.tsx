@@ -50,7 +50,7 @@ const work: ComponentProps<typeof AppointmentInteractionControls> = {
   cancellationRequestNonce: "nonce", coordinationSubmissionNonce: "coordination-nonce",
 };
 const self: PatientSelfAppointmentItem = {
-  appointmentId, type: "CONSULTATION", scheduledAt: updatedAt, updatedAt, status: "SCHEDULED",
+  appointmentId, type: "EDUCATION", scheduledAt: updatedAt, updatedAt, status: "SCHEDULED",
   durationMinutes: null, locationType: null, locationDetail: null,
   responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null,
   acknowledgement: null, cancellationRequests: [],
