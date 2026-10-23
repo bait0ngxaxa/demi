@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ actor: vi.fn(), propose: vi.fn(), accept: vi.fn(), revoke: vi.fn(), revalidate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ actor: vi.fn(), propose: vi.fn(), accept: vi.fn(), revoke: vi.fn(), proposeResource: vi.fn(), acceptResource: vi.fn(), revokeResource: vi.fn(), revalidate: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidate }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("../services/appointment-grant-service", () => ({ proposeAppointmentGrant: mocks.propose, acceptAppointmentGrant: mocks.accept, revokeAppointmentGrant: mocks.revoke }));
-import { acceptAppointmentGrantAction, proposeAppointmentGrantAction, revokeAppointmentGrantAction } from "./appointment-grant-actions";
+vi.mock("../services/caregiver-resource-grant-service", () => ({ proposeResourceGrant: mocks.proposeResource, acceptResourceGrant: mocks.acceptResource, revokeResourceGrant: mocks.revokeResource }));
+import { acceptAppointmentGrantAction, acceptResourceGrantAction, proposeAppointmentGrantAction, proposeResourceGrantAction, revokeAppointmentGrantAction, revokeResourceGrantAction } from "./appointment-grant-actions";
 const actor = { userId: "current-account" };
 beforeEach(() => { vi.resetAllMocks(); mocks.actor.mockResolvedValue(actor); });
 describe("Family grant server actions", () => {
@@ -26,5 +27,18 @@ describe("Family grant server actions", () => {
     mocks.actor.mockRejectedValue(new Error("unauthenticated"));
     expect((await proposeAppointmentGrantAction({ status: "IDLE" }, new FormData())).status).toBe("ERROR");
     expect(mocks.propose).not.toHaveBeenCalled();
+  });
+  it("AF-5: resource grant actions forward only the relationship/resource or grant locator", async () => {
+    const form = new FormData(); form.set("caregiverRelationshipId", "parent"); form.set("resource", "HEALTH_PLAN"); form.set("status", "ACTIVE");
+    expect(await proposeResourceGrantAction({ status: "IDLE" }, form)).toMatchObject({ status: "SUCCESS" });
+    expect(mocks.proposeResource).toHaveBeenCalledWith(actor, { caregiverRelationshipId: "parent", resource: "HEALTH_PLAN" });
+    expect(mocks.revalidate).toHaveBeenCalledWith("/app/family/members/[relationshipId]", "page");
+    const grant = new FormData(); grant.set("grantId", "grant");
+    for (const [action, service] of [[acceptResourceGrantAction, mocks.acceptResource], [revokeResourceGrantAction, mocks.revokeResource]] as const) {
+      expect(await action({ status: "IDLE" }, grant)).toMatchObject({ status: "SUCCESS" });
+      expect(service).toHaveBeenCalledWith(actor, "grant");
+      service.mockRejectedValue(new Error("SECRET medication"));
+      expect(JSON.stringify(await action({ status: "IDLE" }, grant))).not.toContain("SECRET");
+    }
   });
 });

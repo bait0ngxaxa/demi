@@ -443,6 +443,30 @@ enum CaregiverRelationshipStatus {
   WITHDRAWN
 }
 
+// AF-5: how the caregiver is related to the Patient, chosen and edited by the Patient. Not proof of kinship.
+enum CaregiverRelationshipLabel {
+  SPOUSE
+  CHILD
+  PARENT
+  SIBLING
+  GRANDCHILD
+  RELATIVE
+  OTHER
+}
+
+// AF-5: Patient-level resources a caregiver may read under a separate accepted grant.
+enum CaregiverResource {
+  PROFILE_SUMMARY
+  HEALTH_PLAN
+  MEDICATION
+}
+
+enum CaregiverResourceGrantStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
 enum UserTakeoverProviderState {
   PENDING
   CONFIRMED
@@ -507,6 +531,10 @@ model User {
   appointmentGrantsProposed CaregiverAppointmentGrant[] @relation("AppointmentGrantProposer")
   appointmentGrantsAccepted CaregiverAppointmentGrant[] @relation("AppointmentGrantAccepter")
   appointmentGrantsRevoked CaregiverAppointmentGrant[] @relation("AppointmentGrantRevoker")
+  resourceGrants CaregiverResourceGrant[] @relation("ResourceGrantCaregiver")
+  resourceGrantsProposed CaregiverResourceGrant[] @relation("ResourceGrantProposer")
+  resourceGrantsAccepted CaregiverResourceGrant[] @relation("ResourceGrantAccepter")
+  resourceGrantsRevoked CaregiverResourceGrant[] @relation("ResourceGrantRevoker")
   patientOsmAssignments PatientOsmAssignment[] @relation("PatientOsmAssignments")
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
@@ -813,6 +841,7 @@ model PatientProfile {
   caregiverInvitations CaregiverInvitation[]
   caregiverRelationships CaregiverRelationship[]
   appointmentGrants CaregiverAppointmentGrant[]
+  resourceGrants CaregiverResourceGrant[]
   patientClassification PatientClassification?
   classificationHistory PatientClassificationHistory[]
   personalMedications PersonalMedication[]
@@ -1102,6 +1131,11 @@ model CaregiverInvitation {
   rejectedAt                  DateTime?                 @db.Timestamptz(3)
   revokedAt                   DateTime?                 @db.Timestamptz(3)
   expiredAt                   DateTime?                 @db.Timestamptz(3)
+  // AF-5 one-step add: what the Patient asked for at issue time. Consumed once, atomically, on acceptance;
+  // the shape is `caregiverInvitationRequestedScopesSchema` and every scope is re-authorized then.
+  requestedRelationshipLabel      CaregiverRelationshipLabel?
+  requestedRelationshipLabelOther String?                   @db.VarChar(50)
+  requestedScopes                 Json?
   createdAt                   DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt                   DateTime                  @updatedAt @db.Timestamptz(3)
 
@@ -1130,6 +1164,10 @@ model CaregiverRelationship {
   revokedAt         DateTime?                    @db.Timestamptz(3)
   revokedByUserId   String?                      @db.Uuid
   withdrawnAt       DateTime?                    @db.Timestamptz(3)
+  relationshipLabel      CaregiverRelationshipLabel?
+  relationshipLabelOther String?                   @db.VarChar(50)
+  // AF-5: optimistic-concurrency version of the Patient-edited label.
+  relationshipLabelVersion Int                     @default(1)
   createdAt         DateTime                     @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime                     @updatedAt @db.Timestamptz(3)
 
@@ -1139,6 +1177,7 @@ model CaregiverRelationship {
   revokedByUser User? @relation("CaregiverRelationshipRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
 
   appointmentGrants CaregiverAppointmentGrant[]
+  resourceGrants CaregiverResourceGrant[]
 
   @@unique([id, patientProfileId, caregiverUserId])
   @@index([patientProfileId, createdAt])
@@ -1177,6 +1216,43 @@ model CaregiverAppointmentGrant {
   @@index([caregiverUserId, createdAt])
   @@index([caregiverRelationshipId])
   @@index([patientHospitalRelationshipId])
+  @@index([proposedByUserId])
+  @@index([acceptedByUserId])
+  @@index([revokedByUserId])
+}
+
+// AF-5: one Patient-level resource shared with one caregiver relationship. Lifecycle mirrors the appointment
+// grant (Patient proposes, caregiver accepts, either side's revocation is final); one actionable grant per
+// relationship and resource is enforced by a partial unique index in the migration.
+model CaregiverResourceGrant {
+  id String @id @default(uuid()) @db.Uuid
+  caregiverRelationshipId String @db.Uuid
+  patientProfileId String @db.Uuid
+  patientPersonId String @db.Uuid
+  caregiverUserId String @db.Uuid
+  caregiverPersonId String @db.Uuid
+  resource CaregiverResource
+  contractVersion String @db.VarChar(64)
+  status CaregiverResourceGrantStatus @default(PENDING)
+  proposedByUserId String @db.Uuid
+  proposedAt DateTime @default(now()) @db.Timestamptz(3)
+  acceptedByUserId String? @db.Uuid
+  acceptedAt DateTime? @db.Timestamptz(3)
+  revokedByUserId String? @db.Uuid
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  caregiverRelationship CaregiverRelationship @relation(fields: [caregiverRelationshipId, patientProfileId, caregiverUserId], references: [id, patientProfileId, caregiverUserId], onDelete: Restrict, onUpdate: Restrict)
+  patientProfile PatientProfile @relation(fields: [patientProfileId, patientPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  caregiverUser User @relation("ResourceGrantCaregiver", fields: [caregiverUserId, caregiverPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  proposedByUser User @relation("ResourceGrantProposer", fields: [proposedByUserId, patientPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  acceptedByUser User? @relation("ResourceGrantAccepter", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+  revokedByUser User? @relation("ResourceGrantRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientProfileId, createdAt])
+  @@index([caregiverUserId, createdAt])
+  @@index([caregiverRelationshipId])
   @@index([proposedByUserId])
   @@index([acceptedByUserId])
   @@index([revokedByUserId])

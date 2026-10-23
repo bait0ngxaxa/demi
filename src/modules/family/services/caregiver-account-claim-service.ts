@@ -24,6 +24,7 @@ import {
   identityKeyHashesMatch,
 } from "@/modules/identity/services/identity-service";
 import {
+  ConflictError,
   InfrastructureError,
 } from "@/shared/errors/application-error";
 import {
@@ -34,6 +35,12 @@ import {
 import { caregiverAccountClaimInputSchema } from "../schemas/caregiver-relationship-schemas";
 import { FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION } from "./caregiver-relationship-service";
 import { hashCaregiverInvitationToken } from "./caregiver-invitation-token-service";
+import {
+  activatableInvitationSelect,
+  activateCaregiverRelationship,
+  resolveCaregiverSharingGates,
+  type CaregiverSharingGates,
+} from "./caregiver-scope-activation";
 
 export class CaregiverAccountClaimRejectedError extends Error {
   constructor() {
@@ -56,6 +63,7 @@ export type CaregiverAccountClaimDependencies = {
   createProviderIdentity?: (input: { userId: string; password: string }) => Promise<UnpersistedPasswordAuthIdentity>;
   deleteProviderIdentity?: (authSubject: string) => Promise<void>;
   createUserId?: () => string;
+  gates?: CaregiverSharingGates;
 };
 
 export type AcceptedCaregiverAccountClaim = {
@@ -253,14 +261,14 @@ export async function createCaregiverAccountFromInvitation(
   const providerIdentity = await createProviderIdentity({ userId, password: parsed.data.password });
   let providerCompensated = false;
   let rejectionAudited = false;
+  const gates = resolveCaregiverSharingGates(dependencies.gates);
 
   try {
     const outcome = await runSerializableTransaction(database, async (transaction) => {
       const currentInvitation = await transaction.caregiverInvitation.findUnique({
         where: { id: invitation.id },
         select: {
-          id: true,
-          patientProfileId: true,
+          ...activatableInvitationSelect,
           status: true,
           caregiverUserId: true,
           caregiverPersonId: true,
@@ -344,15 +352,15 @@ export async function createCaregiverAccountFromInvitation(
       const acceptedAt = acceptedRows[0]?.acceptedAt;
       if (!acceptedAt) throw new CaregiverAccountClaimRejectedError();
 
-      const relationship = await transaction.caregiverRelationship.create({
-        data: {
-          patientProfileId: currentInvitation.patientProfileId,
-          caregiverUserId: userId,
-          sourceInvitationId: currentInvitation.id,
-          status: CaregiverRelationshipStatus.ACTIVE,
-          activatedAt: acceptedAt,
-        },
-        select: { id: true },
+      // AF-5: a scope that is no longer available rolls the whole claim back (provider identity compensated below).
+      const relationship = await activateCaregiverRelationship(transaction, {
+        invitation: currentInvitation,
+        caregiver: { userId, personId: person.id },
+        acceptedAt,
+        gates,
+      }).catch((error: unknown) => {
+        if (error instanceof ConflictError) throw new CaregiverAccountClaimRejectedError();
+        throw error;
       });
 
       await recordAuditEvent({
@@ -376,14 +384,14 @@ export async function createCaregiverAccountFromInvitation(
         actorUserId: userId,
         action: "caregiver_relationship.activated",
         resourceType: "caregiver_relationship",
-        resourceId: relationship.id,
+        resourceId: relationship.relationshipId,
         metadata: { status: CaregiverRelationshipStatus.ACTIVE },
       }, transaction);
 
       return {
         kind: "ACCEPTED" as const,
         userId,
-        relationshipId: relationship.id,
+        relationshipId: relationship.relationshipId,
         acceptedAt,
       };
     });

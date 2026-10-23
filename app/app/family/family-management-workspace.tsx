@@ -2,11 +2,13 @@
 
 import { useId, useState } from "react";
 import Link from "next/link";
+import type { CaregiverRelationshipLabel, CaregiverResource } from "@prisma/client";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
@@ -28,14 +30,86 @@ import {
   reissueCaregiverInvitationLinkAction,
   revokeCaregiverRelationshipAction,
   revokePendingCaregiverInvitationAction,
+  updateCaregiverRelationshipLabelAction,
   withdrawOwnCaregiverRelationshipAction,
 } from "@/modules/family/transport/server-actions";
+import {
+  CAREGIVER_RELATIONSHIP_LABEL_OTHER_MAX,
+  CAREGIVER_RELATIONSHIP_LABELS,
+  CAREGIVER_RESOURCE_LABELS,
+  formatCaregiverRelationshipLabel,
+} from "@/modules/family/domain/caregiver-sharing-contract";
 import {
   initialCreateCaregiverInvitationActionState,
   initialFamilyMutationActionState,
 } from "@/modules/family/transport/action-state";
 
 import { FamilyInvitationQr } from "./family-invitation-qr";
+import { familyHealthSummaryHref } from "./members/family-health-summary-href";
+
+/** AF-5: what the Patient may choose to share in the one-step add; empty while the release gates are off. */
+export type CaregiverSharingOptions = {
+  hospitals: readonly { relationshipId: string; hospitalName: string }[];
+  resources: readonly CaregiverResource[];
+};
+
+const fieldClassName = "h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none placeholder:text-text-subtle focus:border-action-primary focus:ring-4 focus:ring-focus-ring";
+
+function RelationshipLabelFields({
+  idPrefix,
+  disabled,
+  defaultLabel,
+  defaultOther,
+}: {
+  idPrefix: string;
+  disabled: boolean;
+  defaultLabel?: CaregiverRelationshipLabel | null;
+  defaultOther?: string | null;
+}): React.JSX.Element {
+  const [kind, setKind] = useState<string>(defaultLabel ?? "");
+  return (
+    <>
+      <div className="space-y-2">
+        <label className="block text-sm font-semibold text-text" htmlFor={`${idPrefix}-label`}>ผู้ดูแลเกี่ยวข้องกับคุณอย่างไร</label>
+        <Select disabled={disabled} id={`${idPrefix}-label`} name="relationshipLabel" onChange={(event) => setKind(event.target.value)} required value={kind}>
+          <option disabled value="">เลือกความสัมพันธ์</option>
+          {(Object.keys(CAREGIVER_RELATIONSHIP_LABELS) as CaregiverRelationshipLabel[]).map((value) => (
+            <option key={value} value={value}>{CAREGIVER_RELATIONSHIP_LABELS[value]}</option>
+          ))}
+        </Select>
+      </div>
+      {kind === "OTHER" ? (
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor={`${idPrefix}-label-other`}>ระบุความสัมพันธ์</label>
+          <input autoComplete="off" className={fieldClassName} defaultValue={defaultOther ?? ""} disabled={disabled} id={`${idPrefix}-label-other`} maxLength={CAREGIVER_RELATIONSHIP_LABEL_OTHER_MAX} name="relationshipLabelOther" required type="text" />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function SharingScopeFields({ options, disabled }: { options: CaregiverSharingOptions; disabled: boolean }): React.JSX.Element | null {
+  if (options.hospitals.length === 0 && options.resources.length === 0) return null;
+  const checkbox = "mt-1 size-5 shrink-0 accent-action-primary";
+  return (
+    <fieldset className="space-y-3">
+      <legend className="text-sm font-semibold text-text">ข้อมูลที่ต้องการแชร์ให้ผู้ดูแล</legend>
+      <p className="text-sm leading-6 text-text-muted">เลือกเฉพาะที่ต้องการ ผู้ดูแลต้องยอมรับพร้อมกันตอนตอบรับคำเชิญ และคุณยกเลิกแต่ละรายการได้ภายหลัง</p>
+      {options.hospitals.map((hospital) => (
+        <label className="flex min-h-11 items-start gap-3 text-sm text-text" key={hospital.relationshipId}>
+          <input className={checkbox} disabled={disabled} name="appointmentRelationshipIds" type="checkbox" value={hospital.relationshipId} />
+          <span>นัดหมายที่ {hospital.hospitalName}</span>
+        </label>
+      ))}
+      {options.resources.map((resource) => (
+        <label className="flex min-h-11 items-start gap-3 text-sm text-text" key={resource}>
+          <input className={checkbox} disabled={disabled} name="resources" type="checkbox" value={resource} />
+          <span>{CAREGIVER_RESOURCE_LABELS[resource]}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
 
 function PaginationLink({ href }: { href: string }): React.JSX.Element {
   return (
@@ -113,7 +187,7 @@ function InvitationLinkHandoff({
   );
 }
 
-function CreateCaregiverInvitationForm(): React.JSX.Element {
+function CreateCaregiverInvitationForm({ sharingOptions }: { sharingOptions: CaregiverSharingOptions }): React.JSX.Element {
   const [state, formAction, pending, unknownOutcome] = useMutationActionState(
     createCaregiverInvitationAction,
     initialCreateCaregiverInvitationActionState,
@@ -123,7 +197,7 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
     <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text">เพิ่มผู้ดูแล</h3>
       <p className="type-readable mt-2 text-sm leading-6 text-text-muted">
-        ระบุเลขบัตรประชาชนของผู้ดูแล แล้วแชร์ลิงก์หรือ QR ให้ผู้รับด้วยตนเอง หากยังไม่มีบัญชี ผู้รับสามารถสร้างบัญชีจากคำเชิญนี้โดยใช้เลขบัตรเดียวกัน
+        ระบุเลขบัตรประชาชนและความสัมพันธ์ของผู้ดูแล เลือกข้อมูลที่ต้องการแชร์ แล้วแชร์ลิงก์หรือ QR ให้ผู้รับด้วยตนเอง หากยังไม่มีบัญชี ผู้รับสามารถสร้างบัญชีจากคำเชิญนี้โดยใช้เลขบัตรเดียวกัน
         การรู้เลขบัตรประชาชนอย่างเดียวไม่ทำให้เกิดสิทธิ์หรือความสัมพันธ์
       </p>
       <form
@@ -149,6 +223,8 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
             type="text"
           />
         </div>
+        <RelationshipLabelFields disabled={pending || unknownOutcome} idPrefix="caregiver-invitation" />
+        <SharingScopeFields disabled={pending || unknownOutcome} options={sharingOptions} />
         {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
         <UnknownOutcomeAlert
           active={unknownOutcome}
@@ -269,6 +345,54 @@ function RevokeRelationship({
   );
 }
 
+function EditRelationshipLabel({
+  relationship,
+}: {
+  relationship: FamilyRelationshipManagementItem;
+}): React.JSX.Element | null {
+  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
+    updateCaregiverRelationshipLabelAction,
+    initialFamilyMutationActionState,
+  );
+  const [editing, setEditing] = useState(false);
+  if (relationship.status !== "ACTIVE") return null;
+
+  return (
+    <div className="mt-3">
+      {editing && state.status !== "SUCCESS" ? (
+        <form action={formAction} className="space-y-3">
+          <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
+          <input name="expectedVersion" type="hidden" value={relationship.relationshipLabelVersion} />
+          <RelationshipLabelFields
+            defaultLabel={relationship.relationshipLabel}
+            defaultOther={relationship.relationshipLabelOther}
+            disabled={pending || unknownOutcome}
+            idPrefix={`relationship-${relationship.relationshipId}`}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
+              {pending ? "กำลังบันทึก..." : "บันทึกความสัมพันธ์"}
+            </Button>
+            <Button disabled={pending} onClick={() => setEditing(false)} size="compact" type="button" variant="secondary">ยกเลิก</Button>
+          </div>
+        </form>
+      ) : (
+        <Button aria-label={`แก้ไขความสัมพันธ์: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} onClick={() => setEditing(true)} size="compact" type="button" variant="secondary">
+          แก้ไขความสัมพันธ์
+        </Button>
+      )}
+      {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
+      {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
+      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
+    </div>
+  );
+}
+
+function RelationshipLabelText({ relationship }: { relationship: FamilyRelationshipManagementItem }): React.JSX.Element | null {
+  const label = formatCaregiverRelationshipLabel(relationship.relationshipLabel, relationship.relationshipLabelOther);
+  return label ? <p className="mb-2 text-sm text-text">ความสัมพันธ์: {label}</p> : null;
+}
+
 function WithdrawCaregiverRelationship({
   relationship,
 }: {
@@ -321,14 +445,16 @@ function WithdrawCaregiverRelationship({
 
 function PatientPerspective({
   overview,
+  sharingOptions,
 }: {
   overview: NonNullable<FamilyManagementOverview["patient"]>;
+  sharingOptions: CaregiverSharingOptions;
 }): React.JSX.Element {
   return (
     <>
       <section aria-labelledby="patient-caregivers-heading" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="patient-caregivers-heading">ผู้ที่ดูแลคุณ</h2>
-        <CreateCaregiverInvitationForm />
+        <CreateCaregiverInvitationForm sharingOptions={sharingOptions} />
         <Panel className="mt-4">
           <h3 className="text-lg font-semibold text-text">คำเชิญที่คุณสร้าง</h3>
           {overview.invitations.length === 0 ? (
@@ -376,6 +502,7 @@ function PatientPerspective({
                     {relationship.participant.nameIsSelfAsserted ? (
                       <p className="mb-2 text-sm text-text-muted">ชื่อที่ผู้ดูแลแจ้งเอง</p>
                     ) : null}
+                    <RelationshipLabelText relationship={relationship} />
                     <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
                       {caregiverRelationshipStatusLabel(relationship.status)}
                     </StatusBadge>
@@ -383,7 +510,10 @@ function PatientPerspective({
                     {relationship.revokedAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.revokedAt)}</p> : null}
                     {relationship.withdrawnAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.withdrawnAt)}</p> : null}
                   </div>
-                  <RevokeRelationship relationship={relationship} />
+                  <div className="sm:max-w-md">
+                    <EditRelationshipLabel relationship={relationship} />
+                    <RevokeRelationship relationship={relationship} />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -399,8 +529,10 @@ function PatientPerspective({
 
 function CaregiverPerspective({
   overview,
+  summaryEnabled,
 }: {
   overview: FamilyManagementOverview["caregiver"];
+  summaryEnabled: boolean;
 }): React.JSX.Element {
   return (
     <>
@@ -448,6 +580,7 @@ function CaregiverPerspective({
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <p className="break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}</p>
+                      <RelationshipLabelText relationship={relationship} />
                       <p className="mt-1 text-sm text-text-muted">เริ่มเมื่อ {formatFamilyManagementDate(relationship.activatedAt)}</p>
                       {relationship.revokedAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.revokedAt)}</p> : null}
                       {relationship.withdrawnAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.withdrawnAt)}</p> : null}
@@ -456,6 +589,11 @@ function CaregiverPerspective({
                       {caregiverRelationshipStatusLabel(relationship.status)}
                     </StatusBadge>
                   </div>
+                  {summaryEnabled && relationship.status === "ACTIVE" ? (
+                    <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={familyHealthSummaryHref(relationship.relationshipId)} prefetch={false}>
+                      ดูสรุปสุขภาพที่ได้รับแชร์
+                    </Link>
+                  ) : null}
                   <WithdrawCaregiverRelationship relationship={relationship} />
                 </li>
               ))}
@@ -470,12 +608,16 @@ function CaregiverPerspective({
   );
 }
 
+const NO_SHARING_OPTIONS: CaregiverSharingOptions = { hospitals: [], resources: [] };
+
 export function FamilyManagementWorkspace({
   overview,
   appointmentSharingEnabled = false,
+  sharingOptions = NO_SHARING_OPTIONS,
 }: {
   overview: FamilyManagementOverview;
   appointmentSharingEnabled?: boolean;
+  sharingOptions?: CaregiverSharingOptions;
 }): React.JSX.Element {
   return (
     <div className="max-w-4xl">
@@ -487,11 +629,11 @@ export function FamilyManagementWorkspace({
         <p className="font-semibold">การเชื่อมนี้ยังไม่ให้สิทธิ์เข้าถึงข้อมูลผู้ป่วย</p>
         <p className="mt-1">
           ผู้ดูแลจะไม่สามารถอ่านโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลจากความสัมพันธ์นี้
-          {appointmentSharingEnabled ? "สิทธิ์ดูนัดหมายต้องเสนอและยอมรับแยกต่างหากในส่วนแชร์นัดหมาย" : "ระบบยังไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพในเฟสนี้"}
+          {appointmentSharingEnabled ? "ผู้ดูแลเห็นเฉพาะข้อมูลที่คุณเลือกแชร์และผู้ดูแลยอมรับแล้ว คุณยกเลิกแต่ละรายการได้ทุกเมื่อ" : "ระบบยังไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพในเฟสนี้"}
         </p>
       </Alert>
-      {overview.patient ? <PatientPerspective overview={overview.patient} /> : null}
-      <CaregiverPerspective overview={overview.caregiver} />
+      {overview.patient ? <PatientPerspective overview={overview.patient} sharingOptions={sharingOptions} /> : null}
+      <CaregiverPerspective overview={overview.caregiver} summaryEnabled={appointmentSharingEnabled} />
     </div>
   );
 }

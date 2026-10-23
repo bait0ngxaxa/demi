@@ -15,7 +15,9 @@ import type {
   PersonalAppointmentHubSubject,
 } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
+import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "@/modules/family/domain/appointment-grant-contract";
 import { AppointmentFields } from "../../family/grants/[grantId]/appointments/appointment-fields";
+import { familyHealthSummaryHref } from "../../family/members/family-health-summary-href";
 import { RefreshDelegatedRead } from "../../family/grants/[grantId]/appointments/refresh-delegated-read";
 import { ORDINARY_PATIENT_APPOINTMENT_LINKS, PatientSelfAppointmentRow } from "../patient-self-appointment-content";
 import { PatientSelfEmptyState } from "../patient-self-care-presentation";
@@ -184,12 +186,21 @@ function FamilyAppointments({
   subject: Extract<PersonalAppointmentHubSubject, { kind: "FAMILY" }>;
 }): React.JSX.Element {
   const intro = (
-    <p className="text-sm leading-6 text-text-muted">
-      นัดหมายของ {subjectLabel(subject)} ที่ {subject.hospitalName} แบบอ่านอย่างเดียว ตามสิทธิ์ที่ผู้ป่วยแชร์
-    </p>
+    <div className="space-y-2">
+      <p className="text-sm leading-6 text-text-muted">
+        นัดหมายของ {subjectLabel(subject)} ที่ {subject.hospitalName} แบบอ่านอย่างเดียว ตามสิทธิ์ที่ผู้ป่วยแชร์
+      </p>
+      <Link
+        className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+        href={familyHealthSummaryHref(subject.caregiverRelationshipId)}
+        prefetch={false}
+      >
+        ดูสรุปสุขภาพของ {subjectLabel(subject)}
+      </Link>
+    </div>
   );
 
-  if (context.tab === "history") {
+  if (context.tab === "history" && subject.contractVersion !== FAMILY_APPOINTMENT_READ_CONTRACT_V2) {
     return (
       <div className="space-y-4">
         {intro}
@@ -228,13 +239,13 @@ function FamilyAppointments({
           ))}
         </ul>
       ) : (
-        <PatientSelfEmptyState title="ไม่มีนัดหมายที่เข้าเกณฑ์ในช่วง 90 วันข้างหน้า" />
+        <PatientSelfEmptyState title={context.tab === "history" ? "ไม่มีประวัติการนัดหมายในช่วง 90 วันที่ผ่านมา" : "ไม่มีนัดหมายที่เข้าเกณฑ์ในช่วง 90 วันข้างหน้า"} />
       )}
       {context.family.nextCursor ? (
         <div className="flex justify-center">
           <Link
             className={buttonClassName({ variant: "secondary" })}
-            href={personalAppointmentHubHref({ subject: subject.key, tab: "upcoming", cursor: context.family.nextCursor })}
+            href={personalAppointmentHubHref({ subject: subject.key, tab: context.tab, cursor: context.family.nextCursor })}
             prefetch={false}
           >
             ดูนัดหมายถัดไป

@@ -28,7 +28,48 @@ import {
   CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE,
   initialCaregiverInvitationPreviewActionState,
   initialFamilyMutationActionState,
+  type CaregiverInvitationRequestedSharingView,
 } from "@/modules/family/transport/action-state";
+import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXT_V2 } from "@/modules/family/domain/appointment-grant-contract";
+import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
+
+/**
+ * AF-5: the exact acceptance text of every scope the Patient chose; accepting the invitation accepts all of them
+ * together with the relationship. Hospital names appear only when the server returned them.
+ */
+function RequestedSharing({ sharing }: { sharing: CaregiverInvitationRequestedSharingView }): React.JSX.Element {
+  const hasScopes = sharing.appointmentHospitalCount > 0 || sharing.resources.length > 0;
+  return (
+    <div className="mt-5 space-y-3">
+      {sharing.relationshipLabel ? <p className="text-sm text-text">ผู้ป่วยระบุความสัมพันธ์กับคุณว่า: <span className="font-semibold">{sharing.relationshipLabel}</span></p> : null}
+      {hasScopes ? (
+        <Alert variant="info">
+          <p className="font-semibold">เมื่อตอบรับ คุณยอมรับสิทธิ์ต่อไปนี้พร้อมกัน</p>
+          <ul className="mt-3 space-y-3">
+            {sharing.appointmentHospitalCount > 0 ? (
+              <li>
+                <p className="font-semibold">
+                  นัดหมาย: {sharing.appointmentHospitalNames ? sharing.appointmentHospitalNames.join(", ") : `${sharing.appointmentHospitalCount} หน่วยบริการที่ผู้ป่วยเลือก`}
+                </p>
+                <p className="type-readable mt-1 text-sm leading-6">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXT_V2}</p>
+              </li>
+            ) : null}
+            {sharing.resources.map((resource) => (
+              <li key={resource}>
+                <p className="font-semibold">{CAREGIVER_RESOURCE_LABELS[resource]}</p>
+                <p className="type-readable mt-1 text-sm leading-6">{CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS[resource]}</p>
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      ) : (
+        <Alert variant="info">
+          <p>การยอมรับนี้ยังไม่ทำให้คุณมีสิทธิ์เข้าถึงข้อมูลสุขภาพใด ๆ นอกเหนือจากสิทธิ์ที่ระบบอนุญาตอย่างชัดเจน</p>
+        </Alert>
+      )}
+    </div>
+  );
+}
 
 type InvitationTokenSnapshot =
   | { status: "LOADING" }
@@ -47,10 +88,12 @@ function CaregiverAccountClaimForm({
   token,
   patientDisplayName,
   expiresAt,
+  requestedSharing,
 }: {
   token: string;
   patientDisplayName: string;
   expiresAt: string;
+  requestedSharing: CaregiverInvitationRequestedSharingView;
 }): React.JSX.Element {
   const [state, setState] = useState<AccountClaimState>({ status: "IDLE" });
 
@@ -119,6 +162,7 @@ function CaregiverAccountClaimForm({
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง ผู้ป่วยจะเห็นชื่อนี้ในรายการครอบครัว
       </p>
+      <RequestedSharing sharing={requestedSharing} />
       <form className="mt-5 space-y-4" onSubmit={(event) => void submit(event)}>
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-national-id">เลขบัตรประชาชนของคุณ</label>
@@ -352,6 +396,7 @@ export function FamilyInvitationPreview(): React.JSX.Element {
         <CaregiverAccountClaimForm
           expiresAt={preview.invitation.expiresAt}
           patientDisplayName={preview.invitation.patientDisplayName}
+          requestedSharing={preview.invitation.requestedSharing}
           token={token}
         />
       ) : null}
@@ -372,13 +417,8 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           <p className="mt-4 text-sm leading-6 text-text-muted">
             คำเชิญหมดอายุ {formatFamilyManagementDate(preview.invitation.expiresAt)}
           </p>
-          <Alert className="mt-5" variant="info">
-            <p>
-              การยอมรับนี้ยังไม่ทำให้คุณมีสิทธิ์เข้าถึงข้อมูลสุขภาพใด ๆ
-              นอกเหนือจากสิทธิ์ที่ระบบอนุญาตอย่างชัดเจน
-            </p>
-            <p className="mt-2 text-xs">ข้อตกลงการตอบรับ: {preview.invitation.acceptanceContractVersion}</p>
-          </Alert>
+          <RequestedSharing sharing={preview.invitation.requestedSharing} />
+          <p className="mt-2 text-xs text-text-muted">ข้อตกลงการตอบรับ: {preview.invitation.acceptanceContractVersion}</p>
 
           {acceptance.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">{acceptance.message}</Alert>

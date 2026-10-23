@@ -6,6 +6,7 @@ import {
   Prisma,
   Role,
   UserStatus,
+  type CaregiverResource,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -15,6 +16,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   ConflictError,
   ForbiddenError,
@@ -24,13 +26,22 @@ import {
   ApplicationError,
 } from "@/shared/errors/application-error";
 
+import { formatCaregiverRelationshipLabel, isPlanMedicationResource } from "../domain/caregiver-sharing-contract";
 import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import {
   caregiverInvitationIdSchema,
   caregiverRelationshipIdSchema,
   createCaregiverInvitationInputSchema,
   caregiverInvitationTokenSchema,
+  updateCaregiverRelationshipLabelInputSchema,
 } from "../schemas/caregiver-relationship-schemas";
+import {
+  activatableInvitationSelect,
+  activateCaregiverRelationship,
+  parseRequestedScopes,
+  resolveCaregiverSharingGates,
+  type CaregiverSharingGates,
+} from "./caregiver-scope-activation";
 import {
   generateCaregiverInvitationCredential,
   hashCaregiverInvitationToken,
@@ -44,6 +55,7 @@ export type CaregiverRelationshipServiceDependencies = {
   database?: PrismaClient;
   now?: () => Date;
   generateCredential?: () => CaregiverInvitationCredential;
+  gates?: CaregiverSharingGates;
 };
 
 export type CreatedCaregiverInvitation = {
@@ -275,6 +287,14 @@ export async function createCaregiverInvitation(
   if (!parsedInput.success) {
     throw new ValidationError("A valid Thai National ID is required");
   }
+  const { appointmentRelationshipIds, resources } = parsedInput.data;
+  const gates = resolveCaregiverSharingGates(dependencies.gates);
+  if ((appointmentRelationshipIds.length > 0 || resources.length > 0) && !gates.delegatedReadEnabled) {
+    throw new ValidationError("Caregiver sharing is not available");
+  }
+  if (resources.some(isPlanMedicationResource) && !gates.planMedicationEnabled) {
+    throw new ValidationError("Caregiver sharing is not available");
+  }
 
   const recipientIdentityHash = hashIdentityReference({
     namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
@@ -340,6 +360,18 @@ export async function createCaregiverInvitation(
         throw new ConflictError("A caregiver invitation cannot be created for this information");
       }
 
+      if (appointmentRelationshipIds.length > 0) {
+        const ownOngoing = await transaction.patientHospitalRelationship.count({
+          where: {
+            id: { in: appointmentRelationshipIds }, patientProfileId: patient.patientProfileId,
+            ...activePatientHospitalRelationshipWhere, hospital: { is: { status: "ACTIVE" } },
+          },
+        });
+        if (ownOngoing !== appointmentRelationshipIds.length) {
+          throw new ValidationError("Appointment sharing can only name the Patient's ongoing Hospitals");
+        }
+      }
+
       const [issueTime] = await transaction.$queryRaw<CaregiverInvitationIssueTimeRow[]>(Prisma.sql`
         SELECT issue_time AS "issuedAt",
                issue_time + INTERVAL '24 hours' AS "expiresAt"
@@ -360,6 +392,9 @@ export async function createCaregiverInvitation(
           status: CaregiverInvitationStatus.PENDING,
           issuedAt: issueTime.issuedAt,
           expiresAt: issueTime.expiresAt,
+          requestedRelationshipLabel: parsedInput.data.relationshipLabel ?? null,
+          requestedRelationshipLabelOther: parsedInput.data.relationshipLabelOther ?? null,
+          requestedScopes: { appointmentRelationshipIds, resources },
         },
         select: { id: true, issuedAt: true, expiresAt: true },
       });
@@ -373,6 +408,8 @@ export async function createCaregiverInvitation(
           metadata: {
             status: CaregiverInvitationStatus.PENDING,
             expiresAt: invitation.expiresAt.toISOString(),
+            requestedAppointmentHospitalCount: appointmentRelationshipIds.length,
+            requestedResources: resources.join(","),
           },
         },
         transaction,
@@ -392,12 +429,53 @@ export async function createCaregiverInvitation(
   }
 }
 
+/**
+ * AF-5: what accepting this invitation will share. Hospital names are listed only to the signed-in invitee whose
+ * identity matches the invitation; the public (token-only) preview gets the count.
+ */
+export type CaregiverInvitationRequestedSharing = {
+  relationshipLabel: string | null;
+  appointmentHospitalCount: number;
+  appointmentHospitalNames: string[] | null;
+  resources: CaregiverResource[];
+};
+
 export type CaregiverInvitationPreview = {
   status: CaregiverInvitationStatus;
   expiresAt: Date;
   patientDisplayName: string;
   acceptanceContractVersion: typeof FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION;
+  requestedSharing: CaregiverInvitationRequestedSharing;
 };
+
+const requestedSharingSelect = {
+  requestedRelationshipLabel: true,
+  requestedRelationshipLabelOther: true,
+  requestedScopes: true,
+} satisfies Prisma.CaregiverInvitationSelect;
+
+async function toRequestedSharing(
+  database: PrismaClient,
+  invitation: Prisma.CaregiverInvitationGetPayload<{ select: typeof requestedSharingSelect }> & { patientProfileId: string },
+  withHospitalNames: boolean,
+): Promise<CaregiverInvitationRequestedSharing> {
+  // An unparsable stored value lists nothing here; acceptance then fails closed.
+  const scopes = parseRequestedScopes(invitation.requestedScopes) ?? { appointmentRelationshipIds: [], resources: [] };
+  const hospitals = withHospitalNames && scopes.appointmentRelationshipIds.length > 0
+    ? await database.patientHospitalRelationship.findMany({
+        where: { id: { in: scopes.appointmentRelationshipIds }, patientProfileId: invitation.patientProfileId },
+        select: { id: true, hospital: { select: { name: true } } },
+      })
+    : [];
+  return {
+    relationshipLabel: formatCaregiverRelationshipLabel(invitation.requestedRelationshipLabel, invitation.requestedRelationshipLabelOther),
+    appointmentHospitalCount: scopes.appointmentRelationshipIds.length,
+    appointmentHospitalNames: withHospitalNames
+      ? scopes.appointmentRelationshipIds.flatMap((id) => hospitals.find((row) => row.id === id)?.hospital.name ?? [])
+      : null,
+    resources: scopes.resources,
+  };
+}
 
 function formatPersonDisplayName(person: { givenName: string | null; familyName: string | null }): string {
   const displayName = [person.givenName, person.familyName]
@@ -432,6 +510,8 @@ export async function previewCaregiverInvitation(
         recipientIdentityKeyHash: true,
         status: true,
         expiresAt: true,
+        patientProfileId: true,
+        ...requestedSharingSelect,
         patientProfile: {
           select: {
             person: { select: { givenName: true, familyName: true } },
@@ -464,6 +544,7 @@ export async function previewCaregiverInvitation(
       expiresAt: invitation.expiresAt,
       patientDisplayName: formatPersonDisplayName(invitation.patientProfile.person),
       acceptanceContractVersion: FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION,
+      requestedSharing: await toRequestedSharing(database, invitation, true),
     };
   } catch (error: unknown) {
     rethrowServiceError(error, "Caregiver invitation could not be previewed");
@@ -475,6 +556,7 @@ export type PublicCaregiverInvitationPreview = {
   expiresAt: Date;
   patientDisplayName: string;
   acceptanceContractVersion: typeof FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION;
+  requestedSharing: CaregiverInvitationRequestedSharing;
 };
 
 /** Token possession previews only the invitation's patient and the required next account step. */
@@ -496,6 +578,8 @@ export async function previewPublicCaregiverInvitation(
         recipientIdentityKeyHash: true,
         status: true,
         expiresAt: true,
+        patientProfileId: true,
+        ...requestedSharingSelect,
         patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
       },
     });
@@ -521,6 +605,7 @@ export async function previewPublicCaregiverInvitation(
       expiresAt: invitation.expiresAt,
       patientDisplayName: formatPersonDisplayName(invitation.patientProfile.person),
       acceptanceContractVersion: FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION,
+      requestedSharing: await toRequestedSharing(database, invitation, false),
     };
   } catch (error: unknown) {
     rethrowServiceError(error, "Caregiver invitation could not be previewed");
@@ -807,6 +892,7 @@ export async function acceptCaregiverInvitation(
   }
 
   const tokenHash = hashCaregiverInvitationToken(parsedToken.data);
+  const gates = resolveCaregiverSharingGates(dependencies.gates);
 
   try {
     const outcome = await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
@@ -814,8 +900,7 @@ export async function acceptCaregiverInvitation(
       const invitation = await transaction.caregiverInvitation.findUnique({
         where: { tokenHash },
         select: {
-          id: true,
-          patientProfileId: true,
+          ...activatableInvitationSelect,
           caregiverUserId: true,
           caregiverPersonId: true,
           recipientIdentityKeyHash: true,
@@ -873,15 +958,11 @@ export async function acceptCaregiverInvitation(
         throw new InfrastructureError("Caregiver acceptance time could not be recorded");
       }
 
-      const relationship = await transaction.caregiverRelationship.create({
-        data: {
-          patientProfileId: invitation.patientProfileId,
-          caregiverUserId: user.id,
-          sourceInvitationId: invitation.id,
-          status: CaregiverRelationshipStatus.ACTIVE,
-          activatedAt: acceptedAt,
-        },
-        select: { id: true },
+      const relationship = await activateCaregiverRelationship(transaction, {
+        invitation,
+        caregiver: { userId: user.id, personId: user.personId },
+        acceptedAt,
+        gates,
       });
 
       await recordAuditEvent(
@@ -902,7 +983,7 @@ export async function acceptCaregiverInvitation(
           actorUserId: user.id,
           action: "caregiver_relationship.activated",
           resourceType: "caregiver_relationship",
-          resourceId: relationship.id,
+          resourceId: relationship.relationshipId,
           metadata: { status: CaregiverRelationshipStatus.ACTIVE },
         },
         transaction,
@@ -911,7 +992,7 @@ export async function acceptCaregiverInvitation(
       return {
         kind: "ACCEPTED" as const,
         invitationId: invitation.id,
-        relationshipId: relationship.id,
+        relationshipId: relationship.relationshipId,
         acceptedAt,
       };
     });
@@ -928,6 +1009,39 @@ export async function acceptCaregiverInvitation(
     };
   } catch (error: unknown) {
     rethrowServiceError(error, "Caregiver invitation could not be accepted");
+  }
+}
+
+/**
+ * AF-5: ending a relationship (Patient revocation or caregiver withdrawal) revokes every actionable appointment and
+ * resource grant under it in the same transaction. Reads already deny through the relationship status; this keeps
+ * the grant records consistent with it.
+ */
+async function revokeRelationshipGrants(
+  transaction: Prisma.TransactionClient,
+  relationshipId: string,
+  actorUserId: string,
+  now: Date,
+): Promise<void> {
+  const where = { caregiverRelationshipId: relationshipId, status: { in: ["PENDING", "ACTIVE"] as ("PENDING" | "ACTIVE")[] } };
+  const [appointmentGrants, resourceGrants] = await Promise.all([
+    transaction.caregiverAppointmentGrant.findMany({ where, select: { id: true, status: true, contractVersion: true } }),
+    transaction.caregiverResourceGrant.findMany({ where, select: { id: true, status: true, resource: true, contractVersion: true } }),
+  ]);
+  const data = { status: "REVOKED" as const, revokedByUserId: actorUserId, revokedAt: now };
+  await transaction.caregiverAppointmentGrant.updateMany({ where: { id: { in: appointmentGrants.map(({ id }) => id) }, ...where }, data });
+  await transaction.caregiverResourceGrant.updateMany({ where: { id: { in: resourceGrants.map(({ id }) => id) }, ...where }, data });
+  for (const grant of appointmentGrants) {
+    await recordAuditEvent({
+      actorUserId, action: "caregiver_appointment_grant.revoked", resourceType: "caregiver_appointment_grant", resourceId: grant.id,
+      metadata: { contractVersion: grant.contractVersion, priorStatus: grant.status, reason: "RELATIONSHIP_ENDED" },
+    }, transaction);
+  }
+  for (const grant of resourceGrants) {
+    await recordAuditEvent({
+      actorUserId, action: "caregiver_resource_grant.revoked", resourceType: "caregiver_resource_grant", resourceId: grant.id,
+      metadata: { resource: grant.resource, contractVersion: grant.contractVersion, priorStatus: grant.status, reason: "RELATIONSHIP_ENDED" },
+    }, transaction);
   }
 }
 
@@ -978,6 +1092,7 @@ export async function revokeCaregiverRelationship(
       if (changed.count !== 1) {
         throw new ConflictError("The caregiver relationship changed concurrently");
       }
+      await revokeRelationshipGrants(transaction, relationship.id, actor.userId, now);
 
       await recordAuditEvent(
         {
@@ -1038,6 +1153,7 @@ export async function withdrawOwnCaregiverRelationship(
       if (changed.count !== 1) {
         throw new ConflictError("The caregiver relationship changed concurrently");
       }
+      await revokeRelationshipGrants(transaction, relationship.id, user.id, now);
 
       await recordAuditEvent(
         {
@@ -1052,6 +1168,67 @@ export async function withdrawOwnCaregiverRelationship(
     });
   } catch (error: unknown) {
     rethrowServiceError(error, "Caregiver relationship could not be withdrawn");
+  }
+}
+
+/** AF-5: the Patient edits a caregiver's label; optimistic version, audited without the free-text value. */
+export async function updateCaregiverRelationshipLabel(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: CaregiverRelationshipServiceDependencies = {},
+): Promise<{ relationshipLabelVersion: number }> {
+  assertFamilyPatientSelf(actor);
+  const parsed = updateCaregiverRelationshipLabelInputSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError();
+  }
+
+  try {
+    return await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
+      const patient = await assertPatientSelf(transaction, actor);
+      const relationship = await transaction.caregiverRelationship.findFirst({
+        where: { id: parsed.data.relationshipId, patientProfileId: patient.patientProfileId },
+        select: { id: true, status: true, relationshipLabel: true, relationshipLabelVersion: true },
+      });
+      if (!relationship) {
+        throw new NotFoundError();
+      }
+      if (relationship.status !== CaregiverRelationshipStatus.ACTIVE || relationship.relationshipLabelVersion !== parsed.data.expectedVersion) {
+        throw new ConflictError("The caregiver relationship changed concurrently");
+      }
+
+      const changed = await transaction.caregiverRelationship.updateMany({
+        where: {
+          id: relationship.id,
+          patientProfileId: patient.patientProfileId,
+          status: CaregiverRelationshipStatus.ACTIVE,
+          relationshipLabelVersion: parsed.data.expectedVersion,
+        },
+        data: {
+          relationshipLabel: parsed.data.relationshipLabel,
+          relationshipLabelOther: parsed.data.relationshipLabelOther ?? null,
+          relationshipLabelVersion: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) {
+        throw new ConflictError("The caregiver relationship changed concurrently");
+      }
+
+      const version = parsed.data.expectedVersion + 1;
+      await recordAuditEvent(
+        {
+          actorUserId: actor.userId,
+          action: "caregiver_relationship.label_updated",
+          resourceType: "caregiver_relationship",
+          resourceId: relationship.id,
+          metadata: { fromLabel: relationship.relationshipLabel, toLabel: parsed.data.relationshipLabel, relationshipLabelVersion: version },
+        },
+        transaction,
+      );
+      return { relationshipLabelVersion: version };
+    });
+  } catch (error: unknown) {
+    rethrowServiceError(error, "Caregiver relationship label could not be updated");
   }
 }
 

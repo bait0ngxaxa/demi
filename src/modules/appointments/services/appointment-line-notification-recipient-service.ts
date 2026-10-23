@@ -10,7 +10,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 
-import { FAMILY_APPOINTMENT_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_READ_CONTRACTS } from "@/modules/family/domain/appointment-grant-contract";
 import { appointmentGrantCaregiverWhere } from "@/modules/family/policies/appointment-grant-policy";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 
@@ -111,7 +111,7 @@ async function activeCaregiverRecipients(
   const candidates = await transaction.caregiverAppointmentGrant.findMany({
     where: {
       patientHospitalRelationshipId,
-      contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT,
+      contractVersion: { in: [...FAMILY_APPOINTMENT_READ_CONTRACTS] },
       status: CaregiverAppointmentGrantStatus.ACTIVE,
       revokedAt: null,
     },

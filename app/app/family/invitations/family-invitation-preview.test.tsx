@@ -81,6 +81,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
         expiresAt: "2026-10-02T00:00:00Z",
         patientDisplayName: "สมชาย ใจดี",
         acceptanceContractVersion: "family-delegation-v1",
+        requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] },
       },
     };
     const markup = render();
@@ -91,7 +92,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
   });
 
   it.each(["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"] as const)("keeps bounded recipient %s preview and never mutates on render/preview", async (invitationStatus) => {
-    harness.preview = { status: "READY", invitation: { invitationStatus, patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z", acceptanceContractVersion: "family-delegation-v1" } };
+    harness.preview = { status: "READY", invitation: { invitationStatus, patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z", acceptanceContractVersion: "family-delegation-v1", requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] } } };
     const markup = render();
     expect(markup).toContain("สมชาย ใจดี");
     expect(markup.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล")).toBe(invitationStatus === "PENDING");
@@ -100,5 +101,15 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     expect(harness.previewAction).toHaveBeenCalledWith("a".repeat(43));
     expect(harness.accept).not.toHaveBeenCalled();
     expect(harness.reject).not.toHaveBeenCalled();
+  });
+  it("AF-5: lists the exact acceptance text of every requested scope; the public preview counts Hospitals without naming them", () => {
+    const requestedSharing = { relationshipLabel: "บุตร", appointmentHospitalCount: 2, appointmentHospitalNames: null, resources: ["PROFILE_SUMMARY" as const] };
+    harness.preview = { status: "NEEDS_ACCOUNT", invitation: { expiresAt: "2026-10-02T00:00:00Z", patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1", requestedSharing } };
+    const publicMarkup = render();
+    for (const text of ["บุตร", "เมื่อตอบรับ คุณยอมรับสิทธิ์ต่อไปนี้พร้อมกัน", "2 หน่วยบริการที่ผู้ป่วยเลือก", "90 วันย้อนหลัง", "ข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(publicMarkup).toContain(text);
+
+    harness.preview = { status: "READY", invitation: { invitationStatus: "PENDING", patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z",
+      acceptanceContractVersion: "family-delegation-v1", requestedSharing: { ...requestedSharing, appointmentHospitalNames: ["รพ.สต. บ้านใหม่", "โรงพยาบาลแม่ข่าย"] } } };
+    expect(render()).toContain("นัดหมาย: รพ.สต. บ้านใหม่, โรงพยาบาลแม่ข่าย");
   });
 });

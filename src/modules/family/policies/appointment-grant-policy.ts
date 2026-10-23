@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma, Role } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import { FAMILY_APPOINTMENT_READ_CONTRACT } from "../domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_READ_CONTRACTS } from "../domain/appointment-grant-contract";
 
 export function appointmentGrantOwnerWhere(actor: ActorContext): Prisma.CaregiverAppointmentGrantWhereInput {
   return {
@@ -24,7 +24,7 @@ export function appointmentGrantCaregiverWhere(
   status: "PENDING" | "ACTIVE",
 ): Prisma.CaregiverAppointmentGrantWhereInput {
   return {
-    contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT,
+    contractVersion: { in: [...FAMILY_APPOINTMENT_READ_CONTRACTS] },
     status,
     ...(status === "ACTIVE" ? { acceptedByUserId: actor.userId, acceptedAt: { not: null }, revokedAt: null } : {}),
     caregiverUserId: actor.userId,

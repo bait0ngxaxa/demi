@@ -29,7 +29,7 @@ const appointment = {
   responsibleProfession: null, osmAtCreationDisplayName: null, acknowledgement: null, cancellationRequests: [],
 };
 const family = {
-  kind: "FAMILY" as const, key: grantId, grantId, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. บ้านใหม่",
+  kind: "FAMILY" as const, key: grantId, grantId, caregiverRelationshipId: "99999999-9999-4999-8999-999999999999", contractVersion: "family-appointment-read-v1" as const, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. บ้านใหม่",
 };
 const selfContext: PersonalAppointmentHubPageContext = {
   subjects: [{ kind: "SELF", key: "me" }, family],
@@ -71,7 +71,7 @@ describe("AF-4 appointment hub view", () => {
   it("shows a family member's shared upcoming appointments read-only through the grant routes", () => {
     const markup = renderToStaticMarkup(<PersonalAppointmentHub context={{
       ...selfContext, selected: family, self: null,
-      family: { appointments: [{ appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED }], nextCursor: null },
+      family: { appointments: [{ appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
     }} />);
 
     expect(markup).toContain("นัดหมายของ แม่ ใจดี ที่ รพ.สต. บ้านใหม่");
@@ -85,6 +85,17 @@ describe("AF-4 appointment hub view", () => {
 
     const unavailable = renderToStaticMarkup(<PersonalAppointmentHub context={{ ...selfContext, selected: family, self: null, family: "UNAVAILABLE" }} />);
     expect(unavailable).toContain("สิทธิ์อาจถูกยกเลิกแล้ว");
+  });
+
+  it("AF-5: a v2 grant shows the family member's 90-day history and links to the health summary", () => {
+    const v2 = { ...family, contractVersion: "family-appointment-read-v2" as const };
+    const markup = renderToStaticMarkup(<PersonalAppointmentHub context={{
+      ...selfContext, subjects: [selfContext.subjects[0]!, v2], selected: v2, tab: "history", self: null,
+      family: { appointments: [], nextCursor: null, contractVersion: "family-appointment-read-v2" },
+    }} />);
+    expect(markup).toContain("ไม่มีประวัติการนัดหมายในช่วง 90 วันที่ผ่านมา");
+    expect(markup).not.toContain("ภายใต้ความยินยอมปัจจุบัน");
+    expect(markup).toContain(`href="/app/family/members/${family.caregiverRelationshipId}"`);
   });
 
   it("hides the switcher when the account has a single entry", () => {

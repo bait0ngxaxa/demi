@@ -8,6 +8,7 @@ export const proposeAppointmentGrantSchema = z.object({
 export const delegatedAppointmentListSchema = z.object({
   grantId: appointmentGrantIdSchema,
   cursor: appointmentGrantIdSchema.optional(),
+  tab: z.enum(["upcoming", "history"]).optional(),
 }).strict();
 export const appointmentGrantManagementSchema = z.object({
   patientGrantsCursor: appointmentGrantIdSchema.optional(),

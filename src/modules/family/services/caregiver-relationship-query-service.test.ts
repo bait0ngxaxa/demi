@@ -5,7 +5,8 @@ import { caregiverRelationshipQueryInternals as queries } from "./caregiver-rela
 
 const names = { givenName: true, familyName: true, nameIsSelfAsserted: true };
 const invitationFields = { id: true, status: true, issuedAt: true, expiresAt: true };
-const relationshipFields = { id: true, status: true, activatedAt: true, revokedAt: true, withdrawnAt: true };
+const relationshipFields = { id: true, status: true, activatedAt: true, revokedAt: true, withdrawnAt: true,
+  relationshipLabel: true, relationshipLabelOther: true, relationshipLabelVersion: true };
 
 describe("Family management query projections", () => {
   it("selects only lifecycle and caregiver names for Patient management", () => {
@@ -28,8 +29,8 @@ describe("Family management query projections", () => {
       invitationId: "invite", status: CaregiverInvitationStatus.EXPIRED, issuedAt: now, expiresAt: now,
       participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
     });
-    expect(queries.asRelationshipItem({ id: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null }, participant)).toEqual({
-      relationshipId: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null,
+    expect(queries.asRelationshipItem({ id: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null, relationshipLabel: null, relationshipLabelOther: null, relationshipLabelVersion: 1 }, participant)).toEqual({
+      relationshipId: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null, relationshipLabel: null, relationshipLabelOther: null, relationshipLabelVersion: 1,
       participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
     });
   });

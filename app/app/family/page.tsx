@@ -30,10 +30,11 @@ export default async function FamilyManagementPage({
     caregiverGrantsCursor: search.caregiverGrantsCursor,
     hospitalsCursor: search.hospitalsCursor,
   });
-  const { overview, management } = await getFamilyAppointmentWorkspacePageContext(
+  const { overview, management, resources } = await getFamilyAppointmentWorkspacePageContext(
     parsedCursors.success ? parsedCursors.data : {}, grantCursors.success ? grantCursors.data : {},
   );
+  const sharingOptions = { hospitals: management?.patient?.hospitals ?? [], resources: resources?.availableResources ?? [] };
 
-  return <><FamilyManagementWorkspace overview={overview} appointmentSharingEnabled={management !== null} />
-    {management ? <AppointmentSharingWorkspace management={management} relationships={overview.patient?.relationships ?? []} /> : null}</>;
+  return <><FamilyManagementWorkspace overview={overview} appointmentSharingEnabled={management !== null} sharingOptions={sharingOptions} />
+    {management ? <AppointmentSharingWorkspace management={management} relationships={overview.patient?.relationships ?? []} resources={resources} /> : null}</>;
 }

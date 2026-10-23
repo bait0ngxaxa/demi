@@ -34,7 +34,7 @@ describe("appointment grant contract and gate", () => {
   });
   it("requires current known accepted account-bound authority without caregiver role inheritance", () => {
     const where = appointmentGrantCaregiverWhere(caregiver, "ACTIVE");
-    expect(where).toMatchObject({ contractVersion: "family-appointment-read-v1", status: "ACTIVE", acceptedByUserId: caregiver.userId,
+    expect(where).toMatchObject({ contractVersion: { in: ["family-appointment-read-v1", "family-appointment-read-v2"] }, status: "ACTIVE", acceptedByUserId: caregiver.userId,
       caregiverUserId: caregiver.userId, caregiverPersonId: caregiver.personId, caregiverUser: { is: { status: "ACTIVE", personId: caregiver.personId } },
       proposedByUser: { is: { status: "ACTIVE", roles: { some: { role: "PATIENT" } } } },
       caregiverRelationship: { is: { status: "ACTIVE", sourceInvitation: { is: { caregiverPersonId: caregiver.personId, status: "ACCEPTED" } } } },

@@ -77,7 +77,7 @@ describe("Family Server Actions", () => {
 
     const result = await createCaregiverInvitationAction(
       initialCreateCaregiverInvitationActionState,
-      createFormData({ nationalId: "1000000000009" }),
+      createFormData({ nationalId: "1000000000009", relationshipLabel: "CHILD" }),
     );
 
     expect(result).toEqual({
@@ -110,7 +110,7 @@ describe("Family Server Actions", () => {
 
     const result = await createCaregiverInvitationAction(
       initialCreateCaregiverInvitationActionState,
-      createFormData({ nationalId }),
+      createFormData({ nationalId, relationshipLabel: "CHILD" }),
     );
 
     expect(result).toEqual({
@@ -125,12 +125,29 @@ describe("Family Server Actions", () => {
   it("rejects malformed National ID before resolving the actor or recipient", async () => {
     const result = await createCaregiverInvitationAction(
       initialCreateCaregiverInvitationActionState,
-      createFormData({ nationalId: "not-an-id" }),
+      createFormData({ nationalId: "not-an-id", relationshipLabel: "CHILD" }),
     );
 
-    expect(result).toEqual({ status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนให้ถูกต้อง" });
+    expect(result).toEqual({ status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและความสัมพันธ์ให้ถูกต้อง" });
     expect(mocks.getActor).not.toHaveBeenCalled();
     expect(mocks.createInvitation).not.toHaveBeenCalled();
+  });
+
+  it("AF-5: requires a relationship label and forwards exactly the chosen scopes", async () => {
+    expect(await createCaregiverInvitationAction(initialCreateCaregiverInvitationActionState, createFormData({ nationalId: "1000000000009" })))
+      .toEqual({ status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและความสัมพันธ์ให้ถูกต้อง" });
+    expect(mocks.createInvitation).not.toHaveBeenCalled();
+
+    mocks.createInvitation.mockResolvedValue({ plaintextToken: "a".repeat(43), expiresAt: new Date("2026-10-02T00:00:00.000Z") });
+    const form = createFormData({ nationalId: "1000000000009", relationshipLabel: "OTHER", relationshipLabelOther: " เพื่อนบ้าน " });
+    form.append("appointmentRelationshipIds", "33333333-3333-4333-8333-333333333333");
+    form.append("resources", "PROFILE_SUMMARY");
+    form.append("patientProfileId", "untrusted");
+    expect(await createCaregiverInvitationAction(initialCreateCaregiverInvitationActionState, form)).toMatchObject({ status: "SUCCESS" });
+    expect(mocks.createInvitation).toHaveBeenCalledWith(actor, {
+      nationalId: "1000000000009", relationshipLabel: "OTHER", relationshipLabelOther: "เพื่อนบ้าน",
+      appointmentRelationshipIds: ["33333333-3333-4333-8333-333333333333"], resources: ["PROFILE_SUMMARY"],
+    });
   });
 
   it("does not expose invite identifiers or secrets in preview results", async () => {

@@ -3,7 +3,7 @@ import { Prisma, type AppointmentStatus, Role } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_WINDOW_MS } from "@/modules/family/domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, FAMILY_APPOINTMENT_WINDOW_MS } from "@/modules/family/domain/appointment-grant-contract";
 import { acceptAppointmentGrant, proposeAppointmentGrant, revokeAppointmentGrant } from "@/modules/family/services/appointment-grant-service";
 import { getAppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
 import { getDelegatedAppointment, listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
@@ -63,6 +63,10 @@ async function activeGrant(f: Fixture): Promise<string> {
   await acceptAppointmentGrant(f.caregiver, grantId, deps);
   return grantId;
 }
+/** A grant accepted under the v1 contract before AF-5 (new proposals are v2). */
+async function activeV1Grant(f: Fixture): Promise<string> {
+  return (await db.caregiverAppointmentGrant.create({ data: { ...grantData(f), status: "ACTIVE", acceptedByUserId: f.caregiver.userId, acceptedAt: now } })).id;
+}
 async function appointment(f: Fixture, at: Date = now, status: AppointmentStatus = "SCHEDULED", id: string = randomUUID()): Promise<string> {
   const row = await db.patientAppointment.create({ data: { id, patientHospitalRelationshipId: f.phrId, createdByUserId: f.patient.userId,
     type: "FOLLOW_UP", scheduledAt: at, status, submissionNonce: randomUUID(), durationMinutes: null, locationType: null,
@@ -98,7 +102,7 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
   afterEach(clear);
   afterAll(async () => { await db.$disconnect(); });
 
-  it("requires separate acceptance, preserves exactly six fields/nulls and audits only lifecycle", async () => {
+  it("requires separate acceptance, preserves the v2 fields/nulls and audits only lifecycle", async () => {
     const f = await fixture();
     const id = await appointment(f);
     await expect(listDelegatedAppointments(f.caregiver, { grantId: randomUUID() }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -106,16 +110,18 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     await expect(listDelegatedAppointments(f.caregiver, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await acceptAppointmentGrant(f.caregiver, grantId, deps);
     const page = await listDelegatedAppointments(f.caregiver, { grantId }, deps);
-    expect(page.appointments).toEqual([{ appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED" }]);
+    // AF-5: a new proposal is the v2 contract; its additions are present and null here.
+    expect(page.appointments).toEqual([{ appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
+      extension: { locationDetail: "SECRET-LOCATION", responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null } }]);
     // E4 (ก-20): the detail adds the Hospital contact phone only; the Patient phone is never projected to a caregiver.
     expect(await getDelegatedAppointment(f.caregiver, grantId, id, deps)).toEqual({ ...page.appointments[0], contactPhones: { hospitalPhone: null, patientPhone: null } });
     const management = await getAppointmentGrantManagement(f.caregiver, {}, deps);
-    expect(Object.keys(management?.caregiver.grants[0] ?? {}).sort()).toEqual(["grantId", "status", "proposedAt", "acceptedAt", "revokedAt", "participant", "hospitalName"].sort());
+    expect(Object.keys(management?.caregiver.grants[0] ?? {}).sort()).toEqual(["grantId", "status", "proposedAt", "acceptedAt", "revokedAt", "participant", "hospitalName", "contractVersion"].sort());
     expect(JSON.stringify(management)).not.toMatch(/SECRET|hospitalNumber|hospitalCode|patientProfileId/);
     const audits = await db.auditEvent.findMany({ orderBy: { createdAt: "asc" }, select: { action: true, metadata: true, resourceId: true, actorUserId: true } });
     expect(audits.map((a) => a.action)).toEqual(["caregiver_appointment_grant.proposed", "caregiver_appointment_grant.accepted"]);
     expect(audits.map((a) => a.actorUserId)).toEqual([f.patient.userId, f.caregiver.userId]);
-    expect(audits.every((a) => a.resourceId === grantId && JSON.stringify(a.metadata) === JSON.stringify({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT }))).toBe(true);
+    expect(audits.every((a) => a.resourceId === grantId && JSON.stringify(a.metadata) === JSON.stringify({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 }))).toBe(true);
     expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: grantId } })).toMatchObject({ acceptedByUserId: f.caregiver.userId, acceptedAt: now, status: "ACTIVE" });
   });
 
@@ -416,8 +422,8 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     }
   });
 
-  it("uses inclusive now/exclusive 90 days and current statuses for list/detail", async () => {
-    const f = await fixture(); const grantId = await activeGrant(f);
+  it("uses inclusive now/exclusive 90 days and current statuses for v1 list/detail", async () => {
+    const f = await fixture(); const grantId = await activeV1Grant(f);
     const eligible: string[] = [];
     for (const [at, status, included] of [
       [now, "SCHEDULED", true], [new Date(now.getTime() - 1), "SCHEDULED", false],

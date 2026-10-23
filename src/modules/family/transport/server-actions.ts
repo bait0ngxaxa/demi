@@ -15,6 +15,7 @@ import {
   reissueCaregiverInvitationLink,
   revokeCaregiverRelationship,
   revokePendingCaregiverInvitation,
+  updateCaregiverRelationshipLabel,
   withdrawOwnCaregiverRelationship,
 } from "../services/caregiver-relationship-service";
 import {
@@ -33,6 +34,15 @@ import { CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE } from "./action-state";
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+function optionalFormString(formData: FormData, key: string): string | undefined {
+  const value = formString(formData, key).trim();
+  return value === "" ? undefined : value;
+}
+
+function formStrings(formData: FormData, key: string): string[] {
+  return formData.getAll(key).filter((value): value is string => typeof value === "string");
 }
 
 function safeMutationError(error: unknown): { status: "ERROR"; message: string } {
@@ -61,12 +71,18 @@ export async function createCaregiverInvitationAction(
   _previousState: CreateCaregiverInvitationActionState,
   formData: FormData,
 ): Promise<CreateCaregiverInvitationActionState> {
+  const relationshipLabel = optionalFormString(formData, "relationshipLabel");
   const parsed = createCaregiverInvitationInputSchema.safeParse({
     nationalId: formString(formData, "nationalId"),
+    relationshipLabel,
+    relationshipLabelOther: relationshipLabel === "OTHER" ? optionalFormString(formData, "relationshipLabelOther") : undefined,
+    appointmentRelationshipIds: formStrings(formData, "appointmentRelationshipIds"),
+    resources: formStrings(formData, "resources"),
   });
 
-  if (!parsed.success) {
-    return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนให้ถูกต้อง" };
+  // AF-5: the add-caregiver form always names the relationship.
+  if (!parsed.success || !parsed.data.relationshipLabel) {
+    return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและความสัมพันธ์ให้ถูกต้อง" };
   }
 
   try {
@@ -95,7 +111,7 @@ export async function createCaregiverInvitationAction(
       };
     }
     if (error instanceof ApplicationError && error.code === "VALIDATION") {
-      return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนให้ถูกต้อง" };
+      return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและรายการที่เลือกแชร์ให้ถูกต้อง" };
     }
 
     return { status: "ERROR", message: "ระบบไม่สามารถสร้างคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
@@ -122,6 +138,7 @@ export async function previewCaregiverInvitationAction(
         expiresAt: invitation.expiresAt.toISOString(),
         patientDisplayName: invitation.patientDisplayName,
         acceptanceContractVersion: invitation.acceptanceContractVersion,
+        requestedSharing: invitation.requestedSharing,
       },
     };
   } catch (error: unknown) {
@@ -135,6 +152,7 @@ export async function previewCaregiverInvitationAction(
               expiresAt: invitation.expiresAt.toISOString(),
               patientDisplayName: invitation.patientDisplayName,
               acceptanceContractVersion: invitation.acceptanceContractVersion,
+              requestedSharing: invitation.requestedSharing,
             },
           };
         }
@@ -291,6 +309,26 @@ export async function withdrawOwnCaregiverRelationshipAction(
     revalidatePath("/app/family/grants/[grantId]/appointments", "page");
     revalidatePath("/app/family/grants/[grantId]/appointments/[appointmentId]", "page");
     return { status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" };
+  } catch (error: unknown) {
+    return safeMutationError(error);
+  }
+}
+
+export async function updateCaregiverRelationshipLabelAction(
+  _previousState: FamilyMutationActionState,
+  formData: FormData,
+): Promise<FamilyMutationActionState> {
+  const relationshipLabel = formString(formData, "relationshipLabel");
+  try {
+    const actor = await getProtectedApplicationActor();
+    await updateCaregiverRelationshipLabel(actor, {
+      relationshipId: formString(formData, "relationshipId"),
+      relationshipLabel,
+      relationshipLabelOther: relationshipLabel === "OTHER" ? optionalFormString(formData, "relationshipLabelOther") : undefined,
+      expectedVersion: Number(formString(formData, "expectedVersion")),
+    });
+    revalidatePath("/app/family");
+    return { status: "SUCCESS", message: "บันทึกความสัมพันธ์แล้ว" };
   } catch (error: unknown) {
     return safeMutationError(error);
   }

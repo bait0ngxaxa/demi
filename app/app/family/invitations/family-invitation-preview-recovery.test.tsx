@@ -76,6 +76,7 @@ it("checks invitation status after a lost accept response without replaying the 
       expiresAt: "2026-10-17T00:00:00.000Z",
       patientDisplayName: "สมชาย ใจดี",
       acceptanceContractVersion: "family-delegation-v1",
+      requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] },
     },
   }).mockResolvedValueOnce({
     status: "READY",
@@ -84,6 +85,7 @@ it("checks invitation status after a lost accept response without replaying the 
       expiresAt: "2026-10-17T00:00:00.000Z",
       patientDisplayName: "สมชาย ใจดี",
       acceptanceContractVersion: "family-delegation-v1",
+      requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] },
     },
   });
   mocks.accept.mockRejectedValue(new TypeError("Failed to fetch after commit"));
@@ -135,6 +137,7 @@ it("allows a deliberate answer only after verification confirms the invitation i
       expiresAt: "2026-10-17T00:00:00.000Z",
       patientDisplayName: "สมชาย ใจดี",
       acceptanceContractVersion: "family-delegation-v1" as const,
+      requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] },
     },
   };
   mocks.preview.mockResolvedValueOnce(pendingPreview).mockResolvedValueOnce(pendingPreview);

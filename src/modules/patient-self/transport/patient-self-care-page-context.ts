@@ -14,6 +14,7 @@ import {
   type DelegatedAppointmentPage,
   type DelegatedAppointmentSubject,
 } from "@/modules/family/services/delegated-appointment-query-service";
+import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "@/modules/family/domain/appointment-grant-contract";
 import {
   ForbiddenError,
   NotFoundError,
@@ -168,7 +169,10 @@ export type PersonalAppointmentHubPageContext = {
   selected: PersonalAppointmentHubSubject | null;
   tab: PatientSelfAppointmentHubTab;
   self: PatientSelfAppointmentHub | null;
-  /** Upcoming tab of a family member only; UNAVAILABLE when the grant stopped authorizing between reads. */
+  /**
+   * A family member's list: upcoming always, history only under a v2 grant (AF-5); UNAVAILABLE when the grant
+   * stopped authorizing between reads.
+   */
   family: DelegatedAppointmentPage | "UNAVAILABLE" | null;
 };
 
@@ -177,9 +181,10 @@ const hubLocatorSchema = z.string().uuid().transform((value) => value.toLowerCas
 async function loadFamilyAppointments(
   actor: ActorContext,
   grantId: string,
+  tab: PatientSelfAppointmentHubTab,
   cursor: string | undefined,
 ): Promise<DelegatedAppointmentPage | "UNAVAILABLE"> {
-  for (const input of cursor ? [{ grantId, cursor }, { grantId }] : [{ grantId }]) {
+  for (const input of cursor ? [{ grantId, tab, cursor }, { grantId, tab }] : [{ grantId, tab }]) {
     try {
       return await listDelegatedAppointments(actor, input);
     } catch (error: unknown) {
@@ -231,8 +236,8 @@ export async function getPersonalAppointmentHubPageContext(
       self: selected?.kind === "SELF"
         ? await listOwnPatientAppointmentHub(actor, { tab, hospital: value("hospital"), cursor: value("cursor") })
         : null,
-      family: selected?.kind === "FAMILY" && tab === "upcoming"
-        ? await loadFamilyAppointments(actor, selected.grantId, cursor.success ? cursor.data : undefined)
+      family: selected?.kind === "FAMILY" && (tab === "upcoming" || selected.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT_V2)
+        ? await loadFamilyAppointments(actor, selected.grantId, tab, cursor.success ? cursor.data : undefined)
         : null,
     };
   }, returnTo, PATIENT_ACCESS_UNAVAILABLE);

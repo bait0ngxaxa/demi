@@ -113,6 +113,9 @@ describe("Caregiver invitation lost-response boundary", () => {
         status: CaregiverInvitationStatus.PENDING,
         issuedAt,
         expiresAt,
+        requestedRelationshipLabel: null,
+        requestedRelationshipLabelOther: null,
+        requestedScopes: { appointmentRelationshipIds: [], resources: [] },
       },
       select: { id: true, issuedAt: true, expiresAt: true },
     });

@@ -11,6 +11,17 @@ export function isFamilyDelegatedAppointmentReadEnabled(): boolean {
 }
 
 /**
+ * AF-5 release gate G-01: caregiver health-plan and medication sharing stays off until the partner agency approves.
+ * Turning it off denies existing grants immediately; the grants stay recorded. Invalid values fail closed.
+ */
+export function isFamilyPlanMedicationSharingEnabled(): boolean {
+  const parsed = z.enum(["true", "false"]).optional().safeParse(
+    process.env.FAMILY_PLAN_MEDICATION_SHARING_ENABLED,
+  );
+  return parsed.success && parsed.data === "true";
+}
+
+/**
  * Medication LINE reminder emergency kill switch, parsed like
  * DEMI_LINE_MINI_APP_DISABLED: only unset/empty/"false" leaves reminders running.
  */

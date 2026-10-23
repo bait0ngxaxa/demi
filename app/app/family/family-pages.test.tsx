@@ -63,6 +63,9 @@ describe("Family relationship management pages", () => {
             activatedAt: new Date("2026-10-01T00:00:00.000Z"),
             revokedAt: null,
             withdrawnAt: null,
+            relationshipLabel: null,
+            relationshipLabelOther: null,
+            relationshipLabelVersion: 1,
           },
         ],
         nextRelationshipsCursor: null,
@@ -90,7 +93,7 @@ describe("Family relationship management pages", () => {
     const patients = ["สมชาย", "สมบัติ"];
     const relationships = (givenNames: string[], prefix: string) => givenNames.map((givenName, index) => ({
       participant: { givenName, familyName: "ใจดี", nameIsSelfAsserted: false }, relationshipId: `${prefix}-${index}`,
-      status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null,
+      status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null, relationshipLabel: null, relationshipLabelOther: null, relationshipLabelVersion: 1,
     }));
     const invitations = (givenNames: string[], prefix: string) => givenNames.map((givenName, index) => ({
       participant: { givenName, familyName: "ใจดี", nameIsSelfAsserted: false }, invitationId: `${prefix}-${index}`,
@@ -117,7 +120,7 @@ describe("Family relationship management pages", () => {
   it("uses a truthful name fallback without substituting private identifiers", () => {
     const now = new Date();
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ ...emptyOverview, caregiver: {
-      ...emptyOverview.caregiver, relationships: [{ participant: { givenName: null, familyName: " ", nameIsSelfAsserted: false }, relationshipId: "unnamed", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null }],
+      ...emptyOverview.caregiver, relationships: [{ participant: { givenName: null, familyName: " ", nameIsSelfAsserted: false }, relationshipId: "unnamed", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null, relationshipLabel: null, relationshipLabelOther: null, relationshipLabelVersion: 1 }],
     } }} />);
     expect(markup).toContain("ไม่ระบุชื่อผู้ป่วย");
     expect(markup).not.toContain("identityKeyHash");

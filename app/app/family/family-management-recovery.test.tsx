@@ -86,6 +86,11 @@ describe("Caregiver invitation lost-response recovery", () => {
     act(() => root.render(createElement(FamilyManagementWorkspace, { overview: emptyOverview })));
 
     container.querySelector<HTMLInputElement>('input[name="nationalId"]')!.value = "1000000000009";
+    const label = container.querySelector<HTMLSelectElement>('select[name="relationshipLabel"]')!;
+    await act(async () => {
+      label.value = "CHILD";
+      label.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await act(async () => buttonByText("สร้างลิงก์คำเชิญ").click());
 
     expect(committedInvitations.size).toBe(1);

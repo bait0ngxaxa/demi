@@ -1,4 +1,12 @@
-import type { CaregiverInvitationStatus } from "@prisma/client";
+import type { CaregiverInvitationStatus, CaregiverResource } from "@prisma/client";
+
+/** AF-5: what accepting will share; hospital names only for the signed-in, identity-matched invitee. */
+export type CaregiverInvitationRequestedSharingView = {
+  relationshipLabel: string | null;
+  appointmentHospitalCount: number;
+  appointmentHospitalNames: string[] | null;
+  resources: CaregiverResource[];
+};
 
 export const CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE = "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน";
 
@@ -20,6 +28,7 @@ export type CaregiverInvitationPreviewActionState =
         expiresAt: string;
         patientDisplayName: string;
         acceptanceContractVersion: string;
+        requestedSharing: CaregiverInvitationRequestedSharingView;
       };
     }
   | {
@@ -29,6 +38,7 @@ export type CaregiverInvitationPreviewActionState =
         expiresAt: string;
         patientDisplayName: string;
         acceptanceContractVersion: string;
+        requestedSharing: CaregiverInvitationRequestedSharingView;
       };
     }
   | { status: "INVALID"; message: string }

@@ -967,6 +967,7 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
 
     // Family.
     await tx.caregiverAppointmentGrant.deleteMany({ where: { caregiverRelationshipId: { in: caregiverRelationshipIds } } });
+    await tx.caregiverResourceGrant.deleteMany({ where: { caregiverRelationshipId: { in: caregiverRelationshipIds } } });
     await tx.caregiverRelationship.deleteMany({ where: { id: { in: caregiverRelationshipIds } } });
     await tx.caregiverInvitation.deleteMany({ where: { OR: [profile, { issuedByUserId: users }] } });
 

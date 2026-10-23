@@ -6,6 +6,7 @@ import {
   Prisma,
   Role,
   UserStatus,
+  type CaregiverRelationshipLabel,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -39,6 +40,10 @@ export type FamilyRelationshipManagementItem = {
   activatedAt: Date;
   revokedAt: Date | null;
   withdrawnAt: Date | null;
+  /** AF-5: the Patient-chosen label, shown to both ends; the version guards the Patient's edit. */
+  relationshipLabel: CaregiverRelationshipLabel | null;
+  relationshipLabelOther: string | null;
+  relationshipLabelVersion: number;
 };
 
 export type FamilyManagementOverview = {
@@ -76,6 +81,9 @@ const relationshipLifecycleSelect = {
   activatedAt: true,
   revokedAt: true,
   withdrawnAt: true,
+  relationshipLabel: true,
+  relationshipLabelOther: true,
+  relationshipLabelVersion: true,
 } satisfies Prisma.CaregiverRelationshipSelect;
 
 const invitationManagementSelect = {
@@ -147,6 +155,9 @@ function asRelationshipItem(
     activatedAt: relationship.activatedAt,
     revokedAt: relationship.revokedAt,
     withdrawnAt: relationship.withdrawnAt,
+    relationshipLabel: relationship.relationshipLabel,
+    relationshipLabelOther: relationship.relationshipLabelOther,
+    relationshipLabelVersion: relationship.relationshipLabelVersion,
   };
 }
 

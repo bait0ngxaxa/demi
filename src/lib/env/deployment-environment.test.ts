@@ -72,7 +72,17 @@ describe("deployment environment check", () => {
       miniAppProvisioned: false,
       miniAppKillSwitch: false,
       familyDelegatedAppointmentRead: false,
+      familyPlanMedicationSharing: false,
     });
+  });
+
+  it("reports the AF-5 plan/medication sharing gate and rejects a non-boolean value", () => {
+    vi.stubEnv("FAMILY_PLAN_MEDICATION_SHARING_ENABLED", "true");
+    expect(checkDeploymentEnvironment("production").features.familyPlanMedicationSharing).toBe(true);
+    vi.stubEnv("FAMILY_PLAN_MEDICATION_SHARING_ENABLED", "yes");
+    const report = checkDeploymentEnvironment("production");
+    expect(status(report, "FAMILY_PLAN_MEDICATION_SHARING_ENABLED")).toBe("INVALID");
+    expect(report.features.familyPlanMedicationSharing).toBe(false);
   });
 
   it("rejects test National IDs in the production profile", () => {

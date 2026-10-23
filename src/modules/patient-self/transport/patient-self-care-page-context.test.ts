@@ -95,9 +95,9 @@ describe("AF-4 appointment hub page context", () => {
     relationshipId: "44444444-4444-4444-8444-444444444444", hospitalCode: "H-1", hospitalName: "โรงพยาบาล ก",
     hospitalNumber: null, hospitalStatus: "ACTIVE" as const, careEndedAt: null,
   };
-  const subject = (id: string) => ({ grantId: id, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. ข" });
+  const subject = (id: string) => ({ grantId: id, caregiverRelationshipId: "99999999-9999-4999-8999-999999999999", contractVersion: "family-appointment-read-v1" as const, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. ข" });
   const selfHub = { tab: "upcoming" as const, relationships: [ownRelationship], endedRelationships: [], selectedRelationshipId: null, appointments: [], nextCursor: null };
-  const familyPage = { appointments: [], nextCursor: null };
+  const familyPage = { appointments: [], nextCursor: null, contractVersion: "family-appointment-read-v1" as const };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,7 +121,7 @@ describe("AF-4 appointment hub page context", () => {
     const context = await getPersonalAppointmentHubPageContext({ subject: grantId.toUpperCase(), cursor });
 
     expect(context).toMatchObject({ selected: { kind: "FAMILY", key: grantId }, tab: "upcoming", self: null, family: familyPage });
-    expect(listDelegatedAppointments).toHaveBeenCalledWith(patientActor, { grantId, cursor });
+    expect(listDelegatedAppointments).toHaveBeenCalledWith(patientActor, { grantId, tab: "upcoming", cursor });
     expect(listOwnPatientAppointmentHub).not.toHaveBeenCalled();
   });
 
@@ -160,10 +160,16 @@ describe("AF-4 appointment hub page context", () => {
     expect(listDelegatedAppointments).not.toHaveBeenCalled();
   });
 
+  it("AF-5: reads a family member's history only under a v2 grant", async () => {
+    vi.mocked(listDelegatedAppointmentSubjects).mockResolvedValue([{ ...subject(grantId), contractVersion: "family-appointment-read-v2" }]);
+    await expect(getPersonalAppointmentHubPageContext({ subject: grantId, tab: "history" })).resolves.toMatchObject({ family: familyPage });
+    expect(listDelegatedAppointments).toHaveBeenCalledWith(patientActor, { grantId, tab: "history" });
+  });
+
   it("restarts a stale family cursor and reports a grant that stopped authorizing between reads", async () => {
     vi.mocked(listDelegatedAppointments).mockRejectedValueOnce(new NotFoundError());
     await expect(getPersonalAppointmentHubPageContext({ subject: grantId, cursor })).resolves.toMatchObject({ family: familyPage });
-    expect(listDelegatedAppointments).toHaveBeenLastCalledWith(patientActor, { grantId });
+    expect(listDelegatedAppointments).toHaveBeenLastCalledWith(patientActor, { grantId, tab: "upcoming" });
 
     vi.mocked(listDelegatedAppointments).mockRejectedValue(new NotFoundError());
     await expect(getPersonalAppointmentHubPageContext({ subject: grantId })).resolves.toMatchObject({ family: "UNAVAILABLE" });

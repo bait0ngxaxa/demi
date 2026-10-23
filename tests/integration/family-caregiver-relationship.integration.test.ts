@@ -740,7 +740,8 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
         expect(Object.keys(item.participant).sort()).toEqual(["givenName", "familyName", "nameIsSelfAsserted"].sort());
       }
       for (const item of perspective?.relationships ?? []) {
-        expect(Object.keys(item).sort()).toEqual(["relationshipId", "participant", "status", "activatedAt", "revokedAt", "withdrawnAt"].sort());
+        expect(Object.keys(item).sort()).toEqual(["relationshipId", "participant", "status", "activatedAt", "revokedAt", "withdrawnAt",
+          "relationshipLabel", "relationshipLabelOther", "relationshipLabelVersion"].sort());
         expect(Object.keys(item.participant).sort()).toEqual(["givenName", "familyName", "nameIsSelfAsserted"].sort());
       }
       expect(JSON.stringify(perspective)).not.toMatch(/identityKeyHash|national.?id|hospitalNumber|phone|email|address|birth|emergencyContact|authSubject|roles|memberships|hospital|appointment|screening|goalPlan|followup|clinical/i);

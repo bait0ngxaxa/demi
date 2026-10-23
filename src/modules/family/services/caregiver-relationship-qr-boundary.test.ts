@@ -12,7 +12,8 @@ const token = "a".repeat(43);
 function databaseFixture(status: CaregiverInvitationStatus = CaregiverInvitationStatus.PENDING) {
   const transaction = {
     user: { findFirst: vi.fn().mockResolvedValue({ id: actor.userId, personId: actor.personId, roles: [], person: { identityKeyHash: "a".repeat(64) } }) },
-    caregiverInvitation: { findUnique: vi.fn().mockResolvedValue({ id: "invitation", patientProfileId: "patient", caregiverUserId: actor.userId, caregiverPersonId: actor.personId, status }) },
+    caregiverInvitation: { findUnique: vi.fn().mockResolvedValue({ id: "invitation", patientProfileId: "patient", issuedByUserId: "patient-user", issuedAt: new Date("2026-10-01T00:00:00Z"),
+      requestedRelationshipLabel: null, requestedRelationshipLabelOther: null, requestedScopes: null, caregiverUserId: actor.userId, caregiverPersonId: actor.personId, status }) },
     caregiverRelationship: { create: vi.fn().mockResolvedValue({ id: "relationship" }) },
     caregiverAppointmentGrant: { create: vi.fn(), updateMany: vi.fn() },
     appointment: { findMany: vi.fn() },
