@@ -8,6 +8,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import {
   ForbiddenError,
   InfrastructureError,
@@ -64,6 +65,7 @@ export type PatientProvisioningServiceDependencies = {
   database?: PatientDatabase;
   now?: () => Date;
   transactionRetries?: number;
+  revokeProviderSessions?: (authSubject: string) => Promise<ProviderSessionRevocationOutcome>;
 };
 
 export type PatientProvisioningScope = {

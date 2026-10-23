@@ -28,7 +28,7 @@ const days = (value: number): Date => new Date(now.getTime() + value * 24 * 60 *
 const caregiverNationalId = "1000000000009";
 const relativeNationalId = "1101700203450";
 const allGates = { delegatedReadEnabled: true, planMedicationEnabled: true };
-const deps = { database: db, now: () => now, gates: allGates };
+const deps = { database: db, now: () => now, gates: allGates, rateLimiter: { consume: async () => true } };
 const grantDeps = { database: db, now: () => now, enabled: true };
 let sequence = 0;
 

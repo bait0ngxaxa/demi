@@ -1,6 +1,8 @@
 import { CaregiverInvitationStatus, Role, UserStatus, type Prisma, type PrismaClient } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { InfrastructureError } from "@/shared/errors/application-error";
+
 const mocks = vi.hoisted(() => ({
   audit: vi.fn(),
 }));
@@ -76,14 +78,17 @@ describe("Caregiver invitation lost-response boundary", () => {
       createCaregiverInvitation(
         actor,
         { nationalId: "1000000000009" },
-        { database, generateCredential: () => ({ plaintextToken, tokenHash }) },
+        { database, rateLimiter: { consume: vi.fn().mockResolvedValue(true) }, generateCredential: () => ({ plaintextToken, tokenHash }) },
       ),
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
     expect(transaction.caregiverInvitation.findFirst).toHaveBeenCalledWith({
       where: {
         patientProfileId: "patient-profile",
-        caregiverUserId: "caregiver-user",
+        OR: [
+          { recipientIdentityKeyHash: expect.any(String) },
+          { caregiverUserId: "caregiver-user" },
+        ],
         status: CaregiverInvitationStatus.PENDING,
       },
       select: { id: true },
@@ -99,7 +104,7 @@ describe("Caregiver invitation lost-response boundary", () => {
     const result = await createCaregiverInvitation(
       actor,
       { nationalId: "1000000000009" },
-      { database, generateCredential: () => ({ plaintextToken, tokenHash }) },
+      { database, rateLimiter: { consume: vi.fn().mockResolvedValue(true) }, generateCredential: () => ({ plaintextToken, tokenHash }) },
     );
 
     expect(result).toEqual({ invitationId: "invitation-1", issuedAt, expiresAt, plaintextToken });
@@ -121,5 +126,21 @@ describe("Caregiver invitation lost-response boundary", () => {
     });
     expect(JSON.stringify(transaction.caregiverInvitation.create.mock.calls)).not.toContain(plaintextToken);
     expect(transaction.caregiverInvitation.create.mock.calls[0]?.[0].data).not.toHaveProperty("plaintextToken");
+  });
+
+  it.each(["CG_PATIENT", "CG_IDENTITY"] as const)("fails generically when the %s quota is exhausted", async (blockedCategory) => {
+    const { transaction, database } = databaseFixture(null);
+    const consume = vi.fn(async (category: string) => category !== blockedCategory);
+
+    await expect(createCaregiverInvitation(
+      actor,
+      { nationalId: "1000000000009" },
+      { database, rateLimiter: { consume } },
+    )).rejects.toBeInstanceOf(InfrastructureError);
+
+    expect(consume).toHaveBeenCalledTimes(2);
+    expect(consume.mock.calls.map(([category]) => category).sort()).toEqual(["CG_IDENTITY", "CG_PATIENT"]);
+    expect(transaction.caregiverInvitation.create).not.toHaveBeenCalled();
+    expect(transaction.person.findUnique).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  IdentityAssurance,
   HospitalStatus,
   MembershipStatus,
   MembershipType,
@@ -49,6 +50,7 @@ export type UserDirectoryRow = {
   displayName: string;
   hospitalNumber: string | null;
   status: UserDirectoryStatus;
+  identityAssurance: IdentityAssurance;
   method: ActivationMethod;
   selfRegisteredAt: Date | null;
   addedAt: Date;
@@ -68,6 +70,7 @@ function toDisplayName(person: { givenName: string | null; familyName: string | 
 
 const usedActivationSelect = {
   status: true,
+  identityAssurance: true,
   workforceActivations: { where: { usedAt: { not: null } }, select: { purpose: true, mode: true, usedAt: true } },
   patientActivations: { where: { usedAt: { not: null } }, select: { purpose: true, usedAt: true } },
 } as const satisfies Prisma.UserSelect;
@@ -177,6 +180,7 @@ export async function listHospitalUsers(
           displayName: toDisplayName(relationship.patientProfile.person), hospitalNumber: relationship.hospitalNumber,
           status: deriveUserDirectoryStatus({ ended: relationship.endedAt !== null, relationshipSuspended: false, userStatus: user?.status ?? null }),
           method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: user?.status ?? null, usedActivations: usedActivationsOf(user) }),
+          identityAssurance: user?.identityAssurance ?? IdentityAssurance.HOSPITAL_PROOFED,
           selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt,
         } };
       });
@@ -206,6 +210,7 @@ export async function listHospitalUsers(
           userStatus: relationship.user.status,
         }),
         method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: relationship.user.status, usedActivations: usedActivationsOf(relationship.user) }),
+        identityAssurance: relationship.user.identityAssurance,
         selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt,
       } }));
     }
@@ -236,6 +241,7 @@ export type UserDetail = {
   hospitalNumber: string | null;
   status: UserDirectoryStatus;
   accountStatus: UserStatus;
+  identityAssurance: IdentityAssurance;
   relationshipUpdatedAt: string;
   activation: {
     method: ActivationMethod;
@@ -399,6 +405,7 @@ export async function getHospitalUserDetail(
         hospitalNumber: record.hospitalNumber,
         status,
         accountStatus: user.status,
+        identityAssurance: user.identityAssurance,
         relationshipUpdatedAt: record.updatedAt.toISOString(),
         activation: {
           method: deriveActivationMethod({ selfRegisteredAt: record.selfRegisteredAt, userStatus: user.status, usedActivations }),

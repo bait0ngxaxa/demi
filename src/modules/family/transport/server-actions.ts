@@ -104,17 +104,13 @@ export async function createCaregiverInvitationAction(
       error instanceof ApplicationError &&
       (error.code === "CONFLICT" || error.code === "NOT_FOUND")
     ) {
-      return {
-        status: "ERROR",
-        message:
-          "ไม่สามารถสร้างคำเชิญได้ กรุณาตรวจสอบรายการคำเชิญที่รอตอบรับ หากพบคำเชิญเดิม ให้ยกเลิกก่อนสร้างใหม่",
-      };
+      return { status: "ERROR", message: "ไม่สามารถสร้างคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
     }
     if (error instanceof ApplicationError && error.code === "VALIDATION") {
       return { status: "ERROR", message: "กรุณาตรวจสอบเลขบัตรประชาชนและรายการที่เลือกแชร์ให้ถูกต้อง" };
     }
 
-    return { status: "ERROR", message: "ระบบไม่สามารถสร้างคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
+    return { status: "ERROR", message: "ไม่สามารถสร้างคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
   }
 }
 

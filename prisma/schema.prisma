@@ -16,6 +16,12 @@ enum Role {
   CAREGIVER
 }
 
+enum IdentityAssurance {
+  HOSPITAL_PROOFED
+  SELF_REGISTERED
+  CAREGIVER_INVITATION
+}
+
 enum UserStatus {
   PROVISIONED
   INVITED
@@ -505,6 +511,7 @@ model User {
   authSubject String?    @unique @db.VarChar(255)
   providerLoginAlias String? @unique @db.VarChar(255)
   status      UserStatus @default(PROVISIONED)
+  identityAssurance IdentityAssurance @default(HOSPITAL_PROOFED)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

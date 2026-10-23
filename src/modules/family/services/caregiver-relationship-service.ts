@@ -16,6 +16,10 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
+import {
+  createPublicSelfRegistrationRateLimiter,
+  type PublicSelfRegistrationRateLimiter,
+} from "@/modules/self-registration/services/public-self-registration-rate-limit";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   ConflictError,
@@ -55,6 +59,7 @@ export type CaregiverRelationshipServiceDependencies = {
   database?: PrismaClient;
   now?: () => Date;
   generateCredential?: () => CaregiverInvitationCredential;
+  rateLimiter?: PublicSelfRegistrationRateLimiter;
   gates?: CaregiverSharingGates;
 };
 
@@ -300,10 +305,26 @@ export async function createCaregiverInvitation(
     namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
     value: parsedInput.data.nationalId,
   });
+  const database = getDatabase(dependencies);
+  const now = getNow(dependencies);
+  const limiter = dependencies.rateLimiter ?? createPublicSelfRegistrationRateLimiter(database);
+
+  try {
+    const [patientAllowed, recipientAllowed] = await Promise.all([
+      limiter.consume("CG_PATIENT", actor.userId, now),
+      limiter.consume("CG_IDENTITY", recipientIdentityHash, now),
+    ]);
+    if (!patientAllowed || !recipientAllowed) {
+      throw new InfrastructureError("Caregiver invitation creation is temporarily unavailable");
+    }
+  } catch (error: unknown) {
+    rethrowServiceError(error, "Caregiver invitation could not be created");
+  }
+
   const credential = (dependencies.generateCredential ?? generateCaregiverInvitationCredential)();
 
   try {
-    const result = await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
+    const result = await runSerializableTransaction(database, async (transaction) => {
       const patient = await assertPatientSelf(transaction, actor);
       const recipientPerson = await transaction.person.findUnique({
         where: { identityKeyHash: recipientIdentityHash },
@@ -315,28 +336,23 @@ export async function createCaregiverInvitation(
         },
       });
       const caregiver = recipientPerson?.user;
-      const isUnregisteredRelative = recipientPerson === null;
-
-      if (recipientPerson && (
-        !caregiver ||
-        caregiver.status !== UserStatus.ACTIVE ||
-        !caregiver.authSubject ||
-        caregiver.personId !== recipientPerson.id ||
-        caregiver.id === actor.userId ||
-        recipientPerson.id === patient.patientPersonId
-      )) {
+      if (recipientPerson?.id === patient.patientPersonId) {
         throw new ConflictError("A caregiver invitation cannot be created for this information");
       }
+      const isEligibleActiveRecipient = Boolean(
+        recipientPerson && caregiver && caregiver.status === UserStatus.ACTIVE && caregiver.authSubject &&
+        caregiver.personId === recipientPerson.id,
+      );
 
-      if (isUnregisteredRelative) {
+      if (!recipientPerson) {
         await expireHashInvitation(transaction, actor.userId, patient.patientProfileId, recipientIdentityHash);
-      } else if (caregiver) {
+      } else if (isEligibleActiveRecipient && caregiver) {
         await expirePairInvitations(transaction, actor.userId, patient.patientProfileId, caregiver.id);
       }
 
-      const recipientUserFilter: Prisma.CaregiverRelationshipWhereInput = isUnregisteredRelative
-        ? { caregiverUser: { person: { identityKeyHash: recipientIdentityHash } } }
-        : { caregiverUserId: caregiver?.id };
+      const recipientUserFilter: Prisma.CaregiverRelationshipWhereInput = caregiver
+        ? { caregiverUserId: caregiver.id }
+        : { caregiverUser: { person: { identityKeyHash: recipientIdentityHash } } };
       const activeRelationship = await transaction.caregiverRelationship.findFirst({
         where: {
           patientProfileId: patient.patientProfileId,
@@ -349,9 +365,10 @@ export async function createCaregiverInvitation(
         where: {
           patientProfileId: patient.patientProfileId,
           status: CaregiverInvitationStatus.PENDING,
-          ...(isUnregisteredRelative
-            ? { recipientIdentityKeyHash: recipientIdentityHash }
-            : { caregiverUserId: caregiver?.id }),
+          OR: [
+            { recipientIdentityKeyHash: recipientIdentityHash },
+            ...(caregiver ? [{ caregiverUserId: caregiver.id }] : []),
+          ],
         },
         select: { id: true },
       });
@@ -384,9 +401,9 @@ export async function createCaregiverInvitation(
       const invitation = await transaction.caregiverInvitation.create({
         data: {
           patientProfileId: patient.patientProfileId,
-          ...(isUnregisteredRelative
-            ? { recipientIdentityKeyHash: recipientIdentityHash }
-            : { caregiverUserId: caregiver?.id, caregiverPersonId: recipientPerson?.id }),
+          ...(isEligibleActiveRecipient && recipientPerson && caregiver
+            ? { caregiverUserId: caregiver.id, caregiverPersonId: recipientPerson.id }
+            : { recipientIdentityKeyHash: recipientIdentityHash }),
           issuedByUserId: actor.userId,
           tokenHash: credential.tokenHash,
           status: CaregiverInvitationStatus.PENDING,

@@ -133,6 +133,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
             <ul>
               {page.rows.map((row) => {
                 const status = USER_STATUS_PRESENTATION[row.status];
+                const needsIdentityProof = row.identityAssurance === "CAREGIVER_INVITATION";
                 return (
                   <li className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={row.relationshipId}>
                     <div className="min-w-0">
@@ -146,7 +147,12 @@ export function UsersDirectory({ hospitals, page, filters }: {
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                      <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
+                      {needsIdentityProof ? (
+                        <div className="text-sm">
+                          <StatusBadge variant="danger">ต้องยืนยันตัวตนก่อนใช้งาน</StatusBadge>
+                          <p className="mt-1 text-xs text-text-muted">บัญชีนี้สร้างผ่านคำเชิญญาติ</p>
+                        </div>
+                      ) : <StatusBadge variant={status.variant}>{status.label}</StatusBadge>}
                       <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/users/${row.kind}/${encodeURIComponent(row.relationshipId)}`}>
                         จัดการ
                       </Link>

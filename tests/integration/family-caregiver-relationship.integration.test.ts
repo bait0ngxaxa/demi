@@ -41,6 +41,7 @@ type TestActor = { actor: ActorContext; userId: string; personId: string };
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.$executeRaw`DELETE FROM "PublicSelfRegistrationRateLimitBucket" WHERE "category" IN ('CG_PATIENT', 'CG_IDENTITY')`;
   await prisma.caregiverRelationship.deleteMany();
   await prisma.caregiverInvitation.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
@@ -376,20 +377,75 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
     expect(JSON.stringify(auditRows)).not.toContain(accountClaimInput(invitation.plaintextToken).password);
   });
 
-  it.each([UserStatus.PROVISIONED, UserStatus.INVITED])(
-    "does not let an invitation claim a hospital identity in %s status",
-    async (status) => {
-      const patient = await createPatient();
-      await createActor({ roles: [Role.PATIENT], status, nationalId: validNationalId });
+  it("creates indistinguishable invitations for unknown, unactivated, and active recipient identities", async () => {
+    const patient = await createPatient({ nationalId: "1000000000041" });
+    const personWithoutUserId = "1101700203450";
+    const provisionedId = "1000000000017";
+    const invitedId = "1000000000025";
+    const activeId = "1234567890121";
+    await prisma.person.create({
+      data: {
+        identityKeyHash: hashIdentityReference({
+          namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
+          value: personWithoutUserId,
+        }),
+      },
+    });
+    await createActor({ roles: [], status: UserStatus.PROVISIONED, nationalId: provisionedId });
+    await createActor({ roles: [], status: UserStatus.INVITED, nationalId: invitedId });
+    await createActor({ roles: [], status: UserStatus.ACTIVE, nationalId: activeId });
 
-      await expect(createCaregiverInvitation(patient.actor, { nationalId: validNationalId })).rejects.toBeInstanceOf(ConflictError);
+    const identities = [validNationalId, personWithoutUserId, provisionedId, invitedId, activeId];
+    const invitationResults = [];
+    for (const nationalId of identities) {
+      invitationResults.push(await createCaregiverInvitation(
+        patient.actor,
+        { nationalId },
+        { database: prisma, rateLimiter: { consume: async () => true } },
+      ));
+    }
 
-      expect(await prisma.caregiverInvitation.count()).toBe(0);
-      expect(await prisma.person.count({
-        where: { identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: validNationalId }) },
-      })).toBe(1);
-    },
-  );
+    let providerCreates = 0;
+    const usersBeforePublicClaim = await prisma.user.count();
+    const personOnlyInvitation = invitationResults[1];
+    if (!personOnlyInvitation) throw new Error("Expected the Person-without-User invitation");
+    await expect(createCaregiverAccountFromInvitation(
+      accountClaimInput(personOnlyInvitation.plaintextToken, personWithoutUserId),
+      { ipAddress: "203.0.113.31" },
+      accountClaimDependencies({
+        createProviderIdentity: async ({ userId }) => {
+          providerCreates += 1;
+          return { authSubject: randomUUID(), providerLoginAlias: `caregiver-${userId}@test.invalid` };
+        },
+      }),
+    )).rejects.toBeInstanceOf(CaregiverAccountClaimRejectedError);
+    expect(providerCreates).toBe(0);
+    expect(await prisma.user.count()).toBe(usersBeforePublicClaim);
+
+    const expectedKeys = ["expiresAt", "invitationId", "issuedAt", "plaintextToken"];
+    for (const result of invitationResults) {
+      expect(Object.keys(result).sort()).toEqual(expectedKeys);
+      expect(result.plaintextToken).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+      expect(result.expiresAt.getTime() - result.issuedAt.getTime()).toBe(CAREGIVER_INVITATION_TTL_MS);
+    }
+    for (const nationalId of identities.slice(0, -1)) {
+      const hash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId });
+      expect(await prisma.caregiverInvitation.findFirst({
+        where: { recipientIdentityKeyHash: hash },
+        select: { caregiverUserId: true, caregiverPersonId: true },
+      })).toEqual({ caregiverUserId: null, caregiverPersonId: null });
+    }
+    expect(await prisma.caregiverInvitation.findFirst({
+      where: { caregiverUser: { person: { identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: activeId }) } } },
+      select: { caregiverUserId: true, caregiverPersonId: true, recipientIdentityKeyHash: true },
+    })).toMatchObject({ caregiverUserId: expect.any(String), caregiverPersonId: expect.any(String), recipientIdentityKeyHash: null });
+
+    await expect(createCaregiverInvitation(
+      patient.actor,
+      { nationalId: "1000000000041" },
+      { database: prisma, rateLimiter: { consume: async () => true } },
+    )).rejects.toBeInstanceOf(ConflictError);
+  });
 
   it("lets an ACTIVE account matching a hash-bound invitation use the existing accept flow", async () => {
     const patient = await createPatient();
@@ -1329,7 +1385,7 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
     ).resolves.toBe(2);
   });
 
-  it("rejects inactive recipients and self-delegation without revealing account state", async () => {
+  it("hash-binds inactive recipients and rejects only self-delegation", async () => {
     const patient = await createPatient({ nationalId: validNationalId });
     const nonPatient = await createActor({ roles: [Role.OSM] });
     const unregisteredNationalId = "1200000000007";
@@ -1341,7 +1397,7 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
         }),
       },
     });
-    const inactiveCaregiver = await createActor({
+    await createActor({
       roles: [Role.OSM],
       status: UserStatus.SUSPENDED,
       nationalId: alternateNationalId,
@@ -1354,20 +1410,19 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
     await expect(
       createCaregiverInvitation(patient.actor, { nationalId: validNationalId }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(
-      createCaregiverInvitation(patient.actor, { nationalId: alternateNationalId }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(
-      createCaregiverInvitation(patient.actor, { nationalId: unregisteredNationalId }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(prisma.caregiverInvitation.count()).resolves.toBe(0);
+    const inactiveInvitation = await createCaregiverInvitation(patient.actor, { nationalId: alternateNationalId });
+    const unregisteredInvitation = await createCaregiverInvitation(patient.actor, { nationalId: unregisteredNationalId });
+    await expect(prisma.caregiverInvitation.count()).resolves.toBe(2);
     await expect(prisma.caregiverRelationship.count()).resolves.toBe(0);
     await expect(prisma.user.count()).resolves.toBe(usersBeforeIssuance);
 
-    await prisma.user.update({ where: { id: inactiveCaregiver.userId }, data: { status: UserStatus.ACTIVE } });
-    await expect(
-      createCaregiverInvitation(patient.actor, { nationalId: alternateNationalId }),
-    ).resolves.toMatchObject({ invitationId: expect.any(String) });
-    await expect(prisma.user.count()).resolves.toBe(usersBeforeIssuance);
+    const storedInvitations = await prisma.caregiverInvitation.findMany({
+      where: { id: { in: [inactiveInvitation.invitationId, unregisteredInvitation.invitationId] } },
+      select: { caregiverUserId: true, caregiverPersonId: true, recipientIdentityKeyHash: true },
+    });
+    expect(storedInvitations).toEqual(expect.arrayContaining([
+      { caregiverUserId: null, caregiverPersonId: null, recipientIdentityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: alternateNationalId }) },
+      { caregiverUserId: null, caregiverPersonId: null, recipientIdentityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: unregisteredNationalId }) },
+    ]));
   });
 });

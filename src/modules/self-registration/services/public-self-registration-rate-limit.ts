@@ -15,6 +15,8 @@ export const PUBLIC_SELF_REGISTRATION_RATE_LIMITS = {
   IDENTITY: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
   INVITATION: { limit: 5, windowMs: 15 * 60 * 1000 },
   GLOBAL: { limit: 1000, windowMs: 60 * 60 * 1000 },
+  CG_PATIENT: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
+  CG_IDENTITY: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
 } as const;
 
 export type PublicSelfRegistrationRateLimitCategory = keyof typeof PUBLIC_SELF_REGISTRATION_RATE_LIMITS;

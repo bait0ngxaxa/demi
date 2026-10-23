@@ -1306,7 +1306,12 @@ async function finalizePatientActivationLocally(
           status: UserStatus.PROVISIONED,
           authSubject,
         },
-        data: { status: UserStatus.ACTIVE },
+        data: {
+          status: UserStatus.ACTIVE,
+          ...(activation.purpose === PatientActivationPurpose.SELF_REGISTRATION
+            ? { identityAssurance: "SELF_REGISTERED" as const }
+            : {}),
+        },
       });
 
       if (activatedUser.count !== 1) {

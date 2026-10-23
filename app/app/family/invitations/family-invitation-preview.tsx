@@ -393,12 +393,16 @@ export function FamilyInvitationPreview(): React.JSX.Element {
       ) : null}
 
       {preview.status === "NEEDS_ACCOUNT" && token ? (
-        <CaregiverAccountClaimForm
-          expiresAt={preview.invitation.expiresAt}
-          patientDisplayName={preview.invitation.patientDisplayName}
-          requestedSharing={preview.invitation.requestedSharing}
-          token={token}
-        />
+        <>
+          <CaregiverAccountClaimForm
+            expiresAt={preview.invitation.expiresAt}
+            patientDisplayName={preview.invitation.patientDisplayName}
+            requestedSharing={preview.invitation.requestedSharing}
+            token={token}
+          />
+          <p className="mt-4 text-sm text-text-muted">หากมีบัญชีแล้ว เข้าสู่ระบบเพื่อรับคำเชิญนี้</p>
+          <LoginLink token={token} />
+        </>
       ) : null}
 
       {preview.status === "READY" ? (

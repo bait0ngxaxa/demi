@@ -84,14 +84,22 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
   return (
     <div className="content-detail break-words">
       <PageHeader
-        actions={<StatusBadge variant={status.variant}>{status.label}</StatusBadge>}
+        actions={<StatusBadge variant={detail.identityAssurance === "CAREGIVER_INVITATION" ? "danger" : status.variant}>
+          {detail.identityAssurance === "CAREGIVER_INVITATION" ? "ต้องยืนยันตัวตนก่อนใช้งาน" : status.label}
+        </StatusBadge>}
         breadcrumbs={[{ href: directoryHref, label: "จัดการผู้ใช้งาน" }, { label: "รายละเอียด" }]}
         description={`${USER_KIND_LABELS[detail.kind]} · ${detail.hospital.name}`}
         title={detail.displayName}
       />
 
       <div className="space-y-6 pt-8">
-        {detail.takeoverLock ? (
+        {detail.identityAssurance === "CAREGIVER_INVITATION" ? (
+          <Alert variant={lockRetry ? "warning" : "danger"}>
+            <p className="font-semibold">บัญชีนี้สร้างผ่านคำเชิญญาติ</p>
+            <p className="mt-1">ต้องยืนยันตัวตนผ่านการรีเซ็ตรหัสผ่านแบบมีผู้ดูแลก่อนใช้งาน บัญชีถูกระงับและข้อมูลครอบครัวเดิมยังคงอยู่</p>
+            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการตัดการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ ระบบภายในปิดการเข้าถึงแล้ว กรุณาตรวจสอบการคืนบัญชี</p> : null}
+          </Alert>
+        ) : detail.takeoverLock ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
             <p className="font-semibold">บัญชีถูกล็อก: แจ้งว่าไม่ใช่เจ้าของจริง</p>
             <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} ใช้การคืนบัญชีด้านล่างเพื่อยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>

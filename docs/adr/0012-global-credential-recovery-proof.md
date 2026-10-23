@@ -152,3 +152,7 @@ active LINE binding receives `รหัสผ่านบัญชี DEMI ข�
 `/recover` without a token instructs the user to contact their Hospital for an in-person or video
 verification. `/register` tells an already-active requester to contact the Hospital for a verified
 reset. The OWNER guide and remediation runbook define the procedure and reconciliation boundary.
+
+### FIX-1 credential-assurance amendment (2026-10-23)
+
+`User.identityAssurance` records `HOSPITAL_PROOFED`, `SELF_REGISTERED`, or `CAREGIVER_INVITATION`. A caregiver-claimed User later reused by Patient/workforce provisioning is suspended and receives a `UserTakeoverLock` in the same transaction as the new role and relationship; provider revocation remains outside database locks and uses the existing `PENDING` / `CONFIRMED` / `RECONCILIATION_REQUIRED` states. The REC-1 verified reset replaces the credential, restores only the recorded suspended workforce relationships, marks the lock `RESOLVED`, and sets assurance to `HOSPITAL_PROOFED`. Caregiver relationships and grants are neither removed nor suspended. Because an acting caregiver is OWNER-ineligible under the existing rule above, only a platform ADMIN can release this account.

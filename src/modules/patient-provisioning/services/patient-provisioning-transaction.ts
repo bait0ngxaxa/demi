@@ -11,6 +11,10 @@ import {
 } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  lockCaregiverInvitationIdentityInTransaction,
+  type CaregiverInvitationTakeoverTask,
+} from "@/modules/account-security/services/caregiver-invitation-takeover-lock";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
   createIdentityStore,
@@ -42,6 +46,7 @@ export type PatientProvisioningResult = {
   hospitalId: string;
   accountStatus: UserStatus;
   reusedExistingUser: boolean;
+  takeoverTask?: CaregiverInvitationTakeoverTask | null;
 };
 
 export type PatientProvisioningConflictKind =
@@ -352,6 +357,13 @@ export async function provisionPatientInTransaction(
     changed = true;
   }
 
+  const takeoverTask = await lockCaregiverInvitationIdentityInTransaction(transaction, {
+    userId: user.id,
+    actorUserId: actor.userId,
+    hospitalId: input.targetHospitalId,
+    now: new Date(),
+  });
+
   const outcome: PatientProvisioningOutcome = changed ? "CREATED" : "ALREADY_PROVISIONED";
 
   if (changed) {
@@ -365,7 +377,7 @@ export async function provisionPatientInTransaction(
           outcome,
           hospitalId: input.targetHospitalId,
           relationshipId: relationship.id,
-          accountStatus: user.status,
+          accountStatus: takeoverTask ? UserStatus.SUSPENDED : user.status,
           role: Role.PATIENT,
         },
       },
@@ -380,8 +392,9 @@ export async function provisionPatientInTransaction(
     patientProfileId: patientProfile.id,
     relationshipId: relationship.id,
     hospitalId: input.targetHospitalId,
-    accountStatus: user.status,
+    accountStatus: takeoverTask ? UserStatus.SUSPENDED : user.status,
     reusedExistingUser,
+    takeoverTask,
   };
 }
 

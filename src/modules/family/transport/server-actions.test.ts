@@ -30,7 +30,7 @@ vi.mock("../services/caregiver-relationship-service", () => ({
   withdrawOwnCaregiverRelationship: mocks.withdrawRelationship,
 }));
 
-import { ForbiddenError, ConflictError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, ConflictError, InfrastructureError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import {
   acceptCaregiverInvitationAction,
@@ -104,22 +104,24 @@ describe("Family Server Actions", () => {
     });
   });
 
-  it("returns the approved generic recipient failure without echoing National ID", async () => {
+  it("returns the same generic failure for recipient conflicts and rate limits", async () => {
     const nationalId = "1000000000009";
-    mocks.createInvitation.mockRejectedValue(new ConflictError("recipient state is private"));
+    mocks.createInvitation.mockRejectedValueOnce(new ConflictError("recipient state is private"));
 
     const result = await createCaregiverInvitationAction(
       initialCreateCaregiverInvitationActionState,
       createFormData({ nationalId, relationshipLabel: "CHILD" }),
     );
 
-    expect(result).toEqual({
-      status: "ERROR",
-      message:
-        "ไม่สามารถสร้างคำเชิญได้ กรุณาตรวจสอบรายการคำเชิญที่รอตอบรับ หากพบคำเชิญเดิม ให้ยกเลิกก่อนสร้างใหม่",
-    });
+    expect(result).toEqual({ status: "ERROR", message: "ไม่สามารถสร้างคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
     expect(JSON.stringify(result)).not.toContain(nationalId);
     expect(JSON.stringify(result)).not.toContain("recipient state is private");
+
+    mocks.createInvitation.mockRejectedValueOnce(new InfrastructureError("per-recipient quota reached"));
+    await expect(createCaregiverInvitationAction(
+      initialCreateCaregiverInvitationActionState,
+      createFormData({ nationalId, relationshipLabel: "CHILD" }),
+    )).resolves.toEqual(result);
   });
 
   it("rejects malformed National ID before resolving the actor or recipient", async () => {

@@ -165,7 +165,8 @@ async function findCommittedClaim(
     where: {
       id: input.userId,
       authSubject: input.authSubject,
-      status: UserStatus.ACTIVE,
+      status: { in: [UserStatus.ACTIVE, UserStatus.SUSPENDED] },
+      identityAssurance: "CAREGIVER_INVITATION",
       person: { identityKeyHash: input.personHash },
       roles: { some: { role: Role.CAREGIVER } },
     },
@@ -327,6 +328,7 @@ export async function createCaregiverAccountFromInvitation(
           authSubject: providerIdentity.authSubject,
           providerLoginAlias: providerIdentity.providerLoginAlias,
           status: UserStatus.ACTIVE,
+          identityAssurance: "CAREGIVER_INVITATION",
           roles: { create: { role: Role.CAREGIVER } },
         },
       });

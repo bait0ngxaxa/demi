@@ -14,7 +14,7 @@
 
 ## Current decision addendum — invitation-created caregiver accounts (2026-10-23)
 
-[ADR-0021](../adr/0021-caregiver-accounts-by-invitation.md) adds CAREGIVER-only first credentials through a Patient-issued invitation and matching checksum-valid national ID. It does not widen ADR-0020 /register, Patient-self, workforce, or Platform ADMIN authority. The account claim rechecks the token, identity hash, expiry, and Person absence in its serializable transaction; provider credential I/O stays outside database locks under ADR-0012. Names are explicitly self-asserted until authoritative Patient roster provisioning replaces them. Caregiver-only password recovery and LINE binding remain unavailable under current policy.
+[ADR-0021](../adr/0021-caregiver-accounts-by-invitation.md) adds CAREGIVER-only first credentials through a Patient-issued invitation and matching checksum-valid national ID. It does not widen ADR-0020 /register, Patient-self, workforce, or Platform ADMIN authority. The account claim rechecks the token, identity hash, expiry, and Person absence in its serializable transaction; provider credential I/O stays outside database locks under ADR-0012. Names are explicitly self-asserted until authoritative Patient roster provisioning replaces them. FIX-1 records caregiver-claim assurance and suspends the global User if Hospital provisioning later reuses that identity, until a REC-1 platform ADMIN reset. Caregiver-only accounts still have no self-service recovery or LINE binding.
 
 ## Current decision addendum — Hospital registry (2026-10-21)
 

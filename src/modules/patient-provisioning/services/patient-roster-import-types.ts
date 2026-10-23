@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
 
 import {
@@ -16,6 +17,7 @@ export type PatientRosterImportServiceDependencies = {
   database?: PatientRosterImportDatabase;
   now?: () => Date;
   transactionRetries?: number;
+  revokeProviderSessions?: (authSubject: string) => Promise<ProviderSessionRevocationOutcome>;
 };
 
 export type PatientImportOptions = {

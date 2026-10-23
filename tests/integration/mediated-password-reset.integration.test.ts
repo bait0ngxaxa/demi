@@ -3,6 +3,7 @@ import {
   CaregiverInvitationStatus,
   CaregiverRelationshipStatus,
   HospitalStatus,
+  IdentityAssurance,
   MembershipStatus,
   MembershipType,
   Role,
@@ -11,11 +12,13 @@ import {
   WorkforceActivationOperationState,
   type Hospital,
 } from "@prisma/client";
+import { AuthApiError } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore } from "@/modules/auth/services/actor-context-service";
+import { authenticateWithPassword } from "@/modules/auth/services/authentication-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
@@ -214,6 +217,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const caregiverPatientProfileId = caregiverTarget.patientProfileId;
     if (!caregiverPatientProfileId) throw new Error("Expected patient profile");
     const caregiverPatient = await createTarget("patient", hospital.id);
+    await db.user.update({ where: { id: caregiverPatient.userId }, data: { identityAssurance: IdentityAssurance.CAREGIVER_INVITATION } });
     const caregiver = { userId: caregiverPatient.userId, personId: caregiverPatient.personId };
     const caregiverInvitation = await db.caregiverInvitation.create({
       data: {
@@ -303,6 +307,53 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       passwordConfirmation: "new-password-for-rec1",
     }, { database: db, now: () => now, ...platformAdminProvider });
     expect(await db.user.findUniqueOrThrow({ where: { id: platformAdminTarget.userId } })).toMatchObject({ authSubject: platformAdminProvider.replacementSubject, status: UserStatus.ACTIVE });
+
+    const caregiverPatientRelationship = await db.patientHospitalRelationship.findUniqueOrThrow({
+      where: { id: caregiverPatient.relationshipId }, select: { updatedAt: true },
+    });
+    await lockSuspectedTakeover(owner, {
+      kind: "patient",
+      relationshipId: caregiverPatient.relationshipId,
+      targetHospitalId: hospital.id,
+      expectedUpdatedAt: caregiverPatientRelationship.updatedAt.toISOString(),
+      confirmation: "ไม่ใช่เจ้าของจริง",
+    }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
+    const caregiverResetProvider = fakeProvider();
+    const previousCaregiverSubject = caregiverPatient.authSubject;
+    const caregiverReset = await issueMediatedPasswordReset(admin, issueInput("patient", hospital.id, caregiverPatient.relationshipId), { database: db, now: () => now });
+    await completeMediatedPasswordReset({
+      token: caregiverReset.token,
+      nationalId: caregiverPatient.nationalId,
+      newPassword: "new-password-for-rec1",
+      passwordConfirmation: "new-password-for-rec1",
+    }, { database: db, now: () => now, ...caregiverResetProvider });
+    expect(await db.user.findUniqueOrThrow({ where: { id: caregiverPatient.userId } })).toMatchObject({
+      status: UserStatus.ACTIVE,
+      identityAssurance: IdentityAssurance.HOSPITAL_PROOFED,
+      authSubject: caregiverResetProvider.replacementSubject,
+    });
+    expect(caregiverResetProvider.deleteProviderIdentity).toHaveBeenCalledWith(previousCaregiverSubject);
+    expect(await createActorContextStore(db).findUserByAuthSubject(previousCaregiverSubject)).toBeNull();
+    expect(await createActorContextStore(db).findUserByAuthSubject(caregiverResetProvider.replacementSubject)).not.toBeNull();
+    const replacementLoginProvider = {
+      signInWithPassword: vi.fn(async ({ password }: { email: string; password: string }) => password === "new-password-for-rec1"
+        ? { data: { user: { id: caregiverResetProvider.replacementSubject } }, error: null }
+        : { data: { user: null }, error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials") }),
+      getUser: vi.fn(async () => ({ data: { user: { id: caregiverResetProvider.replacementSubject } }, error: null })),
+      signOut: vi.fn(async () => ({ error: null })),
+    };
+    await expect(authenticateWithPassword({ nationalId: caregiverPatient.nationalId, password: "new-password-for-rec1" }, {
+      provider: replacementLoginProvider,
+      actorStore: createActorContextStore(db),
+    })).resolves.toMatchObject({ status: "AUTHORIZED", actor: { userId: caregiverPatient.userId } });
+    await expect(authenticateWithPassword({ nationalId: caregiverPatient.nationalId, password: "caregiver-test-password-2026" }, {
+      provider: replacementLoginProvider,
+      actorStore: createActorContextStore(db),
+    })).resolves.toEqual({ status: "INVALID_CREDENTIALS" });
+    expect(await db.caregiverRelationship.findUniqueOrThrow({ where: { id: caregiverRelationship.id }, select: { status: true } }))
+      .toEqual({ status: CaregiverRelationshipStatus.ACTIVE });
+    expect(await db.caregiverAppointmentGrant.findFirstOrThrow({ where: { caregiverUserId: caregiverPatient.userId }, select: { status: true } }))
+      .toEqual({ status: CaregiverAppointmentGrantStatus.ACTIVE });
     expect(adminIssued.mode).toBe("ONLINE");
   });
 

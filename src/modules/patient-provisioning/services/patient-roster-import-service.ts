@@ -8,6 +8,10 @@ import {
   runSerializableTransaction,
 } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  revokeCaregiverInvitationTakeoverSessionsAfterCommit,
+  type CaregiverInvitationTakeoverTask,
+} from "@/modules/account-security/services/caregiver-invitation-takeover-lock";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { createPatientBaselineInTransaction } from "@/modules/patient-baseline/services/patient-baseline-transaction";
 import { setPatientClassificationInTransaction } from "@/modules/patient-classification/services/patient-classification-transaction";
@@ -120,6 +124,11 @@ type PatientRosterImportExistingRow = {
   existing: { classification: "ALREADY_EXISTS" | "CONFLICT"; reason: string | null };
 };
 
+type PatientRosterImportRowCommit = {
+  result: PatientRosterImportRowResult;
+  takeoverTask: CaregiverInvitationTakeoverTask | null;
+};
+
 async function importPatientRosterRow(
   actor: ActorContext,
   candidate: PatientProvisioningImportCandidate,
@@ -132,9 +141,9 @@ async function importPatientRosterRow(
 
   const patientInput = candidate.input;
   try {
-    return await runSerializableTransaction(
+    const committed = await runSerializableTransaction(
       getDatabase(dependencies),
-      async (transaction): Promise<PatientRosterImportRowResult | PatientRosterImportExistingRow> => {
+      async (transaction): Promise<PatientRosterImportRowCommit | PatientRosterImportExistingRow> => {
         // Import creates new patients only. A relationship that appeared after the
         // preview (a double submit, another user) is only identity-checked, exactly
         // like an existing row in the preview: no HN fill-in, baseline, classification or health history.
@@ -261,10 +270,22 @@ async function importPatientRosterRow(
           healthHistoryCreated = true;
         }
 
-        return { baselineStatus, classificationCreated, healthHistoryCreated };
+        return {
+          result: { baselineStatus, classificationCreated, healthHistoryCreated },
+          takeoverTask: patient.takeoverTask ?? null,
+        };
       },
       dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
     );
+    if ("existing" in committed) return committed;
+    if (committed.takeoverTask) {
+      await revokeCaregiverInvitationTakeoverSessionsAfterCommit(
+        getDatabase(dependencies),
+        committed.takeoverTask,
+        { revokeProviderSessions: dependencies.revokeProviderSessions },
+      );
+    }
+    return committed.result;
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);
   }

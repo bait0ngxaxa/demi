@@ -19,6 +19,12 @@ import { fingerprintWorkforceBulkSubmission, workforceBulkReceiptSchema, workfor
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getPrisma } from "@/lib/db/prisma";
+import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
+import {
+  lockCaregiverInvitationIdentityInTransaction,
+  revokeCaregiverInvitationTakeoverSessionsAfterCommit,
+  type CaregiverInvitationTakeoverTask,
+} from "@/modules/account-security/services/caregiver-invitation-takeover-lock";
 import {
   PasswordAuthProvisioningReconciliationError,
   PasswordAuthProvisioningProviderRejectedError,
@@ -132,6 +138,7 @@ export type WorkforceServiceDependencies = {
   }) => Promise<void>;
   deleteProviderIdentity?: (authSubject: string) => Promise<void>;
   detachAuthSubject?: (input: { userId: string; authSubject: string }) => Promise<boolean>;
+  revokeProviderSessions?: (authSubject: string) => Promise<ProviderSessionRevocationOutcome>;
   transactionRetries?: number;
 };
 
@@ -288,6 +295,7 @@ type WorkforceIdentity = {
   relationshipCreated: boolean;
   relationshipChanged: boolean;
   reusedExistingUser: boolean;
+  takeoverTask: CaregiverInvitationTakeoverTask | null;
 };
 
 export type WorkforceActivationIssueResult = {
@@ -1194,19 +1202,27 @@ async function createOrReuseWorkforceIdentity(
           activationMode: null,
         };
 
+  const takeoverTask = await lockCaregiverInvitationIdentityInTransaction(transaction, {
+    userId: user.id,
+    actorUserId: input.actorUserId,
+    hospitalId: input.hospitalId,
+    now: input.now,
+  });
+
   return {
     personId,
     userId: user.id,
-    userStatus: user.status,
+    userStatus: takeoverTask ? UserStatus.SUSPENDED : user.status,
     authSubject: user.authSubject,
     relationshipId: relationship.id,
-    relationshipStatus: relationship.status,
+    relationshipStatus: takeoverTask ? MembershipStatus.SUSPENDED : relationship.status,
     activationToken: activation.activationToken,
     activationExpiresAt: activation.activationExpiresAt,
     activationMode: activation.activationMode,
     relationshipCreated: relationship.created,
     relationshipChanged: relationship.changed,
     reusedExistingUser,
+    takeoverTask,
   };
 }
 
@@ -1264,6 +1280,12 @@ async function provisionWorkforce(
         }),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
+
+    if (identity.takeoverTask) {
+      await revokeCaregiverInvitationTakeoverSessionsAfterCommit(database, identity.takeoverTask, {
+        revokeProviderSessions: dependencies.revokeProviderSessions,
+      });
+    }
 
     return {
       ...toProvisioningResult(kind, identity),
@@ -3731,7 +3753,7 @@ async function finalizeWorkforceActivationLocally(
           status: UserStatus.PROVISIONED,
           authSubject,
         },
-        data: { status: UserStatus.ACTIVE },
+        data: { status: UserStatus.ACTIVE, ...(selfRegistration ? { identityAssurance: "SELF_REGISTERED" as const } : {}) },
       });
 
       if (activatedUser.count !== 1) {
@@ -4229,7 +4251,10 @@ export async function provisionWorkforceBulk(
     const rowNumber = index + 1;
     const key = { ...batchKey, rowNumber };
     try {
-      const result = await runSerializable(database, async (transaction): Promise<WorkforceBulkRowResult> => {
+      const committed = await runSerializable(database, async (transaction): Promise<{
+        outcome: WorkforceBulkRowResult;
+        takeoverTask: CaregiverInvitationTakeoverTask | null;
+      }> => {
         // Replays must also reauthorize. Serializable ordering covers authority changes during each row.
         await assertWorkforceProvisionerInDatabase(transaction, actor.userId, targetHospitalId, kind);
         const batch = await transaction.workforceBulkSubmission.findUnique({ where: { actorUserId_submissionId: batchKey } });
@@ -4239,11 +4264,14 @@ export async function provisionWorkforceBulk(
         });
         if (receipt) {
           const saved = workforceBulkReceiptSchema.parse(receipt.result);
-          if (saved.status !== "invalid" || saved.reason !== "UNAVAILABLE" || receipt.attempts >= WORKFORCE_BULK_MAX_ATTEMPTS) return saved;
+          if (saved.status !== "invalid" || saved.reason !== "UNAVAILABLE" || receipt.attempts >= WORKFORCE_BULK_MAX_ATTEMPTS) {
+            return { outcome: saved, takeoverTask: null };
+          }
         }
         const rowInput = { ...(isRecord(row) ? row : {}), targetHospitalId };
         const validated = kind === "OSM" ? osmProvisionSchema.safeParse(rowInput) : hospitalMemberProvisionSchema.safeParse(rowInput);
         let outcome: WorkforceBulkRowResult;
+        let takeoverTask: CaregiverInvitationTakeoverTask | null = null;
         if (!validated.success) {
           outcome = { rowNumber, status: "invalid", reason: "INVALID_ROW" };
         } else {
@@ -4255,12 +4283,18 @@ export async function provisionWorkforceBulk(
           });
           outcome = { rowNumber, status: !identity.relationshipCreated && !identity.relationshipChanged ? "existing" : "created",
             userId: identity.userId, relationshipId: identity.relationshipId, activationRequired: identity.userStatus === UserStatus.PROVISIONED };
+          takeoverTask = identity.takeoverTask;
         }
         await transaction.workforceBulkRowReceipt.upsert({ where: { actorUserId_submissionId_rowNumber: key },
           create: { ...key, result: outcome }, update: { result: outcome, attempts: { increment: 1 } } });
-        return outcome;
+        return { outcome, takeoverTask };
       }, retryLimit);
-      results.push(result);
+      if (committed.takeoverTask) {
+        await revokeCaregiverInvitationTakeoverSessionsAfterCommit(database, committed.takeoverTask, {
+          revokeProviderSessions: dependencies.revokeProviderSessions,
+        });
+      }
+      results.push(committed.outcome);
     } catch (error: unknown) {
       if (error instanceof ForbiddenError) throw error;
       // Domain writes rolled back. Persist an explicit failure separately; never overwrite a concurrently committed success.

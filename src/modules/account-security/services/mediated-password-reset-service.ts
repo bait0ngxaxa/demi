@@ -808,7 +808,12 @@ async function switchIdentityAndFinalize(
     }
     const updatedUser = await transaction.user.updateMany({
       where: { id: record.userId, authSubject: record.previousAuthSubject },
-      data: { authSubject: replacement.authSubject, providerLoginAlias: replacement.providerLoginAlias, status: UserStatus.ACTIVE },
+      data: {
+        authSubject: replacement.authSubject,
+        providerLoginAlias: replacement.providerLoginAlias,
+        status: UserStatus.ACTIVE,
+        identityAssurance: "HOSPITAL_PROOFED",
+      },
     });
     if (updatedUser.count !== 1) throw new ConflictError("The target credential changed during reset");
     await restoreTakeoverRelationships(transaction, target, record.issuerUserId, now);

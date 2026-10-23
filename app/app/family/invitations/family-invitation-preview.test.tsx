@@ -89,6 +89,8 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     expect(markup).toContain("เลขบัตรประชาชนของคุณ");
     expect(markup).toContain("ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง");
     expect(markup).toContain("สร้างบัญชีและตอบรับคำเชิญ");
+    expect(markup).toContain("หากมีบัญชีแล้ว เข้าสู่ระบบเพื่อรับคำเชิญนี้");
+    expect(markup).toContain(`href="/login#${"a".repeat(43)}"`);
   });
 
   it.each(["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"] as const)("keeps bounded recipient %s preview and never mutates on render/preview", async (invitationStatus) => {

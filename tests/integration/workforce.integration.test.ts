@@ -1,5 +1,6 @@
 import {
   HospitalStatus,
+  IdentityAssurance,
   MembershipStatus,
   MembershipType,
   Role,
@@ -9,6 +10,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
+import { authenticateWithPassword } from "@/modules/auth/services/authentication-service";
 import { PasswordAuthProvisioningProviderRejectedError, PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
 import {
   completeWorkforceActivation,
@@ -24,6 +27,8 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
+import { createCaregiverInvitation } from "@/modules/family/services/caregiver-relationship-service";
+import { createCaregiverAccountFromInvitation } from "@/modules/family/services/caregiver-account-claim-service";
 
 const prisma = getPrisma();
 
@@ -62,7 +67,15 @@ async function linkNetwork(
 
 async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
+  await prisma.caregiverAppointmentGrant.deleteMany();
+  await prisma.caregiverResourceGrant.deleteMany();
+  await prisma.caregiverRelationship.deleteMany();
+  await prisma.caregiverInvitation.deleteMany();
+  await prisma.userTakeoverLock.deleteMany();
+  await prisma.$executeRaw`DELETE FROM "PublicSelfRegistrationRateLimitBucket" WHERE "category" IN ('CG_PATIENT', 'CG_IDENTITY')`;
   await prisma.patientOsmAssignment.deleteMany();
+  await prisma.patientHospitalRelationship.deleteMany();
+  await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
   await prisma.osmHospitalRelationship.deleteMany();
   await prisma.hospitalOnboardingApplication.deleteMany();
@@ -227,6 +240,7 @@ function createDeferred(): {
 describe("Phase 4B workforce PostgreSQL workflow", () => {
   beforeAll(async () => {
     await prisma.$connect();
+    await clearDatabase();
   });
 
   afterEach(async () => {
@@ -359,30 +373,76 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     });
   });
 
-  it("provisions workforce onto an ACTIVE CAREGIVER identity without creating a second Person or User", async () => {
-    const { actor, hospitalId } = await createOwner();
+  it("leaves a HOSPITAL_PROOFED workforce identity active when another Hospital provisions it", async () => {
+    const source = await createOwner("INTEGRATION-WF-SOURCE");
+    const target = await createOwner("INTEGRATION-WF-TARGET");
     const person = await prisma.person.create({
-      data: {
-        identityKeyHash: hashIdentityReference({
-          namespace: "thai-national-id",
-          value: nationalIds.active,
-        }),
-        givenName: "ชื่อที่ผู้ดูแลแจ้ง",
-        familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
-        nameIsSelfAsserted: true,
-      },
+      data: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIds.active }) },
       select: { id: true },
     });
     const user = await prisma.user.create({
+      data: { personId: person.id, authSubject: randomUUID(), status: UserStatus.ACTIVE, roles: { create: { role: Role.HOSPITAL } } },
+      select: { id: true },
+    });
+    await prisma.hospitalMembership.create({ data: { userId: user.id, hospitalId: source.hospitalId, membershipType: MembershipType.MEMBER, profession: "NURSE", status: MembershipStatus.ACTIVE } });
+
+    const result = await provisionHospitalMember(target.actor, {
+      nationalId: nationalIds.active,
+      givenName: "บุคลากร",
+      familyName: "เดิม",
+      targetHospitalId: target.hospitalId,
+      profession: "NURSE",
+    });
+
+    expect(result).toMatchObject({ userId: user.id, accountStatus: UserStatus.ACTIVE, relationshipStatus: MembershipStatus.ACTIVE, reusedExistingUser: true });
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).toMatchObject({ status: UserStatus.ACTIVE, identityAssurance: IdentityAssurance.HOSPITAL_PROOFED });
+    expect(await prisma.userTakeoverLock.findUnique({ where: { userId: user.id } })).toBeNull();
+  });
+
+  it("quarantines a claimed caregiver before granting workforce access", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const inviterPerson = await prisma.person.create({
       data: {
-        personId: person.id,
-        authSubject: "77777777-7777-4777-8777-777777777777",
-        status: UserStatus.ACTIVE,
+        identityKeyHash: `workforce-caregiver-inviter-${randomUUID()}`,
       },
       select: { id: true },
     });
-    await prisma.userRole.create({ data: { userId: user.id, role: Role.CAREGIVER } });
-    const provisionIdentity = vi.fn();
+    const inviter = await prisma.user.create({
+      data: {
+        personId: inviterPerson.id,
+        authSubject: randomUUID(),
+        status: UserStatus.ACTIVE,
+        roles: { create: { role: Role.PATIENT } },
+      },
+      select: { id: true },
+    });
+    await prisma.patientProfile.create({ data: { personId: inviterPerson.id } });
+    const caregiverPatientActor: ActorContext = {
+      userId: inviter.id,
+      personId: inviterPerson.id,
+      roles: [Role.PATIENT],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    };
+    const invitation = await createCaregiverInvitation(caregiverPatientActor, { nationalId: nationalIds.active }, {
+      database: prisma,
+      rateLimiter: { consume: async () => true },
+    });
+    const authSubject = randomUUID();
+    const claim = await createCaregiverAccountFromInvitation({
+      token: invitation.plaintextToken,
+      nationalId: nationalIds.active,
+      givenName: "ชื่อที่ผู้ดูแลแจ้ง",
+      familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
+      password: "caregiver-test-password-2026",
+      passwordConfirmation: "caregiver-test-password-2026",
+    }, { ipAddress: "203.0.113.13" }, {
+      database: prisma,
+      rateLimiter: { consume: async () => true },
+      createProviderIdentity: async ({ userId }) => ({ authSubject, providerLoginAlias: `caregiver-${userId}@test.invalid` }),
+      deleteProviderIdentity: async () => {},
+    });
+    const revokeProviderSessions = vi.fn(async () => "CONFIRMED" as const);
 
     const result = await provisionHospitalMember(
       actor,
@@ -393,23 +453,47 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
         targetHospitalId: hospitalId,
         profession: "NURSE",
       },
-      { provisionIdentity },
+      { revokeProviderSessions },
     );
 
-    expect(result.userId).toBe(user.id);
+    expect(result.userId).toBe(claim.userId);
     expect(result.activationToken).toBeNull();
-    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(result.accountStatus).toBe(UserStatus.SUSPENDED);
+    expect(result.relationshipStatus).toBe(MembershipStatus.SUSPENDED);
+    expect(revokeProviderSessions).toHaveBeenCalledOnce();
+    expect(revokeProviderSessions).toHaveBeenCalledWith(authSubject);
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: claim.userId } })).toMatchObject({
+      status: UserStatus.SUSPENDED,
+      identityAssurance: IdentityAssurance.CAREGIVER_INVITATION,
+      authSubject,
+    });
+    expect(await prisma.userTakeoverLock.findUniqueOrThrow({ where: { userId: claim.userId } })).toMatchObject({
+      hospitalId,
+      providerState: "CONFIRMED",
+    });
     expect(new Set((await prisma.userRole.findMany({
-      where: { userId: user.id },
+      where: { userId: claim.userId },
       select: { role: true },
     })).map(({ role }) => role))).toEqual(new Set([Role.CAREGIVER, Role.HOSPITAL]));
-    expect(await prisma.person.count({ where: { identityKeyHash: hashIdentityReference({
-      namespace: "thai-national-id",
-      value: nationalIds.active,
-    }) } })).toBe(1);
-    expect(await prisma.user.count({ where: { personId: person.id } })).toBe(1);
-    expect(await prisma.hospitalMembership.count({ where: { userId: user.id, hospitalId } })).toBe(1);
-    expect(await prisma.workforceActivation.count({ where: { userId: user.id } })).toBe(0);
+    expect(await prisma.person.count({ where: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIds.active }) } })).toBe(1);
+    expect(await prisma.user.count({ where: { id: claim.userId } })).toBe(1);
+    expect(await prisma.hospitalMembership.count({ where: { userId: claim.userId, hospitalId, status: MembershipStatus.SUSPENDED } })).toBe(1);
+    expect(await prisma.workforceActivation.count({ where: { userId: claim.userId } })).toBe(0);
+    expect(await prisma.caregiverRelationship.count({ where: { caregiverUserId: claim.userId, status: "ACTIVE" } })).toBe(1);
+    expect(await resolveActorAccessByUserId(claim.userId, createActorContextStore(prisma))).toEqual({
+      status: "ACCOUNT_NOT_ACTIVE",
+      accountStatus: UserStatus.SUSPENDED,
+    });
+    const loginProvider = {
+      signInWithPassword: vi.fn(async () => ({ data: { user: { id: authSubject } }, error: null })),
+      getUser: vi.fn(async () => ({ data: { user: { id: authSubject } }, error: null })),
+      signOut: vi.fn(async () => ({ error: null })),
+    };
+    await expect(authenticateWithPassword({ nationalId: nationalIds.active, password: "caregiver-test-password-2026" }, {
+      provider: loginProvider,
+      actorStore: createActorContextStore(prisma),
+    })).resolves.toEqual({ status: "APPLICATION_ACCESS_DENIED", reason: "ACCOUNT_NOT_ACTIVE" });
+    expect(loginProvider.signOut).toHaveBeenCalledOnce();
   });
 
   it("rejects an existing ADMIN User as Hospital staff without changing workforce state", async () => {
