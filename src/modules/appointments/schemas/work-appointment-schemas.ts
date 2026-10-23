@@ -30,6 +30,7 @@ export const workAppointmentFiltersSchema = z
     locationType: z.enum(APPOINTMENT_LOCATION_VALUES).optional(),
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     awaitingOsmAcceptance: z.literal("true").optional(),
+    unassignedOsm: z.literal("true").optional(),
   })
   .strict()
   .superRefine((filters, context) => {
@@ -53,6 +54,7 @@ export const workAppointmentQuerySchema = z
     locationType: z.enum(APPOINTMENT_LOCATION_VALUES).optional(),
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     awaitingOsmAcceptance: z.literal("true").optional(),
+    unassignedOsm: z.literal("true").optional(),
     cursor: z.string().optional(),
   })
   .strict()

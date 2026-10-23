@@ -1,0 +1,2 @@
+# Keep CSV template worktree bytes CRLF on Windows and Linux; Git stores normalized LF blobs.
+public/templates/*.csv eol=crlf

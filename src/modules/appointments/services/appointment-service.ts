@@ -790,6 +790,33 @@ async function rescheduleInTransaction(
     }, notificationRollout, now, undefined, { onlyOsmUserId: fields.assignedOsmUserId });
   }
 
+  if (
+    access.authoritativeActor.roles.includes(Role.OSM) &&
+    fields.locationType === "HOME_VISIT" &&
+    fields.assignedOsmUserId === actor.userId
+  ) {
+    await transaction.patientAppointmentAssigneeAcceptance.create({
+      data: {
+        appointmentId: result.id,
+        sourceAppointmentUpdatedAt: result.updatedAt,
+        acceptedByUserId: actor.userId,
+        submissionNonce: randomUUID(),
+        acceptedAt: now,
+      },
+    });
+    await recordAuditEvent({
+      actorUserId: actor.userId,
+      action: "appointment.assignment_accepted",
+      resourceType: "PatientAppointment",
+      resourceId: result.id,
+      metadata: {
+        hospitalId: access.target.hospitalId,
+        source: "OSM_SELF_EDIT",
+        sourceAppointmentUpdatedAt: result.updatedAt.toISOString(),
+      },
+    }, transaction);
+  }
+
   return toMutationResult(result, access.target.hospitalId);
 }
 

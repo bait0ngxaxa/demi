@@ -65,6 +65,10 @@ function createDatabase(input: {
       update: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
     };
+    patientAppointment: {
+      findMany: ReturnType<typeof vi.fn>;
+      updateMany: ReturnType<typeof vi.fn>;
+    };
   };
 } {
   const assignmentFindFirst = vi.fn().mockResolvedValue(input.activeAssignment ?? null);
@@ -73,6 +77,8 @@ function createDatabase(input: {
     id: assignmentId,
     osmUserId: input.targetOsmUserId ?? osmUserId,
   });
+  const appointmentFindMany = vi.fn().mockResolvedValue([]);
+  const appointmentUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
   const transaction = {
     user: {
       findUnique: vi.fn().mockResolvedValue({
@@ -85,12 +91,20 @@ function createDatabase(input: {
       findFirst: vi.fn().mockResolvedValue(input.ownerMembership === false ? null : { id: "membership" }),
     },
     patientHospitalRelationship: {
-      findFirst: vi.fn().mockResolvedValue({ id: relationshipId, hospitalId }),
+      findFirst: vi.fn().mockResolvedValue({
+        id: relationshipId,
+        hospitalId,
+        patientProfile: { person: { user: { id: "88888888-8888-4888-8888-888888888888" } } },
+      }),
     },
     patientOsmAssignment: {
       findFirst: assignmentFindFirst,
       update: assignmentUpdate,
       create: assignmentCreate,
+    },
+    patientAppointment: {
+      findMany: appointmentFindMany,
+      updateMany: appointmentUpdateMany,
     },
   };
   const database = {
@@ -107,6 +121,10 @@ function createDatabase(input: {
         findFirst: assignmentFindFirst,
         update: assignmentUpdate,
         create: assignmentCreate,
+      },
+      patientAppointment: {
+        findMany: appointmentFindMany,
+        updateMany: appointmentUpdateMany,
       },
     },
   };

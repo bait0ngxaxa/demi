@@ -84,8 +84,10 @@ export type WorkAppointmentListItem = {
   osmAtCreationDisplayName: string | null;
   pendingRequestBadges: {
     reschedule: boolean;
+    staleReschedule: boolean;
     cancellation: boolean;
   };
+  hasUnassignedOsm: boolean;
   osmAcceptanceStatus: "WAITING" | "ACCEPTED" | "RESCHEDULE_REQUESTED" | "NONE";
 };
 
@@ -330,6 +332,25 @@ function activeOsmAssignmentWhere(
   };
 }
 
+function currentOsmAssignmentWhere(hospitalId: string): Prisma.PatientOsmAssignmentWhereInput {
+  return {
+    endedAt: null,
+    osmUser: {
+      is: {
+        status: UserStatus.ACTIVE,
+        roles: { some: { role: Role.OSM } },
+        osmHospitalRelationships: {
+          some: {
+            hospitalId,
+            status: MembershipStatus.ACTIVE,
+            hospital: { is: { status: HospitalStatus.ACTIVE } },
+          },
+        },
+      },
+    },
+  };
+}
+
 function appointmentRelationshipReadWhere(
   actorUserId: string,
   scope: ResolvedHospitalScope,
@@ -388,10 +409,12 @@ function buildAppointmentWhere(
   actorUserId: string,
   scope: ResolvedHospitalScope,
   filters: WorkAppointmentFilters,
+  now: Date,
 ): Prisma.PatientAppointmentWhereInput {
   const scheduledAt: Prisma.DateTimeFilter<"PatientAppointment"> = {};
   if (filters.dateFrom) scheduledAt.gte = bangkokDayStart(filters.dateFrom);
   if (filters.dateTo) scheduledAt.lt = bangkokDayAfter(filters.dateTo);
+  if (filters.unassignedOsm) scheduledAt.gt = now;
 
   return {
     patientHospitalRelationship: {
@@ -404,6 +427,9 @@ function buildAppointmentWhere(
     ...(filters.responsibleUserId === undefined
       ? {}
       : { responsibleUserId: filters.responsibleUserId }),
+    ...(filters.unassignedOsm
+      ? { AND: [{ assignedOsmUserId: null, locationType: "HOME_VISIT", status: "SCHEDULED" }] }
+      : {}),
   };
 }
 
@@ -524,7 +550,7 @@ export async function countWorkAppointmentsAwaitingMyAcceptance(
   return idsByHospital.reduce((total, ids) => total + ids.length, 0);
 }
 
-function workAppointmentSelect(hospitalId: string, actorUserId: string) {
+function workAppointmentSelect(hospitalId: string) {
   return {
     id: true,
     assignedOsmUserId: true,
@@ -560,10 +586,9 @@ function workAppointmentSelect(hospitalId: string, actorUserId: string) {
           },
         },
         osmAssignments: {
-          where: {
-            ...activeOsmAssignmentWhere(actorUserId, hospitalId),
-          },
-          select: { id: true },
+          where: currentOsmAssignmentWhere(hospitalId),
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: { osmUserId: true },
           take: 1,
         },
       },
@@ -593,14 +618,17 @@ type WorkAppointmentRecord = Prisma.PatientAppointmentGetPayload<{
 }>;
 
 function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAppointmentListItem {
-  const hasCurrentAcceptance = record.assigneeAcceptances.some(
+  const currentOsmUserId = record.patientHospitalRelationship.osmAssignments[0]?.osmUserId ?? null;
+  const hasCurrentAssignment = Boolean(record.assignedOsmUserId && record.assignedOsmUserId === currentOsmUserId);
+  const hasCurrentAcceptance = hasCurrentAssignment && record.assigneeAcceptances.some(
     (acceptance) => acceptance.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
   );
-  const hasCurrentReschedule = record.rescheduleRequests.some(
+  const hasCurrentReschedule = hasCurrentAssignment && record.rescheduleRequests.some(
     (request) => request.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
   );
+  const hasPendingReschedule = record.rescheduleRequests.length > 0;
   const isWaiting = Boolean(
-    record.assignedOsmUserId &&
+    hasCurrentAssignment &&
     record.locationType === "HOME_VISIT" &&
     record.status === "SCHEDULED" &&
     record.scheduledAt.getTime() > now.getTime() &&
@@ -625,12 +653,19 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAp
       ? toDisplayName(record.osmAssignmentAtCreation.osmUser.person)
       : null,
     pendingRequestBadges: {
-      reschedule: hasCurrentReschedule,
+      reschedule: hasPendingReschedule,
+      staleReschedule: hasPendingReschedule && !hasCurrentReschedule,
       cancellation: record.cancellationRequests.length > 0,
     },
+    hasUnassignedOsm: Boolean(
+      record.assignedOsmUserId === null &&
+      record.locationType === "HOME_VISIT" &&
+      record.status === "SCHEDULED" &&
+      record.scheduledAt.getTime() > now.getTime(),
+    ),
     osmAcceptanceStatus: hasCurrentAcceptance
       ? "ACCEPTED"
-      : hasCurrentReschedule && record.assignedOsmUserId
+      : hasCurrentReschedule && hasCurrentAssignment
         ? "RESCHEDULE_REQUESTED"
         : isWaiting
           ? "WAITING"
@@ -886,11 +921,14 @@ export async function listWorkAppointments(
     if (filters.awaitingOsmAcceptance && (!resolvedScope.directRead || tab !== "UPCOMING")) {
       throw new ForbiddenError();
     }
+    if (filters.unassignedOsm && (!resolvedScope.directRead || tab !== "UPCOMING")) {
+      throw new ForbiddenError();
+    }
 
     const cursorContext = buildCursorContext(actor.userId, resolvedScope, tab, filters);
     const position = decodeWorkAppointmentCursor(cursor, cursorContext);
     const now = dependencies.now?.() ?? new Date();
-    const baseWhere = buildAppointmentWhere(actor.userId, resolvedScope, filters);
+    const baseWhere = buildAppointmentWhere(actor.userId, resolvedScope, filters, now);
     let waitingAppointmentIds: string[] | null = null;
     if (tab === "AWAITING_MY_ACCEPTANCE") {
       waitingAppointmentIds = await findAppointmentsAwaitingOsmAcceptance(database, {
@@ -926,7 +964,7 @@ export async function listWorkAppointments(
           select: {
             submittedAt: true,
             appointmentId: true,
-            appointment: { select: workAppointmentSelect(resolvedScope.hospitalId, actor.userId) },
+            appointment: { select: workAppointmentSelect(resolvedScope.hospitalId) },
           },
         }),
         database.patientAppointmentCancellationRequest.findMany({
@@ -939,7 +977,7 @@ export async function listWorkAppointments(
           select: {
             submittedAt: true,
             appointmentId: true,
-            appointment: { select: workAppointmentSelect(resolvedScope.hospitalId, actor.userId) },
+            appointment: { select: workAppointmentSelect(resolvedScope.hospitalId) },
           },
         }),
       ]);
@@ -1014,7 +1052,7 @@ export async function listWorkAppointments(
         where,
         orderBy: [{ scheduledAt: ascending ? "asc" : "desc" }, { id: ascending ? "asc" : "desc" }],
         take: WORK_APPOINTMENT_PAGE_SIZE + 1,
-        select: workAppointmentSelect(resolvedScope.hospitalId, actor.userId),
+        select: workAppointmentSelect(resolvedScope.hospitalId),
       });
       const pageRows = rows.slice(0, WORK_APPOINTMENT_PAGE_SIZE);
       records = pageRows;

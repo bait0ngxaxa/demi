@@ -342,6 +342,16 @@ describe("OSM home-visit authority", () => {
       expect(decideAppointmentPolicy({ actor: osm, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY, target: { ...home, operation } }).allowed).toBe(true);
     }
   });
+  it("allows the current assigned OSM to edit and cancel a home visit created by another OSM", () => {
+    const handedOverHomeVisit = { ...home, createdByUserId: "previous-osm" };
+    for (const operation of ["EDIT", "CANCEL"] as const) {
+      expect(decideAppointmentPolicy({
+        actor: osm,
+        capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
+        target: { ...handedOverHomeVisit, operation },
+      })).toEqual({ allowed: true, reason: "active_assigned_osm_home_visit_scope" });
+    }
+  });
   it.each([
     [{ assignedOsmUserId: "other" }, "active_osm_assignment_scope_required"],
     [{ assignedOsmUserId: null }, "active_osm_assignment_scope_required"],
@@ -349,8 +359,6 @@ describe("OSM home-visit authority", () => {
     [{ locationType: "ONLINE" }, "osm_home_location_required"],
     [{ locationType: "OTHER" }, "osm_home_location_required"],
     [{ locationType: null }, "osm_home_location_required"],
-    [{ createdByUserId: "other" }, "osm_creator_required"],
-    [{ createdByUserId: undefined }, "osm_creator_required"],
     [{ responsibleUserId: "clinician" }, "osm_responsible_must_be_null"],
     [{ operation: "COMPLETE" }, "osm_terminal_action_not_allowed"],
     [{ operation: "NO_SHOW" }, "osm_terminal_action_not_allowed"],

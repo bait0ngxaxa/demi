@@ -41,7 +41,11 @@ export type AppointmentPolicyTarget = {
 export type AppointmentPolicyDecision =
   | {
       allowed: true;
-      reason: "active_direct_hospital_scope" | "active_osm_assignment_scope" | "patient_self_scope";
+      reason:
+        | "active_direct_hospital_scope"
+        | "active_osm_assignment_scope"
+        | "active_assigned_osm_home_visit_scope"
+        | "patient_self_scope";
     }
   | {
       allowed: false;
@@ -56,7 +60,6 @@ export type AppointmentPolicyDecision =
         | "patient_self_scope_required"
         | "osm_manage_not_allowed"
         | "osm_home_location_required"
-        | "osm_creator_required"
         | "osm_responsible_must_be_null"
         | "osm_terminal_action_not_allowed";
     };
@@ -138,10 +141,9 @@ export function decideAppointmentPolicy(input: {
     if (hasDirectHospitalScope) return { allowed: true, reason: "active_direct_hospital_scope" };
     if (!hasExactOsmScope) return { allowed: false, reason: "active_osm_assignment_scope_required" };
     if (input.target.locationType !== "HOME_VISIT") return { allowed: false, reason: "osm_home_location_required" };
-    if (input.target.createdByUserId !== input.actor.userId) return { allowed: false, reason: "osm_creator_required" };
     if (input.target.responsibleUserId != null) return { allowed: false, reason: "osm_responsible_must_be_null" };
     if (input.target.operation !== "EDIT" && input.target.operation !== "CANCEL") return { allowed: false, reason: "osm_terminal_action_not_allowed" };
-    return { allowed: true, reason: "active_osm_assignment_scope" };
+    return { allowed: true, reason: "active_assigned_osm_home_visit_scope" };
   }
 
   if (input.capability === APPOINTMENT_MANAGE_CAPABILITY) {

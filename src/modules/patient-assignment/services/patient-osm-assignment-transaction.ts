@@ -1,6 +1,7 @@
 import "server-only";
 
 import {
+  AppointmentLineNotificationEventKind,
   HospitalStatus,
   MembershipStatus,
   MembershipType,
@@ -15,8 +16,11 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
 import {
   ForbiddenError,
+  ConflictError,
   NotFoundError,
 } from "@/shared/errors/application-error";
+import { createAppointmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
+import { getAppointmentLineNotificationRollout } from "@/modules/appointments/domain/appointment-line-notifications";
 
 import {
   assertPatientOsmAssignmentPolicy,
@@ -81,7 +85,7 @@ async function assertOwnerInDatabase(
 async function resolvePatientHospitalRelationship(
   transaction: Prisma.TransactionClient,
   relationshipId: string,
-): Promise<{ id: string; hospitalId: string }> {
+): Promise<{ id: string; hospitalId: string; patientUserId: string | null }> {
   const relationship = await transaction.patientHospitalRelationship.findFirst({
     where: {
       id: relationshipId,
@@ -93,14 +97,93 @@ async function resolvePatientHospitalRelationship(
         },
       },
     },
-    select: { id: true, hospitalId: true },
+    select: {
+      id: true,
+      hospitalId: true,
+      patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } },
+    },
   });
 
   if (!relationship) {
     throw new NotFoundError();
   }
 
-  return relationship;
+  return {
+    id: relationship.id,
+    hospitalId: relationship.hospitalId,
+    patientUserId: relationship.patientProfile.person.user?.id ?? null,
+  };
+}
+
+async function handoffFutureAppointments(
+  transaction: Prisma.TransactionClient,
+  input: {
+    actorUserId: string;
+    hospitalId: string;
+    patientHospitalRelationshipId: string;
+    patientUserId: string | null;
+    previousOsmUserId: string;
+    nextOsmUserId: string | null;
+    now: Date;
+  },
+): Promise<void> {
+  const appointments = await transaction.patientAppointment.findMany({
+    where: {
+      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      assignedOsmUserId: input.previousOsmUserId,
+      status: "SCHEDULED",
+      locationType: "HOME_VISIT",
+      scheduledAt: { gt: input.now },
+    },
+    orderBy: { id: "asc" },
+    select: { id: true, updatedAt: true },
+  });
+  const rollout = input.nextOsmUserId ? getAppointmentLineNotificationRollout() : null;
+
+  for (const appointment of appointments) {
+    const updatedAt = new Date(Math.max(appointment.updatedAt.getTime() + 1, input.now.getTime()));
+    const changed = await transaction.patientAppointment.updateMany({
+      where: {
+        id: appointment.id,
+        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+        assignedOsmUserId: input.previousOsmUserId,
+        status: "SCHEDULED",
+        locationType: "HOME_VISIT",
+        scheduledAt: { gt: input.now },
+        updatedAt: appointment.updatedAt,
+      },
+      data: { assignedOsmUserId: input.nextOsmUserId, updatedAt },
+    });
+
+    if (changed.count !== 1) {
+      throw new ConflictError("The Appointment changed during OSM reassignment");
+    }
+
+    await recordAuditEvent({
+      actorUserId: input.actorUserId,
+      action: input.nextOsmUserId
+        ? "appointment.assignee_handed_over"
+        : "appointment.assignee_unassigned",
+      resourceType: "PatientAppointment",
+      resourceId: appointment.id,
+      metadata: {
+        hospitalId: input.hospitalId,
+        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+        previousOsmUserId: input.previousOsmUserId,
+        nextOsmUserId: input.nextOsmUserId,
+      },
+    }, transaction);
+
+    if (input.nextOsmUserId && rollout) {
+      await createAppointmentLineNotificationIntent(transaction, {
+        appointmentId: appointment.id,
+        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+        sourceUpdatedAt: updatedAt,
+        eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
+        patientUserId: input.patientUserId,
+      }, rollout, input.now, undefined, { onlyOsmUserId: input.nextOsmUserId });
+    }
+  }
 }
 
 async function assertTargetOsmInDatabase(
@@ -245,6 +328,18 @@ export async function assignOsmToPatientInTransaction(
     transaction,
   );
 
+  if (activeAssignment) {
+    await handoffFutureAppointments(transaction, {
+      actorUserId: actor.userId,
+      hospitalId: relationship.hospitalId,
+      patientHospitalRelationshipId: relationship.id,
+      patientUserId: relationship.patientUserId,
+      previousOsmUserId: activeAssignment.osmUserId,
+      nextOsmUserId: assignment.osmUserId,
+      now,
+    });
+  }
+
   return {
     operation: activeAssignment ? "REASSIGNED" : "ASSIGNED",
     patientHospitalRelationshipId: relationship.id,
@@ -295,6 +390,16 @@ export async function unassignOsmFromPatientInTransaction(
       endedAt: now,
       endedByUserId: actor.userId,
     },
+  });
+
+  await handoffFutureAppointments(transaction, {
+    actorUserId: actor.userId,
+    hospitalId: relationship.hospitalId,
+    patientHospitalRelationshipId: relationship.id,
+    patientUserId: relationship.patientUserId,
+    previousOsmUserId: activeAssignment.osmUserId,
+    nextOsmUserId: null,
+    now,
   });
 
   await recordAuditEvent(

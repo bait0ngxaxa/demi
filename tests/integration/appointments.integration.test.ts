@@ -870,13 +870,24 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       select: { osmAssignmentIdAtCreation: true },
     })).toEqual({ osmAssignmentIdAtCreation: null });
 
+    const refreshedOsmAppointment = await prisma.patientAppointment.findUniqueOrThrow({
+      where: { id: osmAppointment.appointmentId },
+      select: { updatedAt: true },
+    });
+    const reviewableRequest = await requestOwnPatientAppointmentCancellation(patientActor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: osmAppointment.appointmentId,
+      expectedUpdatedAt: refreshedOsmAppointment.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    });
+
     const workDetail = await getAppointmentDetail(owner.actor, patient.relationshipId, osmAppointment.appointmentId);
     expect(workDetail.osmAtCreationDisplayName).toBe(firstOsm.displayName);
 
     const review = await reviewAppointmentCancellationRequest(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
       appointmentId: osmAppointment.appointmentId,
-      requestId: proxyRequest.requestId,
+      requestId: reviewableRequest.requestId,
       decision: "APPROVE",
     });
     expect(review).toMatchObject({
@@ -895,7 +906,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       submissionNonce: randomUUID(),
     })).rejects.toBeInstanceOf(ConflictError);
     const persistedRequest = await prisma.patientAppointmentCancellationRequest.findUniqueOrThrow({
-      where: { id: proxyRequest.requestId },
+      where: { id: reviewableRequest.requestId },
       select: { status: true, resolvedByUserId: true, resolvedAt: true },
     });
     expect(persistedRequest).toMatchObject({
@@ -905,7 +916,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(persistedRequest.resolvedAt).toBeInstanceOf(Date);
     expect(await prisma.auditEvent.count({ where: { action: "appointment.acknowledged" } })).toBe(2);
     expect(await prisma.auditEvent.count({ where: { action: "appointment.coordination_recorded" } })).toBe(1);
-    expect(await prisma.auditEvent.count({ where: { action: "appointment.cancellation_requested" } })).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "appointment.cancellation_requested" } })).toBe(2);
     expect(await prisma.auditEvent.count({ where: { action: "appointment.cancellation_request.approved" } })).toBe(1);
     const appointmentAuditMetadata = await prisma.auditEvent.findMany({
       select: { metadata: true },
@@ -1506,6 +1517,13 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         requestId: nextRequest.requestId,
         osmUserId: osm.userId,
       }, "APPROVE", { database: prisma });
+      const nextOsmLineUserId = await bindAndEnable(nextOsm.actor);
+      const handedOverAppointment = await createAppointment(owner.actor, appointmentInput(nextPatient.relationshipId, {
+        assignedOsmUserId: osm.userId,
+        locationType: "HOME_VISIT",
+        responsibleUserId: null,
+      }), { database: prisma, now: () => new Date(), appointmentLineNotificationRollout: notificationRollout });
+      const callsBeforeHandoff = calls.length;
       const formerAssignment = await prisma.patientOsmAssignment.findFirstOrThrow({
         where: { patientHospitalRelationshipId: nextPatient.relationshipId, endedAt: null },
         select: { id: true },
@@ -1515,11 +1533,24 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         osmUserId: nextOsm.userId,
       }, { database: prisma });
       await drainAppointmentLineNotificationOutbox(drainDependencies);
+      expect(await prisma.patientAppointment.findUniqueOrThrow({
+        where: { id: handedOverAppointment.appointmentId },
+        select: { assignedOsmUserId: true },
+      })).toEqual({ assignedOsmUserId: nextOsm.userId });
+      expect(await prisma.appointmentLineNotification.count({
+        where: {
+          appointmentId: handedOverAppointment.appointmentId,
+          eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
+          recipientUserId: nextOsm.userId,
+          state: AppointmentLineNotificationState.PROVIDER_ACCEPTED,
+        },
+      })).toBe(1);
+      expect(calls.slice(callsBeforeHandoff).filter(({ lineUserId }) => lineUserId === nextOsmLineUserId)).toHaveLength(1);
       await expect(prisma.appointmentLineNotification.findFirstOrThrow({
         where: { eventKind: AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED, patientOsmAssignmentId: formerAssignment.id },
         select: { state: true, safeOutcome: true },
       })).resolves.toEqual({ state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "AUTHORITY_CHANGED" });
-      expect(calls).toHaveLength(3);
+      expect(calls.slice(callsBeforeHandoff)).toHaveLength(1);
     } finally {
       if (previousEnabled === undefined) delete process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED;
       else process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED = previousEnabled;
@@ -2421,6 +2452,24 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       responsibleUserId: null,
     }));
     expect(await prisma.patientAppointmentAssigneeAcceptance.count({ where: { appointmentId: osmCreated.appointmentId } })).toBe(1);
+    const osmSelfEdited = await rescheduleAppointment(osm.actor, rescheduleInput(
+      patient.relationshipId,
+      osmCreated.appointmentId,
+      osmCreated.updatedAt,
+      { locationType: "HOME_VISIT", responsibleUserId: null },
+    ));
+    expect(await prisma.patientAppointmentAssigneeAcceptance.findUnique({
+      where: { appointmentId_sourceAppointmentUpdatedAt: {
+        appointmentId: osmCreated.appointmentId,
+        sourceAppointmentUpdatedAt: osmSelfEdited.updatedAt,
+      } },
+      select: { acceptedByUserId: true },
+    })).toEqual({ acceptedByUserId: osm.userId });
+    expect(await prisma.auditEvent.findFirst({
+      where: { resourceType: "PatientAppointment", resourceId: osmCreated.appointmentId, action: "appointment.assignment_accepted" },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    })).toMatchObject({ metadata: { source: "OSM_SELF_EDIT" } });
     expect((await listWorkAppointments(osm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" })).items.map(({ appointmentId }) => appointmentId))
       .toEqual([appointment.appointmentId]);
 
@@ -2440,8 +2489,67 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect((await listWorkAppointments(osm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" })).items).toEqual([]);
     expect((await listWorkAppointments(owner.actor, { hospitalId: hospital.id, tab: "UPCOMING" })).items)
       .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: appointment.appointmentId, osmAcceptanceStatus: "RESCHEDULE_REQUESTED" })]));
-    await unassignOsmFromPatient(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
+    const reassigned = await assignOsmToPatient(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      osmUserId: anotherOsm.userId,
+    });
+    expect(reassigned.operation).toBe("REASSIGNED");
+    expect(await prisma.patientAppointment.findUniqueOrThrow({
+      where: { id: appointment.appointmentId },
+      select: { assignedOsmUserId: true, updatedAt: true },
+    })).toMatchObject({ assignedOsmUserId: anotherOsm.userId });
     await expect(acceptAppointmentAssignment(osm.actor, {
+      ...acceptanceInput,
+      sourceAppointmentUpdatedAt: rescheduled.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getAppointmentDetail(osm.actor, patient.relationshipId, appointment.appointmentId))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(rescheduleAppointment(osm.actor, rescheduleInput(
+      patient.relationshipId,
+      appointment.appointmentId,
+      rescheduled.updatedAt,
+      { assignedOsmUserId: anotherOsm.userId, locationType: "HOME_VISIT", responsibleUserId: null },
+    ))).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await listWorkAppointments(anotherOsm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" })).items)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: appointment.appointmentId, osmAcceptanceStatus: "WAITING" })]));
+    expect((await listWorkAppointments(owner.actor, { hospitalId: hospital.id, tab: "UPCOMING", awaitingOsmAcceptance: "true" })).items)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: appointment.appointmentId, osmAcceptanceStatus: "WAITING" })]));
+
+    const staleAssignmentAppointment = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, {
+      assignedOsmUserId: anotherOsm.userId,
+      locationType: "HOME_VISIT",
+      responsibleUserId: null,
+    }));
+    await prisma.patientAppointment.update({
+      where: { id: staleAssignmentAppointment.appointmentId },
+      data: { assignedOsmUserId: osm.userId },
+    });
+    expect((await listWorkAppointments(owner.actor, { hospitalId: hospital.id, tab: "UPCOMING" })).items)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: staleAssignmentAppointment.appointmentId, osmAcceptanceStatus: "NONE" })]));
+    expect((await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "UPCOMING",
+      awaitingOsmAcceptance: "true",
+    })).items.map(({ appointmentId }) => appointmentId)).not.toContain(staleAssignmentAppointment.appointmentId);
+
+    await unassignOsmFromPatient(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
+    expect(await prisma.patientAppointment.findUniqueOrThrow({
+      where: { id: appointment.appointmentId },
+      select: { assignedOsmUserId: true },
+    })).toEqual({ assignedOsmUserId: null });
+    expect((await listWorkAppointments(owner.actor, { hospitalId: hospital.id, tab: "UPCOMING", unassignedOsm: "true" })).items)
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        appointmentId: appointment.appointmentId,
+        hasUnassignedOsm: true,
+        osmAcceptanceStatus: "NONE",
+      })]));
+    await expect(acceptAppointmentAssignment(osm.actor, {
+      ...acceptanceInput,
+      sourceAppointmentUpdatedAt: rescheduled.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(acceptAppointmentAssignment(anotherOsm.actor, {
       ...acceptanceInput,
       sourceAppointmentUpdatedAt: rescheduled.updatedAt.toISOString(),
       submissionNonce: randomUUID(),
@@ -2487,6 +2595,10 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       preferredDatetimes: [bangkokIso(new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000))],
       reason: "ติดธุระ",
     }, { now: () => latest });
+    await prisma.patientAppointment.update({
+      where: { id: appointmentA.appointmentId },
+      data: { updatedAt: new Date(appointmentA.updatedAt.getTime() + 1) },
+    });
     const cancellationB = await requestOwnPatientAppointmentCancellation(patientActor, {
       patientHospitalRelationshipId: patient.relationshipId,
       appointmentId: appointmentB.appointmentId,
@@ -2502,10 +2614,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       appointmentB.appointmentId,
       appointmentA.appointmentId,
     ]);
-    expect(pending.items[1]?.pendingRequestBadges).toEqual({ reschedule: true, cancellation: true });
+    expect(pending.items[1]?.pendingRequestBadges).toEqual({ reschedule: true, staleReschedule: true, cancellation: true });
     expect(Object.keys(pending.items[1] ?? {}).sort()).toEqual([
       "appointmentId",
       "durationMinutes",
+      "hasUnassignedOsm",
       "hospitalName",
       "locationType",
       "osmAcceptanceStatus",
@@ -2522,6 +2635,12 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(JSON.stringify(pending.items)).not.toContain("HN-AF1-DO-NOT-LIST");
     expect(JSON.stringify(pending.items)).not.toContain("หมายเหตุสำหรับการตรวจ workflow");
 
+    // Restore the version only for the later rejection-path assertion; the preceding
+    // projection assertion above covers how a stale legacy request is labeled.
+    await prisma.patientAppointment.update({
+      where: { id: appointmentA.appointmentId },
+      data: { updatedAt: appointmentA.updatedAt },
+    });
     const rejectedReschedule = await rejectAppointmentRescheduleRequest(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
       appointmentId: appointmentA.appointmentId,
@@ -2537,7 +2656,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       appointmentB.appointmentId,
       appointmentA.appointmentId,
     ]);
-    expect(afterReject.items[1]?.pendingRequestBadges).toEqual({ reschedule: false, cancellation: true });
+    expect(afterReject.items[1]?.pendingRequestBadges).toEqual({ reschedule: false, staleReschedule: false, cancellation: true });
 
     await reviewAppointmentCancellationRequest(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,

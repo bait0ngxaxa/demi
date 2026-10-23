@@ -48,6 +48,7 @@ function buildHref(
   if (filters.locationType) params.set("locationType", filters.locationType);
   if (filters.responsibleUserId) params.set("responsibleUserId", filters.responsibleUserId);
   if (filters.awaitingOsmAcceptance) params.set("awaitingOsmAcceptance", filters.awaitingOsmAcceptance);
+  if (filters.unassignedOsm) params.set("unassignedOsm", filters.unassignedOsm);
   if (overrides.cursor) params.set("cursor", overrides.cursor);
   return `/app/appointments?${params.toString()}`;
 }
@@ -84,8 +85,9 @@ function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={statusVariant(item.status)}>{APPOINTMENT_STATUS_LABELS[item.status]}</StatusBadge>
-            {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">รอเลื่อนนัด</StatusBadge> : null}
+            {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">{item.pendingRequestBadges.staleReschedule ? "คำขอก่อนแก้ไขนัด" : "รอเลื่อนนัด"}</StatusBadge> : null}
             {item.pendingRequestBadges.cancellation ? <StatusBadge variant="warning">รอยกเลิก</StatusBadge> : null}
+            {item.hasUnassignedOsm ? <StatusBadge variant="warning">ไม่มี อสม. รับผิดชอบ</StatusBadge> : null}
             {item.osmAcceptanceStatus === "WAITING" ? <StatusBadge variant="warning">รอ อสม. ตอบรับ</StatusBadge> : null}
             {item.osmAcceptanceStatus === "RESCHEDULE_REQUESTED" ? <StatusBadge variant="warning">อสม. ขอเลื่อนนัด</StatusBadge> : null}
             {item.osmAcceptanceStatus === "ACCEPTED" ? <StatusBadge variant="success">อสม. ตอบรับแล้ว</StatusBadge> : null}
@@ -189,13 +191,22 @@ export function WorkAppointmentView({
             </Select>
           </label>
           {page.canResolveRequests && page.tab === "UPCOMING" ? (
-            <label className="block space-y-2 text-sm font-semibold text-text">
-              การตอบรับของ อสม.
-              <Select defaultValue={page.filters.awaitingOsmAcceptance ?? ""} name="awaitingOsmAcceptance">
-                <option value="">ทุกนัดหมาย</option>
-                <option value="true">รอ อสม. ตอบรับ</option>
-              </Select>
-            </label>
+            <>
+              <label className="block space-y-2 text-sm font-semibold text-text">
+                การตอบรับของ อสม.
+                <Select defaultValue={page.filters.awaitingOsmAcceptance ?? ""} name="awaitingOsmAcceptance">
+                  <option value="">ทุกนัดหมาย</option>
+                  <option value="true">รอ อสม. ตอบรับ</option>
+                </Select>
+              </label>
+              <label className="block space-y-2 text-sm font-semibold text-text">
+                การมอบหมาย อสม.
+                <Select defaultValue={page.filters.unassignedOsm ?? ""} name="unassignedOsm">
+                  <option value="">ทุกนัดหมาย</option>
+                  <option value="true">ไม่มี อสม. รับผิดชอบ</option>
+                </Select>
+              </label>
+            </>
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
             <Button type="submit">ค้นหา</Button>

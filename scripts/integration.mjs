@@ -19,6 +19,7 @@ const supportedActions = new Set([
   "migrate:populated",
   "migrate:line-populated",
   "migrate:line-reactive-populated",
+  "migrate:appointments-populated",
   "test",
   "test:focused",
   "verify",
@@ -627,6 +628,150 @@ async function migrateLineReactivePopulated(environment, runtime) {
   }
 }
 
+async function migrateAppointmentEventKeysPopulated(environment, runtime) {
+  const migrationsRoot = resolve(repositoryRoot, "prisma", "migrations");
+  const currentMigration = "20261114100000_fix2_appointment_handoff_event_key_ms";
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "demi-appointment-event-key-migration-"));
+  const safeTemporaryRoot = resolve(temporaryRoot);
+  const safeTempBase = resolve(tmpdir());
+  if (!safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+    fail("temporary migration workspace resolved outside the system temporary directory");
+  }
+
+  const temporaryMigrations = join(safeTemporaryRoot, "migrations");
+  const temporarySchema = join(safeTemporaryRoot, "schema.prisma");
+  mkdirSync(temporaryMigrations);
+  let prisma;
+  try {
+    databaseDown(runtime, environment);
+    databaseUp(runtime, environment);
+    for (const entry of readdirSync(migrationsRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name >= currentMigration) continue;
+      cpSync(join(migrationsRoot, entry.name), join(temporaryMigrations, entry.name), { recursive: true });
+    }
+    cpSync(join(migrationsRoot, "migration_lock.toml"), join(temporaryMigrations, "migration_lock.toml"));
+    writeFileSync(temporarySchema, [
+      "generator client {",
+      '  provider = "prisma-client-js"',
+      "}",
+      "",
+      "datasource db {",
+      '  provider = "postgresql"',
+      '  url      = env("DATABASE_URL")',
+      "}",
+      "",
+    ].join("\n"), "utf8");
+
+    generate(environment);
+    run(process.execPath, [
+      resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"),
+      "migrate",
+      "deploy",
+      "--schema",
+      temporarySchema,
+    ], { env: environment });
+
+    const {
+      AppointmentLineNotificationEventKind,
+      AppointmentLineNotificationRecipientKind,
+      AppointmentLineNotificationState,
+      AppointmentStatus,
+      AppointmentType,
+      HospitalStatus,
+      Role,
+      UserStatus,
+      PrismaClient,
+    } = await import("@prisma/client");
+    const { randomUUID } = await import("node:crypto");
+    prisma = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    await prisma.$connect();
+
+    const hospital = await prisma.hospital.create({
+      data: { hospitalCode: `FIX2-${randomUUID().slice(0, 8)}`, name: "FIX-2 migration fixture", status: HospitalStatus.ACTIVE },
+      select: { id: true },
+    });
+    const person = await prisma.person.create({ data: { identityKeyHash: randomUUID().replaceAll("-", ""), givenName: "FIX-2" }, select: { id: true } });
+    const patient = await prisma.user.create({ data: { personId: person.id, status: UserStatus.ACTIVE }, select: { id: true } });
+    await prisma.userRole.create({ data: { userId: patient.id, role: Role.PATIENT } });
+    const patientProfile = await prisma.patientProfile.create({ data: { personId: person.id }, select: { id: true } });
+    const relationship = await prisma.patientHospitalRelationship.create({
+      data: { patientProfileId: patientProfile.id, hospitalId: hospital.id },
+      select: { id: true },
+    });
+
+    const originalKinds = [
+      AppointmentLineNotificationEventKind.CREATED,
+      AppointmentLineNotificationEventKind.RESCHEDULED,
+      AppointmentLineNotificationEventKind.CANCELLED,
+    ];
+    const expectedEventKeys = [];
+    for (const [index, eventKind] of originalKinds.entries()) {
+      const sourceUpdatedAt = new Date(Date.UTC(2026, 8, 10, 11, 12, 13, 100 + index));
+      const appointment = await prisma.patientAppointment.create({
+        data: {
+          patientHospitalRelationshipId: relationship.id,
+          createdByUserId: patient.id,
+          type: AppointmentType.EDUCATION,
+          scheduledAt: new Date(sourceUpdatedAt.getTime() + 86_400_000),
+          status: eventKind === AppointmentLineNotificationEventKind.CANCELLED ? AppointmentStatus.CANCELLED : AppointmentStatus.SCHEDULED,
+          submissionNonce: randomUUID(),
+          createdAt: new Date(sourceUpdatedAt.getTime() - 60_000),
+          updatedAt: sourceUpdatedAt,
+        },
+        select: { id: true },
+      });
+      const legacyEventKey = `${eventKind}:${appointment.id}:${sourceUpdatedAt.getTime() / 1000}`;
+      const targetEventKey = `${eventKind}:${appointment.id}:${sourceUpdatedAt.getTime()}`;
+      expectedEventKeys.push({ appointmentId: appointment.id, eventKind, eventKey: targetEventKey });
+      await prisma.appointmentLineNotification.create({
+        data: {
+          appointmentId: appointment.id,
+          patientHospitalRelationshipId: relationship.id,
+          eventKey: legacyEventKey,
+          sourceUpdatedAt,
+          eventKind,
+          recipientKind: AppointmentLineNotificationRecipientKind.PATIENT,
+          rolloutGeneration: randomUUID(),
+          state: AppointmentLineNotificationState.SUPPRESSED,
+          dueAt: sourceUpdatedAt,
+          safeOutcome: "ROLLOUT_CLOSED",
+          terminalAt: sourceUpdatedAt,
+          createdAt: sourceUpdatedAt,
+          updatedAt: sourceUpdatedAt,
+        },
+      });
+    }
+    await prisma.$disconnect();
+    prisma = undefined;
+
+    migrate(environment);
+    const verify = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+    try {
+      const normalized = await verify.appointmentLineNotification.findMany({
+        where: { appointmentId: { in: expectedEventKeys.map(({ appointmentId }) => appointmentId) } },
+        orderBy: { eventKind: "asc" },
+        select: { appointmentId: true, eventKind: true, eventKey: true },
+      });
+      const sortByEventKind = (left, right) => left.eventKind.localeCompare(right.eventKind);
+      if (
+        JSON.stringify([...normalized].sort(sortByEventKind)) !==
+        JSON.stringify([...expectedEventKeys].sort(sortByEventKind))
+      ) {
+        fail("FIX-2 did not normalize all original appointment LINE event keys to runtime epoch milliseconds");
+      }
+      console.log("FIX-2 migration normalized populated CREATED/RESCHEDULED/CANCELLED event keys to epoch milliseconds");
+    } finally {
+      await verify.$disconnect();
+    }
+  } finally {
+    if (prisma) await prisma.$disconnect();
+    databaseDown(runtime, environment);
+    if (safeTemporaryRoot.startsWith(`${safeTempBase}${sep}`)) {
+      rmSync(safeTemporaryRoot, { recursive: true, force: true });
+    }
+  }
+}
+
 function generate(environment) {
   run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "generate"], {
     env: environment,
@@ -727,4 +872,7 @@ if (action === "db:up") {
 } else if (action === "migrate:line-reactive-populated") {
   requireCommittedIntegrationTarget(environment);
   await migrateLineReactivePopulated(environment, runtime);
+} else if (action === "migrate:appointments-populated") {
+  requireCommittedIntegrationTarget(environment);
+  await migrateAppointmentEventKeysPopulated(environment, runtime);
 }
