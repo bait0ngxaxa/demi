@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Noto_Sans_Thai } from "next/font/google";
 import type { ReactNode } from "react";
 import { DESKTOP_SIDEBAR_PREPAINT_SCRIPT } from "@/components/app-shell/desktop-sidebar-state";
 import { AppToaster } from "@/components/ui/app-toaster";
 import "./globals.css";
 
-const geistSans = Geist({
+const notoSansThai = Noto_Sans_Thai({
   display: "swap",
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+  variable: "--font-noto-sans-thai",
+  subsets: ["thai", "latin"],
 });
 
 const geistMono = Geist_Mono({
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html
       lang="th"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${notoSansThai.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

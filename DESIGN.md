@@ -32,31 +32,31 @@ colors:
   navigation-active: "#dceee9"
 typography:
   heading:
-    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontFamily: "Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "1.875rem"
     fontWeight: 700
     lineHeight: 1.22
     letterSpacing: "-0.03em"
   section:
-    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontFamily: "Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 600
     lineHeight: 1.35
     letterSpacing: "-0.02em"
   body:
-    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontFamily: "Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.65
     letterSpacing: "normal"
   label:
-    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontFamily: "Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 500
     lineHeight: 1.5
     letterSpacing: "normal"
   action:
-    fontFamily: "Geist, Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
+    fontFamily: "Noto Sans Thai, Leelawadee UI, Segoe UI, sans-serif"
     fontSize: "0.875rem"
     fontWeight: 600
     lineHeight: 1.5
@@ -152,9 +152,9 @@ Palette เป็น restrained clinical green: brand ทำหน้าที�
 
 ## Typography
 
-**Display Font:** ไม่มี display face แยก; ใช้ Geist ร่วมกับ `Noto Sans Thai`, `Leelawadee UI` และ `Segoe UI`
+**Display Font:** ไม่มี display face แยก; ใช้ `Noto Sans Thai` (โหลดผ่าน `next/font`) โดยมี `Leelawadee UI` และ `Segoe UI` เป็น fallback
 
-**Body Font:** Geist พร้อม Thai fallback stack เดียวกัน
+**Body Font:** `Noto Sans Thai` พร้อม fallback stack เดียวกัน
 
 **Character:** ตัวอักษรมีโครงสร้างชัด สุภาพ และอ่านง่ายในงาน form/table ภาษาไทย น้ำหนัก heading หนักพอให้ scan ได้ แต่ไม่สร้างบุคลิก decorative
 

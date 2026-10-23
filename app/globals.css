@@ -100,7 +100,7 @@
   --spacing-app-sidebar: var(--app-sidebar-width);
   --spacing-app-sidebar-collapsed: var(--app-sidebar-collapsed-width);
   --spacing-app-header: var(--app-header-height);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-noto-sans-thai);
   --font-mono: var(--font-geist-mono);
   --font-weight-medium: var(--font-weight-label);
   --font-weight-semibold: var(--font-weight-label);
@@ -120,7 +120,7 @@ body {
   color: var(--ink);
   font-size: 1rem;
   font-family:
-    var(--font-geist-sans), "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif;
+    var(--font-noto-sans-thai), "Leelawadee UI", "Segoe UI", sans-serif;
   font-weight: var(--font-weight-body);
   line-height: 1.65;
 }

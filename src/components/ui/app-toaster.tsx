@@ -68,7 +68,7 @@ export function AppToaster(): React.JSX.Element {
         style: {
           borderRadius: "var(--demi-radius-control)",
           boxShadow: "var(--demi-shadow-surface)",
-          fontFamily: 'var(--font-geist-sans), "Noto Sans Thai", "Leelawadee UI", "Segoe UI", sans-serif',
+          fontFamily: 'var(--font-noto-sans-thai), "Leelawadee UI", "Segoe UI", sans-serif',
           fontSize: "0.875rem",
         },
       }}
