@@ -50,11 +50,13 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientProgramServiceOneArtifactAssociation.deleteMany();
   await prisma.patientEvidenceArtifact.deleteMany();
   await prisma.patientBaseline.deleteMany();
+  await prisma.patientAppointmentAssigneeAcceptance.deleteMany();
   await prisma.patientAppointment.deleteMany();
   await prisma.patientGoalItem.deleteMany();
   await prisma.patientGoalPlan.deleteMany();
   await prisma.screeningAssessment.deleteMany();
   await prisma.patientActivation.deleteMany();
+  await prisma.patientHospitalHealthHistory.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();

@@ -65,6 +65,7 @@ async function clearDatabase(): Promise<void> {
   await db.auditEvent.deleteMany();
   await db.appointmentLineNotification.deleteMany();
   await db.patientAppointmentCoordinationEvent.deleteMany();
+  await db.patientAppointmentAssigneeAcceptance.deleteMany();
   await db.patientAppointment.deleteMany();
   await db.patientOsmAssignment.deleteMany();
   await db.patientHospitalHealthHistory.deleteMany();
@@ -78,6 +79,11 @@ async function clearDatabase(): Promise<void> {
   await db.osmHospitalRelationship.deleteMany();
   await db.hospitalMembership.deleteMany();
   await db.userRole.deleteMany();
+  await db.$transaction([
+    db.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    db.hospitalServiceArea.deleteMany(),
+  ]);
+  await db.hospitalServiceAreaEligibility.deleteMany();
   await db.user.deleteMany();
   await db.hospital.deleteMany();
   await db.person.deleteMany();

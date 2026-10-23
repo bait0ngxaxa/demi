@@ -29,6 +29,7 @@ export type AppointmentInteractionActionState =
       status: "SUCCESS";
       operation:
         | "ACKNOWLEDGED"
+        | "ASSIGNMENT_ACCEPTED"
         | "CANCELLATION_REQUESTED"
         | "COORDINATION_RECORDED"
         | "CANCELLATION_APPROVED"

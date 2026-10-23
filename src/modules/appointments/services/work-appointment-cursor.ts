@@ -35,7 +35,7 @@ const cursorPayloadSchema = z
       .object({
         actorId: z.uuid(),
         hospitalId: z.uuid(),
-        tab: z.enum(["UPCOMING", "HISTORY", "PENDING_REQUESTS"]),
+        tab: z.enum(["UPCOMING", "HISTORY", "PENDING_REQUESTS", "AWAITING_MY_ACCEPTANCE"]),
         pageSize: z.literal(25),
         filters: z
           .object({
@@ -45,6 +45,7 @@ const cursorPayloadSchema = z
             type: appointmentTypeSchema.optional(),
             locationType: z.enum(["CLINIC", "ONLINE", "HOME_VISIT", "OTHER"]).optional(),
             responsibleUserId: z.uuid().optional(),
+            awaitingOsmAcceptance: z.literal("true").optional(),
           })
           .strict(),
       })
@@ -93,6 +94,9 @@ function cursorContext(
       ...(context.filters.responsibleUserId === undefined
         ? {}
         : { responsibleUserId: context.filters.responsibleUserId.toLowerCase() }),
+      ...(context.filters.awaitingOsmAcceptance === undefined
+        ? {}
+        : { awaitingOsmAcceptance: context.filters.awaitingOsmAcceptance }),
     },
   };
 }

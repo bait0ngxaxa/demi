@@ -19,9 +19,15 @@ const actor: ActorContext = { userId: "reviewer", personId: "person", roles: ["H
 
 function row(id: string = requestId) {
   return {
-    id, hospitalId: hospitalA, status: "PENDING", createdAt,
+    id, hospitalId: hospitalA, status: "PENDING", createdAt, preferredOsmUserId: null,
     offering: { code: "SCREENING" }, preferredOsm: null,
-    relationship: { id: "relationship-a", hospital: { name: "โรงพยาบาล ก", hospitalCode: "H-A" }, patientProfile: { person: { givenName: "สมใจ", familyName: "ผู้ป่วย" } } },
+    appointments: [],
+    relationship: {
+      id: "relationship-a",
+      osmAssignments: [],
+      hospital: { name: "โรงพยาบาล ก", hospitalCode: "H-A", osmHospitalRelationships: [] },
+      patientProfile: { person: { givenName: "สมใจ", familyName: "ผู้ป่วย" } },
+    },
   };
 }
 
@@ -77,7 +83,7 @@ describe("bounded Hospital request list", () => {
 
   it("projects distinct request and relationship associations for the same Person across Hospitals", async () => {
     const a = row();
-    const b = { ...row(hospitalB), hospitalId: hospitalB, relationship: { ...a.relationship, id: "relationship-b", hospital: { name: "โรงพยาบาล ข", hospitalCode: "H-B" } } };
+    const b = { ...row(hospitalB), hospitalId: hospitalB, relationship: { ...a.relationship, id: "relationship-b", hospital: { ...a.relationship.hospital, name: "โรงพยาบาล ข", hospitalCode: "H-B" } } };
     mocks.requests.mockResolvedValue([a, b]);
     const page = await listHospitalPatientServiceRequests(actor);
     expect(page.requests.map(({ requestId, relationshipId, hospitalId, hospitalCode }) => ({ requestId, relationshipId, hospitalId, hospitalCode }))).toEqual([

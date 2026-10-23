@@ -60,6 +60,7 @@ export type WorkAppointmentHospitalScope = {
   access: "DIRECT" | "OSM" | "NETWORK";
   canCreate: boolean;
   canResolveRequests: boolean;
+  canAcceptAssignments: boolean;
 };
 
 export type WorkAppointmentResponsibleOption = {
@@ -85,6 +86,7 @@ export type WorkAppointmentListItem = {
     reschedule: boolean;
     cancellation: boolean;
   };
+  osmAcceptanceStatus: "WAITING" | "ACCEPTED" | "RESCHEDULE_REQUESTED" | "NONE";
 };
 
 export type WorkAppointmentPage = {
@@ -97,6 +99,7 @@ export type WorkAppointmentPage = {
   hasNextPage: boolean;
   canCreate: boolean;
   canResolveRequests: boolean;
+  canAcceptAssignments: boolean;
   responsibleOptions: WorkAppointmentResponsibleOption[];
 };
 
@@ -283,6 +286,7 @@ function toPublicScope(scope: ResolvedHospitalScope): WorkAppointmentHospitalSco
     access,
     canCreate: scope.directRead || scope.osmCanCreate,
     canResolveRequests: scope.directRead,
+    canAcceptAssignments: scope.osmRead,
   };
 }
 
@@ -403,9 +407,128 @@ function buildAppointmentWhere(
   };
 }
 
+async function findAppointmentsAwaitingOsmAcceptance(
+  database: WorkAppointmentDatabase,
+  input: {
+    hospitalId?: string;
+    actorUserId?: string;
+    now: Date;
+    filters: WorkAppointmentFilters;
+  },
+): Promise<string[]> {
+  const dateFrom = input.filters.dateFrom
+    ? Prisma.sql`AND appointment."scheduledAt" >= ${bangkokDayStart(input.filters.dateFrom)}`
+    : Prisma.empty;
+  const dateTo = input.filters.dateTo
+    ? Prisma.sql`AND appointment."scheduledAt" < ${bangkokDayAfter(input.filters.dateTo)}`
+    : Prisma.empty;
+  const status = input.filters.status
+    ? Prisma.sql`AND appointment."status"::text = ${input.filters.status}`
+    : Prisma.empty;
+  const type = input.filters.type
+    ? Prisma.sql`AND appointment."type"::text = ${input.filters.type}`
+    : Prisma.empty;
+  const location = input.filters.locationType
+    ? Prisma.sql`AND appointment."locationType"::text = ${input.filters.locationType}`
+    : Prisma.empty;
+  const responsible = input.filters.responsibleUserId
+    ? Prisma.sql`AND appointment."responsibleUserId" = ${input.filters.responsibleUserId}::uuid`
+    : Prisma.empty;
+  const assignee = input.actorUserId
+    ? Prisma.sql`AND appointment."assignedOsmUserId" = ${input.actorUserId}::uuid`
+    : Prisma.empty;
+  const hospital = input.hospitalId
+    ? Prisma.sql`AND hospital."id" = ${input.hospitalId}::uuid`
+    : Prisma.empty;
+  const rows = await database.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT appointment."id"
+    FROM "PatientAppointment" AS appointment
+    JOIN "PatientHospitalRelationship" AS relationship
+      ON relationship."id" = appointment."patientHospitalRelationshipId"
+    JOIN "Hospital" AS hospital ON hospital."id" = relationship."hospitalId"
+    JOIN "PatientOsmAssignment" AS assignment
+      ON assignment."patientHospitalRelationshipId" = relationship."id"
+      AND assignment."osmUserId" = appointment."assignedOsmUserId"
+      AND assignment."endedAt" IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM "PatientOsmAssignment" AS newer
+        WHERE newer."patientHospitalRelationshipId" = relationship."id"
+          AND newer."endedAt" IS NULL
+          AND (newer."createdAt" > assignment."createdAt"
+            OR (newer."createdAt" = assignment."createdAt" AND newer."id" > assignment."id"))
+      )
+    JOIN "User" AS osm ON osm."id" = assignment."osmUserId" AND osm."status" = 'ACTIVE'
+    WHERE hospital."status" = 'ACTIVE'
+      AND relationship."endedAt" IS NULL
+      AND appointment."status" = 'SCHEDULED'
+      AND appointment."locationType" = 'HOME_VISIT'
+      AND appointment."scheduledAt" > ${input.now}
+      AND appointment."assignedOsmUserId" IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM "OsmHospitalRelationship" AS osmHospital
+        WHERE osmHospital."userId" = osm."id"
+          AND osmHospital."hospitalId" = hospital."id"
+          AND osmHospital."status" = 'ACTIVE'
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM "PatientProfile" AS profile
+        JOIN "Person" AS person ON person."id" = profile."personId"
+        JOIN "User" AS patient ON patient."personId" = person."id"
+        JOIN "UserRole" AS patientRole ON patientRole."userId" = patient."id" AND patientRole."role" = 'PATIENT'
+        WHERE profile."id" = relationship."patientProfileId"
+      )
+      AND EXISTS (
+        SELECT 1 FROM "UserRole" AS osmRole
+        WHERE osmRole."userId" = osm."id" AND osmRole."role" = 'OSM'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "PatientAppointmentAssigneeAcceptance" AS acceptance
+        WHERE acceptance."appointmentId" = appointment."id"
+          AND acceptance."sourceAppointmentUpdatedAt" = appointment."updatedAt"
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM "PatientAppointmentRescheduleRequest" AS request
+        WHERE request."appointmentId" = appointment."id"
+          AND request."sourceAppointmentUpdatedAt" = appointment."updatedAt"
+          AND request."status" = 'PENDING'
+      )
+      ${hospital}
+      ${assignee}
+      ${dateFrom}
+      ${dateTo}
+      ${status}
+      ${type}
+      ${location}
+      ${responsible}
+    ORDER BY appointment."scheduledAt" ASC, appointment."id" ASC
+  `);
+  return rows.map(({ id }) => id);
+}
+
+export async function countWorkAppointmentsAwaitingMyAcceptance(
+  actorInput: ActorContext | null | undefined,
+  dependencies: WorkAppointmentQueryDependencies = {},
+): Promise<number> {
+  const actor = ensureActor(actorInput);
+  if (!actor.roles.includes(Role.OSM)) return 0;
+  const database = getDatabase(dependencies.database);
+  const scopes = (await resolveWorkScopes(actor, database)).filter(({ osmRead }) => osmRead);
+  if (scopes.length === 0) return 0;
+  const idsByHospital = await Promise.all(scopes.map(async (scope) => findAppointmentsAwaitingOsmAcceptance(database, {
+    hospitalId: scope.hospitalId,
+    actorUserId: actor.userId,
+    now: dependencies.now?.() ?? new Date(),
+    filters: {},
+  })));
+  return idsByHospital.reduce((total, ids) => total + ids.length, 0);
+}
+
 function workAppointmentSelect(hospitalId: string, actorUserId: string) {
   return {
     id: true,
+    assignedOsmUserId: true,
+    updatedAt: true,
     responsibleUserId: true,
     patientHospitalRelationshipId: true,
     scheduledAt: true,
@@ -448,7 +571,12 @@ function workAppointmentSelect(hospitalId: string, actorUserId: string) {
     rescheduleRequests: {
       where: { status: AppointmentCancellationRequestStatus.PENDING },
       orderBy: [{ submittedAt: "asc" }, { id: "asc" }],
-      select: { id: true },
+      select: { id: true, sourceAppointmentUpdatedAt: true },
+      take: 1,
+    },
+    assigneeAcceptances: {
+      orderBy: [{ sourceAppointmentUpdatedAt: "desc" }, { id: "desc" }],
+      select: { sourceAppointmentUpdatedAt: true },
       take: 1,
     },
     cancellationRequests: {
@@ -464,7 +592,21 @@ type WorkAppointmentRecord = Prisma.PatientAppointmentGetPayload<{
   select: ReturnType<typeof workAppointmentSelect>;
 }>;
 
-function toWorkAppointmentItem(record: WorkAppointmentRecord): WorkAppointmentListItem {
+function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAppointmentListItem {
+  const hasCurrentAcceptance = record.assigneeAcceptances.some(
+    (acceptance) => acceptance.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+  );
+  const hasCurrentReschedule = record.rescheduleRequests.some(
+    (request) => request.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+  );
+  const isWaiting = Boolean(
+    record.assignedOsmUserId &&
+    record.locationType === "HOME_VISIT" &&
+    record.status === "SCHEDULED" &&
+    record.scheduledAt.getTime() > now.getTime() &&
+    !hasCurrentAcceptance &&
+    !hasCurrentReschedule,
+  );
   return {
     appointmentId: record.id,
     relationshipId: record.patientHospitalRelationshipId,
@@ -483,9 +625,16 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord): WorkAppointmentLi
       ? toDisplayName(record.osmAssignmentAtCreation.osmUser.person)
       : null,
     pendingRequestBadges: {
-      reschedule: record.rescheduleRequests.length > 0,
+      reschedule: hasCurrentReschedule,
       cancellation: record.cancellationRequests.length > 0,
     },
+    osmAcceptanceStatus: hasCurrentAcceptance
+      ? "ACCEPTED"
+      : hasCurrentReschedule && record.assignedOsmUserId
+        ? "RESCHEDULE_REQUESTED"
+        : isWaiting
+          ? "WAITING"
+          : "NONE",
   };
 }
 
@@ -731,11 +880,32 @@ export async function listWorkAppointments(
     if (tab === "PENDING_REQUESTS" && !resolvedScope.directRead) {
       throw new ForbiddenError();
     }
+    if (tab === "AWAITING_MY_ACCEPTANCE" && !resolvedScope.osmRead) {
+      throw new ForbiddenError();
+    }
+    if (filters.awaitingOsmAcceptance && (!resolvedScope.directRead || tab !== "UPCOMING")) {
+      throw new ForbiddenError();
+    }
 
     const cursorContext = buildCursorContext(actor.userId, resolvedScope, tab, filters);
     const position = decodeWorkAppointmentCursor(cursor, cursorContext);
     const now = dependencies.now?.() ?? new Date();
     const baseWhere = buildAppointmentWhere(actor.userId, resolvedScope, filters);
+    let waitingAppointmentIds: string[] | null = null;
+    if (tab === "AWAITING_MY_ACCEPTANCE") {
+      waitingAppointmentIds = await findAppointmentsAwaitingOsmAcceptance(database, {
+        hospitalId: resolvedScope.hospitalId,
+        actorUserId: actor.userId,
+        now,
+        filters,
+      });
+    } else if (filters.awaitingOsmAcceptance) {
+      waitingAppointmentIds = await findAppointmentsAwaitingOsmAcceptance(database, {
+        hospitalId: resolvedScope.hospitalId,
+        now,
+        filters,
+      });
+    }
 
     let records: WorkAppointmentRecord[] = [];
     let nextCursor: string | null = null;
@@ -806,16 +976,26 @@ export async function listWorkAppointments(
         }
       }
     } else {
-      const ascending = tab === "UPCOMING";
+      const ascending = tab === "UPCOMING" || tab === "AWAITING_MY_ACCEPTANCE";
       const tabWhere: Prisma.PatientAppointmentWhereInput =
         tab === "UPCOMING"
           ? {
               AND: [
                 baseWhere,
+                ...(waitingAppointmentIds ? [{ id: { in: waitingAppointmentIds } }] : []),
                 { status: "SCHEDULED" },
                 { scheduledAt: { gte: now } },
               ],
             }
+          : tab === "AWAITING_MY_ACCEPTANCE"
+            ? {
+                AND: [
+                  baseWhere,
+                  { id: { in: waitingAppointmentIds ?? [] } },
+                  { status: "SCHEDULED" },
+                  { scheduledAt: { gte: now } },
+                ],
+              }
           : {
               AND: [
                 baseWhere,
@@ -860,11 +1040,12 @@ export async function listWorkAppointments(
       hospitals: scopes.map(toPublicHospitalScope),
       tab,
       filters,
-      items: records.map(toWorkAppointmentItem),
+      items: records.map((record) => toWorkAppointmentItem(record, now)),
       nextCursor,
       hasNextPage: nextCursor !== null,
       canCreate: publicScope.canCreate,
       canResolveRequests: publicScope.canResolveRequests,
+      canAcceptAssignments: publicScope.canAcceptAssignments,
       responsibleOptions,
     };
   } catch (error: unknown) {

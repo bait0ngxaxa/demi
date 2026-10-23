@@ -31,7 +31,14 @@ function MobileTabLinkContent({ tab }: { tab: MobileNavigationTab }): React.JSX.
       {pending ? (
         <LoadingSpinner aria-hidden="true" className="size-5" />
       ) : (
-        <MobileNavigationGlyph icon={tab.icon} />
+        <span className="relative inline-flex">
+          <MobileNavigationGlyph icon={tab.icon} />
+          {tab.badgeCount && tab.badgeCount > 0 ? (
+            <span aria-hidden="true" className="absolute -right-2 -top-2 min-w-4 rounded-full bg-action-primary px-1 text-center text-xs font-bold leading-4 text-white">
+              {tab.badgeCount > 99 ? "99+" : tab.badgeCount}
+            </span>
+          ) : null}
+        </span>
       )}
       <span className="max-w-full truncate text-xs leading-4">{tab.label}</span>
       {pending ? <span className="sr-only" role="status">กำลังเปิด{tab.accessibleLabel}</span> : null}

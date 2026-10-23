@@ -972,6 +972,7 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
 
     // Appointments.
     await tx.patientAppointmentAcknowledgement.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
+    await tx.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
     await tx.patientAppointmentCancellationRequest.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
     await tx.patientAppointmentRescheduleRequest.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
     await tx.patientAppointmentCoordinationEvent.deleteMany({ where: { appointmentId: { in: appointmentIds } } });

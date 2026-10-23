@@ -57,6 +57,7 @@ async function cleanup(): Promise<void> {
   }
   if (hospitalIds.length) await prisma.supportReport.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
   if (profileIds.length) {
+    await prisma.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: hospitalIds } } } });
     await prisma.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitalIds } } });
     await prisma.patientProfile.deleteMany({ where: { id: { in: profileIds } } });
   }

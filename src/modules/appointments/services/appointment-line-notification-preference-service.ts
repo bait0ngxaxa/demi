@@ -36,9 +36,9 @@ function assertAuthenticatedActor(actor: ActorContext | null | undefined): asser
 }
 
 /**
- * One opt-in per account (E6, ก-24): an ACTIVE User who may receive appointment notifications as the Patient,
- * as an OSM of an ACTIVE Hospital, or as a caregiver with an ACTIVE appointment grant. Recipient authority for
- * each event is still checked at source and at send time.
+ * One opt-in per account (E6, ก-24, AF-3): an ACTIVE User who may receive appointment notifications as the Patient,
+ * as an OSM or direct Hospital member of an ACTIVE Hospital, or as a caregiver with an ACTIVE appointment grant.
+ * Recipient authority for each event is still checked at source and at send time.
  */
 async function loadCurrentNotificationUser(
   actor: ActorContext,
@@ -58,7 +58,7 @@ async function loadCurrentNotificationUser(
   }
 
   const roles = new Set(user.roles.map(({ role }) => role));
-  const [patientRelationship, osmRelationship, caregiverGrant] = await Promise.all([
+  const [patientRelationship, osmRelationship, hospitalMembership, caregiverGrant] = await Promise.all([
     roles.has(Role.PATIENT)
       ? database.patientHospitalRelationship.findFirst({
           where: { patientProfile: { personId: actor.personId }, ...activePatientHospitalRelationshipWhere, hospital: { status: HospitalStatus.ACTIVE } },
@@ -71,6 +71,12 @@ async function loadCurrentNotificationUser(
           select: { id: true },
         })
       : null,
+    roles.has(Role.HOSPITAL)
+      ? database.hospitalMembership.findFirst({
+          where: { userId: user.id, status: MembershipStatus.ACTIVE, hospital: { status: HospitalStatus.ACTIVE } },
+          select: { id: true },
+        })
+      : null,
     isFamilyDelegatedAppointmentReadEnabled()
       ? database.caregiverAppointmentGrant.findFirst({
           where: appointmentGrantCaregiverWhere(actor, "ACTIVE"),
@@ -78,7 +84,9 @@ async function loadCurrentNotificationUser(
         })
       : null,
   ]);
-  return patientRelationship || osmRelationship || caregiverGrant ? { id: user.id, personId: user.personId } : null;
+  return patientRelationship || osmRelationship || hospitalMembership || caregiverGrant
+    ? { id: user.id, personId: user.personId }
+    : null;
 }
 
 async function currentBinding(

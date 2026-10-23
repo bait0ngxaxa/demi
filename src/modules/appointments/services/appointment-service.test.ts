@@ -66,6 +66,7 @@ function validInput(overrides: Record<string, unknown> = {}): Record<string, unk
     locationDetail: "ห้องตรวจ 1",
     note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
     ...overrides,
+    assignedOsmUserId: overrides.assignedOsmUserId ?? null,
   };
 }
 
@@ -82,6 +83,7 @@ function rescheduleInput(overrides: Record<string, unknown> = {}): Record<string
     locationDetail: "ห้องตรวจ 1",
     note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
     ...overrides,
+    assignedOsmUserId: overrides.assignedOsmUserId ?? null,
   };
 }
 
@@ -103,9 +105,10 @@ function requestHash(
     locationDetail: "ห้องตรวจ 1",
     note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
     ...overrides,
+    assignedOsmUserId: overrides.assignedOsmUserId ?? null,
   };
 
-  return appointmentServiceInternals.createAppointmentRequestHash(actor, patientRelationshipId, fields);
+  return appointmentServiceInternals.createAppointmentRequestHash(actor, patientRelationshipId, fields, null);
 }
 
 function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {

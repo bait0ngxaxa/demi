@@ -51,7 +51,7 @@ export default async function NewAppointmentPage({
   let context;
 
   try {
-    context = await getAppointmentCreateContext(actor, relationshipId);
+    context = await getAppointmentCreateContext(actor, relationshipId, {}, query.serviceRequestId);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -69,9 +69,11 @@ export default async function NewAppointmentPage({
       homeVisitOnly={context.homeVisitOnly}
       mode="create"
       patient={context.patient}
+      currentOsmAssignee={context.currentOsmAssignee}
       relationshipId={relationshipId}
       returnTo={parsedReturnTo.success ? parsedReturnTo.data : undefined}
       responsibleMembers={context.responsibleMembers}
+      sourceServiceRequestId={context.sourceServiceRequestId}
       submissionNonce={randomUUID()}
     />
   );

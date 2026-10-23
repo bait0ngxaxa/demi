@@ -102,7 +102,9 @@ describe("LINE-QA.B2.1 scoped Appointment reads on PostgreSQL", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     await database.lineAccountBinding.deleteMany({ where: { userId: { in: created.users } } });
+    await database.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: { createdByUserId: { in: created.users } } } });
     await database.patientAppointment.deleteMany({ where: { createdByUserId: { in: created.users } } });
+    await database.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: created.hospitals } } } });
     await database.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: created.hospitals } } });
     await database.patientProfile.deleteMany({ where: { personId: { in: created.people } } });
     await database.userRole.deleteMany({ where: { userId: { in: created.users } } });

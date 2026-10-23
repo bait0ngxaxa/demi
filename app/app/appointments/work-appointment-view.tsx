@@ -47,6 +47,7 @@ function buildHref(
   if (filters.type) params.set("type", filters.type);
   if (filters.locationType) params.set("locationType", filters.locationType);
   if (filters.responsibleUserId) params.set("responsibleUserId", filters.responsibleUserId);
+  if (filters.awaitingOsmAcceptance) params.set("awaitingOsmAcceptance", filters.awaitingOsmAcceptance);
   if (overrides.cursor) params.set("cursor", overrides.cursor);
   return `/app/appointments?${params.toString()}`;
 }
@@ -85,6 +86,9 @@ function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.
             <StatusBadge variant={statusVariant(item.status)}>{APPOINTMENT_STATUS_LABELS[item.status]}</StatusBadge>
             {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">รอเลื่อนนัด</StatusBadge> : null}
             {item.pendingRequestBadges.cancellation ? <StatusBadge variant="warning">รอยกเลิก</StatusBadge> : null}
+            {item.osmAcceptanceStatus === "WAITING" ? <StatusBadge variant="warning">รอ อสม. ตอบรับ</StatusBadge> : null}
+            {item.osmAcceptanceStatus === "RESCHEDULE_REQUESTED" ? <StatusBadge variant="warning">อสม. ขอเลื่อนนัด</StatusBadge> : null}
+            {item.osmAcceptanceStatus === "ACCEPTED" ? <StatusBadge variant="success">อสม. ตอบรับแล้ว</StatusBadge> : null}
           </div>
         </div>
         <p className="mt-4 border-t border-border pt-3 text-sm font-semibold text-brand-strong">
@@ -99,6 +103,7 @@ const tabs: readonly { id: WorkAppointmentTab; label: string }[] = [
   { id: "UPCOMING", label: "นัดหมาย" },
   { id: "HISTORY", label: "ประวัติการนัดหมาย" },
   { id: "PENDING_REQUESTS", label: "คำขอที่รอดำเนินการ" },
+  { id: "AWAITING_MY_ACCEPTANCE", label: "รอฉันตอบรับ" },
 ];
 
 export function WorkAppointmentView({
@@ -108,10 +113,16 @@ export function WorkAppointmentView({
   page: WorkAppointmentPage;
   queryError: string | null;
 }): React.JSX.Element {
-  const visibleTabs = tabs.filter(({ id }) => id !== "PENDING_REQUESTS" || page.canResolveRequests);
+  const visibleTabs = tabs.filter(({ id }) =>
+    id === "PENDING_REQUESTS" ? page.canResolveRequests
+      : id === "AWAITING_MY_ACCEPTANCE" ? page.canAcceptAssignments
+        : true,
+  );
   const emptyCopy = page.tab === "PENDING_REQUESTS"
     ? "ไม่มีคำขอเลื่อนหรือยกเลิกนัดหมายที่รอดำเนินการ"
-    : page.tab === "HISTORY"
+    : page.tab === "AWAITING_MY_ACCEPTANCE"
+      ? "ไม่มีนัดหมายที่รอคุณตอบรับ"
+      : page.tab === "HISTORY"
       ? "ยังไม่มีประวัติการนัดหมายตามตัวกรองนี้"
       : "ยังไม่มีนัดหมายที่กำลังจะมาถึงตามตัวกรองนี้";
 
@@ -177,6 +188,15 @@ export function WorkAppointmentView({
               {page.responsibleOptions.map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
             </Select>
           </label>
+          {page.canResolveRequests && page.tab === "UPCOMING" ? (
+            <label className="block space-y-2 text-sm font-semibold text-text">
+              การตอบรับของ อสม.
+              <Select defaultValue={page.filters.awaitingOsmAcceptance ?? ""} name="awaitingOsmAcceptance">
+                <option value="">ทุกนัดหมาย</option>
+                <option value="true">รอ อสม. ตอบรับ</option>
+              </Select>
+            </label>
+          ) : null}
           <div className="flex flex-wrap items-end gap-3">
             <Button type="submit">ค้นหา</Button>
             <Link className="inline-flex min-h-11 items-center px-2 text-sm font-semibold text-brand-strong underline" href={buildHref(page, page.tab)}>ล้างตัวกรอง</Link>

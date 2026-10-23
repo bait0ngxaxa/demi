@@ -16,6 +16,7 @@ import { HospitalPatientServiceRequestReviewControls } from "./hospital-service-
 
 const request: HospitalPatientServiceRequestView = {
   requestId: "11111111-1111-4111-8111-111111111111",
+  appointmentId: null,
   relationshipId: "22222222-2222-4222-8222-222222222222",
   hospitalId: "33333333-3333-4333-8333-333333333333",
   hospitalName: "โรงพยาบาล ก ที่มีชื่อยาวสำหรับทดสอบ",
@@ -24,6 +25,10 @@ const request: HospitalPatientServiceRequestView = {
   serviceCode: "SCREENING",
   status: "PENDING",
   preferredOsmName: "สมชาย อสม.",
+  preferredOsmUserId: "77777777-7777-4777-8777-777777777777",
+  currentOsmUserId: null,
+  currentOsmName: null,
+  osmChoices: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." }],
   createdAt: new Date("2026-10-01T00:00:00.000Z"),
 };
 
@@ -58,12 +63,12 @@ describe("Hospital request review workspace", () => {
 
   it.each([
     ["PENDING", ["APPROVE", "REJECT"]],
-    ["APPROVED", ["START"]],
+    ["APPROVED", []],
     ["STARTED", []],
     ["REJECTED", []],
     ["WITHDRAWN", []],
   ] as const)("exposes exactly the persisted %s actions", (status, actions) => {
-    const markup = renderToStaticMarkup(<HospitalPatientServiceRequestReviewControls action={hooks.action} pending={false} requestId={request.requestId} status={status} />);
+    const markup = renderToStaticMarkup(<HospitalPatientServiceRequestReviewControls action={hooks.action} currentOsmName={request.currentOsmName} currentOsmUserId={request.currentOsmUserId} osmChoices={request.osmChoices} pending={false} preferredOsmUserId={request.preferredOsmUserId} requestId={request.requestId} status={status} />);
     const decisions = [...markup.matchAll(/<button\b[^>]*>/g)]
       .filter(([tag]) => tag.includes('name="decision"'))
       .map(([tag]) => tag.match(/value="([A-Z]+)"/)?.[1]);
@@ -76,27 +81,28 @@ describe("Hospital request review workspace", () => {
     }
   });
 
-  it("keeps the same Patient distinct across Hospitals and uses exact relationship care links", () => {
-    const other = { ...request, requestId: "44444444-4444-4444-8444-444444444444", relationshipId: "55555555-5555-4555-8555-555555555555", hospitalId: "66666666-6666-4666-8666-666666666666", hospitalName: "โรงพยาบาล ข", hospitalCode: "H-B", status: "STARTED" as const };
+  it("keeps the same Patient distinct across Hospitals and links a started request to its exact appointment", () => {
+    const other = { ...request, requestId: "44444444-4444-4444-8444-444444444444", relationshipId: "55555555-5555-4555-8555-555555555555", hospitalId: "66666666-6666-4666-8666-666666666666", hospitalName: "โรงพยาบาล ข", hospitalCode: "H-B", status: "STARTED" as const, appointmentId: "88888888-8888-4888-8888-888888888888" };
     const markup = render([{ ...request, status: "STARTED" }, other], { group: "HISTORY" });
     expect(markup).toContain(request.hospitalName);
     expect(markup).toContain(other.hospitalName);
     for (const row of [request, other]) {
-      expect(markup).toContain(`href="/app/patients/${row.relationshipId}#patient-care"`);
       expect(markup).toContain(`id="service-request-${row.requestId}"`);
       expect(markup).not.toContain(`href="/app/patients/${row.requestId}`);
     }
+    expect(markup).toContain(`href="/app/patients/${other.relationshipId}/appointments/${other.appointmentId}"`);
     expect(markup).not.toContain("/programs/");
     expect(markup).not.toContain("nationalId");
   });
 
   it.each(["APPROVED", "STARTED"] as const)("keeps %s handoff truthful and preference separate from assignment", (status) => {
     const markup = render([{ ...request, status }], { group: status === "APPROVED" ? "APPROVED" : "HISTORY" });
-    expect(markup).toContain("ไม่สร้าง Program การมอบหมาย อสม. แบบประเมิน หรือบันทึกติดตามอัตโนมัติ");
-    expect(markup).toContain("ไม่ได้ยืนยันว่าบันทึกการดูแลเกิดจากคำขอนี้");
+    expect(markup).toContain(status === "APPROVED" ? "สร้างนัดหมายเพื่อส่งต่องานให้ อสม." : "สร้างนัดหมายจากคำขอนี้แล้ว");
     expect(markup).toContain("ไม่ใช่ผู้รับผิดชอบที่ได้รับมอบหมายหรือการตอบรับงาน");
-    expect(markup).toContain('href="/app/patients/22222222-2222-4222-8222-222222222222#patient-care"');
-    if (status === "STARTED") expect(markup).toContain("ไม่ใช่หลักฐานว่าบริการเสร็จสิ้น");
+    if (status === "APPROVED") {
+      expect(markup).toContain('href="/app/patients/22222222-2222-4222-8222-222222222222/appointments/new?serviceRequestId=11111111-1111-4111-8111-111111111111"');
+    }
+    if (status === "STARTED") expect(markup).toContain("สถานะไม่ได้ยืนยันว่าบริการเสร็จสิ้น");
   });
 
   it.each(["STARTED", "REJECTED", "WITHDRAWN"] as const)("renders %s history read-only", (status) => {
@@ -109,7 +115,7 @@ describe("Hospital request review workspace", () => {
   it("disables every review button during a mutation without attributing pending to APPROVE", () => {
     hooks.pending = true;
     const markup = render([request, { ...request, requestId: "other" }]);
-    expect(markup.match(/disabled=""/g)).toHaveLength(4);
+    expect(markup.match(/disabled=""/g)).toHaveLength(6);
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain("กำลังบันทึกผลการดำเนินการ");
   });

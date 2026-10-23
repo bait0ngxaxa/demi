@@ -56,6 +56,7 @@ type AppointmentFormValue = {
   locationDetail: string | null;
   note: string | null;
   responsibleUserId: string | null;
+  assignedOsmUserId: string | null;
   updatedAt: string;
 };
 
@@ -67,6 +68,8 @@ type CommonProps = {
   relationshipId: string;
   patient: PatientContext;
   responsibleMembers: readonly ResponsibleMember[];
+  currentOsmAssignee: { userId: string; displayName: string } | null;
+  sourceServiceRequestId: string | null;
 };
 
 type CreateProps = CommonProps & {
@@ -159,17 +162,25 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   );
   const [type, setType] = useState<AppointmentTypeValue>(appointment?.type ?? "FOLLOW_UP");
   const [responsibleUserId, setResponsibleUserId] = useState(appointment?.responsibleUserId ?? "");
+  const [assignedOsmUserId, setAssignedOsmUserId] = useState(
+    appointment && appointment.assignedOsmUserId !== null && appointment.assignedOsmUserId === props.currentOsmAssignee?.userId
+      ? appointment.assignedOsmUserId
+      : appointment
+        ? ""
+        : (props.homeVisitOnly || props.sourceServiceRequestId ? props.currentOsmAssignee?.userId ?? "" : ""),
+  );
   const [durationMinutes, setDurationMinutes] = useState(
     appointment?.durationMinutes?.toString() ?? String(APPOINTMENT_DEFAULT_DURATION_MINUTES),
   );
   const [locationType, setLocationType] = useState<AppointmentLocationValue | "">(
-    appointment?.locationType ?? (props.homeVisitOnly ? "HOME_VISIT" : "CLINIC"),
+    appointment?.locationType ?? (props.homeVisitOnly || props.sourceServiceRequestId ? "HOME_VISIT" : "CLINIC"),
   );
   const [locationDetail, setLocationDetail] = useState(appointment?.locationDetail ?? "");
   const [note, setNote] = useState(appointment?.note ?? "");
   const state = props.mode === "create" ? createState : rescheduleState;
   const pending = props.mode === "create" ? createPending : reschedulePending;
   const unknownOutcome = props.mode === "create" ? createUnknown : rescheduleUnknown;
+  const sourceAssignmentUnavailable = Boolean(props.sourceServiceRequestId && !props.currentOsmAssignee);
   const resendUnconfirmed = props.mode === "create" ? resendCreate : resendReschedule;
   const formAction = props.mode === "create" ? createAction : rescheduleAction;
   const detailHref = appointment
@@ -223,7 +234,10 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
           value={props.relationshipId}
         />
         {props.mode === "create" ? (
-          <input name="submissionNonce" type="hidden" value={props.submissionNonce} />
+          <>
+            <input name="submissionNonce" type="hidden" value={props.submissionNonce} />
+            {props.sourceServiceRequestId ? <input name="sourceServiceRequestId" type="hidden" value={props.sourceServiceRequestId} /> : null}
+          </>
         ) : props.mode === "reschedule" ? (
           <>
             <input name="appointmentId" type="hidden" value={props.appointment.appointmentId} />
@@ -233,6 +247,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
         <input name="scheduledAt" readOnly type="hidden" value={formatBangkokIso(scheduledAtLocal)} />
         <input name="type" readOnly type="hidden" value={type} />
         <input name="responsibleUserId" readOnly type="hidden" value={responsibleUserId} />
+        <input name="assignedOsmUserId" readOnly type="hidden" value={assignedOsmUserId} />
         <input name="durationMinutes" readOnly type="hidden" value={durationMinutes} />
         <input name="locationType" readOnly type="hidden" value={locationType} />
         <input name="locationDetail" readOnly type="hidden" value={locationDetail} />
@@ -294,22 +309,45 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             </label>
 
             <label className={labelClassName} htmlFor="appointment-responsible-user">
-              <span>แพทย์หรือพยาบาลผู้รับผิดชอบ (ไม่บังคับ)</span>
+              <span>ผู้รับผิดชอบนัดหมาย (ไม่บังคับ)</span>
               <Select
                 id="appointment-responsible-user"
-                onChange={(event) => setResponsibleUserId(event.target.value)}
-                value={responsibleUserId}
-                disabled={props.homeVisitOnly}
+                onChange={(event) => {
+                  const selected = event.currentTarget.value;
+                  if (selected.startsWith("osm:")) {
+                    const osmUserId = selected.slice("osm:".length);
+                    setAssignedOsmUserId(osmUserId);
+                    setResponsibleUserId("");
+                    setLocationType("HOME_VISIT");
+                  } else if (selected.startsWith("staff:")) {
+                    setResponsibleUserId(selected.slice("staff:".length));
+                    setAssignedOsmUserId("");
+                  } else {
+                    setResponsibleUserId("");
+                    setAssignedOsmUserId("");
+                  }
+                }}
+                value={assignedOsmUserId ? `osm:${assignedOsmUserId}` : responsibleUserId ? `staff:${responsibleUserId}` : ""}
+                disabled={props.homeVisitOnly || Boolean(props.sourceServiceRequestId)}
               >
                 <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
                 {props.responsibleMembers.map((member) => (
-                  <option key={member.userId} value={member.userId}>
+                  <option key={member.userId} value={`staff:${member.userId}`}>
                     {responsibleOptionLabel(member)}
                   </option>
                 ))}
+                {props.currentOsmAssignee ? (
+                  <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}</option>
+                ) : (
+                  <option disabled value="osm-unavailable">อสม. ผู้ดูแล — ไม่มีผู้ดูแลที่ใช้งานได้ในขณะนี้</option>
+                )}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
-                เลือกได้เฉพาะแพทย์หรือพยาบาลที่พร้อมใช้งานของโรงพยาบาลนี้
+                {props.sourceServiceRequestId
+                  ? "นัดนี้เชื่อมกับคำขอบริการและส่งให้ อสม. ผู้ดูแลปัจจุบัน"
+                  : props.homeVisitOnly
+                    ? `นัดนี้มอบหมายให้คุณ${props.currentOsmAssignee ? ` · ${props.currentOsmAssignee.displayName}` : ""} และระบบบันทึกการตอบรับให้แล้ว`
+                    : "เลือกแพทย์ พยาบาล หรือ อสม. ผู้ดูแลปัจจุบันของผู้ป่วย อสม. ทำงานเฉพาะนัดเยี่ยมบ้าน"}
               </span>
             </label>
 
@@ -333,8 +371,15 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
               <span>รูปแบบสถานที่ (ไม่บังคับ)</span>
               <Select
                 id="appointment-location-type"
-                onChange={(event) => setLocationType(event.target.value as AppointmentLocationValue | "")}
+                onChange={(event) => {
+                  const nextLocation = event.target.value as AppointmentLocationValue | "";
+                  setLocationType(nextLocation);
+                  if (nextLocation !== "HOME_VISIT" && assignedOsmUserId && !props.sourceServiceRequestId) {
+                    setAssignedOsmUserId("");
+                  }
+                }}
                 value={locationType}
+                disabled={props.homeVisitOnly || Boolean(props.sourceServiceRequestId)}
               >
                 <option value="">ยังไม่ระบุสถานที่</option>
                 {(props.homeVisitOnly ? APPOINTMENT_LOCATION_VALUES.filter((value) => value === "HOME_VISIT") : APPOINTMENT_LOCATION_VALUES).map((value) => (
@@ -381,12 +426,15 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             นัดหมายนี้จะผูกกับผู้ป่วยและผู้รับผิดชอบในโรงพยาบาลที่เลือก
           </p>
           <ActionFeedback state={state} />
+          {sourceAssignmentUnavailable ? (
+            <Alert className="mt-5" variant="warning">ไม่พบ อสม. ผู้ดูแลที่ใช้งานได้ในโรงพยาบาลนี้ กรุณาตรวจสอบหรือมอบหมายผู้ดูแลก่อนสร้างนัดจากคำขอ</Alert>
+          ) : null}
           <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
           {state.status === "SUCCESS" ? (
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !scheduledAtLocal} loading={pending} type="submit">
+            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS" || !scheduledAtLocal || sourceAssignmentUnavailable} loading={pending} type="submit">
               {pending ? "กำลังตรวจสอบและบันทึก..." : props.mode === "create" ? "บันทึกนัดหมาย" : "บันทึกการเลื่อนนัดหมาย"}
             </Button>
             <Link

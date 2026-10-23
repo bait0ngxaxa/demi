@@ -54,6 +54,7 @@ async function cleanup(): Promise<void> {
   await db.patientOsmAssignment.deleteMany({ where: { osmUserId: { in: users } } });
   await db.hospitalContentImage.deleteMany({ where: { content: { hospitalId: { in: hospitals } } } });
   await db.hospitalContent.deleteMany({ where: { hospitalId: { in: hospitals } } });
+  await db.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: hospitals } } } });
   await db.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalMembership.deleteMany({ where: { userId: { in: users } } });
   await db.osmHospitalRelationship.deleteMany({ where: { userId: { in: users } } });

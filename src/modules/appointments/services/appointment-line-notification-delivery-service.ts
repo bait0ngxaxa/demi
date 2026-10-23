@@ -4,10 +4,12 @@ import { randomUUID } from "node:crypto";
 
 import {
   AppointmentLineNotificationOutcome,
+  AppointmentLineNotificationEventKind,
   AppointmentLineNotificationRecipientKind,
   AppointmentLineNotificationState,
-  type AppointmentType,
   HospitalStatus,
+  MembershipStatus,
+  MembershipType,
   Prisma,
   Role,
   UserStatus,
@@ -48,7 +50,7 @@ type SafeSuppressionOutcome =
   | "ROLLOUT_CLOSED";
 
 type CurrentEligibility =
-  | { eligible: true; lineUserId: string; appointmentType: AppointmentType }
+  | { eligible: true; lineUserId: string; text: string }
   | { eligible: false; outcome: SafeSuppressionOutcome };
 
 export type AppointmentLineNotificationDrainResult = {
@@ -100,6 +102,63 @@ function pushWithLine(
   retryKey: string,
 ): Promise<LinePushResult> {
   return new LineMessagingClient().pushText(lineUserId, text, retryKey);
+}
+
+async function resolveLineEligibility(
+  transaction: Prisma.TransactionClient,
+  notification: Claim,
+  recipientUserId: string,
+  now: Date,
+  text: string,
+): Promise<CurrentEligibility> {
+  const [bindings, preference] = await Promise.all([
+    transaction.lineAccountBinding.findMany({
+      where: { userId: recipientUserId, unlinkedAt: null },
+      orderBy: { id: "asc" },
+      take: 2,
+      select: {
+        id: true,
+        lifecycleVersion: true,
+        lineUserId: true,
+        reachability: true,
+        reachabilityObservedAt: true,
+      },
+    }),
+    transaction.lineAppointmentNotificationPreference.findUnique({
+      where: { userId: recipientUserId },
+      select: {
+        enabled: true,
+        bindingId: true,
+        bindingLifecycleVersion: true,
+        preferenceVersion: true,
+      },
+    }),
+  ]);
+
+  if (
+    bindings.length !== 1 ||
+    bindings[0]?.id !== notification.bindingId ||
+    bindings[0]?.lifecycleVersion !== notification.bindingLifecycleVersion ||
+    !bindings[0]?.lineUserId
+  ) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
+  }
+  if (
+    !preference?.enabled ||
+    preference.bindingId !== notification.bindingId ||
+    preference.bindingLifecycleVersion !== notification.bindingLifecycleVersion ||
+    preference.preferenceVersion !== notification.preferenceVersion
+  ) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.OPT_IN_REVOKED };
+  }
+  if (!isFreshLineFriendObservation({
+    reachability: bindings[0].reachability,
+    observedAt: bindings[0].reachabilityObservedAt,
+    now,
+  })) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
+  }
+  return { eligible: true, lineUserId: bindings[0].lineUserId, text };
 }
 
 async function closeExhaustedLeases(database: DeliveryDatabase, now: Date): Promise<number> {
@@ -166,10 +225,62 @@ async function currentEligibility(
   const recipientUserId = notification.recipientUserId;
 
   return database.$transaction(async (transaction) => {
+    if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED) {
+      if (!notification.patientOsmAssignmentId) {
+        return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
+      }
+      const assignment = await transaction.patientOsmAssignment.findUnique({
+        where: { id: notification.patientOsmAssignmentId },
+        select: {
+          id: true,
+          osmUserId: true,
+          patientHospitalRelationshipId: true,
+          createdAt: true,
+          endedAt: true,
+          patientHospitalRelationship: {
+            select: {
+              endedAt: true,
+              osmAssignments: {
+                where: { endedAt: null },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { id: true, osmUserId: true },
+              },
+              hospital: { select: { status: true } },
+            },
+          },
+        },
+      });
+      if (
+        !assignment ||
+        assignment.patientHospitalRelationshipId !== notification.patientHospitalRelationshipId ||
+        assignment.createdAt.getTime() !== notification.sourceUpdatedAt.getTime()
+      ) {
+        return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
+      }
+      if (
+        assignment.endedAt ||
+        assignment.patientHospitalRelationship.endedAt ||
+        assignment.patientHospitalRelationship.hospital.status !== HospitalStatus.ACTIVE ||
+        assignment.patientHospitalRelationship.osmAssignments[0]?.id !== assignment.id ||
+        assignment.osmUserId !== recipientUserId ||
+        notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
+        await currentAssignedOsmRecipient(transaction, notification.patientHospitalRelationshipId) !== recipientUserId
+      ) {
+        return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+      }
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีผู้ป่วยที่ได้รับมอบหมายให้คุณดูแล กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    }
+
+    if (!notification.appointmentId) {
+      return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
+    }
     const appointment = await transaction.patientAppointment.findUnique({
       where: { id: notification.appointmentId },
       select: {
         id: true,
+        createdByUserId: true,
+        assignedOsmUserId: true,
         patientHospitalRelationshipId: true,
         updatedAt: true,
         status: true,
@@ -178,7 +289,7 @@ async function currentEligibility(
           select: {
             id: true,
             endedAt: true,
-            hospital: { select: { status: true } },
+            hospital: { select: { id: true, status: true } },
             patientProfile: {
               select: {
                 person: {
@@ -216,6 +327,56 @@ async function currentEligibility(
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
+    if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED) {
+      if (
+        notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
+        appointment.assignedOsmUserId !== recipientUserId ||
+        await currentAssignedOsmRecipient(transaction, relationship.id) !== recipientUserId
+      ) {
+        return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+      }
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีนัดเยี่ยมบ้านที่ได้รับมอบหมายให้คุณ กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    }
+
+    if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_RESCHEDULE_REQUESTED) {
+      if (
+        notification.recipientKind !== AppointmentLineNotificationRecipientKind.STAFF_CREATOR ||
+        !notification.rescheduleRequestId ||
+        appointment.createdByUserId !== recipientUserId
+      ) {
+        return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+      }
+      const [request, creator] = await Promise.all([
+        transaction.patientAppointmentRescheduleRequest.findFirst({
+          where: {
+            id: notification.rescheduleRequestId,
+            appointmentId: appointment.id,
+            sourceAppointmentUpdatedAt: appointment.updatedAt,
+            status: "PENDING",
+          },
+          select: { id: true },
+        }),
+        transaction.user.findFirst({
+          where: {
+            id: recipientUserId,
+            status: UserStatus.ACTIVE,
+            roles: { some: { role: Role.HOSPITAL } },
+            memberships: {
+              some: {
+                hospitalId: relationship.hospital.id,
+                membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+                status: MembershipStatus.ACTIVE,
+                hospital: { status: HospitalStatus.ACTIVE },
+              },
+            },
+          },
+          select: { id: true },
+        }),
+      ]);
+      if (!request || !creator) return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีคำขอเลื่อนนัดรอทบทวน กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    }
+
     // E6: a row is deduplicated by User, so OSM and caregiver eligibility must be re-resolved with OR semantics.
     let recipientStillAuthorized = false;
     if (notification.recipientKind === AppointmentLineNotificationRecipientKind.PATIENT) {
@@ -240,57 +401,7 @@ async function currentEligibility(
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
-    const [bindings, preference] = await Promise.all([
-      transaction.lineAccountBinding.findMany({
-        where: { userId: recipientUserId, unlinkedAt: null },
-        orderBy: { id: "asc" },
-        take: 2,
-        select: {
-          id: true,
-          lifecycleVersion: true,
-          lineUserId: true,
-          reachability: true,
-          reachabilityObservedAt: true,
-        },
-      }),
-      transaction.lineAppointmentNotificationPreference.findUnique({
-        where: { userId: recipientUserId },
-        select: {
-          enabled: true,
-          bindingId: true,
-          bindingLifecycleVersion: true,
-          preferenceVersion: true,
-        },
-      }),
-    ]);
-
-    if (
-      bindings.length !== 1 ||
-      bindings[0]?.id !== notification.bindingId ||
-      bindings[0]?.lifecycleVersion !== notification.bindingLifecycleVersion ||
-      !bindings[0]?.lineUserId
-    ) {
-      return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
-    }
-
-    if (
-      !preference?.enabled ||
-      preference.bindingId !== notification.bindingId ||
-      preference.bindingLifecycleVersion !== notification.bindingLifecycleVersion ||
-      preference.preferenceVersion !== notification.preferenceVersion
-    ) {
-      return { eligible: false, outcome: AppointmentLineNotificationOutcome.OPT_IN_REVOKED };
-    }
-
-    if (!isFreshLineFriendObservation({
-      reachability: bindings[0].reachability,
-      observedAt: bindings[0].reachabilityObservedAt,
-      now,
-    })) {
-      return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
-    }
-
-    return { eligible: true, lineUserId: bindings[0].lineUserId, appointmentType: appointment.type };
+    return resolveLineEligibility(transaction, notification, recipientUserId, now, appointmentLineNotificationText(appointment.type));
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
@@ -574,7 +685,7 @@ export async function drainAppointmentLineNotificationOutbox(
     try {
       providerOutcome = await (dependencies.push ?? pushWithLine)(
         finalEligibility.lineUserId,
-        appointmentLineNotificationText(finalEligibility.appointmentType),
+        finalEligibility.text,
         notification.retryKey,
       );
     } catch {

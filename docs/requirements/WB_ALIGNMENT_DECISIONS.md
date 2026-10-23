@@ -333,6 +333,16 @@ Defaults รอลูกค้ายืนยัน (**default, pending customer
 | AF-D3 | CAREGIVER-only เป็นบัญชีครอบครัวโดยไม่มีสิทธิ์ PATIENT, workforce หรือ admin; หากภายหลังโรงพยาบาล provision เป็นผู้ป่วย ให้เพิ่ม role และข้อมูลทางการบน Person/User เดิม | navigation แสดงเฉพาะครอบครัวและตั้งค่า; policy เดิมปฏิเสธ CAREGIVER; patient provisioning ใช้ identity เดิมและแทนชื่อที่ผู้ใช้แจ้งเองด้วยข้อมูล roster |
 | AF-D4 | ใช้การสร้าง credential/password path เดิมของ activation; ไม่เปิด LINE link, recovery หรือ credential path เพิ่มให้ญาติใน AF-2 | credential provider ถูกสร้างนอก transaction DB และชดเชยเมื่อ transaction ไม่สำเร็จ; recovery ยังไม่เปิดใช้; ต้องรอการอนุมัติกระบวนการพิสูจน์ตัวตนเฉพาะ |
 
+## AF-3 — OSM appointment assignment, acceptance and service-request hand-off (2026-10-23)
+
+| ID | การตัดสินใจ | ผลในระบบ |
+| --- | --- | --- |
+| AF-D2 (final, appointment) | “ตอบรับนัดหมาย” ใน flow ของ อสม. หมายถึง อสม. ที่ได้รับมอบหมายยืนยันว่าจะรับนัด หรือขอเลื่อนนัด; การรับทราบของผู้ป่วยยังเป็นข้อเท็จจริงแยกกันตามเดิม | เจ้าหน้าที่โรงพยาบาลมอบหมายได้เฉพาะ อสม. ที่กำลังดูแลผู้ป่วยใน Hospital เดียวกัน และการมอบหมายทำให้นัดเป็น HOME_VISIT; การยืนยันผูกกับ appointment version ปัจจุบัน จึงต้องยืนยันใหม่หลังแก้ไขนัด. อสม. สร้างเยี่ยมบ้านของตนเองแล้วระบบมอบหมายและยืนยันให้อัตโนมัติในธุรกรรมเดียว. คำขอเลื่อนนัดใช้ workflow เดิมและนำรายการออกจากคิวตอบรับขณะ PENDING. |
+| AF3-D1 | อนุมัติคำขอรับบริการต้องเลือก อสม.; เลือกผู้ดูแลที่ผู้ป่วยต้องการไว้ก่อนเมื่อยังมีสิทธิ์ หรือให้ OWNER เลือกเมื่อผู้ป่วยไม่ระบุ. หากผู้ป่วยมี อสม. ปัจจุบันคนละคน ต้องยืนยันการเปลี่ยนก่อน | ตรวจ OWNER, Hospital, relationship และผู้ดูแลที่ยัง active ในฐานข้อมูล; การอนุมัติและเปลี่ยน assignment เกิดใน transaction เดียวและ concurrent approval สร้าง assignment ได้เพียงหนึ่งรายการ. ตัวเลือกของผู้ป่วยยังจำกัดใน Hospital ของ relationship เดิม. |
+| AF3-D2 | เมื่อสร้างนัดจากคำขอที่อนุมัติ ต้องเชื่อม `sourceServiceRequestId` และเปลี่ยนคำขอเป็น STARTED พร้อมกัน | FK ผูกคำขอกับ PatientHospitalRelationship และ Hospital เดียวกัน; create/STARTED/audit เป็นธุรกรรมเดียว. STARTED หมายถึงส่งต่อไปสู่นัดแล้ว ไม่ได้ยืนยันว่าจัดบริการทางคลินิกเสร็จ. |
+| AF3-D3 | คิวตอบรับของ อสม. มีเฉพาะนัด HOME_VISIT สถานะ SCHEDULED ที่ยังไม่ถึงเวลา มอบหมายให้ผู้ดูแลปัจจุบัน ไม่มีการตอบรับใน version นี้ และไม่มีคำขอเลื่อนที่ PENDING | `/app/appointments` แสดงแท็บ `AWAITING_MY_ACCEPTANCE`; staff กรองนัดที่รอผู้ดูแลตอบรับ. เมนู “เพื่อนที่ดูแล” แสดงจำนวนจาก query ฝั่ง server ใน scope เดียวกัน; การซ่อนเมนูไม่ใช่ authorization. |
+| AF3-D4 | แจ้ง LINE แบบไม่มีรายละเอียดผู้ป่วยหรือข้อมูลทางคลินิก และตรวจผู้รับที่มีสิทธิ์อีกครั้งตอนส่ง | outbox ใช้ unique event/recipient, เคารพ opt-in และป้องกันการส่งให้ผู้ดูแลที่ไม่ active หรือผู้สร้างที่ไม่มีสิทธิ์แล้ว; event assignment ผู้ดูแล/นัด และคำขอเลื่อนแจ้งผู้รับที่เกี่ยวข้อง. |
+
 คำตอบที่ใช้เป็นหลักฐานใน [BUSINESS_FLOW_GAP_CANONICAL.md](./BUSINESS_FLOW_GAP_CANONICAL.md) แต่ไม่เคยบันทึกใน register นี้ (Product Owner ส่งต่อ 2026-10-17; ไม่มีถ้อยคำต้นฉบับใน repo):
 
 - **ข-16** — โรคประจำตัว/ประวัติสุขภาพใช้แบบบันทึกประวัติสุขภาพของ Phase B (WB-DF-10) → PAT-03.

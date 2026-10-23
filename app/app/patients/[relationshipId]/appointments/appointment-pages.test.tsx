@@ -20,6 +20,7 @@ vi.mock("@/modules/patient-program/services/patient-program-query-service", () =
 vi.mock("@/modules/followups/services/followup-query-service", () => ({ getFollowupHistoryForProgram: mocks.followups }));
 vi.mock("@/modules/appointments/transport/server-actions", () => ({
   acknowledgeAppointmentOnBehalfOfPatientAction: vi.fn(),
+  acceptAppointmentAssignmentAction: vi.fn(),
   requestAppointmentCancellationOnBehalfOfPatientAction: vi.fn(),
   recordAppointmentCoordinationAction: vi.fn(),
   approveAppointmentCancellationRequestAction: vi.fn(),
@@ -36,6 +37,7 @@ const detail: AppointmentDetail & { contactPhones: { hospitalPhone: string | nul
   contactPhones: { hospitalPhone: "02-111-1111", patientPhone: "0899999999" },
   patient: { patientHospitalRelationshipId: relationshipId, displayName: "สมใจ ผู้ป่วยทดสอบ", hospitalNumber: "HN-001", hospital: { id: "hospital-a", name: "โรงพยาบาล ก" } },
   appointmentId, canManage: true, canProxyPatientActions: false, canRecordCoordination: false,
+  assignedOsmUserId: null, assignedOsmDisplayName: null, currentAssigneeAcceptance: null, canAcceptAssignment: false,
   responsibleUserId: null, responsibleDisplayName: null, responsibleProfession: null,
   osmAtCreationDisplayName: "อสม. เมื่อสร้างนัด", currentAcknowledgement: null, cancellationRequests: [], coordinationEvents: [],
   createdByDisplayName: "เจ้าหน้าที่ผู้สร้าง", type: "EDUCATION", status: "SCHEDULED",

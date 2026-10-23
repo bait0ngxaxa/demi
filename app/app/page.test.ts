@@ -21,6 +21,9 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
   listActorHospitalWorkspaces: vi.fn().mockResolvedValue([]),
 }));
+vi.mock("@/modules/appointments/services/work-appointment-query-service", () => ({
+  countWorkAppointmentsAwaitingMyAcceptance: vi.fn().mockResolvedValue(0),
+}));
 
 vi.mock("@/modules/hospital-content/services/hospital-content-work-query-service", () => ({
   listHospitalWorkContent: vi.fn(),

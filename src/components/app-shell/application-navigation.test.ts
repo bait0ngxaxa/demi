@@ -70,8 +70,12 @@ function workspace(id: string, parent: string | null, overrides: Partial<ActorHo
   };
 }
 
-function project(subject: ActorContext, workspaces: readonly ActorHospitalWorkspace[] = []): readonly ApplicationNavigationGroup[] {
-  return projectApplicationNavigation(subject, workspaces);
+function project(
+  subject: ActorContext,
+  workspaces: readonly ActorHospitalWorkspace[] = [],
+  awaitingOsmAcceptanceCount = 0,
+): readonly ApplicationNavigationGroup[] {
+  return projectApplicationNavigation(subject, workspaces, awaitingOsmAcceptanceCount);
 }
 
 function allHrefs(groups: readonly ApplicationNavigationGroup[]): string[] {
@@ -222,6 +226,17 @@ const cases: Case[] = [
 ];
 
 describe("UI-4 task-based navigation per actor", () => {
+  it("projects the OSM label and server-computed appointment acceptance count", () => {
+    const groups = project(
+      actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }),
+      [workspace(hospitalId, parentId)],
+      3,
+    );
+    const assignedPatients = groups.flatMap(({ items }) => items).find(({ href }) => href === "/app/patients/assigned");
+
+    expect(assignedPatients).toMatchObject({ label: "เพื่อนที่ดูแล", badgeCount: 3 });
+  });
+
   it("does not link the retired patient account-access routes from navigation", () => {
     const owner = actor({
       roles: [Role.HOSPITAL],

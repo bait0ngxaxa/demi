@@ -25,6 +25,7 @@ const appointmentFieldsSchema = {
   scheduledAt: appointmentScheduledAtSchema,
   type: appointmentTypeSchema,
   responsibleUserId: z.string().uuid().nullable().optional(),
+  assignedOsmUserId: z.string().uuid().nullable().optional(),
   durationMinutes: z
     .number()
     .int()
@@ -46,6 +47,7 @@ export const appointmentCreateRequestSchema = z
   .object({
     patientHospitalRelationshipId: appointmentRelationshipIdSchema,
     submissionNonce: appointmentSubmissionNonceSchema,
+    sourceServiceRequestId: appointmentIdSchema.nullable().optional(),
     ...appointmentFieldsSchema,
   })
   .strict();
@@ -73,6 +75,15 @@ export const appointmentAcknowledgementRequestSchema = z
     patientHospitalRelationshipId: appointmentRelationshipIdSchema,
     appointmentId: appointmentIdSchema,
     expectedUpdatedAt: appointmentScheduledAtSchema,
+  })
+  .strict();
+
+export const appointmentAssignmentAcceptanceRequestSchema = z
+  .object({
+    patientHospitalRelationshipId: appointmentRelationshipIdSchema,
+    appointmentId: appointmentIdSchema,
+    sourceAppointmentUpdatedAt: appointmentScheduledAtSchema,
+    submissionNonce: appointmentSubmissionNonceSchema,
   })
   .strict();
 
@@ -106,6 +117,7 @@ export type AppointmentCreateRequest = z.output<typeof appointmentCreateRequestS
 export type AppointmentRescheduleRequest = z.output<typeof appointmentRescheduleRequestSchema>;
 export type AppointmentTransitionRequest = z.output<typeof appointmentTransitionRequestSchema>;
 export type AppointmentAcknowledgementRequest = z.output<typeof appointmentAcknowledgementRequestSchema>;
+export type AppointmentAssignmentAcceptanceRequest = z.output<typeof appointmentAssignmentAcceptanceRequestSchema>;
 export type AppointmentCancellationRequest = z.output<typeof appointmentCancellationRequestSchema>;
 export type AppointmentCoordinationRequest = z.output<typeof appointmentCoordinationRequestSchema>;
 export type AppointmentCancellationReviewRequest = z.output<typeof appointmentCancellationReviewRequestSchema>;

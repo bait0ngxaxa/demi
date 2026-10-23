@@ -61,6 +61,7 @@ async function cleanup(): Promise<void> {
   const appointmentWhere = { patientHospitalRelationship: relationshipWhere };
   await db.patientAppointmentRescheduleRequest.deleteMany({ where: { appointment: appointmentWhere } });
   await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationshipId: { in: (await db.patientHospitalRelationship.findMany({ where: relationshipWhere, select: { id: true } })).map((row) => row.id) } } });
+  await db.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: appointmentWhere } });
   await db.patientAppointment.deleteMany({ where: appointmentWhere });
   await db.lineAppointmentNotificationPreference.deleteMany({ where: { userId: { in: users } } });
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });

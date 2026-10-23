@@ -68,6 +68,7 @@ export default async function WorkAppointmentPage({
     type: firstSearchParam(params.type),
     locationType: firstSearchParam(params.locationType),
     responsibleUserId: firstSearchParam(params.responsibleUserId),
+    awaitingOsmAcceptance: firstSearchParam(params.awaitingOsmAcceptance),
     cursor: firstSearchParam(params.cursor),
   };
   const parsed = workAppointmentQuerySchema.safeParse(rawQuery);
@@ -75,7 +76,7 @@ export default async function WorkAppointmentPage({
     ? parsed.data
     : {
         hospitalId: rawQuery.hospitalId,
-        tab: rawQuery.tab === "HISTORY" || rawQuery.tab === "PENDING_REQUESTS" ? rawQuery.tab : "UPCOMING",
+        tab: rawQuery.tab === "HISTORY" || rawQuery.tab === "PENDING_REQUESTS" || rawQuery.tab === "AWAITING_MY_ACCEPTANCE" ? rawQuery.tab : "UPCOMING",
       };
   let queryError: string | null = parsed.success
     ? null

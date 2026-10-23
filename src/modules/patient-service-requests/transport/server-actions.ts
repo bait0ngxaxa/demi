@@ -1,8 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 
@@ -14,17 +12,11 @@ import {
 import { setHospitalServiceOffering } from "../services/patient-service-catalog-service";
 import {
   hospitalServiceOfferingMutationSchema,
+  hospitalServiceRequestReviewSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
 } from "../schemas/patient-service-request-schemas";
 import type { PatientServiceMutationActionState } from "./action-state";
-
-const hospitalServiceRequestReviewSchema = z
-  .object({
-    requestId: z.uuid(),
-    decision: z.enum(["APPROVE", "REJECT", "START"]),
-  })
-  .strict();
 
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -39,6 +31,10 @@ function mapMutationError(error: unknown): PatientServiceMutationActionState {
 
     if (error.code === "NOT_FOUND") {
       return { status: "ERROR", message: "ไม่พบรายการที่ต้องการดำเนินการ" };
+    }
+
+    if (error.code === "CONFLICT" && error.message.includes("Confirm the OSM change")) {
+      return { status: "ERROR", message: "ผู้ป่วยมี อสม. ผู้ดูแลอยู่แล้ว กรุณายืนยันการเปลี่ยนผู้ดูแลก่อนอนุมัติ", conflict: true };
     }
 
     if (error.code === "CONFLICT") {
@@ -134,9 +130,12 @@ export async function reviewPatientServiceRequestAction(
   _previousState: PatientServiceMutationActionState,
   formData: FormData,
 ): Promise<PatientServiceMutationActionState> {
+  const decision = formString(formData, "decision");
   const parsed = hospitalServiceRequestReviewSchema.safeParse({
     requestId: formString(formData, "requestId"),
-    decision: formString(formData, "decision"),
+    decision,
+    osmUserId: decision === "APPROVE" ? formString(formData, "osmUserId") || null : null,
+    confirmReassignment: decision === "APPROVE" && formString(formData, "confirmReassignment") === "true",
   });
 
   if (!parsed.success) {
@@ -145,16 +144,18 @@ export async function reviewPatientServiceRequestAction(
 
   try {
     const actor = await getProtectedApplicationActor();
-    await reviewPatientServiceRequest(actor, { requestId: parsed.data.requestId }, parsed.data.decision);
+    await reviewPatientServiceRequest(actor, {
+      requestId: parsed.data.requestId,
+      osmUserId: parsed.data.osmUserId,
+      confirmReassignment: parsed.data.confirmReassignment,
+    }, parsed.data.decision);
     revalidatePath("/app/patients/service-requests");
     revalidatePath("/app/personal/services");
     return {
       status: "SUCCESS",
       message: parsed.data.decision === "APPROVE"
-        ? "อนุมัติคำขอแล้ว ดูรายการในกลุ่มอนุมัติแล้วเพื่อดำเนินงานต่อ"
-        : parsed.data.decision === "REJECT"
-          ? "บันทึกผลไม่อนุมัติแล้ว ดูรายการในกลุ่มเริ่มบริการและประวัติ"
-          : "บันทึกสถานะเริ่มให้บริการแล้ว ไม่ได้สร้าง Program หรือมอบหมาย อสม. อัตโนมัติ ดูรายการในกลุ่มเริ่มบริการและประวัติ",
+        ? "อนุมัติคำขอและมอบหมาย อสม. แล้ว สามารถสร้างนัดหมายจากรายการนี้ได้"
+        : "บันทึกผลไม่อนุมัติแล้ว",
     };
   } catch (error: unknown) {
     const state = mapMutationError(error);

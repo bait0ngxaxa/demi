@@ -58,7 +58,11 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     createdAt: updatedAt,
     updatedAt,
     osmAssignmentAtCreation: null,
+    assignedOsmUserId: null,
+    assignedOsmUser: null,
     acknowledgements: [],
+    assigneeAcceptances: [],
+    rescheduleRequests: [],
     cancellationRequests: [],
     coordinationEvents: [],
     responsibleUser: {
@@ -123,7 +127,7 @@ function createDatabase(options: {
           },
         },
         osmAssignments: options.assignedOsmUserId
-          ? [{ osmUserId: options.assignedOsmUserId }]
+          ? [{ id: "88888888-8888-4888-8888-888888888888", osmUserId: options.assignedOsmUserId }]
           : [],
       }),
     },

@@ -57,6 +57,11 @@ export type AppointmentAcknowledgementSummary = {
   recordedByDisplayName: string | null;
 };
 
+export type AppointmentAssigneeAcceptanceSummary = {
+  acceptedAt: Date;
+  acceptedByDisplayName: string | null;
+};
+
 export type AppointmentCancellationRequestSummary = {
   requestId: string;
   source: AppointmentInteractionSource;
@@ -101,6 +106,10 @@ export type AppointmentDetail = {
   canProxyPatientActions: boolean;
   canRecordCoordination: boolean;
   appointmentId: string;
+  assignedOsmUserId: string | null;
+  assignedOsmDisplayName: string | null;
+  currentAssigneeAcceptance: AppointmentAssigneeAcceptanceSummary | null;
+  canAcceptAssignment: boolean;
   responsibleUserId: string | null;
   responsibleDisplayName: string | null;
   responsibleProfession: Profession | null;
@@ -124,6 +133,8 @@ export type AppointmentCreateContext = {
   homeVisitOnly?: boolean;
   patient: AppointmentPatientSummary;
   responsibleMembers: ResponsibleHospitalMember[];
+  currentOsmAssignee: { userId: string; displayName: string } | null;
+  sourceServiceRequestId: string | null;
 };
 
 export type AppointmentRescheduleContext = AppointmentCreateContext & {
@@ -202,6 +213,7 @@ function appointmentDetailSelect(hospitalId: string) {
   return {
   createdByUserId: true,
   id: true,
+  assignedOsmUserId: true,
   responsibleUserId: true,
   type: true,
   scheduledAt: true,
@@ -223,6 +235,9 @@ function appointmentDetailSelect(hospitalId: string) {
       },
     },
   },
+  assignedOsmUser: {
+    select: { person: { select: { givenName: true, familyName: true } } },
+  },
   osmAssignmentAtCreation: {
     select: {
       osmUser: {
@@ -241,6 +256,21 @@ function appointmentDetailSelect(hospitalId: string) {
       acknowledgedAt: true,
       recordedByUser: { select: { person: { select: { givenName: true, familyName: true } } } },
     },
+  },
+  assigneeAcceptances: {
+    orderBy: [{ sourceAppointmentUpdatedAt: "desc" }, { acceptedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: {
+      sourceAppointmentUpdatedAt: true,
+      acceptedAt: true,
+      acceptedBy: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  rescheduleRequests: {
+    where: { status: "PENDING" },
+    orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+    take: 5,
+    select: { sourceAppointmentUpdatedAt: true, status: true },
   },
   cancellationRequests: {
     orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
@@ -317,6 +347,22 @@ function toCurrentAcknowledgement(record: {
     : null;
 }
 
+function toCurrentAssigneeAcceptance(record: {
+  updatedAt: Date;
+  assigneeAcceptances: Array<{
+    sourceAppointmentUpdatedAt: Date;
+    acceptedAt: Date;
+    acceptedBy: { person: { givenName: string | null; familyName: string | null } };
+  }>;
+}): AppointmentAssigneeAcceptanceSummary | null {
+  const acceptance = record.assigneeAcceptances.find(
+    (item) => item.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+  );
+  return acceptance
+    ? { acceptedAt: acceptance.acceptedAt, acceptedByDisplayName: nullableDisplayName(acceptance.acceptedBy.person) }
+    : null;
+}
+
 function toCancellationRequests(
   records: Array<{
     id: string;
@@ -376,6 +422,7 @@ function toDetail(
   canManage: boolean,
   canProxyPatientActions: boolean,
   canHospitalManage: boolean = canManage,
+  canAcceptAssignment = false,
 ): AppointmentDetail {
   return {
     patient,
@@ -384,6 +431,10 @@ function toDetail(
     canProxyPatientActions,
     canRecordCoordination: canProxyPatientActions,
     appointmentId: record.id,
+    assignedOsmUserId: record.assignedOsmUserId,
+    assignedOsmDisplayName: nullableDisplayName(record.assignedOsmUser?.person ?? null),
+    currentAssigneeAcceptance: toCurrentAssigneeAcceptance(record),
+    canAcceptAssignment,
     responsibleUserId: record.responsibleUserId,
     responsibleDisplayName: nullableDisplayName(record.responsibleUser?.person ?? null),
     responsibleProfession: record.responsibleUser?.memberships[0]?.profession ?? null,
@@ -555,6 +606,20 @@ export async function getAppointmentDetail(
       throw new NotFoundError();
     }
 
+    const currentAcceptance = toCurrentAssigneeAcceptance(record);
+    const hasOpenRescheduleRequest = record.rescheduleRequests.some(
+      (request) => request.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
+    );
+    const canAcceptAssignment = Boolean(
+      access.scopes.exactOsmAssignment &&
+      access.target.assignedOsmUserId === record.assignedOsmUserId &&
+      record.assignedOsmUserId === access.authoritativeActor.userId &&
+      record.status === "SCHEDULED" &&
+      record.scheduledAt.getTime() > Date.now() &&
+      !currentAcceptance &&
+      !hasOpenRescheduleRequest,
+    );
+
     const contactPhones = await loadAppointmentContactPhones(
       database,
       access.patient.patientHospitalRelationshipId,
@@ -562,7 +627,7 @@ export async function getAppointmentDetail(
     );
 
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital), contactPhones };
+      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital, canAcceptAssignment), contactPhones };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -572,10 +637,30 @@ export async function getAppointmentDetail(
   }
 }
 
+async function resolveCurrentOsmAssignee(
+  database: AppointmentQueryDatabase,
+  input: { osmUserId: string | null; hospitalId: string },
+): Promise<{ userId: string; displayName: string } | null> {
+  if (!input.osmUserId) return null;
+  const osm = await database.user.findFirst({
+    where: {
+      id: input.osmUserId,
+      status: "ACTIVE",
+      roles: { some: { role: "OSM" } },
+      osmHospitalRelationships: {
+        some: { hospitalId: input.hospitalId, status: "ACTIVE", hospital: { status: "ACTIVE" } },
+      },
+    },
+    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+  });
+  return osm ? { userId: osm.id, displayName: toDisplayName(osm.person) } : null;
+}
+
 export async function getAppointmentCreateContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: AppointmentQueryDependencies = {},
+  sourceServiceRequestIdInput?: unknown,
 ): Promise<AppointmentCreateContext> {
   try {
     const database = getDatabase(dependencies);
@@ -586,10 +671,34 @@ export async function getAppointmentCreateContext(
       database,
     );
 
+    let sourceServiceRequestId: string | null = null;
+    if (sourceServiceRequestIdInput !== undefined && sourceServiceRequestIdInput !== null && sourceServiceRequestIdInput !== "") {
+      const parsedRequestId = appointmentIdSchema.safeParse(sourceServiceRequestIdInput);
+      if (!parsedRequestId.success) throw new NotFoundError();
+      if (!access.scopes.directHospital) throw new ForbiddenError();
+      const sourceRequest = await database.patientServiceRequest.findFirst({
+        where: {
+          id: parsedRequestId.data,
+          patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+          hospitalId: access.target.hospitalId,
+          status: "APPROVED",
+          relationship: { is: { endedAt: null, hospital: { status: "ACTIVE" } } },
+        },
+        select: { id: true },
+      });
+      if (!sourceRequest) throw new NotFoundError();
+      sourceServiceRequestId = sourceRequest.id;
+    }
+
     return {
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
       responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
+      currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
+        osmUserId: access.target.assignedOsmUserId,
+        hospitalId: access.target.hospitalId,
+      }),
+      sourceServiceRequestId,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -639,6 +748,11 @@ export async function getAppointmentRescheduleContext(
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
       appointment: toDetail(record, access.patient, true, false, access.scopes.directHospital),
+      currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
+        osmUserId: access.target.assignedOsmUserId,
+        hospitalId: access.target.hospitalId,
+      }),
+      sourceServiceRequestId: null,
       responsibleMembers: access.scopes.directHospital ? await getRescheduleResponsibleMembers(
         database,
         access.target.hospitalId,

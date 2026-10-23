@@ -32,6 +32,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 
 import { AppointmentMutationControls } from "./appointment-mutation-controls";
 import { AppointmentInteractionControls } from "./appointment-interaction-controls";
+import { AppointmentAssignmentControls } from "./appointment-assignment-controls";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
 import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
 
@@ -233,6 +234,15 @@ function AppointmentDetailView({
         </Panel>
 
         {rescheduleRequests}
+        <AppointmentAssignmentControls
+          acceptedAt={detail.currentAssigneeAcceptance?.acceptedAt ?? null}
+          appointmentId={detail.appointmentId}
+          assignedOsmDisplayName={detail.assignedOsmDisplayName ?? ""}
+          canAcceptAssignment={detail.canAcceptAssignment}
+          expectedUpdatedAt={detail.updatedAt.toISOString()}
+          relationshipId={relationshipId}
+          submissionNonce={randomUUID()}
+        />
         <AppointmentInteractionControls
           acknowledgement={detail.currentAcknowledgement}
           cancellationRequestNonce={randomUUID()}

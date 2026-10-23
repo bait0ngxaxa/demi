@@ -154,6 +154,7 @@ async function cleanup(): Promise<void> {
   await db.caregiverInvitation.deleteMany({ where: { patientProfileId: { in: profileIds } } });
   await db.patientAppointmentRescheduleRequest.deleteMany({ where: { appointment: { patientHospitalRelationshipId: { in: relationshipIds } } } });
   await db.patientAppointmentCancellationRequest.deleteMany({ where: { appointment: { patientHospitalRelationshipId: { in: relationshipIds } } } });
+  await db.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: { patientHospitalRelationshipId: { in: relationshipIds } } } });
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.lineAppointmentNotificationPreference.deleteMany({ where: { userId: { in: users } } });
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });
@@ -163,6 +164,7 @@ async function cleanup(): Promise<void> {
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientActivation.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.patientAccessRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
+  await db.patientHospitalHealthHistory.deleteMany({ where: { relationship: { id: { in: relationshipIds } } } });
   await db.patientHospitalRelationship.deleteMany({ where: { id: { in: relationshipIds } } });
   await db.patientProfile.deleteMany({ where: { id: { in: profileIds } } });
   await db.hospitalContact.deleteMany({ where: { hospitalId: { in: hospitals } } });

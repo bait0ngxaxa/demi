@@ -71,6 +71,9 @@ async function cleanupFixtures(): Promise<void> {
   await db.patientServiceRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalServiceOffering.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.patientAccessRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
+  await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationship: { hospitalId: { in: hospitals } } } });
+  await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationship: { hospitalId: { in: hospitals } } } });
+  await db.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: hospitals } } } });
   await db.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.patientProfile.deleteMany({ where: { id: { in: profiles } } });
   await db.workforceActivation.deleteMany({ where: { userId: { in: users } } });
@@ -158,10 +161,10 @@ describe("persisted Owner administration", () => {
     const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, offeringId: offering.id, requestedByUserId: requester.id } });
     const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
     for (const subject of [member, osm, staleOwner]) {
-      await expect(reviewPatientServiceRequest(subject, { requestId: serviceRequest.id }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(reviewPatientServiceRequest(subject, { requestId: serviceRequest.id, osmUserId: osm.userId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "PENDING" });
-    await expect(reviewPatientServiceRequest(owner, { requestId: serviceRequest.id }, "APPROVE")).resolves.toBe("APPROVED");
+    await expect(reviewPatientServiceRequest(owner, { requestId: serviceRequest.id, osmUserId: osm.userId }, "APPROVE")).resolves.toBe("APPROVED");
   });
 
   it("disables legacy manual patient creation even for OWNER", async () => {

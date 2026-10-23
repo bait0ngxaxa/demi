@@ -12,6 +12,7 @@ const mockedComplete = vi.hoisted(() => vi.fn());
 const mockedNoShow = vi.hoisted(() => vi.fn());
 const mockedAcknowledgeSelf = vi.hoisted(() => vi.fn());
 const mockedAcknowledgeProxy = vi.hoisted(() => vi.fn());
+const mockedAcceptAssignment = vi.hoisted(() => vi.fn());
 const mockedRequestSelf = vi.hoisted(() => vi.fn());
 const mockedRequestProxy = vi.hoisted(() => vi.fn());
 const mockedCoordination = vi.hoisted(() => vi.fn());
@@ -29,6 +30,7 @@ vi.mock("../services/appointment-service", () => ({
   rescheduleAppointment: mockedReschedule,
   acknowledgeOwnPatientAppointment: mockedAcknowledgeSelf,
   acknowledgeAppointmentOnBehalfOfPatient: mockedAcknowledgeProxy,
+  acceptAppointmentAssignment: mockedAcceptAssignment,
   requestOwnPatientAppointmentCancellation: mockedRequestSelf,
   requestAppointmentCancellationOnBehalfOfPatient: mockedRequestProxy,
   recordAppointmentCoordination: mockedCoordination,
@@ -49,6 +51,7 @@ import {
   rescheduleAppointmentAction,
   acknowledgeOwnPatientAppointmentAction,
   acknowledgeAppointmentOnBehalfOfPatientAction,
+  acceptAppointmentAssignmentAction,
   requestOwnPatientAppointmentCancellationAction,
   requestAppointmentCancellationOnBehalfOfPatientAction,
   recordAppointmentCoordinationAction,
@@ -121,6 +124,15 @@ function acknowledgementFormData(): FormData {
   return data;
 }
 
+function assignmentAcceptanceFormData(): FormData {
+  const data = new FormData();
+  data.set("patientHospitalRelationshipId", relationshipId);
+  data.set("appointmentId", appointmentId);
+  data.set("sourceAppointmentUpdatedAt", expectedUpdatedAt);
+  data.set("submissionNonce", nonce);
+  return data;
+}
+
 function cancellationRequestFormData(): FormData {
   const data = acknowledgementFormData();
   data.set("submissionNonce", nonce);
@@ -152,6 +164,11 @@ describe("Appointment Server Actions", () => {
       appointmentId,
       patientHospitalRelationshipId: relationshipId,
     });
+    mockedAcceptAssignment.mockResolvedValue({
+      appointmentId,
+      patientHospitalRelationshipId: relationshipId,
+      acceptedAt: updatedAt,
+    });
     mockedRequestSelf.mockResolvedValue({ appointmentId, patientHospitalRelationshipId: relationshipId });
     mockedRequestProxy.mockResolvedValue({ appointmentId, patientHospitalRelationshipId: relationshipId });
     mockedCoordination.mockResolvedValue({ appointmentId, patientHospitalRelationshipId: relationshipId });
@@ -175,6 +192,7 @@ describe("Appointment Server Actions", () => {
       "markAppointmentNoShowAction",
       "acknowledgeOwnPatientAppointmentAction",
       "acknowledgeAppointmentOnBehalfOfPatientAction",
+      "acceptAppointmentAssignmentAction",
       "requestOwnPatientAppointmentCancellationAction",
       "requestAppointmentCancellationOnBehalfOfPatientAction",
       "recordAppointmentCoordinationAction",
@@ -332,6 +350,22 @@ describe("Appointment Server Actions", () => {
     expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
     expect(JSON.stringify(result)).not.toContain("internal stale");
     expect(mockedRevalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("accepts an OSM appointment assignment using its source version and nonce", async () => {
+    const result = await acceptAppointmentAssignmentAction(
+      initialAppointmentInteractionActionState,
+      assignmentAcceptanceFormData(),
+    );
+
+    expect(result).toMatchObject({ status: "SUCCESS", operation: "ASSIGNMENT_ACCEPTED", appointmentId, patientHospitalRelationshipId: relationshipId });
+    expect(mockedAcceptAssignment).toHaveBeenCalledWith(actor, {
+      patientHospitalRelationshipId: relationshipId,
+      appointmentId,
+      sourceAppointmentUpdatedAt: expectedUpdatedAt,
+      submissionNonce: nonce,
+    });
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/appointments/${appointmentId}`);
   });
 
   it("shows a sign-in prompt for expired SELF interaction sessions and preserves forbidden copy", async () => {

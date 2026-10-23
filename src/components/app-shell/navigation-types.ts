@@ -23,6 +23,7 @@ export type ApplicationNavigationItem = {
   label: string;
   match: "exact" | "prefix";
   prefetch?: boolean;
+  badgeCount?: number;
   /** UI-01: set on customer menu items only; their icon and mobile tab follow the menu entry, not the href. */
   menuId?: CustomerMenuId;
 };

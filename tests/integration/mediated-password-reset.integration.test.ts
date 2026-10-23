@@ -51,12 +51,18 @@ async function clearDatabase(): Promise<void> {
   await db.caregiverAppointmentGrant.deleteMany();
   await db.caregiverRelationship.deleteMany();
   await db.caregiverInvitation.deleteMany();
+  await db.patientHospitalHealthHistory.deleteMany();
   await db.patientHospitalRelationship.deleteMany();
   await db.patientProfile.deleteMany();
   await db.workforceActivation.deleteMany();
   await db.osmHospitalRelationship.deleteMany();
   await db.hospitalMembership.deleteMany();
   await db.userRole.deleteMany();
+  await db.$transaction([
+    db.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    db.hospitalServiceArea.deleteMany(),
+  ]);
+  await db.hospitalServiceAreaEligibility.deleteMany();
   await db.user.deleteMany();
   await db.hospital.deleteMany();
   await db.person.deleteMany();

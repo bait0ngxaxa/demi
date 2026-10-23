@@ -199,7 +199,9 @@ describe("LINE-QA.B2.2 scoped Appointment mutations on PostgreSQL", () => {
     await database.auditEvent.deleteMany({ where: { actorUserId: users } });
     await database.lineAccountActionIntent.deleteMany({ where: { userId: users } });
     await database.lineAccountBinding.deleteMany({ where: { userId: users } });
+    await database.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: { createdByUserId: users } } });
     await database.patientAppointment.deleteMany({ where: { createdByUserId: users } });
+    await database.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: created.hospitals } } } });
     await database.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: created.hospitals } } });
     await database.patientProfile.deleteMany({ where: { personId: { in: created.people } } });
     await database.userRole.deleteMany({ where: { userId: users } });

@@ -24,6 +24,7 @@ import {
 import { Alert } from "@/components/ui/alert";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { listChildOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
@@ -168,7 +169,10 @@ export default async function ApplicationPage(
   if (actor.roles.length === 1 && actor.roles[0] === Role.CAREGIVER) {
     redirect("/app/family");
   }
-  const hospitalWorkspaces = await listActorHospitalWorkspaces(actor);
+  const [hospitalWorkspaces, awaitingOsmAcceptanceCount] = await Promise.all([
+    listActorHospitalWorkspaces(actor),
+    countWorkAppointmentsAwaitingMyAcceptance(actor),
+  ]);
   const projection = projectApplicationWorkspace(actor, hospitalWorkspaces);
   // ADR-0018: a pending Child OWNER invitation is answered here, so it keeps even a Patient-only account on this page.
   const invitations = await loadHomeSection(() => listChildOwnerInvitationsForActor(actor));
@@ -187,7 +191,7 @@ export default async function ApplicationPage(
   // The grid follows the same task sections and order as the sidebar and the More page.
   const home = projectWorkHome(
     projection,
-    projectApplicationNavigation(actor, hospitalWorkspaces),
+    projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount),
     projectActiveOsmHospitalIds(actor),
     params.hospitalId,
   );

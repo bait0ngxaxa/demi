@@ -50,6 +50,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
+  await prisma.patientHospitalHealthHistory.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
   await prisma.patientProfile.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -57,6 +58,11 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
+  await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    prisma.hospitalServiceArea.deleteMany(),
+  ]);
+  await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.user.deleteMany();
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();

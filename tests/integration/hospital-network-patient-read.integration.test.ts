@@ -138,12 +138,14 @@ async function cleanup(): Promise<void> {
   await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientAppointmentRescheduleRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointmentCancellationRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
+  await db.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientHospitalProfile.deleteMany({ where: { relationship: relationshipWhere } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientActivation.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.auditEvent.deleteMany({ where: { actorUserId: { in: users } } });
+  await db.patientHospitalHealthHistory.deleteMany({ where: { relationship: relationshipWhere } });
   await db.patientHospitalRelationship.deleteMany({ where: relationshipWhere });
   await db.patientProfile.deleteMany({ where: { personId: { in: people } } });
   await db.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitals } } });

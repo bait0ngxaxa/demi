@@ -21,6 +21,25 @@ export const patientServiceRequestIdSchema = z
   .object({ requestId: z.uuid() })
   .strict();
 
+export const hospitalServiceRequestReviewInputSchema = z
+  .object({
+    requestId: z.uuid(),
+    osmUserId: z.uuid().nullable().optional(),
+    confirmReassignment: z.boolean().optional(),
+  })
+  .strict();
+
+export const hospitalServiceRequestReviewSchema = hospitalServiceRequestReviewInputSchema
+  .extend({ decision: z.enum(["APPROVE", "REJECT"]) })
+  .superRefine((value, context) => {
+    if (value.decision === "APPROVE" && !value.osmUserId) {
+      context.addIssue({ code: "custom", path: ["osmUserId"], message: "An OSM must be selected for approval" });
+    }
+    if (value.decision === "REJECT" && value.osmUserId) {
+      context.addIssue({ code: "custom", path: ["osmUserId"], message: "A rejected request cannot assign an OSM" });
+    }
+  });
+
 export type HospitalServiceOfferingMutationInput = z.infer<
   typeof hospitalServiceOfferingMutationSchema
 >;

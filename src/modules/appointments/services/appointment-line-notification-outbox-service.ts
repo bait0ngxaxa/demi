@@ -25,6 +25,11 @@ type SourceIntentInput = {
   patientUserId: string | null;
 };
 
+type SourceIntentOptions = {
+  includeOsm?: boolean;
+  onlyOsmUserId?: string;
+};
+
 type DeliveryReadiness =
   | {
       state: typeof AppointmentLineNotificationState.PENDING;
@@ -92,6 +97,7 @@ export async function createAppointmentLineNotificationIntent(
   rollout: AppointmentLineNotificationRollout,
   now: Date,
   familyAppointmentReadEnabled: boolean = isFamilyDelegatedAppointmentReadEnabled(),
+  options: SourceIntentOptions = {},
 ): Promise<void> {
   if (!rollout.enabled || !rollout.generation) return;
   const generation = rollout.generation;
@@ -110,14 +116,23 @@ export async function createAppointmentLineNotificationIntent(
     }
   }
 
-  const recipients = [
-    { kind: AppointmentLineNotificationRecipientKind.PATIENT, userId: patientRecipientUserId, grantId: null },
-    ...await resolveAdditionalAppointmentNotificationRecipients(transaction, {
-      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-      patientUserId: patientRecipientUserId,
-      familyAppointmentReadEnabled,
-    }),
-  ];
+  const additionalRecipients = await resolveAdditionalAppointmentNotificationRecipients(transaction, {
+    patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+    patientUserId: patientRecipientUserId,
+    familyAppointmentReadEnabled,
+  });
+  const selectedAdditionalRecipients = additionalRecipients.filter((recipient) => {
+      if (options.onlyOsmUserId) {
+        return recipient.kind === AppointmentLineNotificationRecipientKind.OSM && recipient.userId === options.onlyOsmUserId;
+      }
+      return options.includeOsm !== false || recipient.kind !== AppointmentLineNotificationRecipientKind.OSM;
+    });
+  const recipients = options.onlyOsmUserId
+    ? selectedAdditionalRecipients
+    : [
+        { kind: AppointmentLineNotificationRecipientKind.PATIENT, userId: patientRecipientUserId, grantId: null },
+        ...selectedAdditionalRecipients,
+      ];
 
   const rows: Prisma.AppointmentLineNotificationCreateManyInput[] = [];
   for (const recipient of recipients) {
@@ -132,6 +147,7 @@ export async function createAppointmentLineNotificationIntent(
     rows.push({
       appointmentId: input.appointmentId,
       patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      eventKey: `${input.eventKind}:${input.appointmentId}:${input.sourceUpdatedAt.getTime()}`,
       sourceUpdatedAt: input.sourceUpdatedAt,
       eventKind: input.eventKind,
       recipientKind: recipient.kind,
@@ -154,4 +170,111 @@ export async function createAppointmentLineNotificationIntent(
 
   // Unique (event, recipient User) and (event, PATIENT) indexes make a duplicate source write fail the transaction.
   await transaction.appointmentLineNotification.createMany({ data: rows });
+}
+
+async function createUserIntent(
+  transaction: Prisma.TransactionClient,
+  input: {
+    eventKind: AppointmentLineNotificationEventKind;
+    eventKey: string;
+    appointmentId: string | null;
+    patientOsmAssignmentId?: string | null;
+    rescheduleRequestId?: string | null;
+    patientHospitalRelationshipId: string;
+    sourceUpdatedAt: Date;
+    recipientKind: AppointmentLineNotificationRecipientKind;
+    recipientUserId: string;
+    rollout: AppointmentLineNotificationRollout;
+    now: Date;
+  },
+): Promise<void> {
+  if (!input.rollout.enabled || !input.rollout.generation) return;
+  const readiness = await lineDeliveryReadiness(transaction, input.recipientUserId);
+  const pending = readiness.state === AppointmentLineNotificationState.PENDING;
+  await transaction.appointmentLineNotification.createMany({
+    data: [{
+      appointmentId: input.appointmentId,
+      patientOsmAssignmentId: input.patientOsmAssignmentId ?? null,
+      rescheduleRequestId: input.rescheduleRequestId ?? null,
+      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      eventKey: input.eventKey,
+      sourceUpdatedAt: input.sourceUpdatedAt,
+      eventKind: input.eventKind,
+      recipientKind: input.recipientKind,
+      recipientUserId: input.recipientUserId,
+      recipientGrantId: null,
+      bindingId: pending ? readiness.bindingId : null,
+      bindingLifecycleVersion: pending ? readiness.bindingLifecycleVersion : null,
+      preferenceVersion: pending ? readiness.preferenceVersion : null,
+      rolloutGeneration: input.rollout.generation,
+      state: readiness.state,
+      dueAt: input.now,
+      retryKey: randomUUID(),
+      safeOutcome: pending ? null : readiness.safeOutcome,
+      terminalAt: pending ? null : input.now,
+      createdAt: input.now,
+      updatedAt: input.now,
+    }],
+  });
+}
+
+export async function createPatientOsmAssignmentLineNotificationIntent(
+  transaction: Prisma.TransactionClient,
+  input: {
+    assignmentId: string;
+    patientHospitalRelationshipId: string;
+    osmUserId: string;
+    sourceUpdatedAt: Date;
+  },
+  rollout: AppointmentLineNotificationRollout,
+  now: Date,
+): Promise<void> {
+  const assignment = await transaction.patientOsmAssignment.findFirst({
+    where: {
+      id: input.assignmentId,
+      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      osmUserId: input.osmUserId,
+      endedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!assignment) return;
+  await createUserIntent(transaction, {
+    eventKind: AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED,
+    eventKey: `${AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED}:${assignment.id}`,
+    appointmentId: null,
+    patientOsmAssignmentId: assignment.id,
+    patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+    sourceUpdatedAt: input.sourceUpdatedAt,
+    recipientKind: AppointmentLineNotificationRecipientKind.OSM,
+    recipientUserId: input.osmUserId,
+    rollout,
+    now,
+  });
+}
+
+export async function createOsmRescheduleRequestLineNotificationIntent(
+  transaction: Prisma.TransactionClient,
+  input: {
+    appointmentId: string;
+    rescheduleRequestId: string;
+    patientHospitalRelationshipId: string;
+    creatorUserId: string;
+    sourceUpdatedAt: Date;
+  },
+  rollout: AppointmentLineNotificationRollout,
+  now: Date,
+): Promise<void> {
+  await createUserIntent(transaction, {
+    eventKind: AppointmentLineNotificationEventKind.OSM_RESCHEDULE_REQUESTED,
+    eventKey: `${AppointmentLineNotificationEventKind.OSM_RESCHEDULE_REQUESTED}:${input.rescheduleRequestId}`,
+    appointmentId: input.appointmentId,
+    rescheduleRequestId: input.rescheduleRequestId,
+    patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+    sourceUpdatedAt: input.sourceUpdatedAt,
+    recipientKind: AppointmentLineNotificationRecipientKind.STAFF_CREATOR,
+    recipientUserId: input.creatorUserId,
+    rollout,
+    now,
+  });
 }

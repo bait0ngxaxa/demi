@@ -53,6 +53,7 @@ export type MobileNavigationTab = {
     | "osm-followup"
     | "patient-detail"
     | "more";
+  badgeCount?: number;
 };
 
 export type MobileNavigationProjection = {
@@ -120,6 +121,7 @@ function tabFromItem(
     icon: options.icon,
     match: options.match ?? item.match,
     activeRoute: options.activeRoute,
+    ...(item.badgeCount === undefined ? {} : { badgeCount: item.badgeCount }),
   };
 }
 
@@ -214,8 +216,10 @@ function projectWorkTabs(
     tabs.push(
       tabFromItem(patientDirectory, {
         id: "patients",
-        label: "ผู้ป่วย",
-        accessibleLabel: patientDirectory.label,
+        label: assignedPatients ? "เพื่อน" : "ผู้ป่วย",
+        accessibleLabel: patientDirectory.badgeCount === undefined
+          ? patientDirectory.label
+          : `${patientDirectory.label} · รอรับนัด ${patientDirectory.badgeCount} รายการ`,
         icon: "patients",
         match: "exact",
         activeRoute: assignedPatients ? "assigned-patients" : "patient-detail",

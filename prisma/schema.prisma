@@ -275,12 +275,16 @@ enum AppointmentLineNotificationEventKind {
   CREATED
   RESCHEDULED
   CANCELLED
+  OSM_PATIENT_ASSIGNED
+  OSM_APPOINTMENT_ASSIGNED
+  OSM_RESCHEDULE_REQUESTED
 }
 
 enum AppointmentLineNotificationRecipientKind {
   PATIENT
   OSM
   CAREGIVER
+  STAFF_CREATOR
 }
 
 enum AppointmentLineNotificationState {
@@ -511,7 +515,9 @@ model User {
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
   appointmentsCreated PatientAppointment[] @relation("PatientAppointmentCreatedBy")
+  appointmentsAssignedOsm PatientAppointment[] @relation("AppointmentAssignedOsm")
   appointmentAcknowledgementsRecorded PatientAppointmentAcknowledgement[] @relation("AppointmentAcknowledgementRecordedBy")
+  appointmentAssigneeAcceptancesRecorded PatientAppointmentAssigneeAcceptance[] @relation("AppointmentAssigneeAcceptanceRecordedBy")
   appointmentCancellationRequestsSubmitted PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestSubmittedBy")
   appointmentRescheduleRequestsSubmitted PatientAppointmentRescheduleRequest[] @relation("AppointmentRescheduleRequestSubmittedBy")
   appointmentCancellationRequestsResolved PatientAppointmentCancellationRequest[] @relation("AppointmentCancellationRequestResolvedBy")
@@ -1023,6 +1029,7 @@ model PatientHospitalRelationship {
   baseline             PatientBaseline?
   evidenceArtifacts    PatientEvidenceArtifact[]
   serviceRequests      PatientServiceRequest[]
+  lineNotificationIntents AppointmentLineNotification[]
   patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedRelationship")
 
   @@unique([patientProfileId, hospitalId])
@@ -1220,7 +1227,9 @@ model PatientOsmAssignment {
   assignedByUser              User                       @relation("PatientOsmAssignmentsCreated", fields: [assignedByUserId], references: [id], onDelete: Restrict)
   endedByUser                 User?                      @relation("PatientOsmAssignmentsEnded", fields: [endedByUserId], references: [id], onDelete: Restrict)
   appointmentsAtCreation      PatientAppointment[]       @relation("AppointmentOsmAssignmentAtCreation")
+  lineNotificationIntents     AppointmentLineNotification[]
 
+  @@unique([id, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, createdAt])
   @@index([osmUserId, endedAt])
 }
@@ -1323,6 +1332,8 @@ model PatientAppointment {
   id                            String                  @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String                  @db.Uuid
   osmAssignmentIdAtCreation     String?                 @db.Uuid
+  assignedOsmUserId             String?                 @db.Uuid
+  sourceServiceRequestId        String?                 @db.Uuid
   responsibleUserId            String?                 @db.Uuid
   createdByUserId               String                  @db.Uuid
   type                          AppointmentType
@@ -1341,7 +1352,10 @@ model PatientAppointment {
   responsibleUser             User?                      @relation("PatientAppointmentResponsible", fields: [responsibleUserId], references: [id], onDelete: Restrict)
   createdByUser               User                       @relation("PatientAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   osmAssignmentAtCreation     PatientOsmAssignment?      @relation("AppointmentOsmAssignmentAtCreation", fields: [osmAssignmentIdAtCreation], references: [id], onDelete: Restrict)
+  assignedOsmUser             User?                      @relation("AppointmentAssignedOsm", fields: [assignedOsmUserId], references: [id], onDelete: Restrict)
+  sourceServiceRequest        PatientServiceRequest?     @relation(fields: [sourceServiceRequestId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   acknowledgements            PatientAppointmentAcknowledgement[]
+  assigneeAcceptances         PatientAppointmentAssigneeAcceptance[]
   rescheduleRequests          PatientAppointmentRescheduleRequest[]
   cancellationRequests        PatientAppointmentCancellationRequest[]
   coordinationEvents          PatientAppointmentCoordinationEvent[]
@@ -1352,6 +1366,8 @@ model PatientAppointment {
   @@index([responsibleUserId])
   @@index([status])
   @@unique([id, patientHospitalRelationshipId])
+  @@unique([sourceServiceRequestId])
+  @@index([assignedOsmUserId, status, scheduledAt])
 }
 
 model PatientAppointmentAcknowledgement {
@@ -1367,6 +1383,21 @@ model PatientAppointmentAcknowledgement {
 
   @@unique([appointmentId, sourceAppointmentUpdatedAt])
   @@index([recordedByUserId, acknowledgedAt])
+}
+
+model PatientAppointmentAssigneeAcceptance {
+  id                         String   @id @default(uuid()) @db.Uuid
+  appointmentId              String   @db.Uuid
+  sourceAppointmentUpdatedAt  DateTime @db.Timestamptz(3)
+  acceptedByUserId            String   @db.Uuid
+  submissionNonce             String   @unique @db.Uuid
+  acceptedAt                  DateTime @default(now()) @db.Timestamptz(3)
+
+  appointment PatientAppointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+  acceptedBy  User               @relation("AppointmentAssigneeAcceptanceRecordedBy", fields: [acceptedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([appointmentId, sourceAppointmentUpdatedAt])
+  @@index([acceptedByUserId, acceptedAt])
 }
 
 model PatientAppointmentCancellationRequest {
@@ -1413,6 +1444,7 @@ model PatientAppointmentRescheduleRequest {
   @@index([appointmentId, submittedAt])
   @@index([status, submittedAt])
   @@index([submittedByUserId, submittedAt])
+  lineNotificationIntents AppointmentLineNotification[]
 }
 
 model PatientAppointmentCoordinationEvent {
@@ -1864,7 +1896,9 @@ model PatientServiceRequest {
   reviewedBy   User?                        @relation("PatientServiceRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   startedBy    User?                        @relation("PatientServiceRequestStarter", fields: [startedByUserId], references: [id], onDelete: SetNull)
   withdrawnBy  User?                        @relation("PatientServiceRequestWithdrawer", fields: [withdrawnByUserId], references: [id], onDelete: SetNull)
+  appointments PatientAppointment[]
 
+  @@unique([id, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, createdAt])
   @@index([hospitalId, status, createdAt])
   @@index([offeringId])
@@ -2154,8 +2188,11 @@ model MedicationLineReminderWorkerState {
 
 model AppointmentLineNotification {
   id                          String                                @id @default(uuid()) @db.Uuid
-  appointmentId               String                                @db.Uuid
+  appointmentId               String?                               @db.Uuid
+  patientOsmAssignmentId      String?                               @db.Uuid
+  rescheduleRequestId         String?                               @db.Uuid
   patientHospitalRelationshipId String                              @db.Uuid
+  eventKey                    String                                @db.VarChar(255)
   sourceUpdatedAt              DateTime                              @db.Timestamptz(3)
   eventKind                    AppointmentLineNotificationEventKind
   // Customer decision E6 (ก-24): one row per (event, recipient); PATIENT uniqueness is a partial SQL index.
@@ -2179,12 +2216,15 @@ model AppointmentLineNotification {
   createdAt                    DateTime                              @default(now()) @db.Timestamptz(3)
   updatedAt                    DateTime                              @updatedAt @db.Timestamptz(3)
 
-  appointment               PatientAppointment         @relation(fields: [appointmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
+  appointment               PatientAppointment?        @relation(fields: [appointmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
+  patientOsmAssignment      PatientOsmAssignment?       @relation(fields: [patientOsmAssignmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
+  rescheduleRequest         PatientAppointmentRescheduleRequest? @relation(fields: [rescheduleRequestId], references: [id], onDelete: Restrict)
+  patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   recipient                 User?                      @relation("AppointmentLineNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   binding                   LineAccountBinding?        @relation(fields: [bindingId], references: [id], onDelete: Restrict)
   recipientGrant            CaregiverAppointmentGrant? @relation(fields: [recipientGrantId], references: [id], onDelete: Restrict)
 
-  @@unique([appointmentId, sourceUpdatedAt, recipientUserId])
+  @@unique([eventKey, recipientUserId])
   @@index([recipientGrantId])
   @@index([state, dueAt])
   @@index([state, leaseExpiresAt])

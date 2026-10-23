@@ -11,6 +11,7 @@ export const APPOINTMENT_READ_CAPABILITY = "appointment:read" as const;
 export const APPOINTMENT_MANAGE_CAPABILITY = "appointment:manage" as const;
 export const APPOINTMENT_CREATE_CAPABILITY = "appointment:create" as const;
 export const APPOINTMENT_ACKNOWLEDGE_CAPABILITY = "appointment:acknowledge" as const;
+export const APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY = "appointment:accept-assignment" as const;
 export const APPOINTMENT_REQUEST_CANCEL_CAPABILITY = "appointment:request-cancel" as const;
 export const APPOINTMENT_RECORD_COORDINATION_CAPABILITY = "appointment:record-coordination" as const;
 
@@ -21,6 +22,7 @@ export type AppointmentCapability =
   | typeof APPOINTMENT_MANAGE_CAPABILITY
   | typeof APPOINTMENT_CREATE_CAPABILITY
   | typeof APPOINTMENT_ACKNOWLEDGE_CAPABILITY
+  | typeof APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY
   | typeof APPOINTMENT_REQUEST_CANCEL_CAPABILITY
   | typeof APPOINTMENT_RECORD_COORDINATION_CAPABILITY;
 
@@ -98,6 +100,7 @@ export function decideAppointmentPolicy(input: {
     APPOINTMENT_MANAGE_CAPABILITY,
     APPOINTMENT_CREATE_CAPABILITY,
     APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+    APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY,
     APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
     APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
   ];
@@ -176,6 +179,13 @@ export function decideAppointmentPolicy(input: {
     return hasExactOsmScope
       ? { allowed: true, reason: "active_osm_assignment_scope" }
       : { allowed: false, reason: "patient_self_scope_required" };
+  }
+
+  if (input.capability === APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY) {
+    if (!input.actor.roles.includes(Role.OSM)) return { allowed: false, reason: "active_osm_assignment_scope_required" };
+    return hasExactOsmScope
+      ? { allowed: true, reason: "active_osm_assignment_scope" }
+      : { allowed: false, reason: "active_osm_assignment_scope_required" };
   }
 
   return hasExactOsmScope

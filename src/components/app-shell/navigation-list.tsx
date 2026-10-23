@@ -102,7 +102,9 @@ export function NavigationList({
                   <li key={item.href}>
                     <Link
                       aria-current={active ? "page" : undefined}
-                      aria-label={collapsed ? item.label : undefined}
+                      aria-label={collapsed
+                        ? item.badgeCount === undefined ? item.label : `${item.label} · รอรับนัด ${item.badgeCount} รายการ`
+                        : undefined}
                       className={classNames(
                         "flex min-w-0 items-center gap-3 rounded-control text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
                         density === "compact" ? "min-h-10 py-1.5" : "min-h-11 py-2",
@@ -122,6 +124,14 @@ export function NavigationList({
                     >
                       <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       {collapsed ? null : <span className="min-w-0 flex-1">{item.label}</span>}
+                      {item.badgeCount !== undefined ? (
+                        <span className={classNames(
+                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
+                          tone === "desktop" ? "bg-white/15 text-white" : "bg-brand-soft text-brand-strong",
+                        )}>
+                          {item.badgeCount}
+                        </span>
+                      ) : null}
                       <NavigationPendingHint />
                     </Link>
                   </li>

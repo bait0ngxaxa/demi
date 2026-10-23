@@ -72,6 +72,11 @@ export function MoreMenuNavigation({
                         <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       </span>
                       <span className="min-w-0 flex-1">{item.label}</span>
+                      {item.badgeCount !== undefined ? (
+                        <span className="shrink-0 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brand-strong">
+                          {item.badgeCount}
+                        </span>
+                      ) : null}
                       <svg
                         aria-hidden="true"
                         className="size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"

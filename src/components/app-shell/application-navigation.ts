@@ -282,6 +282,7 @@ function projectPersonalSections(): ApplicationNavigationGroup[] {
 function projectWorkSections(
   actor: ActorContext,
   hospitalWorkspaces: readonly ActorHospitalWorkspace[],
+  awaitingOsmAcceptanceCount: number,
 ): ApplicationNavigationGroup[] {
   const assignedPatients = canReadAssignedPatients(actor);
   const directProvisioning = actor.hospitalMemberships.some(({ hospitalId }) =>
@@ -307,7 +308,7 @@ function projectWorkSections(
     ...section("home", "work", [{ href: "/app", label: "หน้าหลัก", match: "exact" }]),
     ...section("care", "work", compact([
       canReadWorkAppointments(actor) && { href: "/app/appointments", label: "รายการนัดหมาย", match: "prefix" },
-      assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่รับผิดชอบ", match: "exact" },
+      assignedPatients && { href: "/app/patients/assigned", label: "เพื่อนที่ดูแล", match: "exact", badgeCount: awaitingOsmAcceptanceCount },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
       canReadPatients(actor) && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
@@ -395,13 +396,14 @@ export async function listNavigationHospitalWorkspaces(actor: ActorContext): Pro
 export function projectApplicationNavigation(
   actor: ActorContext,
   hospitalWorkspaces: readonly ActorHospitalWorkspace[],
+  awaitingOsmAcceptanceCount = 0,
 ): readonly ApplicationNavigationGroup[] {
   const availableWorkspaces = getAvailableApplicationWorkspaces(actor);
   const hasPersonalWorkspace = availableWorkspaces.includes("personal");
   const isCaregiverOnly = actor.roles.length === 1 && actor.roles[0] === Role.CAREGIVER;
   const groups: ApplicationNavigationGroup[] = [
     ...(hasPersonalWorkspace ? projectPersonalSections() : []),
-    ...(availableWorkspaces.includes("work") ? projectWorkSections(actor, hospitalWorkspaces) : []),
+    ...(availableWorkspaces.includes("work") ? projectWorkSections(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount) : []),
   ];
 
   if (availableWorkspaces.length === 0) {

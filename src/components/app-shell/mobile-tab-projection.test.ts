@@ -61,8 +61,11 @@ function actor(
 }
 
 /** Hospital workspaces only gate the areas entry, which these tab tests do not exercise. */
-function projectApplicationNavigation(subject: ActorContext): readonly ApplicationNavigationGroup[] {
-  return projectNavigation(subject, []);
+function projectApplicationNavigation(
+  subject: ActorContext,
+  awaitingOsmAcceptanceCount = 0,
+): readonly ApplicationNavigationGroup[] {
+  return projectNavigation(subject, [], awaitingOsmAcceptanceCount);
 }
 
 function hrefs(groups: readonly ApplicationNavigationGroup[]): string[] {
@@ -129,6 +132,17 @@ describe("server-projected mobile navigation", () => {
       "/app/patients/assigned?task=screening",
       "/app/more",
     ]);
+  });
+
+  it("keeps the OSM mobile label short and announces the assigned appointment count", () => {
+    const navigation = projectApplicationNavigation(actor([Role.OSM]), 4);
+    const patients = primaryTabs(navigation, "work").find(({ id }) => id === "patients");
+
+    expect(patients).toMatchObject({
+      label: "เพื่อน",
+      accessibleLabel: "เพื่อนที่ดูแล · รอรับนัด 4 รายการ",
+      badgeCount: 4,
+    });
   });
 
   it("omits unavailable and revoked OSM task scopes", () => {

@@ -19,6 +19,11 @@ async function clearDatabase(): Promise<void> {
   await prisma.hospitalOnboardingApplication.deleteMany();
   await prisma.hospitalMembership.deleteMany();
   await prisma.userRole.deleteMany();
+  await prisma.$transaction([
+    prisma.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    prisma.hospitalServiceArea.deleteMany(),
+  ]);
+  await prisma.hospitalServiceAreaEligibility.deleteMany();
   await prisma.user.deleteMany();
   await prisma.hospital.deleteMany();
   await prisma.person.deleteMany();

@@ -15,6 +15,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 import {
   appointmentCreateRequestSchema,
   appointmentAcknowledgementRequestSchema,
+  appointmentAssignmentAcceptanceRequestSchema,
   appointmentCancellationRequestSchema,
   appointmentCancellationReviewRequestSchema,
   appointmentCoordinationRequestSchema,
@@ -24,6 +25,7 @@ import {
 import {
   acknowledgeAppointmentOnBehalfOfPatient,
   acknowledgeOwnPatientAppointment,
+  acceptAppointmentAssignment,
   cancelAppointment,
   completeAppointment,
   createAppointment,
@@ -44,9 +46,11 @@ import type {
 const CREATE_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "submissionNonce",
+  "sourceServiceRequestId",
   "scheduledAt",
   "type",
   "responsibleUserId",
+  "assignedOsmUserId",
   "durationMinutes",
   "locationType",
   "locationDetail",
@@ -61,6 +65,7 @@ const RESCHEDULE_FORM_FIELDS = new Set([
   "scheduledAt",
   "type",
   "responsibleUserId",
+  "assignedOsmUserId",
   "durationMinutes",
   "locationType",
   "locationDetail",
@@ -77,6 +82,13 @@ const ACKNOWLEDGEMENT_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "appointmentId",
   "expectedUpdatedAt",
+]);
+
+const ASSIGNMENT_ACCEPTANCE_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "appointmentId",
+  "sourceAppointmentUpdatedAt",
+  "submissionNonce",
 ]);
 
 const CANCELLATION_REQUEST_FORM_FIELDS = new Set([
@@ -172,9 +184,11 @@ function buildCreateInput(formData: FormData): unknown {
   return {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     submissionNonce: getSingleString(formData, "submissionNonce"),
+    sourceServiceRequestId: getNullableUuid(formData, "sourceServiceRequestId"),
     scheduledAt: getSingleString(formData, "scheduledAt"),
     type: getSingleString(formData, "type"),
     responsibleUserId: getNullableUuid(formData, "responsibleUserId"),
+    assignedOsmUserId: getNullableUuid(formData, "assignedOsmUserId"),
     durationMinutes: getNullableInteger(formData, "durationMinutes"),
     locationType: getNullableString(formData, "locationType"),
     locationDetail: getNullableString(formData, "locationDetail"),
@@ -195,6 +209,7 @@ function buildRescheduleInput(formData: FormData): unknown {
     scheduledAt: getSingleString(formData, "scheduledAt"),
     type: getSingleString(formData, "type"),
     responsibleUserId: getNullableUuid(formData, "responsibleUserId"),
+    assignedOsmUserId: getNullableUuid(formData, "assignedOsmUserId"),
     durationMinutes: getNullableInteger(formData, "durationMinutes"),
     locationType: getNullableString(formData, "locationType"),
     locationDetail: getNullableString(formData, "locationDetail"),
@@ -223,6 +238,16 @@ function buildAcknowledgementInput(formData: FormData): unknown {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     appointmentId: getSingleString(formData, "appointmentId"),
     expectedUpdatedAt: getSingleString(formData, "expectedUpdatedAt"),
+  } satisfies Record<string, unknown>;
+}
+
+function buildAssignmentAcceptanceInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, ASSIGNMENT_ACCEPTANCE_FORM_FIELDS)) return null;
+  return {
+    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
+    appointmentId: getSingleString(formData, "appointmentId"),
+    sourceAppointmentUpdatedAt: getSingleString(formData, "sourceAppointmentUpdatedAt"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
   } satisfies Record<string, unknown>;
 }
 
@@ -531,6 +556,26 @@ export async function acknowledgeAppointmentOnBehalfOfPatientAction(
       const result = await acknowledgeAppointmentOnBehalfOfPatient(actor, input);
       return {
         operation: "ACKNOWLEDGED",
+        appointmentId: result.appointmentId,
+        patientHospitalRelationshipId: result.patientHospitalRelationshipId,
+      };
+    },
+    "work",
+  );
+}
+
+export async function acceptAppointmentAssignmentAction(
+  previousState: AppointmentInteractionActionState,
+  formData: FormData,
+): Promise<AppointmentInteractionActionState> {
+  return runInteractionAction(
+    previousState,
+    buildAssignmentAcceptanceInput(formData),
+    appointmentAssignmentAcceptanceRequestSchema,
+    async (actor, input) => {
+      const result = await acceptAppointmentAssignment(actor, input);
+      return {
+        operation: "ASSIGNMENT_ACCEPTED",
         appointmentId: result.appointmentId,
         patientHospitalRelationshipId: result.patientHospitalRelationshipId,
       };

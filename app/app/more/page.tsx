@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -50,7 +51,11 @@ function parseRequestedWorkspace(value: string | string[] | undefined): Applicat
 export default async function MorePage({ searchParams }: MorePageProps): Promise<React.JSX.Element> {
   await connection();
   const [actor, query] = await Promise.all([resolveProtectedActor(), searchParams]);
-  const navigation = projectApplicationNavigation(actor, await listNavigationHospitalWorkspaces(actor));
+  const [hospitalWorkspaces, awaitingOsmAcceptanceCount] = await Promise.all([
+    listNavigationHospitalWorkspaces(actor),
+    countWorkAppointmentsAwaitingMyAcceptance(actor),
+  ]);
+  const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
   const mobileNavigation = projectMobileNavigation(navigation);
   const requestedWorkspace = parseRequestedWorkspace(query.workspace);
   const selectedWorkspace = resolveSelectedWorkspaceContext(

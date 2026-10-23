@@ -12,6 +12,7 @@ function form(decision: string): FormData {
   const data = new FormData();
   data.set("requestId", requestId);
   data.set("decision", decision);
+  if (decision === "APPROVE") data.set("osmUserId", "22222222-2222-4222-8222-222222222222");
   return data;
 }
 
@@ -22,18 +23,21 @@ beforeEach(() => {
 
 describe("Hospital review action feedback", () => {
   it.each([
-    ["APPROVE", "อนุมัติคำขอแล้ว"], ["REJECT", "บันทึกผลไม่อนุมัติแล้ว"], ["START", "บันทึกสถานะเริ่มให้บริการแล้ว"],
+    ["APPROVE", "อนุมัติคำขอและมอบหมาย อสม. แล้ว"], ["REJECT", "บันทึกผลไม่อนุมัติแล้ว"],
   ])("confirms %s and invalidates both review and Patient readback", async (decision, message) => {
     const result = await reviewPatientServiceRequestAction({ status: "IDLE" }, form(decision));
     expect(result).toMatchObject({ status: "SUCCESS", message: expect.stringContaining(message) });
-    expect(mocks.review).toHaveBeenCalledWith({ userId: "trusted-reviewer" }, { requestId }, decision);
+    expect(mocks.review).toHaveBeenCalledWith({ userId: "trusted-reviewer" }, {
+      requestId,
+      osmUserId: decision === "APPROVE" ? "22222222-2222-4222-8222-222222222222" : null,
+      confirmReassignment: false,
+    }, decision);
     expect(mocks.revalidate.mock.calls).toEqual([["/app/patients/service-requests"], ["/app/personal/services"]]);
-    if (decision === "START") expect(result).toMatchObject({ message: expect.stringContaining("ไม่ได้สร้าง Program หรือมอบหมาย อสม. อัตโนมัติ") });
   });
 
   it("refreshes persisted status on a concurrent/repeated mutation conflict", async () => {
     mocks.review.mockRejectedValue(new ConflictError("internal conflict details"));
-    const state = await reviewPatientServiceRequestAction({ status: "IDLE" }, form("START"));
+    const state = await reviewPatientServiceRequestAction({ status: "IDLE" }, form("REJECT"));
     expect(state).toMatchObject({ status: "ERROR", conflict: true, message: "คำขอซ้ำหรือสถานะเปลี่ยนไปแล้ว กรุณาตรวจสอบรายการอีกครั้ง" });
     expect(mocks.revalidate).toHaveBeenCalledWith("/app/patients/service-requests");
     expect(JSON.stringify(state)).not.toContain("internal");
@@ -48,7 +52,7 @@ describe("Hospital review action feedback", () => {
     expect(mocks.revalidate).not.toHaveBeenCalled();
   });
 
-  it.each(["DELETE", "WITHDRAW", "STARTED", ""]) ("rejects forged decision %s before calling the service", async (decision) => {
+  it.each(["DELETE", "WITHDRAW", "START", "STARTED", ""]) ("rejects forged decision %s before calling the service", async (decision) => {
     expect(await reviewPatientServiceRequestAction({ status: "IDLE" }, form(decision))).toMatchObject({ status: "ERROR" });
     expect(mocks.review).not.toHaveBeenCalled();
   });

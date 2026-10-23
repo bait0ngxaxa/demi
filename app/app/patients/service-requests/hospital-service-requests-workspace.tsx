@@ -123,26 +123,49 @@ export function HospitalPatientServiceRequestsWorkspace({
                     <dd className="mt-1 text-text">{request.preferredOsmName ?? "ให้โรงพยาบาลจัดผู้ดูแลให้"}</dd>
                     <dd className="mt-1 text-sm text-text-muted">เป็นความประสงค์เท่านั้น ไม่ใช่ผู้รับผิดชอบที่ได้รับมอบหมายหรือการตอบรับงาน</dd>
                   </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-sm text-text-muted">อสม. ผู้ดูแลปัจจุบัน</dt>
+                    <dd className="mt-1 text-text">{request.currentOsmName ?? "ยังไม่มีผู้ดูแล"}</dd>
+                  </div>
                 </dl>
 
                 {request.status === "APPROVED" || request.status === "STARTED" ? (
                   <div className="mt-4 border-t border-border pt-4">
                     <p className="max-w-prose text-sm leading-6 text-text-muted">
-                      {request.status === "APPROVED" ? "อนุมัติคำขอแล้ว ยังไม่ได้ยืนยันสถานะเริ่มให้บริการ " : "บันทึกสถานะเริ่มให้บริการแล้ว ไม่ใช่หลักฐานว่าบริการเสร็จสิ้น "}
-                      คำขอนี้ไม่สร้าง Program การมอบหมาย อสม. แบบประเมิน หรือบันทึกติดตามอัตโนมัติ
+                      {request.status === "APPROVED"
+                        ? "อนุมัติคำขอและมอบหมายผู้ดูแลแล้ว สร้างนัดหมายเพื่อส่งต่องานให้ อสม."
+                        : "สร้างนัดหมายจากคำขอนี้แล้ว สถานะไม่ได้ยืนยันว่าบริการเสร็จสิ้น"}
                     </p>
-                    <Link
-                      className="mt-2 inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                      href={`/app/patients/${encodeURIComponent(request.relationshipId)}#patient-care`}
-                      prefetch={false}
-                    >
-                      เปิดงานดูแลผู้ป่วย
-                      <span className="sr-only"> {request.patientName} · {request.hospitalName}</span>
-                    </Link>
-                    <p className="mt-1 max-w-prose text-sm leading-6 text-text-muted">เลือกทำงานต่อในรายละเอียดผู้ป่วยตามสิทธิ์ปัจจุบัน การเปิดหน้านี้ไม่ได้ยืนยันว่าบันทึกการดูแลเกิดจากคำขอนี้</p>
+                    {request.status === "APPROVED" ? (
+                      <Link
+                        className="mt-2 inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                        href={`/app/patients/${encodeURIComponent(request.relationshipId)}/appointments/new?serviceRequestId=${encodeURIComponent(request.requestId)}`}
+                        prefetch={false}
+                      >
+                        สร้างนัดหมายจากคำขอนี้
+                      </Link>
+                    ) : request.appointmentId ? (
+                      <Link
+                        className="mt-2 inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                        href={`/app/patients/${encodeURIComponent(request.relationshipId)}/appointments/${encodeURIComponent(request.appointmentId)}`}
+                        prefetch={false}
+                      >
+                        เปิดนัดหมายที่เชื่อมโยง
+                      </Link>
+                    ) : null}
                   </div>
                 ) : null}
-                <HospitalPatientServiceRequestReviewControls action={action} blocked={unknownOutcome} pending={pending} requestId={request.requestId} status={request.status} />
+                <HospitalPatientServiceRequestReviewControls
+                  action={action}
+                  blocked={unknownOutcome}
+                  currentOsmName={request.currentOsmName}
+                  currentOsmUserId={request.currentOsmUserId}
+                  osmChoices={request.osmChoices}
+                  pending={pending}
+                  preferredOsmUserId={request.preferredOsmUserId}
+                  requestId={request.requestId}
+                  status={request.status}
+                />
                 {request.status === "STARTED" || request.status === "REJECTED" || request.status === "WITHDRAWN" ? (
                   <p className="mt-4 text-sm text-text-muted">ประวัติคำขอ · อ่านอย่างเดียว</p>
                 ) : null}

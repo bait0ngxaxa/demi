@@ -160,6 +160,7 @@ async function cleanup(): Promise<void> {
   if (!databaseConnected) return;
   await database.hospitalContent.deleteMany({ where: { id: { in: contentIds } } });
   await database.hospitalContact.deleteMany({ where: { id: { in: contactIds } } });
+  await database.patientHospitalHealthHistory.deleteMany({ where: { relationship: { patientProfileId: { in: patientProfileIds } } } });
   await database.patientHospitalRelationship.deleteMany({ where: { patientProfileId: { in: patientProfileIds } } });
   await database.hospitalMembership.deleteMany({ where: { userId: { in: users } } });
   await database.auditEvent.deleteMany({ where: { actorUserId: { in: users } } });

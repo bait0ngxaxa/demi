@@ -138,6 +138,7 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
     await database.lineAccountActionIntent.deleteMany({ where: { userId: { in: created.users } } });
     await database.auditEvent.deleteMany({ where: { actorUserId: { in: created.users } } });
     await database.lineAccountBinding.deleteMany({ where: { userId: { in: created.users } } });
+    await database.patientHospitalHealthHistory.deleteMany({ where: { relationship: { hospitalId: { in: created.hospitals } } } });
     await database.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: created.hospitals } } });
     await database.patientProfile.deleteMany({ where: { personId: { in: created.people } } });
     await database.userRole.deleteMany({ where: { userId: { in: created.users } } });

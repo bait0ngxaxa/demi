@@ -72,14 +72,22 @@ async function appointment(f: Fixture, at: Date = now, status: AppointmentStatus
 async function clear(): Promise<void> {
   await db.auditEvent.deleteMany();
   await db.caregiverAppointmentGrant.deleteMany();
+  await db.patientAppointmentAssigneeAcceptance.deleteMany();
   await db.patientAppointment.deleteMany();
   await db.caregiverRelationship.deleteMany();
   await db.caregiverInvitation.deleteMany();
+  await db.patientHospitalHealthHistory.deleteMany();
   await db.patientHospitalRelationship.deleteMany();
   await db.patientProfile.deleteMany();
   await db.hospitalMembership.deleteMany();
   await db.osmHospitalRelationship.deleteMany();
   await db.userRole.deleteMany();
+  await db.$transaction([
+    db.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
+    db.hospitalServiceArea.deleteMany(),
+  ]);
+  await db.hospitalServiceAreaEligibility.deleteMany();
+  await db.workforceActivation.deleteMany();
   await db.user.deleteMany();
   await db.hospital.deleteMany();
   await db.person.deleteMany();
