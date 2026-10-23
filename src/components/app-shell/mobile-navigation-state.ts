@@ -70,6 +70,9 @@ function resolvePatientDetailTab(
   }
 
   const segments = pathname.split("/").filter(Boolean);
+  if (segments.includes("appointments") && findTabById(tabs, "appointments")) {
+    return "appointments";
+  }
   if (segments.includes("screenings") && findTabById(tabs, "screening")) {
     return "screening";
   }

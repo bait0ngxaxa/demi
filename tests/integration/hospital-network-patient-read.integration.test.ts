@@ -6,6 +6,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import { getAppointmentHistory } from "@/modules/appointments/services/appointment-query-service";
+import { listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
 import { transferHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { attachHospitalServiceArea, endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
@@ -72,7 +73,9 @@ type Network = {
   parentOwner: Awaited<ReturnType<typeof staff>>;
   parentMember: Awaited<ReturnType<typeof staff>>;
   childOwner: Awaited<ReturnType<typeof staff>>;
+  otherChildOwner: Awaited<ReturnType<typeof staff>>;
   relationshipId: string;
+  otherChildRelationshipId: string;
   areaId: string;
 };
 
@@ -105,7 +108,18 @@ async function network(): Promise<Network> {
   users.push(other.userId);
   people.push(other.personId);
   const area = await attachHospitalServiceArea(parentOwner, { parentHospitalId: parentId, childHospitalId: childId });
-  return { parentId, childId, otherChildId, parentOwner, parentMember, childOwner, relationshipId: provisioned.relationshipId, areaId: area.id };
+  return {
+    parentId,
+    childId,
+    otherChildId,
+    parentOwner,
+    parentMember,
+    childOwner,
+    otherChildOwner,
+    relationshipId: provisioned.relationshipId,
+    otherChildRelationshipId: other.relationshipId,
+    areaId: area.id,
+  };
 }
 
 async function membershipVersion(membershipId: string): Promise<string> {
@@ -115,10 +129,15 @@ async function membershipVersion(membershipId: string): Promise<string> {
 async function cleanup(): Promise<void> {
   if (hospitals.length === 0) return;
   const relationshipWhere = { hospitalId: { in: hospitals } };
+  const relationshipIds = (await db.patientHospitalRelationship.findMany({ where: relationshipWhere, select: { id: true } }))
+    .map(({ id }) => id);
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
     await tx.hospitalServiceArea.deleteMany({ where: { parentHospitalId: { in: hospitals } } });
   });
+  await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
+  await db.patientAppointmentRescheduleRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
+  await db.patientAppointmentCancellationRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientHospitalProfile.deleteMany({ where: { relationship: relationshipWhere } });
@@ -162,6 +181,39 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
     expect((await getPatientProgramPageContext(n.parentOwner, n.relationshipId)).canManage).toBe(false);
     await expect(getAppointmentHistory(n.parentOwner, n.relationshipId)).resolves.toBeDefined();
     await expect(getStaffPatientHospitalProfile(n.parentOwner, n.relationshipId, db)).resolves.toBeDefined();
+
+    const inNetworkAppointment = await createAppointment(n.childOwner, {
+      patientHospitalRelationshipId: n.relationshipId,
+      submissionNonce: randomUUID(),
+      scheduledAt: "2026-12-20T10:00:00+07:00",
+      type: "FOLLOW_UP",
+      responsibleUserId: null,
+      locationType: "CLINIC",
+      durationMinutes: 30,
+    });
+    const outsideNetworkAppointment = await createAppointment(n.otherChildOwner, {
+      patientHospitalRelationshipId: n.otherChildRelationshipId,
+      submissionNonce: randomUUID(),
+      scheduledAt: "2026-12-20T10:00:00+07:00",
+      type: "FOLLOW_UP",
+      responsibleUserId: null,
+      locationType: "CLINIC",
+      durationMinutes: 30,
+    });
+    const appointmentPage = await listWorkAppointments(n.parentOwner, {
+      hospitalId: n.childId,
+      tab: "UPCOMING",
+    });
+    expect(appointmentPage.items.map(({ appointmentId }) => appointmentId)).toEqual([inNetworkAppointment.appointmentId]);
+    expect(appointmentPage.hospitals.map(({ hospitalId }) => hospitalId)).toContain(n.childId);
+    expect(appointmentPage.hospitals.map(({ hospitalId }) => hospitalId)).not.toContain(n.otherChildId);
+    expect(appointmentPage.canCreate).toBe(false);
+    expect(appointmentPage.responsibleOptions).toEqual([]);
+    const invalidChildSelection = await listWorkAppointments(n.parentOwner, {
+      hospitalId: n.otherChildId,
+      tab: "UPCOMING",
+    });
+    expect(invalidChildSelection.items.map(({ appointmentId }) => appointmentId)).not.toContain(outsideNetworkAppointment.appointmentId);
 
     const audits = await db.auditEvent.findMany({ where: { actorUserId: n.parentOwner.userId, action: "patient.network_read" } });
     expect(audits.length).toBeGreaterThanOrEqual(5);

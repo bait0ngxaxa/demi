@@ -72,6 +72,7 @@ type CommonProps = {
 type CreateProps = CommonProps & {
   mode: "create";
   submissionNonce: string;
+  returnTo?: "/app/appointments";
   appointment?: never;
 };
 
@@ -174,14 +175,16 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   const detailHref = appointment
     ? `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments/${encodeURIComponent(appointment.appointmentId)}`
     : null;
+  const appointmentHubHref = props.mode === "create" && props.returnTo
+    ? `${props.returnTo}?hospitalId=${encodeURIComponent(props.patient.hospital.id)}`
+    : null;
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
-      router.push(
-        `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments/${encodeURIComponent(state.result.appointmentId)}`,
-      );
+      router.push(appointmentHubHref ??
+        `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments/${encodeURIComponent(state.result.appointmentId)}`);
     }
-  }, [props.relationshipId, router, state]);
+  }, [appointmentHubHref, props.relationshipId, router, state]);
 
   const title = props.mode === "create" ? "สร้างนัดหมาย" : "เลื่อนนัดหมาย";
   const description =
@@ -195,8 +198,8 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
         actions={<StatusBadge variant="info">นัดหมาย</StatusBadge>}
         breadcrumbs={[
           {
-            href: `/app/patients/${encodeURIComponent(props.relationshipId)}`,
-            label: "รายละเอียดผู้ป่วย",
+            href: appointmentHubHref ?? `/app/patients/${encodeURIComponent(props.relationshipId)}`,
+            label: appointmentHubHref ? "รายการนัดหมาย" : "รายละเอียดผู้ป่วย",
           },
           {
             href: `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments`,
@@ -388,7 +391,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={detailHref ?? `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments`}
+              href={detailHref ?? appointmentHubHref ?? `/app/patients/${encodeURIComponent(props.relationshipId)}/appointments`}
             >
               ยกเลิก
             </Link>

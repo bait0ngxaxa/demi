@@ -18,6 +18,15 @@ const workTabs: MobileNavigationTab[] = [
     activeRoute: "navigation-item",
   },
   {
+    id: "appointments",
+    href: "/app/appointments",
+    label: "นัดหมาย",
+    accessibleLabel: "รายการนัดหมาย",
+    icon: "appointments",
+    match: "prefix",
+    activeRoute: "navigation-item",
+  },
+  {
     id: "patients",
     href: "/app/patients/assigned",
     label: "ผู้ป่วย",
@@ -162,6 +171,8 @@ describe("mobile navigation active route", () => {
     const relationshipId = "55555555-5555-4555-8555-555555555555";
 
     expect(resolveActiveMobileTabId("/app/patients", "", hospitalPatientTabs)).toBe("patients");
+    expect(resolveActiveMobileTabId("/app/appointments", "tab=HISTORY", workTabs)).toBe("appointments");
+    expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}/appointments/appointment-id`, "", workTabs)).toBe("appointments");
     expect(resolveActiveMobileTabId(`/app/patients/${relationshipId}`, "", workTabs)).toBe(
       "patients",
     );

@@ -13,6 +13,7 @@ import { getWorkspaceContextForPathname } from "./navigation-state";
  */
 const ROUTE_FOLDER_WORKSPACES: Readonly<Record<string, "personal" | "work" | "shared">> = {
   admin: "work",
+  appointments: "work",
   family: "shared",
   hospitals: "work",
   more: "shared",

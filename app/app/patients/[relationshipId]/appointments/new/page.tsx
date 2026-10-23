@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
+import { z } from "zod";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getAppointmentCreateContext } from "@/modules/appointments/services/appointment-query-service";
@@ -15,7 +16,10 @@ export const metadata: Metadata = {
 
 type NewAppointmentPageProps = {
   params: Promise<{ relationshipId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
+
+const appointmentReturnToSchema = z.literal("/app/appointments");
 
 async function resolveActor() {
   try {
@@ -35,10 +39,15 @@ async function resolveActor() {
 
 export default async function NewAppointmentPage({
   params,
+  searchParams,
 }: NewAppointmentPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
-  const { relationshipId } = await params;
+  const [{ relationshipId }, query] = await Promise.all([params, searchParams]);
+  const returnToValues = query.returnTo;
+  const parsedReturnTo = appointmentReturnToSchema.safeParse(
+    Array.isArray(returnToValues) ? returnToValues[0] : returnToValues,
+  );
   let context;
 
   try {
@@ -61,6 +70,7 @@ export default async function NewAppointmentPage({
       mode="create"
       patient={context.patient}
       relationshipId={relationshipId}
+      returnTo={parsedReturnTo.success ? parsedReturnTo.data : undefined}
       responsibleMembers={context.responsibleMembers}
       submissionNonce={randomUUID()}
     />

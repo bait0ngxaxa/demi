@@ -313,6 +313,17 @@ Defaults รอลูกค้ายืนยัน (**default, pending customer
 | จ-7 | เวลาออกกำลังกาย/สัปดาห์ในรายงาน | ยืนยัน WB-DF-16 | default กลายเป็น decision ของลูกค้า |
 | จ-8 | CVD risk score | ยืนยัน WB-DF-17 | default กลายเป็น decision ของลูกค้า |
 
+## AF-1 — Work appointment hub and patient picker (2026-10-23)
+
+| ID | การตัดสินใจ | ผลในระบบ |
+| --- | --- | --- |
+| AF1-D1 | Work นัดหมายเป็น hub ข้ามผู้ป่วย มี `UPCOMING`, `HISTORY` และ `PENDING_REQUESTS`; order ของสองแท็บแรกเป็น `(scheduledAt, id)` ส่วนคิวคำขอเรียง `submittedAt` เก่าสุดก่อน | `/app/appointments`; cursor ลงนาม HMAC และผูก actor, Hospital, tab, filter และ page size; cursor ผิดรูป/ถูกแก้/ผิดบริบทตอบแบบ Not Found |
+| AF1-D2 | ขอบเขตการอ่านต้องตรง `appointment:read`: active direct OWNER/MEMBER, OSM assignment ปัจจุบัน, หรือ Child ที่อ่านได้ตาม ADR-0016; relationship ต้องยัง active, Patient role และ Hospital ต้อง active. Parent network read เป็นอ่านอย่างเดียว | Scope ถูกตรวจจาก DB และอยู่ใน Prisma `where`; membership/relationship/assignment/hospital ที่ถูกระงับหรือสิ้นสุดไม่แสดงรายการ; network actor ไม่มี create หรือ request-review scope |
+| AF1-D3 | คิวคำขอแสดง appointment ที่มี reschedule หรือ cancellation request สถานะ PENDING อย่างน้อยหนึ่งรายการเพียงหนึ่งแถว; เปิดเฉพาะผู้มี direct Hospital manage scope | ใช้ query จาก request tables และ pending badges; การอนุมัติ/ปฏิเสธเดิมทำให้รายการออกจากคิว ไม่เพิ่ม mutation AF-1 |
+| AF1-D4 | Work list เป็น allowlist: วันเวลา, ระยะเวลา, ประเภท/สถานที่/สถานะ, ชื่อผู้ป่วย, โรงพยาบาล, ผู้รับผิดชอบ/วิชาชีพ, OSM ณ เวลาสร้าง และ badge คำขอ; ไม่ส่งเบอร์โทร, HN, เลขบัตร, หมายเหตุหรือรายละเอียดสถานที่ | ใช้ projection เดียวกับ hub; หน้ารายละเอียดเดิมคงสิทธิ์และข้อมูลตามเดิม |
+| AF1-D5 | Create เริ่มจาก Work appointment hub แล้วเลือกผู้ป่วยด้วย directory เดิม; return path ยอมรับเฉพาะ literal `/app/appointments` | HOSPITAL ใช้ `findPatientDirectory`; OSM ใช้ `findAssignedPatientDirectory`; create route/policy เดิมยังตัดสินสิทธิ์ และกลับ hub พร้อม Hospital ที่สร้างรายการ |
+| AF1-D6 | hospital locator ที่ผิดรูปหรือไม่อยู่ใน scope ให้เลือก Hospital แรกที่ actor เข้าถึงได้ตาม UI-D8 | default selection ไม่ขยาย query scope; actor ที่ไม่มี scope ถูกปฏิเสธ |
+
 คำตอบที่ใช้เป็นหลักฐานใน [BUSINESS_FLOW_GAP_CANONICAL.md](./BUSINESS_FLOW_GAP_CANONICAL.md) แต่ไม่เคยบันทึกใน register นี้ (Product Owner ส่งต่อ 2026-10-17; ไม่มีถ้อยคำต้นฉบับใน repo):
 
 - **ข-16** — โรคประจำตัว/ประวัติสุขภาพใช้แบบบันทึกประวัติสุขภาพของ Phase B (WB-DF-10) → PAT-03.

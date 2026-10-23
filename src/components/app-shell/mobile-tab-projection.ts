@@ -194,6 +194,20 @@ function projectWorkTabs(
     );
   }
 
+  const appointments = findNavigationItem(navigation, "work", "/app/appointments");
+  if (appointments) {
+    tabs.push(
+      tabFromItem(appointments, {
+        id: "appointments",
+        label: "นัดหมาย",
+        accessibleLabel: appointments.label,
+        icon: "appointments",
+        match: "prefix",
+        activeRoute: "navigation-item",
+      }),
+    );
+  }
+
   const assignedPatients = findNavigationItem(navigation, "work", "/app/patients/assigned");
   const patientDirectory = assignedPatients ?? findNavigationItem(navigation, "work", "/app/patients");
   if (patientDirectory) {
@@ -363,16 +377,17 @@ export function projectMoreNavigation(
   navigation: readonly ApplicationNavigationGroup[],
   primaryTabs: readonly MobileNavigationTab[],
 ): readonly ApplicationNavigationGroup[] {
-  // Full hrefs: the OSM task tabs and their navigation items share the `?task=` query. The More tab is listed too:
-  // the Patient's โปรไฟล์ menu item opens this same hub, so it is never a row inside it.
+  // Full hrefs: OSM task tabs and navigation items share the `?task=` query. The work appointment hub stays in
+  // More as well as the primary Work tab so it remains available from both requested entry points.
   const primaryHrefs = new Set(
     primaryTabs.flatMap(({ href }) => (href ? [href] : [])),
   );
+  const keepOnMore = new Set(["/app/appointments"]);
 
   return navigation
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !primaryHrefs.has(item.href)),
+      items: group.items.filter((item) => !primaryHrefs.has(item.href) || keepOnMore.has(item.href)),
     }))
     .filter(({ items }) => items.length > 0);
 }

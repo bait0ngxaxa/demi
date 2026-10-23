@@ -193,6 +193,7 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
     if (task === "followup") return "followup";
   }
   if (pathname === "/app" || pathname === "/app/personal") return "home";
+  if (pathname.startsWith("/app/appointments")) return "appointments";
   if (pathname.startsWith("/app/personal/appointments")) return "appointments";
   if (pathname.startsWith("/app/personal/wellness")) return "wellness";
   if (pathname.startsWith("/app/personal/care")) return "care";

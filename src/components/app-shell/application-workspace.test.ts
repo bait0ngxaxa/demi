@@ -71,6 +71,7 @@ describe("application workspace projection", () => {
     expect(actions.map(({ href }) => href)).toEqual([
       `/app/workforce?hospitalId=${hospitalId}`,
       `/app/patients?hospitalId=${hospitalId}`,
+      `/app/appointments?hospitalId=${hospitalId}`,
       `/app/patients/provision?hospitalId=${hospitalId}`,
       `/app/patients/activation?hospitalId=${hospitalId}`,
       `/app/hospitals/contact?hospitalId=${hospitalId}`,
@@ -151,7 +152,7 @@ describe("application workspace projection", () => {
     const hrefs = (projection.hospitals[0]?.actions ?? []).map(({ href }) => href);
 
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
-    expect(hrefs).toEqual([]);
+    expect(hrefs).toEqual([`/app/appointments?hospitalId=${hospitalId}`]);
   });
 
   it("keeps PATIENT landing explicit without inventing Patient data links", () => {
@@ -218,7 +219,8 @@ describe("application workspace projection", () => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [hospitalId, secondId].map((id) => ({ hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE })) }), [workspace(), workspace({ hospitalId: secondId })]);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals.map(({ actions }) => actions.map(({ href }) => href))).toEqual([
-      [], [],
+      [`/app/appointments?hospitalId=${hospitalId}`],
+      [`/app/appointments?hospitalId=${secondId}`],
     ]);
     expect(projection.requestActions).toHaveLength(0);
     expect(projection.supportingActions).toHaveLength(0);

@@ -93,7 +93,7 @@ describe("server-projected mobile navigation", () => {
       expect(tabs.map(({ href }) => href)).toEqual(expectedHrefs);
     }
     // Work roles keep their role-based tabs, including the เพิ่มเติม slot.
-    expect(primaryTabs(patientOwner, "work").map(({ id }) => id)).toEqual(["home", "patients", "workforce", "hospital-reports", "more"]);
+    expect(primaryTabs(patientOwner, "work").map(({ id }) => id)).toEqual(["home", "appointments", "patients", "workforce", "more"]);
     expect(hrefs(patientOsm).filter((href) => href.startsWith("/app/patients/"))).toContain(
       "/app/patients/assigned",
     );
@@ -117,16 +117,16 @@ describe("server-projected mobile navigation", () => {
 
     expect(workTabs.map(({ id }) => id)).toEqual([
       "home",
+      "appointments",
       "patients",
       "screening",
-      "followup",
       "more",
     ]);
     expect(workTabs.map(({ href }) => href)).toEqual([
       "/app",
+      "/app/appointments",
       "/app/patients/assigned",
       "/app/patients/assigned?task=screening",
-      "/app/patients/assigned?task=followup",
       "/app/more",
     ]);
   });
@@ -163,9 +163,9 @@ describe("server-projected mobile navigation", () => {
 
     expect(primaryTabs(hospitalNavigation, "work").map(({ id }) => id)).toEqual([
       "home",
+      "appointments",
       "patients",
       "workforce",
-      "hospital-reports",
       "more",
     ]);
     expect(primaryTabs(adminNavigation, "work").map(({ id }) => id)).toEqual([
@@ -220,9 +220,9 @@ describe("server-projected mobile navigation", () => {
     expect(projection.tabsByWorkspace.personal.map(({ id }) => id)).toContain("appointments");
     expect(workTabs.map(({ id }) => id)).toEqual([
       "home",
+      "appointments",
       "patients",
       "screening",
-      "followup",
       "more",
     ]);
     expect(moreHrefs).toContain("/app/patients");
@@ -230,10 +230,11 @@ describe("server-projected mobile navigation", () => {
     expect(moreHrefs).toContain("/app/hospitals/reporting");
     // The workspace switch is a separate control; the Work home is a primary tab, so More omits it.
     expect(moreHrefs).toContain("/app/personal");
+    expect(moreHrefs).toContain("/app/appointments");
     expect(moreHrefs).not.toContain("/app");
     expect(moreHrefs).not.toContain("/app/patients/assigned");
     expect(moreHrefs).not.toContain("/app/patients/assigned?task=screening");
-    expect(moreHrefs).not.toContain("/app/patients/assigned?task=followup");
+    expect(moreHrefs).toContain("/app/patients/assigned?task=followup");
   });
 
   it("retains every authorized navigation entry in a primary slot or More", () => {

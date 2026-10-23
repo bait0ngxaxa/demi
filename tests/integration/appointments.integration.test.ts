@@ -23,6 +23,7 @@ import {
   getAppointmentDetail,
   getAppointmentHistory,
 } from "@/modules/appointments/services/appointment-query-service";
+import { listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
 import {
   acknowledgeAppointmentOnBehalfOfPatient,
   acknowledgeOwnPatientAppointment,
@@ -33,8 +34,10 @@ import {
   recordAppointmentCoordination,
   requestAppointmentCancellationOnBehalfOfPatient,
   requestOwnPatientAppointmentCancellation,
+  rejectAppointmentRescheduleRequest,
   reviewAppointmentCancellationRequest,
   rescheduleAppointment,
+  submitAppointmentRescheduleRequest,
 } from "@/modules/appointments/services/appointment-service";
 import { setOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
@@ -49,6 +52,7 @@ import {
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { executeLineReactiveAppointment } from "@/modules/line/services/line-reactive-appointment-service";
 import { unassignOsmFromPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
+import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -65,6 +69,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.lineAccountActionIntent.deleteMany();
   await prisma.lineAccountBinding.deleteMany();
   await prisma.patientAppointmentCoordinationEvent.deleteMany();
+  await prisma.patientAppointmentRescheduleRequest.deleteMany();
   await prisma.patientAppointmentCancellationRequest.deleteMany();
   await prisma.patientAppointmentAcknowledgement.deleteMany();
   await prisma.patientAppointment.deleteMany();
@@ -1983,5 +1988,265 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       { ...headers, signature: "0".repeat(64) },
       { database: prisma, now: new Date(now.getTime() + 1), secret },
     )).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("AF-1 scopes the work appointment list to active direct and current OSM access", async () => {
+    const hospitalA = await createHospital("AF1-A");
+    const hospitalB = await createHospital("AF1-B");
+    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.OWNER });
+    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id, membershipType: MembershipType.OWNER });
+    const doctorA = await createHospitalActor({ hospitalId: hospitalA.id, profession: Profession.DOCTOR });
+    const patientA = await provisionPatient(ownerA.actor, {
+      identity: { namespace: "appointment-integration", value: "af1-scope-a" },
+      targetHospitalId: hospitalA.id,
+      givenName: "ผู้ป่วย",
+      familyName: "โรงพยาบาลเอ",
+      hospitalNumber: "HN-AF1-PRIVATE",
+    });
+    const patientB = await provisionPatient(ownerB.actor, {
+      identity: { namespace: "appointment-integration", value: "af1-scope-b" },
+      targetHospitalId: hospitalB.id,
+      givenName: "ผู้ป่วย",
+      familyName: "โรงพยาบาลบี",
+    });
+    await Promise.all([patientA, patientB].map(({ userId }) => activateProvisionedPatient(userId)));
+    const appointmentA = await createAppointment(ownerA.actor, appointmentInput(patientA.relationshipId));
+    const appointmentB = await createAppointment(ownerB.actor, appointmentInput(patientB.relationshipId));
+
+    const endedPatient = await provisionPatient(ownerA.actor, {
+      identity: { namespace: "appointment-integration", value: "af1-ended-relationship" },
+      targetHospitalId: hospitalA.id,
+      givenName: "ผู้ป่วย",
+      familyName: "ความสัมพันธ์สิ้นสุด",
+    });
+    await activateProvisionedPatient(endedPatient.userId);
+    const endedAppointment = await createAppointment(ownerA.actor, appointmentInput(endedPatient.relationshipId));
+    await endPatientHospitalRelationship(ownerA.actor, {
+      relationshipId: endedPatient.relationshipId,
+      endReason: "ย้ายไปรับการดูแลที่อื่น",
+      confirmRetention: true,
+    });
+
+    const directPage = await listWorkAppointments(ownerA.actor, {
+      hospitalId: hospitalA.id,
+      tab: "UPCOMING",
+    });
+    expect(directPage.items.map(({ appointmentId }) => appointmentId)).toContain(appointmentA.appointmentId);
+    expect(directPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(appointmentB.appointmentId);
+    expect(directPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(endedAppointment.appointmentId);
+    expect(directPage.responsibleOptions.map(({ userId }) => userId)).toContain(doctorA.userId);
+    expect(JSON.stringify(directPage.items)).not.toContain("HN-AF1-PRIVATE");
+
+    const forgedHospitalPage = await listWorkAppointments(ownerA.actor, {
+      hospitalId: hospitalB.id,
+      tab: "UPCOMING",
+    });
+    expect(forgedHospitalPage.hospital.hospitalId).toBe(hospitalA.id);
+    expect(forgedHospitalPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(appointmentB.appointmentId);
+    const invalidHospitalPage = await listWorkAppointments(ownerA.actor, {
+      hospitalId: "not-a-hospital-id",
+      tab: "UPCOMING",
+    });
+    expect(invalidHospitalPage.hospital.hospitalId).toBe(hospitalA.id);
+    expect(invalidHospitalPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(appointmentB.appointmentId);
+
+    const suspendedMember = await createHospitalActor({
+      hospitalId: hospitalA.id,
+      membershipType: MembershipType.MEMBER,
+    });
+    await expect(listWorkAppointments(suspendedMember.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" }))
+      .resolves.toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ appointmentId: appointmentA.appointmentId })]) });
+    await prisma.hospitalMembership.updateMany({
+      where: { userId: suspendedMember.userId, hospitalId: hospitalA.id },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(listWorkAppointments(suspendedMember.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+
+    const endedMember = await createHospitalActor({
+      hospitalId: hospitalA.id,
+      membershipType: MembershipType.MEMBER,
+    });
+    await prisma.hospitalMembership.updateMany({
+      where: { userId: endedMember.userId, hospitalId: hospitalA.id },
+      data: { status: MembershipStatus.ENDED },
+    });
+    await expect(listWorkAppointments(endedMember.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+
+    const osm = await createOsmActor(hospitalA.id);
+    await assignOsmToPatient(ownerA.actor, {
+      patientHospitalRelationshipId: patientA.relationshipId,
+      osmUserId: osm.userId,
+    });
+    const secondPatientA = await provisionPatient(ownerA.actor, {
+      identity: { namespace: "appointment-integration", value: "af1-unassigned-osm" },
+      targetHospitalId: hospitalA.id,
+      givenName: "ผู้ป่วย",
+      familyName: "ยังไม่มอบหมาย",
+    });
+    await activateProvisionedPatient(secondPatientA.userId);
+    const unassignedAppointment = await createAppointment(ownerA.actor, appointmentInput(secondPatientA.relationshipId));
+    const osmPage = await listWorkAppointments(osm.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" });
+    expect(osmPage.items.map(({ appointmentId }) => appointmentId)).toEqual([appointmentA.appointmentId]);
+    expect(osmPage.responsibleOptions).toEqual([]);
+    expect(osmPage.canCreate).toBe(true);
+    await unassignOsmFromPatient(ownerA.actor, { patientHospitalRelationshipId: patientA.relationshipId });
+    const endedAssignmentPage = await listWorkAppointments(osm.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" });
+    expect(endedAssignmentPage.items).toEqual([]);
+    expect(endedAssignmentPage.canCreate).toBe(false);
+    expect(endedAssignmentPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(unassignedAppointment.appointmentId);
+
+    await prisma.hospital.update({ where: { id: hospitalB.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(listWorkAppointments(ownerB.actor, { hospitalId: hospitalB.id, tab: "UPCOMING" }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("AF-1 paginates equal appointment times stably and returns exactly the open request queue", async () => {
+    const hospital = await createHospital("AF1-QUEUE");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "appointment-integration", value: "af1-request-queue" },
+      targetHospitalId: hospital.id,
+      givenName: "ผู้ป่วย",
+      familyName: "คิวคำขอ",
+      hospitalNumber: "HN-AF1-DO-NOT-LIST",
+    });
+    await activateProvisionedPatient(patient.userId);
+    const patientActor: ActorContext = {
+      userId: patient.userId,
+      personId: patient.personId,
+      roles: [Role.PATIENT],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [],
+    };
+    const now = new Date();
+    const older = new Date(now.getTime() - 2_000);
+    const middle = new Date(now.getTime() - 1_000);
+    const latest = new Date(now.getTime());
+    const scheduledAt = bangkokIso(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+    const appointmentA = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { scheduledAt }));
+    const appointmentB = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { scheduledAt }));
+    const cancellationA = await requestOwnPatientAppointmentCancellation(patientActor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentA.appointmentId,
+      expectedUpdatedAt: appointmentA.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    }, { now: () => middle });
+    const rescheduleA = await submitAppointmentRescheduleRequest(patientActor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentA.appointmentId,
+      expectedUpdatedAt: appointmentA.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+      preferredDatetimes: [bangkokIso(new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000))],
+      reason: "ติดธุระ",
+    }, { now: () => latest });
+    const cancellationB = await requestOwnPatientAppointmentCancellation(patientActor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentB.appointmentId,
+      expectedUpdatedAt: appointmentB.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    }, { now: () => older });
+
+    const pending = await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "PENDING_REQUESTS",
+    });
+    expect(pending.items.map(({ appointmentId }) => appointmentId)).toEqual([
+      appointmentB.appointmentId,
+      appointmentA.appointmentId,
+    ]);
+    expect(pending.items[1]?.pendingRequestBadges).toEqual({ reschedule: true, cancellation: true });
+    expect(Object.keys(pending.items[1] ?? {}).sort()).toEqual([
+      "appointmentId",
+      "durationMinutes",
+      "hospitalName",
+      "locationType",
+      "osmAtCreationDisplayName",
+      "patientDisplayName",
+      "pendingRequestBadges",
+      "relationshipId",
+      "responsibleDisplayName",
+      "responsibleProfession",
+      "scheduledAt",
+      "status",
+      "type",
+    ].sort());
+    expect(JSON.stringify(pending.items)).not.toContain("HN-AF1-DO-NOT-LIST");
+    expect(JSON.stringify(pending.items)).not.toContain("หมายเหตุสำหรับการตรวจ workflow");
+
+    const rejectedReschedule = await rejectAppointmentRescheduleRequest(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentA.appointmentId,
+      requestId: rescheduleA.requestId,
+      rejectionReason: "ไม่สะดวกตามวันที่เสนอ",
+    });
+    expect(rejectedReschedule.requestId).toBe(rescheduleA.requestId);
+    const afterReject = await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "PENDING_REQUESTS",
+    });
+    expect(afterReject.items.map(({ appointmentId }) => appointmentId)).toEqual([
+      appointmentB.appointmentId,
+      appointmentA.appointmentId,
+    ]);
+    expect(afterReject.items[1]?.pendingRequestBadges).toEqual({ reschedule: false, cancellation: true });
+
+    await reviewAppointmentCancellationRequest(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentB.appointmentId,
+      requestId: cancellationB.requestId,
+      decision: "APPROVE",
+    });
+    const afterApprove = await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "PENDING_REQUESTS",
+    });
+    expect(afterApprove.items.map(({ appointmentId }) => appointmentId)).toEqual([appointmentA.appointmentId]);
+    await reviewAppointmentCancellationRequest(owner.actor, {
+      patientHospitalRelationshipId: patient.relationshipId,
+      appointmentId: appointmentA.appointmentId,
+      requestId: cancellationA.requestId,
+      decision: "REJECT",
+    });
+    await expect(listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "PENDING_REQUESTS",
+    })).resolves.toMatchObject({ items: [] });
+
+    const syntheticAppointments = Array.from({ length: 26 }, () => ({
+      id: randomUUID(),
+      patientHospitalRelationshipId: patient.relationshipId,
+      createdByUserId: owner.userId,
+      type: "CONSULTATION" as const,
+      scheduledAt: new Date(scheduledAt),
+      submissionNonce: randomUUID(),
+    }));
+    await prisma.patientAppointment.createMany({ data: syntheticAppointments });
+    const firstPage = await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "UPCOMING",
+    }, { now: () => now });
+    expect(firstPage.items).toHaveLength(25);
+    expect(firstPage.hasNextPage).toBe(true);
+    if (!firstPage.nextCursor) throw new Error("Expected another appointment page");
+    const tamperedCursor = `${firstPage.nextCursor.slice(0, -1)}${firstPage.nextCursor.endsWith("a") ? "b" : "a"}`;
+    await expect(listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "UPCOMING",
+      cursor: tamperedCursor,
+    }, { now: () => now })).rejects.toBeInstanceOf(NotFoundError);
+    const secondPage = await listWorkAppointments(owner.actor, {
+      hospitalId: hospital.id,
+      tab: "UPCOMING",
+      cursor: firstPage.nextCursor,
+    }, { now: () => now });
+    const actualIds = [...firstPage.items, ...secondPage.items].map(({ appointmentId }) => appointmentId);
+    const expectedIds = await prisma.patientAppointment.findMany({
+      where: { patientHospitalRelationshipId: patient.relationshipId, status: AppointmentStatus.SCHEDULED },
+      orderBy: [{ scheduledAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    expect(actualIds).toEqual(expectedIds.map(({ id }) => id));
   });
 });

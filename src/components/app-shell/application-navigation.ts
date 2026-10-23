@@ -168,6 +168,13 @@ function canReadAssignedPatients(actor: ActorContext): boolean {
   );
 }
 
+function canReadWorkAppointments(actor: ActorContext): boolean {
+  return canReadPatients(actor) || (
+    actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some(({ status, hospitalStatus }) =>
+      status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)
+  );
+}
+
 function canAssignOsm(actor: ActorContext): boolean {
   // Same policy the assign-osm page applies to each Hospital it lists (listPatientOsmAssignmentScopes).
   return actor.hospitalMemberships.some(({ hospitalId }) =>
@@ -299,6 +306,7 @@ function projectWorkSections(
   return [
     ...section("home", "work", [{ href: "/app", label: "หน้าหลัก", match: "exact" }]),
     ...section("care", "work", compact([
+      canReadWorkAppointments(actor) && { href: "/app/appointments", label: "รายการนัดหมาย", match: "prefix" },
       assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่รับผิดชอบ", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },

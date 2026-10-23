@@ -168,11 +168,11 @@ describe("application home workspace routing", () => {
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
   });
 
-  it("shows OSM assigned care first without general directory or bulk import", async () => {
+  it("shows the appointment hub and assigned care without general directory or bulk import", async () => {
     const html = await renderHome({ ...patientActor, roles: [Role.OSM], osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] });
-    expect(html).toContain('href="/app/patients/assigned"');
+    expect(html).toContain(`href="/app/appointments?hospitalId=${hospitalId}"`);
     expect(html).not.toContain("/app/patients/provision");
-    expect(section(html, "work-home-heading")).toContain('href="/app/patients/assigned"');
+    expect(section(html, "work-home-heading")).toContain(`href="/app/appointments?hospitalId=${hospitalId}"`);
     const grid = section(html, "work-home-menu-heading");
     expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
     expect(grid).toContain(`href="/app/patients/assigned?task=followup&amp;hospitalId=${hospitalId}"`);
@@ -377,7 +377,7 @@ describe("application home workspace routing", () => {
 
       expect(section(html, "work-home-news-heading")).toContain(`ยังไม่มีข่าวสารสำหรับทีมงานจากโรงพยาบาล ${hospitalId}`);
       expect(section(html, "work-home-heading")).toContain('href="/app/personal"');
-      expect(section(html, "work-home-heading")).toContain('href="/app/patients/assigned"');
+      expect(section(html, "work-home-heading")).toContain(`href="/app/appointments?hospitalId=${hospitalId}"`);
     });
 
     it("stays usable at 320px: labelled controls, four-column wrapping grid and no fixed widths", async () => {

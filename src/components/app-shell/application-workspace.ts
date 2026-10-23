@@ -137,6 +137,27 @@ function projectHospitalActions(
       description: "ค้นหาและเลือกผู้ป่วยในโรงพยาบาลนี้เพื่อเปิดข้อมูลและดูแลต่อเนื่อง",
       category: "care",
     });
+    actions.push({
+      href: withHospitalContext("/app/appointments", hospitalId),
+      label: "รายการนัดหมาย",
+      description: "ดูนัดหมายและคำขอที่รอดำเนินการในโรงพยาบาลนี้",
+      category: "care",
+    });
+  }
+
+  if (
+    !hasDirectHospitalPatientReadScope(actor, hospitalId) &&
+    actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some((relationship) =>
+      relationship.hospitalId === hospitalId &&
+      relationship.status === MembershipStatus.ACTIVE &&
+      relationship.hospitalStatus === HospitalStatus.ACTIVE)
+  ) {
+    actions.push({
+      href: withHospitalContext("/app/appointments", hospitalId),
+      label: "รายการนัดหมาย",
+      description: "ดูนัดหมายของผู้ป่วยที่ได้รับมอบหมายในโรงพยาบาลนี้",
+      category: "care",
+    });
   }
 
   if (hasDirectHospitalProvisioningScope(actor, hospitalId)) {

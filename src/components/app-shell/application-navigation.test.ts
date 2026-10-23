@@ -107,13 +107,13 @@ const personalSections = [
 ] as const;
 const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/settings", "/app/support"]] as const;
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
-const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
 const ownerAdministration = ["/app/users", "/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
   staffRegistration,
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
@@ -122,7 +122,7 @@ const ownerSections = (areas: boolean) => [
 ] as const;
 const memberSections = () => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/patients"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients"]],
   // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
@@ -202,7 +202,7 @@ const cases: Case[] = [
     // Request and service-catalog policies deny ADMIN, exactly as before UI-4.
     expected: { work: [
       ["home", null, ["/app"]],
-      ["care", "ดูแลผู้ป่วย", ["/app/patients", "/app/patients/assign-osm"]],
+      ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
