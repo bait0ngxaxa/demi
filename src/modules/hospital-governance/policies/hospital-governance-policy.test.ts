@@ -39,7 +39,7 @@ describe("hospital governance policy", () => {
     }
   });
 
-  it.each([Role.HOSPITAL, Role.OSM, Role.PATIENT])(
+  it.each([Role.HOSPITAL, Role.OSM, Role.PATIENT, Role.CAREGIVER])(
     "denies %s without the Platform ADMIN role",
     (role) => {
       expect(

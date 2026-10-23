@@ -62,6 +62,16 @@ describe("patient provisioning policy", () => {
     ).toMatchObject({ allowed: false });
   });
 
+  it.each([Role.CAREGIVER])("denies %s-only Patient provisioning", (role) => {
+    expect(
+      decidePatientProvisioningPolicy({
+        actor: hospitalActor({ roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] }),
+        capability: PATIENT_PROVISIONING_CAPABILITY,
+        targetHospitalId: "00000000-0000-4000-8000-000000000010",
+      }).allowed,
+    ).toBe(false);
+  });
+
   it("denies inactive relationships and an OSM bulk import scope", () => {
     const actor = hospitalActor({
       roles: [Role.OSM],

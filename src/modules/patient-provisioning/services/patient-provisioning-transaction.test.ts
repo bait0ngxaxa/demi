@@ -91,6 +91,7 @@ function createTransaction(): Prisma.TransactionClient {
       findUnique: vi.fn(),
     },
     person: {
+      findUnique: vi.fn().mockResolvedValue({ nameIsSelfAsserted: false }),
       update: vi.fn(),
     },
     userRole: {

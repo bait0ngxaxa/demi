@@ -121,6 +121,7 @@ describe("workforce policy", () => {
       createActor({ roles: [] }),
       createActor({ roles: [Role.OSM] }),
       createActor({ roles: [Role.PATIENT] }),
+      createActor({ roles: [Role.CAREGIVER] }),
       createActor({ roles: [Role.ADMIN] }),
       createActor({
         hospitalMemberships: [

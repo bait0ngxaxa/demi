@@ -11,7 +11,7 @@ const token = "a".repeat(43);
 
 function databaseFixture(status: CaregiverInvitationStatus = CaregiverInvitationStatus.PENDING) {
   const transaction = {
-    user: { findFirst: vi.fn().mockResolvedValue({ id: actor.userId, personId: actor.personId, roles: [] }) },
+    user: { findFirst: vi.fn().mockResolvedValue({ id: actor.userId, personId: actor.personId, roles: [], person: { identityKeyHash: "a".repeat(64) } }) },
     caregiverInvitation: { findUnique: vi.fn().mockResolvedValue({ id: "invitation", patientProfileId: "patient", caregiverUserId: actor.userId, caregiverPersonId: actor.personId, status }) },
     caregiverRelationship: { create: vi.fn().mockResolvedValue({ id: "relationship" }) },
     caregiverAppointmentGrant: { create: vi.fn(), updateMany: vi.fn() },
@@ -38,7 +38,7 @@ describe("QR-equivalent existing invitation authority boundary (mock database)",
 
   it.each(["user", "person"])("denies a forwarded token with mismatched intended %s", async (identity) => {
     const { transaction, database } = databaseFixture();
-    transaction.user.findFirst.mockResolvedValue({ id: identity === "user" ? "other" : actor.userId, personId: identity === "person" ? "other-person" : actor.personId, roles: [] });
+    transaction.user.findFirst.mockResolvedValue({ id: identity === "user" ? "other" : actor.userId, personId: identity === "person" ? "other-person" : actor.personId, roles: [], person: { identityKeyHash: "a".repeat(64) } });
     await expect(acceptCaregiverInvitation(actor, token, { database })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(transaction.$queryRaw).not.toHaveBeenCalled();
     expect(transaction.caregiverRelationship.create).not.toHaveBeenCalled();

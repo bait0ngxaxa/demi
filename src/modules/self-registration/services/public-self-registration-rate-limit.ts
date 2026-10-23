@@ -13,6 +13,7 @@ const PURPOSE = "DEMI_PUBLIC_SELF_REGISTRATION_RATE_LIMIT_V1";
 export const PUBLIC_SELF_REGISTRATION_RATE_LIMITS = {
   IP: { limit: 10, windowMs: 15 * 60 * 1000 },
   IDENTITY: { limit: 5, windowMs: 24 * 60 * 60 * 1000 },
+  INVITATION: { limit: 5, windowMs: 15 * 60 * 1000 },
   GLOBAL: { limit: 1000, windowMs: 60 * 60 * 1000 },
 } as const;
 

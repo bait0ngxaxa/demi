@@ -112,7 +112,7 @@ describe("Caregiver invitation lost-response recovery", () => {
         invitations: [
           {
             invitationId: "invitation-1",
-            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ" },
+            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ", nameIsSelfAsserted: false },
             status: CaregiverInvitationStatus.PENDING,
             issuedAt: new Date("2026-10-16T00:00:00.000Z"),
             expiresAt: new Date("2026-10-17T00:00:00.000Z"),
@@ -140,7 +140,7 @@ describe("Caregiver invitation lost-response recovery", () => {
         invitations: [
           {
             invitationId: "invitation-1",
-            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ" },
+            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ", nameIsSelfAsserted: false },
             status: CaregiverInvitationStatus.PENDING,
             issuedAt: new Date("2026-10-16T00:00:00.000Z"),
             expiresAt: new Date("2026-10-17T00:00:00.000Z"),
@@ -173,7 +173,7 @@ describe("Caregiver invitation lost-response recovery", () => {
         patient: {
           invitations: [{
             invitationId: "invitation-1",
-            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ" },
+            participant: { givenName: "ผู้ดูแล", familyName: "ทดสอบ", nameIsSelfAsserted: false },
             status,
             issuedAt: new Date("2026-10-16T00:00:00.000Z"),
             expiresAt: new Date("2026-10-17T00:00:00.000Z"),

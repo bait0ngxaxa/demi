@@ -149,6 +149,16 @@ describe("patient:read policy", () => {
         targetHospitalId: hospitalA,
       }),
     ).toEqual({ allowed: false, reason: "hospital_role_required" });
+    expect(
+      decidePatientReadPolicy({
+        actor: hospitalActor(MembershipType.MEMBER, null, {
+          roles: [Role.CAREGIVER],
+          hospitalMemberships: [],
+        }),
+        capability: PATIENT_READ_CAPABILITY,
+        targetHospitalId: hospitalA,
+      }),
+    ).toEqual({ allowed: false, reason: "hospital_role_required" });
   });
 
   it("preserves a valid direct Hospital path for an actor with an additional ADMIN role", () => {

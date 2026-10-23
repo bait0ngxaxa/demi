@@ -70,7 +70,7 @@ describe("Hospital Content Patient read scope", () => {
     expect(decide(actor({ roles: [Role.PATIENT], personId: " " })).allowed).toBe(false);
     expect(decideHospitalContentPolicy({ actor: actor({ roles: [Role.PATIENT] }), capability: HOSPITAL_CONTENT_CAPABILITIES.read, scope: undefined }).allowed).toBe(false);
   });
-  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN])("denies %s regardless of Owner membership/profession/other relationships", (role) => {
+  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN, Role.CAREGIVER])("denies %s regardless of Owner membership/profession/other relationships", (role) => {
     expect(decide(actor({ roles: [role] })).allowed).toBe(false);
   });
   it("keeps multi-role Patient and Publisher scopes separate", () => {

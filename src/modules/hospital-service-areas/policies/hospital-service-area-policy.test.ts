@@ -12,7 +12,7 @@ describe("Parent OWNER area policy", () => {
   it.each(Object.values(HOSPITAL_SERVICE_AREA_CAPABILITIES))("allows %s for exact active direct OWNER context", (capability) => {
     expect(() => assertHospitalServiceAreaPolicy({ actor, capability, parentHospitalId })).not.toThrow();
   });
-  it.each(["ADMIN", "OSM", "PATIENT"] as const)("denies %s-only", (role) => {
+  it.each(["ADMIN", "OSM", "PATIENT", "CAREGIVER"] as const)("denies %s-only", (role) => {
     expect(() => assertHospitalServiceAreaPolicy({ actor: { ...actor, roles: [role] }, capability: HOSPITAL_SERVICE_AREA_CAPABILITIES.manage, parentHospitalId })).toThrow();
   });
   it("denies missing actors, unknown capabilities, MEMBER, stale memberships, inactive Hospitals and unrelated ownership", () => {

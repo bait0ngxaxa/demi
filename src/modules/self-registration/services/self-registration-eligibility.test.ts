@@ -147,6 +147,19 @@ describe("self-registration eligibility", () => {
     expect(evaluate(user(), null)).toEqual({ outcome: "NOT_FOUND" });
   });
 
+  it("does not reveal a CAREGIVER-only account through national-ID registration lookup", () => {
+    expect(evaluate(user({
+      status: UserStatus.ACTIVE,
+      authSubject: "provider-subject",
+      roles: [{ role: Role.CAREGIVER }],
+    }))).toEqual({ outcome: "NOT_FOUND" });
+    expect(evaluate(user({
+      status: UserStatus.ACTIVE,
+      authSubject: "provider-subject",
+      roles: [{ role: Role.CAREGIVER }, { role: Role.PATIENT }],
+    }))).toEqual({ outcome: "ALREADY_ACTIVE" });
+  });
+
   it("requires a unique exact relationship binding", () => {
     const relationship = {
       kind: "HOSPITAL_MEMBER" as const,

@@ -49,6 +49,10 @@ describe("Global Reporting policy", () => {
       allowed: false,
       reason: "active_admin_required",
     });
+    expect(decide({ actor: { ...actor, roles: [Role.CAREGIVER] }, currentRoles: [Role.CAREGIVER] })).toMatchObject({
+      allowed: false,
+      reason: "active_admin_required",
+    });
   });
 
   it("requires an ACTIVE selected Hospital for report and export capabilities", () => {

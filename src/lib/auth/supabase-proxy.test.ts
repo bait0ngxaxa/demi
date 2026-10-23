@@ -6,7 +6,11 @@ import {
   LINE_WEB_NAVIGATION_PATHS,
 } from "@/modules/line/domain/line-navigation-intents";
 
-import { propagateSupabaseCookies, updateSupabaseSession } from "./supabase-proxy";
+import {
+  PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER,
+  propagateSupabaseCookies,
+  updateSupabaseSession,
+} from "./supabase-proxy";
 
 describe("Supabase proxy cookie propagation", () => {
   it.each(["/api/line/account/recovery", "/api/line/account/recovery/prepare"])("leaves captured recovery cookies unchanged without proxy verification/refresh at %s", async (path) => {
@@ -84,5 +88,38 @@ describe("Supabase proxy cookie propagation", () => {
     const response = propagateSupabaseCookies(request, [], {});
 
     expect(response.headers.get(`x-middleware-request-${LINE_QUICK_ACTION_RETURN_TO_HEADER}`)).toBeNull();
+  });
+
+  it("sets the public invitation marker and private headers only on its exact route", () => {
+    const invitation = propagateSupabaseCookies(
+      new NextRequest("https://demi.example.org/app/family/invitations", {
+        headers: { [PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER]: "forged" },
+      }),
+      [],
+      {},
+    );
+    expect(invitation.headers.get(`x-middleware-request-${PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER}`)).toBe("1");
+    expect(invitation.headers.get("cache-control")).toBe("private, no-store");
+    expect(invitation.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(invitation.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+
+    const protectedPage = propagateSupabaseCookies(
+      new NextRequest("https://demi.example.org/app/family", {
+        headers: { [PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER]: "forged" },
+      }),
+      [],
+      {},
+    );
+    expect(protectedPage.headers.get(`x-middleware-request-${PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER}`)).toBeNull();
+
+    const postRequest = propagateSupabaseCookies(
+      new NextRequest("https://demi.example.org/app/family/invitations", {
+        method: "POST",
+        headers: { [PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER]: "forged" },
+      }),
+      [],
+      {},
+    );
+    expect(postRequest.headers.get(`x-middleware-request-${PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER}`)).toBeNull();
   });
 });

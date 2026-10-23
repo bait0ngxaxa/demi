@@ -106,7 +106,7 @@ describe("Hospital Contact capabilities and scopes", () => {
     ).toBe(false);
   });
 
-  it.each([[Role.ADMIN], [Role.OSM], [Role.PATIENT]] as const)(
+  it.each([[Role.ADMIN], [Role.OSM], [Role.PATIENT], [Role.CAREGIVER]] as const)(
     "denies actors with only %s authority in the Owner scope",
     (role) => {
       const denied = actor({ roles: [role], hospitalMemberships: [] });

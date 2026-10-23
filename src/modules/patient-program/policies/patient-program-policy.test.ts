@@ -128,7 +128,7 @@ describe("Patient Program policy", () => {
     ).toBe(false);
   });
 
-  it.each([Role.ADMIN, Role.PATIENT])("denies %s without a care-actor scope", (role) => {
+  it.each([Role.ADMIN, Role.PATIENT, Role.CAREGIVER])("denies %s without a care-actor scope", (role) => {
     expect(
       decidePatientProgramPolicy({
         actor: actor({ roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] }),

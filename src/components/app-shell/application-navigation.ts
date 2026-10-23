@@ -398,23 +398,32 @@ export function projectApplicationNavigation(
 ): readonly ApplicationNavigationGroup[] {
   const availableWorkspaces = getAvailableApplicationWorkspaces(actor);
   const hasPersonalWorkspace = availableWorkspaces.includes("personal");
+  const isCaregiverOnly = actor.roles.length === 1 && actor.roles[0] === Role.CAREGIVER;
   const groups: ApplicationNavigationGroup[] = [
     ...(hasPersonalWorkspace ? projectPersonalSections() : []),
     ...(availableWorkspaces.includes("work") ? projectWorkSections(actor, hospitalWorkspaces) : []),
   ];
 
   if (availableWorkspaces.length === 0) {
-    groups.push({ id: "home", label: null, items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] });
+    groups.push({
+      id: "home",
+      label: null,
+      items: [isCaregiverOnly
+        ? { href: "/app/family", label: "ครอบครัวของฉัน", match: "prefix" }
+        : { href: "/app", label: "หน้าหลัก", match: "exact" }],
+    });
   }
 
   // Family serves any authenticated account: a delegated caregiver needs no PATIENT role (docs/CONTEXT.md).
-  const supportsAccountTools = actor.roles.some((role) => role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL);
+  const supportsAccountTools = actor.roles.some((role) =>
+    role === Role.PATIENT || role === Role.OSM || role === Role.HOSPITAL || role === Role.CAREGIVER,
+  );
   const accountItems = (workspace: ApplicationWorkspaceContext | null): ApplicationNavigationItem[] => compact([
     // The Patient's own profile stays in the Personal workspace, as before UI-4.
     workspace === "personal" && { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
-    { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
+    !isCaregiverOnly && { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
     supportsAccountTools && { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
-    supportsAccountTools && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
+    supportsAccountTools && !isCaregiverOnly && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
   ]);
 
   // One account section per workspace: at most one is visible at a time, always last.

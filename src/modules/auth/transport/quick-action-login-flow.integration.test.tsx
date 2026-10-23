@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/supabase-proxy", () => ({
+  PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER: "x-demi-public-caregiver-invitation",
   updateSupabaseSession: mocks.updateSupabaseSession,
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({

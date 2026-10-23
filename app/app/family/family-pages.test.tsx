@@ -47,7 +47,7 @@ describe("Family relationship management pages", () => {
       patient: {
         invitations: [
           {
-            participant: { givenName: "สมหญิง", familyName: "ใจดี" },
+            participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
             invitationId: "11111111-1111-4111-8111-111111111111",
             status: CaregiverInvitationStatus.PENDING,
             issuedAt: new Date("2026-10-01T00:00:00.000Z"),
@@ -57,7 +57,7 @@ describe("Family relationship management pages", () => {
         nextInvitationsCursor: null,
         relationships: [
           {
-            participant: { givenName: "สมหญิง", familyName: "ใจดี" },
+            participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
             relationshipId: "22222222-2222-4222-8222-222222222222",
             status: CaregiverRelationshipStatus.ACTIVE,
             activatedAt: new Date("2026-10-01T00:00:00.000Z"),
@@ -89,11 +89,11 @@ describe("Family relationship management pages", () => {
     const caregivers = ["สมหญิง", "สมศรี"];
     const patients = ["สมชาย", "สมบัติ"];
     const relationships = (givenNames: string[], prefix: string) => givenNames.map((givenName, index) => ({
-      participant: { givenName, familyName: "ใจดี" }, relationshipId: `${prefix}-${index}`,
+      participant: { givenName, familyName: "ใจดี", nameIsSelfAsserted: false }, relationshipId: `${prefix}-${index}`,
       status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null,
     }));
     const invitations = (givenNames: string[], prefix: string) => givenNames.map((givenName, index) => ({
-      participant: { givenName, familyName: "ใจดี" }, invitationId: `${prefix}-${index}`,
+      participant: { givenName, familyName: "ใจดี", nameIsSelfAsserted: false }, invitationId: `${prefix}-${index}`,
       status: CaregiverInvitationStatus.PENDING, issuedAt: now, expiresAt: now,
     }));
     const overview: FamilyManagementOverview = {
@@ -117,7 +117,7 @@ describe("Family relationship management pages", () => {
   it("uses a truthful name fallback without substituting private identifiers", () => {
     const now = new Date();
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ ...emptyOverview, caregiver: {
-      ...emptyOverview.caregiver, relationships: [{ participant: { givenName: null, familyName: " " }, relationshipId: "unnamed", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null }],
+      ...emptyOverview.caregiver, relationships: [{ participant: { givenName: null, familyName: " ", nameIsSelfAsserted: false }, relationshipId: "unnamed", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null }],
     } }} />);
     expect(markup).toContain("ไม่ระบุชื่อผู้ป่วย");
     expect(markup).not.toContain("identityKeyHash");

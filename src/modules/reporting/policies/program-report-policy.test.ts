@@ -144,7 +144,7 @@ describe("Program reporting policy", () => {
     ).toMatchObject({ allowed: false, reason: "inactive_target_hospital" });
   });
 
-  it.each([Role.ADMIN, Role.PATIENT])("denies %s-only access", (role) => {
+  it.each([Role.ADMIN, Role.PATIENT, Role.CAREGIVER])("denies %s-only access", (role) => {
     expect(
       decideProgramReportPolicy({
         actor: {

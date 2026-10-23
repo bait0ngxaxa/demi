@@ -18,10 +18,12 @@ const actor = (roles: readonly Role[]): ActorContext => ({
 describe("Family Patient SELF management policy", () => {
   it("requires the authenticated Patient role for Patient-initiated actions", () => {
     expect(decideFamilyPatientSelfPolicy(actor([Role.PATIENT])).allowed).toBe(true);
-    expect(decideFamilyPatientSelfPolicy(actor([Role.HOSPITAL])).allowed).toBe(false);
-    expect(decideFamilyPatientSelfPolicy(actor([Role.OSM])).allowed).toBe(false);
-    expect(decideFamilyPatientSelfPolicy(actor([Role.ADMIN])).allowed).toBe(false);
   });
+
+  it.each([Role.HOSPITAL, Role.OSM, Role.ADMIN, Role.CAREGIVER])(
+    "denies %s from Patient-initiated Family actions",
+    (role) => expect(decideFamilyPatientSelfPolicy(actor([role])).allowed).toBe(false),
+  );
 
   it("does not give any role a Patient-resource capability", () => {
     expect(decideFamilyPatientSelfPolicy(null).allowed).toBe(false);

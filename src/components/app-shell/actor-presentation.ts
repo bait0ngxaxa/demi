@@ -5,4 +5,5 @@ export const roleLabels: Record<Role, string> = {
   [Role.HOSPITAL]: "บุคลากรโรงพยาบาล",
   [Role.OSM]: "อสม.",
   [Role.PATIENT]: "ผู้ป่วย",
+  [Role.CAREGIVER]: "ผู้ดูแลครอบครัว",
 };

@@ -77,6 +77,7 @@ describe("Patient service request policy", () => {
   it.each([
     ["OSM", actor([Role.OSM], MembershipType.OWNER)],
     ["Patient", actor([Role.PATIENT], MembershipType.OWNER)],
+    ["Caregiver", actor([Role.CAREGIVER], MembershipType.OWNER)],
     ["Platform ADMIN", actor([Role.ADMIN], MembershipType.OWNER)],
     ["ADMIN with Hospital role", actor([Role.ADMIN, Role.HOSPITAL], MembershipType.OWNER)],
   ] as const)("denies %s Hospital operations", (_label, candidate) => {

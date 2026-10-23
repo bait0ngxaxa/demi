@@ -80,6 +80,7 @@ describe("patient:assign-osm policy", () => {
   it.each([
     ["OSM", [Role.OSM], []],
     ["ADMIN", [Role.ADMIN], []],
+    ["CAREGIVER", [Role.CAREGIVER], []],
   ] as const)("denies %s assignment authority", (_label, roles, hospitalMemberships) => {
     expect(
       decidePatientOsmAssignmentPolicy({

@@ -43,6 +43,7 @@ describe("assisted account recovery issuer policy", () => {
     }] })],
     ["OSM", actor({ roles: [Role.OSM], hospitalMemberships: [] })],
     ["ADMIN", actor({ roles: [Role.ADMIN], hospitalMemberships: [] })],
+    ["CAREGIVER", actor({ roles: [Role.CAREGIVER], hospitalMemberships: [] })],
     ["inactive membership", actor({ hospitalMemberships: [{
       hospitalId,
       membershipType: MembershipType.OWNER,

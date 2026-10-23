@@ -16,6 +16,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
+import { PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER } from "@/lib/auth/supabase-proxy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -44,6 +45,9 @@ async function ResolvedProtectedApplicationShell({
 }: Readonly<{ children: React.ReactNode }>): Promise<React.JSX.Element> {
   await connection();
   const requestHeaders = await headers();
+  if (requestHeaders.get(PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER) === "1") {
+    return <>{children}</>;
+  }
   const actor = await resolveProtectedActor(
     requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
   );

@@ -21,6 +21,7 @@ export const FAMILY_MANAGEMENT_PAGE_SIZE = 30;
 export type FamilyParticipantDisplay = {
   givenName: string | null;
   familyName: string | null;
+  nameIsSelfAsserted: boolean;
 };
 
 export type FamilyInvitationManagementItem = {
@@ -60,7 +61,7 @@ export type FamilyManagementQueryDependencies = {
   now?: () => Date;
 };
 
-const participantNameSelect = { givenName: true, familyName: true } satisfies Prisma.PersonSelect;
+const participantNameSelect = { givenName: true, familyName: true, nameIsSelfAsserted: true } satisfies Prisma.PersonSelect;
 
 const invitationLifecycleSelect = {
   id: true,
@@ -115,7 +116,11 @@ function asInvitationItem(
   participant: FamilyParticipantDisplay,
 ): FamilyInvitationManagementItem {
   return {
-    participant: { givenName: participant.givenName, familyName: participant.familyName },
+    participant: {
+      givenName: participant.givenName,
+      familyName: participant.familyName,
+      nameIsSelfAsserted: participant.nameIsSelfAsserted,
+    },
     invitationId: invitation.id,
     status:
       invitation.status === CaregiverInvitationStatus.PENDING &&
@@ -132,7 +137,11 @@ function asRelationshipItem(
   participant: FamilyParticipantDisplay,
 ): FamilyRelationshipManagementItem {
   return {
-    participant: { givenName: participant.givenName, familyName: participant.familyName },
+    participant: {
+      givenName: participant.givenName,
+      familyName: participant.familyName,
+      nameIsSelfAsserted: participant.nameIsSelfAsserted,
+    },
     relationshipId: relationship.id,
     status: relationship.status,
     activatedAt: relationship.activatedAt,
@@ -239,7 +248,11 @@ export async function getFamilyManagementOverview(
         ? {
             invitations: patientInvitations
               .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)
-              .map((invitation) => asInvitationItem(invitation, now, invitation.caregiverUser.person)),
+              .map((invitation) => asInvitationItem(
+                invitation,
+                now,
+                invitation.caregiverUser?.person ?? { givenName: null, familyName: null, nameIsSelfAsserted: false },
+              )),
             nextInvitationsCursor: patientInvitationCursor,
             relationships: patientRelationships
               .slice(0, FAMILY_MANAGEMENT_PAGE_SIZE)

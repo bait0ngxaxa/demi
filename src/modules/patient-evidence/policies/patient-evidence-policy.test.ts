@@ -120,8 +120,8 @@ describe("Patient Evidence authorization policy", () => {
     ).toBe(true);
   });
 
-  it("denies an ADMIN-only actor", () => {
-    expect(decide(actor({ roles: [Role.ADMIN] }))).toEqual({
+  it.each([Role.ADMIN, Role.CAREGIVER])("denies a %s-only actor", (role) => {
+    expect(decide(actor({ roles: [role] }))).toEqual({
       allowed: false,
       reason: "artifact_role_required",
     });
@@ -160,8 +160,8 @@ describe("Patient Evidence authorization policy", () => {
     ).toBe(false);
   });
 
-  it("denies Patient self-service", () => {
-    expect(decide(actor({ roles: [Role.PATIENT] }))).toEqual({
+  it.each([Role.PATIENT, Role.CAREGIVER])("denies %s self-service", (role) => {
+    expect(decide(actor({ roles: [role] }))).toEqual({
       allowed: false,
       reason: "artifact_role_required",
     });

@@ -12,7 +12,12 @@ const harness = vi.hoisted(() => ({
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
   // Only the preview state is driven by the harness; flags and counters keep their initial values.
-  useState: (initial: unknown) => [typeof initial === "object" ? harness.preview : initial, vi.fn()],
+  useState: (initial: unknown) => [
+    initial && typeof initial === "object" && "status" in initial && initial.status === "LOADING"
+      ? harness.preview
+      : initial,
+    vi.fn(),
+  ],
   useEffect: (effect: () => unknown) => { harness.effects.push(effect); },
   useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) => {
     harness.getSnapshot = getSnapshot;
@@ -67,6 +72,22 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     harness.preview = { status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ" };
     expect(render()).toContain(`href="/login#${"a".repeat(43)}"`);
     expect(render()).not.toContain("สมชาย");
+  });
+
+  it("shows an account-creation form with self-asserted name guidance", () => {
+    harness.preview = {
+      status: "NEEDS_ACCOUNT",
+      invitation: {
+        expiresAt: "2026-10-02T00:00:00Z",
+        patientDisplayName: "สมชาย ใจดี",
+        acceptanceContractVersion: "family-delegation-v1",
+      },
+    };
+    const markup = render();
+    expect(markup).toContain("สร้างบัญชีผู้ดูแล");
+    expect(markup).toContain("เลขบัตรประชาชนของคุณ");
+    expect(markup).toContain("ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง");
+    expect(markup).toContain("สร้างบัญชีและตอบรับคำเชิญ");
   });
 
   it.each(["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"] as const)("keeps bounded recipient %s preview and never mutates on render/preview", async (invitationStatus) => {

@@ -54,6 +54,7 @@ describe("Patient self-read policy", () => {
     ["OSM", [Role.OSM]],
     ["Hospital", [Role.HOSPITAL]],
     ["Platform Admin", [Role.ADMIN]],
+    ["Caregiver", [Role.CAREGIVER]],
     ["no roles", []],
   ] as const)("denies actors without PATIENT role (%s)", (_label, roles) => {
       const decision = decidePatientSelfReadPolicy({

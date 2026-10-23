@@ -2,9 +2,11 @@
 
 ## Current language — Owner administration and care (2026-10-21)
 
-Current authority: [ADR-0019](./adr/0019-owner-administration-and-import-only-roster.md) for owner administration and care, and [ADR-0020](./adr/0020-self-registration-by-national-id.md) for public self-registration. Earlier status addenda are historical wherever they confer MEMBER/OSM administrative authority.
+Current authority: [ADR-0019](./adr/0019-owner-administration-and-import-only-roster.md) for owner administration and care, [ADR-0020](./adr/0020-self-registration-by-national-id.md) for public self-registration, and [ADR-0021](./adr/0021-caregiver-accounts-by-invitation.md) for patient-invited caregiver accounts. Earlier status addenda are historical wherever they confer MEMBER/OSM administrative authority.
 
 **Public self-registration (SR-1):** an eligible pre-provisioned staff, OSM or patient may create their first credential using national ID, subject to the 30-day eligibility window, the Hospital OWNER's audited setting and the server-side first-credential gates. The accepted identity-ownership and health-data disclosure risks, and the partner-agency acknowledgement required before production use with real data, are recorded as gate G-01 in [ADR-0020](./adr/0020-self-registration-by-national-id.md) and the [release gate](./operations/RELEASE_GATE.md).
+
+**Invitation-only caregiver accounts (AF-2):** a relative without a DEMI identity may create a CAREGIVER-only account only by accepting a patient's pending invitation with the matching checksum-valid national ID. The invitation token and ID are both required; /register remains non-disclosing for pending invitees and CAREGIVER-only accounts. CAREGIVER does not imply Patient, workforce, or admin authority. Self-asserted names are marked for the Patient and are replaced by authoritative Patient roster names during later Patient provisioning. Caregiver-only password recovery and LINE binding remain unavailable under current policy; see [ADR-0021](./adr/0021-caregiver-accounts-by-invitation.md).
 
 **Hospital administrative control plane:** Hospital administration and patient roster onboarding owned by the active direct Hospital OWNER. MEMBER and OSM relationships confer no independent administrative authority.
 

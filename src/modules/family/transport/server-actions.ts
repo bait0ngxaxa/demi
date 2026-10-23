@@ -10,6 +10,7 @@ import {
   acceptCaregiverInvitation,
   createCaregiverInvitation,
   previewCaregiverInvitation,
+  previewPublicCaregiverInvitation,
   rejectCaregiverInvitation,
   reissueCaregiverInvitationLink,
   revokeCaregiverRelationship,
@@ -27,6 +28,7 @@ import type {
   CreateCaregiverInvitationActionState,
   FamilyMutationActionState,
 } from "./action-state";
+import { CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE } from "./action-state";
 
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -106,7 +108,7 @@ export async function previewCaregiverInvitationAction(
   const parsedToken = caregiverInvitationTokenSchema.safeParse(plaintextToken);
 
   if (!parsedToken.success) {
-    return { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
+    return { status: "INVALID", message: CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE };
   }
 
   try {
@@ -123,14 +125,32 @@ export async function previewCaregiverInvitationAction(
       },
     };
   } catch (error: unknown) {
-    if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
-      return { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
-    }
     if (error instanceof ApplicationError && error.code === "UNAUTHENTICATED") {
-      return { status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ" };
+      try {
+        const invitation = await previewPublicCaregiverInvitation(parsedToken.data);
+        if (invitation.status === "NEEDS_ACCOUNT") {
+          return {
+            status: "NEEDS_ACCOUNT",
+            invitation: {
+              expiresAt: invitation.expiresAt.toISOString(),
+              patientDisplayName: invitation.patientDisplayName,
+              acceptanceContractVersion: invitation.acceptanceContractVersion,
+            },
+          };
+        }
+        return { status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ" };
+      } catch (publicError: unknown) {
+        if (publicError instanceof ApplicationError && publicError.code === "NOT_FOUND") {
+          return { status: "INVALID", message: CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE };
+        }
+        return { status: "ERROR", message: "ไม่สามารถตรวจสอบคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
+      }
+    }
+    if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
+      return { status: "INVALID", message: CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE };
     }
     if (error instanceof ApplicationError && error.code === "NOT_FOUND") {
-      return { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
+      return { status: "INVALID", message: CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE };
     }
 
     return { status: "ERROR", message: "ไม่สามารถตรวจสอบคำเชิญได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };

@@ -1,5 +1,7 @@
 import type { CaregiverInvitationStatus } from "@prisma/client";
 
+export const CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE = "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน";
+
 export type CreateCaregiverInvitationActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS"; invitationUrl: string; expiresAt: string }
@@ -12,6 +14,14 @@ export type FamilyMutationActionState =
 
 export type CaregiverInvitationPreviewActionState =
   | { status: "LOADING" }
+  | {
+      status: "NEEDS_ACCOUNT";
+      invitation: {
+        expiresAt: string;
+        patientDisplayName: string;
+        acceptanceContractVersion: string;
+      };
+    }
   | {
       status: "READY";
       invitation: {

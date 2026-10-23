@@ -68,7 +68,7 @@ describe("Hospital reporting policy", () => {
     });
   });
 
-  it.each([Role.OSM, Role.PATIENT, Role.ADMIN])("denies %s-only access", (role) => {
+  it.each([Role.OSM, Role.PATIENT, Role.ADMIN, Role.CAREGIVER])("denies %s-only access", (role) => {
     expect(decide(hospitalOwnerActor({ roles: [role], membershipType: MembershipType.MEMBER }))).toMatchObject({
       allowed: false,
       reason: "hospital_role_required",

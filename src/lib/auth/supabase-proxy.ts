@@ -8,14 +8,22 @@ import {
   type LineQuickActionReturnPath,
 } from "@/modules/line/domain/line-navigation-intents";
 
+export const PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER = "x-demi-public-caregiver-invitation";
+
 function createNextResponse(
   request: NextRequest,
   lineQuickActionReturnTo: LineQuickActionReturnPath | null,
 ): NextResponse {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete(LINE_QUICK_ACTION_RETURN_TO_HEADER);
+  requestHeaders.delete(PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER);
   if (lineQuickActionReturnTo) {
     requestHeaders.set(LINE_QUICK_ACTION_RETURN_TO_HEADER, lineQuickActionReturnTo);
+  }
+  const isPublicCaregiverInvitationPage = request.nextUrl.pathname === "/app/family/invitations" &&
+    (request.method === "GET" || request.method === "HEAD");
+  if (isPublicCaregiverInvitationPage) {
+    requestHeaders.set(PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER, "1");
   }
 
   const response = NextResponseFactory.next({
@@ -23,6 +31,11 @@ function createNextResponse(
       headers: requestHeaders,
     },
   });
+  if (isPublicCaregiverInvitationPage) {
+    response.headers.set("cache-control", "private, no-store");
+    response.headers.set("referrer-policy", "no-referrer");
+    response.headers.set("x-robots-tag", "noindex, nofollow");
+  }
   if (request.nextUrl.pathname === "/line/account" || request.nextUrl.pathname.startsWith("/api/line/account/")) {
     response.headers.set("cache-control", "private, no-store");
   }

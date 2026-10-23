@@ -324,6 +324,15 @@ Defaults รอลูกค้ายืนยัน (**default, pending customer
 | AF1-D5 | Create เริ่มจาก Work appointment hub แล้วเลือกผู้ป่วยด้วย directory เดิม; return path ยอมรับเฉพาะ literal `/app/appointments` | HOSPITAL ใช้ `findPatientDirectory`; OSM ใช้ `findAssignedPatientDirectory`; create route/policy เดิมยังตัดสินสิทธิ์ และกลับ hub พร้อม Hospital ที่สร้างรายการ |
 | AF1-D6 | hospital locator ที่ผิดรูปหรือไม่อยู่ใน scope ให้เลือก Hospital แรกที่ actor เข้าถึงได้ตาม UI-D8 | default selection ไม่ขยาย query scope; actor ที่ไม่มี scope ถูกปฏิเสธ |
 
+## AF-2 — Caregiver accounts by patient invitation (2026-10-23)
+
+| ID | การตัดสินใจ | ผลในระบบ |
+| --- | --- | --- |
+| AF-D1 | ญาติที่ยังไม่มีบัญชีสมัครได้เฉพาะจากคำเชิญของผู้ป่วย ผ่าน URL/QR เดิม; token ที่ผู้ป่วยส่งให้โดยเจตนาและเลขบัตรประชาชนที่ตรงกันเป็นหลักฐานการรับคำเชิญ ผู้ป่วย/โรงพยาบาลไม่ต้องทำขั้นตอนเพิ่ม | คำเชิญเก็บ hash ของเลขบัตรก่อนมี Person/User; claim ตรวจ token, สถานะ, วันหมดอายุ และ checksum แล้วสร้างบัญชี CAREGIVER และความสัมพันธ์ใน transaction เดียว. `/register` ไม่ค้นพบคำเชิญหรือบัญชี CAREGIVER-only; บัญชี PROVISIONED/INVITED ต้องเปิดใช้งานผ่านโรงพยาบาล |
+| AF-D2 | ความเสี่ยง token ถูกขโมยลดด้วยเลขบัตรที่ตรงกับคำเชิญ, การตอบผิด/หมดอายุ/ใช้แล้วแสดงข้อผิดพลาดเดียว, ไม่เปิดเผยบัญชีผ่าน `/register`, และจำกัดอัตราต่อ IP hash กับคำเชิญ | กำหนดชื่อ/นามสกุลของบัญชีใหม่เป็นข้อมูลที่ผู้ดูแลแจ้งเองและแสดงป้ายกำกับแก่ผู้ป่วย; audit ไม่มีเลขบัตร ชื่อ รหัสผ่าน หรือ token |
+| AF-D3 | CAREGIVER-only เป็นบัญชีครอบครัวโดยไม่มีสิทธิ์ PATIENT, workforce หรือ admin; หากภายหลังโรงพยาบาล provision เป็นผู้ป่วย ให้เพิ่ม role และข้อมูลทางการบน Person/User เดิม | navigation แสดงเฉพาะครอบครัวและตั้งค่า; policy เดิมปฏิเสธ CAREGIVER; patient provisioning ใช้ identity เดิมและแทนชื่อที่ผู้ใช้แจ้งเองด้วยข้อมูล roster |
+| AF-D4 | ใช้การสร้าง credential/password path เดิมของ activation; ไม่เปิด LINE link, recovery หรือ credential path เพิ่มให้ญาติใน AF-2 | credential provider ถูกสร้างนอก transaction DB และชดเชยเมื่อ transaction ไม่สำเร็จ; recovery ยังไม่เปิดใช้; ต้องรอการอนุมัติกระบวนการพิสูจน์ตัวตนเฉพาะ |
+
 คำตอบที่ใช้เป็นหลักฐานใน [BUSINESS_FLOW_GAP_CANONICAL.md](./BUSINESS_FLOW_GAP_CANONICAL.md) แต่ไม่เคยบันทึกใน register นี้ (Product Owner ส่งต่อ 2026-10-17; ไม่มีถ้อยคำต้นฉบับใน repo):
 
 - **ข-16** — โรคประจำตัว/ประวัติสุขภาพใช้แบบบันทึกประวัติสุขภาพของ Phase B (WB-DF-10) → PAT-03.

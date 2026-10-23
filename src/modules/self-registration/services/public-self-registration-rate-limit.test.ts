@@ -18,10 +18,10 @@ function database(hitCount = 1) {
 }
 
 describe("persisted public self-registration rate limits", () => {
-  it.each(["IP", "IDENTITY", "GLOBAL"] as const)("stores only an HMAC key for %s buckets", async (category) => {
+  it.each(["IP", "IDENTITY", "INVITATION", "GLOBAL"] as const)("stores only an HMAC key for %s buckets", async (category) => {
     const db = database();
     const limiter = createPublicSelfRegistrationRateLimiter(db as never, "a-test-only-secret-with-at-least-32-chars");
-    const principal = category === "IP" ? "203.0.113.9" : category === "GLOBAL" ? "GLOBAL" : "national-id-hash";
+    const principal = category === "IP" ? "203.0.113.9" : category === "GLOBAL" ? "GLOBAL" : `${category.toLowerCase()}-principal-hash`;
 
     await expect(limiter.consume(category, principal, NOW)).resolves.toBe(true);
     const call = db.$queryRaw.mock.calls[0];
@@ -37,7 +37,7 @@ describe("persisted public self-registration rate limits", () => {
     expect(call?.[0].join("")).toContain("LEAST");
   });
 
-  it.each(["IP", "IDENTITY", "GLOBAL"] as const)("denies %s requests after the fixed-window quota", async (category) => {
+  it.each(["IP", "IDENTITY", "INVITATION", "GLOBAL"] as const)("denies %s requests after the fixed-window quota", async (category) => {
     const limit = PUBLIC_SELF_REGISTRATION_RATE_LIMITS[category].limit;
     const db = database(limit + 1);
     const limiter = createPublicSelfRegistrationRateLimiter(db as never, "a-test-only-secret-with-at-least-32-chars");

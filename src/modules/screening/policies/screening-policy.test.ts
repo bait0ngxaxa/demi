@@ -128,7 +128,7 @@ describe("Screening policy", () => {
     ).toBe(false);
   });
 
-  it.each([Role.PATIENT, Role.ADMIN])("denies routine %s Screening operation", (role) => {
+  it.each([Role.PATIENT, Role.ADMIN, Role.CAREGIVER])("denies routine %s Screening operation", (role) => {
     expect(
       decideScreeningPolicy({
         actor: actor({ roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] }),

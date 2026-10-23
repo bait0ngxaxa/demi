@@ -165,7 +165,7 @@ describe("Follow-up policy", () => {
     ).toBe(false);
   });
 
-  it.each([Role.PATIENT, Role.ADMIN])("denies routine %s access", (role) => {
+  it.each([Role.PATIENT, Role.ADMIN, Role.CAREGIVER])("denies routine %s access", (role) => {
     expect(
       decideFollowupPolicy({
         actor: actor({ roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] }),

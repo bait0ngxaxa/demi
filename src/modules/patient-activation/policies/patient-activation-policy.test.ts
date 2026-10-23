@@ -45,14 +45,17 @@ describe("patient activation issuance policy", () => {
     ).toBe(true);
   });
 
-  it("does not grant the capability to OSM or an unrelated Hospital", () => {
+  it.each([Role.OSM, Role.CAREGIVER])("does not grant the capability to %s", (role) => {
     expect(
       canIssuePatientActivation(
-        createActor({ roles: [Role.OSM] }),
+        createActor({ roles: [role] }),
         targetPatient,
         hospitalId,
       ),
     ).toBe(false);
+  });
+
+  it("does not grant the capability to an unrelated Hospital", () => {
     expect(
       canIssuePatientActivation(
         createActor({

@@ -8,6 +8,8 @@ import {
 } from "@/shared/errors/application-error";
 
 import {
+  createUnpersistedPasswordAuthIdentity,
+  deleteUnpersistedPasswordAuthIdentity,
   provisionPasswordAuthIdentity,
   PasswordAuthProvisioningIdentityConflictError,
   PasswordAuthProvisioningProviderRejectedError,
@@ -43,6 +45,26 @@ function createProvider(): PasswordAuthAdminProvider {
 }
 
 describe("password auth identity provisioning", () => {
+  it("shares the opaque provider credential path for transactional first-credential signup", async () => {
+    const provider = createProvider();
+
+    await expect(createUnpersistedPasswordAuthIdentity(
+      { userId, password },
+      { provider },
+    )).resolves.toEqual({
+      authSubject: providerSubject,
+      providerLoginAlias: userId + "@auth.demi.internal",
+    });
+    await deleteUnpersistedPasswordAuthIdentity(providerSubject, { provider });
+
+    expect(provider.createUser).toHaveBeenCalledWith({
+      email: userId + "@auth.demi.internal",
+      password,
+      email_confirm: true,
+    });
+    expect(provider.deleteUser).toHaveBeenCalledWith(providerSubject);
+  });
+
   it("creates an opaque confirmed provider identity and persists its subject", async () => {
     const provider = createProvider();
     const store = createStore();

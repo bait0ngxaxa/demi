@@ -13,7 +13,7 @@ const expiresAt = new Date("2026-10-17T00:00:00.000Z");
 
 function databaseFixture(status: CaregiverInvitationStatus = CaregiverInvitationStatus.PENDING) {
   const transaction = {
-    user: { findFirst: vi.fn().mockResolvedValue({ id: actor.userId, personId: actor.personId, roles: [{ role: Role.PATIENT }] }) },
+    user: { findFirst: vi.fn().mockResolvedValue({ id: actor.userId, personId: actor.personId, roles: [{ role: Role.PATIENT }], person: { identityKeyHash: "a".repeat(64) } }) },
     patientProfile: { findUnique: vi.fn().mockResolvedValue({ id: "patient-profile", personId: actor.personId }) },
     caregiverInvitation: { findFirst: vi.fn().mockResolvedValue({ id: invitationId, status }) },
     caregiverRelationship: { create: vi.fn() },

@@ -53,6 +53,9 @@ describe("hospital onboarding policy", () => {
         decideHospitalOnboardingPolicy({ actor: actor([Role.HOSPITAL]), capability }).allowed,
       ).toBe(false);
       expect(
+        decideHospitalOnboardingPolicy({ actor: actor([Role.CAREGIVER]), capability }).allowed,
+      ).toBe(false);
+      expect(
         decideHospitalOnboardingPolicy({ actor: actor([Role.ADMIN]), capability }),
       ).toEqual({ allowed: true, reason: "platform_admin" });
     }

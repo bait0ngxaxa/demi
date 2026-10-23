@@ -13,6 +13,7 @@ enum Role {
   HOSPITAL
   OSM
   PATIENT
+  CAREGIVER
 }
 
 enum UserStatus {
@@ -449,6 +450,7 @@ model Person {
   identityKeyHash String   @unique @db.VarChar(64)
   givenName       String?  @db.VarChar(120)
   familyName      String?  @db.VarChar(120)
+  nameIsSelfAsserted Boolean @default(false)
   // Customer decision E3 (ก-19): optimistic-concurrency version for name correction.
   version         Int      @default(1)
   createdAt       DateTime @default(now())
@@ -1079,8 +1081,9 @@ model PatientHospitalHealthHistory {
 model CaregiverInvitation {
   id                         String                    @id @default(uuid()) @db.Uuid
   patientProfileId           String                    @db.Uuid
-  caregiverUserId            String                    @db.Uuid
-  caregiverPersonId          String                    @db.Uuid
+  caregiverUserId            String?                   @db.Uuid
+  caregiverPersonId          String?                   @db.Uuid
+  recipientIdentityKeyHash   String?                   @db.VarChar(64)
   issuedByUserId              String                    @db.Uuid
   tokenHash                   String                    @unique @db.VarChar(64)
   status                      CaregiverInvitationStatus @default(PENDING)
@@ -1095,7 +1098,7 @@ model CaregiverInvitation {
   updatedAt                   DateTime                  @updatedAt @db.Timestamptz(3)
 
   patientProfile PatientProfile @relation(fields: [patientProfileId], references: [id], onDelete: Restrict)
-  caregiverUser User @relation("CaregiverInvitationCaregiver", fields: [caregiverUserId, caregiverPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
+  caregiverUser User? @relation("CaregiverInvitationCaregiver", fields: [caregiverUserId, caregiverPersonId], references: [id, personId], onDelete: Restrict, onUpdate: Restrict)
   issuedByUser User @relation("CaregiverInvitationIssuer", fields: [issuedByUserId], references: [id], onDelete: Restrict)
   revokedByUser User? @relation("CaregiverInvitationRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
   revokedByUserId String? @db.Uuid
@@ -1103,6 +1106,7 @@ model CaregiverInvitation {
 
   @@index([patientProfileId, createdAt])
   @@index([caregiverUserId, createdAt])
+  @@index([patientProfileId, recipientIdentityKeyHash, status])
   // Additional source-pair FK is enforced by the corrective SQL migration.
   @@unique([id, patientProfileId, caregiverUserId], map: "CaregiverInvitation_source_pair_key")
   @@index([status, expiresAt])

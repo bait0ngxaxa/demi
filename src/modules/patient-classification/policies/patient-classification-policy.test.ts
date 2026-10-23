@@ -96,6 +96,16 @@ describe("Patient classification policy", () => {
     ).toBe(false);
   });
 
+  it.each([Role.CAREGIVER])("denies %s-only Patient classification access", (role) => {
+    expect(
+      decidePatientClassificationPolicy({
+        actor: actor({ roles: [role], hospitalMemberships: [] }),
+        capability: PATIENT_CLASSIFICATION_READ_CAPABILITY,
+        target: target(),
+      }).allowed,
+    ).toBe(false);
+  });
+
   it("denies ADMIN-only actors, missing Patient relationships, inactive memberships, and inactive Hospitals", () => {
     expect(
       decidePatientClassificationPolicy({

@@ -121,7 +121,7 @@ describe("Goal Plan policy", () => {
     ).toBe(false);
   });
 
-  it.each([Role.PATIENT, Role.ADMIN])("denies routine %s Goal access", (role) => {
+  it.each([Role.PATIENT, Role.ADMIN, Role.CAREGIVER])("denies routine %s Goal access", (role) => {
     expect(
       decideGoalPolicy({
         actor: actor({ roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] }),

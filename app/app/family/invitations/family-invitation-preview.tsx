@@ -15,13 +15,17 @@ import {
   caregiverInvitationStatusVariant,
   formatFamilyManagementDate,
 } from "@/modules/family/presentation/caregiver-relationship-presentation";
-import { caregiverInvitationTokenSchema } from "@/modules/family/schemas/caregiver-relationship-schemas";
+import {
+  caregiverAccountClaimResponseSchema,
+  caregiverInvitationTokenSchema,
+} from "@/modules/family/schemas/caregiver-relationship-schemas";
 import {
   acceptCaregiverInvitationAction,
   previewCaregiverInvitationAction,
   rejectCaregiverInvitationAction,
 } from "@/modules/family/transport/server-actions";
 import {
+  CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE,
   initialCaregiverInvitationPreviewActionState,
   initialFamilyMutationActionState,
 } from "@/modules/family/transport/action-state";
@@ -32,6 +36,120 @@ type InvitationTokenSnapshot =
   | { status: "READY"; token: string };
 
 const initialInvitationTokenSnapshot: InvitationTokenSnapshot = { status: "LOADING" };
+
+type AccountClaimState =
+  | { status: "IDLE" }
+  | { status: "PENDING" }
+  | { status: "ACCEPTED" }
+  | { status: "ERROR"; message: string };
+
+function CaregiverAccountClaimForm({
+  token,
+  patientDisplayName,
+  expiresAt,
+}: {
+  token: string;
+  patientDisplayName: string;
+  expiresAt: string;
+}): React.JSX.Element {
+  const [state, setState] = useState<AccountClaimState>({ status: "IDLE" });
+
+  async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (state.status === "PENDING") return;
+    setState({ status: "PENDING" });
+    const formData = new FormData(event.currentTarget);
+
+    try {
+      const response = await fetch("/api/v1/family/caregiver-invitations/accept-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          nationalId: formData.get("nationalId"),
+          givenName: formData.get("givenName"),
+          familyName: formData.get("familyName"),
+          password: formData.get("password"),
+          passwordConfirmation: formData.get("passwordConfirmation"),
+        }),
+        cache: "no-store",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+      });
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+      const parsed = caregiverAccountClaimResponseSchema.safeParse(payload);
+      if (response.ok && parsed.success && parsed.data.status === "ACCEPTED") {
+        setState({ status: "ACCEPTED" });
+      } else if (parsed.success && parsed.data.status === "ERROR") {
+        setState({ status: "ERROR", message: parsed.data.message });
+      } else {
+        setState({ status: "ERROR", message: "ไม่สามารถสร้างบัญชีได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
+      }
+    } catch {
+      setState({ status: "ERROR", message: connectionFailureMessage });
+    }
+  }
+
+  if (state.status === "ACCEPTED") {
+    return (
+      <Alert className="mt-5" variant="success">
+        <p className="font-semibold">สร้างบัญชีและตอบรับคำเชิญแล้ว</p>
+        <p className="mt-1">เข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้เพื่อดูครอบครัวของคุณ</p>
+        <Link
+          className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href="/login"
+        >
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </Alert>
+    );
+  }
+
+  return (
+    <Panel className="mt-5">
+      <h3 className="text-lg font-semibold text-text">สร้างบัญชีผู้ดูแล</h3>
+      <p className="mt-2 text-sm leading-6 text-text-muted">
+        คำเชิญจาก {patientDisplayName} หมดอายุ {formatFamilyManagementDate(new Date(expiresAt))}
+      </p>
+      <p className="mt-2 text-sm leading-6 text-text-muted">
+        ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง ผู้ป่วยจะเห็นชื่อนี้ในรายการครอบครัว
+      </p>
+      <form className="mt-5 space-y-4" onSubmit={(event) => void submit(event)}>
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-national-id">เลขบัตรประชาชนของคุณ</label>
+          <input autoComplete="off" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-national-id" inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" required type="text" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-given-name">ชื่อ</label>
+            <input autoComplete="given-name" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-given-name" maxLength={120} name="givenName" required type="text" />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-family-name">นามสกุล</label>
+            <input autoComplete="family-name" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-family-name" maxLength={120} name="familyName" required type="text" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password">รหัสผ่าน (อย่างน้อย 12 ตัวอักษร)</label>
+          <input autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password" maxLength={128} minLength={12} name="password" required type="password" />
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password-confirmation">ยืนยันรหัสผ่าน</label>
+          <input autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required type="password" />
+        </div>
+        {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
+        <Button disabled={state.status === "PENDING"} loading={state.status === "PENDING"} type="submit">
+          {state.status === "PENDING" ? "กำลังสร้างบัญชี..." : "สร้างบัญชีและตอบรับคำเชิญ"}
+        </Button>
+      </form>
+    </Panel>
+  );
+}
 
 function createInvitationTokenStore(): {
   subscribe: (listener: () => void) => () => void;
@@ -180,7 +298,7 @@ export function FamilyInvitationPreview(): React.JSX.Element {
     <div className="max-w-3xl">
       <PageHeader
         breadcrumbs={[{ label: "ครอบครัวและผู้ดูแล", href: "/app/family" }, { label: "คำเชิญ" }]}
-        description="ตรวจสอบคำเชิญสำหรับบัญชีที่เข้าสู่ระบบ และเลือกตอบรับหรือปฏิเสธด้วยตนเอง"
+        description="ตรวจสอบคำเชิญจากผู้ป่วยและตอบรับด้วยบัญชีของคุณ"
         title="คำเชิญผู้ดูแล"
       />
 
@@ -208,7 +326,7 @@ export function FamilyInvitationPreview(): React.JSX.Element {
         <Alert className="mt-6" variant={preview.status === "ERROR" ? "danger" : "warning"}>
           <p className="font-semibold">
             {tokenSnapshot.status === "INVALID" && preview.status === "LOADING"
-              ? "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน"
+              ? CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE
               : preview.status === "INVALID" || preview.status === "ERROR"
                 ? preview.message
                 : "คำเชิญไม่พร้อมใช้งาน"}
@@ -228,6 +346,14 @@ export function FamilyInvitationPreview(): React.JSX.Element {
           <p className="mt-1">หลังเข้าสู่ระบบ ระบบจะกลับมาตรวจสอบคำเชิญนี้อีกครั้ง</p>
           {token ? <LoginLink token={token} /> : null}
         </Alert>
+      ) : null}
+
+      {preview.status === "NEEDS_ACCOUNT" && token ? (
+        <CaregiverAccountClaimForm
+          expiresAt={preview.invitation.expiresAt}
+          patientDisplayName={preview.invitation.patientDisplayName}
+          token={token}
+        />
       ) : null}
 
       {preview.status === "READY" ? (

@@ -131,6 +131,7 @@ describe("workforce password reset policy (ADR-0008 amendment D3)", () => {
       reason: "active_hospital_required",
     });
     expect(decide(actorWith(MembershipType.OWNER, { roles: [Role.OSM] }), "OSM").allowed).toBe(false);
+    expect(decide(actorWith(null, { roles: [Role.CAREGIVER] }), "HOSPITAL_MEMBER").allowed).toBe(false);
   });
 
   it("fails closed for a missing actor and malformed input", () => {

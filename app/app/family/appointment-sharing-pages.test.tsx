@@ -12,7 +12,7 @@ import ListPage from "./grants/[grantId]/appointments/page";
 import DetailPage from "./grants/[grantId]/appointments/[appointmentId]/page";
 
 const now = new Date("2026-10-02T00:00:00Z");
-const participant = { givenName: "สมชาย", familyName: "ใจดี" };
+const participant = { givenName: "สมชาย", familyName: "ใจดี", nameIsSelfAsserted: false };
 const relationship = { participant, relationshipId: "parent-locator", status: "ACTIVE" as const, activatedAt: now, revokedAt: null, withdrawnAt: null };
 const grant = { participant, grantId: "grant-locator", hospitalName: "หน่วยบริการทดสอบ", status: "PENDING" as const, proposedAt: now, acceptedAt: null, revokedAt: null };
 const overview: AppointmentGrantManagement = { patient: { grants: [grant, { ...grant, grantId: "active-locator", status: "ACTIVE", acceptedAt: now }], nextCursor: null,

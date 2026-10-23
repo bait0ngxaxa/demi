@@ -64,6 +64,7 @@ describe("Hospital Owner policy", () => {
     }] }), HOSPITAL_OWNER_CAPABILITIES.promote, hospitalId],
     ["OSM", createActor({ roles: [Role.OSM], hospitalMemberships: [] }), HOSPITAL_OWNER_CAPABILITIES.demote, hospitalId],
     ["PATIENT", createActor({ roles: [Role.PATIENT], hospitalMemberships: [] }), HOSPITAL_OWNER_CAPABILITIES.demote, hospitalId],
+    ["CAREGIVER", createActor({ roles: [Role.CAREGIVER], hospitalMemberships: [] }), HOSPITAL_OWNER_CAPABILITIES.demote, hospitalId],
     ["ADMIN only", createActor({ roles: [Role.ADMIN], hospitalMemberships: [] }), HOSPITAL_OWNER_CAPABILITIES.promote, hospitalId],
     ["inactive membership", createActor({ hospitalMemberships: [{
       hospitalId,

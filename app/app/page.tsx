@@ -165,6 +165,9 @@ export default async function ApplicationPage(
   const paramsPromise: Promise<Record<string, string | string[] | undefined>> =
     searchParams ?? Promise.resolve({});
   const [actor, params] = await Promise.all([resolveProtectedActor(), paramsPromise]);
+  if (actor.roles.length === 1 && actor.roles[0] === Role.CAREGIVER) {
+    redirect("/app/family");
+  }
   const hospitalWorkspaces = await listActorHospitalWorkspaces(actor);
   const projection = projectApplicationWorkspace(actor, hospitalWorkspaces);
   // ADR-0018: a pending Child OWNER invitation is answered here, so it keeps even a Patient-only account on this page.

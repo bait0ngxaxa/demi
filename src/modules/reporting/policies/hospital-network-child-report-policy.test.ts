@@ -59,7 +59,7 @@ describe("Hospital Network Child reporting policy", () => {
   });
 
   it("does not inherit the Parent path from ADMIN-only, OSM-only or PATIENT-only roles", () => {
-    for (const role of [Role.ADMIN, Role.OSM, Role.PATIENT]) {
+    for (const role of [Role.ADMIN, Role.OSM, Role.PATIENT, Role.CAREGIVER]) {
       expect(decide({ actor: { ...actor, roles: [role] } })).toMatchObject({
         allowed: false,
         reason: "hospital_role_required",

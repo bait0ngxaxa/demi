@@ -107,6 +107,16 @@ describe("Patient Baseline policy", () => {
     ).toBe(false);
   });
 
+  it.each([Role.CAREGIVER])("denies %s-only access to Patient Baseline", (role) => {
+    expect(
+      decidePatientBaselinePolicy({
+        actor: actor({ roles: [role], hospitalMemberships: [] }),
+        capability: PATIENT_BASELINE_READ_CAPABILITY,
+        target: target(),
+      }).allowed,
+    ).toBe(false);
+  });
+
   it("denies ADMIN-only, inactive scope, and Hospital hierarchy widening", () => {
     expect(
       decidePatientBaselinePolicy({

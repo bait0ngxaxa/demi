@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createInvitation: vi.fn(),
   reissueInvitation: vi.fn(),
   previewInvitation: vi.fn(),
+  previewPublicInvitation: vi.fn(),
   acceptInvitation: vi.fn(),
   rejectInvitation: vi.fn(),
   revokeInvitation: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../services/caregiver-relationship-service", () => ({
   createCaregiverInvitation: mocks.createInvitation,
   reissueCaregiverInvitationLink: mocks.reissueInvitation,
   previewCaregiverInvitation: mocks.previewInvitation,
+  previewPublicCaregiverInvitation: mocks.previewPublicInvitation,
   acceptCaregiverInvitation: mocks.acceptInvitation,
   rejectCaregiverInvitation: mocks.rejectInvitation,
   revokePendingCaregiverInvitation: mocks.revokeInvitation,
@@ -202,10 +204,29 @@ describe("invitation preview privacy boundary", () => {
   });
   it("keeps reachable unauthenticated handoff generic and usable", async () => {
     mocks.getActor.mockRejectedValueOnce(new UnauthenticatedError());
+    mocks.previewPublicInvitation.mockResolvedValueOnce({ status: "NEEDS_LOGIN" });
     expect(await previewCaregiverInvitationAction("a".repeat(43))).toEqual({
       status: "NEEDS_LOGIN", message: "กรุณาเข้าสู่ระบบด้วยบัญชีผู้รับคำเชิญ",
     });
-    expect(mocks.previewInvitation).not.toHaveBeenCalled();
+    expect(mocks.previewPublicInvitation).toHaveBeenCalledWith("a".repeat(43));
+  });
+  it("offers account creation only for a valid hash-bound invitation", async () => {
+    mocks.getActor.mockRejectedValueOnce(new UnauthenticatedError());
+    mocks.previewPublicInvitation.mockResolvedValueOnce({
+      status: "NEEDS_ACCOUNT",
+      expiresAt: new Date("2026-10-02T00:00:00Z"),
+      patientDisplayName: "สมชาย ใจดี",
+      acceptanceContractVersion: "family-delegation-v1",
+    });
+
+    expect(await previewCaregiverInvitationAction("a".repeat(43))).toEqual({
+      status: "NEEDS_ACCOUNT",
+      invitation: {
+        expiresAt: "2026-10-02T00:00:00.000Z",
+        patientDisplayName: "สมชาย ใจดี",
+        acceptanceContractVersion: "family-delegation-v1",
+      },
+    });
   });
   it.each(["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"])("preserves bounded exact-recipient %s preview without mutation", async (status) => {
     mocks.previewInvitation.mockResolvedValueOnce({ status, expiresAt: new Date("2026-10-02T00:00:00Z"), patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1" });

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { caregiverRelationshipQueryInternals as queries } from "./caregiver-relationship-query-service";
 
-const names = { givenName: true, familyName: true };
+const names = { givenName: true, familyName: true, nameIsSelfAsserted: true };
 const invitationFields = { id: true, status: true, issuedAt: true, expiresAt: true };
 const relationshipFields = { id: true, status: true, activatedAt: true, revokedAt: true, withdrawnAt: true };
 
@@ -22,15 +22,15 @@ describe("Family management query projections", () => {
   });
 
   it("serializes only allowlisted participant names and lifecycle metadata", () => {
-    const participant = { givenName: "สมหญิง", familyName: "ใจดี", identityKeyHash: "private", phone: "private" };
+    const participant = { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false, identityKeyHash: "private", phone: "private" };
     const now = new Date("2026-10-01T00:00:00Z");
     expect(queries.asInvitationItem({ id: "invite", status: CaregiverInvitationStatus.PENDING, issuedAt: now, expiresAt: now }, now, participant)).toEqual({
       invitationId: "invite", status: CaregiverInvitationStatus.EXPIRED, issuedAt: now, expiresAt: now,
-      participant: { givenName: "สมหญิง", familyName: "ใจดี" },
+      participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
     });
     expect(queries.asRelationshipItem({ id: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null }, participant)).toEqual({
       relationshipId: "relationship", status: CaregiverRelationshipStatus.ACTIVE, activatedAt: now, revokedAt: null, withdrawnAt: null,
-      participant: { givenName: "สมหญิง", familyName: "ใจดี" },
+      participant: { givenName: "สมหญิง", familyName: "ใจดี", nameIsSelfAsserted: false },
     });
   });
 });

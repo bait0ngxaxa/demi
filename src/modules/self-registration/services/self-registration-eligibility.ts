@@ -193,6 +193,9 @@ function readEligibility(
   options: SelfRegistrationEligibilityOptions = {},
 ): SelfRegistrationEligibility {
   if (!user || !identityKeyHash || isOwnerOrAdmin(user)) return { outcome: "NOT_FOUND" };
+  if (user.roles.length === 1 && user.roles[0]?.role === Role.CAREGIVER) {
+    return { outcome: "NOT_FOUND" };
+  }
   if (user.status === UserStatus.ACTIVE && user.authSubject !== null) {
     return { outcome: "ALREADY_ACTIVE" };
   }

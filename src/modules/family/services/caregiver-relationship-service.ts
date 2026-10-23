@@ -14,7 +14,7 @@ import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
-import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
 import {
   ConflictError,
   ForbiddenError,
@@ -63,6 +63,7 @@ export type AcceptedCaregiverInvitation = {
 type CurrentUserRecord = {
   id: string;
   personId: string;
+  identityKeyHash: string;
   roles: { role: Role }[];
 };
 
@@ -113,6 +114,7 @@ async function assertActiveUser(
       id: true,
       personId: true,
       roles: { select: { role: true } },
+      person: { select: { identityKeyHash: true } },
     },
   });
 
@@ -120,7 +122,12 @@ async function assertActiveUser(
     throw new ForbiddenError();
   }
 
-  return user;
+  return {
+    id: user.id,
+    personId: user.personId,
+    identityKeyHash: user.person.identityKeyHash,
+    roles: user.roles,
+  };
 }
 
 async function assertPatientSelf(
@@ -155,6 +162,7 @@ async function expirePairInvitations(
   const expiredInvitations = await database.$queryRaw<ExpiringInvitationRow[]>(Prisma.sql`
     UPDATE "CaregiverInvitation"
     SET "status" = 'EXPIRED',
+        "recipientIdentityKeyHash" = NULL,
         "expiredAt" = clock_timestamp(),
         "updatedAt" = clock_timestamp()
     WHERE "patientProfileId" = ${patientProfileId}::uuid
@@ -178,14 +186,49 @@ async function expirePairInvitations(
   }
 }
 
-async function expireInvitationIfDue(
+async function expireHashInvitation(
   database: Prisma.TransactionClient,
   actorUserId: string,
+  patientProfileId: string,
+  recipientIdentityKeyHash: string,
+): Promise<void> {
+  const expiredInvitations = await database.$queryRaw<ExpiringInvitationRow[]>(Prisma.sql`
+    UPDATE "CaregiverInvitation"
+    SET "status" = 'EXPIRED',
+        "recipientIdentityKeyHash" = NULL,
+        "expiredAt" = clock_timestamp(),
+        "updatedAt" = clock_timestamp()
+    WHERE "patientProfileId" = ${patientProfileId}::uuid
+      AND "recipientIdentityKeyHash" = ${recipientIdentityKeyHash}
+      AND "caregiverUserId" IS NULL
+      AND "status" = 'PENDING'
+      AND "expiresAt" <= clock_timestamp()
+    RETURNING "id"
+  `);
+
+  for (const invitation of expiredInvitations) {
+    await recordAuditEvent(
+      {
+        actorUserId,
+        action: "caregiver_invitation.expired",
+        resourceType: "caregiver_invitation",
+        resourceId: invitation.id,
+        metadata: { status: CaregiverInvitationStatus.EXPIRED },
+      },
+      database,
+    );
+  }
+}
+
+async function expireInvitationIfDue(
+  database: Prisma.TransactionClient,
+  actorUserId: string | null,
   invitationId: string,
 ): Promise<boolean> {
   const expiredInvitations = await database.$queryRaw<ExpiringInvitationRow[]>(Prisma.sql`
     UPDATE "CaregiverInvitation"
     SET "status" = 'EXPIRED',
+        "recipientIdentityKeyHash" = NULL,
         "expiredAt" = clock_timestamp(),
         "updatedAt" = clock_timestamp()
     WHERE "id" = ${invitationId}::uuid
@@ -210,6 +253,15 @@ async function expireInvitationIfDue(
   );
 
   return true;
+}
+
+async function expireInvitationFromPublicPreview(
+  database: PrismaClient,
+  invitationId: string,
+): Promise<void> {
+  await runSerializableTransaction(database, async (transaction) => {
+    await expireInvitationIfDue(transaction, null, invitationId);
+  });
 }
 
 export async function createCaregiverInvitation(
@@ -243,30 +295,32 @@ export async function createCaregiverInvitation(
         },
       });
       const caregiver = recipientPerson?.user;
+      const isUnregisteredRelative = recipientPerson === null;
 
-      if (
-        !recipientPerson ||
+      if (recipientPerson && (
         !caregiver ||
         caregiver.status !== UserStatus.ACTIVE ||
         !caregiver.authSubject ||
         caregiver.personId !== recipientPerson.id ||
         caregiver.id === actor.userId ||
         recipientPerson.id === patient.patientPersonId
-      ) {
+      )) {
         throw new ConflictError("A caregiver invitation cannot be created for this information");
       }
 
-      await expirePairInvitations(
-        transaction,
-        actor.userId,
-        patient.patientProfileId,
-        caregiver.id,
-      );
+      if (isUnregisteredRelative) {
+        await expireHashInvitation(transaction, actor.userId, patient.patientProfileId, recipientIdentityHash);
+      } else if (caregiver) {
+        await expirePairInvitations(transaction, actor.userId, patient.patientProfileId, caregiver.id);
+      }
 
+      const recipientUserFilter: Prisma.CaregiverRelationshipWhereInput = isUnregisteredRelative
+        ? { caregiverUser: { person: { identityKeyHash: recipientIdentityHash } } }
+        : { caregiverUserId: caregiver?.id };
       const activeRelationship = await transaction.caregiverRelationship.findFirst({
         where: {
           patientProfileId: patient.patientProfileId,
-          caregiverUserId: caregiver.id,
+          ...recipientUserFilter,
           status: CaregiverRelationshipStatus.ACTIVE,
         },
         select: { id: true },
@@ -274,8 +328,10 @@ export async function createCaregiverInvitation(
       const pendingInvitation = await transaction.caregiverInvitation.findFirst({
         where: {
           patientProfileId: patient.patientProfileId,
-          caregiverUserId: caregiver.id,
           status: CaregiverInvitationStatus.PENDING,
+          ...(isUnregisteredRelative
+            ? { recipientIdentityKeyHash: recipientIdentityHash }
+            : { caregiverUserId: caregiver?.id }),
         },
         select: { id: true },
       });
@@ -296,8 +352,9 @@ export async function createCaregiverInvitation(
       const invitation = await transaction.caregiverInvitation.create({
         data: {
           patientProfileId: patient.patientProfileId,
-          caregiverUserId: caregiver.id,
-          caregiverPersonId: recipientPerson.id,
+          ...(isUnregisteredRelative
+            ? { recipientIdentityKeyHash: recipientIdentityHash }
+            : { caregiverUserId: caregiver?.id, caregiverPersonId: recipientPerson?.id }),
           issuedByUserId: actor.userId,
           tokenHash: credential.tokenHash,
           status: CaregiverInvitationStatus.PENDING,
@@ -372,6 +429,7 @@ export async function previewCaregiverInvitation(
       select: {
         caregiverUserId: true,
         caregiverPersonId: true,
+        recipientIdentityKeyHash: true,
         status: true,
         expiresAt: true,
         patientProfile: {
@@ -386,10 +444,12 @@ export async function previewCaregiverInvitation(
       throw new NotFoundError();
     }
 
-    if (
-      invitation.caregiverUserId !== user.id ||
-      invitation.caregiverPersonId !== user.personId
-    ) {
+    const isBoundToUser = invitation.caregiverUserId === user.id &&
+      invitation.caregiverPersonId === user.personId;
+    const isHashInvitationForUser = invitation.caregiverUserId === null &&
+      invitation.caregiverPersonId === null && invitation.recipientIdentityKeyHash !== null &&
+      identityKeyHashesMatch(invitation.recipientIdentityKeyHash, user.identityKeyHash);
+    if (!isBoundToUser && !isHashInvitationForUser) {
       throw new ForbiddenError();
     }
 
@@ -401,6 +461,63 @@ export async function previewCaregiverInvitation(
 
     return {
       status,
+      expiresAt: invitation.expiresAt,
+      patientDisplayName: formatPersonDisplayName(invitation.patientProfile.person),
+      acceptanceContractVersion: FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION,
+    };
+  } catch (error: unknown) {
+    rethrowServiceError(error, "Caregiver invitation could not be previewed");
+  }
+}
+
+export type PublicCaregiverInvitationPreview = {
+  status: "NEEDS_ACCOUNT" | "NEEDS_LOGIN";
+  expiresAt: Date;
+  patientDisplayName: string;
+  acceptanceContractVersion: typeof FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION;
+};
+
+/** Token possession previews only the invitation's patient and the required next account step. */
+export async function previewPublicCaregiverInvitation(
+  plaintextToken: unknown,
+  dependencies: Pick<CaregiverRelationshipServiceDependencies, "database" | "now"> = {},
+): Promise<PublicCaregiverInvitationPreview> {
+  const parsedToken = caregiverInvitationTokenSchema.safeParse(plaintextToken);
+  if (!parsedToken.success) throw new NotFoundError();
+
+  const database = dependencies.database ?? getPrisma();
+  try {
+    const invitation = await database.caregiverInvitation.findUnique({
+      where: { tokenHash: hashCaregiverInvitationToken(parsedToken.data) },
+      select: {
+        id: true,
+        caregiverUserId: true,
+        caregiverPersonId: true,
+        recipientIdentityKeyHash: true,
+        status: true,
+        expiresAt: true,
+        patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
+      },
+    });
+
+    if (!invitation) {
+      throw new NotFoundError();
+    }
+
+    const isUnclaimedIdentity = invitation.caregiverUserId === null &&
+      invitation.caregiverPersonId === null && invitation.recipientIdentityKeyHash !== null;
+    if (invitation.status !== CaregiverInvitationStatus.PENDING) {
+      throw new NotFoundError();
+    }
+    if (invitation.expiresAt.getTime() <= getNow(dependencies).getTime()) {
+      if (isUnclaimedIdentity) {
+        await expireInvitationFromPublicPreview(database, invitation.id);
+      }
+      throw new NotFoundError();
+    }
+
+    return {
+      status: isUnclaimedIdentity ? "NEEDS_ACCOUNT" : "NEEDS_LOGIN",
       expiresAt: invitation.expiresAt,
       patientDisplayName: formatPersonDisplayName(invitation.patientProfile.person),
       acceptanceContractVersion: FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION,
@@ -427,8 +544,10 @@ async function transitionPendingInvitation(
     if (transition === "REJECTED") {
       where = {
         ...("tokenHash" in locator ? { tokenHash: locator.tokenHash } : { id: locator.invitationId }),
-        caregiverUserId: user.id,
-        caregiverPersonId: user.personId,
+        OR: [
+          { caregiverUserId: user.id, caregiverPersonId: user.personId },
+          { caregiverUserId: null, caregiverPersonId: null, recipientIdentityKeyHash: user.identityKeyHash },
+        ],
       };
     } else {
       if (!("invitationId" in locator)) {
@@ -462,11 +581,17 @@ async function transitionPendingInvitation(
         ? await transaction.$queryRaw<ExpiringInvitationRow[]>(Prisma.sql`
             UPDATE "CaregiverInvitation"
             SET "status" = 'REJECTED',
+                "caregiverUserId" = ${user.id}::uuid,
+                "caregiverPersonId" = ${user.personId}::uuid,
+                "recipientIdentityKeyHash" = NULL,
                 "rejectedAt" = clock_timestamp(),
                 "updatedAt" = clock_timestamp()
             WHERE "id" = ${invitation.id}::uuid
-              AND "caregiverUserId" = ${user.id}::uuid
-              AND "caregiverPersonId" = ${user.personId}::uuid
+              AND (
+                ("caregiverUserId" = ${user.id}::uuid AND "caregiverPersonId" = ${user.personId}::uuid)
+                OR ("caregiverUserId" IS NULL AND "caregiverPersonId" IS NULL
+                    AND "recipientIdentityKeyHash" = ${user.identityKeyHash})
+              )
               AND "status" = 'PENDING'
               AND "expiresAt" > clock_timestamp()
             RETURNING "id"
@@ -474,6 +599,7 @@ async function transitionPendingInvitation(
         : await transaction.$queryRaw<ExpiringInvitationRow[]>(Prisma.sql`
             UPDATE "CaregiverInvitation"
             SET "status" = 'REVOKED',
+                "recipientIdentityKeyHash" = NULL,
                 "revokedAt" = clock_timestamp(),
                 "revokedByUserId" = ${user.id}::uuid,
                 "updatedAt" = clock_timestamp()
@@ -692,6 +818,7 @@ export async function acceptCaregiverInvitation(
           patientProfileId: true,
           caregiverUserId: true,
           caregiverPersonId: true,
+          recipientIdentityKeyHash: true,
           status: true,
         },
       });
@@ -700,10 +827,12 @@ export async function acceptCaregiverInvitation(
         throw new NotFoundError();
       }
 
-      if (
-        invitation.caregiverUserId !== user.id ||
-        invitation.caregiverPersonId !== user.personId
-      ) {
+      const isBoundToUser = invitation.caregiverUserId === user.id &&
+        invitation.caregiverPersonId === user.personId;
+      const isHashInvitationForUser = invitation.caregiverUserId === null &&
+        invitation.caregiverPersonId === null && invitation.recipientIdentityKeyHash !== null &&
+        identityKeyHashesMatch(invitation.recipientIdentityKeyHash, user.identityKeyHash);
+      if (!isBoundToUser && !isHashInvitationForUser) {
         throw new ForbiddenError();
       }
 
@@ -714,12 +843,18 @@ export async function acceptCaregiverInvitation(
       const acceptedInvitations = await transaction.$queryRaw<AcceptedInvitationRow[]>(Prisma.sql`
         UPDATE "CaregiverInvitation"
         SET "status" = 'ACCEPTED',
+            "caregiverUserId" = ${user.id}::uuid,
+            "caregiverPersonId" = ${user.personId}::uuid,
+            "recipientIdentityKeyHash" = NULL,
             "acceptedAt" = clock_timestamp(),
             "acceptanceContractVersion" = ${FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION},
             "updatedAt" = clock_timestamp()
         WHERE "id" = ${invitation.id}::uuid
-          AND "caregiverUserId" = ${user.id}::uuid
-          AND "caregiverPersonId" = ${user.personId}::uuid
+          AND (
+            ("caregiverUserId" = ${user.id}::uuid AND "caregiverPersonId" = ${user.personId}::uuid)
+            OR ("caregiverUserId" IS NULL AND "caregiverPersonId" IS NULL
+                AND "recipientIdentityKeyHash" = ${user.identityKeyHash})
+          )
           AND "status" = 'PENDING'
           AND "expiresAt" > clock_timestamp()
         RETURNING "id", "acceptedAt"

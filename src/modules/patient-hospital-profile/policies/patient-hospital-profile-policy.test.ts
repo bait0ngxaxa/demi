@@ -26,7 +26,7 @@ describe("Patient Hospital profile update policy", () => {
     ).toMatchObject({ allowed: true, scope: "SELF" });
   });
 
-  it.each([[Role.HOSPITAL], [Role.OSM], [Role.ADMIN]])(
+  it.each([[Role.HOSPITAL], [Role.OSM], [Role.ADMIN], [Role.CAREGIVER]])(
     "denies a work-only %s actor",
     (role) => {
       expect(

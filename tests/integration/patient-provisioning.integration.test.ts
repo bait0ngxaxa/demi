@@ -351,6 +351,48 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     expect(await prisma.person.count()).toBe(2);
   });
 
+  it("reconciles a CAREGIVER-only identity into one hospital Patient identity and replaces its self-asserted name", async () => {
+    const hospital = await createHospital("INTEG-CARE-REUSE");
+    const { actor } = await createActor({ kind: "HOSPITAL", hospitalId: hospital.id });
+    const identityKeyHash = hashIdentityReference({
+      namespace: "thai-national-id",
+      value: nationalIds.reused,
+    });
+    const person = await prisma.person.create({
+      data: {
+        identityKeyHash,
+        givenName: "ชื่อที่ผู้ดูแลแจ้ง",
+        familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
+        nameIsSelfAsserted: true,
+      },
+      select: { id: true },
+    });
+    const user = await prisma.user.create({
+      data: {
+        personId: person.id,
+        authSubject: "11111111-1111-4111-8111-111111111112",
+        status: UserStatus.ACTIVE,
+        roles: { create: { role: Role.CAREGIVER } },
+      },
+      select: { id: true },
+    });
+
+    const result = await provisionPatient(actor, patientInput(nationalIds.reused, hospital.id));
+
+    expect(result).toMatchObject({ personId: person.id, userId: user.id, accountStatus: UserStatus.ACTIVE, reusedExistingUser: true });
+    expect(await prisma.user.count({ where: { personId: person.id } })).toBe(1);
+    expect(await prisma.person.count({ where: { identityKeyHash } })).toBe(1);
+    expect(await prisma.person.findUniqueOrThrow({
+      where: { id: person.id },
+      select: { givenName: true, familyName: true, nameIsSelfAsserted: true },
+    })).toEqual({ givenName: "สมชาย", familyName: "ผู้ป่วย", nameIsSelfAsserted: false });
+    expect(await prisma.userRole.findMany({
+      where: { userId: user.id },
+      select: { role: true },
+      orderBy: { role: "asc" },
+    })).toEqual(expect.arrayContaining([{ role: Role.CAREGIVER }, { role: Role.PATIENT }]));
+  });
+
   it("denies OSM patient creation through the internal import row boundary", async () => {
     const hospital = await createHospital("INTEGRATION-PATIENT-OSM-DENIED");
     const { actor } = await createActor({ kind: "OSM", hospitalId: hospital.id });

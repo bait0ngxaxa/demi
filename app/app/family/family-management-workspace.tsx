@@ -123,7 +123,7 @@ function CreateCaregiverInvitationForm(): React.JSX.Element {
     <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text">เพิ่มผู้ดูแล</h3>
       <p className="type-readable mt-2 text-sm leading-6 text-text-muted">
-        ระบุเลขบัตรประชาชนของบัญชีที่มีอยู่แล้ว ระบบจะส่งลิงก์ให้คุณนำไปแชร์ด้วยตนเอง
+        ระบุเลขบัตรประชาชนของผู้ดูแล แล้วแชร์ลิงก์หรือ QR ให้ผู้รับด้วยตนเอง หากยังไม่มีบัญชี ผู้รับสามารถสร้างบัญชีจากคำเชิญนี้โดยใช้เลขบัตรเดียวกัน
         การรู้เลขบัตรประชาชนอย่างเดียวไม่ทำให้เกิดสิทธิ์หรือความสัมพันธ์
       </p>
       <form
@@ -373,6 +373,9 @@ function PatientPerspective({
                 <li className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between" key={relationship.relationshipId}>
                   <div>
                     <p className="mb-2 break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}</p>
+                    {relationship.participant.nameIsSelfAsserted ? (
+                      <p className="mb-2 text-sm text-text-muted">ชื่อที่ผู้ดูแลแจ้งเอง</p>
+                    ) : null}
                     <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
                       {caregiverRelationshipStatusLabel(relationship.status)}
                     </StatusBadge>

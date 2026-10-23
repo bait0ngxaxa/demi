@@ -407,7 +407,7 @@ describe("application navigation visibility (unchanged policies)", () => {
   });
 
   it("offers the shared Family route in every workspace to every active actor type, including non-Patient caregivers", () => {
-    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN], [Role.PATIENT, Role.OSM]] as const) {
+    for (const roles of [[Role.HOSPITAL], [Role.OSM], [Role.PATIENT], [Role.ADMIN], [Role.PATIENT, Role.OSM], [Role.CAREGIVER, Role.PATIENT]] as const) {
       const groups = project(actor({ roles }));
       const workspaces = [...new Set(groups.flatMap(({ workspace: groupWorkspace }) => groupWorkspace === "personal" || groupWorkspace === "work" ? [groupWorkspace] : []))];
 
@@ -422,10 +422,20 @@ describe("application navigation visibility (unchanged policies)", () => {
     }
   });
 
+  it("limits a CAREGIVER-only account to family and settings navigation", () => {
+    const groups = project(actor({ roles: [Role.CAREGIVER] }));
+    const hrefs = allHrefs(groups);
+
+    expect(hrefs).toEqual(["/app/family", "/app/settings"]);
+    expect(groups.some(({ workspace }) => workspace === "personal" || workspace === "work")).toBe(false);
+    expect(hrefs.some((href) => href.startsWith("/app/personal") || href.startsWith("/app/patients") ||
+      href.startsWith("/app/hospitals") || href.startsWith("/app/admin"))).toBe(false);
+  });
+
   it("gives the Patient the customer menus verbatim in every Personal workspace and never in Work", () => {
     const bottom = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
     const top = ["ประวัติการนัดหมาย", "ครอบครัวของฉัน", "ยา", "Food & Finess", "ติดต่อเรา"];
-    for (const roles of [[Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN]] as const) {
+    for (const roles of [[Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN], [Role.PATIENT, Role.CAREGIVER]] as const) {
       const groups = project(actor({ roles, osmHospitalRelationships: [osm(hospitalId)], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }));
       const labels = (id: string, context: ApplicationWorkspaceContext) =>
         groups.filter((group) => group.id === id && group.workspace === context).flatMap(({ items }) => items.map(({ label }) => label));

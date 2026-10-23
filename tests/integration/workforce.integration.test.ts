@@ -359,6 +359,59 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     });
   });
 
+  it("provisions workforce onto an ACTIVE CAREGIVER identity without creating a second Person or User", async () => {
+    const { actor, hospitalId } = await createOwner();
+    const person = await prisma.person.create({
+      data: {
+        identityKeyHash: hashIdentityReference({
+          namespace: "thai-national-id",
+          value: nationalIds.active,
+        }),
+        givenName: "ชื่อที่ผู้ดูแลแจ้ง",
+        familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
+        nameIsSelfAsserted: true,
+      },
+      select: { id: true },
+    });
+    const user = await prisma.user.create({
+      data: {
+        personId: person.id,
+        authSubject: "77777777-7777-4777-8777-777777777777",
+        status: UserStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    await prisma.userRole.create({ data: { userId: user.id, role: Role.CAREGIVER } });
+    const provisionIdentity = vi.fn();
+
+    const result = await provisionHospitalMember(
+      actor,
+      {
+        nationalId: nationalIds.active,
+        givenName: "ชื่อจากโรงพยาบาล",
+        familyName: "นามสกุลจากโรงพยาบาล",
+        targetHospitalId: hospitalId,
+        profession: "NURSE",
+      },
+      { provisionIdentity },
+    );
+
+    expect(result.userId).toBe(user.id);
+    expect(result.activationToken).toBeNull();
+    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(new Set((await prisma.userRole.findMany({
+      where: { userId: user.id },
+      select: { role: true },
+    })).map(({ role }) => role))).toEqual(new Set([Role.CAREGIVER, Role.HOSPITAL]));
+    expect(await prisma.person.count({ where: { identityKeyHash: hashIdentityReference({
+      namespace: "thai-national-id",
+      value: nationalIds.active,
+    }) } })).toBe(1);
+    expect(await prisma.user.count({ where: { personId: person.id } })).toBe(1);
+    expect(await prisma.hospitalMembership.count({ where: { userId: user.id, hospitalId } })).toBe(1);
+    expect(await prisma.workforceActivation.count({ where: { userId: user.id } })).toBe(0);
+  });
+
   it("rejects an existing ADMIN User as Hospital staff without changing workforce state", async () => {
     const { actor, hospitalId } = await createOwner();
     const target = await createAdminTarget(nationalIds.adminStaff);

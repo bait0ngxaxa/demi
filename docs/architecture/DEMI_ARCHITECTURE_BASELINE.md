@@ -12,6 +12,10 @@
 
 ---
 
+## Current decision addendum — invitation-created caregiver accounts (2026-10-23)
+
+[ADR-0021](../adr/0021-caregiver-accounts-by-invitation.md) adds CAREGIVER-only first credentials through a Patient-issued invitation and matching checksum-valid national ID. It does not widen ADR-0020 /register, Patient-self, workforce, or Platform ADMIN authority. The account claim rechecks the token, identity hash, expiry, and Person absence in its serializable transaction; provider credential I/O stays outside database locks under ADR-0012. Names are explicitly self-asserted until authoritative Patient roster provisioning replaces them. Caregiver-only password recovery and LINE binding remain unavailable under current policy.
+
 ## Current decision addendum — Hospital registry (2026-10-21)
 
 [ADR-0017](../adr/0017-retire-hospital-master.md) (amended 2026-10-21, Phase N1) is the current Hospital identity model and supersedes every Hospital Master statement in §9.2, §9.3, §19.9 and decisions 30–31 below. Platform ADMIN registers each Hospital as `PENDING_VERIFICATION` with a network role in `/app/admin/hospitals`, idempotently per form submission nonce; there is no Master dataset, seed or `npm run db:seed`, and `Hospital.parentHospitalId` no longer exists. The public onboarding page lists only PENDING Hospitals; approval activates the chosen Hospital and creates its first OWNER. Platform ADMIN can retire an unclaimed PENDING Hospital (`RETIRED`, with a reason, never deleted, restorable to PENDING; refused while an onboarding application is pending), and a RETIRED Hospital is outside onboarding, the network and reports. PostgreSQL triggers keep an area's Parent at role PARENT and its Child at role CHILD.

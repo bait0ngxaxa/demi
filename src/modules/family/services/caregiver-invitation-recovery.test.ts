@@ -34,6 +34,7 @@ function databaseFixture(pendingInvitation: { id: string } | null) {
         id: actor.userId,
         personId: actor.personId,
         roles: [{ role: Role.PATIENT }],
+        person: { identityKeyHash: "a".repeat(64) },
       }),
     },
     patientProfile: {

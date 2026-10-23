@@ -48,6 +48,11 @@ export type ProvisionPasswordAuthIdentityResult = {
   authSubject: string;
 };
 
+export type UnpersistedPasswordAuthIdentity = {
+  authSubject: string;
+  providerLoginAlias: string;
+};
+
 export type PasswordAuthProvisioningDependencies = {
   provider?: PasswordAuthAdminProvider;
   store?: PasswordAuthProvisioningStore;
@@ -185,16 +190,79 @@ async function compensateProviderAccount(
   persistenceError: ApplicationError,
 ): Promise<never> {
   try {
-    const { error } = await provider.deleteUser(providerSubject);
-
-    if (error) {
-      throw error;
-    }
+    await deleteProviderIdentity(provider, providerSubject);
   } catch {
     throw new PasswordAuthProvisioningReconciliationError();
   }
 
   throw persistenceError;
+}
+
+async function createProviderIdentity(
+  input: ProvisionPasswordAuthIdentityInput,
+  provider: PasswordAuthAdminProvider,
+): Promise<UnpersistedPasswordAuthIdentity> {
+  const providerLoginAlias = createProviderLoginAlias(input.userId);
+  let providerResponse: Awaited<ReturnType<PasswordAuthAdminProvider["createUser"]>>;
+
+  try {
+    providerResponse = await provider.createUser({
+      email: providerLoginAlias,
+      password: input.password,
+      email_confirm: true,
+    });
+  } catch (error: unknown) {
+    classifyProviderFailure(error);
+  }
+
+  if (providerResponse.error) {
+    classifyProviderFailure(providerResponse.error);
+  }
+
+  const providerSubject = providerSubjectSchema.safeParse(providerResponse.data.user?.id);
+  if (!providerSubject.success) {
+    throw new PasswordAuthProvisioningReconciliationError();
+  }
+
+  return { authSubject: providerSubject.data, providerLoginAlias };
+}
+
+async function deleteProviderIdentity(
+  provider: PasswordAuthAdminProvider,
+  authSubject: string,
+): Promise<void> {
+  const { error } = await provider.deleteUser(authSubject);
+  if (error) throw error;
+}
+
+/** Creates the same opaque-alias Supabase credential used by activation, before a local User exists. */
+export async function createUnpersistedPasswordAuthIdentity(
+  input: ProvisionPasswordAuthIdentityInput,
+  dependencies: Pick<PasswordAuthProvisioningDependencies, "provider"> = {},
+): Promise<UnpersistedPasswordAuthIdentity> {
+  const parsed = provisionPasswordAuthIdentitySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("Password authentication provisioning data is invalid");
+  }
+
+  return createProviderIdentity(parsed.data, dependencies.provider ?? getPasswordAuthAdminProvider());
+}
+
+/** Compensates a provider credential when the transaction that owns it does not commit. */
+export async function deleteUnpersistedPasswordAuthIdentity(
+  authSubject: string,
+  dependencies: Pick<PasswordAuthProvisioningDependencies, "provider"> = {},
+): Promise<void> {
+  const parsedSubject = providerSubjectSchema.safeParse(authSubject);
+  if (!parsedSubject.success) {
+    throw new PasswordAuthProvisioningReconciliationError();
+  }
+
+  try {
+    await deleteProviderIdentity(dependencies.provider ?? getPasswordAuthAdminProvider(), parsedSubject.data);
+  } catch {
+    throw new PasswordAuthProvisioningReconciliationError();
+  }
 }
 
 export async function provisionPasswordAuthIdentity(
@@ -224,42 +292,21 @@ export async function provisionPasswordAuthIdentity(
     throw new ConflictError("DEMI User already has a provider identity");
   }
 
-  const providerLoginAlias = createProviderLoginAlias(user.id);
   const provider = dependencies.provider ?? getPasswordAuthAdminProvider();
-  let providerResponse: Awaited<ReturnType<PasswordAuthAdminProvider["createUser"]>>;
-
-  try {
-    providerResponse = await provider.createUser({
-      email: providerLoginAlias,
-      password: parsed.data.password,
-      email_confirm: true,
-    });
-  } catch (error: unknown) {
-    classifyProviderFailure(error);
-  }
-
-  if (providerResponse.error) {
-    classifyProviderFailure(providerResponse.error);
-  }
-
-  const providerSubject = providerSubjectSchema.safeParse(providerResponse.data.user?.id);
-
-  if (!providerSubject.success) {
-    throw new PasswordAuthProvisioningReconciliationError();
-  }
+  const providerIdentity = await createProviderIdentity(parsed.data, provider);
 
   let persisted: boolean;
 
   try {
     persisted = await store.setAuthSubject({
       userId: user.id,
-      authSubject: providerSubject.data,
-      providerLoginAlias,
+      authSubject: providerIdentity.authSubject,
+      providerLoginAlias: providerIdentity.providerLoginAlias,
     });
   } catch (error: unknown) {
     return await compensateProviderAccount(
       provider,
-      providerSubject.data,
+      providerIdentity.authSubject,
       normalizePersistenceError(error),
     );
   }
@@ -267,13 +314,13 @@ export async function provisionPasswordAuthIdentity(
   if (!persisted) {
     return await compensateProviderAccount(
       provider,
-      providerSubject.data,
+      providerIdentity.authSubject,
       new ConflictError("DEMI User provider identity changed during provisioning"),
     );
   }
 
   return {
     userId: user.id,
-    authSubject: providerSubject.data,
+    authSubject: providerIdentity.authSubject,
   };
 }

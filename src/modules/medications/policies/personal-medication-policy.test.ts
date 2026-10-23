@@ -5,7 +5,7 @@ import { assertPersonalMedicationSelf } from "./personal-medication-policy";
 
 const actor: ActorContext = { userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] };
 describe("focused medication SELF gate", () => {
-  it.each([[], [Role.OSM], [Role.HOSPITAL], [Role.ADMIN]].map((roles) => ({ roles })))("denies non Patient roles $roles", ({ roles }) => {
+  it.each([[], [Role.OSM], [Role.HOSPITAL], [Role.ADMIN], [Role.CAREGIVER]].map((roles) => ({ roles })))("denies non Patient roles $roles", ({ roles }) => {
     expect(() => assertPersonalMedicationSelf({ ...actor, roles })).toThrow();
   });
   it.each([[Role.PATIENT], [Role.PATIENT, Role.OSM], [Role.PATIENT, Role.HOSPITAL], [Role.PATIENT, Role.ADMIN]].map((roles) => ({ roles })))("permits initial SELF gate $roles without a role bypass", ({ roles }) => {

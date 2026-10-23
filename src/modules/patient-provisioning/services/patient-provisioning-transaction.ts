@@ -20,6 +20,7 @@ import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce
 import {
   ConflictError,
   ForbiddenError,
+  InfrastructureError,
 } from "@/shared/errors/application-error";
 
 import {
@@ -175,9 +176,16 @@ async function resolvePatientPerson(
     createIdentityStore(transaction),
   );
 
+  const current = await transaction.person.findUnique({
+    where: { id: resolved.id },
+    select: { nameIsSelfAsserted: true },
+  });
+  if (!current) throw new InfrastructureError("The resolved Patient identity no longer exists");
+
   if (
-    (resolved.givenName && resolved.givenName !== input.givenName) ||
-    (resolved.familyName && resolved.familyName !== input.familyName)
+    !current.nameIsSelfAsserted &&
+    ((resolved.givenName && resolved.givenName !== input.givenName) ||
+      (resolved.familyName && resolved.familyName !== input.familyName))
   ) {
     throw new PatientProvisioningConflictError(
       "IDENTITY_CONFLICT",
@@ -187,13 +195,14 @@ async function resolvePatientPerson(
 
   const data: Prisma.PersonUpdateInput = {};
 
-  if (!resolved.givenName) {
+  if (current.nameIsSelfAsserted || !resolved.givenName) {
     data.givenName = input.givenName;
   }
 
-  if (!resolved.familyName) {
+  if (current.nameIsSelfAsserted || !resolved.familyName) {
     data.familyName = input.familyName;
   }
+  if (current.nameIsSelfAsserted) data.nameIsSelfAsserted = false;
 
   if (Object.keys(data).length === 0) {
     return {
