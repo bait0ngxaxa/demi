@@ -866,8 +866,9 @@ async function auditNetworkRead(
   const uniqueRelationships = new Map<string, string>();
   for (const record of records) {
     const relationshipId = record.patientHospitalRelationshipId;
+    // The select is the patient's current OSM (anyone); only the actor's own assignment is a direct OSM read.
     const hasDirectOsmRead = scope.osmRead &&
-      record.patientHospitalRelationship.osmAssignments.length > 0;
+      record.patientHospitalRelationship.osmAssignments[0]?.osmUserId === actorUserId;
     if (!hasDirectOsmRead) uniqueRelationships.set(relationshipId, relationshipId);
   }
 

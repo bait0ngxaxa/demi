@@ -38,6 +38,7 @@ import { findNetworkChild, findNetworkPatientReadParent, listNetworkScopes } fro
 import { setHospitalNetworkRole, transferHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { completeWorkforceActivation, previewWorkforceActivation } from "@/modules/workforce/services/workforce-service";
+import { provisionPatientFixture } from "./support/patient-provisioning";
 
 // ADR-0018 / Phase O1: ADMIN bulk Parent registration and Parent-led Child onboarding.
 const db = getPrisma();
@@ -162,6 +163,8 @@ afterEach(async () => {
     await tx.userTakeoverLock.deleteMany({ where: { OR: [{ userId: { in: allUserIds } }, { lockedByUserId: { in: allUserIds } }] } });
     await tx.workforceActivation.deleteMany({ where: { OR: [{ userId: { in: allUserIds } }, { hospitalId: { in: allHospitalIds } }] } });
     await tx.hospitalMembership.deleteMany({ where: { OR: [{ userId: { in: allUserIds } }, { hospitalId: { in: allHospitalIds } }] } });
+    await tx.patientHospitalRelationship.deleteMany({ where: { hospitalId: { in: allHospitalIds } } });
+    await tx.patientProfile.deleteMany({ where: { personId: { in: allPersonIds } } });
     await tx.hospitalServiceArea.deleteMany({ where: { OR: [{ parentHospitalId: { in: allHospitalIds } }, { childHospitalId: { in: allHospitalIds } }] } });
     await tx.hospitalRetirementEvent.deleteMany({ where: { hospitalId: { in: allHospitalIds } } });
     await tx.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: allHospitalIds } } });
@@ -504,6 +507,85 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
 
     const invitations = await listChildOwnerInvitationsForActor(invitee, { database: db });
     expect(invitations).toEqual([expect.objectContaining({ membershipId: membership.id })]);
+    await acceptChildOwnerInvitation(invitee, { membershipId: membership.id }, { database: db });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: MembershipStatus.ACTIVE });
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: created.child.id } })).toMatchObject({ status: HospitalStatus.ACTIVE });
+  });
+
+  it.each([UserTakeoverProviderState.PENDING, UserTakeoverProviderState.CONFIRMED])("holds a child OWNER invitation for an identity already locked (%s) by patient provisioning at another Hospital", async (lockState) => {
+    const { parent, parentOwner } = await setup();
+    const patientHospital = await hospital(HospitalStatus.ACTIVE, null);
+    const patientHospitalOwner = await member(patientHospital.id);
+    const targetNationalId = nationalId();
+    const invitee = await user([Role.CAREGIVER], { nationalId: targetNationalId, identityAssurance: IdentityAssurance.CAREGIVER_INVITATION });
+    const patient = await provisionPatientFixture(patientHospitalOwner, {
+      identity: { namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: targetNationalId },
+      givenName: "ทดสอบ", familyName: "ลูกข่าย", targetHospitalId: patientHospital.id,
+    }, { database: db, revokeProviderSessions: async () => "CONFIRMED" });
+    expect(patient).toMatchObject({ userId: invitee.userId, accountStatus: UserStatus.SUSPENDED });
+    if (lockState === UserTakeoverProviderState.PENDING) {
+      // The post-commit provider revocation never recorded its outcome.
+      await db.userTakeoverLock.update({ where: { userId: invitee.userId }, data: { providerState: lockState, providerCheckedAt: null } });
+    }
+
+    const revokedSubjects: string[] = [];
+    const created = await createChildFacility(parentOwner, childInput(parent.id, { nationalId: targetNationalId }), {
+      database: db,
+      revokeProviderSessions: async (authSubject) => {
+        revokedSubjects.push(authSubject);
+        return "CONFIRMED";
+      },
+    });
+    const membership = await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: created.child.id, userId: invitee.userId } });
+    expect(created.invitation).toEqual({ status: "ADMIN_RESET_REQUIRED" });
+    expect(membership).toMatchObject({ membershipType: "OWNER", status: MembershipStatus.PROVISIONED });
+    expect(revokedSubjects).toHaveLength(lockState === UserTakeoverProviderState.CONFIRMED ? 0 : 1);
+    expect(await db.userTakeoverLock.findUniqueOrThrow({ where: { userId: invitee.userId } })).toMatchObject({
+      hospitalId: patientHospital.id,
+      providerState: UserTakeoverProviderState.CONFIRMED,
+      heldOwnerMembershipIds: [membership.id],
+    });
+    expect(await listManagedChildFacilities(parentOwner, { parentHospitalId: parent.id }, { database: db }))
+      .toEqual(expect.arrayContaining([expect.objectContaining({
+        child: expect.objectContaining({ id: created.child.id }),
+        invitation: expect.objectContaining({ membershipId: membership.id, delivery: "ADMIN_RESET_REQUIRED" }),
+      })]));
+    expect(await listChildOwnerInvitationsForActor(invitee, { database: db })).toEqual([]);
+
+    const resetInput = {
+      targetKind: "staff" as const,
+      hospitalId: created.child.id,
+      relationshipId: membership.id,
+      mode: "IN_PERSON" as const,
+      verificationMethod: "IN_PERSON_ID_CARD" as const,
+    };
+    await expect(issueMediatedPasswordReset(parentOwner, resetInput, { database: db })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(await searchMediatedPasswordResetTargets(admin, { nationalId: targetNationalId }, db))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ targetKind: "staff", hospitalId: created.child.id, relationshipId: membership.id })]));
+    const issued = await issueMediatedPasswordReset(admin, resetInput, { database: db });
+    const replacementSubject = randomUUID();
+    await completeMediatedPasswordReset({
+      token: issued.token,
+      nationalId: targetNationalId,
+      newPassword: "hospital-verified-password-2026",
+      passwordConfirmation: "hospital-verified-password-2026",
+    }, {
+      database: db,
+      createReplacementIdentity: async ({ userId, resetId }) => ({
+        authSubject: replacementSubject,
+        providerLoginAlias: createProviderResetLoginAlias(userId, resetId),
+      }),
+      deleteProviderIdentity: async () => undefined,
+    });
+
+    expect(await db.user.findUniqueOrThrow({ where: { id: invitee.userId } })).toMatchObject({
+      status: UserStatus.ACTIVE,
+      identityAssurance: IdentityAssurance.HOSPITAL_PROOFED,
+      authSubject: replacementSubject,
+    });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: MembershipStatus.INVITED });
+    expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: patient.relationshipId } })).toMatchObject({ endedAt: null });
+    expect(await listChildOwnerInvitationsForActor(invitee, { database: db })).toEqual([expect.objectContaining({ membershipId: membership.id })]);
     await acceptChildOwnerInvitation(invitee, { membershipId: membership.id }, { database: db });
     expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     expect(await db.hospital.findUniqueOrThrow({ where: { id: created.child.id } })).toMatchObject({ status: HospitalStatus.ACTIVE });

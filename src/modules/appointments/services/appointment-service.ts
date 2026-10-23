@@ -688,10 +688,10 @@ async function rescheduleInTransaction(
   }
 
   assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-    target: { ...access.target, ...current, operation: "EDIT" } });
+    target: { ...access.target, ...current, appointmentAssignedOsmUserId: current.assignedOsmUserId, operation: "EDIT" } });
   if (!access.scopes.directHospital) {
     assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...current, locationType: fields.locationType, responsibleUserId: fields.responsibleUserId, operation: "EDIT" } });
+      target: { ...access.target, ...current, appointmentAssignedOsmUserId: current.assignedOsmUserId, locationType: fields.locationType, responsibleUserId: fields.responsibleUserId, operation: "EDIT" } });
   }
   if (input.rescheduleRequestId && !access.scopes.directHospital) throw new ForbiddenError();
   if (current.status !== AppointmentStatus.SCHEDULED) {
@@ -881,7 +881,7 @@ async function terminalTransitionInTransaction(
   }
 
   assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-    target: { ...access.target, ...current, operation: transition.status === AppointmentStatus.CANCELLED ? "CANCEL" : transition.status === AppointmentStatus.COMPLETED ? "COMPLETE" : "NO_SHOW" } });
+    target: { ...access.target, ...current, appointmentAssignedOsmUserId: current.assignedOsmUserId, operation: transition.status === AppointmentStatus.CANCELLED ? "CANCEL" : transition.status === AppointmentStatus.COMPLETED ? "COMPLETE" : "NO_SHOW" } });
   if (current.status === transition.status) {
     return toMutationResult(current, access.target.hospitalId);
   }
@@ -1237,7 +1237,7 @@ export async function acceptAppointmentAssignment(
       if (!appointment) throw new NotFoundError();
       if (
         appointment.assignedOsmUserId !== actor.userId ||
-        access.target.assignedOsmUserId !== actor.userId ||
+        access.target.patientCurrentOsmUserId !== actor.userId ||
         access.target.assignedOsmAssignmentId === null
       ) {
         throw new ForbiddenError();

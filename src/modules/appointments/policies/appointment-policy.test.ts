@@ -30,7 +30,7 @@ function target(overrides: Partial<Parameters<typeof decideAppointmentPolicy>[0]
   return {
     hospitalId: hospitalA,
     hospitalStatus: HospitalStatus.ACTIVE,
-    assignedOsmUserId: null,
+    patientCurrentOsmUserId: null,
     assignedOsmAssignmentId: null,
     patientUserId: "55555555-5555-4555-8555-555555555555",
     ...overrides,
@@ -147,21 +147,21 @@ describe("Appointment policy", () => {
       decideAppointmentPolicy({
         actor: osm,
         capability: APPOINTMENT_READ_CAPABILITY,
-        target: target({ assignedOsmUserId: actorUserId }),
+        target: target({ patientCurrentOsmUserId: actorUserId }),
       }),
     ).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
     expect(
       decideAppointmentPolicy({
         actor: osm,
         capability: APPOINTMENT_CREATE_CAPABILITY,
-        target: target({ assignedOsmUserId: actorUserId, locationType: "HOME_VISIT", responsibleUserId: null }),
+        target: target({ patientCurrentOsmUserId: actorUserId, locationType: "HOME_VISIT", responsibleUserId: null }),
       }).allowed,
     ).toBe(true);
     expect(
       decideAppointmentPolicy({
         actor: osm,
         capability: APPOINTMENT_MANAGE_CAPABILITY,
-        target: target({ assignedOsmUserId: actorUserId }),
+        target: target({ patientCurrentOsmUserId: actorUserId }),
       }),
     ).toMatchObject({ allowed: false, reason: "osm_manage_not_allowed" });
     expect(
@@ -175,7 +175,7 @@ describe("Appointment policy", () => {
       decideAppointmentPolicy({
         actor: osm,
         capability: APPOINTMENT_READ_CAPABILITY,
-        target: target({ hospitalId: hospitalB, assignedOsmUserId: actorUserId }),
+        target: target({ hospitalId: hospitalB, patientCurrentOsmUserId: actorUserId }),
       }).allowed,
     ).toBe(false);
   });
@@ -253,7 +253,7 @@ describe("Appointment policy", () => {
       expect(decideAppointmentPolicy({
         actor: osm,
         capability,
-        target: target({ assignedOsmUserId: actorUserId, locationType: "HOME_VISIT", responsibleUserId: null, assignedOsmAssignmentId: "66666666-6666-4666-8666-666666666666" }),
+        target: target({ patientCurrentOsmUserId: actorUserId, locationType: "HOME_VISIT", responsibleUserId: null, assignedOsmAssignmentId: "66666666-6666-4666-8666-666666666666" }),
       })).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
     }
 
@@ -274,7 +274,7 @@ describe("Appointment policy", () => {
       expect(decideAppointmentPolicy({
         actor: osm,
         capability,
-        target: target({ hospitalId: hospitalB, assignedOsmUserId: actorUserId }),
+        target: target({ hospitalId: hospitalB, patientCurrentOsmUserId: actorUserId }),
       }).allowed).toBe(false);
     }
   });
@@ -319,14 +319,14 @@ describe("Appointment policy", () => {
       decideAppointmentPolicy({
         actor: adminWithOsmScope,
         capability: APPOINTMENT_READ_CAPABILITY,
-        target: target({ assignedOsmUserId: actorUserId }),
+        target: target({ patientCurrentOsmUserId: actorUserId }),
       }),
     ).toMatchObject({ allowed: true, reason: "active_osm_assignment_scope" });
     expect(
       decideAppointmentPolicy({
         actor: adminWithOsmScope,
         capability: APPOINTMENT_MANAGE_CAPABILITY,
-        target: target({ assignedOsmUserId: actorUserId }),
+        target: target({ patientCurrentOsmUserId: actorUserId }),
       }),
     ).toMatchObject({ allowed: false, reason: "osm_manage_not_allowed" });
   });
@@ -336,7 +336,7 @@ describe("OSM home-visit authority", () => {
   const osm = actor({ roles: [Role.OSM], hospitalMemberships: [], osmHospitalRelationships: [
     { hospitalId: hospitalA, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
   ] });
-  const home = target({ assignedOsmUserId: actorUserId, assignedOsmAssignmentId: "assignment", locationType: "HOME_VISIT", createdByUserId: actorUserId, responsibleUserId: null, operation: "EDIT" });
+  const home = target({ patientCurrentOsmUserId: actorUserId, appointmentAssignedOsmUserId: actorUserId, assignedOsmAssignmentId: "assignment", locationType: "HOME_VISIT", createdByUserId: actorUserId, responsibleUserId: null, operation: "EDIT" });
   it("allows the current assigned OSM to edit and cancel their own home visit", () => {
     for (const operation of ["EDIT", "CANCEL"] as const) {
       expect(decideAppointmentPolicy({ actor: osm, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY, target: { ...home, operation } }).allowed).toBe(true);
@@ -353,8 +353,11 @@ describe("OSM home-visit authority", () => {
     }
   });
   it.each([
-    [{ assignedOsmUserId: "other" }, "active_osm_assignment_scope_required"],
-    [{ assignedOsmUserId: null }, "active_osm_assignment_scope_required"],
+    [{ patientCurrentOsmUserId: "other" }, "active_osm_assignment_scope_required"],
+    [{ patientCurrentOsmUserId: null }, "active_osm_assignment_scope_required"],
+    [{ appointmentAssignedOsmUserId: "other" }, "active_osm_assignment_scope_required"],
+    [{ appointmentAssignedOsmUserId: null }, "active_osm_assignment_scope_required"],
+    [{ appointmentAssignedOsmUserId: undefined }, "active_osm_assignment_scope_required"],
     [{ locationType: "CLINIC" }, "osm_home_location_required"],
     [{ locationType: "ONLINE" }, "osm_home_location_required"],
     [{ locationType: "OTHER" }, "osm_home_location_required"],

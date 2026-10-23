@@ -612,7 +612,7 @@ export async function getAppointmentDetail(
     );
     const canAcceptAssignment = Boolean(
       access.scopes.exactOsmAssignment &&
-      access.target.assignedOsmUserId === record.assignedOsmUserId &&
+      access.target.patientCurrentOsmUserId === record.assignedOsmUserId &&
       record.assignedOsmUserId === access.authoritativeActor.userId &&
       record.status === "SCHEDULED" &&
       record.scheduledAt.getTime() > Date.now() &&
@@ -627,7 +627,7 @@ export async function getAppointmentDetail(
     );
 
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital, canAcceptAssignment), contactPhones };
+      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital, canAcceptAssignment), contactPhones };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -695,7 +695,7 @@ export async function getAppointmentCreateContext(
       patient: access.patient,
       responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
-        osmUserId: access.target.assignedOsmUserId,
+        osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
       sourceServiceRequestId,
@@ -743,13 +743,13 @@ export async function getAppointmentRescheduleContext(
     }
 
     assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, operation: "EDIT" } });
+      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } });
     return {
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
       appointment: toDetail(record, access.patient, true, false, access.scopes.directHospital),
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
-        osmUserId: access.target.assignedOsmUserId,
+        osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
       sourceServiceRequestId: null,

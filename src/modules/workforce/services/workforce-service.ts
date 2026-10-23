@@ -8,6 +8,7 @@ import {
   Prisma,
   Role,
   UserStatus,
+  UserTakeoverProviderState,
   WorkforceActivationMode,
   WorkforceActivationPurpose,
   WorkforceActivationOperationState,
@@ -542,8 +543,15 @@ function assertActorPolicy(
 function assertUserAccountCanReceiveWorkforce(user: {
   status: UserStatus;
   authSubject: string | null;
+  identityAssurance: IdentityAssurance;
+  takeoverLock: { providerState: UserTakeoverProviderState } | null;
 }): void {
-  if (user.status === UserStatus.ACTIVE) {
+  // FIX-1c: a caregiver-claimed identity already quarantined by its unresolved lock may receive more authority; the
+  // lock records the new relationship and only a verified reset restores it (ADR-0021).
+  const caregiverLocked = user.status === UserStatus.SUSPENDED &&
+    user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION &&
+    user.takeoverLock !== null && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED;
+  if (user.status === UserStatus.ACTIVE || caregiverLocked) {
     if (!user.authSubject || !zUuid(user.authSubject)) {
       throw new ConflictError("The existing account has an invalid authentication mapping");
     }
@@ -1067,15 +1075,17 @@ export async function resolveWorkforceGrantee(
     createIdentityStore(transaction),
   );
 
+  const granteeSelect = {
+    id: true,
+    personId: true,
+    status: true,
+    authSubject: true,
+    identityAssurance: true,
+    takeoverLock: { select: { providerState: true } },
+  } satisfies Prisma.UserSelect;
   let user = await transaction.user.findUnique({
     where: { personId: person.id },
-    select: {
-      id: true,
-      personId: true,
-      status: true,
-      authSubject: true,
-      identityAssurance: true,
-    },
+    select: granteeSelect,
   });
   const reusedExistingUser = user !== null;
 
@@ -1085,13 +1095,7 @@ export async function resolveWorkforceGrantee(
         personId: person.id,
         status: UserStatus.PROVISIONED,
       },
-      select: {
-        id: true,
-        personId: true,
-        status: true,
-        authSubject: true,
-        identityAssurance: true,
-      },
+      select: granteeSelect,
     });
   }
 

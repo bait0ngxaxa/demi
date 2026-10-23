@@ -29,8 +29,11 @@ export type AppointmentCapability =
 export type AppointmentPolicyTarget = {
   hospitalId: string;
   hospitalStatus: HospitalStatus;
-  assignedOsmUserId: string | null;
+  /** The patient's current OSM at this Hospital (any OSM), not the Appointment's assignee. */
+  patientCurrentOsmUserId: string | null;
   assignedOsmAssignmentId: string | null;
+  /** HOME_VISIT_MANAGE only: the Appointment row's `assignedOsmUserId`. */
+  appointmentAssignedOsmUserId?: string | null;
   patientUserId: string | null;
   locationType?: string | null;
   createdByUserId?: string;
@@ -77,7 +80,7 @@ function hasActiveDirectHospitalScope(actor: ActorContext, hospitalId: string): 
 
 function hasExactActiveOsmAssignment(actor: ActorContext, target: AppointmentPolicyTarget): boolean {
   return Boolean(
-    target.assignedOsmUserId === actor.userId &&
+    target.patientCurrentOsmUserId === actor.userId &&
       actor.osmHospitalRelationships.some(
         (relationship) =>
           relationship.hospitalId === target.hospitalId &&
@@ -139,7 +142,9 @@ export function decideAppointmentPolicy(input: {
 
   if (input.capability === APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY) {
     if (hasDirectHospitalScope) return { allowed: true, reason: "active_direct_hospital_scope" };
-    if (!hasExactOsmScope) return { allowed: false, reason: "active_osm_assignment_scope_required" };
+    if (!hasExactOsmScope || input.target.appointmentAssignedOsmUserId !== input.actor.userId) {
+      return { allowed: false, reason: "active_osm_assignment_scope_required" };
+    }
     if (input.target.locationType !== "HOME_VISIT") return { allowed: false, reason: "osm_home_location_required" };
     if (input.target.responsibleUserId != null) return { allowed: false, reason: "osm_responsible_must_be_null" };
     if (input.target.operation !== "EDIT" && input.target.operation !== "CANCEL") return { allowed: false, reason: "osm_terminal_action_not_allowed" };

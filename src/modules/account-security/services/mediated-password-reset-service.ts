@@ -260,7 +260,10 @@ async function isOwnerScopedTarget(
   return allHospitals.size > 0 && allHospitals.size === 1 && allHospitals.has(hospitalId);
 }
 
-/** The only REC-1 exception for a non-ACTIVE Hospital: an exact OWNER hold recorded by its unresolved takeover lock. */
+/**
+ * The only REC-1 exception for a non-ACTIVE Hospital: an exact OWNER hold recorded by its unresolved takeover lock.
+ * FIX-1c: a lock spans Hospitals, so the hold is validated against its own Child, not the Hospital that first locked.
+ */
 async function isHeldChildOwnerResetTarget(
   transaction: Prisma.TransactionClient,
   target: TargetSnapshot,
@@ -270,7 +273,7 @@ async function isHeldChildOwnerResetTarget(
   if (
     input.targetKind !== "staff" || !input.relationshipId ||
     target.identityAssurance !== IdentityAssurance.CAREGIVER_INVITATION || target.status !== UserStatus.SUSPENDED ||
-    !lock || lock.providerState === UserTakeoverProviderState.RESOLVED || lock.hospitalId !== input.hospitalId ||
+    !lock || lock.providerState === UserTakeoverProviderState.RESOLVED ||
     !lock.heldOwnerMembershipIds.includes(input.relationshipId)
   ) return false;
 
@@ -739,9 +742,10 @@ async function restoreTakeoverRelationships(
     osmIds = osmRelationships.map(({ id }) => id);
   }
 
+  // FIX-1c: recorded ids may belong to any Hospital that provisioned this identity while it was locked.
   const [memberships, osmRelationships] = await Promise.all([
-    transaction.hospitalMembership.updateMany({ where: { id: { in: membershipIds }, userId: target.userId, hospitalId: lock.hospitalId, status: MembershipStatus.SUSPENDED }, data: { status: MembershipStatus.ACTIVE } }),
-    transaction.osmHospitalRelationship.updateMany({ where: { id: { in: osmIds }, userId: target.userId, hospitalId: lock.hospitalId, status: MembershipStatus.SUSPENDED }, data: { status: MembershipStatus.ACTIVE } }),
+    transaction.hospitalMembership.updateMany({ where: { id: { in: membershipIds }, userId: target.userId, status: MembershipStatus.SUSPENDED }, data: { status: MembershipStatus.ACTIVE } }),
+    transaction.osmHospitalRelationship.updateMany({ where: { id: { in: osmIds }, userId: target.userId, status: MembershipStatus.SUSPENDED }, data: { status: MembershipStatus.ACTIVE } }),
   ]);
   if (memberships.count !== membershipIds.length || osmRelationships.count !== osmIds.length) {
     throw new ConflictError("The suspended relationships changed during account recovery");
@@ -758,7 +762,7 @@ async function restoreTakeoverRelationships(
       where: { id: membershipId },
       select: { id: true, hospitalId: true, status: true, membershipType: true, userId: true },
     });
-    if (!held || held.userId !== target.userId || held.hospitalId !== lock.hospitalId || held.membershipType !== MembershipType.OWNER) {
+    if (!held || held.userId !== target.userId || held.membershipType !== MembershipType.OWNER) {
       heldOwnerMembershipsNotRestored.push({ membershipId, reason: "HELD_MEMBERSHIP_NOT_FOUND" });
       continue;
     }
@@ -1158,7 +1162,6 @@ export async function searchMediatedPasswordResetTargets(
                 where: {
                   id: { in: user.takeoverLock.heldOwnerMembershipIds },
                   userId: user.id,
-                  hospitalId: user.takeoverLock.hospitalId,
                   membershipType: MembershipType.OWNER,
                   status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
                 },

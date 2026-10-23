@@ -210,7 +210,7 @@ export async function resolveAppointmentAccessContext(
     ...createFields,
     hospitalId: record.hospitalId,
     hospitalStatus: record.hospital.status,
-    assignedOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
+    patientCurrentOsmUserId: record.osmAssignments[0]?.osmUserId ?? null,
     assignedOsmAssignmentId: record.osmAssignments[0]?.id ?? null,
     patientUserId: record.patientProfile.person.user?.id ?? null,
   };

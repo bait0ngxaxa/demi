@@ -99,7 +99,7 @@ const appointment = (subject: ActorContext, capability: string, hospitalId: stri
     target: {
       hospitalId,
       hospitalStatus: HospitalStatus.ACTIVE,
-      assignedOsmUserId,
+      patientCurrentOsmUserId: assignedOsmUserId,
       assignedOsmAssignmentId: assignedOsmUserId ? "77777777-7777-4777-8777-777777777777" : null,
       patientUserId: null,
     },

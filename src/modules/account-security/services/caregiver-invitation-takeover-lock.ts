@@ -45,7 +45,12 @@ export async function lockCaregiverInvitationIdentityInTransaction(
       status: true,
       authSubject: true,
       identityAssurance: true,
-      takeoverLock: { select: { id: true, providerState: true, heldOwnerMembershipIds: true } },
+      takeoverLock: {
+        select: {
+          id: true, hospitalId: true, providerState: true,
+          suspendedMembershipIds: true, suspendedOsmRelationshipIds: true, heldOwnerMembershipIds: true,
+        },
+      },
       workforceActivations: { where: { usedAt: { not: null } }, select: { purpose: true, mode: true, usedAt: true } },
       patientActivations: { where: { usedAt: { not: null } }, select: { purpose: true, usedAt: true } },
     },
@@ -72,7 +77,62 @@ export async function lockCaregiverInvitationIdentityInTransaction(
     if (user.status !== UserStatus.SUSPENDED || !user.authSubject) {
       throw new InfrastructureError("The caregiver account takeover lock is inconsistent");
     }
-    if (user.takeoverLock.providerState === UserTakeoverProviderState.CONFIRMED) return null;
+    // FIX-1c: the lock is additive across Hospitals. Every relationship this operation created or held is recorded by
+    // its own id; `hospitalId` stays the Hospital that first locked the identity.
+    await lockFirstCredentialOperation(transaction, user.id);
+    const grantedHere = {
+      userId: user.id,
+      hospitalId: input.hospitalId,
+      status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ACTIVE] },
+    };
+    const [membershipRows, osmRows] = await Promise.all([
+      transaction.hospitalMembership.findMany({
+        where: { ...grantedHere, membershipType: MembershipType.MEMBER },
+        select: { id: true },
+      }),
+      transaction.osmHospitalRelationship.findMany({ where: grantedHere, select: { id: true } }),
+    ]);
+    const [memberships, osmRelationships] = await Promise.all([
+      transaction.hospitalMembership.updateMany({
+        where: { id: { in: membershipRows.map(({ id }) => id) }, status: grantedHere.status },
+        data: { status: MembershipStatus.SUSPENDED },
+      }),
+      transaction.osmHospitalRelationship.updateMany({
+        where: { id: { in: osmRows.map(({ id }) => id) }, status: grantedHere.status },
+        data: { status: MembershipStatus.SUSPENDED },
+      }),
+    ]);
+    if (memberships.count !== membershipRows.length || osmRelationships.count !== osmRows.length) {
+      throw new InfrastructureError("The caregiver account changed during provisioning");
+    }
+    const extended = await transaction.userTakeoverLock.updateMany({
+      where: { id: user.takeoverLock.id, providerState: { not: UserTakeoverProviderState.RESOLVED } },
+      data: {
+        suspendedMembershipIds: [...new Set([...user.takeoverLock.suspendedMembershipIds, ...membershipRows.map(({ id }) => id)])],
+        suspendedOsmRelationshipIds: [...new Set([...user.takeoverLock.suspendedOsmRelationshipIds, ...osmRows.map(({ id }) => id)])],
+        heldOwnerMembershipIds: [...new Set([
+          ...user.takeoverLock.heldOwnerMembershipIds,
+          ...(input.heldOwnerMembershipId ? [input.heldOwnerMembershipId] : []),
+        ])],
+      },
+    });
+    if (extended.count !== 1) throw new InfrastructureError("The caregiver account takeover lock changed during provisioning");
+
+    await recordAuditEvent({
+      actorUserId: input.actorUserId,
+      action: "user.takeover_lock_extended",
+      resourceType: "User",
+      resourceId: user.id,
+      metadata: {
+        hospitalId: input.hospitalId,
+        lockHospitalId: user.takeoverLock.hospitalId,
+        reason: "CAREGIVER_INVITATION_IDENTITY_PROVISIONED",
+        relationshipsSuspended: memberships.count + osmRelationships.count,
+        heldOwnerMembershipId: input.heldOwnerMembershipId ?? null,
+        providerState: user.takeoverLock.providerState,
+      },
+    }, transaction);
+
     return {
       lockId: user.takeoverLock.id,
       userId: user.id,

@@ -17,7 +17,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { createActorContextStore } from "@/modules/auth/services/actor-context-service";
+import { createActorContextStore, resolveActorAccessByAuthSubject } from "@/modules/auth/services/actor-context-service";
 import { authenticateWithPassword } from "@/modules/auth/services/authentication-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
@@ -33,6 +33,7 @@ import {
   searchMediatedPasswordResetTargets,
 } from "@/modules/account-security/services/mediated-password-reset-service";
 import { lockSuspectedTakeover } from "@/modules/user-management/services/user-takeover-service";
+import { provisionHospitalMember, provisionOsm } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
@@ -757,6 +758,63 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     expect(await db.lineAccountBinding.findUniqueOrThrow({ where: { id: postLockBinding.id } })).toMatchObject({ unlinkedAt: now });
     expect(await db.auditEvent.count({ where: { action: "user.takeover_locked", resourceId: target.userId } })).toBe(1);
     expect(await db.auditEvent.findFirstOrThrow({ where: { action: "user.takeover_lock_resolved", resourceId: target.userId } })).toMatchObject({ actorUserId: null, metadata: { issuerUserId: owner.userId } });
+  });
+
+  it("records workforce granted at other Hospitals on an existing caregiver lock and restores it after the reset", async () => {
+    const [first, second, third] = [await createHospital(), await createHospital(), await createHospital()];
+    const [firstOwner, secondOwner, thirdOwner] = [await createOwner(first.id), await createOwner(second.id), await createOwner(third.id)];
+    const admin = await createAdmin();
+    const caregiver = await createIdentity({ role: Role.CAREGIVER });
+    await db.user.update({ where: { id: caregiver.userId }, data: { identityAssurance: IdentityAssurance.CAREGIVER_INVITATION } });
+    const person = { nationalId: caregiver.nationalId, givenName: "ผู้ดูแล", familyName: "หลายโรงพยาบาล" };
+    const revokeProviderSessions = vi.fn(async () => "CONFIRMED" as const);
+
+    const firstGrant = await provisionHospitalMember(firstOwner, { ...person, targetHospitalId: first.id, profession: "NURSE" }, { revokeProviderSessions });
+    const secondGrant = await provisionHospitalMember(secondOwner, { ...person, targetHospitalId: second.id, profession: "NURSE" }, { revokeProviderSessions });
+    const thirdGrant = await provisionOsm(thirdOwner, { ...person, targetHospitalId: third.id }, { revokeProviderSessions });
+
+    // The lock is already CONFIRMED after the first grant: later grants are recorded without another provider revocation.
+    expect(revokeProviderSessions).toHaveBeenCalledOnce();
+    for (const grant of [firstGrant, secondGrant, thirdGrant]) {
+      expect(grant).toMatchObject({ userId: caregiver.userId, accountStatus: UserStatus.SUSPENDED, relationshipStatus: MembershipStatus.SUSPENDED, activationToken: null });
+    }
+    expect(await db.userTakeoverLock.findUniqueOrThrow({ where: { userId: caregiver.userId } })).toMatchObject({
+      hospitalId: first.id,
+      providerState: UserTakeoverProviderState.CONFIRMED,
+      suspendedMembershipIds: [firstGrant.relationshipId, secondGrant.relationshipId],
+      suspendedOsmRelationshipIds: [thirdGrant.relationshipId],
+    });
+    expect(await db.auditEvent.count({ where: { action: "user.takeover_lock_extended", resourceId: caregiver.userId } })).toBe(2);
+    expect(await db.workforceActivation.count({ where: { userId: caregiver.userId } })).toBe(0);
+
+    // The identity now spans Hospitals, so only a platform ADMIN may reset it.
+    await expect(issueMediatedPasswordReset(secondOwner, issueInput("staff", second.id, secondGrant.relationshipId), { database: db, now: () => now }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    const issued = await issueMediatedPasswordReset(admin, issueInput("staff", second.id, secondGrant.relationshipId), { database: db, now: () => now });
+    const provider = fakeProvider();
+    await completeMediatedPasswordReset({
+      token: issued.token,
+      nationalId: caregiver.nationalId,
+      newPassword: "new-password-for-rec1",
+      passwordConfirmation: "new-password-for-rec1",
+    }, { database: db, now: () => now, ...provider });
+
+    expect(await db.user.findUniqueOrThrow({ where: { id: caregiver.userId } })).toMatchObject({
+      status: UserStatus.ACTIVE,
+      identityAssurance: IdentityAssurance.HOSPITAL_PROOFED,
+      authSubject: provider.replacementSubject,
+    });
+    for (const relationshipId of [firstGrant.relationshipId, secondGrant.relationshipId]) {
+      expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
+    }
+    expect(await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: thirdGrant.relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
+    expect(await db.auditEvent.findFirstOrThrow({ where: { action: "user.takeover_lock_resolved", resourceId: caregiver.userId } }))
+      .toMatchObject({ metadata: { membershipsRestored: 2, osmRelationshipsRestored: 1 } });
+    const access = await resolveActorAccessByAuthSubject(provider.replacementSubject, createActorContextStore(db));
+    expect(access).toMatchObject({ status: "AUTHORIZED", actor: { userId: caregiver.userId } });
+    expect(access.status === "AUTHORIZED" ? access.actor.hospitalMemberships : []).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hospitalId: second.id, status: MembershipStatus.ACTIVE, profession: "NURSE" }),
+    ]));
   });
 
   it("sends the approved password-change warning to an active LINE binding", async () => {

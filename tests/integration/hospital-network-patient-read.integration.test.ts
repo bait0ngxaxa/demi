@@ -150,6 +150,7 @@ async function cleanup(): Promise<void> {
   await db.patientProfile.deleteMany({ where: { personId: { in: people } } });
   await db.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalMembership.deleteMany({ where: { hospitalId: { in: hospitals } } });
+  await db.osmHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.userRole.deleteMany({ where: { userId: { in: users } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
   await db.person.deleteMany({ where: { id: { in: people } } });
@@ -226,6 +227,55 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
     // Child staff keep seeing only their own Hospital.
     expect((await listPatientDirectoryScopes(n.childOwner)).map(({ hospitalId }) => hospitalId)).toEqual([n.childId]);
     await expect(findPatientDirectory(n.childOwner, directoryInput(n.parentId))).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("audits the network read of a Child Patient whose current OSM is someone else, even when the reader is an OSM there", async () => {
+    const n = await network();
+    async function osmAtChild(userId: string): Promise<void> {
+      await db.userRole.upsert({ where: { userId_role: { userId, role: Role.OSM } }, update: {}, create: { userId, role: Role.OSM } });
+      await db.osmHospitalRelationship.create({ data: { userId, hospitalId: n.childId, status: MembershipStatus.ACTIVE } });
+    }
+    await osmAtChild(n.parentOwner.userId);
+    const otherOsm = await staff(n.otherChildId, MembershipType.MEMBER);
+    await osmAtChild(otherOsm.userId);
+    const ownPatient = await provisionPatient(n.childOwner, {
+      identity: { namespace: "network-read", value: randomUUID() },
+      targetHospitalId: n.childId,
+      givenName: "ผู้ป่วย",
+      familyName: "ของอสม",
+    });
+    users.push(ownPatient.userId);
+    people.push(ownPatient.personId);
+    await db.user.update({ where: { id: ownPatient.userId }, data: { status: UserStatus.ACTIVE, authSubject: randomUUID() } });
+    await assignOsmToPatient(n.childOwner, { patientHospitalRelationshipId: n.relationshipId, osmUserId: otherOsm.userId });
+    await assignOsmToPatient(n.childOwner, { patientHospitalRelationshipId: ownPatient.relationshipId, osmUserId: n.parentOwner.userId });
+    for (const patientHospitalRelationshipId of [n.relationshipId, ownPatient.relationshipId]) {
+      await createAppointment(n.childOwner, {
+        patientHospitalRelationshipId,
+        submissionNonce: randomUUID(),
+        scheduledAt: "2026-12-20T10:00:00+07:00",
+        type: "FOLLOW_UP",
+        responsibleUserId: null,
+        locationType: "CLINIC",
+        durationMinutes: 30,
+      });
+    }
+    const readerAndOsm: ActorContext = {
+      ...n.parentOwner,
+      roles: [Role.HOSPITAL, Role.OSM],
+      osmHospitalRelationships: [{ hospitalId: n.childId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+    };
+    await db.auditEvent.deleteMany({ where: { actorUserId: n.parentOwner.userId, action: "patient.network_read" } });
+
+    const page = await listWorkAppointments(readerAndOsm, { hospitalId: n.childId, tab: "UPCOMING" });
+
+    expect(page.items).toHaveLength(2);
+    const audited = await db.auditEvent.findMany({
+      where: { actorUserId: n.parentOwner.userId, action: "patient.network_read", resourceType: "PatientHospitalRelationship" },
+      select: { resourceId: true },
+    });
+    // ADR-0016: only the Patient the actor serves as current OSM is a direct read.
+    expect(audited.map(({ resourceId }) => resourceId)).toEqual([n.relationshipId]);
   });
 
   it("never lets a network reader write Child data", async () => {
