@@ -17,6 +17,7 @@ import { correctPatientName, PatientNameCorrectionRequiresAdminError } from "@/m
 import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { getPatientSelfAssignedOsmPhone } from "@/modules/patient-self/services/patient-self-query-service";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
   PATIENT_SELF_MEASUREMENT_CARE_TEAM_PAGE_SIZE,
@@ -238,8 +239,8 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await updateStaffPatientHospitalProfile(f.owner, f.relationshipId, { expectedVersion: 0, phoneNumber: "0812345678" }, db);
     const { caregiver, grantId } = await caregiverWithGrant(f);
     const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
-    const both = { hospitalPhone: "02-123-4567", patientPhone: "0812345678" };
-    const hospitalOnly = { hospitalPhone: "02-123-4567", patientPhone: null };
+    const both = { assignedOsmPhone: null, hospitalPhone: "02-123-4567", patientPhone: "0812345678" };
+    const hospitalOnly = { assignedOsmPhone: null, hospitalPhone: "02-123-4567", patientPhone: null };
 
     expect((await getAppointmentDetail(f.owner, f.relationshipId, appointment.appointmentId)).contactPhones).toEqual(both);
     expect((await getAppointmentDetail(f.member, f.relationshipId, appointment.appointmentId)).contactPhones).toEqual(both);
@@ -251,6 +252,35 @@ describe("Phase E access decisions (PostgreSQL)", () => {
 
     const unassigned = await osm(f.hospitalId);
     await expect(getAppointmentDetail(unassigned, f.relationshipId, appointment.appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("WF-PHONE: current assigned OSM phone reaches only same-Hospital staff and exact Patient SELF", async () => {
+    const f = await fixture();
+    await db.osmHospitalRelationship.updateMany({ where: { hospitalId: f.hospitalId, userId: f.osm.userId }, data: { contactPhone: "0899999999" } });
+    await db.hospitalMembership.updateMany({ where: { hospitalId: f.hospitalId }, data: { contactPhone: "021234567" } });
+    const { caregiver, grantId } = await caregiverWithGrant(f);
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
+    for (const actor of [f.owner, f.member]) {
+      const detail = await getAppointmentDetail(actor, f.relationshipId, appointment.appointmentId);
+      expect(detail.contactPhones.assignedOsmPhone).toBe("0899999999");
+      expect(JSON.stringify(detail)).not.toContain("021234567");
+    }
+    expect((await getOwnPatientAppointmentDetail(f.patient, f.relationshipId, appointment.appointmentId)).contactPhones.assignedOsmPhone).toBe("0899999999");
+    expect((await getAppointmentDetail(f.osm, f.relationshipId, appointment.appointmentId)).contactPhones.assignedOsmPhone).toBeNull();
+    const delegated = await getDelegatedAppointment(caregiver, grantId, appointment.appointmentId, familyDeps);
+    expect(delegated.contactPhones.assignedOsmPhone).toBeNull();
+    expect(JSON.stringify(delegated)).not.toContain("0899999999");
+    expect(JSON.stringify(delegated)).not.toContain("021234567");
+    expect(await getPatientSelfAssignedOsmPhone(f.patient, f.relationshipId)).toBe("0899999999");
+    const other = await account([Role.PATIENT]);
+    await expect(getPatientSelfAssignedOsmPhone(other, f.relationshipId)).rejects.toThrow();
+    await expect(getOwnPatientAppointmentDetail(other, f.relationshipId, appointment.appointmentId)).rejects.toThrow();
+    const next = await osm(f.hospitalId);
+    await db.osmHospitalRelationship.updateMany({ where: { hospitalId: f.hospitalId, userId: next.userId }, data: { contactPhone: "0691234567" } });
+    await assignOsmToPatient(f.owner, { patientHospitalRelationshipId: f.relationshipId, osmUserId: next.userId });
+    expect((await getOwnPatientAppointmentDetail(f.patient, f.relationshipId, appointment.appointmentId)).contactPhones.assignedOsmPhone).toBe("0691234567");
+    await db.osmHospitalRelationship.updateMany({ where: { hospitalId: f.hospitalId, userId: next.userId }, data: { status: MembershipStatus.SUSPENDED } });
+    expect((await getOwnPatientAppointmentDetail(f.patient, f.relationshipId, appointment.appointmentId)).contactPhones.assignedOsmPhone).toBeNull();
   });
 
   it("E5: the Patient records and lists own values; the care team reads them labeled; they never reach rounds or the report", async () => {

@@ -133,7 +133,7 @@ export type AppointmentCreateContext = {
   homeVisitOnly?: boolean;
   patient: AppointmentPatientSummary;
   responsibleMembers: ResponsibleHospitalMember[];
-  currentOsmAssignee: { userId: string; displayName: string } | null;
+  currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
   sourceServiceRequestId: string | null;
 };
 
@@ -623,7 +623,7 @@ export async function getAppointmentDetail(
     const contactPhones = await loadAppointmentContactPhones(
       database,
       access.patient.patientHospitalRelationshipId,
-      access.scopes.exactOsmAssignment || access.scopes.directHospital ? "ASSIGNED_OSM_OR_HOSPITAL_STAFF" : "PATIENT_SELF",
+      access.scopes.directHospital ? "HOSPITAL_STAFF" : access.scopes.exactOsmAssignment ? "ASSIGNED_OSM_OR_HOSPITAL_STAFF" : "PATIENT_SELF",
     );
 
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
@@ -639,8 +639,8 @@ export async function getAppointmentDetail(
 
 async function resolveCurrentOsmAssignee(
   database: AppointmentQueryDatabase,
-  input: { osmUserId: string | null; hospitalId: string },
-): Promise<{ userId: string; displayName: string } | null> {
+  input: { osmUserId: string | null; hospitalId: string; includePhone: boolean },
+): Promise<{ userId: string; displayName: string; contactPhone: string | null } | null> {
   if (!input.osmUserId) return null;
   const osm = await database.user.findFirst({
     where: {
@@ -651,9 +651,9 @@ async function resolveCurrentOsmAssignee(
         some: { hospitalId: input.hospitalId, status: "ACTIVE", hospital: { status: "ACTIVE" } },
       },
     },
-    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+    select: { id: true, person: { select: { givenName: true, familyName: true } }, osmHospitalRelationships: { where: { hospitalId: input.hospitalId, status: "ACTIVE" }, take: 1, select: { contactPhone: true } } },
   });
-  return osm ? { userId: osm.id, displayName: toDisplayName(osm.person) } : null;
+  return osm ? { userId: osm.id, displayName: toDisplayName(osm.person), contactPhone: input.includePhone ? osm.osmHospitalRelationships[0]?.contactPhone ?? null : null } : null;
 }
 
 export async function getAppointmentCreateContext(
@@ -695,6 +695,7 @@ export async function getAppointmentCreateContext(
       patient: access.patient,
       responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
+        includePhone: access.scopes.directHospital,
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
@@ -749,6 +750,7 @@ export async function getAppointmentRescheduleContext(
       patient: access.patient,
       appointment: toDetail(record, access.patient, true, false, access.scopes.directHospital),
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
+        includePhone: access.scopes.directHospital,
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),

@@ -114,6 +114,7 @@ function createDatabase(options: {
     // ADR-0016: no active network association unless a test supplies one.
     hospitalServiceArea: { findFirst: vi.fn().mockResolvedValue(null) },
     patientHospitalRelationship: {
+      findFirst: vi.fn().mockResolvedValue(null),
       findUnique: vi.fn().mockResolvedValue({
         id: relationshipId,
         hospitalId,

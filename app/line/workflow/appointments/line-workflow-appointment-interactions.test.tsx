@@ -24,7 +24,7 @@ const appointment = {
   locationType: "HOSPITAL", locationDetail: null, status: "SCHEDULED", updatedAt: new Date(VERSION),
   responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, acknowledgement: null, cancellationRequests: [],
   relationship: { relationshipId: REL, hospitalCode: "H", hospitalName: "โรงพยาบาล", hospitalNumber: null, hospitalStatus: HospitalStatus.ACTIVE, careEndedAt: null },
-  contactPhones: { hospitalPhone: null, patientPhone: null },
+  contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null },
 } as unknown as PatientSelfAppointmentDetail;
 
 let container: HTMLDivElement;

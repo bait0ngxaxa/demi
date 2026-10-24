@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadAssignedOsmPhone } from "@/modules/patient-assignment/services/assigned-osm-phone";
+
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { isPatientHospitalRelationshipEnded } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
@@ -24,7 +26,7 @@ export async function loadAppointmentContactPhones(
     where: { id: patientHospitalRelationshipId },
     select: { endedAt: true, hospital: { select: { contact: { select: { phoneNumber: true } } } } },
   });
-  const patient = audience === "ASSIGNED_OSM_OR_HOSPITAL_STAFF"
+  const patient = (audience === "ASSIGNED_OSM_OR_HOSPITAL_STAFF" || audience === "HOSPITAL_STAFF")
     ? await database.patientHospitalRelationship.findUnique({
         where: { id: patientHospitalRelationshipId },
         select: {
@@ -35,6 +37,8 @@ export async function loadAppointmentContactPhones(
     : null;
 
   return projectAppointmentContactPhones({
+    assignedOsmPhone: audience === "PATIENT_SELF" || audience === "HOSPITAL_STAFF"
+      ? await loadAssignedOsmPhone(database, patientHospitalRelationshipId) : null,
     hospitalPhone: relationship && !isPatientHospitalRelationshipEnded(relationship)
       ? relationship.hospital.contact?.phoneNumber ?? null
       : null,

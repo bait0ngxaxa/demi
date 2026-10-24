@@ -114,7 +114,7 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     expect(page.appointments).toEqual([{ appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
       extension: { locationDetail: "SECRET-LOCATION", responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null } }]);
     // E4 (ก-20): the detail adds the Hospital contact phone only; the Patient phone is never projected to a caregiver.
-    expect(await getDelegatedAppointment(f.caregiver, grantId, id, deps)).toEqual({ ...page.appointments[0], contactPhones: { hospitalPhone: null, patientPhone: null } });
+    expect(await getDelegatedAppointment(f.caregiver, grantId, id, deps)).toEqual({ ...page.appointments[0], contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } });
     const management = await getAppointmentGrantManagement(f.caregiver, {}, deps);
     expect(Object.keys(management?.caregiver.grants[0] ?? {}).sort()).toEqual(["grantId", "status", "proposedAt", "acceptedAt", "revokedAt", "participant", "hospitalName", "contractVersion"].sort());
     expect(JSON.stringify(management)).not.toMatch(/SECRET|hospitalNumber|hospitalCode|patientProfileId/);

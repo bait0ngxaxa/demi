@@ -94,7 +94,7 @@ function BulkAddPanel({
 }): React.JSX.Element {
   const [kind, setKind] = useState<"HOSPITAL_MEMBER" | "OSM">("HOSPITAL_MEMBER");
   const [rowCount, setRowCount] = useState(INITIAL_BULK_ROWS);
-  const [formRows, setFormRows] = useState(() => Array.from({ length: MAX_BULK_ROWS }, () => ({ nationalId: "", givenName: "", familyName: "", profession: "" })));
+  const [formRows, setFormRows] = useState(() => Array.from({ length: MAX_BULK_ROWS }, () => ({ nationalId: "", givenName: "", familyName: "", profession: "", contactPhone: "" })));
   const [submissionId, setSubmissionId] = useState("");
   const [showOutcome, setShowOutcome] = useState(true);
   const clock = useRef({ serverTime, receivedAt: 0 });
@@ -146,6 +146,7 @@ function BulkAddPanel({
           เลขบัตรประชาชนต้องไม่ซ้ำกันในรายการที่ส่ง หลังบันทึกให้พิมพ์ใบเปิดใช้งานจากส่วน &quot;รอเปิดใช้งาน&quot;
         </p>
         <form action={action} className="mt-6 space-y-4" onSubmit={() => setShowOutcome(true)}>
+          {kind === "OSM" ? <p className="text-sm text-muted" id="bulk-osm-phone-help">เบอร์นี้จะแสดงให้ผู้ป่วยที่ อสม. ดูแลเห็น</p> : null}
           <input name="submissionId" type="hidden" value={submissionId} />
           <input name="targetHospitalId" type="hidden" value={hospitalId} />
           <label className="block max-w-xs space-y-2 text-sm font-semibold">
@@ -162,7 +163,7 @@ function BulkAddPanel({
           </label>
           <div className="space-y-3">
             {Array.from({ length: rowCount }, (_, index) => (
-              <div className={`grid gap-3 rounded-control border p-3 sm:grid-cols-2 ${duplicateRows.has(index + 1) ? "border-danger" : "border-border"} ${kind === "HOSPITAL_MEMBER" ? "lg:grid-cols-4" : "lg:grid-cols-3"}`} key={index}>
+              <div className={`grid gap-3 rounded-control border p-3 sm:grid-cols-2 ${duplicateRows.has(index + 1) ? "border-danger" : "border-border"} ${kind === "HOSPITAL_MEMBER" ? "lg:grid-cols-5" : "lg:grid-cols-4"}`} key={index}>
                 <label className="space-y-1 text-xs font-semibold">
                   <span>แถว {index + 1} · เลขบัตรประชาชน</span>
                   <Input disabled={pending} value={formRows[index].nationalId} onChange={(event) => updateRow(index, "nationalId", event.target.value)} inputMode="numeric" maxLength={13} name="nationalId" pattern="[0-9]{13}" type="text" />
@@ -174,6 +175,10 @@ function BulkAddPanel({
                 <label className="space-y-1 text-xs font-semibold">
                   <span>นามสกุล</span>
                   <Input disabled={pending} value={formRows[index].familyName} onChange={(event) => updateRow(index, "familyName", event.target.value)} maxLength={120} name="familyName" type="text" />
+                </label>
+                <label className="space-y-1 text-xs font-semibold">
+                  <span>เบอร์ติดต่อ</span>
+                  <Input disabled={pending} value={formRows[index].contactPhone} onChange={(event) => updateRow(index, "contactPhone", event.target.value)} inputMode="tel" autoComplete="tel" maxLength={32} name="contactPhone" required={Boolean(formRows[index].nationalId || formRows[index].givenName || formRows[index].familyName || formRows[index].profession)} aria-describedby={kind === "OSM" ? "bulk-osm-phone-help" : undefined} />
                 </label>
                 {kind === "HOSPITAL_MEMBER" ? (
                   <label className="space-y-1 text-xs font-semibold">

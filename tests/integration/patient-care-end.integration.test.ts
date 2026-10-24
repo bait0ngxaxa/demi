@@ -364,9 +364,9 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     const future = await createAppointment(f.owner, appointmentInput(f.relationshipId, "2026-10-30T10:00:00+07:00"), dependencies);
     const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: f.hospitalId, code: "SCREENING", enabled: true, createdByUserId: f.owner.userId, updatedByUserId: f.owner.userId } });
     await db.hospitalContact.create({ data: { hospitalId: f.hospitalId, phoneNumber: "021234567" } });
-    await expect(getOwnPatientAppointmentDetail(f.patient, f.relationshipId, future.appointmentId, { database: db })).resolves.toMatchObject({ contactPhones: { hospitalPhone: "021234567" } });
+    await expect(getOwnPatientAppointmentDetail(f.patient, f.relationshipId, future.appointmentId, { database: db })).resolves.toMatchObject({ contactPhones: { assignedOsmPhone: null, hospitalPhone: "021234567" } });
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
-    await expect(getOwnPatientAppointmentDetail(f.patient, f.relationshipId, future.appointmentId, { database: db })).resolves.toMatchObject({ status: "CANCELLED", contactPhones: { hospitalPhone: null } });
+    await expect(getOwnPatientAppointmentDetail(f.patient, f.relationshipId, future.appointmentId, { database: db })).resolves.toMatchObject({ status: "CANCELLED", contactPhones: { assignedOsmPhone: null, hospitalPhone: null } });
 
     const context = await resolveOwnPatientContext(f.patient, { database: db });
     const ended = context?.hospitalRelationships.find(({ relationshipId }) => relationshipId === f.relationshipId);

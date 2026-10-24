@@ -196,7 +196,7 @@ function OsmSearchPicker({
                       type="radio"
                     />
                     <span className="min-w-0 flex-1 break-words font-semibold text-text">
-                      {candidate.displayName}
+                      {candidate.displayName}{candidate.contactPhone ? ` · ${candidate.contactPhone}` : ""}
                     </span>
                   </label>
                 </li>

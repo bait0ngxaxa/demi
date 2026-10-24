@@ -408,7 +408,7 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
       patientHospitalRelationshipId: patient.relationshipId,
       value: "",
     });
-    expect(candidates).toEqual([{ userId: candidate.userId, displayName: "ไม่ระบุชื่อ" }]);
+    expect(candidates).toEqual([{ userId: candidate.userId, displayName: "ไม่ระบุชื่อ", contactPhone: null }]);
     const view = await getPatientOsmAssignmentManagementView(owner.actor, patient.relationshipId);
     expect(view.currentAssignment).toBeNull();
 

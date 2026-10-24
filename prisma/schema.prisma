@@ -795,6 +795,7 @@ model SupportReport {
 }
 
 model HospitalMembership {
+  contactPhone String? @db.VarChar(16)
   id             String           @id @default(uuid()) @db.Uuid
   userId         String           @db.Uuid
   hospitalId     String           @db.Uuid
@@ -2044,6 +2045,7 @@ model PatientActivation {
 }
 
 model OsmHospitalRelationship {
+  contactPhone String? @db.VarChar(16)
   id         String           @id @default(uuid()) @db.Uuid
   userId     String           @db.Uuid
   hospitalId String           @db.Uuid

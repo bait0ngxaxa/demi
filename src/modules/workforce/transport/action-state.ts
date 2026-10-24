@@ -78,6 +78,7 @@ export type WorkforceOwnerGovernanceMutationResultState = {
 };
 
 export type WorkforceField =
+  | "contactPhone"
   | "nationalId"
   | "givenName"
   | "familyName"

@@ -110,6 +110,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การเปิดใช้งาน</h2>
           <dl className="mt-4 divide-y divide-border border-y border-border">
+            {detail.kind !== "patient" ? <Field label="เบอร์ติดต่อ">{detail.contactPhone ?? "ยังไม่ได้ระบุ"}</Field> : null}
             {detail.hospitalNumber ? <Field label="HN ของโรงพยาบาลนี้">{detail.hospitalNumber}</Field> : null}
             <Field label="วิธีเปิดใช้งาน">
               <span className="font-semibold">{ACTIVATION_METHOD_LABELS[detail.activation.method]}</span>

@@ -17,7 +17,7 @@ const rows: WorkforceListRow[] = [
   {
     id: "pending-relationship",
     userId: "pending-user",
-    displayName: "บุคลากรรอลิงก์",
+    contactPhone: null, displayName: "บุคลากรรอลิงก์",
     kind: "HOSPITAL_MEMBER",
     membershipType: MembershipType.MEMBER,
     profession: Profession.NURSE,
@@ -32,7 +32,7 @@ const rows: WorkforceListRow[] = [
   {
     id: "expired-relationship",
     userId: "expired-user",
-    displayName: "บุคลากรลิงก์หมดอายุ",
+    contactPhone: null, displayName: "บุคลากรลิงก์หมดอายุ",
     kind: "HOSPITAL_MEMBER",
     membershipType: MembershipType.MEMBER,
     profession: Profession.NURSE,

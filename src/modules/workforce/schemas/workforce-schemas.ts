@@ -5,6 +5,14 @@ import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema"
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { selfRegistrationListFilterSchema } from "@/modules/self-registration/domain/self-registration-schemas";
 
+// Validate raw characters before removing separators (hospital-contact guard style).
+// An ASCII allowlist also rejects controls, invisible characters and unpaired surrogates.
+export const workforceContactPhoneSchema = z.string({ error: "กรุณากรอกเบอร์ติดต่อ" })
+  .max(32, "เบอร์ติดต่อยาวเกินกำหนด")
+  .regex(/^[0-9 -]+$/u, "เบอร์ติดต่อใช้ได้เฉพาะตัวเลข เว้นวรรค และขีด")
+  .transform((value) => value.replace(/[ -]/gu, ""))
+  .pipe(z.string().regex(/^(?:0[689][0-9]{8}|0[0-9]{8})$/u, "กรุณากรอกเบอร์มือถือไทย 10 หลัก หรือเบอร์โทรศัพท์พื้นฐาน 9 หลัก"));
+
 export const personNameSchema = z.string().trim().min(1).max(120);
 
 export const workforceKindSchema = z.enum(["HOSPITAL_MEMBER", "OSM"]);
@@ -17,6 +25,7 @@ export const workforceExpectedUpdatedAtSchema = z.iso.datetime({ offset: true })
 export const hospitalMemberProvisionSchema = z
   .object({
     nationalId: thaiNationalIdSchema,
+    contactPhone: workforceContactPhoneSchema,
     givenName: personNameSchema,
     familyName: personNameSchema,
     targetHospitalId: workforceTargetHospitalIdSchema,
@@ -27,6 +36,7 @@ export const hospitalMemberProvisionSchema = z
 export const osmProvisionSchema = z
   .object({
     nationalId: thaiNationalIdSchema,
+    contactPhone: workforceContactPhoneSchema,
     givenName: personNameSchema,
     familyName: personNameSchema,
     targetHospitalId: workforceTargetHospitalIdSchema,
@@ -57,6 +67,12 @@ const hospitalMembershipLifecycleFields = {
   targetHospitalId: workforceTargetHospitalIdSchema,
   expectedUpdatedAt: workforceExpectedUpdatedAtSchema,
 } as const;
+
+export const workforceContactPhoneUpdateSchema = z.object({
+  ...hospitalMembershipLifecycleFields,
+  kind: workforceDetailKindSchema,
+  contactPhone: workforceContactPhoneSchema,
+}).strict();
 
 export const hospitalMembershipProfessionUpdateSchema = z
   .object({

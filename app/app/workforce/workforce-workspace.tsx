@@ -203,6 +203,7 @@ export function WorkforceWorkspace({
                   <li className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={`${row.kind}-${row.id}`}>
                     <div className="min-w-0">
                       <p className="font-semibold text-ink">{row.displayName}</p>
+                      <p className="mt-1 break-all text-sm text-muted">เบอร์ติดต่อ: {row.contactPhone ?? "ยังไม่ได้ระบุ"}</p>
                       <p className="mt-1 text-sm text-muted">{kindName(row)}</p>
                       {row.activationExpiresAt ? (
                         <p className="mt-1 text-xs text-muted">ลิงก์ล่าสุดหมดอายุ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(row.activationExpiresAt)}</p>

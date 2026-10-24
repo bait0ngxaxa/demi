@@ -1170,3 +1170,9 @@ unbound credentials are revoked and ambiguous claimed RESETs quarantine applicat
 This is remediation implementation, not production deployment or complete account-recovery
 acceptance. See [ADR-0008 amendment](./adr/0008-workforce-provisioning-and-activation.md) and
 [verification/runbook handoff](./phases/WORKFORCE_ONBOARDING_V2_REMEDIATION.md).
+
+## WF-PHONE — เบอร์ติดต่อบุคลากร (2026-10-24)
+
+**เบอร์ติดต่อบุคลากร:** เบอร์ที่ OWNER ระบุให้บุคลากรหรือ อสม. ในความสัมพันธ์กับโรงพยาบาลแต่ละแห่ง แยกจากข้อมูลตัวตนและเบอร์ผู้ป่วย; OWNER ของโรงพยาบาลนั้นดูและแก้ไขได้ ผู้ใช้ไม่แก้ไขเอง และรายการเดิมอาจยังไม่มีเบอร์
+
+**เบอร์ติดต่อ อสม. ที่ดูแลปัจจุบัน:** เบอร์ของ อสม. ที่มีการมอบหมายปัจจุบันในความสัมพันธ์ผู้ป่วยนั้น เจ้าหน้าที่ OWNER/MEMBER ของโรงพยาบาล ACTIVE เดียวกันเห็นในบริบทการดูแล และผู้ป่วย SELF เห็นเฉพาะ อสม. ที่ดูแลตน ผู้ดูแล/ญาติไม่เห็นเบอร์บุคลากรใด ๆ; เบอร์เจ้าหน้าที่ไม่แสดงให้ผู้ป่วย ไม่มีเบอร์บุคลากรใน LINE, audit metadata, logs หรือใบเปิดใช้งาน

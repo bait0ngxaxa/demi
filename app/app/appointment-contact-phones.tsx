@@ -31,6 +31,10 @@ export function AppointmentContactPhoneEntries({
         <dt className="text-sm text-text-muted">เบอร์ติดต่อโรงพยาบาล</dt>
         <PhoneValue missing="โรงพยาบาลยังไม่ได้ระบุเบอร์ติดต่อ" phone={contactPhones.hospitalPhone} />
       </div>
+      {contactPhones.assignedOsmPhone ? <div className="min-w-0">
+        <dt className="text-sm text-text-muted">เบอร์ติดต่อ อสม. ที่ดูแลปัจจุบัน</dt>
+        <PhoneValue missing="ยังไม่มีเบอร์ติดต่อ อสม." phone={contactPhones.assignedOsmPhone} />
+      </div> : null}
       {showPatientPhone ? (
         <div className="min-w-0">
           <dt className="text-sm text-text-muted">เบอร์ติดต่อผู้ป่วย</dt>

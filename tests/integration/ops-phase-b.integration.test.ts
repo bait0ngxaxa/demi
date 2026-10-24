@@ -211,7 +211,7 @@ describe("Phase B hospital operations", () => {
     expect((await getAppointmentDetail(f.owner, f.relationshipId, a.appointmentId)).status).toBe("SCHEDULED");
     const nationalId = "1101700203450";
     await db.person.update({ where: { id: f.osm.personId }, data: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalId }) } });
-    const readded = await provisionOsm(f.owner, { nationalId, givenName: "ทดสอบ", familyName: "Phase B", targetHospitalId: f.hospitalId }, dependencies);
+    const readded = await provisionOsm(f.owner, { contactPhone: "0812345678", nationalId, givenName: "ทดสอบ", familyName: "Phase B", targetHospitalId: f.hospitalId }, dependencies);
     expect(readded.userId).toBe(f.osm.userId);
     expect(readded.relationshipId).not.toBe(rel.id);
     expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: rel.id } })).status).toBe("ENDED");

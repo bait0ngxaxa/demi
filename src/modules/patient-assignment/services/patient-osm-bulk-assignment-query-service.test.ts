@@ -64,7 +64,7 @@ function createDatabase(options: { hospitalFound?: boolean } = {}) {
   };
   const user = {
     findMany: vi.fn(async () => [
-      { id: "77777777-7777-4777-8777-777777777777", person: { givenName: "สมหญิง", familyName: "ผู้ดูแล" } },
+      { id: "77777777-7777-4777-8777-777777777777", osmHospitalRelationships: [{ contactPhone: "0812345678" }], person: { givenName: "สมหญิง", familyName: "ผู้ดูแล" } },
     ]),
     findFirst: vi.fn(async () => null as { id: string } | null),
   };
@@ -168,6 +168,7 @@ describe("getPatientOsmBulkAssignmentView", () => {
 
 describe("listPatientOsmBulkCandidates", () => {
   const osmRecord = (index: number) => ({
+    osmHospitalRelationships: [{ contactPhone: "0812345678" }],
     id: `77777777-7777-4777-8777-${String(index).padStart(12, "0")}`,
     person: { givenName: `อสม.${index}`, familyName: "ผู้ดูแล" },
   });
@@ -182,7 +183,7 @@ describe("listPatientOsmBulkCandidates", () => {
     );
 
     expect(page).toEqual({
-      candidates: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง ผู้ดูแล" }],
+      candidates: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง ผู้ดูแล", contactPhone: "0812345678" }],
       hasMore: false,
       nextCursor: null,
     });

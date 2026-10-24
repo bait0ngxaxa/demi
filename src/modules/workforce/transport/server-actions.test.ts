@@ -21,6 +21,7 @@ import {
   suspendHospitalMembership,
   suspendOsmRelationship,
   updateHospitalMembershipProfession,
+  updateWorkforceContactPhone,
   WorkforceBulkDuplicateError,
 } from "../services/workforce-service";
 import {
@@ -45,6 +46,7 @@ import {
   suspendHospitalMembershipAction,
   suspendOsmRelationshipAction,
   updateHospitalMembershipProfessionAction,
+  updateWorkforceContactPhoneAction,
 } from "./server-actions";
 
 const mockedRedirect = vi.hoisted(() => vi.fn());
@@ -80,6 +82,7 @@ vi.mock("../services/workforce-service", () => ({
   suspendHospitalMembership: vi.fn(),
   suspendOsmRelationship: vi.fn(),
   updateHospitalMembershipProfession: vi.fn(),
+  updateWorkforceContactPhone: vi.fn(),
 }));
 
 const mockedGetProtectedApplicationActor = vi.mocked(getProtectedApplicationActor);
@@ -104,6 +107,7 @@ function createStaffFormData(): FormData {
   const formData = new FormData();
   formData.set("nationalId", "1000000000009");
   formData.set("givenName", "สมชาย");
+  formData.set("contactPhone", "081-234-5678");
   formData.set("familyName", "บุคลากร");
   formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
   formData.set("profession", "NURSE");
@@ -176,6 +180,7 @@ describe("workforce Server Actions", () => {
       {
         nationalId: "1000000000009",
         givenName: "สมชาย",
+        contactPhone: "0812345678",
         familyName: "บุคลากร",
         targetHospitalId: "11111111-1111-4111-8111-111111111111",
         profession: "NURSE",
@@ -248,6 +253,7 @@ describe("workforce Server Actions", () => {
     expect(mockedProvisionHospitalMember).toHaveBeenCalledWith(actor, {
       nationalId: "1000000000009",
       givenName: "สมชาย",
+        contactPhone: "0812345678",
       familyName: "บุคลากร",
       targetHospitalId: "11111111-1111-4111-8111-111111111111",
       profession: "NURSE",
@@ -517,6 +523,7 @@ describe("workforce Server Actions", () => {
       formData.append("nationalId", nationalId);
       formData.append("givenName", givenName);
       formData.append("familyName", familyName);
+      formData.append("contactPhone", nationalId ? "0812345678" : "");
     }
 
     const result = await provisionWorkforceBulkAction({ status: "IDLE" }, formData);
@@ -529,8 +536,8 @@ describe("workforce Server Actions", () => {
         targetHospitalId: "11111111-1111-4111-8111-111111111111",
         rowNumbers: [1, 3],
         rows: [
-          { nationalId: "1000000000009", givenName: "ก", familyName: "ข" },
-          { nationalId: "12", givenName: "ค", familyName: "ง" },
+          { nationalId: "1000000000009", givenName: "ก", familyName: "ข", contactPhone: "0812345678" },
+          { nationalId: "12", givenName: "ค", familyName: "ง", contactPhone: "0812345678" },
         ],
       },
     );
@@ -823,5 +830,27 @@ describe("workforce Server Actions", () => {
     expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
     expect(mockedPromoteHospitalOwner).not.toHaveBeenCalled();
+  });
+});
+
+describe("WF-PHONE action", () => {
+  it("rejects missing phones before invoking a mutation", async () => {
+    const result = await updateWorkforceContactPhoneAction({ status: "IDLE" }, new FormData());
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
+    expect(vi.mocked(updateWorkforceContactPhone)).not.toHaveBeenCalled();
+  });
+  it("sends normalized phones to the service and returns only the version receipt", async () => {
+    const formData = new FormData();
+    formData.set("relationshipId", "22222222-2222-4222-8222-222222222222");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("expectedUpdatedAt", "2026-10-24T00:00:00.000Z");
+    formData.set("kind", "osm");
+    formData.set("contactPhone", "081-234-5678");
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as Awaited<ReturnType<typeof getProtectedApplicationActor>>);
+    vi.mocked(updateWorkforceContactPhone).mockResolvedValue({ relationshipId: "22222222-2222-4222-8222-222222222222", hospitalId: "11111111-1111-4111-8111-111111111111", updatedAt: new Date("2026-10-24T00:01:00.000Z") });
+    const result = await updateWorkforceContactPhoneAction({ status: "IDLE" }, formData);
+    expect(vi.mocked(updateWorkforceContactPhone)).toHaveBeenCalledWith({ userId: "owner-1" }, expect.objectContaining({ kind: "osm", contactPhone: "0812345678" }));
+    expect(result.status).toBe("SUCCESS");
+    expect(JSON.stringify(result)).not.toContain("0812345678");
   });
 });

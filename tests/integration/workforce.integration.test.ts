@@ -253,7 +253,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("provisions new Hospital staff, stores only activation digest, and activates with target-owned password", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionHospitalMember(actor, {
+    const result = await provisionHospitalMember(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.staff,
       givenName: "สมชาย",
       familyName: "บุคลากร",
@@ -310,7 +310,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("provisions OSM separately without HospitalMembership or clinical scope", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionOsm(actor, {
+    const result = await provisionOsm(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.osm,
       givenName: "สมหญิง",
       familyName: "อาสา",
@@ -351,7 +351,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
     const result = await provisionHospitalMember(
       actor,
-      {
+      { contactPhone: "0812345678",
         nationalId: nationalIds.active,
         givenName: "ชื่อใหม่ไม่เขียนทับ",
         familyName: "นามสกุลใหม่",
@@ -386,7 +386,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     });
     await prisma.hospitalMembership.create({ data: { userId: user.id, hospitalId: source.hospitalId, membershipType: MembershipType.MEMBER, profession: "NURSE", status: MembershipStatus.ACTIVE } });
 
-    const result = await provisionHospitalMember(target.actor, {
+    const result = await provisionHospitalMember(target.actor, { contactPhone: "0812345678",
       nationalId: nationalIds.active,
       givenName: "บุคลากร",
       familyName: "เดิม",
@@ -446,7 +446,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
     const result = await provisionHospitalMember(
       actor,
-      {
+      { contactPhone: "0812345678",
         nationalId: nationalIds.active,
         givenName: "ชื่อจากโรงพยาบาล",
         familyName: "นามสกุลจากโรงพยาบาล",
@@ -501,7 +501,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     const target = await createAdminTarget(nationalIds.adminStaff);
 
     await expect(
-      provisionHospitalMember(actor, {
+      provisionHospitalMember(actor, { contactPhone: "0812345678",
         nationalId: nationalIds.adminStaff,
         givenName: "ผู้ดูแล",
         familyName: "ระบบ",
@@ -524,7 +524,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     const target = await createAdminTarget(nationalIds.adminOsm);
 
     await expect(
-      provisionOsm(actor, {
+      provisionOsm(actor, { contactPhone: "0812345678",
         nationalId: nationalIds.adminOsm,
         givenName: "ผู้ดูแล",
         familyName: "ระบบ",
@@ -543,7 +543,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("regeneration revokes the old credential and only the new credential works", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionOsm(actor, {
+    const result = await provisionOsm(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.activationConcurrent,
       givenName: "สมชาย",
       familyName: "เปิดใช้งาน",
@@ -586,7 +586,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("rejects regeneration and revocation while an activation claim is in flight", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionOsm(actor, {
+    const result = await provisionOsm(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.activationConcurrent,
       givenName: "ผู้ใช้",
       familyName: "กำลังเปิดใช้งาน",
@@ -643,7 +643,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("keeps local workforce state provisioned when provider establishment fails", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionHospitalMember(actor, {
+    const result = await provisionHospitalMember(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.providerFailure,
       givenName: "ผู้ใช้",
       familyName: "ผู้ให้บริการล้มเหลว",
@@ -692,7 +692,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("keeps a claimed activation in reconciliation when provider identity ownership is ambiguous", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionHospitalMember(actor, {
+    const result = await provisionHospitalMember(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.providerFailure,
       givenName: "ผู้ใช้",
       familyName: "provider conflict",
@@ -753,8 +753,8 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       profession: "COORDINATOR" as const,
     };
     const outcomes = await Promise.allSettled([
-      provisionHospitalMember(actor, input),
-      provisionHospitalMember(actor, input),
+      provisionHospitalMember(actor, { contactPhone: "0812345678", ...input }),
+      provisionHospitalMember(actor, { contactPhone: "0812345678", ...input }),
     ]);
 
     expect(outcomes.every((outcome) => outcome.status === "fulfilled")).toBe(true);
@@ -766,7 +766,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("allows only one concurrent activation claim", async () => {
     const { actor, hospitalId } = await createOwner();
-    const result = await provisionOsm(actor, {
+    const result = await provisionOsm(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.activationConcurrent,
       givenName: "ผู้ใช้",
       familyName: "เปิดพร้อมกัน",
@@ -1143,7 +1143,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
   it("exposes no lifecycle actions for an OSM or OWNER detail", async () => {
     const { actor, hospitalId } = await createOwner("INTEGRATION-DETAIL-READONLY");
-    const osm = await provisionOsm(actor, {
+    const osm = await provisionOsm(actor, { contactPhone: "0812345678",
       nationalId: nationalIds.osm,
       givenName: "อาสา",
       familyName: "ทดสอบ",

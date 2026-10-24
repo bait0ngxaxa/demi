@@ -1,3 +1,4 @@
+import { WorkforceContactPhoneControl } from "./workforce-contact-phone-control";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -164,6 +165,8 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
             ) : null}
           </dl>
         </Panel>
+
+        {detail.viewerScope === "OWNER" ? <WorkforceContactPhoneControl kind={detail.kind} relationshipId={detail.relationshipId} targetHospitalId={detail.hospital.id} expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()} contactPhone={detail.contactPhone} ended={detail.relationshipStatus === "ENDED"} /> : null}
 
         <WorkforceManagementControls detail={detail} />
         <Link

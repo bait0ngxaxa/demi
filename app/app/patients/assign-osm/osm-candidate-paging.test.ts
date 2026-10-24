@@ -10,7 +10,7 @@ import {
 
 const candidate = (index: number) => ({
   userId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-  displayName: "อสม. ชื่อเดียวกัน",
+  contactPhone: null, displayName: "อสม. ชื่อเดียวกัน",
 });
 const page = (from: number, to: number, nextCursor: string | null) => ({
   status: "OK" as const,

@@ -338,7 +338,7 @@ describe("AF-5 family appointment read v2 (PostgreSQL)", () => {
     const history = await listDelegatedAppointments(caregiver, { grantId: v2GrantId, tab: "history" }, grantDeps);
     expect(history.appointments.map(({ appointmentId, status }) => ({ appointmentId, status }))).toEqual([{ appointmentId: ids.past, status: "COMPLETED" }]);
     const detail = await getDelegatedAppointment(caregiver, v2GrantId, ids.past, grantDeps);
-    expect(detail.contactPhones).toEqual({ hospitalPhone: "021111111", patientPhone: null });
+    expect(detail.contactPhones).toEqual({ assignedOsmPhone: null, hospitalPhone: "021111111", patientPhone: null });
     expect(JSON.stringify([upcoming, history, detail])).not.toMatch(/0899999999|บันทึกภายใน|"note"/u);
     expect(await db.caregiverAppointmentGrant.count({ where: { status: "ACTIVE" } })).toBe(1);
   });

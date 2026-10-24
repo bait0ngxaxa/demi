@@ -12,6 +12,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { ActivationPresentation } from "@/components/workforce/activation-presentation";
+import { workforceContactPhoneSchema } from "@/modules/workforce/schemas/workforce-schemas";
 import type { WorkforceHospital } from "@/modules/workforce/services/workforce-service";
 import {
   initialWorkforceActivationActionState,
@@ -51,6 +52,7 @@ type Draft = {
   familyName: string;
   nationalId: string;
   profession: string;
+  contactPhone: string;
 };
 
 const professionLabels = {
@@ -101,7 +103,7 @@ export function WorkforceNewWorkspace({
   const router = useRouter();
   const [kind, setKind] = useState<ProvisionKind | null>(initialKind);
   const [step, setStep] = useState<Step>(initialStep);
-  const [draft, setDraft] = useState<Draft>({ givenName: "", familyName: "", nationalId: "", profession: "" });
+  const [draft, setDraft] = useState<Draft>({ givenName: "", familyName: "", nationalId: "", profession: "", contactPhone: "" });
   const [delivery, setDelivery] = useState<Delivery>("REMOTE");
   const [created, setCreated] = useState<WorkforceProvisionResultState | null>(null);
   const [outcome, setOutcome] = useState<"LATER" | "INVITED" | null>(null);
@@ -190,7 +192,7 @@ export function WorkforceNewWorkspace({
   const failureState = provision.state.status === "ERROR" ? provision.state : null;
   const activationFailure = remote.state.status === "ERROR" ? remote.state : assisted.state.status === "ERROR" ? assisted.state : null;
   const readyForProvision = kind !== null && draft.givenName.trim().length > 0 && draft.familyName.trim().length > 0 &&
-    /^[0-9]{13}$/u.test(draft.nationalId) && (kind === "OSM" || Object.hasOwn(professionLabels, draft.profession));
+    workforceContactPhoneSchema.safeParse(draft.contactPhone).success && /^[0-9]{13}$/u.test(draft.nationalId) && (kind === "OSM" || Object.hasOwn(professionLabels, draft.profession));
 
   return (
     <div className="content-workspace mx-auto max-w-3xl break-words">
@@ -224,7 +226,7 @@ export function WorkforceNewWorkspace({
             onClick={(event) => {
               event.preventDefault();
               setHandoff(null);
-              setDraft({ givenName: "", familyName: "", nationalId: "", profession: "" });
+              setDraft({ givenName: "", familyName: "", nationalId: "", profession: "", contactPhone: "" });
               setCreated(null);
               setOutcome(null);
               setKind(null);
@@ -268,6 +270,10 @@ export function WorkforceNewWorkspace({
                 <label className="space-y-2 text-sm font-semibold"><span>นามสกุล</span><Input autoComplete="family-name" maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, familyName: event.target.value }))} required value={draft.familyName} /></label>
               </div>
               <label className="block space-y-2 text-sm font-semibold"><span>เลขบัตรประชาชน</span><Input autoComplete="off" inputMode="numeric" maxLength={13} onChange={(event) => setDraft((current) => ({ ...current, nationalId: event.target.value }))} pattern="[0-9]{13}" required value={draft.nationalId} /></label>
+              <label className="block space-y-2 text-sm font-semibold"><span>เบอร์ติดต่อ</span>
+                <Input autoComplete="tel" inputMode="tel" maxLength={32} required value={draft.contactPhone} onChange={(event) => setDraft((current) => ({ ...current, contactPhone: event.target.value }))} aria-describedby={kind === "OSM" ? "osm-phone-help" : undefined} />
+                {kind === "OSM" ? <span className="block text-sm font-normal text-muted" id="osm-phone-help">เบอร์นี้จะแสดงให้ผู้ป่วยที่ อสม. ดูแลเห็น</span> : null}
+              </label>
               {kind === "HOSPITAL_MEMBER" ? (
                 <label className="block space-y-2 text-sm font-semibold"><span>วิชาชีพ</span>
                   <Select onChange={(event) => setDraft((current) => ({ ...current, profession: event.target.value }))} required value={draft.profession}>
@@ -293,6 +299,7 @@ export function WorkforceNewWorkspace({
                 <input name="givenName" type="hidden" value={draft.givenName} />
                 <input name="familyName" type="hidden" value={draft.familyName} />
                 <input name="nationalId" type="hidden" value={draft.nationalId} />
+                <input name="contactPhone" type="hidden" value={draft.contactPhone} />
                 {kind === "HOSPITAL_MEMBER" ? <input name="profession" type="hidden" value={draft.profession} /> : null}
                 <input name="deferActivation" type="hidden" value="true" />
                 {([

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   hospitalMemberProvisionSchema,
+  workforceContactPhoneSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
 } from "./workforce-schemas";
@@ -25,6 +26,7 @@ describe("workforce National ID schemas", () => {
         nationalId: checksumInvalidNationalId,
         givenName: "ตัวอย่าง",
         familyName: "บุคลากร",
+        contactPhone: "081-234-5678",
         targetHospitalId,
         profession: Profession.NURSE,
       }).success,
@@ -34,6 +36,7 @@ describe("workforce National ID schemas", () => {
         nationalId: checksumInvalidNationalId,
         givenName: "ตัวอย่าง",
         familyName: "อสม.",
+        contactPhone: "02 123 4567",
         targetHospitalId,
       }).success,
     ).toBe(true);
@@ -44,5 +47,20 @@ describe("workforce National ID schemas", () => {
         passwordConfirmation: "correct-horse-battery-staple",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("workforce contact phones", () => {
+  it.each([
+    ["081-234-5678", "0812345678"], [" 069 123 4567 ", "0691234567"],
+    ["0912345678", "0912345678"], ["02-123-4567", "021234567"], ["053 123 456", "053123456"],
+  ])("normalizes %s", (input, expected) => {
+    expect(workforceContactPhoneSchema.parse(input)).toBe(expected);
+  });
+  it.each([undefined, null, "", " ", "0712345678", "+66812345678", "181234567", "08123456789", "๐๘๑๒๓๔๕๖๗๘", "0812345678\n", "081\t2345678", "081\u200b2345678", "081\u202e2345678", "081\ufeff2345678", "081\ud8002345678", "(02)1234567"])("rejects %s", (input) => {
+    expect(workforceContactPhoneSchema.safeParse(input).success).toBe(false);
+  });
+  it.each([hospitalMemberProvisionSchema, osmProvisionSchema])("requires a phone at provisioning", (schema) => {
+    expect(schema.safeParse({ nationalId: "1000000000009", givenName: "สมใจ", familyName: "ใจดี", targetHospitalId, ...(schema === hospitalMemberProvisionSchema ? { profession: "NURSE" } : {}) }).success).toBe(false);
   });
 });

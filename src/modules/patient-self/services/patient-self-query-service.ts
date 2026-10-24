@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadAssignedOsmPhone } from "@/modules/patient-assignment/services/assigned-osm-phone";
+
 import { Prisma, Role, UserStatus, type HospitalStatus, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -288,6 +290,20 @@ export async function resolveOwnPatientRelationshipContext(
     }
 
     throw new InfrastructureError("Patient relationship could not be resolved");
+  }
+}
+
+/** PH-1 item 12: resolve exact SELF ownership before reading the current OSM contact. */
+export async function getPatientSelfAssignedOsmPhone(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientSelfQueryDependencies = {},
+): Promise<string | null> {
+  const relationship = await resolveOwnPatientRelationshipContext(actor, relationshipId, dependencies);
+  try {
+    return await loadAssignedOsmPhone(getDatabase(dependencies.database), relationship.relationshipId);
+  } catch {
+    throw new InfrastructureError("ไม่สามารถโหลดเบอร์ติดต่อ อสม. ได้");
   }
 }
 

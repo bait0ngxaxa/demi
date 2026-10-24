@@ -138,6 +138,7 @@ function createDatabase() {
   const database = {
     person: { findFirst: vi.fn().mockResolvedValue(ownRelationshipRecord()) },
     patientHospitalRelationship: {
+      findFirst: vi.fn().mockResolvedValue(null),
       findUnique: vi.fn().mockResolvedValue({ endedAt: null, hospital: { contact: { phoneNumber: "02-000-0000" } } }),
     },
     screeningAssessment: {
@@ -598,7 +599,7 @@ describe("Patient SELF care read projections", () => {
       select: { parent: { select: { name: true } } },
     });
     // E4: the Patient's own view gets the Hospital phone; the Patient phone is never read for it.
-    expect(detail.contactPhones).toEqual({ hospitalPhone: "02-000-0000", patientPhone: null });
+    expect(detail.contactPhones).toEqual({ assignedOsmPhone: null, hospitalPhone: "02-000-0000", patientPhone: null });
     expect(database.patientHospitalRelationship.findUnique).toHaveBeenCalledTimes(1);
   });
 
@@ -738,7 +739,8 @@ describe("Patient SELF care read projections", () => {
       roundActivities: [],
       roundCompletions: [],
       roundStepSkips: [],
-      patientHospitalRelationship: { hospitalProfile: null },
+      patientHospitalRelationship: {
+      findFirst: vi.fn().mockResolvedValue(null), hospitalProfile: null },
       screeningAssessments: [],
       serviceOneRoutines: [{ roundNumber: 1, recordedAt, recordedByUser: recorder, routineDate: null, entries: [], serviceOneArtifactAssociation: null }],
       serviceOneFloatingCharts: [],
@@ -852,7 +854,8 @@ describe("AF-4 Patient appointment hub", () => {
     database.patientAppointment.findMany = vi.fn().mockResolvedValue([
       appointmentRecord({
         patientHospitalRelationshipId: otherRelationshipId,
-        patientHospitalRelationship: { hospitalId: "hospital-b" },
+        patientHospitalRelationship: {
+      findFirst: vi.fn().mockResolvedValue(null), hospitalId: "hospital-b" },
         responsibleUser: {
           person: { givenName: "Care", familyName: "Nurse" },
           memberships: [
@@ -934,7 +937,8 @@ describe("AF-4 Patient appointment hub", () => {
       Array.from({ length: 51 }, (_, index) => appointmentRecord({
         id: String(index).padStart(8, "0") + "-0000-4000-8000-000000000000",
         patientHospitalRelationshipId: relationshipId,
-        patientHospitalRelationship: { hospitalId: "hospital-a" },
+        patientHospitalRelationship: {
+      findFirst: vi.fn().mockResolvedValue(null), hospitalId: "hospital-a" },
       })),
     );
 

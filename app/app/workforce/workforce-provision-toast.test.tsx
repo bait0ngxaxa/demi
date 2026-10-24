@@ -157,6 +157,7 @@ async function stepToDelivery(kind: "HOSPITAL_MEMBER" | "OSM" = "HOSPITAL_MEMBER
     setValue(inputFor("ชื่อ"), "สมชาย");
     setValue(inputFor("นามสกุล"), "บุคลากร");
     setValue(inputFor("เลขบัตรประชาชน"), "1000000000009");
+    setValue(inputFor("เบอร์ติดต่อ"), "081-234-5678");
     if (kind === "HOSPITAL_MEMBER") {
       const profession = Array.from(container.querySelectorAll<HTMLSelectElement>("select")).find((select) => select.closest("label")?.textContent?.includes("วิชาชีพ"));
       if (!profession) throw new Error("Missing profession select");

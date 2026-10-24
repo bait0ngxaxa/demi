@@ -769,9 +769,9 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const person = { nationalId: caregiver.nationalId, givenName: "ผู้ดูแล", familyName: "หลายโรงพยาบาล" };
     const revokeProviderSessions = vi.fn(async () => "CONFIRMED" as const);
 
-    const firstGrant = await provisionHospitalMember(firstOwner, { ...person, targetHospitalId: first.id, profession: "NURSE" }, { revokeProviderSessions });
-    const secondGrant = await provisionHospitalMember(secondOwner, { ...person, targetHospitalId: second.id, profession: "NURSE" }, { revokeProviderSessions });
-    const thirdGrant = await provisionOsm(thirdOwner, { ...person, targetHospitalId: third.id }, { revokeProviderSessions });
+    const firstGrant = await provisionHospitalMember(firstOwner, { contactPhone: "0812345678", ...person, targetHospitalId: first.id, profession: "NURSE" }, { revokeProviderSessions });
+    const secondGrant = await provisionHospitalMember(secondOwner, { contactPhone: "0812345678", ...person, targetHospitalId: second.id, profession: "NURSE" }, { revokeProviderSessions });
+    const thirdGrant = await provisionOsm(thirdOwner, { contactPhone: "0812345678", ...person, targetHospitalId: third.id }, { revokeProviderSessions });
 
     // The lock is already CONFIRMED after the first grant: later grants are recorded without another provider revocation.
     expect(revokeProviderSessions).toHaveBeenCalledOnce();

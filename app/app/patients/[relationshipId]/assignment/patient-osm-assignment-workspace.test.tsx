@@ -49,7 +49,7 @@ const candidates = [
   { userId: "osm-1", displayName: "สมใจ อสม." },
   { userId: "osm-2", displayName: "สมหมาย อสม." },
 ];
-const current = { assignmentId: "assignment-1", osmUserId: "osm-1", osmDisplayName: "สมใจ อสม.", assignedAt: "2026-10-01T00:00:00.000Z" };
+const current = { assignmentId: "assignment-1", osmUserId: "osm-1", contactPhone: null, osmDisplayName: "สมใจ อสม.", assignedAt: "2026-10-01T00:00:00.000Z" };
 
 let container: HTMLDivElement;
 let root: Root;

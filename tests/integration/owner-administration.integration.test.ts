@@ -100,7 +100,7 @@ describe("persisted Owner administration", () => {
   });
 
   it("preserves OWNER workforce provisioning, listing and regeneration", async () => {
-    const result = await provisionOsm(owner, { nationalId: "1000000000092", givenName: "อสม", familyName: "ทดสอบเจ้าของ", targetHospitalId: hospital.id });
+    const result = await provisionOsm(owner, { contactPhone: "0812345678", nationalId: "1000000000092", givenName: "อสม", familyName: "ทดสอบเจ้าของ", targetHospitalId: hospital.id });
     users.push(result.userId);
     const user = await db.user.findUniqueOrThrow({ where: { id: result.userId }, select: { personId: true } });
     people.push(user.personId);
@@ -116,7 +116,7 @@ describe("persisted Owner administration", () => {
     await expect(resolvePatientImportTemplateTarget(subject, hospital.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(previewPatientRosterImport(subject, hospital.id, [])).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(importPatientRoster(subject, hospital.id, [])).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(provisionOsm(subject, { nationalId: "1000000000009", givenName: "ห้าม", familyName: "สร้าง", targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(provisionOsm(subject, { contactPhone: "0812345678", nationalId: "1000000000009", givenName: "ห้าม", familyName: "สร้าง", targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listWorkforce(subject, { targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(regenerateWorkforceActivation(subject, { userId: osm.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(assertPatientActivationActorInDatabase(db, subject.userId, hospital.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -126,7 +126,7 @@ describe("persisted Owner administration", () => {
     await db.hospitalMembership.updateMany({ where: { userId: member.userId }, data: { reportExportGrantedAt: new Date(), reportExportGrantedByUserId: owner.userId } });
     const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
     await expect(resolvePatientImportTemplateTarget(staleOwner, hospital.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(provisionOsm(staleOwner, { nationalId: "1000000000009", givenName: "ห้าม", familyName: "สร้าง", targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(provisionOsm(staleOwner, { contactPhone: "0812345678", nationalId: "1000000000009", givenName: "ห้าม", familyName: "สร้าง", targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(regenerateWorkforceActivation(staleOwner, { userId: osm.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listWorkforce(staleOwner, { targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(listWorkforceHospitals(staleOwner)).resolves.toEqual([]);

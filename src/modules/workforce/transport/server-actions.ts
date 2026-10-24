@@ -13,6 +13,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
   hospitalMemberProvisionSchema,
+  workforceContactPhoneUpdateSchema,
   hospitalMembershipProfessionUpdateSchema,
   hospitalMembershipReportExportGrantSchema,
   hospitalMembershipTransitionSchema,
@@ -45,6 +46,7 @@ import {
   suspendOsmRelationship,
   suspendHospitalMembership,
   updateHospitalMembershipProfession,
+  updateWorkforceContactPhone,
 } from "../services/workforce-service";
 import type {
   WorkforceActivationActionState,
@@ -84,6 +86,7 @@ function mapFieldErrors(
         familyName: "กรุณากรอกนามสกุล",
         targetHospitalId: "กรุณาเลือกโรงพยาบาลที่มีสิทธิ์จัดการ",
         profession: "กรุณาเลือกวิชาชีพที่กำหนด",
+        contactPhone: "กรุณากรอกเบอร์ติดต่อไทยให้ถูกต้อง",
         userId: "ไม่พบผู้ใช้งานที่ต้องการดำเนินการ",
         relationshipId: "ไม่พบความสัมพันธ์บุคลากรที่ต้องการดำเนินการ",
         expectedUpdatedAt: "ข้อมูลบุคลากรล้าสมัย กรุณาโหลดข้อมูลใหม่",
@@ -183,6 +186,7 @@ function getProvisionInput(formData: FormData) {
     nationalId: getString(formData, "nationalId"),
     givenName: getString(formData, "givenName"),
     familyName: getString(formData, "familyName"),
+    contactPhone: getString(formData, "contactPhone"),
     targetHospitalId: getString(formData, "targetHospitalId"),
     profession: getString(formData, "profession"),
   };
@@ -365,6 +369,7 @@ export async function provisionOsmAction(
     nationalId: getString(formData, "nationalId"),
     givenName: getString(formData, "givenName"),
     familyName: getString(formData, "familyName"),
+    contactPhone: getString(formData, "contactPhone"),
     targetHospitalId: getString(formData, "targetHospitalId"),
   });
 
@@ -390,6 +395,32 @@ export async function provisionOsmAction(
     if (isConfiguredActivationOriginError(error)) {
       return { status: "ERROR", code: "CONFIGURATION", message: CONFIGURED_ACTIVATION_ORIGIN_MESSAGE };
     }
+    return { status: "ERROR", ...mapWorkforceError(error) };
+  }
+}
+
+export type WorkforceContactPhoneActionState =
+  | { status: "IDLE" }
+  | { status: "SUCCESS"; result: { relationshipId: string; hospitalId: string; updatedAt: string } }
+  | { status: "ERROR"; code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE"; message: string };
+
+export async function updateWorkforceContactPhoneAction(
+  _previousState: WorkforceContactPhoneActionState,
+  formData: FormData,
+): Promise<WorkforceContactPhoneActionState> {
+  const parsed = workforceContactPhoneUpdateSchema.safeParse({
+    ...getMembershipMutationInput(formData), kind: getString(formData, "kind"),
+    contactPhone: formData.get("contactPhone"),
+  });
+  if (!parsed.success) return { status: "ERROR", code: "INVALID_INPUT", message: "กรุณากรอกเบอร์ติดต่อไทยให้ถูกต้อง" };
+  try {
+    const actor = await getProtectedApplicationActor();
+    const result = await updateWorkforceContactPhone(actor, parsed.data);
+    revalidatePath("/app/workforce");
+    revalidatePath(`/app/workforce/${parsed.data.kind}/${result.relationshipId}`);
+    revalidatePath(`/app/users/${parsed.data.kind}/${result.relationshipId}`);
+    return { status: "SUCCESS", result: { ...result, updatedAt: result.updatedAt.toISOString() } };
+  } catch (error: unknown) {
     return { status: "ERROR", ...mapWorkforceError(error) };
   }
 }
@@ -844,6 +875,7 @@ export async function provisionWorkforceBulkAction(
   const givenNames = formData.getAll("givenName");
   const familyNames = formData.getAll("familyName");
   const professions = formData.getAll("profession");
+  const contactPhones = formData.getAll("contactPhone");
 
   if (!kind.success || nationalIds.length > WORKFORCE_BULK_MAX_ROWS) {
     return {
@@ -861,10 +893,12 @@ export async function provisionWorkforceBulkAction(
   const rowNumbers: number[] = [];
 
   for (let index = 0; index < nationalIds.length; index += 1) {
+    const contactPhone = contactPhones[index];
     const row: Record<string, string> = {
       nationalId: text(nationalIds, index),
       givenName: text(givenNames, index),
       familyName: text(familyNames, index),
+      contactPhone: typeof contactPhone === "string" ? contactPhone : "",
     };
 
     if (kind.data === "HOSPITAL_MEMBER") {
@@ -872,7 +906,7 @@ export async function provisionWorkforceBulkAction(
     }
 
     // Untouched rows are skipped; reported row numbers still refer to the visible form row.
-    if (row.nationalId || row.givenName || row.familyName || row.profession) {
+    if (row.nationalId || row.givenName || row.familyName || row.profession || row.contactPhone) {
       rows.push(row);
       rowNumbers.push(index + 1);
     }

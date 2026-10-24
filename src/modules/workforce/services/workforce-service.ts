@@ -73,6 +73,7 @@ import {
 } from "../policies/hospital-owner-policy";
 import {
   workforceReleaseSchema,
+  workforceContactPhoneUpdateSchema,
   hospitalMemberProvisionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
@@ -176,6 +177,7 @@ export type WorkforceHospital = {
 export type WorkforceActivationStatus = "PENDING" | "EXPIRED" | "IN_PROGRESS";
 
 export type WorkforceListRow = {
+  contactPhone: string | null;
   id: string;
   userId: string;
   displayName: string;
@@ -210,6 +212,7 @@ export type WorkforceListResult = {
 };
 
 export type WorkforceDetail = {
+  contactPhone: string | null;
   relationshipId: string;
   userId: string;
   kind: WorkforceDetailKind;
@@ -345,6 +348,7 @@ const workforceDetailActivationSelect = {
 } satisfies Prisma.WorkforceActivationSelect;
 
 const workforceMembershipDetailSelect = {
+  contactPhone: true,
   id: true,
   userId: true,
   membershipType: true,
@@ -378,6 +382,7 @@ const workforceMembershipDetailSelect = {
 } satisfies Prisma.HospitalMembershipSelect;
 
 const workforceOsmDetailSelect = {
+  contactPhone: true,
   id: true,
   userId: true,
   status: true,
@@ -802,6 +807,7 @@ async function ensureHospitalMembership(
     hospitalId: string;
     profession: HospitalMemberProvisionInput["profession"];
     userStatus: UserStatus;
+    contactPhone: string;
   },
 ): Promise<{
   id: string;
@@ -815,6 +821,7 @@ async function ensureHospitalMembership(
       id: true,
       membershipType: true,
       profession: true,
+      contactPhone: true,
       status: true,
     },
   });
@@ -830,6 +837,7 @@ async function ensureHospitalMembership(
         userId: input.userId,
         hospitalId: input.hospitalId,
         membershipType: MembershipType.MEMBER,
+        contactPhone: input.contactPhone,
         profession: input.profession,
         status: expectedStatus,
       },
@@ -838,6 +846,8 @@ async function ensureHospitalMembership(
 
     return { ...created, created: true, changed: true };
   }
+
+  if (existing.contactPhone !== input.contactPhone) throw new ConflictError("เบอร์ติดต่อไม่ตรงกับรายการเดิม กรุณาแก้ไขในหน้ารายละเอียด");
 
   if (existing.membershipType === MembershipType.OWNER) {
     throw new ConflictError("An existing Hospital Owner membership cannot be downgraded");
@@ -892,6 +902,7 @@ async function ensureOsmRelationship(
     userId: string;
     hospitalId: string;
     userStatus: UserStatus;
+    contactPhone: string;
   },
 ): Promise<{
   id: string;
@@ -901,7 +912,7 @@ async function ensureOsmRelationship(
 }> {
   const existing = await transaction.osmHospitalRelationship.findFirst({ where: { userId: input.userId,
         hospitalId: input.hospitalId, status: { not: "ENDED" } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, contactPhone: true },
   });
 
   const expectedStatus =
@@ -915,12 +926,15 @@ async function ensureOsmRelationship(
         userId: input.userId,
         hospitalId: input.hospitalId,
         status: expectedStatus,
+        contactPhone: input.contactPhone,
       },
       select: { id: true, status: true },
     });
 
     return { ...created, created: true, changed: true };
   }
+
+  if (existing.contactPhone !== input.contactPhone) throw new ConflictError("เบอร์ติดต่อไม่ตรงกับรายการเดิม กรุณาแก้ไขในหน้ารายละเอียด");
 
   if (
     existing.status === MembershipStatus.INVITED ||
@@ -1135,6 +1149,7 @@ async function createOrReuseWorkforceIdentity(
     now: Date;
     dependencies: WorkforceServiceDependencies;
     issueInitialActivation: boolean;
+    contactPhone: string;
   },
 ): Promise<WorkforceIdentity> {
   await assertWorkforceProvisionerInDatabase(
@@ -1166,12 +1181,14 @@ async function createOrReuseWorkforceIdentity(
           userId: user.id,
           hospitalId: input.hospitalId,
           userStatus: user.status,
+          contactPhone: input.contactPhone,
         })
       : await ensureHospitalMembership(transaction, {
           userId: user.id,
           hospitalId: input.hospitalId,
           profession: input.profession!,
           userStatus: user.status,
+          contactPhone: input.contactPhone,
         });
 
   if (relationship.created || relationship.changed) {
@@ -1277,6 +1294,7 @@ async function provisionWorkforce(
           kind,
           hospitalId: targetHospitalId,
           nationalId: input.nationalId,
+          contactPhone: input.contactPhone,
           givenName: input.givenName,
           familyName: input.familyName,
           profession:
@@ -1590,6 +1608,7 @@ function toWorkforceDetail(
     kind,
     hospital: record.hospital,
     displayName: toDisplayName(record.user.person.givenName, record.user.person.familyName),
+    contactPhone: viewer.scope === "OWNER" ? record.contactPhone : null,
     membershipType,
     profession,
     relationshipStatus,
@@ -1820,6 +1839,7 @@ export async function listWorkforce(
               userId: true,
               membershipType: true,
               profession: true,
+              contactPhone: true,
               status: true,
               selfRegisteredAt: true,
               user: {
@@ -1840,6 +1860,7 @@ export async function listWorkforce(
           userId: true,
           status: true,
           selfRegisteredAt: true,
+          contactPhone: true,
           user: {
             select: {
               status: true,
@@ -1931,6 +1952,7 @@ export async function listWorkforce(
           kind: "HOSPITAL_MEMBER" as const,
           membershipType: membership.membershipType,
           profession: membership.profession,
+          contactPhone: membership.contactPhone,
           relationshipStatus: membership.status,
           accountStatus: membership.user.status,
           activationRequired: membership.status !== MembershipStatus.ENDED && membership.user.status === UserStatus.PROVISIONED,
@@ -1952,6 +1974,7 @@ export async function listWorkforce(
           kind: "OSM" as const,
           membershipType: null,
           profession: null,
+          contactPhone: relationship.contactPhone,
           relationshipStatus: relationship.status,
           accountStatus: relationship.user.status,
           activationRequired: relationship.status !== MembershipStatus.ENDED && relationship.user.status === UserStatus.PROVISIONED,
@@ -2648,6 +2671,46 @@ async function transitionHospitalMembershipInTransaction(
   );
 
   return toMembershipMutationResult(result);
+}
+
+export type WorkforceContactPhoneMutationResult = {
+  relationshipId: string;
+  hospitalId: string;
+  updatedAt: Date;
+};
+
+export async function updateWorkforceContactPhone(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkforceServiceDependencies = {},
+): Promise<WorkforceContactPhoneMutationResult> {
+  const parsed = workforceContactPhoneUpdateSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("กรุณาตรวจสอบเบอร์ติดต่อ");
+  const request = parsed.data;
+  assertActorPolicy(actor, WORKFORCE_CAPABILITIES.update, request.targetHospitalId);
+  if (!actor) throw new ForbiddenError();
+  try {
+    return await runSerializable(getDatabase(dependencies), async (transaction) => {
+      await assertOwnerInDatabase(transaction, actor.userId, request.targetHospitalId);
+      const where = { id: request.relationshipId, hospitalId: request.targetHospitalId,
+        status: { not: MembershipStatus.ENDED }, updatedAt: new Date(request.expectedUpdatedAt) };
+      const data = { contactPhone: request.contactPhone };
+      const result = request.kind === "staff"
+        ? await transaction.hospitalMembership.updateMany({ where, data })
+        : await transaction.osmHospitalRelationship.updateMany({ where, data });
+      if (result.count !== 1) throw new ConflictError("ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
+      const select = { id: true, hospitalId: true, updatedAt: true } as const;
+      const row = request.kind === "staff"
+        ? await transaction.hospitalMembership.findUniqueOrThrow({ where: { id: request.relationshipId }, select })
+        : await transaction.osmHospitalRelationship.findUniqueOrThrow({ where: { id: request.relationshipId }, select });
+      await recordAuditEvent({ actorUserId: actor.userId, action: "workforce.contact_phone_updated",
+        resourceType: request.kind === "staff" ? "HospitalMembership" : "OsmHospitalRelationship",
+        resourceId: row.id, metadata: { hospitalId: row.hospitalId } }, transaction);
+      return { relationshipId: row.id, hospitalId: row.hospitalId, updatedAt: row.updatedAt };
+    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error, "ไม่สามารถบันทึกเบอร์ติดต่อได้");
+  }
 }
 
 export async function updateHospitalMembershipProfession(
@@ -4284,6 +4347,7 @@ export async function provisionWorkforceBulk(
         } else {
           const identity = await createOrReuseWorkforceIdentity(transaction, {
             actorUserId: actor.userId, kind, hospitalId: targetHospitalId,
+            contactPhone: validated.data.contactPhone,
             nationalId: validated.data.nationalId, givenName: validated.data.givenName, familyName: validated.data.familyName,
             profession: "profession" in validated.data ? hospitalMemberProvisionSchema.shape.profession.parse(validated.data.profession) : null,
             now: getNow(dependencies), dependencies, issueInitialActivation: true,

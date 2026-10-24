@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadAssignedOsmPhone } from "./assigned-osm-phone";
+
 import {
   HospitalStatus,
   MembershipStatus,
@@ -55,6 +57,7 @@ export type PatientOsmAssignmentSummary = {
   assignmentId: string;
   osmUserId: string;
   osmDisplayName: string;
+  contactPhone: string | null;
   assignedAt: Date;
 };
 
@@ -66,6 +69,7 @@ export type PatientOsmAssignmentManagementView = {
 export type PatientOsmCandidate = {
   userId: string;
   displayName: string;
+  contactPhone: string | null;
 };
 
 export type PatientOsmAssignmentScope = {
@@ -212,6 +216,7 @@ function toAssignmentManagementView(
           osmUserId: currentAssignment.osmUserId,
           osmDisplayName: toDisplayName(currentAssignment.osmUser.person),
           assignedAt: currentAssignment.createdAt,
+          contactPhone: null,
         }
       : null,
   };
@@ -248,7 +253,9 @@ export async function getPatientOsmAssignmentManagementView(
       targetHospitalId: record.hospital.id,
     });
 
-    return toAssignmentManagementView(record);
+    const view = toAssignmentManagementView(record);
+    if (view.currentAssignment) view.currentAssignment.contactPhone = await loadAssignedOsmPhone(getDatabase(dependencies), record.id, view.currentAssignment.osmUserId);
+    return view;
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -295,7 +302,7 @@ async function findEligibleOsmCandidates(
 
   const records = await database.user.findMany({
     where,
-    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+    select: { id: true, person: { select: { givenName: true, familyName: true } }, osmHospitalRelationships: { where: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE }, select: { contactPhone: true }, take: 1 } },
     orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
     take: OSM_CANDIDATE_PAGE_SIZE + 1,
     ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
@@ -307,6 +314,7 @@ async function findEligibleOsmCandidates(
     candidates: page.map((record) => ({
       userId: record.id,
       displayName: toDisplayName(record.person),
+      contactPhone: record.osmHospitalRelationships[0]?.contactPhone ?? null,
     })),
     hasMore,
     nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,

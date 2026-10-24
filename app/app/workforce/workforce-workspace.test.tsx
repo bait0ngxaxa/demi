@@ -13,7 +13,7 @@ const second = { ...hospital, id: "22222222-2222-4222-8222-222222222222", name: 
 const row: WorkforceListRow = {
   id: "33333333-3333-4333-8333-333333333333",
   userId: "user",
-  displayName: "บุคลากรทดสอบ",
+  contactPhone: null, displayName: "บุคลากรทดสอบ",
   kind: "HOSPITAL_MEMBER",
   membershipType: MembershipType.MEMBER,
   profession: Profession.NURSE,
@@ -77,7 +77,7 @@ describe("OWNER workforce roster", () => {
       ...row,
       id: "pending-relationship",
       userId: "pending-user",
-      displayName: "รอเปิดใช้งาน",
+      contactPhone: null, displayName: "รอเปิดใช้งาน",
       relationshipStatus: MembershipStatus.PROVISIONED,
       accountStatus: UserStatus.PROVISIONED,
       activationRequired: true,

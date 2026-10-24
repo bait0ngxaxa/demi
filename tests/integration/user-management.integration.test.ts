@@ -110,11 +110,11 @@ async function hospitalActor(hospitalId: string, membershipType: MembershipType 
 }
 
 async function staff(owner: ActorContext, hospitalId: string, nationalId = nationalIdFor(++sequence)) {
-  return provisionHospitalMember(owner, { nationalId, givenName: "บุคลากร", familyName: "ทดสอบ", targetHospitalId: hospitalId, profession: Profession.NURSE }, { database: db });
+  return provisionHospitalMember(owner, { contactPhone: "0812345678", nationalId, givenName: "บุคลากร", familyName: "ทดสอบ", targetHospitalId: hospitalId, profession: Profession.NURSE }, { database: db });
 }
 
 async function osm(owner: ActorContext, hospitalId: string, nationalId = nationalIdFor(++sequence)) {
-  return provisionOsm(owner, { nationalId, givenName: "อสม", familyName: "ทดสอบ", targetHospitalId: hospitalId }, { database: db });
+  return provisionOsm(owner, { contactPhone: "0812345678", nationalId, givenName: "อสม", familyName: "ทดสอบ", targetHospitalId: hospitalId }, { database: db });
 }
 
 async function patient(owner: ActorContext, hospitalId: string, nationalId = nationalIdFor(++sequence), hospitalNumber?: string) {
@@ -240,6 +240,8 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
       // A stale context claiming OWNER is re-checked in the database.
       await expect(listHospitalUsers({ ...otherOwner, hospitalMemberships: owner.hospitalMemberships }, { targetHospitalId: h.id, kind: "staff" }, db))
         .rejects.toBeInstanceOf(ForbiddenError);
+      expect((await getHospitalUserDetail(owner, { kind: "staff", relationshipId: record.relationshipId }, db)).contactPhone).toBe("0812345678");
+      await expect(getHospitalUserDetail(member, { kind: "staff", relationshipId: record.relationshipId }, db)).rejects.toBeInstanceOf(NotFoundError);
       await expect(getHospitalUserDetail(otherOwner, { kind: "staff", relationshipId: record.relationshipId }, db)).rejects.toBeInstanceOf(NotFoundError);
       await expect(getHospitalUserDetail(owner, { kind: "staff", relationshipId: record.relationshipId }, db)).resolves.toMatchObject({
         status: "PENDING", deletionBlockers: [], activation: { method: "NOT_ACTIVATED", addedByName: expect.any(String) },

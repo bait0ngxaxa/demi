@@ -286,8 +286,8 @@ async function seedWorkforce(
 ): Promise<{ userId: string; relationshipId: string }> {
   const input = { nationalId: demoNationalId(account.index), givenName: account.givenName, familyName: account.familyName, targetHospitalId: hospitalId };
   const provisioned = kind === "MEMBER"
-    ? await provisionHospitalMember(ownerActor, { ...input, profession: Profession.NURSE })
-    : await provisionOsm(ownerActor, input);
+    ? await provisionHospitalMember(ownerActor, { contactPhone: "0812345678", ...input, profession: Profession.NURSE })
+    : await provisionOsm(ownerActor, { contactPhone: "0812345678", ...input });
   if (provisioned.activationToken) {
     await completeWorkforceActivation(
       provisioned.activationToken,

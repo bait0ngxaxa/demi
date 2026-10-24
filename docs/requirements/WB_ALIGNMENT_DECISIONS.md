@@ -381,3 +381,13 @@ LINE ไม่เปลี่ยน: การแจ้งเตือนนั�
 | ID | การตัดสินใจ | ผลในระบบ |
 | --- | --- | --- |
 | AF-D3 (appointment; AF-6) | `FOLLOW_UP` = “ติดตาม”; `EDUCATION` = “ให้ความรู้”; เพิ่ม `ASSESSMENT` = “ประเมิน” ตามรายละเอียดใน whiteboard | เปลี่ยน enum label เดิมในฐานข้อมูลโดยคงแถว appointment และ fingerprint เดิม; เพิ่มตัวเลือกทั้งสามใน create/edit, readback, filter และ LINE notification โดยไม่เปลี่ยน authorization หรือเพิ่ม side effect จากประเภทนัด |
+
+### E4 extension — WF-PHONE (Product Owner, 2026-10-24)
+
+`assignedOsmPhone` เป็นเบอร์ที่ OWNER บันทึกใน `OsmHospitalRelationship` ของโรงพยาบาลนั้น ไม่ใช่เบอร์ระดับ Person/User หรือเบอร์ snapshot ของนัดเก่า อ่านเฉพาะการมอบหมายปัจจุบันที่ยัง ACTIVE ภายใต้โรงพยาบาล ACTIVE; หลังเปลี่ยน อสม. จะแสดงเบอร์คนใหม่ หลังยุติการดูแล/ถอนมอบหมาย/ระงับสิทธิ์ จะไม่มีเบอร์
+
+- OWNER เห็นเบอร์ติดต่อบุคลากรและ อสม. ใน workforce list/detail และ users directory detail ของโรงพยาบาลตน
+- OWNER/MEMBER ของโรงพยาบาลเดียวกันเห็นเบอร์ อสม. ในบริบทการดูแล (การมอบหมายและรายละเอียดนัด)
+- ผู้ป่วย SELF เห็นเฉพาะเบอร์ อสม. ที่ได้รับมอบหมายปัจจุบันใน relationship ของตน ผ่านรายละเอียดนัดและ query สำหรับ PH-1 item 12; ไม่เห็นเบอร์เจ้าหน้าที่
+- caregiver grant และ อสม. ในฐานะผู้ดูแลไม่รับเบอร์บุคลากร ไม่เปลี่ยน `family-appointment-read-v1`; ผู้ป่วยอื่นไม่ผ่าน SELF authorization
+- OWNER กรอกเบอร์เมื่อเพิ่มรายบุคคล/หลายคน และแก้ไขภายหลังด้วย optimistic version; เบอร์เก่ายังว่างได้ ไม่มี backfill ไม่มี self-edit, SMS/OTP หรือการเปลี่ยน activation/identity ไม่มีเบอร์ใน logs, audit metadata, LINE messages หรือ activation slips

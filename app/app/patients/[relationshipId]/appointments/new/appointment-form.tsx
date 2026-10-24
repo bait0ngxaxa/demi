@@ -68,7 +68,7 @@ type CommonProps = {
   relationshipId: string;
   patient: PatientContext;
   responsibleMembers: readonly ResponsibleMember[];
-  currentOsmAssignee: { userId: string; displayName: string } | null;
+  currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
   sourceServiceRequestId: string | null;
 };
 
@@ -337,7 +337,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                   </option>
                 ))}
                 {props.currentOsmAssignee ? (
-                  <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}</option>
+                  <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}{props.currentOsmAssignee.contactPhone ? ` · ${props.currentOsmAssignee.contactPhone}` : ""}</option>
                 ) : (
                   <option disabled value="osm-unavailable">อสม. ผู้ดูแล — ไม่มีผู้ดูแลที่ใช้งานได้ในขณะนี้</option>
                 )}

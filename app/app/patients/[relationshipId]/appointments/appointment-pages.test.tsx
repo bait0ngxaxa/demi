@@ -33,8 +33,8 @@ import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const appointmentId = "22222222-2222-4222-8222-222222222222";
-const detail: AppointmentDetail & { contactPhones: { hospitalPhone: string | null; patientPhone: string | null } } = {
-  contactPhones: { hospitalPhone: "02-111-1111", patientPhone: "0899999999" },
+const detail: AppointmentDetail & { contactPhones: { assignedOsmPhone: string | null; hospitalPhone: string | null; patientPhone: string | null } } = {
+  contactPhones: { assignedOsmPhone: null, hospitalPhone: "02-111-1111", patientPhone: "0899999999" },
   patient: { patientHospitalRelationshipId: relationshipId, displayName: "สมใจ ผู้ป่วยทดสอบ", hospitalNumber: "HN-001", hospital: { id: "hospital-a", name: "โรงพยาบาล ก" } },
   appointmentId, canManage: true, canProxyPatientActions: false, canRecordCoordination: false,
   assignedOsmUserId: null, assignedOsmDisplayName: null, currentAssigneeAcceptance: null, canAcceptAssignment: false,
@@ -78,7 +78,7 @@ describe("Work appointment journey", () => {
     expect(markup).toContain("เบอร์ติดต่อผู้ป่วย");
     expect(markup).toContain('href="tel:0899999999"');
 
-    mocks.detail.mockResolvedValue({ ...detail, canHospitalManage: false, canProxyPatientActions: false, contactPhones: { hospitalPhone: "02-111-1111", patientPhone: null } });
+    mocks.detail.mockResolvedValue({ ...detail, canHospitalManage: false, canProxyPatientActions: false, contactPhones: { assignedOsmPhone: null, hospitalPhone: "02-111-1111", patientPhone: null } });
     const withoutScope = await render();
     expect(withoutScope).toContain("เบอร์ติดต่อโรงพยาบาล");
     expect(withoutScope).not.toContain("เบอร์ติดต่อผู้ป่วย");

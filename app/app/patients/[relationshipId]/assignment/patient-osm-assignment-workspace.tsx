@@ -41,6 +41,7 @@ type PatientOsmAssignmentSummary = {
   assignmentId: string;
   osmUserId: string;
   osmDisplayName: string;
+  contactPhone: string | null;
   assignedAt: string;
 };
 
@@ -231,6 +232,7 @@ export function PatientOsmAssignmentWorkspace({
           {currentAssignment ? (
             <div className="mt-4 rounded-control border border-success/20 bg-success-soft px-4 py-4">
               <p className="font-semibold text-text">{currentAssignment.osmDisplayName}</p>
+              <p className="mt-1 text-sm text-muted">เบอร์ติดต่อ: {currentAssignment.contactPhone ?? "ยังไม่ได้ระบุ"}</p>
               <p className="mt-1 text-sm leading-6 text-text-muted">
                 เริ่มมอบหมายเมื่อ {formatDate(currentAssignment.assignedAt)}
               </p>
@@ -289,7 +291,7 @@ export function PatientOsmAssignmentWorkspace({
                   </option>
                   {candidates.map((candidate) => (
                     <option key={candidate.userId} value={candidate.userId}>
-                      {candidate.displayName}
+                      {candidate.displayName}{candidate.contactPhone ? ` · ${candidate.contactPhone}` : ""}
                     </option>
                   ))}
                 </Select>

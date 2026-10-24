@@ -230,6 +230,7 @@ export async function listHospitalUsers(
 export type UserTimelineEntry = { at: Date; label: string };
 
 export type UserDetail = {
+  contactPhone: string | null;
   kind: UserKind;
   relationshipId: string;
   hospital: { id: string; name: string };
@@ -279,6 +280,7 @@ const TIMELINE_LABELS: Record<string, string> = {
   "osm_relationship.suspended": "ระงับสิทธิ์",
   "hospital_membership.restored": "คืนสิทธิ์",
   "osm_relationship.restored": "คืนสิทธิ์",
+  "workforce.contact_phone_updated": "แก้ไขเบอร์ติดต่อ",
   "hospital_membership.profession_changed": "เปลี่ยนวิชาชีพ",
   "hospital_owner.promoted": "แต่งตั้งเป็นเจ้าของโรงพยาบาล",
   "hospital_owner.demoted": "ถอดจากเจ้าของโรงพยาบาล",
@@ -314,7 +316,7 @@ async function loadDetailRecord(transaction: Prisma.TransactionClient, kind: Use
     return row && user ? { ...row, ended: row.endedAt !== null, suspended: false, ownerMembership: false, user } : null;
   }
   const select = {
-    id: true, hospitalId: true, createdAt: true, updatedAt: true, status: true, selfRegisteredAt: true,
+    id: true, hospitalId: true, createdAt: true, updatedAt: true, status: true, selfRegisteredAt: true, contactPhone: true,
     hospital: { select: { id: true, name: true } },
     user: { select: detailUserSelect },
   } as const;
@@ -403,6 +405,7 @@ export async function getHospitalUserDetail(
         familyName: user.person.familyName,
         personVersion: user.person.version,
         hospitalNumber: record.hospitalNumber,
+        contactPhone: "contactPhone" in record ? record.contactPhone : null,
         status,
         accountStatus: user.status,
         identityAssurance: user.identityAssurance,

@@ -40,7 +40,7 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   cancellationRequests: [{ source: AppointmentInteractionSource.PATIENT_SELF, status: AppointmentCancellationRequestStatus.PENDING, submittedAt: new Date("2026-10-02T00:00:00Z") }],
 };
 const history: PatientSelfAppointmentHistory = { relationship, appointments: [appointment], historyPage: { page: 1, hasMore: true } };
-const detail: PatientSelfAppointmentDetail = { ...appointment, relationship, parentHospitalName: null, contactPhones: { hospitalPhone: null, patientPhone: null } };
+const detail: PatientSelfAppointmentDetail = { ...appointment, relationship, parentHospitalName: null, contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } };
 const rescheduleRequest = {
   id: "33333333-3333-4333-8333-333333333333", appointmentId: APPT, source: "PATIENT_SELF", status: "REJECTED",
   reason: "ติดธุระสังเคราะห์", preferredDatetimes: [new Date("2026-11-05T03:00:00Z")], submittedAt: new Date("2026-10-03T00:00:00Z"),

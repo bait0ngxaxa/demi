@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getServerEnv } from "@/lib/env/server";
 import { ValidationError } from "@/shared/errors/application-error";
 
+import { workforceContactPhoneSchema } from "../schemas/workforce-schemas";
+
 import type { WorkforceBulkProvisionInput } from "../schemas/workforce-schemas";
 
 export const WORKFORCE_BULK_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -32,7 +34,15 @@ function normalize(value: unknown, depth = 0): unknown {
   if (typeof value === "object" && value !== null) {
     const keys = Object.keys(value).sort();
     if (keys.length > 10) throw new ValidationError("Bulk row has too many fields");
-    return Object.fromEntries(keys.map((key) => [key, normalize((value as Record<string, unknown>)[key], depth + 1)]));
+    return Object.fromEntries(keys.map((key) => {
+      const field = (value as Record<string, unknown>)[key];
+      if (key === "contactPhone") {
+        const parsed = workforceContactPhoneSchema.safeParse(field);
+        // Preserve invalid raw characters: replay must not bypass the phone guard via trimming.
+        if (typeof field === "string" && field.length <= 1024) return [key, parsed.success ? parsed.data : field];
+      }
+      return [key, normalize(field, depth + 1)];
+    }));
   }
   throw new ValidationError("Bulk data is invalid");
 }
