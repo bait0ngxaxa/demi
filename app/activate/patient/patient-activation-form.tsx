@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { Button, LoadingSpinner } from "@/components/ui/button";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { Alert } from "@/components/ui/alert";
+import { Button, buttonClassName, LoadingSpinner } from "@/components/ui/button";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   getPatientActivationDetailsAction,
@@ -21,6 +22,7 @@ type ActivationTokenStore = {
   getServerSnapshot: () => null;
   subscribe: (listener: () => void) => () => void;
   hydrate: () => void;
+  clear: () => void;
 };
 
 function createActivationTokenStore(): ActivationTokenStore {
@@ -30,6 +32,10 @@ function createActivationTokenStore(): ActivationTokenStore {
   return {
     getSnapshot: () => token,
     getServerSnapshot: () => null,
+    clear() {
+      token = null;
+      listeners.forEach((listener) => listener());
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -61,25 +67,6 @@ function createActivationTokenStore(): ActivationTokenStore {
   };
 }
 
-/**
- * Success is a redirect to the sign-in page (no Toast: the destination confirms it).
- * A returned UNAVAILABLE may follow a committed activation, so it is reported through the
- * same unconfirmed-outcome path as a lost request instead of as a failure to retry.
- */
-async function completeActivation(
-  token: string,
-  previous: PatientActivationCompletionActionState,
-  formData: FormData,
-): Promise<PatientActivationCompletionActionState> {
-  const result = await completePatientActivationAction(token, previous, formData);
-
-  if (result.status === "IDLE" || (result.status === "ERROR" && result.code === "UNAVAILABLE")) {
-    throw new Error("Activation outcome unconfirmed");
-  }
-
-  return result;
-}
-
 function formatDate(date: string): string {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
@@ -94,17 +81,38 @@ export function PatientActivationForm(): React.JSX.Element {
   const [detailsToken, setDetailsToken] = useState<string | null>(null);
   const [detailsFailedToken, setDetailsFailedToken] = useState<string | null>(null);
   const [detailsAttempt, setDetailsAttempt] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     PatientActivationCompletionActionState,
     FormData
   >(
-    completeActivation.bind(null, token ?? ""),
+    completePatientActivationAction.bind(null, token ?? ""),
     initialPatientActivationCompletionActionState,
   );
+  const outcomeUnconfirmed =
+    unknownOutcome || (state.status === "ERROR" && state.code === "UNAVAILABLE");
 
   useEffect(() => {
     store.hydrate();
   }, [store]);
+
+  useEffect(() => {
+    if (
+      state.status === "SUCCESS" ||
+      outcomeUnconfirmed ||
+      (state.status === "ERROR" && state.code === "CONFLICT")
+    ) {
+      store.clear();
+    }
+  }, [outcomeUnconfirmed, state, store]);
+
+  useEffect(() => {
+    if (state.status !== "ERROR" || !state.fieldErrors) {
+      return;
+    }
+
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [state]);
 
   useEffect(() => {
     if (!token) {
@@ -134,6 +142,55 @@ export function PatientActivationForm(): React.JSX.Element {
 
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors : undefined;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
+
+  if (state.status === "SUCCESS") {
+    return (
+      <section className="mt-8 space-y-4" aria-labelledby="patient-activation-success-title">
+        <Alert variant="success">
+          <h3 className="font-semibold" id="patient-activation-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
+          <p className="mt-1">
+            บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
+          </p>
+        </Alert>
+        <Link className={buttonClassName({ className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
+
+  if (outcomeUnconfirmed) {
+    return (
+      <section className="mt-8 space-y-4">
+        <UnknownOutcomeAlert
+          active
+          recovery={{
+            kind: "note",
+            message: "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+            note:
+              "หากตั้งรหัสผ่านสำเร็จ ให้ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
+          }}
+        />
+        <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
+
+  if (state.status === "ERROR" && state.code === "CONFLICT") {
+    return (
+      <section className="mt-8 space-y-4">
+        <Alert variant="warning">
+          <p className="font-semibold">ลิงก์นี้ใช้ไม่ได้แล้ว</p>
+          <p className="mt-1">ลิงก์อาจหมดอายุหรือถูกใช้ไปแล้ว กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่</p>
+        </Alert>
+        <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
 
   if (!token) {
     return (
@@ -190,7 +247,7 @@ export function PatientActivationForm(): React.JSX.Element {
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-5">
+    <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <div className="rounded-[14px] border border-line bg-white px-4 py-4 text-sm leading-6 text-ink">
         <p className="font-semibold">บัญชีสำหรับ {visibleDetails.displayName}</p>
         <p className="mt-1 text-muted">โรงพยาบาล: {visibleDetails.hospitalName}</p>
@@ -221,7 +278,7 @@ export function PatientActivationForm(): React.JSX.Element {
           type="password"
         />
         {fieldErrors?.password ? (
-          <p className="text-sm leading-6 text-danger" id="patient-password-error" role="alert">
+          <p className="text-sm leading-6 text-danger" id="patient-password-error">
             {fieldErrors.password}
           </p>
         ) : null}
@@ -252,35 +309,18 @@ export function PatientActivationForm(): React.JSX.Element {
           <p
             className="text-sm leading-6 text-danger"
             id="patient-password-confirmation-error"
-            role="alert"
           >
             {fieldErrors.passwordConfirmation}
           </p>
         ) : null}
       </div>
 
-      <div aria-live="polite" className="min-h-6">
-        {errorMessage ? (
-          <p className="text-sm leading-6 text-danger" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-      </div>
-
-      <UnknownOutcomeAlert
-        active={unknownOutcome}
-        recovery={{
-          kind: "note",
-          message: "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
-          note:
-            "ลิงก์นี้ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
-        }}
-      />
+      {errorMessage && !fieldErrors ? <Alert variant="danger">{errorMessage}</Alert> : null}
 
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || unknownOutcome}
+        disabled={pending}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

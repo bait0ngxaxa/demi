@@ -16,27 +16,57 @@ vi.mock("./login-form", () => ({ LoginForm: () => null }));
 
 import LoginPage from "./page";
 
-describe("Login page assisted recovery guidance", () => {
+describe("Login page entry points and recovery guidance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveCurrentActorAccess.mockResolvedValue({ status: "UNAUTHENTICATED" });
   });
 
-  it("keeps account recovery unavailable and points first-time users to registration only", async () => {
+  it("shows registration and hospital onboarding as secondary action cards", async () => {
     const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
 
     expect(markup).toContain("ลืมรหัสผ่าน?");
-    expect(markup).toContain("ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ");
-    expect(markup).not.toContain("โรงพยาบาลจะตรวจสอบตัวตน");
-    expect(markup).not.toContain("ออกลิงก์กู้คืนบัญชี");
+    expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน");
+    expect(markup).toContain("ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?");
+    expect(markup).toContain("ลงทะเบียนครั้งแรก");
+    expect(markup).toContain("สำหรับบุคลากร อสม. และผู้ป่วยที่โรงพยาบาลเพิ่มข้อมูลไว้แล้ว");
+    expect(markup).toContain("เริ่มลงทะเบียน");
+    expect(markup).toContain("สำหรับผู้แทนโรงพยาบาลแม่ข่ายที่ต้องการส่งคำขอใช้งานระบบ");
+    expect(markup).toContain("ส่งคำขอโรงพยาบาล");
     expect(markup).toContain('href="/register"');
+    expect(markup).toContain('href="/hospital/onboarding"');
     expect(markup).not.toContain('href="/patient/access-request"');
     expect(markup).not.toContain("มั่นใจ");
-    expect(markup).toContain("ขอใช้งาน DEMI สำหรับโรงพยาบาล");
-    expect(markup).not.toContain('href="/recover"');
+    expect(markup).toContain('href="/recover"');
     expect(markup).not.toContain("ส่งอีเมลกู้คืน");
     expect(markup).not.toContain("ส่ง SMS");
     expect(markup).not.toContain("ส่ง LINE");
+  });
+
+  it("shows activation and reset query hints as presentation only", async () => {
+    const activation = renderToStaticMarkup(await LoginPage({
+      searchParams: Promise.resolve({ activated: "1" }),
+    }));
+    expect(activation).toContain("เปิดใช้งานบัญชีแล้ว");
+    expect(activation).toContain("กรุณาเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+
+    const reset = renderToStaticMarkup(await LoginPage({
+      searchParams: Promise.resolve({ reset: "1" }),
+    }));
+    expect(reset).toContain("ตั้งรหัสผ่านใหม่สำเร็จแล้ว");
+    expect(reset).toContain("กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicated success hints", async () => {
+    const markup = renderToStaticMarkup(await LoginPage({
+      searchParams: Promise.resolve({ activated: ["1", "1"], reset: ["1", "1"] }),
+    }));
+
+    expect(markup).not.toContain("เปิดใช้งานบัญชีแล้ว");
+    expect(markup).not.toContain("ตั้งรหัสผ่านใหม่สำเร็จแล้ว");
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
   it("redirects an already-authorized request before rendering the login client", async () => {
     mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });

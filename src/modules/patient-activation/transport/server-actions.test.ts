@@ -20,10 +20,8 @@ import {
   issuePatientActivationAction,
 } from "./server-actions";
 
-const mockedRedirect = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
-vi.mock("next/navigation", () => ({ redirect: mockedRedirect }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: vi.fn(),
@@ -312,7 +310,7 @@ describe("patient activation Server Actions", () => {
     expect(mockedCompletePatientActivation).not.toHaveBeenCalled();
   });
 
-  it("passes the patient-owned password to the service and redirects after completion", async () => {
+  it("returns success after the patient activation service completes", async () => {
     mockedCompletePatientActivation.mockResolvedValue({
       userId: "11111111-1111-4111-8111-111111111111",
       hospitalId: "22222222-2222-4222-8222-222222222222",
@@ -321,7 +319,7 @@ describe("patient activation Server Actions", () => {
     formData.set("password", "patient-password-123");
     formData.set("passwordConfirmation", "patient-password-123");
 
-    await completePatientActivationAction(
+    const result = await completePatientActivationAction(
       "opaque-token",
       initialPatientActivationCompletionActionState,
       formData,
@@ -331,6 +329,6 @@ describe("patient activation Server Actions", () => {
       password: "patient-password-123",
       passwordConfirmation: "patient-password-123",
     });
-    expect(mockedRedirect).toHaveBeenCalledWith("/login?activated=1");
+    expect(result).toEqual({ status: "SUCCESS" });
   });
 });

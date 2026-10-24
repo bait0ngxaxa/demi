@@ -10,6 +10,7 @@ vi.mock("@/modules/hospital-onboarding/transport/server-actions", () => ({
 
 import { HospitalOnboardingForm } from "./onboarding-form";
 import type { OnboardingHospitalOption } from "./hospital-groups";
+import { submitHospitalOnboardingAction } from "@/modules/hospital-onboarding/transport/server-actions";
 
 const parentId = "00000000-0000-4000-8000-000000000001";
 const childId = "00000000-0000-4000-8000-000000000002";
@@ -40,6 +41,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  vi.mocked(submitHospitalOnboardingAction).mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -73,6 +75,31 @@ function changeSearch(value: string): void {
 
 function selectedHospitalCode(): string {
   return container.querySelector<HTMLInputElement>('input[name="hospitalCode"]')?.value ?? "";
+}
+
+function setField(name: string, value: string): void {
+  const input = container.querySelector<HTMLInputElement>(`[name="${name}"]`);
+  if (!input) throw new Error(`Missing field: ${name}`);
+  input.value = value;
+}
+
+async function submitOnboardingForm(): Promise<void> {
+  const form = container.querySelector<HTMLFormElement>("form");
+  if (!form) throw new Error("Hospital onboarding form is missing");
+  await act(async () => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+function fillValidOnboardingForm(): void {
+  act(() => buttonByLabel(`เลือกโรงพยาบาล ${parentName}`).click());
+  setField("givenName", "สมชาย");
+  setField("familyName", "ตัวอย่าง");
+  setField("nationalId", "1000000000009");
+  setField("password", "a-valid-password");
+  setField("passwordConfirmation", "a-valid-password");
 }
 
 describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
@@ -161,5 +188,40 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
       expect(container.textContent).not.toContain(code);
       expect(accessibleLabels).not.toContain(code);
     }
+  });
+
+  it("clearly says a submitted request is waiting for review, not approved", async () => {
+    vi.mocked(submitHospitalOnboardingAction).mockResolvedValue({ status: "SUCCESS" });
+    renderForm(hospitalOptions());
+    fillValidOnboardingForm();
+
+    await submitOnboardingForm();
+
+    expect(container.textContent).toContain("ส่งคำขอเรียบร้อยแล้ว");
+    expect(container.textContent).toContain("ระบบได้รับคำขอของคุณแล้ว");
+    expect(container.textContent).toContain("รอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ");
+    expect(container.querySelector('a[href="/login"]')?.textContent).toContain("กลับไปหน้าเข้าสู่ระบบ");
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.textContent).not.toContain("ได้รับอนุมัติแล้ว");
+  });
+
+  it("focuses correctable fields and preserves entered values after validation errors", async () => {
+    vi.mocked(submitHospitalOnboardingAction).mockResolvedValue({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
+      fieldErrors: { givenName: "กรุณากรอกชื่อ" },
+    });
+    renderForm(hospitalOptions());
+    fillValidOnboardingForm();
+
+    await submitOnboardingForm();
+
+    const givenName = container.querySelector<HTMLInputElement>('[name="givenName"]');
+    expect(givenName?.value).toBe("สมชาย");
+    expect(givenName?.getAttribute("aria-invalid")).toBe("true");
+    expect(document.activeElement).toBe(givenName);
+    expect(container.querySelector("form")).not.toBeNull();
+    expect(container.textContent).not.toContain("raw internal detail");
   });
 });

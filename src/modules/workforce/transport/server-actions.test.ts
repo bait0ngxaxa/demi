@@ -49,10 +49,8 @@ import {
   updateWorkforceContactPhoneAction,
 } from "./server-actions";
 
-const mockedRedirect = vi.hoisted(() => vi.fn());
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
-vi.mock("next/navigation", () => ({ redirect: mockedRedirect }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: vi.fn(),
@@ -261,14 +259,14 @@ describe("workforce Server Actions", () => {
     expect(result).toMatchObject({ status: "SUCCESS", result: { activationToken: null, activationUrl: null } });
   });
 
-  it("passes the ephemeral token, national ID and purpose to the completion service and redirects to login", async () => {
+  it("returns confirmed activation success after the service completes", async () => {
     mockedCompleteWorkforceActivation.mockResolvedValue({ userId: "user-1" });
     const formData = new FormData();
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
 
-    await completeWorkforceActivationAction(
+    const result = await completeWorkforceActivationAction(
       "one-time-token",
       "ACTIVATION",
       initialWorkforceCompletionActionState,
@@ -281,18 +279,18 @@ describe("workforce Server Actions", () => {
       passwordConfirmation: "target-owned-workforce-password",
     });
     expect(mockedCompleteWorkforcePasswordReset).not.toHaveBeenCalled();
-    expect(mockedRedirect).toHaveBeenCalledWith("/login?activated=1");
+    expect(result).toEqual({ status: "SUCCESS" });
     expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
   });
 
-  it("routes a RESET purpose to the password reset service only", async () => {
+  it("returns RESET success only after the reset service completes", async () => {
     mockedCompleteWorkforcePasswordReset.mockResolvedValue({ userId: "user-1" });
     const formData = new FormData();
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
 
-    await completeWorkforceActivationAction(
+    const result = await completeWorkforceActivationAction(
       "one-time-token",
       "RESET",
       initialWorkforceCompletionActionState,
@@ -301,7 +299,30 @@ describe("workforce Server Actions", () => {
 
     expect(mockedCompleteWorkforcePasswordReset).toHaveBeenCalledTimes(1);
     expect(mockedCompleteWorkforceActivation).not.toHaveBeenCalled();
-    expect(mockedRedirect).toHaveBeenCalledWith("/login?reset=1");
+    expect(result).toEqual({ status: "SUCCESS" });
+  });
+
+  it("keeps child-owner onboarding on the activation completion service", async () => {
+    mockedCompleteWorkforceActivation.mockResolvedValue({ userId: "user-1" });
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+
+    const result = await completeWorkforceActivationAction(
+      "one-time-token",
+      "CHILD_OWNER_ONBOARDING",
+      initialWorkforceCompletionActionState,
+      formData,
+    );
+
+    expect(mockedCompleteWorkforceActivation).toHaveBeenCalledWith("one-time-token", {
+      nationalId: "1000000000009",
+      password: "target-owned-workforce-password",
+      passwordConfirmation: "target-owned-workforce-password",
+    });
+    expect(mockedCompleteWorkforcePasswordReset).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "SUCCESS" });
   });
 
   it("requires a valid national ID before any service call", async () => {

@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import {
   createWorkforceActivationUrlBuilder,
@@ -136,6 +135,13 @@ function mapCompletionError(error: unknown): {
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง" };
+    }
+
+    if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
+      return {
+        code: "FORBIDDEN",
+        message: "ไม่สามารถดำเนินการผ่านลิงก์นี้ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอความช่วยเหลือ",
+      };
     }
 
     if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
@@ -836,7 +842,7 @@ export async function completeWorkforceActivationAction(
     return { status: "ERROR", ...mapCompletionError(error) };
   }
 
-  redirect(purpose === "RESET" ? "/login?reset=1" : "/login?activated=1");
+  return { status: "SUCCESS" };
 }
 
 export async function issueWorkforcePasswordResetAction(

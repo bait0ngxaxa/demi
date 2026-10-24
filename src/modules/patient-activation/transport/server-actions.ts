@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -304,5 +303,5 @@ export async function completePatientActivationAction(
     return { status: "ERROR", ...mapCompletionError(error) };
   }
 
-  redirect("/login?activated=1");
+  return { status: "SUCCESS" };
 }

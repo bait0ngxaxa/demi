@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { Button, LoadingSpinner } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { Button, buttonClassName, LoadingSpinner } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
@@ -21,6 +22,7 @@ type ActivationTokenStore = {
   getServerSnapshot: () => null;
   subscribe: (listener: () => void) => () => void;
   hydrate: () => void;
+  clear: () => void;
 };
 
 function createActivationTokenStore(): ActivationTokenStore {
@@ -30,6 +32,10 @@ function createActivationTokenStore(): ActivationTokenStore {
   return {
     getSnapshot: () => token,
     getServerSnapshot: () => null,
+    clear() {
+      token = null;
+      listeners.forEach((listener) => listener());
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -67,6 +73,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const [preview, setPreview] = useState<WorkforceActivationPreviewState | null>(null);
   const [previewFailedToken, setPreviewFailedToken] = useState<string | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     WorkforceCompletionActionState,
@@ -75,10 +82,30 @@ export function WorkforceActivationForm(): React.JSX.Element {
     completeWorkforceActivationAction.bind(null, token ?? "", purpose),
     initialWorkforceCompletionActionState,
   );
+  const outcomeUnconfirmed =
+    unknownOutcome || (state.status === "ERROR" && state.code === "UNAVAILABLE");
 
   useEffect(() => {
     store.hydrate();
   }, [store]);
+
+  useEffect(() => {
+    if (
+      state.status === "SUCCESS" ||
+      outcomeUnconfirmed ||
+      (state.status === "ERROR" && (state.code === "CONFLICT" || state.code === "FORBIDDEN"))
+    ) {
+      store.clear();
+    }
+  }, [outcomeUnconfirmed, state, store]);
+
+  useEffect(() => {
+    if (state.status !== "ERROR" || !state.fieldErrors) {
+      return;
+    }
+
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [state]);
 
   useEffect(() => {
     if (!token) {
@@ -107,6 +134,80 @@ export function WorkforceActivationForm(): React.JSX.Element {
 
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors : undefined;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
+
+  if (state.status === "SUCCESS") {
+    const isReset = purpose === "RESET";
+    const isChildOwner = purpose === "CHILD_OWNER_ONBOARDING";
+    const title = isReset
+      ? "ตั้งรหัสผ่านใหม่สำเร็จแล้ว"
+      : isChildOwner
+        ? "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการสำเร็จแล้ว"
+        : "ตั้งรหัสผ่านสำเร็จแล้ว";
+    const body = isReset
+      ? "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ"
+      : isChildOwner
+        ? "บัญชีผู้ดูแลหน่วยบริการของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้"
+        : "บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้";
+
+    return (
+      <section className="mt-8 space-y-4" aria-labelledby="workforce-activation-success-title">
+        <Alert variant="success">
+          <h3 className="font-semibold" id="workforce-activation-success-title">{title}</h3>
+          <p className="mt-1">{body}</p>
+        </Alert>
+        <Link className={buttonClassName({ className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
+
+  if (outcomeUnconfirmed) {
+    return (
+      <section className="mt-8 space-y-4">
+        <UnknownOutcomeAlert
+          active
+          recovery={{
+            kind: "note",
+            message:
+              purpose === "RESET"
+                ? "ระบบยังยืนยันไม่ได้ว่าการเปลี่ยนรหัสผ่านสำเร็จหรือไม่"
+                : "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+            note:
+              purpose === "RESET"
+                ? "หากเปลี่ยนรหัสผ่านสำเร็จ ให้ลองเข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอความช่วยเหลือ"
+                : "หากตั้งรหัสผ่านสำเร็จ ให้ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
+          }}
+        />
+        <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
+
+  if (
+    state.status === "ERROR" &&
+    (state.code === "CONFLICT" || state.code === "FORBIDDEN")
+  ) {
+    const message = state.code === "CONFLICT"
+      ? "ลิงก์อาจหมดอายุหรือถูกใช้ไปแล้ว กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่"
+      : "ไม่สามารถดำเนินการผ่านลิงก์นี้ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอความช่วยเหลือ";
+
+    return (
+      <section className="mt-8 space-y-4">
+        <Alert variant="warning">
+          <p className="font-semibold">
+            {state.code === "CONFLICT" ? "ลิงก์นี้ใช้ไม่ได้แล้ว" : "ไม่สามารถใช้ลิงก์นี้ได้"}
+          </p>
+          <p className="mt-1">{message}</p>
+        </Alert>
+        <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
+          ไปหน้าเข้าสู่ระบบ
+        </Link>
+      </section>
+    );
+  }
 
   if (!token) {
     return (
@@ -161,7 +262,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)}>
+    <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <div className="rounded-[14px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         <p>
           {purpose === "RESET"
@@ -196,7 +297,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
           type="text"
         />
         {fieldErrors?.nationalId ? (
-          <p className="text-sm leading-6 text-danger" id="nationalId-error" role="alert">
+          <p className="text-sm leading-6 text-danger" id="nationalId-error">
             {fieldErrors.nationalId}
           </p>
         ) : null}
@@ -220,7 +321,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
           type="password"
         />
         {fieldErrors?.password ? (
-          <p className="text-sm leading-6 text-danger" id="password-error" role="alert">
+          <p className="text-sm leading-6 text-danger" id="password-error">
             {fieldErrors.password}
           </p>
         ) : null}
@@ -246,39 +347,18 @@ export function WorkforceActivationForm(): React.JSX.Element {
           type="password"
         />
         {fieldErrors?.passwordConfirmation ? (
-          <p className="text-sm leading-6 text-danger" id="passwordConfirmation-error" role="alert">
+          <p className="text-sm leading-6 text-danger" id="passwordConfirmation-error">
             {fieldErrors.passwordConfirmation}
           </p>
         ) : null}
       </div>
 
-      <div aria-live="polite" className="min-h-6">
-        {errorMessage ? (
-          <p className="text-sm leading-6 text-danger" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-      </div>
-
-      <UnknownOutcomeAlert
-        active={unknownOutcome}
-        recovery={{
-          kind: "note",
-          message:
-            purpose === "RESET"
-              ? "ระบบยังยืนยันไม่ได้ว่าการเปลี่ยนรหัสผ่านสำเร็จหรือไม่"
-              : "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
-          note:
-            purpose === "RESET"
-              ? "ลิงก์ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์รีเซ็ตใหม่"
-              : "ลิงก์ใช้ได้ครั้งเดียว หากตั้งรหัสผ่านสำเร็จ ให้เข้าสู่ระบบด้วยรหัสผ่านใหม่ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์เปิดใช้งานใหม่",
-        }}
-      />
+      {errorMessage && !fieldErrors ? <Alert variant="danger">{errorMessage}</Alert> : null}
 
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || unknownOutcome}
+        disabled={pending}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

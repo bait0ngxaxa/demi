@@ -148,7 +148,8 @@ describe("Patient activation form", () => {
     );
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("หากตั้งรหัสผ่านสำเร็จ");
     expect(container.querySelector('[role="alert"] button')).toBeNull();
-    expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(mocks.completePatient).toHaveBeenCalledTimes(1);
   });
 
@@ -183,7 +184,8 @@ describe("Patient activation form", () => {
       const alert = container.querySelector('[role="alert"]')?.textContent;
       expect(alert).toContain("ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่");
       expect(container.textContent).not.toContain("กรุณาลองใหม่หรือติดต่อโรงพยาบาล");
-      expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
+      expect(container.querySelector("form")).toBeNull();
+      expect(container.querySelector('a[href="/login"]')).not.toBeNull();
       expect(mocks.completePatient).toHaveBeenCalledTimes(1);
       expect(mocks.notifyError).not.toHaveBeenCalled();
       expect(mocks.notifySuccess).not.toHaveBeenCalled();
@@ -206,7 +208,7 @@ describe("Patient activation form", () => {
       expect(mocks.notifyWarning).not.toHaveBeenCalled();
     });
 
-    it("keeps an invalid or expired link inline without a Toast", async () => {
+    it("explains when a link is expired or already used without claiming success", async () => {
       mocks.completePatient.mockResolvedValue({
         status: "ERROR",
         code: "CONFLICT",
@@ -215,16 +217,64 @@ describe("Patient activation form", () => {
 
       await submitActivation();
 
-      expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
+      expect(container.textContent).toContain("ลิงก์นี้ใช้ไม่ได้แล้ว");
+      expect(container.textContent).toContain("อาจหมดอายุหรือถูกใช้ไปแล้ว");
+      expect(container.textContent).not.toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
+      expect(container.querySelector("form")).toBeNull();
       expect(mocks.notifyError).not.toHaveBeenCalled();
       expect(mocks.notifyWarning).not.toHaveBeenCalled();
+    });
+
+    it("shows a persistent login confirmation after patient activation succeeds", async () => {
+      mocks.completePatient.mockResolvedValue({ status: "SUCCESS" });
+
+      await submitActivation();
+
+      expect(container.textContent).toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
+      expect(container.textContent).toContain("บัญชีของคุณพร้อมใช้งานแล้ว");
+      expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
+      expect(container.querySelector("form")).toBeNull();
+      expect(mocks.completePatient).toHaveBeenCalledTimes(1);
+      expect(mocks.notifySuccess).not.toHaveBeenCalled();
+    });
+
+    it("offers recovery guidance for an expired or consumed patient link", async () => {
+      window.history.replaceState(null, "", "/activate/patient#token-1");
+      mocks.details.mockResolvedValue({
+        status: "INVALID",
+        message: "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ",
+      });
+
+      await act(async () => {
+        root.render(createElement(PatientActivationForm));
+      });
+
+      expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
+      expect(container.textContent).toContain("ขอลิงก์ใหม่จากโรงพยาบาล");
+      expect(container.querySelector("form")).toBeNull();
     });
   });
 
   it.each([
-    { purpose: "ACTIVATION" as const, label: "เปิดใช้งานบัญชี", pendingLabel: "กำลังเปิดใช้งานบัญชี..." },
-    { purpose: "RESET" as const, label: "ตั้งรหัสผ่านใหม่", pendingLabel: "กำลังตั้งรหัสผ่าน..." },
-  ])("shows the matching pending action for $purpose", async ({ purpose, label, pendingLabel }) => {
+    {
+      purpose: "ACTIVATION" as const,
+      label: "เปิดใช้งานบัญชี",
+      pendingLabel: "กำลังเปิดใช้งานบัญชี...",
+      successTitle: "ตั้งรหัสผ่านสำเร็จแล้ว",
+    },
+    {
+      purpose: "RESET" as const,
+      label: "ตั้งรหัสผ่านใหม่",
+      pendingLabel: "กำลังตั้งรหัสผ่าน...",
+      successTitle: "ตั้งรหัสผ่านใหม่สำเร็จแล้ว",
+    },
+    {
+      purpose: "CHILD_OWNER_ONBOARDING" as const,
+      label: "เปิดใช้งานบัญชี",
+      pendingLabel: "กำลังเปิดใช้งานบัญชี...",
+      successTitle: "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการสำเร็จแล้ว",
+    },
+  ])("shows a purpose-specific confirmed completion for $purpose", async ({ purpose, label, pendingLabel, successTitle }) => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
     mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส*** ใจ***", purpose });
     let finishCompletion: (() => void) | null = null;
@@ -252,6 +302,11 @@ describe("Patient activation form", () => {
     await act(async () => {
       finishCompletion?.();
     });
+
+    expect(container.textContent).toContain(successTitle);
+    expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
+    expect(container.querySelector("form")).toBeNull();
+    expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);
   });
 
   it("checks a one-time workforce activation through account sign-in guidance, not token replay", async () => {
@@ -276,11 +331,29 @@ describe("Patient activation form", () => {
       "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
     );
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "เข้าสู่ระบบด้วยรหัสผ่านใหม่",
+      "ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้",
     );
     expect(container.querySelector('[role="alert"] button')).toBeNull();
     expect(container.textContent).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
-    expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(true);
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers recovery guidance when a workforce link is expired or already used", async () => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({
+      status: "ERROR",
+      message: "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ",
+    });
+
+    await act(async () => {
+      root.render(createElement(WorkforceActivationForm));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
+    expect(container.textContent).toContain("ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล");
+    expect(container.querySelector("form")).toBeNull();
   });
 });

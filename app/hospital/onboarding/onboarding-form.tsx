@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 
-import { LoadingSpinner } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { buttonClassName, LoadingSpinner } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
@@ -32,6 +34,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
   >(submitHospitalOnboardingAction, initialHospitalOnboardingSubmitActionState);
   const [hospitalQuery, setHospitalQuery] = useState("");
   const [selectedHospitalId, setSelectedHospitalId] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const changeHospitalButtonRef = useRef<HTMLButtonElement>(null);
   const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
@@ -70,34 +73,47 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     if (focusTarget === "search") searchInputRef.current?.focus();
   }, [selectedHospitalId]);
 
+  useEffect(() => {
+    if (state.status !== "ERROR" || !state.fieldErrors) {
+      return;
+    }
+
+    if (state.fieldErrors.hospitalCode) {
+      (selectedHospital ? changeHospitalButtonRef.current : searchInputRef.current)?.focus();
+      return;
+    }
+
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }, [selectedHospital, state]);
+
   if (state.status === "SUCCESS") {
     return (
-      <div className="space-y-6" role="status">
-        <div className="rounded-[12px] bg-success-soft px-4 py-4 text-success">
-          <p className="font-semibold">ส่งคำขอแล้ว</p>
-          <p className="mt-2 text-sm leading-6">
-            DEMI สร้างบัญชีผู้สมัครและส่งคำขอให้ตรวจสอบแล้ว
-            คุณจะเข้าใช้งานได้หลังจากคำขอได้รับอนุมัติ
+      <div className="space-y-6">
+        <Alert variant="success">
+          <h3 className="font-semibold">ส่งคำขอเรียบร้อยแล้ว</h3>
+          <p className="mt-2">
+            ระบบได้รับคำขอของคุณแล้ว กรุณารอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ
           </p>
-        </div>
-        <a
-          className="inline-flex h-12 w-full items-center justify-center rounded-[12px] border border-line bg-white px-5 text-base font-semibold text-ink transition-[border-color,color,background-color] hover:border-brand hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft sm:w-auto"
+        </Alert>
+        <Link
+          className={buttonClassName({ variant: "secondary", className: "w-full sm:w-auto" })}
           href="/login"
         >
           กลับไปหน้าเข้าสู่ระบบ
-        </a>
+        </Link>
       </div>
     );
   }
 
   return (
-    <form action={formAction} className="space-y-7" onSubmit={submitPreservingInput(formAction)}>
+    <form action={formAction} className="space-y-7" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <div className="rounded-[12px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         ข้อมูลที่ส่งจะใช้เพื่อจับคู่ตัวตนและตรวจสอบคำขอเท่านั้น
         ผู้ดูแลระบบจะเป็นผู้อนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
       </div>
 
       <fieldset
+        aria-invalid={fieldErrors.hospitalCode ? true : undefined}
         aria-describedby={fieldErrors.hospitalCode ? "hospitalCode-error" : undefined}
         className="space-y-4"
       >
@@ -205,7 +221,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
           {selectedHospitalStatus}
         </p>
         {fieldErrors.hospitalCode ? (
-          <p className="text-sm leading-6 text-danger" id="hospitalCode-error" role="alert">
+          <p className="text-sm leading-6 text-danger" id="hospitalCode-error">
             {fieldErrors.hospitalCode}
           </p>
         ) : null}
@@ -232,7 +248,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
               type="text"
             />
             {fieldErrors.givenName ? (
-              <p className="text-sm leading-6 text-danger" id="givenName-error" role="alert">
+              <p className="text-sm leading-6 text-danger" id="givenName-error">
                 {fieldErrors.givenName}
               </p>
             ) : null}
@@ -254,7 +270,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
               type="text"
             />
             {fieldErrors.familyName ? (
-              <p className="text-sm leading-6 text-danger" id="familyName-error" role="alert">
+              <p className="text-sm leading-6 text-danger" id="familyName-error">
                 {fieldErrors.familyName}
               </p>
             ) : null}
@@ -283,7 +299,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             type="text"
           />
           {fieldErrors.nationalId ? (
-            <p className="text-sm leading-6 text-danger" id="nationalId-error" role="alert">
+            <p className="text-sm leading-6 text-danger" id="nationalId-error">
               {fieldErrors.nationalId}
             </p>
           ) : null}
@@ -314,7 +330,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             type="password"
           />
           {fieldErrors.password ? (
-            <p className="text-sm leading-6 text-danger" id="password-error" role="alert">
+            <p className="text-sm leading-6 text-danger" id="password-error">
               {fieldErrors.password}
             </p>
           ) : null}
@@ -343,7 +359,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             <p
               className="text-sm leading-6 text-danger"
               id="passwordConfirmation-error"
-              role="alert"
             >
               {fieldErrors.passwordConfirmation}
             </p>
@@ -351,13 +366,11 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         </div>
       </fieldset>
 
-      <div aria-live="polite" className="min-h-6">
-        {errorMessage ? (
-          <p className="text-sm leading-6 text-danger" role="alert">
-            {errorMessage}
-          </p>
-        ) : null}
-      </div>
+      {state.status === "ERROR" && errorMessage && !Object.keys(fieldErrors).length ? (
+        <Alert role="alert" variant={state.code === "UNAVAILABLE" ? "warning" : "danger"}>
+          {errorMessage}
+        </Alert>
+      ) : null}
 
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
 

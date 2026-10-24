@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context-service";
+import { Alert } from "@/components/ui/alert";
 import {
   isLineQuickActionLoginReturnTo,
   isLineWorkflowLoginReturnTo,
@@ -26,6 +27,17 @@ export default async function LoginPage({
   const query = await searchParams;
   const parsedReturnTo = loginReturnToSchema.safeParse(query.returnTo);
   const safeReturnTo = parsedReturnTo.success ? parsedReturnTo.data : null;
+  const completionHint = query.reset === "1"
+    ? {
+        title: "ตั้งรหัสผ่านใหม่สำเร็จแล้ว",
+        message: "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ",
+      }
+    : query.activated === "1"
+      ? {
+          title: "เปิดใช้งานบัญชีแล้ว",
+          message: "กรุณาเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้",
+        }
+      : null;
   const access = await resolveCurrentActorAccess();
 
   if (access.status === "AUTHORIZED") {
@@ -72,28 +84,56 @@ export default async function LoginPage({
             ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบแทนเลขบัตรประชาชน
           </p>
 
+          {completionHint ? (
+            <Alert className="mt-5" variant="success">
+              <p className="font-semibold">{completionHint.title}</p>
+              <p className="mt-1">{completionHint.message}</p>
+            </Alert>
+          ) : null}
+
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
 
+          <section aria-labelledby="login-entry-options-title" className="mt-8 border-t border-line pt-6">
+            <h3 className="text-lg font-semibold leading-7 text-ink" id="login-entry-options-title">
+              ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?
+            </h3>
+            <div className="mt-4 grid gap-3">
+              <Link
+                className="group block rounded-panel border border-border bg-surface p-4 transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/register"
+              >
+                <h4 className="font-semibold text-text group-hover:text-brand-strong">ลงทะเบียนครั้งแรก</h4>
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  สำหรับบุคลากร อสม. และผู้ป่วยที่โรงพยาบาลเพิ่มข้อมูลไว้แล้ว
+                </p>
+                <span className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-strong underline underline-offset-4">
+                  เริ่มลงทะเบียน
+                </span>
+              </Link>
+              <Link
+                className="group block rounded-panel border border-border bg-surface p-4 transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href="/hospital/onboarding"
+              >
+                <h4 className="font-semibold text-text group-hover:text-brand-strong">
+                  ขอใช้งาน DEMI สำหรับโรงพยาบาล
+                </h4>
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  สำหรับผู้แทนโรงพยาบาลแม่ข่ายที่ต้องการส่งคำขอใช้งานระบบ
+                </p>
+                <span className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-strong underline underline-offset-4">
+                  ส่งคำขอโรงพยาบาล
+                </span>
+              </Link>
+            </div>
+          </section>
+
           <p className="mt-5 text-sm leading-6 text-muted">
+            ลืมรหัสผ่าน? ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน{" "}
             <Link
               className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/register"
+              href="/recover"
             >
-              ลงทะเบียนครั้งแรก (บุคลากร / อสม. / ผู้ป่วย)
-            </Link>
-          </p>
-
-          <p className="mt-4 text-sm leading-6 text-muted">
-            ลืมรหัสผ่าน? ขณะนี้ยังไม่มีช่องทางกู้คืนบัญชีที่รองรับ โปรดติดต่อผู้ดูแลระบบเพื่อสอบถามแนวทาง
-          </p>
-
-          <p className="mt-6 border-t border-line pt-6 text-center text-sm leading-6 text-muted">
-            ต้องการใช้ DEMI ในนามโรงพยาบาล?{" "}
-            <Link
-              className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/hospital/onboarding"
-            >
-              ขอใช้งาน DEMI สำหรับโรงพยาบาล
+              ดูแนวทาง
             </Link>
           </p>
 
