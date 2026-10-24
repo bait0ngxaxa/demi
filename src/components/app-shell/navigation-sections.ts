@@ -9,6 +9,7 @@ export const NAVIGATION_SECTION_ORDER: readonly NavigationSectionId[] = [
   "top-menu",
   "home",
   "care",
+  "care-tasks",
   "health-records",
   "registration",
   "review-queue",
@@ -33,6 +34,8 @@ export function getNavigationSectionLabel(
       return "เมนูด่วน";
     case "care":
       return workspace === "personal" ? "การดูแลของฉัน" : "ดูแลผู้ป่วย";
+    case "care-tasks":
+      return "งานดูแลผู้ป่วย";
     case "health-records":
       return "บันทึกสุขภาพ";
     case "registration":

@@ -288,6 +288,20 @@ function projectWorkTabs(
     }
   }
 
+  const careService = findNavigationItem(navigation, "work", "/app/patients?task=service");
+  if (careService) {
+    tabs.push(
+      tabFromItem(careService, {
+        id: "service",
+        label: "จัดบริการ",
+        accessibleLabel: "จัดบริการผู้ป่วย",
+        icon: "care",
+        match: "exact",
+        activeRoute: "navigation-item",
+      }),
+    );
+  }
+
   const hospitalReport =
     findNavigationItem(navigation, "work", "/app/hospitals/reporting") ??
     findNavigationItem(navigation, "work", "/app/hospitals/reporting/export");

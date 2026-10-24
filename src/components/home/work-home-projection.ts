@@ -13,7 +13,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { HomeShortcut } from "./home-shortcut-grid";
 
-export const WORK_HOME_MAX_TILES = 8;
+export const WORK_HOME_MAX_TILES = 9;
 
 const overflowTile: HomeShortcut = { href: "/app/more", icon: "more", label: "ทั้งหมด" };
 
@@ -43,7 +43,7 @@ function tileKey(href: string): string {
 
 /**
  * UI-4: the tile order is the Work navigation order (NAVIGATION_SECTION_ORDER, then item order), keyed by pathname
- * plus the OSM `task` query. It only orders what the server projection already allowed; it never adds a destination.
+ * plus its task mode. It only orders what the server projection already allowed; it never adds a destination.
  */
 export function projectWorkNavigationOrder(navigation: readonly ApplicationNavigationGroup[]): string[] {
   return navigation
@@ -124,9 +124,14 @@ export function projectWorkHome(
   const requestAndSupporting = [...projection.requestActions, ...projection.supportingActions];
 
   if (selected) {
+    const patientDirectoryAction = selected.actions.find(({ href }) => {
+      const [pathname = "", query = ""] = href.split("?", 2);
+      return pathname === "/app/patients" && !new URLSearchParams(query).has("task");
+    });
+
     return {
       scope: { kind: "hospital", hospital: selected, groups: projection.areaGroups },
-      hero: selected.actions.find(({ category }) => category === "care") ?? projection.assignedPatientsAction,
+      hero: patientDirectoryAction ?? selected.actions.find(({ category }) => category === "care") ?? projection.assignedPatientsAction,
       tiles: projectWorkHomeTiles([...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)], navigationOrder),
       sharedActions: [...requestAndSupporting, ...projection.governanceActions],
       unavailableHospitals,

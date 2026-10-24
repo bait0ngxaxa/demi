@@ -192,6 +192,12 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
     if (task === "screening") return "screening";
     if (task === "followup") return "followup";
   }
+  if (pathname === "/app/patients") {
+    const task = new URLSearchParams(query).get("task");
+    if (task === "screening") return "screening";
+    if (task === "followup") return "followup";
+    if (task === "service") return "care";
+  }
   if (pathname === "/app" || pathname === "/app/personal") return "home";
   if (pathname.startsWith("/app/appointments")) return "appointments";
   if (pathname.startsWith("/app/personal/appointments")) return "appointments";

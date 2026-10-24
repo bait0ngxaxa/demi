@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { z } from "zod";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -38,8 +39,17 @@ type PatientDirectoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+const patientDirectoryTaskModeSchema = z.enum(["screening", "followup", "service"]);
+type PatientDirectoryTaskMode = z.infer<typeof patientDirectoryTaskModeSchema>;
+
 function firstSearchParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function parseTaskMode(value: string | string[] | undefined): PatientDirectoryTaskMode | null {
+  if (typeof value !== "string") return null;
+  const parsed = patientDirectoryTaskModeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 async function resolveActor(): Promise<ActorContext> {
@@ -97,6 +107,7 @@ export default async function PatientDirectoryPage({
   if (!selectedScope) {
     redirect("/app/patients");
   }
+  const taskMode = selectedScope.access === "DIRECT" ? parseTaskMode(params.task) : null;
 
   const requestedLookupType = firstSearchParam(params.lookupType);
   const lookupType: PatientDirectoryLookupType =
@@ -153,6 +164,7 @@ export default async function PatientDirectoryPage({
       selfRegistrationFilter={result?.selfRegistrationFilter ?? selfRegistrationFilter}
       lookupType={result?.lookupType ?? lookupType}
       result={result}
+      taskMode={taskMode}
       classificationCounts={classificationCounts}
       canAssignOsm={
         decidePatientOsmAssignmentPolicy({

@@ -29,14 +29,18 @@ import {
 } from "@/modules/reporting/policies/hospital-report-policy";
 
 import { getAvailableApplicationWorkspaces } from "./application-workspace-context";
-import type { ApplicationWorkspaceContext } from "./navigation-types";
+import type {
+  ApplicationNavigationGroup,
+  ApplicationNavigationItem,
+  ApplicationWorkspaceContext,
+} from "./navigation-types";
 import { projectApplicationNavigation, projectPlatformGovernanceNavigation } from "./application-navigation";
 
 export type ApplicationWorkspaceAction = {
   href: string;
   label: string;
   description: string;
-  category?: "care" | "patient" | "administration";
+  category?: "care" | "patient" | "information" | "administration";
   prefetch?: boolean;
 };
 
@@ -62,7 +66,70 @@ export type ApplicationWorkspaceProjection = {
 };
 
 function withHospitalContext(path: string, hospitalId: string): string {
-  return `${path}?hospitalId=${encodeURIComponent(hospitalId)}`;
+  const queryIndex = path.indexOf("?");
+  const pathname = queryIndex < 0 ? path : path.slice(0, queryIndex);
+  const params = new URLSearchParams(queryIndex < 0 ? "" : path.slice(queryIndex + 1));
+  params.set("hospitalId", hospitalId);
+  return `${pathname}?${params.toString()}`;
+}
+
+function navigationItemsForSections(
+  navigation: readonly ApplicationNavigationGroup[],
+  sectionIds: readonly ApplicationNavigationGroup["id"][],
+): ApplicationNavigationItem[] {
+  return navigation
+    .filter(({ id, workspace }) => sectionIds.includes(id) && workspace === "work")
+    .flatMap(({ items }) => items);
+}
+
+function isDirectHospitalCareItem(item: ApplicationNavigationItem): boolean {
+  const [pathname = "", query = ""] = item.href.split("?", 2);
+  if (pathname === "/app/appointments" || pathname === "/app/appointments/new") return true;
+  if (pathname !== "/app/patients") return false;
+
+  const task = new URLSearchParams(query).get("task");
+  return task === null || task === "service" || task === "screening" || task === "followup";
+}
+
+function careActionDescription(item: ApplicationNavigationItem): string {
+  if (item.href === "/app/appointments") return "ดูนัดหมายของโรงพยาบาลนี้";
+  if (item.href === "/app/appointments/new") return "เลือกผู้ป่วยและบันทึกนัดหมายใหม่ในโรงพยาบาลนี้";
+  if (item.href === "/app/patients") return "ค้นหาและเลือกผู้ป่วยในโรงพยาบาลนี้เพื่อเปิดข้อมูลและดูแลต่อเนื่อง";
+
+  const task = new URLSearchParams(item.href.split("?", 2)[1] ?? "").get("task");
+  if (task === "service") return "เลือกผู้ป่วยเพื่อดูขั้นตอนจัดบริการถัดไป";
+  if (task === "screening") return "เลือกผู้ป่วยเพื่อบันทึกการคัดกรอง";
+  if (task === "followup") return "เลือกผู้ป่วยเพื่อบันทึกการติดตาม";
+  return "เปิดงานดูแลผู้ป่วยในโรงพยาบาลนี้";
+}
+
+function isActiveOsmAtHospital(actor: ActorContext, hospitalId: string): boolean {
+  return actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some((relationship) =>
+    relationship.hospitalId === hospitalId &&
+    relationship.status === MembershipStatus.ACTIVE &&
+    relationship.hospitalStatus === HospitalStatus.ACTIVE,
+  );
+}
+
+function projectHospitalCareActions(
+  actor: ActorContext,
+  workspace: ActorHospitalWorkspace,
+  navigation: readonly ApplicationNavigationGroup[],
+): ApplicationWorkspaceAction[] {
+  const hasDirectPatientScope = hasDirectHospitalPatientReadScope(actor, workspace.hospitalId);
+  const hasOsmAppointmentScope = isActiveOsmAtHospital(actor, workspace.hospitalId);
+
+  return navigationItemsForSections(navigation, ["care", "care-tasks"])
+    .filter((item) => hasDirectPatientScope
+      ? isDirectHospitalCareItem(item)
+      : hasOsmAppointmentScope && item.href === "/app/appointments")
+    .map((item) => ({
+      href: withHospitalContext(item.href, workspace.hospitalId),
+      label: item.label,
+      description: careActionDescription(item),
+      category: "care",
+      ...(item.prefetch === undefined ? {} : { prefetch: item.prefetch }),
+    }));
 }
 
 function navigationDescription(href: string): string {
@@ -89,9 +156,8 @@ function projectGovernanceActions(actor: ActorContext): ApplicationWorkspaceActi
     : []);
 }
 
-function projectAssignedPatientsAction(actor: ActorContext): ApplicationWorkspaceAction | null {
-  // Hospital workspaces only gate the areas entry, which this lookup does not read.
-  const assignedPatientsItem = projectApplicationNavigation(actor, [])
+function projectAssignedPatientsAction(navigation: readonly ApplicationNavigationGroup[]): ApplicationWorkspaceAction | null {
+  const assignedPatientsItem = navigation
     .flatMap((group) => group.items)
     .find((item) => item.href === "/app/patients/assigned");
 
@@ -107,13 +173,14 @@ function projectAssignedPatientsAction(actor: ActorContext): ApplicationWorkspac
 function projectHospitalActions(
   actor: ActorContext,
   workspace: ActorHospitalWorkspace,
+  navigation: readonly ApplicationNavigationGroup[],
 ): ApplicationWorkspaceAction[] {
   if (workspace.hospitalStatus !== HospitalStatus.ACTIVE) {
     return [];
   }
 
   const { hospitalId } = workspace;
-  const actions: ApplicationWorkspaceAction[] = [];
+  const actions: ApplicationWorkspaceAction[] = projectHospitalCareActions(actor, workspace, navigation);
 
   const workforceDecision = decideWorkforcePolicy({
     actor,
@@ -131,33 +198,26 @@ function projectHospitalActions(
   }
 
   if (hasDirectHospitalPatientReadScope(actor, hospitalId)) {
-    actions.push({
-      href: withHospitalContext("/app/patients", hospitalId),
-      label: "รายชื่อผู้ป่วย",
-      description: "ค้นหาและเลือกผู้ป่วยในโรงพยาบาลนี้เพื่อเปิดข้อมูลและดูแลต่อเนื่อง",
-      category: "care",
-    });
-    actions.push({
-      href: withHospitalContext("/app/appointments", hospitalId),
-      label: "รายการนัดหมาย",
-      description: "ดูนัดหมายและคำขอที่รอดำเนินการในโรงพยาบาลนี้",
-      category: "care",
-    });
-  }
-
-  if (
-    !hasDirectHospitalPatientReadScope(actor, hospitalId) &&
-    actor.roles.includes(Role.OSM) && actor.osmHospitalRelationships.some((relationship) =>
-      relationship.hospitalId === hospitalId &&
-      relationship.status === MembershipStatus.ACTIVE &&
-      relationship.hospitalStatus === HospitalStatus.ACTIVE)
-  ) {
-    actions.push({
-      href: withHospitalContext("/app/appointments", hospitalId),
-      label: "รายการนัดหมาย",
-      description: "ดูนัดหมายของผู้ป่วยที่ได้รับมอบหมายในโรงพยาบาลนี้",
-      category: "care",
-    });
+    const informationItems = navigationItemsForSections(navigation, ["reports-info"]);
+    for (const item of informationItems) {
+      if (item.href === "/app/hospitals/content") {
+        actions.push({
+          href: withHospitalContext(item.href, hospitalId),
+          label: item.label,
+          description: "อ่านข่าวสารและความรู้จากโรงพยาบาลนี้",
+          category: "information",
+          ...(item.prefetch === undefined ? {} : { prefetch: item.prefetch }),
+        });
+      } else if (item.href === "/app/hospitals/contacts") {
+        actions.push({
+          href: withHospitalContext(item.href, hospitalId),
+          label: item.label,
+          description: "ดูข้อมูลติดต่อของโรงพยาบาลนี้",
+          category: "information",
+          ...(item.prefetch === undefined ? {} : { prefetch: item.prefetch }),
+        });
+      }
+    }
   }
 
   if (hasDirectHospitalProvisioningScope(actor, hospitalId)) {
@@ -271,13 +331,18 @@ function projectHospitalActions(
     capability: HOSPITAL_REPORT_CAPABILITIES.export,
     target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
   }).allowed) {
-    // The export page lists every Hospital where the actor is a MEMBER, so it is a shared (uncategorized) action.
-    actions.push({
-      href: "/app/hospitals/reporting/export",
-      label: "ส่งออกรายงาน",
-      description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาล (Excel) ของผู้ป่วยที่ยังอยู่ในการดูแล",
-      prefetch: false,
-    });
+    // The export page resolves every authorized Hospital itself and rejects query parameters; keep its existing URL.
+    const exportItem = navigationItemsForSections(navigation, ["reports-info"])
+      .find(({ href }) => href === "/app/hospitals/reporting/export");
+    if (exportItem) {
+      actions.push({
+        href: exportItem.href,
+        label: exportItem.label,
+        description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาล (Excel) ของผู้ป่วยที่ยังอยู่ในการดูแล",
+        category: "patient",
+        ...(exportItem.prefetch === undefined ? {} : { prefetch: exportItem.prefetch }),
+      });
+    }
   }
 
   return actions;
@@ -286,10 +351,11 @@ function projectHospitalActions(
 export function projectApplicationWorkspace(
   actor: ActorContext,
   workspaces: readonly ActorHospitalWorkspace[],
+  navigation: readonly ApplicationNavigationGroup[] = projectApplicationNavigation(actor, workspaces),
 ): ApplicationWorkspaceProjection {
   const projected = workspaces.map((workspace) => ({
     ...workspace,
-    actions: projectHospitalActions(actor, workspace),
+    actions: projectHospitalActions(actor, workspace, navigation),
   }));
   // These destinations resolve the actor's full permitted scope, not a selected Hospital.
   const shared = new Map<string, ApplicationWorkspaceAction>();
@@ -308,7 +374,7 @@ export function projectApplicationWorkspace(
     areaGroups: projectWorkAreaGroups(actor, workspaces),
     availableWorkspaces: getAvailableApplicationWorkspaces(actor),
     governanceActions: projectGovernanceActions(actor),
-    assignedPatientsAction: projectAssignedPatientsAction(actor),
+    assignedPatientsAction: projectAssignedPatientsAction(navigation),
     hospitals,
     requestActions: [...shared.values()].filter(({ href }) => href !== "/app/patients/service-catalog"),
     supportingActions: [

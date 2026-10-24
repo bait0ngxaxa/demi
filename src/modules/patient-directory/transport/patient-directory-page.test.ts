@@ -44,10 +44,12 @@ const scopes = [
   {
     hospitalId: "11111111-1111-4111-8111-111111111111",
     hospitalName: "โรงพยาบาล ก",
+    access: "DIRECT" as const,
   },
   {
     hospitalId: "22222222-2222-4222-8222-222222222222",
     hospitalName: "โรงพยาบาล ข",
+    access: "DIRECT" as const,
   },
 ];
 
@@ -108,6 +110,42 @@ describe("Patient Directory page Hospital context", () => {
       expect.anything(),
       expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
     );
+  });
+
+  it.each(["screening", "followup", "service"] as const)("accepts the %s direct Hospital task mode", async (task) => {
+    const page = await PatientDirectoryPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task }),
+    });
+
+    expect(page.props.taskMode).toBe(task);
+    expect(mockedFindPatientDirectory).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
+    );
+  });
+
+  it("ignores an invalid task without changing the directory query", async () => {
+    const page = await PatientDirectoryPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "import" }),
+    });
+
+    expect(page.props.taskMode).toBeNull();
+    expect(mockedFindPatientDirectory).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
+    );
+  });
+
+  it("does not activate a write-oriented task for a read-only network scope", async () => {
+    mockedListPatientDirectoryScopes.mockResolvedValue([
+      { ...scopes[0], access: "NETWORK" },
+    ]);
+
+    const page = await PatientDirectoryPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "screening" }),
+    });
+
+    expect(page.props.taskMode).toBeNull();
   });
 
   it("offers bulk OSM assignment only to an active OWNER of the selected Hospital", async () => {

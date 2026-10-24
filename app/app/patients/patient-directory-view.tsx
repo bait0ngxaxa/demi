@@ -33,8 +33,33 @@ type PatientDirectoryViewProps = {
   classificationFilter: PatientDirectoryClassificationFilter;
   selfRegistrationFilter: PatientDirectorySelfRegistrationFilter;
   classificationCounts: PatientClassificationCounts;
+  taskMode?: PatientDirectoryTaskMode | null;
   /** Active OWNER of the selected Hospital: may open the bulk OSM assignment page. */
   canAssignOsm?: boolean;
+};
+
+type PatientDirectoryTaskMode = "screening" | "followup" | "service";
+
+const taskPresentation: Record<PatientDirectoryTaskMode, {
+  title: string;
+  description: string;
+  selectionAction: string;
+}> = {
+  screening: {
+    title: "คัดกรองผู้ป่วย",
+    description: "เลือกผู้ป่วยเพื่อบันทึกการคัดกรองในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง",
+    selectionAction: "บันทึกการคัดกรอง",
+  },
+  followup: {
+    title: "บันทึกติดตาม",
+    description: "เลือกผู้ป่วยเพื่อบันทึกการติดตามในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง",
+    selectionAction: "บันทึกการติดตาม",
+  },
+  service: {
+    title: "จัดบริการผู้ป่วย",
+    description: "เลือกผู้ป่วยเพื่อเปิดขั้นตอนจัดบริการถัดไปตามสถานะการดูแล",
+    selectionAction: "ดูขั้นตอนบริการถัดไป",
+  },
 };
 
 function directoryUrl(input: {
@@ -44,6 +69,7 @@ function directoryUrl(input: {
   page: number;
   classification: PatientDirectoryClassificationFilter;
   selfRegistration: PatientDirectorySelfRegistrationFilter;
+  taskMode: PatientDirectoryTaskMode | null;
 }): string {
   const params = new URLSearchParams({
     hospitalId: input.hospitalId,
@@ -62,6 +88,7 @@ function directoryUrl(input: {
     params.set("classification", input.classification);
   }
   if (input.selfRegistration !== "ALL") params.set("selfRegistration", input.selfRegistration);
+  if (input.taskMode) params.set("task", input.taskMode);
 
   return `/app/patients?${params.toString()}`;
 }
@@ -72,44 +99,63 @@ function displayHospitalNumber(hospitalNumber: string | null): string {
 
 function PatientDirectoryList({
   items,
+  taskMode,
 }: {
   items: readonly PatientDirectoryItem[];
+  taskMode: PatientDirectoryTaskMode | null;
 }): React.JSX.Element {
   return (
     <div className="overflow-hidden rounded-panel border border-border bg-surface">
-      <ul className="divide-y divide-border" aria-label="รายชื่อผู้ป่วย">
-        {items.map((item) => (
-          <li key={item.patientHospitalRelationshipId}>
-            <Link
-              className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-              href={`/app/patients/${item.patientHospitalRelationshipId}`}
-            >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-                <div className="min-w-0">
-                  <h3 className="break-words text-lg font-semibold text-text group-hover:text-brand-strong">
-                    {item.displayName}
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-text-muted">{item.hospital.name}</p>
-                  {item.selfRegisteredAt ? (
-                    <StatusBadge className="mt-2" variant="info">
-                      ลงทะเบียนเองเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(item.selfRegisteredAt)}
+      <ul
+        className="divide-y divide-border"
+        aria-label={taskMode ? `รายชื่อผู้ป่วยสำหรับ${taskPresentation[taskMode].title}` : "รายชื่อผู้ป่วย"}
+      >
+        {items.map((item) => {
+          const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
+          const href = taskMode === "screening"
+            ? `${relationshipPath}/screenings/new`
+            : taskMode === "followup"
+              ? `${relationshipPath}/followups/new`
+              : relationshipPath;
+
+          return (
+            <li key={item.patientHospitalRelationshipId}>
+              <Link
+                className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
+                href={href}
+              >
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+                  <div className="min-w-0">
+                    <h3 className="break-words text-lg font-semibold text-text group-hover:text-brand-strong">
+                      {item.displayName}
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-text-muted">{item.hospital.name}</p>
+                    {item.selfRegisteredAt ? (
+                      <StatusBadge className="mt-2" variant="info">
+                        ลงทะเบียนเองเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium" }).format(item.selfRegisteredAt)}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  <dl className="shrink-0 text-sm leading-6 sm:text-right">
+                    <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
+                    <dd className="font-semibold text-text">{displayHospitalNumber(item.hospitalNumber)}</dd>
+                  </dl>
+                  <div className="shrink-0 sm:text-right">
+                    <p className="text-xs text-text-muted">สถานะผู้ป่วย</p>
+                    <StatusBadge variant={item.classification ? "info" : "neutral"}>
+                      {getPatientClassificationLabel(item.classification)}
                     </StatusBadge>
-                  ) : null}
+                    {taskMode ? (
+                      <p className="mt-3 text-sm font-semibold text-brand-strong">
+                        {taskPresentation[taskMode].selectionAction}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                <dl className="shrink-0 text-sm leading-6 sm:text-right">
-                  <dt className="text-text-muted">HN ของโรงพยาบาลนี้</dt>
-                  <dd className="font-semibold text-text">{displayHospitalNumber(item.hospitalNumber)}</dd>
-                </dl>
-                <div className="shrink-0 sm:text-right">
-                  <p className="text-xs text-text-muted">สถานะผู้ป่วย</p>
-                  <StatusBadge variant={item.classification ? "info" : "neutral"}>
-                    {getPatientClassificationLabel(item.classification)}
-                  </StatusBadge>
-                </div>
-              </div>
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -117,8 +163,10 @@ function PatientDirectoryList({
 
 function PatientDirectoryPagination({
   result,
+  taskMode,
 }: {
   result: PatientDirectoryPage;
+  taskMode: PatientDirectoryTaskMode | null;
 }): React.JSX.Element | null {
   if (result.totalPages <= 1) {
     return null;
@@ -143,6 +191,7 @@ function PatientDirectoryPagination({
               page: result.page - 1,
               classification: result.classificationFilter,
               selfRegistration: result.selfRegistrationFilter,
+              taskMode,
             })}
           >
             ก่อนหน้า
@@ -162,6 +211,7 @@ function PatientDirectoryPagination({
               page: result.page + 1,
               classification: result.classificationFilter,
               selfRegistration: result.selfRegistrationFilter,
+              taskMode,
             })}
           >
             ถัดไป
@@ -186,6 +236,7 @@ export function PatientDirectoryView({
   classificationFilter,
   selfRegistrationFilter,
   classificationCounts,
+  taskMode = null,
   canAssignOsm = false,
 }: PatientDirectoryViewProps): React.JSX.Element {
   const lookupLabel = lookupType === "HOSPITAL_NUMBER" ? "HN" : "ชื่อผู้ป่วย";
@@ -193,14 +244,15 @@ export function PatientDirectoryView({
     lookupType === "HOSPITAL_NUMBER"
       ? PATIENT_DIRECTORY_HOSPITAL_NUMBER_MAX_LENGTH
       : PATIENT_DIRECTORY_NAME_MAX_LENGTH;
+  const task = taskMode ? taskPresentation[taskMode] : null;
 
   return (
     <div className="content-workspace">
       <PageHeader
         actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedScope.hospitalId)}` }, { label: "รายชื่อผู้ป่วย" }]}
-        description="ค้นหาและเปิดดูข้อมูลผู้ป่วยเฉพาะในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง"
-        title="รายชื่อผู้ป่วย"
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedScope.hospitalId)}` }, { label: task?.title ?? "รายชื่อผู้ป่วย" }]}
+        description={task?.description ?? "ค้นหาและเปิดดูข้อมูลผู้ป่วยเฉพาะในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง"}
+        title={task?.title ?? "รายชื่อผู้ป่วย"}
       />
 
       <div className="space-y-6 pt-8">
@@ -210,6 +262,11 @@ export function PatientDirectoryView({
               <p className="text-sm font-semibold text-text-muted">โรงพยาบาลที่ดำเนินการ</p>
               {scopes.length > 1 ? (
                 <Form action="" className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
+                  <input name="lookupType" type="hidden" value={lookupType} />
+                  {value ? <input name="value" type="hidden" value={value} /> : null}
+                  {classificationFilter !== "ALL" ? <input name="classification" type="hidden" value={classificationFilter} /> : null}
+                  {selfRegistrationFilter !== "ALL" ? <input name="selfRegistration" type="hidden" value={selfRegistrationFilter} /> : null}
                   <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:min-w-80">
                     <span className="sr-only">เลือกโรงพยาบาล</span>
                     <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
@@ -258,6 +315,7 @@ export function PatientDirectoryView({
           </p>
           <Form action="" className="mt-5 grid gap-4 @5xl/workspace:grid-cols-[13rem_minmax(0,1fr)_13rem_13rem_auto] @5xl/workspace:items-end">
             <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
+            {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
             <label className="block space-y-2 text-sm font-semibold">
               <span>ค้นหาด้วย</span>
               <Select defaultValue={lookupType} key={lookupType} name="lookupType">
@@ -309,7 +367,7 @@ export function PatientDirectoryView({
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="patient-directory-results-heading">
-                  รายชื่อผู้ป่วย
+                  {taskMode ? "เลือกผู้ป่วย" : "รายชื่อผู้ป่วย"}
                 </h2>
                 <p className="mt-1 text-sm text-text-muted">
                   โรงพยาบาล: {result.hospital.hospitalName}
@@ -339,8 +397,8 @@ export function PatientDirectoryView({
 
             {result.items.length > 0 ? (
               <div className="mt-4 space-y-5">
-                <PatientDirectoryList items={result.items} />
-                <PatientDirectoryPagination result={result} />
+                <PatientDirectoryList items={result.items} taskMode={taskMode} />
+                <PatientDirectoryPagination result={result} taskMode={taskMode} />
               </div>
             ) : (
               <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
@@ -358,7 +416,15 @@ export function PatientDirectoryView({
         {result && (result.value || result.classificationFilter !== "ALL" || result.selfRegistrationFilter !== "ALL") ? (
           <Link
             className="inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-            href={`/app/patients?hospitalId=${encodeURIComponent(result.hospital.hospitalId)}`}
+            href={directoryUrl({
+              hospitalId: result.hospital.hospitalId,
+              lookupType: result.lookupType,
+              value: "",
+              page: 1,
+              classification: "ALL",
+              selfRegistration: "ALL",
+              taskMode,
+            })}
           >
             ล้างการค้นหา
           </Link>

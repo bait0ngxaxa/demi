@@ -69,9 +69,15 @@ describe("application workspace projection", () => {
     const actions = projection.hospitals[0]?.actions ?? [];
 
     expect(actions.map(({ href }) => href)).toEqual([
-      `/app/workforce?hospitalId=${hospitalId}`,
-      `/app/patients?hospitalId=${hospitalId}`,
       `/app/appointments?hospitalId=${hospitalId}`,
+      `/app/patients?hospitalId=${hospitalId}`,
+      `/app/patients?task=service&hospitalId=${hospitalId}`,
+      `/app/patients?task=screening&hospitalId=${hospitalId}`,
+      `/app/patients?task=followup&hospitalId=${hospitalId}`,
+      `/app/appointments/new?hospitalId=${hospitalId}`,
+      `/app/workforce?hospitalId=${hospitalId}`,
+      `/app/hospitals/content?hospitalId=${hospitalId}`,
+      `/app/hospitals/contacts?hospitalId=${hospitalId}`,
       `/app/patients/provision?hospitalId=${hospitalId}`,
       `/app/patients/activation?hospitalId=${hospitalId}`,
       `/app/hospitals/contact?hospitalId=${hospitalId}`,
@@ -129,9 +135,16 @@ describe("application workspace projection", () => {
     expect(workforceAction).toBeUndefined();
 
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/patients?task=service&hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/patients?task=screening&hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/patients?task=followup&hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/appointments/new?hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/hospitals/content?hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/hospitals/contacts?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
-    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/hospitals/reporting/export"]);
+    expect(projection.hospitals[0]?.actions.find(({ href }) => href === "/app/hospitals/reporting/export")?.category).toBe("patient");
+    expect(projection.requestActions.map(({ href }) => href)).toEqual([]);
     expect(projection.supportingActions).toHaveLength(0);
   });
 
@@ -204,8 +217,8 @@ describe("application workspace projection", () => {
     }), [workspace(), workspace({ hospitalId: secondId })]);
     expect(projection.hospitals).toHaveLength(2);
     for (const hospital of projection.hospitals) {
-      expect(hospital.actions.every(({ href }) => new URL(href, "https://demi.test").searchParams.get("hospitalId") === hospital.hospitalId)).toBe(true);
-      expect(hospital.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${hospital.hospitalId}`);
+      expect(hospital.actions.every(({ href }) => href === "/app/hospitals/reporting/export" || new URL(href, "https://demi.test").searchParams.get("hospitalId") === hospital.hospitalId)).toBe(true);
+      expect(hospital.actions.find(({ category }) => category === "care")?.href).toBe(`/app/appointments?hospitalId=${hospital.hospitalId}`);
     }
     expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/service-requests"]);
     expect(projection.supportingActions.map(({ href }) => href)).toEqual([
@@ -254,7 +267,7 @@ describe("application workspace projection", () => {
         .filter(({ category }) => category === "administration")
         .map(({ href }) => href),
     ).toEqual([]);
-    expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/patients?hospitalId=${secondId}`);
+    expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/appointments?hospitalId=${secondId}`);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals[1]?.contextLabel).toContain("สมาชิกโรงพยาบาล");
     expect(projection.hospitals[1]?.contextLabel).not.toContain("เจ้าของโรงพยาบาล");

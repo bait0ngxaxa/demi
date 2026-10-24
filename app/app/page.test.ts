@@ -132,15 +132,14 @@ describe("application home workspace routing", () => {
     expect(html).toContain('href="/app/patients/service-requests"');
     expect(html).not.toContain('/app/patients/access-requests');
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลที่เลือก");
-    expect(section(html, "work-home-menu-heading")).toContain(`/app/workforce?hospitalId=${hospitalId}`);
+    expect(section(html, "work-home-menu-heading")).toContain('href="/app/more"');
     expect(html).not.toContain("สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น");
     expect(html).toContain("เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้");
-    // The hero is the first care action of the selected Hospital, as a link without counts.
+    // The patient directory remains the primary care action; the grid follows navigation order.
     expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
     expect(html.includes('href="/app/patients/service-catalog"')).toBe(type === MembershipType.OWNER);
-    for (const path of ["contact", "knowledge", "reporting"]) {
-      expect(html.includes(`href="/app/hospitals/${path}?hospitalId=${hospitalId}"`)).toBe(type === MembershipType.OWNER);
-    }
+    // Overflowed actions remain on the shared More destination; OWNER retains the direct administration note.
+    expect(section(html, "work-home-menu-heading")).toContain('href="/app/more"');
     expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
     expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
@@ -165,7 +164,8 @@ describe("application home workspace routing", () => {
     for (const ownerOnly of ["/app/patients/provision", "/app/patients/activation", "/app/workforce", "/app/patients/service-requests", "/app/patients/access-requests", "/app/patients/service-catalog", `/app/hospitals/reporting?hospitalId=${hospitalId}`]) {
       expect(html).not.toContain(ownerOnly);
     }
-    expect(section(html, "work-home-shared-heading")).toContain('href="/app/hospitals/reporting/export"');
+    expect(section(html, "work-home-menu-heading")).toContain('href="/app/hospitals/reporting/export"');
+    expect(section(html, "work-home-shared-heading")).toBe("");
     expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
     expect(html).not.toContain("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง");
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
@@ -250,7 +250,7 @@ describe("application home workspace routing", () => {
     vi.mocked(listHospitalWorkContent).mockClear();
     const second = await renderHome({ ...actor, hospitalMemberships: [...actor.hospitalMemberships, { hospitalId: secondId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] }, HospitalStatus.ACTIVE, { hospitalId: secondId });
     expect(second).toContain(`/app/patients?hospitalId=${secondId}`);
-    expect(second).toContain(`/app/hospitals/contact?hospitalId=${secondId}`);
+    expect(section(second, "work-home-menu-heading")).toContain('href="/app/more"');
     expect(second).not.toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(second).toContain(`value="${secondId}" selected=""`);
     expect(second.match(/href="\/app\/patients\/service-requests"/g)).toHaveLength(1);
@@ -429,7 +429,7 @@ describe("application home workspace routing", () => {
       expect(news).toContain("โหลดข่าวสารไม่สำเร็จ");
       expect(news).toContain(`href="/app?hospitalId=${hospitalId}"`);
       expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
-      expect(section(html, "work-home-menu-heading")).toContain(`/app/workforce?hospitalId=${hospitalId}`);
+      expect(section(html, "work-home-menu-heading")).toContain('href="/app/more"');
       expect(section(html, "work-home-shared-heading")).toContain('href="/app/patients/service-requests"');
     });
 

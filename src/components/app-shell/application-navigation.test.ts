@@ -113,11 +113,13 @@ const patientAccount = ["account", "บัญชีและช่วยเห�
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
+const hospitalCareTasks = ["care-tasks", "งานดูแลผู้ป่วย", ["/app/patients?task=service", "/app/patients?task=screening", "/app/patients?task=followup", "/app/appointments/new"]] as const;
 const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
 const ownerAdministration = ["/app/users", "/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
+  hospitalCareTasks,
   staffRegistration,
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
@@ -127,6 +129,7 @@ const ownerSections = (areas: boolean) => [
 const memberSections = () => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients"]],
+  hospitalCareTasks,
   // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
@@ -207,6 +210,7 @@ const cases: Case[] = [
     expected: { work: [
       ["home", null, ["/app"]],
       ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
+      hospitalCareTasks,
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
@@ -247,6 +251,47 @@ describe("UI-4 task-based navigation per actor", () => {
 
     expect(hrefs).not.toContain("/patient/access-request");
     expect(hrefs).not.toContain("/app/patients/access-requests");
+  });
+
+  it("gives an active Hospital MEMBER the direct care tasks without OWNER administration", () => {
+    const member = actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)],
+    });
+    const memberHrefs = allHrefs(project(member));
+
+    expect(memberHrefs).toEqual(expect.arrayContaining([
+      "/app/patients?task=service",
+      "/app/patients?task=screening",
+      "/app/patients?task=followup",
+      "/app/appointments/new",
+    ]));
+    expect(memberHrefs).not.toEqual(expect.arrayContaining(ownerAdministration));
+    expect(memberHrefs).not.toEqual(expect.arrayContaining([
+      "/app/patients/provision",
+      "/app/patients/activation",
+      "/app/patients/service-requests",
+      "/app/patients/assign-osm",
+      "/app/hospitals/knowledge",
+      "/app/hospitals/contact",
+      "/app/hospitals/support",
+    ]));
+  });
+
+  it.each([
+    { status: MembershipStatus.SUSPENDED, hospitalStatus: HospitalStatus.ACTIVE },
+    { status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.SUSPENDED },
+  ])("withholds Hospital care tasks when membership or Hospital is inactive (%j)", ({ status, hospitalStatus }) => {
+    const subject = actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER, { status, hospitalStatus })],
+    });
+    const projected = allHrefs(project(subject));
+
+    expect(projected).not.toContain("/app/patients?task=service");
+    expect(projected).not.toContain("/app/patients?task=screening");
+    expect(projected).not.toContain("/app/patients?task=followup");
+    expect(projected).not.toContain("/app/appointments/new");
   });
 
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {

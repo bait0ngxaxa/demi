@@ -28,6 +28,7 @@ function actor(
     hospitalStatus?: HospitalStatus;
     includeOsmScope?: boolean;
     includeHospitalScope?: boolean;
+    membershipType?: MembershipType;
   } = {},
 ): ActorContext {
   const hasOsm = roles.includes(Role.OSM);
@@ -41,7 +42,7 @@ function actor(
       ? [
           {
             hospitalId,
-            membershipType: MembershipType.OWNER,
+            membershipType: options.membershipType ?? MembershipType.OWNER,
             profession: Profession.DOCTOR,
             status: MembershipStatus.ACTIVE,
             hospitalStatus: options.hospitalStatus ?? HospitalStatus.ACTIVE,
@@ -190,6 +191,32 @@ describe("server-projected mobile navigation", () => {
       "more",
     ]);
     expect(hrefs(adminNavigation)).not.toContain("/app/patients");
+  });
+
+  it("gives a Hospital MEMBER the care task tab before the export-only destination", () => {
+    const memberNavigation = projectApplicationNavigation(actor([Role.HOSPITAL], {
+      membershipType: MembershipType.MEMBER,
+    }));
+    const memberTabs = primaryTabs(memberNavigation, "work");
+    const memberMoreHrefs = hrefs(projectMoreNavigation(memberNavigation, memberTabs));
+
+    expect(memberTabs.map(({ id }) => id)).toEqual([
+      "home",
+      "appointments",
+      "patients",
+      "service",
+      "more",
+    ]);
+    expect(memberTabs.map(({ href }) => href)).toEqual([
+      "/app",
+      "/app/appointments",
+      "/app/patients",
+      "/app/patients?task=service",
+      "/app/more",
+    ]);
+    expect(memberTabs[3]?.icon).toBe("care");
+    expect(resolveActiveMobileTabId("/app/patients", "task=service", memberTabs)).toBe("service");
+    expect(memberMoreHrefs).toContain("/app/hospitals/reporting/export");
   });
 
   it("does not project Hospital operations for a suspended Hospital", () => {

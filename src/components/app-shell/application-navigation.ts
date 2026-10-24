@@ -289,6 +289,7 @@ function projectWorkSections(
     hasDirectHospitalProvisioningScope(actor, hospitalId),
   );
   const governance = projectPlatformGovernanceNavigation(actor);
+  const canReadPatientCare = canReadPatients(actor);
   const hospitalAdministration = compact([
     // UM-1: one OWNER directory over staff, OSM and Patients; the workforce entry stays for adding and importing.
     canManageWorkforce(actor) && { href: "/app/users", label: "จัดการผู้ใช้งาน", match: "prefix" },
@@ -311,8 +312,14 @@ function projectWorkSections(
       assignedPatients && { href: "/app/patients/assigned", label: "เพื่อนที่ดูแล", match: "exact", badgeCount: awaitingOsmAcceptanceCount },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
-      canReadPatients(actor) && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
+      canReadPatientCare && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
       canAssignOsm(actor) && { href: "/app/patients/assign-osm", label: "มอบหมาย อสม.", match: "prefix" },
+    ])),
+    ...section("care-tasks", "work", compact([
+      canReadPatientCare && { href: "/app/patients?task=service", label: "จัดบริการ", match: "exact" },
+      canReadPatientCare && { href: "/app/patients?task=screening", label: "คัดกรองผู้ป่วย", match: "exact" },
+      canReadPatientCare && { href: "/app/patients?task=followup", label: "บันทึกติดตาม", match: "exact" },
+      canReadPatientCare && { href: "/app/appointments/new", label: "นัดหมายใหม่", match: "exact" },
     ])),
     ...section("registration", "work", compact([
       directProvisioning && { href: "/app/patients/provision", label: "นำเข้าผู้ป่วย", match: "prefix" },
