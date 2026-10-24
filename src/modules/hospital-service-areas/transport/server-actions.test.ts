@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   actor: vi.fn(),
   issueChildOwnerLink: vi.fn(),
+  attach: vi.fn(),
+  end: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -22,7 +24,12 @@ vi.mock("../services/child-facility-service", () => ({
   revokeChildOwnerLink: vi.fn(),
 }));
 
-import { issueChildOwnerLinkAction } from "./server-actions";
+vi.mock("../services/hospital-service-area-service", () => ({
+  attachHospitalServiceArea: mocks.attach,
+  endHospitalServiceArea: mocks.end,
+}));
+
+import { attachServiceAreaAction, endServiceAreaAction, issueChildOwnerLinkAction, renameChildFacilityAction } from "./server-actions";
 
 describe("Child OWNER invitation activation URL", () => {
   beforeEach(() => {
@@ -70,5 +77,16 @@ describe("Child OWNER invitation activation URL", () => {
       message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
     });
     expect(mocks.issueChildOwnerLink).not.toHaveBeenCalled();
+  });
+});
+
+describe("network report cache invalidation", () => {
+  it.each([attachServiceAreaAction, endServiceAreaAction, renameChildFacilityAction])("refreshes reporting instead of the retired areas destination", async (action) => {
+    vi.clearAllMocks();
+    mocks.actor.mockResolvedValue({ userId: "parent-owner" });
+    const result = await action({ status: "IDLE" }, new FormData());
+    expect(result.status).toBe("SUCCESS");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/app/hospitals/reporting", "page");
+    expect(mocks.revalidatePath).not.toHaveBeenCalledWith("/app/hospitals/areas", "page");
   });
 });

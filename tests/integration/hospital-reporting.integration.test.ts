@@ -448,30 +448,43 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     const programs: string[] = [];
     // Synthetic persisted read fixtures: every round count 0..6, a completed Program, an ended relationship,
     // and an unrelated Hospital. Read tests do not exercise the care checklist write workflow.
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 14; index += 1) {
       const profile = await createPatientProfile(fixture, `รายงาน-${index}`);
       const relationship = await createRelationship(fixture, profile.id, index === 9 ? other.id : hospital.id, `UX-${index}`);
       const program = await createProgram(fixture, { relationshipId: relationship.id,
-        createdByUserId: owner.userId, status: index === 7 ? PatientProgramStatus.COMPLETED : PatientProgramStatus.ACTIVE });
+        createdByUserId: owner.userId, status: [7, 11, 13].includes(index) ? PatientProgramStatus.COMPLETED : PatientProgramStatus.ACTIVE });
       programs.push(program.id);
-      const rounds = index <= 6 ? index : index === 8 ? 3 : 6;
+      const rounds = index <= 6 ? index : index === 8 || index === 10 ? 3 : index === 11 ? 0 : index === 13 ? 2 : 6;
       await openProgramRound(program.id, rounds + 1);
-      if (index === 8) await prisma.patientHospitalRelationship.update({ where: { id: relationship.id }, data: {
+      // Include a historical After with only three explicit completions: After takes precedence over round count.
+      if (index === 10 || index === 12) await prisma.patientFinalAssessment.create({ data: {
+        patientProgramId: program.id, patientHospitalRelationshipId: relationship.id, recordedByUserId: owner.userId, weight: 60,
+      } });
+      if ([8, 12, 13].includes(index)) await prisma.patientHospitalRelationship.update({ where: { id: relationship.id }, data: {
         endedAt: new Date(), endedByUserId: owner.userId, endReason: "สิ้นสุดการดูแลใน fixture",
       } });
     }
     const active = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id });
-    expect(active.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 2], waitingAfter: 1, completed: 1 });
-    expect(active.page.total).toBe(8);
+    expect(active.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 1], afterRecorded: 1, completed: 2 });
+    expect(active.page.total).toBe(10);
     const history = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, cohort: "INCLUDE_ENDED" });
-    expect(history.roundProgress).toEqual({ rounds: [1, 1, 1, 2, 1, 1, 2], waitingAfter: 1, completed: 1 });
-    for (let round = 0; round <= 6; round += 1) {
-      const filtered = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, progress: String(round) });
-      expect(filtered.page.items.map((row) => row.completedRounds)).toEqual(round === 6 ? [6, 6] : [round]);
-      expect(filtered.page.total).toBe(round === 6 ? 2 : 1);
+    expect(history.roundProgress).toEqual({ rounds: [1, 1, 1, 2, 1, 1, 1], afterRecorded: 2, completed: 3 });
+    for (const report of [active, history]) {
+      expect(report.roundProgress.rounds.reduce((sum, count) => sum + count, 0)
+        + report.roundProgress.afterRecorded + report.roundProgress.completed).toBe(report.counts.programs.total);
+      const bucketIds: string[] = [];
+      for (const progress of ["0", "1", "2", "3", "4", "5", "6", "AFTER_RECORDED", "COMPLETED"]) {
+        const filtered = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, cohort: report.cohort, progress });
+        const expectedIds = progress === "COMPLETED" ? [programs[7], programs[11], ...(report.cohort === "INCLUDE_ENDED" ? [programs[13]] : [])]
+          : progress === "AFTER_RECORDED" ? [programs[10], ...(report.cohort === "INCLUDE_ENDED" ? [programs[12]] : [])]
+            : [programs[Number(progress)], ...(progress === "3" && report.cohort === "INCLUDE_ENDED" ? [programs[8]] : [])];
+        expect(filtered.page.items.map((row) => row.patientProgramId).sort()).toEqual(expectedIds.sort());
+        expect(filtered.page.total).toBe(expectedIds.length);
+        bucketIds.push(...filtered.page.items.map((row) => row.patientProgramId));
+      }
+      expect(bucketIds).toHaveLength(report.counts.programs.total);
+      expect(new Set(bucketIds).size).toBe(report.counts.programs.total);
     }
-    const waiting = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, progress: "WAITING_AFTER" });
-    expect(waiting.page.items.map((row) => row.patientProgramId)).toEqual([programs[6]]);
     const byName = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "สมชาย รายงาน-2" });
     expect(byName.page.items.map((row) => row.patientProgramId)).toEqual([programs[2]]);
     const byHn = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "UX-7", status: "COMPLETED" });

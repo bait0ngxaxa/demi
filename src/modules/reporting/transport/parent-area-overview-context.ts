@@ -13,10 +13,9 @@ import {
 import type { ParentChildHospitalReportingProjection } from "../projections/hospital-report-projection";
 import { listHospitalReportingHospitals } from "../services/hospital-report-access-service";
 import { getParentChildHospitalReportingPage } from "../services/hospital-report-query-service";
-import { listParentChildHospitalReportTargetGroups } from "../services/parent-child-hospital-report-access-service";
+import { listParentChildHospitalReportTargetGroups, type ParentChildHospitalReportTargetGroup } from "../services/parent-child-hospital-report-access-service";
 
-export type ParentAreaOverviewGroup = {
-  parent: { id: string; name: string };
+export type ParentAreaOverviewGroup = ParentChildHospitalReportTargetGroup & {
   areas: readonly ParentChildHospitalReportingProjection[];
 };
 
@@ -72,7 +71,7 @@ export async function getParentAreaOverviewContext(): Promise<ParentAreaOverview
     const areas = childReports.slice(childOffset, childOffset + group.children.length);
     childOffset += group.children.length;
     return {
-      parent: group.parent,
+      ...group,
       areas: areas.filter((area): area is ParentChildHospitalReportingProjection => area !== null),
     };
   });

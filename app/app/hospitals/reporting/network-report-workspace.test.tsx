@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({ redirect }));
 
 import { NetworkReportWorkspace } from "./network-report-workspace";
 import AreasPage from "../areas/page";
+import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
 
 function content() {
   const count = { grain: "PATIENT_PROGRAM", value: 1 };
@@ -22,11 +23,15 @@ function content() {
 
 describe("unified network reporting", () => {
   it("renders each authorized Child as a nine-value row linked to its summary", async () => {
-    getContext.mockResolvedValue([{ parent: { id: "parent", name: "แม่ข่าย" }, areas: [
+    getContext.mockResolvedValue([{ parent: { id: "parent", name: "แม่ข่าย" }, children: [{ id: "child", name: "ลูกข่าย" }, { id: "revoked", name: "เปลี่ยนแปลงระหว่างอ่าน" }], areas: [
       { hospital: { id: "child", name: "ลูกข่ายชื่อยาวสำหรับจอมือถือ" }, content: content() },
     ] }]);
     const html = renderToStaticMarkup(await NetworkReportWorkspace());
-    expect(html).toContain("ลูกข่าย (1)");
+    expect(html).toContain("ลูกข่าย (2)");
+    const switcher = renderToStaticMarkup(<HospitalReportTargetSelector hospitals={[]} routeBase="/app/hospitals/reporting"
+      selection={{ kind: "DIRECT_OWNER", hospitalId: "parent" }}
+      parentGroups={[{ parent: { id: "parent", name: "แม่ข่าย" }, children: [{ id: "child", name: "ลูกข่าย" }, { id: "revoked", name: "เปลี่ยนแปลงระหว่างอ่าน" }] }]} />);
+    expect(switcher).toContain("ลูกข่าย (2)");
     expect(html).toContain("PARENT_CHILD%3Aparent%3Achild");
     expect(html.match(/<td /gu)).toHaveLength(9);
     expect(html).not.toContain("/app/patients/");
@@ -35,7 +40,7 @@ describe("unified network reporting", () => {
   });
 
   it("explains an empty active network", async () => {
-    getContext.mockResolvedValue([{ parent: { id: "parent", name: "แม่ข่าย" }, areas: [] }]);
+    getContext.mockResolvedValue([{ parent: { id: "parent", name: "แม่ข่าย" }, children: [{ id: "child", name: "ลูกข่าย" }, { id: "revoked", name: "เปลี่ยนแปลงระหว่างอ่าน" }], areas: [] }]);
     expect(renderToStaticMarkup(await NetworkReportWorkspace())).toContain("ยังไม่มีลูกข่ายที่พร้อมแสดงรายงาน");
   });
 

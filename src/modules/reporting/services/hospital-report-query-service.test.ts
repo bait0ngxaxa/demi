@@ -282,15 +282,17 @@ describe("Hospital reporting query service", () => {
     })));
     Object.assign(database, { patientProgramRoundCompletion: { groupBy } });
     database.patientProgram.groupBy.mockResolvedValue([
-      { status: PatientProgramStatus.ACTIVE, _count: { _all: 6 } },
-      { status: PatientProgramStatus.COMPLETED, _count: { _all: 1 } },
+      { status: PatientProgramStatus.ACTIVE, _count: { _all: 8 } },
+      { status: PatientProgramStatus.COMPLETED, _count: { _all: 2 } },
     ]);
-    vi.spyOn(database.patientProgram, "count").mockResolvedValueOnce(7).mockResolvedValueOnce(1);
+    vi.spyOn(database.patientProgram, "count").mockResolvedValueOnce(10).mockResolvedValueOnce(1);
     const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, cohort }, { database });
-    expect(result.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 1], waitingAfter: 1, completed: 1 });
+    expect(result.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 1], afterRecorded: 1, completed: 2 });
+    expect(result.roundProgress.rounds.reduce((sum, value) => sum + value, 0)
+      + result.roundProgress.afterRecorded + result.roundProgress.completed).toBe(result.counts.programs.total);
     expect(groupBy).toHaveBeenCalledExactlyOnceWith({ by: ["roundNumber"], _count: { _all: true }, where: {
-      patientProgram: { is: { patientHospitalRelationship: { is: { hospitalId: hospitalAId,
-        ...(cohort === "ACTIVE" ? { endedAt: null } : {}) } }, status: { in: ["ACTIVE", "COMPLETED"] } } },
+      patientProgram: { is: { AND: [{ patientHospitalRelationship: { is: { hospitalId: hospitalAId,
+        ...(cohort === "ACTIVE" ? { endedAt: null } : {}) } }, status: { in: ["ACTIVE", "COMPLETED"] } }, { status: "ACTIVE", finalAssessment: { is: null } }] } },
     } });
   });
 

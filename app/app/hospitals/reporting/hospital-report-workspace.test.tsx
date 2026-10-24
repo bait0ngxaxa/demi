@@ -145,7 +145,7 @@ function page(items: HospitalReportProgramRow[], total = items.length): Hospital
       },
     },
     filters: { search: "", progress: "", status: "" },
-    roundProgress: { rounds: [total, 0, 0, 0, 0, 0, 0], waitingAfter: 0, completed: 0 },
+    roundProgress: { rounds: [total, 0, 0, 0, 0, 0, 0], afterRecorded: 0, completed: 0 },
     page: { items: items.map((item) => ({ ...item, completedRounds: 0, latestServiceDate: null })), total, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },
   };
 }
@@ -197,6 +197,10 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup.match(/<details /gu)).toHaveLength(2);
     expect(markup).not.toContain("<details open");
     expect(markup.indexOf("ความคืบหน้ารอบบริการ")).toBeLessThan(markup.indexOf("<details "));
+    expect(markup).toContain("ครบ 6 รอบ · รอ After");
+    expect(markup).toContain("บันทึก After แล้ว · รอจบ Program");
+    expect(markup).toContain("progress=AFTER_RECORDED");
+    expect(markup).not.toContain("progress=WAITING_AFTER");
     expect(markup).toContain("จัดบริการแล้ว 0/6");
     expect(markup).toContain("หน้า 1 จาก 1");
     expect(markup).toContain("ใช้งานอยู่");

@@ -52,7 +52,7 @@ describe("Parent area overview context (ADR-0013)", () => {
     expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childA.id });
     expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childB.id });
     expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: parent.id, hospitalId: childC.id });
-    expect(groups).toEqual([{ parent, areas: [{ hospital: childA, parent }] }]);
+    expect(groups).toEqual([{ parent, children: [childA, childB, childC], areas: [{ hospital: childA, parent }] }]);
   });
 
   it("bounds Child report concurrency and preserves the listed Parent/Child order", async () => {
@@ -87,7 +87,7 @@ describe("Parent area overview context (ADR-0013)", () => {
   it("returns an empty active network without issuing Child report queries", async () => {
     mockedListParentGroups.mockResolvedValue([{ parent, children: [] }]);
 
-    await expect(getParentAreaOverviewContext()).resolves.toEqual([{ parent, areas: [] }]);
+    await expect(getParentAreaOverviewContext()).resolves.toEqual([{ parent, children: [], areas: [] }]);
     expect(mockedGetParentChildPage).not.toHaveBeenCalled();
   });
 

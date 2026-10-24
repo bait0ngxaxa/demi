@@ -24,11 +24,11 @@ export function HospitalReportTargetSelector({ hospitals, parentGroups, selectio
     </nav>
     {!network && hospitals.length > 1 ? <Form action={routeBase} className="max-w-xl">
       <label className="type-label mb-2 block" htmlFor="hospital-report-target">โรงพยาบาลของฉัน</label>
-      <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 text-text focus-visible:ring-4 focus-visible:ring-focus-ring" defaultValue={ownId} key={ownId} id="hospital-report-target" name="hospitalId" onChange={(event) => event.currentTarget.form?.requestSubmit()}>
+      <select className="type-control min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 text-text focus-visible:ring-4 focus-visible:ring-focus-ring" defaultValue={ownId} key={ownId} id="hospital-report-target" name="hospitalId">
         {hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
       </select>
       {view ? <input type="hidden" name="view" value={view} /> : null}
-      <noscript><button className={buttonClassName({ variant: "secondary" })} type="submit">เปิดรายงาน</button></noscript>
+      <button className={buttonClassName({ variant: "secondary", className: "mt-3" })} type="submit">เปิดรายงาน</button>
     </Form> : null}
   </div>;
 }

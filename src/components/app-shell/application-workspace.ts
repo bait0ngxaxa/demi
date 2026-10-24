@@ -317,8 +317,8 @@ function projectHospitalActions(
     // Only a Parent with active network Children has responsibility areas to show.
     if (workspace.hasActiveDirectChildren) {
       actions.push({
-        href: "/app/hospitals/areas",
-        label: "เขตความรับผิดชอบ",
+        href: "/app/hospitals/reporting?scope=network",
+        label: "รายงานลูกข่าย",
         description: "ดูและดาวน์โหลดตัวเลขสรุปของโรงพยาบาลลูกข่ายในเครือข่าย",
         category: "administration",
         prefetch: false,

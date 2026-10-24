@@ -119,7 +119,7 @@ export async function attachServiceAreaAction(
       CONFLICT: "โรงพยาบาลนี้มีแม่ข่ายดูแลอยู่แล้ว หากต้องการย้าย กรุณาติดต่อผู้ดูแลระบบ",
       INVALID_INPUT: "โรงพยาบาลนี้ยังเพิ่มเป็นลูกข่ายไม่ได้ (ต้องเป็นลูกข่ายที่ใช้งานอยู่)",
     },
-    ["/app/hospitals/network", "/app/hospitals/areas"],
+    ["/app/hospitals/network", "/app/hospitals/reporting"],
   );
 }
 
@@ -136,7 +136,7 @@ export async function endServiceAreaAction(
     }),
     "นำลูกข่ายออกจากเครือข่ายแล้ว สิทธิ์ดูข้อมูลของแม่ข่ายสิ้นสุดทันที",
     { INVALID_INPUT: "กรุณาระบุเหตุผล (ไม่เกิน 500 ตัวอักษร)" },
-    ["/app/hospitals/network", "/app/hospitals/areas"],
+    ["/app/hospitals/network", "/app/hospitals/reporting"],
   );
 }
 
@@ -280,7 +280,7 @@ export async function adminEndServiceAreaAction(
 
 // ADR-0018: Parent OWNER creates Child facilities and invites their first or replacement OWNER.
 
-const NETWORK_PATHS = ["/app/hospitals/network", "/app/hospitals/areas"] as const;
+const NETWORK_PATHS = ["/app/hospitals/network", "/app/hospitals/reporting"] as const;
 
 const childOwnerInviteeCopy: ErrorCopy = {
   INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: ชื่อหน่วยบริการ (ไม่เกิน 200 ตัวอักษร) เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",

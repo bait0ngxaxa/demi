@@ -84,15 +84,22 @@ describe("application workspace projection", () => {
     ]);
   });
 
-  it("offers the responsibility-area overview only to the direct OWNER of a Parent with active Children (ADR-0013)", () => {
+  it("offers the network report only to the direct OWNER of a Parent with active Children (ADR-0013)", () => {
     const owner = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] });
     const member = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.MEMBER)] });
     const hrefs = (projectionActor: ActorContext, hasActiveDirectChildren: boolean) =>
       projectApplicationWorkspace(projectionActor, [workspace({ hasActiveDirectChildren })]).hospitals[0]?.actions.map(({ href }) => href);
 
-    expect(hrefs(owner, true)).toContain("/app/hospitals/areas");
-    expect(hrefs(owner, false)).not.toContain("/app/hospitals/areas");
-    expect(hrefs(member, true)).not.toContain("/app/hospitals/areas");
+    expect(hrefs(owner, true)).toContain("/app/hospitals/reporting?scope=network");
+    expect(hrefs(owner, true)).not.toContain("/app/hospitals/areas");
+    const networkAction = projectApplicationWorkspace(owner, [workspace({ hasActiveDirectChildren: true })])
+      .hospitals[0]?.actions.find(({ href }) => href === "/app/hospitals/reporting?scope=network");
+    expect(networkAction?.label).toBe("รายงานลูกข่าย");
+    expect(hrefs(owner, false)).not.toContain("/app/hospitals/reporting?scope=network");
+    expect(hrefs(member, true)).not.toContain("/app/hospitals/reporting?scope=network");
+    for (const role of [Role.ADMIN, Role.OSM, Role.PATIENT]) {
+      expect(hrefs(actor({ roles: [role] }), true)).not.toContain("/app/hospitals/reporting?scope=network");
+    }
   });
 
   it("builds work-area groups only from active direct relationships, grouped by network (STAFF-04)", () => {

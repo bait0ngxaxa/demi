@@ -45,7 +45,7 @@ export type HospitalReportCohort = z.infer<typeof hospitalReportCohortSchema>;
 
 export const hospitalReportFiltersSchema = z.object({
   search: z.string().trim().max(100).default(""),
-  progress: z.enum(["", "0", "1", "2", "3", "4", "5", "6", "WAITING_AFTER", "COMPLETED"]).default(""),
+  progress: z.enum(["", "0", "1", "2", "3", "4", "5", "6", "AFTER_RECORDED", "COMPLETED"]).default(""),
   status: z.enum(["", "ACTIVE", "COMPLETED"]).default(""),
 }).strict();
 export type HospitalReportFilters = z.infer<typeof hospitalReportFiltersSchema>;

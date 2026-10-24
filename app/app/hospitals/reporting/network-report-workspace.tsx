@@ -6,7 +6,7 @@ import { getParentAreaOverviewContext } from "@/modules/reporting/transport/pare
 
 export async function NetworkReportWorkspace(): Promise<React.JSX.Element> {
   const groups = await getParentAreaOverviewContext();
-  const count = groups.reduce((sum, group) => sum + group.areas.length, 0);
+  const count = groups.reduce((sum, group) => sum + group.children.length, 0);
   return <div className="content-workspace min-w-0">
     <PageHeader description="รายงานสรุปแยกตามโรงพยาบาลลูกข่ายในเครือข่ายปัจจุบัน" title="รายงานโรงพยาบาล" breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานโรงพยาบาล", href: "/app/hospitals/reporting" }, { label: "ลูกข่าย" }]} />
     <nav aria-label="ขอบเขตรายงาน" className="mt-5 flex flex-wrap gap-2">

@@ -174,7 +174,7 @@ export type HospitalReportingPageProjection = {
   cohort: HospitalReportCohort;
   counts: HospitalReportingSummary;
   filters: HospitalReportFilters;
-  roundProgress: { rounds: readonly number[]; waitingAfter: number; completed: number };
+  roundProgress: { rounds: readonly number[]; afterRecorded: number; completed: number };
   page: {
     items: readonly HospitalReportCompactProgramRow[];
     total: number;

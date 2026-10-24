@@ -82,7 +82,7 @@ const ownerTiles = (id: string, areas = false) => [
   withHospital("/app/appointments/new", id),
   withHospital("/app/patients/provision", id),
   withHospital("/app/patients/activation", id),
-  ...(areas ? ["/app/hospitals/areas"] : []),
+  ...(areas ? ["/app/hospitals/reporting?scope=network"] : []),
   withHospital("/app/hospitals/content", id),
   withHospital("/app/hospitals/contacts", id),
   withHospital("/app/hospitals/contact", id),

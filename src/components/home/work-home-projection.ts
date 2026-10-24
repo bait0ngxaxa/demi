@@ -37,7 +37,10 @@ type WorkHomeLink = Pick<ApplicationWorkspaceAction, "href" | "label" | "prefetc
 
 function tileKey(href: string): string {
   const [pathname = "", query = ""] = href.split("?");
-  const task = new URLSearchParams(query).get("task");
+  const params = new URLSearchParams(query);
+  // Network reporting is a separate action; it must not inherit the own-report tile's pinned priority.
+  if (pathname === "/app/hospitals/reporting" && params.get("scope") === "network") return `${pathname}?scope=network`;
+  const task = params.get("task");
   return task === null ? pathname : `${pathname}?task=${task}`;
 }
 

@@ -659,10 +659,10 @@ export function HospitalReportWorkspace({
 
       <section aria-label="ความคืบหน้ารอบบริการ" className="mt-6">
         <h2 className="text-lg font-semibold">ความคืบหน้ารอบบริการ</h2>
-        <p className="mt-1 text-sm text-text-muted">นับรอบที่ยืนยันเสร็จสิ้น รอ After และสิ้นสุด Program เป็นสถานะเพิ่มเติมของชุดข้อมูลเดียวกัน</p>
+        <p className="mt-1 text-sm text-text-muted">แต่ละ Program อยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับ Program ทั้งหมดในชุดข้อมูลนี้</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {page.roundProgress.rounds.map((count, round) => <Link key={round} className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=${round}&view=${view}`}>ครบ {round} รอบ · {count.toLocaleString("th-TH")}</Link>)}
-          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=WAITING_AFTER&view=${view}`}>รอ After · {page.roundProgress.waitingAfter.toLocaleString("th-TH")}</Link>
+          {page.roundProgress.rounds.map((count, round) => <Link key={round} className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=${round}&view=${view}`}>{round === 6 ? "ครบ 6 รอบ · รอ After" : `ครบ ${round} รอบ`} · {count.toLocaleString("th-TH")}</Link>)}
+          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=AFTER_RECORDED&view=${view}`}>บันทึก After แล้ว · รอจบ Program · {page.roundProgress.afterRecorded.toLocaleString("th-TH")}</Link>
           <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=COMPLETED&view=${view}`}>สิ้นสุด Program · {page.roundProgress.completed.toLocaleString("th-TH")}</Link>
         </div>
       </section>
@@ -681,7 +681,7 @@ export function HospitalReportWorkspace({
         {includesEnded ? <input type="hidden" name="cohort" value="INCLUDE_ENDED" /> : null}
         <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<input type="search" name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring" /></label>
         <label className="min-w-0 text-sm">ความคืบหน้า<select name="progress" defaultValue={page.filters.progress} key={page.filters.progress} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring">
-          <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>ครบ {round} รอบ</option>)}<option value="WAITING_AFTER">รอ After</option><option value="COMPLETED">สิ้นสุด Program</option>
+          <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>{round === 6 ? "ครบ 6 รอบ · รอ After" : `ครบ ${round} รอบ`}</option>)}<option value="AFTER_RECORDED">บันทึก After แล้ว · รอจบ Program</option><option value="COMPLETED">สิ้นสุด Program</option>
         </select></label>
         <label className="min-w-0 text-sm">สถานะ Program<select name="status" defaultValue={page.filters.status} key={page.filters.status} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring"><option value="">ทุกสถานะ</option><option value="ACTIVE">กำลังดำเนิน</option><option value="COMPLETED">สิ้นสุดแล้ว</option></select></label>
         <div className="flex flex-wrap items-end gap-2"><PendingSubmitButton pendingLabel="กำลังค้นหา..." variant="secondary">ค้นหา / กรอง</PendingSubmitButton><Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&view=${view}`}>ล้างตัวกรอง</Link></div>

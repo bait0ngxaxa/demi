@@ -97,7 +97,7 @@ const page: HospitalReportingPageProjection = {
     programs: { grain: "PATIENT_PROGRAM", total: 0, active: 0, completed: 0 },
   },
   filters: { search: "", progress: "", status: "" },
-  roundProgress: { rounds: [0, 0, 0, 0, 0, 0, 0], waitingAfter: 0, completed: 0 },
+  roundProgress: { rounds: [0, 0, 0, 0, 0, 0, 0], afterRecorded: 0, completed: 0 },
   page: { items: [], total: 0, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },
 };
 

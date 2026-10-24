@@ -222,11 +222,11 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/patients")) return "patients";
   if (pathname.startsWith("/app/workforce")) return "workforce";
   if (pathname.startsWith("/app/admin/hospital-onboarding")) return "review";
+  if (pathname === "/app/hospitals/reporting" && new URLSearchParams(query).get("scope") === "network") return "areas";
   if (pathname.startsWith("/app/hospitals/reporting/export")) return "export";
   if (pathname.startsWith("/app/admin/reporting") || pathname.startsWith("/app/hospitals/reporting")) {
     return "reports";
   }
-  if (pathname.startsWith("/app/hospitals/areas")) return "areas";
   if (pathname.startsWith("/app/hospitals/knowledge")) return "publish";
   if (pathname.startsWith("/app/hospitals/content")) return "knowledge";
   if (pathname.startsWith("/app/hospitals/contacts")) return "contact";

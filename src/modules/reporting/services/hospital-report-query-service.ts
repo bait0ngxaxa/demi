@@ -85,7 +85,8 @@ const REPORT_TRANSACTION_OPTIONS = {
   maxWait: 5_000,
   timeout: 25_000,
 } as const;
-const REPORT_CURSOR_VERSION = 3;
+// Progress buckets changed meaning; older continuations must restart under the new partition.
+const REPORT_CURSOR_VERSION = 4;
 const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
 const REPORT_CURSOR_ORDERING = "startedAt:desc,id:desc";
 const REPORT_CURSOR_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -1021,20 +1022,27 @@ async function resolveAuthorizedHospitalReportScope(
   return { actor: access.actor, hospital: access.hospital, operation };
 }
 
+const activeProgramsWithoutAfterWhere = {
+  status: PatientProgramStatus.ACTIVE,
+  finalAssessment: { is: null },
+} satisfies Prisma.PatientProgramWhereInput;
+
 function reportFiltersWhere(filters: HospitalReportFilters): Prisma.PatientProgramWhereInput {
   const clauses: Prisma.PatientProgramWhereInput[] = [];
   if (filters.status) clauses.push({ status: filters.status });
   if (filters.progress === "COMPLETED") clauses.push({ status: PatientProgramStatus.COMPLETED });
-  else if (filters.progress === "WAITING_AFTER") clauses.push({
-    status: PatientProgramStatus.ACTIVE,
-    roundCompletions: { some: { roundNumber: 6 } }, finalAssessment: { is: null },
+  else if (filters.progress === "AFTER_RECORDED") clauses.push({
+    status: PatientProgramStatus.ACTIVE, finalAssessment: { isNot: null },
   });
   else if (filters.progress !== "") {
     const round = Number(filters.progress);
-    clauses.push({ roundCompletions: {
-      ...(round > 0 ? { some: { roundNumber: round } } : {}),
-      ...(round < 6 ? { none: { roundNumber: round + 1 } } : {}),
-    } });
+    clauses.push({
+      ...activeProgramsWithoutAfterWhere,
+      roundCompletions: {
+        ...(round > 0 ? { some: { roundNumber: round } } : {}),
+        ...(round < 6 ? { none: { roundNumber: round + 1 } } : {}),
+      },
+    });
   }
   if (filters.search) {
     // Each name token can match either part of the patient's name; HN also supports partial matching.
@@ -1083,7 +1091,7 @@ async function loadHospitalReportingPage(
   const scope = reportHospitalProgramWhere(access.hospital.id, cohort);
   const filteredWhere: Prisma.PatientProgramWhereInput = { ...scope, AND: [reportFiltersWhere(filters)] };
   const backwards = cursor?.direction === "previous";
-  const [records, summary, total, roundCounts, waitingAfter] = await Promise.all([
+  const [records, summary, total, roundCounts, afterRecorded] = await Promise.all([
     database.patientProgram.findMany({
       where: { ...scope, ...reportCursorWhere(cursor), AND: [reportFiltersWhere(filters)] },
       orderBy: [{ startedAt: backwards ? "asc" : "desc" }, { id: backwards ? "asc" : "desc" }],
@@ -1093,9 +1101,11 @@ async function loadHospitalReportingPage(
     loadSummary(database, access.hospital.id, cohort),
     database.patientProgram.count({ where: filteredWhere }),
     database.patientProgramRoundCompletion.groupBy({
-      by: ["roundNumber"], where: { patientProgram: { is: scope } }, _count: { _all: true },
+      by: ["roundNumber"],
+      where: { patientProgram: { is: { AND: [scope, activeProgramsWithoutAfterWhere] } } },
+      _count: { _all: true },
     }),
-    database.patientProgram.count({ where: { AND: [scope, reportFiltersWhere({ search: "", status: "", progress: "WAITING_AFTER" })] } }),
+    database.patientProgram.count({ where: { AND: [scope, reportFiltersWhere({ search: "", status: "", progress: "AFTER_RECORDED" })] } }),
   ]);
   const hasMore = records.length > pageSize;
   const slicedRecords = records.slice(0, pageSize);
@@ -1119,7 +1129,7 @@ async function loadHospitalReportingPage(
   const number = cursor?.page ?? 1;
   const atLeast = new Map(roundCounts.map((group) => [group.roundNumber, group._count._all]));
   const rounds = Array.from({ length: 7 }, (_, round) =>
-    (round === 0 ? summary.programs.total : atLeast.get(round) ?? 0) - (atLeast.get(round + 1) ?? 0));
+    (round === 0 ? summary.programs.active - afterRecorded : atLeast.get(round) ?? 0) - (atLeast.get(round + 1) ?? 0));
   const firstRecord = pageRecords.at(0);
   const lastRecord = pageRecords.at(-1);
 
@@ -1132,7 +1142,7 @@ async function loadHospitalReportingPage(
     cohort,
     counts: summary,
     filters,
-    roundProgress: { rounds, waitingAfter, completed: summary.programs.completed },
+    roundProgress: { rounds, afterRecorded, completed: summary.programs.completed },
     page: {
       items, pageSize, total, number,
       previousCursor: firstRecord && (backwards ? hasMore : number > 1)
