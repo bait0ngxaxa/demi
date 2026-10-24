@@ -34,7 +34,7 @@ export const parentChildHospitalReportRequestSchema = z
   .strict()
   .refine(({ parentHospitalId, hospitalId }) => parentHospitalId !== hospitalId);
 
-const cursorSchema = z.string().trim().min(1).max(512).optional();
+const cursorSchema = z.string().trim().min(1).max(1024).optional();
 
 /**
  * Phase F (ก-18): the default cohort excludes Patients whose care with the Hospital ended; the OWNER may opt in to
@@ -43,9 +43,17 @@ const cursorSchema = z.string().trim().min(1).max(512).optional();
 export const hospitalReportCohortSchema = z.enum(["ACTIVE", "INCLUDE_ENDED"]);
 export type HospitalReportCohort = z.infer<typeof hospitalReportCohortSchema>;
 
+export const hospitalReportFiltersSchema = z.object({
+  search: z.string().trim().max(100).default(""),
+  progress: z.enum(["", "0", "1", "2", "3", "4", "5", "6", "WAITING_AFTER", "COMPLETED"]).default(""),
+  status: z.enum(["", "ACTIVE", "COMPLETED"]).default(""),
+}).strict();
+export type HospitalReportFilters = z.infer<typeof hospitalReportFiltersSchema>;
+
 export const hospitalReportPageRequestSchema = z
   .object({
     hospitalId: hospitalReportHospitalIdSchema,
+    ...hospitalReportFiltersSchema.shape,
     cursor: cursorSchema,
     pageSize: z.coerce.number().int().min(1).max(50).optional(),
     cohort: hospitalReportCohortSchema.optional(),

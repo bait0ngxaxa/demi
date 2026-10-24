@@ -48,9 +48,9 @@ describe("Hospital Contact Owner interface", () => {
     expect(html).toContain('for="hospital-contact-address"');
     expect(html).toContain('for="hospital-contact-phone"');
     expect(html).toContain("ยังไม่มีข้อมูลติดต่อ");
-    expect(html).not.toContain("hospitalId=");
+    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("hospitalId=");
     expect(html).not.toContain("ตรวจสอบแล้ว");
-    expect(html).toContain(`href="/app#hospital-workspace-${hospitalA.id}"`);
+    expect(html).toContain(`href="/app?hospitalId=${hospitalA.id}"`);
   });
 
   it("renders multi-Hospital selection and wraps long Thai addresses on narrow layouts", () => {

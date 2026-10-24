@@ -4,12 +4,18 @@ import { connection } from "next/server";
 
 import { getHospitalReportPageContext } from "@/modules/reporting/transport/hospital-report-page-context";
 
+import { NetworkReportWorkspace } from "./network-report-workspace";
+
 import { HospitalReportWorkspace } from "./hospital-report-workspace";
 import { ParentChildHospitalReportWorkspace } from "./parent-child-hospital-report-workspace";
 
 export const metadata: Metadata = { title: "รายงานโรงพยาบาล" };
 
 type SearchParams = {
+  scope?: string | string[];
+  search?: string | string[];
+  progress?: string | string[];
+  status?: string | string[];
   hospitalId?: string | string[];
   cursor?: string | string[];
   pageSize?: string | string[];
@@ -30,7 +36,14 @@ export default async function HospitalReportingPage({
 }): Promise<React.JSX.Element> {
   await connection();
   const params = await searchParams;
-  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "target", "view", "cohort"].includes(key))) notFound();
+  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "target", "view", "cohort", "scope", "search", "progress", "status"].includes(key))) notFound();
+  const scope = readSingleParameter(params.scope);
+  if (scope !== undefined && scope !== "network") notFound();
+  if (scope === "network") {
+    if (Object.keys(params).some((key) => !["scope", "target"].includes(key))) notFound();
+    if (params.target === undefined) return <NetworkReportWorkspace />;
+  }
+  const filters = { search: readSingleParameter(params.search), progress: readSingleParameter(params.progress), status: readSingleParameter(params.status) };
   const requestedHospitalId = readSingleParameter(params.hospitalId);
   const cursor = readSingleParameter(params.cursor);
   const pageSizeRaw = readSingleParameter(params.pageSize);
@@ -46,7 +59,7 @@ export default async function HospitalReportingPage({
   const pageSize = pageSizeRaw === undefined ? undefined : Number(pageSizeRaw);
   if (pageSizeRaw !== undefined && !Number.isInteger(pageSize)) notFound();
 
-  const context = await getHospitalReportPageContext(requestedHospitalId, cursor, pageSize, requestedTarget, requestedCohort);
+  const context = await getHospitalReportPageContext(requestedHospitalId, cursor, pageSize, requestedTarget, requestedCohort, filters, scope === "network");
   if (context.mode === "PARENT_CHILD") {
     return (
       <ParentChildHospitalReportWorkspace

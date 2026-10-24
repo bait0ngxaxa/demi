@@ -16,6 +16,7 @@ describe("Hospital reporting request schemas", () => {
       hospitalId,
       cursor: "cursor",
       pageSize: 50,
+      search: "", progress: "", status: "",
     });
     expect(hospitalReportPageRequestSchema.safeParse({ hospitalId, pageSize: 51 }).success).toBe(false);
     expect(hospitalReportPageRequestSchema.safeParse({ hospitalId, prismaWhere: {} }).success).toBe(false);

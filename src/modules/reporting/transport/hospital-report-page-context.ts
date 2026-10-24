@@ -101,6 +101,8 @@ export async function getHospitalReportPageContext(
   pageSize: number | undefined,
   requestedTarget?: string,
   cohort?: HospitalReportCohort,
+  filters?: { search?: string; progress?: string; status?: string },
+  networkScope = false,
 ): Promise<HospitalReportPageContext> {
   const actor = await resolveActor();
   let hospitals: HospitalReportingHospital[];
@@ -136,12 +138,15 @@ export async function getHospitalReportPageContext(
     notFound();
   }
 
+  if (networkScope && selection.kind !== "PARENT_CHILD") await denyAndHideParentChildTarget(actor);
+
   if (selection.kind === "DIRECT_OWNER") {
     const parsedRequest = hospitalReportPageRequestSchema.safeParse({
       hospitalId: selection.hospitalId,
       cursor,
       pageSize,
       cohort,
+      ...filters,
     });
     if (!parsedRequest.success) notFound();
     const directHospital = hospitals.find(({ id }) => id === parsedRequest.data.hospitalId);
@@ -165,7 +170,7 @@ export async function getHospitalReportPageContext(
     }
   }
 
-  if (cursor !== undefined || pageSize !== undefined) {
+  if (cursor !== undefined || pageSize !== undefined || (filters && Object.values(filters).some(Boolean))) {
     await denyAndHideParentChildTarget(
       actor,
       selection.parentHospitalId,
@@ -175,12 +180,8 @@ export async function getHospitalReportPageContext(
   }
 
   const directlyOwnedHospital = hospitals.find(({ id }) => id === selection.hospitalId);
-  if (directlyOwnedHospital) {
-    const currentParentRelationship = parentGroupContainsTarget(
-      parentGroups,
-      selection.parentHospitalId,
-      selection.hospitalId,
-    );
+  // Explicit network navigation stays aggregate-only even for an actor who also directly owns the Child.
+  if (directlyOwnedHospital && !networkScope) {
     try {
       const parsedRequest = hospitalReportPageRequestSchema.safeParse({ hospitalId: directlyOwnedHospital.id });
       if (!parsedRequest.success) notFound();
@@ -192,9 +193,7 @@ export async function getHospitalReportPageContext(
         mode: "DIRECT_OWNER",
         hospitals,
         parentGroups,
-        selection: currentParentRelationship
-          ? selection
-          : { kind: "DIRECT_OWNER", hospitalId: directlyOwnedHospital.id },
+        selection: { kind: "DIRECT_OWNER", hospitalId: directlyOwnedHospital.id },
         selectedHospitalId: directlyOwnedHospital.id,
         page,
         hierarchy,

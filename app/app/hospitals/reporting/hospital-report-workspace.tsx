@@ -16,6 +16,7 @@ import type {
   HospitalReportFollowup,
   HospitalReportMeasurementSet,
   HospitalReportProgramRow,
+  HospitalReportCompactProgramRow,
   HospitalReportingPageProjection,
 } from "@/modules/reporting/projections/hospital-report-projection";
 import { summarizeFollowupAchievements } from "@/modules/followups/domain/followup-achievement";
@@ -109,99 +110,17 @@ function networkClassificationLabel(classification: HospitalHierarchyContext["cl
   }
 }
 
-function HospitalReportingHierarchy({
-  hierarchy,
-}: {
+function HospitalReportingHierarchy({ hierarchy, network }: {
   hierarchy: HospitalHierarchyContext;
+  network?: ParentChildHospitalReportTargetGroup;
 }): React.JSX.Element {
-  const isMain = hierarchy.classification === "MAIN";
-  const hospital = hierarchy.hospital;
-
-  return (
-    <section aria-labelledby="hospital-hierarchy-context-heading" className="mt-6">
-      <Panel className="min-w-0 p-5 sm:p-6">
-        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-text" id="hospital-hierarchy-context-heading">
-              โครงสร้างโรงพยาบาล
-            </h2>
-            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-              โรงพยาบาลที่เลือก: {hospital.name}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <StatusBadge variant="info">{networkClassificationLabel(hierarchy.classification)}</StatusBadge>
-            <StatusBadge variant={hierarchyStatusVariant(hospital.status)}>
-              {hierarchyStatusLabel(hospital.status)}
-            </StatusBadge>
-          </div>
-        </div>
-
-        {isMain ? (
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-sm leading-6 text-text-muted">
-              ลูกข่ายในเครือข่าย {hierarchy.directChildCount.toLocaleString("th-TH")} แห่ง
-            </p>
-            {hierarchy.directChildren.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">ยังไม่มีลูกข่ายในเครือข่าย</p>
-            ) : (
-              <ul aria-label="ลูกข่ายในเครือข่าย" className="mt-2 divide-y divide-border border-t border-border">
-                {hierarchy.directChildren.map((child) => (
-                  <li className="flex min-w-0 flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={child.id}>
-                    <div className="min-w-0">
-                      <p className="break-words font-medium text-text">{child.name}</p>
-                    </div>
-                    <StatusBadge variant={hierarchyStatusVariant(child.status)}>
-                      {hierarchyStatusLabel(child.status)}
-                    </StatusBadge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : hierarchy.classification === "SUBORDINATE" ? (
-          <div className="mt-4 border-t border-border pt-4">
-            <p className="text-sm text-text-muted">โรงพยาบาลแม่ข่าย</p>
-            {hierarchy.parentHospital ? (
-              <div className="mt-1 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="break-words font-medium text-text">
-                  {hierarchy.parentHospital.name}
-                </p>
-                <StatusBadge variant={hierarchyStatusVariant(hierarchy.parentHospital.status)}>
-                  {hierarchyStatusLabel(hierarchy.parentHospital.status)}
-                </StatusBadge>
-              </div>
-            ) : (
-              <p className="mt-1 text-sm text-text-muted">ยังไม่มีแม่ข่ายดูแล</p>
-            )}
-          </div>
-        ) : null}
-
-        <Alert className="mt-4" variant="info">
-          ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมข้อมูลของโรงพยาบาลลูกข่ายหรือโรงพยาบาลอื่น
-        </Alert>
-
-        <dl className="mt-4 grid gap-x-6 sm:grid-cols-2">
-          <div className="border-t border-border py-3">
-            <dt className="font-semibold text-text">รายงานผู้ป่วย / Program</dt>
-            <dd className="mt-1 text-sm leading-6 text-text-muted">แสดงข้อมูลของโรงพยาบาลที่เลือกโดยตรง</dd>
-          </div>
-          <div className="border-t border-border py-3">
-            <dt className="font-semibold text-text">โครงสร้างเครือข่ายโรงพยาบาล</dt>
-            <dd className="mt-1 text-sm leading-6 text-text-muted">แสดงความสัมพันธ์แม่ข่ายและลูกข่ายโดยตรงแบบอ่านอย่างเดียว</dd>
-          </div>
-          <div className="border-t border-border py-3">
-            <dt className="font-semibold text-text">ภาพรวมเครือข่าย</dt>
-            <dd className="mt-1 text-sm leading-6 text-text-muted">ยังไม่เปิดใช้งาน ระหว่างรอกติกาคุ้มครองข้อมูล เงื่อนไขผู้มีสิทธิ์ และการตีความข้อมูลย้อนหลัง</dd>
-          </div>
-          <div className="border-t border-border py-3">
-            <dt className="font-semibold text-text">ส่งออกข้อมูลเครือข่าย</dt>
-            <dd className="mt-1 text-sm leading-6 text-text-muted">ยังไม่ได้รับอนุญาต</dd>
-          </div>
-        </dl>
-      </Panel>
-    </section>
-  );
+  if (network) return <p className="mt-4 break-words text-sm text-text-muted">
+    ลูกข่าย {network.children.length} แห่ง · <Link className="inline-flex min-h-11 items-center text-brand-strong underline" href="/app/hospitals/reporting?scope=network">ดูลูกข่าย</Link>
+  </p>;
+  return <p className="mt-4 break-words text-sm text-text-muted">
+    {hierarchy.parentHospital ? `แม่ข่าย: ${hierarchy.parentHospital.name}` : hierarchy.classification === "MAIN"
+      ? `ลูกข่าย ${hierarchy.directChildCount} แห่ง` : "ยังไม่อยู่ในเครือข่าย"}
+  </p>;
 }
 
 function MeasurementList({
@@ -501,6 +420,24 @@ function ServiceProgram({
   );
 }
 
+function CompactProgram({ program, view, allowProgramDetail }: {
+  program: HospitalReportCompactProgramRow; view: ReportView; allowProgramDetail: boolean;
+}): React.JSX.Element {
+  return <details className="min-w-0 rounded-panel border border-border bg-surface">
+    <summary className="min-h-12 cursor-pointer rounded-control p-4 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
+      <span className="inline-grid w-full min-w-0 gap-2 align-top sm:grid-cols-2 xl:grid-cols-6">
+        <span className="min-w-0 break-words font-semibold">{program.patient.displayName}<span className="mt-1 block text-xs font-normal text-text-muted">กดเพื่อดูรายละเอียด</span></span>
+        <span className="min-w-0 break-words text-sm">HN: {factText(program.patient.hospitalNumber)}</span>
+        <span className="min-w-0 break-words text-sm">อสม.: {program.currentRelationshipOsmAssignment.state === "PRESENT" ? program.currentRelationshipOsmAssignment.value.displayName : "ยังไม่มอบหมาย"}</span>
+        <span className="text-sm">{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "สิ้นสุด Program แล้ว"}</span>
+        <span className="text-sm tabular-nums">จัดบริการแล้ว {program.completedRounds}/6</span>
+        <span className="text-sm">บริการล่าสุด: {program.latestServiceDate ? displayDate(program.latestServiceDate) : "ยังไม่บันทึก"}</span>
+      </span>
+    </summary>
+    {view === "overview" ? <ProgramOverview program={program} allowProgramDetail={allowProgramDetail} /> : <ServiceProgram program={program} allowProgramDetail={allowProgramDetail} />}
+  </details>;
+}
+
 export function ExportButton({
   hospitalId,
   endpoint,
@@ -605,43 +542,14 @@ export function HospitalReportWorkspace({
   const includesEnded = page.cohort === "INCLUDE_ENDED";
   const hospitalHref = `${routeBase}?hospitalId=${encodeURIComponent(selectedHospitalId)}`;
   // In-report links (pagination, views) keep the selected cohort.
-  const baseHref = includesEnded ? `${hospitalHref}&cohort=INCLUDE_ENDED` : hospitalHref;
+  const cohortHref = includesEnded ? `${hospitalHref}&cohort=INCLUDE_ENDED` : hospitalHref;
+  const query = new URLSearchParams(page.filters);
+  const baseHref = `${cohortHref}&${query.toString()}`;
   const allowProgramDetail = !isGlobalAdmin;
   const targetSelection = selection ?? { kind: "DIRECT_OWNER", hospitalId: selectedHospitalId };
 
   return (
     <div className="content-workspace">
-      <PageHeader
-        actions={<ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
-        breadcrumbs={isGlobalAdmin
-          ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
-          : [{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
-        description={isGlobalAdmin
-          ? "ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น"
-          : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
-        title="รายงานโรงพยาบาล"
-      />
-
-      <div className="mt-5">
-        <ExportPreview
-          hospitalName={page.hospital.name}
-          programEntryHref={isGlobalAdmin ? undefined : PROGRAM_ENTRY_HREF}
-          programRows={page.counts.programs.total}
-          relationshipsWithoutProgram={page.counts.relationshipsWithoutProgram.value}
-        />
-      </div>
-
-      {isGlobalAdmin ? (
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <p className="max-w-3xl text-sm leading-6 text-text-muted">
-            รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
-          </p>
-          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
-            กลับไปภาพรวมและเลือกโรงพยาบาล
-          </Link>
-        </div>
-      ) : null}
-
       {isGlobalAdmin ? (
         hospitals.length > 1 ? (
           <Form action={routeBase} className="mt-6 flex min-w-0 flex-col gap-3 sm:max-w-2xl sm:flex-row sm:items-end">
@@ -665,7 +573,31 @@ export function HospitalReportWorkspace({
         />
       )}
 
-      <HospitalReportingHierarchy hierarchy={hierarchy} />
+      <PageHeader
+        actions={<ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
+        breadcrumbs={isGlobalAdmin
+          ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
+          : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
+        description={isGlobalAdmin
+          ? "ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น"
+          : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
+        title="รายงานโรงพยาบาล"
+      />
+
+
+      {isGlobalAdmin ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-3xl text-sm leading-6 text-text-muted">
+            รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น ไม่รวมผู้ป่วยจากโรงพยาบาลแม่ข่าย ลูกข่าย หรือหน่วยอื่น
+          </p>
+          <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href="/app/admin/reporting" prefetch={false}>
+            กลับไปภาพรวมและเลือกโรงพยาบาล
+          </Link>
+        </div>
+      ) : null}
+
+
+      <HospitalReportingHierarchy hierarchy={hierarchy} network={!isGlobalAdmin ? parentGroups.find((group) => group.parent.id === selectedHospitalId) : undefined} />
 
       <section aria-labelledby="hospital-report-context-heading" className="mt-6">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -725,6 +657,36 @@ export function HospitalReportWorkspace({
         </dl>
       </section>
 
+      <section aria-label="ความคืบหน้ารอบบริการ" className="mt-6">
+        <h2 className="text-lg font-semibold">ความคืบหน้ารอบบริการ</h2>
+        <p className="mt-1 text-sm text-text-muted">นับรอบที่ยืนยันเสร็จสิ้น รอ After และสิ้นสุด Program เป็นสถานะเพิ่มเติมของชุดข้อมูลเดียวกัน</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {page.roundProgress.rounds.map((count, round) => <Link key={round} className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=${round}&view=${view}`}>ครบ {round} รอบ · {count.toLocaleString("th-TH")}</Link>)}
+          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=WAITING_AFTER&view=${view}`}>รอ After · {page.roundProgress.waitingAfter.toLocaleString("th-TH")}</Link>
+          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=COMPLETED&view=${view}`}>สิ้นสุด Program · {page.roundProgress.completed.toLocaleString("th-TH")}</Link>
+        </div>
+      </section>
+      <div className="mt-5">
+        <ExportPreview
+          hospitalName={page.hospital.name}
+          programEntryHref={isGlobalAdmin ? undefined : PROGRAM_ENTRY_HREF}
+          programRows={page.counts.programs.total}
+          relationshipsWithoutProgram={page.counts.relationshipsWithoutProgram.value}
+        />
+      </div>
+
+      <Form action={routeBase} className="mt-6 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <input type="hidden" name="hospitalId" value={selectedHospitalId} />
+        <input type="hidden" name="view" value={view} />
+        {includesEnded ? <input type="hidden" name="cohort" value="INCLUDE_ENDED" /> : null}
+        <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<input type="search" name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring" /></label>
+        <label className="min-w-0 text-sm">ความคืบหน้า<select name="progress" defaultValue={page.filters.progress} key={page.filters.progress} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring">
+          <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>ครบ {round} รอบ</option>)}<option value="WAITING_AFTER">รอ After</option><option value="COMPLETED">สิ้นสุด Program</option>
+        </select></label>
+        <label className="min-w-0 text-sm">สถานะ Program<select name="status" defaultValue={page.filters.status} key={page.filters.status} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring"><option value="">ทุกสถานะ</option><option value="ACTIVE">กำลังดำเนิน</option><option value="COMPLETED">สิ้นสุดแล้ว</option></select></label>
+        <div className="flex flex-wrap items-end gap-2"><PendingSubmitButton pendingLabel="กำลังค้นหา..." variant="secondary">ค้นหา / กรอง</PendingSubmitButton><Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&view=${view}`}>ล้างตัวกรอง</Link></div>
+      </Form>
+
       <div className="mt-6 max-w-full overflow-x-auto pb-1">
         <LocalNavigation ariaLabel="มุมมองรายงานโรงพยาบาล" items={REPORT_VIEWS} onChange={setView} value={view} />
       </div>
@@ -736,7 +698,7 @@ export function HospitalReportWorkspace({
           </h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
             {view === "overview"
-              ? "แต่ละบัตรแสดงข้อมูลหนึ่ง Program ผู้ป่วยคนเดียวอาจมีหลาย Program; ระบบจะแจ้งเมื่อข้อมูลยังไม่ถูกบันทึกหรือไม่มีแหล่งข้อมูลรองรับ"
+              ? "แต่ละแถวแสดงข้อมูลหนึ่ง Program กดเพื่อขยายรายละเอียด ผู้ป่วยคนเดียวอาจมีหลาย Program; ระบบจะแจ้งเมื่อข้อมูลยังไม่ถูกบันทึกหรือไม่มีแหล่งข้อมูลรองรับ"
               : "ตรวจการมีบันทึกของแต่ละบริการ เป้าหมายที่ตั้งไว้ และความคืบหน้าที่บันทึกไว้ โดยการมีบันทึกไม่ยืนยันว่าบริการส่งมอบหรือเกิดผลสำเร็จ"}
           </p>
         </div>
@@ -754,26 +716,22 @@ export function HospitalReportWorkspace({
           </Panel>
         ) : page.page.items.length === 0 ? (
           <Panel>
-            <h3 className="font-semibold text-text">ไม่มี Program ในหน้านี้</h3>
-            <p className="mt-2 text-sm leading-6 text-text-muted">ยังมี Program {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ โปรดกลับไปหน้าแรกของรายงาน</p>
+            <h3 className="font-semibold text-text">ไม่พบ Program ตามเงื่อนไขนี้</h3>
+            <p className="mt-2 text-sm leading-6 text-text-muted">ยังมี Program {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ ลองล้างตัวกรองหรือค้นหาด้วยชื่อ / HN อื่น</p>
             <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`} prefetch={false}>กลับไปหน้าแรก</Link>
           </Panel>
         ) : (
           <div className="grid min-w-0 gap-4">
-            {page.page.items.map((program) => view === "overview"
-              ? <ProgramOverview allowProgramDetail={allowProgramDetail} key={program.patientProgramId} program={program} />
-              : <ServiceProgram allowProgramDetail={allowProgramDetail} key={program.patientProgramId} program={program} />)}
+            {page.page.items.map((program) => <CompactProgram key={program.patientProgramId} program={program} view={view} allowProgramDetail={allowProgramDetail} />)}
           </div>
         )}
       </section>
 
-      {page.counts.programs.total > 0 ? <p className="mt-4 text-sm text-text-muted">แสดง {page.page.items.length.toLocaleString("th-TH")} รายการในหน้านี้ จากทั้งหมด {page.counts.programs.total.toLocaleString("th-TH")} Program</p> : null}
-
-      {page.page.nextCursor ? (
-        <nav aria-label="หน้ารายการ Program ของรายงานโรงพยาบาล" className="mt-5 flex justify-end">
-          <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="next">ดู Program ถัดไป</Link>
-        </nav>
-      ) : null}
+      <nav aria-label="หน้ารายการ Program ของรายงานโรงพยาบาล" className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        {page.page.previousCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.previousCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="prev">หน้าก่อนหน้า</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าก่อนหน้า</span>}
+        <p className="text-sm text-text-muted">หน้า {page.page.number} จาก {Math.max(1, Math.ceil(page.page.total / page.page.pageSize))} · {page.page.total.toLocaleString("th-TH")} Program</p>
+        {page.page.nextCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="next">หน้าถัดไป</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าถัดไป</span>}
+      </nav>
       <p className="mt-4 text-xs leading-5 text-text-muted">ชื่อ อสม. แสดงเฉพาะผู้ที่ได้รับมอบหมายให้ดูแลผู้ป่วยรายนี้ในปัจจุบัน รายงานนี้ไม่มีข้อมูลผู้ดูแลย้อนหลังของบริการ</p>
     </div>
   );

@@ -94,7 +94,7 @@ export function WorkforceWorkspace({
       <PageHeader
         actions={<Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มบุคลากร / อสม.</Link>}
         breadcrumbs={[
-          { label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` },
+          { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
           { label: "จัดการบุคลากร" },
         ]}
         description="จัดการรายชื่อบุคลากรโรงพยาบาลและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของ"

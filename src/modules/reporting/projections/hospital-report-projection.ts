@@ -2,7 +2,7 @@ import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@pris
 
 import type { FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import type { GoalActivityCategory } from "@/modules/goals/domain/goal-templates";
-import type { HospitalReportCohort } from "@/modules/reporting/schemas/hospital-report-schemas";
+import type { HospitalReportCohort, HospitalReportFilters } from "@/modules/reporting/schemas/hospital-report-schemas";
 
 export type HospitalReportUnavailableReason =
   | "SOURCE_MISSING"
@@ -163,13 +163,23 @@ export type HospitalReportProgramRow = {
   };
 };
 
+export type HospitalReportCompactProgramRow = HospitalReportProgramRow & {
+  completedRounds: number;
+  latestServiceDate: string | null;
+};
+
 export type HospitalReportingPageProjection = {
   hospital: { id: string; hospitalCode: string; name: string };
   /** Phase F: whether Patients whose care ended are part of this report. */
   cohort: HospitalReportCohort;
   counts: HospitalReportingSummary;
+  filters: HospitalReportFilters;
+  roundProgress: { rounds: readonly number[]; waitingAfter: number; completed: number };
   page: {
-    items: readonly HospitalReportProgramRow[];
+    items: readonly HospitalReportCompactProgramRow[];
+    total: number;
+    number: number;
+    previousCursor: string | null;
     pageSize: number;
     nextCursor: string | null;
   };
@@ -207,7 +217,7 @@ export type ParentChildHospitalReportingProjection = {
 
 export type ParentChildHospitalReportPageProjection = ParentChildHospitalReportingProjection;
 
-export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page"> & {
+export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page" | "filters" | "roundProgress"> & {
   programs: readonly HospitalReportProgramRow[];
 };
 

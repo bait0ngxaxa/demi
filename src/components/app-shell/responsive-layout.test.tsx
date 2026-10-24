@@ -104,10 +104,10 @@ describe("responsive shell contract", () => {
 
   it("allows long breadcrumb text and header actions to wrap without changing exact return URLs", () => {
     const html = renderToStaticMarkup(<PageHeader title="รายละเอียดผู้ป่วย" description="ข้อมูลในโรงพยาบาลนี้" breadcrumbs={[
-      { label: "โรงพยาบาลชื่อยาวสำหรับตรวจการตัดบรรทัด", href: "/app#hospital-workspace-H" },
+      { label: "โรงพยาบาลชื่อยาวสำหรับตรวจการตัดบรรทัด", href: "/app?hospitalId=H" },
       { label: "รายละเอียดผู้ป่วย" },
     ]} actions={<button>กลับไปยังโรงพยาบาล</button>} />);
-    expect(html).toContain('href="/app#hospital-workspace-H"');
+    expect(html).toContain('href="/app?hospitalId=H"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("min-w-0 max-w-full");
     expect(html).toContain("flex-wrap items-end");

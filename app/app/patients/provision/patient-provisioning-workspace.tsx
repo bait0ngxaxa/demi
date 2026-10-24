@@ -1282,7 +1282,7 @@ export function PatientProvisioningWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">นำเข้าผู้ป่วย</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าผู้ป่วย" }]}
         description="นำเข้ารายชื่อผู้ป่วยจาก Excel ของโรงพยาบาลที่คุณเป็นเจ้าของ รองรับตั้งแต่ 1 รายการต่อไฟล์"
         title="นำเข้าผู้ป่วย"
       />

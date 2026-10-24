@@ -70,9 +70,11 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).toContain(">1</dd>");
     expect(markup).toContain(">0</dd>");
     expect(markup).not.toContain("ยังไม่อนุมัติการเปิดเผยตัวเลข");
-    expect(markup).toContain("เลือกโรงพยาบาลสำหรับรายงาน");
-    expect(markup).toContain("DIRECT_OWNER:");
-    expect(markup).toContain("PARENT_CHILD:");
+    expect(markup).toContain("โรงพยาบาลของฉัน");
+    expect(markup).toContain("ลูกข่าย (1)");
+    expect(markup).toContain('href="/app/hospitals/reporting?scope=network"');
+    expect(markup).toContain("กลับไปรายชื่อลูกข่าย");
+    expect(markup).not.toContain('<select');
     expect(markup).not.toContain("สมชาย");
     expect(markup).not.toContain("HOSPITAL-NUMBER");
     expect(markup).not.toContain("bloodSugar");
@@ -81,7 +83,7 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).not.toContain("/api/v1/hospital/reporting/export");
     expect(markup).toContain("ส่งออก Excel");
     expect(markup).toContain("ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้");
-    expect(markup).toContain(`href="/app#hospital-workspace-${parentHospitalId}"`);
-    expect(markup).not.toContain(`href="/app#hospital-workspace-${childHospitalId}"`);
+    expect(markup).toContain(`href="/app?hospitalId=${parentHospitalId}"`);
+    expect(markup).not.toContain(`href="/app?hospitalId=${childHospitalId}"`);
   });
 });

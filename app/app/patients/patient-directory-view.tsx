@@ -235,7 +235,7 @@ export function PatientDirectoryView({
     <div className="content-workspace">
       <PageHeader
         actions={<StatusBadge variant="info">อ่านข้อมูล</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedScope.hospitalId)}` }, { label: task?.title ?? "รายชื่อผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedScope.hospitalId)}` }, { label: task?.title ?? "รายชื่อผู้ป่วย" }]}
         description={task?.description ?? "ค้นหาและเปิดดูข้อมูลผู้ป่วยเฉพาะในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง"}
         title={task?.title ?? "รายชื่อผู้ป่วย"}
       />

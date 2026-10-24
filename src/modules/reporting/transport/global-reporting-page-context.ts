@@ -79,6 +79,9 @@ async function denyAndHide(
 
 export async function getGlobalReportingPageContext(input: {
   hospitalId?: string;
+  search?: string;
+  progress?: string;
+  status?: string;
   cursor?: string;
   pageSize?: number;
 }): Promise<GlobalReportingPageContext> {
@@ -151,6 +154,9 @@ export async function getGlobalReportingPageContext(input: {
 
   const parsedRequest = hospitalReportPageRequestSchema.safeParse({
     hospitalId: selectedHospitalId,
+    search: input.search,
+    progress: input.progress,
+    status: input.status,
     cursor: input.cursor,
     pageSize: input.pageSize,
   });

@@ -119,7 +119,7 @@ describe("Hospital report page context", () => {
       hierarchy,
     });
     expect(mockedListParentGroups).toHaveBeenCalledWith(actor, [hospitalId]);
-    expect(mockedGetPage).toHaveBeenCalledWith(actor, { hospitalId, cursor: undefined, pageSize: undefined });
+    expect(mockedGetPage).toHaveBeenCalledWith(actor, { hospitalId, cursor: undefined, pageSize: undefined, cohort: undefined, search: "", progress: "", status: "" });
   });
 
   it("routes a non-owned Child through the dedicated Parent report read only", async () => {
@@ -155,7 +155,33 @@ describe("Hospital report page context", () => {
     );
 
     expect(context).toMatchObject({ mode: "DIRECT_OWNER", selectedHospitalId: childHospitalId });
-    expect(mockedGetPage).toHaveBeenCalledWith(actor, { hospitalId: childHospitalId });
+    expect(mockedGetPage).toHaveBeenCalledWith(actor, { hospitalId: childHospitalId, search: "", progress: "", status: "" });
+    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicitly selected network Child aggregate-only even when also directly owned", async () => {
+    mockedListHospitals.mockResolvedValueOnce([hospital, child]);
+    const context = await getHospitalReportPageContext(undefined, undefined, undefined,
+      `PARENT_CHILD:${hospitalId}:${childHospitalId}`, undefined, undefined, true);
+    expect(context).toMatchObject({ mode: "PARENT_CHILD", report: childReport });
+    expect("page" in context).toBe(false);
+    expect(mockedGetPage).not.toHaveBeenCalled();
+    expect(mockedGetParentChildPage).toHaveBeenCalledWith(actor, { parentHospitalId: hospitalId, hospitalId: childHospitalId });
+  });
+
+  it("rejects an own-report locator inside the explicit network scope", async () => {
+    await expect(getHospitalReportPageContext(undefined, undefined, undefined,
+      `DIRECT_OWNER:${hospitalId}`, undefined, undefined, true)).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mockedGetPage).not.toHaveBeenCalled();
+    expect(mockedGetParentChildPage).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to patient rows for a revoked network link on a directly owned Child", async () => {
+    mockedListHospitals.mockResolvedValueOnce([hospital, child]);
+    mockedListParentGroups.mockResolvedValueOnce([]);
+    await expect(getHospitalReportPageContext(undefined, undefined, undefined,
+      `PARENT_CHILD:${hospitalId}:${childHospitalId}`, undefined, undefined, true)).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mockedGetPage).not.toHaveBeenCalled();
     expect(mockedGetParentChildPage).not.toHaveBeenCalled();
   });
 

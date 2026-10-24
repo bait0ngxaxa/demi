@@ -330,7 +330,6 @@ function projectWorkSections(
       canReadHospitalReports(actor)
         ? { href: "/app/hospitals/reporting", label: "รายงานโรงพยาบาล", match: "prefix" }
         : canOnlyExportHospitalReports(actor) && { href: "/app/hospitals/reporting/export", label: "ส่งออกรายงาน", match: "exact" },
-      canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/areas", label: "เขตความรับผิดชอบ", match: "exact", prefetch: false },
       hasActiveWorkHospital(actor) && { href: "/app/hospitals/content", label: "ข่าวสารและความรู้", match: "prefix" },
       canReadWorkHospitalContacts(actor) && { href: "/app/hospitals/contacts", label: "ติดต่อโรงพยาบาล", match: "exact" },
     ])),

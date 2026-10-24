@@ -96,7 +96,9 @@ const page: HospitalReportingPageProjection = {
     relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },
     programs: { grain: "PATIENT_PROGRAM", total: 0, active: 0, completed: 0 },
   },
-  page: { items: [], pageSize: 20, nextCursor: null },
+  filters: { search: "", progress: "", status: "" },
+  roundProgress: { rounds: [0, 0, 0, 0, 0, 0, 0], waitingAfter: 0, completed: 0 },
+  page: { items: [], total: 0, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },
 };
 
 describe("Global Reporting page context", () => {
@@ -124,6 +126,7 @@ describe("Global Reporting page context", () => {
     expect(mockedGetPage).toHaveBeenCalledWith(actor, {
       hospitalId,
       cursor: "signed-cursor",
+      search: "", progress: "", status: "",
       pageSize: 20,
     });
     expect(mockedResolveAccess).toHaveBeenCalledWith(

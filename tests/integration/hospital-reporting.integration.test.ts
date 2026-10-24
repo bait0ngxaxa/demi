@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
+
 import {
   FollowupActivityProgressStatus,
   HospitalStatus,
@@ -62,6 +64,7 @@ function newFixture(): Fixture {
 async function cleanFixture(fixture: Fixture): Promise<void> {
   const programIds = fixture.programIds;
   if (programIds.length > 0) {
+    await clearProgramRoundCompletions(programIds);
     await prisma.patientFollowupActivityProgress.deleteMany({ where: { followup: { patientProgramId: { in: programIds } } } });
     await prisma.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await prisma.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
@@ -434,6 +437,57 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     if (previousCursorSecret === undefined) delete process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET;
     else process.env.DEMI_HOSPITAL_REPORTING_CURSOR_SECRET = previousCursorSecret;
     await prisma.$disconnect();
+  });
+
+  it("RPT-UX scopes buckets, searches and filters, and traverses signed pages in both directions", async () => {
+    const fixture = newFixture();
+    currentFixture = fixture;
+    const hospital = await createHospital(fixture, { name: "RPT-UX" });
+    const other = await createHospital(fixture, { name: "RPT-UX other" });
+    const owner = await createActor(fixture, { role: Role.HOSPITAL, hospital });
+    const programs: string[] = [];
+    // Synthetic persisted read fixtures: every round count 0..6, a completed Program, an ended relationship,
+    // and an unrelated Hospital. Read tests do not exercise the care checklist write workflow.
+    for (let index = 0; index < 10; index += 1) {
+      const profile = await createPatientProfile(fixture, `รายงาน-${index}`);
+      const relationship = await createRelationship(fixture, profile.id, index === 9 ? other.id : hospital.id, `UX-${index}`);
+      const program = await createProgram(fixture, { relationshipId: relationship.id,
+        createdByUserId: owner.userId, status: index === 7 ? PatientProgramStatus.COMPLETED : PatientProgramStatus.ACTIVE });
+      programs.push(program.id);
+      const rounds = index <= 6 ? index : index === 8 ? 3 : 6;
+      await openProgramRound(program.id, rounds + 1);
+      if (index === 8) await prisma.patientHospitalRelationship.update({ where: { id: relationship.id }, data: {
+        endedAt: new Date(), endedByUserId: owner.userId, endReason: "สิ้นสุดการดูแลใน fixture",
+      } });
+    }
+    const active = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id });
+    expect(active.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 2], waitingAfter: 1, completed: 1 });
+    expect(active.page.total).toBe(8);
+    const history = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, cohort: "INCLUDE_ENDED" });
+    expect(history.roundProgress).toEqual({ rounds: [1, 1, 1, 2, 1, 1, 2], waitingAfter: 1, completed: 1 });
+    for (let round = 0; round <= 6; round += 1) {
+      const filtered = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, progress: String(round) });
+      expect(filtered.page.items.map((row) => row.completedRounds)).toEqual(round === 6 ? [6, 6] : [round]);
+      expect(filtered.page.total).toBe(round === 6 ? 2 : 1);
+    }
+    const waiting = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, progress: "WAITING_AFTER" });
+    expect(waiting.page.items.map((row) => row.patientProgramId)).toEqual([programs[6]]);
+    const byName = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "สมชาย รายงาน-2" });
+    expect(byName.page.items.map((row) => row.patientProgramId)).toEqual([programs[2]]);
+    const byHn = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "UX-7", status: "COMPLETED" });
+    expect(byHn.page.items.map((row) => row.patientProgramId)).toEqual([programs[7]]);
+    const excluded = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "UX-9" });
+    expect(excluded.page.total).toBe(0);
+    const first = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, pageSize: 3, search: "UX-" });
+    const second = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, pageSize: 3, search: "UX-", cursor: first.page.nextCursor });
+    const back = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, pageSize: 3, search: "UX-", cursor: second.page.previousCursor });
+    expect(second.page.number).toBe(2);
+    expect(back.page.number).toBe(1);
+    expect(back.page.items.map((row) => row.patientProgramId)).toEqual(first.page.items.map((row) => row.patientProgramId));
+    expect(back.page.previousCursor).toBeNull();
+    expect(new Set([...first.page.items, ...second.page.items].map((row) => row.patientProgramId)).size).toBe(6);
+    await expect(getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, pageSize: 3, search: "เปลี่ยนคำค้น", cursor: first.page.nextCursor })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, pageSize: 3, search: "UX-", cursor: `${first.page.nextCursor}x` })).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("keeps one row per exact Program, isolates Hospital scope, and rechecks distinct Owner reporting access", async () => {

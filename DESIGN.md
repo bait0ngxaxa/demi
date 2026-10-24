@@ -282,3 +282,9 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Don't** สร้าง dashboard metrics, clinical statistics, imagery หรือ claim ที่ยังไม่มี product requirement
 - **Don't** รวม Patient Provisioning กับ Patient Activation หรือแยก Excel เป็น application-level destination ใหม่
 - **Don't** ใช้ decorative gradient, glass, nested cards หรือ card ทุก section แทนข้อมูล hierarchy
+
+### Hospital reporting — RPT-UX
+
+OWNER สลับ “โรงพยาบาลของฉัน” / “ลูกข่าย (n)” ที่หัวรายงาน; hospital picker เปลี่ยนหน้าเมื่อเลือกและมีปุ่มใน noscript. นำเมนู “เขตความรับผิดชอบ” ออก; URL `/app/hospitals/areas` redirect ไป `/app/hospitals/reporting?scope=network`. ลูกข่ายใช้ตาราง 9 ค่าเดิมแยกรายโรงพยาบาลและลิงก์ชื่อไปสรุปเฉพาะแห่ง ไม่มี patient rows หรือ Program links; ลิงก์จากรายการใช้ `scope=network&target=...` เพื่อคง aggregate-only แม้ผู้ใช้จะเป็น OWNER ของลูกข่ายโดยตรงด้วย (รายงานของตนเองยังเข้าทาง own picker).
+
+รายงานโรงพยาบาลของฉันเรียง KPI → ความคืบหน้ารอบที่ยืนยันเสร็จสิ้น → export preview → ตัวกรอง → รายการ Program แบบ `<details>`. รอบ 0–6 เป็นกลุ่มแยกกัน; “รอ After” คือ ACTIVE ที่ครบ 6 รอบและยังไม่มี Final Assessment, “สิ้นสุด Program” ใช้สถานะ COMPLETED และอาจซ้อนกับกลุ่มรอบ. ใช้ semantic tokens เดิม border-border / bg-surface / text-text / text-text-muted, rounded-control / rounded-panel, focus-ring และ touch target ≥44px. แถว Program เรียงซ้อนบนมือถือ; ตารางลูกข่ายแสดง label/value สองคอลัมน์บนจอเล็ก ไม่มี horizontal page scroll. Global ADMIN ใช้แถวขยายชุดเดียวกันโดยไม่มีลิงก์รายละเอียด Program; MEMBER export ไม่เปลี่ยน.

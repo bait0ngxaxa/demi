@@ -19,7 +19,7 @@ describe("Hospital patient operations navigation", () => {
       hospital: scope, items: [{ patientHospitalRelationshipId: "exact-relationship", patientProfileId: "patient-profile", displayName: "ผู้ป่วย", hospital: { id: scope.hospitalId, name: scope.hospitalName }, hospitalNumber: "HN-B", classification: null, selfRegisteredAt: null }],
       lookupType: "NAME", value: "", classificationFilter: "ALL", selfRegistrationFilter: "ALL", page: 1, pageSize: 25, total: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
     }} />);
-    expect(html).toContain(`href="/app#hospital-workspace-${scope.hospitalId}"`);
+    expect(html).toContain(`href="/app?hospitalId=${scope.hospitalId}"`);
     expect(html).toContain('href="/app/patients/exact-relationship"');
     expect(html).toContain("HN-B");
     expect(html).not.toContain(`/app/patients?hospitalId=${scopes[0].hospitalId}`);
@@ -27,7 +27,7 @@ describe("Hospital patient operations navigation", () => {
 
   it("keeps activation search and return in the exact selected Hospital", () => {
     const html = renderToStaticMarkup(<PatientActivationActionsWorkspace scopes={scopes} selectedScope={scope} selectedHospitalId={scope.hospitalId} />);
-    expect(html).toContain(`href="/app#hospital-workspace-${scope.hospitalId}"`);
+    expect(html).toContain(`href="/app?hospitalId=${scope.hospitalId}"`);
     expect(html).toContain(`href="/app/patients?hospitalId=${scope.hospitalId}"`);
     expect(html).toContain(`name="targetHospitalId" value="${scope.hospitalId}"`);
     expect(html).toContain("ตั้งรหัสผ่านเอง");

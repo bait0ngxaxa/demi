@@ -204,7 +204,7 @@ export function PatientActivationActionsWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
         description="ค้นหาผู้ป่วยในโรงพยาบาลนี้ แล้วออกลิงก์ให้ผู้ป่วยเปิดใช้งานบัญชีและตั้งรหัสผ่านเอง"
         title="เปิดใช้งานบัญชีผู้ป่วย"
       />

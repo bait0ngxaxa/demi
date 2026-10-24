@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -26,6 +27,7 @@ export function ParentChildHospitalReportWorkspace({
 
   return (
     <div className="content-workspace">
+      <HospitalReportTargetSelector hospitals={hospitals} parentGroups={parentGroups} routeBase="/app/hospitals/reporting" selection={selection} />
       <PageHeader
         actions={(
           <ExportButton
@@ -35,7 +37,7 @@ export function ParentChildHospitalReportWorkspace({
           />
         )}
         breadcrumbs={[
-          { label: "งานโรงพยาบาลแม่ข่าย", href: `/app#hospital-workspace-${encodeURIComponent(report.parent.id)}` },
+          { label: "งานโรงพยาบาลแม่ข่าย", href: `/app?hospitalId=${encodeURIComponent(report.parent.id)}` },
           { label: "รายงานโรงพยาบาล", href: "/app/hospitals/reporting" },
           { label: "รายงานโรงพยาบาลลูกข่าย" },
         ]}
@@ -43,12 +45,7 @@ export function ParentChildHospitalReportWorkspace({
         title="รายงานโรงพยาบาล"
       />
 
-      <HospitalReportTargetSelector
-        hospitals={hospitals}
-        parentGroups={parentGroups}
-        routeBase="/app/hospitals/reporting"
-        selection={selection}
-      />
+      <Link className="mt-4 inline-flex min-h-11 items-center text-brand-strong underline" href="/app/hospitals/reporting?scope=network">กลับไปรายชื่อลูกข่าย</Link>
 
       <section aria-labelledby="parent-child-report-heading" className="mt-6">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

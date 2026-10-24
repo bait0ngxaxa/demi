@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PatientProgramStatus } from "@prisma/client";
@@ -142,7 +144,9 @@ function page(items: HospitalReportProgramRow[], total = items.length): Hospital
         completed: items.filter(({ lifecycle }) => lifecycle.status === PatientProgramStatus.COMPLETED).length,
       },
     },
-    page: { items, pageSize: 20, nextCursor: null },
+    filters: { search: "", progress: "", status: "" },
+    roundProgress: { rounds: [total, 0, 0, 0, 0, 0, 0], waitingAfter: 0, completed: 0 },
+    page: { items: items.map((item) => ({ ...item, completedRounds: 0, latestServiceDate: null })), total, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },
   };
 }
 
@@ -160,9 +164,23 @@ function render(view: string, items: HospitalReportProgramRow[] = [
 }
 
 describe("Hospital reporting dashboard presentation", () => {
-  it("shows source-backed grains and a separate card for every Program", () => {
+  it("expands and collapses a row using the native summary interaction", () => {
+    const container = document.createElement("div");
+    container.innerHTML = render("overview");
+    const row = container.querySelector("details");
+    const summary = row?.querySelector("summary");
+    if (!row || !summary) throw new Error("Expected a compact Program row");
+    expect(row.open).toBe(false);
+    summary.click();
+    expect(row.open).toBe(true);
+    expect(row.textContent).toContain("ก่อนเริ่ม · ข้อมูลตั้งต้น");
+    summary.click();
+    expect(row.open).toBe(false);
+  });
+
+  it("shows summaries before collapsed rows and retains each Program detail", () => {
     const markup = render("overview");
-    expect(markup).toContain(`href="/app#hospital-workspace-${hospitalId}"`);
+    expect(markup).toContain(`href="/app?hospitalId=${hospitalId}"`);
     expect(markup).toContain("<h1");
     expect(markup).toContain("ภาพรวม");
     expect(markup).not.toContain("Dashboard");
@@ -175,12 +193,14 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("หลัง Program · การประเมินครั้งสุดท้าย");
     expect(markup).toContain("ยังไม่บันทึก");
     expect(markup).toContain("โรงพยาบาลแม่ข่าย");
-    expect(markup).toContain("ลูกข่ายในเครือข่าย 3 แห่ง");
+    expect(markup).toContain("ลูกข่าย 3 แห่ง");
+    expect(markup.match(/<details /gu)).toHaveLength(2);
+    expect(markup).not.toContain("<details open");
+    expect(markup.indexOf("ความคืบหน้ารอบบริการ")).toBeLessThan(markup.indexOf("<details "));
+    expect(markup).toContain("จัดบริการแล้ว 0/6");
+    expect(markup).toContain("หน้า 1 จาก 1");
     expect(markup).toContain("ใช้งานอยู่");
-    expect(markup).toContain("โรงพยาบาลลูกข่ายรอยืนยัน");
-    expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
-    expect(markup).toContain("รายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
-    expect(markup).toContain("ยังไม่ได้รับอนุญาต");
+    expect(markup).not.toContain("โรงพยาบาลลูกข่ายรอยืนยัน");
     // D7/D8: staff-entered CVD % and HbA1c %.
     expect(markup).toContain("ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): 12.5");
     expect(markup).toContain("HbA1c (%): ยังไม่บันทึก");
@@ -266,7 +286,7 @@ describe("Hospital reporting dashboard presentation", () => {
 
   it("distinguishes an empty continuation page from an empty Hospital report", () => {
     const markup = render("overview", [], 3);
-    expect(markup).toContain("ไม่มี Program ในหน้านี้");
+    expect(markup).toContain("ไม่พบ Program ตามเงื่อนไขนี้");
     expect(markup).toContain("กลับไปหน้าแรก");
     expect(markup).not.toContain("ยังไม่มี Program ที่รายงานได้");
   });
@@ -291,12 +311,11 @@ describe("Hospital reporting dashboard presentation", () => {
     };
     const markup = render("overview", [], 0, childHierarchy);
 
-    expect(markup).toContain("รพ.สต.ทดสอบ");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
     expect(markup).not.toContain("DEMO-CHILD");
     expect(markup).not.toContain("DEMO-PARENT");
     expect(markup).not.toContain("โรงพยาบาลลูกข่ายที่ใช้งาน");
     expect(markup).not.toContain("ลูกข่ายในเครือข่าย");
-    expect(markup).toContain("ข้อมูลผู้ป่วยและ Program ในรายงานนี้เป็นของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).toContain("แม่ข่าย: โรงพยาบาลแม่ข่ายทดสอบ");
   });
 });

@@ -120,7 +120,7 @@ const ownerSections = (areas: boolean) => [
   ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
   staffRegistration,
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
-  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
+  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
   ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
 ] as const;
@@ -395,7 +395,7 @@ describe("orphan entries reuse their pages' policies", () => {
     const subject = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [...hospitalMemberships] });
 
     expect(canOpenParentAreaOverview(subject, workspaces)).toBe(allowed);
-    expect(allHrefs(project(subject, workspaces)).includes("/app/hospitals/areas")).toBe(allowed);
+    expect(allHrefs(project(subject, workspaces)).includes("/app/hospitals/areas")).toBe(false);
   });
 
   it("never shows areas to OSM or ADMIN without a direct OWNER membership", () => {

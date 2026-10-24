@@ -148,6 +148,7 @@ function programRecord(input: {
     finalAssessment: input.finalAssessment ?? null,
     roundVitals: input.roundVitals ?? [],
     screeningAssessments: input.screeningAssessments ?? [],
+    roundCompletions: [],
     goalPlans: [],
     followups: Array.from({ length: input.followupCount ?? 0 }, (_, index) => followupRecord(index + 1)),
   };
@@ -168,7 +169,9 @@ function createDatabase(input: {
   personalExerciseEntry: { findMany: ReturnType<typeof vi.fn> };
 } {
   const database = {
+    patientProgramRoundCompletion: { groupBy: vi.fn().mockResolvedValue([]) },
     patientProgram: {
+      count: vi.fn().mockResolvedValue(2),
       findMany: vi.fn().mockResolvedValue(input.programs ?? []),
       groupBy: vi.fn().mockResolvedValue([
         { status: PatientProgramStatus.ACTIVE, _count: { _all: 1 } },
@@ -270,6 +273,60 @@ describe("Hospital reporting query service", () => {
     }));
     expect(JSON.stringify(result)).toContain("givenName");
     expect(JSON.stringify(result)).not.toContain("createdBy");
+  });
+
+  it.each(["ACTIVE", "INCLUDE_ENDED"] as const)("groups sequential round completions in the exact %s cohort", async (cohort) => {
+    const database = createDatabase();
+    const groupBy = vi.fn().mockResolvedValue(Array.from({ length: 6 }, (_, index) => ({
+      roundNumber: index + 1, _count: { _all: 6 - index },
+    })));
+    Object.assign(database, { patientProgramRoundCompletion: { groupBy } });
+    database.patientProgram.groupBy.mockResolvedValue([
+      { status: PatientProgramStatus.ACTIVE, _count: { _all: 6 } },
+      { status: PatientProgramStatus.COMPLETED, _count: { _all: 1 } },
+    ]);
+    vi.spyOn(database.patientProgram, "count").mockResolvedValueOnce(7).mockResolvedValueOnce(1);
+    const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, cohort }, { database });
+    expect(result.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 1], waitingAfter: 1, completed: 1 });
+    expect(groupBy).toHaveBeenCalledExactlyOnceWith({ by: ["roundNumber"], _count: { _all: true }, where: {
+      patientProgram: { is: { patientHospitalRelationship: { is: { hospitalId: hospitalAId,
+        ...(cohort === "ACTIVE" ? { endedAt: null } : {}) } }, status: { in: ["ACTIVE", "COMPLETED"] } } },
+    } });
+  });
+
+  it.each([
+    { search: "ต่างคน" }, { progress: "2" }, { status: "COMPLETED" }, { cohort: "INCLUDE_ENDED" },
+  ])("rejects a continuation with changed filters %j before reading rows", async (change) => {
+    const database = createDatabase({ programs: [
+      programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE }),
+      programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE }),
+    ] });
+    const page = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    database.patientProgram.findMany.mockClear();
+    await expect(getHospitalReportingPage(actor, {
+      hospitalId: hospitalAId, pageSize: 1, cursor: page.page.nextCursor, ...change,
+    }, { database })).rejects.toBeInstanceOf(NotFoundError);
+    expect(database.patientProgram.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns a signed previous page and reverses ascending results into display order", async () => {
+    const first = programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE });
+    const second = programRecord({ id: programA2Id, status: PatientProgramStatus.ACTIVE });
+    const database = createDatabase({ programs: [first, second] });
+    const page1 = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1 }, { database });
+    database.patientProgram.findMany.mockResolvedValueOnce([second]);
+    const page2 = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1, cursor: page1.page.nextCursor }, { database });
+    expect(page2.page.number).toBe(2);
+    expect(page2.page.previousCursor).toBeTruthy();
+    database.patientProgram.findMany.mockResolvedValueOnce([first]);
+    const back = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, pageSize: 1, cursor: page2.page.previousCursor }, { database });
+    expect(back.page.number).toBe(1);
+    expect(back.page.previousCursor).toBeNull();
+    expect(back.page.items.map((row) => row.patientProgramId)).toEqual(page1.page.items.map((row) => row.patientProgramId));
+    expect(database.patientProgram.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      orderBy: [{ startedAt: "asc" }, { id: "asc" }],
+      where: expect.objectContaining({ OR: [{ startedAt: { gt: startedAt } }, { startedAt, id: { gt: programA2Id } }] }),
+    }));
   });
 
   it("rejects an unsupported cohort before querying report data", async () => {

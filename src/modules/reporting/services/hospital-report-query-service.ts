@@ -3,7 +3,7 @@ import "server-only";
 import { illnessDuration } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 
 import { Buffer } from "node:buffer";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   HospitalStatus,
   PatientProgramStatus,
@@ -59,6 +59,7 @@ import {
   hospitalReportPageRequestSchema,
   parentChildHospitalReportRequestSchema,
   type HospitalReportCohort,
+  type HospitalReportFilters,
 } from "../schemas/hospital-report-schemas";
 import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
 import {
@@ -84,7 +85,7 @@ const REPORT_TRANSACTION_OPTIONS = {
   maxWait: 5_000,
   timeout: 25_000,
 } as const;
-const REPORT_CURSOR_VERSION = 2;
+const REPORT_CURSOR_VERSION = 3;
 const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
 const REPORT_CURSOR_ORDERING = "startedAt:desc,id:desc";
 const REPORT_CURSOR_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -104,7 +105,7 @@ export class HospitalReportExportLimitError extends ApplicationError {
   }
 }
 
-type ReportCursor = { startedAt: Date; id: string };
+type ReportCursor = { startedAt: Date; id: string; direction: "next" | "previous"; page: number };
 // Parent reporting currently returns only an allowlisted exact-Child summary, with no pageable Patient/Program
 // rows or cursor. Any future pageable Parent operation must bind its signed cursor to the actor, exact Parent
 // and Child, operation, page size, ordering and expiry, then re-resolve authority on every continuation.
@@ -114,6 +115,7 @@ type ReportCursorContext = {
   hospitalId: string;
   pageSize: number;
   operation: ReportScopeOperation;
+  filterBinding: string;
 };
 
 const cursorPayloadSchema = z
@@ -125,9 +127,12 @@ const cursorPayloadSchema = z
       pageSize: z.number().int().min(1).max(HOSPITAL_REPORT_MAX_PAGE_SIZE),
       ordering: z.literal(REPORT_CURSOR_ORDERING),
       operation: z.enum(["HOSPITAL_OWNER", "GLOBAL_ADMIN"]),
+      filterBinding: z.string().length(64),
     }).strict(),
     startedAt: z.string().datetime({ offset: true }),
     id: z.string().uuid().transform((value) => value.toLowerCase()),
+    direction: z.enum(["next", "previous"]),
+    page: z.number().int().min(1),
     issuedAt: z.number().int().nonnegative(),
     expiresAt: z.number().int().positive(),
   })
@@ -310,6 +315,7 @@ const reportProgramBaseSelect = {
 
 export const hospitalReportPageProgramSelect = {
   ...reportProgramBaseSelect,
+  roundCompletions: { select: { roundNumber: true } },
   goalPlans: { ...reportProgramGoalPlanSelect, take: HOSPITAL_REPORT_GOAL_PLAN_PREVIEW_LIMIT },
   followups: {
     ...reportProgramFollowupSelect,
@@ -339,7 +345,7 @@ function getCursorSigningSecret(): string {
   return secret;
 }
 
-function encodeCursor(record: { startedAt: Date; id: string }, context: ReportCursorContext): string {
+function encodeCursor(record: ReportCursor, context: ReportCursorContext): string {
   const issuedAt = Date.now();
   const payload = Buffer.from(JSON.stringify({
     version: REPORT_CURSOR_VERSION,
@@ -349,9 +355,12 @@ function encodeCursor(record: { startedAt: Date; id: string }, context: ReportCu
       pageSize: context.pageSize,
       ordering: REPORT_CURSOR_ORDERING,
       operation: context.operation,
+      filterBinding: context.filterBinding,
     },
     startedAt: record.startedAt.toISOString(),
     id: record.id.toLowerCase(),
+    direction: record.direction,
+    page: record.page,
     issuedAt,
     expiresAt: issuedAt + REPORT_CURSOR_TTL_MS,
   }), "utf8").toString("base64url");
@@ -365,7 +374,7 @@ function decodeCursor(value: string | undefined, context: ReportCursorContext): 
   try {
     const [encodedPayload, suppliedSignature, extra] = value.split(".");
     if (
-      value.length > 512 ||
+      value.length > 1024 ||
       extra !== undefined ||
       !encodedPayload ||
       !suppliedSignature ||
@@ -401,6 +410,7 @@ function decodeCursor(value: string | undefined, context: ReportCursorContext): 
       data.context.pageSize !== context.pageSize ||
       data.context.ordering !== REPORT_CURSOR_ORDERING ||
       data.context.operation !== context.operation ||
+      data.context.filterBinding !== context.filterBinding ||
       data.expiresAt <= now ||
       data.issuedAt > now + 30_000 ||
       data.expiresAt <= data.issuedAt ||
@@ -408,7 +418,7 @@ function decodeCursor(value: string | undefined, context: ReportCursorContext): 
     ) {
       throw new Error("Reporting cursor context or expiry is invalid");
     }
-    return { startedAt: new Date(data.startedAt), id: data.id };
+    return { startedAt: new Date(data.startedAt), id: data.id, direction: data.direction, page: data.page };
   } catch (error: unknown) {
     if (error instanceof InfrastructureError) throw error;
     throw new NotFoundError();
@@ -419,8 +429,8 @@ function reportCursorWhere(cursor: ReportCursor | null): Prisma.PatientProgramWh
   if (!cursor) return {};
   return {
     OR: [
-      { startedAt: { lt: cursor.startedAt } },
-      { startedAt: cursor.startedAt, id: { lt: cursor.id } },
+      { startedAt: { [cursor.direction === "previous" ? "gt" : "lt"]: cursor.startedAt } },
+      { startedAt: cursor.startedAt, id: { [cursor.direction === "previous" ? "gt" : "lt"]: cursor.id } },
     ],
   };
 }
@@ -1011,6 +1021,35 @@ async function resolveAuthorizedHospitalReportScope(
   return { actor: access.actor, hospital: access.hospital, operation };
 }
 
+function reportFiltersWhere(filters: HospitalReportFilters): Prisma.PatientProgramWhereInput {
+  const clauses: Prisma.PatientProgramWhereInput[] = [];
+  if (filters.status) clauses.push({ status: filters.status });
+  if (filters.progress === "COMPLETED") clauses.push({ status: PatientProgramStatus.COMPLETED });
+  else if (filters.progress === "WAITING_AFTER") clauses.push({
+    status: PatientProgramStatus.ACTIVE,
+    roundCompletions: { some: { roundNumber: 6 } }, finalAssessment: { is: null },
+  });
+  else if (filters.progress !== "") {
+    const round = Number(filters.progress);
+    clauses.push({ roundCompletions: {
+      ...(round > 0 ? { some: { roundNumber: round } } : {}),
+      ...(round < 6 ? { none: { roundNumber: round + 1 } } : {}),
+    } });
+  }
+  if (filters.search) {
+    // Each name token can match either part of the patient's name; HN also supports partial matching.
+    const tokens = filters.search.split(/\s+/u);
+    clauses.push({ patientHospitalRelationship: { is: { OR: [
+      { hospitalNumber: { contains: filters.search, mode: "insensitive" } },
+      { patientProfile: { is: { person: { is: { AND: tokens.map((token) => ({ OR: [
+        { givenName: { contains: token, mode: "insensitive" } },
+        { familyName: { contains: token, mode: "insensitive" } },
+      ] })) } } } } },
+    ] } } });
+  }
+  return { AND: clauses };
+}
+
 async function loadHospitalReportingPage(
   actor: ActorContext | null | undefined,
   request: ReturnType<typeof hospitalReportPageRequestSchema.parse>,
@@ -1034,30 +1073,33 @@ async function loadHospitalReportingPage(
   }
 
   const pageSize = request.pageSize ?? HOSPITAL_REPORT_DEFAULT_PAGE_SIZE;
-  // Phase F: the cohort is a filter, not an authority dimension, so it travels with the request rather than the
-  // signed cursor (whose actor/Hospital/page-size/operation binding is unchanged); the keyset fits both cohorts.
   const cohort = request.cohort ?? "ACTIVE";
-  const cursor = decodeCursor(request.cursor, {
-    actorId: access.actor.userId,
-    hospitalId: access.hospital.id,
-    pageSize,
-    operation: access.operation,
-  });
-  const where: Prisma.PatientProgramWhereInput = {
-    ...reportHospitalProgramWhere(access.hospital.id, cohort),
-    ...reportCursorWhere(cursor),
+  const filters: HospitalReportFilters = { search: request.search, progress: request.progress, status: request.status };
+  const cursorContext: ReportCursorContext = {
+    actorId: access.actor.userId, hospitalId: access.hospital.id, pageSize, operation: access.operation,
+    filterBinding: createHash("sha256").update(JSON.stringify({ cohort, ...filters })).digest("hex"),
   };
-  const [records, summary] = await Promise.all([
+  const cursor = decodeCursor(request.cursor, cursorContext);
+  const scope = reportHospitalProgramWhere(access.hospital.id, cohort);
+  const filteredWhere: Prisma.PatientProgramWhereInput = { ...scope, AND: [reportFiltersWhere(filters)] };
+  const backwards = cursor?.direction === "previous";
+  const [records, summary, total, roundCounts, waitingAfter] = await Promise.all([
     database.patientProgram.findMany({
-      where,
-      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+      where: { ...scope, ...reportCursorWhere(cursor), AND: [reportFiltersWhere(filters)] },
+      orderBy: [{ startedAt: backwards ? "asc" : "desc" }, { id: backwards ? "asc" : "desc" }],
       take: pageSize + 1,
       select: hospitalReportPageProgramSelect,
     }),
     loadSummary(database, access.hospital.id, cohort),
+    database.patientProgram.count({ where: filteredWhere }),
+    database.patientProgramRoundCompletion.groupBy({
+      by: ["roundNumber"], where: { patientProgram: { is: scope } }, _count: { _all: true },
+    }),
+    database.patientProgram.count({ where: { AND: [scope, reportFiltersWhere({ search: "", status: "", progress: "WAITING_AFTER" })] } }),
   ]);
   const hasMore = records.length > pageSize;
-  const pageRecords = hasMore ? records.slice(0, pageSize) : records;
+  const slicedRecords = records.slice(0, pageSize);
+  const pageRecords = backwards ? slicedRecords.reverse() : slicedRecords;
   const [childCounts, weeklyExercise] = await Promise.all([
     countProgramRelatedRows(
       database,
@@ -1066,13 +1108,19 @@ async function loadHospitalReportingPage(
     ),
     loadWeeklyExerciseFacts(database, pageRecords),
   ]);
-  const items = pageRecords.map((record) =>
-    toHospitalReportProgramRow(
-      record,
-      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 },
-      weeklyExercise.get(record.id)!,
-    ),
-  );
+  const items = pageRecords.map((record) => {
+    const row = toHospitalReportProgramRow(record,
+      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 }, weeklyExercise.get(record.id)!);
+    const dates = [...record.roundVitals.map((vital) => toServiceDateOnly(vital.serviceDate)),
+      ...record.followups.flatMap((followup) => followup.serviceDate ? [toServiceDateOnly(followup.serviceDate)] : []),
+      ...(record.finalAssessment?.serviceDate ? [toServiceDateOnly(record.finalAssessment.serviceDate)] : [])];
+    return { ...row, completedRounds: record.roundCompletions.length, latestServiceDate: dates.sort().at(-1) ?? null };
+  });
+  const number = cursor?.page ?? 1;
+  const atLeast = new Map(roundCounts.map((group) => [group.roundNumber, group._count._all]));
+  const rounds = Array.from({ length: 7 }, (_, round) =>
+    (round === 0 ? summary.programs.total : atLeast.get(round) ?? 0) - (atLeast.get(round + 1) ?? 0));
+  const firstRecord = pageRecords.at(0);
   const lastRecord = pageRecords.at(-1);
 
   return {
@@ -1083,15 +1131,14 @@ async function loadHospitalReportingPage(
     },
     cohort,
     counts: summary,
+    filters,
+    roundProgress: { rounds, waitingAfter, completed: summary.programs.completed },
     page: {
-      items,
-      pageSize,
-      nextCursor: hasMore && lastRecord ? encodeCursor(lastRecord, {
-        actorId: access.actor.userId,
-        hospitalId: access.hospital.id,
-        pageSize,
-        operation: access.operation,
-      }) : null,
+      items, pageSize, total, number,
+      previousCursor: firstRecord && (backwards ? hasMore : number > 1)
+        ? encodeCursor({ ...firstRecord, direction: "previous", page: Math.max(1, number - 1) }, cursorContext) : null,
+      nextCursor: lastRecord && (backwards || hasMore)
+        ? encodeCursor({ ...lastRecord, direction: "next", page: number + 1 }, cursorContext) : null,
     },
   };
 }

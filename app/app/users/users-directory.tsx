@@ -50,7 +50,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
     <div className="content-workspace break-words">
       <PageHeader
         breadcrumbs={[
-          { label: "งานโรงพยาบาล", href: `/app#hospital-workspace-${encodeURIComponent(hospitalId)}` },
+          { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(hospitalId)}` },
           { label: "จัดการผู้ใช้งาน" },
         ]}
         description="ตรวจสอบ แก้ไข ลบรายการที่ยังไม่ได้ใช้ และนำบุคลากร อสม. และผู้ป่วยออกจากระบบ"

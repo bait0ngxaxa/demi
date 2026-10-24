@@ -10,6 +10,9 @@ import { GlobalAdminReportingWorkspace } from "./global-admin-reporting-workspac
 export const metadata: Metadata = { title: "รายงานสำหรับผู้ดูแลระบบ" };
 
 type SearchParams = {
+  search?: string | string[];
+  progress?: string | string[];
+  status?: string | string[];
   hospitalId?: string | string[];
   cursor?: string | string[];
   pageSize?: string | string[];
@@ -28,7 +31,7 @@ export default async function GlobalAdminReportingPage({
 }): Promise<React.JSX.Element> {
   await connection();
   const params = await searchParams;
-  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "view"].includes(key))) notFound();
+  if (Object.keys(params).some((key) => !["hospitalId", "cursor", "pageSize", "view", "search", "progress", "status"].includes(key))) notFound();
 
   const hospitalIdInput = readSingleParameter(params.hospitalId);
   const cursor = readSingleParameter(params.cursor);
@@ -46,7 +49,7 @@ export default async function GlobalAdminReportingPage({
   const pageSize = pageSizeInput === undefined ? undefined : Number(pageSizeInput);
   if (pageSizeInput !== undefined && (!Number.isInteger(pageSize) || pageSizeInput.trim() !== String(pageSize))) notFound();
 
-  const context = await getGlobalReportingPageContext({ hospitalId, cursor, pageSize });
+  const context = await getGlobalReportingPageContext({ hospitalId, cursor, pageSize, search: readSingleParameter(params.search), progress: readSingleParameter(params.progress), status: readSingleParameter(params.status) });
   return (
     <GlobalAdminReportingWorkspace
       directory={context.directory}
