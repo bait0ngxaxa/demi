@@ -142,8 +142,8 @@ describe("server-projected mobile navigation", () => {
     const patients = primaryTabs(navigation, "work").find(({ id }) => id === "patients");
 
     expect(patients).toMatchObject({
-      label: "เพื่อน",
-      accessibleLabel: "เพื่อนที่ดูแล · รอรับนัด 4 รายการ",
+      label: "ผู้ป่วย",
+      accessibleLabel: "ผู้ป่วยที่ดูแล · รอรับนัด 4 รายการ",
       badgeCount: 4,
     });
   });

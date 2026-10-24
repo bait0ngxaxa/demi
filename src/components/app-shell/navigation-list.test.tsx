@@ -17,7 +17,7 @@ const workGroups: ApplicationNavigationGroup[] = [
   { id: "administration", label: "บริหารโรงพยาบาล", workspace: "work", items: [{ href: "/app/workforce", label: "บุคลากร", match: "prefix" }] },
   { id: "home", label: null, workspace: "work", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },
   { id: "care", label: "ดูแลผู้ป่วย", workspace: "work", items: [
-    { href: "/app/patients/assigned", label: "เพื่อนที่ดูแล", match: "exact", badgeCount: 4 },
+    { href: "/app/patients/assigned", label: "ผู้ป่วยที่ดูแล", match: "exact", badgeCount: 4 },
     { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
   ] },
 ];
@@ -95,8 +95,8 @@ describe("UI-4 task sections and icon rail", () => {
       expect(html).toContain(`aria-label="${label}"`);
       expect(html).toContain(`data-navigation-tooltip="${label}"`);
     }
-    expect(html).toContain('data-navigation-tooltip="เพื่อนที่ดูแล"');
-    expect(html).toContain('aria-label="เพื่อนที่ดูแล · รอรับนัด 4 รายการ"');
+    expect(html).toContain('data-navigation-tooltip="ผู้ป่วยที่ดูแล"');
+    expect(html).toContain('aria-label="ผู้ป่วยที่ดูแล · รอรับนัด 4 รายการ"');
     expect(html).toContain(">4</span>");
     // Headings stay for screen readers only; nothing in the rail is inert, hidden or removed from the tab order.
     expect(html).toContain('class="sr-only text-white/55" id="navigation-section-desktop-care"');

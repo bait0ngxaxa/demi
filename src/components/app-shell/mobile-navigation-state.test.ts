@@ -30,7 +30,7 @@ const workTabs: MobileNavigationTab[] = [
     id: "patients",
     href: "/app/patients/assigned",
     label: "ผู้ป่วย",
-    accessibleLabel: "เพื่อนที่ดูแล",
+    accessibleLabel: "ผู้ป่วยที่ดูแล",
     icon: "patients",
     match: "exact",
     activeRoute: "assigned-patients",

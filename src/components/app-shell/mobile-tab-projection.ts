@@ -216,7 +216,7 @@ function projectWorkTabs(
     tabs.push(
       tabFromItem(patientDirectory, {
         id: "patients",
-        label: assignedPatients ? "เพื่อน" : "ผู้ป่วย",
+        label: "ผู้ป่วย",
         accessibleLabel: patientDirectory.badgeCount === undefined
           ? patientDirectory.label
           : `${patientDirectory.label} · รอรับนัด ${patientDirectory.badgeCount} รายการ`,

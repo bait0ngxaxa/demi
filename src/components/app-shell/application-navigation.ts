@@ -309,7 +309,7 @@ function projectWorkSections(
     ...section("home", "work", [{ href: "/app", label: "หน้าหลัก", match: "exact" }]),
     ...section("care", "work", compact([
       canReadWorkAppointments(actor) && { href: "/app/appointments", label: "รายการนัดหมาย", match: "prefix" },
-      assignedPatients && { href: "/app/patients/assigned", label: "เพื่อนที่ดูแล", match: "exact", badgeCount: awaitingOsmAcceptanceCount },
+      assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่ดูแล", match: "exact", badgeCount: awaitingOsmAcceptanceCount },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
       canReadPatientCare && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },

@@ -235,7 +235,7 @@ describe("UI-4 task-based navigation per actor", () => {
     );
     const assignedPatients = groups.flatMap(({ items }) => items).find(({ href }) => href === "/app/patients/assigned");
 
-    expect(assignedPatients).toMatchObject({ label: "เพื่อนที่ดูแล", badgeCount: 3 });
+    expect(assignedPatients).toMatchObject({ label: "ผู้ป่วยที่ดูแล", badgeCount: 3 });
   });
 
   it("does not link the retired patient account-access routes from navigation", () => {

@@ -71,7 +71,7 @@ const navigation: readonly ApplicationNavigationGroup[] = [
     label: "ดูแลผู้ป่วย",
     workspace: "work",
     items: [
-      { href: "/app/patients/assigned", label: "เพื่อนที่ดูแล", match: "exact" },
+      { href: "/app/patients/assigned", label: "ผู้ป่วยที่ดูแล", match: "exact" },
       { href: "/app/patients/provision", label: "เพิ่มผู้ป่วย", match: "prefix" },
     ],
   },
@@ -242,7 +242,7 @@ describe("unified mobile bottom navigation", () => {
     expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
 
     navigate("/app/patients/assigned");
-    expect(container.querySelector('[aria-label="เพื่อนที่ดูแล"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('[aria-label="ผู้ป่วยที่ดูแล"]')?.getAttribute("aria-current")).toBe("page");
   });
 
   it("asks before changing tabs when an unresolved outcome is active", () => {
