@@ -104,9 +104,10 @@ function simulateRuntimeEnvironment(environment: Readonly<Record<string, string>
 
 // UI-01: the Patient's customer bottom and top menus first; remaining Personal items stay as secondary sections.
 const personalSections = [
-  ["primary", null, ["/app/personal", "/app/personal/measurements", "/app/personal/appointments", "/app/personal/care", "/app/more"]],
+  ["primary", null, ["/app/personal", "/app/personal/health", "/app/personal/appointments", "/app/personal/care", "/app/more"]],
   ["top-menu", "เมนูด่วน", ["/app/personal/appointments?tab=history", "/app/family", "/app/personal/medications", "/app/personal/wellness", "/app/personal#personal-hospital-contact"]],
   ["care", "การดูแลของฉัน", ["/app/personal/services"]],
+  ["health-records", "บันทึกสุขภาพ", ["/app/personal/measurements"]],
   ["reports-info", "ข่าวสารและความรู้", ["/app/personal/news", "/app/personal/knowledge"]],
 ] as const;
 const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/settings", "/app/support"]] as const;

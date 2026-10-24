@@ -9,7 +9,7 @@ import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/
 
 import { PatientSelfMeasurementWorkspace } from "./patient-self-measurement-workspace";
 
-export const metadata: Metadata = { title: "ตัวฉันในตอนนี้" };
+export const metadata: Metadata = { title: "ค่าที่วัดเอง" };
 
 type PatientSelfMeasurementPageProps = {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;

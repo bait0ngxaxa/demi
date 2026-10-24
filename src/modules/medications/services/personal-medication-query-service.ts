@@ -64,6 +64,24 @@ export async function listOwnPersonalMedications(
   }
 }
 
+/** Health summary: active medications and schedules in one bounded query, with the existing SELF owner check. */
+export async function listOwnActiveMedicationSummaries(
+  actor: ActorContext | null | undefined, database: PrismaClient = getPrisma(),
+): Promise<{ items: PersonalMedicationDetailDto[]; hasMore: boolean }> {
+  try {
+    const patientProfileId = await resolvePersonalMedicationOwner(actor, database);
+    const rows = await database.personalMedication.findMany({
+      where: { patientProfileId, status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: PERSONAL_MEDICATION_PAGE_SIZE + 1, select: personalMedicationDetailSelect,
+    });
+    return { items: rows.slice(0, PERSONAL_MEDICATION_PAGE_SIZE).map(toPersonalMedicationDetailDto),
+      hasMore: rows.length > PERSONAL_MEDICATION_PAGE_SIZE };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("ไม่สามารถโหลดรายการยาได้");
+  }
+}
+
 export async function getOwnPersonalMedication(
   actor: ActorContext | null | undefined, medicationId: unknown,
   database: PrismaClient = getPrisma(),

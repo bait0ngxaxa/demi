@@ -881,6 +881,26 @@ export async function getOwnPatientProgramRounds(
   }
 }
 
+/** Latest immutable plan for the exact SELF relationship; detail keeps the existing Goal read boundary. */
+export async function getOwnLatestPatientGoalPlan(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientSelfCareQueryDependencies = {},
+): Promise<PatientSelfGoalPlanDetail | null> {
+  const database = getDatabase(dependencies);
+  try {
+    const relationship = await resolveAuthorizedRelationship(actor, relationshipId, GOAL_READ_CAPABILITY, database);
+    const plan = await database.patientGoalPlan.findFirst({
+      where: { patientHospitalRelationshipId: relationship.relationshipId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true },
+    });
+    return plan ? await getOwnPatientGoalPlanDetail(actor, relationship.relationshipId, plan.id, { database }) : null;
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("ไม่สามารถโหลดแผนสุขภาพล่าสุดได้");
+  }
+}
+
 export async function getOwnPatientGoalPlanDetail(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,

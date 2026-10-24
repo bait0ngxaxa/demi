@@ -21,6 +21,7 @@ import {
   getOwnPatientCareJourney,
   getOwnPatientFollowupDetail,
   getOwnPatientGoalPlanDetail,
+  getOwnLatestPatientGoalPlan,
   getOwnPatientProgramDetail,
   getOwnPatientProgramRounds,
   listOwnPatientAppointmentHub,
@@ -246,6 +247,24 @@ function createDatabase() {
 }
 
 describe("Patient SELF care read projections", () => {
+  it("reads the latest exact-relationship plan and resolves item titles through the existing detail projection", async () => {
+    const database = createDatabase();
+    const result = await getOwnLatestPatientGoalPlan(actor(), relationshipId, { database });
+    expect(database.patientGoalPlan.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { patientHospitalRelationshipId: relationshipId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true },
+    });
+    expect(result?.goalPlanId).toBe(goalPlanId);
+    expect(result?.items[0]?.activityLabel).toBeTruthy();
+    vi.mocked(database.patientGoalPlan.findFirst).mockResolvedValue(null);
+    expect(await getOwnLatestPatientGoalPlan(actor(), relationshipId, { database })).toBeNull();
+  });
+
+  it("does not read a latest plan for a foreign relationship", async () => {
+    const database = createDatabase();
+    await expect(getOwnLatestPatientGoalPlan(actor(), foreignRelationshipId, { database })).rejects.toBeInstanceOf(NotFoundError);
+    expect(database.patientGoalPlan.findFirst).not.toHaveBeenCalled();
+  });
   it("reads only factual Screening and Baseline fields from the exact relationship", async () => {
     const database = createDatabase();
 

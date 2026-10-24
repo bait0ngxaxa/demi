@@ -270,7 +270,7 @@ function projectPersonalSections(): ApplicationNavigationGroup[] {
     ...section("health-records", "personal", [
       { href: "/app/personal/medications", label: "ยาของฉัน", match: "prefix" },
       { href: "/app/personal/wellness", label: "อาหารและออกกำลังกาย", match: "prefix" },
-      { href: "/app/personal/measurements", label: "ตัวฉันในตอนนี้", match: "prefix" },
+      { href: "/app/personal/measurements", label: "ค่าที่วัดเอง", match: "prefix" },
     ]),
     ...section("reports-info", "personal", [
       { href: "/app/personal/news", label: "ข่าวสาร", match: "prefix", prefetch: false },
@@ -343,7 +343,7 @@ function projectWorkSections(
  */
 const PERSONAL_CUSTOMER_MENU_DESTINATIONS: Readonly<Record<CustomerMenuId, Pick<ApplicationNavigationItem, "href" | "match">>> = {
   home: { href: "/app/personal", match: "exact" },
-  health: { href: "/app/personal/measurements", match: "prefix" },
+  health: { href: "/app/personal/health", match: "prefix" },
   appointments: { href: "/app/personal/appointments", match: "prefix" },
   followup: { href: "/app/personal/care", match: "prefix" },
   profile: { href: "/app/more", match: "exact" },

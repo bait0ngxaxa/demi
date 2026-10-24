@@ -105,9 +105,9 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
   return (
     <div className="min-w-0 max-w-3xl space-y-6">
       <PageHeader
-        breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ตัวฉันในตอนนี้" }]}
+        breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ค่าที่วัดเอง" }]}
         description="บันทึกน้ำหนัก น้ำตาลในเลือด และความดันที่คุณวัดเอง อสม. และเจ้าหน้าที่ที่ดูแลคุณเห็นรายการนี้พร้อมป้ายผู้ป่วยบันทึกเอง"
-        title="ตัวฉันในตอนนี้"
+        title="ค่าที่วัดเอง"
       />
       <Panel>
         <h2 className="mb-4 text-lg font-semibold">บันทึกค่าใหม่</h2>

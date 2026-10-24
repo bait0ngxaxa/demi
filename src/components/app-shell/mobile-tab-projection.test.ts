@@ -87,7 +87,7 @@ describe("server-projected mobile navigation", () => {
     const patientOwner = projectApplicationNavigation(actor([Role.PATIENT, Role.HOSPITAL]));
     const expectedIds = ["home", "health", "appointments", "followup", "more"];
     const expectedLabels = ["หน้าหลัก", "ข้อมูลสุขภาพ", "นัดหมาย", "ติดตาม", "โปรไฟล์"];
-    const expectedHrefs = ["/app/personal", "/app/personal/measurements", "/app/personal/appointments", "/app/personal/care", "/app/more"];
+    const expectedHrefs = ["/app/personal", "/app/personal/health", "/app/personal/appointments", "/app/personal/care", "/app/more"];
 
     expect(projectMobileNavigation(patient).availableWorkspaces).toEqual(["personal"]);
     for (const navigation of [patient, patientOsm, patientOwner]) {
@@ -105,7 +105,9 @@ describe("server-projected mobile navigation", () => {
 
   it.each([
     ["/app/personal", "", "home"],
-    ["/app/personal/measurements", "", "health"],
+    ["/app/personal/health", "", "health"],
+    ["/app/personal/health", "relationshipId=selected", "health"],
+    ["/app/personal/measurements", "", null],
     ["/app/personal/appointments/rel-1/apt-1", "", "appointments"],
     ["/app/personal/care/rel-1/programs/program-1/rounds", "", "followup"],
     ["/app/more", "workspace=personal", "more"],

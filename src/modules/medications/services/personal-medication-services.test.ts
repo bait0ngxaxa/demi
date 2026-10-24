@@ -4,7 +4,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
 import { createPersonalMedication, updatePersonalMedication, stopPersonalMedication } from "./personal-medication-service";
-import { getOwnPersonalMedication, listOwnPersonalMedications, personalMedicationSelect, personalMedicationDetailSelect } from "./personal-medication-query-service";
+import { listOwnActiveMedicationSummaries, getOwnPersonalMedication, listOwnPersonalMedications, personalMedicationSelect, personalMedicationDetailSelect } from "./personal-medication-query-service";
 
 vi.mock("@/modules/audit/services/audit-service", () => ({ recordAuditEvent: vi.fn() }));
 const a: ActorContext = { userId: "11111111-1111-4111-8111-111111111111", personId: "22222222-2222-4222-8222-222222222222", roles: ["PATIENT"], hospitalMemberships: [], osmHospitalRelationships: [] };
@@ -22,6 +22,21 @@ function fixture(): { db: PrismaClient; tx: Prisma.TransactionClient; person: { 
   return { db, tx, person, medication, transaction };
 }
 describe("medication persisted access/services/queries", () => {
+  it("loads bounded active medication instructions and schedules together for the persisted SELF owner", async () => {
+    const f = fixture();
+    f.medication.findMany.mockResolvedValue([{ ...row, instructionText: "ครั้งละ 1 เม็ด", schedules: [{ localTime: new Date("1970-01-01T08:00:00Z") }] }]);
+    const result = await listOwnActiveMedicationSummaries(a, f.db);
+    expect(f.medication.findMany).toHaveBeenCalledWith({ where: { patientProfileId: profileId, status: "ACTIVE" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 51, select: personalMedicationDetailSelect });
+    expect(result.items[0]).toMatchObject({ instructionText: "ครั้งละ 1 เม็ด", schedules: [{ localTime: "08:00" }] });
+    expect(result.hasMore).toBe(false);
+    f.medication.findMany.mockResolvedValue(Array.from({ length: 51 }, () => row));
+    const bounded = await listOwnActiveMedicationSummaries(a, f.db);
+    expect(bounded.items).toHaveLength(50); expect(bounded.hasMore).toBe(true);
+    f.medication.findMany.mockClear(); f.person.findFirst.mockResolvedValue(null);
+    await expect(listOwnActiveMedicationSummaries(a, f.db)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(f.medication.findMany).not.toHaveBeenCalled();
+  });
   beforeEach(() => { vi.clearAllMocks(); });
   it("resolves exact persisted active User + Person + role with minimal profile select", async () => {
     const f = fixture(); expect(await resolvePersonalMedicationOwner(a, f.db)).toBe(profileId);
