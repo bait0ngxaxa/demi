@@ -184,58 +184,50 @@ describe("DEMI shared Rich Menu catalog", () => {
     }
   });
 
-  it("uses a Patient 2×2 task grid with care as a full-width fifth task", () => {
-    const menu = LINE_RICH_MENU_BY_KEY.get("PATIENT_DIRECT");
-    if (!menu) throw new Error("Missing direct Patient menu");
+  it.each([
+    ["UNLINKED", 1, 1],
+    ["HOSPITAL_DIRECT", 2, 1],
+    ["CHOOSER_PATIENT_OSM", 3, 1],
+    ["CHOOSER_PATIENT_OSM_HOSPITAL", 2, 2],
+    ["OSM_DIRECT", 3, 2],
+    ["OSM_PATIENT_OSM", 3, 2],
+    ["PATIENT_DIRECT", 4, 2],
+    ["PATIENT_PATIENT_OSM", 4, 2],
+    ["PATIENT_PATIENT_OSM_HOSPITAL", 3, 3],
+  ] as const)("centers square cards in %s using %i columns and %i rows", (key, columns, rows) => {
+    const menu = LINE_RICH_MENU_BY_KEY.get(key);
+    if (!menu) throw new Error(`Missing menu ${key}`);
     const bounds = getLineMenuAreaBounds(menu);
-    const primaryGrid = bounds.slice(0, 4);
-    const careBounds = bounds[4];
-    const moreBounds = bounds[5];
-
-    expect(new Set(primaryGrid.map(({ x }) => x)).size).toBe(2);
-    expect(new Set(primaryGrid.map(({ y }) => y)).size).toBe(2);
-    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 610, 610]);
-    expect(careBounds).toMatchObject({ x: 48, y: 906, width: 2404, height: 252 });
-    expect(moreBounds?.y).toBe(1174);
+    expect(new Set(bounds.map(({ y }) => y)).size).toBe(rows);
+    expect(bounds.filter(({ y }) => y === bounds[0]?.y)).toHaveLength(columns);
+    expect(new Set(bounds.map(({ width }) => width)).size).toBe(1);
+    for (const region of bounds) {
+      expect(region.width).toBe(region.height);
+      // At the smallest preview width every card remains larger than 44px.
+      expect(region.width * 360 / 2500).toBeGreaterThanOrEqual(44);
+    }
+    for (const y of new Set(bounds.map((region) => region.y))) {
+      const row = bounds.filter((region) => region.y === y);
+      const first = row[0];
+      const last = row.at(-1);
+      if (!first || !last) throw new Error("Expected a nonempty row");
+      expect(Math.abs(first.x - (2500 - last.x - last.width))).toBeLessThanOrEqual(1);
+      for (const [index, region] of row.entries()) {
+        const next = row[index + 1];
+        if (next) expect(next.x - region.x - region.width).toBe(24);
+      }
+    }
   });
 
-  it("preserves the existing multi-role chooser and account hit regions", () => {
-    const chooser = LINE_RICH_MENU_BY_KEY.get("CHOOSER_PATIENT_OSM_HOSPITAL");
-    if (!chooser) throw new Error("Missing three-role chooser");
-    const bounds = getLineMenuAreaBounds(chooser);
-
-    expect(bounds.slice(0, 3)).toEqual([
-      { x: 0, y: 340, width: 833, height: 980 },
-      { x: 833, y: 340, width: 833, height: 980 },
-      { x: 1666, y: 340, width: 834, height: 980 },
-    ]);
-    expect(bounds[3]).toEqual({ x: 100, y: 1360, width: 2300, height: 326 });
-  });
-
-  it("keeps OSM tasks in a 2×2 grid and gives three navigation actions a footer", () => {
-    const menu = LINE_RICH_MENU_BY_KEY.get("OSM_PATIENT_OSM_HOSPITAL");
-    if (!menu) throw new Error("Missing multi-role OSM menu");
-    const bounds = getLineMenuAreaBounds(menu);
-    const primaryGrid = bounds.slice(0, 4);
-    const footer = bounds.slice(4);
-
-    expect(new Set(primaryGrid.map(({ x }) => x)).size).toBe(2);
-    expect(new Set(primaryGrid.map(({ y }) => y)).size).toBe(2);
-    expect(primaryGrid.map(({ y }) => y)).toEqual([314, 314, 682, 682]);
-    expect(footer).toHaveLength(3);
-    expect(footer.map(({ y }) => y)).toEqual([1050, 1050, 1050]);
-    expect(footer.every(({ height }) => height === 636)).toBe(true);
-  });
-
-  it("keeps four Patient multi-role navigation actions in a 2×2 footer", () => {
-    const menu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
-    if (!menu) throw new Error("Missing three-role Patient menu");
-    const footer = getLineMenuAreaBounds(menu).slice(5);
-
-    expect(footer).toHaveLength(4);
-    expect(new Set(footer.map(({ x }) => x)).size).toBe(2);
-    expect(new Set(footer.map(({ y }) => y)).size).toBe(2);
-    expect(footer.map(({ y }) => y)).toEqual([1174, 1174, 1438, 1438]);
-    expect(footer.every(({ width, height }) => width === 1194 && height === 248)).toBe(true);
+  it("gives one and two actions larger cards than denser menus", () => {
+    const size = (key: string): number => {
+      const menu = LINE_RICH_MENU_BY_KEY.get(key);
+      if (!menu) throw new Error(`Missing menu ${key}`);
+      return getLineMenuAreaBounds(menu)[0]?.width ?? 0;
+    };
+    expect(size("UNLINKED")).toBe(size("HOSPITAL_DIRECT"));
+    expect(size("HOSPITAL_DIRECT")).toBeGreaterThan(size("CHOOSER_PATIENT_OSM"));
+    expect(size("CHOOSER_PATIENT_OSM")).toBeGreaterThan(size("PATIENT_DIRECT"));
+    expect(size("PATIENT_DIRECT")).toBeGreaterThan(size("PATIENT_PATIENT_OSM_HOSPITAL"));
   });
 });

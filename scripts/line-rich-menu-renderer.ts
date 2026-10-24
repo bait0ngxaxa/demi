@@ -1,6 +1,7 @@
 import sharp from "sharp";
 
 import { assertBundledLineRichMenuFont } from "./line-rich-menu-font";
+import { renderLineRichMenuIcon, type LineRichMenuIcon } from "./line-rich-menu-icons";
 import type { LineMenuBounds } from "../src/modules/line/rich-menu/layout";
 
 export const LINE_RICH_MENU_CANVAS = { width: 2500, height: 1686 } as const;
@@ -17,7 +18,7 @@ const colors = {
 const thaiLabelLines: Readonly<Record<string, readonly string[]>> = {
   "เชื่อมบัญชี DEMI": ["เชื่อมบัญชี", "DEMI"],
   "ข้อมูลของฉัน": ["ข้อมูล", "ของฉัน"],
-  "งานโรงพยาบาล": ["งาน", "โรงพยาบาล"],
+  "งานโรงพยาบาล": ["งานโรง", "พยาบาล"],
   "ตรวจสอบนัดหมาย": ["ตรวจสอบ", "นัดหมาย"],
   "นัดหมายทั้งหมด": ["นัดหมาย", "ทั้งหมด"],
   "บันทึกสุขภาพ": ["บันทึก", "สุขภาพ"],
@@ -49,6 +50,7 @@ type MenuActionManifest = {
   label: string;
   kind: "uri" | "richmenuswitch" | "postback";
   intent: string | null;
+  icon: LineRichMenuIcon;
   bounds: LineMenuBounds;
 };
 
@@ -141,61 +143,28 @@ function isPrimaryAction(
   return menu.actions.length === 1 || index === 0;
 }
 
-function getActionFontSize(
-  menu: LineRichMenuAssetManifestEntry,
-  action: MenuActionManifest,
-  index: number,
-): number {
-  const primary = isPrimaryAction(menu, action, index);
-  const { width, height } = action.bounds;
-
-  if (primary && menu.key.startsWith("CHOOSER_") && action.kind === "richmenuswitch") {
-    return width < 1000 ? 140 : 170;
-  }
-  if (primary && (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_"))) {
-    return 112;
-  }
-  if (primary && height > 1000) return 202;
-  if (primary && width > 1800) return 186;
-  if (primary) return 164;
-  if (menu.key.startsWith("PATIENT_") || menu.key.startsWith("OSM_")) {
-    return 104;
-  }
-  if (width > 1800) return 148;
-  if (width > 1000) return 142;
-  return 132;
+function getActionFontSize(action: MenuActionManifest): number {
+  return action.bounds.width < 500 ? 104 : action.bounds.width < 800 ? 112 : 144;
 }
 
-export function getLineRichMenuActionLines(
-  label: string,
-  width?: number,
-  menuKey?: string,
-): readonly string[] {
-  if (
-    width !== undefined &&
-    width >= 700 &&
-    (menuKey?.startsWith("PATIENT_") || menuKey?.startsWith("OSM_"))
-  ) {
-    return [label];
-  }
-  if (label === "จัดการบัญชี" && width !== undefined && width > 1800) return [label];
+export function getLineRichMenuActionLines(label: string): readonly string[] {
   return thaiLabelLines[label] ?? [label];
 }
 
 function buildBaseSvg(menu: LineRichMenuAssetManifestEntry): string {
-  const actionRects = menu.actions.map((action, index) => {
+  const cards = menu.actions.map((action, index) => {
     const primary = isPrimaryAction(menu, action, index);
-    const fill = primary
-      ? colors.brand
-      : action.kind === "richmenuswitch"
-        ? colors.soft
-        : colors.surface;
-    const stroke = primary ? colors.canvas : colors.line;
-    const bounds = action.bounds;
-    return `<rect x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="${fill}" stroke="${stroke}" stroke-width="4"/>`;
+    const fill = primary ? colors.soft : colors.surface;
+    const { x, y, width, height } = action.bounds;
+    const iconSize = Math.min(260, Math.round(width * 0.24));
+    const icon = renderLineRichMenuIcon(
+      action.icon, x + (width - iconSize) / 2, y + Math.round(height * 0.055), iconSize, colors.brand,
+    );
+    // Stroke stays inside the shared rectangular LINE bounds. Corners are visual only.
+    return `<rect x="${x + 2}" y="${y + 2}" width="${width - 4}" height="${height - 4}" rx="${Math.round(width * 0.08)}" fill="${fill}" stroke="${colors.line}" stroke-width="4"/>${icon}`;
   }).join("");
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${LINE_RICH_MENU_CANVAS.width}" height="${LINE_RICH_MENU_CANVAS.height}" viewBox="0 0 ${LINE_RICH_MENU_CANVAS.width} ${LINE_RICH_MENU_CANVAS.height}"><rect width="2500" height="1686" fill="${colors.canvas}"/><rect width="2500" height="300" fill="${colors.brand}"/>${actionRects}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${LINE_RICH_MENU_CANVAS.width}" height="${LINE_RICH_MENU_CANVAS.height}" viewBox="0 0 2500 1686"><rect width="2500" height="1686" fill="${colors.canvas}"/>${cards}</svg>`;
 }
 
 export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEntry): Promise<Buffer> {
@@ -205,39 +174,43 @@ export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEnt
 
   overlays.push(await createTextOverlay(
     "DEMI",
-    { x: 100, y: 8, width: 2300, height: 58 },
-    { fontSize: 50, weight: "Bold", color: colors.surface },
+    { x: 64, y: 22, width: 320, height: 110 },
+    { fontSize: 86, weight: "Bold", color: colors.brand },
     { horizontal: 0, vertical: 2 },
     `${menu.key} brand label`,
   ));
   overlays.push(await createTextOverlay(
     menu.title,
-    { x: 100, y: 70, width: 2300, height: 132 },
-    { fontSize: 98, weight: "Semi-Bold", color: colors.surface },
+    { x: 440, y: 0, width: 1620, height: 120 },
+    { fontSize: 86, weight: "Semi-Bold", color: colors.ink },
     { horizontal: 16, vertical: 2 },
     `${menu.key} title`,
   ));
   overlays.push(await createTextOverlay(
     menu.context,
-    { x: 100, y: 204, width: 2300, height: 86 },
-    { fontSize: 58, weight: "Medium", color: colors.surface },
+    { x: 440, y: 114, width: 1620, height: 80 },
+    { fontSize: 56, weight: "Medium", color: colors.brand },
     { horizontal: 24, vertical: 2 },
     `${menu.key} context`,
   ));
 
-  for (const [index, action] of menu.actions.entries()) {
-    const primary = isPrimaryAction(menu, action, index);
-    const fontSize = getActionFontSize(menu, action, index);
+  for (const action of menu.actions) {
+    const fontSize = getActionFontSize(action);
     const style: LineMenuTextStyle = {
       fontSize,
-      weight: primary ? "Bold" : "Semi-Bold",
-      color: primary ? colors.surface : colors.ink,
+      weight: "Semi-Bold",
+      color: colors.ink,
     };
     overlays.push(await createTextOverlay(
-      getLineRichMenuActionLines(action.label, action.bounds.width, menu.key).join("\n"),
-      action.bounds,
+      getLineRichMenuActionLines(action.label).join("\n"),
+      {
+        x: action.bounds.x,
+        y: action.bounds.y + Math.round(action.bounds.height * 0.34),
+        width: action.bounds.width,
+        height: Math.floor(action.bounds.height * 0.64),
+      },
       style,
-      { horizontal: 64, vertical: 24 },
+      { horizontal: 24, vertical: 8 },
       `${menu.key} action “${action.label}”`,
     ));
   }
