@@ -26,6 +26,7 @@ describe("DEMI LINE Messaging API boundary", () => {
       { type: "richmenuswitch", label: "งาน อสม.", richMenuAliasId: "d17j1_o_po", data: LINE_WORKSPACE_SWITCH_MARKER },
     ]);
     expect(payload.size).toEqual({ width: 2500, height: 1686 });
+    expect(payload.selected).toBe(true);
   });
 
   it("projects the Patient appointment action as an exact Rich Menu postback", () => {

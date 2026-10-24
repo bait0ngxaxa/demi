@@ -118,6 +118,8 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
 describe("serialized MINI context issuance", () => {
   beforeEach(() => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
+    vi.stubEnv("IDENTITY_HASH_SECRET", "synthetic-line-issuance-test-secret-only");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -147,13 +149,13 @@ describe("serialized MINI context issuance", () => {
   });
 
   it.each([
-    ["unlink committed first", { binding: binding({ unlinkedAt: NOW, lifecycleVersion: 3 }) }],
-    ["relink advanced the generation", { binding: binding({ lifecycleVersion: 3 }) }],
-    ["the LINE locator changed", { binding: binding({ lineUserId: `U${"b".repeat(32)}` }) }],
-    ["Patient SELF eligibility was removed", { patient: { patientProfile: { hospitalRelationships: [] } } }],
-    ["the canonical Patient actor was removed", { actor: { id: USER_ID, personId: PERSON_ID, status: "ACTIVE", roles: [], memberships: [], osmHospitalRelationships: [] } }],
+    ["unlink committed first", () => ({ binding: binding({ unlinkedAt: NOW, lifecycleVersion: 3 }) })],
+    ["relink advanced the generation", () => ({ binding: binding({ lifecycleVersion: 3 }) })],
+    ["the LINE locator changed", () => ({ binding: binding({ lineUserId: `U${"b".repeat(32)}` }) })],
+    ["Patient SELF eligibility was removed", () => ({ patient: { patientProfile: { hospitalRelationships: [] } } })],
+    ["the canonical Patient actor was removed", () => ({ actor: { id: USER_ID, personId: PERSON_ID, status: "ACTIVE", roles: [], memberships: [], osmHospitalRelationships: [] } })],
   ] as const)("denies when %s and commits no MINI observation", async (_label, overrides) => {
-    const { observed, dependencies } = setup(overrides);
+    const { observed, dependencies } = setup(overrides());
     expect(await codeOf(issueLineWorkflowContext(eligibility, dependencies))).toBe("WORKFLOW_INELIGIBLE");
     expect(observed).not.toHaveBeenCalled();
   });

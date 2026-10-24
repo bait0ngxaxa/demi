@@ -460,13 +460,15 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const roundAchievementUnavailable = "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง";
 
     // Header counts: both relationships are counted, only the Program becomes a row.
-    for (const sheet of [dashboard, service]) {
-      expect(cells(sheet, 2, 1, 6)).toEqual(["จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล", 2, "เบาหวาน (DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ทั้งหมด", 1]);
-      expect(cells(sheet, 3, 1, 6)).toEqual(["ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program", 1, "กลุ่มเสี่ยง (Pre-DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ACTIVE / COMPLETED", "0 / 1"]);
+    for (const [sheet, countRow] of [[dashboard, 2], [service, 3]] as const) {
+      expect(cells(sheet, countRow, 1, 6)).toEqual(["จำนวนเคส", 2, "เบาหวาน (DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ทั้งหมด", 1]);
+      expect(cells(sheet, countRow + 1, 1, 6)).toEqual(["ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program", 1, "กลุ่มเสี่ยง (Pre-DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ACTIVE / COMPLETED", "0 / 1"]);
     }
 
     const identity = ["ทดสอบสมชาย", `รายงาน${suffix}`, `HN-${suffix}`, 4, `ทดสอบอสม ทดสอบ${suffix} (มอบหมายปัจจุบัน)`, startedOn];
-    expect(cells(dashboard, 9, 1, 46)).toEqual([
+    expect(dashboard.columnCount).toBe(43);
+    expect(service.columnCount).toBe(65);
+    expect(cells(dashboard, 9, 1, 43)).toEqual([
       1, ...identity,
       // Before: CVD %, HbA1c, DTX, BW, BMI, height, waist, systolic, diastolic.
       22, 8.2, 180, 80, 31.2, 160, 95, 140, 90,
@@ -479,10 +481,9 @@ describe("report pipeline end to end (P1 Part D)", () => {
       125, 74, 0.44,
       // After: completion date, CVD %, HbA1c, DTX, BW, BMI (round 2 height 161 cm), waist, systolic, diastolic.
       completedOn, 14, 6.9, 118, 72, 27.8, 88, 128, 82,
-      "COMPLETED", programId, 1,
     ]);
 
-    expect(cells(service, 9, 1, 70)).toEqual([
+    expect(cells(service, 9, 1, 65)).toEqual([
       1, ...identity, completedOn,
       // Before DTX/BW, PAM, PROMs, confidence ruler, exercise before; After DTX/BW, exercise after; follow-ups > 70%.
       // R2: PAM score = the PAM total; PROMs = มีปัญหา/ไม่มีปัญหา (Q6).
@@ -496,15 +497,16 @@ describe("report pipeline end to end (P1 Part D)", () => {
       today, 7, 0.88, "ไม่มีแหล่งข้อมูลในระบบ", "ปรับ", "", "", "ไม่มี",
       today, 9, 1, "ไม่มีแหล่งข้อมูลในระบบ", "", "ไม่ปรับ", "", "ไม่มี",
       today, 4, 0.44, "ไม่มีแหล่งข้อมูลในระบบ", "", "ไม่ปรับ", "", "ไม่มี",
-      "COMPLETED", programId, 1, 2, 4,
     ]);
 
     // Exactly one Program row: the rest of the template's data-entry grid stays empty (Dashboard rows 10–29,
-    // รายงานการจัดบริการ rows 10–30), notes start below it, and the outside Patient appears nowhere.
+    // รายงานการจัดบริการ rows 10–30), native guidance stays in place, and the outside Patient appears nowhere.
     for (const [sheet, gridEnd] of [[dashboard, 29], [service, 30]] as const) {
       for (let rowNumber = 10; rowNumber <= gridEnd + 1; rowNumber += 1) expect(sheet.getRow(rowNumber).getCell(1).value ?? null).toBeNull();
-      expect(sheet.getRow(gridEnd + 2).getCell(1).value).toBe("หมายเหตุ");
+      expect(sheet.getRow(gridEnd + 2).getCell(1).value ?? null).toBeNull();
     }
+    expect(service.getCell("AH31").value).toBe("หมายเหตุ");
+    expect(service.getCell("AI35").value).toContain("ติดตามประมาณ 2-4 ครั้ง/โปรแกรม");
     for (const sheet of [dashboard, service]) {
       sheet.eachRow((row) => row.eachCell((cell) => expect(String(cell.value ?? "")).not.toContain("ทดสอบนอกโปรแกรม")));
     }

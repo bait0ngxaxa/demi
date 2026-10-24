@@ -3,6 +3,7 @@ import { HospitalContentCategory, HospitalContentStatus, HospitalStatus, Members
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { HOSPITAL_CONTENT_IMAGE_LIMIT } from "@/modules/hospital-content/domain/hospital-content";
 import { getPatientHospitalContent as detail, listPatientHospitalContent as list } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
 import { getHospitalContentImageSignedUrl, removeHospitalContentImage, reorderHospitalContentImages, uploadHospitalContentImage } from "@/modules/hospital-content/services/hospital-content-image-service";
 import { getHospitalWorkContent, listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
@@ -530,18 +531,18 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
         expect(stored).toHaveLength(1); expect(stored[0].contentSha256).toBe(sha256(otherPng)); expect(stored[0].id).not.toBe(imageId);
       } finally { errors.mockRestore(); }
     });
-    it("keeps the five-image limit, owner authority and draft-only rules around replay", async () => {
-      const { publisher, hospitalId, contentId } = await setup(); const storage = memoryStorage(); const nonces = [0, 1, 2, 3, 4].map(() => randomUUID());
+    it("keeps the three-image limit, owner authority and draft-only rules around replay", async () => {
+      const { publisher, hospitalId, contentId } = await setup(); const storage = memoryStorage(); const nonces = Array.from({ length: HOSPITAL_CONTENT_IMAGE_LIMIT }, () => randomUUID());
       const member = await owner(hospitalId, [Role.HOSPITAL], MembershipType.MEMBER); const foreignOwner = await owner(await hospital());
       for (const nonce of nonces) await upload(publisher, contentId, nonce, png, "image/png", { storage });
       const replayAtLimit = await upload(publisher, contentId, nonces[0], png, "image/png", { storage });
       expect(replayAtLimit).toEqual({ imageId: (await rows(contentId))[0].id, replay: true });
       await expect(upload(publisher, contentId, randomUUID(), png, "image/png", { storage })).rejects.toBeInstanceOf(ValidationError);
-      expect(storage.removed).toEqual([storage.uploaded[5]]);
+      expect(storage.removed).toEqual([storage.uploaded[HOSPITAL_CONTENT_IMAGE_LIMIT]]);
       for (const outsider of [member, foreignOwner]) await expect(upload(outsider, contentId, nonces[0], png, "image/png", { storage })).rejects.toBeInstanceOf(NotFoundError);
       await db.hospitalContent.update({ where: { id: contentId }, data: { status: HospitalContentStatus.PUBLISHED, firstPublishedAt: now, latestPublishedAt: now } });
       await expect(upload(publisher, contentId, nonces[0], png, "image/png", { storage })).rejects.toBeInstanceOf(ConflictError);
-      expect(await rows(contentId)).toHaveLength(5); expect(storage.uploaded).toHaveLength(6);
+      expect(await rows(contentId)).toHaveLength(HOSPITAL_CONTENT_IMAGE_LIMIT); expect(storage.uploaded).toHaveLength(HOSPITAL_CONTENT_IMAGE_LIMIT + 1);
     });
   });
 });
