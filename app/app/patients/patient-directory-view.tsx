@@ -38,23 +38,13 @@ type PatientDirectoryViewProps = {
   canAssignOsm?: boolean;
 };
 
-type PatientDirectoryTaskMode = "screening" | "followup" | "service";
+type PatientDirectoryTaskMode = "service";
 
 const taskPresentation: Record<PatientDirectoryTaskMode, {
   title: string;
   description: string;
   selectionAction: string;
 }> = {
-  screening: {
-    title: "คัดกรองผู้ป่วย",
-    description: "เลือกผู้ป่วยเพื่อบันทึกการคัดกรองในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง",
-    selectionAction: "บันทึกการคัดกรอง",
-  },
-  followup: {
-    title: "บันทึกติดตาม",
-    description: "เลือกผู้ป่วยเพื่อบันทึกการติดตามในโรงพยาบาลที่คุณมีสิทธิ์เข้าถึง",
-    selectionAction: "บันทึกการติดตาม",
-  },
   service: {
     title: "จัดบริการผู้ป่วย",
     description: "เลือกผู้ป่วยเพื่อเปิดขั้นตอนจัดบริการถัดไปตามสถานะการดูแล",
@@ -112,17 +102,12 @@ function PatientDirectoryList({
       >
         {items.map((item) => {
           const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
-          const href = taskMode === "screening"
-            ? `${relationshipPath}/screenings/new`
-            : taskMode === "followup"
-              ? `${relationshipPath}/followups/new`
-              : relationshipPath;
 
           return (
             <li key={item.patientHospitalRelationshipId}>
               <Link
                 className="group block px-5 py-5 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-focus-ring sm:px-7"
-                href={href}
+                href={relationshipPath}
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
                   <div className="min-w-0">
@@ -263,10 +248,6 @@ export function PatientDirectoryView({
               {scopes.length > 1 ? (
                 <Form action="" className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
                   {taskMode ? <input name="task" type="hidden" value={taskMode} /> : null}
-                  <input name="lookupType" type="hidden" value={lookupType} />
-                  {value ? <input name="value" type="hidden" value={value} /> : null}
-                  {classificationFilter !== "ALL" ? <input name="classification" type="hidden" value={classificationFilter} /> : null}
-                  {selfRegistrationFilter !== "ALL" ? <input name="selfRegistration" type="hidden" value={selfRegistrationFilter} /> : null}
                   <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:min-w-80">
                     <span className="sr-only">เลือกโรงพยาบาล</span>
                     <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">

@@ -13,6 +13,7 @@ import {
   projectOsmTaskLinks,
   projectWorkHome,
   projectWorkHomeTiles,
+  projectWorkNavigationOrder,
 } from "./work-home-projection";
 
 const hospitalA = "11111111-1111-4111-8111-111111111111";
@@ -70,22 +71,20 @@ const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
 const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
 const ownerRequests = ["/app/patients/service-requests", "/app/patients/service-catalog"];
-// Home links follow the same Work navigation destinations and section order.
+// Home pins core care and OWNER tools before remaining Work navigation destinations.
 const ownerTiles = (id: string, areas = false) => [
   appointmentsAt(id),
   withHospital("/app/patients", id),
+  withHospital("/app/hospitals/reporting", id),
+  withHospital("/app/workforce", id),
+  withHospital("/app/hospitals/knowledge", id),
   withHospital("/app/patients?task=service", id),
-  withHospital("/app/patients?task=screening", id),
-  withHospital("/app/patients?task=followup", id),
   withHospital("/app/appointments/new", id),
   withHospital("/app/patients/provision", id),
   withHospital("/app/patients/activation", id),
-  withHospital("/app/hospitals/reporting", id),
   ...(areas ? ["/app/hospitals/areas"] : []),
   withHospital("/app/hospitals/content", id),
   withHospital("/app/hospitals/contacts", id),
-  withHospital("/app/workforce", id),
-  withHospital("/app/hospitals/knowledge", id),
   withHospital("/app/hospitals/contact", id),
   ...(areas ? [withHospital("/app/hospitals/network", id)] : []),
 ];
@@ -137,8 +136,6 @@ const cases: Case[] = [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
       withHospital("/app/patients?task=service", hospitalA),
-      withHospital("/app/patients?task=screening", hospitalA),
-      withHospital("/app/patients?task=followup", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -208,8 +205,6 @@ const cases: Case[] = [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
       withHospital("/app/patients?task=service", hospitalA),
-      withHospital("/app/patients?task=screening", hospitalA),
-      withHospital("/app/patients?task=followup", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -220,6 +215,16 @@ const cases: Case[] = [
 ];
 
 describe("work home projection per actor", () => {
+  it("keeps reporting, workforce and publishing visible for OWNER within eight tiles", () => {
+    const subject = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.OWNER)] });
+    const { home } = project(subject, [workspace(hospitalA)]);
+    expect(home.tiles.length).toBeLessThanOrEqual(8);
+    expect(home.tiles.map(({ href }) => href)).toEqual(expect.arrayContaining([
+      withHospital("/app/hospitals/reporting", hospitalA),
+      withHospital("/app/workforce", hospitalA),
+      withHospital("/app/hospitals/knowledge", hospitalA),
+    ]));
+  });
   it("keeps MEMBER care, information and export links in the selected Hospital grid", () => {
     const subject = actor({
       roles: [Role.HOSPITAL],
@@ -232,8 +237,6 @@ describe("work home projection per actor", () => {
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
       withHospital("/app/patients?task=service", hospitalA),
-      withHospital("/app/patients?task=screening", hospitalA),
-      withHospital("/app/patients?task=followup", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -272,29 +275,19 @@ describe("work home projection per actor", () => {
     const { home } = project(subject, [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })]);
 
     expect(home.tiles).toHaveLength(WORK_HOME_MAX_TILES);
-    expect(home.tiles.map(({ href }) => href)).toEqual([
-      appointmentsAt(parentId),
-      screeningAt(parentId),
-      followupAt(parentId),
-      withHospital("/app/patients", parentId),
-      withHospital("/app/patients?task=service", parentId),
-      withHospital("/app/patients?task=screening", parentId),
-      withHospital("/app/patients?task=followup", parentId),
-      withHospital("/app/appointments/new", parentId),
-      "/app/more",
-    ]);
+    expect(home.tiles.map(({ href }) => href)).toEqual(cappedOwnerTiles(parentId, true));
     expect(home.tiles.at(-1)).toEqual({ href: "/app/more", icon: "more", label: "ทั้งหมด" });
   });
 
-  it("orders tiles by the same section order as the sidebar and More", () => {
+  it("keeps remaining items in navigation order after the seven priority destinations", () => {
     const subject = actor({ roles: [Role.HOSPITAL, Role.OSM], hospitalMemberships: [membership(parentId, MembershipType.OWNER)], osmHospitalRelationships: [osm(parentId)] });
-    const { navigation, home } = project(subject, [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })]);
+    const { navigation } = project(subject, [workspace(parentId, { networkRole: "PARENT", hasActiveDirectChildren: true })]);
     const sectionOf = (href: string): number => {
       const key = href.split("&")[0]?.replace(/\?hospitalId=.*$/u, "") ?? href;
       const group = navigation.find(({ workspace: groupWorkspace, items }) => groupWorkspace === "work" && items.some((item) => item.href === key));
       return group ? NAVIGATION_SECTION_ORDER.indexOf(group.id) : Number.POSITIVE_INFINITY;
     };
-    const ranks = home.tiles.filter(({ href }) => href !== "/app/more").map(({ href }) => sectionOf(href));
+    const ranks = projectWorkNavigationOrder(navigation).slice(7).map((href) => sectionOf(href));
 
     expect(ranks.every(Number.isFinite)).toBe(true);
     expect(ranks).toEqual([...ranks].sort((left, right) => left - right));
@@ -316,8 +309,6 @@ describe("work home projection per actor", () => {
   it("uses existing care and task glyphs for direct Hospital tasks", () => {
     const taskHrefs = [
       withHospital("/app/patients?task=service", hospitalA),
-      withHospital("/app/patients?task=screening", hospitalA),
-      withHospital("/app/patients?task=followup", hospitalA),
     ];
     const tiles = projectWorkHomeTiles(
       taskHrefs.map((href) => ({ href, label: "งานดูแล" })),
@@ -326,8 +317,6 @@ describe("work home projection per actor", () => {
 
     expect(tiles.map(({ href, icon }) => [href, icon])).toEqual([
       [taskHrefs[0], "care"],
-      [taskHrefs[1], "screening"],
-      [taskHrefs[2], "followup"],
     ]);
   });
 

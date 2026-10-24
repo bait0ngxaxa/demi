@@ -113,13 +113,11 @@ const patientAccount = ["account", "บัญชีและช่วยเห�
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
-const hospitalCareTasks = ["care-tasks", "งานดูแลผู้ป่วย", ["/app/patients?task=service", "/app/patients?task=screening", "/app/patients?task=followup", "/app/appointments/new"]] as const;
 const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
 const ownerAdministration = ["/app/users", "/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
-  hospitalCareTasks,
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
   staffRegistration,
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", ...(areas ? ["/app/hospitals/areas"] : []), "/app/hospitals/content", "/app/hospitals/contacts"]],
@@ -128,8 +126,7 @@ const ownerSections = (areas: boolean) => [
 ] as const;
 const memberSections = () => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients"]],
-  hospitalCareTasks,
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients?task=service", "/app/appointments/new"]],
   // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
@@ -209,8 +206,7 @@ const cases: Case[] = [
     // Request and service-catalog policies deny ADMIN, exactly as before UI-4.
     expected: { work: [
       ["home", null, ["/app"]],
-      ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm"]],
-      hospitalCareTasks,
+      ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
@@ -262,10 +258,11 @@ describe("UI-4 task-based navigation per actor", () => {
 
     expect(memberHrefs).toEqual(expect.arrayContaining([
       "/app/patients?task=service",
-      "/app/patients?task=screening",
-      "/app/patients?task=followup",
       "/app/appointments/new",
     ]));
+    expect(memberHrefs).not.toContain("/app/patients?task=screening");
+    expect(memberHrefs).not.toContain("/app/patients?task=followup");
+    for (const href of ownerAdministration) expect(memberHrefs).not.toContain(href);
     expect(memberHrefs).not.toEqual(expect.arrayContaining(ownerAdministration));
     expect(memberHrefs).not.toEqual(expect.arrayContaining([
       "/app/patients/provision",
@@ -292,6 +289,31 @@ describe("UI-4 task-based navigation per actor", () => {
     expect(projected).not.toContain("/app/patients?task=screening");
     expect(projected).not.toContain("/app/patients?task=followup");
     expect(projected).not.toContain("/app/appointments/new");
+  });
+
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("keeps direct Hospital %s care in one section within six items", (membershipType) => {
+    const groups = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, membershipType)] }));
+    const care = groups.filter(({ id }) => id === "care");
+    expect(care).toHaveLength(1);
+    expect(care[0]?.items.length).toBeLessThanOrEqual(6);
+  });
+
+  it("keeps all existing OSM care entries alongside OWNER tasks for a mixed account", () => {
+    const groups = project(actor({
+      roles: [Role.HOSPITAL, Role.OSM],
+      hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)],
+      osmHospitalRelationships: [osm(hospitalId)],
+    }));
+    expect(groups.find(({ id }) => id === "care")?.items.map(({ href }) => href)).toEqual([
+      "/app/appointments",
+      "/app/patients/assigned",
+      "/app/patients/assigned?task=screening",
+      "/app/patients/assigned?task=followup",
+      "/app/patients",
+      "/app/patients/assign-osm",
+      "/app/patients?task=service",
+      "/app/appointments/new",
+    ]);
   });
 
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {

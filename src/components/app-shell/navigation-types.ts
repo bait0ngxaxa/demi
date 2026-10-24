@@ -11,7 +11,6 @@ export type NavigationSectionId =
   | "top-menu"
   | "home"
   | "care"
-  | "care-tasks"
   | "health-records"
   | "registration"
   | "review-queue"

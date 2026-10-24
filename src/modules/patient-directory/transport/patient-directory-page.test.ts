@@ -112,7 +112,7 @@ describe("Patient Directory page Hospital context", () => {
     );
   });
 
-  it.each(["screening", "followup", "service"] as const)("accepts the %s direct Hospital task mode", async (task) => {
+  it.each(["service"] as const)("accepts the %s direct Hospital task mode", async (task) => {
     const page = await PatientDirectoryPage({
       searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task }),
     });
@@ -124,9 +124,9 @@ describe("Patient Directory page Hospital context", () => {
     );
   });
 
-  it("ignores an invalid task without changing the directory query", async () => {
+  it.each(["import", "screening", "followup"])("ignores the %s task without changing the directory query", async (task) => {
     const page = await PatientDirectoryPage({
-      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "import" }),
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task }),
     });
 
     expect(page.props.taskMode).toBeNull();
@@ -142,7 +142,7 @@ describe("Patient Directory page Hospital context", () => {
     ]);
 
     const page = await PatientDirectoryPage({
-      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "screening" }),
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "service" }),
     });
 
     expect(page.props.taskMode).toBeNull();

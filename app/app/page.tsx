@@ -189,7 +189,7 @@ export default async function ApplicationPage(
 
   await scheduleCurrentLineAccountReconciliation();
 
-  // The grid follows the same task sections and order as the sidebar and the More page.
+  // Home ranks permitted navigation destinations with core care and OWNER tools first.
   const home = projectWorkHome(
     projection,
     navigation,

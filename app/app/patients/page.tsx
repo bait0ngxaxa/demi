@@ -39,7 +39,7 @@ type PatientDirectoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const patientDirectoryTaskModeSchema = z.enum(["screening", "followup", "service"]);
+const patientDirectoryTaskModeSchema = z.enum(["service"]);
 type PatientDirectoryTaskMode = z.infer<typeof patientDirectoryTaskModeSchema>;
 
 function firstSearchParam(value: string | string[] | undefined): string | undefined {

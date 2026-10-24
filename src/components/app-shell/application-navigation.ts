@@ -314,11 +314,7 @@ function projectWorkSections(
       assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
       canReadPatientCare && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
       canAssignOsm(actor) && { href: "/app/patients/assign-osm", label: "มอบหมาย อสม.", match: "prefix" },
-    ])),
-    ...section("care-tasks", "work", compact([
       canReadPatientCare && { href: "/app/patients?task=service", label: "จัดบริการ", match: "exact" },
-      canReadPatientCare && { href: "/app/patients?task=screening", label: "คัดกรองผู้ป่วย", match: "exact" },
-      canReadPatientCare && { href: "/app/patients?task=followup", label: "บันทึกติดตาม", match: "exact" },
       canReadPatientCare && { href: "/app/appointments/new", label: "นัดหมายใหม่", match: "exact" },
     ])),
     ...section("registration", "work", compact([

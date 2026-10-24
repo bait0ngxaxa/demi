@@ -13,7 +13,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { HomeShortcut } from "./home-shortcut-grid";
 
-export const WORK_HOME_MAX_TILES = 9;
+export const WORK_HOME_MAX_TILES = 8;
 
 const overflowTile: HomeShortcut = { href: "/app/more", icon: "more", label: "ทั้งหมด" };
 
@@ -42,14 +42,27 @@ function tileKey(href: string): string {
 }
 
 /**
- * UI-4: the tile order is the Work navigation order (NAVIGATION_SECTION_ORDER, then item order), keyed by pathname
- * plus its task mode. It only orders what the server projection already allowed; it never adds a destination.
+ * Home prioritizes core care and OWNER reporting/workforce/publishing before remaining navigation items.
+ * The order only ranks links already allowed by the projection; it never adds a destination.
  */
 export function projectWorkNavigationOrder(navigation: readonly ApplicationNavigationGroup[]): string[] {
-  return navigation
+  const navigationOrder = navigation
     .filter(({ workspace }) => workspace === undefined || workspace === "all" || workspace === "work")
     .sort((left, right) => compareNavigationSections(left.id, right.id))
     .flatMap(({ items }) => items.map(({ href }) => tileKey(href)));
+  const priority = [
+    "/app/appointments",
+    "/app/patients",
+    "/app/hospitals/reporting",
+    "/app/workforce",
+    "/app/hospitals/knowledge",
+    "/app/patients?task=service",
+    "/app/appointments/new",
+  ];
+  return [
+    ...priority.filter((href) => navigationOrder.includes(href)),
+    ...navigationOrder.filter((href) => !priority.includes(href)),
+  ];
 }
 
 export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationOrder: readonly string[]): HomeShortcut[] {

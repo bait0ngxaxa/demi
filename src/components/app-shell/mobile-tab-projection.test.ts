@@ -217,6 +217,8 @@ describe("server-projected mobile navigation", () => {
     expect(memberTabs[3]?.icon).toBe("care");
     expect(resolveActiveMobileTabId("/app/patients", "task=service", memberTabs)).toBe("service");
     expect(memberMoreHrefs).toContain("/app/hospitals/reporting/export");
+    expect(memberMoreHrefs).not.toContain("/app/patients?task=screening");
+    expect(memberMoreHrefs).not.toContain("/app/patients?task=followup");
   });
 
   it("does not project Hospital operations for a suspended Hospital", () => {

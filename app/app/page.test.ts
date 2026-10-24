@@ -127,8 +127,9 @@ describe("application home workspace routing", () => {
     const html = await renderHome(staff(type));
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html.indexOf(`/app/patients?hospitalId=${hospitalId}`)).toBeLessThan(html.indexOf("ข้อมูลบัญชีและสิทธิ์"));
-    expect(html).toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
-    expect(html).toContain(`/app/patients/activation?hospitalId=${hospitalId}`);
+    for (const path of ["/app/hospitals/reporting", "/app/workforce", "/app/hospitals/knowledge"]) {
+      expect(section(html, "work-home-menu-heading")).toContain(`href="${path}?hospitalId=${hospitalId}"`);
+    }
     expect(html).toContain('href="/app/patients/service-requests"');
     expect(html).not.toContain('/app/patients/access-requests');
     expect(html).toContain("ไม่จำกัดเฉพาะโรงพยาบาลที่เลือก");

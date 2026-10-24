@@ -23,7 +23,7 @@ import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/p
 import { getPatientClassificationPageContext } from "@/modules/patient-classification/services/patient-classification-query-service";
 import type { PatientClassificationPageContext } from "@/modules/patient-classification/services/patient-classification-query-service";
 import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
-import type { PatientProgramPageContext, PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
+import type { PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
 import { getProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
 import type { ProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -113,9 +113,9 @@ function roundProgressLabel(
     return "โหลดความคืบหน้าไม่ได้";
   }
 
-  const nextRound = overview.rounds.find((round) => round.state !== "COMPLETED");
-  if (nextRound) return `ครั้งที่ ${nextRound.roundNumber}/6`;
-  return overview.rounds.length === 6 ? "ครั้งที่ 6/6" : "ข้อมูลรอบไม่ครบ";
+  if (overview.rounds.length !== 6) return "ข้อมูลรอบไม่ครบ";
+  const completedRounds = overview.rounds.filter((round) => round.state === "COMPLETED").length;
+  return `จัดบริการแล้ว ${completedRounds}/6`;
 }
 
 function roundProgressVariant(
@@ -153,7 +153,7 @@ function PatientSummary({
           <dd className="mt-1 break-words font-semibold text-text">{patient.hospital.name}</dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-xs font-semibold text-text-muted sm:text-sm">การจัดประเภท</dt>
+          <dt className="text-xs font-semibold text-text-muted sm:text-sm">สถานะผู้ป่วย</dt>
           <dd className="mt-1"><StatusBadge variant={classification ? "info" : "neutral"}>{getPatientClassificationLabel(classification?.classification)}</StatusBadge></dd>
         </div>
         <div className="min-w-0">
@@ -399,60 +399,26 @@ export default async function PatientDetailPage({
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
 
-  let classificationContext: PatientClassificationPageContext;
-  try {
-    classificationContext = await getPatientClassificationPageContext(
-      actor,
-      relationshipId,
-      undefined,
-      { includeHistory: tab === "profile" },
-    );
-  } catch (error: unknown) {
-    if (error instanceof NotFoundError) {
-      notFound();
-    }
-
-    if (error instanceof ForbiddenError) {
-      redirect("/app");
-    }
-
-    throw error;
-  }
-
-  let baselineNavigation: PatientBaselineNavigationState;
-  try {
-    baselineNavigation = await getPatientBaselineNavigationState(actor, relationshipId);
-  } catch (error: unknown) {
-    if (error instanceof NotFoundError) {
-      notFound();
-    }
-
-    if (error instanceof ForbiddenError) {
-      redirect("/app");
-    }
-
-    throw error;
-  }
-
-  let programContext: PatientProgramPageContext;
-  try {
-    programContext = await getPatientProgramPageContext(
-      actor,
-      relationshipId,
-      undefined,
-      { includeHistory: tab === "history" },
-    );
-  } catch (error: unknown) {
-    if (error instanceof NotFoundError) {
-      notFound();
-    }
-
-    if (error instanceof ForbiddenError) {
-      redirect("/app");
-    }
-
-    throw error;
-  }
+  const [classificationContext, baselineNavigation, programContext] = await Promise.all([
+    getPatientClassificationPageContext(actor, relationshipId, undefined, { includeHistory: tab === "profile" })
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundError) notFound();
+        if (error instanceof ForbiddenError) redirect("/app");
+        throw error;
+      }),
+    getPatientBaselineNavigationState(actor, relationshipId)
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundError) notFound();
+        if (error instanceof ForbiddenError) redirect("/app");
+        throw error;
+      }),
+    getPatientProgramPageContext(actor, relationshipId, undefined, { includeHistory: tab === "history" })
+      .catch((error: unknown) => {
+        if (error instanceof NotFoundError) notFound();
+        if (error instanceof ForbiddenError) redirect("/app");
+        throw error;
+      }),
+  ]);
 
   const latestProgram = programContext.active ?? programContext.latest ?? programContext.history[0] ?? null;
   let roundsOverview: ProgramRoundsOverview | null = null;
@@ -466,15 +432,7 @@ export default async function PatientDetailPage({
         roundsError = true;
       }
     } catch (error: unknown) {
-      if (error instanceof NotFoundError) {
-        notFound();
-      }
-
-      if (error instanceof ForbiddenError) {
-        redirect("/app");
-      }
-
-      if (error instanceof InfrastructureError) {
+      if (error instanceof NotFoundError || error instanceof ForbiddenError || error instanceof InfrastructureError) {
         roundsError = true;
       } else {
         throw error;

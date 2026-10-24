@@ -88,7 +88,7 @@ function isDirectHospitalCareItem(item: ApplicationNavigationItem): boolean {
   if (pathname !== "/app/patients") return false;
 
   const task = new URLSearchParams(query).get("task");
-  return task === null || task === "service" || task === "screening" || task === "followup";
+  return task === null || task === "service";
 }
 
 function careActionDescription(item: ApplicationNavigationItem): string {
@@ -98,8 +98,6 @@ function careActionDescription(item: ApplicationNavigationItem): string {
 
   const task = new URLSearchParams(item.href.split("?", 2)[1] ?? "").get("task");
   if (task === "service") return "เลือกผู้ป่วยเพื่อดูขั้นตอนจัดบริการถัดไป";
-  if (task === "screening") return "เลือกผู้ป่วยเพื่อบันทึกการคัดกรอง";
-  if (task === "followup") return "เลือกผู้ป่วยเพื่อบันทึกการติดตาม";
   return "เปิดงานดูแลผู้ป่วยในโรงพยาบาลนี้";
 }
 
@@ -119,7 +117,7 @@ function projectHospitalCareActions(
   const hasDirectPatientScope = hasDirectHospitalPatientReadScope(actor, workspace.hospitalId);
   const hasOsmAppointmentScope = isActiveOsmAtHospital(actor, workspace.hospitalId);
 
-  return navigationItemsForSections(navigation, ["care", "care-tasks"])
+  return navigationItemsForSections(navigation, ["care"])
     .filter((item) => hasDirectPatientScope
       ? isDirectHospitalCareItem(item)
       : hasOsmAppointmentScope && item.href === "/app/appointments")

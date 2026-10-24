@@ -36,7 +36,7 @@ const result: PatientDirectoryPage = {
   selfRegistrationFilter: "SELF_REGISTERED",
 };
 
-function render(taskMode: "screening" | "followup" | "service" | null): string {
+function render(taskMode: "service" | null): string {
   return renderToStaticMarkup(<PatientDirectoryView
     scopes={[directScope, { ...directScope, hospitalId: "44444444-4444-4444-8444-444444444444", hospitalName: "โรงพยาบาล ข" }]}
     selectedScope={directScope}
@@ -53,8 +53,6 @@ function render(taskMode: "screening" | "followup" | "service" | null): string {
 
 describe("Hospital patient directory task modes", () => {
   it.each([
-    ["screening", `/app/patients/${patientId}/screenings/new`, "คัดกรองผู้ป่วย"],
-    ["followup", `/app/patients/${patientId}/followups/new`, "บันทึกติดตาม"],
     ["service", `/app/patients/${patientId}`, "จัดบริการผู้ป่วย"],
   ] as const)("routes %s to its existing next step", (taskMode, href, title) => {
     const html = render(taskMode);
@@ -65,19 +63,29 @@ describe("Hospital patient directory task modes", () => {
   });
 
   it("preserves task, Hospital, search, filters and pagination in directory navigation", () => {
-    const html = render("screening");
+    const html = render("service");
 
-    expect(html).toContain('name="task" value="screening"');
+    expect(html).toContain('name="task" value="service"');
     expect(html).toContain('name="hospitalId" value="11111111-1111-4111-8111-111111111111"');
     expect(html).toContain('name="value" value="HN-001"');
-    expect(html).toContain('name="classification" value="RISK"');
-    expect(html).toContain('name="selfRegistration" value="SELF_REGISTERED"');
+    expect(html).toContain('<option value="RISK" selected="">');
+    expect(html).toContain('<option value="SELF_REGISTERED" selected="">');
     expect(html).toContain(
-      'href="/app/patients?hospitalId=11111111-1111-4111-8111-111111111111&amp;lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=2&amp;classification=RISK&amp;selfRegistration=SELF_REGISTERED&amp;task=screening"',
+      'href="/app/patients?hospitalId=11111111-1111-4111-8111-111111111111&amp;lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=2&amp;classification=RISK&amp;selfRegistration=SELF_REGISTERED&amp;task=service"',
     );
     expect(html).toContain(
-      'href="/app/patients?hospitalId=11111111-1111-4111-8111-111111111111&amp;lookupType=HOSPITAL_NUMBER&amp;task=screening"',
+      'href="/app/patients?hospitalId=11111111-1111-4111-8111-111111111111&amp;lookupType=HOSPITAL_NUMBER&amp;task=service"',
     );
+  });
+
+  it("resets search and filters when switching Hospital while keeping the service task", () => {
+    const html = render("service");
+    const switchForm = html.match(/<form[^>]*>[\s\S]*?<\/form>/u)?.[0] ?? "";
+    expect(switchForm).toContain('name="hospitalId"');
+    expect(switchForm).toContain('name="task" value="service"');
+    for (const name of ["lookupType", "value", "classification", "selfRegistration", "page"]) {
+      expect(switchForm).not.toContain(`name="${name}"`);
+    }
   });
 
   it("returns to ordinary directory presentation without a valid task", () => {

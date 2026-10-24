@@ -417,7 +417,7 @@ describe("Patient detail page", () => {
     expect(containsString(page, "ดูโปรแกรมที่จบแล้ว")).toBe(true);
     expect(primaryActionCount(page)).toBe(1);
     expect(containsString(page, "เสร็จสิ้นแล้ว")).toBe(true);
-    expect(containsString(page, "ครั้งที่ 6/6")).toBe(true);
+    expect(containsString(page, "จัดบริการแล้ว 6/6")).toBe(true);
   });
 
   it("uses the active Program summary without implying a Baseline prerequisite", async () => {
@@ -435,6 +435,8 @@ describe("Patient detail page", () => {
 
     expect(containsString(page, "กำลังดำเนินการ")).toBe(true);
     expect(containsString(page, "เริ่มครั้งที่ 1")).toBe(true);
+    expect(containsString(page, "จัดบริการแล้ว 0/6")).toBe(true);
+    expect(containsString(page, "สถานะผู้ป่วย")).toBe(true);
     expect(containsString(page, "ข้อมูลตั้งต้นแนะนำสำหรับการดูแล แต่ไม่ใช่เงื่อนไขของการเปิดโปรแกรม")).toBe(true);
     expect(containsString(page, "/rounds/1")).toBe(true);
     expect(containsString(page, "ไม่จำเป็นต้องทำตามลำดับ")).toBe(false);
@@ -488,9 +490,10 @@ describe("Patient detail page", () => {
     expect(primaryActionCount(page)).toBe(1);
     expect(containsString(page, expectedLabel)).toBe(true);
     expect(containsString(page, expectedHref)).toBe(true);
+    expect(containsString(page, `จัดบริการแล้ว ${states.filter((state) => state === "COMPLETED").length}/6`)).toBe(true);
   });
 
-  it("falls back to the rounds overview when its summary cannot be loaded", async () => {
+  it.each([new InfrastructureError("rounds unavailable"), new NotFoundError(), new ForbiddenError()])("falls back to the rounds overview when its summary cannot be loaded (%s)", async (error) => {
     const active = programProjection();
     mockedGetPatientProgramPageContext.mockResolvedValue(programContext({
       active,
@@ -498,13 +501,16 @@ describe("Patient detail page", () => {
       canOpen: false,
       canManage: true,
     }));
-    mockedGetProgramRoundsOverview.mockRejectedValue(new InfrastructureError("rounds unavailable"));
+    mockedGetProgramRoundsOverview.mockRejectedValue(error);
 
     const page = await renderPage();
 
     expect(primaryActionCount(page)).toBe(1);
     expect(containsString(page, "ดูการจัดบริการทั้งหมด")).toBe(true);
     expect(containsString(page, "ยังโหลดความคืบหน้ารอบไม่ได้")).toBe(true);
+    expect(containsString(page, "/programs/current-program/rounds")).toBe(true);
+    expect(mockedNotFound).not.toHaveBeenCalled();
+    expect(mockedRedirect).not.toHaveBeenCalled();
   });
 
   it("renders the existing Program open control as the only primary action when Baseline is not actionable", async () => {
@@ -642,6 +648,53 @@ describe("Patient detail page", () => {
     });
     const memberPage = await renderPage("manage");
     expect(containsString(memberPage, "/assignment")).toBe(false);
+  });
+
+  it("starts Baseline and Program context loads while classification is still pending", async () => {
+    let releaseClassification = (): void => {};
+    const gate = new Promise<void>((resolve) => { releaseClassification = resolve; });
+    mockedGetPatientClassificationPageContext.mockImplementationOnce(async () => {
+      await gate;
+      return {
+        patient: {
+          patientProfileId: patient.patientProfileId,
+          patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+          displayName: patient.displayName,
+          hospitalName: patient.hospital.name,
+        },
+        current: null,
+        history: [],
+        canManage: true,
+      };
+    });
+    const loading = renderPage();
+    try {
+      await vi.waitFor(() => {
+        expect(mockedGetPatientBaselineNavigationState).toHaveBeenCalledOnce();
+        expect(mockedGetPatientProgramPageContext).toHaveBeenCalledOnce();
+      });
+    } finally {
+      releaseClassification();
+    }
+    expect(await loading).toBeDefined();
+  });
+
+  describe.each([
+    ["classification", mockedGetPatientClassificationPageContext],
+    ["baseline", mockedGetPatientBaselineNavigationState],
+    ["program", mockedGetPatientProgramPageContext],
+  ] as const)("%s context authorization", (_name, load) => {
+    it("keeps NotFound mapped to the safe not-found path", async () => {
+      load.mockRejectedValueOnce(new NotFoundError());
+      await expect(renderPage()).rejects.toThrow("NEXT_NOT_FOUND");
+      expect(mockedNotFound).toHaveBeenCalledOnce();
+    });
+
+    it("keeps Forbidden mapped to the application redirect", async () => {
+      load.mockRejectedValueOnce(new ForbiddenError());
+      await expect(renderPage()).rejects.toThrow("NEXT_REDIRECT");
+      expect(mockedRedirect).toHaveBeenCalledWith("/app");
+    });
   });
 
   it("uses the safe not-found path for an inaccessible Hospital relationship", async () => {

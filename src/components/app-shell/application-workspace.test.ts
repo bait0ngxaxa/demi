@@ -72,8 +72,6 @@ describe("application workspace projection", () => {
       `/app/appointments?hospitalId=${hospitalId}`,
       `/app/patients?hospitalId=${hospitalId}`,
       `/app/patients?task=service&hospitalId=${hospitalId}`,
-      `/app/patients?task=screening&hospitalId=${hospitalId}`,
-      `/app/patients?task=followup&hospitalId=${hospitalId}`,
       `/app/appointments/new?hospitalId=${hospitalId}`,
       `/app/workforce?hospitalId=${hospitalId}`,
       `/app/hospitals/content?hospitalId=${hospitalId}`,
@@ -136,8 +134,7 @@ describe("application workspace projection", () => {
 
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/patients?task=service&hospitalId=${hospitalId}`);
-    expect(hrefs).toContain(`/app/patients?task=screening&hospitalId=${hospitalId}`);
-    expect(hrefs).toContain(`/app/patients?task=followup&hospitalId=${hospitalId}`);
+    expect(hrefs.some((href) => href.includes("task=screening") || href.includes("task=followup"))).toBe(false);
     expect(hrefs).toContain(`/app/appointments/new?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/hospitals/content?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/hospitals/contacts?hospitalId=${hospitalId}`);

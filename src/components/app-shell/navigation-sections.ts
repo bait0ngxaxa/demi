@@ -1,15 +1,14 @@
 import type { ApplicationWorkspaceContext, NavigationSectionId } from "./navigation-types";
 
 /**
- * UI-4 single source of truth for navigation task categories. Every surface (desktop sidebar, mobile More,
- * Work Home grid) renders sections in this order; `account` is last and the sidebar pins it to the bottom.
+ * UI-4 single source of truth for desktop sidebar and mobile More section order; `account` is last.
+ * Work Home uses this order after its core care and OWNER shortcut priorities.
  */
 export const NAVIGATION_SECTION_ORDER: readonly NavigationSectionId[] = [
   "primary",
   "top-menu",
   "home",
   "care",
-  "care-tasks",
   "health-records",
   "registration",
   "review-queue",
@@ -34,8 +33,6 @@ export function getNavigationSectionLabel(
       return "เมนูด่วน";
     case "care":
       return workspace === "personal" ? "การดูแลของฉัน" : "ดูแลผู้ป่วย";
-    case "care-tasks":
-      return "งานดูแลผู้ป่วย";
     case "health-records":
       return "บันทึกสุขภาพ";
     case "registration":
