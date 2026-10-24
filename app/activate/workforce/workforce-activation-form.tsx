@@ -74,6 +74,7 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const [previewFailedToken, setPreviewFailedToken] = useState<string | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const terminalStatusRef = useRef<HTMLDivElement>(null);
   const purpose = preview?.status === "SUCCESS" ? preview.purpose : "ACTIVATION";
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     WorkforceCompletionActionState,
@@ -106,6 +107,21 @@ export function WorkforceActivationForm(): React.JSX.Element {
 
     formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [state]);
+
+  useEffect(() => {
+    if (
+      state.status === "SUCCESS" ||
+      (state.status === "ERROR" && (state.code === "CONFLICT" || state.code === "FORBIDDEN"))
+    ) {
+      terminalStatusRef.current?.focus();
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (preview?.status === "ERROR") {
+      terminalStatusRef.current?.focus();
+    }
+  }, [preview]);
 
   useEffect(() => {
     if (!token) {
@@ -150,11 +166,21 @@ export function WorkforceActivationForm(): React.JSX.Element {
         : "บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้";
 
     return (
-      <section className="mt-8 space-y-4" aria-labelledby="workforce-activation-success-title">
-        <Alert variant="success">
-          <h3 className="font-semibold" id="workforce-activation-success-title">{title}</h3>
-          <p className="mt-1">{body}</p>
-        </Alert>
+      <section className="mt-8 space-y-4">
+        <div
+          aria-describedby="workforce-activation-success-description"
+          aria-live="off"
+          aria-labelledby="workforce-activation-success-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="success">
+            <h3 className="font-semibold" id="workforce-activation-success-title">{title}</h3>
+            <p className="mt-1" id="workforce-activation-success-description">{body}</p>
+          </Alert>
+        </div>
         <Link className={buttonClassName({ className: "w-full" })} href="/login">
           ไปหน้าเข้าสู่ระบบ
         </Link>
@@ -196,12 +222,22 @@ export function WorkforceActivationForm(): React.JSX.Element {
 
     return (
       <section className="mt-8 space-y-4">
-        <Alert variant="warning">
-          <p className="font-semibold">
-            {state.code === "CONFLICT" ? "ลิงก์นี้ใช้ไม่ได้แล้ว" : "ไม่สามารถใช้ลิงก์นี้ได้"}
-          </p>
-          <p className="mt-1">{message}</p>
-        </Alert>
+        <div
+          aria-describedby="workforce-activation-terminal-description"
+          aria-live="off"
+          aria-labelledby="workforce-activation-terminal-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="warning">
+            <p className="font-semibold" id="workforce-activation-terminal-title">
+              {state.code === "CONFLICT" ? "ลิงก์นี้ใช้ไม่ได้แล้ว" : "ไม่สามารถใช้ลิงก์นี้ได้"}
+            </p>
+            <p className="mt-1" id="workforce-activation-terminal-description">{message}</p>
+          </Alert>
+        </div>
         <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
           ไปหน้าเข้าสู่ระบบ
         </Link>
@@ -251,11 +287,16 @@ export function WorkforceActivationForm(): React.JSX.Element {
   if (preview.status === "ERROR") {
     return (
       <div
-        className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950"
+        aria-describedby="workforce-link-error-description"
+        aria-live="off"
+        aria-labelledby="workforce-link-error-title"
+        className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        ref={terminalStatusRef}
         role="alert"
+        tabIndex={-1}
       >
-        <p className="font-semibold">ไม่สามารถใช้ลิงก์นี้ได้</p>
-        <p className="mt-1">{preview.message}</p>
+        <p className="font-semibold" id="workforce-link-error-title">ไม่สามารถใช้ลิงก์นี้ได้</p>
+        <p className="mt-1" id="workforce-link-error-description">{preview.message}</p>
         <p className="mt-1">ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
       </div>
     );

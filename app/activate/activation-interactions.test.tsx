@@ -220,6 +220,7 @@ describe("Patient activation form", () => {
       expect(container.textContent).toContain("ลิงก์นี้ใช้ไม่ได้แล้ว");
       expect(container.textContent).toContain("อาจหมดอายุหรือถูกใช้ไปแล้ว");
       expect(container.textContent).not.toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
+      expect(document.activeElement).toBe(container.querySelector('[role="status"]'));
       expect(container.querySelector("form")).toBeNull();
       expect(mocks.notifyError).not.toHaveBeenCalled();
       expect(mocks.notifyWarning).not.toHaveBeenCalled();
@@ -230,10 +231,14 @@ describe("Patient activation form", () => {
 
       await submitActivation();
 
+      const status = container.querySelector('[role="status"]');
       expect(container.textContent).toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
       expect(container.textContent).toContain("บัญชีของคุณพร้อมใช้งานแล้ว");
       expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
       expect(container.querySelector("form")).toBeNull();
+      expect(status?.getAttribute("aria-live")).toBe("off");
+      expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+      expect(document.activeElement).toBe(status);
       expect(mocks.completePatient).toHaveBeenCalledTimes(1);
       expect(mocks.notifySuccess).not.toHaveBeenCalled();
     });
@@ -251,6 +256,8 @@ describe("Patient activation form", () => {
 
       expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
       expect(container.textContent).toContain("ขอลิงก์ใหม่จากโรงพยาบาล");
+      expect(container.querySelector('[role="alert"]')?.getAttribute("aria-live")).toBe("off");
+      expect(document.activeElement).toBe(container.querySelector('[role="alert"]'));
       expect(container.querySelector("form")).toBeNull();
     });
   });
@@ -306,6 +313,10 @@ describe("Patient activation form", () => {
     expect(container.textContent).toContain(successTitle);
     expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
     expect(container.querySelector("form")).toBeNull();
+    const status = container.querySelector('[role="status"]');
+    expect(status?.getAttribute("aria-live")).toBe("off");
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(document.activeElement).toBe(status);
     expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);
   });
 
@@ -354,6 +365,8 @@ describe("Patient activation form", () => {
 
     expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
     expect(container.textContent).toContain("ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล");
+    expect(container.querySelector('[role="alert"]')?.getAttribute("aria-live")).toBe("off");
+    expect(document.activeElement).toBe(container.querySelector('[role="alert"]'));
     expect(container.querySelector("form")).toBeNull();
   });
 });

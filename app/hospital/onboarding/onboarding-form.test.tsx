@@ -202,6 +202,10 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(container.textContent).toContain("รอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ");
     expect(container.querySelector('a[href="/login"]')?.textContent).toContain("กลับไปหน้าเข้าสู่ระบบ");
     expect(container.querySelector("form")).toBeNull();
+    const status = container.querySelector('[role="status"]');
+    expect(status?.getAttribute("aria-live")).toBe("off");
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(document.activeElement).toBe(status);
     expect(container.textContent).not.toContain("ได้รับอนุมัติแล้ว");
   });
 

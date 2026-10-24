@@ -58,6 +58,8 @@ export function SelfRegistrationForm(): React.JSX.Element {
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegistrationField, string>>>({});
   const lookupInputRef = useRef<HTMLInputElement>(null);
   const completionFormRef = useRef<HTMLFormElement>(null);
+  const terminalStatusRef = useRef<HTMLDivElement>(null);
+  const completionErrorRef = useRef<HTMLDivElement>(null);
   const focusErrorsRef = useRef(false);
 
   useEffect(() => {
@@ -73,6 +75,22 @@ export function SelfRegistrationForm(): React.JSX.Element {
 
     completionFormRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [fieldErrors]);
+
+  useEffect(() => {
+    if (
+      completionStatus === "SUCCESS" ||
+      completionStatus === "REJECTED" ||
+      (completionStatus === "IDLE" && outcome?.outcome === "ALREADY_ACTIVE")
+    ) {
+      terminalStatusRef.current?.focus();
+    }
+  }, [completionStatus, outcome]);
+
+  useEffect(() => {
+    if (completionStatus === "IDLE" && completionMessage) {
+      completionErrorRef.current?.focus();
+    }
+  }, [completionMessage, completionStatus]);
 
   function clearCompletionData(): void {
     setNationalId("");
@@ -218,7 +236,13 @@ export function SelfRegistrationForm(): React.JSX.Element {
       }
 
       if (parsed.data.status === "ERROR" && response.status === 400) {
-        setCompletionMessage("กรุณาตรวจสอบชื่อที่ยืนยันและรหัสผ่านให้ถูกต้อง");
+        setCompletionMessage("ข้อมูลที่ส่งไม่ถูกต้อง กรุณาตรวจสอบข้อมูลที่กรอกแล้วลองอีกครั้ง");
+        return;
+      }
+
+      if (response.status === 400) {
+        clearCompletionData();
+        setCompletionStatus("UNCONFIRMED");
         return;
       }
 
@@ -243,13 +267,23 @@ export function SelfRegistrationForm(): React.JSX.Element {
 
   if (completionStatus === "SUCCESS") {
     return (
-      <section aria-labelledby="registration-success-title" className="mt-7 space-y-4">
-        <Alert variant="success">
-          <h3 className="font-semibold" id="registration-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
-          <p className="mt-1">
-            บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
-          </p>
-        </Alert>
+      <section className="mt-7 space-y-4">
+        <div
+          aria-describedby="registration-success-description"
+          aria-live="off"
+          aria-labelledby="registration-success-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="success">
+            <h3 className="font-semibold" id="registration-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
+            <p className="mt-1" id="registration-success-description">
+              บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
+            </p>
+          </Alert>
+        </div>
         <Link className={buttonClassName({ className: "w-full" })} href="/login">
           ไปหน้าเข้าสู่ระบบ
         </Link>
@@ -284,7 +318,20 @@ export function SelfRegistrationForm(): React.JSX.Element {
   if (completionStatus === "REJECTED") {
     return (
       <section className="mt-7 space-y-4">
-        <Alert variant="danger">{completionMessage}</Alert>
+        <div
+          aria-describedby="registration-rejected-description"
+          aria-live="off"
+          aria-labelledby="registration-rejected-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="alert"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="danger">
+            <h3 className="font-semibold" id="registration-rejected-title">ไม่สามารถลงทะเบียนได้</h3>
+            <p className="mt-1" id="registration-rejected-description">{completionMessage}</p>
+          </Alert>
+        </div>
         <button
           className={buttonClassName({ variant: "secondary", className: "w-full" })}
           onClick={startOver}
@@ -302,12 +349,22 @@ export function SelfRegistrationForm(): React.JSX.Element {
   if (outcome?.outcome === "ALREADY_ACTIVE") {
     return (
       <section aria-labelledby="already-active-heading" className="mt-7 space-y-4">
-        <Alert variant="info">
-          <h3 className="font-semibold" id="already-active-heading">บัญชีนี้เปิดใช้งานแล้ว</h3>
-          <p className="mt-1">
-            กรุณาเข้าสู่ระบบ หากลืมรหัสผ่านหรือต้องการตรวจสอบบัญชี ให้ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน
-          </p>
-        </Alert>
+        <div
+          aria-describedby="already-active-description"
+          aria-live="off"
+          aria-labelledby="already-active-heading"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="info">
+            <h3 className="font-semibold" id="already-active-heading">บัญชีนี้เปิดใช้งานแล้ว</h3>
+            <p className="mt-1" id="already-active-description">
+              กรุณาเข้าสู่ระบบ หากลืมรหัสผ่านหรือต้องการตรวจสอบบัญชี ให้ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน
+            </p>
+          </Alert>
+        </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm font-semibold">
           <Link className="min-h-11 inline-flex items-center text-brand-strong underline underline-offset-4" href="/login">
             เข้าสู่ระบบ
@@ -489,7 +546,26 @@ export function SelfRegistrationForm(): React.JSX.Element {
         ) : null}
       </div>
 
-      {completionMessage ? <Alert variant="danger">{completionMessage}</Alert> : null}
+      {completionMessage ? (
+        <div
+          aria-describedby="registration-completion-error-description"
+          aria-live="off"
+          aria-labelledby="registration-completion-error-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={completionErrorRef}
+          role="alert"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="danger">
+            <h3 className="font-semibold" id="registration-completion-error-title">
+              ตรวจสอบข้อมูลก่อนส่งอีกครั้ง
+            </h3>
+            <p className="mt-1" id="registration-completion-error-description">
+              {completionMessage}
+            </p>
+          </Alert>
+        </div>
+      ) : null}
 
       <button
         aria-busy={busy || undefined}

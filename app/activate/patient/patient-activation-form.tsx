@@ -82,6 +82,7 @@ export function PatientActivationForm(): React.JSX.Element {
   const [detailsFailedToken, setDetailsFailedToken] = useState<string | null>(null);
   const [detailsAttempt, setDetailsAttempt] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
+  const terminalStatusRef = useRef<HTMLDivElement>(null);
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<
     PatientActivationCompletionActionState,
     FormData
@@ -115,6 +116,18 @@ export function PatientActivationForm(): React.JSX.Element {
   }, [state]);
 
   useEffect(() => {
+    if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
+      terminalStatusRef.current?.focus();
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (detailsToken === token && details?.status === "INVALID") {
+      terminalStatusRef.current?.focus();
+    }
+  }, [details, detailsToken, token]);
+
+  useEffect(() => {
     if (!token) {
       return;
     }
@@ -145,13 +158,23 @@ export function PatientActivationForm(): React.JSX.Element {
 
   if (state.status === "SUCCESS") {
     return (
-      <section className="mt-8 space-y-4" aria-labelledby="patient-activation-success-title">
-        <Alert variant="success">
-          <h3 className="font-semibold" id="patient-activation-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
-          <p className="mt-1">
-            บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
-          </p>
-        </Alert>
+      <section className="mt-8 space-y-4">
+        <div
+          aria-describedby="patient-activation-success-description"
+          aria-live="off"
+          aria-labelledby="patient-activation-success-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="success">
+            <h3 className="font-semibold" id="patient-activation-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
+            <p className="mt-1" id="patient-activation-success-description">
+              บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
+            </p>
+          </Alert>
+        </div>
         <Link className={buttonClassName({ className: "w-full" })} href="/login">
           ไปหน้าเข้าสู่ระบบ
         </Link>
@@ -181,10 +204,22 @@ export function PatientActivationForm(): React.JSX.Element {
   if (state.status === "ERROR" && state.code === "CONFLICT") {
     return (
       <section className="mt-8 space-y-4">
-        <Alert variant="warning">
-          <p className="font-semibold">ลิงก์นี้ใช้ไม่ได้แล้ว</p>
-          <p className="mt-1">ลิงก์อาจหมดอายุหรือถูกใช้ไปแล้ว กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่</p>
-        </Alert>
+        <div
+          aria-describedby="patient-activation-terminal-description"
+          aria-live="off"
+          aria-labelledby="patient-activation-terminal-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={terminalStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="warning">
+            <p className="font-semibold" id="patient-activation-terminal-title">ลิงก์นี้ใช้ไม่ได้แล้ว</p>
+            <p className="mt-1" id="patient-activation-terminal-description">
+              ลิงก์อาจหมดอายุหรือถูกใช้ไปแล้ว กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่
+            </p>
+          </Alert>
+        </div>
         <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">
           ไปหน้าเข้าสู่ระบบ
         </Link>
@@ -233,9 +268,17 @@ export function PatientActivationForm(): React.JSX.Element {
 
   if (visibleDetails.status === "INVALID") {
     return (
-      <div className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950" role="alert">
-        <p className="font-semibold">{visibleDetails.message}</p>
-        <p className="mt-1">ขอลิงก์ใหม่จากโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
+      <div
+        aria-describedby="patient-link-error-description"
+        aria-live="off"
+        aria-labelledby="patient-link-error-title"
+        className="mt-8 rounded-[14px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+        ref={terminalStatusRef}
+        role="alert"
+        tabIndex={-1}
+      >
+        <p className="font-semibold" id="patient-link-error-title">{visibleDetails.message}</p>
+        <p className="mt-1" id="patient-link-error-description">ขอลิงก์ใหม่จากโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
         <Link
           className="mt-3 inline-flex font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
           href="/login"

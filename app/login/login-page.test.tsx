@@ -26,6 +26,7 @@ describe("Login page entry points and recovery guidance", () => {
     const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
 
     expect(markup).toContain("ลืมรหัสผ่าน?");
+    expect(markup.indexOf("ลืมรหัสผ่าน?")).toBeLessThan(markup.indexOf("ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?"));
     expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน");
     expect(markup).toContain("ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?");
     expect(markup).toContain("ลงทะเบียนครั้งแรก");
@@ -43,19 +44,22 @@ describe("Login page entry points and recovery guidance", () => {
     expect(markup).not.toContain("ส่ง LINE");
   });
 
-  it("shows activation and reset query hints as presentation only", async () => {
+  it("keeps legacy query hints as neutral login guidance, not proof of completion", async () => {
     const activation = renderToStaticMarkup(await LoginPage({
       searchParams: Promise.resolve({ activated: "1" }),
     }));
-    expect(activation).toContain("เปิดใช้งานบัญชีแล้ว");
-    expect(activation).toContain("กรุณาเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้");
+    expect(activation).toContain("คำแนะนำสำหรับเข้าสู่ระบบ");
+    expect(activation).toContain("หากเพิ่งตั้งรหัสผ่าน");
+    expect(activation).not.toContain("เปิดใช้งานบัญชีแล้ว");
+    expect(activation).not.toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
     expect(mocks.redirect).not.toHaveBeenCalled();
 
     const reset = renderToStaticMarkup(await LoginPage({
       searchParams: Promise.resolve({ reset: "1" }),
     }));
-    expect(reset).toContain("ตั้งรหัสผ่านใหม่สำเร็จแล้ว");
-    expect(reset).toContain("กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ");
+    expect(reset).toContain("คำแนะนำสำหรับเข้าสู่ระบบ");
+    expect(reset).toContain("หากเพิ่งตั้งรหัสผ่าน");
+    expect(reset).not.toContain("ตั้งรหัสผ่านใหม่สำเร็จแล้ว");
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 

@@ -256,6 +256,10 @@ describe("public self-registration form", () => {
     expect(container.textContent).toContain("บัญชีของคุณพร้อมใช้งานแล้ว");
     expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
     expect(container.querySelector("form")).toBeNull();
+    const status = container.querySelector('[role="status"]');
+    expect(status?.getAttribute("aria-live")).toBe("off");
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(document.activeElement).toBe(status);
     expect(container.textContent).not.toContain("single-use-capability");
     expect(container.textContent).not.toContain("a-valid-password");
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -298,6 +302,65 @@ describe("public self-registration form", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("shows a focused generic validation summary and preserves correctable values on HTTP 400", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
+      .mockResolvedValueOnce(response({ status: "ERROR", message: "internal detail" }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, nationalId());
+    await submitForm();
+
+    const checkbox = container.querySelector<HTMLInputElement>("#registration-name-confirmed");
+    const password = container.querySelector<HTMLInputElement>("#registration-password");
+    const confirmation = container.querySelector<HTMLInputElement>("#registration-password-confirmation");
+    if (!checkbox || !password || !confirmation) throw new Error("Missing password setup fields");
+    await act(async () => checkbox.click());
+    setInput(password, "a-valid-password");
+    setInput(confirmation, "a-valid-password");
+    await submitForm();
+
+    const summary = container.querySelector('[role="alert"]');
+    expect(summary?.textContent).toContain("ตรวจสอบข้อมูลก่อนส่งอีกครั้ง");
+    expect(summary?.textContent).toContain("ตรวจสอบข้อมูลที่กรอกแล้วลองอีกครั้ง");
+    expect(summary?.textContent).not.toContain("internal detail");
+    expect(summary?.getAttribute("aria-live")).toBe("off");
+    expect(document.activeElement).toBe(summary);
+    expect(container.querySelector("form")).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>("#registration-name-confirmed")?.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>("#registration-password")?.value).toBe("a-valid-password");
+    expect(container.querySelector<HTMLInputElement>("#registration-password-confirmation")?.value).toBe("a-valid-password");
+    expect(container.querySelector<HTMLInputElement>("#registration-password")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("treats a success body paired with HTTP 400 as unconfirmed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
+      .mockResolvedValueOnce(response({ status: "SUCCESS" }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, nationalId());
+    await submitForm();
+
+    const checkbox = container.querySelector<HTMLInputElement>("#registration-name-confirmed");
+    const password = container.querySelector<HTMLInputElement>("#registration-password");
+    const confirmation = container.querySelector<HTMLInputElement>("#registration-password-confirmation");
+    if (!checkbox || !password || !confirmation) throw new Error("Missing password setup fields");
+    await act(async () => checkbox.click());
+    setInput(password, "a-valid-password");
+    setInput(confirmation, "a-valid-password");
+    await submitForm();
+
+    expect(container.textContent).toContain("ยังยืนยันผลการลงทะเบียนไม่ได้");
+    expect(container.textContent).not.toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
+    expect(container.querySelector("form")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not claim success for a rejected completion", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
@@ -321,6 +384,7 @@ describe("public self-registration form", () => {
     expect(container.textContent).toContain("ไม่สามารถลงทะเบียนได้");
     expect(container.textContent).not.toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
     expect(container.querySelector("form")).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector('[role="alert"]'));
     expect(container.querySelector('button[type="button"]')?.textContent).toContain("เริ่มตรวจสอบใหม่");
   });
 
@@ -366,6 +430,7 @@ describe("public self-registration form", () => {
 
     expect(container.textContent).toContain("บัญชีนี้เปิดใช้งานแล้ว");
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน");
+    expect(document.activeElement).toBe(container.querySelector('[role="status"]'));
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(container.querySelector('a[href="/recover"]')).not.toBeNull();
   });

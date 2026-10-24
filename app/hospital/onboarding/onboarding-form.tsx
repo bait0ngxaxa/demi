@@ -35,6 +35,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
   const [hospitalQuery, setHospitalQuery] = useState("");
   const [selectedHospitalId, setSelectedHospitalId] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const successStatusRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const changeHospitalButtonRef = useRef<HTMLButtonElement>(null);
   const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
@@ -86,15 +87,33 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
     formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [selectedHospital, state]);
 
+  useEffect(() => {
+    if (state.status === "SUCCESS") {
+      successStatusRef.current?.focus();
+    }
+  }, [state.status]);
+
   if (state.status === "SUCCESS") {
     return (
       <div className="space-y-6">
-        <Alert variant="success">
-          <h3 className="font-semibold">ส่งคำขอเรียบร้อยแล้ว</h3>
-          <p className="mt-2">
-            ระบบได้รับคำขอของคุณแล้ว กรุณารอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ
-          </p>
-        </Alert>
+        <div
+          aria-describedby="hospital-onboarding-success-description"
+          aria-live="off"
+          aria-labelledby="hospital-onboarding-success-title"
+          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+          ref={successStatusRef}
+          role="status"
+          tabIndex={-1}
+        >
+          <Alert role="none" variant="success">
+            <h3 className="font-semibold" id="hospital-onboarding-success-title">
+              ส่งคำขอเรียบร้อยแล้ว
+            </h3>
+            <p className="mt-2" id="hospital-onboarding-success-description">
+              ระบบได้รับคำขอของคุณแล้ว กรุณารอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ
+            </p>
+          </Alert>
+        </div>
         <Link
           className={buttonClassName({ variant: "secondary", className: "w-full sm:w-auto" })}
           href="/login"

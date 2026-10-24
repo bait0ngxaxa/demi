@@ -27,17 +27,9 @@ export default async function LoginPage({
   const query = await searchParams;
   const parsedReturnTo = loginReturnToSchema.safeParse(query.returnTo);
   const safeReturnTo = parsedReturnTo.success ? parsedReturnTo.data : null;
-  const completionHint = query.reset === "1"
-    ? {
-        title: "ตั้งรหัสผ่านใหม่สำเร็จแล้ว",
-        message: "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ",
-      }
-    : query.activated === "1"
-      ? {
-          title: "เปิดใช้งานบัญชีแล้ว",
-          message: "กรุณาเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้",
-        }
-      : null;
+  const loginHint = query.reset === "1" || query.activated === "1"
+    ? "หากเพิ่งตั้งรหัสผ่าน ให้ลองเข้าสู่ระบบด้วยรหัสผ่านนั้น หากยังเข้าสู่ระบบไม่ได้ กรุณาติดต่อโรงพยาบาลที่ดูแล"
+    : null;
   const access = await resolveCurrentActorAccess();
 
   if (access.status === "AUTHORIZED") {
@@ -84,14 +76,24 @@ export default async function LoginPage({
             ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบแทนเลขบัตรประชาชน
           </p>
 
-          {completionHint ? (
-            <Alert className="mt-5" variant="success">
-              <p className="font-semibold">{completionHint.title}</p>
-              <p className="mt-1">{completionHint.message}</p>
+          {loginHint ? (
+            <Alert className="mt-5" variant="info">
+              <p className="font-semibold">คำแนะนำสำหรับเข้าสู่ระบบ</p>
+              <p className="mt-1">{loginHint}</p>
             </Alert>
           ) : null}
 
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
+
+          <p className="mt-5 text-sm leading-6 text-muted">
+            ลืมรหัสผ่าน? ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน{" "}
+            <Link
+              className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
+              href="/recover"
+            >
+              ดูแนวทาง
+            </Link>
+          </p>
 
           <section aria-labelledby="login-entry-options-title" className="mt-8 border-t border-line pt-6">
             <h3 className="text-lg font-semibold leading-7 text-ink" id="login-entry-options-title">
@@ -126,16 +128,6 @@ export default async function LoginPage({
               </Link>
             </div>
           </section>
-
-          <p className="mt-5 text-sm leading-6 text-muted">
-            ลืมรหัสผ่าน? ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน{" "}
-            <Link
-              className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
-              href="/recover"
-            >
-              ดูแนวทาง
-            </Link>
-          </p>
 
           <p className="mt-8 text-sm leading-6 text-muted">
             การเข้าสู่ระบบไม่ได้เปิดให้ใช้ทุกส่วน ระบบจะแสดงเฉพาะงานที่บัญชีของคุณเข้าใช้ได้
