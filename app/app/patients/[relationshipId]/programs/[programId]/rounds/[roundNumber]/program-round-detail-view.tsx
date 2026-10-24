@@ -20,6 +20,7 @@ import {
   roundStepStatusLabel,
   ROUND_STATE_LABELS,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
+import { RoundStepTimeline } from "@/modules/patient-program-rounds/presentation/round-step-timeline";
 import { buildRoundReturnQuery } from "@/modules/patient-program-rounds/presentation/round-return-path";
 import {
   HealthPathTimeline,
@@ -59,14 +60,6 @@ const TOOL_KEYS: Partial<Record<RoundStepState["code"], ServiceOneToolKey>> = {
 };
 
 const linkClassName = "font-semibold text-brand-strong underline decoration-brand-muted underline-offset-4";
-
-function stepMarker(step: RoundStepState, index: number): string {
-  if (step.status === "DONE") {
-    return "✓";
-  }
-
-  return step.status === "SKIPPED" ? "–" : String(index + 1);
-}
 
 function stepBadgeVariant(step: RoundStepState): "success" | "warning" | "neutral" {
   return step.status === "DONE" ? "success" : step.status === "SKIPPED" ? "warning" : "neutral";
@@ -567,6 +560,16 @@ export function ProgramRoundDetailView({
     : roundsPath;
   const context: StepContext = { detail, editable, nextHref, nonces, programPath, roundPath, todayServiceDate };
   const target = { patientHospitalRelationshipId: relationshipId, patientProgramId: programId, roundNumber: detail.roundNumber };
+  const timeline = (
+    <RoundStepTimeline
+      completion={status.completion}
+      currentStep={currentStep}
+      hrefForStep={(code) => buildRoundStepPath(relationshipId, programId, detail.roundNumber, code)}
+      locked={status.state === "LOCKED"}
+      roundNumber={detail.roundNumber}
+      steps={status.steps}
+    />
+  );
 
   return (
     <div>
@@ -601,7 +604,7 @@ export function ProgramRoundDetailView({
           <Alert variant="info">บัญชีนี้อ่านข้อมูลครั้งนี้ได้ แต่ไม่มีสิทธิ์บันทึก ข้าม หรือจบบริการ</Alert>
         ) : null}
 
-        <nav aria-label="ขั้นตอนของครั้งนี้" className="space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-semibold text-text">
               {status.resolvedItems}/{status.totalItems} รายการ
@@ -618,86 +621,59 @@ export function ProgramRoundDetailView({
           >
             <div className="h-full rounded-full bg-action-primary" style={{ width: `${percent}%` }} />
           </div>
-          <ol className="flex flex-wrap gap-2">
-            {status.steps.map((item, index) => {
-              const current = item.code === currentStep;
+        </div>
 
-              return (
-                <li key={item.code}>
-                  <Link
-                    aria-current={current ? "step" : undefined}
-                    aria-label={`ขั้นตอนที่ ${index + 1} ${item.label}: ${roundStepStatusLabel(item)}`}
-                    className={`flex size-11 items-center justify-center rounded-full border text-sm font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring ${
-                      current
-                        ? "border-action-primary bg-action-primary text-white"
-                        : item.status === "DONE"
-                          ? "border-success bg-success-soft text-success"
-                          : item.status === "SKIPPED"
-                            ? "border-warning bg-warning-soft text-warning"
-                            : "border-border-strong bg-surface text-text"
-                    }`}
-                    href={buildRoundStepPath(relationshipId, programId, detail.roundNumber, item.code)}
-                    title={item.label}
-                  >
-                    {stepMarker(item, index)}
-                  </Link>
-                </li>
-              );
-            })}
-            <li>
-              <Link
-                aria-current={currentStep === ROUND_SUMMARY_STEP ? "step" : undefined}
-                className={`flex h-11 items-center justify-center rounded-full border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring ${
-                  currentStep === ROUND_SUMMARY_STEP
-                    ? "border-action-primary bg-action-primary text-white"
-                    : "border-border-strong bg-surface text-text"
-                }`}
-                href={buildRoundStepPath(relationshipId, programId, detail.roundNumber, ROUND_SUMMARY_STEP)}
-              >
-                สรุป
-              </Link>
-            </li>
-          </ol>
-        </nav>
-
-        <Panel>
-          <p className="text-sm text-text-muted">
-            ขั้นตอนที่ {step ? stepIndex + 1 : stepCount}/{stepCount}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
-              {step ? step.label : `สรุปและจบบริการครั้งที่ ${detail.roundNumber}`}
-            </h2>
-            {step ? <StatusBadge variant={stepBadgeVariant(step)}>{roundStepStatusLabel(step)}</StatusBadge> : null}
-          </div>
-          {step && step.items.length > 1 ? (
-            <p className="mt-2 text-sm text-text-muted">รายการ: {step.items.join(" · ")}</p>
-          ) : null}
-          {step?.code === "VITALS" && healthHistory ? <div className="mt-2">{healthHistory}</div> : null}
-
-          <div className="mt-5">
-            {step ? <StepContent context={context} step={step} /> : <RoundSummary context={context} />}
-          </div>
-
-          {step ? (
-            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                {step.status === "SKIPPED" ? (
-                  <p className="break-words text-sm text-text-muted">ข้ามแล้ว · เหตุผล: {roundSkipDescription(step)}</p>
-                ) : null}
-                {editable && step.skippable && step.status === "TODO" ? (
-                  <SkipStepControl nextHref={nextHref} stepCode={step.code} stepLabel={step.label} target={target} />
-                ) : null}
-                {editable && step.status === "SKIPPED" ? <UnskipStepControl stepCode={step.code} target={target} /> : null}
+        <div className="grid min-w-0 items-start gap-6 @5xl/workspace:grid-cols-[18rem_minmax(0,1fr)]">
+          <nav aria-label="ขั้นตอนบริการ" className="sticky top-6 hidden max-h-[calc(100dvh-3rem)] overflow-y-auto p-1 @5xl/workspace:block">
+            {timeline}
+          </nav>
+          <div className="min-w-0 space-y-6">
+            <details className="rounded-panel border border-border bg-surface p-4 @5xl/workspace:hidden" open={!editable}>
+              <summary className="min-h-11 cursor-pointer rounded-control py-3 text-sm font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
+                ขั้นตอนที่ {step ? stepIndex + 1 : stepCount}/{stepCount} · {step ? step.label : `สรุปและจบบริการครั้งที่ ${detail.roundNumber}`} · {step ? roundStepStatusLabel(step) : status.completion ? "บันทึกแล้ว" : status.state === "LOCKED" ? "ยังเปิดไม่ได้" : "ยังไม่ได้บันทึก"}
+              </summary>
+              {timeline}
+            </details>
+            <Panel>
+              <p className="text-sm text-text-muted">
+                ขั้นตอนที่ {step ? stepIndex + 1 : stepCount}/{stepCount}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
+                  {step ? step.label : `สรุปและจบบริการครั้งที่ ${detail.roundNumber}`}
+                </h2>
+                {step ? <StatusBadge variant={stepBadgeVariant(step)}>{roundStepStatusLabel(step)}</StatusBadge> : null}
               </div>
-              <Link className={buttonClassName({ variant: "secondary" })} href={nextHref}>
-                ขั้นตอนถัดไป
-              </Link>
-            </div>
-          ) : null}
-        </Panel>
+              {step && step.items.length > 1 ? (
+                <p className="mt-2 text-sm text-text-muted">รายการ: {step.items.join(" · ")}</p>
+              ) : null}
+              {step?.code === "VITALS" && healthHistory ? <div className="mt-2">{healthHistory}</div> : null}
 
-        <ExtraActivities context={context} />
+              <div className="mt-5">
+                {step ? <StepContent context={context} step={step} /> : <RoundSummary context={context} />}
+              </div>
+
+              {step ? (
+                <div className="mt-6 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-2">
+                    {step.status === "SKIPPED" ? (
+                      <p className="break-words text-sm text-text-muted">ข้ามแล้ว · เหตุผล: {roundSkipDescription(step)}</p>
+                    ) : null}
+                    {editable && step.skippable && step.status === "TODO" ? (
+                      <SkipStepControl nextHref={nextHref} stepCode={step.code} stepLabel={step.label} target={target} />
+                    ) : null}
+                    {editable && step.status === "SKIPPED" ? <UnskipStepControl stepCode={step.code} target={target} /> : null}
+                  </div>
+                  <Link className={buttonClassName({ variant: "secondary" })} href={nextHref}>
+                    ขั้นตอนถัดไป
+                  </Link>
+                </div>
+              ) : null}
+            </Panel>
+
+            <ExtraActivities context={context} />
+          </div>
+        </div>
 
         <Link className={buttonClassName({ variant: "secondary" })} href={roundsPath}>
           กลับไปภาพรวมครั้งที่ 1–6

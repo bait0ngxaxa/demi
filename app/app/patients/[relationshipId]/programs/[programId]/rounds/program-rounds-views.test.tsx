@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -108,7 +110,34 @@ describe("round overview cards (R1-D)", () => {
   });
 });
 
+function parseMarkup(markup: string): HTMLDivElement {
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  return container;
+}
+
 describe("round stepper (SR-D7)", () => {
+  it("uses labelled timelines and defaults mobile details according to editability", () => {
+    const editable = parseMarkup(renderDetail(1, "PAM"));
+    const details = editable.querySelector("details");
+    expect(details?.hasAttribute("open")).toBe(false);
+    expect(details?.querySelector("summary")?.textContent).toContain("ขั้นตอนที่ 3/9 · PAM · ยังไม่ได้บันทึก");
+    const timeline = details?.querySelector('ol[aria-label="ขั้นตอนของครั้งนี้"]');
+    expect(timeline?.querySelectorAll("li")).toHaveLength(9);
+    expect(timeline?.querySelector("li")?.textContent).toContain("สัญญาณชีพ");
+    expect(timeline?.querySelector('[aria-current="step"]')?.getAttribute("href")).toBe(`${roundPath(1)}?step=PAM`);
+    expect(timeline?.querySelector("li:last-child")?.textContent).toContain("สรุปและจบบริการครั้งที่ 1");
+    expect(editable.querySelector('a[title]')).toBeNull();
+    for (const markup of [
+      renderDetail(1, "SUMMARY", { roundCompletions: [completion(1)] }),
+      renderDetail(3, "VITALS"),
+      renderDetail(1, "VITALS", { status: "COMPLETED" }),
+      renderDetail(1, "VITALS", {}, false),
+    ]) {
+      expect(parseMarkup(markup).querySelector("details")?.hasAttribute("open")).toBe(true);
+    }
+  });
+
   it("embeds the vitals form with preferred name and occupation in round 1 and offers a reasoned skip", () => {
     const markup = renderDetail(1, "VITALS", {
       patientHospitalRelationship: { hospitalProfile: { occupation: null, preferredName: null, version: 2 } },

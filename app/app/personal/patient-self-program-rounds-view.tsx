@@ -2,13 +2,11 @@ import Link from "next/link";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
   formatRoundDate,
   HEALTH_PATH_TIMEPOINT_LABELS,
-  roundSkipDescription,
-  roundStepStatusLabel,
 } from "@/modules/patient-program-rounds/presentation/round-labels";
+import { RoundStepTimeline } from "@/modules/patient-program-rounds/presentation/round-step-timeline";
 import { RoundProgressSummary } from "@/modules/patient-program-rounds/presentation/round-progress";
 import { RoundVitalsValues } from "@/modules/patient-program-rounds/presentation/round-vitals-display";
 import {
@@ -85,23 +83,14 @@ export function PatientSelfProgramRoundsView({
                 </section>
               ) : null}
 
-              {round.status.state === "LOCKED" ? null : (
-                <ul className="mt-4 divide-y divide-border border-t border-border">
-                  {round.status.steps.map((step) => (
-                    <li className="flex flex-wrap items-center justify-between gap-2 py-3" key={step.code}>
-                      <span className="min-w-0">
-                        <span className="block font-medium text-text">{step.label}</span>
-                        {step.status === "SKIPPED" ? (
-                          <span className="mt-0.5 block break-words text-xs text-text-muted">เหตุผลที่ข้าม: {roundSkipDescription(step)}</span>
-                        ) : null}
-                      </span>
-                      <StatusBadge variant={step.status === "DONE" ? "success" : step.status === "SKIPPED" ? "warning" : "neutral"}>
-                        {roundStepStatusLabel(step)}
-                      </StatusBadge>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className="mt-4 border-t border-border pt-4">
+                <RoundStepTimeline
+                  completion={round.status.completion}
+                  locked={round.status.state === "LOCKED"}
+                  roundNumber={round.roundNumber}
+                  steps={round.status.steps}
+                />
+              </div>
 
               {round.followupId || (round.roundNumber === 2 && round.goalPlan.firstGoalPlanId) ? (
                 <p className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4 text-sm">

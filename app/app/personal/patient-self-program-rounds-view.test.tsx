@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -109,7 +111,12 @@ describe("Patient SELF round history", () => {
     expect(markup).toContain("เปรียบเทียบกับครั้งที่ 1");
     expect(markup).toContain("ครั้งที่ 4");
     // The Follow-up is not linked to a plan, so the plan review is not done.
-    expect(markup).toMatch(/ทบทวนแผนสุขภาพ<\/span><\/span><span[^>]*>ยังไม่ได้บันทึก/u);
+    const document = globalThis.document.createElement("div");
+    document.innerHTML = markup;
+    const timelines = document.querySelectorAll('ol[aria-label="ขั้นตอนของครั้งนี้"]');
+    expect(timelines).toHaveLength(6);
+    timelines.forEach((timeline) => expect(timeline.querySelector("a")).toBeNull());
+    expect(timelines[2].querySelectorAll("li")[1].textContent).toContain("ทบทวนแผนสุขภาพยังไม่ได้บันทึก");
     expect(markup).not.toContain("สมศรี");
     expect(markup).not.toContain("<form");
   });
