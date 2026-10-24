@@ -11,7 +11,7 @@ export const workforceContactPhoneSchema = z.string({ error: "กรุณาก
   .max(32, "เบอร์ติดต่อยาวเกินกำหนด")
   .regex(/^[0-9 -]+$/u, "เบอร์ติดต่อใช้ได้เฉพาะตัวเลข เว้นวรรค และขีด")
   .transform((value) => value.replace(/[ -]/gu, ""))
-  .pipe(z.string().regex(/^(?:0[689][0-9]{8}|0[0-9]{8})$/u, "กรุณากรอกเบอร์มือถือไทย 10 หลัก หรือเบอร์โทรศัพท์พื้นฐาน 9 หลัก"));
+  .pipe(z.string().regex(/^(?:0[689][0-9]{8}|0[2-57][0-9]{7})$/u, "กรุณากรอกเบอร์มือถือไทย 10 หลัก หรือเบอร์โทรศัพท์พื้นฐาน 9 หลัก"));
 
 export const personNameSchema = z.string().trim().min(1).max(120);
 

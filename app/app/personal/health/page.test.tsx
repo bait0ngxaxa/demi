@@ -9,7 +9,7 @@ import { getOwnLatestPatientGoalPlan, getOwnNextAppointmentForRelationship } fro
 import { listOwnActiveMedicationSummaries } from "@/modules/medications/services/personal-medication-query-service";
 import { listOwnPatientSelfMeasurements } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
 import { PATIENT_ACCESS_UNAVAILABLE } from "@/modules/patient-self/transport/patient-access-unavailable";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 import Page from "./page";
 import Loading from "./loading";
 import ErrorPage from "../error";
@@ -112,11 +112,20 @@ describe("PH-1 patient health page", () => {
     expect(renderToStaticMarkup(await Page())).toContain("ยังไม่มีโรงพยาบาลที่พร้อมแสดงข้อมูลสุขภาพ");
     expect(getOwnCurrentAssignedOsm).not.toHaveBeenCalled();
   });
-  it("uses loading and sanitized retry error states; data failures never masquerade as empty records", async () => {
+  it("uses loading and sanitized retry states; one failed source leaves the remaining summary visible", async () => {
     expect(renderToStaticMarkup(<Loading />)).toContain("กำลังโหลดข้อมูลสุขภาพ");
     const html = renderToStaticMarkup(<ErrorPage error={new Error("private data")} retry={() => undefined} />);
     expect(html).toContain("ลองอีกครั้ง"); expect(html).not.toContain("private data");
     vi.mocked(getOwnLatestStaffMeasurements).mockRejectedValue(new InfrastructureError());
-    await expect(Page()).rejects.toBeInstanceOf(InfrastructureError);
+    vi.mocked(getOwnNextAppointmentForRelationship).mockResolvedValue({ appointmentId: "appt", scheduledAt: date });
+    const partial = renderToStaticMarkup(await Page());
+    expect(partial).toContain("โหลดข้อมูลส่วนนี้ไม่สำเร็จ");
+    expect(partial).toContain("ข้อมูลไม่พร้อมแสดง");
+    expect(partial).toContain("สมชาย ใจดี");
+    expect(partial).toContain(`/app/personal/appointments/${id}/appt`);
+  });
+  it.each([new ForbiddenError(), new UnauthenticatedError()])("propagates authorization errors from a failed source", async (error) => {
+    vi.mocked(getOwnLatestStaffMeasurements).mockRejectedValue(error);
+    await expect(Page()).rejects.toBe(error);
   });
 });

@@ -19,6 +19,22 @@ describe("E4 appointment contact phone projection", () => {
     });
   });
 
+  it("gives network readers the Hospital phone only", () => {
+    expect(projectAppointmentContactPhones(source, "NETWORK_READ")).toEqual({
+      assignedOsmPhone: null,
+      hospitalPhone: "02-123-4567",
+      patientPhone: null,
+    });
+  });
+
+  it("returns no phone when no audience is authorized", () => {
+    expect(projectAppointmentContactPhones(source, "NONE")).toEqual({
+      assignedOsmPhone: null,
+      hospitalPhone: null,
+      patientPhone: null,
+    });
+  });
+
   it("treats blank numbers as missing", () => {
     expect(projectAppointmentContactPhones({ assignedOsmPhone: null, hospitalPhone: "  ", patientPhone: "" }, "ASSIGNED_OSM_OR_HOSPITAL_STAFF")).toEqual({
       assignedOsmPhone: null, hospitalPhone: null,

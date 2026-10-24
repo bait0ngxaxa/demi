@@ -54,10 +54,11 @@ describe("workforce contact phones", () => {
   it.each([
     ["081-234-5678", "0812345678"], [" 069 123 4567 ", "0691234567"],
     ["0912345678", "0912345678"], ["02-123-4567", "021234567"], ["053 123 456", "053123456"],
+    ["07-123-4567", "071234567"],
   ])("normalizes %s", (input, expected) => {
     expect(workforceContactPhoneSchema.parse(input)).toBe(expected);
   });
-  it.each([undefined, null, "", " ", "0712345678", "+66812345678", "181234567", "08123456789", "๐๘๑๒๓๔๕๖๗๘", "0812345678\n", "081\t2345678", "081\u200b2345678", "081\u202e2345678", "081\ufeff2345678", "081\ud8002345678", "(02)1234567"])("rejects %s", (input) => {
+  it.each([undefined, null, "", " ", "061234567", "081234567", "091234567", "012345678", "0212345678", "0712345678", "+66812345678", "181234567", "08123456789", "๐๘๑๒๓๔๕๖๗๘", "0812345678\n", "081\t2345678", "081\u200b2345678", "081\u202e2345678", "081\ufeff2345678", "081\ud8002345678", "(02)1234567"])("rejects %s", (input) => {
     expect(workforceContactPhoneSchema.safeParse(input).success).toBe(false);
   });
   it.each([hospitalMemberProvisionSchema, osmProvisionSchema])("requires a phone at provisioning", (schema) => {

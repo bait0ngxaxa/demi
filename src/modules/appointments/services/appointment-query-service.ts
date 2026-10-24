@@ -37,7 +37,7 @@ import {
   type AppointmentPatientSummary,
 } from "./appointment-access-service";
 import { loadAppointmentContactPhones } from "./appointment-contact-phone-service";
-import type { AppointmentContactPhones } from "../domain/appointment-contact-phones";
+import type { AppointmentContactAudience, AppointmentContactPhones } from "../domain/appointment-contact-phones";
 
 export type AppointmentQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -306,6 +306,19 @@ type AppointmentDetailRecord = Prisma.PatientAppointmentGetPayload<{
 
 function getDatabase(dependencies: AppointmentQueryDependencies): AppointmentQueryDatabase {
   return dependencies.database ?? getPrisma();
+}
+
+function appointmentContactAudienceForScope(scopes: {
+  patientSelf: boolean;
+  directHospital: boolean;
+  exactOsmAssignment: boolean;
+  networkRead: boolean;
+}): AppointmentContactAudience {
+  if (scopes.patientSelf) return "PATIENT_SELF";
+  if (scopes.directHospital) return "HOSPITAL_STAFF";
+  if (scopes.exactOsmAssignment) return "ASSIGNED_OSM_OR_HOSPITAL_STAFF";
+  if (scopes.networkRead) return "NETWORK_READ";
+  return "NONE";
 }
 
 function toDisplayName(person: {
@@ -623,7 +636,7 @@ export async function getAppointmentDetail(
     const contactPhones = await loadAppointmentContactPhones(
       database,
       access.patient.patientHospitalRelationshipId,
-      access.scopes.directHospital ? "HOSPITAL_STAFF" : access.scopes.exactOsmAssignment ? "ASSIGNED_OSM_OR_HOSPITAL_STAFF" : "PATIENT_SELF",
+      appointmentContactAudienceForScope(access.scopes),
     );
 
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,

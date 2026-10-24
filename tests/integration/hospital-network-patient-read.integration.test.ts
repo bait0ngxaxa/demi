@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
-import { getAppointmentHistory } from "@/modules/appointments/services/appointment-query-service";
+import { getAppointmentDetail, getAppointmentHistory } from "@/modules/appointments/services/appointment-query-service";
 import { listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
 import { transferHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { attachHospitalServiceArea, endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
@@ -154,6 +154,7 @@ async function cleanup(): Promise<void> {
   await db.userRole.deleteMany({ where: { userId: { in: users } } });
   await db.user.deleteMany({ where: { id: { in: users } } });
   await db.person.deleteMany({ where: { id: { in: people } } });
+  await db.hospitalContact.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospital.deleteMany({ where: { id: { in: hospitals } } });
   hospitals.length = 0;
   users.length = 0;
@@ -231,6 +232,8 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
 
   it("audits the network read of a Child Patient whose current OSM is someone else, even when the reader is an OSM there", async () => {
     const n = await network();
+    await db.hospitalContact.create({ data: { hospitalId: n.childId, phoneNumber: "02-123-4567" } });
+    await updateStaffPatientHospitalProfile(n.childOwner, n.relationshipId, { expectedVersion: 0, phoneNumber: "0812345678" }, db);
     async function osmAtChild(userId: string): Promise<void> {
       await db.userRole.upsert({ where: { userId_role: { userId, role: Role.OSM } }, update: {}, create: { userId, role: Role.OSM } });
       await db.osmHospitalRelationship.create({ data: { userId, hospitalId: n.childId, status: MembershipStatus.ACTIVE } });
@@ -247,10 +250,11 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
     users.push(ownPatient.userId);
     people.push(ownPatient.personId);
     await db.user.update({ where: { id: ownPatient.userId }, data: { status: UserStatus.ACTIVE, authSubject: randomUUID() } });
+    await db.osmHospitalRelationship.updateMany({ where: { userId: otherOsm.userId, hospitalId: n.childId }, data: { contactPhone: "0899999999" } });
     await assignOsmToPatient(n.childOwner, { patientHospitalRelationshipId: n.relationshipId, osmUserId: otherOsm.userId });
     await assignOsmToPatient(n.childOwner, { patientHospitalRelationshipId: ownPatient.relationshipId, osmUserId: n.parentOwner.userId });
     for (const patientHospitalRelationshipId of [n.relationshipId, ownPatient.relationshipId]) {
-      await createAppointment(n.childOwner, {
+      const appointment = await createAppointment(n.childOwner, {
         patientHospitalRelationshipId,
         submissionNonce: randomUUID(),
         scheduledAt: "2026-12-20T10:00:00+07:00",
@@ -259,6 +263,14 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
         locationType: "CLINIC",
         durationMinutes: 30,
       });
+      if (patientHospitalRelationshipId === n.relationshipId) {
+        const detail = await getAppointmentDetail(n.parentOwner, n.relationshipId, appointment.appointmentId);
+        expect(detail.contactPhones).toEqual({
+          assignedOsmPhone: null,
+          hospitalPhone: "02-123-4567",
+          patientPhone: null,
+        });
+      }
     }
     const readerAndOsm: ActorContext = {
       ...n.parentOwner,
