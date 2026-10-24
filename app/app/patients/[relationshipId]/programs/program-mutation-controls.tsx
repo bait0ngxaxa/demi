@@ -34,9 +34,13 @@ function ErrorFeedback({
 }
 
 export function PatientProgramOpenControl({
+  label = "เปิดโปรแกรม",
   relationshipId,
+  variant = "primary",
 }: {
+  label?: string;
   relationshipId: string;
+  variant?: "primary" | "secondary";
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramActionState, FormData>(
@@ -57,8 +61,8 @@ export function PatientProgramOpenControl({
     <div>
       <form action={action}>
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
-        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
-          {pending ? "กำลังเปิดโปรแกรม…" : "เปิดโปรแกรม"}
+        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant={variant}>
+          {pending ? "กำลังเปิดโปรแกรม…" : label}
         </Button>
       </form>
       <ErrorFeedback state={state} />

@@ -64,6 +64,11 @@ export type PatientClassificationPageContext = {
   canManage: boolean;
 };
 
+export type PatientClassificationPageOptions = {
+  /** The profile tab opts in to the change log; summary tabs read only the current classification. */
+  includeHistory?: boolean;
+};
+
 export type PatientClassificationCounts = {
   total: number;
   risk: number;
@@ -148,6 +153,7 @@ export async function getPatientClassificationPageContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   database?: PatientClassificationAccessDatabase,
+  options: PatientClassificationPageOptions = {},
 ): Promise<PatientClassificationPageContext> {
   try {
     const access = await resolvePatientClassificationAccessContext(
@@ -162,12 +168,14 @@ export async function getPatientClassificationPageContext(
         where: { patientProfileId: access.patient.patientProfileId },
         select: patientClassificationCurrentSelect,
       }),
-      db.patientClassificationHistory.findMany({
-        where: { patientProfileId: access.patient.patientProfileId },
-        orderBy: [{ changedAt: "desc" }, { id: "desc" }],
-        take: PATIENT_CLASSIFICATION_HISTORY_LIMIT,
-        select: patientClassificationHistorySelect,
-      }),
+      options.includeHistory === false
+        ? Promise.resolve([])
+        : db.patientClassificationHistory.findMany({
+          where: { patientProfileId: access.patient.patientProfileId },
+          orderBy: [{ changedAt: "desc" }, { id: "desc" }],
+          take: PATIENT_CLASSIFICATION_HISTORY_LIMIT,
+          select: patientClassificationHistorySelect,
+        }),
     ]);
     const manageDecision = decidePatientClassificationPolicy({
       actor: access.actor,

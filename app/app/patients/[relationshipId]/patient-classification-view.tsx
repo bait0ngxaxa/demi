@@ -169,10 +169,6 @@ export function PatientClassificationView({
           </StatusBadge>
         </div>
 
-        <p className="mt-4 border-l-2 border-amber-300 pl-3 text-sm leading-6 text-text-muted">
-          สถานะนี้เป็นสถานะปัจจุบันของผู้ป่วยและใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
-        </p>
-
         {context.canManage ? (
           <ConfirmableActionForm
             action={action}
@@ -217,7 +213,7 @@ export function PatientClassificationView({
             <p className="mt-2 max-w-xl text-xs leading-5 text-text-muted">
               การเลือกค่าเดิมจะไม่สร้างประวัติซ้ำ การเปลี่ยนค่าจะบันทึกผู้ดำเนินการและเวลาจากระบบ
             </p>
-            <Button className="mt-4" disabled={pending || unknownOutcome} loading={pending} type="submit">
+            <Button className="mt-4" disabled={pending || unknownOutcome} loading={pending} type="submit" variant="secondary">
               {pending
                 ? "กำลังบันทึก..."
                 : context.current && selectedClassification !== context.current.classification

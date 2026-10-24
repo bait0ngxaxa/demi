@@ -1,12 +1,20 @@
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, PatientProgramStatus, Role } from "@prisma/client";
 
+import Link from "next/link";
 import PatientDetailPage from "../../../../app/app/patients/[relationshipId]/page";
-import { PatientProgramView } from "../../../../app/app/patients/[relationshipId]/programs/patient-program-view";
 import { PatientProfileView } from "../../../../app/app/patients/[relationshipId]/patient-profile-view";
+import { PatientHealthHistorySection } from "../../../../app/app/patients/[relationshipId]/patient-health-history-section";
+import { PatientSelfMeasurementSection } from "../../../../app/app/patients/[relationshipId]/patient-self-measurement-section";
+import { PatientClassificationView } from "../../../../app/app/patients/[relationshipId]/patient-classification-view";
+import { PatientAccountRecoveryPanel } from "../../../../app/app/patients/[relationshipId]/account-recovery-panel";
+import { PatientProgramOpenControl } from "../../../../app/app/patients/[relationshipId]/programs/program-mutation-controls";
+import { PatientProgramView } from "../../../../app/app/patients/[relationshipId]/programs/patient-program-view";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import type { ProgramRoundsOverview, RoundSummary } from "@/modules/patient-program-rounds/services/round-query-service";
+import type { PatientProgramPageContext, PatientProgramProjection } from "@/modules/patient-program/services/patient-program-query-service";
+import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const {
   mockedConnection,
@@ -14,6 +22,7 @@ const {
   mockedGetPatientClassificationPageContext,
   mockedGetPatientDirectoryDetail,
   mockedGetPatientProgramPageContext,
+  mockedGetProgramRoundsOverview,
   mockedGetProtectedApplicationActor,
   mockedNotFound,
   mockedRedirect,
@@ -23,37 +32,31 @@ const {
   mockedGetPatientClassificationPageContext: vi.fn(),
   mockedGetPatientDirectoryDetail: vi.fn(),
   mockedGetPatientProgramPageContext: vi.fn(),
+  mockedGetProgramRoundsOverview: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
   mockedNotFound: vi.fn(),
   mockedRedirect: vi.fn(),
 }));
 
-vi.mock("next/server", () => ({
-  connection: mockedConnection,
-}));
-
-vi.mock("next/navigation", () => ({
-  notFound: mockedNotFound,
-  redirect: mockedRedirect,
-}));
-
+vi.mock("next/server", () => ({ connection: mockedConnection }));
+vi.mock("next/navigation", () => ({ notFound: mockedNotFound, redirect: mockedRedirect }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mockedGetProtectedApplicationActor,
 }));
-
 vi.mock("@/modules/patient-directory/services/patient-directory-query-service", () => ({
   getPatientDirectoryDetail: mockedGetPatientDirectoryDetail,
 }));
-
 vi.mock("@/modules/patient-baseline/services/patient-baseline-query-service", () => ({
   getPatientBaselineNavigationState: mockedGetPatientBaselineNavigationState,
 }));
-
 vi.mock("@/modules/patient-program/services/patient-program-query-service", () => ({
   getPatientProgramPageContext: mockedGetPatientProgramPageContext,
 }));
 vi.mock("@/modules/patient-classification/services/patient-classification-query-service", () => ({
   getPatientClassificationPageContext: mockedGetPatientClassificationPageContext,
+}));
+vi.mock("@/modules/patient-program-rounds/services/round-query-service", () => ({
+  getProgramRoundsOverview: mockedGetProgramRoundsOverview,
 }));
 
 const patient = {
@@ -65,6 +68,9 @@ const patient = {
     name: "โรงพยาบาล ก",
   },
   hospitalNumber: "HN-001",
+  classification: null,
+  selfRegisteredAt: null,
+  access: "DIRECT" as const,
   profile: {
     dateOfBirth: new Date("1977-01-01T00:00:00.000Z"),
     gender: "ชาย",
@@ -77,6 +83,17 @@ const patient = {
     educationLevel: "มัธยมศึกษา",
   },
   profileSource: "LEGACY_FALLBACK" as const,
+};
+
+const patientSummary = {
+  patientProfileId: patient.patientProfileId,
+  patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+  displayName: patient.displayName,
+  hospital: patient.hospital,
+  hospitalNumber: patient.hospitalNumber,
+  classification: null,
+  selfRegisteredAt: null,
+  access: "DIRECT" as const,
 };
 
 const actor = {
@@ -95,41 +112,131 @@ const actor = {
   osmHospitalRelationships: [],
 } satisfies ActorContext;
 
+type PageElementProps = {
+  children?: ReactNode;
+  id?: string;
+  className?: string;
+  href?: string;
+  variant?: "primary" | "secondary";
+  relationshipId?: string;
+  label?: string;
+  "aria-current"?: string;
+};
+
+const expandedPageComponents = new Set([
+  "CompletedPatientPrograms",
+  "HistoryTab",
+  "PatientNextStepPanel",
+  "PatientProgramView",
+  "PatientSummary",
+]);
+
 function containsString(value: unknown, needle: string, seen = new Set<object>()): boolean {
-  if (typeof value === "string") {
-    return value.includes(needle);
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  if (seen.has(value)) {
-    return false;
-  }
-
+  if (typeof value === "string") return value.includes(needle);
+  if (typeof value !== "object" || value === null || seen.has(value)) return false;
   seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.some((item) => containsString(item, needle, seen));
+  if (isValidElement(value)) {
+    return elements(value).some((element) => containsString(element.props, needle, seen));
   }
-
+  if (Array.isArray(value)) return value.some((item) => containsString(item, needle, seen));
   return Object.values(value).some((item) => containsString(item, needle, seen));
 }
 
-function elements(node: ReactNode): ReactElement<{ children?: ReactNode; id?: string }>[] {
+function elements(node: ReactNode): ReactElement<PageElementProps>[] {
   return Children.toArray(node).flatMap((child) => {
-    if (!isValidElement<{ children?: ReactNode; id?: string }>(child)) return [];
-    return [child, ...elements(child.props.children)];
+    if (!isValidElement<PageElementProps>(child)) return [];
+    const componentName = typeof child.type === "function" ? child.type.name : "";
+    const nested = typeof child.type === "function" && expandedPageComponents.has(componentName)
+      ? (child.type as (props: PageElementProps) => ReactNode)(child.props)
+      : child.props.children;
+    return [child, ...elements(nested)];
   });
 }
 
-describe("Patient detail page authorization boundary", () => {
+function primaryActionCount(node: ReactNode): number {
+  return elements(node).filter((element) =>
+    element.props.className?.includes("bg-action-primary") ||
+    (element.type === PatientProgramOpenControl && element.props.variant === "primary"),
+  ).length;
+}
+
+function roundOverview(
+  states: readonly RoundSummary["state"][] = ["NOT_STARTED", "LOCKED", "LOCKED", "LOCKED", "LOCKED", "LOCKED"],
+  after: ProgramRoundsOverview["after"]["state"] = "LOCKED",
+): ProgramRoundsOverview & { patientDisplayName: string } {
+  return {
+    patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+    patientProgramId: "current-program",
+    patientDisplayName: patient.displayName,
+    programStatus: PatientProgramStatus.ACTIVE,
+    rounds: states.map((state, index) => ({
+      roundNumber: (index + 1) as RoundSummary["roundNumber"],
+      title: `ครั้งที่ ${index + 1}`,
+      state,
+      resolvedItems: state === "COMPLETED" ? 2 : 0,
+      totalItems: 2,
+      completedAt: null,
+      completedByDisplayName: null,
+    })),
+    after: { state: after, date: null, recordedByDisplayName: null },
+  };
+}
+
+function programProjection(
+  status: PatientProgramProjection["status"] = PatientProgramStatus.ACTIVE,
+  programId = "current-program",
+): PatientProgramProjection {
+  return {
+    programId,
+    patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+    status,
+    startedAt: new Date("2026-08-01T00:00:00.000Z"),
+    completedAt: status === PatientProgramStatus.COMPLETED ? new Date("2026-08-18T00:00:00.000Z") : null,
+    createdAt: new Date("2026-08-01T00:00:00.000Z"),
+    createdBy: { id: actor.userId, displayName: "ผู้บันทึก" },
+    initialBaseline: null,
+  };
+}
+
+function programContext(overrides: Partial<PatientProgramPageContext> = {}): PatientProgramPageContext {
+  return {
+    patient: {
+      patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+      displayName: patient.displayName,
+      hospitalNumber: patient.hospitalNumber,
+      hospital: patient.hospital,
+    },
+    active: null,
+    latest: null,
+    history: [],
+    canOpen: true,
+    canManage: true,
+    ...overrides,
+  };
+}
+
+async function renderPage(tab?: string): Promise<React.JSX.Element> {
+  return PatientDetailPage({
+    params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+    searchParams: Promise.resolve({ tab }),
+  });
+}
+
+function expectActiveTab(page: React.JSX.Element, label: string): void {
+  const activeTab = elements(page).find((element) =>
+    element.type === Link &&
+    containsString(element.props.children, label) &&
+    element.props["aria-current"] === "page",
+  );
+  expect(activeTab).toBeDefined();
+}
+
+describe("Patient detail page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedConnection.mockResolvedValue(undefined);
     mockedGetProtectedApplicationActor.mockResolvedValue(actor);
-    mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
+    mockedGetPatientDirectoryDetail.mockResolvedValue(patientSummary);
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: true });
     mockedGetPatientClassificationPageContext.mockResolvedValue({
       patient: {
@@ -142,18 +249,8 @@ describe("Patient detail page authorization boundary", () => {
       history: [],
       canManage: true,
     });
-    mockedGetPatientProgramPageContext.mockResolvedValue({
-      patient: {
-        patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
-        displayName: patient.displayName,
-        hospitalNumber: patient.hospitalNumber,
-        hospital: patient.hospital,
-      },
-      active: null,
-      history: [],
-      canOpen: true,
-      canManage: true,
-    });
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext());
+    mockedGetProgramRoundsOverview.mockResolvedValue(roundOverview());
     mockedNotFound.mockImplementation(() => {
       throw new Error("NEXT_NOT_FOUND");
     });
@@ -163,25 +260,21 @@ describe("Patient detail page authorization boundary", () => {
   });
 
   it("passes the opaque relationship ID to the independently authorized service", async () => {
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const page = await renderPage();
 
     expect(mockedGetPatientDirectoryDetail).toHaveBeenCalledWith(
       expect.anything(),
       patient.patientHospitalRelationshipId,
+      {},
+      { includeProfile: false },
     );
     expect(page).toBeDefined();
   });
 
-  it("renders the selected Patient Profile fields as a read-only detail section", async () => {
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
-    const profileView = PatientProfileView({
-      profile: patient.profile,
-      profileSource: patient.profileSource,
-    });
+  it("renders the selected Patient Profile fields only in the profile tab", async () => {
+    mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
+    const page = await renderPage("profile");
+    const profileView = PatientProfileView({ profile: patient.profile, profileSource: patient.profileSource });
 
     for (const value of [
       "ข้อมูลผู้ป่วย",
@@ -201,8 +294,21 @@ describe("Patient detail page authorization boundary", () => {
       expect(containsString(profileView, value)).toBe(true);
     }
     expect(containsString(page, "0812345678")).toBe(true);
-    expect(containsString(page, "แก้ไขข้อมูลโปรไฟล์")).toBe(false);
-    expect(containsString(profileView, "ตรวจสอบความต้องการ")).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientHealthHistorySection)).toBe(true);
+    expect(elements(page).some((element) => element.type === PatientSelfMeasurementSection)).toBe(true);
+    expect(elements(page).some((element) => element.type === PatientClassificationView)).toBe(true);
+    expect(mockedGetPatientDirectoryDetail).toHaveBeenCalledWith(
+      expect.anything(),
+      patient.patientHospitalRelationshipId,
+      {},
+      { includeProfile: true },
+    );
+    expect(mockedGetPatientClassificationPageContext).toHaveBeenCalledWith(
+      expect.anything(),
+      patient.patientHospitalRelationshipId,
+      undefined,
+      { includeHistory: true },
+    );
   });
 
   it("keeps the profile structure visible and uses the missing-value label", async () => {
@@ -221,9 +327,7 @@ describe("Patient detail page authorization boundary", () => {
       },
     });
 
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const page = await renderPage("profile");
     const profileView = PatientProfileView({
       profile: {
         dateOfBirth: null,
@@ -245,119 +349,211 @@ describe("Patient detail page authorization boundary", () => {
     expect(page).toBeDefined();
   });
 
-  it("shows the Baseline creation entry point when no Baseline exists", async () => {
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+  it("shows Baseline status and recommends recording it without blocking Program opening", async () => {
+    const page = await renderPage();
 
     expect(containsString(page, "ข้อมูลตั้งต้น")).toBe(true);
     expect(containsString(page, "ยังไม่มีข้อมูลตั้งต้น")).toBe(true);
+    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น แต่สามารถเปิดโปรแกรมได้โดยไม่ต้องมีข้อมูลตั้งต้น")).toBe(true);
     expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(true);
+    expect(primaryActionCount(page)).toBe(1);
+    expect(elements(page).some((element) => element.type === PatientProgramOpenControl && element.props.variant === "secondary")).toBe(true);
     expect(mockedGetPatientBaselineNavigationState).toHaveBeenCalledWith(
       expect.anything(),
       patient.patientHospitalRelationshipId,
     );
   });
 
-  it("shows an existing Baseline as read-only navigation", async () => {
+  it("shows an existing Baseline in the ordered history list", async () => {
     mockedGetPatientBaselineNavigationState.mockResolvedValue({
       baseline: { recordedOn: new Date("2026-08-01T00:00:00.000Z") },
       canCreate: true,
     });
 
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const page = await renderPage("history");
 
     expect(containsString(page, "ดูข้อมูลตั้งต้น")).toBe(true);
-    expect(containsString(page, "ข้อมูลอ่านอย่างเดียว")).toBe(true);
+    expect(containsString(page, "บันทึกเมื่อ")).toBe(true);
+    expect(containsString(page, "1 สิงหาคม 2569")).toBe(true);
     expect(containsString(page, "บันทึกข้อมูลตั้งต้น")).toBe(false);
   });
 
-  it("keeps unavailable Baseline creation neutral and preserves all supporting destinations", async () => {
+  it("keeps unavailable Baseline creation neutral and shows all history destinations", async () => {
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+
+    const page = await renderPage("history");
 
     expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/baseline`)).toBe(false);
-    expect(containsString(page, "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลตั้งต้น")).toBe(true);
-    for (const section of ["#patient-context", "#patient-care", "#patient-history"]) {
-      expect(containsString(page, section)).toBe(true);
-    }
-    for (const destination of ["screenings", "goals", "followups", "appointments", "evidence", "assignment"]) {
+    for (const destination of ["appointments", "screenings", "goals", "followups", "evidence"]) {
       expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/${destination}`)).toBe(true);
     }
+    expect(mockedGetPatientProgramPageContext).toHaveBeenCalledWith(
+      expect.anything(),
+      patient.patientHospitalRelationshipId,
+      undefined,
+      { includeHistory: true },
+    );
   });
 
-  it("suggests the authorized current Program without implying a mandatory Baseline prerequisite", async () => {
+  it("shows completed Programs inline and read-only in the history tab", async () => {
+    const completed = programProjection(PatientProgramStatus.COMPLETED, "completed-program");
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({
+      active: null,
+      latest: completed,
+      history: [completed],
+      canOpen: true,
+      canManage: true,
+    }));
+    mockedGetProgramRoundsOverview.mockResolvedValue({
+      ...roundOverview(["COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED"], "RECORDED"),
+      patientProgramId: "completed-program",
+      programStatus: PatientProgramStatus.COMPLETED,
+    });
+
+    const page = await renderPage("history");
+
+    expect(containsString(page, "โปรแกรมที่จบแล้ว · อ่านอย่างเดียว")).toBe(true);
+    expect(containsString(page, "/programs/completed-program")).toBe(true);
+    expect(containsString(page, "ดูโปรแกรมที่จบแล้ว")).toBe(true);
+    expect(primaryActionCount(page)).toBe(1);
+    expect(containsString(page, "เสร็จสิ้นแล้ว")).toBe(true);
+    expect(containsString(page, "ครั้งที่ 6/6")).toBe(true);
+  });
+
+  it("uses the active Program summary without implying a Baseline prerequisite", async () => {
+    const active = programProjection();
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
-    mockedGetPatientProgramPageContext.mockResolvedValue({
-      patient,
-      active: { programId: "current-program", status: "ACTIVE" },
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({
+      active,
+      latest: active,
       history: [],
       canOpen: false,
       canManage: true,
-    });
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
-    expect(containsString(page, "ทำงานต่อในโปรแกรมปัจจุบัน")).toBe(true);
-    expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(false);
+    }));
+
+    const page = await renderPage();
+
+    expect(containsString(page, "กำลังดำเนินการ")).toBe(true);
+    expect(containsString(page, "เริ่มครั้งที่ 1")).toBe(true);
+    expect(containsString(page, "ข้อมูลตั้งต้นแนะนำสำหรับการดูแล แต่ไม่ใช่เงื่อนไขของการเปิดโปรแกรม")).toBe(true);
+    expect(containsString(page, "/rounds/1")).toBe(true);
+    expect(containsString(page, "ไม่จำเป็นต้องทำตามลำดับ")).toBe(false);
+    for (const anchor of ["#program-service-one", "#program-goals", "#program-followups", "#program-final"]) {
+      expect(containsString(page, anchor)).toBe(false);
+    }
+    expect(elements(page).filter((element) => element.type === PatientProgramView)).toHaveLength(1);
   });
 
   it.each([
-    { label: "active Program with Baseline", active: true, baseline: true, canCreate: true, canOpen: false, first: "program" },
-    { label: "active Program with permitted missing Baseline", active: true, baseline: false, canCreate: true, canOpen: false, first: "program" },
-    { label: "no active Program with Baseline creation", active: false, baseline: false, canCreate: true, canOpen: true, first: "baseline" },
-    { label: "no active Program with only Program creation", active: false, baseline: false, canCreate: false, canOpen: true, first: "program" },
-    { label: "no creation permissions", active: false, baseline: false, canCreate: false, canOpen: false, first: "baseline" },
-  ])("orders care entries for $label without duplicating paths", async ({ active, baseline, canCreate, canOpen, first }) => {
-    mockedGetPatientBaselineNavigationState.mockResolvedValue({
-      baseline: baseline ? { recordedOn: new Date("2026-08-01T00:00:00Z") } : null, canCreate,
-    });
-    mockedGetPatientProgramPageContext.mockResolvedValue({
-      patient, active: active ? { programId: "current-program", status: "ACTIVE" } : null,
-      history: [], canOpen, canManage: canOpen || active,
-    });
-    const page = await PatientDetailPage({ params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }) });
-    const care = elements(page).find((element) => element.props.id === "patient-care");
-    expect(care).toBeDefined();
-    const entries = Children.toArray(care?.props.children).filter(isValidElement).slice(-2);
-    expect(entries.map((entry) => entry.type === PatientProgramView ? "program" : "baseline")).toEqual(first === "program" ? ["program", "baseline"] : ["baseline", "program"]);
-    expect(elements(page).filter((element) => element.type === PatientProgramView)).toHaveLength(1);
-    expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/baseline`)).toBe(baseline || canCreate);
-    if (active) {
-      expect(containsString(page, "ทำงานต่อในโปรแกรมปัจจุบัน")).toBe(true);
-      expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(false);
-    } else if (canCreate && !baseline) {
-      expect(containsString(page, "แนะนำให้บันทึกข้อมูลตั้งต้น")).toBe(true);
-    } else if (canOpen) {
-      expect(containsString(page, "สามารถเปิดโปรแกรมการดูแลรอบใหม่")).toBe(true);
-    } else {
-      expect(containsString(page, "เลือกดูข้อมูลตั้งต้นและโปรแกรมการดูแลตามสิทธิ์ปัจจุบัน")).toBe(true);
-    }
-    if (active && canCreate && !baseline) {
-      const baselineEntry = entries[1];
-      const link = elements(baselineEntry).find((element) => containsString(element.props.children, "บันทึกข้อมูลตั้งต้น"));
-      expect(link).toBeDefined();
-      expect(containsString(link, "bg-action-primary")).toBe(false);
-    }
+    {
+      label: "NOT_STARTED round",
+      states: ["NOT_STARTED", "LOCKED", "LOCKED", "LOCKED", "LOCKED", "LOCKED"] as const,
+      after: "LOCKED" as const,
+      expectedLabel: "เริ่มครั้งที่ 1",
+      expectedHref: "/rounds/1",
+    },
+    {
+      label: "IN_PROGRESS round",
+      states: ["COMPLETED", "IN_PROGRESS", "LOCKED", "LOCKED", "LOCKED", "LOCKED"] as const,
+      after: "LOCKED" as const,
+      expectedLabel: "ทำงานต่อจากครั้งที่ 2",
+      expectedHref: "/rounds/2",
+    },
+    {
+      label: "unrecorded After after six completed rounds",
+      states: ["COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED"] as const,
+      after: "NOT_RECORDED" as const,
+      expectedLabel: "บันทึก After",
+      expectedHref: "#program-final",
+    },
+    {
+      label: "recorded After",
+      states: ["COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED"] as const,
+      after: "RECORDED" as const,
+      expectedLabel: "ไปยังโปรแกรมเพื่อจบโปรแกรม",
+      expectedHref: "/programs/current-program",
+    },
+  ])("renders exactly one primary next step for an $label", async ({ states, after, expectedLabel, expectedHref }) => {
+    const active = programProjection();
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({
+      active,
+      latest: active,
+      canOpen: false,
+      canManage: true,
+    }));
+    mockedGetProgramRoundsOverview.mockResolvedValue(roundOverview(states, after));
+
+    const page = await renderPage();
+
+    expect(primaryActionCount(page)).toBe(1);
+    expect(containsString(page, expectedLabel)).toBe(true);
+    expect(containsString(page, expectedHref)).toBe(true);
   });
 
-  it("explains shared patient-level classification outside the closed history disclosure", async () => {
-    const page = await PatientDetailPage({ params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }) });
-    const context = elements(page).find((element) => element.props.id === "patient-context");
-    const identityPanel = Children.toArray(context?.props.children)[0];
-    expect(containsString(identityPanel, "สถานะนี้เป็นข้อมูลระดับผู้ป่วย ใช้ร่วมกันในบริบทโรงพยาบาลที่เกี่ยวข้อง")).toBe(true);
-    expect(containsString(page, "สถานะผู้ป่วยและประวัติการเปลี่ยนแปลง")).toBe(true);
+  it("falls back to the rounds overview when its summary cannot be loaded", async () => {
+    const active = programProjection();
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({
+      active,
+      latest: active,
+      canOpen: false,
+      canManage: true,
+    }));
+    mockedGetProgramRoundsOverview.mockRejectedValue(new InfrastructureError("rounds unavailable"));
+
+    const page = await renderPage();
+
+    expect(primaryActionCount(page)).toBe(1);
+    expect(containsString(page, "ดูการจัดบริการทั้งหมด")).toBe(true);
+    expect(containsString(page, "ยังโหลดความคืบหน้ารอบไม่ได้")).toBe(true);
   });
 
-  it("retains the selected Hospital directory for multi-role users with Patient self-access", async () => {
+  it("renders the existing Program open control as the only primary action when Baseline is not actionable", async () => {
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({ canOpen: true, canManage: true }));
+
+    const page = await renderPage();
+
+    expect(primaryActionCount(page)).toBe(1);
+    expect(elements(page).filter((element) => element.type === PatientProgramOpenControl && element.props.variant === "primary")).toHaveLength(1);
+  });
+
+  it("shows the shared patient-level classification explanation in the profile tab", async () => {
+    mockedGetPatientDirectoryDetail.mockResolvedValue(patient);
+    const page = await renderPage("profile");
+
+    expect(elements(page).some((element) => element.type === PatientClassificationView)).toBe(true);
+    expect(containsString(page, "สถานะนี้เป็นสถานะปัจจุบันของผู้ป่วยและใช้ร่วมกันทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้")).toBe(true);
+    expect(primaryActionCount(page)).toBe(1);
+  });
+
+  it("loads no history or profile data on the overview tab and keeps the patient-care anchor", async () => {
+    const page = await renderPage();
+
+    expect(elements(page).some((element) => element.type === PatientProfileView)).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientHealthHistorySection)).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientSelfMeasurementSection)).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientClassificationView)).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientAccountRecoveryPanel)).toBe(false);
+    expect(containsString(page, patient.profile.phoneNumber)).toBe(false);
+    expect(elements(page).some((element) => element.props.id === "patient-care")).toBe(true);
+    expect(mockedGetPatientDirectoryDetail).toHaveBeenCalledWith(expect.anything(), patient.patientHospitalRelationshipId, {}, { includeProfile: false });
+    expect(mockedGetPatientClassificationPageContext).toHaveBeenCalledWith(expect.anything(), patient.patientHospitalRelationshipId, undefined, { includeHistory: false });
+    expect(mockedGetPatientProgramPageContext).toHaveBeenCalledWith(expect.anything(), patient.patientHospitalRelationshipId, undefined, { includeHistory: false });
+  });
+
+  it("falls back to overview for an invalid tab", async () => {
+    const page = await renderPage("not-a-tab");
+
+    expectActiveTab(page, "ภาพรวม");
+    expect(elements(page).some((element) => element.props.id === "patient-care")).toBe(true);
+    expect(elements(page).some((element) => element.type === PatientProfileView)).toBe(false);
+    expect(mockedGetPatientDirectoryDetail).toHaveBeenCalledWith(expect.anything(), patient.patientHospitalRelationshipId, {}, { includeProfile: false });
+  });
+
+  it("keeps the selected Hospital directory for multi-role users with Patient self-access", async () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ ...actor, roles: [Role.HOSPITAL, Role.OSM, Role.PATIENT] });
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const page = await renderPage();
+
     expect(containsString(page, `/app/patients?hospitalId=${patient.hospital.id}`)).toBe(true);
     expect(containsString(page, "รายชื่อผู้ป่วยของโรงพยาบาล")).toBe(true);
     expect(containsString(page, "/app/personal")).toBe(false);
@@ -374,29 +570,65 @@ describe("Patient detail page authorization boundary", () => {
         hospitalStatus: HospitalStatus.ACTIVE,
       }],
     });
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const page = await renderPage();
+
     expect(containsString(page, "/app/patients/assigned")).toBe(true);
     expect(containsString(page, "ผู้ป่วยที่รับผิดชอบ")).toBe(true);
     expect(containsString(page, "/app/patients?hospitalId=")).toBe(false);
     expect(containsString(page, "/assignment")).toBe(false);
   });
 
-  it("exposes the relationship-scoped Evidence entry point without changing profile behavior", async () => {
-    const page = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
+  it("shows the network read-only alert and no write CTA", async () => {
+    mockedGetPatientDirectoryDetail.mockResolvedValue({ ...patientSummary, access: "NETWORK" });
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      ...actor,
+      hospitalMemberships: actor.hospitalMemberships.map((membership) => ({ ...membership, hospitalId: "parent-hospital" })),
     });
+    mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: false });
+    mockedGetPatientProgramPageContext.mockResolvedValue(programContext({ canOpen: true, canManage: true }));
 
-    expect(containsString(page, "หลักฐาน / รูปภาพสถานะ")).toBe(true);
-    expect(containsString(page, "ดูหลักฐานและรูปภาพที่เกี่ยวข้องกับการดูแลผู้ป่วยรายนี้")).toBe(true);
+    const page = await renderPage();
+
+    expect(containsString(page, "ทุกการเปิดดูจะถูกบันทึกไว้")).toBe(true);
+    expect(primaryActionCount(page)).toBe(0);
+    expect(elements(page).some((element) => element.type === PatientProgramOpenControl)).toBe(false);
+  });
+
+  it("shows the Manage tab for an OWNER and its authorized controls", async () => {
+    const page = await renderPage("manage");
+
+    expectActiveTab(page, "จัดการ");
+    expect(containsString(page, "/assignment")).toBe(true);
+    expect(elements(page).some((element) => element.type === PatientAccountRecoveryPanel)).toBe(true);
+  });
+
+  it("hides the Manage tab and loads no management controls for a MEMBER", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({
+      ...actor,
+      hospitalMemberships: actor.hospitalMemberships.map((membership) => ({
+        ...membership,
+        membershipType: MembershipType.MEMBER,
+      })),
+    });
+    const page = await renderPage("manage");
+
+    expectActiveTab(page, "ภาพรวม");
+    expect(containsString(page, "/assignment")).toBe(false);
+    expect(elements(page).some((element) => element.type === PatientAccountRecoveryPanel)).toBe(false);
+    expect(elements(page).some((element) => element.props.href?.includes("tab=manage"))).toBe(false);
+  });
+
+  it("exposes relationship-scoped Evidence in the single ordered history list", async () => {
+    const page = await renderPage("history");
+
+    expect(containsString(page, "หลักฐาน/รูปภาพ")).toBe(true);
+    expect(containsString(page, "ดูหลักฐาน")).toBe(true);
     expect(containsString(page, `/app/patients/${patient.patientHospitalRelationshipId}/evidence`)).toBe(true);
+    expect(elements(page).filter((element) => element.type === "ol")).toHaveLength(1);
   });
 
   it("shows assignment management only for a Hospital OWNER", async () => {
-    const ownerPage = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const ownerPage = await renderPage("manage");
     expect(containsString(ownerPage, "/assignment")).toBe(true);
 
     mockedGetProtectedApplicationActor.mockResolvedValue({
@@ -408,32 +640,21 @@ describe("Patient detail page authorization boundary", () => {
         },
       ],
     });
-    const memberPage = await PatientDetailPage({
-      params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-    });
+    const memberPage = await renderPage("manage");
     expect(containsString(memberPage, "/assignment")).toBe(false);
   });
 
   it("uses the safe not-found path for an inaccessible Hospital relationship", async () => {
     mockedGetPatientDirectoryDetail.mockRejectedValue(new NotFoundError());
 
-    await expect(
-      PatientDetailPage({
-        params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-      }),
-    ).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(renderPage()).rejects.toThrow("NEXT_NOT_FOUND");
     expect(mockedNotFound).toHaveBeenCalledOnce();
   });
 
   it("does not render a detail page when the actor is forbidden", async () => {
     mockedGetPatientDirectoryDetail.mockRejectedValue(new ForbiddenError());
 
-    await expect(
-      PatientDetailPage({
-        params: Promise.resolve({ relationshipId: patient.patientHospitalRelationshipId }),
-      }),
-    ).rejects.toThrow("NEXT_REDIRECT");
-
+    await expect(renderPage()).rejects.toThrow("NEXT_REDIRECT");
     expect(mockedRedirect).toHaveBeenCalledWith("/app");
   });
 });

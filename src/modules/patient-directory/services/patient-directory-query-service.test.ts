@@ -17,6 +17,7 @@ import {
   getPatientDirectoryDetail,
   buildAuthorizedHospitalWhere,
   patientDirectoryInternals,
+  patientDirectorySelect,
   type PatientDirectoryDetailRecord,
   type PatientDirectoryDatabase,
 } from "./patient-directory-query-service";
@@ -379,5 +380,45 @@ describe("Patient directory query boundary", () => {
       occupation: null,
       educationLevel: null,
     });
+  });
+
+  it("does not select profile fields when the caller requests a Patient summary", async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: relationshipId,
+      hospitalNumber: "HN-001",
+      selfRegisteredAt: null,
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      patientProfile: {
+        id: patientProfileId,
+        patientClassification: null,
+        person: { givenName: "สมชาย", familyName: "ผู้ป่วย" },
+      },
+    });
+    const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
+
+    const result = await getPatientDirectoryDetail(
+      directoryActor,
+      relationshipId,
+      { database },
+      { includeProfile: false },
+    );
+
+    expect(result).toEqual({
+      patientProfileId,
+      patientHospitalRelationshipId: relationshipId,
+      displayName: "สมชาย ผู้ป่วย",
+      hospital: { id: hospitalId, name: "โรงพยาบาลทดสอบ" },
+      hospitalNumber: "HN-001",
+      classification: null,
+      selfRegisteredAt: null,
+      access: "DIRECT",
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: relationshipId, OR: expect.any(Array) }),
+        select: patientDirectorySelect,
+      }),
+    );
+    expect(JSON.stringify(result)).not.toContain("phoneNumber");
   });
 });

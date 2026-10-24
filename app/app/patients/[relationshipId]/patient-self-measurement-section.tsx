@@ -43,7 +43,7 @@ export async function PatientSelfMeasurementSection({ actor, relationshipId, cur
         {cursor ? (
           <Link
             className={buttonClassName({ variant: "secondary", size: "compact" })}
-            href={`/app/patients/${encodeURIComponent(relationshipId)}#patient-self-measurement-heading`}
+            href={`/app/patients/${encodeURIComponent(relationshipId)}?tab=profile#patient-self-measurement-heading`}
           >
             กลับไปรายการล่าสุด
           </Link>
@@ -51,7 +51,7 @@ export async function PatientSelfMeasurementSection({ actor, relationshipId, cur
         {page.nextCursor ? (
           <Link
             className={buttonClassName({ variant: "secondary", size: "compact" })}
-            href={`/app/patients/${encodeURIComponent(relationshipId)}?selfMeasurementCursor=${encodeURIComponent(page.nextCursor)}#patient-self-measurement-heading`}
+            href={`/app/patients/${encodeURIComponent(relationshipId)}?tab=profile&selfMeasurementCursor=${encodeURIComponent(page.nextCursor)}#patient-self-measurement-heading`}
             prefetch={false}
             rel="next"
           >

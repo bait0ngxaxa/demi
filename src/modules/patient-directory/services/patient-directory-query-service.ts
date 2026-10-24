@@ -89,6 +89,11 @@ export type PatientDirectoryDetail = PatientDirectoryItem & {
   access: "DIRECT" | "NETWORK";
 };
 
+export type PatientDirectorySummary = PatientDirectoryItem & {
+  /** ADR-0016: NETWORK detail is read-only; callers must not offer any write action. */
+  access: "DIRECT" | "NETWORK";
+};
+
 export type PatientDirectoryPage = {
   hospital: PatientDirectoryScope;
   items: PatientDirectoryItem[];
@@ -551,11 +556,29 @@ export async function findPatientDirectory(
   }
 }
 
+export function getPatientDirectoryDetail(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies?: PatientDirectoryQueryDependencies,
+): Promise<PatientDirectoryDetail>;
+export function getPatientDirectoryDetail(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientDirectoryQueryDependencies,
+  options: { includeProfile: false },
+): Promise<PatientDirectorySummary>;
+export function getPatientDirectoryDetail(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientDirectoryQueryDependencies,
+  options: { includeProfile: boolean },
+): Promise<PatientDirectoryDetail | PatientDirectorySummary>;
 export async function getPatientDirectoryDetail(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: PatientDirectoryQueryDependencies = {},
-): Promise<PatientDirectoryDetail> {
+  options: { includeProfile?: boolean } = {},
+): Promise<PatientDirectoryDetail | PatientDirectorySummary> {
   const parsedRelationshipId = patientDirectoryRelationshipIdSchema.safeParse(relationshipId);
 
   if (!parsedRelationshipId.success) {
@@ -589,16 +612,22 @@ export async function getPatientDirectoryDetail(
 
   try {
     const database = getDatabase(dependencies.database);
-    const relationship = await database.patientHospitalRelationship.findFirst({
-      where: {
-        id: parsedRelationshipId.data,
-        OR: accessPredicates,
-      },
-      select: patientDetailSelect,
-    });
+    const relationshipWhere = {
+      id: parsedRelationshipId.data,
+      OR: accessPredicates,
+    } satisfies Prisma.PatientHospitalRelationshipWhereInput;
+    const directRelationship = options.includeProfile === false
+      ? await database.patientHospitalRelationship.findFirst({
+        where: relationshipWhere,
+        select: patientDirectorySelect,
+      }).then((record) => record ? { ...toPatientDirectoryItem(record), access: "DIRECT" as const } : null)
+      : await database.patientHospitalRelationship.findFirst({
+        where: relationshipWhere,
+        select: patientDetailSelect,
+      }).then((record) => record ? { ...toPatientDirectoryDetail(record), access: "DIRECT" as const } : null);
 
-    if (relationship) {
-      return { ...toPatientDirectoryDetail(relationship), access: "DIRECT" };
+    if (directRelationship) {
+      return directRelationship;
     }
 
     if (!actor.roles.includes(Role.HOSPITAL)) {
@@ -606,14 +635,20 @@ export async function getPatientDirectoryDetail(
     }
 
     // ADR-0016: read-only detail of an active network Child's Patient, audited with the granting Parent.
-    const networkRelationship = await database.patientHospitalRelationship.findFirst({
-      where: {
-        id: parsedRelationshipId.data,
-        ...activePatientHospitalRelationshipWhere,
-        hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
-      },
-      select: patientDetailSelect,
-    });
+    const networkRelationshipWhere = {
+      id: parsedRelationshipId.data,
+      ...activePatientHospitalRelationshipWhere,
+      hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
+    } satisfies Prisma.PatientHospitalRelationshipWhereInput;
+    const networkRelationship = options.includeProfile === false
+      ? await database.patientHospitalRelationship.findFirst({
+        where: networkRelationshipWhere,
+        select: patientDirectorySelect,
+      }).then((record) => record ? { ...toPatientDirectoryItem(record), access: "NETWORK" as const } : null)
+      : await database.patientHospitalRelationship.findFirst({
+        where: networkRelationshipWhere,
+        select: patientDetailSelect,
+      }).then((record) => record ? { ...toPatientDirectoryDetail(record), access: "NETWORK" as const } : null);
     const parent = networkRelationship
       ? await findNetworkPatientReadParent(database, actor.userId, networkRelationship.hospital.id)
       : null;
@@ -627,10 +662,10 @@ export async function getPatientDirectoryDetail(
       parentHospitalId: parent.id,
       childHospitalId: networkRelationship.hospital.id,
       resourceType: "PatientHospitalRelationship",
-      resourceId: networkRelationship.id,
+      resourceId: networkRelationship.patientHospitalRelationshipId,
       scope: "patient-detail",
     });
-    return { ...toPatientDirectoryDetail(networkRelationship), access: "NETWORK" };
+    return networkRelationship;
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;

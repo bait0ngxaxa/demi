@@ -60,9 +60,15 @@ export type PatientProgramProjection = {
 export type PatientProgramPageContext = {
   patient: PatientProgramPatientSummary;
   active: PatientProgramProjection | null;
+  latest: PatientProgramProjection | null;
   history: PatientProgramProjection[];
   canOpen: boolean;
   canManage: boolean;
+};
+
+export type PatientProgramPageOptions = {
+  /** The history tab opts in; summary tabs read only the active and most recent Program. */
+  includeHistory?: boolean;
 };
 
 export type PatientProgramDetail = PatientProgramProjection & {
@@ -153,6 +159,7 @@ export async function getPatientProgramPageContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: PatientProgramQueryDependencies = {},
+  options: PatientProgramPageOptions = {},
 ): Promise<PatientProgramPageContext> {
   try {
     const database = getDatabase(dependencies);
@@ -162,19 +169,43 @@ export async function getPatientProgramPageContext(
       PATIENT_PROGRAM_READ_CAPABILITY,
       database,
     );
-    const records = await database.patientProgram.findMany({
-      where: { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId },
-      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-      take: PATIENT_PROGRAM_HISTORY_LIMIT,
-      select: patientProgramSelect,
-    });
-    const history = records.map(toProjection);
-    const active = history.find((program) => program.status === PatientProgramStatus.ACTIVE) ?? null;
+    const where = { patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId };
+    let history: PatientProgramProjection[] = [];
+    let active: PatientProgramProjection | null = null;
+    let latest: PatientProgramProjection | null = null;
+
+    if (options.includeHistory !== false) {
+      const records = await database.patientProgram.findMany({
+        where,
+        orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+        take: PATIENT_PROGRAM_HISTORY_LIMIT,
+        select: patientProgramSelect,
+      });
+      history = records.map(toProjection);
+      active = history.find((program) => program.status === PatientProgramStatus.ACTIVE) ?? null;
+      latest = history[0] ?? null;
+    } else {
+      const [activeRecord, latestRecord] = await Promise.all([
+        database.patientProgram.findFirst({
+          where: { ...where, status: PatientProgramStatus.ACTIVE },
+          orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+          select: patientProgramSelect,
+        }),
+        database.patientProgram.findFirst({
+          where,
+          orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+          select: patientProgramSelect,
+        }),
+      ]);
+      active = activeRecord ? toProjection(activeRecord) : null;
+      latest = latestRecord ? toProjection(latestRecord) : null;
+    }
     const canManage = getCanManage(access.actor, access.target);
 
     return {
       patient: access.patient,
       active,
+      latest,
       history,
       canOpen: canManage && active === null,
       canManage,

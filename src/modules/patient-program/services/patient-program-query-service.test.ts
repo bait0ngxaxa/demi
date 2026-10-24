@@ -159,6 +159,7 @@ describe("Patient Program query service", () => {
         hospital: { id: hospitalId, name: "โรงพยาบาล ก" },
       },
       active: { programId: activeProgramId, status: PatientProgramStatus.ACTIVE },
+      latest: { programId: completedProgramId, status: PatientProgramStatus.COMPLETED },
       history: [
         { programId: completedProgramId, status: PatientProgramStatus.COMPLETED },
         { programId: activeProgramId, status: PatientProgramStatus.ACTIVE },
@@ -190,6 +191,27 @@ describe("Patient Program query service", () => {
     expect(result.canOpen).toBe(true);
     expect(JSON.stringify(result)).not.toContain("weight");
     expect(JSON.stringify(result)).not.toContain("bloodPressure");
+  });
+
+  it("loads only the active and most recent Program when history is not requested", async () => {
+    const database = createDatabase();
+    const active = programRecord(activeProgramId, PatientProgramStatus.ACTIVE);
+    database.patientProgram.findFirst
+      .mockResolvedValueOnce(active)
+      .mockResolvedValueOnce(active);
+
+    const result = await getPatientProgramPageContext(
+      actor,
+      relationshipId,
+      { database },
+      { includeHistory: false },
+    );
+
+    expect(result.active?.programId).toBe(activeProgramId);
+    expect(result.latest?.programId).toBe(activeProgramId);
+    expect(result.history).toEqual([]);
+    expect(database.patientProgram.findMany).not.toHaveBeenCalled();
+    expect(database.patientProgram.findFirst).toHaveBeenCalledTimes(2);
   });
 
   it("denies the page when the actor's authoritative Hospital scope is inactive", async () => {

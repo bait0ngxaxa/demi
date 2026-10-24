@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { PatientProgramDetail, PatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
+import type { ProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
+import type { PatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import type { GoalPlanProgramOverview } from "@/modules/goals/services/goal-query-service";
 import type { FollowupProgramHistory } from "@/modules/followups/services/followup-query-service";
 import type { PatientFinalAssessmentProjection } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
@@ -25,7 +27,7 @@ vi.mock("@/modules/patient-program/transport/patient-program-service-one-server-
 }));
 
 import { PatientProgramDetailView } from "./program-detail-view";
-import { PatientProgramView } from "../patient-program-view";
+import { CompletedPatientPrograms, PatientProgramView } from "../patient-program-view";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const programId = "22222222-2222-4222-8222-222222222222";
@@ -60,6 +62,22 @@ const history: FollowupProgramHistory = {
 };
 const finalAssessment: PatientFinalAssessmentProjection = {
   patientProgramId: programId, patientHospitalRelationshipId: relationshipId, programStatus: "ACTIVE", finalAssessment: null,
+};
+const baseline: PatientBaselineNavigationState = { baseline: null, canCreate: false };
+const careOverview: ProgramRoundsOverview = {
+  patientHospitalRelationshipId: relationshipId,
+  patientProgramId: programId,
+  programStatus: "ACTIVE",
+  rounds: Array.from({ length: 6 }, (_, index) => ({
+    roundNumber: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6,
+    title: `ครั้งที่ ${index + 1}`,
+    state: index === 0 ? "NOT_STARTED" : "LOCKED",
+    resolvedItems: 0,
+    totalItems: 2,
+    completedAt: null,
+    completedByDisplayName: null,
+  })),
+  after: { state: "LOCKED", date: null, recordedByDisplayName: null },
 };
 
 function renderProgram(overrides: Partial<Parameters<typeof PatientProgramDetailView>[0]> = {}): string {
@@ -118,15 +136,11 @@ describe("Patient care journey and Program workspace", () => {
     expect(html).toContain(`/programs/${programId}/report`);
   });
 
-  it("describes a bounded history list without implying an all-time total", () => {
+  it("renders completed Programs inline as read-only history", () => {
     const completed = { ...detail, status: "COMPLETED" as const, completedAt: now };
-    const context: PatientProgramPageContext = {
-      patient, active: null, history: Array.from({ length: 50 }, (_, index) => ({ ...completed, programId: `history-${index}` })),
-      canOpen: false, canManage: false,
-    };
-    const html = renderToStaticMarkup(createElement(PatientProgramView, { context }));
-    expect(html).toContain("แสดง 50 โปรแกรมจากรายการที่โหลด");
-    expect(html).not.toContain("มี 50 โปรแกรม");
+    const programs = Array.from({ length: 50 }, (_, index) => ({ ...completed, programId: `history-${index}` }));
+    const html = renderToStaticMarkup(createElement(CompletedPatientPrograms, { programs, relationshipId }));
+    expect(html).toContain("โปรแกรมที่จบแล้ว");
     expect(html).toContain("/programs/history-49");
     expect(html).not.toContain("<form");
   });
@@ -142,24 +156,31 @@ describe("Patient care journey and Program workspace", () => {
     expect(followupDenied).not.toContain("/followups/new");
   });
 
-  it("separates the active journey from completed history and retains Program opening", () => {
+  it("guides the current Program through sequential rounds and keeps completed history separate", () => {
     const completed = { ...detail, programId: "historical-program", status: "COMPLETED" as const, completedAt: now };
-    const context: PatientProgramPageContext = { patient, active: detail, history: [detail, completed], canOpen: false, canManage: true };
-    const html = renderToStaticMarkup(createElement(PatientProgramView, { context }));
-    expect(html).toContain(`/programs/${programId}#program-service-one`);
-    expect(html).toContain(`/programs/${programId}#program-final`);
-    expect(html).toContain('<details');
-    expect(html).toContain("ประวัติโปรแกรมที่เสร็จสิ้น · อ่านอย่างเดียว");
-    expect(html).toContain("/programs/historical-program");
-    expect(html).toContain("แสดง 1 โปรแกรมจากรายการที่โหลด");
-    expect(html).not.toContain("มี 1 โปรแกรม");
-    expect(html).not.toContain("/programs/historical-program#");
-    expect(html).not.toContain("<form");
-    const empty = renderToStaticMarkup(createElement(PatientProgramView, { context: { ...context, active: null, canOpen: true } }));
-    expect(empty).toContain("เปิดโปรแกรม");
-    expect(empty).toContain("<form");
-    const unavailable = renderToStaticMarkup(createElement(PatientProgramView, { context: { ...context, active: null, canOpen: false, canManage: false } }));
-    expect(unavailable).not.toContain("<form");
-    expect(unavailable).toContain("ไม่มีสิทธิ์เปิดหรือจบโปรแกรม");
+    const context: PatientProgramPageContext = { patient, active: detail, latest: detail, history: [detail], canOpen: false, canManage: true };
+    const journey = renderToStaticMarkup(createElement(PatientProgramView, {
+      baseline,
+      context,
+      overview: careOverview,
+      roundsError: false,
+    }));
+    const historyHtml = renderToStaticMarkup(createElement(CompletedPatientPrograms, {
+      programs: [detail, completed],
+      relationshipId,
+    }));
+
+    expect(journey).toContain('id="patient-care"');
+    expect(journey).toContain(`/programs/${programId}/rounds/1`);
+    expect(journey).not.toContain(`/programs/${programId}/rounds/2`);
+    expect(journey).toContain('aria-disabled="true"');
+    expect(journey).toContain("จบครั้งที่ 6 ก่อนจึงจะเปิด After ได้");
+    expect(journey).not.toContain("ไม่จำเป็นต้องทำตามลำดับ");
+    expect(journey).not.toContain(`/programs/${programId}#program-service-one`);
+    expect(journey).not.toContain(`/programs/${programId}#program-goals`);
+    expect(journey).not.toContain(`/programs/${programId}#program-followups`);
+    expect(historyHtml).toContain("/programs/historical-program");
+    expect(historyHtml).toContain("ดูโปรแกรมที่จบแล้ว");
+    expect(historyHtml).not.toContain("<form");
   });
 });
