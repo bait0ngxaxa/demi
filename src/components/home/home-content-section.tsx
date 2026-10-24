@@ -67,7 +67,7 @@ export function HomeContentSection({
                     {item.title}
                   </Link>
                 </h3>
-                <HospitalContentImageList imageIds={item.imageIds.slice(0, 1)} layout="home" title={item.title} />
+                <HospitalContentImageList imageIds={item.imageIds} layout="home" title={item.title} />
                 <p className="mt-2 text-sm leading-6 text-text-muted">
                   {item.hospital.name} · เผยแพร่ล่าสุด <time dateTime={item.latestPublishedAt}>{formatPublishedAt(item.latestPublishedAt)}</time>
                 </p>

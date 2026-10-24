@@ -713,7 +713,7 @@ describe("Hospital Knowledge image upload Toasts", () => {
   it("keeps client-side validation inline without uploading or notifying", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await mountImages([imageIdOne, imageIdTwo, "i3", "i4"]);
+    await mountImages([imageIdOne, imageIdTwo]);
 
     await act(async () => pick(2));
     await settle();

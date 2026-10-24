@@ -14,6 +14,7 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   HOSPITAL_CONTENT_CATEGORY_LABELS,
+  HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE,
   HOSPITAL_CONTENT_STATUS_LABELS,
   HOSPITAL_CONTENT_STATUS_VARIANTS,
 } from "@/modules/hospital-content/domain/hospital-content";
@@ -72,6 +73,7 @@ function formatPublisherTime(value: string | null): string {
 function messageForState(state: HospitalContentMutationActionState): string | null {
   if (state.status === "IDLE" || state.status === "SUCCESS") return null;
   if (state.status === "UNCONFIRMED") return "ยังยืนยันผลไม่ได้ เก็บข้อมูลในหน้านี้ไว้แล้ว กรุณาโหลดข้อมูลปัจจุบันก่อนดำเนินการต่อ";
+  if (state.code === "VALIDATION" && state.message === HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE) return state.message;
   if (state.code === "VALIDATION") return "ตรวจสอบหัวข้อ เนื้อหา หมวดหมู่ และแหล่งข้อมูลอีกครั้ง";
   if (state.code === "CONFLICT") return "รายการเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลปัจจุบันและตรวจสอบก่อนบันทึกอีกครั้ง";
   if (state.code === "FORBIDDEN" || state.code === "NOT_FOUND") return "ไม่สามารถจัดการรายการนี้ได้ สิทธิ์อาจเปลี่ยนแปลงแล้ว";

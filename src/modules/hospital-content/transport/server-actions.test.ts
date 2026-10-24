@@ -10,6 +10,8 @@ const harness = vi.hoisted(() => ({
   archive: vi.fn(),
   read: vi.fn(),
   reconcile: vi.fn(),
+  removeImage: vi.fn(),
+  reorderImages: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -25,9 +27,15 @@ vi.mock("@/modules/hospital-content/services/hospital-content-service", () => ({
   reconcileHospitalContentCreate: harness.reconcile,
 }));
 
+vi.mock("@/modules/hospital-content/services/hospital-content-image-service", () => ({
+  removeHospitalContentImage: harness.removeImage,
+  reorderHospitalContentImages: harness.reorderImages,
+}));
+
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { HospitalContentDetailProjection } from "@/modules/hospital-content/types/hospital-content-projections";
-import { ConflictError } from "@/shared/errors/application-error";
+import { HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE } from "@/modules/hospital-content/domain/hospital-content";
+import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   archiveHospitalContentAction,
@@ -36,6 +44,8 @@ import {
   publishHospitalContentAction,
   readHospitalContentCurrentAction,
   reconcileHospitalContentCreateAction,
+  removeHospitalContentImageAction,
+  reorderHospitalContentImagesAction,
   withdrawHospitalContentAction,
 } from "./server-actions";
 
@@ -128,5 +138,43 @@ describe("Hospital Content Server Actions", () => {
     const conflicted = await editHospitalContentDraftAction({ ...lifecycleInput, title: "x", body: "PRIVATE ARTICLE BODY", category: "NCD", sourceText: null });
     expect(conflicted).toMatchObject({ status: "ERROR", code: "CONFLICT" });
     expect(JSON.stringify(conflicted)).not.toContain("PRIVATE ARTICLE BODY");
+  });
+
+  it("removes and reorders draft images as the freshly resolved actor and revalidates the detail page", async () => {
+    const imageIds = ["aaaaaaaa-aaaa-4aaa-8aaa-000000000001", "aaaaaaaa-aaaa-4aaa-8aaa-000000000002"];
+    harness.removeImage.mockResolvedValueOnce({ imageIds: [imageIds[1]] });
+    harness.reorderImages.mockResolvedValueOnce({ imageIds: [...imageIds].reverse() });
+
+    await expect(removeHospitalContentImageAction({ contentId: detail.id, imageId: imageIds[0] })).resolves.toEqual({ status: "SUCCESS", imageIds: [imageIds[1]] });
+    await expect(reorderHospitalContentImagesAction({ contentId: detail.id, imageIds })).resolves.toEqual({ status: "SUCCESS", imageIds: [...imageIds].reverse() });
+
+    expect(harness.removeImage).toHaveBeenCalledWith(actor, { contentId: detail.id, imageId: imageIds[0] });
+    expect(harness.reorderImages).toHaveBeenCalledWith(actor, { contentId: detail.id, imageIds });
+    expect(harness.revalidatePath).toHaveBeenCalledWith(`/app/hospitals/knowledge/${detail.id}`);
+  });
+
+  it("maps image failures to sanitized errors and never calls the service without an actor", async () => {
+    harness.removeImage.mockRejectedValueOnce(new ForbiddenError("PRIVATE"));
+    harness.reorderImages.mockRejectedValueOnce(new ConflictError("PRIVATE"));
+    const forbidden = await removeHospitalContentImageAction({ contentId: detail.id, imageId: "x" });
+    const conflicted = await reorderHospitalContentImagesAction({ contentId: detail.id, imageIds: [] });
+    expect(forbidden).toMatchObject({ status: "ERROR", code: "FORBIDDEN" });
+    expect(conflicted).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify([forbidden, conflicted])).not.toContain("PRIVATE");
+
+    harness.getActor.mockRejectedValueOnce(new ForbiddenError());
+    harness.removeImage.mockClear();
+    await expect(removeHospitalContentImageAction({ contentId: detail.id, imageId: "x" })).resolves.toMatchObject({ status: "ERROR", code: "FORBIDDEN" });
+    expect(harness.removeImage).not.toHaveBeenCalled();
+  });
+
+  it("shows the Thai image-limit message when publish is refused for too many images, and nothing else from a validation error", async () => {
+    harness.publish.mockRejectedValueOnce(new ValidationError(HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE));
+    await expect(publishHospitalContentAction(lifecycleInput)).resolves.toEqual({ status: "ERROR", code: "VALIDATION", message: HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE });
+
+    harness.publish.mockRejectedValueOnce(new ValidationError("PRIVATE ARTICLE BODY"));
+    const other = await publishHospitalContentAction(lifecycleInput);
+    expect(other).toMatchObject({ status: "ERROR", code: "VALIDATION", message: "กรุณาตรวจสอบข้อมูลที่กรอก" });
+    expect(JSON.stringify(other)).not.toContain("PRIVATE");
   });
 });

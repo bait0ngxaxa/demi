@@ -73,7 +73,7 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
         <h2 className="mb-4 text-xl font-semibold leading-8 [overflow-wrap:anywhere]">
           <PatientContentLink href={`${knowledgeBase}/${content.id}`} className="block min-h-11 rounded-control text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">{content.title}</PatientContentLink>
         </h2>
-        <HospitalContentImageList imageIds={content.imageIds.slice(0, 1)} title={content.title} />
+        <HospitalContentImageList imageIds={content.imageIds} title={content.title} />
         <PatientContentAttribution content={content} />
       </li>)}
     </ul>}

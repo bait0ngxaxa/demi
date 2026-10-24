@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getPatientHospitalContent as detail, listPatientHospitalContent as list } from "@/modules/hospital-content/services/hospital-content-patient-query-service";
-import { getHospitalContentImageSignedUrl, uploadHospitalContentImage } from "@/modules/hospital-content/services/hospital-content-image-service";
+import { getHospitalContentImageSignedUrl, removeHospitalContentImage, reorderHospitalContentImages, uploadHospitalContentImage } from "@/modules/hospital-content/services/hospital-content-image-service";
 import { getHospitalWorkContent, listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { encodeHospitalContentPatientCursor } from "@/modules/hospital-content/services/hospital-content-patient-cursor";
 import { archiveHospitalContent, createHospitalContent, publishHospitalContent, withdrawHospitalContent } from "@/modules/hospital-content/services/hospital-content-service";
@@ -128,7 +128,7 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     expect(Object.keys(item.hospital).sort()).toEqual(["hospitalCode", "name"]);
     expect((await list(b, {}, db)).items).toEqual([]); await expect(detail(b, id, db)).rejects.toBeInstanceOf(NotFoundError);
   });
-  it("shares published News with exact-hospital OSMs and staff, and serves up to five private signed images", async () => {
+  it("shares published News with exact-hospital OSMs and staff, and serves up to three private signed images", async () => {
     const h = await hospital(); const foreign = await hospital();
     const publisher = await owner(h); const member = await owner(h, [Role.HOSPITAL], MembershipType.MEMBER);
     const osmBase = await actor([Role.OSM], false);
@@ -155,12 +155,12 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
     };
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const images: string[] = [];
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
       const result = await uploadHospitalContentImage(publisher, { contentId: draft.content.id, uploadNonce: randomUUID(), bytes: png, declaredMediaType: "image/png" }, { database: db, storage, now: () => new Date(current.getTime() + index + 1) });
       images.push(result.imageId);
     }
     await expect(uploadHospitalContentImage(publisher, { contentId: draft.content.id, uploadNonce: randomUUID(), bytes: png, declaredMediaType: "image/png" }, { database: db, storage })).rejects.toBeInstanceOf(ValidationError);
-    expect(uploaded).toHaveLength(6); expect(removed).toHaveLength(1);
+    expect(uploaded).toHaveLength(4); expect(removed).toHaveLength(1);
     expect(await getHospitalContentImageSignedUrl(publisher, images[0], { database: db, storage })).toContain("hospital-content/");
     await expect(getHospitalContentImageSignedUrl(osm, images[0], { database: db, storage })).rejects.toBeInstanceOf(NotFoundError);
     const published = await publishHospitalContent(publisher, { contentId: draft.content.id, expectedUpdatedAt: draft.content.expectedUpdatedAt }, { database: db, now: () => new Date(current.getTime() + 10) });
@@ -406,6 +406,38 @@ describe("Phase 17I.3 Patient Content real PostgreSQL", () => {
       return uploadHospitalContentImage(publisher, { contentId, uploadNonce, bytes, declaredMediaType }, { database: db, ...dependencies });
     }
     const rows = (contentId: string) => db.hospitalContentImage.findMany({ where: { contentId }, orderBy: { sortOrder: "asc" } });
+
+    it("removes and reorders DRAFT images with a contiguous sortOrder and refuses everyone but the direct OWNER", async () => {
+      const { publisher, hospitalId, contentId } = await setup(); const storage = memoryStorage();
+      const ids: string[] = [];
+      for (let index = 0; index < 3; index += 1) ids.push((await upload(publisher, contentId, randomUUID(), png, "image/png", { storage })).imageId);
+      const [first, second, third] = ids as [string, string, string];
+
+      await expect(reorderHospitalContentImages(publisher, { contentId, imageIds: [third, first, second] }, { database: db })).resolves.toEqual({ imageIds: [third, first, second] });
+      expect((await rows(contentId)).map(({ id, sortOrder }) => [id, sortOrder])).toEqual([[third, 0], [first, 1], [second, 2]]);
+      await expect(removeHospitalContentImage(publisher, { contentId, imageId: third }, { database: db, storage })).resolves.toEqual({ imageIds: [first, second] });
+      expect((await rows(contentId)).map(({ id, sortOrder }) => [id, sortOrder])).toEqual([[first, 0], [second, 1]]);
+      expect(storage.removed).toHaveLength(1);
+
+      const member = await owner(hospitalId, [Role.HOSPITAL], MembershipType.MEMBER);
+      const osm = await actor([Role.OSM], false);
+      const adminOnly = await actor([Role.ADMIN], false);
+      const foreignOwner = await owner(await hospital());
+      await expect(removeHospitalContentImage(member, { contentId, imageId: first }, { database: db, storage })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(reorderHospitalContentImages(member, { contentId, imageIds: [second, first] }, { database: db })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(removeHospitalContentImage(osm, { contentId, imageId: first }, { database: db, storage })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(reorderHospitalContentImages(adminOnly, { contentId, imageIds: [second, first] }, { database: db })).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(removeHospitalContentImage(foreignOwner, { contentId, imageId: first }, { database: db, storage })).rejects.toBeInstanceOf(NotFoundError);
+      // A stale order (one image missing) is refused instead of guessed.
+      await expect(reorderHospitalContentImages(publisher, { contentId, imageIds: [first] }, { database: db })).rejects.toBeInstanceOf(ConflictError);
+
+      const current = await db.hospitalContent.findUniqueOrThrow({ where: { id: contentId }, select: { updatedAt: true } });
+      const published = await publishHospitalContent(publisher, { contentId, expectedUpdatedAt: current.updatedAt.toISOString() }, { database: db });
+      if (published.outcome === "UNCONFIRMED") throw new Error("Expected confirmed publication");
+      await expect(removeHospitalContentImage(publisher, { contentId, imageId: first }, { database: db, storage })).rejects.toBeInstanceOf(ConflictError);
+      await expect(reorderHospitalContentImages(publisher, { contentId, imageIds: [second, first] }, { database: db })).rejects.toBeInstanceOf(ConflictError);
+      expect(await rows(contentId)).toHaveLength(2);
+    });
 
     it("replays the same nonce and identical image without a second row or object", async () => {
       const { publisher, contentId } = await setup(); const storage = memoryStorage(); const nonce = randomUUID();

@@ -10,10 +10,12 @@ import {
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
+import { HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE } from "../domain/hospital-content";
 import type {
   HospitalContentActionError,
   HospitalContentCreateActionState,
   HospitalContentField,
+  HospitalContentImagesActionState,
   HospitalContentMutationActionState,
   HospitalContentReadActionState,
   HospitalContentReconciliationActionState,
@@ -26,6 +28,7 @@ import {
   hospitalContentReconcileSchema,
   hospitalContentWithdrawSchema,
 } from "../schemas/hospital-content-schemas";
+import { removeHospitalContentImage, reorderHospitalContentImages } from "../services/hospital-content-image-service";
 import {
   archiveHospitalContent,
   createHospitalContent,
@@ -57,6 +60,7 @@ function getFieldErrors(issues: readonly { path: readonly PropertyKey[] }[]): Pa
 
 function mapError(error: unknown): HospitalContentActionError {
   if (error instanceof ApplicationError) {
+    if (error.code === "VALIDATION" && error.message === HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE) return { status: "ERROR", code: "VALIDATION", message: HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE };
     if (error.code === "VALIDATION") return { status: "ERROR", code: "VALIDATION", message: "กรุณาตรวจสอบข้อมูลที่กรอก" };
     if (error.code === "CONFLICT") return { status: "ERROR", code: "CONFLICT", message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลปัจจุบันเพื่อตรวจสอบ" };
     if (error.code === "NOT_FOUND") return { status: "ERROR", code: "NOT_FOUND", message: "ไม่พบรายการนี้หรือไม่สามารถเข้าถึงได้" };
@@ -172,4 +176,30 @@ export async function reconcileHospitalContentCreateAction(input: unknown): Prom
   } catch (error: unknown) {
     return mapError(error);
   }
+}
+
+async function runImageMutation(operation: (actor: Awaited<ReturnType<typeof getProtectedApplicationActor>>) => Promise<{ imageIds: string[] }>, contentId: unknown): Promise<HospitalContentImagesActionState> {
+  const auth = await getActorOrError();
+  if ("error" in auth) return auth.error;
+  try {
+    const { imageIds } = await operation(auth.actor);
+    if (typeof contentId === "string") {
+      try {
+        revalidatePath(`/app/hospitals/knowledge/${contentId}`);
+      } catch {
+        // The committed image change stays confirmed if route revalidation fails.
+      }
+    }
+    return { status: "SUCCESS", imageIds };
+  } catch (error: unknown) {
+    return mapError(error);
+  }
+}
+
+export async function removeHospitalContentImageAction(input: { contentId: unknown; imageId: unknown }): Promise<HospitalContentImagesActionState> {
+  return runImageMutation((actor) => removeHospitalContentImage(actor, input), input?.contentId);
+}
+
+export async function reorderHospitalContentImagesAction(input: { contentId: unknown; imageIds: unknown }): Promise<HospitalContentImagesActionState> {
+  return runImageMutation((actor) => reorderHospitalContentImages(actor, input), input?.contentId);
 }

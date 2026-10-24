@@ -20,7 +20,7 @@ export default async function HospitalWorkContentPage({ searchParams }: { search
       {page.items.map((item) => <li className="min-w-0 py-5 first:pt-0" key={item.id}>
         <Link className="min-h-11 break-words text-lg font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/hospitals/content/${item.id}`}>{item.title}</Link>
         <p className="mt-2 text-sm text-text-muted">{HOSPITAL_CONTENT_CATEGORY_LABELS[item.category]} · {item.hospital.name}</p>
-        <HospitalContentImageList imageIds={item.imageIds.slice(0, 1)} title={item.title} />
+        <HospitalContentImageList imageIds={item.imageIds} title={item.title} />
       </li>)}
     </ul>}
     {page.nextCursor ? <nav aria-label="หน้ารายการข่าวสารและสื่อความรู้">

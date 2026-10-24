@@ -27,6 +27,8 @@ import {
 import { decideHospitalContentMutation, type HospitalContentEditableFields } from "../domain/hospital-content-mutation";
 import {
   HOSPITAL_CONTENT_CURSOR_LOOKAHEAD,
+  HOSPITAL_CONTENT_IMAGE_LIMIT,
+  HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE,
   HOSPITAL_CONTENT_PAGE_SIZE,
   hospitalContentPublicationTimes,
   nextHospitalContentVersion,
@@ -604,6 +606,9 @@ async function mutateInTransaction(
     action = "hospital_content.updated";
   } else if (command === "PUBLISH") {
     validateStoredContentForPublish(current);
+    // Uploads lock this row too, so the count cannot change between this check and the status update.
+    const imageCount = await transaction.hospitalContentImage.count({ where: { contentId: current.id } });
+    if (imageCount > HOSPITAL_CONTENT_IMAGE_LIMIT) throw new ValidationError(HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE);
     let publicationTimes: ReturnType<typeof hospitalContentPublicationTimes>;
     try {
       publicationTimes = hospitalContentPublicationTimes(current.firstPublishedAt, current.latestPublishedAt, now);

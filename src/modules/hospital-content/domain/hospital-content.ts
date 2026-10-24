@@ -22,7 +22,10 @@ export const HOSPITAL_CONTENT_STATUS_VARIANTS = {
 
 export const HOSPITAL_CONTENT_PAGE_SIZE = 25;
 export const HOSPITAL_CONTENT_CURSOR_LOOKAHEAD = HOSPITAL_CONTENT_PAGE_SIZE + 1;
-export const HOSPITAL_CONTENT_IMAGE_LIMIT = 5;
+export const HOSPITAL_CONTENT_IMAGE_LIMIT = 3;
+export const HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE = "เนื้อหาหนึ่งรายการแนบรูปได้ไม่เกิน 3 รูป กรุณาลบรูปที่เกินก่อน";
+// The database CHECK keeps sortOrder within 0..4, which bounds the stored images (and the spare slot used to reorder).
+export const HOSPITAL_CONTENT_IMAGE_MAX_SORT_ORDER = 4;
 export const HOSPITAL_CONTENT_IMAGE_URL_TTL_SECONDS = 300;
 export const HOSPITAL_CONTENT_REQUEST_MAX_BYTES = 131_072;
 export const HOSPITAL_CONTENT_TITLE_MAX_CODE_UNITS = 200;
@@ -93,3 +96,36 @@ export const hospitalContentDomainInternals = {
   HOSPITAL_CONTENT_CURSOR_LOOKAHEAD,
   HOSPITAL_CONTENT_REQUEST_MAX_BYTES,
 };
+
+export type HospitalContentImageMove = { imageId: string; sortOrder: number };
+
+/**
+ * Orders single-row `sortOrder` updates so the non-deferrable unique (contentId, sortOrder) index is
+ * never violated: the first free slot above the stored images is the spare that breaks each cycle.
+ */
+export function planHospitalContentImageReorder(current: readonly string[], desired: readonly string[]): HospitalContentImageMove[] {
+  if (current.length !== desired.length || new Set(desired).size !== desired.length || desired.some((id) => !current.includes(id))) {
+    throw new RangeError("Hospital Content image order is not a permutation of the stored images");
+  }
+  const spare = current.length;
+  if (spare > HOSPITAL_CONTENT_IMAGE_MAX_SORT_ORDER) throw new RangeError("No spare image slot is available");
+  const slotOf = new Map(current.map((id, index) => [id, index] as const));
+  const moves: HospitalContentImageMove[] = [];
+  const done = new Set<string>();
+  for (const [targetSlot, startId] of desired.entries()) {
+    if (done.has(startId)) continue;
+    done.add(startId);
+    if (slotOf.get(startId) === targetSlot) continue;
+    // Park the first mover in the spare slot, then pull each displaced row into the slot freed before it.
+    moves.push({ imageId: startId, sortOrder: spare });
+    let freed = slotOf.get(startId) as number;
+    while (freed !== targetSlot) {
+      const occupantId = desired[freed] as string;
+      moves.push({ imageId: occupantId, sortOrder: freed });
+      done.add(occupantId);
+      freed = slotOf.get(occupantId) as number;
+    }
+    moves.push({ imageId: startId, sortOrder: targetSlot });
+  }
+  return moves;
+}

@@ -13,7 +13,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import {
   HOSPITAL_CONTENT_CATEGORY_LABELS,
+  HOSPITAL_CONTENT_IMAGE_LIMIT,
+  HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE,
 } from "@/modules/hospital-content/domain/hospital-content";
+import {
+  runHospitalContentPublishFlow,
+  type HospitalContentPublishFlowDependencies,
+  type HospitalContentPublishFlowProgress,
+  type HospitalContentPublishFlowResult,
+  type HospitalContentPublishFlowState,
+} from "@/modules/hospital-content/client/hospital-content-publish-flow";
 import type { HospitalContentOwnerHospital } from "@/modules/hospital-content/types/hospital-content-projections";
 import type {
   HospitalContentCreateActionState,
@@ -22,10 +31,19 @@ import type {
 } from "@/modules/hospital-content/transport/action-state";
 import {
   createHospitalContentAction,
+  publishHospitalContentAction,
+  readHospitalContentCurrentAction,
   reconcileHospitalContentCreateAction,
 } from "@/modules/hospital-content/transport/server-actions";
-import { hospitalContentFormEntriesToObject } from "@/modules/hospital-content/schemas/hospital-content-schemas";
+import {
+  hospitalContentFormEntriesToObject,
+  normalizeHospitalContentBody,
+  normalizeHospitalContentSourceText,
+  normalizeHospitalContentTitle,
+} from "@/modules/hospital-content/schemas/hospital-content-schemas";
 import { hospitalContentCreateRecoveryStorageKey } from "@/modules/hospital-content/transport/create-recovery-storage";
+
+import { HospitalContentComposerImages, type ComposerImage } from "./hospital-content-composer-images";
 
 type CreateDraft = {
   title: string;
@@ -42,7 +60,48 @@ type CreateConfirmationIntent =
   | { kind: "OPEN_RECORD"; contentId: string; title: string }
   | { kind: "DISCARD" };
 
+type CreateFields = { title: string; body: string; category: string; sourceText: string | null };
+type StoppedFlow = Extract<HospitalContentPublishFlowResult, { status: "STOPPED" }>;
+type FlowRun = { publish: boolean; fields: CreateFields; state: HospitalContentPublishFlowState; createdHospitalId: string | null };
+
 const emptyDraft: CreateDraft = { title: "", body: "", category: "", sourceText: "" };
+const requiredFieldMessages = {
+  title: "ตรวจสอบหัวข้อและความยาวอีกครั้ง",
+  body: "ตรวจสอบเนื้อหาและความยาวอีกครั้ง",
+  category: "เลือกหมวดหมู่ที่ต้องการ",
+} as const;
+const imageUploadFailureMessage = "อัปโหลดรูปไม่สำเร็จ กรุณาเปิดฉบับร่างเพื่อตรวจสอบและเพิ่มรูปอีกครั้ง";
+
+function isImageIdResult(value: unknown): value is { imageId: string } {
+  return typeof value === "object" && value !== null && "imageId" in value && typeof value.imageId === "string";
+}
+
+function errorTextOf(value: unknown): string | null {
+  return typeof value === "object" && value !== null && "error" in value && typeof value.error === "string" ? value.error : null;
+}
+
+/** The server normalizes text before storing it, so a replayed create is compared after the same normalization. */
+function storedMatchesFields(content: { title: string; body: string; category: string; sourceText: string | null }, fields: CreateFields): boolean {
+  try {
+    return content.title === normalizeHospitalContentTitle(fields.title)
+      && content.body === normalizeHospitalContentBody(fields.body)
+      && content.category === fields.category
+      && content.sourceText === normalizeHospitalContentSourceText(fields.sourceText);
+  } catch {
+    return false;
+  }
+}
+
+function stoppedTitle(stop: StoppedFlow): string {
+  if (stop.step === "UPLOAD") return `อัปโหลดรูปที่ ${stop.imageNumber ?? ""} ไม่สำเร็จ`;
+  return "เผยแพร่ไม่สำเร็จ";
+}
+
+function stoppedDetail(stop: StoppedFlow): string {
+  if (stop.reason === "UNKNOWN") return "ยังยืนยันผลไม่ได้ กด “ลองต่อ” เพื่อทำต่อจากขั้นตอนนี้ ระบบจะไม่สร้างเนื้อหาหรือรูปซ้ำ";
+  if (stop.reason === "CONFLICT") return "ฉบับร่างถูกเปลี่ยนแปลงแล้ว กรุณาเปิดฉบับร่างเพื่อตรวจสอบก่อนเผยแพร่";
+  return stop.message ?? "กรุณาเปิดฉบับร่างเพื่อตรวจสอบและดำเนินการต่อ";
+}
 
 function parseMarker(value: string): CreateAttemptMarker | null {
   try {
@@ -90,11 +149,19 @@ export function HospitalContentCreateForm({
   const [marker, setMarker] = useState<CreateAttemptMarker | null>(null);
   const [recoveryLoaded, setRecoveryLoaded] = useState(false);
   const [recoveryChecked, setRecoveryChecked] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [storageUnavailable, setStorageUnavailable] = useState(false);
   const [confirmationIntent, setConfirmationIntent] = useState<CreateConfirmationIntent | null>(null);
   const [navigationBlockedWhilePending, setNavigationBlockedWhilePending] = useState(false);
+  const [images, setImages] = useState<ComposerImage[]>([]);
+  const [progress, setProgress] = useState<HospitalContentPublishFlowProgress | null>(null);
+  const [runMode, setRunMode] = useState<"PUBLISH" | "DRAFT" | null>(null);
+  const [flowStop, setFlowStop] = useState<StoppedFlow | null>(null);
+  const [savedContentId, setSavedContentId] = useState<string | null>(null);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const flowRef = useRef<FlowRun | null>(null);
+  const imagesRef = useRef<ComposerImage[]>([]);
+  const formRef = useRef<HTMLFormElement>(null);
   const nonceRef = useRef<string | null>(null);
   const createInFlight = useRef(false);
   const mountedRef = useRef(false);
@@ -109,6 +176,14 @@ export function HospitalContentCreateForm({
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => () => {
+    for (const image of imagesRef.current) URL.revokeObjectURL(image.previewUrl);
   }, []);
 
   useEffect(() => {
@@ -151,7 +226,8 @@ export function HospitalContentCreateForm({
     if (invalidControl && !invalidControl.disabled) invalidControl.focus();
   }, [actionState, isPending]);
 
-  const dirty = hasDraftText(draft);
+  // Once the draft is stored on the server, leaving the page loses nothing the detail page cannot resume.
+  const dirty = savedContentId === null && (hasDraftText(draft) || images.length > 0);
   const activeMarker = marker;
   const recoveryHospitalMatches = activeMarker?.hospitalId === selectedHospitalId;
   const selectedHospital = hospitals.find(({ id }) => id === selectedHospitalId);
@@ -276,8 +352,10 @@ export function HospitalContentCreateForm({
     } else {
       clearMarker();
       setDraft(emptyDraft);
+      for (const image of images) URL.revokeObjectURL(image.previewUrl);
+      setImages([]);
+      flowRef.current = null;
       setActionState({ status: "IDLE" });
-      setPreviewOpen(false);
     }
   }
 
@@ -308,72 +386,199 @@ export function HospitalContentCreateForm({
     });
   }
 
-  function submitCreate(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  function addImages(added: ComposerImage[]): void {
+    setImages((current) => [...current, ...added].slice(0, HOSPITAL_CONTENT_IMAGE_LIMIT));
+  }
+
+  function removeImage(index: number): void {
+    const removed = images[index];
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    setImages((current) => current.filter((_, position) => position !== index));
+  }
+
+  function moveImage(index: number, direction: -1 | 1): void {
+    setImages((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target] as ComposerImage, next[index] as ComposerImage];
+      return next;
+    });
+  }
+
+  /** Reads the create fields and starts a new run, or continues the run whose draft is already stored. */
+  function startFlow(form: HTMLFormElement | null, publish: boolean): void {
     if (createInFlight.current || isPending || !recoveryLoaded || storageUnavailable || (activeMarker && (!recoveryChecked || !recoveryHospitalMatches))) return;
     setNavigationBlockedWhilePending(false);
 
-    let fields: Record<string, string>;
-    try {
-      fields = hospitalContentFormEntriesToObject(new FormData(event.currentTarget).entries(), "CREATE");
-    } catch {
-      setActionState({ status: "ERROR", code: "VALIDATION", message: "ตรวจสอบข้อมูลในแบบฟอร์มอีกครั้ง" });
-      return;
+    if (!flowRef.current?.state.contentId) {
+      if (!form) return;
+      let fields: Record<string, string>;
+      try {
+        fields = hospitalContentFormEntriesToObject(new FormData(form).entries(), "CREATE");
+      } catch {
+        setActionState({ status: "ERROR", code: "VALIDATION", message: "ตรวจสอบข้อมูลในแบบฟอร์มอีกครั้ง" });
+        return;
+      }
+      // A run that has not stored a draft yet may be rebuilt from the current form; image nonces stay stable per file.
+      flowRef.current = {
+        publish,
+        fields: { title: fields.title, body: fields.body, category: fields.category, sourceText: fields.sourceText === "" ? null : fields.sourceText },
+        state: { images: images.map(({ nonce, file }) => ({ nonce, file })) },
+        createdHospitalId: null,
+      };
+    } else {
+      flowRef.current.publish = publish;
     }
-    const submissionNonce = nonceRef.current ?? window.crypto.randomUUID();
-    nonceRef.current = submissionNonce;
-    const nextMarker = { hospitalId: selectedHospitalId, submissionNonce };
-    if (!storeMarker(nextMarker)) {
-      setActionState({ status: "ERROR", code: "UNAVAILABLE", message: "ไม่สามารถเตรียมรหัสคำขอสำหรับการตรวจสอบผลได้ จึงยังไม่ได้ส่งข้อมูล" });
-      return;
-    }
+    const run = flowRef.current;
     createInFlight.current = true;
-    setActionState({ status: "IDLE" });
-    setReconciliationState(null);
-    setRecoveryChecked(false);
+    setFlowStop(null);
+    setRunMode(publish ? "PUBLISH" : "DRAFT");
     const generation = ++requestGeneration.current;
-    const input = {
-      hospitalId: selectedHospitalId,
-      submissionNonce,
-      title: fields.title,
-      body: fields.body,
-      category: fields.category,
-      sourceText: fields.sourceText === "" ? null : fields.sourceText,
+    const stale = (): boolean => generation !== requestGeneration.current;
+
+    const dependencies: HospitalContentPublishFlowDependencies = {
+      create: async () => {
+        const submissionNonce = nonceRef.current ?? window.crypto.randomUUID();
+        nonceRef.current = submissionNonce;
+        const nextMarker = { hospitalId: selectedHospitalId, submissionNonce };
+        if (!storeMarker(nextMarker)) {
+          setActionState({ status: "ERROR", code: "UNAVAILABLE", message: "ไม่สามารถเตรียมรหัสคำขอสำหรับการตรวจสอบผลได้ จึงยังไม่ได้ส่งข้อมูล" });
+          return { kind: "REJECTED", message: "" };
+        }
+        setActionState({ status: "IDLE" });
+        setReconciliationState(null);
+        setRecoveryChecked(false);
+        let result: HospitalContentCreateActionState;
+        try {
+          result = await createHospitalContentAction({ hospitalId: selectedHospitalId, submissionNonce, ...run.fields });
+        } catch {
+          if (stale()) return { kind: "UNKNOWN" };
+          setMarker(nextMarker);
+          setRecoveryChecked(false);
+          setActionState({ status: "UNCONFIRMED" });
+          return { kind: "UNKNOWN" };
+        }
+        if (stale()) return { kind: "UNKNOWN" };
+        if (result.status === "UNCONFIRMED") {
+          setActionState(result);
+          setMarker(nextMarker);
+          setRecoveryChecked(false);
+          return { kind: "UNKNOWN" };
+        }
+        if (result.status !== "SUCCESS") {
+          setActionState(result);
+          if (result.status === "ERROR" && result.code === "VALIDATION") {
+            try { window.sessionStorage.removeItem(hospitalContentCreateRecoveryStorageKey(recoveryScope)); } catch { /* Keep the in-memory nonce. */ }
+            setMarker(null);
+            setRecoveryChecked(false);
+          }
+          return { kind: "REJECTED", message: "" };
+        }
+        const { content } = result.result;
+        if (result.result.outcome === "REPLAY" && !(content.status === "DRAFT" && content.imageIds.length === 0 && storedMatchesFields(content, run.fields))) {
+          // A replay that is not exactly this composer's untouched draft is never published or filled with images.
+          setActionState(result);
+          removeStoredMarker();
+          setMarker(nextMarker);
+          setRecoveryChecked(true);
+          return { kind: "CONFLICT" };
+        }
+        if (!run.publish && result.result.outcome === "CREATED") setActionState(result);
+        clearMarker();
+        run.createdHospitalId = content.hospital.id;
+        setSavedContentId(content.id);
+        return { kind: "OK", contentId: content.id, expectedUpdatedAt: content.expectedUpdatedAt };
+      },
+      upload: async (contentId, image) => {
+        const body = new FormData();
+        body.append("file", image.file, image.file.name);
+        body.append("caption", image.nonce);
+        let response: Response;
+        try {
+          response = await fetch(`/api/hospital-content/${contentId}/images`, { method: "POST", body, cache: "no-store" });
+        } catch {
+          return { kind: "UNKNOWN" };
+        }
+        const payload: unknown = await response.json().catch(() => null);
+        if (response.ok && isImageIdResult(payload)) return { kind: "OK", imageId: payload.imageId };
+        // An unusable answer or a server fault may still have stored the image; the same nonce replays it safely.
+        if (response.ok || response.status >= 500) return { kind: "UNKNOWN" };
+        return { kind: "REJECTED", message: errorTextOf(payload) ?? imageUploadFailureMessage };
+      },
+      publish: async (contentId, expectedUpdatedAt) => {
+        try {
+          const result = await publishHospitalContentAction({ contentId, expectedUpdatedAt });
+          if (result.status === "SUCCESS") return { kind: "OK" };
+          if (result.status === "UNCONFIRMED") return { kind: "UNKNOWN" };
+          if (result.status === "ERROR" && result.code === "CONFLICT") return { kind: "CONFLICT" };
+          if (result.status === "ERROR" && result.code === "UNAVAILABLE") return { kind: "UNKNOWN" };
+          return { kind: "REJECTED", message: result.status === "ERROR" && result.code === "VALIDATION" && result.message === HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE ? result.message : "ไม่สามารถเผยแพร่ได้ กรุณาเปิดฉบับร่างเพื่อตรวจสอบ" };
+        } catch {
+          return { kind: "UNKNOWN" };
+        }
+      },
+      readCurrent: async (contentId) => {
+        try {
+          const result = await readHospitalContentCurrentAction(contentId);
+          return result.status === "SUCCESS"
+            ? { kind: "OK", status: result.content.status, expectedUpdatedAt: result.content.expectedUpdatedAt }
+            : { kind: "UNKNOWN" };
+        } catch {
+          return { kind: "UNKNOWN" };
+        }
+      },
     };
 
     startTransition(async () => {
       try {
-        const result = await createHospitalContentAction(input);
-        if (generation !== requestGeneration.current) return;
-        setActionState(result);
-        if (result.status === "ERROR" && result.code === "VALIDATION") {
-          try { window.sessionStorage.removeItem(hospitalContentCreateRecoveryStorageKey(recoveryScope)); } catch { /* Keep the in-memory nonce. */ }
-          setMarker(null);
-          setRecoveryChecked(false);
-        } else if (result.status === "SUCCESS" && result.result.outcome === "CREATED") {
-          clearMarker();
-          // Only a newly created draft is announced; a REPLAY keeps its own Alert and link.
-          if (mountedRef.current && result.result.content.hospital.id === selectedHospitalId) {
-            notify.success("สร้างฉบับร่างแล้ว");
-          }
-          router.push(`/app/hospitals/knowledge/${result.result.content.id}`);
-        } else if (result.status === "SUCCESS" && result.result.outcome === "REPLAY") {
-          removeStoredMarker();
-          setMarker(nextMarker);
-          setRecoveryChecked(true);
-        } else if (result.status === "UNCONFIRMED") {
-          setMarker(nextMarker);
-          setRecoveryChecked(false);
+        const result = await runHospitalContentPublishFlow(run.state, { publish: run.publish, onProgress: (next) => { if (!stale()) setProgress(next); } }, dependencies);
+        if (stale()) return;
+        setProgress(null);
+        if (result.status === "DONE") {
+          // Only a draft of the hospital shown here is announced.
+          if (mountedRef.current && run.createdHospitalId === selectedHospitalId) notify.success(result.published ? "เผยแพร่เนื้อหาแล้ว" : "สร้างฉบับร่างแล้ว");
+          router.push(`/app/hospitals/knowledge/${result.contentId}`);
+        } else if (run.state.contentId) {
+          setFlowStop(result);
         }
       } catch {
-        if (generation !== requestGeneration.current) return;
-        setMarker(nextMarker);
-        setRecoveryChecked(false);
-        setActionState({ status: "UNCONFIRMED" });
+        if (stale()) return;
+        setProgress(null);
+        if (run.state.contentId) setFlowStop({ status: "STOPPED", step: "PUBLISH", reason: "UNKNOWN", resumable: true });
+        else setActionState({ status: "UNCONFIRMED" });
       } finally {
-        if (generation === requestGeneration.current) createInFlight.current = false;
+        if (!stale()) createInFlight.current = false;
       }
     });
+  }
+
+  function submitCreate(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    startFlow(event.currentTarget, false);
+  }
+
+  function requestPublish(): void {
+    if (isPending || fieldsLocked) return;
+    const missing: Partial<Record<HospitalContentField, string>> = {};
+    if (!draft.title.trim()) missing.title = requiredFieldMessages.title;
+    if (!draft.body.trim()) missing.body = requiredFieldMessages.body;
+    if (!draft.category) missing.category = requiredFieldMessages.category;
+    if (Object.keys(missing).length > 0) {
+      setActionState({ status: "ERROR", code: "VALIDATION", message: "กรุณาตรวจสอบข้อมูลที่กรอก", fieldErrors: missing });
+      return;
+    }
+    setActionState({ status: "IDLE" });
+    setPublishConfirmOpen(true);
+  }
+
+  function confirmPublish(): void {
+    setPublishConfirmOpen(false);
+    startFlow(formRef.current, true);
+  }
+
+  function resumeFlow(): void {
+    startFlow(formRef.current, flowRef.current?.publish ?? false);
   }
 
   function requestOpenRecoveredRecord(contentId: string, title: string): void {
@@ -436,6 +641,7 @@ export function HospitalContentCreateForm({
     ? reconciliationState.result.content
     : replayContent;
   const retryAllowed = recoveryChecked && reconciliationState?.status === "SUCCESS" && reconciliationState.result.status === "ABSENT";
+  const fieldsLocked = isPending || Boolean(activeMarker && !retryAllowed) || savedContentId !== null;
 
   return (
     <div className="max-w-4xl">
@@ -446,7 +652,7 @@ export function HospitalContentCreateForm({
           { label: "ข่าวสารและความรู้", href: `/app/hospitals/knowledge?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
           { label: "สร้างฉบับร่าง" },
         ]}
-        description="บันทึกฉบับร่างที่มีข้อมูลครบก่อนตรวจทานและเผยแพร่"
+        description="กรอกเนื้อหา เพิ่มรูปได้ไม่เกิน 3 รูป แล้วเผยแพร่ทันที หรือบันทึกเป็นฉบับร่างไว้ก่อน"
         title="สร้างข่าวสารและความรู้"
       />
 
@@ -506,6 +712,35 @@ export function HospitalContentCreateForm({
       {actionState.status === "ERROR" ? (
         <Alert className="mt-5" variant={actionState.code === "VALIDATION" ? "warning" : "danger"}>
           <p className="font-semibold">{stateMessage(actionState)}</p>
+        </Alert>
+      ) : null}
+
+      {isPending && progress ? (
+        <Panel aria-labelledby="hospital-content-progress-heading" className="mt-5">
+          <h2 className="text-base font-semibold text-text" id="hospital-content-progress-heading">กำลังดำเนินการ อย่าปิดหน้านี้</h2>
+          <ol className="mt-3 space-y-1 text-sm leading-6 text-text-muted">
+            <li aria-current={progress.step === "CREATE" ? "step" : undefined} className={progress.step === "CREATE" ? "font-semibold text-text" : undefined}>1. บันทึกเนื้อหา</li>
+            {progress.imageTotal > 0 ? (
+              <li aria-current={progress.step === "UPLOAD" ? "step" : undefined} className={progress.step === "UPLOAD" ? "font-semibold text-text" : undefined}>
+                2. อัปโหลดรูป {progress.step === "UPLOAD" ? `${progress.imageNumber ?? 1}/${progress.imageTotal}` : `${progress.imageTotal} รูป`}
+              </li>
+            ) : null}
+            {runMode === "PUBLISH" ? (
+              <li aria-current={progress.step === "PUBLISH" ? "step" : undefined} className={progress.step === "PUBLISH" ? "font-semibold text-text" : undefined}>{progress.imageTotal > 0 ? "3" : "2"}. เผยแพร่</li>
+            ) : null}
+          </ol>
+        </Panel>
+      ) : null}
+
+      {savedContentId !== null && flowStop ? (
+        <Alert className="mt-5" variant={flowStop.reason === "UNKNOWN" ? "warning" : "danger"}>
+          <p className="font-semibold">{stoppedTitle(flowStop)}</p>
+          <p className="mt-1">บันทึกฉบับร่างไว้แล้ว เนื้อหายังไม่ถูกเผยแพร่{flowStop.step === "UPLOAD" ? " และรูปที่ยังไม่ได้อัปโหลดต้องเพิ่มในหน้าฉบับร่าง" : ""}</p>
+          <p className="mt-1">{stoppedDetail(flowStop)}</p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            {flowStop.resumable ? <Button disabled={isPending} onClick={resumeFlow} type="button">ลองต่อ</Button> : null}
+            <Button disabled={isPending} onClick={() => router.push(`/app/hospitals/knowledge/${savedContentId}`)} type="button" variant="secondary">เปิดฉบับร่าง</Button>
+          </div>
         </Alert>
       ) : null}
 
@@ -573,14 +808,14 @@ export function HospitalContentCreateForm({
               </Alert>
             ) : null}
 
-            <form className="mt-6 space-y-5" noValidate onSubmit={submitCreate}>
+            <form className="mt-6 space-y-5" noValidate onSubmit={submitCreate} ref={formRef}>
               <div className="min-w-0">
                 <label className="type-label mb-2 block text-text" htmlFor="hospital-content-title">หัวข้อ</label>
                 <input
                   aria-describedby="hospital-content-title-description hospital-content-title-error"
                   aria-invalid={Boolean(actionState.status === "ERROR" && actionState.fieldErrors?.title)}
                   className="type-control min-h-12 w-full max-w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
-                  disabled={isPending || Boolean(activeMarker && !retryAllowed)}
+                  disabled={fieldsLocked}
                   id="hospital-content-title"
                   maxLength={1_000}
                   name="title"
@@ -602,7 +837,7 @@ export function HospitalContentCreateForm({
                   aria-describedby="hospital-content-body-description hospital-content-body-error"
                   aria-invalid={Boolean(actionState.status === "ERROR" && actionState.fieldErrors?.body)}
                   className="type-control min-h-72 w-full max-w-full resize-y rounded-control border border-border-strong bg-surface px-4 py-3 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
-                  disabled={isPending || Boolean(activeMarker && !retryAllowed)}
+                  disabled={fieldsLocked}
                   id="hospital-content-body"
                   maxLength={24_000}
                   name="body"
@@ -624,7 +859,7 @@ export function HospitalContentCreateForm({
                   aria-describedby="hospital-content-category-description hospital-content-category-error"
                   aria-invalid={Boolean(actionState.status === "ERROR" && actionState.fieldErrors?.category)}
                   className="type-control min-h-12 w-full max-w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
-                  disabled={isPending || Boolean(activeMarker && !retryAllowed)}
+                  disabled={fieldsLocked}
                   id="hospital-content-category"
                   name="category"
                   ref={categoryRef}
@@ -650,7 +885,7 @@ export function HospitalContentCreateForm({
                   aria-describedby="hospital-content-source-description hospital-content-source-error"
                   aria-invalid={Boolean(actionState.status === "ERROR" && actionState.fieldErrors?.sourceText)}
                   className="type-control min-h-12 w-full max-w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 aria-invalid:border-danger"
-                  disabled={isPending || Boolean(activeMarker && !retryAllowed)}
+                  disabled={fieldsLocked}
                   id="hospital-content-source"
                   maxLength={2_000}
                   name="sourceText"
@@ -665,32 +900,29 @@ export function HospitalContentCreateForm({
                 <p className="mt-1 min-h-6 text-sm leading-6 text-danger" id="hospital-content-source-error">{fieldMessage(actionState, "sourceText")}</p>
               </div>
 
-              {previewOpen ? (
-                <section aria-labelledby="hospital-content-local-preview" className="border-t border-border pt-5">
-                  <h3 className="text-base font-semibold text-text" id="hospital-content-local-preview">ตัวอย่างข้อมูลที่ยังไม่บันทึก</h3>
-                  <p className="mt-1 text-sm text-text-muted">{selectedHospital?.name}</p>
-                  <p className="mt-4 break-words text-lg font-semibold text-text">{draft.title || "ยังไม่มีหัวข้อ"}</p>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-base leading-7 text-text">{draft.body || "ยังไม่มีเนื้อหา"}</p>
-                  {draft.category ? <p className="mt-3 text-sm text-text-muted">หมวดหมู่: {HOSPITAL_CONTENT_CATEGORY_LABELS[draft.category]}</p> : null}
-                  {draft.sourceText.trim() ? (
-                    <p className="mt-3 break-all text-sm leading-6 text-text"><span className="font-semibold">แหล่งข้อมูล/อ้างอิง: </span>{draft.sourceText}</p>
-                  ) : null}
-                </section>
-              ) : null}
+              <HospitalContentComposerImages
+                disabled={fieldsLocked}
+                images={images}
+                onAdd={addImages}
+                onMove={moveImage}
+                onRemove={removeImage}
+              />
 
-              <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button disabled={isPending || Boolean(activeMarker && !retryAllowed)} onClick={() => setPreviewOpen((open) => !open)} type="button" variant="secondary">
-                    {previewOpen ? "ซ่อนตัวอย่าง" : "ดูตัวอย่างฉบับร่าง"}
-                  </Button>
+              {savedContentId === null ? (
+                <div className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
                   <Link className={buttonClassName({ variant: "ghost" })} href={`/app/hospitals/knowledge?hospitalId=${encodeURIComponent(selectedHospitalId)}`} onClick={handleExit}>
                     กลับไปรายการ
                   </Link>
+                  <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                    <Button disabled={isPending || !recoveryLoaded || storageUnavailable || Boolean(activeMarker && !retryAllowed)} loading={isPending && runMode === "DRAFT"} type="submit" variant="secondary">
+                      {isPending && runMode === "DRAFT" ? "กำลังบันทึก..." : activeMarker ? "บันทึกฉบับร่างด้วยรหัสคำขอเดิม" : "บันทึกฉบับร่าง"}
+                    </Button>
+                    <Button disabled={isPending || !recoveryLoaded || storageUnavailable || Boolean(activeMarker && !retryAllowed)} loading={isPending && runMode === "PUBLISH"} onClick={requestPublish} type="button">
+                      {isPending && runMode === "PUBLISH" ? "กำลังเผยแพร่..." : "เผยแพร่"}
+                    </Button>
+                  </div>
                 </div>
-                <Button disabled={isPending || !recoveryLoaded || storageUnavailable || Boolean(activeMarker && !retryAllowed)} loading={isPending} type="submit">
-                  {isPending ? "กำลังบันทึก..." : activeMarker ? "บันทึกฉบับร่างด้วยรหัสคำขอเดิม" : "บันทึกฉบับร่าง"}
-                </Button>
-              </div>
+              ) : null}
               {activeMarker && !retryAllowed ? (
                 <p className="mt-3 text-sm leading-6 text-warning">ตรวจสอบคำขอเดิมก่อนส่งข้อมูลซ้ำ</p>
               ) : null}
@@ -700,6 +932,33 @@ export function HospitalContentCreateForm({
       ) : null}
 
       {!recoveryLoaded ? <p aria-live="polite" className="mt-5 text-sm text-text-muted">กำลังตรวจสอบคำขอที่อาจค้างอยู่...</p> : null}
+
+      <ConfirmDialog
+        confirmLabel="เผยแพร่"
+        description="เมื่อเผยแพร่ ผู้ป่วยที่เชื่อมกับโรงพยาบาลและเจ้าหน้าที่ที่เกี่ยวข้องจะเห็นเนื้อหานี้ กรุณาตรวจทานตัวอย่างก่อนยืนยัน"
+        details={(
+          <div className="min-w-0 space-y-2 text-left">
+            <p className="text-sm text-text-muted">{selectedHospital?.name}{draft.category ? ` · ${HOSPITAL_CONTENT_CATEGORY_LABELS[draft.category]}` : ""}</p>
+            <p className="break-words text-base font-semibold text-text">{draft.title.trim()}</p>
+            <p className="line-clamp-6 whitespace-pre-wrap break-words text-sm leading-6 text-text">{draft.body.trim()}</p>
+            {draft.sourceText.trim() ? <p className="break-all text-sm text-text-muted">แหล่งข้อมูล/อ้างอิง: {draft.sourceText.trim()}</p> : null}
+            {images.length > 0 ? (
+              <div>
+                <p className="text-sm text-text-muted">{images.length} รูป ตามลำดับที่แสดง</p>
+                <div className="mt-2 flex gap-2">
+                  {images.map((image, index) => (
+                    <img alt={`ตัวอย่างภาพที่ ${index + 1}`} className="aspect-[4/3] w-1/3 rounded-control bg-surface-muted object-contain" key={image.key} src={image.previewUrl} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+        onCancel={() => setPublishConfirmOpen(false)}
+        onConfirm={confirmPublish}
+        open={publishConfirmOpen}
+        title="เผยแพร่เนื้อหานี้หรือไม่"
+      />
 
       <ConfirmDialog
         confirmLabel={confirmationLabel}

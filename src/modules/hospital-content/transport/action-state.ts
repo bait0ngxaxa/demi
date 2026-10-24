@@ -26,6 +26,10 @@ export type HospitalContentMutationActionState =
   | { status: "UNCONFIRMED" }
   | HospitalContentActionError;
 
+export type HospitalContentImagesActionState =
+  | { status: "SUCCESS"; imageIds: string[] }
+  | HospitalContentActionError;
+
 export type HospitalContentReadActionState =
   | { status: "SUCCESS"; content: HospitalContentDetailProjection }
   | { status: "NOT_FOUND" }
