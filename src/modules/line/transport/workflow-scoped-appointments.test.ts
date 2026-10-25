@@ -79,9 +79,8 @@ describe("scoped Appointment loaders", () => {
 
 describe("scoped failure classification", () => {
   it.each<[LineWorkflowFailureCode, string]>([
-    ["WORKFLOW_DISABLED", "NOT_ACTIVATED"],
-    ["MINI_CONFIGURATION_UNAVAILABLE", "NOT_ACTIVATED"],
-    ["LIFECYCLE_UNAVAILABLE", "NOT_ACTIVATED"],
+    ["MINI_CONFIGURATION_UNAVAILABLE", "TEMPORARILY_UNAVAILABLE"],
+    ["LIFECYCLE_UNAVAILABLE", "TEMPORARILY_UNAVAILABLE"],
     ["SCOPE_MISSING", "SCOPE_MISSING"],
     ["SCOPE_INVALID", "SCOPE_MISSING"],
     ["SCOPE_EXPIRED", "SCOPE_EXPIRED"],

@@ -16,13 +16,12 @@ import { assertFamilyAuthenticatedActor } from "../policies/caregiver-relationsh
 import { resourceGrantCaregiverWhere } from "../policies/resource-grant-policy";
 import { resourceGrantIdSchema } from "../schemas/caregiver-relationship-schemas";
 import { appointmentGrantNow, rethrowAppointmentGrantError } from "./appointment-grant-service";
-import { resolveCaregiverSharingGates, type CaregiverSharingGates } from "./caregiver-scope-activation";
 
 type PersonName = { givenName: string | null; familyName: string | null };
 
 /**
- * AF-5 family health summary. A block is `null` (absent) when its grant is missing, not yet accepted, revoked or
- * gated off; a present block may still be empty. No phone of the Patient or of an OSM is ever selected.
+ * AF-5 family health summary. A block is `null` (absent) when its grant is missing, not yet accepted or revoked;
+ * a present block may still be empty. No phone of the Patient or of an OSM is ever selected.
  */
 export type FamilyHealthSummary = {
   relationshipId: string;
@@ -46,7 +45,7 @@ export type FamilyHealthSummary = {
   medications: { items: Array<{ medicationId: string; medicationName: string; times: string[] }> } | null;
 };
 
-export type FamilyHealthSummaryDependencies = { database?: ReturnType<typeof getPrisma>; now?: () => Date; gates?: CaregiverSharingGates };
+export type FamilyHealthSummaryDependencies = { database?: ReturnType<typeof getPrisma>; now?: () => Date };
 
 // Bounded reads: a Patient has few ongoing Hospitals; medication lists use the personal page size.
 const HOSPITAL_LIMIT = 20;
@@ -61,8 +60,6 @@ function displayName(person: PersonName): string | null {
 export async function getFamilyHealthSummary(
   actor: ActorContext | null | undefined, relationshipId: unknown, dependencies: FamilyHealthSummaryDependencies = {},
 ): Promise<FamilyHealthSummary> {
-  const gates = resolveCaregiverSharingGates(dependencies.gates);
-  if (!gates.delegatedReadEnabled) throw new NotFoundError();
   assertFamilyAuthenticatedActor(actor);
   const parsed = resourceGrantIdSchema.safeParse(relationshipId);
   if (!parsed.success) throw new NotFoundError();
@@ -117,7 +114,7 @@ export async function getFamilyHealthSummary(
         } } },
       });
 
-      const planGrant = gates.planMedicationEnabled ? await transaction.caregiverResourceGrant.findFirst({
+      const planGrant = await transaction.caregiverResourceGrant.findFirst({
         where: resourceGrant("HEALTH_PLAN"),
         select: { patientProfile: { select: { hospitalRelationships: {
           where: ongoingHospitalWhere, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: HOSPITAL_LIMIT,
@@ -128,15 +125,15 @@ export async function getFamilyHealthSummary(
               items: { orderBy: [{ sortOrder: "asc" }, { id: "asc" }], select: { activityCode: true, targetDays: true, targetValue: true, targetUnit: true } } },
           } },
         } } } },
-      }) : null;
+      });
 
-      const medicationGrant = gates.planMedicationEnabled ? await transaction.caregiverResourceGrant.findFirst({
+      const medicationGrant = await transaction.caregiverResourceGrant.findFirst({
         where: resourceGrant("MEDICATION"),
         select: { patientProfile: { select: { personalMedications: {
           where: { status: "ACTIVE" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: MEDICATION_LIMIT,
           select: { id: true, medicationName: true, schedules: { orderBy: { localTime: "asc" }, select: { localTime: true } } },
         } } } },
-      }) : null;
+      });
 
       const next = appointmentGrants
         .flatMap((grant) => grant.patientHospitalRelationship.appointments.map((appointment) => ({

@@ -17,7 +17,6 @@ export type LineWorkflowGatewayState =
   | "ACCOUNT_MISMATCH"
   | "LINE_NOT_LINKED"
   | "WORKFLOW_INELIGIBLE"
-  | "NOT_ACTIVATED"
   | "RATE_LIMITED"
   | "TEMPORARILY_UNAVAILABLE";
 
@@ -59,7 +58,6 @@ const stateByCode: Record<string, LineWorkflowGatewayState> = {
   WORKFLOW_INELIGIBLE: "WORKFLOW_INELIGIBLE",
   LINE_IDENTITY_INVALID: "LINE_PROOF_UNAVAILABLE",
   RATE_LIMITED: "RATE_LIMITED",
-  WORKFLOW_DISABLED: "NOT_ACTIVATED",
 };
 
 /** Only the exact finite success response can start the scoped continuation. */

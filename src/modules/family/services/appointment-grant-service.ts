@@ -3,7 +3,6 @@ import "server-only";
 import { Prisma, Role, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
@@ -16,12 +15,7 @@ import { appointmentGrantIdSchema, proposeAppointmentGrantSchema } from "../sche
 export type AppointmentGrantDependencies = {
   database?: PrismaClient;
   now?: () => Date;
-  enabled?: boolean;
 };
-
-export function assertAppointmentGrantEnabled(dependencies: AppointmentGrantDependencies): void {
-  if (!(dependencies.enabled ?? isFamilyDelegatedAppointmentReadEnabled())) throw new NotFoundError();
-}
 
 export function appointmentGrantNow(dependencies: AppointmentGrantDependencies): Date {
   const now = dependencies.now?.() ?? new Date();
@@ -51,7 +45,6 @@ async function patientSelf(transaction: Prisma.TransactionClient, actor: ActorCo
 export async function proposeAppointmentGrant(
   actor: ActorContext | null | undefined, input: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<{ grantId: string }> {
-  assertAppointmentGrantEnabled(dependencies);
   assertFamilyPatientSelf(actor);
   const parsed = proposeAppointmentGrantSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError();
@@ -93,7 +86,6 @@ export async function proposeAppointmentGrant(
 export async function acceptAppointmentGrant(
   actor: ActorContext | null | undefined, grantId: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<void> {
-  assertAppointmentGrantEnabled(dependencies);
   assertFamilyAuthenticatedActor(actor);
   const parsed = appointmentGrantIdSchema.safeParse(grantId);
   if (!parsed.success) throw new NotFoundError();
@@ -135,7 +127,6 @@ export async function acceptAppointmentGrant(
 export async function revokeAppointmentGrant(
   actor: ActorContext | null | undefined, grantId: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<void> {
-  assertAppointmentGrantEnabled(dependencies);
   assertFamilyPatientSelf(actor);
   const parsed = appointmentGrantIdSchema.safeParse(grantId);
   if (!parsed.success) throw new NotFoundError();

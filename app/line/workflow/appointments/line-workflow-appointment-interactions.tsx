@@ -41,7 +41,6 @@ const errorMessages: Record<LineWorkflowInteractionErrorCode, string> = {
   TEMPORARILY_UNAVAILABLE: "ระบบไม่พร้อมบันทึกในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   AUTH_UNAVAILABLE: "ระบบยังตรวจสอบการเข้าสู่ระบบไม่ได้ กรุณาลองใหม่อีกครั้ง",
   RATE_LIMITED: "ส่งคำขอบ่อยเกินไป กรุณารอสักครู่ก่อนลองอีกครั้ง รายการนี้ยังไม่ได้บันทึก",
-  NOT_ACTIVATED: "นัดหมายผ่าน LINE MINI App ยังไม่เปิดใช้งาน ยังไม่ได้บันทึกรายการนี้",
   SCOPE_MISSING: "หน้านี้ไม่ได้เปิดจากเมนู DEMI ใน LINE ยังไม่ได้บันทึกรายการนี้",
   SCOPE_EXPIRED: "หมดเวลาการใช้งานแล้ว ยังไม่ได้บันทึกรายการนี้ กรุณาเริ่มใหม่จากเมนู DEMI ใน LINE",
   SCOPE_REVOKED: "การเชื่อมบัญชี LINE เปลี่ยนไป ยังไม่ได้บันทึกรายการนี้",
@@ -52,7 +51,7 @@ const errorMessages: Record<LineWorkflowInteractionErrorCode, string> = {
 
 /** The page itself must re-render from a fresh scoped read: these states replace it with recovery. */
 const scopeDenials = new Set<LineWorkflowInteractionErrorCode>([
-  "NOT_ACTIVATED", "SCOPE_MISSING", "SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED", "INELIGIBLE",
+  "SCOPE_MISSING", "SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED", "INELIGIBLE",
 ]);
 
 function isInteractionResponse(value: unknown): value is LineWorkflowInteractionResponse {

@@ -1,5 +1,4 @@
 export type LineWorkflowFailureCode =
-  | "WORKFLOW_DISABLED"
   | "MINI_CONFIGURATION_UNAVAILABLE"
   | "LIFECYCLE_UNAVAILABLE"
   | "ORIGIN_DENIED"

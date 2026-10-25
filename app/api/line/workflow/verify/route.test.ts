@@ -15,7 +15,6 @@ const TOKEN = "synthetic.mini.id-token-value";
 
 function enableMini(): void {
   for (const [name, value] of Object.entries({
-    DEMI_LINE_MINI_APP_DISABLED: undefined,
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
     DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001",
     IDENTITY_HASH_SECRET: "synthetic-secret-at-least-32-characters",
@@ -45,7 +44,7 @@ async function expectCode(response: Response, status: number, code: string): Pro
   expect(response.headers.get("set-cookie")).toBeNull();
 }
 
-describe("POST /api/line/workflow/verify activation fence", () => {
+describe("POST /api/line/workflow/verify", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.evaluate.mockResolvedValue({ userId: "u", sessionId: "s", bindingId: "b", bindingVersion: 1, proofExpiresAt: new Date(), miniTupleKey: "t" });
@@ -53,12 +52,12 @@ describe("POST /api/line/workflow/verify activation fence", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it.each(["true", "TRUE", "1"])("the emergency kill switch (%s) denies before Origin, body or provider work", async (value) => {
+  it("ignores the former activation switch when provider configuration is valid", async () => {
     enableMini();
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", value);
-    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN }, { origin: "https://attacker.example" })), 503, "WORKFLOW_DISABLED");
-    expect(mocks.evaluate).not.toHaveBeenCalled();
-    expect(mocks.issue).not.toHaveBeenCalled();
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
+    mocks.evaluate.mockRejectedValue(new LineWorkflowFailure("LOGIN_REQUIRED"));
+    await expectCode(await POST(request({ intent: "OPEN_PATIENT_APPOINTMENTS", idToken: TOKEN })), 401, "LOGIN_REQUIRED");
+    expect(mocks.evaluate).toHaveBeenCalledOnce();
   });
 
   it("does not require any legacy workflow/issuance activation flag", async () => {

@@ -16,7 +16,7 @@ function handleReadError(error: unknown): never {
 }
 
 export async function getFamilyAppointmentWorkspacePageContext(relationshipInput: unknown, grantInput: unknown): Promise<{
-  overview: FamilyManagementOverview; management: AppointmentGrantManagement | null; resources: ResourceGrantManagement | null;
+  overview: FamilyManagementOverview; management: AppointmentGrantManagement; resources: ResourceGrantManagement;
 }> {
   try {
     const actor = await getProtectedApplicationActor();

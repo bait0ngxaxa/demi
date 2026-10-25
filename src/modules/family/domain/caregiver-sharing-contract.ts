@@ -17,7 +17,7 @@ export function formatCaregiverRelationshipLabel(kind: CaregiverRelationshipLabe
   return kind === "OTHER" && other ? other : CAREGIVER_RELATIONSHIP_LABELS[kind];
 }
 
-/** HEALTH_PLAN and MEDICATION stay behind FAMILY_PLAN_MEDICATION_SHARING_ENABLED until the agency approves (G-01). */
+/** Health plans and medications require a separate resource grant accepted by the caregiver. */
 export const PLAN_MEDICATION_RESOURCES: readonly CaregiverResource[] = ["HEALTH_PLAN", "MEDICATION"];
 
 export function isPlanMedicationResource(resource: CaregiverResource): boolean {

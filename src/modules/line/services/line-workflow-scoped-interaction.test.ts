@@ -169,16 +169,13 @@ describe("mandatory scoped interaction boundary", () => {
   });
 
   it.each([
-    ["the emergency kill switch", () => vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true"), () => seal(), "WORKFLOW_DISABLED"],
     ["a missing context", () => undefined, () => undefined, "SCOPE_MISSING"],
     ["a tampered context", () => undefined, () => `${seal().slice(0, -2)}AA`, "SCOPE_INVALID"],
     ["an expired context", () => undefined, () => seal(new Date(NOW.getTime() - 20 * 60_000)), "SCOPE_EXPIRED"],
   ] as Array<[string, () => void, () => string | undefined, string]>)("stops on %s before any session, database or service work", async (_label, arrange, credential, code) => {
     arrange();
     const { calls, dependencies } = setup();
-    // The kill switch belongs to the default availability policy, not an injected channel.
-    const policy = code === "WORKFLOW_DISABLED" ? { ...dependencies, configuration: undefined } : dependencies;
-    expect(await codeOf(runLineWorkflowScopedInteraction(credential(), "ACKNOWLEDGE", input, policy))).toBe(code);
+    expect(await codeOf(runLineWorkflowScopedInteraction(credential(), "ACKNOWLEDGE", input, dependencies))).toBe(code);
     expect(calls).toEqual([]);
   });
 

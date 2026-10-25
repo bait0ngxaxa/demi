@@ -36,7 +36,6 @@ export type LineWorkflowInteractionResponse =
   | { status: "ERROR"; code: LineWorkflowInteractionErrorCode };
 
 const httpStatus: Record<LineWorkflowInteractionErrorCode, number> = {
-  NOT_ACTIVATED: 503,
   SCOPE_MISSING: 403,
   SCOPE_EXPIRED: 403,
   SCOPE_REVOKED: 403,
@@ -138,7 +137,7 @@ async function readWorkflowCredential(): Promise<string | undefined> {
 
 /**
  * Fixed scoped interaction transport (17J.3B sections 12.4 and 17). Order:
- * MINI availability policy (kill switch + trusted channel), exact canonical Origin, no Server
+ * Trusted MINI channel configuration, exact canonical Origin, no Server
  * Action dispatch, JSON content type, bounded strict body (existing domain
  * schema, no extra or duplicate fields), then the mandatory HttpOnly workflow
  * cookie and the scoped runner. It never issues, renews or clears the

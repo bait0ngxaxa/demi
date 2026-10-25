@@ -1,4 +1,3 @@
-import { isRecoveryLineEnabled } from "@/lib/env/server";
 import {
   completeLinePasswordRecoveryWithIdentityToken,
   LinePasswordRecoveryCompletionError,
@@ -19,9 +18,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     await requireSameOrigin(request);
     const input = await readAccountJson(request);
-    const enabled = isRecoveryLineEnabled();
     completionStarted = true;
-    await completeLinePasswordRecoveryWithIdentityToken(input, { enabled });
+    await completeLinePasswordRecoveryWithIdentityToken(input);
     return Response.json({ status: "COMPLETED" }, { headers: { "cache-control": "private, no-store" } });
   } catch (error: unknown) {
     return Response.json(

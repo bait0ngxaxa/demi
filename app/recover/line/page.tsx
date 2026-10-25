@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { Panel } from "@/components/ui/panel";
-import { isRecoveryLineEnabled } from "@/lib/env/server";
 import { LinePasswordRecoveryRequestForm } from "./line-password-recovery-request-form";
 
 export const metadata: Metadata = { title: "กู้คืนรหัสผ่านผ่าน LINE", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 export default async function LineRecoveryEntryPage(): Promise<React.JSX.Element> {
   await connection();
-  if (!isRecoveryLineEnabled()) redirect("/recover");
   return (
     <main className="mx-auto min-h-screen w-full max-w-2xl px-4 py-10 sm:px-6 sm:py-16">
       <Panel>

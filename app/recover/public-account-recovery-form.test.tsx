@@ -35,21 +35,18 @@ afterEach(() => {
 });
 
 describe("public account recovery", () => {
-  it("offers the Hospital path and exposes LINE recovery only behind its feature flag", async () => {
+  it("offers both the Hospital and LINE recovery paths", async () => {
     window.history.replaceState(null, "", "/recover");
 
     await act(async () => root.render(createElement(PublicAccountRecoveryForm)));
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
-    expect(container.textContent).not.toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
-
-    await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryEnabled: true })));
     expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
     expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
   });
 
   it("keeps tokenized REC-1 links on the existing mediated-reset form", async () => {
     await act(async () => {
-      root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryEnabled: true }));
+      root.render(createElement(PublicAccountRecoveryForm));
       await new Promise((resolve) => setTimeout(resolve, 0));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

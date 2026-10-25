@@ -4,7 +4,6 @@ import { Prisma, Role } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { FAMILY_APPOINTMENT_PAGE_SIZE, FAMILY_APPOINTMENT_READ_CONTRACTS, isFamilyAppointmentReadContract, type FamilyAppointmentReadContract } from "../domain/appointment-grant-contract";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
@@ -50,8 +49,7 @@ function item(row: Prisma.CaregiverAppointmentGrantGetPayload<{ select: typeof l
 
 export async function getAppointmentGrantManagement(
   actor: ActorContext | null | undefined, input: unknown = {}, dependencies: AppointmentGrantDependencies = {},
-): Promise<AppointmentGrantManagement | null> {
-  if (!(dependencies.enabled ?? isFamilyDelegatedAppointmentReadEnabled())) return null;
+): Promise<AppointmentGrantManagement> {
   assertFamilyAuthenticatedActor(actor);
   const parsed = appointmentGrantManagementSchema.safeParse(input);
   if (!parsed.success) throw new NotFoundError();

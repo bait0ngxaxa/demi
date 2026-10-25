@@ -122,7 +122,6 @@ type LineAccountScreenProps = {
   preferenceUiGeneration: number;
   relinkEligibility: RelinkEligibility;
   recoveryContent?: React.ReactNode;
-  recoveryLineEnabled: boolean;
   currentPassword: string;
   currentPasswordError: string;
   initial: InitialStatus;
@@ -163,7 +162,6 @@ export function LineAccountScreen({
   preferenceUiGeneration,
   relinkEligibility,
   recoveryContent,
-  recoveryLineEnabled,
   currentPassword,
   currentPasswordError,
   initial,
@@ -396,13 +394,11 @@ export function LineAccountScreen({
                       <Link href="/login?returnTo=%2Fline%2Faccount" className={primaryButtonClass}>
                         เข้าสู่ระบบ DEMI
                       </Link>
-                      {recoveryLineEnabled ? (
-                        <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-request-title">
-                          <h3 id="line-recovery-request-title" className="text-lg font-semibold text-ink">ลืมรหัสผ่าน?</h3>
-                          <p className="mt-2 text-sm leading-6 text-muted">ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE ที่ผูกกับบัญชี DEMI ของคุณ</p>
-                          <LinePasswordRecoveryRequestForm />
-                        </section>
-                      ) : null}
+                      <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-request-title">
+                        <h3 id="line-recovery-request-title" className="text-lg font-semibold text-ink">ลืมรหัสผ่าน?</h3>
+                        <p className="mt-2 text-sm leading-6 text-muted">ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE ที่ผูกกับบัญชี DEMI ของคุณ</p>
+                        <LinePasswordRecoveryRequestForm />
+                      </section>
                     </div>
                   ) : null}
 
@@ -527,7 +523,6 @@ export function LineAccountClient({
   disconnection,
   lifecycleReadiness,
   notificationPreference,
-  recoveryLineEnabled,
 }: {
   initial: InitialStatus;
   liffId: string | null;
@@ -535,7 +530,6 @@ export function LineAccountClient({
   disconnection?: LineDisconnectionStatus;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
-  recoveryLineEnabled: boolean;
 }): React.JSX.Element {
   const [termination, setTermination] = useState(disconnection);
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -824,7 +818,6 @@ export function LineAccountClient({
       preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
       recoveryContent={lifecycleReadiness.state === "READY" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
-      recoveryLineEnabled={recoveryLineEnabled}
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}

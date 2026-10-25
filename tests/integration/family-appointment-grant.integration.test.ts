@@ -7,12 +7,11 @@ import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, 
 import { acceptAppointmentGrant, proposeAppointmentGrant, revokeAppointmentGrant } from "@/modules/family/services/appointment-grant-service";
 import { getAppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
 import { getDelegatedAppointment, listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
-import { getFamilyManagementOverview } from "@/modules/family/services/caregiver-relationship-query-service";
 import { revokeCaregiverRelationship, withdrawOwnCaregiverRelationship } from "@/modules/family/services/caregiver-relationship-service";
 
 const db = getPrisma();
 const now = new Date("2026-10-02T00:00:00.000Z");
-const deps = { database: db, enabled: true, now: () => now };
+const deps = { database: db, now: () => now };
 
 async function actor(roles: Role[] = []): Promise<ActorContext> {
   const person = await db.person.create({ data: { identityKeyHash: randomUUID(), givenName: "ทดสอบ", familyName: "เดมี" } });
@@ -135,19 +134,6 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     await db.hospital.update({ where: { id: f.hospitalId }, data: { status: "SUSPENDED" } });
     await expect(proposeAppointmentGrant(f.patient, proposal(f), deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await db.caregiverAppointmentGrant.count()).toBe(0);
-  });
-
-  it("denies every grant operation while disabled but preserves ordinary Family management", async () => {
-    const f = await fixture(); const grantId = await activeGrant(f); const id = await appointment(f);
-    const disabled = { ...deps, enabled: false };
-    for (const operation of [() => proposeAppointmentGrant(f.patient, proposal(f), disabled), () => acceptAppointmentGrant(f.caregiver, grantId, disabled),
-      () => revokeAppointmentGrant(f.patient, grantId, disabled), () => listDelegatedAppointments(f.caregiver, { grantId }, disabled), () => getDelegatedAppointment(f.caregiver, grantId, id, disabled)]) {
-      await expect(operation()).rejects.toMatchObject({ code: "NOT_FOUND" });
-    }
-    expect(await getAppointmentGrantManagement(f.caregiver, {}, disabled)).toBeNull();
-    expect((await getFamilyManagementOverview(f.patient)).patient?.relationships).toHaveLength(1);
-    await withdrawOwnCaregiverRelationship(f.caregiver, f.parentId, { database: db, now: () => now });
-    expect((await getFamilyManagementOverview(f.caregiver)).caregiver.relationships[0]?.status).toBe("WITHDRAWN");
   });
 
   it.each(["patientAccount", "patientRole", "parent", "caregiverAccount", "caregiverPerson"] as const)("proposal rechecks current %s evidence", async (kind) => {

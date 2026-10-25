@@ -58,7 +58,6 @@ const publicCode: Partial<Record<LineWorkflowFailureCode, LineWorkflowResponseCo
 };
 
 const statusOf: Record<LineWorkflowResponseCode, number> = {
-  WORKFLOW_DISABLED: 503,
   MINI_CONFIGURATION_UNAVAILABLE: 503,
   LIFECYCLE_UNAVAILABLE: 503,
   ORIGIN_DENIED: 403,
@@ -139,8 +138,7 @@ function serializeWorkflowCookie(value: string, options: ReturnType<typeof lineW
 }
 
 /**
- * POST /api/line/workflow/verify. Issuance is governed by the single MINI
- * availability policy: a valid server-owned channel and an inactive kill switch.
+ * POST /api/line/workflow/verify. Issuance uses a valid server-owned LINE MINI channel.
  */
 export async function handleLineWorkflowVerifyRequest(
   request: Request,

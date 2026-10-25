@@ -312,10 +312,9 @@ describe("mandatory scoped read boundary", () => {
     expect(transaction.user.findFirst).toHaveBeenCalledWith({ where: { id: USER_A, authSubject: AUTH_SUBJECT }, select: { id: true } });
   });
 
-  it("stays disabled behind the emergency kill switch before reading the context", async () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
+  it("fails safely without MINI provider configuration before reading the context", async () => {
     const { liveSession, reader, dependencies } = scoped({ configuration: undefined });
-    expect(await codeOf(runLineWorkflowScopedRead(seal(), reader, dependencies))).toBe("WORKFLOW_DISABLED");
+    expect(await codeOf(runLineWorkflowScopedRead(seal(), reader, dependencies))).toBe("MINI_CONFIGURATION_UNAVAILABLE");
     expect(liveSession).not.toHaveBeenCalled();
   });
 

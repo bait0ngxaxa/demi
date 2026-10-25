@@ -23,7 +23,6 @@ import { runLineWorkflowScopedRead, type LineWorkflowScopedSnapshot } from "../s
 
 /** Safe UI classification; carries no identity, locator or provider detail. */
 export type LineWorkflowScopedFailureState =
-  | "NOT_ACTIVATED"
   | "SCOPE_MISSING"
   | "SCOPE_EXPIRED"
   | "SCOPE_REVOKED"
@@ -40,9 +39,8 @@ export type LineWorkflowScopedResult<T> =
   | { status: "DENIED"; state: LineWorkflowScopedFailureState };
 
 const failureStates: Partial<Record<LineWorkflowFailureCode, LineWorkflowScopedFailureState>> = {
-  WORKFLOW_DISABLED: "NOT_ACTIVATED",
-  MINI_CONFIGURATION_UNAVAILABLE: "NOT_ACTIVATED",
-  LIFECYCLE_UNAVAILABLE: "NOT_ACTIVATED",
+  MINI_CONFIGURATION_UNAVAILABLE: "TEMPORARILY_UNAVAILABLE",
+  LIFECYCLE_UNAVAILABLE: "TEMPORARILY_UNAVAILABLE",
   // A tampered, unknown-key or wrong-tuple context is indistinguishable from none.
   SCOPE_MISSING: "SCOPE_MISSING",
   SCOPE_INVALID: "SCOPE_MISSING",

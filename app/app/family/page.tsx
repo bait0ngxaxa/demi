@@ -33,8 +33,9 @@ export default async function FamilyManagementPage({
   const { overview, management, resources } = await getFamilyAppointmentWorkspacePageContext(
     parsedCursors.success ? parsedCursors.data : {}, grantCursors.success ? grantCursors.data : {},
   );
-  const sharingOptions = { hospitals: management?.patient?.hospitals ?? [], resources: resources?.availableResources ?? [] };
+  const sharingOptions = { hospitals: management.patient?.hospitals ?? [], resources: resources.availableResources };
 
-  return <><FamilyManagementWorkspace overview={overview} appointmentSharingEnabled={management !== null} sharingOptions={sharingOptions} />
-    {management ? <AppointmentSharingWorkspace management={management} relationships={overview.patient?.relationships ?? []} resources={resources} /> : null}</>;
+  return <><FamilyManagementWorkspace overview={overview} sharingOptions={sharingOptions} />
+    <AppointmentSharingWorkspace management={management} relationships={overview.patient?.relationships ?? []} resources={resources} />
+  </>;
 }

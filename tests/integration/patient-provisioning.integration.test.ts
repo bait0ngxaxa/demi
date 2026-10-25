@@ -407,7 +407,6 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     }, {
       database: prisma,
       rateLimiter: { consume: async () => true },
-      gates: { delegatedReadEnabled: true, planMedicationEnabled: false },
     });
     const authSubject = "11111111-1111-4111-8111-111111111112";
     const claim = await createCaregiverAccountFromInvitation({
@@ -420,7 +419,6 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     }, { ipAddress: "203.0.113.12" }, {
       database: prisma,
       rateLimiter: { consume: async () => true },
-      gates: { delegatedReadEnabled: true, planMedicationEnabled: false },
       createProviderIdentity: async ({ userId }) => ({ authSubject, providerLoginAlias: `caregiver-${userId}@test.invalid` }),
       deleteProviderIdentity: async () => {},
     });

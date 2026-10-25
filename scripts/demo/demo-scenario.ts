@@ -97,7 +97,6 @@ export type DemoSeedReport = {
 type HospitalRef = { id: string; hospitalCode: string; name: string };
 type PatientRef = { key: DemoAccountKey; userId: string; relationshipId: string; hospitalId: string };
 
-const FAMILY_ENABLED = { enabled: true } as const;
 const DEMO_FLOATING_CHART_SCORES = {
   familyScore: 2,
   eatingScore: -1,
@@ -816,8 +815,8 @@ export async function seedDemoScenario(dependencies: DemoScenarioDependencies): 
   const accepted = await acceptCaregiverInvitation(b1, invitation.plaintextToken, clock(addDays(today, -10), "12:30"));
   const grant = await proposeAppointmentGrant(a1, {
     caregiverRelationshipId: accepted.relationshipId, patientHospitalRelationshipId: patients.patientA1.relationshipId,
-  }, { ...FAMILY_ENABLED, ...clock(addDays(today, -10), "13:00") });
-  await acceptAppointmentGrant(b1, grant.grantId, { ...FAMILY_ENABLED, ...clock(addDays(today, -10), "13:30") });
+  }, clock(addDays(today, -10), "13:00"));
+  await acceptAppointmentGrant(b1, grant.grantId, clock(addDays(today, -10), "13:30"));
 
   progress("ตรวจผลผ่าน read model ของรายงาน");
   return {

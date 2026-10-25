@@ -38,8 +38,6 @@ import { hashCaregiverInvitationToken } from "./caregiver-invitation-token-servi
 import {
   activatableInvitationSelect,
   activateCaregiverRelationship,
-  resolveCaregiverSharingGates,
-  type CaregiverSharingGates,
 } from "./caregiver-scope-activation";
 
 export class CaregiverAccountClaimRejectedError extends Error {
@@ -63,7 +61,6 @@ export type CaregiverAccountClaimDependencies = {
   createProviderIdentity?: (input: { userId: string; password: string }) => Promise<UnpersistedPasswordAuthIdentity>;
   deleteProviderIdentity?: (authSubject: string) => Promise<void>;
   createUserId?: () => string;
-  gates?: CaregiverSharingGates;
 };
 
 export type AcceptedCaregiverAccountClaim = {
@@ -262,7 +259,6 @@ export async function createCaregiverAccountFromInvitation(
   const providerIdentity = await createProviderIdentity({ userId, password: parsed.data.password });
   let providerCompensated = false;
   let rejectionAudited = false;
-  const gates = resolveCaregiverSharingGates(dependencies.gates);
 
   try {
     const outcome = await runSerializableTransaction(database, async (transaction) => {
@@ -359,7 +355,6 @@ export async function createCaregiverAccountFromInvitation(
         invitation: currentInvitation,
         caregiver: { userId, personId: person.id },
         acceptedAt,
-        gates,
       }).catch((error: unknown) => {
         if (error instanceof ConflictError) throw new CaregiverAccountClaimRejectedError();
         throw error;

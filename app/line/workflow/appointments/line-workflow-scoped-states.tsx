@@ -15,11 +15,6 @@ export const lineWorkflowScopedSecondaryButtonClass =
 type Recovery = "GATEWAY" | "LOGIN" | "RETRY" | "ACCOUNT" | "ROOT";
 
 const copy: Record<LineWorkflowScopedFailureState, { title: string; body: string; recovery: readonly Recovery[] }> = {
-  NOT_ACTIVATED: {
-    title: "ยังไม่เปิดให้บริการ",
-    body: "นัดหมายผ่าน LINE MINI App ยังไม่เปิดใช้งาน ดูนัดหมายได้ที่ DEMI บนเว็บ",
-    recovery: [],
-  },
   SCOPE_MISSING: {
     title: "กรุณาเปิดจากเมนู DEMI ใน LINE",
     body: "หน้านี้ใช้ได้เมื่อเปิดจากเมนู DEMI ใน LINE และยืนยันบัญชีแล้วเท่านั้น",

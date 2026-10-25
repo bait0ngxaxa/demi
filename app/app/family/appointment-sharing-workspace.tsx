@@ -120,10 +120,9 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
   return <li className="space-y-3 py-5 first:pt-0">
     <p className="break-words font-semibold text-text">{name}</p>
     <p className="text-sm text-text">{resourceLabel}</p>
-    <StatusBadge variant={!grant.available ? "neutral" : grant.status === "ACTIVE" ? "success" : "warning"}>
-      {!grant.available ? "ปิดการแชร์ชั่วคราว" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "รอผู้ดูแลยอมรับ"}
+    <StatusBadge variant={grant.status === "ACTIVE" ? "success" : "warning"}>
+      {grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "รอผู้ดูแลยอมรับ"}
     </StatusBadge>
-    {!grant.available ? <p className="type-readable text-sm leading-7 text-text-muted">ระบบยังไม่เปิดการแชร์ข้อมูลประเภทนี้ ผู้ดูแลจึงไม่เห็นข้อมูลนี้ สิทธิ์ยังถูกบันทึกไว้และคุณยกเลิกได้</p> : null}
     <p className="text-sm text-text-muted">เสนอเมื่อ {formatFamilyManagementDate(grant.proposedAt)}</p>
     {grant.acceptedAt ? <p className="text-sm text-text-muted">ยอมรับเมื่อ {formatFamilyManagementDate(grant.acceptedAt)}</p> : null}
     {perspective === "caregiver" && grant.status === "PENDING" ? <p className="type-readable text-sm leading-7 text-text-muted">{CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS[grant.resource]}</p> : null}

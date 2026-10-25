@@ -47,7 +47,7 @@ type LiveSession = { userId: string; sessionId: string; authSubject: string };
 export type LineWorkflowDependencies = {
   database?: PrismaClient;
   now?: () => Date;
-  /** Defaults to the single MINI availability policy (kill switch + validated channel). */
+  /** Defaults to the configured MINI provider channel and keyring. */
   configuration?: () => LineMiniAppConfiguration;
   /** Server-derived Full Disconnection inventory with migration readiness. */
   lifecycleInventory?: () => Promise<LineChannelInventory>;
@@ -306,7 +306,7 @@ type OpenedLineWorkflowScope = { context: OpenedLineWorkflowContext; session: Li
 
 /**
  * Checks shared by every scoped request, all outside any transaction: the
- * MINI availability policy (kill switch + trusted channel), the keyring, the
+ * MINI provider configuration, the keyring, the
  * mandatory context (absence denies, never downgrades to ordinary DEMI
  * authority), the derived lifecycle tuple and the Auth-provider exact session.
  */

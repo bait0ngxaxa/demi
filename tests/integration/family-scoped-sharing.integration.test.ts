@@ -27,9 +27,7 @@ const now = new Date("2026-10-23T03:00:00.000Z");
 const days = (value: number): Date => new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
 const caregiverNationalId = "1000000000009";
 const relativeNationalId = "1101700203450";
-const allGates = { delegatedReadEnabled: true, planMedicationEnabled: true };
-const deps = { database: db, now: () => now, gates: allGates, rateLimiter: { consume: async () => true } };
-const grantDeps = { database: db, now: () => now, enabled: true };
+const deps = { database: db, now: () => now, rateLimiter: { consume: async () => true } };
 let sequence = 0;
 
 async function account(roles: Role[], nationalId?: string, name = "ทดสอบ"): Promise<ActorContext> {
@@ -78,9 +76,9 @@ async function addCareData(f: Fixture) {
   return { upcoming: upcoming.id, past: past.id };
 }
 
-async function oneStepAdd(f: Fixture, input: Record<string, unknown>, gates = allGates) {
+async function oneStepAdd(f: Fixture, input: Record<string, unknown>) {
   const caregiver = await account([Role.CAREGIVER], caregiverNationalId, "ลูก");
-  const invitation = await createCaregiverInvitation(f.patient, { nationalId: caregiverNationalId, ...input }, { ...deps, gates });
+  const invitation = await createCaregiverInvitation(f.patient, { nationalId: caregiverNationalId, ...input }, deps);
   return { caregiver, invitation };
 }
 
@@ -148,7 +146,7 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
       token: invitation.plaintextToken, nationalId: relativeNationalId, givenName: "ญาติ", familyName: "ทดสอบ",
       password: "caregiver-test-password-2026", passwordConfirmation: "caregiver-test-password-2026",
     }, { ipAddress: "203.0.113.50" }, {
-      database: db, now: () => now, gates: allGates, rateLimiter: { consume: async () => true },
+      database: db, now: () => now, rateLimiter: { consume: async () => true },
       createProviderIdentity: async ({ userId }) => ({ authSubject: randomUUID(), providerLoginAlias: `caregiver-${userId}@test.invalid` }),
       deleteProviderIdentity: async () => {},
     });
@@ -162,10 +160,7 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
   it("creates nothing when one chosen scope is no longer available at acceptance", async () => {
     const f = await patientFixture();
     const { caregiver, invitation } = await oneStepAdd(f, { relationshipLabel: "SPOUSE", appointmentRelationshipIds: [f.relationshipA, f.relationshipB], resources: ["HEALTH_PLAN"] });
-    // The release gate turned off after issue fails closed.
-    await expect(acceptCaregiverInvitation(caregiver, invitation.plaintextToken, { ...deps, gates: { ...allGates, planMedicationEnabled: false } }))
-      .rejects.toMatchObject({ code: "CONFLICT" });
-    // So does one Hospital whose care ended after issue: no partial relationship or grant.
+    // A Hospital whose care ended after issue fails closed: no partial relationship or grant.
     await db.patientHospitalRelationship.update({ where: { id: f.relationshipB }, data: { endedAt: new Date(), endedByUserId: f.patient.userId, endReason: "สิ้นสุดการดูแล" } });
     await expect(acceptCaregiverInvitation(caregiver, invitation.plaintextToken, deps)).rejects.toMatchObject({ code: "CONFLICT" });
 
@@ -175,14 +170,14 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     expect((await db.caregiverInvitation.findFirstOrThrow({ select: { status: true } })).status).toBe("PENDING");
   });
 
-  it("rejects a foreign Hospital or a gated resource at issue time", async () => {
+  it("rejects a foreign Hospital or an unsupported resource at issue time", async () => {
     const f = await patientFixture();
     const other = await patientFixture();
     await account([Role.CAREGIVER], caregiverNationalId);
     await expect(createCaregiverInvitation(f.patient, { nationalId: caregiverNationalId, relationshipLabel: "CHILD", appointmentRelationshipIds: [other.relationshipA] }, deps))
       .rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(createCaregiverInvitation(f.patient, { nationalId: caregiverNationalId, relationshipLabel: "CHILD", resources: ["MEDICATION"] },
-      { ...deps, gates: { ...allGates, planMedicationEnabled: false } })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(createCaregiverInvitation(f.patient, { nationalId: caregiverNationalId, relationshipLabel: "CHILD", resources: ["UNRECOGNIZED"] }, deps))
+      .rejects.toMatchObject({ code: "VALIDATION" });
     expect(await db.caregiverInvitation.count()).toBe(0);
   });
 
@@ -207,13 +202,7 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     });
     expect(JSON.stringify(summary)).not.toMatch(/0899999999|หลังอาหาร|บันทึกของเจ้าหน้าที่|บันทึกภายใน|ยาที่หยุดแล้ว/u);
 
-    // Flag off: plan/medication blocks disappear at once while the grants stay recorded; back on, they return.
-    const gated = await getFamilyHealthSummary(caregiver, relationshipId, { ...deps, gates: { ...allGates, planMedicationEnabled: false } });
-    expect(gated.healthPlan).toBeNull();
-    expect(gated.medications).toBeNull();
-    expect(gated.profile).not.toBeNull();
     expect(await db.caregiverResourceGrant.count({ where: { status: "ACTIVE" } })).toBe(3);
-    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).medications).not.toBeNull();
 
     // Revoking one scope hides only that block on the next request.
     const medication = await db.caregiverResourceGrant.findFirstOrThrow({ where: { resource: "MEDICATION" }, select: { id: true } });
@@ -225,7 +214,6 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
 
     // Another caregiver, or the Patient, cannot open this relationship's summary.
     await expect(getFamilyHealthSummary(f.patient, relationshipId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(getFamilyHealthSummary(caregiver, relationshipId, { ...deps, gates: { ...allGates, delegatedReadEnabled: false } })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("revoking the relationship revokes every grant; a caregiver withdrawal does too", async () => {
@@ -263,11 +251,10 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     await acceptResourceGrant(caregiver, grantId, deps);
     expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).profile).toMatchObject({ age: 66 });
 
-    // A gated resource can be neither proposed nor accepted while the release gate is off.
-    const offGates = { ...deps, gates: { ...allGates, planMedicationEnabled: false } };
-    await expect(proposeResourceGrant(f.patient, { caregiverRelationshipId: relationshipId, resource: "HEALTH_PLAN" }, offGates)).rejects.toMatchObject({ code: "NOT_FOUND" });
     const plan = await proposeResourceGrant(f.patient, { caregiverRelationshipId: relationshipId, resource: "HEALTH_PLAN" }, deps);
-    await expect(acceptResourceGrant(caregiver, plan.grantId, offGates)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan).toBeNull();
+    await acceptResourceGrant(caregiver, plan.grantId, deps);
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan).not.toBeNull();
   });
 
   it("edits the label with a version check and audits it", async () => {
@@ -313,31 +300,31 @@ describe("AF-5 family appointment read v2 (PostgreSQL)", () => {
       scheduledAt: new Date(days(-90).getTime() - 1), status: "COMPLETED", submissionNonce: randomUUID() } });
     const { caregiver, relationshipId, v1GrantId } = await legacyV1Grant(f);
 
-    const v1 = await listDelegatedAppointments(caregiver, { grantId: v1GrantId }, grantDeps);
+    const v1 = await listDelegatedAppointments(caregiver, { grantId: v1GrantId }, deps);
     expect(v1.contractVersion).toBe("family-appointment-read-v1");
     expect(v1.appointments).toEqual([expect.objectContaining({ appointmentId: ids.upcoming, extension: null })]);
-    await expect(listDelegatedAppointments(caregiver, { grantId: v1GrantId, tab: "history" }, grantDeps)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(getDelegatedAppointment(caregiver, v1GrantId, ids.past, grantDeps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(listDelegatedAppointments(caregiver, { grantId: v1GrantId, tab: "history" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(getDelegatedAppointment(caregiver, v1GrantId, ids.past, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
 
     // The Patient proposes v2; the v1 projection stays until the caregiver accepts (no silent widening).
-    const { grantId: v2GrantId } = await proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, grantDeps);
-    await expect(proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, grantDeps)).rejects.toMatchObject({ code: "CONFLICT" });
-    expect((await listDelegatedAppointments(caregiver, { grantId: v1GrantId }, grantDeps)).appointments[0]?.extension).toBeNull();
-    await expect(listDelegatedAppointments(caregiver, { grantId: v2GrantId }, grantDeps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const { grantId: v2GrantId } = await proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, deps);
+    await expect(proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect((await listDelegatedAppointments(caregiver, { grantId: v1GrantId }, deps)).appointments[0]?.extension).toBeNull();
+    await expect(listDelegatedAppointments(caregiver, { grantId: v2GrantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-    await acceptAppointmentGrant(caregiver, v2GrantId, grantDeps);
+    await acceptAppointmentGrant(caregiver, v2GrantId, deps);
 
     expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: v1GrantId }, select: { status: true, revokedByUserId: true } }))
       .toEqual({ status: "REVOKED", revokedByUserId: caregiver.userId });
-    await expect(listDelegatedAppointments(caregiver, { grantId: v1GrantId }, grantDeps)).rejects.toMatchObject({ code: "NOT_FOUND" });
-    const upcoming = await listDelegatedAppointments(caregiver, { grantId: v2GrantId }, grantDeps);
+    await expect(listDelegatedAppointments(caregiver, { grantId: v1GrantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const upcoming = await listDelegatedAppointments(caregiver, { grantId: v2GrantId }, deps);
     expect(upcoming.appointments).toEqual([expect.objectContaining({ appointmentId: ids.upcoming, extension: {
       locationDetail: "บ้านเลขที่ 9", responsibleDisplayName: expect.stringContaining("หมอ"), responsibleProfession: "DOCTOR",
       osmAtCreationDisplayName: expect.stringContaining("อสม. สมศรี"), parentHospitalName: "โรงพยาบาลแม่ข่าย",
     } })]);
-    const history = await listDelegatedAppointments(caregiver, { grantId: v2GrantId, tab: "history" }, grantDeps);
+    const history = await listDelegatedAppointments(caregiver, { grantId: v2GrantId, tab: "history" }, deps);
     expect(history.appointments.map(({ appointmentId, status }) => ({ appointmentId, status }))).toEqual([{ appointmentId: ids.past, status: "COMPLETED" }]);
-    const detail = await getDelegatedAppointment(caregiver, v2GrantId, ids.past, grantDeps);
+    const detail = await getDelegatedAppointment(caregiver, v2GrantId, ids.past, deps);
     expect(detail.contactPhones).toEqual({ assignedOsmPhone: null, hospitalPhone: "021111111", patientPhone: null });
     expect(JSON.stringify([upcoming, history, detail])).not.toMatch(/0899999999|บันทึกภายใน|"note"/u);
     expect(await db.caregiverAppointmentGrant.count({ where: { status: "ACTIVE" } })).toBe(1);

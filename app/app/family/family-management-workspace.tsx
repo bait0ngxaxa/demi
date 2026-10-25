@@ -47,7 +47,7 @@ import {
 import { FamilyInvitationQr } from "./family-invitation-qr";
 import { familyHealthSummaryHref } from "./members/family-health-summary-href";
 
-/** AF-5: what the Patient may choose to share in the one-step add; empty while the release gates are off. */
+/** AF-5: what the Patient may choose to share in the one-step add. */
 export type CaregiverSharingOptions = {
   hospitals: readonly { relationshipId: string; hospitalName: string }[];
   resources: readonly CaregiverResource[];
@@ -529,10 +529,8 @@ function PatientPerspective({
 
 function CaregiverPerspective({
   overview,
-  summaryEnabled,
 }: {
   overview: FamilyManagementOverview["caregiver"];
-  summaryEnabled: boolean;
 }): React.JSX.Element {
   return (
     <>
@@ -589,7 +587,7 @@ function CaregiverPerspective({
                       {caregiverRelationshipStatusLabel(relationship.status)}
                     </StatusBadge>
                   </div>
-                  {summaryEnabled && relationship.status === "ACTIVE" ? (
+                  {relationship.status === "ACTIVE" ? (
                     <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={familyHealthSummaryHref(relationship.relationshipId)} prefetch={false}>
                       ดูสรุปสุขภาพที่ได้รับแชร์
                     </Link>
@@ -612,11 +610,9 @@ const NO_SHARING_OPTIONS: CaregiverSharingOptions = { hospitals: [], resources: 
 
 export function FamilyManagementWorkspace({
   overview,
-  appointmentSharingEnabled = false,
   sharingOptions = NO_SHARING_OPTIONS,
 }: {
   overview: FamilyManagementOverview;
-  appointmentSharingEnabled?: boolean;
   sharingOptions?: CaregiverSharingOptions;
 }): React.JSX.Element {
   return (
@@ -628,12 +624,12 @@ export function FamilyManagementWorkspace({
       <Alert className="mt-6" variant="info">
         <p className="font-semibold">การเชื่อมนี้ยังไม่ให้สิทธิ์เข้าถึงข้อมูลผู้ป่วย</p>
         <p className="mt-1">
-          ผู้ดูแลจะไม่สามารถอ่านโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลจากความสัมพันธ์นี้
-          {appointmentSharingEnabled ? "ผู้ดูแลเห็นเฉพาะข้อมูลที่คุณเลือกแชร์และผู้ดูแลยอมรับแล้ว คุณยกเลิกแต่ละรายการได้ทุกเมื่อ" : "ระบบยังไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพในเฟสนี้"}
+          ความสัมพันธ์นี้เพียงอย่างเดียวไม่ทำให้ผู้ดูแลอ่านโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลได้
+          {" "}ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว คุณยกเลิกสิทธิ์แต่ละรายการได้ทุกเมื่อ
         </p>
       </Alert>
       {overview.patient ? <PatientPerspective overview={overview.patient} sharingOptions={sharingOptions} /> : null}
-      <CaregiverPerspective overview={overview.caregiver} summaryEnabled={appointmentSharingEnabled} />
+      <CaregiverPerspective overview={overview.caregiver} />
     </div>
   );
 }

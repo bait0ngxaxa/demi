@@ -9,8 +9,8 @@ import { resolveLineMiniAppChannel } from "./line-mini-app-configuration";
 /**
  * The deployment's channel inventory, derived from the same connection
  * configuration that authenticates LINE: the Account Login channel plus the
- * selected MINI channel when provisioned. The MINI kill switch does not remove
- * the channel: disabling access never proves an existing grant absent.
+ * selected MINI channel when provisioned. Removing runtime access never proves
+ * an existing grant absent.
  * Missing Account or partial MINI configuration fails closed.
  */
 export function getLineChannelInventory(): LineChannelInventory {

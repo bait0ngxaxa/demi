@@ -30,7 +30,7 @@ import {
   ApplicationError,
 } from "@/shared/errors/application-error";
 
-import { formatCaregiverRelationshipLabel, isPlanMedicationResource } from "../domain/caregiver-sharing-contract";
+import { formatCaregiverRelationshipLabel } from "../domain/caregiver-sharing-contract";
 import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import {
   caregiverInvitationIdSchema,
@@ -43,8 +43,6 @@ import {
   activatableInvitationSelect,
   activateCaregiverRelationship,
   parseRequestedScopes,
-  resolveCaregiverSharingGates,
-  type CaregiverSharingGates,
 } from "./caregiver-scope-activation";
 import {
   generateCaregiverInvitationCredential,
@@ -60,7 +58,6 @@ export type CaregiverRelationshipServiceDependencies = {
   now?: () => Date;
   generateCredential?: () => CaregiverInvitationCredential;
   rateLimiter?: PublicSelfRegistrationRateLimiter;
-  gates?: CaregiverSharingGates;
 };
 
 export type CreatedCaregiverInvitation = {
@@ -293,13 +290,6 @@ export async function createCaregiverInvitation(
     throw new ValidationError("A valid Thai National ID is required");
   }
   const { appointmentRelationshipIds, resources } = parsedInput.data;
-  const gates = resolveCaregiverSharingGates(dependencies.gates);
-  if ((appointmentRelationshipIds.length > 0 || resources.length > 0) && !gates.delegatedReadEnabled) {
-    throw new ValidationError("Caregiver sharing is not available");
-  }
-  if (resources.some(isPlanMedicationResource) && !gates.planMedicationEnabled) {
-    throw new ValidationError("Caregiver sharing is not available");
-  }
 
   const recipientIdentityHash = hashIdentityReference({
     namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
@@ -909,7 +899,6 @@ export async function acceptCaregiverInvitation(
   }
 
   const tokenHash = hashCaregiverInvitationToken(parsedToken.data);
-  const gates = resolveCaregiverSharingGates(dependencies.gates);
 
   try {
     const outcome = await runSerializableTransaction(getDatabase(dependencies), async (transaction) => {
@@ -979,7 +968,6 @@ export async function acceptCaregiverInvitation(
         invitation,
         caregiver: { userId: user.id, personId: user.personId },
         acceptedAt,
-        gates,
       });
 
       await recordAuditEvent(

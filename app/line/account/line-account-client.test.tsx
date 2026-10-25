@@ -33,7 +33,6 @@ function renderScreen(
       notificationPreference={state.notificationPreference}
       preferenceUiGeneration={state.preferenceUiGeneration ?? 0}
       relinkEligibility={state.relinkEligibility ?? "ELIGIBLE"}
-      recoveryLineEnabled={state.recoveryLineEnabled ?? false}
       currentPassword={state.currentPassword ?? ""}
       currentPasswordError={state.currentPasswordError ?? ""}
       accountStatus={state.accountStatus ?? initial.status}
@@ -90,7 +89,6 @@ describe("LINE account user experience", () => {
         liffId={null}
         publicOrigin=""
         lifecycleReadiness={{ state: "NOT_CHECKED" }}
-        recoveryLineEnabled={true}
       />,
     );
 
@@ -118,7 +116,6 @@ describe("LINE account user experience", () => {
         liffId="1234567890-AbCdEfGh"
         publicOrigin="https://demi.example.org"
         lifecycleReadiness={{ state: "READY" }}
-        recoveryLineEnabled={false}
         disconnection={{ state: "NONE", canRelink: true, obligations: [] }}
       />,
     );

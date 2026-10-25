@@ -2,27 +2,16 @@ import "server-only";
 
 import { CaregiverRelationshipStatus, Prisma, Role, UserStatus, type CaregiverRelationshipLabel } from "@prisma/client";
 
-import { isFamilyDelegatedAppointmentReadEnabled, isFamilyPlanMedicationSharingEnabled } from "@/lib/env/server";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ConflictError } from "@/shared/errors/application-error";
 
 import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "../domain/appointment-grant-contract";
-import { CAREGIVER_RESOURCE_CONTRACTS, isPlanMedicationResource } from "../domain/caregiver-sharing-contract";
+import { CAREGIVER_RESOURCE_CONTRACTS } from "../domain/caregiver-sharing-contract";
 import {
   caregiverInvitationRequestedScopesSchema,
   type CaregiverInvitationRequestedScopes,
 } from "../schemas/caregiver-relationship-schemas";
-
-/** Release gates read once per acceptance; tests pass them explicitly. */
-export type CaregiverSharingGates = { delegatedReadEnabled?: boolean; planMedicationEnabled?: boolean };
-
-export function resolveCaregiverSharingGates(gates: CaregiverSharingGates = {}): Required<CaregiverSharingGates> {
-  return {
-    delegatedReadEnabled: gates.delegatedReadEnabled ?? isFamilyDelegatedAppointmentReadEnabled(),
-    planMedicationEnabled: gates.planMedicationEnabled ?? isFamilyPlanMedicationSharingEnabled(),
-  };
-}
 
 export const EMPTY_REQUESTED_SCOPES: CaregiverInvitationRequestedScopes = { appointmentRelationshipIds: [], resources: [] };
 
@@ -58,7 +47,7 @@ const SCOPE_UNAVAILABLE = "The requested caregiver sharing is no longer availabl
 /**
  * AF-5 one-step add, inside the caller's acceptance transaction: creates the relationship with the requested label
  * and every requested grant as already accepted. Each scope is re-authorized against current state (Patient still
- * an ACTIVE PATIENT, Hospital relationship still ongoing, release gates on). Any failure throws, so the caller's
+ * an ACTIVE PATIENT, Hospital relationship still ongoing). Any failure throws, so the caller's
  * transaction rolls back and nothing is created.
  */
 export async function activateCaregiverRelationship(
@@ -67,15 +56,12 @@ export async function activateCaregiverRelationship(
     invitation: ActivatableInvitation;
     caregiver: { userId: string; personId: string };
     acceptedAt: Date;
-    gates: Required<CaregiverSharingGates>;
   },
 ): Promise<{ relationshipId: string }> {
-  const { invitation, caregiver, acceptedAt, gates } = input;
+  const { invitation, caregiver, acceptedAt } = input;
   const scopes = parseRequestedScopes(invitation.requestedScopes);
   if (!scopes) throw new ConflictError(SCOPE_UNAVAILABLE);
   const hasScopes = scopes.appointmentRelationshipIds.length > 0 || scopes.resources.length > 0;
-  if (hasScopes && !gates.delegatedReadEnabled) throw new ConflictError(SCOPE_UNAVAILABLE);
-  if (scopes.resources.some(isPlanMedicationResource) && !gates.planMedicationEnabled) throw new ConflictError(SCOPE_UNAVAILABLE);
 
   let patientPersonId: string | null = null;
   if (hasScopes) {

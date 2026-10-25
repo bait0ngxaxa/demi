@@ -151,7 +151,7 @@ describe("scoped Appointment pages — authorized", () => {
 
 describe("scoped Appointment pages — denied", () => {
   const states: LineWorkflowScopedFailureState[] = [
-    "NOT_ACTIVATED", "SCOPE_MISSING", "SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED",
+    "SCOPE_MISSING", "SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED",
     "AUTH_UNAVAILABLE", "RATE_LIMITED", "INELIGIBLE", "RESOURCE_INVALID", "TEMPORARILY_UNAVAILABLE",
   ];
 

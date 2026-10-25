@@ -73,16 +73,6 @@ describe("fixed scoped interaction Route Handler transport", () => {
     expect(mocks.run).toHaveBeenCalledWith(CONTEXT, "CANCELLATION_REQUEST", cancellation, expect.anything());
   });
 
-  it("stays disabled behind the emergency kill switch before any other work", async () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
-    const response = await handleLineWorkflowInteractionRequest(post(JSON.stringify(ack)), "ACKNOWLEDGE");
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ status: "ERROR", code: "NOT_ACTIVATED" });
-    expect(mocks.run).not.toHaveBeenCalled();
-    expect(mocks.cookie).not.toHaveBeenCalled();
-    vi.unstubAllEnvs();
-  });
-
   it.each([
     ["missing", {}],
     ["null", { origin: "null" }],
@@ -142,9 +132,8 @@ describe("fixed scoped interaction Route Handler transport", () => {
   });
 
   it.each([
-    ["WORKFLOW_DISABLED", 503, "NOT_ACTIVATED"],
-    ["LIFECYCLE_UNAVAILABLE", 503, "NOT_ACTIVATED"],
-    ["MINI_CONFIGURATION_UNAVAILABLE", 503, "NOT_ACTIVATED"],
+    ["LIFECYCLE_UNAVAILABLE", 503, "TEMPORARILY_UNAVAILABLE"],
+    ["MINI_CONFIGURATION_UNAVAILABLE", 503, "TEMPORARILY_UNAVAILABLE"],
     ["SCOPE_INVALID", 403, "SCOPE_MISSING"],
     ["SCOPE_EXPIRED", 403, "SCOPE_EXPIRED"],
     ["SCOPE_REVOKED", 403, "SCOPE_REVOKED"],

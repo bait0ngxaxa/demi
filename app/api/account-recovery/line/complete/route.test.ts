@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   complete: vi.fn(),
-  enabled: vi.fn(() => true),
   read: vi.fn(async () => ({ capabilityId: "11111111-1111-4111-8111-111111111111" })),
   sameOrigin: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/lib/env/server", () => ({ isRecoveryLineEnabled: h.enabled }));
 vi.mock("@/modules/line/services/line-password-recovery-service", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/modules/line/services/line-password-recovery-service")>();
   return { ...actual, completeLinePasswordRecoveryWithIdentityToken: h.complete };
@@ -20,7 +18,6 @@ import { POST } from "./route";
 describe("LINE recovery completion response", () => {
   beforeEach(() => {
     h.complete.mockReset().mockResolvedValue(undefined);
-    h.enabled.mockReturnValue(true);
     h.read.mockResolvedValue({ capabilityId: "11111111-1111-4111-8111-111111111111" });
     h.sameOrigin.mockResolvedValue(undefined);
   });

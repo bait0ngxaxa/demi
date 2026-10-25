@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { redirect } from "next/navigation";
 
-import { isRecoveryLineEnabled, getLineLiffId } from "@/lib/env/server";
+import { getLineLiffId } from "@/lib/env/server";
 import { LinePasswordRecoveryClient } from "./line-password-recovery-client";
 
 export const metadata: Metadata = {
@@ -13,6 +12,5 @@ export const metadata: Metadata = {
 
 export default async function LinePasswordRecoveryPage(): Promise<React.JSX.Element> {
   await connection();
-  if (!isRecoveryLineEnabled()) redirect("/recover");
   return <LinePasswordRecoveryClient liffId={getLineLiffId()} />;
 }

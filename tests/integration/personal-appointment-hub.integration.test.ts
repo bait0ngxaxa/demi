@@ -13,7 +13,7 @@ import {
 const db = getPrisma();
 const now = new Date("2026-10-23T00:00:00.000Z");
 const hours = (value: number): Date => new Date(now.getTime() + value * 60 * 60 * 1000);
-const grantDeps = { database: db, enabled: true, now: () => now };
+const grantDeps = { database: db, now: () => now };
 
 async function account(roles: Role[]): Promise<ActorContext> {
   const person = await db.person.create({ data: { identityKeyHash: randomUUID(), givenName: "ทดสอบ", familyName: "ศูนย์นัด" } });
@@ -164,7 +164,6 @@ describe("AF-4 personal appointment hub PostgreSQL", () => {
         patient: { givenName: "ทดสอบ", familyName: "ศูนย์นัด" }, hospitalName: "รพ.สต. บ้านทดสอบ" },
     ]);
     expect(await listDelegatedAppointmentSubjects(f.patient, grantDeps)).toEqual([]);
-    expect(await listDelegatedAppointmentSubjects(caregiver, { ...grantDeps, enabled: false })).toEqual([]);
     await expect(listOwnPatientAppointmentHub(caregiver, {}, { database: db, now })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     await revokeAppointmentGrant(f.patient, grantId, grantDeps);

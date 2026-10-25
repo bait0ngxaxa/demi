@@ -38,13 +38,12 @@ const copy: Record<LineWorkflowScreenState, Copy> = {
   ACCOUNT_MISMATCH: { title: "บัญชีไม่ตรงกัน", body: "บัญชี LINE นี้ไม่ตรงกับบัญชี DEMI ที่ลงชื่อเข้าใช้อยู่ กรุณาออกจากระบบ DEMI แล้วเข้าสู่ระบบด้วยบัญชีที่ถูกต้อง หรือตรวจสอบที่หน้าบัญชี LINE" },
   LINE_NOT_LINKED: { title: "ยังไม่ได้เชื่อมบัญชี LINE", body: "เชื่อมบัญชี LINE กับ DEMI ที่หน้าบัญชี LINE ก่อน แล้วเปิดจากเมนูอีกครั้ง" },
   WORKFLOW_INELIGIBLE: { title: "ยังใช้งานนัดหมายผ่าน LINE ไม่ได้", body: "บัญชีนี้ยังไม่พร้อมสำหรับนัดหมายผู้ป่วยผ่าน LINE หากคิดว่าไม่ถูกต้อง กรุณาติดต่อโรงพยาบาล" },
-  NOT_ACTIVATED: { title: "ยังไม่เปิดให้บริการ", body: "นัดหมายผ่าน LINE MINI App ยังไม่เปิดใช้งาน ดูนัดหมายได้ที่ DEMI บนเว็บ" },
   RATE_LIMITED: { title: "ลองหลายครั้งเกินไป", body: "กรุณารอสักครู่แล้วลองใหม่" },
   TEMPORARILY_UNAVAILABLE: { title: "ระบบไม่พร้อมใช้งานชั่วคราว", body: "กรุณาลองใหม่ภายหลัง" },
 };
 
 const retryStates = new Set<LineWorkflowScreenState>(["INIT_FAILED", "LINE_PROOF_UNAVAILABLE", "RATE_LIMITED", "TEMPORARILY_UNAVAILABLE"]);
-const webExitStates = new Set<LineWorkflowScreenState>(["UNAVAILABLE", "NOT_ACTIVATED", "WORKFLOW_INELIGIBLE", "NAVIGATION_INVALID", "PLATFORM_STATE_INVALID"]);
+const webExitStates = new Set<LineWorkflowScreenState>(["UNAVAILABLE", "WORKFLOW_INELIGIBLE", "NAVIGATION_INVALID", "PLATFORM_STATE_INVALID"]);
 
 export function LineWorkflowScreen({
   state,

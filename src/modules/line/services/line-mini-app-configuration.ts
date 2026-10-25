@@ -26,7 +26,7 @@ export type LineMiniAppConfiguration = {
   endpointUrl: string;
 };
 
-/** Every MINI variable except the kill switch; any one present means MINI is being provisioned. */
+/** Any MINI configuration present means MINI is being provisioned. */
 const MINI_VARIABLES = [
   "DEMI_LINE_MINI_APP_CHANNEL_ID",
   "DEMI_LINE_MINI_APP_LIFF_ID",
@@ -62,27 +62,20 @@ export function resolveLineMiniAppChannel(): LineMiniAppConfiguration | null {
   }
 }
 
-/** Emergency kill switch. Only unset/empty/"false" leaves MINI available; any other value denies. */
-export function isLineMiniAppDisabled(): boolean {
-  const value = process.env.DEMI_LINE_MINI_APP_DISABLED?.trim();
-  return value !== undefined && value !== "" && value !== "false";
-}
-
 /**
- * The one MINI runtime availability policy for the gateway, ID-token
- * verification, scope issuance and every scoped read/mutation. Account LIFF
- * and ordinary DEMI web never call this.
+ * The trusted provider configuration used for the gateway, ID-token verification,
+ * scope issuance and every scoped read/mutation. Account LIFF and ordinary DEMI
+ * web never call this.
  */
 export function getLineMiniAppConfiguration(): LineMiniAppConfiguration {
-  if (isLineMiniAppDisabled()) throw new LineWorkflowFailure("WORKFLOW_DISABLED");
   const configuration = resolveLineMiniAppChannel();
   if (!configuration) throw new LineWorkflowFailure("MINI_CONFIGURATION_UNAVAILABLE");
   return configuration;
 }
 
 /**
- * Server-only credentials for LINE's user deauthorization API. Deliberately not
- * gated by the kill switch: terminating a grant reduces access.
+ * Server-only credentials for LINE's user deauthorization API. Credentials are
+ * bound to the configured workflow channel because terminating a grant reduces access.
  */
 export function getLineMiniAppDeauthorizationCredentials(): LineMiniAppDeauthorizationCredentials {
   const configuration = resolveLineMiniAppChannel();

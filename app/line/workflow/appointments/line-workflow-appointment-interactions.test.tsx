@@ -163,7 +163,7 @@ describe("scoped Appointment interaction controls", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
-  it.each(["SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED", "SCOPE_MISSING", "INELIGIBLE", "NOT_ACTIVATED"])(
+  it.each(["SCOPE_EXPIRED", "SCOPE_REVOKED", "SESSION_MISMATCH", "LOGIN_REQUIRED", "SCOPE_MISSING", "INELIGIBLE"])(
     "reports %s as not saved and re-renders from a fresh scoped read for recovery",
     async (code) => {
       fetchMock.mockResolvedValue(reply({ status: "ERROR", code }, 403));

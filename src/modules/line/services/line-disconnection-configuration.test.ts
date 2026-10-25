@@ -36,7 +36,7 @@ describe("server-derived channel inventory", () => {
     expect(getLineChannelInventory()).toEqual({ channels: [account, mini] });
   });
 
-  it("keeps the MINI channel while the kill switch is active: disabling never proves a grant absent", () => {
+  it("keeps a configured MINI channel despite the removed legacy setting", () => {
     setMini();
     vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
     expect(getLineChannelInventory()).toEqual({ channels: [account, mini] });

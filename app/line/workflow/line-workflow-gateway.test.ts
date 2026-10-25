@@ -45,8 +45,8 @@ describe("MINI gateway LIFF initialization", () => {
 
 describe("MINI gateway verification step", () => {
   it("sends only the finite intent and transient proof in a same-origin POST body", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ code: "WORKFLOW_DISABLED" }, { status: 503 }));
-    await expect(verifyLineWorkflow(liffDouble(), fetcher)).resolves.toBe("NOT_ACTIVATED");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ code: "MINI_CONFIGURATION_UNAVAILABLE" }, { status: 503 }));
+    await expect(verifyLineWorkflow(liffDouble(), fetcher)).resolves.toBe("TEMPORARILY_UNAVAILABLE");
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/line/workflow/verify");
     expect(init?.method).toBe("POST");
@@ -70,7 +70,6 @@ describe("MINI gateway verification step", () => {
     [{ code: "WORKFLOW_INELIGIBLE" }, "WORKFLOW_INELIGIBLE"],
     [{ code: "LINE_IDENTITY_INVALID" }, "LINE_PROOF_UNAVAILABLE"],
     [{ code: "RATE_LIMITED" }, "RATE_LIMITED"],
-    [{ code: "WORKFLOW_DISABLED" }, "NOT_ACTIVATED"],
     [{ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments" }, "SCOPE_GRANTED"],
     [{ code: "SCOPE_GRANTED", continuation: "https://attacker.example" }, "TEMPORARILY_UNAVAILABLE"],
     [{ code: "SCOPE_GRANTED", continuation: "/line/workflow/appointments", target: "/app" }, "TEMPORARILY_UNAVAILABLE"],

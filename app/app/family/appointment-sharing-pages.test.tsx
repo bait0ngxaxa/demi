@@ -35,10 +35,11 @@ describe("bounded appointment sharing UI", () => {
     expect(markup).toContain("ยกเลิกแล้ว"); expect(markup).toContain("ยังไม่ระบุ");
     expect(markup).not.toMatch(/appointment-locator|HN|ผู้รับผิดชอบ|อสม.|ยืนยันนัด|ขอยกเลิก|หมายเหตุ|สถานที่โดยละเอียด/);
   });
-  it("disabled ordinary Family management remains available without delegated controls", () => {
+  it("ordinary Family management explains that a relationship alone grants no access", () => {
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ patient: { invitations: [], relationships: [relationship], nextInvitationsCursor: null, nextRelationshipsCursor: null }, caregiver: { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null } }} />);
     expect(markup).toContain("สร้างลิงก์คำเชิญ"); expect(markup).toContain("ยุติความสัมพันธ์ผู้ดูแล");
     expect(markup).not.toContain("เสนอสิทธิ์ดูนัดหมาย");
+    expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
   });
   it("legacy list deep links land on the member's hub selection; detail stays scoped and returns to the hub", async () => {
     mocks.redirect.mockImplementation(() => { throw new Error("redirected"); });
@@ -54,11 +55,11 @@ describe("bounded appointment sharing UI", () => {
   });
   it("AF-5: one-step add offers per-Hospital appointments and only the resources the server allows", () => {
     const empty = { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null };
-    const render = (resources: ("PROFILE_SUMMARY" | "HEALTH_PLAN" | "MEDICATION")[]) => renderToStaticMarkup(<FamilyManagementWorkspace appointmentSharingEnabled
+    const render = (resources: ("PROFILE_SUMMARY" | "HEALTH_PLAN" | "MEDICATION")[]) => renderToStaticMarkup(<FamilyManagementWorkspace
       overview={{ patient: empty, caregiver: empty }} sharingOptions={{ hospitals: [{ relationshipId: "phr-locator", hospitalName: "รพ.สต. บ้านใหม่" }], resources }} />);
-    const gated = render(["PROFILE_SUMMARY"]);
-    for (const text of ['name="relationshipLabel"', "ผู้ดูแลเกี่ยวข้องกับคุณอย่างไร", "บุตร", 'name="appointmentRelationshipIds" value="phr-locator"', "นัดหมายที่ รพ.สต. บ้านใหม่", 'value="PROFILE_SUMMARY"', "ข้อมูลทั่วไป"]) expect(gated).toContain(text);
-    expect(gated).not.toMatch(/HEALTH_PLAN|MEDICATION|แผนสุขภาพ/u);
+    const profileOnly = render(["PROFILE_SUMMARY"]);
+    for (const text of ['name="relationshipLabel"', "ผู้ดูแลเกี่ยวข้องกับคุณอย่างไร", "บุตร", 'name="appointmentRelationshipIds" value="phr-locator"', "นัดหมายที่ รพ.สต. บ้านใหม่", 'value="PROFILE_SUMMARY"', "ข้อมูลทั่วไป"]) expect(profileOnly).toContain(text);
+    expect(profileOnly).not.toMatch(/HEALTH_PLAN|MEDICATION|แผนสุขภาพ/u);
     expect(render(["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"])).toMatch(/value="HEALTH_PLAN"[\s\S]*value="MEDICATION"/u);
   });
   it("AF-5: an active v1 grant offers the Patient the v2 upgrade; a pending v2 shows the v2 acceptance text", () => {
@@ -71,12 +72,12 @@ describe("bounded appointment sharing UI", () => {
     expect(markup).toContain("สิทธิ์แบบเดิม");
     for (const text of ["หน่วยบริการแม่ข่าย", "รายละเอียดสถานที่", "90 วันย้อนหลัง", "ไม่เห็นเบอร์โทรส่วนตัวของผู้ป่วยหรือของ อสม."]) expect(markup).toContain(text);
   });
-  it("AF-5: resource grants are listed per side; a gated grant stays revocable and is labeled as giving no access", () => {
+  it("AF-5: resource grants are listed per side and each scope has an explicit accept or revoke action", () => {
     const item = { grantId: "resource-locator", caregiverRelationshipId: "parent-locator", resource: "MEDICATION" as const, status: "ACTIVE" as const,
-      proposedAt: now, acceptedAt: now, participant, available: false };
+      proposedAt: now, acceptedAt: now, participant };
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace management={overview} relationships={[relationship]}
-      resources={{ patient: [item], caregiver: [{ ...item, grantId: "pending-locator", resource: "PROFILE_SUMMARY", status: "PENDING", acceptedAt: null, available: true }], availableResources: ["PROFILE_SUMMARY"] }} />);
-    for (const text of ["แชร์ข้อมูลสุขภาพอื่นให้ผู้ดูแล", "ปิดการแชร์ชั่วคราว", 'name="grantId" value="resource-locator"', "ยกเลิกสิทธิ์", "ยอมรับสิทธิ์ดูข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(markup).toContain(text);
-    expect(markup).toMatch(/name="resource"[\s\S]*value="PROFILE_SUMMARY"/u);
+      resources={{ patient: [item], caregiver: [{ ...item, grantId: "pending-locator", resource: "PROFILE_SUMMARY", status: "PENDING", acceptedAt: null }], availableResources: ["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"] }} />);
+    for (const text of ["แชร์ข้อมูลสุขภาพอื่นให้ผู้ดูแล", 'name="grantId" value="resource-locator"', "ยกเลิกสิทธิ์", "ยอมรับสิทธิ์ดูข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล", "แผนสุขภาพ", 'value="MEDICATION">ยา</option>']) expect(markup).toContain(text);
+    expect(markup).toMatch(/name="resource"[\s\S]*value="HEALTH_PLAN"[\s\S]*value="MEDICATION"/u);
   });
 });

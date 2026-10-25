@@ -298,7 +298,6 @@ function lineRecoveryDependencies(lineUserId: string) {
   });
   return {
     ...provider,
-    enabled: true,
     lineLiffId: "1234567890-AbCdEf",
     database: db,
     now: () => now,

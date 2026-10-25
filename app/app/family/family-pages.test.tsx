@@ -38,7 +38,7 @@ describe("Family relationship management pages", () => {
     expect(markup).toContain("ครอบครัวและผู้ดูแล");
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแล");
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้");
-    expect(markup).toContain("ไม่เปิดสิทธิ์อ่านข้อมูลสุขภาพ");
+    expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
     expect(markup).toContain("การเชื่อมความสัมพันธ์ไม่ทำให้เข้าถึงข้อมูลสุขภาพของผู้ป่วย");
   });
 

@@ -37,7 +37,7 @@ function Empty({ children }: { children: React.ReactNode }): React.JSX.Element {
 
 /**
  * AF-5 family health summary. Each block renders only when the server returned it, i.e. its grant is currently
- * active (and, for plan/medication, the release gate is on); an absent block is never shown as empty.
+ * active; an absent block is never shown as empty.
  */
 export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSummary }): React.JSX.Element {
   const name = formatFamilyParticipantName(summary.patient, "ไม่ระบุชื่อผู้ป่วย");

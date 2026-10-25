@@ -2,7 +2,6 @@ import "server-only";
 
 import { Prisma, type Profession } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
@@ -18,7 +17,7 @@ import {
 import { appointmentGrantCaregiverWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor } from "../policies/caregiver-relationship-policy";
 import { appointmentGrantIdSchema, delegatedAppointmentListSchema } from "../schemas/appointment-grant-schemas";
-import { appointmentGrantNow, assertAppointmentGrantEnabled, rethrowAppointmentGrantError, type AppointmentGrantDependencies } from "./appointment-grant-service";
+import { appointmentGrantNow, rethrowAppointmentGrantError, type AppointmentGrantDependencies } from "./appointment-grant-service";
 
 /** v1: no SELF selector, notes, people or interaction data. Hospital name comes from authorized grant scope. */
 export const delegatedAppointmentSelect = {
@@ -139,7 +138,6 @@ function selectFor(scope: GrantScope) {
 export async function listDelegatedAppointments(
   actor: ActorContext | null | undefined, input: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<DelegatedAppointmentPage> {
-  assertAppointmentGrantEnabled(dependencies);
   assertFamilyAuthenticatedActor(actor);
   const parsed = delegatedAppointmentListSchema.safeParse(input);
   if (!parsed.success) throw new NotFoundError();
@@ -181,7 +179,6 @@ export type DelegatedAppointmentSubject = {
 export async function listDelegatedAppointmentSubjects(
   actor: ActorContext | null | undefined, dependencies: AppointmentGrantDependencies = {},
 ): Promise<DelegatedAppointmentSubject[]> {
-  if (!(dependencies.enabled ?? isFamilyDelegatedAppointmentReadEnabled())) return [];
   assertFamilyAuthenticatedActor(actor);
   try {
     const rows = await (dependencies.database ?? getPrisma()).caregiverAppointmentGrant.findMany({
@@ -202,7 +199,6 @@ export async function listDelegatedAppointmentSubjects(
 export async function getDelegatedAppointment(
   actor: ActorContext | null | undefined, grantId: unknown, appointmentId: unknown, dependencies: AppointmentGrantDependencies = {},
 ): Promise<DelegatedAppointmentDetail> {
-  assertAppointmentGrantEnabled(dependencies);
   assertFamilyAuthenticatedActor(actor);
   const grant = appointmentGrantIdSchema.safeParse(grantId);
   const appointment = appointmentGrantIdSchema.safeParse(appointmentId);

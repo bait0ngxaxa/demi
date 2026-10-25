@@ -4,7 +4,6 @@ import { LineWorkflowFailure } from "../domain/line-workflow-errors";
 import {
   getLineMiniAppConfiguration,
   getLineMiniAppDeauthorizationCredentials,
-  isLineMiniAppDisabled,
   resolveLineMiniAppChannel,
 } from "./line-mini-app-configuration";
 
@@ -14,7 +13,6 @@ const MINI_VARIABLES = [
   "DEMI_LINE_MINI_APP_LIFF_ID",
   "DEMI_LINE_MINI_APP_CHANNEL_SECRET",
   "DEMI_LINE_MINI_APP_CONTEXT_KEYRING",
-  "DEMI_LINE_MINI_APP_DISABLED",
 ] as const;
 
 // Synthetic identifiers only.
@@ -26,7 +24,6 @@ function setMiniEnvironment(overrides: Record<string, string | undefined> = {}):
     DEMI_LINE_MINI_APP_LIFF_ID: "2000000001-MiniDev",
     DEMI_LINE_MINI_APP_CHANNEL_SECRET: undefined,
     DEMI_LINE_MINI_APP_CONTEXT_KEYRING: undefined,
-    DEMI_LINE_MINI_APP_DISABLED: undefined,
     DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001",
     IDENTITY_HASH_SECRET: "synthetic-secret-at-least-32-characters",
     NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1000000001-Account",
@@ -65,6 +62,11 @@ describe("selected MINI App channel", () => {
       "DEMI_LINE_MINI_APP_WORKFLOW_ENABLED", "DEMI_LINE_MINI_APP_ISSUANCE_ENABLED",
       "DEMI_LINE_MINI_APP_ENDPOINT_URL", "DEMI_LINE_MINI_APP_DEPLOYMENT_REFERENCE",
     ]) vi.stubEnv(legacy, undefined);
+    expect(getLineMiniAppConfiguration().channelId).toBe("2000000001");
+  });
+
+  it("ignores the former MINI activation switch when provider configuration is valid", () => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
     expect(getLineMiniAppConfiguration().channelId).toBe("2000000001");
   });
 
@@ -123,34 +125,5 @@ describe("selected MINI App channel", () => {
   it("never falls back to Account credentials for MINI deauthorization", () => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_SECRET", "synthetic-account-channel-secret");
     expect(failureCode(getLineMiniAppDeauthorizationCredentials)).toBe("MINI_CONFIGURATION_UNAVAILABLE");
-  });
-});
-
-describe("MINI emergency kill switch", () => {
-  beforeEach(() => setMiniEnvironment());
-  afterEach(() => vi.unstubAllEnvs());
-
-  it.each([undefined, "", "false"])("leaves a valid MINI channel available for %s", (value) => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", value);
-    expect(isLineMiniAppDisabled()).toBe(false);
-    expect(getLineMiniAppConfiguration().channelId).toBe("2000000001");
-  });
-
-  it.each(["true", "TRUE", "1", "yes", "False"])("denies all MINI access for %s", (value) => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", value);
-    expect(isLineMiniAppDisabled()).toBe(true);
-    expect(failureCode(getLineMiniAppConfiguration)).toBe("WORKFLOW_DISABLED");
-  });
-
-  it("still denies when the MINI configuration is also invalid", () => {
-    setMiniEnvironment({ DEMI_LINE_MINI_APP_DISABLED: "true", DEMI_LINE_MINI_APP_CHANNEL_ID: undefined });
-    expect(failureCode(getLineMiniAppConfiguration)).toBe("WORKFLOW_DISABLED");
-  });
-
-  it("keeps the selected channel and its credentials for termination while disabled", () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
-    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_SECRET", "synthetic-mini-channel-secret");
-    expect(resolveLineMiniAppChannel()?.channelId).toBe("2000000001");
-    expect(getLineMiniAppDeauthorizationCredentials().channelId).toBe("2000000001");
   });
 });

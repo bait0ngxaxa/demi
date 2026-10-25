@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { getLineLiffId, isRecoveryLineEnabled } from "@/lib/env/server";
+import { getLineLiffId } from "@/lib/env/server";
 import { accountRecoveryTokenSchema, linePasswordRecoveryRequestSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import {
   completeLinePasswordRecovery,
@@ -56,7 +56,6 @@ export type LinePasswordRecoveryDependencies = Pick<
   MediatedPasswordResetDependencies,
   "database" | "now" | "createToken" | "createReplacementIdentity" | "deleteProviderIdentity" | "sendLineMessage"
 > & {
-  enabled?: boolean;
   lineLiffId?: string | null;
   attemptThrottle?: AuthAttemptThrottle;
   clientIpAddress?: string | null;
@@ -70,10 +69,6 @@ function databaseOf(dependencies: LinePasswordRecoveryDependencies): PrismaClien
 
 function nowOf(dependencies: LinePasswordRecoveryDependencies): Date {
   return dependencies.now?.() ?? new Date();
-}
-
-function recoveryEnabled(dependencies: LinePasswordRecoveryDependencies): boolean {
-  return dependencies.enabled ?? isRecoveryLineEnabled();
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
@@ -97,7 +92,6 @@ export async function requestLinePasswordRecovery(
   input: unknown,
   dependencies: LinePasswordRecoveryDependencies = {},
 ): Promise<{ message: string }> {
-  if (!recoveryEnabled(dependencies)) return { message: LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE };
   const database = databaseOf(dependencies);
   const now = nowOf(dependencies);
   const nationalId = identityValue(input);
@@ -179,7 +173,6 @@ export async function openLinePasswordRecovery(
   input: unknown,
   dependencies: LinePasswordRecoveryDependencies = {},
 ): Promise<{ status: LinePasswordRecoveryAvailability }> {
-  if (!recoveryEnabled(dependencies)) return { status: genericAvailability() };
   const parsed = openCapabilitySchema.safeParse(input);
   if (!parsed.success) return { status: genericAvailability() };
   try {
@@ -209,7 +202,6 @@ export async function completeLinePasswordRecoveryWithIdentityToken(
   input: unknown,
   dependencies: LinePasswordRecoveryDependencies = {},
 ): Promise<void> {
-  if (!recoveryEnabled(dependencies)) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
   const parsed = completeCapabilitySchema.safeParse(input);
   if (!parsed.success) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
   const { idToken, ...completion } = parsed.data;

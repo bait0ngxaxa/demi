@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   loginEnv: vi.fn(),
   actor: vi.fn(),
   notificationPreference: vi.fn(),
-  recoveryLineEnabled: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -25,7 +24,6 @@ vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ sched
 vi.mock("@/lib/env/server", () => ({
   getLineLiffId: mocks.liffId,
   getLineLoginEnv: mocks.loginEnv,
-  isRecoveryLineEnabled: mocks.recoveryLineEnabled,
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("@/modules/appointments/services/appointment-line-notification-preference-service", () => ({
@@ -90,7 +88,6 @@ describe("Account page readiness composition", () => {
     mocks.reconcile.mockResolvedValue(undefined);
     mocks.liffId.mockReturnValue("1234567890-test");
     mocks.loginEnv.mockReturnValue({ DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org" });
-    mocks.recoveryLineEnabled.mockReturnValue(false);
     mocks.actor.mockRejectedValue(new Error("no Patient session"));
     mocks.notificationPreference.mockResolvedValue(null);
   });

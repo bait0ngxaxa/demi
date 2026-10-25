@@ -15,7 +15,6 @@ const ORIGIN = "https://demi.example.org";
 
 function enableMini(): void {
   for (const [name, value] of Object.entries({
-    DEMI_LINE_MINI_APP_DISABLED: undefined,
     DEMI_LINE_PUBLIC_ORIGIN: ORIGIN,
     DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001",
     IDENTITY_HASH_SECRET: "synthetic-secret-at-least-32-characters",
@@ -76,12 +75,11 @@ describe("GET /line/workflow initialization shell", () => {
     expect(mocks.database).not.toHaveBeenCalled();
   });
 
-  it("does not initialize LIFF while the emergency kill switch is active", async () => {
+  it("ignores the former activation switch when provider configuration is valid", async () => {
     enableMini();
     vi.stubEnv("DEMI_LINE_MINI_APP_DISABLED", "true");
     const markup = await render();
-    expect(markup).toContain("ยังเปิดนัดหมายผ่าน LINE ไม่ได้");
-    expect(markup).not.toContain("2000000001-MiniDev");
+    expect(markup).toContain("กำลังเปิดนัดหมายผ่าน LINE");
     expect(mocks.init).not.toHaveBeenCalled();
     expect(mocks.database).not.toHaveBeenCalled();
   });
@@ -99,7 +97,7 @@ describe("gateway screen states", () => {
   const states: LineWorkflowScreenState[] = [
     "INITIALIZING", "VERIFYING", "UNAVAILABLE", "NAVIGATION_INVALID", "PLATFORM_STATE_INVALID", "INIT_FAILED",
     "LINE_LOGIN_REQUIRED", "LINE_PROOF_UNAVAILABLE", "LOGIN_REQUIRED", "ACCOUNT_MISMATCH", "LINE_NOT_LINKED",
-    "WORKFLOW_INELIGIBLE", "NOT_ACTIVATED", "RATE_LIMITED", "TEMPORARILY_UNAVAILABLE",
+    "WORKFLOW_INELIGIBLE", "RATE_LIMITED", "TEMPORARILY_UNAVAILABLE",
   ];
 
   it.each(states)("renders %s as Thai status copy with no Patient or appointment content", (state) => {

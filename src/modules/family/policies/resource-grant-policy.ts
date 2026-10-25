@@ -16,7 +16,7 @@ export function resourceGrantOwnerWhere(actor: ActorContext): Prisma.CaregiverRe
 
 /**
  * AF-5: current caregiver authority over one Patient-level resource. Same exact-pair rules as the appointment grant;
- * no role or membership fallback. The plan/medication release gate is checked by the services on top of this.
+ * no role or membership fallback.
  */
 export function resourceGrantCaregiverWhere(
   actor: ActorContext,
