@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
   actor: vi.fn(),
   summary: vi.fn(),
-  recoveryEnabled: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -15,7 +14,6 @@ vi.mock("next/link", () => ({
 }));
 vi.mock("@/components/ui/page-header", () => ({ PageHeader: ({ title }: { title: string }) => createElement("h1", null, title) }));
 vi.mock("@/components/ui/panel", () => ({ Panel: ({ children }: { children: ReactNode }) => createElement("section", null, children) }));
-vi.mock("@/lib/env/server", () => ({ isRecoveryLineEnabled: mocks.recoveryEnabled }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("@/modules/line/services/line-account-service", () => ({ getLineAccountSummary: mocks.summary }));
 vi.mock("../../../line/account/line-password-recovery-nudge", () => ({
@@ -35,7 +33,6 @@ describe("application LINE account page", () => {
     mocks.connection.mockResolvedValue(undefined);
     mocks.actor.mockResolvedValue({ userId: "user-1", roles: ["PATIENT"] });
     mocks.summary.mockResolvedValue({ status: "UNLINKED" });
-    mocks.recoveryEnabled.mockReturnValue(true);
   });
 
   it("shows the dismissible LINE recovery nudge for an unlinked non-ADMIN account", async () => {
@@ -46,11 +43,7 @@ describe("application LINE account page", () => {
     expect(html).toContain('href="/line/account"');
   });
 
-  it("hides the nudge when the flag is off, the account is linked, or the user is an ADMIN", async () => {
-    mocks.recoveryEnabled.mockReturnValue(false);
-    expect(await renderPage()).not.toContain("ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม");
-
-    mocks.recoveryEnabled.mockReturnValue(true);
+  it("hides the nudge when the account is linked or the user is an ADMIN", async () => {
     mocks.summary.mockResolvedValue({ status: "LINKED" });
     expect(await renderPage()).not.toContain("ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม");
 

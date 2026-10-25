@@ -5,7 +5,6 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { isRecoveryLineEnabled } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
 
@@ -16,11 +15,10 @@ export const metadata: Metadata = { title: "บัญชี LINE" };
 export default async function ApplicationLineAccountPage(): Promise<React.JSX.Element> {
   await connection();
   const actor = await getProtectedApplicationActor();
-  const recoveryLineEnabled = isRecoveryLineEnabled();
   const summary = await getLineAccountSummary().catch(() => null);
   const unlinked = summary?.status === "UNLINKED";
   const linked = summary?.status === "LINKED";
-  const showRecoveryNudge = recoveryLineEnabled && unlinked && !actor.roles.includes(Role.ADMIN);
+  const showRecoveryNudge = unlinked && !actor.roles.includes(Role.ADMIN);
 
   return (
     <div className="min-w-0 max-w-3xl space-y-6">
