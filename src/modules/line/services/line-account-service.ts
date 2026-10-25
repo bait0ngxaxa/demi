@@ -16,6 +16,8 @@ import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ForbiddenError } from "@/shared/errors/application-error";
+import { CurrentPasswordRejectedError, verifyAuthenticatedCurrentPassword } from "@/modules/account-security/adapters/supabase-account-security-provider";
+import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 
 import { LineFailure } from "../domain/line-errors";
 import { verifyLineFriendship, verifyLineIdToken, verifyFreshLineIdToken } from "../adapters/line-login-client";
@@ -32,6 +34,9 @@ const sha256 = (value: string): string => createHash("sha256").update(value).dig
 export type LineAccountDependencies = {
   database?: PrismaClient;
   now?: () => Date;
+  verifyCurrentPassword?: (input: { userId: string; currentPassword: string }) => Promise<void>;
+  attemptThrottle?: AuthAttemptThrottle;
+  clientIpAddress?: string | null;
   verifyIdentity?: typeof verifyLineIdToken;
   verifyFriendship?: typeof verifyLineFriendship;
   currentSession?: () => Promise<CurrentLineSession>;
@@ -42,6 +47,45 @@ export type LineAccountDependencies = {
   /** Server-derived marker for local Unlink committed while readiness failed. */
   disconnectionReadinessUnavailable?: boolean;
 };
+
+export class LineCurrentPasswordAttemptThrottledError extends Error {
+  constructor() {
+    super("LINE linking current-password attempts are temporarily blocked");
+    this.name = "LineCurrentPasswordAttemptThrottledError";
+  }
+}
+
+async function verifyCurrentDemiPassword(
+  userId: string,
+  currentPassword: string,
+  dependencies: LineAccountDependencies,
+  database: PrismaClient,
+  now: Date,
+): Promise<void> {
+  const user = await database.user.findUnique({
+    where: { id: userId },
+    select: { person: { select: { identityKeyHash: true } } },
+  });
+  const identityHash = user?.person.identityKeyHash;
+  if (!identityHash) throw new ForbiddenError();
+  const attemptThrottle = dependencies.attemptThrottle ?? createAuthAttemptThrottle({ database });
+  const throttleInput = {
+    scope: "PASSWORD_LOGIN" as const,
+    identityHash,
+    clientIp: dependencies.clientIpAddress ?? null,
+    now,
+  };
+  if (await attemptThrottle.isBlocked(throttleInput)) throw new LineCurrentPasswordAttemptThrottledError();
+  try {
+    await (dependencies.verifyCurrentPassword ?? verifyAuthenticatedCurrentPassword)({ userId, currentPassword });
+  } catch (error: unknown) {
+    if (error instanceof CurrentPasswordRejectedError) {
+      await attemptThrottle.recordFailure(throttleInput);
+      throw error;
+    }
+    throw error;
+  }
+}
 
 export function isLineDisconnectionReadinessUnavailableAudit(metadata: unknown): boolean {
   return Boolean(metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
@@ -156,13 +200,14 @@ function checkIntentInTransaction(
 }
 
 export async function linkLineAccount(
-  input: { intentId: string; challenge: string; idToken: string; accessToken?: string },
+  input: { intentId: string; challenge: string; idToken: string; currentPassword: string; accessToken?: string },
   dependencies: LineAccountDependencies = {},
 ): Promise<{ status: "LINKED" | "ALREADY_LINKED"; bindingId: string; lifecycleVersion: number }> {
   const session = await (dependencies.currentSession ?? getCurrentLineSession)();
   const now = nowOf(dependencies);
   const database = databaseOf(dependencies);
   await validateIntentBeforeProvider({ ...input, action: LineAccountAction.LINK }, session, database, now);
+  await verifyCurrentDemiPassword(session.userId, input.currentPassword, dependencies, database, now);
 
   const verified = await (dependencies.verifyIdentity ?? (dependencies.enforceRelinkPolicy ? verifyFreshLineIdToken : verifyLineIdToken))(input.idToken);
   const identity = createLineSubjectFingerprint(verified.subject);

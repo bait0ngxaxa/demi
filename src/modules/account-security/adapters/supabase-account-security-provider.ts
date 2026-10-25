@@ -108,6 +108,52 @@ export async function updateAuthenticatedPassword(input: {
   }
 }
 
+/** Verifies a current password for a sensitive step-up without replacing the browser's session. */
+export async function verifyAuthenticatedCurrentPassword(input: {
+  userId: string;
+  currentPassword: string;
+}): Promise<void> {
+  let verificationSession: { access_token: string } | null = null;
+  let verifier: SupabaseClient | null = null;
+  try {
+    const client = await getServerSupabaseClient({ requireWritableCookies: true });
+    const currentUser = await client.auth.getUser();
+    if (currentUser.error || !currentUser.data.user) throw new InfrastructureError("Authenticated provider user could not be confirmed");
+
+    const identity = await getPrisma().user.findUnique({
+      where: { id: input.userId },
+      select: { authSubject: true, providerLoginAlias: true },
+    });
+    if (!identity || identity.authSubject !== currentUser.data.user.id) {
+      throw new InfrastructureError("Authenticated provider identity is no longer current");
+    }
+
+    verifier = createIsolatedAuthClient();
+    const verification = await verifier.auth.signInWithPassword({
+      email: identity.providerLoginAlias ?? createProviderLoginAlias(input.userId),
+      password: input.currentPassword,
+    });
+    verificationSession = verification.data.session;
+    if (isExplicitInvalidPassword(verification.error)) throw new CurrentPasswordRejectedError();
+    if (verification.error || verification.data.user?.id !== currentUser.data.user.id || !verificationSession) {
+      throw new InfrastructureError("Current password was not confirmed for the authenticated user");
+    }
+  } catch (error: unknown) {
+    if (error instanceof CurrentPasswordRejectedError || error instanceof InfrastructureError) throw error;
+    throw new InfrastructureError("Current password could not be verified");
+  } finally {
+    if (verificationSession) {
+      try {
+        if (!verifier) throw new Error("Temporary password-verification client is unavailable");
+        const { error } = await verifier.auth.signOut({ scope: "local" });
+        if (error) throw new Error("Temporary password-verification session could not be closed");
+      } catch {
+        console.error("Temporary password-verification session cleanup could not be confirmed");
+      }
+    }
+  }
+}
+
 export class CurrentPasswordRejectedError extends Error {
   constructor() {
     super("The current password was not accepted");

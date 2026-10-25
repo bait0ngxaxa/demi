@@ -30,7 +30,11 @@ import { lockFirstCredentialOperation } from "@/modules/identity/services/first-
 import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/line-account-service";
 import { assertChildOwnerInvitationContext } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
+import {
+  unreconciledAccountRecoveryWhere,
+  unreconciledLinePasswordRecoveryWhere,
+  unreconciledWorkforceResetWhere,
+} from "@/modules/auth/services/credential-recovery-state";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { passwordLoginIdentifierSchema } from "@/modules/auth/schemas/login-schema";
@@ -43,6 +47,7 @@ import {
   replacePasswordAndRevokeRecoverySessions,
 } from "../adapters/supabase-account-security-provider";
 import {
+  accountRecoveryCompletionSchema,
   accountRecoveryTokenSchema,
   mediatedPasswordResetCompletionSchema,
   mediatedPasswordResetIssueSchema,
@@ -66,6 +71,9 @@ import {
 export const MEDIATED_RESET_IN_PERSON_TTL_MS = 15 * 60 * 1000;
 export const MEDIATED_RESET_ONLINE_TTL_MS = 24 * 60 * 60 * 1000;
 export const MEDIATED_RESET_MAX_FAILED_IDENTITIES = 5;
+export const LINE_PASSWORD_RECOVERY_TTL_MS = 15 * 60 * 1000;
+export const LINE_PASSWORD_RECOVERY_MAX_ISSUANCES_PER_HOUR = 3;
+const LINE_PASSWORD_RECOVERY_ISSUANCE_WINDOW_MS = 60 * 60 * 1000;
 
 export type MediatedPasswordResetDatabase = PrismaClient;
 
@@ -88,6 +96,7 @@ export type MediatedPasswordResetDependencies = {
 };
 
 export type MediatedPasswordResetReconcileDependencies = Pick<MediatedPasswordResetDependencies, "database" | "now" | "deleteProviderIdentity"> & {
+  sendLineMessage?: MediatedPasswordResetDependencies["sendLineMessage"];
   findProviderIdentityByLoginAlias?: (providerLoginAlias: string) => Promise<{ authSubject: string } | null>;
   providerIdentityExists?: (authSubject: string) => Promise<boolean>;
   operatorNote?: string;
@@ -104,7 +113,7 @@ class ResetAuthorizationLostError extends Error {
   }
 }
 
-type ResetStorage = "WORKFORCE" | "PATIENT";
+type ResetStorage = "WORKFORCE" | "PATIENT" | "LINE_SELF_SERVICE";
 
 type ResetRecord = {
   storage: ResetStorage;
@@ -112,11 +121,12 @@ type ResetRecord = {
   userId: string;
   hospitalId: string | null;
   relationshipId: string | null;
-  targetKind: MediatedPasswordResetTargetKind;
+  targetKind: MediatedPasswordResetTargetKind | "line_self_service";
   issuerUserId: string;
   mode: MediatedPasswordResetMode;
   verificationMethod: StoredCredentialRecoveryVerificationMethod;
   expiresAt: Date;
+  deliveredAt: Date | null;
   claimedAt: Date | null;
   usedAt: Date | null;
   completedAt: Date | null;
@@ -126,6 +136,8 @@ type ResetRecord = {
   reconciliationRequiredAt: Date | null;
   previousAuthSubject: string | null;
   replacementAuthSubject: string | null;
+  lineAccountBindingId: string | null;
+  lineSubjectFingerprint: string | null;
 };
 
 type TargetSnapshot = {
@@ -244,7 +256,7 @@ async function isReconcilingCredential(
   target: TargetSnapshot,
   currentReset?: { storage: ResetStorage; id: string },
 ): Promise<boolean> {
-  const [workforce, patient] = await Promise.all([
+  const [workforce, patient, line] = await Promise.all([
     transaction.workforceActivation.findFirst({
       where: { ...unreconciledWorkforceResetWhere, userId: target.userId, ...(currentReset?.storage === "WORKFORCE" ? { id: { not: currentReset.id } } : {}) },
       select: { id: true },
@@ -253,8 +265,51 @@ async function isReconcilingCredential(
       where: { ...unreconciledAccountRecoveryWhere, targetUserId: target.userId, ...(currentReset?.storage === "PATIENT" ? { id: { not: currentReset.id } } : {}) },
       select: { id: true },
     }),
+    transaction.linePasswordRecoveryCapability.findFirst({
+      where: { ...unreconciledLinePasswordRecoveryWhere, targetUserId: target.userId, ...(currentReset?.storage === "LINE_SELF_SERVICE" ? { id: { not: currentReset.id } } : {}) },
+      select: { id: true },
+    }),
   ]);
-  return Boolean(workforce || patient);
+  return Boolean(workforce || patient || line);
+}
+
+export type LinePasswordRecoveryTarget = {
+  userId: string;
+  authSubject: string;
+  bindingId: string;
+  lineUserId: string;
+  lineSubjectFingerprint: string;
+};
+
+async function findEligibleLinePasswordRecoveryTarget(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  expected?: { bindingId: string; lineSubjectFingerprint: string },
+  currentReset?: { storage: ResetStorage; id: string },
+): Promise<LinePasswordRecoveryTarget | null> {
+  const user = await transaction.user.findUnique({ where: { id: userId }, select: targetUserSelect });
+  if (
+    !user || user.status !== UserStatus.ACTIVE || !user.authSubject ||
+    user.roles.some(({ role }) => role === Role.ADMIN) ||
+    (user.takeoverLock !== null && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED) ||
+    await isReconcilingCredential(transaction, toTargetSnapshot(user), currentReset)
+  ) return null;
+
+  const bindings = await transaction.lineAccountBinding.findMany({
+    where: { userId, unlinkedAt: null },
+    select: { id: true, lineUserId: true, lineSubjectFingerprint: true },
+  });
+  if (bindings.length !== 1) return null;
+  const binding = bindings[0];
+  if (!binding?.lineUserId || !/^U[0-9a-f]{32}$/iu.test(binding.lineUserId)) return null;
+  if (expected && (binding.id !== expected.bindingId || binding.lineSubjectFingerprint !== expected.lineSubjectFingerprint)) return null;
+  return {
+    userId,
+    authSubject: user.authSubject,
+    bindingId: binding.id,
+    lineUserId: binding.lineUserId,
+    lineSubjectFingerprint: binding.lineSubjectFingerprint,
+  };
 }
 
 async function isCaregiverOnlyTarget(
@@ -426,8 +481,9 @@ async function authorizeIssuerAndTarget(
   return { target, mode: "OWNER" };
 }
 
-function modeForRecord(record: { storage: ResetStorage; mode: WorkforceActivationMode | AccountRecoveryDeliveryChannel }): MediatedPasswordResetMode {
+function modeForRecord(record: { storage: ResetStorage; mode?: WorkforceActivationMode | AccountRecoveryDeliveryChannel }): MediatedPasswordResetMode {
   if (record.storage === "WORKFORCE") return record.mode === WorkforceActivationMode.ASSISTED ? "IN_PERSON" : "ONLINE";
+  if (record.storage === "LINE_SELF_SERVICE") return "ONLINE";
   return record.mode === AccountRecoveryDeliveryChannel.ASSISTED ? "IN_PERSON" : "ONLINE";
 }
 
@@ -458,6 +514,13 @@ async function updateReset(
     });
     return result.count;
   }
+  if (record.storage === "LINE_SELF_SERVICE") {
+    const result = await transaction.linePasswordRecoveryCapability.updateMany({
+      where: { id: record.id, ...(whileClaimed ? unreconciledLinePasswordRecoveryWhere : {}) },
+      data: { ...common, completedAt: completedAt ?? usedAt },
+    });
+    return result.count;
+  }
   const result = await transaction.accountRecovery.updateMany({
     where: { id: record.id, ...(whileClaimed ? unreconciledAccountRecoveryWhere : {}) },
     data: { ...common, completedAt: completedAt ?? usedAt },
@@ -470,7 +533,7 @@ function findResetByToken(transaction: Prisma.TransactionClient, tokenHash: stri
 }
 
 async function findReset(transaction: Prisma.TransactionClient, where: { tokenHash: string } | { id: string }): Promise<ResetRecord | null> {
-  const [workforce, patient] = await Promise.all([
+  const [workforce, patient, line] = await Promise.all([
     transaction.workforceActivation.findFirst({
       where: { ...where, purpose: WorkforceActivationPurpose.RESET },
       select: {
@@ -489,8 +552,16 @@ async function findReset(transaction: Prisma.TransactionClient, where: { tokenHa
         reconciliationRequiredAt: true, previousAuthSubject: true, replacementAuthSubject: true,
       },
     }),
+    transaction.linePasswordRecoveryCapability.findFirst({
+      where,
+      select: {
+        id: true, targetUserId: true, lineAccountBindingId: true, lineSubjectFingerprint: true,
+        expiresAt: true, deliveredAt: true, claimedAt: true, completedAt: true, revokedAt: true, operationState: true,
+        reconciliationRequiredAt: true, previousAuthSubject: true, replacementAuthSubject: true,
+      },
+    }),
   ]);
-  if (workforce && patient) throw new InfrastructureError("A recovery token is ambiguous");
+  if ([workforce, patient, line].filter(Boolean).length > 1) throw new InfrastructureError("A recovery token is ambiguous");
   if (workforce?.relationshipKind && workforce.verificationMethod) {
     const targetKind = workforce.relationshipKind === "staff" || workforce.relationshipKind === "osm" || workforce.relationshipKind === "patient" || workforce.relationshipKind === "caregiver" || workforce.relationshipKind === "platform_admin" ? workforce.relationshipKind : null;
     if (!targetKind) throw new InfrastructureError("A workforce reset scope is invalid");
@@ -500,10 +571,11 @@ async function findReset(transaction: Prisma.TransactionClient, where: { tokenHa
       storage: "WORKFORCE", id: workforce.id, userId: workforce.userId, hospitalId: workforce.hospitalId,
       relationshipId: workforce.relationshipId, targetKind, issuerUserId: workforce.createdByUserId,
       mode: modeForRecord({ storage: "WORKFORCE", mode: workforce.mode }), verificationMethod: workforce.verificationMethod,
-      expiresAt: workforce.expiresAt, claimedAt: workforce.claimedAt, usedAt: workforce.usedAt,
+      expiresAt: workforce.expiresAt, deliveredAt: null, claimedAt: workforce.claimedAt, usedAt: workforce.usedAt,
       completedAt: null, revokedAt: workforce.revokedAt, failedVerificationCount: workforce.failedVerificationCount,
       operationState: workforce.operationState, reconciliationRequiredAt: workforce.reconciliationRequiredAt,
       previousAuthSubject: workforce.previousAuthSubject, replacementAuthSubject: workforce.replacementAuthSubject,
+      lineAccountBindingId: null, lineSubjectFingerprint: null,
     };
   }
   if (patient?.verificationMethod && patient.hospitalId) {
@@ -516,17 +588,30 @@ async function findReset(transaction: Prisma.TransactionClient, where: { tokenHa
       storage: "PATIENT", id: patient.id, userId: patient.targetUserId, hospitalId: patient.hospitalId,
       relationshipId: patient.patientHospitalRelationshipId, targetKind: "patient", issuerUserId: patient.issuedByUserId,
       mode: modeForRecord({ storage: "PATIENT", mode: patient.deliveryChannel }), verificationMethod: patient.verificationMethod,
-      expiresAt: patient.expiresAt, claimedAt: patient.claimedAt, usedAt: patient.completedAt,
+      expiresAt: patient.expiresAt, deliveredAt: null, claimedAt: patient.claimedAt, usedAt: patient.completedAt,
       completedAt: patient.completedAt, revokedAt: patient.revokedAt, failedVerificationCount: patient.failedVerificationCount,
       operationState: patient.operationState, reconciliationRequiredAt: patient.reconciliationRequiredAt,
       previousAuthSubject: patient.previousAuthSubject, replacementAuthSubject: patient.replacementAuthSubject,
+      lineAccountBindingId: null, lineSubjectFingerprint: null,
+    };
+  }
+  if (line) {
+    return {
+      storage: "LINE_SELF_SERVICE", id: line.id, userId: line.targetUserId, hospitalId: null,
+      relationshipId: null, targetKind: "line_self_service", issuerUserId: line.targetUserId,
+        mode: "ONLINE", verificationMethod: "LINE_ID_TOKEN", expiresAt: line.expiresAt, deliveredAt: line.deliveredAt,
+      claimedAt: line.claimedAt, usedAt: line.completedAt, completedAt: line.completedAt,
+      revokedAt: line.revokedAt, failedVerificationCount: 0, operationState: line.operationState,
+      reconciliationRequiredAt: line.reconciliationRequiredAt, previousAuthSubject: line.previousAuthSubject,
+      replacementAuthSubject: line.replacementAuthSubject, lineAccountBindingId: line.lineAccountBindingId,
+      lineSubjectFingerprint: line.lineSubjectFingerprint,
     };
   }
   return null;
 }
 
 function resetLocator(record: ResetRecord): Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind" | "targetUserId"> {
-  if (!record.hospitalId) throw new InfrastructureError("The mediated reset hospital scope is missing");
+  if (!record.hospitalId || record.targetKind === "line_self_service") throw new InfrastructureError("The mediated reset hospital scope is missing");
   return { hospitalId: record.hospitalId, relationshipId: record.relationshipId, targetKind: record.targetKind, targetUserId: record.userId };
 }
 
@@ -562,14 +647,19 @@ export async function issueMediatedPasswordReset(
     const issued = await runSerializableTransaction(database, async (transaction) => {
       const { target, mode } = await authorizeIssuerAndTarget(transaction, actor.userId, parsed.data);
       await lockFirstCredentialOperation(transaction, target.userId);
-      const [claimedWorkforce, claimedPatient] = await Promise.all([
+      const [claimedWorkforce, claimedPatient, claimedLine] = await Promise.all([
         transaction.workforceActivation.findFirst({ where: { userId: target.userId, purpose: WorkforceActivationPurpose.RESET, claimedAt: { not: null }, usedAt: null, revokedAt: null }, select: { id: true } }),
         transaction.accountRecovery.findFirst({ where: { targetUserId: target.userId, claimedAt: { not: null }, completedAt: null, revokedAt: null }, select: { id: true } }),
+        transaction.linePasswordRecoveryCapability.findFirst({ where: { targetUserId: target.userId, ...unreconciledLinePasswordRecoveryWhere }, select: { id: true } }),
       ]);
-      if (claimedWorkforce || claimedPatient) throw new ConflictError("A password reset is already being reconciled");
+      if (claimedWorkforce || claimedPatient || claimedLine) throw new ConflictError("A password reset is already being reconciled");
       const previousResetWhere = { userId: target.userId, purpose: WorkforceActivationPurpose.RESET, claimedAt: null, usedAt: null, revokedAt: null };
       await transaction.workforceActivation.updateMany({ where: previousResetWhere, data: { revokedAt: now } });
       await transaction.accountRecovery.updateMany({
+        where: { targetUserId: target.userId, claimedAt: null, completedAt: null, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      await transaction.linePasswordRecoveryCapability.updateMany({
         where: { targetUserId: target.userId, claimedAt: null, completedAt: null, revokedAt: null },
         data: { revokedAt: now },
       });
@@ -676,10 +766,202 @@ export async function getMediatedPasswordResetAvailability(
   if (!parsed.success) throw new NotFoundError();
   const database = getDatabase(dependencies);
   const record = await database.$transaction((transaction) => findResetByToken(transaction, hashAccountRecoveryToken(parsed.data)));
-  if (!record || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= currentTime(dependencies)) {
+  if (!record || record.storage === "LINE_SELF_SERVICE" || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= currentTime(dependencies)) {
     throw new NotFoundError();
   }
   return { expiresAt: record.expiresAt, mode: record.mode };
+}
+
+export type LinePasswordRecoveryAvailability = "READY" | "EXPIRED" | "OTHER_LINE" | "INELIGIBLE";
+
+export async function issueLinePasswordRecoveryCapability(
+  input: { userId: string; identityKeyHash: string },
+  dependencies: MediatedPasswordResetDependencies = {},
+): Promise<{ resetId: string; token: string; bindingId: string; lineUserId: string; expiresAt: Date } | null> {
+  const database = getDatabase(dependencies);
+  const now = currentTime(dependencies);
+  const token = accountRecoveryTokenSchema.parse(dependencies.createToken?.() ?? createAccountRecoveryToken());
+  const tokenHash = hashAccountRecoveryToken(token);
+  const expiresAt = new Date(now.getTime() + LINE_PASSWORD_RECOVERY_TTL_MS);
+  try {
+    const issued = await runSerializableTransaction(database, async (transaction) => {
+      await lockFirstCredentialOperation(transaction, input.userId);
+      const identity = await transaction.user.findUnique({
+        where: { id: input.userId },
+        select: { person: { select: { identityKeyHash: true } } },
+      });
+      if (identity?.person.identityKeyHash !== input.identityKeyHash) return null;
+      const target = await findEligibleLinePasswordRecoveryTarget(transaction, input.userId);
+      if (!target) return null;
+      const recentIssuanceCount = await transaction.linePasswordRecoveryCapability.count({
+        where: { targetUserId: input.userId, createdAt: { gt: new Date(now.getTime() - LINE_PASSWORD_RECOVERY_ISSUANCE_WINDOW_MS) } },
+      });
+      if (recentIssuanceCount >= LINE_PASSWORD_RECOVERY_MAX_ISSUANCES_PER_HOUR) return null;
+
+      await transaction.linePasswordRecoveryCapability.updateMany({
+        where: { targetUserId: input.userId, claimedAt: null, completedAt: null, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      const capability = await transaction.linePasswordRecoveryCapability.create({
+        data: {
+          targetUserId: input.userId,
+          lineAccountBindingId: target.bindingId,
+          lineSubjectFingerprint: target.lineSubjectFingerprint,
+          tokenHash,
+          expiresAt,
+        },
+        select: { id: true },
+      });
+      return { resetId: capability.id, bindingId: target.bindingId, lineUserId: target.lineUserId };
+    });
+    return issued ? { ...issued, token, expiresAt } : null;
+  } catch (error: unknown) {
+    return asApplicationError(error);
+  }
+}
+
+/** A token becomes usable only after LINE confirms the push; an ambiguous send is revoked. */
+export async function confirmLinePasswordRecoveryDelivery(
+  resetId: string,
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+): Promise<boolean> {
+  const result = await getDatabase(dependencies).linePasswordRecoveryCapability.updateMany({
+    where: {
+      id: resetId,
+      deliveredAt: null,
+      claimedAt: null,
+      completedAt: null,
+      revokedAt: null,
+      expiresAt: { gt: currentTime(dependencies) },
+    },
+    data: { deliveredAt: currentTime(dependencies) },
+  });
+  return result.count === 1;
+}
+
+export async function revokeLinePasswordRecoveryCapability(
+  resetId: string,
+  outcome: "PUSH_FAILED" | "DELIVERY_UNCONFIRMED",
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+): Promise<void> {
+  const database = getDatabase(dependencies);
+  const now = currentTime(dependencies);
+  await runSerializableTransaction(database, async (transaction) => {
+    const capability = await transaction.linePasswordRecoveryCapability.findUnique({ where: { id: resetId }, select: { targetUserId: true } });
+    if (!capability) return;
+    await transaction.linePasswordRecoveryCapability.updateMany({
+      where: { id: resetId, claimedAt: null, completedAt: null, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await recordAuditEvent({
+      actorUserId: null,
+      action: "account.password_reset.self_service.delivery",
+      resourceType: "User",
+      resourceId: capability.targetUserId,
+      metadata: { outcome },
+    }, transaction);
+  });
+}
+
+export async function getLinePasswordRecoveryAvailability(
+  token: unknown,
+  lineSubjectFingerprint: string,
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+): Promise<LinePasswordRecoveryAvailability> {
+  const parsedToken = accountRecoveryTokenSchema.safeParse(token);
+  if (!parsedToken.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) return "EXPIRED";
+  const database = getDatabase(dependencies);
+  const now = currentTime(dependencies);
+  try {
+    return await runSerializableTransaction(database, async (transaction) => {
+      const tokenHash = hashAccountRecoveryToken(parsedToken.data);
+      const record = await findResetByToken(transaction, tokenHash);
+      if (
+        !record || record.storage !== "LINE_SELF_SERVICE" || !record.deliveredAt ||
+        record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now
+      ) return "EXPIRED";
+      if (record.lineSubjectFingerprint !== lineSubjectFingerprint) return "OTHER_LINE";
+
+      await lockFirstCredentialOperation(transaction, record.userId);
+      const refreshed = await findResetByToken(transaction, tokenHash);
+      if (
+        !refreshed || refreshed.storage !== "LINE_SELF_SERVICE" || !refreshed.deliveredAt ||
+        refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now
+      ) return "EXPIRED";
+      if (refreshed.lineSubjectFingerprint !== lineSubjectFingerprint) return "OTHER_LINE";
+      const target = await findEligibleLinePasswordRecoveryTarget(
+        transaction,
+        refreshed.userId,
+        { bindingId: refreshed.lineAccountBindingId ?? "", lineSubjectFingerprint },
+        { storage: refreshed.storage, id: refreshed.id },
+      );
+      if (!target) {
+        await updateReset(transaction, refreshed, { revokedAt: now });
+        return "INELIGIBLE";
+      }
+      return "READY";
+    });
+  } catch (error: unknown) {
+    return asApplicationError(error);
+  }
+}
+
+export async function completeLinePasswordRecovery(
+  input: unknown,
+  lineSubjectFingerprint: string,
+  dependencies: MediatedPasswordResetDependencies = {},
+): Promise<void> {
+  const parsed = accountRecoveryCompletionSchema.safeParse(input);
+  if (!parsed.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) {
+    throw new ValidationError("LINE password recovery data is invalid");
+  }
+  const database = getDatabase(dependencies);
+  const now = currentTime(dependencies);
+  const tokenHash = hashAccountRecoveryToken(parsed.data.token);
+  let claimed: { record: ResetRecord; previousAuthSubject: string } | null;
+  try {
+    claimed = await runSerializableTransaction(database, async (transaction) => {
+      const record = await findResetByToken(transaction, tokenHash);
+      if (
+        !record || record.storage !== "LINE_SELF_SERVICE" || !record.deliveredAt ||
+        record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now
+      ) throw new NotFoundError();
+      if (record.lineSubjectFingerprint !== lineSubjectFingerprint) throw new ForbiddenError();
+      await lockFirstCredentialOperation(transaction, record.userId);
+      const refreshed = await findResetByToken(transaction, tokenHash);
+      if (
+        !refreshed || refreshed.storage !== "LINE_SELF_SERVICE" || !refreshed.deliveredAt ||
+        refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now
+      ) throw new ConflictError("This reset link is no longer available");
+      if (refreshed.lineSubjectFingerprint !== lineSubjectFingerprint) throw new ForbiddenError();
+
+      const target = await findEligibleLinePasswordRecoveryTarget(
+        transaction,
+        refreshed.userId,
+        { bindingId: refreshed.lineAccountBindingId ?? "", lineSubjectFingerprint },
+        { storage: refreshed.storage, id: refreshed.id },
+      );
+      if (!target) {
+        await updateReset(transaction, refreshed, { revokedAt: now });
+        return null;
+      }
+      const claimedAt = now;
+      const updated = await updateReset(transaction, refreshed, {
+        claimedAt,
+        operationState: WorkforceActivationOperationState.CLAIMED,
+        previousAuthSubject: target.authSubject,
+      });
+      if (updated !== 1) throw new ConflictError("This reset link was already used");
+      return {
+        record: { ...refreshed, claimedAt, operationState: WorkforceActivationOperationState.CLAIMED, previousAuthSubject: target.authSubject },
+        previousAuthSubject: target.authSubject,
+      };
+    });
+  } catch (error: unknown) {
+    return asApplicationError(error);
+  }
+  if (!claimed) throw new ForbiddenError("The LINE password reset is no longer eligible");
+  await replaceClaimedPasswordAndFinalize(database, claimed, parsed.data.newPassword, dependencies);
 }
 
 async function markReconciliationRequired(
@@ -711,10 +993,10 @@ async function verifyIdentityAndClaim(
   const tokenHash = hashAccountRecoveryToken(token);
   const outcome = await runSerializableTransaction(database, async (transaction) => {
     const record = await findResetByToken(transaction, tokenHash);
-    if (!record || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now) throw new NotFoundError();
+    if (!record || record.storage === "LINE_SELF_SERVICE" || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now) throw new NotFoundError();
     await lockFirstCredentialOperation(transaction, record.userId);
     const refreshed = await findResetByToken(transaction, tokenHash);
-    if (!refreshed || refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now) {
+    if (!refreshed || refreshed.storage === "LINE_SELF_SERVICE" || refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now) {
       throw new ConflictError("This reset link is no longer available");
     }
     const user = await transaction.user.findUnique({ where: { id: refreshed.userId }, select: { personId: true, authSubject: true } });
@@ -1021,7 +1303,18 @@ async function switchIdentityAndFinalize(
     await lockFirstCredentialOperation(transaction, record.userId);
     let target: TargetSnapshot;
     try {
-      if (record.verificationMethod === "BREAK_GLASS_CLI") {
+      if (record.storage === "LINE_SELF_SERVICE") {
+        const eligible = await findEligibleLinePasswordRecoveryTarget(
+          transaction,
+          record.userId,
+          { bindingId: record.lineAccountBindingId ?? "", lineSubjectFingerprint: record.lineSubjectFingerprint ?? "" },
+          { storage: record.storage, id: record.id },
+        );
+        if (!eligible) throw new ForbiddenError();
+        const user = await transaction.user.findUnique({ where: { id: record.userId }, select: targetUserSelect });
+        if (!user) throw new ForbiddenError();
+        target = toTargetSnapshot(user);
+      } else if (record.verificationMethod === "BREAK_GLASS_CLI") {
         target = await authorizeBreakGlassTarget(transaction, record);
       } else {
         ({ target } = await authorizeIssuerAndTarget(transaction, record.issuerUserId, resetLocator(record), record.userId, { storage: record.storage, id: record.id }));
@@ -1039,7 +1332,9 @@ async function switchIdentityAndFinalize(
         authSubject: replacement.authSubject,
         providerLoginAlias: replacement.providerLoginAlias,
         status: UserStatus.ACTIVE,
-        identityAssurance: "HOSPITAL_PROOFED",
+        ...(record.storage === "LINE_SELF_SERVICE"
+          ? { passwordResetNoticePendingAt: now }
+          : { identityAssurance: "HOSPITAL_PROOFED" }),
       },
     });
     if (updatedUser.count !== 1) throw new ConflictError("The target credential changed during reset");
@@ -1064,6 +1359,15 @@ async function switchIdentityAndFinalize(
         outcome: "COMPLETED",
       },
     }, transaction);
+    if (record.storage === "LINE_SELF_SERVICE" && record.lineAccountBindingId) {
+      await recordAuditEvent({
+        actorUserId: record.userId,
+        action: "account.password_reset.self_service",
+        resourceType: "User",
+        resourceId: record.userId,
+        metadata: { bindingId: record.lineAccountBindingId, method: "LINE_ID_TOKEN", path: "LINE", outcome: "COMPLETED" },
+      }, transaction);
+    }
     return cleanupId;
   });
 }
@@ -1121,9 +1425,9 @@ async function notifyLineBinding(
   database: MediatedPasswordResetDatabase,
   record: ResetRecord,
   now: Date,
-  dependencies: MediatedPasswordResetDependencies,
+  sendLineMessage?: MediatedPasswordResetDependencies["sendLineMessage"],
 ): Promise<void> {
-  await notifyPasswordChangeLineBindings(database, record.userId, now, dependencies.sendLineMessage, {
+  await notifyPasswordChangeLineBindings(database, record.userId, now, sendLineMessage, {
     action: "account.password_reset.line_notification",
     metadata: { issuerUserId: record.issuerUserId },
   });
@@ -1192,7 +1496,7 @@ async function replaceClaimedPasswordAndFinalize(
       console.error("Password reset succeeded but the pending identity cleanup audit could not be stored");
     }
   }
-  await notifyLineBinding(database, claimed.record, currentTime(dependencies), dependencies);
+  await notifyLineBinding(database, claimed.record, currentTime(dependencies), dependencies.sendLineMessage);
 }
 
 export async function completeMediatedPasswordReset(
@@ -1264,13 +1568,15 @@ export async function recoverPlatformAdminPassword(
       if (activePeerCount > 0 && !parsed.data.allowActivePeer) {
         throw new ConflictError("Another active platform ADMIN exists; explicit override and operator reason are required");
       }
-      const [claimedWorkforce, claimedPatient] = await Promise.all([
+      const [claimedWorkforce, claimedPatient, claimedLine] = await Promise.all([
         transaction.workforceActivation.findFirst({ where: { ...unreconciledWorkforceResetWhere, userId: user.id }, select: { id: true } }),
         transaction.accountRecovery.findFirst({ where: { ...unreconciledAccountRecoveryWhere, targetUserId: user.id }, select: { id: true } }),
+        transaction.linePasswordRecoveryCapability.findFirst({ where: { ...unreconciledLinePasswordRecoveryWhere, targetUserId: user.id }, select: { id: true } }),
       ]);
-      if (claimedWorkforce || claimedPatient) throw new ConflictError("The ADMIN account already has a reset requiring reconciliation");
+      if (claimedWorkforce || claimedPatient || claimedLine) throw new ConflictError("The ADMIN account already has a reset requiring reconciliation");
       await transaction.workforceActivation.updateMany({ where: { userId: user.id, purpose: WorkforceActivationPurpose.RESET, claimedAt: null, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
       await transaction.accountRecovery.updateMany({ where: { targetUserId: user.id, claimedAt: null, completedAt: null, revokedAt: null }, data: { revokedAt: now } });
+      await transaction.linePasswordRecoveryCapability.updateMany({ where: { targetUserId: user.id, claimedAt: null, completedAt: null, revokedAt: null }, data: { revokedAt: now } });
       const reset = await transaction.workforceActivation.create({
         data: {
           userId: user.id,
@@ -1313,6 +1619,7 @@ export async function recoverPlatformAdminPassword(
         mode: "IN_PERSON",
         verificationMethod: "BREAK_GLASS_CLI",
         expiresAt: new Date(now.getTime() + MEDIATED_RESET_IN_PERSON_TTL_MS),
+        deliveredAt: null,
         claimedAt: now,
         usedAt: null,
         completedAt: null,
@@ -1322,6 +1629,8 @@ export async function recoverPlatformAdminPassword(
         reconciliationRequiredAt: null,
         previousAuthSubject: user.authSubject,
         replacementAuthSubject: null,
+        lineAccountBindingId: null,
+        lineSubjectFingerprint: null,
       };
       return { record, previousAuthSubject: user.authSubject };
     });
@@ -1569,7 +1878,7 @@ export async function listQuarantinedMediatedPasswordResets(
     return await runSerializableTransaction(database, async (transaction) => {
       await assertPlatformAdminInDatabase(transaction, actor.userId);
       const person = { select: { givenName: true, familyName: true } } as const;
-      const [workforce, patient] = await Promise.all([
+      const [workforce, patient, line] = await Promise.all([
         transaction.workforceActivation.findMany({
           where: { ...unreconciledWorkforceResetWhere, verificationMethod: { not: null }, OR: [{ hospitalId: { not: null } }, { hospitalId: null, verificationMethod: "BREAK_GLASS_CLI" }] },
           orderBy: { claimedAt: "asc" },
@@ -1579,6 +1888,11 @@ export async function listQuarantinedMediatedPasswordResets(
           where: { ...unreconciledAccountRecoveryWhere, verificationMethod: { not: null }, hospitalId: { not: null } },
           orderBy: { claimedAt: "asc" },
           select: { id: true, targetUserId: true, hospitalId: true, deliveryChannel: true, verificationMethod: true, claimedAt: true, operationState: true, targetUser: { select: { person } }, hospital: { select: { name: true } } },
+        }),
+        transaction.linePasswordRecoveryCapability.findMany({
+          where: unreconciledLinePasswordRecoveryWhere,
+          orderBy: { claimedAt: "asc" },
+          select: { id: true, targetUserId: true, lineAccountBindingId: true, claimedAt: true, operationState: true, targetUser: { select: { person } } },
         }),
       ]);
       const rows: QuarantinedMediatedPasswordReset[] = [];
@@ -1595,6 +1909,14 @@ export async function listQuarantinedMediatedPasswordResets(
         rows.push({
           resetId: row.id, userId: row.targetUserId, displayName: displayNameOf(row.targetUser.person), hospitalId: row.hospitalId,
           hospitalName: row.hospital.name, mode: modeForRecord({ storage: "PATIENT", mode: row.deliveryChannel }), verificationMethod: row.verificationMethod,
+          claimedAt: row.claimedAt, operationState: row.operationState,
+        });
+      }
+      for (const row of line) {
+        if (!row.claimedAt) continue;
+        rows.push({
+          resetId: row.id, userId: row.targetUserId, displayName: displayNameOf(row.targetUser.person), hospitalId: null,
+          hospitalName: "กู้คืนผ่าน LINE", mode: "ONLINE", verificationMethod: "LINE_ID_TOKEN",
           claimedAt: row.claimedAt, operationState: row.operationState,
         });
       }
@@ -1697,6 +2019,19 @@ export async function reconcileMediatedPasswordReset(
       if (user?.authSubject !== canonicalSubject) throw new ConflictError("The target credential changed during reconciliation");
       const count = await updateReset(transaction, record, outcome === "COMPLETED" ? completionUpdate(record, now) : rollbackUpdate(now), true);
       if (count !== 1) throw new ConflictError("The reset operation changed");
+      if (outcome === "COMPLETED" && record.storage === "LINE_SELF_SERVICE" && record.lineAccountBindingId) {
+        await transaction.user.updateMany({
+          where: { id: record.userId },
+          data: { passwordResetNoticePendingAt: now },
+        });
+        await recordAuditEvent({
+          actorUserId: record.userId,
+          action: "account.password_reset.self_service",
+          resourceType: "User",
+          resourceId: record.userId,
+          metadata: { bindingId: record.lineAccountBindingId, method: "LINE_ID_TOKEN", path: "LINE", outcome: "COMPLETED" },
+        }, transaction);
+      }
       const orphanSubject = outcome === "COMPLETED" ? (previousExists ? record.previousAuthSubject : null) : replacement?.authSubject ?? null;
       const id = orphanSubject
         ? await recordProviderIdentityCleanup(transaction, {
@@ -1711,6 +2046,9 @@ export async function reconcileMediatedPasswordReset(
 
     if (cleanupId) await attemptProviderIdentityCleanup(database, cleanupId, dependencies, now).catch(() => false);
     await retryPendingProviderIdentityCleanups(database, dependencies, now);
+    if (outcome === "COMPLETED" && record.storage === "LINE_SELF_SERVICE") {
+      await notifyLineBinding(database, record, now, dependencies.sendLineMessage);
+    }
     return { outcome };
   } catch (error: unknown) {
     return asApplicationError(error);

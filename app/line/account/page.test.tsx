@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   loginEnv: vi.fn(),
   actor: vi.fn(),
   notificationPreference: vi.fn(),
+  recoveryLineEnabled: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -21,7 +22,11 @@ vi.mock("@/modules/line/services/line-disconnection-service", () => ({
   hasLineLifecycleHistoryForCurrentOwner: mocks.history,
 }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: mocks.reconcile }));
-vi.mock("@/lib/env/server", () => ({ getLineLiffId: mocks.liffId, getLineLoginEnv: mocks.loginEnv }));
+vi.mock("@/lib/env/server", () => ({
+  getLineLiffId: mocks.liffId,
+  getLineLoginEnv: mocks.loginEnv,
+  isRecoveryLineEnabled: mocks.recoveryLineEnabled,
+}));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("@/modules/appointments/services/appointment-line-notification-preference-service", () => ({
   getOwnAppointmentLineNotificationPreference: mocks.notificationPreference,
@@ -85,8 +90,9 @@ describe("Account page readiness composition", () => {
     mocks.reconcile.mockResolvedValue(undefined);
     mocks.liffId.mockReturnValue("1234567890-test");
     mocks.loginEnv.mockReturnValue({ DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org" });
-  mocks.actor.mockRejectedValue(new Error("no Patient session"));
-  mocks.notificationPreference.mockResolvedValue(null);
+    mocks.recoveryLineEnabled.mockReturnValue(false);
+    mocks.actor.mockRejectedValue(new Error("no Patient session"));
+    mocks.notificationPreference.mockResolvedValue(null);
   });
 
   it("preserves an authorized binding and local unlink when readiness and reconciliation fail", async () => {

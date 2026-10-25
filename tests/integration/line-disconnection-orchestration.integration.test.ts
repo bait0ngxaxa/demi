@@ -3,7 +3,7 @@ import type { LineAccountBinding } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { createLineAccountIntent, linkLineAccount } from "@/modules/line/services/line-account-service";
+import { createLineAccountIntent, linkLineAccount as linkLineAccountCore } from "@/modules/line/services/line-account-service";
 import { disconnectLineAccount, getLineDisconnectionStatus, prepareLineAccountRecovery, recoverLineAccount, type DisconnectionDependencies } from "@/modules/line/services/line-disconnection-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import { hashLineSessionId } from "@/modules/line/services/line-session-service";
@@ -19,6 +19,25 @@ const subject = `U${"7".repeat(32)}`; const accessToken = "transient-access-toke
 const inventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 const account = lineChannelTupleKey(inventory.channels[0]);
 const mini = { kind: "MINI" as const, channelId: "2222222222", environment: "DEVELOPING" as const };
+
+type LinkService = typeof linkLineAccountCore;
+type LinkInput = Omit<Parameters<LinkService>[0], "currentPassword"> & { currentPassword?: string };
+type LinkDependencies = NonNullable<Parameters<LinkService>[1]>;
+const noLinkPasswordThrottle: NonNullable<LinkDependencies["attemptThrottle"]> = {
+  isBlocked: async () => false,
+  recordFailure: async () => undefined,
+};
+
+function linkLineAccount(input: LinkInput, dependencies: LinkDependencies) {
+  return linkLineAccountCore(
+    { ...input, currentPassword: input.currentPassword ?? "integration-current-password" },
+    {
+      ...dependencies,
+      verifyCurrentPassword: dependencies.verifyCurrentPassword ?? (async () => undefined),
+      attemptThrottle: dependencies.attemptThrottle ?? noLinkPasswordThrottle,
+    },
+  );
+}
 
 async function fixture(): Promise<LineAccountBinding> {
   const person = await database.person.create({ data: { identityKeyHash: createHash("sha256").update(randomUUID()).digest("hex"), givenName: "ทดสอบ", familyName: "Recovery" } }); people.push(person.id);

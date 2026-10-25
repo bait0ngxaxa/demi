@@ -6,7 +6,11 @@ import { isAuthError, isAuthSessionMissingError } from "@supabase/supabase-js";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
-import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "./credential-recovery-state";
+import {
+  unreconciledAccountRecoveryWhere,
+  unreconciledLinePasswordRecoveryWhere,
+  unreconciledWorkforceResetWhere,
+} from "./credential-recovery-state";
 
 import type {
   ActorContext,
@@ -146,6 +150,7 @@ async function readActorUser(
         // alone cannot make that identity safe; quarantine application access pending reconciliation.
         workforceActivations: { none: unreconciledWorkforceResetWhere },
         accountRecoveries: { none: unreconciledAccountRecoveryWhere },
+        linePasswordRecoveryCapabilities: { none: unreconciledLinePasswordRecoveryWhere },
       },
       select: actorContextUserSelect,
     });

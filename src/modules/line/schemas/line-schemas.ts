@@ -12,6 +12,7 @@ export const lineIntentUseSchema = z.object({
 
 export const lineLinkRequestSchema = lineIntentUseSchema.extend({
   idToken: z.string().min(20).max(16_384),
+  currentPassword: z.string().min(1).max(128),
   accessToken: z.string().min(20).max(16_384).optional(),
 }).strict();
 

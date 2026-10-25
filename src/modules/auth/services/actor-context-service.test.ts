@@ -216,6 +216,7 @@ describe("ActorContext resolution", () => {
         id: actor.userId,
         workforceActivations: { none: { purpose: "RESET", claimedAt: { not: null }, usedAt: null } },
         accountRecoveries: { none: { claimedAt: { not: null }, completedAt: null } },
+        linePasswordRecoveryCapabilities: { none: { claimedAt: { not: null }, completedAt: null } },
       } }),
     );
   });

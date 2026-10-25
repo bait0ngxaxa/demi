@@ -53,6 +53,7 @@ export const storedCredentialRecoveryVerificationMethodSchema = z.enum([
   "VIDEO_CALL_FACE_AND_ID_CARD",
   "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
   "BREAK_GLASS_CLI",
+  "LINE_ID_TOKEN",
 ]);
 export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "caregiver", "platform_admin"]);
 
@@ -112,6 +113,8 @@ export const accountRecoveryCompletionSchema = z
       });
     }
   });
+
+export const linePasswordRecoveryRequestSchema = z.object({ nationalId: thaiNationalIdSchema }).strict();
 
 export const patientHospitalRelationshipIdSchema = z.uuid();
 

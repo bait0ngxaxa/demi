@@ -83,6 +83,7 @@ const PASSWORD_RESET_METHOD_LABELS: Record<string, string> = {
   VIDEO_CALL_FACE_AND_ID_CARD: "วิดีโอคอลและบัตรประชาชน",
   CALLBACK_PHONE_ON_HOSPITAL_RECORD: "โทรกลับหมายเลขในประวัติโรงพยาบาล",
   BREAK_GLASS_CLI: "กู้คืนฉุกเฉินผ่าน CLI",
+  LINE_ID_TOKEN: "ลิงก์ยืนยันทาง LINE",
 };
 
 type UserActivationRecord = Prisma.UserGetPayload<{ select: typeof usedActivationSelect }>;

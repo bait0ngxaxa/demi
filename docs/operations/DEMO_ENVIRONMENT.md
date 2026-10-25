@@ -45,6 +45,7 @@ npm run demo:reset   # หลังสาธิต: ลบเฉพาะข้�
 - ข้อมูล demo ระบุได้จากเลขบัตรประชาชนสังเคราะห์ช่วง `8-99-9xxxxxxx-c` (รหัสจังหวัด 99 ไม่มีอยู่จริง แต่ checksum ถูกต้อง) โทรศัพท์ใช้ช่วง `02-000-00xx` Reset ลบเฉพาะสิ่งที่ผูกกับตัวตนเหล่านี้และโรงพยาบาลที่ตัวตนเหล่านี้ onboard
 - ถ้าระบบมี Platform ADMIN อยู่แล้ว seed จะสร้าง ADMIN ของ demo เพิ่มอีกหนึ่งบัญชี และ reset จะลบเฉพาะบัญชี demo นี้
 - ใน Vercel `demi_demo` ให้ตั้ง `FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED=true` เพื่อให้ผู้ดูแล (caregiver) เห็นนัดที่ได้รับสิทธิ์
+- ใน Vercel `demi_demo` ให้ตั้ง `DEMI_RECOVERY_LINE_ENABLED=true` เพื่อเปิด flow ลืมรหัสผ่านที่ส่งลิงก์ไปยัง LINE ที่ผูกบัญชีไว้; production ให้คง `false` จนกว่าจะผ่าน release gate G-06
 
 ### สิ่งที่ seed สร้าง
 

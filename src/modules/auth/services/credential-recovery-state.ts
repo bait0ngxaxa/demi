@@ -12,6 +12,10 @@ export const unreconciledAccountRecoveryWhere = {
   claimedAt: { not: null }, completedAt: null,
 } as const satisfies Prisma.AccountRecoveryWhereInput;
 
+export const unreconciledLinePasswordRecoveryWhere = {
+  claimedAt: { not: null }, completedAt: null,
+} as const satisfies Prisma.LinePasswordRecoveryCapabilityWhereInput;
+
 export function assertIndependentCredentialRecoverySupported(): never {
   throw new ForbiddenError("การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน เนื่องจากยังไม่มีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแล กรุณาติดต่อผู้ดูแลระบบเพื่อรับแนวทางดำเนินการ");
 }

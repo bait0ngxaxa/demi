@@ -17,8 +17,8 @@ import {
   type Hospital,
 } from "@prisma/client";
 import { AuthApiError } from "@supabase/supabase-js";
-import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore, resolveActorAccessByAuthSubject } from "@/modules/auth/services/actor-context-service";
@@ -41,6 +41,14 @@ import {
 } from "@/modules/account-security/services/mediated-password-reset-service";
 import { createAuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { lockSuspectedTakeover } from "@/modules/user-management/services/user-takeover-service";
+import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
+import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import {
+  completeLinePasswordRecoveryWithIdentityToken,
+  openLinePasswordRecovery,
+  requestLinePasswordRecovery,
+} from "@/modules/line/services/line-password-recovery-service";
+import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
 import { provisionHospitalMember, provisionOsm } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -57,6 +65,7 @@ function nationalIdFor(value: number): string {
 async function clearDatabase(): Promise<void> {
   await db.providerIdentityCleanup.deleteMany();
   await db.userTakeoverLock.deleteMany();
+  await db.linePasswordRecoveryCapability.deleteMany();
   await db.lineAccountBinding.deleteMany();
   await db.auditEvent.deleteMany();
   await db.authenticationAttemptThrottleBucket.deleteMany();
@@ -224,6 +233,67 @@ async function createCaregiverTarget(hospitalIds: string[]): Promise<{ userId: s
     });
   }
   return caregiver;
+}
+
+async function createLineRecoveryTarget(role?: Role): Promise<{
+  userId: string;
+  personId: string;
+  authSubject: string;
+  nationalId: string;
+  lineUserId: string;
+  bindingId: string;
+}> {
+  const identity = await createIdentity({ ...(role ? { role } : {}) });
+  const lineUserId = `U${randomUUID().replaceAll("-", "").slice(0, 32)}`;
+  const fingerprint = createLineSubjectFingerprint(lineUserId);
+  const binding = await db.lineAccountBinding.create({
+    data: {
+      userId: identity.userId,
+      lineUserId,
+      lineSubjectFingerprint: fingerprint.fingerprint,
+      lineSubjectFingerprintKeyId: fingerprint.keyId,
+    },
+    select: { id: true },
+  });
+  return { ...identity, lineUserId, bindingId: binding.id };
+}
+
+function lineRecoveryDependencies(lineUserId: string) {
+  let tokenSequence = 0;
+  const provider = fakeProvider();
+  const sendPush = vi.fn(async (lineUserId: string, message: string, retryKey: string): Promise<LinePushResult> => {
+    void lineUserId;
+    void message;
+    void retryKey;
+    return { kind: "ACCEPTED" };
+  });
+  const attemptThrottle = {
+    isBlocked: vi.fn(async () => false),
+    recordFailure: vi.fn(async () => undefined),
+  };
+  const verifyIdentity = vi.fn(async (idToken: string) => {
+    if (idToken === "wrong-audience-line-token" || idToken === "expired-line-token") throw new Error("Line ID token rejected");
+    return {
+      subject: idToken === "other-line-account-token" ? `U${"f".repeat(32)}` : lineUserId,
+      verifiedAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+  });
+  return {
+    ...provider,
+    enabled: true,
+    lineLiffId: "1234567890-AbCdEf",
+    database: db,
+    now: () => now,
+    attemptThrottle,
+    verifyIdentity,
+    sendPush,
+    createToken: () => lineRecoveryToken(++tokenSequence, lineUserId),
+  };
+}
+
+function lineRecoveryToken(sequence: number, lineUserId: string): string {
+  return createHash("sha256").update(`${lineUserId}:${sequence}`, "utf8").digest("base64url");
 }
 
 describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () => {
@@ -1306,5 +1376,231 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       expect.objectContaining({ metadata: { dimension: "IP", outcome: "BLOCKED" } }),
     ]));
     expect(JSON.stringify(blockEvents)).not.toContain(sharedIp);
+  });
+
+  describe("REC-2B LINE password recovery", () => {
+    beforeEach(() => {
+      vi.stubEnv("IDENTITY_HASH_SECRET", "rec2b-test-identity-hash-secret-32-chars");
+      vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    });
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("returns identical copy and sends only for active non-ADMIN users with one eligible binding", async () => {
+      const eligible = await createLineRecoveryTarget(Role.PATIENT);
+      const noBinding = await createIdentity({ role: Role.CAREGIVER });
+      const admin = await createLineRecoveryTarget(Role.ADMIN);
+      const suspended = await createLineRecoveryTarget(Role.PATIENT);
+      await db.user.update({ where: { id: suspended.userId }, data: { status: UserStatus.SUSPENDED } });
+
+      const hospital = await createHospital();
+      const lockActor = await createAdmin();
+      const locked = await createLineRecoveryTarget(Role.PATIENT);
+      await db.userTakeoverLock.create({
+        data: {
+          userId: locked.userId,
+          hospitalId: hospital.id,
+          lockedByUserId: lockActor.userId,
+          lockedAt: now,
+          providerState: UserTakeoverProviderState.RECONCILIATION_REQUIRED,
+          providerCheckedAt: now,
+        },
+      });
+
+      const quarantined = await createLineRecoveryTarget(Role.PATIENT);
+      await db.linePasswordRecoveryCapability.create({
+        data: {
+          targetUserId: quarantined.userId,
+          lineAccountBindingId: quarantined.bindingId,
+          lineSubjectFingerprint: createLineSubjectFingerprint(quarantined.lineUserId).fingerprint,
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
+          expiresAt: new Date(now.getTime() + 15 * 60_000),
+          claimedAt: now,
+          reconciliationRequiredAt: now,
+          operationState: WorkforceActivationOperationState.RECONCILIATION_REQUIRED,
+        },
+      });
+
+      const dependencies = lineRecoveryDependencies(eligible.lineUserId);
+      const identities = [eligible.nationalId, nationalIdFor(++sequence), noBinding.nationalId, admin.nationalId, suspended.nationalId, locked.nationalId, quarantined.nationalId];
+      const messages: string[] = [];
+      for (const nationalId of identities) {
+        messages.push((await requestLinePasswordRecovery({ nationalId }, dependencies)).message);
+      }
+
+      expect(new Set(messages)).toEqual(new Set(["หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล"]));
+      expect(dependencies.sendPush).toHaveBeenCalledOnce();
+      expect(dependencies.sendPush).toHaveBeenCalledWith(eligible.lineUserId, expect.stringContaining("https://liff.line.me/1234567890-AbCdEf/recover#"), expect.any(String));
+      expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(lineRecoveryToken(1, eligible.lineUserId));
+      expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(noBinding.nationalId);
+      expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(admin.nationalId);
+    });
+
+    it("verifies the bound LINE subject, replaces the canonical credential once, records the audit and consumes the next-sign-in notice", async () => {
+      const target = await createLineRecoveryTarget(Role.PATIENT);
+      const dependencies = lineRecoveryDependencies(target.lineUserId);
+      const token = lineRecoveryToken(1, target.lineUserId);
+      const response = await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+
+      expect(response.message).toBe("หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล");
+      expect(dependencies.sendPush).toHaveBeenCalledOnce();
+      expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(`#${token}`);
+      const availabilityInput = { token, idToken: "fresh-line-id-token-for-recovery" };
+      await expect(openLinePasswordRecovery(availabilityInput, dependencies)).resolves.toEqual({ status: "READY" });
+      await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "other-line-account-token" }, dependencies)).resolves.toEqual({ status: "OTHER_LINE" });
+      await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "wrong-audience-line-token" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "expired-line-token" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(completeLinePasswordRecoveryWithIdentityToken({
+        token,
+        idToken: "wrong-audience-line-token",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      }, dependencies)).rejects.toThrow();
+      expect(dependencies.createReplacementIdentity).not.toHaveBeenCalled();
+
+      await completeLinePasswordRecoveryWithIdentityToken({
+        token,
+        idToken: "fresh-line-id-token-for-recovery",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      }, dependencies);
+
+      const user = await db.user.findUniqueOrThrow({ where: { id: target.userId } });
+      expect(user.authSubject).toBe(dependencies.replacementSubject);
+      expect(user.passwordResetNoticePendingAt).toEqual(now);
+      expect(await resolveActorAccessByAuthSubject(target.authSubject, createActorContextStore(db))).toMatchObject({ status: "UNMAPPED" });
+      expect(dependencies.createReplacementIdentity).toHaveBeenCalledOnce();
+      expect(dependencies.deleteProviderIdentity).toHaveBeenCalledWith(target.authSubject);
+      expect(dependencies.sendLineMessage).toHaveBeenCalledWith(target.lineUserId, expect.stringContaining("รหัสผ่านบัญชี DEMI ของคุณถูกเปลี่ยนเมื่อ"), expect.any(String));
+      await expect(openLinePasswordRecovery(availabilityInput, dependencies)).resolves.toEqual({ status: "EXPIRED" });
+
+      const selfServiceAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.self_service", resourceId: target.userId } });
+      expect(selfServiceAudit).toMatchObject({
+        actorUserId: target.userId,
+        resourceType: "User",
+        metadata: { bindingId: target.bindingId, method: "LINE_ID_TOKEN", path: "LINE", outcome: "COMPLETED" },
+      });
+      expect(JSON.stringify(selfServiceAudit)).not.toContain(target.nationalId);
+      expect(JSON.stringify(selfServiceAudit)).not.toContain(target.lineUserId);
+      expect(JSON.stringify(selfServiceAudit)).not.toContain(token);
+      const capability = await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { tokenHash: createHash("sha256").update(token, "utf8").digest("hex") } });
+      expect(capability).toMatchObject({ completedAt: now, deliveredAt: now, revokedAt: null });
+      await expect(consumePasswordResetNotice(target.userId, db)).resolves.toEqual(now);
+      await expect(consumePasswordResetNotice(target.userId, db)).resolves.toBeNull();
+      expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ passwordResetNoticePendingAt: null });
+    });
+
+    it("expires at 15 minutes, supersedes prior links, enforces three links per hour and revokes a failed push", async () => {
+      const target = await createLineRecoveryTarget(Role.CAREGIVER);
+      const dependencies = lineRecoveryDependencies(target.lineUserId);
+      await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, target.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(2, target.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "READY" });
+      await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      const beforeFourthRequest = dependencies.sendPush.mock.calls.length;
+      await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      expect(dependencies.sendPush).toHaveBeenCalledTimes(beforeFourthRequest);
+
+      const expiring = await createLineRecoveryTarget(Role.PATIENT);
+      const expiringDependencies = lineRecoveryDependencies(expiring.lineUserId);
+      await requestLinePasswordRecovery({ nationalId: expiring.nationalId }, expiringDependencies);
+      const expiredAt = new Date(now.getTime() + 15 * 60_000);
+      const expiryDependencies = {
+        ...expiringDependencies,
+        now: () => expiredAt,
+        verifyIdentity: async () => ({ subject: expiring.lineUserId, verifiedAt: expiredAt, expiresAt: new Date(expiredAt.getTime() + 60_000) }),
+      };
+      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, expiring.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, expiryDependencies)).resolves.toEqual({ status: "EXPIRED" });
+
+      const pushFailure = await createLineRecoveryTarget(Role.PATIENT);
+      const failedDependencies = lineRecoveryDependencies(pushFailure.lineUserId);
+      failedDependencies.sendPush.mockResolvedValueOnce({ kind: "PERMANENT_FAILURE" });
+      const sameMessage = (await requestLinePasswordRecovery({ nationalId: pushFailure.nationalId }, failedDependencies)).message;
+      expect(sameMessage).toBe((await requestLinePasswordRecovery({ nationalId: nationalIdFor(++sequence) }, failedDependencies)).message);
+      const failedCapability = await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: pushFailure.userId } });
+      expect(failedCapability).toMatchObject({ deliveredAt: null, revokedAt: now });
+      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, pushFailure.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, failedDependencies)).resolves.toEqual({ status: "EXPIRED" });
+      const failedDeliveryAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.self_service.delivery", resourceId: pushFailure.userId } });
+      expect(JSON.stringify(failedDeliveryAudit)).not.toContain(pushFailure.nationalId);
+      expect(JSON.stringify(failedDeliveryAudit)).not.toContain(pushFailure.lineUserId);
+    });
+
+    it("allows at most one concurrent completion and keeps the old credential when eligibility is lost before switch", async () => {
+      const target = await createLineRecoveryTarget(Role.PATIENT);
+      const dependencies = lineRecoveryDependencies(target.lineUserId);
+      await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      const completion = {
+        token: lineRecoveryToken(1, target.lineUserId),
+        idToken: "fresh-line-id-token-for-recovery",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      };
+      const results = await Promise.allSettled([
+        completeLinePasswordRecoveryWithIdentityToken(completion, dependencies),
+        completeLinePasswordRecoveryWithIdentityToken(completion, dependencies),
+      ]);
+      expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(dependencies.createReplacementIdentity).toHaveBeenCalledOnce();
+      expect((await db.user.findUniqueOrThrow({ where: { id: target.userId } })).authSubject).toBe(dependencies.replacementSubject);
+
+      const lost = await createLineRecoveryTarget(Role.PATIENT);
+      const lostDependencies = lineRecoveryDependencies(lost.lineUserId);
+      const replacementSubject = randomUUID();
+      const createReplacementIdentity = vi.fn(async ({ userId, resetId }: { userId: string; resetId: string }) => {
+        await db.lineAccountBinding.update({ where: { id: lost.bindingId }, data: { unlinkedAt: now, lineUserId: null } });
+        return { authSubject: replacementSubject, providerLoginAlias: createProviderResetLoginAlias(userId, resetId) };
+      });
+      lostDependencies.createReplacementIdentity = createReplacementIdentity;
+      await requestLinePasswordRecovery({ nationalId: lost.nationalId }, lostDependencies);
+      await expect(completeLinePasswordRecoveryWithIdentityToken({ ...completion, token: lineRecoveryToken(1, lost.lineUserId) }, lostDependencies)).rejects.toBeInstanceOf(ForbiddenError);
+      expect(await db.user.findUniqueOrThrow({ where: { id: lost.userId } })).toMatchObject({ authSubject: lost.authSubject, passwordResetNoticePendingAt: null });
+      expect(lostDependencies.deleteProviderIdentity).toHaveBeenCalledWith(replacementSubject);
+      expect(lostDependencies.deleteProviderIdentity).not.toHaveBeenCalledWith(lost.authSubject);
+      expect(await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: lost.userId } })).toMatchObject({ claimedAt: null, revokedAt: now });
+      const oldCredentialProvider = {
+        signInWithPassword: vi.fn(async ({ password }: { email: string; password: string }) => password === "old-password-before-reset"
+          ? { data: { user: { id: lost.authSubject } }, error: null }
+          : { data: { user: null }, error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials") }),
+        getUser: vi.fn(async () => ({ data: { user: { id: lost.authSubject } }, error: null })),
+        signOut: vi.fn(async () => ({ error: null })),
+      };
+      await expect(authenticateWithPassword({ nationalId: lost.nationalId, password: "old-password-before-reset" }, {
+        provider: oldCredentialProvider,
+        actorStore: createActorContextStore(db),
+        attemptThrottle: { isBlocked: async () => false, recordFailure: async () => undefined },
+      })).resolves.toMatchObject({ status: "AUTHORIZED", actor: { userId: lost.userId } });
+    });
+
+    it("applies national-ID and client-IP recovery throttles without changing the generic response", async () => {
+      const throttle = createAuthAttemptThrottle({ database: db, secret: "rec2b-test-throttle-secret" });
+      const identity = nationalIdFor(++sequence);
+      const identityDependencies = {
+        ...lineRecoveryDependencies(`U${"a".repeat(32)}`),
+        attemptThrottle: throttle,
+      };
+      const identityMessages: string[] = [];
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        identityMessages.push((await requestLinePasswordRecovery({ nationalId: identity }, identityDependencies)).message);
+      }
+      expect(new Set(identityMessages).size).toBe(1);
+      expect(identityDependencies.sendPush).not.toHaveBeenCalled();
+      expect(await throttle.isBlocked({ scope: "RECOVERY_IDENTITY", identityHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: identity }), clientIp: null, now })).toBe(true);
+
+      const sharedIp = "192.0.2.83";
+      const ipMessages: string[] = [];
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const dependencies = {
+          ...lineRecoveryDependencies(`U${String(attempt + 1).repeat(32)}`),
+          attemptThrottle: throttle,
+          clientIpAddress: sharedIp,
+        };
+        ipMessages.push((await requestLinePasswordRecovery({ nationalId: nationalIdFor(++sequence) }, dependencies)).message);
+      }
+      expect(new Set(ipMessages).size).toBe(1);
+      expect(await throttle.isBlocked({ scope: "RECOVERY_IDENTITY", identityHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalIdFor(sequence + 1) }), clientIp: sharedIp, now })).toBe(true);
+      const blockAudits = await db.auditEvent.findMany({ where: { action: "auth.recovery_identity.throttled" } });
+      expect(JSON.stringify(blockAudits)).not.toContain(identity);
+      expect(JSON.stringify(blockAudits)).not.toContain(sharedIp);
+    });
   });
 });

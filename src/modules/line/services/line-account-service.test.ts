@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ForbiddenError } from "@/shared/errors/application-error";
+import { CurrentPasswordRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
 
 import type { LineChannelInventory } from "../domain/line-authorization-lifecycle";
 import { LineFailure } from "../domain/line-errors";
@@ -17,7 +18,7 @@ import {
   createLineAccountIntent,
   getLineAccountSummary,
   lineAccountInternals,
-  linkLineAccount,
+  linkLineAccount as linkLineAccountCore,
   unlinkLineAccount,
 } from "./line-account-service";
 import type { CurrentLineSession } from "./line-session-service";
@@ -61,7 +62,7 @@ function createLinkHarness(options: {
   const lifecycleRows = options.lifecycleRows ?? [];
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([]),
-    user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE }) },
+    user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE, person: { identityKeyHash: "c".repeat(64) } }) },
     lineAccountActionIntent: {
       findUnique: vi.fn().mockImplementation(async () => intent),
       update: vi.fn().mockResolvedValue({}),
@@ -113,7 +114,7 @@ function createLinkHarness(options: {
     auditEvent: { create: vi.fn().mockResolvedValue({}), findFirst: vi.fn().mockResolvedValue(null) },
   };
   const database = {
-    user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE }) },
+    user: { findUnique: vi.fn().mockResolvedValue({ status: options.userStatus ?? UserStatus.ACTIVE, person: { identityKeyHash: "c".repeat(64) } }) },
     lineAccountActionIntent: { findUnique: vi.fn().mockResolvedValue(intent) },
     lineAccountBinding: { findFirst: vi.fn().mockResolvedValue({ id: bindingId }) },
     $transaction: vi.fn(async (operation: (transaction: typeof tx) => Promise<unknown>) => operation(tx)),
@@ -129,7 +130,25 @@ function dependencies(database: ReturnType<typeof createLinkHarness>["database"]
     now: () => now,
     currentSession: async () => session,
     verifyIdentity: vi.fn(async () => ({ subject: lineSubject })),
+    verifyCurrentPassword: vi.fn(async () => undefined),
+    attemptThrottle: {
+      isBlocked: vi.fn(async () => false),
+      recordFailure: vi.fn(async () => undefined),
+    },
   };
+}
+
+type LinkInput = Omit<Parameters<typeof linkLineAccountCore>[0], "currentPassword"> & { currentPassword?: string };
+
+function linkLineAccount(input: LinkInput, deps: Parameters<typeof linkLineAccountCore>[1] = {}) {
+  return linkLineAccountCore(
+    { ...input, currentPassword: input.currentPassword ?? "test-current-password" },
+    {
+      ...deps,
+      verifyCurrentPassword: deps.verifyCurrentPassword ?? (async () => undefined),
+      attemptThrottle: deps.attemptThrottle ?? { isBlocked: async () => false, recordFailure: async () => undefined },
+    },
+  );
 }
 
 describe("LINE account lifecycle service", () => {
@@ -224,10 +243,25 @@ describe("LINE account lifecycle service", () => {
     expect(invalidHarness.database.$transaction).not.toHaveBeenCalled();
 
     const inactiveHarness = createLinkHarness();
-    inactiveHarness.database.user.findUnique.mockResolvedValueOnce({ status: UserStatus.ACTIVE });
+    inactiveHarness.database.user.findUnique.mockResolvedValueOnce({ status: UserStatus.ACTIVE, person: { identityKeyHash: "c".repeat(64) } });
     inactiveHarness.tx.user.findUnique.mockResolvedValueOnce({ status: UserStatus.SUSPENDED });
     await expect(linkLineAccount({ intentId, challenge, idToken: "token" }, dependencies(inactiveHarness.database))).rejects.toMatchObject({ code: "DEMI_ACCOUNT_INELIGIBLE" });
     expect(inactiveHarness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
+  });
+
+  it("requires the correct current DEMI password before verifying LINE or creating a binding", async () => {
+    const harness = createLinkHarness();
+    const deps = dependencies(harness.database);
+    const verifyCurrentPassword = vi.fn(async () => { throw new CurrentPasswordRejectedError(); });
+    deps.verifyCurrentPassword = verifyCurrentPassword;
+
+    await expect(linkLineAccountCore({ intentId, challenge, idToken: "raw-id-token", currentPassword: "wrong-password" }, deps))
+      .rejects.toBeInstanceOf(CurrentPasswordRejectedError);
+
+    expect(verifyCurrentPassword).toHaveBeenCalledWith({ userId, currentPassword: "wrong-password" });
+    expect(deps.attemptThrottle.recordFailure).toHaveBeenCalledOnce();
+    expect(deps.verifyIdentity).not.toHaveBeenCalled();
+    expect(harness.tx.lineAccountBinding.create).not.toHaveBeenCalled();
   });
 
   it("returns an idempotent same-user binding without incrementing its lifecycle", async () => {

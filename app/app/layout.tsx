@@ -12,6 +12,7 @@ import {
 import { AppShell } from "@/components/app-shell/app-shell";
 import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
+import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
@@ -52,12 +53,16 @@ async function ResolvedProtectedApplicationShell({
   const actor = await resolveProtectedActor(
     requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
   );
-  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName] = await Promise.all([
+  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName, passwordResetNoticeAt] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
     countWorkAppointmentsAwaitingMyAcceptance(actor),
     getActorDisplayName(actor).catch((error: unknown) =>
       error instanceof InfrastructureError ? "ผู้ใช้งาน DEMI" : Promise.reject(error),
     ),
+    consumePasswordResetNotice(actor.userId).catch(() => {
+      console.error("Pending password reset notice could not be consumed");
+      return null;
+    }),
   ]);
   const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
 
@@ -65,6 +70,7 @@ async function ResolvedProtectedApplicationShell({
     <AppShell
       displayName={displayName}
       navigation={navigation}
+      passwordResetNoticeAt={passwordResetNoticeAt}
       roleLabels={actor.roles.map((role) => roleLabels[role])}
     >
       {children}

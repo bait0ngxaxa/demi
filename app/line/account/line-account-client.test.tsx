@@ -33,6 +33,9 @@ function renderScreen(
       notificationPreference={state.notificationPreference}
       preferenceUiGeneration={state.preferenceUiGeneration ?? 0}
       relinkEligibility={state.relinkEligibility ?? "ELIGIBLE"}
+      recoveryLineEnabled={state.recoveryLineEnabled ?? false}
+      currentPassword={state.currentPassword ?? ""}
+      currentPasswordError={state.currentPasswordError ?? ""}
       accountStatus={state.accountStatus ?? initial.status}
       canUnlink={state.canUnlink ?? initial.canUnlink}
       liffState={state.liffState ?? "READY"}
@@ -53,6 +56,7 @@ function renderScreen(
       onBeginUnlinkAndSwitch={() => undefined}
       switchAfterUnlink={state.switchAfterUnlink ?? false}
       onConfirmLink={() => undefined}
+      onCurrentPasswordChange={() => undefined}
       onConfirmUnlink={() => undefined}
       onRequestFriendship={() => undefined}
       onRefreshReachability={() => undefined}
@@ -86,11 +90,25 @@ describe("LINE account user experience", () => {
         liffId={null}
         publicOrigin=""
         lifecycleReadiness={{ state: "NOT_CHECKED" }}
+        recoveryLineEnabled={true}
       />,
     );
 
     expect(markup).toContain('href="/login?returnTo=%2Fline%2Faccount"');
     expect(markup).toContain("เข้าสู่ระบบ DEMI");
+    expect(markup).toContain("ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE");
+    expect(markup).toContain('name="nationalId"');
+  });
+
+  it("requires the current DEMI password before linking the open LINE account", () => {
+    const markup = renderScreen(
+      { ...emptyStatus, status: "UNLINKED", canUnlink: false },
+      { view: "LINK_CONFIRM", currentPasswordError: "รหัสผ่านปัจจุบันไม่ถูกต้อง" },
+    );
+
+    expect(markup).toContain('name="currentPassword"');
+    expect(markup).toContain('aria-invalid="true"');
+    expect(markup).toContain("รหัสผ่านปัจจุบันไม่ถูกต้อง");
   });
 
   it("keeps account linking unavailable while LIFF is loading", () => {
@@ -100,6 +118,7 @@ describe("LINE account user experience", () => {
         liffId="1234567890-AbCdEfGh"
         publicOrigin="https://demi.example.org"
         lifecycleReadiness={{ state: "READY" }}
+        recoveryLineEnabled={false}
         disconnection={{ state: "NONE", canRelink: true, obligations: [] }}
       />,
     );

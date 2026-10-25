@@ -6,12 +6,14 @@ import { AppSidebar } from "./app-sidebar";
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
 import { NavigationWorkspaceProvider } from "./navigation-workspace-provider";
 import { projectMobileNavigation } from "./mobile-tab-projection";
+import { Alert } from "@/components/ui/alert";
 
 type AppShellProps = {
   children: ReactNode;
   displayName: string;
   navigation: readonly ApplicationNavigationGroup[];
   roleLabels: readonly string[];
+  passwordResetNoticeAt?: Date | null;
 };
 
 export function AppShell({
@@ -19,6 +21,7 @@ export function AppShell({
   displayName,
   navigation,
   roleLabels,
+  passwordResetNoticeAt = null,
 }: AppShellProps): React.JSX.Element {
   const mobileNavigation = projectMobileNavigation(navigation);
 
@@ -44,6 +47,11 @@ export function AppShell({
             id="application-main-content"
             tabIndex={-1}
           >
+            {passwordResetNoticeAt ? (
+              <Alert className="mb-6" variant="warning">
+                รหัสผ่านบัญชี DEMI ของคุณถูกเปลี่ยนเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(passwordResetNoticeAt)} หากไม่ใช่คุณ ติดต่อโรงพยาบาล
+              </Alert>
+            ) : null}
             {children}
           </main>
         </div>

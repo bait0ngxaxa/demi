@@ -32,6 +32,8 @@ sudo -u demi -H env NODE_OPTIONS='--env-file=/etc/demi/demi.env' npm run admin:r
 
 Keep the incident/change reference, operator identity, start and completion times, target's internal User ID, the `account.password_reset.break_glass` audit event and reset ID, whether the active-peer override was used, final reset/reconciliation state, and the provider outcome needed for any follow-up. Store this evidence in the restricted incident record. Do not retain or copy the National ID, password, bearer token, service-role key, or hidden terminal input. The operator note belongs in the audit and should describe the incident without personal or credential data.
 
-## Recovery entry flag
+## LINE forgot-password recovery
 
-Keep `DEMI_RECOVERY_LINE_ENABLED=false` until REC-2B's LINE self-service flow is implemented and approved for rollout. REC-2A keeps `/recover` token completion working and offers Hospital identity verification; setting the flag early only exposes the not-yet-available LINE entry and does not start a self-service recovery.
+REC-2B adds the `/recover` choice “ลืมรหัสผ่าน · รับลิงก์ทาง LINE” and the same request entry on the LINE account page. A valid request always receives the same Thai response; only a non-ADMIN account with one active LINE binding can receive a single-use, 15-minute link. The link works only when opened with a fresh ID token from that same LINE binding. An unreachable OA or push failure leaves no usable capability. Users without a linked LINE use the existing Hospital-mediated path, and platform ADMIN accounts remain on the mediated reset path.
+
+Keep `DEMI_RECOVERY_LINE_ENABLED=true` in the demo environment for demonstration. Production must remain `false` until partner-agency approval of the LINE recovery notice is recorded at RELEASE_GATE G-06. REC-1 tokenized links and Hospital-mediated recovery remain available regardless of this flag. See [ADR-0012 REC-2B](../adr/0012-global-credential-recovery-proof.md).

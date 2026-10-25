@@ -64,6 +64,7 @@ export const userRelationRules = {
   patientActivationsCreated: "EMPTY",
   accountRecoveries: "EMPTY",
   accountRecoveriesIssued: "EMPTY",
+  linePasswordRecoveryCapabilities: "EMPTY",
   caregiverInvitationsReceived: "EMPTY",
   caregiverInvitationsIssued: "EMPTY",
   caregiverInvitationsRevoked: "EMPTY",

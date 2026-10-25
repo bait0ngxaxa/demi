@@ -22,6 +22,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   mocks.check.mockReset().mockResolvedValue({ status: "READY", expiresAt: "2026-10-23T03:00:00.000Z", mode: "ONLINE" });
+  mocks.useActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
   window.history.replaceState(null, "", `/recover#${"z".repeat(43)}`);
   container = document.createElement("div");
   document.body.append(container);
@@ -33,23 +34,33 @@ afterEach(() => {
   container.remove();
 });
 
-describe("public mediated reset form", () => {
-  it("offers Hospital recovery and keeps the future LINE entry behind its feature flag", async () => {
+describe("public account recovery", () => {
+  it("offers the Hospital path and exposes LINE recovery only behind its feature flag", async () => {
     window.history.replaceState(null, "", "/recover");
-    mocks.useActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
 
     await act(async () => root.render(createElement(PublicAccountRecoveryForm)));
-
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
     expect(container.textContent).not.toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
 
     await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryEnabled: true })));
-
     expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
     expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
   });
 
-  it("keeps the form usable and marks the password field when the provider rejects the password by policy", async () => {
+  it("keeps tokenized REC-1 links on the existing mediated-reset form", async () => {
+    await act(async () => {
+      root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryEnabled: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.check).toHaveBeenCalledWith("z".repeat(43));
+    expect(container.textContent).toContain("ตั้งรหัสผ่านใหม่");
+    expect(container.querySelector('input[name="nationalId"]')).not.toBeNull();
+    expect(container.querySelector('input[name="newPassword"]')).not.toBeNull();
+  });
+
+  it("keeps the reset form usable and marks the password field when provider policy rejects it", async () => {
     mocks.useActionState.mockReturnValue([
       { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน", fieldErrors: { newPassword: "รหัสผ่านนี้ไม่ผ่านนโยบายความปลอดภัย" } },
       vi.fn(),
@@ -58,6 +69,7 @@ describe("public mediated reset form", () => {
 
     await act(async () => {
       root.render(createElement(PublicAccountRecoveryForm));
+      await new Promise((resolve) => setTimeout(resolve, 0));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 

@@ -54,7 +54,7 @@
 
 | ID | รายการ | Owner | หลักฐานที่ต้องมี | สถานะ |
 | --- | --- | --- | --- | --- |
-| F-01 (เดิม B-03) | **ACCOUNT-04 Phase I account recovery — ยังไม่ได้ implement**: `/recover` แสดงเพียง “ยังไม่สามารถกู้คืนรหัสผ่านได้”; assisted recovery ปิดตาม ADR-0012 จนกว่าจะมีวิธีพิสูจน์ความเป็นเจ้าของบัญชีที่อนุมัติ | ทีม product + Security | Phase I ที่ implement และทดสอบแล้ว หรือขั้นตอนชั่วคราวที่ลงนาม | เปิด |
+| F-01 (เดิม B-03) | **ACCOUNT-04 Phase I account recovery**: REC-1 mediated reset และ REC-2B forgot-password ผ่าน LINE ใช้ proof, throttling, single-use capability และ reconciliation ตาม ADR-0012; production LINE entry ยังถูกปิดด้วย `DEMI_RECOVERY_LINE_ENABLED=false` จนผ่าน G-06 | ทีม product + Security | commit SHA และผล test/lint/typecheck; production activation ต้องมีหลักฐาน G-06 | เปิด |
 | F-02 | **หน้าจอ Terms / Privacy / ความยินยอม พร้อมบันทึกการยอมรับแบบมีเวอร์ชัน — ยังไม่มี**: ไม่มีหน้าแสดง ไม่มีการยอมรับ และไม่มีบันทึกเวอร์ชันที่ผู้ใช้ยอมรับ; product สร้างฟีเจอร์พร้อมข้อความ placeholder ที่ระบุชัด ส่วนข้อความจริงเป็นของหน่วยงานพันธมิตร (G-01) | ทีม product | หน้าจอ + บันทึกการยอมรับ (ผู้ใช้, เวอร์ชัน, เวลา) + tests | เปิด |
 
 ดูรายการงาน product ทั้งหมดที่เหลือใน [REMAINING_GAPS.md](../requirements/REMAINING_GAPS.md)
@@ -68,6 +68,7 @@
 | G-03 | **Record-time disclosure** ของ Parent summary view/export (REPORTING_ACCESS_CANONICAL §5): Parent OWNER ปัจจุบันเห็น 9 ค่า active-cohort ที่อาจรวม record ก่อน Parent–Child link ปัจจุบันได้หรือไม่ | หน่วยงานพันธมิตร | Query ใช้ current hierarchy; ไม่สร้าง effective date ขึ้นเอง | เปิด |
 | G-04 | **Small-count aggregate privacy**: ต้องปกปิดหรือทบทวนจำนวนต่ำใน Parent summary หรือไม่ (§5) | หน่วยงานพันธมิตร | ไม่มี suppression threshold ใน product จนกว่าจะได้รับกฎ | เปิด |
 | G-05 | **Onward distribution**: ผู้รับปลายทาง ชุดข้อมูล และกระบวนการส่งต่อไฟล์ที่ Global ADMIN/โรงพยาบาลดาวน์โหลด (§5) | หน่วยงานพันธมิตร | ทุกการส่งออกบันทึก audit event แล้ว | เปิด |
+| G-06 | **ประกาศการกู้คืนบัญชีทาง LINE**: หน่วยงานพันธมิตรอนุมัติข้อความที่อธิบายการส่งลิงก์ตั้งรหัสผ่านทาง LINE, วิธีตรวจสอบบัญชี LINE OA และช่องทางติดต่อโรงพยาบาลเมื่อไม่ได้รับลิงก์; ข้อความต้องไม่เปิดเผยว่าบัญชีหรือ LINE binding มีอยู่หรือไม่ | หน่วยงานพันธมิตร + DPO/ผู้รับผิดชอบสื่อสาร | ข้อความฉบับอนุมัติ ผู้อนุมัติ วันที่ และหลักฐานใน release record; production คง `DEMI_RECOVERY_LINE_ENABLED=false` จนผ่าน | เปิด |
 
 ## C. Customer content inputs — เจ้าของ: ลูกค้า (product มี placeholder แล้ว)
 
@@ -86,7 +87,7 @@
 | --- | --- |
 | CODE VERIFIED | commit SHA, focused regression tests, lint/typecheck และ integration checks ที่รันจริง; ถ้าไม่รันให้ระบุเหตุผลและห้ามอ้างว่าผ่าน |
 | OPERATIONALLY VERIFIED | ต้องมีหลักฐานจาก target environment สำหรับ T-01–T-20 ที่เกี่ยวข้อง; repository artifacts ไม่เพียงพอ |
-| BUSINESS APPROVED | คำตัดสินของหน่วยงานพันธมิตรตาม G-01–G-05 และเนื้อหาจากลูกค้าตาม C-01–C-04; ยังเป็น `เปิด` จนมีหลักฐาน |
+| BUSINESS APPROVED | คำตัดสินของหน่วยงานพันธมิตรตาม G-01–G-06 และเนื้อหาจากลูกค้าตาม C-01–C-04; ยังเป็น `เปิด` จนมีหลักฐาน |
 
 - `deploy/pm2/ecosystem.config.cjs`, `deploy/nginx/demi.conf.example`, `deploy/systemd/demi-scheduler.{service,timer}`, `scripts/scheduler-tick.mjs`, `.env.production.example`, `npm run env:check`, `/api/health` + `/api/health/live`
 - การทดสอบอัตโนมัติ: `deploy/deploy-artifacts.test.mjs` (PM2 1 instance/`kill_timeout` ≥ 30000, ขนาด body ตรงกับ validator, header ของ proxy, Cloudflare mTLS, timeout < 100 s, timer), `scripts/env-check.test.mjs`, `scripts/scheduler-tick.test.mjs`, unit/integration ของ readiness

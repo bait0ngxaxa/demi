@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { createLineAccountIntent, linkLineAccount, unlinkLineAccount } from "@/modules/line/services/line-account-service";
+import { createLineAccountIntent, linkLineAccount as linkLineAccountCore, unlinkLineAccount } from "@/modules/line/services/line-account-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import { lineChannelTupleDefinition, lineChannelTupleKey, lineObligationStatus, type LineChannelInventory } from "@/modules/line/domain/line-authorization-lifecycle";
 import {
@@ -28,6 +28,25 @@ const legacyMini = createHash("sha256").update(legacyMiniDefinition).digest("hex
 const account = lineChannelTupleKey(inventory.channels[0]);
 const mini = lineChannelTupleKey(inventory.channels[1]);
 const subject = `U${"1".repeat(32)}`;
+
+type LinkService = typeof linkLineAccountCore;
+type LinkInput = Omit<Parameters<LinkService>[0], "currentPassword"> & { currentPassword?: string };
+type LinkDependencies = NonNullable<Parameters<LinkService>[1]>;
+const noLinkPasswordThrottle: NonNullable<LinkDependencies["attemptThrottle"]> = {
+  isBlocked: async () => false,
+  recordFailure: async () => undefined,
+};
+
+function linkLineAccount(input: LinkInput, dependencies: LinkDependencies) {
+  return linkLineAccountCore(
+    { ...input, currentPassword: input.currentPassword ?? "integration-current-password" },
+    {
+      ...dependencies,
+      verifyCurrentPassword: dependencies.verifyCurrentPassword ?? (async () => undefined),
+      attemptThrottle: dependencies.attemptThrottle ?? noLinkPasswordThrottle,
+    },
+  );
+}
 
 function target(binding: LineAccountBinding): LineLifecycleTarget {
   return { ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion };

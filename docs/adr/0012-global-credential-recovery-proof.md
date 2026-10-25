@@ -1,6 +1,6 @@
 # ADR-0012 — Global credential recovery requires independent owner proof
 
-Status: Accepted security restriction, amended 2026-10-25 by REC-2A; originally amended 2026-10-22 by REC-1.
+Status: Accepted security restriction, amended 2026-10-25 by REC-2A and REC-2B; originally amended 2026-10-22 by REC-1.
 Supersedes: ADR-0008 D3 credential-replacement trust and Phase 17E.1 assisted-recovery ownership assumptions.
 
 ## Context
@@ -193,3 +193,21 @@ Password login, the National-ID recovery lookup and the National-ID proof step u
 `/login` links to `/recover`, which offers Hospital identity verification and exposes the future LINE recovery entry only when `DEMI_RECOVERY_LINE_ENABLED=true`. Leave the flag false until REC-2B ships; REC-2A adds no self-service recovery. Tokenized REC-1 links continue to use the same `/recover` completion flow. The OWNER directory shows the latest mediated-reset date and path without National ID or issuer details.
 
 Authenticated current-password changes are available to every role from Settings. An explicitly invalid current password returns a Thai field error and counts against the same identity/IP throttle. After `auth.updateUser`, DEMI calls `auth.signOut({ scope: "others" })`; Supabase documents that password update does not itself terminate other sessions, while this scope retains the current session and ends the others ([sign-out guide](https://supabase.com/docs/guides/auth/signout), [JS reference](https://supabase.com/docs/reference/javascript/auth-signout)). An active LINE binding receives the existing password-changed notice.
+
+## Amendment — REC-2B forgotten-password recovery through LINE (2026-10-25)
+
+This amendment supersedes REC-1 and REC-2A's former exclusion of LINE recovery only for the flow below. Forgotten-password recovery is distinct from authenticated current-password change. It never grants LINE sign-in, a DEMI role, membership, permission, or data access. Platform ADMIN remains excluded from self-service recovery; all other roles may use it only when eligible.
+
+### Request, delivery and proof
+
+- The web `/recover` chooser and the LINE account LIFF page accept a National ID. The server performs the existing HMAC identity lookup and returns the same Thai response for existing and nonexistent accounts, missing/ineligible LINE bindings, disabled configuration, throttling and delivery failure. A successful response does not confirm that an account or binding exists.
+- DEMI applies the REC-2A identity/IP failure buckets to the National-ID request step and permits at most three capability issuances per User per hour. A capability is single-use, stored only as a token hash, valid for 15 minutes, and bound to the target User, exact active LINE binding ID and HMAC LINE-subject fingerprint. A new request revokes an older unclaimed capability. A capability is usable only after LINE accepts the push; failed or ambiguous delivery is revoked and audited without PII.
+- The Push message contains a LIFF recovery URL with the bearer token in the fragment. The recovery page submits that token with a fresh raw LIFF ID token to the server. The server verifies the token against the configured `DEMI_LINE_LOGIN_CHANNEL_ID` audience and checks the subject fingerprint against the capability; client-supplied profile fields or LINE user IDs are never authority. A forwarded link opened from another LINE account, an expired/wrong-audience token, and an ineligible account are refused without revealing account existence.
+- At issuance, link open/claim and credential switch, the User must remain `ACTIVE`, non-ADMIN, without an unresolved `UserTakeoverLock` or an unfinished/reconciliation-required credential reset, and with exactly one active LINE binding still attached to the same User. There is no minimum binding age. A lost binding, authority change, takeover lock or ineligible state revokes the capability and leaves the old credential canonical.
+- LINE binding creation requires the signed-in User to re-enter the current DEMI password. The server verifies this step-up and throttles failures using the REC-2A identity/IP buckets before creating the binding; existing intent and CSRF checks remain.
+
+### Credential replacement, audit and rollout
+
+Completion reuses REC-1's existing provider replacement, per-User serialization, canonical subject switch, previous-identity cleanup, quarantine and reconciliation state machine without a second implementation. Authority loss before switch revokes the reset and removes an orphan replacement; ambiguous provider/database outcomes remain quarantined for audited reconciliation. Completion records `account.password_reset.self_service` with the target as actor and the binding ID, without National ID, raw LINE subject or token. The existing `account.password_reset.completed` audit also supplies the reset date/path to the OWNER user directory. DEMI sends the existing LINE password-changed notice when the binding remains reachable and sets a one-time in-app notice for the target's next sign-in.
+
+`DEMI_RECOVERY_LINE_ENABLED` is a fail-closed rollout gate: enabled in the demo environment and false in production until partner-agency notice approval is recorded at RELEASE_GATE G-06. When false, the chooser hides the LINE path; REC-1 tokenized links and Hospital-mediated recovery continue to work. Users without a LINE binding are directed to Hospital-mediated recovery. The exact message and other LINE identity rules remain subject to [ADR-0009](0009-demi-line-oa-liff-identity-and-messaging.md).

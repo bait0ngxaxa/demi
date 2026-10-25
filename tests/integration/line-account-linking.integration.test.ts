@@ -22,7 +22,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { LineFailure } from "@/modules/line/domain/line-errors";
 import { applyLineReachabilityObservation, isLinePushReachabilityEligible } from "@/modules/line/services/line-reachability-service";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { createLineAccountIntent, getLineAccountSummary, refreshLineAccountReachability, linkLineAccount, unlinkLineAccount } from "@/modules/line/services/line-account-service";
+import { createLineAccountIntent, getLineAccountSummary, refreshLineAccountReachability, linkLineAccount as linkLineAccountCore, unlinkLineAccount } from "@/modules/line/services/line-account-service";
 import { lineWebhookInternals } from "@/modules/line/services/line-webhook-service";
 import { LINE_RICH_MENU_BY_KEY } from "@/modules/line/rich-menu/catalog";
 import { lineMenuReconcilerInternals, reconcileLineBinding, type LinePresentationProvider } from "@/modules/line/services/line-menu-reconciler";
@@ -34,6 +34,25 @@ const personIds: string[] = [];
 const hospitalIds: string[] = [];
 const receiptIds: string[] = [];
 const sessionHash = "a".repeat(64);
+
+type LinkService = typeof linkLineAccountCore;
+type LinkInput = Omit<Parameters<LinkService>[0], "currentPassword"> & { currentPassword?: string };
+type LinkDependencies = NonNullable<Parameters<LinkService>[1]>;
+const noLinkPasswordThrottle: NonNullable<LinkDependencies["attemptThrottle"]> = {
+  isBlocked: async () => false,
+  recordFailure: async () => undefined,
+};
+
+function linkLineAccount(input: LinkInput, dependencies: LinkDependencies) {
+  return linkLineAccountCore(
+    { ...input, currentPassword: input.currentPassword ?? "integration-current-password" },
+    {
+      ...dependencies,
+      verifyCurrentPassword: dependencies.verifyCurrentPassword ?? (async () => undefined),
+      attemptThrottle: dependencies.attemptThrottle ?? noLinkPasswordThrottle,
+    },
+  );
+}
 
 function requireDisposableDatabase(): void {
   const url = process.env.DEMI_TEST_DATABASE_URL;

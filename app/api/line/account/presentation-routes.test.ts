@@ -84,7 +84,11 @@ describe("LINE account mutation response boundary", () => {
   });
 
   it("returns linked with an unknown presentation state after scheduling reconcile", async () => {
-    mocks.readAccountJson.mockResolvedValue({ ...intent, idToken: "verified-token-value-with-sufficient-length" });
+    mocks.readAccountJson.mockResolvedValue({
+      ...intent,
+      idToken: "verified-token-value-with-sufficient-length",
+      currentPassword: "Existing-password-for-route-test",
+    });
     mocks.link.mockResolvedValue({ status: "LINKED", bindingId: "binding-id", lifecycleVersion: 2 });
 
     const response = await linkPOST(new Request("https://demi.example.org/api/line/account/link", { method: "POST" }));

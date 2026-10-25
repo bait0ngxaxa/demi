@@ -9,6 +9,7 @@ import type { LineDisconnectionStatus } from "@/modules/line/services/line-disco
 import { disconnectionStatusSchema, initializeLineAccountLiff, LineRecoveryPanel } from "./line-recovery-panel";
 import { AppointmentNotificationPreference, type AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
 import { LineDemiAccountSwitch } from "./line-demi-account-switch";
+import { LinePasswordRecoveryRequestForm } from "../../recover/line/line-password-recovery-request-form";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -36,6 +37,13 @@ const menuStates = new Set<MenuPresentation>(["UNKNOWN", "APPLIED", "MISMATCH", 
 const cleanupStates = new Set<CleanupPresentation>(["PENDING", "CONFIRMED_CLEAN", "MISMATCH", "UNAVAILABLE", "UNKNOWN"]);
 const primaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
 const secondaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-5 py-3 text-center font-semibold text-ink hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
+
+class LineRequestError extends Error {
+  constructor(message: string, readonly currentPasswordError?: string) {
+    super(message);
+    this.name = "LineRequestError";
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -114,6 +122,9 @@ type LineAccountScreenProps = {
   preferenceUiGeneration: number;
   relinkEligibility: RelinkEligibility;
   recoveryContent?: React.ReactNode;
+  recoveryLineEnabled: boolean;
+  currentPassword: string;
+  currentPasswordError: string;
   initial: InitialStatus;
   accountStatus: InitialStatus["status"];
   canUnlink: boolean;
@@ -136,6 +147,7 @@ type LineAccountScreenProps = {
   onBeginUnlinkAndSwitch: () => void;
   switchAfterUnlink: boolean;
   onConfirmLink: () => void;
+  onCurrentPasswordChange: (value: string) => void;
   onConfirmUnlink: () => void;
   onRequestFriendship: () => void;
   onRefreshReachability: () => void;
@@ -151,6 +163,9 @@ export function LineAccountScreen({
   preferenceUiGeneration,
   relinkEligibility,
   recoveryContent,
+  recoveryLineEnabled,
+  currentPassword,
+  currentPasswordError,
   initial,
   accountStatus,
   canUnlink,
@@ -172,6 +187,7 @@ export function LineAccountScreen({
   onBeginUnlinkAndSwitch,
   switchAfterUnlink,
   onConfirmLink,
+  onCurrentPasswordChange,
   onConfirmUnlink,
   onRequestFriendship,
   onRefreshReachability,
@@ -380,6 +396,13 @@ export function LineAccountScreen({
                       <Link href="/login?returnTo=%2Fline%2Faccount" className={primaryButtonClass}>
                         เข้าสู่ระบบ DEMI
                       </Link>
+                      {recoveryLineEnabled ? (
+                        <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-request-title">
+                          <h3 id="line-recovery-request-title" className="text-lg font-semibold text-ink">ลืมรหัสผ่าน?</h3>
+                          <p className="mt-2 text-sm leading-6 text-muted">ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE ที่ผูกกับบัญชี DEMI ของคุณ</p>
+                          <LinePasswordRecoveryRequestForm />
+                        </section>
+                      ) : null}
                     </div>
                   ) : null}
 
@@ -436,8 +459,26 @@ export function LineAccountScreen({
                 <div className="mt-6 rounded-control border border-line bg-surface-muted p-4" aria-labelledby="link-confirm-title">
                   <h3 id="link-confirm-title" className="text-base">ยืนยันบัญชีที่เปิดอยู่</h3>
                   <p className="mt-2 text-sm text-muted">เมื่อยืนยัน บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
+                  <label htmlFor="line-link-current-password" className="mt-4 grid gap-1 text-sm font-medium text-ink">
+                    รหัสผ่านบัญชี DEMI ปัจจุบัน
+                    <input
+                      autoComplete="current-password"
+                      aria-describedby={currentPasswordError ? "line-link-current-password-error" : undefined}
+                      aria-invalid={currentPasswordError ? true : undefined}
+                      className="min-h-12 rounded-control border border-line-strong bg-surface px-3 text-base text-ink focus-visible:outline-2 focus-visible:outline-focus-ring"
+                      disabled={busy}
+                      id="line-link-current-password"
+                      name="currentPassword"
+                      onChange={(event) => onCurrentPasswordChange(event.target.value)}
+                      required
+                      type="password"
+                      value={currentPassword}
+                    />
+                    {currentPasswordError ? <span id="line-link-current-password-error" className="font-normal text-danger">{currentPasswordError}</span> : null}
+                  </label>
+                  {message ? <p className="mt-2 text-sm text-danger" role="alert">{message}</p> : null}
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmLink} className={primaryButtonClass}>ยืนยันเชื่อมบัญชี</button>
+                    <button ref={confirmationRef} type="button" disabled={busy || !currentPassword} onClick={onConfirmLink} className={primaryButtonClass}>ยืนยันเชื่อมบัญชี</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
                   </div>
                 </div>
@@ -486,6 +527,7 @@ export function LineAccountClient({
   disconnection,
   lifecycleReadiness,
   notificationPreference,
+  recoveryLineEnabled,
 }: {
   initial: InitialStatus;
   liffId: string | null;
@@ -493,6 +535,7 @@ export function LineAccountClient({
   disconnection?: LineDisconnectionStatus;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
+  recoveryLineEnabled: boolean;
 }): React.JSX.Element {
   const [termination, setTermination] = useState(disconnection);
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -511,6 +554,8 @@ export function LineAccountClient({
   const [canRefreshReachability, setCanRefreshReachability] = useState(false);
   const [successAction, setSuccessAction] = useState<SuccessAction>(null);
   const [switchAfterUnlink, setSwitchAfterUnlink] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [currentPasswordError, setCurrentPasswordError] = useState("");
   const [appointmentPreference, setAppointmentPreference] = useState(notificationPreference);
   const [preferenceUiGeneration, setPreferenceUiGeneration] = useState(0);
   const refreshAttempted = useRef(false);
@@ -591,16 +636,21 @@ export function LineAccountClient({
     let value: unknown;
     try { value = await response.json(); } catch { throw new Error(safeFailure); }
     if (!response.ok || !value || typeof value !== "object") {
-      const error = value && typeof value === "object" && "error" in value && typeof value.error === "string"
-        ? value.error
+      const record = isRecord(value) ? value : null;
+      const error = record && typeof record.error === "string"
+        ? record.error
         : safeFailure;
-      throw new Error(error);
+      const currentPasswordError = record && isRecord(record.fieldErrors) && typeof record.fieldErrors.currentPassword === "string"
+        ? record.fieldErrors.currentPassword
+        : undefined;
+      throw new LineRequestError(error, currentPasswordError);
     }
     return parse(value);
   }
 
   async function begin(action: "LINK" | "UNLINK"): Promise<void> {
     if (action === "LINK" && relinkEligibility !== "ELIGIBLE") return;
+    if (action === "LINK") { setCurrentPassword(""); setCurrentPasswordError(""); }
     setView("BUSY");
     setMessage("");
     try {
@@ -625,6 +675,7 @@ export function LineAccountClient({
       const result = await postJson("/api/line/account/link", {
         ...intent,
         idToken,
+        currentPassword,
         ...(accessToken ? { accessToken } : {}),
       }, parseMenuResult);
       setProviderWarning(result.presentation !== "APPLIED");
@@ -645,6 +696,8 @@ export function LineAccountClient({
       setRefreshFailed(false);
       setView("SUCCESS");
       setIntent(null);
+      setCurrentPassword("");
+      setCurrentPasswordError("");
       if (accessToken && !refreshAttempted.current) {
         refreshAttempted.current = true;
         setRefreshBusy(true);
@@ -658,6 +711,12 @@ export function LineAccountClient({
         });
       }
     } catch (error: unknown) {
+      if (error instanceof LineRequestError && error.currentPasswordError) {
+        setCurrentPasswordError(error.currentPasswordError);
+        setMessage("ยืนยันรหัสผ่านปัจจุบันไม่สำเร็จ");
+        setView("LINK_CONFIRM");
+        return;
+      }
       setMessage(error instanceof Error ? error.message : safeFailure);
       setView("FAILURE");
     }
@@ -765,6 +824,7 @@ export function LineAccountClient({
       preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
       recoveryContent={lifecycleReadiness.state === "READY" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
+      recoveryLineEnabled={recoveryLineEnabled}
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}
@@ -780,17 +840,20 @@ export function LineAccountClient({
       message={message}
       providerWarning={providerWarning}
       confirmationRef={confirmationRef}
+      currentPassword={currentPassword}
+      currentPasswordError={currentPasswordError}
       onStartLineLogin={() => void startLineLogin()}
       onBeginLink={() => void begin("LINK")}
       onBeginUnlink={() => { setSwitchAfterUnlink(false); void begin("UNLINK"); }}
       onBeginUnlinkAndSwitch={() => { setSwitchAfterUnlink(true); void begin("UNLINK"); }}
       switchAfterUnlink={switchAfterUnlink}
       onConfirmLink={() => void confirmLink()}
+      onCurrentPasswordChange={(value) => { setCurrentPassword(value); setCurrentPasswordError(""); setMessage(""); }}
       onConfirmUnlink={() => void confirmUnlink()}
       onRequestFriendship={() => void requestFriendship()}
       onRefreshReachability={() => void refreshReachability()}
       onReturnToLine={returnToLine}
-      onCancel={() => { setView("READY"); setIntent(null); setSwitchAfterUnlink(false); }}
+      onCancel={() => { setView("READY"); setIntent(null); setSwitchAfterUnlink(false); setCurrentPassword(""); setCurrentPasswordError(""); }}
       onRestart={() => { setIntent(null); setMessage(""); setView("READY"); }}
       onReload={reloadPage}
     />

@@ -104,3 +104,7 @@ Runtime configuration describes only how to connect: Account Login/LIFF, Messagi
 - Multi-role Rich Menu UX remains OPEN / OWNER DECISION REQUIRED among combined menu, workspace/role selector and Rich Menu tabs/switching; no option or precedence is approved.
 - OA friendship/reachability after the last signed follow/unfollow event can become unknown; Push must fail closed on known false/unknown status and 17J.4 must set the freshness/reconciliation policy.
 - Exact privacy disclosure for reactive appointment messages, unlink notice/retention copy, inaccessible-LINE recovery UX, and operational push retry limits remain open in Phase 17J.0.
+
+## REC-2B cross-reference — forgot-password recovery (2026-10-25)
+
+LINE may deliver a DEMI password-recovery link to the user's existing active LINE binding and provide a fresh ID token that DEMI verifies against the configured Account Login channel audience. The server accepts recovery only when that verified LINE subject matches the binding already attached to the target DEMI User. This is a credential-recovery proof and delivery path only: LINE does not sign the User in to DEMI, create or switch a DEMI identity, grant roles/memberships/capabilities, select data scope, or authorize access to data. Reset eligibility and credential replacement continue to follow [ADR-0012 REC-2B](0012-global-credential-recovery-proof.md) and the REC-1 state machine. ADMIN self-service is excluded.

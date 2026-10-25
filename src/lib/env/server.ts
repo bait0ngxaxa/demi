@@ -21,7 +21,7 @@ export function isFamilyPlanMedicationSharingEnabled(): boolean {
   return parsed.success && parsed.data === "true";
 }
 
-/** REC-2B LINE recovery stays hidden until its self-service flow ships. Invalid values fail closed. */
+/** REC-2B LINE recovery rollout gate. Keep production off until G-06 approval; invalid values fail closed. */
 export function isRecoveryLineEnabled(): boolean {
   const parsed = z.enum(["true", "false"]).optional().safeParse(process.env.DEMI_RECOVERY_LINE_ENABLED);
   return parsed.success && parsed.data === "true";

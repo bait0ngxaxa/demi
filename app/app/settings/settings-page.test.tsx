@@ -24,6 +24,7 @@ describe("settings page password entry (UI-4: moved out of navigation)", () => {
     const html = renderToStaticMarkup(await SettingsPage());
 
     expect(html.includes('href="/app/personal/password"')).toBe(shown);
+    expect(html.includes('href="/app/line/account"')).toBe(shown);
     expect(html.includes("เปลี่ยนรหัสผ่าน")).toBe(shown);
     expect(html).toContain("<form>contact</form>");
   });

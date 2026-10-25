@@ -8,6 +8,7 @@ describe("LINE input schemas", () => {
       intentId: "82ce5f58-4a66-4b03-a5e8-2418e8544271",
       challenge: "secure-256-bit-challenge-for-tests-000000000000000000000",
       idToken: "raw-line-id-token-value-at-least-20-characters",
+      currentPassword: "Existing-password-for-link-test",
       lineUserId: `U${"a".repeat(32)}`,
       userId: "83da3ab8-2895-4cab-bb63-19f807246288",
       role: "ADMIN",
@@ -21,6 +22,7 @@ describe("LINE input schemas", () => {
       intentId: "82ce5f58-4a66-4b03-a5e8-2418e8544271",
       challenge: "secure-256-bit-challenge-for-tests-000000000000000000000",
       idToken: "raw-line-id-token-value-at-least-20-characters",
+      currentPassword: "Existing-password-for-link-test",
     };
     expect(lineLinkRequestSchema.parse(trustedShape)).toEqual(trustedShape);
     const unlink = lineIntentUseSchema.parse({
