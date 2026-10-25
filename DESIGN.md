@@ -242,6 +242,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Mobile (2026-10-20):** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม”; “เพิ่มเติม” เป็นลิงก์ไปหน้า `/app/more` ที่แสดง server-projected navigation ชุดเดียวกับ desktop โดยไม่เปิด sidebar หรือ dialog; logout อยู่ด้านล่างของหน้า More
 - **Mobile Patient Personal Home (2026-10-20):** หน้า `/app/personal` ใช้ hero เป็นแถบพื้นทึบ `brand-deep` สำหรับคำทักทายและบริบทโรงพยาบาลเท่านั้น นี่เป็นข้อยกเว้นเฉพาะ hero ของหน้า home (personal และ `/app` ของงาน ตั้งแต่ UI-3); ไม่ใช้ gradient และไม่ขยายรูปแบบนี้ไปหน้าอื่น
 - Active route ใช้ `aria-current="page"` (รายการที่มี query เช่น `?task=screening` ชนะรายการ path เดียวกันที่ไม่มี query); workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
+- **2026-10-25 (UX-01):** Hospital Administration แสดง “ผู้ใช้และสิทธิ์” เป็น directory หลัก และ “ตั้งค่าโรงพยาบาล” เป็นทางเข้ารวม Contact, Service Catalog และ Self-Registration ตามสิทธิ์ของแต่ละ domain; provisioning/import workforce ยังเข้าจากหน้า Users. Personal Account Settings (`/app/settings`) แยกจาก Hospital Settings. Navigation และ Work Home ไม่มี activation shortcut; activation ยังคงเป็น operation แยก เปิดจาก Patient Detail → จัดการผู้ป่วย พร้อม exact relationship context
 
 ### Content Width and Responsive Layout
 

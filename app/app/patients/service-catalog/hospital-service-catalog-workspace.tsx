@@ -13,7 +13,7 @@ export function HospitalServiceCatalogWorkspace({
   return (
     <div className="min-w-0 max-w-4xl break-words">
       <PageHeader
-        breadcrumbs={[{ href: "/app", label: "งาน" }, { label: "บริการที่ผู้ป่วยขอได้" }]}
+        breadcrumbs={[{ href: `/app/hospitals/settings${catalogs.length === 1 ? `?hospitalId=${encodeURIComponent(catalogs[0].hospitalId)}` : ""}`, label: "ตั้งค่าโรงพยาบาล" }, { label: "บริการที่ผู้ป่วยขอได้" }]}
         description="กำหนดว่าผู้ป่วยส่งคำขอประเภทใดให้โรงพยาบาลของคุณได้ การตั้งค่านี้ไม่สร้าง Program หรือมอบหมาย อสม."
         title="บริการที่ผู้ป่วยขอได้"
       />

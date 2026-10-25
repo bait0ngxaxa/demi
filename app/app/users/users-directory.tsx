@@ -52,10 +52,10 @@ export function UsersDirectory({ hospitals, page, filters }: {
       <PageHeader
         breadcrumbs={[
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(hospitalId)}` },
-          { label: "จัดการผู้ใช้งาน" },
+          { label: "ผู้ใช้และสิทธิ์" },
         ]}
-        description="ตรวจสอบ แก้ไข ลบรายการที่ยังไม่ได้ใช้ และนำบุคลากร อสม. และผู้ป่วยออกจากระบบ"
-        title="จัดการผู้ใช้งาน"
+        description="ตรวจสอบสถานะและจัดการบัญชีเจ้าหน้าที่ อสม. และผู้ป่วยในโรงพยาบาลที่คุณเป็นเจ้าของ"
+        title="ผู้ใช้และสิทธิ์"
       />
 
       <div className="pt-8">
@@ -72,11 +72,12 @@ export function UsersDirectory({ hospitals, page, filters }: {
           </Select>
           {switching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
-            แสดงเฉพาะรายการของ {page.hospital.name} ที่คุณเป็นเจ้าของโรงพยาบาล การเพิ่มบุคลากรและนำเข้าผู้ป่วยยังทำที่หน้าเดิม
+            แสดงเฉพาะรายการของ {page.hospital.name} ที่คุณเป็นเจ้าของโรงพยาบาล การเปิดบัญชีและจัดการการเป็นสมาชิกยังใช้ขั้นตอนเดิม
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce/new?hospitalId=${encodeURIComponent(hospitalId)}&step=1`}>เพิ่มบุคลากร / อสม.</Link>
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}>นำเข้าผู้ป่วย</Link>
+            <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`}>งานบุคลากรและนำเข้ารายชื่อ</Link>
           </div>
           <CaregiverPasswordResetSearch hospitalId={hospitalId} hospitalName={page.hospital.name} />
         </Panel>

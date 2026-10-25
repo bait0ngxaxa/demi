@@ -114,8 +114,8 @@ const patientAccount = ["account", "บัญชีและช่วยเห�
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
-const staffRegistration = ["registration", "ลงทะเบียนผู้ป่วย", ["/app/patients/provision", "/app/patients/activation"]] as const;
-const ownerAdministration = ["/app/users", "/app/workforce", "/app/patients/service-catalog", "/app/hospitals/knowledge", "/app/hospitals/contact"];
+const staffRegistration = ["registration", "นำเข้าผู้ป่วย", ["/app/patients/provision"]] as const;
+const ownerAdministration = ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
@@ -211,7 +211,7 @@ const cases: Case[] = [
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
-      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/workforce", "/app/hospitals/knowledge", "/app/hospitals/contact", "/app/admin/hospitals", "/app/admin/reporting"]],
+      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge", "/app/admin/hospitals", "/app/admin/reporting"]],
       workAccount,
     ] },
   },
@@ -337,8 +337,12 @@ describe("UI-4 task-based navigation per actor", () => {
     const reachable = new Set(allHrefs(project(subject, workspaces)));
     const lost = (previousHrefs[name] ?? []).filter((href) => !reachable.has(href));
 
-    // The password item moved to the settings page (see settings page tests).
-    expect(lost).toEqual(subject.roles.includes(Role.PATIENT) ? ["/app/personal/password"] : []);
+    // Password stays on Personal Settings; administration entry points are consolidated into their primary directories.
+    expect(lost).toEqual(subject.roles.includes(Role.PATIENT) ? ["/app/personal/password"] : name === "owner"
+      ? ["/app/workforce", "/app/hospitals/contact", "/app/patients/activation", "/app/patients/service-catalog"]
+      : name === "adminOwner"
+        ? ["/app/workforce", "/app/hospitals/contact", "/app/patients/activation"]
+        : []);
   });
 
   it("keeps sections at six items or fewer for every projected actor", () => {
@@ -452,14 +456,14 @@ describe("application navigation visibility (unchanged policies)", () => {
     const owner = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER, { profession: Profession.DOCTOR })] });
     const member = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] });
 
-    expect(navigationLabels(owner)).toContain("ข้อมูลติดต่อของ รพ.");
+    expect(navigationLabels(owner)).toContain("ตั้งค่าโรงพยาบาล");
     expect(navigationLabels(owner)).toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(owner)).toContain("เผยแพร่ข่าวสาร");
     expect(navigationLabels(owner)).toContain("ข่าวสารและความรู้");
-    expect(navigationLabels(member)).not.toContain("ข้อมูลติดต่อของ รพ.");
+    expect(navigationLabels(member)).not.toContain("ตั้งค่าโรงพยาบาล");
     expect(navigationLabels(member)).toContain("ติดต่อโรงพยาบาล");
     expect(navigationLabels(member)).not.toContain("เผยแพร่ข่าวสาร");
-    for (const label of ["ข้อมูลติดต่อของ รพ.", "ติดต่อโรงพยาบาล", "เผยแพร่ข่าวสาร"]) {
+    for (const label of ["ตั้งค่าโรงพยาบาล", "ติดต่อโรงพยาบาล", "เผยแพร่ข่าวสาร"]) {
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain(label);
     }
     expect(navigationLabels(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }))).toContain("ติดต่อโรงพยาบาล");
@@ -539,14 +543,15 @@ describe("application navigation visibility (unchanged policies)", () => {
     }
   });
 
-  it("keeps Patient provisioning and activation as separate registration items", () => {
+  it("keeps provisioning in registration and removes the standalone activation entry", () => {
     const registration = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }))
       .find(({ id }) => id === "registration");
 
     expect(registration?.items.map(({ href, label }) => [href, label])).toEqual([
       ["/app/patients/provision", "นำเข้าผู้ป่วย"],
-      ["/app/patients/activation", "เปิดใช้งานบัญชี"],
     ]);
+    expect(allHrefs(project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] })))).not.toContain("/app/patients/activation");
+    expect(allHrefs(project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] })))).toContain("/app/users");
   });
 
   it("does not grant Hospital-only activation or directory navigation to an OSM provisioning actor", () => {

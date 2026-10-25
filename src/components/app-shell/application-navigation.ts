@@ -15,7 +15,6 @@ import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/p
 import {
   hasDirectHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
-import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
   PATIENT_SERVICE_REQUEST_CAPABILITIES,
   decidePatientServiceRequestPolicy,
@@ -69,17 +68,6 @@ function canManageWorkforce(actor: ActorContext): boolean {
   );
 }
 
-function canManageHospitalContact(actor: ActorContext): boolean {
-  return actor.hospitalMemberships.some(({ hospitalId }) =>
-    decideHospitalContactPolicy({
-      actor,
-      capability: HOSPITAL_CONTACT_CAPABILITIES.read,
-      scope: "DIRECT_HOSPITAL_OWNER",
-      hospitalId,
-    }).allowed,
-  );
-}
-
 function canReadWorkHospitalContacts(actor: ActorContext): boolean {
   return decideHospitalContactPolicy({
     actor,
@@ -126,26 +114,37 @@ function canOnlyExportHospitalReports(actor: ActorContext): boolean {
   );
 }
 
-function canActivatePatients(actor: ActorContext): boolean {
-  return actor.hospitalMemberships.some(({ hospitalId }) =>
-    hasPatientActivationHospitalScope(actor, hospitalId),
-  );
-}
-
 function canReadPatients(actor: ActorContext): boolean {
   return actor.hospitalMemberships.some(({ hospitalId }) =>
     hasDirectHospitalPatientReadScope(actor, hospitalId),
   );
 }
 
-function canManagePatientServiceCatalog(actor: ActorContext): boolean {
-  return actor.hospitalMemberships.some(({ hospitalId }) =>
+export function canOpenHospitalSettings(actor: ActorContext, hospitalId: string): boolean {
+  const canManageSelfRegistration = actor.roles.includes(Role.HOSPITAL) &&
+    !actor.roles.includes(Role.ADMIN) &&
+    actor.hospitalMemberships.some((membership) =>
+      membership.hospitalId === hospitalId &&
+      membership.membershipType === MembershipType.OWNER &&
+      membership.status === MembershipStatus.ACTIVE &&
+      membership.hospitalStatus === HospitalStatus.ACTIVE);
+
+  return canManageSelfRegistration ||
+    decideHospitalContactPolicy({
+      actor,
+      capability: HOSPITAL_CONTACT_CAPABILITIES.read,
+      scope: "DIRECT_HOSPITAL_OWNER",
+      hospitalId,
+    }).allowed ||
     decidePatientServiceRequestPolicy({
       actor,
       capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
       hospitalId,
-    }).allowed,
-  );
+    }).allowed;
+}
+
+function canManageHospitalSettings(actor: ActorContext): boolean {
+  return actor.hospitalMemberships.some(({ hospitalId }) => canOpenHospitalSettings(actor, hospitalId));
 }
 
 function canReviewPatientServiceRequests(actor: ActorContext): boolean {
@@ -291,12 +290,10 @@ function projectWorkSections(
   const governance = projectPlatformGovernanceNavigation(actor);
   const canReadPatientCare = canReadPatients(actor);
   const hospitalAdministration = compact([
-    // UM-1: one OWNER directory over staff, OSM and Patients; the workforce entry stays for adding and importing.
-    canManageWorkforce(actor) && { href: "/app/users", label: "จัดการผู้ใช้งาน", match: "prefix" },
-    canManageWorkforce(actor) && { href: "/app/workforce", label: "บุคลากร", match: "prefix" },
-    canManagePatientServiceCatalog(actor) && { href: "/app/patients/service-catalog", label: "บริการที่เปิดให้ขอ", match: "prefix" },
+    // UM-1: one OWNER directory over staff, OSM and Patients. Workforce operations remain linked from that directory.
+    canManageWorkforce(actor) && { href: "/app/users", label: "ผู้ใช้และสิทธิ์", match: "prefix" },
+    canManageHospitalSettings(actor) && { href: "/app/hospitals/settings", label: "ตั้งค่าโรงพยาบาล", match: "prefix" },
     canManageHospitalContent(actor) && { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" },
-    canManageHospitalContact(actor) && { href: "/app/hospitals/contact", label: "ข้อมูลติดต่อของ รพ.", match: "exact" },
     // ADR-0016: the same audience as the areas overview (OWNER of an active network PARENT).
     canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/network", label: "จัดการลูกข่าย", match: "exact", prefetch: false },
   ]);
@@ -319,7 +316,6 @@ function projectWorkSections(
     ])),
     ...section("registration", "work", compact([
       directProvisioning && { href: "/app/patients/provision", label: "นำเข้าผู้ป่วย", match: "prefix" },
-      canActivatePatients(actor) && { href: "/app/patients/activation", label: "เปิดใช้งานบัญชี", match: "prefix" },
     ])),
     ...section("review-queue", "work", compact([
       canReviewPatientServiceRequests(actor) && { href: "/app/patients/service-requests", label: "คำขอรับบริการ", match: "prefix" },
@@ -427,7 +423,7 @@ export function projectApplicationNavigation(
     // The Patient's own profile stays in the Personal workspace, as before UI-4.
     workspace === "personal" && { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
     !isCaregiverOnly && { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
-    supportsAccountTools && { href: "/app/settings", label: "ตั้งค่า", match: "prefix" },
+    supportsAccountTools && { href: "/app/settings", label: "ตั้งค่าบัญชีส่วนตัว", match: "prefix" },
     supportsAccountTools && !isCaregiverOnly && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
   ]);
 

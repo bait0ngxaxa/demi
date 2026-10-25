@@ -69,6 +69,11 @@ export const patientActivationLookupSchema = z
     }
   });
 
+export const patientActivationRelationshipLookupSchema = z.object({
+  targetHospitalId: z.uuid(),
+  patientHospitalRelationshipId: z.uuid(),
+}).strict();
+
 export const patientActivationCompletionSchema = z
   .object({
     nationalId: thaiNationalIdSchema.optional(),
@@ -88,6 +93,7 @@ export const patientActivationCompletionSchema = z
 
 export type PatientActivationRequestInput = z.infer<typeof patientActivationRequestSchema>;
 export type PatientActivationLookupInput = z.infer<typeof patientActivationLookupSchema>;
+export type PatientActivationRelationshipLookupInput = z.infer<typeof patientActivationRelationshipLookupSchema>;
 export type PatientActivationCompletionInput = z.infer<
   typeof patientActivationCompletionSchema
 >;

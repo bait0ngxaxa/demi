@@ -4,18 +4,16 @@ import { connection } from "next/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { getSettingsPageContext } from "@/modules/account-settings/transport/settings-page-context";
 import { ContactSettingsForm } from "./contact-settings-form";
-import { HospitalSelfRegistrationSettings } from "./hospital-self-registration-settings";
 
-export const metadata: Metadata = { title: "ตั้งค่า" };
+export const metadata: Metadata = { title: "ตั้งค่าบัญชีส่วนตัว" };
 
 export default async function SettingsPage(): Promise<React.JSX.Element> {
   await connection();
   const context = await getSettingsPageContext();
   return (
     <div className="min-w-0 max-w-4xl space-y-6">
-      <PageHeader title="ตั้งค่า" description="ข้อมูลติดต่อและการแจ้งเตือนของบัญชี" />
+      <PageHeader title="ตั้งค่าบัญชีส่วนตัว" description="ข้อมูลติดต่อ การแจ้งเตือน และความปลอดภัยของบัญชีของคุณ" />
       <ContactSettingsForm initial={context.contact} patient={context.patient} />
-      <HospitalSelfRegistrationSettings hospitals={context.selfRegistrationHospitals ?? []} />
       {context.canChangePassword ? (
         <section aria-labelledby="settings-security-heading" className="border-t border-border pt-6">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="settings-security-heading">ความปลอดภัยของบัญชี</h2>

@@ -273,7 +273,7 @@ export function HospitalContactWorkspace({
     return (
       <div className="max-w-3xl">
         <PageHeader
-          breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
+          breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ตั้งค่าโรงพยาบาล", href: `/app/hospitals/settings?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
           description="จัดการข้อมูลติดต่อของโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
           title="ข้อมูลติดต่อโรงพยาบาล"
         />
@@ -288,7 +288,7 @@ export function HospitalContactWorkspace({
   return (
     <div className="max-w-3xl">
       <PageHeader
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
+        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ตั้งค่าโรงพยาบาล", href: `/app/hospitals/settings?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข้อมูลติดต่อโรงพยาบาล" }]}
         description="ปรับปรุงข้อมูลติดต่อที่โรงพยาบาลให้ไว้สำหรับผู้ป่วย"
         title="ข้อมูลติดต่อโรงพยาบาล"
       />

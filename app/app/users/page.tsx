@@ -15,7 +15,7 @@ import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/
 import { UsersDirectory, type UsersDirectoryFilters } from "./users-directory";
 
 export const metadata: Metadata = {
-  title: "จัดการผู้ใช้งาน",
+  title: "ผู้ใช้และสิทธิ์",
 };
 
 type UsersPageProps = {

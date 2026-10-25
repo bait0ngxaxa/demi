@@ -45,7 +45,7 @@ function tileKey(href: string): string {
 }
 
 /**
- * Home prioritizes core care and OWNER reporting/workforce/publishing before remaining navigation items.
+ * Home prioritizes core care and OWNER reporting/user administration/publishing before remaining navigation items.
  * The order only ranks links already allowed by the projection; it never adds a destination.
  */
 export function projectWorkNavigationOrder(navigation: readonly ApplicationNavigationGroup[]): string[] {
@@ -57,7 +57,7 @@ export function projectWorkNavigationOrder(navigation: readonly ApplicationNavig
     "/app/appointments",
     "/app/patients",
     "/app/hospitals/reporting",
-    "/app/workforce",
+    "/app/users",
     "/app/hospitals/knowledge",
     "/app/patients?task=service",
     "/app/appointments/new",

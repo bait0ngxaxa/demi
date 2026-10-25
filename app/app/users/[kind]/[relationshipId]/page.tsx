@@ -178,7 +178,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
               {detail.status === "PENDING" ? (
                 <Panel>
                   <p className="text-sm leading-6 text-text">บัญชียังไม่เปิดใช้งาน ออกลิงก์ใหม่หรือช่วยเปิดใช้งานได้ที่หน้าเปิดใช้งานบัญชีผู้ป่วย</p>
-                  <Link className={`mt-3 ${buttonClassName({ variant: "secondary", size: "compact" })}`} href={`/app/patients/activation?hospitalId=${encodeURIComponent(detail.hospital.id)}`}>
+                  <Link className={`mt-3 ${buttonClassName({ variant: "secondary", size: "compact" })}`} href={`/app/patients/activation?hospitalId=${encodeURIComponent(detail.hospital.id)}&relationshipId=${encodeURIComponent(detail.relationshipId)}`}>
                     ออกลิงก์ใหม่ / ช่วยเปิดใช้งาน
                   </Link>
                 </Panel>

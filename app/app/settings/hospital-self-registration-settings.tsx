@@ -63,7 +63,7 @@ export function HospitalSelfRegistrationSettings({
   return (
     <section aria-labelledby="hospital-self-registration-heading" className="border-t border-border pt-6">
       <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="hospital-self-registration-heading">
-        การลงทะเบียนบัญชี
+        การลงทะเบียนด้วยตนเอง
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
         ค่าเริ่มต้นเปิดอยู่ ปิดการลงทะเบียนเองได้ทันทีสำหรับโรงพยาบาลที่คุณเป็น OWNER

@@ -38,7 +38,9 @@ import {
 } from "../policies/patient-activation-policy";
 import {
   patientActivationLookupSchema,
+  patientActivationRelationshipLookupSchema,
   type PatientActivationLookupInput,
+  type PatientActivationRelationshipLookupInput,
 } from "../schemas/patient-activation-schemas";
 
 export type PatientActivationQueryDatabase =
@@ -447,6 +449,97 @@ export async function findPatientActivationCandidates(
     }
 
     throw new InfrastructureError("Patient activation candidates could not be loaded");
+  }
+}
+
+/** Resolves the activation projection from the exact Hospital relationship opened in Patient Detail. */
+export async function getPatientActivationCandidateForRelationship(
+  actor: ActorContext | null | undefined,
+  input: PatientActivationRelationshipLookupInput,
+  dependencies: {
+    database?: PatientActivationQueryDatabase;
+    now?: () => Date;
+  } = {},
+): Promise<PatientActivationCandidate | null> {
+  const parsed = patientActivationRelationshipLookupSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Patient activation relationship is invalid");
+
+  assertLookupPolicy(actor, parsed.data.targetHospitalId);
+  if (!actor) throw new ForbiddenError();
+
+  const db = getDatabase(dependencies.database);
+  try {
+    await assertPatientActivationActorInDatabase(db, actor.userId, parsed.data.targetHospitalId);
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError) throw error;
+    throw new InfrastructureError("Patient activation actor could not be verified");
+  }
+  if (!hasPatientActivationHospitalScope(actor, parsed.data.targetHospitalId)) throw new ForbiddenError();
+
+  try {
+    const relationship = await db.patientHospitalRelationship.findFirst({
+      where: {
+        id: parsed.data.patientHospitalRelationshipId,
+        hospitalId: parsed.data.targetHospitalId,
+        ...activePatientHospitalRelationshipWhere,
+        hospital: { status: HospitalStatus.ACTIVE },
+      },
+      select: {
+        hospitalNumber: true,
+        patientProfile: {
+          select: {
+            id: true,
+            person: {
+              select: {
+                givenName: true,
+                familyName: true,
+                user: {
+                  select: {
+                    id: true,
+                    status: true,
+                    authSubject: true,
+                    roles: { select: { role: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const user = relationship?.patientProfile.person.user;
+    if (!relationship || !user || !user.roles.some(({ role }) => role === Role.PATIENT)) return null;
+
+    const activations = await db.patientActivation.findMany({
+      where: { userId: user.id, purpose: PatientActivationPurpose.ACTIVATION },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        expiresAt: true,
+        claimedAt: true,
+        claimExpiresAt: true,
+        reconciliationRequiredAt: true,
+        usedAt: true,
+        revokedAt: true,
+      },
+    });
+    const hasWorkforceAuthority = (await db.user.findMany({
+      where: { id: user.id, ...workforceAuthorityUserWhere },
+      select: { id: true },
+    })).length > 0;
+    const projection = projectActivationStatus(user, activations, getNow(dependencies.now), hasWorkforceAuthority);
+
+    return {
+      userId: user.id,
+      patientProfileId: relationship.patientProfile.id,
+      hospitalId: parsed.data.targetHospitalId,
+      displayName: toDisplayName({ ...user, person: relationship.patientProfile.person }),
+      hospitalNumber: relationship.hospitalNumber,
+      accountStatus: user.status,
+      ...projection,
+    };
+  } catch (error: unknown) {
+    if (error instanceof ForbiddenError || error instanceof ValidationError) throw error;
+    throw new InfrastructureError("Patient activation candidate could not be loaded");
   }
 }
 

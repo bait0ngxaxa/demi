@@ -15,7 +15,7 @@ vi.mock("./contact-settings-form", () => ({ ContactSettingsForm: () => createEle
 
 import SettingsPage from "./page";
 
-describe("settings page password entry (UI-4: moved out of navigation)", () => {
+describe("personal account settings", () => {
   it.each([
     [true, true],
     [false, false],
@@ -27,5 +27,7 @@ describe("settings page password entry (UI-4: moved out of navigation)", () => {
     expect(html.includes('href="/app/line/account"')).toBe(shown);
     expect(html.includes("เปลี่ยนรหัสผ่าน")).toBe(shown);
     expect(html).toContain("<form>contact</form>");
+    expect(html).toContain("ตั้งค่าบัญชีส่วนตัว");
+    expect(html).not.toContain("การลงทะเบียนบัญชี");
   });
 });

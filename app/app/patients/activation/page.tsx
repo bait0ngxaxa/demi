@@ -1,13 +1,18 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
+  getPatientActivationCandidateForRelationship,
   listPatientActivationScopes,
 } from "@/modules/patient-activation/services/patient-activation-query-service";
-import type { PatientActivationScope } from "@/modules/patient-activation/services/patient-activation-query-service";
-import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import type {
+  PatientActivationCandidate,
+  PatientActivationScope,
+} from "@/modules/patient-activation/services/patient-activation-query-service";
+import type { PatientActivationCandidateState } from "@/modules/patient-activation/transport/action-state";
+import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 
 import { PatientActivationActionsWorkspace } from "./patient-activation-actions-workspace";
 
@@ -16,8 +21,12 @@ export const metadata: Metadata = {
 };
 
 type PatientActivationPageProps = {
-  searchParams: Promise<{ hospitalId?: string | string[] }>;
+  searchParams: Promise<{ hospitalId?: string | string[]; relationshipId?: string | string[] }>;
 };
+
+function scalar(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 async function resolveActor() {
   try {
@@ -57,10 +66,36 @@ export default async function PatientActivationPage({
   }
 
   const params = await searchParams;
-  const requestedHospitalId = Array.isArray(params.hospitalId)
-    ? params.hospitalId[0]
-    : params.hospitalId;
-  const selectedScope = scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId) ?? scopes[0];
+  if (
+    (Array.isArray(params.hospitalId) && params.hospitalId.length !== 1) ||
+    (Array.isArray(params.relationshipId) && params.relationshipId.length !== 1)
+  ) notFound();
+
+  const requestedHospitalId = scalar(params.hospitalId);
+  const relationshipId = scalar(params.relationshipId);
+  const selectedScope = relationshipId
+    ? scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId)
+    : scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId) ?? scopes[0];
+  if (!selectedScope) notFound();
+
+  let contextualCandidate: PatientActivationCandidateState | null = null;
+  if (relationshipId) {
+    let candidate: PatientActivationCandidate | null;
+    try {
+      candidate = await getPatientActivationCandidateForRelationship(actor, {
+        targetHospitalId: selectedScope.hospitalId,
+        patientHospitalRelationshipId: relationshipId,
+      });
+    } catch (error: unknown) {
+      if (error instanceof ValidationError || error instanceof ForbiddenError) notFound();
+      throw error;
+    }
+    if (!candidate) notFound();
+    contextualCandidate = {
+      ...candidate,
+      activationExpiresAt: candidate.activationExpiresAt?.toISOString() ?? null,
+    };
+  }
 
   return (
     <PatientActivationActionsWorkspace
@@ -68,6 +103,8 @@ export default async function PatientActivationPage({
       scopes={scopes}
       selectedHospitalId={selectedScope.hospitalId}
       selectedScope={selectedScope}
+      contextualCandidate={contextualCandidate}
+      contextualPatientHref={relationshipId ? `/app/patients/${encodeURIComponent(relationshipId)}` : null}
     />
   );
 }

@@ -26,6 +26,7 @@ import {
 } from "@/modules/patient-activation/transport/server-actions";
 import {
   initialPatientActivationLookupActionState,
+  type PatientActivationCandidateState,
   type PatientActivationLookupActionState,
 } from "@/modules/patient-activation/transport/action-state";
 
@@ -35,6 +36,8 @@ type PatientActivationActionsWorkspaceProps = {
   scopes: PatientActivationScope[];
   selectedHospitalId: string;
   selectedScope: PatientActivationScope;
+  contextualCandidate?: PatientActivationCandidateState | null;
+  contextualPatientHref?: string | null;
 };
 
 const accountStatusLabels: Record<string, string> = {
@@ -94,6 +97,8 @@ export function PatientActivationActionsWorkspace({
   scopes,
   selectedHospitalId,
   selectedScope,
+  contextualCandidate = null,
+  contextualPatientHref,
 }: PatientActivationActionsWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [feedbackScope] = useState(createFeedbackScope);
@@ -135,7 +140,9 @@ export function PatientActivationActionsWorkspace({
           ? previous
           : { status: "ERROR", code: "UNAVAILABLE", message: connectionFailureMessage },
     ),
-    initialPatientActivationLookupActionState,
+    contextualCandidate
+      ? { status: "SUCCESS", candidates: [contextualCandidate] } satisfies PatientActivationLookupActionState
+      : initialPatientActivationLookupActionState,
   );
   const [lookupType, setLookupType] = useState<PatientActivationLookupType>("NAME");
   const [hospitalSwitching, startHospitalSwitch] = useTransition();
@@ -204,8 +211,16 @@ export function PatientActivationActionsWorkspace({
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">ออกลิงก์เปิดใช้งาน</StatusBadge>}
-        breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
-        description="ค้นหาผู้ป่วยในโรงพยาบาลนี้ แล้วออกลิงก์ให้ผู้ป่วยเปิดใช้งานบัญชีและตั้งรหัสผ่านเอง"
+        breadcrumbs={contextualCandidate
+          ? [
+              { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
+              { label: contextualCandidate.displayName, href: contextualPatientHref ?? "/app/patients" },
+              { label: "เปิดใช้งานบัญชีผู้ป่วย" },
+            ]
+          : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เปิดใช้งานบัญชีผู้ป่วย" }]}
+        description={contextualCandidate
+          ? "ตรวจสอบสถานะบัญชีของผู้ป่วยรายนี้ แล้วออกหรือส่งลิงก์เปิดใช้งานใหม่ตามสิทธิ์และสถานะบัญชี"
+          : "ค้นหาผู้ป่วยในโรงพยาบาลนี้ แล้วออกลิงก์ให้ผู้ป่วยเปิดใช้งานบัญชีและตั้งรหัสผ่านเอง"}
         title="เปิดใช้งานบัญชีผู้ป่วย"
       />
 
@@ -214,7 +229,7 @@ export function PatientActivationActionsWorkspace({
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-muted">โรงพยาบาลที่ดำเนินการ</p>
-              {scopes.length > 1 ? (
+              {!contextualCandidate && scopes.length > 1 ? (
                 <>
                   <Select
                     aria-label="โรงพยาบาลที่ดำเนินการ"
@@ -238,11 +253,13 @@ export function PatientActivationActionsWorkspace({
               )}
             </div>
             <p className="max-w-xl text-sm leading-6 text-muted">
-              ค้นหาได้เฉพาะผู้ป่วยของโรงพยาบาลที่เลือก และจะแสดงข้อมูลเท่าที่จำเป็นต่อการเปิดใช้งานบัญชี
+              {contextualCandidate
+                ? "กำลังจัดการบัญชีผู้ป่วยในความสัมพันธ์โรงพยาบาลนี้ โดยแสดงข้อมูลเท่าที่จำเป็นต่อการเปิดใช้งานบัญชี"
+                : "ค้นหาได้เฉพาะผู้ป่วยของโรงพยาบาลที่เลือก และจะแสดงข้อมูลเท่าที่จำเป็นต่อการเปิดใช้งานบัญชี"}
             </p>
           </div>
 
-          <div className="mt-7 border-t border-line pt-6">
+          {!contextualCandidate ? <div className="mt-7 border-t border-line pt-6">
             <h2 className="text-xl font-semibold tracking-[-0.02em]">ค้นหาผู้ป่วย</h2>
             <p className="mt-2 text-sm leading-6 text-muted" id="patient-activation-lookup-help">
               {lookupType === "NAME"
@@ -323,7 +340,7 @@ export function PatientActivationActionsWorkspace({
                 <p className="mt-1">{errorMessage}</p>
               </Alert>
             ) : null}
-          </div>
+          </div> : null}
         </Panel>
 
         {lookupState.status === "SUCCESS" ? (

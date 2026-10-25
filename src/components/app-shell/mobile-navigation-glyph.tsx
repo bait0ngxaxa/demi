@@ -215,6 +215,7 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   }
   if (pathname === "/app/family" || pathname.startsWith("/app/family/")) return "family";
   if (pathname === "/app/settings" || pathname.startsWith("/app/settings/")) return "settings";
+  if (pathname === "/app/hospitals/settings" || pathname.startsWith("/app/hospitals/settings/")) return "settings";
   if (pathname === "/app/support" || pathname.startsWith("/app/support/")) return "support";
   if (pathname.startsWith("/app/patients/provision")) return "provision";
   if (pathname.startsWith("/app/patients/activation")) return "activation";

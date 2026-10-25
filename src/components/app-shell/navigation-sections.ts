@@ -36,7 +36,7 @@ export function getNavigationSectionLabel(
     case "health-records":
       return "บันทึกสุขภาพ";
     case "registration":
-      return "ลงทะเบียนผู้ป่วย";
+      return "นำเข้าผู้ป่วย";
     case "review-queue":
       return "คำขอรอตรวจ";
     case "reports-info":

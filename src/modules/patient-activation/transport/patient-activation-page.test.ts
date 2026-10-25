@@ -5,12 +5,16 @@ import PatientActivationPage from "../../../../app/app/patients/activation/page"
 const {
   mockedConnection,
   mockedGetProtectedApplicationActor,
+  mockedGetPatientActivationCandidateForRelationship,
   mockedListPatientActivationScopes,
+  mockedNotFound,
   mockedRedirect,
 } = vi.hoisted(() => ({
   mockedConnection: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
+  mockedGetPatientActivationCandidateForRelationship: vi.fn(),
   mockedListPatientActivationScopes: vi.fn(),
+  mockedNotFound: vi.fn(),
   mockedRedirect: vi.fn(),
 }));
 
@@ -19,6 +23,7 @@ vi.mock("next/server", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
+  notFound: mockedNotFound,
   redirect: mockedRedirect,
 }));
 
@@ -30,6 +35,7 @@ vi.mock(
   "@/modules/patient-activation/services/patient-activation-query-service",
   () => ({
     listPatientActivationScopes: mockedListPatientActivationScopes,
+    getPatientActivationCandidateForRelationship: mockedGetPatientActivationCandidateForRelationship,
   }),
 );
 
@@ -52,6 +58,7 @@ describe("Patient activation page Hospital context", () => {
     mockedConnection.mockResolvedValue(undefined);
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "actor" });
     mockedListPatientActivationScopes.mockResolvedValue(scopes);
+    mockedNotFound.mockImplementation(() => { throw new Error("NOT_FOUND"); });
   });
 
   it("keys the workspace by the server-validated selected Hospital", async () => {
@@ -65,5 +72,35 @@ describe("Patient activation page Hospital context", () => {
     expect(hospitalA.key).toBe(scopes[0].hospitalId);
     expect(hospitalB.key).toBe(scopes[1].hospitalId);
     expect(hospitalB.key).not.toBe(hospitalA.key);
+  });
+
+  it("loads activation from the exact patient Hospital relationship context", async () => {
+    const relationshipId = "33333333-3333-4333-8333-333333333333";
+    const candidate = {
+      userId: "44444444-4444-4444-8444-444444444444",
+      patientProfileId: "55555555-5555-4555-8555-555555555555",
+      hospitalId: scopes[1].hospitalId,
+      displayName: "ผู้ป่วยทดสอบ",
+      hospitalNumber: "HN-02",
+      accountStatus: "PROVISIONED",
+      activationStatus: "NOT_ISSUED",
+      activationExpiresAt: null,
+      activationMayBeIssued: true,
+    } as const;
+    mockedGetPatientActivationCandidateForRelationship.mockResolvedValue(candidate);
+
+    const page = await PatientActivationPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[1].hospitalId, relationshipId }),
+    });
+
+    expect(mockedGetPatientActivationCandidateForRelationship).toHaveBeenCalledWith(
+      expect.anything(),
+      { targetHospitalId: scopes[1].hospitalId, patientHospitalRelationshipId: relationshipId },
+    );
+    expect(page.props).toMatchObject({
+      selectedHospitalId: scopes[1].hospitalId,
+      contextualCandidate: candidate,
+      contextualPatientHref: `/app/patients/${relationshipId}`,
+    });
   });
 });

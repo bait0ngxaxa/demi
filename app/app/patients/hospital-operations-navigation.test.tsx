@@ -33,13 +33,39 @@ describe("Hospital patient operations navigation", () => {
     expect(html).toContain("ตั้งรหัสผ่านเอง");
   });
 
+  it("opens activation from an exact Patient relationship without making the user search again", () => {
+    const relationshipId = "33333333-3333-4333-8333-333333333333";
+    const html = renderToStaticMarkup(<PatientActivationActionsWorkspace
+      scopes={scopes}
+      selectedScope={scope}
+      selectedHospitalId={scope.hospitalId}
+      contextualPatientHref={`/app/patients/${relationshipId}`}
+      contextualCandidate={{
+        userId: "44444444-4444-4444-8444-444444444444",
+        patientProfileId: "55555555-5555-4555-8555-555555555555",
+        hospitalId: scope.hospitalId,
+        displayName: "ผู้ป่วยทดสอบ",
+        hospitalNumber: "HN-B",
+        accountStatus: "PROVISIONED",
+        activationStatus: "NOT_ISSUED",
+        activationExpiresAt: null,
+        activationMayBeIssued: true,
+      }}
+    />);
+
+    expect(html).toContain(`href="/app/patients/${relationshipId}"`);
+    expect(html).toContain("ผู้ป่วยทดสอบ");
+    expect(html).not.toContain("ค้นหาด้วย");
+    expect(html).toContain(`name="targetHospitalId" value="${scope.hospitalId}"`);
+  });
+
   it("shows catalog Hospitals separately and describes its actor-wide scope", () => {
     const html = renderToStaticMarkup(<HospitalServiceCatalogWorkspace catalogs={scopes.map((item) => ({ ...item, offerings: [] }))} />);
     expect(html).toContain("โรงพยาบาล ก");
     expect(html).toContain("โรงพยาบาล ข");
     expect(html).toContain("แต่ละรายการบันทึกแยกตามโรงพยาบาล");
     expect(html).toContain("ไม่สร้าง Program หรือมอบหมาย อสม.");
-    expect(html).toContain('href="/app"');
+    expect(html).toContain('href="/app/hospitals/settings"');
     expect(html).not.toContain('href="/app/patients/service-catalog?hospitalId=');
   });
 

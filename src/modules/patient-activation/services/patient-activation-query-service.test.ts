@@ -1,7 +1,12 @@
-import { Role, UserStatus } from "@prisma/client";
-import { describe, expect, it } from "vitest";
+import { HospitalStatus, MembershipStatus, MembershipType, Profession, Role, UserStatus } from "@prisma/client";
+import { describe, expect, it, vi } from "vitest";
 
-import { patientActivationQueryInternals } from "./patient-activation-query-service";
+import {
+  getPatientActivationCandidateForRelationship,
+  patientActivationQueryInternals,
+  type PatientActivationQueryDatabase,
+} from "./patient-activation-query-service";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 const now = new Date("2026-08-15T12:00:00.000Z");
 const baseUser = {
@@ -114,5 +119,74 @@ describe("patient activation query projection", () => {
       activationExpiresAt: null,
       activationMayBeIssued: false,
     });
+  });
+});
+
+describe("patient activation relationship lookup", () => {
+  const hospitalId = "11111111-1111-4111-8111-111111111111";
+  const relationshipId = "22222222-2222-4222-8222-222222222222";
+  const userId = "33333333-3333-4333-8333-333333333333";
+  const subject: ActorContext = {
+    userId: "44444444-4444-4444-8444-444444444444",
+    personId: "55555555-5555-4555-8555-555555555555",
+    roles: [Role.HOSPITAL],
+    hospitalMemberships: [{ hospitalId, membershipType: MembershipType.OWNER, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+    osmHospitalRelationships: [],
+  };
+
+  function database(relationship: unknown): PatientActivationQueryDatabase {
+    return {
+      user: {
+        findUnique: async () => ({ status: UserStatus.ACTIVE, roles: [{ role: Role.HOSPITAL }] }),
+        findMany: async () => [],
+      },
+      hospitalMembership: { findFirst: async () => ({ id: "owner-membership" }) },
+      patientHospitalRelationship: { findFirst: async () => relationship },
+      patientActivation: { findMany: async () => [] },
+    } as unknown as PatientActivationQueryDatabase;
+  }
+
+  it("resolves one current patient only from the exact Hospital relationship", async () => {
+    const findRelationship = vi.fn(async () => ({
+      hospitalNumber: "HN-01",
+      patientProfile: {
+        id: "profile-id",
+        person: {
+          givenName: "สมชาย",
+          familyName: "ใจดี",
+          user: { id: userId, status: UserStatus.PROVISIONED, authSubject: null, roles: [{ role: Role.PATIENT }] },
+        },
+      },
+    }));
+    const db = database(undefined) as unknown as Record<string, unknown>;
+    const patientHospitalRelationship = { findFirst: findRelationship };
+    Object.assign(db, { patientHospitalRelationship });
+
+    await expect(getPatientActivationCandidateForRelationship(subject, {
+      targetHospitalId: hospitalId,
+      patientHospitalRelationshipId: relationshipId,
+    }, {
+      database: db as unknown as PatientActivationQueryDatabase,
+      now: () => now,
+    })).resolves.toMatchObject({
+      userId,
+      patientProfileId: "profile-id",
+      hospitalId,
+      displayName: "สมชาย ใจดี",
+      hospitalNumber: "HN-01",
+      activationStatus: "NOT_ISSUED",
+      activationMayBeIssued: true,
+    });
+
+    expect(findRelationship).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: relationshipId, hospitalId, endedAt: null, hospital: { status: "ACTIVE" } },
+    }));
+  });
+
+  it("does not turn an ended or missing relationship into a candidate", async () => {
+    await expect(getPatientActivationCandidateForRelationship(subject, {
+      targetHospitalId: hospitalId,
+      patientHospitalRelationshipId: relationshipId,
+    }, { database: database(null) })).resolves.toBeNull();
   });
 });

@@ -6,7 +6,6 @@ import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/p
 import {
   hasDirectHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
-import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
 import {
   PATIENT_SERVICE_REQUEST_CAPABILITIES,
   decidePatientServiceRequestPolicy,
@@ -15,10 +14,6 @@ import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
-import {
-  decideHospitalContactPolicy,
-  HOSPITAL_CONTACT_CAPABILITIES,
-} from "@/modules/hospital-contact/policies/hospital-contact-policy";
 import {
   decideHospitalContentPolicy,
   HOSPITAL_CONTENT_CAPABILITIES,
@@ -34,7 +29,7 @@ import type {
   ApplicationNavigationItem,
   ApplicationWorkspaceContext,
 } from "./navigation-types";
-import { projectApplicationNavigation, projectPlatformGovernanceNavigation } from "./application-navigation";
+import { canOpenHospitalSettings, projectApplicationNavigation, projectPlatformGovernanceNavigation } from "./application-navigation";
 
 export type ApplicationWorkspaceAction = {
   href: string;
@@ -188,10 +183,20 @@ function projectHospitalActions(
 
   if (workforceDecision.allowed) {
     actions.push({
-      href: withHospitalContext("/app/workforce", hospitalId),
-      label: "จัดการบุคลากร",
-      description: "จัดการสมาชิกและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง",
+      href: withHospitalContext("/app/users", hospitalId),
+      label: "ผู้ใช้และสิทธิ์",
+      description: "ดูสถานะและจัดการบัญชีเจ้าหน้าที่ อสม. และผู้ป่วยในโรงพยาบาลนี้",
       category: "administration",
+    });
+  }
+
+  if (canOpenHospitalSettings(actor, hospitalId)) {
+    actions.push({
+      href: withHospitalContext("/app/hospitals/settings", hospitalId),
+      label: "ตั้งค่าโรงพยาบาล",
+      description: "จัดการข้อมูลติดต่อ บริการที่เปิดให้ขอ และการลงทะเบียนเองตามสิทธิ์ของคุณ",
+      category: "administration",
+      prefetch: false,
     });
   }
 
@@ -227,15 +232,6 @@ function projectHospitalActions(
     });
   }
 
-  if (hasPatientActivationHospitalScope(actor, hospitalId)) {
-    actions.push({
-      href: withHospitalContext("/app/patients/activation", hospitalId),
-      label: "เปิดใช้งานบัญชีผู้ป่วย",
-      description: "จัดการการเปิดใช้งานบัญชีผู้ป่วยในโรงพยาบาลนี้",
-      category: "patient",
-    });
-  }
-
   if (
     decidePatientServiceRequestPolicy({
       actor,
@@ -250,34 +246,6 @@ function projectHospitalActions(
     });
   }
 
-  if (
-    decidePatientServiceRequestPolicy({
-      actor,
-      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
-      hospitalId,
-    }).allowed
-  ) {
-    actions.push({
-      href: "/app/patients/service-catalog",
-      label: "บริการที่เปิดให้ขอ",
-      description: "กำหนดบริการในโรงพยาบาลที่บัญชีนี้มีสิทธิ์จัดการ",
-    });
-  }
-
-  if (decideHospitalContactPolicy({
-    actor,
-    capability: HOSPITAL_CONTACT_CAPABILITIES.read,
-    scope: "DIRECT_HOSPITAL_OWNER",
-    hospitalId,
-  }).allowed) {
-    actions.push({
-      href: withHospitalContext("/app/hospitals/contact", hospitalId),
-      label: "ข้อมูลติดต่อของ รพ.",
-      description: "ปรับปรุงที่อยู่และโทรศัพท์ที่โรงพยาบาลนี้ให้ไว้สำหรับผู้ป่วย",
-      category: "administration",
-      prefetch: false,
-    });
-  }
   if (decideHospitalContentPolicy({
     actor,
     capability: HOSPITAL_CONTENT_CAPABILITIES.read,
@@ -374,10 +342,8 @@ export function projectApplicationWorkspace(
     governanceActions: projectGovernanceActions(actor),
     assignedPatientsAction: projectAssignedPatientsAction(navigation),
     hospitals,
-    requestActions: [...shared.values()].filter(({ href }) => href !== "/app/patients/service-catalog"),
-    supportingActions: [
-      ...[...shared.values()].filter(({ href }) => href === "/app/patients/service-catalog"),
-    ],
+    requestActions: [...shared.values()],
+    supportingActions: [],
   };
 }
 

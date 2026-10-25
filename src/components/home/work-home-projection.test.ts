@@ -70,22 +70,21 @@ const followup = "/app/patients/assigned?task=followup";
 const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
 const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
-const ownerRequests = ["/app/patients/service-requests", "/app/patients/service-catalog"];
+const ownerRequests = ["/app/patients/service-requests"];
 // Home pins core care and OWNER tools before remaining Work navigation destinations.
 const ownerTiles = (id: string, areas = false) => [
   appointmentsAt(id),
   withHospital("/app/patients", id),
   withHospital("/app/hospitals/reporting", id),
-  withHospital("/app/workforce", id),
+  withHospital("/app/users", id),
   withHospital("/app/hospitals/knowledge", id),
   withHospital("/app/patients?task=service", id),
   withHospital("/app/appointments/new", id),
   withHospital("/app/patients/provision", id),
-  withHospital("/app/patients/activation", id),
   ...(areas ? ["/app/hospitals/reporting?scope=network"] : []),
   withHospital("/app/hospitals/content", id),
   withHospital("/app/hospitals/contacts", id),
-  withHospital("/app/hospitals/contact", id),
+  withHospital("/app/hospitals/settings", id),
   ...(areas ? [withHospital("/app/hospitals/network", id)] : []),
 ];
 
@@ -215,13 +214,13 @@ const cases: Case[] = [
 ];
 
 describe("work home projection per actor", () => {
-  it("keeps reporting, workforce and publishing visible for OWNER within eight tiles", () => {
+  it("keeps reporting, user administration and publishing visible for OWNER within eight tiles", () => {
     const subject = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.OWNER)] });
     const { home } = project(subject, [workspace(hospitalA)]);
     expect(home.tiles.length).toBeLessThanOrEqual(8);
     expect(home.tiles.map(({ href }) => href)).toEqual(expect.arrayContaining([
       withHospital("/app/hospitals/reporting", hospitalA),
-      withHospital("/app/workforce", hospitalA),
+      withHospital("/app/users", hospitalA),
       withHospital("/app/hospitals/knowledge", hospitalA),
     ]));
   });

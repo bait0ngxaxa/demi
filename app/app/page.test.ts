@@ -127,7 +127,7 @@ describe("application home workspace routing", () => {
     const html = await renderHome(staff(type));
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html.indexOf(`/app/patients?hospitalId=${hospitalId}`)).toBeLessThan(html.indexOf("ข้อมูลบัญชีและสิทธิ์"));
-    for (const path of ["/app/hospitals/reporting", "/app/workforce", "/app/hospitals/knowledge"]) {
+    for (const path of ["/app/hospitals/reporting", "/app/users", "/app/hospitals/knowledge"]) {
       expect(section(html, "work-home-menu-heading")).toContain(`href="${path}?hospitalId=${hospitalId}"`);
     }
     expect(html).toContain('href="/app/patients/service-requests"');
@@ -138,7 +138,8 @@ describe("application home workspace routing", () => {
     expect(html).toContain("เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้");
     // The patient directory remains the primary care action; the grid follows navigation order.
     expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
-    expect(html.includes('href="/app/patients/service-catalog"')).toBe(type === MembershipType.OWNER);
+    expect(html).not.toContain('href="/app/patients/activation"');
+    expect(html).not.toContain('href="/app/patients/service-catalog"');
     // Overflowed actions remain on the shared More destination; OWNER retains the direct administration note.
     expect(section(html, "work-home-menu-heading")).toContain('href="/app/more"');
     expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
@@ -149,7 +150,7 @@ describe("application home workspace routing", () => {
     expect(html).toContain('aria-labelledby="work-home-menu-heading"');
     // Cross-hospital actions are rows outside the Hospital grid.
     const grid = section(html, "work-home-menu-heading");
-    for (const shared of ["/app/patients/service-requests", "/app/patients/access-requests", "/app/patients/service-catalog"]) {
+    for (const shared of ["/app/patients/service-requests", "/app/patients/access-requests"]) {
       expect(grid).not.toContain(shared);
     }
     expect(section(html, "work-home-shared-heading")).toContain('href="/app/patients/service-requests"');
@@ -235,7 +236,7 @@ describe("application home workspace routing", () => {
     const html = await renderHome({ ...actor, hospitalMemberships: [...actor.hospitalMemberships, { hospitalId: secondId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] });
     expect(html.match(/href="\/app\/patients\/service-requests"/g)).toHaveLength(1);
     expect(html).not.toContain('/app/patients/access-requests');
-    expect(html.match(/href="\/app\/patients\/service-catalog"/g)).toHaveLength(1);
+    expect(html).not.toContain('href="/app/patients/service-catalog"');
     // The grid shows only the selected (default: first) Hospital; the other is a chip option.
     expect(html).toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).not.toContain(`/app/patients?hospitalId=${secondId}`);

@@ -5,6 +5,9 @@ import Link from "next/link";
 
 import { decidePatientOsmAssignmentPolicy } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 import { decideAccountRecoveryIssuePolicy } from "@/modules/account-security/policies/account-recovery-policy";
+import { hasPatientActivationHospitalScope } from "@/modules/patient-activation/policies/patient-activation-policy";
+import { getPatientActivationCandidateForRelationship } from "@/modules/patient-activation/services/patient-activation-query-service";
+import type { PatientActivationCandidate } from "@/modules/patient-activation/services/patient-activation-query-service";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Alert } from "@/components/ui/alert";
@@ -165,6 +168,102 @@ function PatientSummary({
           <dd className="mt-1"><StatusBadge variant={roundProgressVariant(latestProgram, roundsOverview, roundsError)}>{roundProgressLabel(latestProgram, roundsOverview, roundsError)}</StatusBadge></dd>
         </div>
       </dl>
+    </Panel>
+  );
+}
+
+function PatientActivationStatusPanel({
+  candidate,
+  relationshipId,
+  hospitalId,
+  loadFailed,
+  canIssueRecovery,
+}: {
+  candidate: PatientActivationCandidate | null;
+  relationshipId: string;
+  hospitalId: string;
+  loadFailed: boolean;
+  canIssueRecovery: boolean;
+}): React.JSX.Element {
+  if (loadFailed) {
+    return (
+      <Alert role="alert" variant="warning">
+        <p className="font-semibold">โหลดสถานะบัญชีไม่สำเร็จ</p>
+        <p className="mt-1">ขณะนี้ยังยืนยันสถานะการเปิดใช้งานไม่ได้ กรุณาลองใหม่ภายหลัง</p>
+      </Alert>
+    );
+  }
+  if (!candidate) {
+    return (
+      <Alert role="status" variant="warning">
+        <p className="font-semibold">ไม่พบความสัมพันธ์ผู้ป่วยที่พร้อมจัดการบัญชี</p>
+        <p className="mt-1">ตรวจสอบสถานะผู้ป่วยและโรงพยาบาลก่อนดำเนินการ</p>
+      </Alert>
+    );
+  }
+
+  const accountLabel = candidate.accountStatus === "ACTIVE"
+    ? "ใช้งานอยู่"
+    : candidate.accountStatus === "PROVISIONED"
+      ? "ยังไม่เปิดใช้งาน"
+      : candidate.accountStatus === "SUSPENDED"
+        ? "บัญชีถูกระงับ"
+        : "ต้องตรวจสอบสถานะ";
+  const activationLabel = {
+    ACTIVE: "เปิดใช้งานแล้ว",
+    NOT_ISSUED: "ยังไม่ได้ออกลิงก์",
+    ISSUED: "ออกลิงก์แล้ว",
+    IN_PROGRESS: "กำลังเปิดใช้งาน",
+    EXPIRED: "ลิงก์หมดอายุ",
+    RECONCILIATION_REQUIRED: "ต้องตรวจสอบบัญชีก่อนดำเนินการ",
+  }[candidate.activationStatus];
+  const statusVariant: StatusVariant = candidate.activationStatus === "ACTIVE"
+    ? "success"
+    : candidate.activationStatus === "RECONCILIATION_REQUIRED" || candidate.accountStatus === "SUSPENDED"
+      ? "warning"
+      : candidate.activationStatus === "IN_PROGRESS" || candidate.activationStatus === "ISSUED"
+        ? "info"
+        : "neutral";
+  const activationHref = `/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}&relationshipId=${encodeURIComponent(relationshipId)}`;
+
+  return (
+    <Panel aria-labelledby="patient-activation-status-heading">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold text-text" id="patient-activation-status-heading">บัญชีผู้ป่วย</h3>
+          <p className="mt-1 text-sm leading-6 text-text-muted">ตรวจสอบสถานะบัญชีและดำเนินการเปิดใช้งานในโรงพยาบาลนี้</p>
+        </div>
+        <StatusBadge variant={statusVariant}>{activationLabel}</StatusBadge>
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-text-muted">สถานะบัญชี</dt>
+          <dd className="mt-1 font-semibold text-text">{accountLabel}</dd>
+        </div>
+        {candidate.activationExpiresAt ? (
+          <div>
+            <dt className="text-text-muted">ลิงก์หมดอายุ</dt>
+            <dd className="mt-1 font-semibold text-text">{new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(candidate.activationExpiresAt)}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {candidate.activationStatus === "ACTIVE" ? (
+        <p className="mt-4 text-sm leading-6 text-text-muted">บัญชีนี้เปิดใช้งานแล้ว ไม่ต้องออกลิงก์เปิดใช้งาน</p>
+      ) : candidate.accountStatus === "SUSPENDED" ? (
+        <p className="mt-4 text-sm leading-6 text-text-muted">
+          บัญชีถูกระงับ การเปิดใช้งานใหม่ไม่พร้อมใช้
+          {canIssueRecovery ? " หากต้องคืนบัญชี ให้ใช้ขั้นตอนยืนยันตัวตนในส่วนคืนบัญชีด้านล่าง" : " กรุณาติดต่อผู้ดูแลที่มีสิทธิ์"}
+        </p>
+      ) : candidate.activationStatus === "RECONCILIATION_REQUIRED" ? (
+        <p className="mt-4 text-sm leading-6 text-text-muted">ระบบต้องตรวจสอบข้อมูลบัญชีก่อน ไม่สามารถออกลิงก์เปิดใช้งานได้{canIssueRecovery ? " การคืนรหัสผ่านยังเป็นอีกขั้นตอนหนึ่งที่ต้องยืนยันตัวตน" : ""}</p>
+      ) : candidate.activationStatus === "IN_PROGRESS" ? (
+        <p className="mt-4 text-sm leading-6 text-text-muted">ผู้ป่วยเริ่มเปิดใช้งานบัญชีแล้ว กรุณารอให้ขั้นตอนเสร็จสิ้น</p>
+      ) : null}
+      {candidate.activationMayBeIssued ? (
+        <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={activationHref} prefetch={false}>
+          {candidate.activationStatus === "NOT_ISSUED" ? "ออกลิงก์เปิดใช้งาน" : "ออกหรือส่งลิงก์ใหม่"}
+        </Link>
+      ) : null}
     </Panel>
   );
 }
@@ -388,8 +487,24 @@ export default async function PatientDetailPage({
     targetHospitalId: patient.hospital.id,
   }).allowed;
   const canIssueAccountRecovery = decideAccountRecoveryIssuePolicy(actor, patient.hospital.id).allowed;
-  const hasManagementTab = canManageAssignment || canIssueAccountRecovery;
+  const canManageActivation = hasPatientActivationHospitalScope(actor, patient.hospital.id);
+  const hasManagementTab = canManageAssignment || canIssueAccountRecovery || canManageActivation;
   const tab = resolveTab(query.tab, hasManagementTab);
+  let activationCandidate: PatientActivationCandidate | null = null;
+  let activationLoadFailed = false;
+  if (canManageActivation && tab === "manage") {
+    try {
+      activationCandidate = await getPatientActivationCandidateForRelationship(actor, {
+        targetHospitalId: patient.hospital.id,
+        patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+      });
+    } catch (error: unknown) {
+      if (error instanceof NotFoundError) notFound();
+      if (error instanceof ForbiddenError) redirect("/app");
+      if (error instanceof InfrastructureError) activationLoadFailed = true;
+      else throw error;
+    }
+  }
   const hasHospitalDirectoryAccess = hasDirectHospitalPatientReadScope(actor, patient.hospital.id);
   const isNetworkRead = patient.access === "NETWORK";
   const backLabel = hasHospitalDirectoryAccess
@@ -563,6 +678,15 @@ export default async function PatientDetailPage({
                   จัดการผู้รับผิดชอบ
                 </Link>
               </Panel>
+            ) : null}
+            {canManageActivation ? (
+              <PatientActivationStatusPanel
+                candidate={activationCandidate}
+                canIssueRecovery={canIssueAccountRecovery}
+                hospitalId={patient.hospital.id}
+                loadFailed={activationLoadFailed}
+                relationshipId={patient.patientHospitalRelationshipId}
+              />
             ) : null}
             {canIssueAccountRecovery ? <PatientAccountRecoveryPanel relationshipId={patient.patientHospitalRelationshipId} /> : null}
           </section>
