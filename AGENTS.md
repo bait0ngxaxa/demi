@@ -38,7 +38,8 @@ Set-Content -Encoding utf8NoBOM
 ## 3. Documentation and Repository Context
 
 * Review project instructions, types, tests, schemas, and existing implementations before creating anything new.
-* Treat existing repository implementations and conventions as the primary source of truth.
+* Resolve apparent conflicts in this order: (1) latest confirmed Product Owner direction, (2) accepted ADRs and current domain decisions, (3) current `PRODUCT.md` and `docs/CONTEXT.md`, (4) actual implementation and verification evidence (source code, schemas, and tests), then (5) relevant historical phase decisions. Existing code and tests describe current behavior; they do not override newer confirmed requirements.
+* Treat historical phase documents and release, readiness, demo, UAT, and operations records as informative evidence, not business or runtime authority. Identify the newer authoritative decision, preserve security and data-integrity invariants, and investigate unresolved ambiguity before changing sensitive behavior.
 * When using APIs or behavior from external libraries, verify the latest documentation through **Context7 MCP** or official documentation.
 * Do not guess APIs, configuration options, framework behavior, or package versions.
 * If documentation is unclear, state the assumption and choose the approach with the smallest impact.
