@@ -143,12 +143,15 @@ sudo -u demi -H ln -sfn "$REL" /srv/demi/current
 ### 1.9 nginx
 
 ```sh
+sudo install -m 0644 /srv/demi/current/deploy/nginx/demi-log-format.conf.example /etc/nginx/conf.d/demi-log-format.conf
 sudo sed "s/<PROD_HOST>/$PROD_HOST/g" /srv/demi/current/deploy/nginx/demi.conf.example | sudo tee /etc/nginx/sites-available/demi.conf >/dev/null
 sudo ln -sfn /etc/nginx/sites-available/demi.conf /etc/nginx/sites-enabled/demi.conf
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+ตัวอย่าง nginx กำหนด access log แบบ `demi_redacted` สำหรับทั้ง HTTP redirect และ HTTPS โดยเก็บ IP, เวลา, path, method, status, ขนาด response, เวลา proxy และ user agent แต่ไม่บันทึก query string, fragment หรือ `Referer`; ห้ามเปลี่ยน `$uri` เป็น `$request`, `$request_uri` หรือ `$args` เพราะ LIFF อาจพก `liff.state` ใน query ได้ หลังติดตั้งให้ตรวจว่า `/etc/nginx/conf.d/demi-log-format.conf` ถูกโหลดใน `http` context และสุ่มตรวจ access log ด้วย URL สังเคราะห์ที่มี `liff.state` ว่าไม่มีค่า query อยู่ใน log
 
 ขนาด body ที่อนุญาตตรงกับ validator ในโค้ด (อ้างอิงอยู่ใน comment ของไฟล์และ `deploy/deploy-artifacts.test.mjs`) เปลี่ยน validator เมื่อไหร่ต้องแก้ไฟล์นี้ตามด้วย
 

@@ -514,6 +514,9 @@ model User {
   status      UserStatus @default(PROVISIONED)
   identityAssurance IdentityAssurance @default(HOSPITAL_PROOFED)
   passwordResetNoticePendingAt DateTime? @db.Timestamptz(3)
+  passwordChangeOperationId String? @db.Uuid
+  passwordChangeStartedAt DateTime? @db.Timestamptz(3)
+  passwordChangeReconciliationRequiredAt DateTime? @db.Timestamptz(3)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -1305,7 +1308,7 @@ model LinePasswordRecoveryCapability {
   targetUserId             String                            @db.Uuid
   lineAccountBindingId     String                            @db.Uuid
   lineSubjectFingerprint   String                            @db.VarChar(64)
-  tokenHash                String                            @unique @db.VarChar(64)
+  tokenHash                String?                           @unique @db.VarChar(64)
   deliveredAt              DateTime?                         @db.Timestamptz(3)
   operationState           WorkforceActivationOperationState @default(NOT_STARTED)
   previousAuthSubject      String?                           @db.VarChar(255)

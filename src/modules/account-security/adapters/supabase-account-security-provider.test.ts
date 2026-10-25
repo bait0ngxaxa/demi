@@ -60,8 +60,11 @@ vi.mock("@/modules/auth/services/provider-login-alias", () => ({
 import { AuthApiError, AuthRetryableFetchError } from "@supabase/supabase-js";
 
 import {
+  CurrentPasswordRejectedError,
   deleteReplacedProviderIdentity,
   findProviderIdentityByLoginAlias,
+  PasswordChangeProviderNotStartedError,
+  PasswordChangeProviderRejectedError,
   ProviderIdentityRejectedError,
   providerIdentityExists,
   replacePasswordAndRevokeRecoverySessions,
@@ -134,6 +137,41 @@ describe("Supabase account security provider boundary", () => {
     expect(authenticatedAuth.signOut).not.toHaveBeenCalled();
   });
 
+  it("distinguishes a documented password rejection from an ambiguous provider response", async () => {
+    isolatedAuth.updateUser.mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError("Password is known to be weak", 422, "weak_password"),
+    });
+
+    await expect(updateAuthenticatedPassword({
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    })).rejects.toBeInstanceOf(PasswordChangeProviderRejectedError);
+    expect(authenticatedAuth.signOut).not.toHaveBeenCalled();
+
+    isolatedAuth.updateUser.mockResolvedValue({
+      data: { user: null },
+      error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials"),
+    });
+    await expect(updateAuthenticatedPassword({
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    })).rejects.toBeInstanceOf(CurrentPasswordRejectedError);
+  });
+
+  it("marks failures before auth.updateUser as definitely unchanged", async () => {
+    authenticatedAuth.getUser.mockResolvedValue({ data: { user: null }, error: new Error("session unavailable") });
+
+    await expect(updateAuthenticatedPassword({
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    })).rejects.toBeInstanceOf(PasswordChangeProviderNotStartedError);
+    expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
+  });
+
   it("reports when Supabase could not sign out the user's other sessions", async () => {
     isolatedAuth.updateUser.mockResolvedValue({ data: { user: { id: authSubject } }, error: null });
     authenticatedAuth.signOut.mockResolvedValue({ data: null, error: new Error("session revocation unavailable") });
@@ -175,7 +213,7 @@ describe("Supabase account security provider boundary", () => {
     ).rejects.toMatchObject({ message: "Account password could not be changed" });
   });
 
-  it("does not update a different or unverifiable authenticated account", async () => {
+  it("marks a different or unverifiable authenticated account as unchanged", async () => {
     isolatedAuth.signInWithPassword.mockResolvedValue({
       data: { user: { id: "99999999-9999-4999-8999-999999999999" }, session: { access_token: "other" } },
       error: null,
@@ -187,7 +225,7 @@ describe("Supabase account security provider boundary", () => {
         currentPassword: "secret",
         newPassword: "new long password",
       }),
-    ).rejects.toMatchObject({ message: "Account password could not be changed" });
+    ).rejects.toBeInstanceOf(PasswordChangeProviderNotStartedError);
     expect(isolatedAuth.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
   });

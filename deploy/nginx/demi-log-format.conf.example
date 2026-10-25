@@ -1,0 +1,9 @@
+# Install in /etc/nginx/conf.d/ so this is loaded inside nginx's http context.
+# `$uri` is the normalized path without query arguments; do not replace it with `$request`,
+# `$request_uri`, or `$args` because LIFF may transport URL state in the query string.
+log_format demi_redacted escape=json
+    '{"client":"$remote_addr","time":"$time_iso8601",'
+    '"request":"$request_method $uri $server_protocol",'
+    '"status":$status,"bytes":$body_bytes_sent,'
+    '"request_time":"$request_time","upstream_time":"$upstream_response_time",'
+    '"user_agent":"$http_user_agent"}';

@@ -28,7 +28,9 @@ export async function updateAuthenticatedPassword(input: {
   currentPassword: string;
   newPassword: string;
 }): Promise<{ otherSessionsRevoked: boolean }> {
+  let passwordUpdateOutcome: "NOT_STARTED" | "AMBIGUOUS" | "REJECTED" | "CONFIRMED" = "NOT_STARTED";
   let passwordChangeConfirmed = false;
+  let definiteRejection: CurrentPasswordRejectedError | PasswordChangeProviderRejectedError | null = null;
   try {
     const client = await getServerSupabaseClient({ requireWritableCookies: true });
     const currentUser = await client.auth.getUser();
@@ -58,20 +60,35 @@ export async function updateAuthenticatedPassword(input: {
         verification.data.user?.id !== currentUser.data.user.id ||
         !verification.data.session
       ) {
-        if (isExplicitInvalidPassword(verification.error)) throw new CurrentPasswordRejectedError();
+        if (isExplicitInvalidPassword(verification.error)) {
+          definiteRejection = new CurrentPasswordRejectedError();
+          throw definiteRejection;
+        }
         throw new Error("Current password was not confirmed for the authenticated user");
       }
 
+      passwordUpdateOutcome = "AMBIGUOUS";
       const { data, error } = await verifier.auth.updateUser({
         password: input.newPassword,
         current_password: input.currentPassword,
       });
 
+      if (isExplicitInvalidPassword(error)) {
+        passwordUpdateOutcome = "REJECTED";
+        definiteRejection = new CurrentPasswordRejectedError();
+        throw definiteRejection;
+      }
+      if (error && isDefinitePasswordUpdateRejection(error)) {
+        passwordUpdateOutcome = "REJECTED";
+        definiteRejection = new PasswordChangeProviderRejectedError();
+        throw definiteRejection;
+      }
       if (error || data.user?.id !== currentUser.data.user.id) {
         throw new Error("Provider rejected password change");
       }
 
       passwordChangeConfirmed = true;
+      passwordUpdateOutcome = "CONFIRMED";
     } finally {
       if (verification.data.session) {
         try {
@@ -81,7 +98,7 @@ export async function updateAuthenticatedPassword(input: {
             throw new Error("Temporary password-verification session could not be closed");
           }
         } catch {
-          if (passwordChangeConfirmed) {
+          if (passwordChangeConfirmed || passwordUpdateOutcome === "REJECTED") {
             console.error("Temporary password-verification session cleanup could not be confirmed");
           } else {
             throw new Error("Temporary password-verification session could not be closed");
@@ -99,10 +116,16 @@ export async function updateAuthenticatedPassword(input: {
       return { otherSessionsRevoked: false };
     }
   } catch (error: unknown) {
-    if (error instanceof CurrentPasswordRejectedError) throw error;
+    if (definiteRejection) {
+      throw definiteRejection;
+    }
+    if (error instanceof CurrentPasswordRejectedError || error instanceof PasswordChangeProviderRejectedError) throw error;
     if (passwordChangeConfirmed) {
       console.error("Password changed but provider session cleanup could not be confirmed");
       return { otherSessionsRevoked: false };
+    }
+    if (passwordUpdateOutcome === "NOT_STARTED") {
+      throw new PasswordChangeProviderNotStartedError();
     }
     throw new InfrastructureError("Account password could not be changed");
   }
@@ -159,6 +182,34 @@ export class CurrentPasswordRejectedError extends Error {
     super("The current password was not accepted");
     this.name = "CurrentPasswordRejectedError";
   }
+}
+
+/** A documented Auth API validation response confirms that the password update did not happen. */
+export class PasswordChangeProviderRejectedError extends ValidationError {
+  constructor() {
+    super("The provider rejected the new password");
+    this.name = "PasswordChangeProviderRejectedError";
+  }
+}
+
+/** Failures before the password update request cannot have changed the provider credential. */
+export class PasswordChangeProviderNotStartedError extends InfrastructureError {
+  constructor() {
+    super("The provider password update did not start");
+    this.name = "PasswordChangeProviderNotStartedError";
+  }
+}
+
+function isDefinitePasswordUpdateRejection(error: unknown): boolean {
+  return isAuthApiError(error) && typeof error.code === "string" && [
+    "over_request_rate_limit",
+    "reauthentication_needed",
+    "same_password",
+    "session_expired",
+    "session_not_found",
+    "validation_failed",
+    "weak_password",
+  ].includes(error.code);
 }
 
 function isExplicitInvalidPassword(error: unknown): boolean {

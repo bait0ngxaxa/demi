@@ -27,24 +27,29 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
-import { ProviderIdentityRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
+import { CurrentPasswordRejectedError, ProviderIdentityRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import {
   completeMediatedPasswordReset,
+  confirmLinePasswordRecoveryDelivery,
+  getLinePasswordRecoveryAvailabilityByCapabilityId,
   getMediatedPasswordResetEligibility,
   getMediatedPasswordResetAvailability,
   issueMediatedPasswordReset,
+  issueLinePasswordRecoveryCapability,
   listQuarantinedMediatedPasswordResets,
   reconcileMediatedPasswordReset,
   reconcilePlatformAdminBreakGlassPassword,
   recoverPlatformAdminPassword,
   searchMediatedPasswordResetTargets,
 } from "@/modules/account-security/services/mediated-password-reset-service";
+import { changeAuthenticatedUserPassword, PasswordChangeRecoveryPendingError } from "@/modules/account-security/services/password-change-service";
 import { createAuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { lockSuspectedTakeover } from "@/modules/user-management/services/user-takeover-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import {
   completeLinePasswordRecoveryWithIdentityToken,
+  LinePasswordRecoveryCompletionError,
   openLinePasswordRecovery,
   requestLinePasswordRecovery,
 } from "@/modules/line/services/line-password-recovery-service";
@@ -259,7 +264,6 @@ async function createLineRecoveryTarget(role?: Role): Promise<{
 }
 
 function lineRecoveryDependencies(lineUserId: string) {
-  let tokenSequence = 0;
   const provider = fakeProvider();
   const sendPush = vi.fn(async (lineUserId: string, message: string, retryKey: string): Promise<LinePushResult> => {
     void lineUserId;
@@ -288,8 +292,14 @@ function lineRecoveryDependencies(lineUserId: string) {
     attemptThrottle,
     verifyIdentity,
     sendPush,
-    createToken: () => lineRecoveryToken(++tokenSequence, lineUserId),
   };
+}
+
+function latestLineCapabilityId(dependencies: ReturnType<typeof lineRecoveryDependencies>): string {
+  const message = dependencies.sendPush.mock.calls[dependencies.sendPush.mock.calls.length - 1]?.[1];
+  const match = typeof message === "string" ? /[?&]capability=([0-9a-f-]{36})/u.exec(message) : null;
+  if (!match?.[1]) throw new Error("Recovery push did not include a capability locator");
+  return match[1];
 }
 
 function lineRecoveryToken(sequence: number, lineUserId: string): string {
@@ -1385,6 +1395,211 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     });
     afterEach(() => vi.unstubAllEnvs());
 
+    it("invalidates all unclaimed reset stores atomically after a confirmed password change and allows a later LINE link", async () => {
+      const target = await createLineRecoveryTarget(Role.PATIENT);
+      const hospital = await createHospital();
+      const owner = await createOwner(hospital.id);
+      const profile = await db.patientProfile.create({ data: { personId: target.personId } });
+      const relationship = await db.patientHospitalRelationship.create({
+        data: { patientProfileId: profile.id, hospitalId: hospital.id, hospitalNumber: `PW-${sequence}` },
+      });
+      const workforceReset = await db.workforceActivation.create({
+        data: {
+          userId: target.userId,
+          hospitalId: hospital.id,
+          relationshipId: relationship.id,
+          relationshipKind: "patient",
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
+          purpose: WorkforceActivationPurpose.RESET,
+          expiresAt: new Date(now.getTime() + 60 * 60_000),
+          createdByUserId: owner.userId,
+          createdAt: now,
+        },
+      });
+      const patientReset = await db.accountRecovery.create({
+        data: {
+          targetUserId: target.userId,
+          patientHospitalRelationshipId: relationship.id,
+          hospitalId: hospital.id,
+          issuedByUserId: owner.userId,
+          tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "2"),
+          expiresAt: new Date(now.getTime() + 60 * 60_000),
+          createdAt: now,
+        },
+      });
+      const lineReset = await db.linePasswordRecoveryCapability.create({
+        data: {
+          targetUserId: target.userId,
+          lineAccountBindingId: target.bindingId,
+          lineSubjectFingerprint: createLineSubjectFingerprint(target.lineUserId).fingerprint,
+          expiresAt: new Date(now.getTime() + 15 * 60_000),
+          deliveredAt: now,
+          createdAt: now,
+        },
+      });
+      const actor: ActorContext = {
+        userId: target.userId,
+        personId: target.personId,
+        roles: [Role.PATIENT],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      };
+      const lineNotice = vi.fn(async () => ({ kind: "ACCEPTED" }));
+      await changeAuthenticatedUserPassword(actor, {
+        currentPassword: "old-credential-password-123",
+        newPassword: "new-credential-password-123",
+        passwordConfirmation: "new-credential-password-123",
+      }, {
+        database: db,
+        provider: vi.fn(async () => ({ otherSessionsRevoked: true })),
+        attemptThrottle: { isBlocked: async () => false, recordFailure: async () => undefined },
+        now: () => now,
+        sendLineMessage: lineNotice,
+      });
+
+      expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: workforceReset.id } })).toMatchObject({ revokedAt: now, claimedAt: null, usedAt: null });
+      expect(await db.accountRecovery.findUniqueOrThrow({ where: { id: patientReset.id } })).toMatchObject({ revokedAt: now, claimedAt: null, completedAt: null });
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: lineReset.id } })).toMatchObject({ revokedAt: now, claimedAt: null, completedAt: null });
+
+      const identity = await db.person.findUniqueOrThrow({ where: { id: target.personId }, select: { identityKeyHash: true } });
+      const laterCapability = await issueLinePasswordRecoveryCapability({ userId: target.userId, identityKeyHash: identity.identityKeyHash }, { database: db, now: () => now });
+      expect(laterCapability).not.toBeNull();
+      if (!laterCapability) throw new Error("Expected a later recovery capability");
+      await confirmLinePasswordRecoveryDelivery(laterCapability.resetId, { database: db, now: () => now });
+      await expect(getLinePasswordRecoveryAvailabilityByCapabilityId(
+        laterCapability.resetId,
+        createLineSubjectFingerprint(target.lineUserId).fingerprint,
+        { database: db, now: () => now },
+      )).resolves.toBe("READY");
+      expect(lineNotice).toHaveBeenCalledOnce();
+    });
+
+    it("preserves links after a definite password rejection and serializes both password-change/reset races", async () => {
+      const failedTarget = await createLineRecoveryTarget(Role.PATIENT);
+      const failedCapability = await issueLinePasswordRecoveryCapability({
+        userId: failedTarget.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: failedTarget.nationalId }),
+      }, { database: db, now: () => now });
+      if (!failedCapability) throw new Error("Expected a pending LINE recovery capability");
+      await confirmLinePasswordRecoveryDelivery(failedCapability.resetId, { database: db, now: () => now });
+      const failedActor: ActorContext = {
+        userId: failedTarget.userId,
+        personId: failedTarget.personId,
+        roles: [Role.PATIENT],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      };
+      await expect(changeAuthenticatedUserPassword(failedActor, {
+        currentPassword: "incorrect-current-password",
+        newPassword: "new-credential-password-123",
+        passwordConfirmation: "new-credential-password-123",
+      }, {
+        database: db,
+        provider: vi.fn(async () => { throw new CurrentPasswordRejectedError(); }),
+        attemptThrottle: { isBlocked: async () => false, recordFailure: async () => undefined },
+        now: () => now,
+      })).rejects.toBeInstanceOf(CurrentPasswordRejectedError);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: failedCapability.resetId } })).toMatchObject({ revokedAt: null, claimedAt: null });
+      await expect(getLinePasswordRecoveryAvailabilityByCapabilityId(
+        failedCapability.resetId,
+        createLineSubjectFingerprint(failedTarget.lineUserId).fingerprint,
+        { database: db, now: () => now },
+      )).resolves.toBe("READY");
+
+      const passwordFirst = await createLineRecoveryTarget(Role.PATIENT);
+      const passwordFirstCapability = await issueLinePasswordRecoveryCapability({
+        userId: passwordFirst.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: passwordFirst.nationalId }),
+      }, { database: db, now: () => now });
+      if (!passwordFirstCapability) throw new Error("Expected a pending LINE recovery capability");
+      await confirmLinePasswordRecoveryDelivery(passwordFirstCapability.resetId, { database: db, now: () => now });
+      const passwordFirstActor: ActorContext = {
+        userId: passwordFirst.userId,
+        personId: passwordFirst.personId,
+        roles: [Role.PATIENT],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      };
+      let signalPasswordProviderStarted: (() => void) | undefined;
+      let finishPasswordProvider: (() => void) | undefined;
+      const passwordProviderStarted = new Promise<void>((resolve) => { signalPasswordProviderStarted = resolve; });
+      const passwordProviderCanFinish = new Promise<void>((resolve) => { finishPasswordProvider = resolve; });
+      const passwordChange = changeAuthenticatedUserPassword(passwordFirstActor, {
+        currentPassword: "old-credential-password-123",
+        newPassword: "new-credential-password-123",
+        passwordConfirmation: "new-credential-password-123",
+      }, {
+        database: db,
+        provider: vi.fn(async () => {
+          signalPasswordProviderStarted?.();
+          await passwordProviderCanFinish;
+          return { otherSessionsRevoked: true };
+        }),
+        attemptThrottle: { isBlocked: async () => false, recordFailure: async () => undefined },
+        now: () => now,
+        sendLineMessage: async () => ({ kind: "ACCEPTED" }),
+      });
+      await passwordProviderStarted;
+      const completion = {
+        capabilityId: passwordFirstCapability.resetId,
+        idToken: "fresh-line-id-token-for-recovery",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      };
+      const passwordFirstLineDependencies = lineRecoveryDependencies(passwordFirst.lineUserId);
+      await expect(completeLinePasswordRecoveryWithIdentityToken(completion, passwordFirstLineDependencies)).rejects.toMatchObject({ code: "LINK_UNAVAILABLE" });
+      expect(passwordFirstLineDependencies.createReplacementIdentity).not.toHaveBeenCalled();
+      finishPasswordProvider?.();
+      await passwordChange;
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: passwordFirstCapability.resetId } })).toMatchObject({ revokedAt: now, claimedAt: null });
+
+      const resetFirst = await createLineRecoveryTarget(Role.PATIENT);
+      const resetFirstCapability = await issueLinePasswordRecoveryCapability({
+        userId: resetFirst.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: resetFirst.nationalId }),
+      }, { database: db, now: () => now });
+      if (!resetFirstCapability) throw new Error("Expected a pending LINE recovery capability");
+      await confirmLinePasswordRecoveryDelivery(resetFirstCapability.resetId, { database: db, now: () => now });
+      let signalResetProviderStarted: (() => void) | undefined;
+      let finishResetProvider: (() => void) | undefined;
+      const resetProviderStarted = new Promise<void>((resolve) => { signalResetProviderStarted = resolve; });
+      const resetProviderCanFinish = new Promise<void>((resolve) => { finishResetProvider = resolve; });
+      const resetDependencies = lineRecoveryDependencies(resetFirst.lineUserId);
+      resetDependencies.createReplacementIdentity = vi.fn(async ({ userId, resetId }: { userId: string; resetId: string }) => {
+        signalResetProviderStarted?.();
+        await resetProviderCanFinish;
+        return { authSubject: randomUUID(), providerLoginAlias: createProviderResetLoginAlias(userId, resetId) };
+      });
+      const resetCompletion = completeLinePasswordRecoveryWithIdentityToken({
+        capabilityId: resetFirstCapability.resetId,
+        idToken: "fresh-line-id-token-for-recovery",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      }, resetDependencies);
+      await resetProviderStarted;
+      const resetFirstActor: ActorContext = {
+        userId: resetFirst.userId,
+        personId: resetFirst.personId,
+        roles: [Role.PATIENT],
+        hospitalMemberships: [],
+        osmHospitalRelationships: [],
+      };
+      const competingPasswordProvider = vi.fn();
+      await expect(changeAuthenticatedUserPassword(resetFirstActor, {
+        currentPassword: "old-credential-password-123",
+        newPassword: "new-credential-password-123",
+        passwordConfirmation: "new-credential-password-123",
+      }, {
+        database: db,
+        provider: competingPasswordProvider,
+        attemptThrottle: { isBlocked: async () => false, recordFailure: async () => undefined },
+        now: () => now,
+      })).rejects.toBeInstanceOf(PasswordChangeRecoveryPendingError);
+      expect(competingPasswordProvider).not.toHaveBeenCalled();
+      finishResetProvider?.();
+      await expect(resetCompletion).resolves.toBeUndefined();
+    });
+
     it("returns identical copy and sends only for active non-ADMIN users with one eligible binding", async () => {
       const eligible = await createLineRecoveryTarget(Role.PATIENT);
       const noBinding = await createIdentity({ role: Role.CAREGIVER });
@@ -1429,8 +1644,9 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
 
       expect(new Set(messages)).toEqual(new Set(["หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล"]));
       expect(dependencies.sendPush).toHaveBeenCalledOnce();
-      expect(dependencies.sendPush).toHaveBeenCalledWith(eligible.lineUserId, expect.stringContaining("https://liff.line.me/1234567890-AbCdEf/recover#"), expect.any(String));
-      expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(lineRecoveryToken(1, eligible.lineUserId));
+      expect(dependencies.sendPush).toHaveBeenCalledWith(eligible.lineUserId, expect.stringContaining("https://liff.line.me/1234567890-AbCdEf/recover?capability="), expect.any(String));
+      expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain("#");
+      expect((await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: eligible.userId } })).tokenHash).toBeNull();
       expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(noBinding.nationalId);
       expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(admin.nationalId);
     });
@@ -1438,27 +1654,33 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     it("verifies the bound LINE subject, replaces the canonical credential once, records the audit and consumes the next-sign-in notice", async () => {
       const target = await createLineRecoveryTarget(Role.PATIENT);
       const dependencies = lineRecoveryDependencies(target.lineUserId);
-      const token = lineRecoveryToken(1, target.lineUserId);
       const response = await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      const capabilityId = latestLineCapabilityId(dependencies);
 
       expect(response.message).toBe("หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล");
       expect(dependencies.sendPush).toHaveBeenCalledOnce();
-      expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(`#${token}`);
-      const availabilityInput = { token, idToken: "fresh-line-id-token-for-recovery" };
+      expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(`?capability=${capabilityId}`);
+      const availabilityInput = { capabilityId, idToken: "fresh-line-id-token-for-recovery" };
       await expect(openLinePasswordRecovery(availabilityInput, dependencies)).resolves.toEqual({ status: "READY" });
       await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "other-line-account-token" }, dependencies)).resolves.toEqual({ status: "OTHER_LINE" });
       await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "wrong-audience-line-token" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
       await expect(openLinePasswordRecovery({ ...availabilityInput, idToken: "expired-line-token" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
       await expect(completeLinePasswordRecoveryWithIdentityToken({
-        token,
+        capabilityId,
+        idToken: "other-line-account-token",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      }, dependencies)).rejects.toMatchObject({ code: "LINE_PROOF_INVALID" });
+      await expect(completeLinePasswordRecoveryWithIdentityToken({
+        capabilityId,
         idToken: "wrong-audience-line-token",
         newPassword: "line-recovery-password-123",
         passwordConfirmation: "line-recovery-password-123",
-      }, dependencies)).rejects.toThrow();
+      }, dependencies)).rejects.toMatchObject({ code: "LINE_PROOF_INVALID" });
       expect(dependencies.createReplacementIdentity).not.toHaveBeenCalled();
 
       await completeLinePasswordRecoveryWithIdentityToken({
-        token,
+        capabilityId,
         idToken: "fresh-line-id-token-for-recovery",
         newPassword: "line-recovery-password-123",
         passwordConfirmation: "line-recovery-password-123",
@@ -1481,21 +1703,76 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       });
       expect(JSON.stringify(selfServiceAudit)).not.toContain(target.nationalId);
       expect(JSON.stringify(selfServiceAudit)).not.toContain(target.lineUserId);
-      expect(JSON.stringify(selfServiceAudit)).not.toContain(token);
-      const capability = await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { tokenHash: createHash("sha256").update(token, "utf8").digest("hex") } });
+      expect(JSON.stringify(selfServiceAudit)).not.toContain(capabilityId);
+      const capability = await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } });
       expect(capability).toMatchObject({ completedAt: now, deliveredAt: now, revokedAt: null });
       await expect(consumePasswordResetNotice(target.userId, db)).resolves.toEqual(now);
       await expect(consumePasswordResetNotice(target.userId, db)).resolves.toBeNull();
       expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ passwordResetNoticePendingAt: null });
     });
 
+    it("keeps legacy fragment links, releases a definite policy rejection for retry, and quarantines ambiguous completion", async () => {
+      const legacyTarget = await createLineRecoveryTarget(Role.PATIENT);
+      const legacyDependencies = lineRecoveryDependencies(legacyTarget.lineUserId);
+      const legacyToken = lineRecoveryToken(1, legacyTarget.lineUserId);
+      await db.linePasswordRecoveryCapability.create({
+        data: {
+          targetUserId: legacyTarget.userId,
+          lineAccountBindingId: legacyTarget.bindingId,
+          lineSubjectFingerprint: createLineSubjectFingerprint(legacyTarget.lineUserId).fingerprint,
+          tokenHash: createHash("sha256").update(legacyToken, "utf8").digest("hex"),
+          deliveredAt: now,
+          expiresAt: new Date(now.getTime() + 15 * 60_000),
+        },
+      });
+      await expect(openLinePasswordRecovery({ token: legacyToken, idToken: "fresh-line-id-token-for-recovery" }, legacyDependencies)).resolves.toEqual({ status: "READY" });
+
+      const retryTarget = await createLineRecoveryTarget(Role.PATIENT);
+      const retryDependencies = lineRecoveryDependencies(retryTarget.lineUserId);
+      await requestLinePasswordRecovery({ nationalId: retryTarget.nationalId }, retryDependencies);
+      const retryCapabilityId = latestLineCapabilityId(retryDependencies);
+      retryDependencies.createReplacementIdentity.mockRejectedValueOnce(new ProviderIdentityRejectedError("PASSWORD_POLICY"));
+      const completion = {
+        capabilityId: retryCapabilityId,
+        idToken: "fresh-line-id-token-for-recovery",
+        newPassword: "line-recovery-password-123",
+        passwordConfirmation: "line-recovery-password-123",
+      };
+      await expect(completeLinePasswordRecoveryWithIdentityToken(completion, retryDependencies)).rejects.toMatchObject({
+        code: "PASSWORD_POLICY_REJECTED",
+      } satisfies Partial<LinePasswordRecoveryCompletionError>);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: retryCapabilityId } })).toMatchObject({
+        claimedAt: null,
+        revokedAt: null,
+        reconciliationRequiredAt: null,
+      });
+      await expect(completeLinePasswordRecoveryWithIdentityToken(completion, retryDependencies)).resolves.toBeUndefined();
+
+      const uncertainTarget = await createLineRecoveryTarget(Role.PATIENT);
+      const uncertainDependencies = lineRecoveryDependencies(uncertainTarget.lineUserId);
+      await requestLinePasswordRecovery({ nationalId: uncertainTarget.nationalId }, uncertainDependencies);
+      const uncertainCapabilityId = latestLineCapabilityId(uncertainDependencies);
+      uncertainDependencies.createReplacementIdentity.mockRejectedValueOnce(new Error("provider timeout"));
+      await expect(completeLinePasswordRecoveryWithIdentityToken({ ...completion, capabilityId: uncertainCapabilityId }, uncertainDependencies)).rejects.toMatchObject({
+        code: "RECONCILIATION_REQUIRED",
+      } satisfies Partial<LinePasswordRecoveryCompletionError>);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: uncertainCapabilityId } })).toMatchObject({
+        claimedAt: now,
+        reconciliationRequiredAt: now,
+        revokedAt: null,
+      });
+      expect(await db.user.findUniqueOrThrow({ where: { id: uncertainTarget.userId } })).toMatchObject({ authSubject: uncertainTarget.authSubject });
+    });
+
     it("expires at 15 minutes, supersedes prior links, enforces three links per hour and revokes a failed push", async () => {
       const target = await createLineRecoveryTarget(Role.CAREGIVER);
       const dependencies = lineRecoveryDependencies(target.lineUserId);
       await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      const firstCapabilityId = latestLineCapabilityId(dependencies);
       await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
-      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, target.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
-      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(2, target.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "READY" });
+      const secondCapabilityId = latestLineCapabilityId(dependencies);
+      await expect(openLinePasswordRecovery({ capabilityId: firstCapabilityId, idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(openLinePasswordRecovery({ capabilityId: secondCapabilityId, idToken: "fresh-line-id-token-for-recovery" }, dependencies)).resolves.toEqual({ status: "READY" });
       await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
       const beforeFourthRequest = dependencies.sendPush.mock.calls.length;
       await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
@@ -1504,22 +1781,24 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       const expiring = await createLineRecoveryTarget(Role.PATIENT);
       const expiringDependencies = lineRecoveryDependencies(expiring.lineUserId);
       await requestLinePasswordRecovery({ nationalId: expiring.nationalId }, expiringDependencies);
+      const expiringCapabilityId = latestLineCapabilityId(expiringDependencies);
       const expiredAt = new Date(now.getTime() + 15 * 60_000);
       const expiryDependencies = {
         ...expiringDependencies,
         now: () => expiredAt,
         verifyIdentity: async () => ({ subject: expiring.lineUserId, verifiedAt: expiredAt, expiresAt: new Date(expiredAt.getTime() + 60_000) }),
       };
-      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, expiring.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, expiryDependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(openLinePasswordRecovery({ capabilityId: expiringCapabilityId, idToken: "fresh-line-id-token-for-recovery" }, expiryDependencies)).resolves.toEqual({ status: "EXPIRED" });
 
       const pushFailure = await createLineRecoveryTarget(Role.PATIENT);
       const failedDependencies = lineRecoveryDependencies(pushFailure.lineUserId);
       failedDependencies.sendPush.mockResolvedValueOnce({ kind: "PERMANENT_FAILURE" });
       const sameMessage = (await requestLinePasswordRecovery({ nationalId: pushFailure.nationalId }, failedDependencies)).message;
+      const failedCapabilityId = latestLineCapabilityId(failedDependencies);
       expect(sameMessage).toBe((await requestLinePasswordRecovery({ nationalId: nationalIdFor(++sequence) }, failedDependencies)).message);
       const failedCapability = await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: pushFailure.userId } });
       expect(failedCapability).toMatchObject({ deliveredAt: null, revokedAt: now });
-      await expect(openLinePasswordRecovery({ token: lineRecoveryToken(1, pushFailure.lineUserId), idToken: "fresh-line-id-token-for-recovery" }, failedDependencies)).resolves.toEqual({ status: "EXPIRED" });
+      await expect(openLinePasswordRecovery({ capabilityId: failedCapabilityId, idToken: "fresh-line-id-token-for-recovery" }, failedDependencies)).resolves.toEqual({ status: "EXPIRED" });
       const failedDeliveryAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.self_service.delivery", resourceId: pushFailure.userId } });
       expect(JSON.stringify(failedDeliveryAudit)).not.toContain(pushFailure.nationalId);
       expect(JSON.stringify(failedDeliveryAudit)).not.toContain(pushFailure.lineUserId);
@@ -1529,8 +1808,9 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       const target = await createLineRecoveryTarget(Role.PATIENT);
       const dependencies = lineRecoveryDependencies(target.lineUserId);
       await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
+      const capabilityId = latestLineCapabilityId(dependencies);
       const completion = {
-        token: lineRecoveryToken(1, target.lineUserId),
+        capabilityId,
         idToken: "fresh-line-id-token-for-recovery",
         newPassword: "line-recovery-password-123",
         passwordConfirmation: "line-recovery-password-123",
@@ -1552,7 +1832,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       });
       lostDependencies.createReplacementIdentity = createReplacementIdentity;
       await requestLinePasswordRecovery({ nationalId: lost.nationalId }, lostDependencies);
-      await expect(completeLinePasswordRecoveryWithIdentityToken({ ...completion, token: lineRecoveryToken(1, lost.lineUserId) }, lostDependencies)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(completeLinePasswordRecoveryWithIdentityToken({ ...completion, capabilityId: latestLineCapabilityId(lostDependencies) }, lostDependencies)).rejects.toMatchObject({ code: "LINK_UNAVAILABLE" });
       expect(await db.user.findUniqueOrThrow({ where: { id: lost.userId } })).toMatchObject({ authSubject: lost.authSubject, passwordResetNoticePendingAt: null });
       expect(lostDependencies.deleteProviderIdentity).toHaveBeenCalledWith(replacementSubject);
       expect(lostDependencies.deleteProviderIdentity).not.toHaveBeenCalledWith(lost.authSubject);

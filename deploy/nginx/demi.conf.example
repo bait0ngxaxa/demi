@@ -19,6 +19,7 @@ server {
     listen [::]:80;
     server_name <PROD_HOST>;
     server_tokens off;
+    access_log /var/log/nginx/demi-access.log demi_redacted;
 
     location / {
         return 301 https://$host$request_uri;
@@ -31,6 +32,7 @@ server {
     http2 on;
     server_name <PROD_HOST>;
     server_tokens off;
+    access_log /var/log/nginx/demi-access.log demi_redacted;
 
     # Cloudflare Origin CA certificate and key (Cloudflare dashboard → SSL/TLS → Origin Server).
     ssl_certificate /etc/ssl/cloudflare/<PROD_HOST>.origin.pem;

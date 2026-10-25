@@ -31,6 +31,7 @@ import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/l
 import { assertChildOwnerInvitationContext } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
+  assertPasswordChangeRecoveryAvailable,
   unreconciledAccountRecoveryWhere,
   unreconciledLinePasswordRecoveryWhere,
   unreconciledWorkforceResetWhere,
@@ -47,7 +48,6 @@ import {
   replacePasswordAndRevokeRecoverySessions,
 } from "../adapters/supabase-account-security-provider";
 import {
-  accountRecoveryCompletionSchema,
   accountRecoveryTokenSchema,
   mediatedPasswordResetCompletionSchema,
   mediatedPasswordResetIssueSchema,
@@ -110,6 +110,20 @@ class ResetAuthorizationLostError extends Error {
   constructor() {
     super("Mediated password reset authorization was lost");
     this.name = "ResetAuthorizationLostError";
+  }
+}
+
+export class PasswordResetReconciliationRequiredError extends InfrastructureError {
+  constructor() {
+    super("The password reset operation requires reconciliation");
+    this.name = "PasswordResetReconciliationRequiredError";
+  }
+}
+
+export class LinePasswordRecoveryIdentityMismatchError extends ForbiddenError {
+  constructor() {
+    super("The recovery link was opened from a different LINE account");
+    this.name = "LinePasswordRecoveryIdentityMismatchError";
   }
 }
 
@@ -647,6 +661,7 @@ export async function issueMediatedPasswordReset(
     const issued = await runSerializableTransaction(database, async (transaction) => {
       const { target, mode } = await authorizeIssuerAndTarget(transaction, actor.userId, parsed.data);
       await lockFirstCredentialOperation(transaction, target.userId);
+      await assertPasswordChangeRecoveryAvailable(transaction, target.userId);
       const [claimedWorkforce, claimedPatient, claimedLine] = await Promise.all([
         transaction.workforceActivation.findFirst({ where: { userId: target.userId, purpose: WorkforceActivationPurpose.RESET, claimedAt: { not: null }, usedAt: null, revokedAt: null }, select: { id: true } }),
         transaction.accountRecovery.findFirst({ where: { targetUserId: target.userId, claimedAt: { not: null }, completedAt: null, revokedAt: null }, select: { id: true } }),
@@ -765,7 +780,11 @@ export async function getMediatedPasswordResetAvailability(
   const parsed = accountRecoveryTokenSchema.safeParse(token);
   if (!parsed.success) throw new NotFoundError();
   const database = getDatabase(dependencies);
-  const record = await database.$transaction((transaction) => findResetByToken(transaction, hashAccountRecoveryToken(parsed.data)));
+  const record = await database.$transaction(async (transaction) => {
+    const reset = await findResetByToken(transaction, hashAccountRecoveryToken(parsed.data));
+    if (reset) await assertPasswordChangeRecoveryAvailable(transaction, reset.userId);
+    return reset;
+  });
   if (!record || record.storage === "LINE_SELF_SERVICE" || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= currentTime(dependencies)) {
     throw new NotFoundError();
   }
@@ -777,15 +796,14 @@ export type LinePasswordRecoveryAvailability = "READY" | "EXPIRED" | "OTHER_LINE
 export async function issueLinePasswordRecoveryCapability(
   input: { userId: string; identityKeyHash: string },
   dependencies: MediatedPasswordResetDependencies = {},
-): Promise<{ resetId: string; token: string; bindingId: string; lineUserId: string; expiresAt: Date } | null> {
+): Promise<{ resetId: string; bindingId: string; lineUserId: string; expiresAt: Date } | null> {
   const database = getDatabase(dependencies);
   const now = currentTime(dependencies);
-  const token = accountRecoveryTokenSchema.parse(dependencies.createToken?.() ?? createAccountRecoveryToken());
-  const tokenHash = hashAccountRecoveryToken(token);
   const expiresAt = new Date(now.getTime() + LINE_PASSWORD_RECOVERY_TTL_MS);
   try {
     const issued = await runSerializableTransaction(database, async (transaction) => {
       await lockFirstCredentialOperation(transaction, input.userId);
+      await assertPasswordChangeRecoveryAvailable(transaction, input.userId);
       const identity = await transaction.user.findUnique({
         where: { id: input.userId },
         select: { person: { select: { identityKeyHash: true } } },
@@ -807,14 +825,13 @@ export async function issueLinePasswordRecoveryCapability(
           targetUserId: input.userId,
           lineAccountBindingId: target.bindingId,
           lineSubjectFingerprint: target.lineSubjectFingerprint,
-          tokenHash,
           expiresAt,
         },
         select: { id: true },
       });
       return { resetId: capability.id, bindingId: target.bindingId, lineUserId: target.lineUserId };
     });
-    return issued ? { ...issued, token, expiresAt } : null;
+    return issued ? { ...issued, expiresAt } : null;
   } catch (error: unknown) {
     return asApplicationError(error);
   }
@@ -863,19 +880,18 @@ export async function revokeLinePasswordRecoveryCapability(
   });
 }
 
-export async function getLinePasswordRecoveryAvailability(
-  token: unknown,
+type LinePasswordRecoveryLocator = { tokenHash: string } | { id: string };
+
+async function getLinePasswordRecoveryAvailabilityForLocator(
+  locator: LinePasswordRecoveryLocator,
   lineSubjectFingerprint: string,
-  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now">,
 ): Promise<LinePasswordRecoveryAvailability> {
-  const parsedToken = accountRecoveryTokenSchema.safeParse(token);
-  if (!parsedToken.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) return "EXPIRED";
   const database = getDatabase(dependencies);
   const now = currentTime(dependencies);
   try {
     return await runSerializableTransaction(database, async (transaction) => {
-      const tokenHash = hashAccountRecoveryToken(parsedToken.data);
-      const record = await findResetByToken(transaction, tokenHash);
+      const record = await findReset(transaction, locator);
       if (
         !record || record.storage !== "LINE_SELF_SERVICE" || !record.deliveredAt ||
         record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now
@@ -883,7 +899,12 @@ export async function getLinePasswordRecoveryAvailability(
       if (record.lineSubjectFingerprint !== lineSubjectFingerprint) return "OTHER_LINE";
 
       await lockFirstCredentialOperation(transaction, record.userId);
-      const refreshed = await findResetByToken(transaction, tokenHash);
+      try {
+        await assertPasswordChangeRecoveryAvailable(transaction, record.userId);
+      } catch {
+        return "EXPIRED";
+      }
+      const refreshed = await findReset(transaction, locator);
       if (
         !refreshed || refreshed.storage !== "LINE_SELF_SERVICE" || !refreshed.deliveredAt ||
         refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now
@@ -906,34 +927,84 @@ export async function getLinePasswordRecoveryAvailability(
   }
 }
 
+export async function getLinePasswordRecoveryAvailability(
+  token: unknown,
+  lineSubjectFingerprint: string,
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+): Promise<LinePasswordRecoveryAvailability> {
+  const parsedToken = accountRecoveryTokenSchema.safeParse(token);
+  if (!parsedToken.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) return "EXPIRED";
+  return getLinePasswordRecoveryAvailabilityForLocator(
+    { tokenHash: hashAccountRecoveryToken(parsedToken.data) },
+    lineSubjectFingerprint,
+    dependencies,
+  );
+}
+
+export async function getLinePasswordRecoveryAvailabilityByCapabilityId(
+  capabilityId: unknown,
+  lineSubjectFingerprint: string,
+  dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
+): Promise<LinePasswordRecoveryAvailability> {
+  const parsedId = z.uuid().safeParse(capabilityId);
+  if (!parsedId.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) return "EXPIRED";
+  return getLinePasswordRecoveryAvailabilityForLocator(
+    { id: parsedId.data },
+    lineSubjectFingerprint,
+    dependencies,
+  );
+}
+
+const linePasswordRecoveryCompletionSchema = z.object({
+  token: accountRecoveryTokenSchema.optional(),
+  capabilityId: z.uuid().optional(),
+  newPassword: userOwnedPasswordSchema,
+  passwordConfirmation: userOwnedPasswordSchema,
+}).strict().superRefine((input, context) => {
+  if (Boolean(input.token) === Boolean(input.capabilityId)) {
+    context.addIssue({ code: "custom", path: ["capabilityId"], message: "Exactly one recovery link identifier is required" });
+  }
+  if (input.newPassword !== input.passwordConfirmation) {
+    context.addIssue({ code: "custom", path: ["passwordConfirmation"], message: "Password confirmation does not match" });
+  }
+});
+
 export async function completeLinePasswordRecovery(
   input: unknown,
   lineSubjectFingerprint: string,
   dependencies: MediatedPasswordResetDependencies = {},
 ): Promise<void> {
-  const parsed = accountRecoveryCompletionSchema.safeParse(input);
+  const parsed = linePasswordRecoveryCompletionSchema.safeParse(input);
   if (!parsed.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) {
     throw new ValidationError("LINE password recovery data is invalid");
   }
   const database = getDatabase(dependencies);
   const now = currentTime(dependencies);
-  const tokenHash = hashAccountRecoveryToken(parsed.data.token);
+  let locator: LinePasswordRecoveryLocator;
+  if (parsed.data.token) {
+    locator = { tokenHash: hashAccountRecoveryToken(parsed.data.token) };
+  } else if (parsed.data.capabilityId) {
+    locator = { id: parsed.data.capabilityId };
+  } else {
+    throw new ValidationError("LINE password recovery data is invalid");
+  }
   let claimed: { record: ResetRecord; previousAuthSubject: string } | null;
   try {
     claimed = await runSerializableTransaction(database, async (transaction) => {
-      const record = await findResetByToken(transaction, tokenHash);
+      const record = await findReset(transaction, locator);
       if (
         !record || record.storage !== "LINE_SELF_SERVICE" || !record.deliveredAt ||
         record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= now
       ) throw new NotFoundError();
-      if (record.lineSubjectFingerprint !== lineSubjectFingerprint) throw new ForbiddenError();
+      if (record.lineSubjectFingerprint !== lineSubjectFingerprint) throw new LinePasswordRecoveryIdentityMismatchError();
       await lockFirstCredentialOperation(transaction, record.userId);
-      const refreshed = await findResetByToken(transaction, tokenHash);
+      await assertPasswordChangeRecoveryAvailable(transaction, record.userId);
+      const refreshed = await findReset(transaction, locator);
       if (
         !refreshed || refreshed.storage !== "LINE_SELF_SERVICE" || !refreshed.deliveredAt ||
         refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now
       ) throw new ConflictError("This reset link is no longer available");
-      if (refreshed.lineSubjectFingerprint !== lineSubjectFingerprint) throw new ForbiddenError();
+      if (refreshed.lineSubjectFingerprint !== lineSubjectFingerprint) throw new LinePasswordRecoveryIdentityMismatchError();
 
       const target = await findEligibleLinePasswordRecoveryTarget(
         transaction,
@@ -999,6 +1070,7 @@ async function verifyIdentityAndClaim(
     if (!refreshed || refreshed.storage === "LINE_SELF_SERVICE" || refreshed.claimedAt || refreshed.usedAt || refreshed.revokedAt || refreshed.expiresAt <= now) {
       throw new ConflictError("This reset link is no longer available");
     }
+    await assertPasswordChangeRecoveryAvailable(transaction, refreshed.userId);
     const user = await transaction.user.findUnique({ where: { id: refreshed.userId }, select: { personId: true, authSubject: true } });
     if (!user?.authSubject) throw new ConflictError("The target credential changed");
     const identityKeyHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId });
@@ -1301,6 +1373,7 @@ async function switchIdentityAndFinalize(
 ): Promise<string> {
   return runSerializableTransaction(database, async (transaction) => {
     await lockFirstCredentialOperation(transaction, record.userId);
+    await assertPasswordChangeRecoveryAvailable(transaction, record.userId);
     let target: TargetSnapshot;
     try {
       if (record.storage === "LINE_SELF_SERVICE") {
@@ -1478,6 +1551,7 @@ async function replaceClaimedPasswordAndFinalize(
   } catch (error: unknown) {
     if (!settled) {
       await markReconciliationRequired(database, claimed.record, currentTime(dependencies));
+      throw new PasswordResetReconciliationRequiredError();
     }
     return asApplicationError(error);
   }
@@ -1562,6 +1636,7 @@ export async function recoverPlatformAdminPassword(
         throw new NotFoundError("No active platform ADMIN matches the login identifier");
       }
       await lockFirstCredentialOperation(transaction, user.id);
+      await assertPasswordChangeRecoveryAvailable(transaction, user.id);
       const activePeerCount = await transaction.user.count({
         where: { id: { not: user.id }, status: UserStatus.ACTIVE, roles: { some: { role: Role.ADMIN } } },
       });

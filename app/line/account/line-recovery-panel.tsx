@@ -42,13 +42,20 @@ const statusCopy = {
   RECOVERY_RELEASED_UNVERIFIED: "ตรวจสอบเพื่อเชื่อมใหม่แล้ว การถอนสิทธิ์เดิมจาก LINE ยังไม่ยืนยัน คุณเลือกเริ่มเชื่อมบัญชีใหม่ได้",
 };
 
-export async function initializeLineAccountLiff(liffId: string): Promise<void> {
+let liffInitialization: { liffId: string; promise: Promise<void> } | null = null;
+
+export function initializeLineAccountLiff(liffId: string): Promise<void> {
+  if (liffInitialization?.liffId === liffId) return liffInitialization.promise;
+
   let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([liff.init({ liffId }), new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(failure)), 10_000);
-    })]);
-  } finally { if (timer) clearTimeout(timer); }
+  const promise = Promise.race([liff.init({ liffId }), new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(failure)), 10_000);
+  })]).finally(() => {
+    if (timer) clearTimeout(timer);
+    if (liffInitialization?.promise === promise) liffInitialization = null;
+  });
+  liffInitialization = { liffId, promise };
+  return promise;
 }
 
 async function post(path: string, body: unknown): Promise<unknown> {

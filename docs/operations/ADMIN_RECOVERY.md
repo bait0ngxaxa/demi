@@ -28,6 +28,8 @@ The reset creates a claimed REC-1 `WorkforceActivation` record and reuses the sa
 sudo -u demi -H env NODE_OPTIONS='--env-file=/etc/demi/demi.env' npm run admin:recover -- --reconcile --reason "INC-1234: reconcile provider outcome"
 ```
 
+An unresolved authenticated password change is also a credential-operation fence. If a User has a non-null `passwordChangeOperationId`, do not issue, claim, or manually clear recovery state for that account. A definite current-password or password-policy rejection clears the fence automatically; an ambiguous provider/database result intentionally leaves recovery paused. Escalate to the application/security operator for an incident review of the operation ID and timestamp, application logs, and provider request outcome. Keep recovery paused until the operator can establish a safe credential state; do not clear the User fence with direct SQL or treat refresh-session revocation as proof that the password update succeeded.
+
 ### Evidence to retain
 
 Keep the incident/change reference, operator identity, start and completion times, target's internal User ID, the `account.password_reset.break_glass` audit event and reset ID, whether the active-peer override was used, final reset/reconciliation state, and the provider outcome needed for any follow-up. Store this evidence in the restricted incident record. Do not retain or copy the National ID, password, bearer token, service-role key, or hidden terminal input. The operator note belongs in the audit and should describe the incident without personal or credential data.

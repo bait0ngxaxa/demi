@@ -5,27 +5,52 @@ import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { getLineLiffId, isRecoveryLineEnabled } from "@/lib/env/server";
-import { linePasswordRecoveryRequestSchema } from "@/modules/account-security/schemas/account-security-schemas";
+import { accountRecoveryTokenSchema, linePasswordRecoveryRequestSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import {
   completeLinePasswordRecovery,
   confirmLinePasswordRecoveryDelivery,
   getLinePasswordRecoveryAvailability,
+  getLinePasswordRecoveryAvailabilityByCapabilityId,
   issueLinePasswordRecoveryCapability,
+  LinePasswordRecoveryIdentityMismatchError,
   revokeLinePasswordRecoveryCapability,
+  PasswordResetReconciliationRequiredError,
   type LinePasswordRecoveryAvailability,
   type MediatedPasswordResetDependencies,
 } from "@/modules/account-security/services/mediated-password-reset-service";
-import { accountRecoveryCompletionSchema, accountRecoveryTokenSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
+import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { verifyFreshLineIdToken, type VerifiedFreshLineIdentity } from "@/modules/line/adapters/line-login-client";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import {
+  ConflictError,
+  ForbiddenError,
+  InfrastructureError,
+  NotFoundError,
+  ValidationError,
+} from "@/shared/errors/application-error";
+import { ProviderIdentityRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE } from "@/modules/line/domain/line-password-recovery-copy";
 
 export { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE };
+
+export type LinePasswordRecoveryCompletionErrorCode =
+  | "PASSWORD_POLICY_REJECTED"
+  | "PASSWORD_REJECTED"
+  | "LINK_UNAVAILABLE"
+  | "LINE_PROOF_INVALID"
+  | "RECONCILIATION_REQUIRED"
+  | "OUTCOME_UNCERTAIN";
+
+export class LinePasswordRecoveryCompletionError extends Error {
+  constructor(readonly code: LinePasswordRecoveryCompletionErrorCode) {
+    super("LINE password recovery could not be completed");
+    this.name = "LinePasswordRecoveryCompletionError";
+  }
+}
 
 export type LinePasswordRecoveryDependencies = Pick<
   MediatedPasswordResetDependencies,
@@ -116,7 +141,7 @@ export async function requestLinePasswordRecovery(
     }
     resetId = issued.resetId;
 
-    const recoveryUrl = `https://liff.line.me/${lineLiffId}/recover#${encodeURIComponent(issued.token)}`;
+    const recoveryUrl = `https://liff.line.me/${lineLiffId}/recover?capability=${encodeURIComponent(issued.resetId)}`;
     const deliveryMessage = `ตั้งรหัสผ่าน DEMI ใหม่ได้จากลิงก์นี้ ลิงก์ใช้ได้ 15 นาทีและใช้ได้ครั้งเดียว\n${recoveryUrl}\nหากคุณไม่ได้ขอ กรุณาติดต่อโรงพยาบาล`;
     const sendPush: (lineUserId: string, message: string, retryKey: string) => Promise<{ kind: string }> =
       dependencies.sendPush ?? dependencies.sendLineMessage ??
@@ -139,7 +164,16 @@ export async function requestLinePasswordRecovery(
   return { message: LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE };
 }
 
-const openCapabilitySchema = z.object({ token: accountRecoveryTokenSchema, idToken: z.string().min(20).max(16_384) }).strict();
+const recoveryLocatorSchema = z.object({
+  token: accountRecoveryTokenSchema.optional(),
+  capabilityId: z.uuid().optional(),
+}).strict().superRefine((input, context) => {
+  if (Boolean(input.token) === Boolean(input.capabilityId)) {
+    context.addIssue({ code: "custom", path: ["capabilityId"], message: "Exactly one recovery link identifier is required" });
+  }
+});
+
+const openCapabilitySchema = recoveryLocatorSchema.extend({ idToken: z.string().min(20).max(16_384) });
 
 export async function openLinePasswordRecovery(
   input: unknown,
@@ -152,25 +186,60 @@ export async function openLinePasswordRecovery(
     const identity = await (dependencies.verifyIdentity ?? verifyFreshLineIdToken)(parsed.data.idToken);
     if (!isVerifiedFreshIdentity(identity)) return { status: genericAvailability() };
     const fingerprint = createLineSubjectFingerprint(identity.subject).fingerprint;
-    const status = await getLinePasswordRecoveryAvailability(parsed.data.token, fingerprint, dependencies);
+    const status = parsed.data.token
+      ? await getLinePasswordRecoveryAvailability(parsed.data.token, fingerprint, dependencies)
+      : await getLinePasswordRecoveryAvailabilityByCapabilityId(parsed.data.capabilityId, fingerprint, dependencies);
     return { status };
   } catch {
     return { status: genericAvailability() };
   }
 }
 
-const completeCapabilitySchema = accountRecoveryCompletionSchema.extend({ idToken: z.string().min(20).max(16_384) }).strict();
+const completeCapabilitySchema = recoveryLocatorSchema.extend({
+  idToken: z.string().min(20).max(16_384),
+  newPassword: userOwnedPasswordSchema,
+  passwordConfirmation: userOwnedPasswordSchema,
+}).strict().superRefine((input, context) => {
+  if (input.newPassword !== input.passwordConfirmation) {
+    context.addIssue({ code: "custom", path: ["passwordConfirmation"], message: "Password confirmation does not match" });
+  }
+});
 
 export async function completeLinePasswordRecoveryWithIdentityToken(
   input: unknown,
   dependencies: LinePasswordRecoveryDependencies = {},
 ): Promise<void> {
-  if (!recoveryEnabled(dependencies)) throw new Error("LINE password recovery is unavailable");
+  if (!recoveryEnabled(dependencies)) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
   const parsed = completeCapabilitySchema.safeParse(input);
-  if (!parsed.success) throw new Error("LINE password recovery is invalid");
+  if (!parsed.success) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
   const { idToken, ...completion } = parsed.data;
-  const identity = await (dependencies.verifyIdentity ?? verifyFreshLineIdToken)(idToken);
-  if (!isVerifiedFreshIdentity(identity)) throw new Error("LINE identity expired");
+  let identity: VerifiedFreshLineIdentity;
+  try {
+    identity = await (dependencies.verifyIdentity ?? verifyFreshLineIdToken)(idToken);
+  } catch {
+    throw new LinePasswordRecoveryCompletionError("LINE_PROOF_INVALID");
+  }
+  if (!isVerifiedFreshIdentity(identity)) throw new LinePasswordRecoveryCompletionError("LINE_PROOF_INVALID");
   const fingerprint = createLineSubjectFingerprint(identity.subject).fingerprint;
-  await completeLinePasswordRecovery(completion, fingerprint, dependencies);
+  try {
+    await completeLinePasswordRecovery(completion, fingerprint, dependencies);
+  } catch (error: unknown) {
+    if (error instanceof ProviderIdentityRejectedError) {
+      throw new LinePasswordRecoveryCompletionError(
+        error.reason === "PASSWORD_POLICY" ? "PASSWORD_POLICY_REJECTED" : "PASSWORD_REJECTED",
+      );
+    }
+    if (error instanceof PasswordResetReconciliationRequiredError) {
+      throw new LinePasswordRecoveryCompletionError("RECONCILIATION_REQUIRED");
+    }
+    if (error instanceof LinePasswordRecoveryIdentityMismatchError) {
+      throw new LinePasswordRecoveryCompletionError("LINE_PROOF_INVALID");
+    }
+    if (error instanceof ForbiddenError) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
+    if (error instanceof NotFoundError || error instanceof ConflictError || error instanceof ValidationError) {
+      throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
+    }
+    if (error instanceof InfrastructureError) throw new LinePasswordRecoveryCompletionError("OUTCOME_UNCERTAIN");
+    throw new LinePasswordRecoveryCompletionError("OUTCOME_UNCERTAIN");
+  }
 }

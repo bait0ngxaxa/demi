@@ -11,37 +11,72 @@ import { accountRecoveryTokenSchema } from "@/modules/account-security/schemas/a
 import { initializeLineAccountLiff } from "../line-recovery-panel";
 
 const openResponseSchema = z.object({ status: z.enum(["READY", "EXPIRED", "OTHER_LINE", "INELIGIBLE"]) });
-const completeResponseSchema = z.object({ status: z.enum(["COMPLETED", "ERROR"]) });
-type RecoveryStatus = "LOADING" | "READY" | "EXPIRED" | "OTHER_LINE" | "INELIGIBLE" | "LINE_UNAVAILABLE" | "COMPLETED";
-const safeFailure = "ยืนยันตัวตนหรือเปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาเปิดลิงก์จาก LINE ที่ผูกกับบัญชี หรือเริ่มขอลิงก์ใหม่";
+const completeResponseSchema = z.object({
+  status: z.enum(["COMPLETED", "ERROR"]),
+  code: z.enum([
+    "PASSWORD_POLICY_REJECTED",
+    "PASSWORD_REJECTED",
+    "LINK_UNAVAILABLE",
+    "LINE_PROOF_INVALID",
+    "RECONCILIATION_REQUIRED",
+    "OUTCOME_UNCERTAIN",
+  ]).optional(),
+});
+type RecoveryStatus = "LOADING" | "READY" | "EXPIRED" | "OTHER_LINE" | "INELIGIBLE" | "LINE_UNAVAILABLE" | "UNCERTAIN" | "COMPLETED";
+type RecoveryLocator = { token: string } | { capabilityId: string };
+
+function captureRecoveryLocatorAfterInit(): RecoveryLocator | null {
+  const url = new URL(window.location.href);
+  const queryParts = window.location.search.slice(1).split("&").filter(Boolean);
+  const capabilityParts = queryParts.filter((part) => part.split("=", 1)[0] === "capability");
+  const capabilityId = capabilityParts.length === 1 ? capabilityParts[0]?.slice("capability=".length) ?? null : null;
+  const rawToken = url.hash.slice(1);
+  let token: string | null = null;
+  try { token = rawToken ? decodeURIComponent(rawToken) : null; } catch { token = null; }
+
+  let locator: RecoveryLocator | null = null;
+  if (capabilityParts.length === 1 && capabilityId && !rawToken && z.uuid().safeParse(capabilityId).success) {
+    locator = { capabilityId };
+  } else if (capabilityParts.length === 0 && accountRecoveryTokenSchema.safeParse(token).success && token) {
+    locator = { token };
+  }
+
+  const remainingQuery = queryParts.filter((part) => part.split("=", 1)[0] !== "capability").join("&");
+  const cleanedUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ""}`;
+  window.history.replaceState(window.history.state, document.title, cleanedUrl);
+  return locator;
+}
 
 export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }): React.JSX.Element {
-  const [token, setToken] = useState<string | null>(null);
+  const [locator, setLocator] = useState<RecoveryLocator | null>(null);
   const [status, setStatus] = useState<RecoveryStatus>("LOADING");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [newPasswordError, setNewPasswordError] = useState("");
   const running = useRef(false);
+  const mountGeneration = useRef(0);
 
   useEffect(() => {
+    const generation = mountGeneration.current + 1;
+    mountGeneration.current = generation;
     let active = true;
-    const rawToken = window.location.hash.slice(1);
-    window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
-    let parsedToken: string | null = null;
-    try { parsedToken = rawToken ? decodeURIComponent(rawToken) : null; } catch { parsedToken = null; }
 
     async function verify(): Promise<void> {
-      await Promise.resolve();
-      if (!active) return;
-      setToken(parsedToken);
-      if (!accountRecoveryTokenSchema.safeParse(parsedToken).success || !liffId) {
+      if (!liffId) {
         setStatus("EXPIRED");
         return;
       }
       try {
         await initializeLineAccountLiff(liffId);
+        if (!active) return;
+        const recoveredLocator = captureRecoveryLocatorAfterInit();
+        setLocator(recoveredLocator);
+        if (!recoveredLocator) {
+          setStatus("EXPIRED");
+          return;
+        }
         if (!liff.isLoggedIn()) {
-          if (active) setStatus("LINE_UNAVAILABLE");
+          setStatus("LINE_UNAVAILABLE");
           return;
         }
         const idToken = liff.getIDToken();
@@ -51,7 +86,7 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
           credentials: "same-origin",
           cache: "no-store",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ token: parsedToken, idToken }),
+          body: JSON.stringify({ ...recoveredLocator, idToken }),
           signal: AbortSignal.timeout(25_000),
         });
         const result = openResponseSchema.safeParse(await response.json());
@@ -62,11 +97,14 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
       }
     }
     void verify();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (mountGeneration.current === generation) mountGeneration.current += 1;
+    };
   }, [liffId]);
 
   async function complete(formData: FormData): Promise<void> {
-    if (!token || status !== "READY" || running.current || !liffId) return;
+    if (!locator || status !== "READY" || running.current || !liffId) return;
     const newPassword = formData.get("newPassword");
     const passwordConfirmation = formData.get("passwordConfirmation");
     const passwordCheck = userOwnedPasswordSchema.safeParse(newPassword);
@@ -78,27 +116,63 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
     }
     running.current = true;
     setBusy(true);
+    const generation = mountGeneration.current;
+    let completionRequestStarted = false;
     try {
-      await initializeLineAccountLiff(liffId);
-      if (!liff.isLoggedIn()) throw new Error();
+      if (!liff.isLoggedIn()) {
+        if (mountGeneration.current === generation) setStatus("LINE_UNAVAILABLE");
+        return;
+      }
       const idToken = liff.getIDToken();
-      if (!idToken) throw new Error();
+      if (!idToken) {
+        if (mountGeneration.current === generation) setStatus("LINE_UNAVAILABLE");
+        return;
+      }
+      completionRequestStarted = true;
       const response = await fetch("/api/account-recovery/line/complete", {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, idToken, newPassword, passwordConfirmation }),
+        body: JSON.stringify({
+          ...locator,
+          idToken,
+          newPassword,
+          passwordConfirmation,
+        }),
         signal: AbortSignal.timeout(30_000),
       });
       const result = completeResponseSchema.safeParse(await response.json());
-      if (!response.ok || !result.success || result.data.status !== "COMPLETED") throw new Error();
-      setStatus("COMPLETED");
+      if (response.ok && result.success && result.data.status === "COMPLETED") {
+        if (mountGeneration.current === generation) setStatus("COMPLETED");
+      } else if (result.success && result.data.status === "ERROR") {
+        const code = result.data.code ?? "OUTCOME_UNCERTAIN";
+        if (mountGeneration.current !== generation) return;
+        if (code === "PASSWORD_POLICY_REJECTED") {
+          setNewPasswordError("รหัสผ่านนี้ยังไม่ผ่านข้อกำหนดด้านความปลอดภัย กรุณาเลือกรหัสผ่านใหม่");
+        } else if (code === "PASSWORD_REJECTED") {
+          setNewPasswordError("ระบบไม่ยอมรับรหัสผ่านนี้ กรุณาเลือกรหัสผ่านใหม่แล้วลองอีกครั้ง");
+        } else if (code === "LINK_UNAVAILABLE") {
+          setStatus("EXPIRED");
+        } else if (code === "LINE_PROOF_INVALID") {
+          setStatus("OTHER_LINE");
+        } else {
+          setStatus("UNCERTAIN");
+        }
+      } else if (mountGeneration.current === generation) {
+        setStatus("UNCERTAIN");
+      }
     } catch {
-      setMessage(safeFailure);
+      if (mountGeneration.current === generation) {
+        if (completionRequestStarted) {
+          setStatus("UNCERTAIN");
+        } else {
+          setMessage("ยืนยันบัญชี LINE ไม่สำเร็จ กรุณาเปิดลิงก์จาก LINE ที่ผูกกับบัญชีแล้วลองอีกครั้ง");
+        }
+      }
     } finally {
       running.current = false;
-      setBusy(false);
+      if (mountGeneration.current === generation) setBusy(false);
     }
   }
 
@@ -109,7 +183,11 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
     return <RecoveryShell>
       <h1 className="text-2xl font-semibold text-text">เปิดลิงก์ใน LINE</h1>
       <p className="mt-3 text-sm leading-6 text-text-muted">ลิงก์นี้ต้องยืนยันด้วยบัญชี LINE ที่ผูกกับ DEMI กรุณาเปิดจาก LINE ที่ได้รับข้อความ</p>
-      {liffId && token ? <a className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={`https://liff.line.me/${liffId}/recover#${encodeURIComponent(token)}`}>เปิดลิงก์ใน LINE</a> : null}
+      {liffId && locator ? <a className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={
+        "token" in locator
+          ? `https://liff.line.me/${liffId}/recover#${encodeURIComponent(locator.token)}`
+          : `https://liff.line.me/${liffId}/recover?capability=${encodeURIComponent(locator.capabilityId)}`
+      }>เปิดลิงก์ใน LINE</a> : null}
     </RecoveryShell>;
   }
   if (status === "EXPIRED") {
@@ -138,6 +216,13 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
       <h1 className="text-2xl font-semibold text-text">ตั้งรหัสผ่านใหม่แล้ว</h1>
       <p className="mt-3 text-sm leading-6 text-text-muted">เข้าสู่ระบบ DEMI ด้วยเลขบัตรประชาชนและรหัสผ่านใหม่ได้</p>
       <Link className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/login">ไปหน้าเข้าสู่ระบบ</Link>
+    </RecoveryShell>;
+  }
+  if (status === "UNCERTAIN") {
+    return <RecoveryShell>
+      <h1 className="text-2xl font-semibold text-text">ยังยืนยันผลการตั้งรหัสผ่านไม่ได้</h1>
+      <p className="mt-3 text-sm leading-6 text-text-muted">กรุณาอย่าลองใช้ลิงก์นี้ซ้ำ ติดต่อโรงพยาบาลเพื่อให้ตรวจสอบสถานะบัญชี</p>
+      <RecoveryLinks />
     </RecoveryShell>;
   }
   return <RecoveryShell>
