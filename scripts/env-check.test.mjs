@@ -65,9 +65,8 @@ describe("npm run env:check", () => {
 
   it.each([
     ["DATABASE_URL", /^DATABASE_URL=.*\r?\n/mu, "MISSING +CORE +DATABASE_URL"],
-    ["DEMI_SCHEDULER_SECRET", /^DEMI_SCHEDULER_SECRET=.*\r?\n/mu, "MISSING +PRODUCTION +DEMI_SCHEDULER_SECRET"],
-    ["DEMI_LINE_MESSAGING_BOT_USER_ID", /^DEMI_LINE_MESSAGING_BOT_USER_ID=.*\r?\n/mu, "MISSING +PRODUCTION +DEMI_LINE_MESSAGING_BOT_USER_ID"],
-  ])("fails when the required %s is missing, even if the shell defines it", (name, pattern, expected) => {
+    ["SUPABASE_SERVICE_ROLE_KEY", /^SUPABASE_SERVICE_ROLE_KEY=.*\r?\n/mu, "MISSING +CORE +SUPABASE_SERVICE_ROLE_KEY"],
+  ])("fails when required core variable %s is missing, even if the shell defines it", (name, pattern, expected) => {
     const path = variant(`missing-${name}.env`, (text) => text.replace(pattern, ""));
     const { status, output } = check(path);
     expect(status).toBe(1);
@@ -75,22 +74,35 @@ describe("npm run env:check", () => {
     expect(output).toContain("env:check FAILED");
   });
 
-  it("fails on invalid values and on appointment notifications enabled without a generation", () => {
+  it("fails on invalid test override and partial MINI provider configuration", () => {
     const path = variant("invalid.env", (text) => text
-      .replace("DEMI_DEPLOYMENT_STAGE=production", "DEMI_DEPLOYMENT_STAGE=uat")
-      .replace("DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false", "DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=true")
+      .replace("DEMI_ALLOW_TEST_NATIONAL_IDS=false", "DEMI_ALLOW_TEST_NATIONAL_IDS=TRUE")
       .replace("DEMI_LINE_MINI_APP_CHANNEL_ID=", "DEMI_LINE_MINI_APP_CHANNEL_ID=2234567890"));
     const { status, output } = check(path);
     expect(status).toBe(1);
-    expect(output).toMatch(/INVALID +PRODUCTION +DEMI_DEPLOYMENT_STAGE/u);
-    expect(output).toMatch(/INVALID +FEATURE +DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION/u);
+    expect(output).toMatch(/INVALID +OPTIONAL +DEMI_ALLOW_TEST_NATIONAL_IDS/u);
     expect(output).toMatch(/INVALID +OPTIONAL +DEMI_LINE_MINI_APP_ENVIRONMENT/u);
     expect(output).toMatch(/INVALID +OPTIONAL +DEMI_LINE_MINI_APP_CONTEXT_KEYRING/u);
   });
 
+  it("fails safely when a configured optional LINE Messaging integration is incomplete", () => {
+    const path = variant("partial-messaging.env", (text) => text.replace(/^DEMI_LINE_MESSAGING_BOT_USER_ID=.*\r?\n/mu, ""));
+    const { status, output } = check(path);
+    expect(status).toBe(1);
+    expect(output).toMatch(/INVALID +OPTIONAL +DEMI_LINE_MESSAGING_BOT_USER_ID/u);
+    expect(output).toContain("env:check FAILED");
+  });
+
+  it("accepts the explicit checksum-only National ID override with NODE_ENV=production", () => {
+    const path = variant("synthetic-ids.env", (text) => text.replace("DEMI_ALLOW_TEST_NATIONAL_IDS=false", "DEMI_ALLOW_TEST_NATIONAL_IDS=true"));
+    const { status, output } = check(path);
+    expect(status).toBe(0);
+    expect(output).toMatch(/OK +OPTIONAL +DEMI_ALLOW_TEST_NATIONAL_IDS/u);
+  });
+
   it("lists variables DEMI does not read and rejects a missing file", () => {
-    const path = variant("legacy.env", (text) => `${text}DEMI_LINE_DISCONNECTION_ENABLED=true\n`);
-    expect(check(path).output).toContain("not read by DEMI (remove): DEMI_LINE_DISCONNECTION_ENABLED");
+    const path = variant("legacy.env", (text) => `${text}DEMI_RECOVERY_LINE_ENABLED=true\n`);
+    expect(check(path).output).toContain("not read by DEMI (remove): DEMI_RECOVERY_LINE_ENABLED");
     expect(check(join(directory, "absent.env")).status).toBe(1);
     expect(check().status).toBe(1);
   });

@@ -86,7 +86,6 @@ describe("public self-registration form", () => {
   });
 
   it("submits a 13-digit synthetic ID so the server can apply the deployment policy", async () => {
-    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "development");
     vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
     const fetchMock = vi.fn().mockReturnValue(new Promise<Response>(() => {}));
     vi.stubGlobal("fetch", fetchMock);

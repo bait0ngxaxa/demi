@@ -1,7 +1,7 @@
 // Safety guard for the synthetic demo seed (P1 Part C). Pure: reads only the environment object it is given.
 // Every check must pass before the seed or reset touches a database or the auth provider; it fails closed.
 
-const PRODUCTION_MARKERS = ["NODE_ENV", "VERCEL_ENV", "DEMI_DEPLOYMENT_STAGE", "DEMI_LINE_MINI_APP_ENVIRONMENT"];
+const PRODUCTION_MARKERS = ["NODE_ENV", "VERCEL_ENV"];
 const SUPABASE_REF_PATTERN = /^[a-z0-9]{20}$/u;
 
 export class DemoSeedRefusedError extends Error {

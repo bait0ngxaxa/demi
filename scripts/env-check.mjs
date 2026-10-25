@@ -44,9 +44,6 @@ async function main() {
     console.log(`${status.padEnd(11)} ${group.padEnd(10)} ${name}`);
   }
   console.log("");
-  for (const [feature, on] of Object.entries(report.features)) {
-    console.log(`feature ${feature}: ${on ? "on" : "off"}`);
-  }
   const unknown = Object.keys(values).filter((name) => !DEPLOYMENT_ENVIRONMENT_VARIABLES.includes(name));
   if (unknown.length > 0) console.log(`\nnot read by DEMI (remove): ${unknown.join(", ")}`);
 

@@ -54,9 +54,8 @@ describe("patient activation lookup schema", () => {
     ).toBe(false);
   });
 
-  it("accepts checksum-invalid synthetic National ID lookup in production-mode UAT", () => {
+  it("accepts checksum-invalid synthetic National ID lookup in a production-mode build", () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
     vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
 
     expect(

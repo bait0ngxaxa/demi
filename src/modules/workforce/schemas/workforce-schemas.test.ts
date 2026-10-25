@@ -16,9 +16,8 @@ afterEach(() => {
 });
 
 describe("workforce National ID schemas", () => {
-  it("accepts synthetic IDs for workforce provisioning and activation in production-mode UAT", () => {
+  it("accepts synthetic IDs for workforce provisioning and activation in a production-mode build", () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
     vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
 
     expect(

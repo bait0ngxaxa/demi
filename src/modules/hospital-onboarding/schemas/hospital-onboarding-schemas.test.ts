@@ -35,9 +35,8 @@ describe("hospital onboarding input schema", () => {
     expect(hospitalOnboardingSubmissionSchema.safeParse(input).success).toBe(false);
   });
 
-  it("accepts a checksum-invalid synthetic applicant ID in production-mode UAT", () => {
+  it("accepts a checksum-invalid synthetic applicant ID in a production-mode build", () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
     vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
 
     expect(

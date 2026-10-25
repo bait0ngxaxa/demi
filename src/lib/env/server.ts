@@ -2,40 +2,6 @@ import "server-only";
 
 import { z } from "zod";
 
-/** Operational gate only. Invalid configuration also fails closed. */
-export function isFamilyDelegatedAppointmentReadEnabled(): boolean {
-  const parsed = z.enum(["true", "false"]).optional().safeParse(
-    process.env.FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED,
-  );
-  return parsed.success && parsed.data === "true";
-}
-
-/**
- * AF-5 release gate G-01: caregiver health-plan and medication sharing stays off until the partner agency approves.
- * Turning it off denies existing grants immediately; the grants stay recorded. Invalid values fail closed.
- */
-export function isFamilyPlanMedicationSharingEnabled(): boolean {
-  const parsed = z.enum(["true", "false"]).optional().safeParse(
-    process.env.FAMILY_PLAN_MEDICATION_SHARING_ENABLED,
-  );
-  return parsed.success && parsed.data === "true";
-}
-
-/** REC-2B LINE recovery rollout gate. Keep production off until G-06 approval; invalid values fail closed. */
-export function isRecoveryLineEnabled(): boolean {
-  const parsed = z.enum(["true", "false"]).optional().safeParse(process.env.DEMI_RECOVERY_LINE_ENABLED);
-  return parsed.success && parsed.data === "true";
-}
-
-/**
- * Medication LINE reminder emergency kill switch, parsed like
- * DEMI_LINE_MINI_APP_DISABLED: only unset/empty/"false" leaves reminders running.
- */
-export function isMedicationLineRemindersDisabled(): boolean {
-  const value = process.env.DEMI_LINE_MEDICATION_REMINDERS_DISABLED?.trim();
-  return value !== undefined && value !== "" && value !== "false";
-}
-
 const postgresUrlSchema = z
   .url()
   .refine((value) => value.startsWith("postgres://") || value.startsWith("postgresql://"), {

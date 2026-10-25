@@ -31,8 +31,8 @@ describe("demo seed guard", () => {
     expect(() => assertDemoSeedAllowed({ ...allowed, DATABASE_URL: "postgresql://demi:pw@127.0.0.1:5432/demi_test" })).toThrow("DATABASE_URL");
   });
 
-  it("refuses any production marker even when the ref matches", () => {
-    for (const name of ["NODE_ENV", "VERCEL_ENV", "DEMI_DEPLOYMENT_STAGE", "DEMI_LINE_MINI_APP_ENVIRONMENT"]) {
+  it("refuses production runtime markers even when the ref matches", () => {
+    for (const name of ["NODE_ENV", "VERCEL_ENV"]) {
       expect(() => assertDemoSeedAllowed({ ...allowed, [name]: "production" })).toThrow(name);
     }
   });

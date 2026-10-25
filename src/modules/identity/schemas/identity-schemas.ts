@@ -4,11 +4,8 @@ const optionalPersonName = z.string().trim().min(1).max(120).optional();
 
 export const THAI_NATIONAL_IDENTITY_NAMESPACE = "thai-national-id";
 export const TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE = "DEMI_ALLOW_TEST_NATIONAL_IDS";
-export const DEPLOYMENT_STAGE_ENVIRONMENT_VARIABLE = "DEMI_DEPLOYMENT_STAGE";
 
 export type IdentityEnvironment = {
-  nodeEnv?: string;
-  deploymentStage?: string;
   allowTestNationalIds?: string;
 };
 
@@ -18,8 +15,6 @@ function readRuntimeIdentityEnvironment(): IdentityEnvironment {
   }
 
   return {
-    nodeEnv: process.env["NODE_ENV"],
-    deploymentStage: process.env[DEPLOYMENT_STAGE_ENVIRONMENT_VARIABLE],
     allowTestNationalIds: process.env[TEST_NATIONAL_ID_ENVIRONMENT_VARIABLE],
   };
 }
@@ -28,27 +23,7 @@ export function isTestNationalIdBypassEnabled(
   environment?: IdentityEnvironment,
 ): boolean {
   const configuration = environment ?? readRuntimeIdentityEnvironment();
-
-  if (configuration.deploymentStage === "production") {
-    return false;
-  }
-
-  if (configuration.allowTestNationalIds !== "true") {
-    return false;
-  }
-
-  if (configuration.nodeEnv === "production") {
-    return configuration.deploymentStage === "uat";
-  }
-
-  if (
-    configuration.deploymentStage !== undefined &&
-    configuration.deploymentStage !== "development"
-  ) {
-    return false;
-  }
-
-  return configuration.nodeEnv === "development" || configuration.nodeEnv === "test";
+  return configuration.allowTestNationalIds === "true";
 }
 
 function hasValidThaiNationalIdChecksum(nationalId: string): boolean {

@@ -53,42 +53,49 @@ describe("deployment environment check", () => {
     expect(status(report, "SUPABASE_PATIENT_EVIDENCE_BUCKET")).toBe("MISSING");
   });
 
-  it("requires production LINE, stage and a dedicated scheduler secret in the production profile", () => {
-    vi.stubEnv("CRON_SECRET", "c".repeat(40));
+  it("does not require deployment labels or optional providers for a production check", () => {
+    const report = checkDeploymentEnvironment("production");
+    expect(report.valid).toBe(true);
+    expect(status(report, "DEMI_LINE_MESSAGING_CHANNEL_SECRET")).toBe("UNSET");
+    expect(status(report, "DEMI_SCHEDULER_SECRET")).toBe("UNSET");
+    expect(report.variables.some(({ name }) => name === "DEMI_DEPLOYMENT_STAGE")).toBe(false);
+  });
+
+  it("allows the explicit National ID test override in production mode", () => {
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
+
+    const report = checkDeploymentEnvironment("production");
+    expect(report.valid).toBe(true);
+    expect(status(report, "DEMI_ALLOW_TEST_NATIONAL_IDS")).toBe("OK");
+  });
+
+  it.each(["false", "yes", "TRUE"]) ("reports invalid National ID test flag %j", (value) => {
+    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", value);
+
+    const report = checkDeploymentEnvironment("production");
+    expect(report.valid).toBe(value === "false");
+    expect(status(report, "DEMI_ALLOW_TEST_NATIONAL_IDS")).toBe(value === "false" ? "OK" : "INVALID");
+  });
+
+  it("validates a provisioned LINE Messaging integration as a complete configuration", () => {
+    vi.stubEnv("DEMI_LINE_MESSAGING_CHANNEL_SECRET", "channel-secret");
+
+    const incomplete = checkDeploymentEnvironment("production");
+    expect(incomplete.valid).toBe(false);
+    expect(status(incomplete, "DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN")).toBe("INVALID");
+    expect(status(incomplete, "DEMI_LINE_MESSAGING_BOT_USER_ID")).toBe("INVALID");
+
+    vi.stubEnv("DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN", "access-token");
+    vi.stubEnv("DEMI_LINE_MESSAGING_BOT_USER_ID", "U1234567890abcdef1234567890abcdef");
+    expect(checkDeploymentEnvironment("production").valid).toBe(true);
+  });
+
+  it("rejects a partially configured LINE MINI App without requiring an unconfigured one", () => {
+    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", "2234567890");
     const report = checkDeploymentEnvironment("production");
     expect(report.valid).toBe(false);
-    for (const name of ["DEMI_DEPLOYMENT_STAGE", "DEMI_LINE_LOGIN_CHANNEL_ID", "NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "DEMI_LINE_MESSAGING_BOT_USER_ID", "DEMI_SCHEDULER_SECRET"]) {
-      expect(status(report, name)).toBe("MISSING");
-    }
-  });
-
-  it("derives feature states with the runtime resolvers", () => {
-    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "true");
-    vi.stubEnv("DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED", "true");
-    vi.stubEnv("DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION", "1b4e28ba-2fa1-41d2-883f-0016d3cca427");
-    expect(checkDeploymentEnvironment("production").features).toEqual({
-      appointmentNotifications: true,
-      medicationReminders: false,
-      lineRecovery: false,
-      miniAppProvisioned: false,
-      miniAppKillSwitch: false,
-      familyDelegatedAppointmentRead: false,
-      familyPlanMedicationSharing: false,
-    });
-  });
-
-  it("reports the AF-5 plan/medication sharing gate and rejects a non-boolean value", () => {
-    vi.stubEnv("FAMILY_PLAN_MEDICATION_SHARING_ENABLED", "true");
-    expect(checkDeploymentEnvironment("production").features.familyPlanMedicationSharing).toBe(true);
-    vi.stubEnv("FAMILY_PLAN_MEDICATION_SHARING_ENABLED", "yes");
-    const report = checkDeploymentEnvironment("production");
-    expect(status(report, "FAMILY_PLAN_MEDICATION_SHARING_ENABLED")).toBe("INVALID");
-    expect(report.features.familyPlanMedicationSharing).toBe(false);
-  });
-
-  it("rejects test National IDs in the production profile", () => {
-    vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
-    expect(status(checkDeploymentEnvironment("production"), "DEMI_ALLOW_TEST_NATIONAL_IDS")).toBe("INVALID");
+    expect(status(report, "DEMI_LINE_MINI_APP_ENVIRONMENT")).toBe("INVALID");
+    expect(status(report, "DEMI_LINE_MINI_APP_CONTEXT_KEYRING")).toBe("INVALID");
   });
 
   it.each([

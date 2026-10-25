@@ -202,9 +202,8 @@ describe("Strict hospital-bound patient import parser (template v3)", () => {
     });
   }, 10000);
 
-  it("accepts checksum-invalid synthetic National IDs from Excel in production-mode UAT", async () => {
+  it("accepts checksum-invalid synthetic National IDs from Excel in a production-mode build", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("DEMI_DEPLOYMENT_STAGE", "uat");
     vi.stubEnv("DEMI_ALLOW_TEST_NATIONAL_IDS", "true");
 
     const [candidate] = await readPatientImportCandidates(
