@@ -69,6 +69,7 @@ describe("deployment environment check", () => {
     expect(checkDeploymentEnvironment("production").features).toEqual({
       appointmentNotifications: true,
       medicationReminders: false,
+      lineRecovery: false,
       miniAppProvisioned: false,
       miniAppKillSwitch: false,
       familyDelegatedAppointmentRead: false,

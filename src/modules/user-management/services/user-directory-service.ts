@@ -47,6 +47,7 @@ import { assessUserRecordDeletion, type UserRecordDeletionBlocker } from "./user
 export type UserDirectoryRow = {
   kind: UserKind;
   relationshipId: string;
+  userId?: string | null;
   displayName: string;
   hospitalNumber: string | null;
   status: UserDirectoryStatus;
@@ -54,6 +55,7 @@ export type UserDirectoryRow = {
   method: ActivationMethod;
   selfRegisteredAt: Date | null;
   addedAt: Date;
+  latestPasswordReset: { completedAt: Date; verificationMethod: string; path: string } | null;
 };
 
 export type UserDirectoryPage = {
@@ -69,11 +71,19 @@ function toDisplayName(person: { givenName: string | null; familyName: string | 
 }
 
 const usedActivationSelect = {
+  id: true,
   status: true,
   identityAssurance: true,
   workforceActivations: { where: { usedAt: { not: null } }, select: { purpose: true, mode: true, usedAt: true } },
   patientActivations: { where: { usedAt: { not: null } }, select: { purpose: true, usedAt: true } },
 } as const satisfies Prisma.UserSelect;
+
+const PASSWORD_RESET_METHOD_LABELS: Record<string, string> = {
+  IN_PERSON_ID_CARD: "ตรวจบัตรประชาชน",
+  VIDEO_CALL_FACE_AND_ID_CARD: "วิดีโอคอลและบัตรประชาชน",
+  CALLBACK_PHONE_ON_HOSPITAL_RECORD: "โทรกลับหมายเลขในประวัติโรงพยาบาล",
+  BREAK_GLASS_CLI: "กู้คืนฉุกเฉินผ่าน CLI",
+};
 
 type UserActivationRecord = Prisma.UserGetPayload<{ select: typeof usedActivationSelect }>;
 
@@ -176,12 +186,12 @@ export async function listHospitalUsers(
       rows = relationships.map((relationship) => {
         const user = relationship.patientProfile.person.user;
         return { key: relationship, row: {
-          kind: "patient" as const, relationshipId: relationship.id,
+          kind: "patient" as const, relationshipId: relationship.id, userId: user?.id ?? null,
           displayName: toDisplayName(relationship.patientProfile.person), hospitalNumber: relationship.hospitalNumber,
           status: deriveUserDirectoryStatus({ ended: relationship.endedAt !== null, relationshipSuspended: false, userStatus: user?.status ?? null }),
           method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: user?.status ?? null, usedActivations: usedActivationsOf(user) }),
           identityAssurance: user?.identityAssurance ?? IdentityAssurance.HOSPITAL_PROOFED,
-          selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt,
+          selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt, latestPasswordReset: null,
         } };
       });
     } else {
@@ -202,7 +212,7 @@ export async function listHospitalUsers(
         ? await database.hospitalMembership.findMany({ where: where as Prisma.HospitalMembershipWhereInput, ...page, select })
         : await database.osmHospitalRelationship.findMany({ where: where as Prisma.OsmHospitalRelationshipWhereInput, ...page, select });
       rows = relationships.map((relationship) => ({ key: relationship, row: {
-        kind: query.kind, relationshipId: relationship.id,
+        kind: query.kind, relationshipId: relationship.id, userId: relationship.user.id,
         displayName: toDisplayName(relationship.user.person), hospitalNumber: null,
         status: deriveUserDirectoryStatus({
           ended: relationship.status === MembershipStatus.ENDED,
@@ -211,14 +221,40 @@ export async function listHospitalUsers(
         }),
         method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: relationship.user.status, usedActivations: usedActivationsOf(relationship.user) }),
         identityAssurance: relationship.user.identityAssurance,
-        selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt,
+        selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt, latestPasswordReset: null,
       } }));
     }
 
     const visible = rows.slice(0, pageSize);
+    const userIds = [...new Set(visible.map(({ row }) => row.userId).filter((id): id is string => id !== null))];
+    if (userIds.length > 0) {
+      const resetEvents = await database.auditEvent.findMany({
+        where: { action: "account.password_reset.completed", resourceType: "User", resourceId: { in: userIds } },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { resourceId: true, createdAt: true, metadata: true },
+      });
+      const latestByUser = new Map<string, UserDirectoryRow["latestPasswordReset"]>();
+      for (const event of resetEvents) {
+        if (!event.resourceId || latestByUser.has(event.resourceId)) continue;
+        const metadata = event.metadata && typeof event.metadata === "object" && !Array.isArray(event.metadata)
+          ? event.metadata as Prisma.JsonObject
+          : null;
+        const verificationMethod = typeof metadata?.verificationMethod === "string" ? metadata.verificationMethod : "ไม่ระบุวิธี";
+        const mode = typeof metadata?.mode === "string" ? metadata.mode : "";
+        const path = verificationMethod === "BREAK_GLASS_CLI"
+          ? "กู้คืนฉุกเฉินผ่าน CLI"
+          : `${mode === "IN_PERSON" ? "ต่อหน้า" : mode === "ONLINE" ? "ออนไลน์" : "ไม่ระบุช่องทาง"} · ${PASSWORD_RESET_METHOD_LABELS[verificationMethod] ?? "ไม่ระบุวิธี"}`;
+        latestByUser.set(event.resourceId, { completedAt: event.createdAt, verificationMethod, path });
+      }
+      for (const { row } of visible) row.latestPasswordReset = row.userId ? latestByUser.get(row.userId) ?? null : null;
+    }
     return {
       hospital,
-      rows: visible.map(({ row }) => row),
+      rows: visible.map(({ row }) => {
+        const publicRow = { ...row };
+        delete publicRow.userId;
+        return publicRow;
+      }),
       nextCursor: rows.length > pageSize ? writeCursor(query, visible.at(-1)?.key) : null,
     };
   } catch (error: unknown) {
@@ -296,7 +332,6 @@ const TIMELINE_LABELS: Record<string, string> = {
 const ADDED_ACTIONS = ["hospital_membership.provisioned", "osm_relationship.provisioned", "patient.provisioned"];
 
 const detailUserSelect = {
-  id: true,
   ...usedActivationSelect,
   takeoverLock: { select: { lockedAt: true, providerState: true, hospitalId: true } },
   person: { select: { id: true, givenName: true, familyName: true, version: true, patientProfile: { select: { id: true } } } },

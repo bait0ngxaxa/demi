@@ -29,9 +29,8 @@ export async function getSettingsPageContext(): Promise<SettingsPageContext> {
   }
   const contact = await getOwnContactSetting(actor);
   const selfRegistrationHospitals = await listOwnedHospitalSelfRegistrationSettings(actor);
-  // UI-4: password change moved from navigation to settings, keeping its Patient-only visibility.
-  const canChangePassword = actor.roles.includes(Role.PATIENT);
-  if (!canChangePassword) return { contact, patient: null, canChangePassword, selfRegistrationHospitals };
+  const canChangePassword = true;
+  if (!actor.roles.includes(Role.PATIENT)) return { contact, patient: null, canChangePassword, selfRegistrationHospitals };
   const [appointment, medication] = await Promise.all([
     getOwnAppointmentLineNotificationPreference(actor),
     getOwnMedicationLineReminderPreference(actor).catch((error: unknown) => error instanceof ForbiddenError ? null : Promise.reject(error)),

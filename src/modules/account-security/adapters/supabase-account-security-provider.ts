@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createClient, isAuthApiError, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, isAuthApiError, isAuthError, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
@@ -27,7 +27,8 @@ export async function updateAuthenticatedPassword(input: {
   userId: string;
   currentPassword: string;
   newPassword: string;
-}): Promise<void> {
+}): Promise<{ otherSessionsRevoked: boolean }> {
+  let passwordChangeConfirmed = false;
   try {
     const client = await getServerSupabaseClient({ requireWritableCookies: true });
     const currentUser = await client.auth.getUser();
@@ -51,14 +52,13 @@ export async function updateAuthenticatedPassword(input: {
       password: input.currentPassword,
     });
 
-    let passwordChangeConfirmed = false;
-
     try {
       if (
         verification.error ||
         verification.data.user?.id !== currentUser.data.user.id ||
         !verification.data.session
       ) {
+        if (isExplicitInvalidPassword(verification.error)) throw new CurrentPasswordRejectedError();
         throw new Error("Current password was not confirmed for the authenticated user");
       }
 
@@ -89,9 +89,34 @@ export async function updateAuthenticatedPassword(input: {
         }
       }
     }
-  } catch {
+
+    try {
+      const { error } = await client.auth.signOut({ scope: "others" });
+      if (error) console.error("Password changed but other provider sessions could not be revoked");
+      return { otherSessionsRevoked: !error };
+    } catch {
+      console.error("Password changed but other provider sessions could not be revoked");
+      return { otherSessionsRevoked: false };
+    }
+  } catch (error: unknown) {
+    if (error instanceof CurrentPasswordRejectedError) throw error;
+    if (passwordChangeConfirmed) {
+      console.error("Password changed but provider session cleanup could not be confirmed");
+      return { otherSessionsRevoked: false };
+    }
     throw new InfrastructureError("Account password could not be changed");
   }
+}
+
+export class CurrentPasswordRejectedError extends Error {
+  constructor() {
+    super("The current password was not accepted");
+    this.name = "CurrentPasswordRejectedError";
+  }
+}
+
+function isExplicitInvalidPassword(error: unknown): boolean {
+  return isAuthError(error) && error.code === "invalid_credentials";
 }
 
 export type ProviderIdentityRejection = "PASSWORD_POLICY" | "INVALID_REQUEST";

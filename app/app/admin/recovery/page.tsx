@@ -43,6 +43,7 @@ export default async function AdminPasswordRecoveryPage(): Promise<React.JSX.Ele
           displayName: reset.displayName,
           hospitalName: reset.hospitalName,
           mode: reset.mode,
+          verificationMethod: reset.verificationMethod,
           claimedAt: reset.claimedAt.toISOString(),
         }))}
       />

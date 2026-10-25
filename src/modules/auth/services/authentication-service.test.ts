@@ -17,10 +17,15 @@ import {
 } from "./authentication-service";
 
 const mockedGetServerSupabaseClient = vi.hoisted(() => vi.fn());
+const mockedThrottle = vi.hoisted(() => ({
+  isBlocked: vi.fn().mockResolvedValue(false),
+  recordFailure: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("@/lib/auth/supabase-server", () => ({
   getServerSupabaseClient: mockedGetServerSupabaseClient,
 }));
+vi.mock("./auth-attempt-throttle-service", () => ({ createAuthAttemptThrottle: () => mockedThrottle }));
 
 const activeUser: ActorUserRecord = {
   id: "user-1",
@@ -70,6 +75,8 @@ function createProvider(): PasswordAuthenticationProvider {
 describe("password authentication service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedThrottle.isBlocked.mockResolvedValue(false);
+    mockedThrottle.recordFailure.mockResolvedValue(undefined);
   });
 
   it("returns a safe invalid-credentials result", async () => {
@@ -87,6 +94,22 @@ describe("password authentication service", () => {
       ),
     ).resolves.toEqual({ status: "INVALID_CREDENTIALS" });
     expect(store.findUserByAuthSubject).not.toHaveBeenCalled();
+  });
+
+  it("does not look up the identity or call Supabase after a throttle block", async () => {
+    const provider = createProvider();
+    const resolveLoginIdentity = createLoginIdentityResolver();
+    mockedThrottle.isBlocked.mockResolvedValue(true);
+
+    await expect(authenticateWithPassword(loginInput, {
+      provider,
+      actorStore: createStore(),
+      resolveLoginIdentity,
+      clientIpAddress: "192.0.2.1",
+    })).resolves.toEqual({ status: "INVALID_CREDENTIALS" });
+
+    expect(resolveLoginIdentity).not.toHaveBeenCalled();
+    expect(provider.signInWithPassword).not.toHaveBeenCalled();
   });
 
   it("does not downgrade a provider failure to invalid credentials", async () => {
@@ -153,6 +176,34 @@ describe("password authentication service", () => {
       email: "invalid-login@auth.demi.internal",
       password: loginInput.password,
     });
+  });
+
+  it("gives existing and unknown identities the same failure response and throttles both", async () => {
+    const knownProvider = createProvider();
+    const unknownProvider = createProvider();
+    for (const provider of [knownProvider, unknownProvider]) {
+      vi.mocked(provider.signInWithPassword).mockResolvedValue({
+        data: { user: null },
+        error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials"),
+      });
+    }
+
+    const knownResult = await authenticateWithPassword(loginInput, {
+      provider: knownProvider,
+      actorStore: createStore(),
+      resolveLoginIdentity: createLoginIdentityResolver(),
+      clientIpAddress: "192.0.2.1",
+    });
+    const unknownResult = await authenticateWithPassword(loginInput, {
+      provider: unknownProvider,
+      actorStore: createStore(),
+      resolveLoginIdentity: createLoginIdentityResolver(null),
+      clientIpAddress: "192.0.2.1",
+    });
+
+    expect(knownResult).toEqual(unknownResult);
+    expect(knownResult).toEqual({ status: "INVALID_CREDENTIALS" });
+    expect(mockedThrottle.recordFailure).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when provider authentication returns an unexpected subject", async () => {

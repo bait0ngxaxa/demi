@@ -1,4 +1,4 @@
-import { isIP } from "node:net";
+import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
 
 export const PUBLIC_SELF_REGISTRATION_HEADERS = {
   "Cache-Control": "no-store, max-age=0",
@@ -16,11 +16,7 @@ export function publicSelfRegistrationJson(body: unknown, status = 200): Respons
 }
 
 export function getTrustedClientIpAddress(request: Request): string | null {
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  if (realIp && isIP(realIp)) return realIp;
-
-  const forwardedIp = request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
-  return forwardedIp && isIP(forwardedIp) ? forwardedIp : null;
+  return trustedClientIpAddress(request.headers);
 }
 
 export async function readBoundedJsonBody(request: Request): Promise<unknown> {

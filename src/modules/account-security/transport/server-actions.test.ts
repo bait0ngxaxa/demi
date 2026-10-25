@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
@@ -10,12 +11,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-real-ip": "192.0.2.1" }) }));
 vi.mock("@/lib/env/server", () => ({
   createApplicationCredentialUrlBuilder: () => ({ build: (token: string) => `https://demi.example/recover#${token}` }),
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.getActor }));
 vi.mock("@/modules/auth/services/authentication-service", () => ({ signOutCurrentSession: mocks.signOut }));
-vi.mock("../services/password-change-service", () => ({ changeAuthenticatedUserPassword: vi.fn() }));
+vi.mock("../services/password-change-service", () => ({
+  changeAuthenticatedUserPassword: vi.fn(),
+  PasswordChangeAttemptThrottledError: class PasswordChangeAttemptThrottledError extends Error {},
+}));
 vi.mock("../services/account-recovery-service", () => ({
   completePatientAccountRecovery: vi.fn(),
   getPatientAccountRecoveryAvailability: vi.fn(),
@@ -35,11 +40,13 @@ vi.mock("../adapters/supabase-account-security-provider", async () => {
   class ProviderIdentityRejectedError extends ValidationError {
     constructor(readonly reason: "PASSWORD_POLICY" | "INVALID_REQUEST") { super(); }
   }
-  return { ProviderIdentityRejectedError };
+  class CurrentPasswordRejectedError extends Error {}
+  return { CurrentPasswordRejectedError, ProviderIdentityRejectedError };
 });
 
-import { ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
-import { completeMediatedPasswordResetAction, issueMediatedPasswordResetAction } from "./server-actions";
+import { CurrentPasswordRejectedError, ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
+import { changeAuthenticatedUserPassword } from "../services/password-change-service";
+import { changeAuthenticatedPasswordAction, completeMediatedPasswordResetAction, issueMediatedPasswordResetAction } from "./server-actions";
 
 const actor = { userId: "11111111-1111-4111-8111-111111111111" };
 const input = {
@@ -97,6 +104,31 @@ describe("mediated password reset actions", () => {
     await expect(completeMediatedPasswordResetAction({ status: "IDLE" }, formData)).resolves.toMatchObject({
       status: "ERROR",
       fieldErrors: { newPassword: expect.stringContaining("รหัสผ่าน") },
+    });
+  });
+
+  it("returns the same Thai identity error for an existing and unknown National ID", async () => {
+    mocks.complete
+      .mockRejectedValueOnce(new ForbiddenError("The National ID did not match"))
+      .mockRejectedValueOnce(new NotFoundError("No account matched the National ID"));
+    const existingIdentityResult = await completeMediatedPasswordResetAction({ status: "IDLE" }, new FormData());
+    const unknownIdentityResult = await completeMediatedPasswordResetAction({ status: "IDLE" }, new FormData());
+
+    expect(existingIdentityResult).toEqual(unknownIdentityResult);
+    expect(existingIdentityResult).toEqual({
+      status: "ERROR",
+      message: "ยืนยันตัวตนไม่สำเร็จ ลิงก์อาจหมดอายุหรือใช้ครบจำนวนครั้งแล้ว กรุณาติดต่อโรงพยาบาล",
+    });
+  });
+
+  it("returns a current-password field error without exposing provider details", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(new CurrentPasswordRejectedError());
+    const result = await changeAuthenticatedPasswordAction({ status: "IDLE" }, new FormData());
+
+    expect(result).toEqual({
+      status: "ERROR",
+      message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล",
+      fieldErrors: { currentPassword: "รหัสผ่านปัจจุบันไม่ถูกต้อง" },
     });
   });
 });

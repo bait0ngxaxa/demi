@@ -1,10 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
+import { CurrentPasswordRejectedError } from "../adapters/supabase-account-security-provider";
+import { PasswordChangeAttemptThrottledError } from "../services/password-change-service";
+import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
 import { ConflictError, InfrastructureError } from "@/shared/errors/application-error";
 
 import { ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
@@ -41,11 +45,24 @@ export async function changeAuthenticatedPasswordAction(
 ): Promise<PasswordChangeActionState> {
   try {
     const actor = await getProtectedApplicationActor();
-    await changeAuthenticatedUserPassword(actor, Object.fromEntries(formData.entries()));
+    const result = await changeAuthenticatedUserPassword(actor, Object.fromEntries(formData.entries()), {
+      clientIpAddress: trustedClientIpAddress(await headers()),
+    });
     revalidatePath("/app/personal/password");
 
-    return { status: "SUCCESS", message: "เปลี่ยนรหัสผ่านของบัญชี DEMI แล้ว" };
-  } catch {
+    return {
+      status: "SUCCESS",
+      message: result.otherSessionsRevoked
+        ? "เปลี่ยนรหัสผ่านของบัญชี DEMI แล้ว"
+        : "เปลี่ยนรหัสผ่านแล้ว แต่ระบบออกจากระบบในอุปกรณ์อื่นไม่สำเร็จ กรุณาออกจากระบบในอุปกรณ์เหล่านั้นด้วยตนเอง",
+    };
+  } catch (error: unknown) {
+    if (error instanceof CurrentPasswordRejectedError) {
+      return { status: "ERROR", message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล", fieldErrors: { currentPassword: "รหัสผ่านปัจจุบันไม่ถูกต้อง" } };
+    }
+    if (error instanceof PasswordChangeAttemptThrottledError) {
+      return { status: "ERROR", message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล", fieldErrors: { currentPassword: "พยายามตรวจสอบรหัสผ่านปัจจุบันหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่" } };
+    }
     return { status: "ERROR", message: genericAccountError };
   }
 }
@@ -147,10 +164,14 @@ export type MediatedPasswordResetSearchActionResult =
 
 export async function searchMediatedPasswordResetTargetsAction(
   nationalId: string,
+  hospitalId?: string,
 ): Promise<MediatedPasswordResetSearchActionResult> {
   try {
     const actor = await getProtectedApplicationActor();
-    const candidates = await searchMediatedPasswordResetTargets(actor, { nationalId });
+    const candidates = await searchMediatedPasswordResetTargets(actor, { nationalId }, undefined, {
+      ...(hospitalId ? { hospitalId } : {}),
+      clientIpAddress: trustedClientIpAddress(await headers()),
+    });
     return candidates.length > 0 ? { status: "MATCH", candidates } : { status: "NO_MATCH" };
   } catch {
     return { status: "ERROR", message: genericAccountError };
@@ -180,7 +201,7 @@ export async function completeMediatedPasswordResetAction(
       nationalId: formData.get("nationalId"),
       newPassword: formData.get("newPassword"),
       passwordConfirmation: formData.get("passwordConfirmation"),
-    });
+    }, { clientIpAddress: trustedClientIpAddress(await headers()) });
     return { status: "COMPLETED", message: "รหัสผ่านบัญชี DEMI เปลี่ยนแล้ว เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้" };
   } catch (error: unknown) {
     if (error instanceof ProviderIdentityRejectedError) {

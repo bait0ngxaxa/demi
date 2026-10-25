@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   title: "เปลี่ยนรหัสผ่าน",
 };
 
-export default async function PatientPasswordPage(): Promise<React.JSX.Element> {
+export default async function AccountPasswordPage(): Promise<React.JSX.Element> {
   await connection();
   await getProtectedApplicationActor();
 
@@ -21,7 +21,7 @@ export default async function PatientPasswordPage(): Promise<React.JSX.Element> 
       <PageHeader
         breadcrumbs={[
           { label: "พื้นที่ส่วนตัว", href: "/app/personal" },
-          { label: "ข้อมูลของฉัน", href: "/app/personal/profile" },
+          { label: "ตั้งค่า", href: "/app/settings" },
           { label: "เปลี่ยนรหัสผ่าน" },
         ]}
         description="เปลี่ยนรหัสผ่านของบัญชี DEMI ที่คุณใช้เข้าสู่ระบบ"
@@ -35,9 +35,9 @@ export default async function PatientPasswordPage(): Promise<React.JSX.Element> 
         <PasswordChangeForm />
         <Link
           className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-strong underline underline-offset-4"
-          href="/app/personal/profile"
+          href="/app/settings"
         >
-          กลับไปข้อมูลของฉัน
+          กลับไปตั้งค่า
         </Link>
       </Panel>
     </div>

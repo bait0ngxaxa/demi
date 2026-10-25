@@ -12,6 +12,7 @@ const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ redirect: mockedRedirect }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-real-ip": "192.0.2.1" }) }));
 vi.mock("../services/authentication-service", () => ({
   authenticateWithPassword: vi.fn(),
   signOutCurrentSession: vi.fn(),
@@ -66,7 +67,7 @@ describe("authentication Server Actions", () => {
     expect(mockedAuthenticateWithPassword).toHaveBeenCalledWith({
       nationalId: "DEMI-ADMIN-ROOT",
       password: "valid-password",
-    });
+    }, { clientIpAddress: "192.0.2.1" });
     expect(mockedRedirect).toHaveBeenCalledWith("/app");
   });
 
@@ -188,6 +189,13 @@ describe("authentication Server Actions", () => {
     expect(unknownIdentityResult).toEqual(result);
     expect(JSON.stringify(result)).not.toContain("1000000000009");
     expect(JSON.stringify(result)).not.toContain("wrong-password");
+
+    mockedAuthenticateWithPassword.mockResolvedValue({ status: "APPLICATION_ACCESS_DENIED", reason: "ACCOUNT_NOT_ACTIVE" });
+    const unavailableAccountResult = await loginAction(
+      initialLoginActionState,
+      createLoginFormData("1000000000009", "correct-password"),
+    );
+    expect(unavailableAccountResult).toEqual(result);
   });
 
   it("sanitizes authentication infrastructure failures", async () => {

@@ -5,10 +5,10 @@ Reviewed baseline: `e61cd8638ca6be450cdc017fd2405475f059fc74`, branch
 No merge, deployment, production data or production provider operation was performed.
 Historical decisions remain in [ADR-0008](../adr/0008-workforce-provisioning-and-activation.md).
 The original remediation below records the pre-REC-1 security posture. For current reset behavior,
-REC-1 in [ADR-0012](../adr/0012-global-credential-recovery-proof.md) supersedes the blanket
-recovery-disable and terminal-takeover statements while preserving the legacy entry-point guards.
+REC-2A in [ADR-0012](../adr/0012-global-credential-recovery-proof.md) amends REC-1's target eligibility
+and ADMIN peer rules while preserving the existing ceremony, state machine and legacy entry-point guards.
 
-## ขั้นตอนปัจจุบัน: REC-1 รีเซ็ตรหัสผ่าน / คืนบัญชี
+## ขั้นตอนปัจจุบัน: REC-2A รีเซ็ตรหัสผ่าน / คืนบัญชี
 
 ใช้ flow นี้เท่านั้นสำหรับการเปลี่ยนรหัสผ่านที่ผู้ใช้ลืมและการปลดล็อกบัญชีที่สงสัยว่าถูกยึด
 ผู้ดำเนินการต้องตรวจตัวตนก่อนออก capability และเลือกวิธีที่ทำจริงจากรายการคงที่:
@@ -16,14 +16,17 @@ recovery-disable and terminal-takeover statements while preserving the legacy en
 (`VIDEO_CALL_FACE_AND_ID_CARD`) หรือโทรกลับเบอร์ที่โรงพยาบาลมีอยู่ก่อนแล้ว
 (`CALLBACK_PHONE_ON_HOSPITAL_RECORD`) ห้ามใช้เบอร์ที่ผู้ร้องขอแจ้งมา ไม่มีการเก็บภาพหรือเลขบัตร
 
-- OWNER ที่ใช้งานอยู่ของ Hospital ACTIVE ทำได้เฉพาะผู้ใช้อื่นซึ่งไม่ใช่ OWNER/ADMIN และความสัมพันธ์
-  ทุกแถว (รวมแถวที่สิ้นสุดแล้ว) กับ HospitalMembership, OsmHospitalRelationship และ
-  PatientHospitalRelationship อยู่ Hospital เดียวกัน ผู้ที่เป็น caregiver เอง (`caregiverUserId` ใน
-  CaregiverRelationship หรือ CaregiverAppointmentGrant) ต้องให้ platform ADMIN ทำรายการ ส่วนผู้ป่วยที่
-  มี caregiver ยังอยู่ใน scope OWNER
-- platform ADMIN ใช้เครื่องมือค้นหาเลขบัตรแบบตรงตัวผ่าน HMAC lookup และทำได้กับเป้าหมายที่อยู่นอก
-  scope OWNER รวมถึง OWNER/ADMIN แต่ห้ามรีเซ็ตบัญชีตนเอง ทุกครั้งต้องเลือก Hospital ACTIVE และระบบ
-  ตรวจ issuer, Hospital, target และความสัมพันธ์ซ้ำเมื่อเจ้าของบัญชีส่งแบบฟอร์ม
+- OWNER โดยตรงที่ใช้งานอยู่ใน Hospital ACTIVE ทำรายการกับ MEMBER/OSM/ผู้ป่วยที่ไม่ใช่ ADMIN/OWNER
+  เมื่อความสัมพันธ์ทั้งหมดของเป้าหมาย รวมแถวที่สิ้นสุดแล้ว อยู่ Hospital เดียวกันได้ รวมทั้ง OWNER คนอื่น
+  ใน Hospital เดียวกันภายใต้เงื่อนไขความสัมพันธ์เดียวกัน
+- OWNER โดยตรงค้นหาเลขบัตรแบบตรงตัวในหน้าไดเรกทอรีเพื่อหาเป้าหมายที่มีบทบาท CAREGIVER อย่างเดียวได้
+  เมื่อทุก `CaregiverRelationship`, `CaregiverAppointmentGrant`, `CaregiverResourceGrant` ของเป้าหมาย
+  (รวมรายการที่สิ้นสุดแล้ว) อ้างถึงผู้ป่วยซึ่ง `PatientHospitalRelationship` ทั้งหมด (รวมรายการที่สิ้นสุดแล้ว)
+  อยู่ Hospital เดียวกัน ผู้ใช้หลายบทบาท, ผู้ป่วยหลาย Hospital, takeover-locked หรือมี credential operation
+  ค้าง/reconciliation-required ยังคง ADMIN-only; ผู้ป่วยที่มี caregiver แต่ไม่ได้เป็น caregiver เองยังอยู่ใน scope OWNER
+- platform ADMIN ใช้เครื่องมือค้นหาเลขบัตรผ่าน HMAC lookup และทำได้กับเป้าหมายภายใต้ REC-1/FIX-1b/1c
+  รวม OWNER และ ADMIN คนอื่น ห้ามรีเซ็ตบัญชีตนเอง ทุกครั้งต้องเลือก Hospital ACTIVE ระบบตรวจ issuer,
+  Hospital, target และความสัมพันธ์ซ้ำตอนออกลิงก์ ตอนยืนยันเลขบัตร และก่อนเปลี่ยน credential
 - `IN_PERSON` หมดอายุ 15 นาที: ส่งมอบเครื่องให้เจ้าของบัญชีกรอกเลขบัตรของตนเองและตั้งรหัสผ่าน
   `ONLINE` หมดอายุ 24 ชั่วโมง: ผู้ดำเนินการส่ง QR/ลิงก์ให้เปิดบนเครื่องของเจ้าของบัญชี ลิงก์ใช้ครั้งเดียว
   ผิด 5 ครั้งแล้ว capability ถูกเพิกถอน
@@ -39,6 +42,10 @@ recovery-disable and terminal-takeover statements while preserving the legacy en
 - เมื่อสำเร็จ User กลับเป็น ACTIVE และ takeover lock เปลี่ยนเป็น `RESOLVED`; คืนเฉพาะ staff/OSM
   relationship ID ที่ lock ระงับไว้ LINE ที่เชื่อมหลัง lock คงสถานะ unlink; ถ้ายังมี binding ที่ใช้งาน
   ส่งข้อความแจ้งเปลี่ยนรหัสผ่านตาม ADR-0012
+
+การค้นหา login และเลขบัตร recovery มี DEMI throttle เพิ่มจาก Supabase: 5 ครั้งไม่สำเร็จใน 15 นาทีเริ่ม block 15 นาทีต่อ HMAC identity และต่อ client IP; หน้า login/recovery ตอบข้อความทั่วไปที่ไม่บอกว่าบัญชีมีอยู่หรือไม่ IP ใช้เฉพาะ `X-Real-IP` ที่ nginx เขียนทับหลังตรวจ Cloudflare real IP แล้ว ห้ามเชื่อ `X-Forwarded-For` ที่ส่งมาจาก client
+
+ผู้ดูแลระบบสามารถรีเซ็ตรหัสผ่าน ADMIN คนอื่นด้วย REC-1 ceremony; สำหรับ ADMIN คนสุดท้ายหรือเหตุฉุกเฉินให้ใช้ `npm run admin:recover` ตาม [runbook break-glass](../operations/ADMIN_RECOVERY.md) เท่านั้น ส่วน authenticated password change มีให้ทุกบทบาทจาก **ตั้งค่า → เปลี่ยนรหัสผ่าน** และจะออกจากระบบ Supabase session อื่นหลังเปลี่ยนสำเร็จ
 
 การเรียก Supabase ที่ใช้คือ Admin `createUser` เพื่อสร้าง credential ใหม่, Admin `deleteUser` เพื่อลบ
 subject เก่า, Admin `updateUserById` สำหรับ provider ban ขณะล็อก และ Auth `getUser` สำหรับตรวจ session

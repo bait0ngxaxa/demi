@@ -29,7 +29,10 @@ export function PasswordChangeForm(): React.JSX.Element {
           name="currentPassword"
           required
           type="password"
+          aria-invalid={Boolean(state.fieldErrors?.currentPassword)}
+          aria-describedby={state.fieldErrors?.currentPassword ? "currentPassword-error" : undefined}
         />
+        {state.fieldErrors?.currentPassword ? <p className="mt-1 text-sm leading-5 text-danger" id="currentPassword-error" role="alert">{state.fieldErrors.currentPassword}</p> : null}
       </div>
       <div className="min-w-0">
         <label className="block text-sm font-semibold text-text" htmlFor="newPassword">

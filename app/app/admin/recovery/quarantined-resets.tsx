@@ -16,7 +16,15 @@ export type QuarantinedResetRow = {
   displayName: string;
   hospitalName: string;
   mode: "IN_PERSON" | "ONLINE";
+  verificationMethod: string;
   claimedAt: string;
+};
+
+const VERIFICATION_METHOD_LABELS: Record<string, string> = {
+  IN_PERSON_ID_CARD: "ตรวจบัตรประชาชนต่อหน้า",
+  VIDEO_CALL_FACE_AND_ID_CARD: "วิดีโอคอลและบัตรประชาชน",
+  CALLBACK_PHONE_ON_HOSPITAL_RECORD: "โทรกลับหมายเลขในประวัติโรงพยาบาล",
+  BREAK_GLASS_CLI: "กู้คืนฉุกเฉินผ่าน CLI",
 };
 
 const OUTCOME_MESSAGES = {
@@ -63,7 +71,7 @@ export function QuarantinedMediatedResets({ resets }: { resets: QuarantinedReset
               <div className="min-w-0">
                 <p className="break-words font-medium text-text">{reset.displayName} · {reset.hospitalName}</p>
                 <p className="text-sm text-text-muted">
-                  {reset.mode === "IN_PERSON" ? "ต่อหน้า" : "ออนไลน์"} · เริ่มตั้งรหัสผ่านเมื่อ {formatThaiDate(reset.claimedAt)}
+                  {reset.verificationMethod === "BREAK_GLASS_CLI" ? VERIFICATION_METHOD_LABELS.BREAK_GLASS_CLI : `${reset.mode === "IN_PERSON" ? "ต่อหน้า" : "ออนไลน์"} · ${VERIFICATION_METHOD_LABELS[reset.verificationMethod] ?? "วิธีที่บันทึกไว้"}`} · เริ่มตั้งรหัสผ่านเมื่อ {formatThaiDate(reset.claimedAt)}
                 </p>
                 {result?.resetId === reset.resetId && result.state.status === "ERROR" ? (
                   <Alert className="mt-2" variant="warning">{result.state.message}</Alert>

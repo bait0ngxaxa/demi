@@ -86,12 +86,12 @@ export default async function LoginPage({
           <LoginForm applicationAccessDenied={access.status === "APPLICATION_ACCESS_DENIED"} safeReturnTo={safeReturnTo} />
 
           <p className="mt-5 text-sm leading-6 text-muted">
-            ลืมรหัสผ่าน? ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน{" "}
+            ต้องการกู้คืนบัญชีใช่ไหม{" "}
             <Link
               className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
               href="/recover"
             >
-              ดูแนวทาง
+              ลืมรหัสผ่าน?
             </Link>
           </p>
 

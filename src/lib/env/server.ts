@@ -21,6 +21,12 @@ export function isFamilyPlanMedicationSharingEnabled(): boolean {
   return parsed.success && parsed.data === "true";
 }
 
+/** REC-2B LINE recovery stays hidden until its self-service flow ships. Invalid values fail closed. */
+export function isRecoveryLineEnabled(): boolean {
+  const parsed = z.enum(["true", "false"]).optional().safeParse(process.env.DEMI_RECOVERY_LINE_ENABLED);
+  return parsed.success && parsed.data === "true";
+}
+
 /**
  * Medication LINE reminder emergency kill switch, parsed like
  * DEMI_LINE_MINI_APP_DISABLED: only unset/empty/"false" leaves reminders running.

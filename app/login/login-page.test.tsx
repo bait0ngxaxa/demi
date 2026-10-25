@@ -27,7 +27,7 @@ describe("Login page entry points and recovery guidance", () => {
 
     expect(markup).toContain("ลืมรหัสผ่าน?");
     expect(markup.indexOf("ลืมรหัสผ่าน?")).toBeLessThan(markup.indexOf("ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?"));
-    expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน");
+    expect(markup).not.toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน");
     expect(markup).toContain("ยังไม่มีบัญชีหรือเริ่มใช้งานครั้งแรก?");
     expect(markup).toContain("ลงทะเบียนครั้งแรก");
     expect(markup).toContain("สำหรับบุคลากร อสม. และผู้ป่วยที่โรงพยาบาลเพิ่มข้อมูลไว้แล้ว");

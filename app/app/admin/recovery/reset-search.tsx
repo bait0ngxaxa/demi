@@ -49,7 +49,7 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
       </form>
 
       {result?.status === "ERROR" ? <Alert className="mt-4" variant="warning">{result.message}</Alert> : null}
-      {result?.status === "NO_MATCH" ? <p className="mt-4 text-sm text-text-muted" role="status">ไม่พบผู้ใช้ที่ตรงกับเลขบัตรประชาชนนี้</p> : null}
+      {result?.status === "NO_MATCH" ? <p className="mt-4 text-sm text-text-muted" role="status">ไม่พบรายการที่ดำเนินการได้ กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง</p> : null}
 
       {candidates.length > 0 ? (
         <div className="mt-5 space-y-4">
@@ -59,7 +59,7 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
               <option value="">เลือกบัญชี</option>
               {candidates.map((candidate, index) => (
                 <option key={`${candidate.targetKind}-${candidate.relationshipId ?? candidate.userId}-${candidate.hospitalId}`} value={String(index)}>
-                  {candidate.displayName} · {candidate.targetKind === "staff" ? "บุคลากร" : candidate.targetKind === "osm" ? "อสม." : candidate.targetKind === "patient" ? "ผู้ป่วย" : "บัญชี ADMIN"} · {candidate.hospitalName} · {candidate.relationshipStatus}
+                  {candidate.displayName} · {candidate.targetKind === "staff" ? "บุคลากร" : candidate.targetKind === "osm" ? "อสม." : candidate.targetKind === "patient" ? "ผู้ป่วย" : candidate.targetKind === "caregiver" ? "ผู้ดูแลญาติ" : "บัญชี ADMIN"} · {candidate.hospitalName} · {candidate.relationshipStatus}
                 </option>
               ))}
             </select>
@@ -72,7 +72,7 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
                 hospitalId={selected.hospitalId}
                 hospitalName={selected.hospitalName}
                 relationshipId={selected.relationshipId}
-                targetUserId={selected.targetKind === "platform_admin" ? selected.userId : undefined}
+                targetUserId={selected.targetKind === "platform_admin" || selected.targetKind === "caregiver" ? selected.userId : undefined}
                 targetKind={selected.targetKind}
                 targetName={selected.displayName}
               />

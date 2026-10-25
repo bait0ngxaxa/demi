@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { ActivationMethodFilter, UserDirectoryStatus, UserKind } from "@/modules/user-management/domain/user-management-values";
 import type { UserDirectoryPage } from "@/modules/user-management/services/user-directory-service";
+import { CaregiverPasswordResetSearch } from "./caregiver-password-reset-search";
 
 import { ACTIVATION_METHOD_LABELS, USER_KIND_LABELS, USER_STATUS_PRESENTATION } from "./user-presentation";
 
@@ -77,6 +78,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce/new?hospitalId=${encodeURIComponent(hospitalId)}&step=1`}>เพิ่มบุคลากร / อสม.</Link>
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}>นำเข้าผู้ป่วย</Link>
           </div>
+          <CaregiverPasswordResetSearch hospitalId={hospitalId} hospitalName={page.hospital.name} />
         </Panel>
 
         <nav aria-label="ประเภทผู้ใช้งาน" className="mt-6 flex flex-wrap gap-2 border-b border-line">
@@ -144,6 +146,11 @@ export function UsersDirectory({ hospitals, page, filters }: {
                       </p>
                       {row.selfRegisteredAt ? (
                         <p className="mt-1 text-xs font-medium text-brand-strong">ลงทะเบียนเองเมื่อ {dateFormat.format(row.selfRegisteredAt)}</p>
+                      ) : null}
+                      {row.latestPasswordReset ? (
+                        <p className="mt-1 text-xs leading-5 text-text-muted">
+                          รีเซ็ตรหัสผ่านล่าสุด {dateFormat.format(row.latestPasswordReset.completedAt)} · {row.latestPasswordReset.path}
+                        </p>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">

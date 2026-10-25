@@ -34,6 +34,21 @@ afterEach(() => {
 });
 
 describe("public mediated reset form", () => {
+  it("offers Hospital recovery and keeps the future LINE entry behind its feature flag", async () => {
+    window.history.replaceState(null, "", "/recover");
+    mocks.useActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
+
+    await act(async () => root.render(createElement(PublicAccountRecoveryForm)));
+
+    expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
+    expect(container.textContent).not.toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
+
+    await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryEnabled: true })));
+
+    expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
+    expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
+  });
+
   it("keeps the form usable and marks the password field when the provider rejects the password by policy", async () => {
     mocks.useActionState.mockReturnValue([
       { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน", fieldErrors: { newPassword: "รหัสผ่านนี้ไม่ผ่านนโยบายความปลอดภัย" } },

@@ -1,6 +1,7 @@
 export type PasswordChangeActionState = {
   status: "IDLE" | "SUCCESS" | "ERROR";
   message?: string;
+  fieldErrors?: { currentPassword?: string };
 };
 
 export const initialPasswordChangeActionState: PasswordChangeActionState = {

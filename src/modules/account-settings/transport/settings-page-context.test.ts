@@ -24,9 +24,10 @@ describe("settings page context password entry", () => {
   it.each([
     [[Role.PATIENT], true],
     [[Role.PATIENT, Role.OSM], true],
-    [[Role.OSM], false],
-    [[Role.HOSPITAL], false],
-  ])("keeps the Patient-only password entry the navigation used to show (%j)", async (roles, expected) => {
+    [[Role.OSM], true],
+    [[Role.HOSPITAL], true],
+    [[Role.ADMIN], true],
+  ])("makes password change available to every authenticated role (%j)", async (roles, expected) => {
     actor.roles = roles;
 
     await expect(getSettingsPageContext()).resolves.toMatchObject({ canChangePassword: expected });

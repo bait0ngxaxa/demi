@@ -116,6 +116,7 @@ enum CredentialRecoveryVerificationMethod {
   IN_PERSON_ID_CARD
   VIDEO_CALL_FACE_AND_ID_CARD
   CALLBACK_PHONE_ON_HOSPITAL_RECORD
+  BREAK_GLASS_CLI
 }
 
 enum HospitalStatus {
@@ -2459,4 +2460,16 @@ model PublicSelfRegistrationRateLimitBucket {
 
   @@id([category, keyHash, windowStart], map: "PublicSelfRegistrationRateLimitBucket_pkey")
   @@index([expiresAt], map: "PublicSelfRegistrationRateLimitBucket_expiresAt_idx")
+}
+
+/// HMAC-only failure buckets for login, current-password confirmation, and recovery identity checks.
+model AuthenticationAttemptThrottleBucket {
+  keyHash        String   @id @db.VarChar(64)
+  failureCount   Int      @default(0)
+  windowStartedAt DateTime @db.Timestamptz(3)
+  blockedUntil   DateTime? @db.Timestamptz(3)
+  expiresAt      DateTime @db.Timestamptz(3)
+  updatedAt      DateTime @db.Timestamptz(3)
+
+  @@index([expiresAt], map: "AuthenticationAttemptThrottleBucket_expiresAt_idx")
 }

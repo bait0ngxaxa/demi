@@ -128,7 +128,7 @@ sudo ufw status
 
 พอร์ต 3000 bind อยู่ที่ 127.0.0.1 จึงเข้าจากภายนอกไม่ได้ ถึง 443 จะเปิดอยู่ nginx ก็ตอบเฉพาะ connection ที่มี client certificate ของ Cloudflare (ที่อื่นได้ 400) จะจำกัด 80/443 ให้รับเฉพาะ IP ของ Cloudflare ด้วย ufw ซ้อนอีกชั้นก็ได้ (ไม่บังคับ)
 
-ต้องให้ Next.js listen เฉพาะ `127.0.0.1` หลัง nginx และห้ามเปิดพอร์ต 3000 สู่เครือข่ายสาธารณะ เพราะ public self-registration rate limit ใช้ `X-Real-IP` หรือค่าแรกของ `X-Forwarded-For` เป็น client IP โดยเชื่อค่าที่ nginx เขียนทับหลังตรวจ real IP จาก Cloudflare ranges แล้วเท่านั้น
+ต้องให้ Next.js listen เฉพาะ `127.0.0.1` หลัง nginx และห้ามเปิดพอร์ต 3000 สู่เครือข่ายสาธารณะ DEMI ใช้เฉพาะ `X-Real-IP` สำหรับ rate limit โดย nginx เขียนทับค่านี้เป็น `$remote_addr` หลังตรวจ `CF-Connecting-IP` จาก Cloudflare ranges ที่เชื่อถือแล้ว ห้ามอ่าน `X-Forwarded-For` ในแอป และห้ามตั้ง proxy อื่นที่ส่ง `X-Real-IP` จากค่าที่ผู้ใช้กำหนดเอง
 
 ### 1.8 Release แรก
 

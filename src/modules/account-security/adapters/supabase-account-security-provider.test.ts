@@ -15,7 +15,7 @@ const {
   isolatedClient,
   adminClient,
 } = vi.hoisted(() => {
-  const authenticatedAuth = { getUser: vi.fn() };
+  const authenticatedAuth = { getUser: vi.fn(), signOut: vi.fn() };
   const isolatedAuth = { signInWithPassword: vi.fn(), updateUser: vi.fn(), signOut: vi.fn() };
   const adminAuth = { admin: { updateUserById: vi.fn(), createUser: vi.fn(), deleteUser: vi.fn(), signOut: vi.fn(), getUserById: vi.fn(), listUsers: vi.fn() } };
   const authenticatedClient = { auth: authenticatedAuth };
@@ -91,6 +91,7 @@ describe("Supabase account security provider boundary", () => {
       error: null,
     });
     isolatedAuth.signOut.mockResolvedValue({ data: null, error: null });
+    authenticatedAuth.signOut.mockResolvedValue({ data: null, error: null });
   });
 
   it("verifies current password in an isolated provider session before authenticated auth.updateUser", async () => {
@@ -102,7 +103,7 @@ describe("Supabase account security provider boundary", () => {
         currentPassword: "current password",
         newPassword: "new long password",
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ otherSessionsRevoked: true });
 
     expect(mockedGetServerSupabaseClient).toHaveBeenCalledWith({ requireWritableCookies: true });
     expect(mockedCreateProviderLoginAlias).toHaveBeenCalledWith(targetUserId);
@@ -115,6 +116,36 @@ describe("Supabase account security provider boundary", () => {
       password: "new long password",
       current_password: "current password",
     });
+    expect(authenticatedAuth.signOut).toHaveBeenCalledWith({ scope: "others" });
+  });
+
+  it("identifies an explicitly rejected current password and throttles other sessions only after update", async () => {
+    isolatedAuth.signInWithPassword.mockResolvedValue({
+      data: { user: null, session: null },
+      error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials"),
+    });
+
+    await expect(updateAuthenticatedPassword({
+      userId: targetUserId,
+      currentPassword: "wrong password",
+      newPassword: "new long password",
+    })).rejects.toMatchObject({ name: "CurrentPasswordRejectedError" });
+    expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
+    expect(authenticatedAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("reports when Supabase could not sign out the user's other sessions", async () => {
+    isolatedAuth.updateUser.mockResolvedValue({ data: { user: { id: authSubject } }, error: null });
+    authenticatedAuth.signOut.mockResolvedValue({ data: null, error: new Error("session revocation unavailable") });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(updateAuthenticatedPassword({
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    })).resolves.toEqual({ otherSessionsRevoked: false });
+    expect(authenticatedAuth.signOut).toHaveBeenCalledWith({ scope: "others" });
+    consoleError.mockRestore();
   });
 
   it("hides current-password provider errors behind a generic service error", async () => {

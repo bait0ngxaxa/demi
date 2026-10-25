@@ -192,6 +192,15 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
       const pending = await staff(owner, h.id);
       const assisted = await staff(owner, h.id);
       await activate(assisted.userId, { mode: WorkforceActivationMode.ASSISTED, createdBy: owner.userId });
+      await db.auditEvent.create({
+        data: {
+          action: "account.password_reset.completed",
+          resourceType: "User",
+          resourceId: assisted.userId,
+          metadata: { mode: "IN_PERSON", verificationMethod: "IN_PERSON_ID_CARD" },
+          createdAt: now,
+        },
+      });
       const selfRegistered = await osm(owner, h.id);
       await activate(selfRegistered.userId);
       await db.osmHospitalRelationship.update({ where: { id: selfRegistered.relationshipId }, data: { selfRegisteredAt: now } });
@@ -210,6 +219,8 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
         .toEqual([pending.relationshipId]);
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff", method: "ASSISTED" }, db)).rows)
         .toEqual([expect.objectContaining({ relationshipId: assisted.relationshipId, method: "ASSISTED", status: "ACTIVE" })]);
+      expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff" }, db)).rows.find(({ relationshipId }) => relationshipId === assisted.relationshipId))
+        .toMatchObject({ latestPasswordReset: { completedAt: now, verificationMethod: "IN_PERSON_ID_CARD", path: "ต่อหน้า · ตรวจบัตรประชาชน" } });
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff", method: "NOT_ACTIVATED" }, db)).rows.map(({ relationshipId }) => relationshipId))
         .toEqual([pending.relationshipId]);
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "osm", method: "SELF_REGISTERED" }, db)).rows)

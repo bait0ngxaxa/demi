@@ -83,6 +83,7 @@ const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
     "DEMI_LINE_MINI_APP_DISABLED",
     "FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED",
     "FAMILY_PLAN_MEDICATION_SHARING_ENABLED",
+    "DEMI_RECOVERY_LINE_ENABLED",
   ],
 };
 
@@ -181,6 +182,9 @@ function invalidFeatures(): string[] {
   if (!optionalBooleanSchema.safeParse(read("FAMILY_PLAN_MEDICATION_SHARING_ENABLED")).success) {
     invalid.push("FAMILY_PLAN_MEDICATION_SHARING_ENABLED");
   }
+  if (!optionalBooleanSchema.safeParse(read("DEMI_RECOVERY_LINE_ENABLED")).success) {
+    invalid.push("DEMI_RECOVERY_LINE_ENABLED");
+  }
   return invalid;
 }
 
@@ -213,6 +217,7 @@ export function checkDeploymentEnvironment(profile: DeploymentEnvironmentProfile
       miniAppKillSwitch: isLineMiniAppDisabled(),
       familyDelegatedAppointmentRead: process.env.FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED === "true",
       familyPlanMedicationSharing: process.env.FAMILY_PLAN_MEDICATION_SHARING_ENABLED === "true",
+      lineRecovery: process.env.DEMI_RECOVERY_LINE_ENABLED === "true",
     },
     valid: variables.every(({ status }) => status !== "MISSING" && status !== "INVALID"),
     placeholders: variables.filter(({ status }) => status === "PLACEHOLDER").map(({ name }) => name),

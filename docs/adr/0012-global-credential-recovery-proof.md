@@ -1,6 +1,6 @@
 # ADR-0012 — Global credential recovery requires independent owner proof
 
-Status: Accepted security restriction, amended 2026-10-22 by the REC-1 product decision below.
+Status: Accepted security restriction, amended 2026-10-25 by REC-2A; originally amended 2026-10-22 by REC-1.
 Supersedes: ADR-0008 D3 credential-replacement trust and Phase 17E.1 assisted-recovery ownership assumptions.
 
 ## Context
@@ -170,3 +170,26 @@ To preserve the only approved release route, a Parent cannot retire a pending Ch
 A `UserTakeoverLock` belongs to the User, not to one Hospital. `hospitalId` keeps the Hospital that first locked the identity (used for the lock audit and the LINE-binding cut-off); it is not a scope check. While a caregiver-claimed User's lock is unresolved (`PENDING`, `RECONCILIATION_REQUIRED` or `CONFIRMED`), any later Hospital operation that adds authority to that User extends the same lock in its own transaction: workforce/OSM rows it creates or finds `PROVISIONED`/`ACTIVE` at its Hospital are set `SUSPENDED` and their IDs appended to `suspendedMembershipIds` / `suspendedOsmRelationshipIds`; a held Child OWNER invitation ID is appended to `heldOwnerMembershipIds`. A `user.takeover_lock_extended` audit records the Hospital and counts. Provider revocation runs again only while the lock is not yet `CONFIRMED`.
 
 Every rule keyed on the lock is evaluated per recorded ID and that row's own Hospital: the held-OWNER ADMIN exception and search above, the Parent's held-invitation view and retire guard, invitee listing/acceptance, and completion. Completion restores each recorded `SUSPENDED` row at whatever Hospital it belongs to, applies the FIX-1b held-OWNER rules against each row's own Child, and keeps the restored / not-restored audit. Because the restored scope now spans Hospitals, the existing single-Hospital OWNER eligibility rule makes such a target platform-ADMIN-only.
+
+## Amendment — REC-2A mediated reset, break-glass and throttling (2026-10-25)
+
+Product decision: a co-OWNER may reset another OWNER in the same ACTIVE Hospital; an OWNER may reset a caregiver-only account when every patient that account serves is scoped only to that Hospital; a platform ADMIN may reset another ADMIN. This amendment supersedes only REC-1's contrary target exclusions and former ADMIN-peer restriction. Every other REC-1 ceremony, token, state-machine, audit, takeover-lock and reconciliation rule remains in force.
+
+### Eligibility and re-authorization
+
+- A direct ACTIVE Hospital OWNER may reset another non-self OWNER of the same ACTIVE Hospital only when the target is not an ADMIN and **every** target `HospitalMembership`, `OsmHospitalRelationship` and `PatientHospitalRelationship` row, including ended rows, belongs to that Hospital. The issuer must remain an active direct OWNER. The selected target membership and full target scope are re-checked at issue, identity claim and credential switch.
+- A direct ACTIVE Hospital OWNER may reset a non-self target whose only role is `CAREGIVER` when every `CaregiverRelationship`, `CaregiverAppointmentGrant` and `CaregiverResourceGrant` row where the target is `caregiverUserId`, including ended rows, points to a patient whose complete `PatientHospitalRelationship` history, including ended rows, belongs to that ACTIVE Hospital. Caregiver-only accounts are found only through an exact-ID lookup scoped to that Hospital. Mixed-role accounts, a patient served at another Hospital, an unresolved takeover lock, or an unfinished/reconciliation-required credential operation stays platform-ADMIN-only. Existing FIX-1 and FIX-1b/1c behavior is unchanged.
+- An active platform ADMIN may reset another active ADMIN, never themself, through the REC-1 identity-confirmation ceremony. ADMIN may still reset other target kinds under REC-1 and the FIX-1b/1c exception.
+- All issuer/target decisions are re-authorized at issue, identity claim and credential switch. Authority loss revokes the reset and deletes an orphan replacement as in REC-1; an ambiguous provider/database result remains quarantined for audited reconciliation.
+
+### Last-ADMIN break-glass
+
+`npm run admin:recover` is a server-only operator CLI using the server-held Supabase service role from environment configuration. The operator selects an active ADMIN by the same login identifier accepted at `/login`; the password and confirmation are hidden terminal input. It creates an already-claimed `WorkforceActivation` RESET record and then uses the same provider replacement, canonical switch, cleanup and reconciliation code as REC-1. It prints no bearer token, password or key. By default it refuses when another ACTIVE ADMIN exists; the explicit `--no-active-peer --reason "<text>"` override is audited and requires an operator note. The audit action `account.password_reset.break_glass` stores the note, reset reference, override state and outcome, never a secret. Only authorized server operators with access to the production environment may run it; see the [break-glass runbook](../operations/ADMIN_RECOVERY.md) for authorization and retained evidence.
+
+### Throttling, entry and account settings
+
+Password login, the National-ID recovery lookup and the National-ID proof step use DEMI-side failure buckets in addition to Supabase limits: five failures in 15 minutes starts a 15-minute block, independently by HMACed identity and client IP. Buckets and block audits contain no National ID, IP, identity hash or credential. Login and recovery messages remain generic across existing and unknown accounts. The VPS trusts only nginx-overwritten `X-Real-IP`, after Cloudflare real-IP validation; the app does not trust `X-Forwarded-For`.
+
+`/login` links to `/recover`, which offers Hospital identity verification and exposes the future LINE recovery entry only when `DEMI_RECOVERY_LINE_ENABLED=true`. Leave the flag false until REC-2B ships; REC-2A adds no self-service recovery. Tokenized REC-1 links continue to use the same `/recover` completion flow. The OWNER directory shows the latest mediated-reset date and path without National ID or issuer details.
+
+Authenticated current-password changes are available to every role from Settings. An explicitly invalid current password returns a Thai field error and counts against the same identity/IP throttle. After `auth.updateUser`, DEMI calls `auth.signOut({ scope: "others" })`; Supabase documents that password update does not itself terminate other sessions, while this scope retains the current session and ends the others ([sign-out guide](https://supabase.com/docs/guides/auth/signout), [JS reference](https://supabase.com/docs/reference/javascript/auth-signout)). An active LINE binding receives the existing password-changed notice.

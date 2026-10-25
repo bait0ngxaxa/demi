@@ -48,7 +48,13 @@ export const credentialRecoveryVerificationMethodSchema = z.enum([
   "VIDEO_CALL_FACE_AND_ID_CARD",
   "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
 ]);
-export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "platform_admin"]);
+export const storedCredentialRecoveryVerificationMethodSchema = z.enum([
+  "IN_PERSON_ID_CARD",
+  "VIDEO_CALL_FACE_AND_ID_CARD",
+  "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
+  "BREAK_GLASS_CLI",
+]);
+export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "caregiver", "platform_admin"]);
 
 export const mediatedPasswordResetIssueSchema = z
   .object({
@@ -61,9 +67,9 @@ export const mediatedPasswordResetIssueSchema = z
   })
   .strict()
   .superRefine((input, context) => {
-    if (input.targetKind === "platform_admin") {
+    if (input.targetKind === "platform_admin" || input.targetKind === "caregiver") {
       if (!input.targetUserId || input.relationshipId !== null) {
-        context.addIssue({ code: "custom", path: ["targetUserId"], message: "An ADMIN target is required" });
+        context.addIssue({ code: "custom", path: ["targetUserId"], message: "A direct user target is required" });
       }
     } else if (!input.relationshipId || input.targetUserId !== undefined) {
       context.addIssue({ code: "custom", path: ["relationshipId"], message: "A target relationship is required" });
@@ -119,5 +125,6 @@ export type AccountRecoveryCompletionInput = z.infer<
 export type MediatedPasswordResetIssueInput = z.infer<typeof mediatedPasswordResetIssueSchema>;
 export type MediatedPasswordResetMode = z.infer<typeof mediatedPasswordResetModeSchema>;
 export type CredentialRecoveryVerificationMethod = z.infer<typeof credentialRecoveryVerificationMethodSchema>;
+export type StoredCredentialRecoveryVerificationMethod = z.infer<typeof storedCredentialRecoveryVerificationMethodSchema>;
 export type MediatedPasswordResetTargetKind = z.infer<typeof mediatedPasswordResetTargetKindSchema>;
 export type MediatedPasswordResetCompletionInput = z.infer<typeof mediatedPasswordResetCompletionSchema>;

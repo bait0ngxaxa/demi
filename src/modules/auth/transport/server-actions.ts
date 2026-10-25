@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
@@ -15,6 +16,7 @@ import { resolveCurrentActorContext } from "../services/actor-context-service";
 import type { ActorContext } from "../types/actor-context";
 import type { LoginActionState, LogoutActionState } from "./action-state";
 import { buildLoginReturnHref } from "./login-return";
+import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
 
 export async function loginAction(
   _previousState: LoginActionState,
@@ -36,7 +38,9 @@ export async function loginAction(
   let result: Awaited<ReturnType<typeof authenticateWithPassword>>;
 
   try {
-    result = await authenticateWithPassword(parsed.data);
+    result = await authenticateWithPassword(parsed.data, {
+      clientIpAddress: trustedClientIpAddress(await headers()),
+    });
   } catch {
     return {
       status: "ERROR",
@@ -45,19 +49,11 @@ export async function loginAction(
     };
   }
 
-  if (result.status === "INVALID_CREDENTIALS") {
+  if (result.status !== "AUTHORIZED") {
     return {
       status: "ERROR",
       code: "INVALID_CREDENTIALS",
       message: "ข้อมูลเข้าสู่ระบบไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง",
-    };
-  }
-
-  if (result.status === "APPLICATION_ACCESS_DENIED") {
-    return {
-      status: "ERROR",
-      code: "APPLICATION_ACCESS_DENIED",
-      message: "บัญชีนี้ยังไม่สามารถเข้าใช้งาน DEMI ได้ กรุณาติดต่อผู้ดูแลระบบ",
     };
   }
 

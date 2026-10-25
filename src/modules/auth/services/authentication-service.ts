@@ -4,6 +4,9 @@ import { isAuthError } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
+import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "./auth-attempt-throttle-service";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
 import { loginInputSchema, type LoginInput } from "../schemas/login-schema";
@@ -45,6 +48,9 @@ export type AuthenticationDependencies = {
   provider?: PasswordAuthenticationProvider;
   actorStore?: ActorContextStore;
   resolveLoginIdentity?: PasswordLoginIdentityResolver;
+  attemptThrottle?: AuthAttemptThrottle;
+  clientIpAddress?: string | null;
+  now?: () => Date;
 };
 
 const DECOY_PROVIDER_LOGIN_ALIAS = "invalid-login@auth.demi.internal";
@@ -105,6 +111,14 @@ export async function authenticateWithPassword(
     throw new ValidationError("Login data is invalid");
   }
 
+  const attemptThrottle = dependencies.attemptThrottle ?? createAuthAttemptThrottle();
+  const throttleInput = {
+    scope: "PASSWORD_LOGIN" as const,
+    identityHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: parsed.data.nationalId }),
+    clientIp: dependencies.clientIpAddress ?? null,
+    now: dependencies.now?.() ?? new Date(),
+  };
+  if (await attemptThrottle.isBlocked(throttleInput)) return { status: "INVALID_CREDENTIALS" };
   const resolveLoginIdentity =
     dependencies.resolveLoginIdentity ?? resolvePasswordLoginIdentity;
   const loginIdentity = await resolveLoginIdentity(parsed.data.nationalId);
@@ -118,6 +132,7 @@ export async function authenticateWithPassword(
     });
   } catch (error) {
     if (isInvalidCredentialsError(error)) {
+      await attemptThrottle.recordFailure(throttleInput);
       return { status: "INVALID_CREDENTIALS" };
     }
 
@@ -126,6 +141,7 @@ export async function authenticateWithPassword(
 
   if (response.error) {
     if (isInvalidCredentialsError(response.error)) {
+      await attemptThrottle.recordFailure(throttleInput);
       return { status: "INVALID_CREDENTIALS" };
     }
 
@@ -138,6 +154,7 @@ export async function authenticateWithPassword(
 
   if (!loginIdentity) {
     await signOutCurrentSession(provider);
+    await attemptThrottle.recordFailure(throttleInput);
     return { status: "INVALID_CREDENTIALS" };
   }
 

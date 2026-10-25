@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
+    "admin:recover": "node scripts/admin-recover.mjs",
     "demo:seed": "node scripts/demo-seed.mjs seed",
     "demo:reset": "node scripts/demo-seed.mjs reset",
     "env:check": "node scripts/env-check.mjs",
