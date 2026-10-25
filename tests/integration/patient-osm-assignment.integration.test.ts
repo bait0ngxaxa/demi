@@ -13,6 +13,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   getPatientOsmAssignmentManagementView,
+  countCurrentAssignmentsForOsmInHospital,
   listPatientOsmCandidates,
 } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
@@ -21,8 +22,11 @@ import {
 } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import {
   findAssignedPatientDirectory,
+  findPatientsAssignedToOsmInHospital,
   getPatientDirectoryDetail,
+  getPatientResponsibleOsm,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
+import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -240,6 +244,29 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
         osmUserId: osmB.userId,
       }),
     ).resolves.toMatchObject({ operation: "REASSIGNED" });
+    await expect(getPatientResponsibleOsm(owner.actor, {
+      hospitalId: hospital.id,
+      patientHospitalRelationshipId: patient.relationshipId,
+    })).resolves.toMatchObject({ status: "ASSIGNED" });
+    await expect(getPatientResponsibleOsm(member.actor, {
+      hospitalId: hospital.id,
+      patientHospitalRelationshipId: patient.relationshipId,
+    })).resolves.toMatchObject({ status: "ASSIGNED" });
+    await prisma.hospitalMembership.updateMany({
+      where: { userId: member.userId, hospitalId: hospital.id },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(getPatientResponsibleOsm(member.actor, {
+      hospitalId: hospital.id,
+      patientHospitalRelationshipId: patient.relationshipId,
+    })).rejects.toBeInstanceOf(NotFoundError);
+    await prisma.hospitalMembership.updateMany({
+      where: { userId: member.userId, hospitalId: hospital.id },
+      data: { status: MembershipStatus.ACTIVE },
+    });
+    await expect(getPatientOsmAssignmentManagementView(member.actor, patient.relationshipId)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
     await expect(
       unassignOsmFromPatient(owner.actor, {
         patientHospitalRelationshipId: patient.relationshipId,
@@ -275,6 +302,111 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
         osmUserId: osmA.userId,
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("keeps the OSM workforce roster independent of Patient account status and bounded by care scope", async () => {
+    const hospitalA = await createHospital("ASSIGN-ROSTER-A");
+    const hospitalB = await createHospital("ASSIGN-ROSTER-B");
+    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id });
+    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id });
+    const osm = await createOsmActor({ hospitalId: hospitalA.id });
+    await prisma.osmHospitalRelationship.create({
+      data: { userId: osm.userId, hospitalId: hospitalB.id, status: MembershipStatus.ACTIVE },
+    });
+
+    const accountStates = [
+      UserStatus.PROVISIONED,
+      UserStatus.INVITED,
+      UserStatus.ACTIVE,
+      UserStatus.SUSPENDED,
+    ];
+    const patients: Array<{ relationshipId: string; status: UserStatus }> = [];
+    for (const [index, status] of accountStates.entries()) {
+      const patient = await createPatient(ownerA.actor, hospitalA.id, {
+        identity: `account-state-${status}`,
+        givenName: "ผู้ป่วย",
+        familyName: `สถานะ ${status}`,
+        hospitalNumber: `HN-STATE-${index + 1}`,
+      });
+      await prisma.user.update({ where: { id: patient.userId }, data: { status } });
+      await assignOsmToPatient(ownerA.actor, {
+        patientHospitalRelationshipId: patient.relationshipId,
+        osmUserId: osm.userId,
+      });
+      patients.push({ relationshipId: patient.relationshipId, status });
+    }
+
+    const patientInHospitalB = await createPatient(ownerB.actor, hospitalB.id, {
+      identity: "multi-hospital-osm",
+      givenName: "ผู้ป่วย",
+      familyName: "โรงพยาบาลบี",
+      hospitalNumber: "HN-B",
+    });
+    await assignOsmToPatient(ownerB.actor, {
+      patientHospitalRelationshipId: patientInHospitalB.relationshipId,
+      osmUserId: osm.userId,
+    });
+
+    const rosterA = () => findPatientsAssignedToOsmInHospital(ownerA.actor, {
+      hospitalId: hospitalA.id,
+      osmUserId: osm.userId,
+      page: 1,
+    });
+    const initialRoster = await rosterA();
+    expect(initialRoster.total).toBe(accountStates.length);
+    expect(initialRoster.items.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId).sort())
+      .toEqual(patients.map(({ relationshipId }) => relationshipId).sort());
+    await expect(countCurrentAssignmentsForOsmInHospital(prisma, {
+      osmUserId: osm.userId,
+      hospitalId: hospitalA.id,
+    })).resolves.toBe(accountStates.length);
+
+    const invitedPatient = patients.find(({ status }) => status === UserStatus.INVITED);
+    const activePatient = patients.find(({ status }) => status === UserStatus.ACTIVE);
+    if (!invitedPatient || !activePatient) throw new Error("Patient lifecycle fixtures were not created");
+    await unassignOsmFromPatient(ownerA.actor, {
+      patientHospitalRelationshipId: invitedPatient.relationshipId,
+    });
+    await endPatientHospitalRelationship(ownerA.actor, {
+      relationshipId: activePatient.relationshipId,
+      endReason: "ทดสอบสิ้นสุดความสัมพันธ์",
+      confirmRetention: true,
+    });
+    const afterCareLifecycleChanges = await rosterA();
+    expect(afterCareLifecycleChanges.total).toBe(2);
+    expect(afterCareLifecycleChanges.items.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId).sort())
+      .toEqual(patients.filter(({ status }) => status === UserStatus.PROVISIONED || status === UserStatus.SUSPENDED)
+        .map(({ relationshipId }) => relationshipId).sort());
+    await expect(countCurrentAssignmentsForOsmInHospital(prisma, {
+      osmUserId: osm.userId,
+      hospitalId: hospitalA.id,
+    })).resolves.toBe(2);
+
+    await prisma.osmHospitalRelationship.updateMany({
+      where: { userId: osm.userId, hospitalId: hospitalA.id },
+      data: { status: MembershipStatus.SUSPENDED },
+    });
+    await expect(rosterA()).resolves.toMatchObject({ total: 0, items: [] });
+    await expect(countCurrentAssignmentsForOsmInHospital(prisma, {
+      osmUserId: osm.userId,
+      hospitalId: hospitalA.id,
+    })).resolves.toBe(2);
+
+    await prisma.osmHospitalRelationship.updateMany({
+      where: { userId: osm.userId, hospitalId: hospitalA.id },
+      data: { status: MembershipStatus.ACTIVE },
+    });
+    await prisma.user.update({ where: { id: osm.userId }, data: { status: UserStatus.SUSPENDED } });
+    await expect(rosterA()).resolves.toMatchObject({ total: 0, items: [] });
+    await expect(findPatientsAssignedToOsmInHospital(ownerB.actor, {
+      hospitalId: hospitalB.id,
+      osmUserId: osm.userId,
+      page: 1,
+    })).resolves.toMatchObject({ total: 0, items: [] });
+    await expect(countCurrentAssignmentsForOsmInHospital(prisma, {
+      osmUserId: osm.userId,
+      hospitalId: hospitalA.id,
+    })).resolves.toBe(2);
   });
 
   it("enforces same-Hospital OWNER authority and target OSM validation", async () => {

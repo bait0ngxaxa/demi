@@ -24,7 +24,7 @@ import {
   type PatientDirectoryDetailRecord,
   type PatientDirectoryDatabase,
 } from "./patient-directory-query-service";
-import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -495,7 +495,15 @@ describe("Patient directory query boundary", () => {
           select: {
             osmUser: {
               select: {
-                osmHospitalRelationships: { where: { hospitalId } },
+                osmHospitalRelationships: {
+                  where: {
+                    hospitalId,
+                    status: MembershipStatus.ACTIVE,
+                    hospital: { status: HospitalStatus.ACTIVE },
+                  },
+                  orderBy: [{ id: "asc" }],
+                  take: 1,
+                },
               },
             },
           },
@@ -505,7 +513,7 @@ describe("Patient directory query boundary", () => {
     expect(JSON.stringify(findFirst.mock.calls[0])).not.toContain("contactPhone");
   });
 
-  it("distinguishes no current assignment from an assignment whose OSM is no longer active", async () => {
+  it("distinguishes no current assignment from an open assignment with an ineligible OSM", async () => {
     const findFirst = vi.fn()
       .mockResolvedValueOnce({ osmAssignments: [] })
       .mockResolvedValueOnce({
@@ -521,6 +529,48 @@ describe("Patient directory query boundary", () => {
             }],
           },
         }],
+      })
+      .mockResolvedValueOnce({
+        osmAssignments: [{
+          createdAt: new Date("2026-10-01T00:00:00.000Z"),
+          osmUser: {
+            status: UserStatus.ACTIVE,
+            roles: [],
+            person: { givenName: "ไม่มี", familyName: "บทบาท" },
+            osmHospitalRelationships: [{
+              status: MembershipStatus.ACTIVE,
+              hospital: { status: HospitalStatus.ACTIVE },
+            }],
+          },
+        }],
+      })
+      .mockResolvedValueOnce({
+        osmAssignments: [{
+          createdAt: new Date("2026-10-01T00:00:00.000Z"),
+          osmUser: {
+            status: UserStatus.ACTIVE,
+            roles: [{ role: Role.OSM }],
+            person: { givenName: "ความสัมพันธ์", familyName: "ถูกระงับ" },
+            osmHospitalRelationships: [{
+              status: MembershipStatus.SUSPENDED,
+              hospital: { status: HospitalStatus.ACTIVE },
+            }],
+          },
+        }],
+      })
+      .mockResolvedValueOnce({
+        osmAssignments: [{
+          createdAt: new Date("2026-10-01T00:00:00.000Z"),
+          osmUser: {
+            status: UserStatus.ACTIVE,
+            roles: [{ role: Role.OSM }],
+            person: { givenName: "โรงพยาบาล", familyName: "ถูกระงับ" },
+            osmHospitalRelationships: [{
+              status: MembershipStatus.ACTIVE,
+              hospital: { status: HospitalStatus.SUSPENDED },
+            }],
+          },
+        }],
       });
     const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
 
@@ -532,6 +582,63 @@ describe("Patient directory query boundary", () => {
       patientHospitalRelationshipId: relationshipId,
       hospitalId,
     }, { database })).resolves.toEqual({ status: "UNAVAILABLE" });
+    await expect(getPatientResponsibleOsm(ownerActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toEqual({ status: "UNAVAILABLE" });
+    await expect(getPatientResponsibleOsm(ownerActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toEqual({ status: "UNAVAILABLE" });
+    await expect(getPatientResponsibleOsm(ownerActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toEqual({ status: "UNAVAILABLE" });
+  });
+
+  it("uses an eligible exact-Hospital OSM relationship when inactive history is also present", async () => {
+    const assignedAt = new Date("2026-10-02T00:00:00.000Z");
+    const findFirst = vi.fn().mockResolvedValue({
+      osmAssignments: [{
+        createdAt: assignedAt,
+        osmUser: {
+          status: UserStatus.ACTIVE,
+          roles: [{ role: Role.OSM }],
+          person: { givenName: "สมใจ", familyName: "อสม." },
+          osmHospitalRelationships: [
+            { status: MembershipStatus.SUSPENDED, hospital: { status: HospitalStatus.ACTIVE } },
+            { status: MembershipStatus.ACTIVE, hospital: { status: HospitalStatus.ACTIVE } },
+          ],
+        },
+      }],
+    });
+    const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
+
+    await expect(getPatientResponsibleOsm(ownerActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toMatchObject({ status: "ASSIGNED", displayName: "สมใจ อสม." });
+    expect(findFirst.mock.calls[0]?.[0]).toMatchObject({
+      select: {
+        osmAssignments: {
+          select: {
+            osmUser: {
+              select: {
+                osmHospitalRelationships: {
+                  where: {
+                    hospitalId,
+                    status: MembershipStatus.ACTIVE,
+                    hospital: { status: HospitalStatus.ACTIVE },
+                  },
+                  orderBy: [{ id: "asc" }],
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
   });
 
   it("uses the OSM-specific fallback when the assigned person has no display name", async () => {
@@ -562,14 +669,109 @@ describe("Patient directory query boundary", () => {
     });
   });
 
-  it("allows an OSM to see only the exact assigned Patient relationship", async () => {
-    const findFirst = vi.fn().mockResolvedValue({ osmAssignments: [] });
+  it("allows a direct Hospital MEMBER to read the current OSM without assignment-management scope", async () => {
+    const assignedAt = new Date("2026-10-01T00:00:00.000Z");
+    const findFirst = vi.fn().mockResolvedValue({
+      osmAssignments: [{
+        createdAt: assignedAt,
+        osmUser: {
+          status: UserStatus.ACTIVE,
+          roles: [{ role: Role.OSM }],
+          person: { givenName: "สมใจ", familyName: "อสม." },
+          osmHospitalRelationships: [{
+            status: MembershipStatus.ACTIVE,
+            hospital: { status: HospitalStatus.ACTIVE },
+          }],
+        },
+      }],
+    });
     const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
 
     await expect(getPatientResponsibleOsm(osmActor, {
       patientHospitalRelationshipId: relationshipId,
       hospitalId,
-    }, { database })).resolves.toEqual({ status: "UNASSIGNED" });
+    }, { database })).resolves.toMatchObject({ status: "ASSIGNED", displayName: "สมใจ อสม." });
+    await expect(getPatientResponsibleOsm(directoryActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toMatchObject({ status: "ASSIGNED", displayName: "สมใจ อสม." });
+
+    const memberQuery = findFirst.mock.calls[1]?.[0];
+    expect(memberQuery).toMatchObject({
+      where: {
+        id: relationshipId,
+        hospitalId,
+        OR: expect.arrayContaining([
+          expect.objectContaining({
+            endedAt: null,
+            hospital: expect.objectContaining({
+              memberships: {
+                some: expect.objectContaining({
+                  userId: directoryActor.userId,
+                  membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] },
+                  status: MembershipStatus.ACTIVE,
+                }),
+              },
+            }),
+          }),
+        ]),
+      },
+    });
+  });
+
+  it.each([
+    ["a Patient", { ...directoryActor, roles: [Role.PATIENT], hospitalMemberships: [] } as ActorContext],
+    ["a routine Platform ADMIN", { ...directoryActor, roles: [Role.ADMIN], hospitalMemberships: [] } as ActorContext],
+    ["a parent or other Hospital", {
+      ...directoryActor,
+      hospitalMemberships: [{
+        hospitalId: "77777777-7777-4777-8777-777777777777",
+        membershipType: MembershipType.OWNER,
+        profession: null,
+        status: MembershipStatus.ACTIVE,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    } as ActorContext],
+    ["a suspended direct Hospital MEMBER", {
+      ...directoryActor,
+      hospitalMemberships: [{
+        ...directoryActor.hospitalMemberships[0],
+        status: MembershipStatus.SUSPENDED,
+      }],
+    }],
+  ] as const)("restricts current OSM visibility for %s without direct patient:read scope", async (_label, actor) => {
+    const findFirst = vi.fn();
+    const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
+
+    await expect(getPatientResponsibleOsm(actor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toEqual({ status: "RESTRICTED" });
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it("keeps OSM visibility bound to the actor's own current Patient assignment", async () => {
+    const assignedAt = new Date("2026-10-01T00:00:00.000Z");
+    const findFirst = vi.fn().mockResolvedValue({
+      osmAssignments: [{
+        createdAt: assignedAt,
+        osmUser: {
+          status: UserStatus.ACTIVE,
+          roles: [{ role: Role.OSM }],
+          person: { givenName: "สมใจ", familyName: "อสม." },
+          osmHospitalRelationships: [{
+            status: MembershipStatus.ACTIVE,
+            hospital: { status: HospitalStatus.ACTIVE },
+          }],
+        },
+      }],
+    });
+    const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
+
+    await expect(getPatientResponsibleOsm(osmActor, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database })).resolves.toMatchObject({ status: "ASSIGNED", displayName: "สมใจ อสม." });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         id: relationshipId,
@@ -581,9 +783,26 @@ describe("Patient directory query boundary", () => {
         })],
       }),
     }));
+
+    const unrelatedOsm: ActorContext = { ...osmActor, userId: "88888888-8888-4888-8888-888888888888" };
+    const noMatch = vi.fn().mockResolvedValue(null);
+    const noMatchDatabase = { patientHospitalRelationship: { findFirst: noMatch } } as unknown as PatientDirectoryDatabase;
+    await expect(getPatientResponsibleOsm(unrelatedOsm, {
+      patientHospitalRelationshipId: relationshipId,
+      hospitalId,
+    }, { database: noMatchDatabase })).rejects.toBeInstanceOf(NotFoundError);
+    expect(noMatch).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: [expect.objectContaining({
+          osmAssignments: expect.objectContaining({
+            some: expect.objectContaining({ osmUserId: unrelatedOsm.userId, endedAt: null }),
+          }),
+        })],
+      }),
+    }));
   });
 
-  it("hides assignments from patient readers without assignment policy and fails closed on errors", async () => {
+  it("fails closed when the responsible OSM query fails", async () => {
     const findFirst = vi.fn().mockRejectedValue(new Error("database unavailable"));
     const database = { patientHospitalRelationship: { findFirst } } as unknown as PatientDirectoryDatabase;
 
@@ -593,19 +812,13 @@ describe("Patient directory query boundary", () => {
     }, { database })).rejects.toBeInstanceOf(ForbiddenError);
     expect(findFirst).not.toHaveBeenCalled();
 
-    await expect(getPatientResponsibleOsm(directoryActor, {
-      patientHospitalRelationshipId: relationshipId,
-      hospitalId,
-    }, { database })).resolves.toEqual({ status: "RESTRICTED" });
-    expect(findFirst).not.toHaveBeenCalled();
-
     await expect(getPatientResponsibleOsm(ownerActor, {
       patientHospitalRelationshipId: relationshipId,
       hospitalId,
     }, { database })).rejects.toBeInstanceOf(InfrastructureError);
   });
 
-  it("lists OSM patients under exact hospital, active assignment, and patient-read scope with bounded paging", async () => {
+  it("lists assigned patients independently of Patient account status with exact scope and bounded paging", async () => {
     const findFirst = vi.fn().mockResolvedValue({ id: hospitalId, name: "โรงพยาบาลทดสอบ" });
     const count = vi.fn().mockResolvedValue(30);
     const findMany = vi.fn().mockResolvedValue([{
@@ -652,7 +865,6 @@ describe("Patient directory query boundary", () => {
         patientProfile: {
           person: {
             user: {
-              status: UserStatus.ACTIVE,
               roles: { some: { role: Role.PATIENT } },
             },
           },
@@ -676,6 +888,9 @@ describe("Patient directory query boundary", () => {
         },
       }),
     }));
+    const queryWhere = findMany.mock.calls[0]?.[0].where;
+    expect(queryWhere?.patientProfile?.person?.user).not.toHaveProperty("status");
+    expect(count).toHaveBeenCalledWith({ where: queryWhere });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         memberships: { some: expect.objectContaining({ membershipType: { in: [MembershipType.OWNER] } }) },

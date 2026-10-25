@@ -54,10 +54,6 @@ import {
   decideWorkforcePolicy,
   WORKFORCE_CAPABILITIES,
 } from "@/modules/workforce/policies/workforce-policy";
-import {
-  decidePatientOsmAssignmentPolicy,
-  PATIENT_ASSIGN_OSM_CAPABILITY,
-} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 
 export type PatientDirectoryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -279,15 +275,26 @@ function patientResponsibleOsmSelect(hospitalId: string) {
               select: { givenName: true, familyName: true },
             },
             osmHospitalRelationships: {
-              where: { hospitalId },
-              select: { status: true, hospital: { select: { status: true } } },
+              where: buildCurrentOsmHospitalRelationshipWhere(hospitalId),
+              orderBy: [{ id: "asc" }],
               take: 1,
+              select: { status: true, hospital: { select: { status: true } } },
             },
           },
         },
       },
     },
   } satisfies Prisma.PatientHospitalRelationshipSelect;
+}
+
+function buildCurrentOsmHospitalRelationshipWhere(
+  hospitalId: string,
+): Prisma.OsmHospitalRelationshipWhereInput {
+  return {
+    hospitalId,
+    status: MembershipStatus.ACTIVE,
+    hospital: { status: HospitalStatus.ACTIVE },
+  };
 }
 
 export type PatientDirectoryRecord = Prisma.PatientHospitalRelationshipGetPayload<{
@@ -419,10 +426,11 @@ function buildOsmDetailAssignedPatientRelationshipWhere(
     ...activePatientHospitalRelationshipWhere,
     hospitalId: input.hospitalId,
     hospital: buildAuthorizedHospitalWhere(actorUserId, [MembershipType.OWNER]),
+    // Patient account lifecycle is separate from the care relationship; assignment roster eligibility is
+    // determined by the active Patient-Hospital relationship and current, valid OSM assignment below.
     patientProfile: {
       person: {
         user: {
-          status: UserStatus.ACTIVE,
           roles: { some: { role: Role.PATIENT } },
         },
       },
@@ -435,11 +443,7 @@ function buildOsmDetailAssignedPatientRelationshipWhere(
           status: UserStatus.ACTIVE,
           roles: { some: { role: Role.OSM } },
           osmHospitalRelationships: {
-            some: {
-              hospitalId: input.hospitalId,
-              status: MembershipStatus.ACTIVE,
-              hospital: { status: HospitalStatus.ACTIVE },
-            },
+            some: buildCurrentOsmHospitalRelationshipWhere(input.hospitalId),
           },
         },
       },
@@ -475,16 +479,16 @@ function buildPatientResponsibleOsmAccessPredicates(
   hospitalId: string,
 ): Prisma.PatientHospitalRelationshipWhereInput[] {
   const predicates: Prisma.PatientHospitalRelationshipWhereInput[] = [];
-  const assignmentDecision = decidePatientOsmAssignmentPolicy({
+  const patientReadDecision = decidePatientReadPolicy({
     actor,
-    capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+    capability: PATIENT_READ_CAPABILITY,
     targetHospitalId: hospitalId,
   });
 
-  if (assignmentDecision.allowed) {
+  if (patientReadDecision.allowed) {
     predicates.push({
       ...activePatientHospitalRelationshipWhere,
-      hospital: buildAuthorizedHospitalWhere(actor.userId, [MembershipType.OWNER]),
+      hospital: buildAuthorizedHospitalWhere(actor.userId),
     });
   }
 
@@ -882,12 +886,15 @@ export async function getPatientResponsibleOsm(
       return { status: "UNASSIGNED" };
     }
 
-    const osmHospitalRelationship = currentAssignment.osmUser.osmHospitalRelationships[0];
+    const hasEligibleHospitalRelationship = currentAssignment.osmUser.osmHospitalRelationships.some(
+      (relationship) =>
+        relationship.status === MembershipStatus.ACTIVE &&
+        relationship.hospital.status === HospitalStatus.ACTIVE,
+    );
     const isCurrentOsm =
       currentAssignment.osmUser.status === UserStatus.ACTIVE &&
       currentAssignment.osmUser.roles.length > 0 &&
-      osmHospitalRelationship?.status === MembershipStatus.ACTIVE &&
-      osmHospitalRelationship.hospital.status === HospitalStatus.ACTIVE;
+      hasEligibleHospitalRelationship;
 
     if (!isCurrentOsm) {
       return { status: "UNAVAILABLE" };

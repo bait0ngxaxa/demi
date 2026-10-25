@@ -182,9 +182,9 @@ function WorkforceDetailView({
             </div>
             {!isStaff ? (
               <div>
-                <dt className="text-sm text-text-muted">ผู้ป่วยที่รับผิดชอบอยู่ในโรงพยาบาลนี้</dt>
+                <dt className="text-sm text-text-muted">รายการมอบหมายที่ยังไม่สิ้นสุด</dt>
                 <dd className="mt-1 font-semibold text-text">
-                  {detail.currentAssignmentCount ?? 0} ราย
+                  {detail.currentAssignmentCount ?? 0} รายการ
                 </dd>
               </div>
             ) : null}

@@ -23,6 +23,20 @@ describe("Patient responsible OSM section", () => {
     expect(html).not.toContain("/assignment");
   });
 
+  it("shows the current OSM without an assignment action for read-only Hospital users", () => {
+    const html = renderToStaticMarkup(
+      <PatientResponsibleOsmSection
+        canManageAssignment={false}
+        relationshipId={relationshipId}
+        state={{ status: "ASSIGNED", displayName: "สมใจ อสม.", assignedAt: new Date("2026-10-01T00:00:00.000Z") }}
+      />,
+    );
+
+    expect(html).toContain("สมใจ อสม.");
+    expect(html).not.toContain("จัดการผู้รับผิดชอบ");
+    expect(html).not.toContain("/assignment");
+  });
+
   it("links authorized managers to the exact relationship assignment workflow", () => {
     const html = renderToStaticMarkup(
       <PatientResponsibleOsmSection
@@ -38,7 +52,7 @@ describe("Patient responsible OSM section", () => {
 
   it.each([
     ["UNAVAILABLE", "ยืนยันผู้รับผิดชอบปัจจุบันไม่ได้"],
-    ["RESTRICTED", "ไม่มีสิทธิ์ดูรายละเอียดการมอบหมาย อสม."],
+    ["RESTRICTED", "ไม่มีสิทธิ์ดูข้อมูล อสม. ผู้รับผิดชอบ"],
     ["NETWORK_RESTRICTED", "มุมมองเครือข่ายนี้ไม่แสดงข้อมูล อสม."],
     ["ERROR", "โหลดข้อมูล อสม. ผู้รับผิดชอบไม่สำเร็จ"],
   ] as const)("renders the distinct %s state", (status, message) => {

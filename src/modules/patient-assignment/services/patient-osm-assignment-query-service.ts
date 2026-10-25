@@ -100,6 +100,8 @@ export async function countCurrentAssignmentsForOsmInHospital(
   database: PatientOsmAssignmentCountDatabase,
   input: { osmUserId: string; hospitalId: string },
 ): Promise<number> {
+  // This is the raw count of open assignment rows in the exact Hospital, not the filtered displayable-patient count.
+  // Workforce lifecycle operations also rely on it, so do not add Patient or OSM lifecycle/read predicates here.
   return database.patientOsmAssignment.count({
     where: {
       osmUserId: input.osmUserId,

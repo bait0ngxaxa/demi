@@ -33,8 +33,8 @@ describe("OSM assigned patient detail section", () => {
     expect(html).toContain("ผู้ป่วยในความรับผิดชอบ");
     expect(html).toContain("สมชาย ผู้ป่วย");
     expect(html).toContain("HN-001 · โรงพยาบาลตัวอย่าง");
-    expect(html).toContain("รายชื่อที่แสดงได้ 26 ราย จากรายการมอบหมายที่ยังไม่สิ้นสุด 30 รายการ");
-    expect(html).toContain("จำนวนรายการมอบหมายด้านบนยังคงนับรายการที่ยังไม่สิ้นสุดตามเกณฑ์เดิม");
+    expect(html).toContain("รายชื่อที่แสดงได้ 26 ราย · รายการมอบหมายที่ยังไม่สิ้นสุด 30 รายการ");
+    expect(html).toContain("ยอดด้านบนเป็นจำนวนรายการมอบหมายที่ยังไม่สิ้นสุด");
     expect(html).toContain(`href="/app/patients/${patientRelationshipId}"`);
     expect(html).toContain("href=\"/app/workforce/osm/11111111-1111-4111-8111-111111111111?patientsPage=1\"");
     expect(html).toContain("หน้า 2 จาก 2");
@@ -45,7 +45,7 @@ describe("OSM assigned patient detail section", () => {
       <WorkforceOsmAssignedPatientsSection currentAssignmentCount={1} relationshipId={osmRelationshipId} state={{ status: "SUMMARY_ONLY" }} />,
     );
 
-    expect(html).toContain("แสดงได้เฉพาะจำนวนรายการมอบหมาย");
+    expect(html).toContain("แสดงได้เฉพาะจำนวนรายการมอบหมายที่ยังไม่สิ้นสุด");
     expect(html).not.toContain("สมชาย ผู้ป่วย");
     expect(html).not.toContain("/app/patients/");
   });
@@ -56,6 +56,18 @@ describe("OSM assigned patient detail section", () => {
     );
 
     expect(html).toContain("โหลดรายชื่อผู้ป่วยไม่สำเร็จ");
-    expect(html).not.toContain("ไม่มีผู้ป่วยที่มีบัญชี");
+    expect(html).not.toContain("ยังไม่มีรายการมอบหมาย");
+  });
+
+  it("distinguishes an open raw assignment from a displayable roster when no patient passes read eligibility", () => {
+    const html = renderToStaticMarkup(
+      <WorkforceOsmAssignedPatientsSection currentAssignmentCount={2} relationshipId={osmRelationshipId} state={{
+        status: "READY",
+        page: { ...patientPage, items: [], total: 0, totalPages: 1, page: 1, hasPreviousPage: false, hasNextPage: false },
+      }} />,
+    );
+
+    expect(html).toContain("มีรายการมอบหมายที่ยังไม่สิ้นสุด แต่ไม่มีรายชื่อผู้ป่วยที่ผ่านเงื่อนไขแสดงผล");
+    expect(html).not.toContain("ยังไม่มีรายการมอบหมายที่ยังไม่สิ้นสุดในขณะนี้");
   });
 });
