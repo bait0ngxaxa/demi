@@ -6,8 +6,12 @@ import { headers } from "next/headers";
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
-import { CurrentPasswordRejectedError } from "../adapters/supabase-account-security-provider";
-import { PasswordChangeAttemptThrottledError } from "../services/password-change-service";
+import { CurrentPasswordRejectedError, PasswordChangeProviderRejectedError } from "../adapters/supabase-account-security-provider";
+import {
+  PasswordChangeAttemptThrottledError,
+  PasswordChangeOutcomeUncertainError,
+  PasswordChangeRecoveryPendingError,
+} from "../services/password-change-service";
 import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
 import { ConflictError, InfrastructureError } from "@/shared/errors/application-error";
 
@@ -62,6 +66,15 @@ export async function changeAuthenticatedPasswordAction(
     }
     if (error instanceof PasswordChangeAttemptThrottledError) {
       return { status: "ERROR", message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล", fieldErrors: { currentPassword: "พยายามตรวจสอบรหัสผ่านปัจจุบันหลายครั้ง กรุณารอ 15 นาทีแล้วลองใหม่" } };
+    }
+    if (error instanceof PasswordChangeProviderRejectedError) {
+      return { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน ระบบไม่รับรหัสผ่านใหม่นี้ กรุณาตั้งรหัสผ่านใหม่ที่ต่างจากรหัสเดิมและคาดเดายาก แล้วลองอีกครั้ง" };
+    }
+    if (error instanceof PasswordChangeRecoveryPendingError) {
+      return { status: "ERROR", message: "ยังเปลี่ยนรหัสผ่านไม่ได้ในขณะนี้ เนื่องจากบัญชีมีการเปลี่ยนหรือกู้คืนรหัสผ่านที่ยังดำเนินการอยู่หรือรอผู้ดูแลระบบตรวจสอบ กรุณาอย่าทำรายการซ้ำ หากยังเป็นเช่นนี้ให้ติดต่อผู้ดูแลระบบ" };
+    }
+    if (error instanceof PasswordChangeOutcomeUncertainError) {
+      return { status: "OUTCOME_UNCERTAIN", message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะบัญชี" };
     }
     return { status: "ERROR", message: genericAccountError };
   }

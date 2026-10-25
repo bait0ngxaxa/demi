@@ -1,5 +1,6 @@
 "use client";
 
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
@@ -66,7 +67,11 @@ export function PasswordChangeForm(): React.JSX.Element {
         />
       </div>
 
-      {state.message ? (
+      {state.status === "OUTCOME_UNCERTAIN" ? (
+        <Alert role="alert" variant="warning">
+          <p>{state.message}</p>
+        </Alert>
+      ) : state.message ? (
         <p
           aria-live="polite"
           className={`break-words rounded-control border px-4 py-3 text-sm leading-6 ${
@@ -82,7 +87,7 @@ export function PasswordChangeForm(): React.JSX.Element {
 
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "note", note: "ออกจากระบบแล้วเข้าสู่ระบบด้วยรหัสผ่านใหม่เพื่อตรวจสอบ หากเข้าไม่ได้ให้ใช้รหัสผ่านเดิม" }} />
 
-      <Button className="w-full sm:w-fit" disabled={unknownOutcome} loading={pending} type="submit">
+      <Button className="w-full sm:w-fit" disabled={unknownOutcome || state.status === "OUTCOME_UNCERTAIN"} loading={pending} type="submit">
         {pending ? "กำลังเปลี่ยนรหัสผ่าน…" : "เปลี่ยนรหัสผ่าน"}
       </Button>
     </form>

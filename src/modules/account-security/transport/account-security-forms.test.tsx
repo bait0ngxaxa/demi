@@ -83,6 +83,25 @@ describe("account security form presentation", () => {
     expect(markup).not.toContain("targetUserId");
   });
 
+  it("shows an uncertain password change as a warning and does not offer a retry", () => {
+    const message = "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะบัญชี";
+    mockedUseActionState.mockReturnValue([{ status: "OUTCOME_UNCERTAIN", message }, vi.fn(), false]);
+    const markup = renderToStaticMarkup(createElement(PasswordChangeForm));
+
+    expect(markup).toContain(message);
+    expect(markup).toContain("bg-warning-soft");
+    expect(markup).not.toContain("bg-danger-soft");
+    expect(markup).toMatch(/<button[^>]*disabled=""[^>]*type="submit"|<button[^>]*type="submit"[^>]*disabled=""/);
+  });
+
+  it("keeps a definite password change failure retryable", () => {
+    mockedUseActionState.mockReturnValue([{ status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน" }, vi.fn(), false]);
+    const markup = renderToStaticMarkup(createElement(PasswordChangeForm));
+
+    expect(markup).toContain("bg-danger-soft");
+    expect(markup).not.toMatch(/<button[^>]*disabled=""/);
+  });
+
   it("routes account support to the mediated reset entry point without issuer controls", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientAccountRecoveryPanel, {

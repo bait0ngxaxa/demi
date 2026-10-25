@@ -28,11 +28,50 @@ The reset creates a claimed REC-1 `WorkforceActivation` record and reuses the sa
 sudo -u demi -H env NODE_OPTIONS='--env-file=/etc/demi/demi.env' npm run admin:recover -- --reconcile --reason "INC-1234: reconcile provider outcome"
 ```
 
-An unresolved authenticated password change is also a credential-operation fence. If a User has a non-null `passwordChangeOperationId`, do not issue, claim, or manually clear recovery state for that account. A definite current-password or password-policy rejection clears the fence automatically; an ambiguous provider/database result intentionally leaves recovery paused. Escalate to the application/security operator for an incident review of the operation ID and timestamp, application logs, and provider request outcome. Keep recovery paused until the operator can establish a safe credential state; do not clear the User fence with direct SQL or treat refresh-session revocation as proof that the password update succeeded.
-
 ### Evidence to retain
 
 Keep the incident/change reference, operator identity, start and completion times, target's internal User ID, the `account.password_reset.break_glass` audit event and reset ID, whether the active-peer override was used, final reset/reconciliation state, and the provider outcome needed for any follow-up. Store this evidence in the restricted incident record. Do not retain or copy the National ID, password, bearer token, service-role key, or hidden terminal input. The operator note belongs in the audit and should describe the incident without personal or credential data.
+
+## Unresolved authenticated password change
+
+An authenticated password change is also a credential-operation fence. While a User has an outstanding password-change operation, recovery issue, claim and switch for that account are refused. A definite current-password or provider password-policy rejection clears the fence automatically and keeps existing links valid. A provider timeout, an unknown provider response, a database failure after Supabase confirmed the change, or a process that stopped mid-request leaves the fence in place. The User sees “ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้” and is asked not to retry.
+
+DEMI cannot prove from its own records or from Supabase which password is now valid: the operation is recorded before the provider request, and Supabase has no lookup that confirms a password without the password itself. Reconciliation therefore never assumes the password stayed unchanged. It moves the account to the same end state as a confirmed change. Every earlier unclaimed Workforce, Patient and LINE recovery capability is revoked, and the fence is released, in one transaction. That state is safe for either credential, because only the signed-in User who proved the current password knew either value. If the account owner then cannot sign in, they use the normal Hospital-mediated or LINE recovery path, which issues a new link and replaces the provider identity.
+
+Only the designated server operator described above may run the command, from the deployed release directory as the `demi` service account. It takes no password, token, National ID or service key.
+
+1. **Identify.** List outstanding operations. The output shows only internal identifiers and timestamps:
+
+   ```sh
+   sudo -u demi -H env NODE_OPTIONS='--env-file=/etc/demi/demi.env' npm run account:password-change:reconcile -- --list
+   ```
+
+   A non-empty `reconciliationRequiredAt` means the request recorded an uncertain outcome. `-` means the process stopped before it could record one.
+2. **Investigate.** Open an incident record. Check application logs around `startedAt` for “Password change outcome is unknown”, and confirm the request is no longer running. Treat the operation as a possible change, whatever the logs suggest. Do not use Supabase user metadata, `updated_at`, session revocation or the user's own statement as proof of the outcome.
+3. **Reconcile.** Run the command for exactly one User and operation, with the incident reference. The reason is stored in the audit, so keep National IDs, passwords, tokens and keys out of it:
+
+   ```sh
+   sudo -u demi -H env NODE_OPTIONS='--env-file=/etc/demi/demi.env' npm run account:password-change:reconcile -- --user-id <userId> --operation-id <operationId> --reason "INC-1234: password change outcome unconfirmed"
+   ```
+
+4. **Close.** Act on the result code:
+   - `RELEASED`: earlier unclaimed links were revoked (the counts are printed) and the fence is released. Tell the account owner to sign in with the new password, or else the old one. If neither works, start normal recovery. Other devices may still be signed in, so ask the owner to sign out of other devices or change the password again once signed in.
+   - `ALREADY_RELEASED`: this operation was already reconciled. Running the command again changes nothing.
+   - `RETAINED_OPERATION_TOO_RECENT` (exit code 2): the operation started less than 15 minutes ago and the original request may still be running. The fence stays. Try again later. Age alone never releases a fence.
+   - `RETAINED_RECOVERY_UNRESOLVED` (exit code 2): the account also has a claimed or reconciliation-required reset. The fence stays and that reset is left untouched. Reconcile the reset first through `/app/admin/recovery` (or `admin:recover -- --reconcile` for a last-ADMIN break-glass reset), then rerun this command.
+   - `NOT_OUTSTANDING`: no such operation exists for that User. It may have finished already, or the ID may be out of date. Recheck with `--list`. Never reuse an older operation ID against a newer operation.
+   - `FAILED`: nothing changed and the fence stays. Retry after checking database health.
+
+Every run that matches an outstanding operation is audited under the target User. `account.password_change.reconciled` records the release. `account.password_change.reconciliation_retained` records a refusal. Each event records the operation ID, start time, uncertainty time, fence reason, `providerOutcome: UNVERIFIED`, the procedure `REVOKE_UNCLAIMED_AND_RELEASE`, the number of revoked capabilities (on release) and the operator reason. Keep the incident reference, operator identity, target User ID, operation ID, result code and audit event IDs in the restricted incident record.
+
+Do not edit `passwordChangeOperationId`, `passwordChangeStartedAt` or `passwordChangeReconciliationRequiredAt` with SQL. Do not revoke or un-revoke recovery rows by hand. Do not treat refresh-session revocation as proof that the password changed.
+
+Two cases have no supported resolution yet and must stay fenced until someone investigates them by hand:
+
+- A claimed reset whose own reconciliation stays quarantined.
+- Any outcome where the operator cannot confirm that the original request has ended.
+
+DEMI has no operator-driven way to set a known credential for a non-ADMIN account outside the existing recovery ceremonies, and this procedure does not add one.
 
 ## LINE forgot-password recovery
 

@@ -17,10 +17,19 @@ vi.mock("@/lib/env/server", () => ({
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.getActor }));
 vi.mock("@/modules/auth/services/authentication-service", () => ({ signOutCurrentSession: mocks.signOut }));
-vi.mock("../services/password-change-service", () => ({
-  changeAuthenticatedUserPassword: vi.fn(),
-  PasswordChangeAttemptThrottledError: class PasswordChangeAttemptThrottledError extends Error {},
-}));
+vi.mock("../services/password-change-service", async () => {
+  const { ConflictError, InfrastructureError } = await import("@/shared/errors/application-error");
+  return {
+    changeAuthenticatedUserPassword: vi.fn(),
+    PasswordChangeAttemptThrottledError: class PasswordChangeAttemptThrottledError extends Error {},
+    PasswordChangeRecoveryPendingError: class PasswordChangeRecoveryPendingError extends ConflictError {
+      constructor() { super("An account recovery operation is already in progress"); }
+    },
+    PasswordChangeOutcomeUncertainError: class PasswordChangeOutcomeUncertainError extends InfrastructureError {
+      constructor() { super("The password change outcome requires reconciliation"); }
+    },
+  };
+});
 vi.mock("../services/account-recovery-service", () => ({
   completePatientAccountRecovery: vi.fn(),
   getPatientAccountRecoveryAvailability: vi.fn(),
@@ -41,11 +50,23 @@ vi.mock("../adapters/supabase-account-security-provider", async () => {
     constructor(readonly reason: "PASSWORD_POLICY" | "INVALID_REQUEST") { super(); }
   }
   class CurrentPasswordRejectedError extends Error {}
-  return { CurrentPasswordRejectedError, ProviderIdentityRejectedError };
+  class PasswordChangeProviderRejectedError extends ValidationError {
+    constructor() { super("The provider rejected the new password"); }
+  }
+  return { CurrentPasswordRejectedError, PasswordChangeProviderRejectedError, ProviderIdentityRejectedError };
 });
 
-import { CurrentPasswordRejectedError, ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
-import { changeAuthenticatedUserPassword } from "../services/password-change-service";
+import {
+  CurrentPasswordRejectedError,
+  PasswordChangeProviderRejectedError,
+  ProviderIdentityRejectedError,
+} from "../adapters/supabase-account-security-provider";
+import {
+  changeAuthenticatedUserPassword,
+  PasswordChangeAttemptThrottledError,
+  PasswordChangeOutcomeUncertainError,
+  PasswordChangeRecoveryPendingError,
+} from "../services/password-change-service";
 import { changeAuthenticatedPasswordAction, completeMediatedPasswordResetAction, issueMediatedPasswordResetAction } from "./server-actions";
 
 const actor = { userId: "11111111-1111-4111-8111-111111111111" };
@@ -130,5 +151,86 @@ describe("mediated password reset actions", () => {
       message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล",
       fieldErrors: { currentPassword: "รหัสผ่านปัจจุบันไม่ถูกต้อง" },
     });
+  });
+});
+
+describe("authenticated password change action outcomes", () => {
+  const sensitive = /reconciliation|provider|operation|Error|[0-9a-f]{8}-[0-9a-f]{4}/i;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.getActor.mockResolvedValue(actor);
+  });
+
+  async function changePassword() {
+    return changeAuthenticatedPasswordAction({ status: "IDLE" }, new FormData());
+  }
+
+  it("confirms a successful change", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockResolvedValue({ otherSessionsRevoked: true });
+
+    await expect(changePassword()).resolves.toEqual({ status: "SUCCESS", message: "เปลี่ยนรหัสผ่านของบัญชี DEMI แล้ว" });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/app/personal/password");
+  });
+
+  it("keeps the session-revocation warning on a confirmed change", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockResolvedValue({ otherSessionsRevoked: false });
+
+    await expect(changePassword()).resolves.toEqual({
+      status: "SUCCESS",
+      message: "เปลี่ยนรหัสผ่านแล้ว แต่ระบบออกจากระบบในอุปกรณ์อื่นไม่สำเร็จ กรุณาออกจากระบบในอุปกรณ์เหล่านั้นด้วยตนเอง",
+    });
+  });
+
+  it("keeps attempt throttling on the current-password field", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(new PasswordChangeAttemptThrottledError());
+
+    await expect(changePassword()).resolves.toMatchObject({
+      status: "ERROR",
+      fieldErrors: { currentPassword: expect.stringContaining("15 นาที") },
+    });
+  });
+
+  it("states that a provider-rejected new password was not changed and can be corrected", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(new PasswordChangeProviderRejectedError());
+    const result = await changePassword();
+
+    expect(result).toEqual({
+      status: "ERROR",
+      message: "ยังไม่ได้เปลี่ยนรหัสผ่าน ระบบไม่รับรหัสผ่านใหม่นี้ กรุณาตั้งรหัสผ่านใหม่ที่ต่างจากรหัสเดิมและคาดเดายาก แล้วลองอีกครั้ง",
+    });
+    expect(result.message).not.toMatch(sensitive);
+  });
+
+  it("explains a pending credential operation without inviting a retry", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(new PasswordChangeRecoveryPendingError());
+    const result = await changePassword();
+
+    expect(result).toMatchObject({ status: "ERROR", message: expect.stringContaining("กรุณาอย่าทำรายการซ้ำ") });
+    expect(result.message).toContain("รอผู้ดูแลระบบตรวจสอบ");
+    expect(result.message).not.toContain("ลองอีกครั้ง");
+    expect(result.message).not.toMatch(sensitive);
+  });
+
+  it("reports an uncertain outcome distinctly and never as success or a plain failure", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(new PasswordChangeOutcomeUncertainError());
+    const result = await changePassword();
+
+    expect(result).toEqual({
+      status: "OUTCOME_UNCERTAIN",
+      message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะบัญชี",
+    });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+    expect(result.message).not.toMatch(sensitive);
+  });
+
+  it("keeps unexpected infrastructure failures generic", async () => {
+    vi.mocked(changeAuthenticatedUserPassword).mockRejectedValue(
+      new Error("connect ECONNREFUSED 10.0.0.5:5432 operation 11111111-2222-4333-8444-555555555555"),
+    );
+    const result = await changePassword();
+
+    expect(result).toEqual({ status: "ERROR", message: "ไม่สามารถดำเนินการได้ กรุณาตรวจสอบข้อมูลและลองอีกครั้ง" });
+    expect(result.message).not.toMatch(sensitive);
   });
 });

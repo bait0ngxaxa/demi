@@ -15,6 +15,7 @@ import {
   WorkforceActivationOperationState,
   WorkforceActivationPurpose,
   type Hospital,
+  type Prisma,
 } from "@prisma/client";
 import { AuthApiError } from "@supabase/supabase-js";
 import { createHash, randomUUID } from "node:crypto";
@@ -27,7 +28,12 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
-import { CurrentPasswordRejectedError, ProviderIdentityRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
+import {
+  CurrentPasswordRejectedError,
+  PasswordChangeProviderNotStartedError,
+  PasswordChangeProviderRejectedError,
+  ProviderIdentityRejectedError,
+} from "@/modules/account-security/adapters/supabase-account-security-provider";
 import {
   completeMediatedPasswordReset,
   confirmLinePasswordRecoveryDelivery,
@@ -42,7 +48,14 @@ import {
   recoverPlatformAdminPassword,
   searchMediatedPasswordResetTargets,
 } from "@/modules/account-security/services/mediated-password-reset-service";
-import { changeAuthenticatedUserPassword, PasswordChangeRecoveryPendingError } from "@/modules/account-security/services/password-change-service";
+import {
+  changeAuthenticatedUserPassword,
+  listUnresolvedPasswordChangeOperations,
+  PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS,
+  PasswordChangeOutcomeUncertainError,
+  PasswordChangeRecoveryPendingError,
+  reconcileUnresolvedPasswordChange,
+} from "@/modules/account-security/services/password-change-service";
 import { createAuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { lockSuspectedTakeover } from "@/modules/user-management/services/user-takeover-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
@@ -1881,6 +1894,303 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       const blockAudits = await db.auditEvent.findMany({ where: { action: "auth.recovery_identity.throttled" } });
       expect(JSON.stringify(blockAudits)).not.toContain(identity);
       expect(JSON.stringify(blockAudits)).not.toContain(sharedIp);
+    });
+  });
+
+  describe("REC-2 authenticated password change reconciliation", () => {
+    const later = new Date(now.getTime() + PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS + 60_000);
+    const operatorNote = "INC-2042: password change outcome unconfirmed";
+    const throttle = { isBlocked: async () => false, recordFailure: async () => undefined };
+    const changeInput = {
+      currentPassword: "old-credential-password-123",
+      newPassword: "new-credential-password-123",
+      passwordConfirmation: "new-credential-password-123",
+    };
+
+    beforeEach(() => {
+      vi.stubEnv("IDENTITY_HASH_SECRET", "rec2b-test-identity-hash-secret-32-chars");
+      vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    });
+    afterEach(() => vi.unstubAllEnvs());
+
+    function actorFor(target: { userId: string; personId: string }, role: Role): ActorContext {
+      return { userId: target.userId, personId: target.personId, roles: [role], hospitalMemberships: [], osmHospitalRelationships: [] };
+    }
+
+    /** Fails the nth serializable transaction to model a database outage after the provider answered. */
+    function databaseFailingTransaction(failingCall: number): typeof db {
+      let calls = 0;
+      return new Proxy(db, {
+        get(target, property) {
+          if (property !== "$transaction") return Reflect.get(target, property);
+          return (...args: Parameters<typeof db.$transaction>) => {
+            calls += 1;
+            if (calls === failingCall) return Promise.reject(new Error("database connection lost"));
+            return target.$transaction(...args);
+          };
+        },
+      });
+    }
+
+    async function fenceOperationId(userId: string): Promise<string> {
+      const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+      if (!user.passwordChangeOperationId) throw new Error("Expected an unresolved password change fence");
+      return user.passwordChangeOperationId;
+    }
+
+    async function fenceByProviderTimeout(actor: ActorContext): Promise<string> {
+      await expect(changeAuthenticatedUserPassword(actor, changeInput, {
+        database: db,
+        provider: vi.fn(async () => { throw new Error("provider request timed out"); }),
+        attemptThrottle: throttle,
+        now: () => now,
+      })).rejects.toBeInstanceOf(PasswordChangeOutcomeUncertainError);
+      return fenceOperationId(actor.userId);
+    }
+
+    async function issueLineCapability(target: { userId: string; nationalId: string }): Promise<string> {
+      const capability = await issueLinePasswordRecoveryCapability({
+        userId: target.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: target.nationalId }),
+      }, { database: db, now: () => now });
+      if (!capability) throw new Error("Expected a pending LINE recovery capability");
+      await confirmLinePasswordRecoveryDelivery(capability.resetId, { database: db, now: () => now });
+      return capability.resetId;
+    }
+
+    function lineAvailability(target: { lineUserId: string }, capabilityId: string) {
+      return getLinePasswordRecoveryAvailabilityByCapabilityId(
+        capabilityId,
+        createLineSubjectFingerprint(target.lineUserId).fingerprint,
+        { database: db, now: () => now },
+      );
+    }
+
+    function reconcile(userId: string, operationId: string, at: Date = later) {
+      return reconcileUnresolvedPasswordChange({ userId, operationId, operatorNote }, { database: db, now: () => at });
+    }
+
+    it("revokes earlier unclaimed Workforce, Patient and LINE capabilities before releasing each unresolved fence", async () => {
+      const hospital = await createHospital();
+      const owner = await createOwner(hospital.id);
+      const staff = await createTarget("staff", hospital.id);
+      const patient = await createTarget("patient", hospital.id);
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const staffReset = await issueMediatedPasswordReset(owner, issueInput("staff", hospital.id, staff.relationshipId, "ONLINE"), { database: db, now: () => now });
+      const patientReset = await issueMediatedPasswordReset(owner, issueInput("patient", hospital.id, patient.relationshipId, "ONLINE"), { database: db, now: () => now });
+      const lineCapabilityId = await issueLineCapability(line);
+      expect(await db.workforceActivation.count({ where: { id: staffReset.resetId } })).toBe(1);
+      expect(await db.accountRecovery.count({ where: { id: patientReset.resetId } })).toBe(1);
+
+      // Confirmed provider success, then the finalizing transaction fails: the capability revocation never committed.
+      const confirmedProvider = vi.fn(async () => ({ otherSessionsRevoked: true }));
+      await expect(changeAuthenticatedUserPassword(actorFor(staff, Role.HOSPITAL), changeInput, {
+        database: databaseFailingTransaction(2),
+        provider: confirmedProvider,
+        attemptThrottle: throttle,
+        now: () => now,
+      })).rejects.toBeInstanceOf(PasswordChangeOutcomeUncertainError);
+      expect(confirmedProvider).toHaveBeenCalledOnce();
+      const staffOperation = await fenceOperationId(staff.userId);
+      // Provider timeout: the password may or may not have changed.
+      const patientOperation = await fenceByProviderTimeout(actorFor(patient, Role.PATIENT));
+      // Process terminated during the provider request: only the reserved fence survives.
+      const lineOperation = randomUUID();
+      await db.user.update({ where: { id: line.userId }, data: { passwordChangeOperationId: lineOperation, passwordChangeStartedAt: now } });
+
+      expect(await db.user.findUniqueOrThrow({ where: { id: staff.userId } })).toMatchObject({ passwordChangeReconciliationRequiredAt: now });
+      expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: staffReset.resetId } })).toMatchObject({ revokedAt: null });
+      await expect(getMediatedPasswordResetAvailability(staffReset.token, { database: db, now: () => now })).rejects.toBeInstanceOf(ConflictError);
+      await expect(getMediatedPasswordResetAvailability(patientReset.token, { database: db, now: () => now })).rejects.toBeInstanceOf(ConflictError);
+      await expect(lineAvailability(line, lineCapabilityId)).resolves.toBe("EXPIRED");
+      expect((await listUnresolvedPasswordChangeOperations({ database: db })).map(({ operationId }) => operationId).sort())
+        .toEqual([staffOperation, patientOperation, lineOperation].sort());
+
+      await expect(reconcile(staff.userId, staffOperation)).resolves.toEqual({ outcome: "RELEASED", revoked: { workforce: 1, patient: 0, line: 0 } });
+      await expect(reconcile(patient.userId, patientOperation)).resolves.toEqual({ outcome: "RELEASED", revoked: { workforce: 0, patient: 1, line: 0 } });
+      await expect(reconcile(line.userId, lineOperation)).resolves.toEqual({ outcome: "RELEASED", revoked: { workforce: 0, patient: 0, line: 1 } });
+
+      expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: staffReset.resetId } })).toMatchObject({ revokedAt: later, claimedAt: null });
+      expect(await db.accountRecovery.findUniqueOrThrow({ where: { id: patientReset.resetId } })).toMatchObject({ revokedAt: later, claimedAt: null });
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: lineCapabilityId } })).toMatchObject({ revokedAt: later, claimedAt: null });
+      await expect(getMediatedPasswordResetAvailability(staffReset.token, { database: db, now: () => now })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(getMediatedPasswordResetAvailability(patientReset.token, { database: db, now: () => now })).rejects.toBeInstanceOf(NotFoundError);
+      await expect(lineAvailability(line, lineCapabilityId)).resolves.toBe("EXPIRED");
+      await expect(listUnresolvedPasswordChangeOperations({ database: db })).resolves.toEqual([]);
+      for (const userId of [staff.userId, patient.userId, line.userId]) {
+        expect(await db.user.findUniqueOrThrow({ where: { id: userId } })).toMatchObject({
+          passwordChangeOperationId: null, passwordChangeStartedAt: null, passwordChangeReconciliationRequiredAt: null,
+        });
+      }
+
+      const audits = await db.auditEvent.findMany({ where: { action: "account.password_change.reconciled" } });
+      expect(audits).toHaveLength(3);
+      const auditFor = (userId: string) => audits.find(({ resourceId }) => resourceId === userId);
+      expect(auditFor(staff.userId)).toMatchObject({
+        actorUserId: null,
+        resourceType: "User",
+        metadata: {
+          operationId: staffOperation,
+          operationStartedAt: now.toISOString(),
+          reconciliationRequiredAt: now.toISOString(),
+          fenceReason: "OUTCOME_UNCERTAIN",
+          providerOutcome: "UNVERIFIED",
+          procedure: "REVOKE_UNCLAIMED_AND_RELEASE",
+          operatorNote,
+          outcome: "RELEASED",
+          revokedWorkforceResets: 1,
+          revokedPatientRecoveries: 0,
+          revokedLineCapabilities: 0,
+        },
+      });
+      expect(auditFor(line.userId)).toMatchObject({ metadata: { operationId: lineOperation, reconciliationRequiredAt: null, fenceReason: "PROCESS_INTERRUPTED", revokedLineCapabilities: 1 } });
+      const serializedAudits = JSON.stringify(audits);
+      for (const secret of [staff.nationalId, patient.nationalId, line.nationalId, line.lineUserId, changeInput.currentPassword, changeInput.newPassword, staffReset.token, staff.authSubject]) {
+        expect(serializedAudits).not.toContain(secret);
+      }
+
+      // Released accounts resume permitted credential operations.
+      await expect(changeAuthenticatedUserPassword(actorFor(staff, Role.HOSPITAL), changeInput, {
+        database: db,
+        provider: vi.fn(async () => ({ otherSessionsRevoked: true })),
+        attemptThrottle: throttle,
+        now: () => later,
+      })).resolves.toEqual({ otherSessionsRevoked: true });
+      await expect(issueLinePasswordRecoveryCapability({
+        userId: line.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: line.nationalId }),
+      }, { database: db, now: () => later })).resolves.not.toBeNull();
+    });
+
+    it("keeps valid links after a definite rejection or a never-started update, leaving nothing to reconcile", async () => {
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const capabilityId = await issueLineCapability(line);
+
+      for (const error of [new PasswordChangeProviderRejectedError(), new PasswordChangeProviderNotStartedError()]) {
+        await expect(changeAuthenticatedUserPassword(actorFor(line, Role.PATIENT), changeInput, {
+          database: db,
+          provider: vi.fn(async () => { throw error; }),
+          attemptThrottle: throttle,
+          now: () => now,
+        })).rejects.toBe(error);
+        expect(await db.user.findUniqueOrThrow({ where: { id: line.userId } })).toMatchObject({ passwordChangeOperationId: null });
+        await expect(lineAvailability(line, capabilityId)).resolves.toBe("READY");
+      }
+      await expect(reconcile(line.userId, randomUUID())).rejects.toBeInstanceOf(NotFoundError);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: null });
+      expect(await db.auditEvent.count({ where: { action: { startsWith: "account.password_change." } } })).toBe(0);
+    });
+
+    it("retains the fence for a recent operation, a stale operation ID and an unresolved claimed reset", async () => {
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const capabilityId = await issueLineCapability(line);
+      const operationId = await fenceByProviderTimeout(actorFor(line, Role.PATIENT));
+
+      await expect(reconcile(line.userId, operationId, new Date(now.getTime() + 5 * 60_000)))
+        .resolves.toEqual({ outcome: "RETAINED", reason: "OPERATION_TOO_RECENT" });
+      await expect(reconcile(line.userId, randomUUID())).rejects.toBeInstanceOf(NotFoundError);
+      expect(await fenceOperationId(line.userId)).toBe(operationId);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: null });
+      expect(await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_change.reconciliation_retained", resourceId: line.userId } }))
+        .toMatchObject({ metadata: { operationId, outcome: "RETAINED", retainedReason: "OPERATION_TOO_RECENT", operatorNote } });
+
+      const hospital = await createHospital();
+      const owner = await createOwner(hospital.id);
+      const staff = await createTarget("staff", hospital.id);
+      const reset = await issueMediatedPasswordReset(owner, issueInput("staff", hospital.id, staff.relationshipId, "ONLINE"), { database: db, now: () => now });
+      const staffOperation = await fenceByProviderTimeout(actorFor(staff, Role.HOSPITAL));
+      for (const unresolved of [
+        { claimedAt: now, operationState: WorkforceActivationOperationState.CLAIMED, reconciliationRequiredAt: null },
+        { claimedAt: now, operationState: WorkforceActivationOperationState.RECONCILIATION_REQUIRED, reconciliationRequiredAt: now },
+      ]) {
+        await db.workforceActivation.update({ where: { id: reset.resetId }, data: unresolved });
+        await expect(reconcile(staff.userId, staffOperation)).resolves.toEqual({ outcome: "RETAINED", reason: "RECOVERY_UNRESOLVED" });
+        expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: reset.resetId } })).toMatchObject({ ...unresolved, revokedAt: null, usedAt: null });
+        expect(await fenceOperationId(staff.userId)).toBe(staffOperation);
+      }
+      expect(await db.auditEvent.count({ where: { action: "account.password_change.reconciled" } })).toBe(0);
+    });
+
+    it("lets exactly one concurrent reconciliation release the fence and answers repeats idempotently", async () => {
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const capabilityId = await issueLineCapability(line);
+      const operationId = await fenceByProviderTimeout(actorFor(line, Role.PATIENT));
+
+      const outcomes = await Promise.all([reconcile(line.userId, operationId), reconcile(line.userId, operationId)]);
+      expect(outcomes.map(({ outcome }) => outcome).sort()).toEqual(["ALREADY_RELEASED", "RELEASED"]);
+      await expect(reconcile(line.userId, operationId)).resolves.toEqual({ outcome: "ALREADY_RELEASED" });
+      expect(await db.auditEvent.count({ where: { action: "account.password_change.reconciled", resourceId: line.userId } })).toBe(1);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: later });
+
+      // A newer operation is not touched by a repeat with the reconciled ID.
+      const newerOperation = await fenceByProviderTimeout(actorFor(line, Role.PATIENT));
+      await expect(reconcile(line.userId, operationId)).resolves.toEqual({ outcome: "ALREADY_RELEASED" });
+      expect(await fenceOperationId(line.userId)).toBe(newerOperation);
+    });
+
+    it("never lets recovery issuance or claim racing a reconciliation reuse a pre-change capability", async () => {
+      const issuing = await createLineRecoveryTarget(Role.PATIENT);
+      const issuingCapabilityId = await issueLineCapability(issuing);
+      const issuingOperation = await fenceByProviderTimeout(actorFor(issuing, Role.PATIENT));
+      const [reconciled, issued] = await Promise.allSettled([
+        reconcile(issuing.userId, issuingOperation),
+        issueLinePasswordRecoveryCapability({
+          userId: issuing.userId,
+          identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: issuing.nationalId }),
+        }, { database: db, now: () => later }),
+      ]);
+      expect(reconciled).toMatchObject({ status: "fulfilled", value: { outcome: "RELEASED" } });
+      if (issued.status === "rejected") expect(issued.reason).toBeInstanceOf(ConflictError);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: issuingCapabilityId } })).toMatchObject({ revokedAt: later });
+      const usable = await db.linePasswordRecoveryCapability.findMany({ where: { targetUserId: issuing.userId, revokedAt: null } });
+      expect(usable.map(({ id }) => id)).toEqual(issued.status === "fulfilled" && issued.value ? [issued.value.resetId] : []);
+
+      const claiming = await createLineRecoveryTarget(Role.PATIENT);
+      const claimingCapabilityId = await issueLineCapability(claiming);
+      const claimingOperation = await fenceByProviderTimeout(actorFor(claiming, Role.PATIENT));
+      const claimDependencies = lineRecoveryDependencies(claiming.lineUserId);
+      const [claimReconciled, claim] = await Promise.allSettled([
+        reconcile(claiming.userId, claimingOperation),
+        completeLinePasswordRecoveryWithIdentityToken({
+          capabilityId: claimingCapabilityId,
+          idToken: "fresh-line-id-token-for-recovery",
+          newPassword: "line-recovery-password-123",
+          passwordConfirmation: "line-recovery-password-123",
+        }, claimDependencies),
+      ]);
+      expect(claimReconciled).toMatchObject({ status: "fulfilled", value: { outcome: "RELEASED" } });
+      expect(claim).toMatchObject({ status: "rejected", reason: { code: "LINK_UNAVAILABLE" } });
+      expect(claimDependencies.createReplacementIdentity).not.toHaveBeenCalled();
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: claimingCapabilityId } })).toMatchObject({ revokedAt: later, claimedAt: null });
+    });
+
+    it("rolls back a failed reconciliation transaction and keeps the fence and links unchanged", async () => {
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const capabilityId = await issueLineCapability(line);
+      const operationId = await fenceByProviderTimeout(actorFor(line, Role.PATIENT));
+      const failingAudit = new Proxy(db, {
+        get(target, property) {
+          if (property !== "$transaction") return Reflect.get(target, property);
+          return (operation: (transaction: Prisma.TransactionClient) => Promise<unknown>, options?: Parameters<typeof db.$transaction>[1]) =>
+            target.$transaction((transaction) => operation(new Proxy(transaction, {
+              get(client, name) {
+                if (name !== "auditEvent") return Reflect.get(client, name);
+                return { findFirst: client.auditEvent.findFirst.bind(client.auditEvent), create: async () => { throw new Error("audit store unavailable"); } };
+              },
+            })), options);
+        },
+      });
+
+      await expect(reconcileUnresolvedPasswordChange({ userId: line.userId, operationId, operatorNote }, { database: failingAudit, now: () => later }))
+        .rejects.toBeInstanceOf(InfrastructureError);
+      expect(await fenceOperationId(line.userId)).toBe(operationId);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: null });
+      expect(await db.auditEvent.count({ where: { action: { startsWith: "account.password_change." } } })).toBe(0);
+
+      await expect(reconcileUnresolvedPasswordChange({ userId: line.userId, operationId, operatorNote: `INC-2042 ${line.nationalId}` }, { database: db, now: () => later }))
+        .rejects.toBeInstanceOf(ValidationError);
+      expect(await fenceOperationId(line.userId)).toBe(operationId);
+      await expect(reconcile(line.userId, operationId)).resolves.toMatchObject({ outcome: "RELEASED" });
     });
   });
 });
