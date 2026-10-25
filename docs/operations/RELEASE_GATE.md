@@ -1,10 +1,12 @@
-# RELEASE_GATE — เงื่อนไขก่อนเปิด production
+# RELEASE_GATE — บันทึกปฏิบัติการและ governance
 
-ใช้ตัดสินว่า production (VPS + Supabase Pro + LINE provider production + Cloudflare) พร้อมแค่ไหน แบ่งเป็นสามส่วนตามเจ้าของงาน:
+> เอกสารนี้เป็นบันทึกตรวจสอบเชิงปฏิบัติการ/ธรรมาภิบาลของผู้ดูแล ไม่ใช่อำนาจอนุญาตหรือปิด feature ใน runtime. Application code ไม่อ่านสถานะ เอกสารลงนาม ชื่อ environment หรือ release approval เพื่อเลือก business behavior. เจ้าของ deployment จัดการ provider, infrastructure และการใช้ข้อมูลจริงแยกจาก authorization ที่บังคับใช้ในระบบ.
+
+ใช้บันทึกหลักฐานของ production topology (VPS + Supabase Pro + LINE provider production + Cloudflare) แบ่งเป็นสามส่วนตามเจ้าของงาน:
 
 | ส่วน | เจ้าของ | ความหมายต่อทีม product |
 | --- | --- | --- |
-| **A. Product / technical** | ทีม product (ผู้ดูแลระบบ/owner ตามแถว) | product backlog และ operational gates ที่ทีม product ต้องปิดเอง |
+| **A. Product / technical** | ทีม product (ผู้ดูแลระบบ/owner ตามแถว) | รายการตรวจ implementation และการปฏิบัติการ ไม่ใช่ application feature gates |
 | **B. Agency / hospital governance** | หน่วยงานพันธมิตรที่ประสานกับโรงพยาบาล | ข้อมูลประกอบสำหรับทีม product **ไม่ใช่** product backlog; product มี hook ไว้แล้ว หรือไม่ต้องทำอะไร |
 | **C. Customer content inputs** | ลูกค้า (ผู้ให้เนื้อหา) | ลูกค้าส่งเนื้อหา; product มีฟีเจอร์และ placeholder ที่ระบุชัดแล้ว |
 
@@ -54,7 +56,7 @@
 
 | ID | รายการ | Owner | หลักฐานที่ต้องมี | สถานะ |
 | --- | --- | --- | --- | --- |
-| F-01 (เดิม B-03) | **ACCOUNT-04 Phase I account recovery**: REC-1 mediated reset และ REC-2B forgot-password ผ่าน LINE ใช้ proof, throttling, single-use capability และ reconciliation ตาม ADR-0012; production LINE entry ยังถูกปิดด้วย `DEMI_RECOVERY_LINE_ENABLED=false` จนผ่าน G-06 | ทีม product + Security | commit SHA และผล test/lint/typecheck; production activation ต้องมีหลักฐาน G-06 | เปิด |
+| F-01 (เดิม B-03) | **ACCOUNT-04 account recovery**: REC-1 mediated reset และ REC-2B LINE recovery implement ตาม proof, throttling, single-use capability และ reconciliation ใน ADR-0012; อดีต rollout gate ถูกถอดออก | ทีม product + Security | code/tests อ้างอิงตาม ADR-0012; สถานะ provider เป็นเรื่อง configuration ของ operator | ปิด (runtime gate superseded) |
 | F-02 | **หน้าจอ Terms / Privacy / ความยินยอม พร้อมบันทึกการยอมรับแบบมีเวอร์ชัน — ยังไม่มี**: ไม่มีหน้าแสดง ไม่มีการยอมรับ และไม่มีบันทึกเวอร์ชันที่ผู้ใช้ยอมรับ; product สร้างฟีเจอร์พร้อมข้อความ placeholder ที่ระบุชัด ส่วนข้อความจริงเป็นของหน่วยงานพันธมิตร (G-01) | ทีม product | หน้าจอ + บันทึกการยอมรับ (ผู้ใช้, เวอร์ชัน, เวลา) + tests | เปิด |
 
 ดูรายการงาน product ทั้งหมดที่เหลือใน [REMAINING_GAPS.md](../requirements/REMAINING_GAPS.md)
@@ -63,12 +65,12 @@
 
 | ID | รายการ | Owner | สิ่งที่ product มีแล้ว / hook | สถานะ |
 | --- | --- | --- | --- | --- |
-| G-01 (เดิม B-01) | **ก-25 PDPA**: ฐานทางกฎหมายและการประมวลผลข้อมูลสุขภาพ รวม **จ-6** (ฐานความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน), ข้อความ consent/Terms/Privacy (WB-PD-06), และการรับทราบความเสี่ยงของ self-registration ตาม [ADR-0020](../adr/0020-self-registration-by-national-id.md): ผล found/not-found เปิดเผยข้อมูลการลงทะเบียนผู้ป่วยในโครงการ NCD (ข้อมูลสุขภาพ ม.26); รวมการให้ญาติดูแผนสุขภาพและยาของผู้ป่วย (AF-5, FAM-04/05) | หน่วยงานพันธมิตร + DPO/ที่ปรึกษากฎหมาย | ยืนยันฐานและข้อความก่อนเปิดใช้ข้อมูลจริง; บันทึกการรับทราบของหน่วยงานสำหรับ self-registration ก่อน production. AF-5: การแชร์แผนสุขภาพ/ยาให้ญาติสร้างไว้แล้วหลัง `FAMILY_PLAN_MEDICATION_SHARING_ENABLED` (ค่าเริ่มต้น `false`) — ห้ามเปิดใน production จนหน่วยงานอนุมัติข้อความยินยอมและฐานการเปิดเผย; ปิดภายหลังได้ทันที (grant ยังถูกบันทึก แต่อ่านไม่ได้) | เปิด |
+| G-01 (เดิม B-01) | **ก-25 PDPA**: ฐานทางกฎหมายและการประมวลผลข้อมูลสุขภาพ รวม **จ-6** (ฐานความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน), ข้อความ consent/Terms/Privacy (WB-PD-06), และการรับทราบความเสี่ยงของ self-registration ตาม [ADR-0020](../adr/0020-self-registration-by-national-id.md): ผล found/not-found เปิดเผยข้อมูลการลงทะเบียนผู้ป่วยในโครงการ NCD (ข้อมูลสุขภาพ ม.26); รวมการให้ญาติดูแผนสุขภาพและยาของผู้ป่วย (AF-5, FAM-04/05) | หน่วยงานพันธมิตร + DPO/ที่ปรึกษากฎหมาย | บันทึกคำตัดสินและข้อความตามกระบวนการของหน่วยงาน. Runtime caregiver disclosure ยังคงต้องมีความสัมพันธ์ที่ valid และ resource-specific consent/grant ที่ผู้ป่วยยอมรับ; เอกสารนี้ไม่เปิดหรือปิดสิทธิ์นั้น และไม่มี rollout flag | เปิด |
 | G-02 (เดิม B-02) | **Data residency** (ส่วนหนึ่งของ ก-25): region ของ Supabase (`<SUPABASE_REGION>`), Cloudflare ที่ถอดรหัส TLS และประมวลผล request ที่ edge นอกประเทศได้, LINE และที่เก็บ backup/restore drill | หน่วยงานพันธมิตร + DPO/ที่ปรึกษากฎหมาย | ไม่ต้องทำอะไรใน product; region เป็นการตั้งค่า infrastructure (`SUPABASE_PRODUCTION.md`) | เปิด |
 | G-03 | **Record-time disclosure** ของ Parent summary view/export (REPORTING_ACCESS_CANONICAL §5): Parent OWNER ปัจจุบันเห็น 9 ค่า active-cohort ที่อาจรวม record ก่อน Parent–Child link ปัจจุบันได้หรือไม่ | หน่วยงานพันธมิตร | Query ใช้ current hierarchy; ไม่สร้าง effective date ขึ้นเอง | เปิด |
 | G-04 | **Small-count aggregate privacy**: ต้องปกปิดหรือทบทวนจำนวนต่ำใน Parent summary หรือไม่ (§5) | หน่วยงานพันธมิตร | ไม่มี suppression threshold ใน product จนกว่าจะได้รับกฎ | เปิด |
 | G-05 | **Onward distribution**: ผู้รับปลายทาง ชุดข้อมูล และกระบวนการส่งต่อไฟล์ที่ Global ADMIN/โรงพยาบาลดาวน์โหลด (§5) | หน่วยงานพันธมิตร | ทุกการส่งออกบันทึก audit event แล้ว | เปิด |
-| G-06 | **ประกาศการกู้คืนบัญชีทาง LINE**: หน่วยงานพันธมิตรอนุมัติข้อความที่อธิบายการส่งลิงก์ตั้งรหัสผ่านทาง LINE, วิธีตรวจสอบบัญชี LINE OA และช่องทางติดต่อโรงพยาบาลเมื่อไม่ได้รับลิงก์; ข้อความต้องไม่เปิดเผยว่าบัญชีหรือ LINE binding มีอยู่หรือไม่ | หน่วยงานพันธมิตร + DPO/ผู้รับผิดชอบสื่อสาร | ข้อความฉบับอนุมัติ ผู้อนุมัติ วันที่ และหลักฐานใน release record; production คง `DEMI_RECOVERY_LINE_ENABLED=false` จนผ่าน | เปิด |
+| G-06 | **ประกาศการกู้คืนบัญชีทาง LINE**: หน่วยงานพันธมิตรอาจบันทึกคำตัดสิน/ข้อเสนอแนะต่อข้อความ generic anti-enumeration และช่องทางติดต่อเมื่อไม่ได้รับลิงก์ | หน่วยงานพันธมิตร + DPO/ผู้รับผิดชอบสื่อสาร | บันทึกข้อความและคำตัดสินเพื่อการปฏิบัติการ; ไม่ใช่ runtime activation condition ของ REC-2B ตาม ADR-0012 | เปิด |
 
 ## C. Customer content inputs — เจ้าของ: ลูกค้า (product มี placeholder แล้ว)
 

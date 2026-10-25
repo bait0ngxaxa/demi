@@ -1,6 +1,6 @@
 # LINE_PRODUCTION_SETUP — LINE provider และ channel สำหรับ production
 
-สถานะ: runbook ยังไม่ได้ทำกับ LINE Console จริง ใช้คู่กับ [17J.1 runbook](../phases/PHASE_17J1_LINE_EXTERNAL_SETUP_RUNBOOK.md), [B2.4 §13](../phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md#owner-setup-th) และ [C3 §5](../phases/PHASE_LINE_QA_C3_CONVERSATIONAL_REPLIES.md) เอกสารนี้ระบุเฉพาะส่วนที่ต่างหรือเพิ่มสำหรับ production
+สถานะ: runbook ยังไม่ได้ทำกับ LINE Console จริง ใช้คู่กับ [17J.1 runbook](../phases/PHASE_17J1_LINE_EXTERNAL_SETUP_RUNBOOK.md), [B2.4 §13](../phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md#owner-setup-th) และ [C3 §5](../phases/PHASE_LINE_QA_C3_CONVERSATIONAL_REPLIES.md) เอกสารนี้เป็นบันทึกการตั้งค่า provider โดยผู้ดูแล ไม่ใช่ release approval หรือ application feature gate. Business behavior ถูกกำหนดจาก auth, grants, preference, lifecycle และข้อมูลปัจจุบันตาม [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
 ## 0. กฎที่ย้อนกลับไม่ได้
 
@@ -58,9 +58,9 @@ read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://
 4. Rich Menu URI ของหน้าเชื่อมบัญชีคือ `https://liff.line.me/<LIFF_ID>` ไม่ต้องต่อ path (17J.1)
 5. เปลี่ยนสถานะ channel จาก **Developing เป็น Published** เมื่อพร้อมให้ผู้ใช้จริงใช้ (ตอน Developing จะมีแต่ admin/tester ที่เปิด LIFF ได้)
 
-## 4. MINI App (ทำทีหลังสุด ดู §7 ขั้น 4)
+## 4. MINI App (optional provider integration)
 
-สร้าง channel ประเภท LINE MINI App ใต้ provider เดียวกัน, Endpoint URL = `<PROD_ORIGIN>/line/workflow` แล้วตั้งตัวแปร `DEMI_LINE_MINI_APP_*` ตาม B2.4 §13.B (keyring สร้างใหม่สำหรับ production ห้ามใช้ของ demo) ระหว่างยังไม่พร้อม ให้ค่า MINI ว่างทั้งหมดและ `DEMI_LINE_MINI_APP_DISABLED=true`
+สร้าง channel ประเภท LINE MINI App ใต้ provider เดียวกัน, Endpoint URL = `<PROD_ORIGIN>/line/workflow` แล้วตั้งตัวแปร `DEMI_LINE_MINI_APP_*` ตาม B2.4 §13.B (keyring สร้างใหม่สำหรับแต่ละ database environment ห้ามใช้ของ demo ร่วมกับข้อมูลจริง). ถ้าไม่ได้ provision integration นี้ ให้ค่า MINI ทั้งหมดว่าง; endpoint จะ fail closed สำหรับ MINI เท่านั้น. สถานะ DEVELOPING / REVIEW / PUBLISHED เป็นสถานะ channel ที่ LINE กำหนด ไม่ใช่ DEMI deployment stage.
 
 ## 5. ใส่ค่าใน server
 
@@ -96,18 +96,15 @@ sudo -u demi -H sh -c 'cd /srv/demi/current && node --env-file=/etc/demi/demi.en
 
 เมนูชุดเก่ายังอยู่ที่ LINE (reconcile ไม่ลบ) ให้รันข้อ 6.2 จากโฟลเดอร์ของ release ที่ rollback ไป (alias และเมนูเริ่มต้นจะชี้กลับไปที่ชุดนั้น) แล้วซ่อมเมนูรายคนด้วย `--repair --apply` ถ้าเมนูชุดเก่าถูกลบไปแล้ว คำสั่งจะสร้างใหม่จาก asset ของ release นั้นเอง
 
-## 7. ลำดับการเปิด feature (ทำทีละขั้น ห้ามข้าม)
+## 7. Runtime behavior and operational control
 
-ทุกขั้นแก้ `/etc/demi/demi.env` แล้วทำ `DEPLOY_VPS.md` §4 จากนั้นรอสังเกตผลก่อนไปขั้นต่อไป
+ไม่มี application activation flags. Account link/recovery ใช้ Account Login configuration และ permanent proof/security rules. Appointment notifications and medication reminders are queued and delivered only for currently eligible recipients with active bindings and their own enabled preferences; caregiver appointment messages additionally require a current accepted appointment grant. MINI operations require complete valid provider configuration, signed LINE context, and current scope/lifecycle checks. Missing optional provider configuration fails only the relevant integration.
 
-| ขั้น | ค่า | ตรวจก่อนไปต่อ |
-| --- | --- | --- |
-| 1. Account | ค่า §2–§3 ครบ; MINI ว่าง; `DEMI_LINE_MINI_APP_DISABLED=true`; `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=true`; `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false` | webhook Verify ผ่าน, Rich Menu §6, เชื่อม/ยกเลิก/เชื่อมใหม่, keyword "นัด"/"เมนู" ตอบถูก (C3), device UAT (`RELEASE_GATE.md` T-10/T-11) |
-| 2. Medication reminders | `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=` (ว่าง) | รอ scheduler health `healthy: true` + `lastTickStatus=COMPLETED` (หรือ brief DEFERRED ตาม DEPLOY_VPS §1.11) และ HTTP 200 ต่อเนื่อง; log ทุก tick ต้องเป็น `OK` หรือ skip `LOCK_BUSY`/`TOO_SOON` ที่อธิบายได้ ไม่มี `FAILED`/`NOT_STARTED`; `DEFERRED` ชั่วคราวยอมรับได้เฉพาะเมื่อมี progress, readiness ผ่าน และ backlog กลับลงภายใน envelope ใน E1 §15; ตรวจ queue depth/age, retry และผล provider; triage `permanentFailure`/`unknownOutcome` ที่ยังไม่อธิบายและต้องไม่เกิด backlog ต่อเนื่อง; ผู้ทดสอบที่เปิดรับได้รับข้อความครั้งเดียวต่อเวลา |
-| 3. Appointment notifications | `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION` = UUID ใหม่ (`cat /proc/sys/kernel/random/uuid`) และ `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=true` | ทำข้อ 2 เรื่อง scheduler health/log/backlog/provider outcomes ซ้ำ พร้อมตรวจข้อความเมื่อสร้าง/เลื่อน/ยกเลิกนัดของผู้ทดสอบที่ opt-in; ห้ามใช้ UUID ซ้ำกับรอบก่อนหรือกับ demo (17J.4B: แถวของ generation เก่าจะถูก suppress) |
-| 4. MINI | ตั้งค่า §4 ครบ (`env:check` ผ่าน) แล้วตั้ง `DEMI_LINE_MINI_APP_DISABLED=` (ว่าง) | gateway `/line/workflow` เปิดได้ใน LINE, Verify ผ่าน, device UAT ของ MINI |
+หากผู้ดูแลต้องหยุดงานส่ง notification ชั่วคราว ให้หยุด external scheduler trigger (systemd timer, Vercel Cron หรือ worker ที่เรียก `/api/internal/scheduler/tick`) แล้วรอ tick ที่ทำงานอยู่จบก่อนหยุด process. Pending outbox rows and retry keys remain persisted; เมื่อกลับมาเริ่ม scheduler ระบบจะตรวจ source, recipient, preference, binding, lease และ delivery window ตาม business rules ก่อนส่ง. ห้ามแก้สถานะ outbox ด้วย SQL หรือเปลี่ยน user preference แทนผู้ใช้.
 
-ปิดฉุกเฉิน: medication `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=true`, appointment `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false`, MINI `DEMI_LINE_MINI_APP_DISABLED=true` แล้วทำ `DEPLOY_VPS.md` §4 (preference ของผู้ใช้ไม่ถูกแตะ)
+หากต้องหยุด MINI ให้ถอน route `/line/workflow` ผ่าน hosting/routing ของ operator หรือปรับ provider channel availability ใน LINE Console. การเอา provider credentials ออกจาก configuration จะทำให้ MINI ปฏิเสธการทำงานอย่างปลอดภัย แต่ไม่เปลี่ยน authority ของ Account Login หรือระบบส่วนอื่น.
+
+ใช้ `/api/health`, scheduler readiness และ queue depth/age เพื่อการปฏิบัติการ; หลักฐานในเอกสารนี้ไม่ใช่เงื่อนไขที่ application ตรวจเพื่ออนุญาต feature.
 
 ## 8. ประเมิน quota ข้อความ
 
@@ -127,6 +124,6 @@ appointment = (จำนวนครั้งที่สร้าง + เล�
 read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://api.line.me/v2/bot/message/quota && echo && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://api.line.me/v2/bot/message/quota/consumption; unset LINE_TOKEN
 ```
 
-ตัวเลขผู้รับใช้จาก SQL ที่นับเฉพาะจำนวน (ไม่ดึงตัวตน) ก่อนเปิดขั้น 2/3 แล้วบันทึกผลประเมินใน `RELEASE_GATE.md` T-13
+ตัวเลขผู้รับสำหรับ capacity planning อาจนับด้วย SQL ที่คืนเฉพาะจำนวน (ไม่ดึงตัวตน) และบันทึกผลใน operational record; ไม่ใช่ข้อกำหนดเปิดหรือปิด business behavior
 
-ก่อนเปิด proactive notification ต้องผ่าน capacity gate T-16 ด้วยข้อมูลสังเคราะห์ใน target topology: burst ยา 200 + appointment 200, วัด provider+DB ต่อรายการรวม revalidation และ contention, ตรวจ first attempts ไม่เกิน 15 นาทีและทั้ง queue มี progress ห้ามใช้ผล local synthetic เป็น production measurement Timer ใหม่ทุกนาทีต้องติดตั้งจริงและตรวจ unit version; ไม่มีการเปิด provider หรือโหลดข้อมูลผู้ป่วยจริงเป็นส่วนหนึ่งของการแก้โค้ดนี้ หากเกิด 429 ให้รักษา backoff/retry key เดิมและตรวจ quota/rate limit ไม่เพิ่ม workers เพื่อเร่งฝ่า limit
+การทดสอบ capacity ด้วยข้อมูลสังเคราะห์เป็นแนวทางวางแผนของ operator ไม่ใช่ runtime gate; ห้ามนำผล local synthetic มาอ้างเป็น production measurement. ติดตั้งและ monitor timer ตาม topology ที่เลือก. หากเกิด 429 ให้รักษา backoff/retry key เดิมและตรวจ quota/rate limit ไม่เพิ่ม workers เพื่อเร่งฝ่า limit

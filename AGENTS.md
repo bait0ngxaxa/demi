@@ -10,6 +10,14 @@
 * Do not modify files outside the task scope, rewrite code unnecessarily, or revert existing user changes.
 * UI/style work must not change business logic unless explicitly instructed.
 
+## Production Code First
+
+* Implement confirmed business requirements as complete production code. Do not put ordinary product behavior behind release documents, readiness status, demo/UAT labels, deployment stages, or feature activation switches.
+* Equivalent authenticated actors with equivalent permissions and business data must receive equivalent behavior across compatible environments. Framework-required `NODE_ENV` behavior and technical provider configuration are allowed; neither may grant or remove business authority.
+* Do not add generic feature flags, rollout frameworks, fake runtime persistence, temporary bypasses, or activation debt. If a sensitive rule is unresolved, keep the affected operation fail-closed and identify the missing domain/security rule.
+* Release, demo, UAT, and operational records are informational. They do not authorize or disable application business flows. Preserve permanent authentication, resource authorization, consent, audit, and data-integrity rules.
+* Sole application testing-flag exception: server-only `DEMI_ALLOW_TEST_NATIONAL_IDS`. Only exact `"true"` bypasses the Thai National ID checksum, independent of `NODE_ENV` and deployment labels; exactly 13 digits and valid category digits remain mandatory. Unset, false, or invalid values use strict validation. Never expose or enable it automatically; isolate synthetic identities in a separate test database.
+
 ## 2. Thai Text and Encoding
 
 * **Thai text must never become corrupted, lost, translated, or mojibake.**

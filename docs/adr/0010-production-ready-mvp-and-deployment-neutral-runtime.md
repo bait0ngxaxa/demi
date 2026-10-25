@@ -18,3 +18,9 @@ DEMI's demonstrations and UAT contexts were sometimes treated as permission to b
 ## Consequences
 
 Compatible deployment environments run the same business authorization for the same user, role, resource, and database state. New implementations and handoffs must state implemented scope and remaining approvals separately. For example, Hospital OWNER reporting requires direct ACTIVE OWNER membership and remains exact-Hospital; Platform ADMIN selected-Hospital reporting uses its separate ADMIN policy and remains exact-Hospital. Cross-Hospital aggregation, unrestricted Patient discovery/detail, and Network export do not follow from either policy.
+
+## Amendment — production-code-first runtime contract (2026-10-25)
+
+The Product Owner confirms that release approval, readiness records, demo/UAT phases, and deployment labels are operator concerns and do not authorize or disable confirmed application behavior. Ordinary features must not depend on those records or on rollout/activation flags. Technical integration configuration may determine whether that integration can connect; missing optional provider configuration must not disable unrelated operations. A feature with an unresolved sensitive business rule remains explicitly incomplete and fail-closed until its permanent authorization/consent contract is confirmed.
+
+The sole application testing-flag exception is server-only `DEMI_ALLOW_TEST_NATIONAL_IDS`. Only exact `"true"` bypasses Thai National ID checksum validation, in any `NODE_ENV` or deployment; format, exactly 13 numeric digits, category digit, identity conflict and uniqueness checks remain mandatory. Unset, false, or invalid values enforce the checksum. This flag is never automatically enabled, and synthetic data remains isolated by the operator in a separate database. This amendment extends ADR-0010 and does not create a separate runtime or feature-toggle architecture.

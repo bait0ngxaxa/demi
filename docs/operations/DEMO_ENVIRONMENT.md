@@ -2,6 +2,8 @@
 
 Environment สาธิตประกอบด้วย Vercel project `demi_demo` และ Supabase project `Demi-dev` (ref `jfsbcqpllvwzmkrmclgw`) ข้อมูลทั้งหมดเป็นข้อมูลสังเคราะห์ โดยชื่อที่แสดงทุกชื่อขึ้นต้นด้วย “ทดสอบ” ห้ามนำข้อมูลผู้ป่วยจริงเข้า environment นี้ และห้ามรันคำสั่งในเอกสารนี้กับ production (`demo:seed` ถูกออกแบบให้ปฏิเสธ production ตาม RELEASE_GATE T-19)
 
+เอกสารนี้เป็นคู่มือจัดการข้อมูลสาธิตเท่านั้น ไม่กำหนดสิทธิ์การทำงานของ product. Demo ใช้ code path และ business rules เดียวกับ environment อื่น; ห้ามตั้ง feature switch เพื่อเปิด/ปิด business behavior.
+
 ## 1. ตรวจว่า environment ชี้ไปที่ Supabase project ไหน
 
 ให้ดูจาก project ref เท่านั้น และห้ามพิมพ์หรือคัดลอก key
@@ -44,8 +46,8 @@ npm run demo:reset   # หลังสาธิต: ลบเฉพาะข้�
 - **ข้อมูลที่จำเป็นต้องมีก่อน:** ต้องมี Hospital master ใน `Demi-dev` แล้ว (มีแม่ข่ายที่ยังเป็น PENDING_VERIFICATION และลูกข่ายแบบเดียวกันอย่างน้อย 2 แห่ง) Seed จะ onboard สามแห่งนี้ผ่าน flow จริง (ยื่นคำขอ → ADMIN อนุมัติ) จึงไม่แตะโรงพยาบาลที่ใช้งานอยู่แล้ว
 - ข้อมูล demo ระบุได้จากเลขบัตรประชาชนสังเคราะห์ช่วง `8-99-9xxxxxxx-c` (รหัสจังหวัด 99 ไม่มีอยู่จริง แต่ checksum ถูกต้อง) โทรศัพท์ใช้ช่วง `02-000-00xx` Reset ลบเฉพาะสิ่งที่ผูกกับตัวตนเหล่านี้และโรงพยาบาลที่ตัวตนเหล่านี้ onboard
 - ถ้าระบบมี Platform ADMIN อยู่แล้ว seed จะสร้าง ADMIN ของ demo เพิ่มอีกหนึ่งบัญชี และ reset จะลบเฉพาะบัญชี demo นี้
-- ใน Vercel `demi_demo` ให้ตั้ง `FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED=true` เพื่อให้ผู้ดูแล (caregiver) เห็นนัดที่ได้รับสิทธิ์
-- ใน Vercel `demi_demo` ให้ตั้ง `DEMI_RECOVERY_LINE_ENABLED=true` เพื่อเปิด flow ลืมรหัสผ่านที่ส่งลิงก์ไปยัง LINE ที่ผูกบัญชีไว้; production ให้คง `false` จนกว่าจะผ่าน release gate G-06
+- สิทธิ์ caregiver อาศัย relationship ที่ active และ grant นัดหมายเฉพาะ resource ที่ผู้ป่วยสร้างและผู้ดูแลยอมรับ; ไม่มี environment switch
+- LINE account recovery ทำงานตาม REC-2B เมื่อ Account Login/LIFF provider configuration ครบและผู้ใช้ผ่าน proof/security checks; ไม่มี environment switch. ข้อความตอบกลับยังคง anti-enumeration
 
 ### สิ่งที่ seed สร้าง
 
@@ -60,8 +62,8 @@ npm run demo:reset   # หลังสาธิต: ลบเฉพาะข้�
 ผู้ป่วยต้องเชื่อม LINE ก่อน โดยกดเมนูเชื่อมบัญชีใน Rich Menu ของ OA demo แล้ว login ด้วยบัญชีผู้ป่วย demo (ขั้นตอนตาม [PHASE_17J1_LINE_EXTERNAL_SETUP_RUNBOOK.md](../phases/PHASE_17J1_LINE_EXTERNAL_SETUP_RUNBOOK.md))
 
 - **คำว่า “นัด” และ Quick Reply:** ผู้ป่วย A คนที่ 1–3 มีนัดภายใน 7 วันหลัง seed ส่งคำว่า “นัด” แล้วระบบจะตอบนัดถัดไป ส่ง “เมนู” หรือ “ช่วยเหลือ” เพื่อดู Quick Reply ตามบทบาท
-- **เปิดการแจ้งเตือนนัดหมาย:** ใน Vercel `demi_demo` ให้ตั้ง `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION` เป็น UUID ใหม่ทุกครั้งที่เปิดรอบใหม่ (เช่น `node -e "console.log(crypto.randomUUID())"` ห้ามใช้ UUID ซ้ำกับรอบก่อนหรือกับ production) แล้วตั้ง `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=true` และ redeploy ผู้ป่วยต้องเปิดรับการแจ้งเตือนนัดในหน้าตั้งค่าของตัวเองด้วย
-- **เตือนกินยา:** ตั้ง `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=false` ผู้ป่วยเปิดรับการเตือนยาในหน้าตั้งค่า แล้วแก้เวลาของยาหนึ่งรายการให้อยู่ภายในไม่กี่นาทีข้างหน้า (การเตือนจะส่งเฉพาะภายใน 15 นาทีหลังเวลาที่ตั้งไว้)
+- **การแจ้งเตือนนัดหมาย:** ระบบบันทึก event ใน outbox ตามการเปลี่ยนนัด และส่งเมื่อผู้รับมี LINE binding ที่ใช้ได้และเปิดรับการแจ้งเตือน; caregiver ได้รับเฉพาะเมื่อมี resource grant ที่ยอมรับแล้วและยัง active
+- **เตือนกินยา:** ผู้ป่วยเปิดรับการเตือนยาในหน้าตั้งค่า แล้วแก้เวลาของยาหนึ่งรายการให้อยู่ภายในไม่กี่นาทีข้างหน้า (การเตือนจะส่งเฉพาะภายใน 15 นาทีหลังเวลาที่ตั้งไว้)
 - **สั่ง scheduler tick เอง:** Vercel Hobby ไม่มี scheduler ให้ จึงต้องเรียก tick เองหลังสร้างหรือเลื่อนนัด หรือเมื่อถึงเวลายา
 
   ```bash
@@ -69,7 +71,7 @@ npm run demo:reset   # หลังสาธิต: ลบเฉพาะข้�
   ```
 
   `DEMI_SCHEDULER_SECRET` ต้องตรงกับค่าใน Vercel (ยาวอย่างน้อย 32 ตัวอักษร) ผลลัพธ์เป็นจำนวนต่อขั้นตอนเท่านั้น และถ้ามี tick ที่สำเร็จไปภายใน 60 วินาทีก่อนหน้า ระบบจะข้าม (`TOO_SOON`)
-- หลังสาธิต ให้ตั้ง `DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED=false` และ `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=true` กลับ
+- หลังสาธิต ให้หยุดการเรียก scheduler จากระบบภายนอกตามความจำเป็นของผู้ดูแล; ไม่ต้องเปลี่ยน application feature settings
 
 ## 5. เดินดูทีละบทบาท
 

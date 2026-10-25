@@ -71,7 +71,7 @@ openssl rand -base64 48
 กฎ:
 - ห้ามวางไฟล์ `.env*` ไว้ในโฟลเดอร์ release (`next start` จะอ่าน `.env` ใน cwd เพิ่ม)
 - `IDENTITY_HASH_SECRET` ตั้งครั้งเดียว ห้าม rotate (ดู §5)
-- เริ่มต้นด้วย feature flag ตาม template: appointment notifications ปิด, `DEMI_LINE_MEDICATION_REMINDERS_DISABLED=true`, `DEMI_LINE_MINI_APP_DISABLED=true`
+- ตั้งเฉพาะ provider integration ที่จะใช้ตาม `.env.production.example`; optional LINE integration อาจไม่ถูก provisioned โดยไม่มีผลต่อส่วนอื่นของระบบ
 
 ### 1.4 สิทธิ์อ่าน repository (deploy key แบบ read-only)
 
@@ -206,7 +206,7 @@ journalctl -u demi-scheduler.service -n 20 --no-pager
 
 readiness อาจยัง healthy ในช่วง defer สั้น ๆ หาก last fully completed tick อายุไม่เกิน 600 วินาที โดยต้องไม่มี due ยาอายุ ≥300 วินาที, due appointment อายุ ≥600 วินาที, `deliveryWindowExpiredLast10Minutes` หรือ `terminalDeliveryFailuresLast10Minutes` มากกว่า 0 สถานะ `FAILED` ทำให้ unhealthy ทันที lastTickCompletedAt ไม่เลื่อนเมื่อ defer/fail; จึงไม่ซ่อน persistent saturation การเกิด 503 จาก buffer ของ burst เริ่มลดลงเป็นสัญญาณ capacity ให้ตรวจ ไม่ใช่หลักฐานว่าข้อความหาย
 
-ติดตาม snapshots ทุกนาที: `pending`, `oldestPendingAgeSeconds`, `oldestDueAgeSeconds`, `remainingDue`, claimed/accepted/retry/expired และ duration ต่อ queue เปรียบเทียบ trend อย่างน้อย 3 ticks; due backlog ที่ไม่ลดหรือ queue ไม่มี claims ทั้งที่มี eligible work ให้ตรวจทันที งานหมดหน้าต่างแยกนับ `deliveryWindowExpired` จาก suppression สาเหตุอื่น ถ้า queue มี progress แต่ backlog โตต่อเนื่อง ต้องลด rollout ให้กลับเข้า capacity envelope ก่อน ไม่ replay ข้อความที่หมดเวลา ดู model และผล synthetic ใน [E1 §15](../phases/PHASE_LINE_QA_E1_NOTIFICATION_OPERATIONS.md#15-current-throughput-and-fairness-remediation-2026-10-20)
+ติดตาม snapshots ทุกนาที: `pending`, `oldestPendingAgeSeconds`, `oldestDueAgeSeconds`, `remainingDue`, claimed/accepted/retry/expired และ duration ต่อ queue เปรียบเทียบ trend อย่างน้อย 3 ticks; due backlog ที่ไม่ลดหรือ queue ไม่มี claims ทั้งที่มี eligible work ให้ตรวจทันที งานหมดหน้าต่างแยกนับ `deliveryWindowExpired` จาก suppression สาเหตุอื่น ถ้า queue มี progress แต่ backlog โตต่อเนื่อง ให้ operator หยุด external scheduler trigger หรือปรับ capacity ของ worker ตาม topology แล้วตรวจงานที่ค้างก่อนเริ่มใหม่; ไม่ replay ข้อความที่หมดเวลา ดู model และผล synthetic ใน [E1 §15](../phases/PHASE_LINE_QA_E1_NOTIFICATION_OPERATIONS.md#15-current-throughput-and-fairness-remediation-2026-10-20)
 
 release นี้เปลี่ยน timer artifact: ขณะ timer หยุดและ service เดิมจบแล้ว ต้องติดตั้งไฟล์ `.service`/`.timer` จาก release ใหม่ตาม §1.11 แล้ว `daemon-reload` ก่อนเปิด timer; rollback ต้องใช้ unit ของ release ที่ย้อนกลับด้วย การสลับ symlink อย่างเดียวไม่อัปเดต `/etc/systemd/system`
 
