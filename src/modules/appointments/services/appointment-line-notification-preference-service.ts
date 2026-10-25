@@ -10,7 +10,6 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { appointmentGrantCaregiverWhere } from "@/modules/family/policies/appointment-grant-policy";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -77,12 +76,10 @@ async function loadCurrentNotificationUser(
           select: { id: true },
         })
       : null,
-    isFamilyDelegatedAppointmentReadEnabled()
-      ? database.caregiverAppointmentGrant.findFirst({
-          where: appointmentGrantCaregiverWhere(actor, "ACTIVE"),
-          select: { id: true },
-        })
-      : null,
+    database.caregiverAppointmentGrant.findFirst({
+      where: appointmentGrantCaregiverWhere(actor, "ACTIVE"),
+      select: { id: true },
+    }),
   ]);
   return patientRelationship || osmRelationship || hospitalMembership || caregiverGrant
     ? { id: user.id, personId: user.personId }

@@ -11,28 +11,9 @@ import {
   expectedAppointmentStatusForNotification,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
-  resolveAppointmentLineNotificationRollout,
 } from "./appointment-line-notifications";
 
 describe("appointment LINE notification policy", () => {
-  it("keeps rollout OFF unless explicitly enabled with a new UUID generation", () => {
-    expect(resolveAppointmentLineNotificationRollout({ enabled: undefined, generation: "valid" })).toEqual({
-      enabled: false,
-      generation: null,
-    });
-    expect(resolveAppointmentLineNotificationRollout({ enabled: "true", generation: "invalid" })).toEqual({
-      enabled: false,
-      generation: null,
-    });
-    expect(resolveAppointmentLineNotificationRollout({
-      enabled: "true",
-      generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    })).toEqual({
-      enabled: true,
-      generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    });
-  });
-
   it.each([
     ["FOLLOW_UP", "ติดตาม"],
     ["ASSESSMENT", "ประเมิน"],

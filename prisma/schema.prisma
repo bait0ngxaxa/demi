@@ -2320,7 +2320,8 @@ model AppointmentLineNotification {
   bindingId                    String?                               @db.Uuid
   bindingLifecycleVersion      Int?
   preferenceVersion            Int?
-  rolloutGeneration            String                                @db.Uuid
+  // Legacy rollout metadata retained for existing rows; delivery never reads it.
+  rolloutGeneration            String?                               @db.Uuid
   state                        AppointmentLineNotificationState     @default(PENDING)
   dueAt                        DateTime                              @db.Timestamptz(3)
   attemptCount                 Int                                   @default(0)

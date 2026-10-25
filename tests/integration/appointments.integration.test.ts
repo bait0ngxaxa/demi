@@ -333,11 +333,6 @@ async function createAppointmentNotificationSubject(label: string): Promise<{
   return { hospitalId: hospital.id, owner: owner.actor, patient, patientActor, lineUserId, bindingId: binding.id };
 }
 
-const notificationRollout = {
-  enabled: true,
-  generation: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-} as const;
-
 describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
   beforeAll(async () => {
     await prisma.$connect();
@@ -1193,7 +1188,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const dependencies = {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     };
     const firstInput = appointmentInput(subject.patient.relationshipId);
     const created = await createAppointment(subject.owner, firstInput, dependencies);
@@ -1269,90 +1263,50 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(rescheduled.status).toBe(AppointmentStatus.SCHEDULED);
   });
 
-  it("keeps disabled-period mutations silent and suppresses pending work across an OFF cutover", async () => {
-    const subject = await createAppointmentNotificationSubject("CUTOVER");
-    const base = new Date();
-    const disabled = { enabled: false, generation: null } as const;
-    const disabledDependencies = {
-      database: prisma,
-      now: () => base,
-      appointmentLineNotificationRollout: disabled,
-    };
-    const oldInput = appointmentInput(subject.patient.relationshipId);
-    const oldAppointment = await createAppointment(subject.owner, oldInput, disabledDependencies);
-    const oldReschedule = await rescheduleAppointment(subject.owner, rescheduleInput(
-      subject.patient.relationshipId,
-      oldAppointment.appointmentId,
-      oldAppointment.updatedAt,
-    ), disabledDependencies);
-    await cancelAppointment(subject.owner, transitionInput(
-      subject.patient.relationshipId,
-      oldAppointment.appointmentId,
-      oldReschedule.updatedAt,
-    ), disabledDependencies);
-    expect(await prisma.appointmentLineNotification.count()).toBe(0);
+  it("creates notification intents independently of legacy activation configuration", async () => {
+    const previousEnabled = process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED;
+    const previousGeneration = process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION;
+    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED = "false";
+    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION = "not-a-generation";
+    try {
+      const subject = await createAppointmentNotificationSubject("CONFIG-INDEPENDENT");
+      const base = new Date();
+      const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), { database: prisma, now: () => base });
+      const rescheduled = await rescheduleAppointment(subject.owner, rescheduleInput(subject.patient.relationshipId, created.appointmentId, created.updatedAt), { database: prisma, now: () => base });
+      await cancelAppointment(subject.owner, transitionInput(subject.patient.relationshipId, created.appointmentId, rescheduled.updatedAt), { database: prisma, now: () => base });
 
-    const pending = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
-      database: prisma,
-      now: () => base,
-      appointmentLineNotificationRollout: notificationRollout,
-    });
-    expect(await prisma.appointmentLineNotification.count({ where: { appointmentId: pending.appointmentId } })).toBe(1);
-    let providerCalls = 0;
-    await drainAppointmentLineNotificationOutbox({
-      database: prisma,
-      now: () => base,
-      rollout: () => disabled,
-      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
-      logSummary: () => undefined,
-    });
-    expect(providerCalls).toBe(0);
-    expect(await prisma.appointmentLineNotification.findFirstOrThrow({
-      where: { appointmentId: pending.appointmentId },
-      select: { state: true },
-    })).toEqual({ state: AppointmentLineNotificationState.SUPPRESSED });
-
-    const afterCutover = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
-      database: prisma,
-      now: () => base,
-      appointmentLineNotificationRollout: {
-        enabled: true,
-        generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      },
-    });
-    const drain = await drainAppointmentLineNotificationOutbox({
-      database: prisma,
-      now: () => base,
-      rollout: () => ({ enabled: true, generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }),
-      push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
-      logSummary: () => undefined,
-    });
-    expect(drain.providerAccepted).toBe(1);
-    expect(providerCalls).toBe(1);
-    expect(await prisma.appointmentLineNotification.findMany({
-      where: { appointmentId: { in: [pending.appointmentId, afterCutover.appointmentId] } },
-      orderBy: { appointmentId: "asc" },
-      select: { appointmentId: true, rolloutGeneration: true, state: true },
-    })).toHaveLength(2);
+      const events = await prisma.appointmentLineNotification.findMany({
+        where: { appointmentId: created.appointmentId },
+        select: { eventKind: true, state: true, safeOutcome: true },
+        orderBy: { sourceUpdatedAt: "asc" },
+      });
+      expect(events.map(({ eventKind }) => eventKind)).toEqual([
+        AppointmentLineNotificationEventKind.CREATED,
+        AppointmentLineNotificationEventKind.RESCHEDULED,
+        AppointmentLineNotificationEventKind.CANCELLED,
+      ]);
+      expect(events.every(({ state, safeOutcome }) => state === AppointmentLineNotificationState.PENDING && safeOutcome === null)).toBe(true);
+    } finally {
+      if (previousEnabled === undefined) delete process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED;
+      else process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED = previousEnabled;
+      if (previousGeneration === undefined) delete process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION;
+      else process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION = previousGeneration;
+    }
   });
 
-  it("rolls back an appointment when its enabled outbox intent cannot be persisted", async () => {
-    const subject = await createAppointmentNotificationSubject("ATOMICITY");
+  it("records the appointment event outbox in the same operation without a rollout generation", async () => {
+    const subject = await createAppointmentNotificationSubject("OUTBOX-REQUIRED");
     const input = appointmentInput(subject.patient.relationshipId);
-    await expect(createAppointment(subject.owner, input, {
-      database: prisma,
-      appointmentLineNotificationRollout: { enabled: true, generation: "invalid-uuid" },
-    })).rejects.toBeTruthy();
-    expect(await prisma.patientAppointment.count({ where: { submissionNonce: String(input.submissionNonce) } })).toBe(0);
-    expect(await prisma.appointmentLineNotification.count()).toBe(0);
-    expect(await prisma.auditEvent.count({ where: { action: "appointment.created" } })).toBe(0);
+    const created = await createAppointment(subject.owner, input, { database: prisma });
+    expect(await prisma.patientAppointment.count({ where: { submissionNonce: String(input.submissionNonce) } })).toBe(1);
+    expect(await prisma.appointmentLineNotification.count({ where: { appointmentId: created.appointmentId } })).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "appointment.created" } })).toBe(1);
   });
 
   it("enforces the database source-event uniqueness constraint", async () => {
     const subject = await createAppointmentNotificationSubject("UNIQUE");
     const appointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     const source = await prisma.appointmentLineNotification.findFirstOrThrow({
       where: { appointmentId: appointment.appointmentId },
@@ -1368,7 +1322,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         bindingId: source.bindingId,
         bindingLifecycleVersion: source.bindingLifecycleVersion,
         preferenceVersion: source.preferenceVersion,
-        rolloutGeneration: source.rolloutGeneration,
         state: AppointmentLineNotificationState.PENDING,
         dueAt: source.dueAt,
         retryKey: randomUUID(),
@@ -1378,11 +1331,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(await prisma.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId } })).toBe(1);
   });
 
-  it("delivers AF-3 OSM and creator events once under concurrent drains and drops a stale assignment recipient", async () => {
+  it("delivers AF-3 OSM and creator events despite inactive legacy settings, then drops a stale assignment recipient", async () => {
     const previousEnabled = process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED;
     const previousGeneration = process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION;
-    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED = "true";
-    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION = notificationRollout.generation;
+    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED = "false";
+    process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION = "invalid-generation";
     try {
       const hospital = await createHospital("AF3-LINE");
       const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
@@ -1441,7 +1394,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         assignedOsmUserId: osm.userId,
         locationType: "HOME_VISIT",
         responsibleUserId: null,
-      }), { database: prisma, appointmentLineNotificationRollout: notificationRollout });
+      }), { database: prisma });
       await submitAppointmentRescheduleRequest(osm.actor, {
         patientHospitalRelationshipId: patient.relationshipId,
         appointmentId: appointment.appointmentId,
@@ -1449,7 +1402,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         submissionNonce: randomUUID(),
         preferredDatetimes: [bangkokIso(new Date(Date.now() + 72 * 60 * 60 * 1000))],
         reason: "เหตุผลที่ไม่ควรส่งทาง LINE",
-      }, { database: prisma, appointmentLineNotificationRollout: notificationRollout });
+      }, { database: prisma });
 
       const expectedEvents = [
         AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED,
@@ -1469,7 +1422,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
       const drainDependencies = {
         database: prisma,
-        rollout: () => notificationRollout,
         push: async (lineUserId: string, text: string, retryKey: string) => {
           calls.push({ lineUserId, text, retryKey });
           return { kind: "ACCEPTED" as const };
@@ -1522,7 +1474,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         assignedOsmUserId: osm.userId,
         locationType: "HOME_VISIT",
         responsibleUserId: null,
-      }), { database: prisma, now: () => new Date(), appointmentLineNotificationRollout: notificationRollout });
+      }), { database: prisma, now: () => new Date() });
       const callsBeforeHandoff = calls.length;
       const formerAssignment = await prisma.patientOsmAssignment.findFirstOrThrow({
         where: { patientHospitalRelationshipId: nextPatient.relationshipId, endedAt: null },
@@ -1565,7 +1517,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
     let pushCount = 0;
@@ -1577,7 +1528,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push,
       random: () => 0.5,
       batchSize: 1,
@@ -1617,7 +1567,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     for (let index = 0; index < 5; index += 1) {
       const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
         database: prisma,
-        appointmentLineNotificationRollout: notificationRollout,
       });
       const row = await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId }, select: { id: true } });
       ids.push(row.id);
@@ -1649,13 +1598,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push: async (lineUserId: string, text: string, retryKey: string) => {
         calls.push({ lineUserId, text, retryKey });
         return { kind: "RETRYABLE_HTTP_FAILURE" as const };
@@ -1699,12 +1646,10 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("PERMANENT-REJECTION");
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
 
     const result = await drainAppointmentLineNotificationOutbox({
       database: prisma,
-      rollout: () => notificationRollout,
       push: async () => ({ kind: "PERMANENT_FAILURE" }),
       logSummary: () => undefined,
     });
@@ -1727,13 +1672,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     let pushCount = 0;
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push: async () => {
         pushCount += 1;
         return pushCount === 1
@@ -1772,7 +1715,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     let signalProvider: (() => void) | null = null;
     let releaseFirst: ((value: { kind: "ACCEPTED" }) => void) | null = null;
@@ -1781,7 +1723,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push: async () => {
         providerCalls += 1;
         if (providerCalls === 1) {
@@ -1831,14 +1772,12 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const first = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => base,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     await setOwnAppointmentLineNotificationPreference(subject.patientActor, false, { database: prisma, now: () => base });
     let providerCalls = 0;
     const drain = (now: Date) => drainAppointmentLineNotificationOutbox({
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
       logSummary: () => undefined,
     });
@@ -1851,7 +1790,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const relinkedIntent = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => base,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     await prisma.lineAccountBinding.update({
       where: { id: subject.bindingId },
@@ -1876,7 +1814,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("IDENTITY-SCOPE");
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     sequence += 1;
     const replacementPerson = await prisma.person.create({
@@ -1904,7 +1841,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     let providerCalls = 0;
     await drainAppointmentLineNotificationOutbox({
       database: prisma,
-      rollout: () => notificationRollout,
       push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
       logSummary: () => undefined,
     });
@@ -1923,7 +1859,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("ROLE-REVOKED");
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     await prisma.userRole.deleteMany({
       where: { userId: subject.patient.userId, role: Role.PATIENT },
@@ -1947,7 +1882,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     let providerCalls = 0;
     await drainAppointmentLineNotificationOutbox({
       database: prisma,
-      rollout: () => notificationRollout,
       push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
       logSummary: () => undefined,
     });
@@ -1966,7 +1900,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("HOSPITAL-SCOPE");
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     await prisma.hospital.update({
       where: { id: subject.hospitalId },
@@ -1976,7 +1909,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     let providerCalls = 0;
     await drainAppointmentLineNotificationOutbox({
       database: prisma,
-      rollout: () => notificationRollout,
       push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
       logSummary: () => undefined,
     });
@@ -1991,7 +1923,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("STALE-SOURCE");
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     await rescheduleAppointment(subject.owner, rescheduleInput(
       subject.patient.relationshipId,
@@ -1999,12 +1930,10 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       created.updatedAt,
     ), {
       database: prisma,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     let providerCalls = 0;
     await drainAppointmentLineNotificationOutbox({
       database: prisma,
-      rollout: () => notificationRollout,
       push: async () => { providerCalls += 1; return { kind: "ACCEPTED" }; },
       logSummary: () => undefined,
     });
@@ -2019,21 +1948,18 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(providerCalls).toBe(1);
   });
 
-  it("suppresses pending old-generation work across a concurrent cutover without recalling an in-flight Push", async () => {
+  it("drains pending notification work during concurrent delivery without release cutover suppression", async () => {
     const subject = await createAppointmentNotificationSubject("CONCURRENT-CUTOVER");
     let now = new Date();
     const first = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     now = new Date(now.getTime() + 1_000);
     const second = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
-    let rollout: { enabled: boolean; generation: string | null } = notificationRollout;
     let releaseFirst: ((value: { kind: "ACCEPTED" }) => void) | null = null;
     let signalProvider: () => void = () => undefined;
     const providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
@@ -2041,7 +1967,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => rollout,
       batchSize: 1,
       push: async () => {
         calls += 1;
@@ -2055,9 +1980,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     };
     const inFlight = drainAppointmentLineNotificationOutbox(dependencies);
     await providerEntered;
-    rollout = { enabled: true, generation: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" };
-    const afterCutover = await drainAppointmentLineNotificationOutbox(dependencies);
-    expect(afterCutover.suppressed).toBe(1);
+    const secondDrain = await drainAppointmentLineNotificationOutbox(dependencies);
+    expect(secondDrain.providerAccepted).toBe(1);
     const completePush = releaseFirst as ((value: { kind: "ACCEPTED" }) => void) | null;
     if (!completePush) throw new Error("Expected the first provider attempt to be in flight");
     completePush({ kind: "ACCEPTED" });
@@ -2070,9 +1994,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     });
     expect(outcomes).toEqual([
       { state: AppointmentLineNotificationState.PROVIDER_ACCEPTED, safeOutcome: "ACCEPTED" },
-      { state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: "ROLLOUT_CLOSED" },
+      { state: AppointmentLineNotificationState.PROVIDER_ACCEPTED, safeOutcome: "ACCEPTED" },
     ]);
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
   });
 
   it("keeps opt-out and unlink/relink races from authorizing a later retry", async () => {
@@ -2081,7 +2005,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const firstAppointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     let releaseFirst: ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null = null;
     let signalProvider: () => void = () => undefined;
@@ -2090,7 +2013,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const dependencies = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       batchSize: 1,
       push: async () => {
         providerCalls += 1;
@@ -2119,7 +2041,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const secondAppointment = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     releaseFirst = null;
     providerEntered = new Promise<void>((resolve) => { signalProvider = resolve; });
@@ -2171,11 +2092,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const subject = await createAppointmentNotificationSubject("BUDGET");
     const now = new Date();
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
-      database: prisma, now: () => now, appointmentLineNotificationRollout: notificationRollout,
+      database: prisma, now: () => now,
     });
     let checks = 0;
     let calls = 0;
-    const dependencies = { database: prisma, now: () => now, rollout: () => notificationRollout,
+    const dependencies = { database: prisma, now: () => now,
       push: async () => { calls++; return { kind: "ACCEPTED" as const }; }, logSummary: () => undefined };
     const stopped = await drainAppointmentLineNotificationOutbox({ ...dependencies, shouldContinue: () => ++checks < stopAt });
     expect(stopped).toMatchObject({ claimed: 1, providerAccepted: 0, remainingDue: 1 });
@@ -2192,7 +2113,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
       database: prisma,
       now: () => now,
-      appointmentLineNotificationRollout: notificationRollout,
     });
     let resolveFirst: ((value: { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }) => void) | null = null;
     let callCount = 0;
@@ -2209,7 +2129,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const deps = {
       database: prisma,
       now: () => now,
-      rollout: () => notificationRollout,
       push,
       batchSize: 1,
       logSummary: () => undefined,

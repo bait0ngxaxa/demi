@@ -150,6 +150,8 @@ function createDatabase(input: {
     };
     patientAppointmentCancellationRequest: { updateMany: ReturnType<typeof vi.fn> };
     hospitalMembership: { findFirst: ReturnType<typeof vi.fn> };
+    caregiverAppointmentGrant: { findMany: ReturnType<typeof vi.fn> };
+    appointmentLineNotification: { createMany: ReturnType<typeof vi.fn> };
   };
 } {
   const findFirstResults = input.findFirstResults ?? [];
@@ -195,6 +197,8 @@ function createDatabase(input: {
         input.responsibleEligible === false ? null : { userId: responsibleUserId },
       ),
     },
+    caregiverAppointmentGrant: { findMany: vi.fn().mockResolvedValue([]) },
+    appointmentLineNotification: { createMany: vi.fn().mockResolvedValue({ count: 1 }) },
     patientAppointment: {
       findUnique: vi.fn().mockImplementation(async () => {
         if (input.findUniqueResults) {
@@ -266,6 +270,13 @@ describe("Appointment service", () => {
         creationRequestHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
       }),
       select: expect.anything(),
+    });
+    expect(transaction.appointmentLineNotification.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        eventKind: "CREATED",
+        recipientKind: "PATIENT",
+        state: "SUPPRESSED",
+      })],
     });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({

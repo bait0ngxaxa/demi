@@ -426,18 +426,16 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   });
 
   it("E6: one message per eligible recipient per event, even under concurrent drains", async () => {
-    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
     const f = await fixture();
     const { caregiver } = await caregiverWithGrant(f);
     const lineIds = new Set([await bindLine(f.patient), await bindLine(f.osm), await bindLine(caregiver)]);
-    const rollout = { enabled: true, generation: randomUUID() };
-    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), { ...dependencies, appointmentLineNotificationRollout: rollout });
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
 
     const rows = await db.appointmentLineNotification.findMany({ where: { appointmentId: appointment.appointmentId } });
     expect(rows.map((row) => [row.recipientKind, row.state]).sort()).toEqual([["CAREGIVER", "PENDING"], ["OSM", "PENDING"], ["PATIENT", "PENDING"]]);
 
     const pushed: string[] = [];
-    const drainDeps = { database: db, now: () => now, rollout: () => rollout, familyAppointmentReadEnabled: () => true, logSummary: () => undefined,
+    const drainDeps = { database: db, now: () => now, logSummary: () => undefined,
       push: async (lineUserId: string, text: string) => { pushed.push(lineUserId); expect(text).not.toMatch(/FOLLOW_UP|ความดัน|น้ำตาล|\d{2}:\d{2}/u); return { kind: "ACCEPTED" as const }; } };
     await Promise.all([drainAppointmentLineNotificationOutbox(drainDeps), drainAppointmentLineNotificationOutbox(drainDeps)]);
     await drainAppointmentLineNotificationOutbox(drainDeps);
@@ -446,16 +444,11 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   });
 
   it("E6: delivers once when the OSM assignment ends but the same User's caregiver grant remains active", async () => {
-    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
     const f = await fixture();
     const { grantId } = await caregiverWithGrant(f, f.osm);
     const patientLine = await bindLine(f.patient);
     const sharedLine = await bindLine(f.osm);
-    const rollout = { enabled: true, generation: randomUUID() };
-    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), {
-      ...dependencies,
-      appointmentLineNotificationRollout: rollout,
-    });
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
 
     const sharedRecipientRows = await db.appointmentLineNotification.findMany({
       where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
@@ -474,8 +467,6 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await drainAppointmentLineNotificationOutbox({
       database: db,
       now: () => now,
-      rollout: () => rollout,
-      familyAppointmentReadEnabled: () => true,
       logSummary: () => undefined,
       push: async (lineUserId: string) => { pushed.push(lineUserId); return { kind: "ACCEPTED" as const }; },
     });
@@ -489,7 +480,6 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   });
 
   it("E6: an unassigned OSM, a revoked grant and an opted-out user get nothing", async () => {
-    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
     const f = await fixture();
     const { caregiver, grantId } = await caregiverWithGrant(f);
     const optedOut = await caregiverWithGrant(f);
@@ -497,8 +487,7 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await bindLine(f.osm);
     await bindLine(caregiver);
     await bindLine(optedOut.caregiver, false);
-    const rollout = { enabled: true, generation: randomUUID() };
-    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), { ...dependencies, appointmentLineNotificationRollout: rollout });
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
     expect(await db.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: appointment.appointmentId, recipientUserId: optedOut.caregiver.userId } }))
       .toMatchObject({ state: "SUPPRESSED", safeOutcome: "OPT_IN_REQUIRED_AT_SOURCE" });
 
@@ -507,14 +496,14 @@ describe("Phase E access decisions (PostgreSQL)", () => {
     await revokeAppointmentGrant(f.patient, grantId, familyDeps);
 
     const pushed: string[] = [];
-    await drainAppointmentLineNotificationOutbox({ database: db, now: () => now, rollout: () => rollout, familyAppointmentReadEnabled: () => true, logSummary: () => undefined,
+    await drainAppointmentLineNotificationOutbox({ database: db, now: () => now, logSummary: () => undefined,
       push: async (lineUserId: string) => { pushed.push(lineUserId); return { kind: "ACCEPTED" as const }; } });
     expect(pushed).toEqual([patientLine]);
     const suppressed = await db.appointmentLineNotification.findMany({ where: { appointmentId: appointment.appointmentId, safeOutcome: "AUTHORITY_CHANGED" }, select: { recipientKind: true } });
     expect(suppressed.map(({ recipientKind }) => recipientKind).sort()).toEqual(["CAREGIVER", "OSM"]);
 
     // The next event is resolved at its own source time: no assigned OSM, and only the remaining grant holder.
-    const next = await createAppointment(f.owner, appointmentInput(f.relationshipId), { ...dependencies, appointmentLineNotificationRollout: rollout });
+    const next = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
     expect((await db.appointmentLineNotification.findMany({ where: { appointmentId: next.appointmentId } })).map(({ recipientKind }) => recipientKind).sort()).toEqual(["CAREGIVER", "PATIENT"]);
   });
 });

@@ -4,8 +4,6 @@ import {
   AppointmentLineNotificationEventKind,
   LineReachability,
 } from "@prisma/client";
-import { z } from "zod";
-
 import {
   APPOINTMENT_TYPE_LABELS,
   type AppointmentTypeValue,
@@ -22,32 +20,6 @@ export const LINE_RETRY_KEY_STOP_MARGIN_MS = 60 * 60 * 1000;
 export const APPOINTMENT_LINE_NOTIFICATION_LEASE_MS = 30_000;
 export const APPOINTMENT_LINE_NOTIFICATION_BATCH_SIZE = 20;
 export const APPOINTMENT_LINE_NOTIFICATION_TERMINAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-
-const uuidSchema = z.string().uuid();
-
-export type AppointmentLineNotificationRollout = {
-  enabled: boolean;
-  generation: string | null;
-};
-
-export function resolveAppointmentLineNotificationRollout(input: {
-  enabled: unknown;
-  generation: unknown;
-}): AppointmentLineNotificationRollout {
-  const generation = uuidSchema.safeParse(input.generation);
-  if (input.enabled !== "true" || !generation.success) {
-    return { enabled: false, generation: null };
-  }
-
-  return { enabled: true, generation: generation.data.toLowerCase() };
-}
-
-export function getAppointmentLineNotificationRollout(): AppointmentLineNotificationRollout {
-  return resolveAppointmentLineNotificationRollout({
-    enabled: process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_ENABLED,
-    generation: process.env.DEMI_LINE_APPOINTMENT_NOTIFICATIONS_GENERATION,
-  });
-}
 
 export function expectedAppointmentStatusForNotification(
   eventKind: AppointmentLineNotificationEventKind,

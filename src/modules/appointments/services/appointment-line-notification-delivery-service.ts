@@ -18,7 +18,6 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { isPatientHospitalRelationshipEnded } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 
@@ -30,10 +29,8 @@ import {
   appointmentLineNotificationText,
   appointmentLineNotificationRetryDelayMs,
   expectedAppointmentStatusForNotification,
-  getAppointmentLineNotificationRollout,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
-  type AppointmentLineNotificationRollout,
 } from "../domain/appointment-line-notifications";
 import {
   currentAssignedOsmRecipient,
@@ -46,8 +43,7 @@ type SafeSuppressionOutcome =
   | "STALE_SOURCE"
   | "AUTHORITY_CHANGED"
   | "OPT_IN_REVOKED"
-  | "LINE_INELIGIBLE"
-  | "ROLLOUT_CLOSED";
+  | "LINE_INELIGIBLE";
 
 type CurrentEligibility =
   | { eligible: true; lineUserId: string; text: string }
@@ -66,10 +62,8 @@ export type AppointmentLineNotificationDrainResult = {
 export type AppointmentLineNotificationDeliveryDependencies = {
   database?: DeliveryDatabase;
   now?: () => Date;
-  rollout?: () => AppointmentLineNotificationRollout;
   push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>;
   random?: () => number;
-  familyAppointmentReadEnabled?: () => boolean;
   batchSize?: number;
   shouldContinue?: () => boolean;
   logSummary?: (result: AppointmentLineNotificationDrainResult) => void;
@@ -83,17 +77,6 @@ function nowOf(dependencies: AppointmentLineNotificationDeliveryDependencies): D
   const now = new Date((dependencies.now?.() ?? new Date()).getTime());
   if (Number.isNaN(now.getTime())) throw new Error("Notification time could not be resolved");
   return now;
-}
-
-function rolloutOf(dependencies: AppointmentLineNotificationDeliveryDependencies): AppointmentLineNotificationRollout {
-  return (dependencies.rollout ?? getAppointmentLineNotificationRollout)();
-}
-
-function sameRollout(
-  current: AppointmentLineNotificationRollout,
-  claimedGeneration: string,
-): boolean {
-  return current.enabled && current.generation === claimedGeneration;
 }
 
 function pushWithLine(
@@ -214,7 +197,6 @@ async function currentEligibility(
   database: DeliveryDatabase,
   notification: Claim,
   now: Date,
-  familyAppointmentReadEnabled: boolean,
 ): Promise<CurrentEligibility> {
   if (
     !notification.recipientUserId || !notification.bindingId ||
@@ -390,7 +372,7 @@ async function currentEligibility(
       notification.recipientKind === AppointmentLineNotificationRecipientKind.CAREGIVER
     ) {
       recipientStillAuthorized = await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId;
-      if (!recipientStillAuthorized && familyAppointmentReadEnabled) {
+      if (!recipientStillAuthorized) {
         recipientStillAuthorized = await hasActiveCaregiverAppointmentGrant(transaction, {
           caregiverUserId: recipientUserId,
           patientHospitalRelationshipId: relationship.id,
@@ -587,18 +569,6 @@ export async function drainAppointmentLineNotificationOutbox(
     if (!notification) break;
     result.claimed += 1;
 
-    const firstRollout = rolloutOf(dependencies);
-    if (!sameRollout(firstRollout, notification.rolloutGeneration)) {
-      const settled = await settleClaim(database, notification, {
-        state: AppointmentLineNotificationState.SUPPRESSED,
-        safeOutcome: AppointmentLineNotificationOutcome.ROLLOUT_CLOSED,
-        now: nowOf(dependencies),
-        terminal: true,
-      });
-      if (settled) countState(result, AppointmentLineNotificationState.SUPPRESSED);
-      continue;
-    }
-
     const checkedAt = nowOf(dependencies);
     if (notification.firstAttemptAt && !isInsideLineRetryKeyWindow(notification.firstAttemptAt, checkedAt)) {
       const knownRetryableResponse =
@@ -623,23 +593,11 @@ export async function drainAppointmentLineNotificationOutbox(
       continue;
     }
 
-    const familyAppointmentReadEnabled = (dependencies.familyAppointmentReadEnabled ?? isFamilyDelegatedAppointmentReadEnabled)();
-    const eligibility = await currentEligibility(database, notification, checkedAt, familyAppointmentReadEnabled);
+    const eligibility = await currentEligibility(database, notification, checkedAt);
     if (!eligibility.eligible) {
       const settled = await settleClaim(database, notification, {
         state: AppointmentLineNotificationState.SUPPRESSED,
         safeOutcome: eligibility.outcome,
-        now: nowOf(dependencies),
-        terminal: true,
-      });
-      if (settled) countState(result, AppointmentLineNotificationState.SUPPRESSED);
-      continue;
-    }
-
-    if (!sameRollout(rolloutOf(dependencies), notification.rolloutGeneration)) {
-      const settled = await settleClaim(database, notification, {
-        state: AppointmentLineNotificationState.SUPPRESSED,
-        safeOutcome: AppointmentLineNotificationOutcome.ROLLOUT_CLOSED,
         now: nowOf(dependencies),
         terminal: true,
       });
@@ -654,22 +612,11 @@ export async function drainAppointmentLineNotificationOutbox(
     const attempt = await reserveProviderAttempt(database, notification, nowOf(dependencies));
     if (!attempt) continue;
 
-    const finalEligibility = await currentEligibility(database, notification, nowOf(dependencies), familyAppointmentReadEnabled);
+    const finalEligibility = await currentEligibility(database, notification, nowOf(dependencies));
     if (!finalEligibility.eligible) {
       const settled = await settleClaim(database, notification, {
         state: AppointmentLineNotificationState.SUPPRESSED,
         safeOutcome: finalEligibility.outcome,
-        now: nowOf(dependencies),
-        terminal: true,
-      });
-      if (settled) countState(result, AppointmentLineNotificationState.SUPPRESSED);
-      continue;
-    }
-
-    if (!sameRollout(rolloutOf(dependencies), notification.rolloutGeneration)) {
-      const settled = await settleClaim(database, notification, {
-        state: AppointmentLineNotificationState.SUPPRESSED,
-        safeOutcome: AppointmentLineNotificationOutcome.ROLLOUT_CLOSED,
         now: nowOf(dependencies),
         terminal: true,
       });

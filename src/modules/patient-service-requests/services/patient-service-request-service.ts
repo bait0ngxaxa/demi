@@ -18,7 +18,6 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { assignOsmToPatientInTransaction } from "@/modules/patient-assignment/services/patient-osm-assignment-transaction";
-import { getAppointmentLineNotificationRollout } from "@/modules/appointments/domain/appointment-line-notifications";
 import { createPatientOsmAssignmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
 import {
   ConflictError,
@@ -609,7 +608,7 @@ export async function reviewPatientServiceRequest(
               patientHospitalRelationshipId: request.patientHospitalRelationshipId,
               osmUserId: selectedOsmUserId,
               sourceUpdatedAt: now,
-            }, getAppointmentLineNotificationRollout(), now);
+            }, now);
           }
         }
 

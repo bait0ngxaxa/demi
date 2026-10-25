@@ -55,7 +55,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 const db = getPrisma();
 const now = new Date("2026-10-16T03:00:00Z");
 const dependencies = { database: db, now: () => now };
-const familyDeps = { database: db, enabled: true, now: () => now };
+const familyDeps = { database: db, now: () => now };
 const hospitals: string[] = [];
 const users: string[] = [];
 const people: string[] = [];
@@ -391,7 +391,6 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
   });
 
   it("caregivers lose appointment access derived from the ended Hospital; the Patient sees the grant as ended", async () => {
-    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
     const f = await fixture();
     const { caregiver, grantId } = await caregiverWithGrant(f);
     await createAppointment(f.owner, appointmentInput(f.relationshipId, "2026-10-30T10:00:00+07:00"), dependencies);
@@ -409,17 +408,15 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
   });
 
   it("stops LINE notifications for the relationship: pending outbox rows are suppressed at send time", async () => {
-    vi.stubEnv("FAMILY_DELEGATED_APPOINTMENT_READ_ENABLED", "true");
     const f = await fixture();
     const { caregiver } = await caregiverWithGrant(f);
     await bindLine(f.patient); await bindLine(f.osm); await bindLine(caregiver);
-    const rollout = { enabled: true, generation: randomUUID() };
-    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId, "2026-10-30T10:00:00+07:00"), { ...dependencies, appointmentLineNotificationRollout: rollout });
+    const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId, "2026-10-30T10:00:00+07:00"), dependencies);
     expect(await db.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId, state: "PENDING" } })).toBe(3);
 
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
     const pushed: string[] = [];
-    await drainAppointmentLineNotificationOutbox({ database: db, now: () => now, rollout: () => rollout, familyAppointmentReadEnabled: () => true, logSummary: () => undefined,
+    await drainAppointmentLineNotificationOutbox({ database: db, now: () => now, logSummary: () => undefined,
       push: async (lineUserId: string) => { pushed.push(lineUserId); return { kind: "ACCEPTED" as const }; } });
     expect(pushed).toEqual([]);
     expect(await db.appointmentLineNotification.count({ where: { appointmentId: appointment.appointmentId, state: "PROVIDER_ACCEPTED" } })).toBe(0);

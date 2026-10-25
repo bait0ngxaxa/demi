@@ -20,7 +20,6 @@ import {
   NotFoundError,
 } from "@/shared/errors/application-error";
 import { createAppointmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
-import { getAppointmentLineNotificationRollout } from "@/modules/appointments/domain/appointment-line-notifications";
 
 import {
   assertPatientOsmAssignmentPolicy,
@@ -138,8 +137,6 @@ async function handoffFutureAppointments(
     orderBy: { id: "asc" },
     select: { id: true, updatedAt: true },
   });
-  const rollout = input.nextOsmUserId ? getAppointmentLineNotificationRollout() : null;
-
   for (const appointment of appointments) {
     const updatedAt = new Date(Math.max(appointment.updatedAt.getTime() + 1, input.now.getTime()));
     const changed = await transaction.patientAppointment.updateMany({
@@ -174,14 +171,14 @@ async function handoffFutureAppointments(
       },
     }, transaction);
 
-    if (input.nextOsmUserId && rollout) {
+    if (input.nextOsmUserId) {
       await createAppointmentLineNotificationIntent(transaction, {
         appointmentId: appointment.id,
         patientHospitalRelationshipId: input.patientHospitalRelationshipId,
         sourceUpdatedAt: updatedAt,
         eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
         patientUserId: input.patientUserId,
-      }, rollout, input.now, undefined, { onlyOsmUserId: input.nextOsmUserId });
+      }, input.now, { onlyOsmUserId: input.nextOsmUserId });
     }
   }
 }

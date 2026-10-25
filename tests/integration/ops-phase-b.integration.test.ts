@@ -126,7 +126,7 @@ describe("Phase B hospital operations", () => {
     const fields = appointmentInput(f.relationshipId);
     delete fields.submissionNonce;
     const edit = { ...fields, appointmentId: a.appointmentId, expectedUpdatedAt: a.updatedAt.toISOString(), rescheduleRequestId: request.requestId, scheduledAt: requestInput.preferredDatetimes[0] };
-    await rescheduleAppointment(f.staff, edit, { ...dependencies, appointmentLineNotificationRollout: { enabled: true, generation: randomUUID() } });
+    await rescheduleAppointment(f.staff, edit, dependencies);
     expect(await db.patientAppointmentRescheduleRequest.findUnique({ where: { id: request.requestId } })).toMatchObject({ status: "APPROVED", resolvedByUserId: f.staff.userId });
     expect(await db.appointmentLineNotification.count({ where: { appointmentId: a.appointmentId, eventKind: "RESCHEDULED", state: "PENDING" } })).toBe(1);
   });

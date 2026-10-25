@@ -3,7 +3,6 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { MedicationLineReminderOutcome, MedicationLineReminderState, PersonalMedicationStatus, Prisma, Role, UserStatus, type MedicationLineReminderNotification, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
-import { isMedicationLineRemindersDisabled } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { resolveEligibleLineRoles } from "@/modules/line/services/line-eligibility-service";
@@ -18,7 +17,7 @@ type SafeSuppression = "STALE_SOURCE" | "AUTHORITY_CHANGED" | "OPT_IN_REVOKED" |
 type Eligibility = { eligible: true; lineUserId: string } | { eligible: false; outcome: SafeSuppression };
 
 export type MedicationLineReminderDrainResult = { materialized: number; claimed: number; providerAccepted: number; retryScheduled: number; suppressed: number; permanentFailure: number; unknownOutcome: number; remainingDue: number; deliveryWindowExpired: number };
-export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; random?: () => number; batchSize?: number; prepare?: boolean; materialize?: boolean; shouldContinue?: () => boolean; remindersDisabled?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
+export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; random?: () => number; batchSize?: number; prepare?: boolean; materialize?: boolean; shouldContinue?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
 
 function nowOf(input: MedicationLineReminderDependencies): Date {
   const now = new Date((input.now?.() ?? new Date()).getTime());
@@ -176,7 +175,7 @@ async function reserveAttempt(database: Database, notification: Claim, now: Date
   return result.count === 1 ? { attemptCount: notification.attemptCount + 1, firstAttemptAt } : null;
 }
 
-// Suppresses a reserved attempt before LINE was invoked (first-attempt deadline passed, or the kill switch flipped),
+// Suppresses a reserved attempt before LINE was invoked when its first-attempt deadline has passed,
 // restoring the attempt fields so the row does not record a provider attempt that never happened.
 async function cancelReservedAttempt(database: Database, notification: Claim, outcome: MedicationLineReminderOutcome, now: Date): Promise<boolean> {
   const result = await database.medicationLineReminderNotification.updateMany({ where: { id: notification.id, state: MedicationLineReminderState.CLAIMED, leaseToken: notification.leaseToken, attemptCount: notification.attemptCount + 1 }, data: { state: MedicationLineReminderState.SUPPRESSED, safeOutcome: outcome, attemptCount: notification.attemptCount, firstAttemptAt: notification.firstAttemptAt, lastAttemptAt: notification.lastAttemptAt, leaseToken: null, leaseExpiresAt: null, terminalAt: now, updatedAt: now } });
@@ -231,9 +230,7 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
   const database = dependencies.database ?? getPrisma();
   const batchSize = dependencies.batchSize ?? MEDICATION_LINE_REMINDER_BATCH_SIZE;
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MEDICATION_LINE_REMINDER_BATCH_SIZE) throw new RangeError("Medication reminder batch exceeds its bound");
-  // Emergency kill switch: evaluated before materializing, at claim and immediately before the provider call.
-  const remindersDisabled = dependencies.remindersDisabled ?? isMedicationLineRemindersDisabled;
-  const materialized = remindersDisabled() || dependencies.materialize === false ? 0 : await materializeDueOccurrences(database, nowOf(dependencies));
+  const materialized = dependencies.materialize === false ? 0 : await materializeDueOccurrences(database, nowOf(dependencies));
   const expired = dependencies.prepare === false ? 0 : await expireLateFirstAttempts(database, nowOf(dependencies));
   const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: expired, deliveryWindowExpired: expired, remainingDue: 0, permanentFailure: 0, unknownOutcome: dependencies.prepare === false ? 0 : await closeExhausted(database, nowOf(dependencies)) };
   for (let index = 0; index < batchSize; index += 1) {
@@ -241,11 +238,6 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
     const notification = await claim(database, nowOf(dependencies));
     if (!notification) break;
     result.claimed += 1;
-    if (remindersDisabled()) {
-      const settled = await settle(database, notification, { state: MedicationLineReminderState.SUPPRESSED, outcome: MedicationLineReminderOutcome.REMINDERS_DISABLED, now: nowOf(dependencies), terminal: true });
-      if (settled) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
-      continue;
-    }
     const checkedAt = nowOf(dependencies);
     if (notification.firstAttemptAt && checkedAt.getTime() - notification.firstAttemptAt.getTime() >= MEDICATION_LINE_REMINDER_RETRY_WINDOW_MS) {
       const isAmbiguous = notification.safeOutcome === MedicationLineReminderOutcome.AMBIGUOUS_TRANSPORT_FAILURE || notification.safeOutcome === MedicationLineReminderOutcome.PROCESS_OUTCOME_UNKNOWN;
@@ -291,10 +283,6 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
     const dispatchAt = nowOf(dependencies);
     if (firstAttemptDeadlinePassed(notification, dispatchAt)) {
       if (await cancelReservedAttempt(database, notification, MedicationLineReminderOutcome.DELIVERY_WINDOW_EXPIRED, dispatchAt)) { countOutcome(result, MedicationLineReminderState.SUPPRESSED); result.deliveryWindowExpired += 1; }
-      continue;
-    }
-    if (remindersDisabled()) {
-      if (await cancelReservedAttempt(database, notification, MedicationLineReminderOutcome.REMINDERS_DISABLED, nowOf(dependencies))) countOutcome(result, MedicationLineReminderState.SUPPRESSED);
       continue;
     }
     if (dependencies.shouldContinue && !dependencies.shouldContinue()) {

@@ -404,44 +404,14 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(await reminderRows([disabledSubject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "OPT_IN_REVOKED", attemptCount: 0 }]);
   });
 
-  it("materializes nothing while the medication reminder kill switch is set and leaves preferences untouched", async () => {
+  it("delivers eligible reminders regardless of the removed deployment kill switch", async () => {
     const subject = await setupReminderSubject();
     vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "true");
     const calls: PushCall[] = [];
-    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 0 });
-    expect(await reminderRows([subject.medicationId])).toEqual([]);
-    expect(await prisma.lineMedicationReminderPreference.findUniqueOrThrow({ where: { userId: subject.patient.userId } })).toMatchObject({ enabled: true });
-    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "false");
-    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, providerAccepted: 1 });
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, claimed: 1, providerAccepted: 1, suppressed: 0 });
     expect(calls).toHaveLength(1);
-  });
-
-  it("suppresses a row claimed before the kill switch flipped without contacting LINE", async () => {
-    const subject = await setupReminderSubject();
-    expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
-    // A worker claimed the row while reminders were enabled and stopped before sending; its lease has expired.
-    await prisma.medicationLineReminderNotification.updateMany({ where: { personalMedicationId: subject.medicationId }, data: { state: "CLAIMED", leaseToken: randomUUID(), leaseExpiresAt: bangkok("2026-10-14T07:02:00.000") } });
-    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "true");
-    const calls: PushCall[] = [];
-    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 1, suppressed: 1, providerAccepted: 0 });
-    expect(calls).toEqual([]);
-    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "REMINDERS_DISABLED", attemptCount: 0, leaseToken: null, terminalAt: reminderNow }]);
-    vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "");
-    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 0, claimed: 0 });
-    expect(calls).toEqual([]);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "PROVIDER_ACCEPTED", attemptCount: 1 }]);
     expect(await prisma.lineMedicationReminderPreference.findUniqueOrThrow({ where: { userId: subject.patient.userId } })).toMatchObject({ enabled: true });
-  });
-
-  it("re-checks the kill switch immediately before the provider call and releases the reserved attempt", async () => {
-    const subject = await setupReminderSubject();
-    let revalidations = 0;
-    // The second revalidation is the final eligibility check after the attempt was reserved.
-    revalidation.beforeEach = () => { revalidations += 1; if (revalidations === 2) vi.stubEnv("DEMI_LINE_MEDICATION_REMINDERS_DISABLED", "1"); };
-    const calls: PushCall[] = [];
-    expect(await drainAt(reminderNow, calls)).toMatchObject({ materialized: 1, claimed: 1, suppressed: 1, providerAccepted: 0 });
-    expect(revalidations).toBe(2);
-    expect(calls).toEqual([]);
-    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "REMINDERS_DISABLED", attemptCount: 0, firstAttemptAt: null, lastAttemptAt: null, leaseToken: null }]);
   });
 
   it("reports pending medication reminders and the oldest pending age for operators", async () => {

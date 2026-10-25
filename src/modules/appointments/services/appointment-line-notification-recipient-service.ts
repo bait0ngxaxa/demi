@@ -137,16 +137,14 @@ async function activeCaregiverRecipients(
  */
 export async function resolveAdditionalAppointmentNotificationRecipients(
   transaction: Transaction,
-  input: { patientHospitalRelationshipId: string; patientUserId: string | null; familyAppointmentReadEnabled: boolean },
+  input: { patientHospitalRelationshipId: string; patientUserId: string | null },
 ): Promise<AppointmentNotificationRecipient[]> {
   const seen = new Set(input.patientUserId ? [input.patientUserId] : []);
   const recipients: AppointmentNotificationRecipient[] = [];
   const osmUserId = await currentAssignedOsmRecipient(transaction, input.patientHospitalRelationshipId);
   const candidates: AppointmentNotificationRecipient[] = [
     ...(osmUserId ? [{ kind: AppointmentLineNotificationRecipientKind.OSM, userId: osmUserId, grantId: null }] : []),
-    ...(input.familyAppointmentReadEnabled
-      ? await activeCaregiverRecipients(transaction, input.patientHospitalRelationshipId)
-      : []),
+    ...await activeCaregiverRecipients(transaction, input.patientHospitalRelationshipId),
   ];
   for (const candidate of candidates) {
     if (seen.has(candidate.userId)) continue;

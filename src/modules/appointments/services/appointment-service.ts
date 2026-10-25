@@ -47,10 +47,6 @@ import {
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
 import {
-  getAppointmentLineNotificationRollout,
-  type AppointmentLineNotificationRollout,
-} from "../domain/appointment-line-notifications";
-import {
   appointmentPatientRescheduleRequestSchema,
   appointmentRescheduleRejectionSchema,
   appointmentCreateRequestSchema,
@@ -77,7 +73,6 @@ export type AppointmentServiceDependencies = {
   database?: AppointmentDatabase;
   now?: () => Date;
   transactionRetries?: number;
-  appointmentLineNotificationRollout?: AppointmentLineNotificationRollout;
 };
 
 export type AppointmentMutationResult = {
@@ -190,10 +185,6 @@ function getNow(dependencies: AppointmentServiceDependencies): Date {
   }
 
   return copy;
-}
-
-function getNotificationRollout(dependencies: AppointmentServiceDependencies): AppointmentLineNotificationRollout {
-  return dependencies.appointmentLineNotificationRollout ?? getAppointmentLineNotificationRollout();
 }
 
 function isRetryableTransactionError(error: unknown): boolean {
@@ -412,7 +403,6 @@ async function createInTransaction(
   actor: ActorContext,
   input: AppointmentCreateRequest,
   now: Date,
-  notificationRollout: AppointmentLineNotificationRollout,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
     actor,
@@ -576,7 +566,7 @@ async function createInTransaction(
     sourceUpdatedAt: appointment.updatedAt,
     eventKind: AppointmentLineNotificationEventKind.CREATED,
     patientUserId: access.target.patientUserId,
-  }, notificationRollout, now, undefined, { includeOsm: !fields.assignedOsmUserId });
+  }, now, { includeOsm: !fields.assignedOsmUserId });
 
   if (fields.assignedOsmUserId) {
     await createAppointmentLineNotificationIntent(transaction, {
@@ -585,7 +575,7 @@ async function createInTransaction(
       sourceUpdatedAt: appointment.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, notificationRollout, now, undefined, { onlyOsmUserId: fields.assignedOsmUserId });
+    }, now, { onlyOsmUserId: fields.assignedOsmUserId });
   }
 
   return toMutationResult(appointment, access.target.hospitalId);
@@ -607,10 +597,9 @@ export async function createAppointment(
   }
 
   try {
-    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
-      (transaction) => createInTransaction(transaction, actor, parsed.data, getNow(dependencies), notificationRollout),
+      (transaction) => createInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
@@ -661,7 +650,6 @@ async function rescheduleInTransaction(
   actor: ActorContext,
   input: AppointmentRescheduleRequest,
   now: Date,
-  notificationRollout: AppointmentLineNotificationRollout,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
     actor,
@@ -777,7 +765,7 @@ async function rescheduleInTransaction(
       sourceUpdatedAt: result.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.RESCHEDULED,
       patientUserId: access.target.patientUserId,
-    }, notificationRollout, now);
+    }, now);
   }
 
   if (current.assignedOsmUserId !== fields.assignedOsmUserId && fields.assignedOsmUserId) {
@@ -787,7 +775,7 @@ async function rescheduleInTransaction(
       sourceUpdatedAt: result.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, notificationRollout, now, undefined, { onlyOsmUserId: fields.assignedOsmUserId });
+    }, now, { onlyOsmUserId: fields.assignedOsmUserId });
   }
 
   if (
@@ -836,10 +824,9 @@ export async function rescheduleAppointment(
   }
 
   try {
-    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
-      (transaction) => rescheduleInTransaction(transaction, actor, parsed.data, getNow(dependencies), notificationRollout),
+      (transaction) => rescheduleInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {
@@ -858,7 +845,6 @@ async function terminalTransitionInTransaction(
   input: AppointmentTransitionRequest,
   transition: TerminalTransition,
   now: Date,
-  notificationRollout: AppointmentLineNotificationRollout,
   exceptCancellationRequestId?: string,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
@@ -958,7 +944,7 @@ async function terminalTransitionInTransaction(
       sourceUpdatedAt: result.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.CANCELLED,
       patientUserId: access.target.patientUserId,
-    }, notificationRollout, now);
+    }, now);
   }
 
   return toMutationResult(result, access.target.hospitalId);
@@ -981,7 +967,6 @@ async function transitionAppointment(
   }
 
   try {
-    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
       (transaction) =>
@@ -991,7 +976,6 @@ async function transitionAppointment(
           parsed.data,
           transition,
           getNow(dependencies),
-          notificationRollout,
         ),
       dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES,
     );
@@ -1602,7 +1586,6 @@ export async function reviewAppointmentCancellationRequest(
   }
 
   try {
-    const notificationRollout = getNotificationRollout(dependencies);
     return await runSerializable(
       getDatabase(dependencies),
       async (transaction) => {
@@ -1737,7 +1720,6 @@ export async function reviewAppointmentCancellationRequest(
           },
           { status: AppointmentStatus.CANCELLED, action: "appointment.cancelled" },
           now,
-          notificationRollout,
           request.id,
         );
         const resolved = await transaction.patientAppointmentCancellationRequest.updateMany({
@@ -1865,7 +1847,7 @@ export async function submitAppointmentRescheduleRequest(
           patientHospitalRelationshipId: data.patientHospitalRelationshipId,
           creatorUserId: appointment.createdByUserId,
           sourceUpdatedAt: appointment.updatedAt,
-        }, getNotificationRollout(dependencies), now);
+        }, now);
       }
       return { requestId: request.id, appointmentId: appointment.id, patientHospitalRelationshipId: data.patientHospitalRelationshipId };
     }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);

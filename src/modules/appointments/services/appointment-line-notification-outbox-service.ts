@@ -11,9 +11,6 @@ import {
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 
-import { isFamilyDelegatedAppointmentReadEnabled } from "@/lib/env/server";
-
-import type { AppointmentLineNotificationRollout } from "../domain/appointment-line-notifications";
 import { appointmentLineNotificationPreferenceInternals } from "./appointment-line-notification-preference-service";
 import { resolveAdditionalAppointmentNotificationRecipients } from "./appointment-line-notification-recipient-service";
 
@@ -94,13 +91,9 @@ async function lineDeliveryReadiness(
 export async function createAppointmentLineNotificationIntent(
   transaction: Prisma.TransactionClient,
   input: SourceIntentInput,
-  rollout: AppointmentLineNotificationRollout,
   now: Date,
-  familyAppointmentReadEnabled: boolean = isFamilyDelegatedAppointmentReadEnabled(),
   options: SourceIntentOptions = {},
 ): Promise<void> {
-  if (!rollout.enabled || !rollout.generation) return;
-  const generation = rollout.generation;
 
   let patientRecipientUserId: string | null = null;
   if (input.patientUserId) {
@@ -119,7 +112,6 @@ export async function createAppointmentLineNotificationIntent(
   const additionalRecipients = await resolveAdditionalAppointmentNotificationRecipients(transaction, {
     patientHospitalRelationshipId: input.patientHospitalRelationshipId,
     patientUserId: patientRecipientUserId,
-    familyAppointmentReadEnabled,
   });
   const selectedAdditionalRecipients = additionalRecipients.filter((recipient) => {
       if (options.onlyOsmUserId) {
@@ -157,7 +149,6 @@ export async function createAppointmentLineNotificationIntent(
       bindingId: pending ? readiness.bindingId : null,
       bindingLifecycleVersion: pending ? readiness.bindingLifecycleVersion : null,
       preferenceVersion: pending ? readiness.preferenceVersion : null,
-      rolloutGeneration: generation,
       state: readiness.state,
       dueAt: now,
       retryKey: randomUUID(),
@@ -184,11 +175,9 @@ async function createUserIntent(
     sourceUpdatedAt: Date;
     recipientKind: AppointmentLineNotificationRecipientKind;
     recipientUserId: string;
-    rollout: AppointmentLineNotificationRollout;
     now: Date;
   },
 ): Promise<void> {
-  if (!input.rollout.enabled || !input.rollout.generation) return;
   const readiness = await lineDeliveryReadiness(transaction, input.recipientUserId);
   const pending = readiness.state === AppointmentLineNotificationState.PENDING;
   await transaction.appointmentLineNotification.createMany({
@@ -206,7 +195,6 @@ async function createUserIntent(
       bindingId: pending ? readiness.bindingId : null,
       bindingLifecycleVersion: pending ? readiness.bindingLifecycleVersion : null,
       preferenceVersion: pending ? readiness.preferenceVersion : null,
-      rolloutGeneration: input.rollout.generation,
       state: readiness.state,
       dueAt: input.now,
       retryKey: randomUUID(),
@@ -226,7 +214,6 @@ export async function createPatientOsmAssignmentLineNotificationIntent(
     osmUserId: string;
     sourceUpdatedAt: Date;
   },
-  rollout: AppointmentLineNotificationRollout,
   now: Date,
 ): Promise<void> {
   const assignment = await transaction.patientOsmAssignment.findFirst({
@@ -248,7 +235,6 @@ export async function createPatientOsmAssignmentLineNotificationIntent(
     sourceUpdatedAt: input.sourceUpdatedAt,
     recipientKind: AppointmentLineNotificationRecipientKind.OSM,
     recipientUserId: input.osmUserId,
-    rollout,
     now,
   });
 }
@@ -262,7 +248,6 @@ export async function createOsmRescheduleRequestLineNotificationIntent(
     creatorUserId: string;
     sourceUpdatedAt: Date;
   },
-  rollout: AppointmentLineNotificationRollout,
   now: Date,
 ): Promise<void> {
   await createUserIntent(transaction, {
@@ -274,7 +259,6 @@ export async function createOsmRescheduleRequestLineNotificationIntent(
     sourceUpdatedAt: input.sourceUpdatedAt,
     recipientKind: AppointmentLineNotificationRecipientKind.STAFF_CREATOR,
     recipientUserId: input.creatorUserId,
-    rollout,
     now,
   });
 }
