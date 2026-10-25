@@ -11,7 +11,7 @@ import { InfrastructureError, ValidationError } from "@/shared/errors/applicatio
 
 import { createProviderLoginAlias, createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
 
-function createIsolatedAuthClient(): SupabaseClient {
+function createIsolatedAuthClient(signal?: AbortSignal): SupabaseClient {
   const env = getServerEnv();
 
   return createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
@@ -20,13 +20,27 @@ function createIsolatedAuthClient(): SupabaseClient {
       detectSessionInUrl: false,
       persistSession: false,
     },
+    ...(signal
+      ? {
+          global: {
+            fetch: (url: RequestInfo | URL, init?: RequestInit) =>
+              fetch(url, { ...init, signal: init?.signal ? AbortSignal.any([init.signal, signal]) : signal }),
+          },
+        }
+      : {}),
   });
 }
 
+/**
+ * `deadline` (epoch ms) and `signal` bound the provider request: no update is sent once the deadline has passed, and
+ * an update still open at the deadline is aborted. Reconciliation relies on this bound being enforced here.
+ */
 export async function updateAuthenticatedPassword(input: {
   userId: string;
   currentPassword: string;
   newPassword: string;
+  deadline: number;
+  signal: AbortSignal;
 }): Promise<{ otherSessionsRevoked: boolean }> {
   let passwordUpdateOutcome: "NOT_STARTED" | "AMBIGUOUS" | "REJECTED" | "CONFIRMED" = "NOT_STARTED";
   let passwordChangeConfirmed = false;
@@ -48,7 +62,7 @@ export async function updateAuthenticatedPassword(input: {
       throw new Error("Authenticated provider identity is no longer current");
     }
 
-    const verifier = createIsolatedAuthClient();
+    const verifier = createIsolatedAuthClient(input.signal);
     const verification = await verifier.auth.signInWithPassword({
       email: identity.providerLoginAlias ?? createProviderLoginAlias(input.userId),
       password: input.currentPassword,
@@ -67,6 +81,10 @@ export async function updateAuthenticatedPassword(input: {
         throw new Error("Current password was not confirmed for the authenticated user");
       }
 
+      // A resumed or delayed process must not send the update after reconciliation may have released the fence.
+      if (input.signal.aborted || Date.now() >= input.deadline) {
+        throw new Error("Password change deadline passed before the provider update");
+      }
       passwordUpdateOutcome = "AMBIGUOUS";
       const { data, error } = await verifier.auth.updateUser({
         password: input.newPassword,

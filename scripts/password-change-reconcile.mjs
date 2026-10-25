@@ -78,9 +78,12 @@ async function main() {
     return;
   }
   process.exitCode = 2;
-  console.log(result.reason === "OPERATION_TOO_RECENT"
-    ? "RETAINED_OPERATION_TOO_RECENT: operation เริ่มไม่ถึง 15 นาที คำขอเดิมอาจยังทำงานอยู่ fence ยังคงอยู่ ลองใหม่ภายหลัง"
-    : "RETAINED_RECOVERY_UNRESOLVED: บัญชีมีงานรีเซ็ตที่ถูก claim หรือรอ reconcile fence ยังคงอยู่ reconcile งานรีเซ็ตนั้นตามคู่มือก่อน");
+  const retainedMessages = {
+    OPERATION_TOO_RECENT: "RETAINED_OPERATION_TOO_RECENT: operation เริ่มไม่ถึง 15 นาที คำขอเดิมอาจยังทำงานอยู่ fence ยังคงอยู่ ลองใหม่ภายหลัง",
+    OPERATION_IN_FLIGHT: "RETAINED_OPERATION_IN_FLIGHT: process ที่เปลี่ยนรหัสผ่านยังเชื่อมต่อและถือ lease ของ operation นี้อยู่ fence ยังคงอยู่ ตรวจสอบ process นั้นก่อน แล้วลองใหม่หลังจากจบ",
+    RECOVERY_UNRESOLVED: "RETAINED_RECOVERY_UNRESOLVED: บัญชีมีงานรีเซ็ตที่ถูก claim หรือรอ reconcile fence ยังคงอยู่ reconcile งานรีเซ็ตนั้นตามคู่มือก่อน",
+  };
+  console.log(retainedMessages[result.reason]);
 }
 
 try {

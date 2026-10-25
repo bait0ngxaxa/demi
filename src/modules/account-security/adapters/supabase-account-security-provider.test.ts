@@ -73,6 +73,10 @@ import {
 } from "./supabase-account-security-provider";
 
 const authSubject = "88888888-8888-4888-8888-888888888888";
+
+function providerWindow(deadline = Date.now() + 60_000, signal = new AbortController().signal) {
+  return { deadline, signal };
+}
 const targetUserId = "77777777-7777-4777-8777-777777777777";
 
 describe("Supabase account security provider boundary", () => {
@@ -102,6 +106,7 @@ describe("Supabase account security provider boundary", () => {
 
     await expect(
       updateAuthenticatedPassword({
+        ...providerWindow(),
         userId: targetUserId,
         currentPassword: "current password",
         newPassword: "new long password",
@@ -122,6 +127,33 @@ describe("Supabase account security provider boundary", () => {
     expect(authenticatedAuth.signOut).toHaveBeenCalledWith({ scope: "others" });
   });
 
+  it("does not send the password update once the operation deadline has passed", async () => {
+    await expect(updateAuthenticatedPassword({
+      ...providerWindow(Date.now() - 1),
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    })).rejects.toBeInstanceOf(PasswordChangeProviderNotStartedError);
+    expect(isolatedAuth.updateUser).not.toHaveBeenCalled();
+    expect(authenticatedAuth.signOut).not.toHaveBeenCalled();
+  });
+
+  it("binds the isolated provider client to the operation abort signal", async () => {
+    isolatedAuth.updateUser.mockResolvedValue({ data: { user: { id: authSubject } }, error: null });
+    const controller = new AbortController();
+    await updateAuthenticatedPassword({
+      ...providerWindow(Date.now() + 60_000, controller.signal),
+      userId: targetUserId,
+      currentPassword: "current password",
+      newPassword: "new long password",
+    });
+    const options = (mockedCreateClient.mock.calls[0] as unknown[] | undefined)?.[2] as { global?: { fetch?: typeof fetch } } | undefined;
+    const boundFetch = options?.global?.fetch;
+    if (!boundFetch) throw new Error("Expected the isolated client to use a deadline-bound fetch");
+    controller.abort();
+    await expect(boundFetch("https://project.supabase.co/auth/v1/user", { method: "PUT" })).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("identifies an explicitly rejected current password and throttles other sessions only after update", async () => {
     isolatedAuth.signInWithPassword.mockResolvedValue({
       data: { user: null, session: null },
@@ -129,6 +161,7 @@ describe("Supabase account security provider boundary", () => {
     });
 
     await expect(updateAuthenticatedPassword({
+      ...providerWindow(),
       userId: targetUserId,
       currentPassword: "wrong password",
       newPassword: "new long password",
@@ -144,6 +177,7 @@ describe("Supabase account security provider boundary", () => {
     });
 
     await expect(updateAuthenticatedPassword({
+      ...providerWindow(),
       userId: targetUserId,
       currentPassword: "current password",
       newPassword: "new long password",
@@ -155,6 +189,7 @@ describe("Supabase account security provider boundary", () => {
       error: new AuthApiError("Invalid login credentials", 400, "invalid_credentials"),
     });
     await expect(updateAuthenticatedPassword({
+      ...providerWindow(),
       userId: targetUserId,
       currentPassword: "current password",
       newPassword: "new long password",
@@ -165,6 +200,7 @@ describe("Supabase account security provider boundary", () => {
     authenticatedAuth.getUser.mockResolvedValue({ data: { user: null }, error: new Error("session unavailable") });
 
     await expect(updateAuthenticatedPassword({
+      ...providerWindow(),
       userId: targetUserId,
       currentPassword: "current password",
       newPassword: "new long password",
@@ -178,6 +214,7 @@ describe("Supabase account security provider boundary", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     await expect(updateAuthenticatedPassword({
+      ...providerWindow(),
       userId: targetUserId,
       currentPassword: "current password",
       newPassword: "new long password",
@@ -194,6 +231,7 @@ describe("Supabase account security provider boundary", () => {
 
     await expect(
       updateAuthenticatedPassword({
+        ...providerWindow(),
         userId: targetUserId,
         currentPassword: "secret",
         newPassword: "new long password",
@@ -206,6 +244,7 @@ describe("Supabase account security provider boundary", () => {
 
     await expect(
       updateAuthenticatedPassword({
+        ...providerWindow(),
         userId: targetUserId,
         currentPassword: "secret",
         newPassword: "new long password",
@@ -221,6 +260,7 @@ describe("Supabase account security provider boundary", () => {
 
     await expect(
       updateAuthenticatedPassword({
+        ...providerWindow(),
         userId: targetUserId,
         currentPassword: "secret",
         newPassword: "new long password",

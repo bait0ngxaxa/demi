@@ -31,7 +31,15 @@ export type AuthenticatedPasswordChangeProvider = (input: {
   userId: string;
   currentPassword: string;
   newPassword: string;
+  /** Epoch ms after which the provider must not send, and must abort, the password update. */
+  deadline: number;
+  signal: AbortSignal;
 }) => Promise<{ otherSessionsRevoked: boolean } | void>;
+
+/** Hard bound on the provider request, enforced by the provider adapter. */
+export const PASSWORD_CHANGE_PROVIDER_DEADLINE_MS = 60 * 1000;
+/** The lease spans fence reservation, the provider request and the fence resolution. */
+const PASSWORD_CHANGE_LEASE_TIMEOUT_MS = PASSWORD_CHANGE_PROVIDER_DEADLINE_MS + 60 * 1000;
 
 export type PasswordChangeAuditWriter = (input: AuditEventInput) => Promise<void>;
 
@@ -115,6 +123,40 @@ async function hasUnresolvedReset(
     }),
   ]);
   return Boolean(workforce || patient || line);
+}
+
+/** Non-blocking: a held lease means a password-change process for this User is still connected and running. */
+async function tryAcquirePasswordChangeLease(transaction: Prisma.TransactionClient, userId: string): Promise<boolean> {
+  const [row] = await transaction.$queryRaw<{ acquired: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${userId}), hashtext('DEMI_PASSWORD_CHANGE_LEASE')) AS acquired`;
+  return row?.acquired === true;
+}
+
+/**
+ * Holds a per-User lease in an open transaction while the password change runs. PostgreSQL releases it when the
+ * process finishes or its connection dies, so reconciliation can tell a running request from an abandoned fence.
+ * The operation's own result wins over a lease that closed early; the provider deadline still bounds the request.
+ */
+async function withPasswordChangeLease<T>(
+  database: PrismaClient,
+  userId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let outcome: { value: T } | { error: unknown } | undefined;
+  try {
+    await database.$transaction(async (lease) => {
+      if (!await tryAcquirePasswordChangeLease(lease, userId)) throw new PasswordChangeRecoveryPendingError();
+      try {
+        outcome = { value: await operation() };
+      } catch (error: unknown) {
+        outcome = { error };
+      }
+    }, { timeout: PASSWORD_CHANGE_LEASE_TIMEOUT_MS });
+  } catch (error: unknown) {
+    if (!outcome) throw error;
+  }
+  if (!outcome) throw new InfrastructureError("Password change lease did not complete");
+  if ("error" in outcome) throw outcome.error;
+  return outcome.value;
 }
 
 async function beginPasswordChangeOperation(
@@ -291,43 +333,51 @@ export async function changeAuthenticatedUserPassword(
   if (await attemptThrottle.isBlocked(throttleInput)) throw new PasswordChangeAttemptThrottledError();
 
   const operationId = randomUUID();
-  await beginPasswordChangeOperation(database, actor.userId, operationId, now);
+  // Fixed before the fence exists, so the deadline never ends later than the fence start plus the bound.
+  const deadline = Date.now() + PASSWORD_CHANGE_PROVIDER_DEADLINE_MS;
+  const signal = AbortSignal.timeout(PASSWORD_CHANGE_PROVIDER_DEADLINE_MS);
+  const providerResult = await withPasswordChangeLease(database, actor.userId, async () => {
+    await beginPasswordChangeOperation(database, actor.userId, operationId, now);
 
-  let providerResult: { otherSessionsRevoked: boolean } | void;
-  try {
-    providerResult = await updatePassword({
-      userId: actor.userId,
-      currentPassword: parsed.data.currentPassword,
-      newPassword: parsed.data.newPassword,
-    });
-  } catch (error: unknown) {
-    if (
-      error instanceof CurrentPasswordRejectedError ||
-      error instanceof PasswordChangeProviderRejectedError ||
-      error instanceof PasswordChangeProviderNotStartedError
-    ) {
-      try {
-        await clearPasswordChangeOperation(database, actor.userId, operationId);
-      } catch {
-        throw new PasswordChangeOutcomeUncertainError();
+    let result: { otherSessionsRevoked: boolean } | void;
+    try {
+      result = await updatePassword({
+        userId: actor.userId,
+        currentPassword: parsed.data.currentPassword,
+        newPassword: parsed.data.newPassword,
+        deadline,
+        signal,
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof CurrentPasswordRejectedError ||
+        error instanceof PasswordChangeProviderRejectedError ||
+        error instanceof PasswordChangeProviderNotStartedError
+      ) {
+        try {
+          await clearPasswordChangeOperation(database, actor.userId, operationId);
+        } catch {
+          throw new PasswordChangeOutcomeUncertainError();
+        }
+        if (error instanceof CurrentPasswordRejectedError) await attemptThrottle.recordFailure(throttleInput);
+        throw error;
       }
-      if (error instanceof CurrentPasswordRejectedError) await attemptThrottle.recordFailure(throttleInput);
-      throw error;
+      await markPasswordChangeReconciliationRequired(database, actor.userId, operationId, dependencies.now?.() ?? new Date()).catch(() => {
+        console.error("Password change outcome is unknown; credential recovery remains fenced");
+      });
+      throw new PasswordChangeOutcomeUncertainError();
     }
-    await markPasswordChangeReconciliationRequired(database, actor.userId, operationId, dependencies.now?.() ?? new Date()).catch(() => {
-      console.error("Password change outcome is unknown; credential recovery remains fenced");
-    });
-    throw new PasswordChangeOutcomeUncertainError();
-  }
 
-  try {
-    await finalizePasswordChangeOperation(database, actor.userId, operationId, dependencies.now?.() ?? new Date());
-  } catch {
-    await markPasswordChangeReconciliationRequired(database, actor.userId, operationId, dependencies.now?.() ?? new Date()).catch(() => {
-      console.error("Password change outcome is unknown; credential recovery remains fenced");
-    });
-    throw new PasswordChangeOutcomeUncertainError();
-  }
+    try {
+      await finalizePasswordChangeOperation(database, actor.userId, operationId, dependencies.now?.() ?? new Date());
+    } catch {
+      await markPasswordChangeReconciliationRequired(database, actor.userId, operationId, dependencies.now?.() ?? new Date()).catch(() => {
+        console.error("Password change outcome is unknown; credential recovery remains fenced");
+      });
+      throw new PasswordChangeOutcomeUncertainError();
+    }
+    return result;
+  });
 
   const audit = dependencies.audit ?? recordAuditEvent;
 
@@ -347,8 +397,9 @@ export async function changeAuthenticatedUserPassword(
 }
 
 /**
- * Longer than any provider request the password-change process can still have open, so a reconciliation cannot release
- * the fence underneath a live change. Age only gates the operator; it never releases a fence by itself.
+ * Well past the provider deadline and the lease timeout, so even a process whose lease connection dropped can no longer
+ * send or hold open the update. Age is one of two conditions and never releases a fence by itself: the lease must also
+ * be free, proving no connected process still owns the operation.
  */
 export const PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS = 15 * 60 * 1000;
 
@@ -362,7 +413,7 @@ const passwordChangeReconciliationSchema = z.object({
 export type PasswordChangeReconciliationResult =
   | { outcome: "RELEASED"; revoked: { workforce: number; patient: number; line: number } }
   | { outcome: "ALREADY_RELEASED" }
-  | { outcome: "RETAINED"; reason: "OPERATION_TOO_RECENT" | "RECOVERY_UNRESOLVED" };
+  | { outcome: "RETAINED"; reason: "OPERATION_TOO_RECENT" | "OPERATION_IN_FLIGHT" | "RECOVERY_UNRESOLVED" };
 
 export type PasswordChangeReconciliationDependencies = {
   database?: PrismaClient;
@@ -434,10 +485,12 @@ export async function reconcileUnresolvedPasswordChange(
       fenceReason: user.passwordChangeReconciliationRequiredAt ? "OUTCOME_UNCERTAIN" : "PROCESS_INTERRUPTED",
       providerOutcome: "UNVERIFIED",
       procedure: "REVOKE_UNCLAIMED_AND_RELEASE",
+      providerDeadlineMs: PASSWORD_CHANGE_PROVIDER_DEADLINE_MS,
       operatorNote,
     };
     const retainedReason = now.getTime() - user.passwordChangeStartedAt.getTime() < PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS
       ? "OPERATION_TOO_RECENT" as const
+      : !await tryAcquirePasswordChangeLease(transaction, userId) ? "OPERATION_IN_FLIGHT" as const
       : await hasUnresolvedReset(transaction, userId) ? "RECOVERY_UNRESOLVED" as const : null;
     if (retainedReason) {
       await recordAuditEvent({
@@ -468,6 +521,7 @@ export async function reconcileUnresolvedPasswordChange(
       metadata: {
         ...evidence,
         outcome: "RELEASED",
+        processLeaseFree: true,
         revokedWorkforceResets: revoked.workforce,
         revokedPatientRecoveries: revoked.patient,
         revokedLineCapabilities: revoked.line,

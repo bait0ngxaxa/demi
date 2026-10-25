@@ -1985,7 +1985,8 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       // Confirmed provider success, then the finalizing transaction fails: the capability revocation never committed.
       const confirmedProvider = vi.fn(async () => ({ otherSessionsRevoked: true }));
       await expect(changeAuthenticatedUserPassword(actorFor(staff, Role.HOSPITAL), changeInput, {
-        database: databaseFailingTransaction(2),
+        // 1: process lease, 2: fence reservation, 3: finalization.
+        database: databaseFailingTransaction(3),
         provider: confirmedProvider,
         attemptThrottle: throttle,
         now: () => now,
@@ -2109,6 +2110,69 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
         expect(await fenceOperationId(staff.userId)).toBe(staffOperation);
       }
       expect(await db.auditEvent.count({ where: { action: "account.password_change.reconciled" } })).toBe(0);
+    });
+
+    it("retains the fence while the original provider request is still open past the minimum age", async () => {
+      const line = await createLineRecoveryTarget(Role.PATIENT);
+      const capabilityId = await issueLineCapability(line);
+      let signalProviderStarted: (() => void) | undefined;
+      let finishProvider: ((result: "SUCCESS" | "TIMEOUT") => void) | undefined;
+      const providerStarted = new Promise<void>((resolve) => { signalProviderStarted = resolve; });
+      const providerOutcome = new Promise<"SUCCESS" | "TIMEOUT">((resolve) => { finishProvider = resolve; });
+      const provider = vi.fn(async (input: { deadline: number; signal: AbortSignal }) => {
+        expect(input.deadline).toBeGreaterThan(Date.now());
+        expect(input.signal.aborted).toBe(false);
+        signalProviderStarted?.();
+        if (await providerOutcome === "TIMEOUT") throw new Error("provider request timed out");
+        return { otherSessionsRevoked: true };
+      });
+      const change = changeAuthenticatedUserPassword(actorFor(line, Role.PATIENT), changeInput, {
+        database: db, provider, attemptThrottle: throttle, now: () => now, sendLineMessage: async () => ({ kind: "ACCEPTED" }),
+      });
+      await providerStarted;
+      const operationId = await fenceOperationId(line.userId);
+
+      // Well past the minimum age, but the owning process still holds its lease: nothing may be released.
+      const stuck = new Date(now.getTime() + 2 * PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS);
+      await expect(reconcile(line.userId, operationId, stuck)).resolves.toEqual({ outcome: "RETAINED", reason: "OPERATION_IN_FLIGHT" });
+      expect(await fenceOperationId(line.userId)).toBe(operationId);
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: null });
+      await expect(issueLinePasswordRecoveryCapability({
+        userId: line.userId,
+        identityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: line.nationalId }),
+      }, { database: db, now: () => stuck })).rejects.toBeInstanceOf(ConflictError);
+      await expect(changeAuthenticatedUserPassword(actorFor(line, Role.PATIENT), changeInput, {
+        database: db, provider: vi.fn(), attemptThrottle: throttle, now: () => stuck,
+      })).rejects.toBeInstanceOf(PasswordChangeRecoveryPendingError);
+      expect(await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_change.reconciliation_retained", resourceId: line.userId } }))
+        .toMatchObject({ metadata: { operationId, retainedReason: "OPERATION_IN_FLIGHT", providerDeadlineMs: 60_000 } });
+
+      // The late provider success is finalized by its own process, which revokes the earlier link.
+      finishProvider?.("SUCCESS");
+      await expect(change).resolves.toEqual({ otherSessionsRevoked: true });
+      expect(await db.linePasswordRecoveryCapability.findUniqueOrThrow({ where: { id: capabilityId } })).toMatchObject({ revokedAt: now });
+      await expect(reconcile(line.userId, operationId, stuck)).rejects.toBeInstanceOf(NotFoundError);
+
+      // Once the process has ended with an uncertain outcome its lease is free and reconciliation may release.
+      const second = await createLineRecoveryTarget(Role.PATIENT);
+      let signalSecondStarted: (() => void) | undefined;
+      let finishSecond: (() => void) | undefined;
+      const secondStarted = new Promise<void>((resolve) => { signalSecondStarted = resolve; });
+      const secondCanFinish = new Promise<void>((resolve) => { finishSecond = resolve; });
+      const secondChange = changeAuthenticatedUserPassword(actorFor(second, Role.PATIENT), changeInput, {
+        database: db,
+        provider: vi.fn(async () => { signalSecondStarted?.(); await secondCanFinish; throw new Error("provider request timed out"); }),
+        attemptThrottle: throttle,
+        now: () => now,
+      });
+      await secondStarted;
+      const secondOperation = await fenceOperationId(second.userId);
+      await expect(reconcile(second.userId, secondOperation, stuck)).resolves.toEqual({ outcome: "RETAINED", reason: "OPERATION_IN_FLIGHT" });
+      finishSecond?.();
+      await expect(secondChange).rejects.toBeInstanceOf(PasswordChangeOutcomeUncertainError);
+      await expect(reconcile(second.userId, secondOperation, stuck)).resolves.toMatchObject({ outcome: "RELEASED" });
+      expect(await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_change.reconciled", resourceId: second.userId } }))
+        .toMatchObject({ metadata: { processLeaseFree: true, providerDeadlineMs: 60_000 } });
     });
 
     it("lets exactly one concurrent reconciliation release the fence and answers repeats idempotently", async () => {

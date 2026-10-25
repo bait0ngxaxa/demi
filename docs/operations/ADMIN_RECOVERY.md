@@ -38,6 +38,11 @@ An authenticated password change is also a credential-operation fence. While a U
 
 DEMI cannot prove from its own records or from Supabase which password is now valid: the operation is recorded before the provider request, and Supabase has no lookup that confirms a password without the password itself. Reconciliation therefore never assumes the password stayed unchanged. It moves the account to the same end state as a confirmed change. Every earlier unclaimed Workforce, Patient and LINE recovery capability is revoked, and the fence is released, in one transaction. That state is safe for either credential, because only the signed-in User who proved the current password knew either value. If the account owner then cannot sign in, they use the normal Hospital-mediated or LINE recovery path, which issues a new link and replaces the provider identity.
 
+Two conditions, both enforced by the command, establish that the original request can no longer change the credential. Neither is inferred from logs:
+
+- **Bounded provider request.** The provider adapter never sends the password update after a 60-second deadline. That deadline is fixed before the fence is reserved, and an update still open at the deadline is aborted. Reconciliation also requires the operation to be at least 15 minutes old, well past that deadline and the 2-minute process lease timeout.
+- **Process quiescence.** For the whole operation, from reserving the fence through resolving it, the password-change process holds a per-User PostgreSQL lease in an open transaction. PostgreSQL drops the lease when that process finishes or its database connection dies. Reconciliation probes the lease without blocking and refuses while it is held, however old the operation is.
+
 Only the designated server operator described above may run the command, from the deployed release directory as the `demi` service account. It takes no password, token, National ID or service key.
 
 1. **Identify.** List outstanding operations. The output shows only internal identifiers and timestamps:
@@ -47,7 +52,7 @@ Only the designated server operator described above may run the command, from th
    ```
 
    A non-empty `reconciliationRequiredAt` means the request recorded an uncertain outcome. `-` means the process stopped before it could record one.
-2. **Investigate.** Open an incident record. Check application logs around `startedAt` for “Password change outcome is unknown”, and confirm the request is no longer running. Treat the operation as a possible change, whatever the logs suggest. Do not use Supabase user metadata, `updated_at`, session revocation or the user's own statement as proof of the outcome.
+2. **Investigate.** Open an incident record. Check application logs around `startedAt` for “Password change outcome is unknown”. Treat the operation as a possible change, whatever the logs suggest. Do not use Supabase user metadata, `updated_at`, session revocation or the user's own statement as proof of the outcome.
 3. **Reconcile.** Run the command for exactly one User and operation, with the incident reference. The reason is stored in the audit, so keep National IDs, passwords, tokens and keys out of it:
 
    ```sh
@@ -58,18 +63,19 @@ Only the designated server operator described above may run the command, from th
    - `RELEASED`: earlier unclaimed links were revoked (the counts are printed) and the fence is released. Tell the account owner to sign in with the new password, or else the old one. If neither works, start normal recovery. Other devices may still be signed in, so ask the owner to sign out of other devices or change the password again once signed in.
    - `ALREADY_RELEASED`: this operation was already reconciled. Running the command again changes nothing.
    - `RETAINED_OPERATION_TOO_RECENT` (exit code 2): the operation started less than 15 minutes ago and the original request may still be running. The fence stays. Try again later. Age alone never releases a fence.
+   - `RETAINED_OPERATION_IN_FLIGHT` (exit code 2): a connected process still holds this operation's lease, so the original request may still be running. The fence stays and nothing is revoked. Find the process. A healthy process resolves the fence on its own. If the process is hung, stop it, which drops its database connection and lease, and then rerun the command.
    - `RETAINED_RECOVERY_UNRESOLVED` (exit code 2): the account also has a claimed or reconciliation-required reset. The fence stays and that reset is left untouched. Reconcile the reset first through `/app/admin/recovery` (or `admin:recover -- --reconcile` for a last-ADMIN break-glass reset), then rerun this command.
    - `NOT_OUTSTANDING`: no such operation exists for that User. It may have finished already, or the ID may be out of date. Recheck with `--list`. Never reuse an older operation ID against a newer operation.
    - `FAILED`: nothing changed and the fence stays. Retry after checking database health.
 
-Every run that matches an outstanding operation is audited under the target User. `account.password_change.reconciled` records the release. `account.password_change.reconciliation_retained` records a refusal. Each event records the operation ID, start time, uncertainty time, fence reason, `providerOutcome: UNVERIFIED`, the procedure `REVOKE_UNCLAIMED_AND_RELEASE`, the number of revoked capabilities (on release) and the operator reason. Keep the incident reference, operator identity, target User ID, operation ID, result code and audit event IDs in the restricted incident record.
+Every run that matches an outstanding operation is audited under the target User. `account.password_change.reconciled` records the release. `account.password_change.reconciliation_retained` records a refusal. Each event records the operation ID, start time, uncertainty time, fence reason, `providerOutcome: UNVERIFIED`, the procedure `REVOKE_UNCLAIMED_AND_RELEASE`, the enforced `providerDeadlineMs`, `processLeaseFree: true` (on release), the number of revoked capabilities (on release) and the operator reason. Keep the incident reference, operator identity, target User ID, operation ID, result code and audit event IDs in the restricted incident record.
 
 Do not edit `passwordChangeOperationId`, `passwordChangeStartedAt` or `passwordChangeReconciliationRequiredAt` with SQL. Do not revoke or un-revoke recovery rows by hand. Do not treat refresh-session revocation as proof that the password changed.
 
 Two cases have no supported resolution yet and must stay fenced until someone investigates them by hand:
 
 - A claimed reset whose own reconciliation stays quarantined.
-- Any outcome where the operator cannot confirm that the original request has ended.
+- A host that froze while it held the lease, lost its database connection, and then resumed in the instant after the deadline check passed, while the update was being sent. The deadline and lease together cover every other interleaving. Stop or fence a resumed host from the frozen period before you rerun the command.
 
 DEMI has no operator-driven way to set a known credential for a non-ADMIN account outside the existing recovery ceremonies, and this procedure does not add one.
 

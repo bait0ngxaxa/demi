@@ -73,7 +73,7 @@ function createDatabase(initial: Partial<PasswordChangeTestState> = {}): { datab
     workforceActivation: recoveryTable("workforce"),
     accountRecovery: recoveryTable("patient"),
     linePasswordRecoveryCapability: recoveryTable("line"),
-    $queryRaw: vi.fn(async () => []),
+    $queryRaw: vi.fn(async () => [{ acquired: true }]),
   };
   const database = {
     ...transaction,
@@ -103,6 +103,8 @@ describe("authenticated account password change", () => {
       userId: actor.userId,
       currentPassword: input.currentPassword,
       newPassword: input.newPassword,
+      deadline: expect.any(Number),
+      signal: expect.any(AbortSignal),
     });
     expect(audit).toHaveBeenCalledWith({
       actorUserId: actor.userId,
