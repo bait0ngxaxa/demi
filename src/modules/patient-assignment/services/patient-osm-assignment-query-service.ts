@@ -32,6 +32,7 @@ import {
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
 import {
   patientDirectorySelect,
+  toDisplayName as toPersonDisplayName,
   toPatientDirectoryItem,
   type PatientDirectoryItem,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
@@ -194,11 +195,7 @@ export function formatPatientOsmDisplayName(person: {
   givenName: string | null;
   familyName: string | null;
 }): string {
-  const nameParts = [person.givenName, person.familyName]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value));
-
-  return nameParts.join(" ") || "ไม่ระบุชื่อ";
+  return toPersonDisplayName(person, "ไม่ระบุชื่อ");
 }
 
 const toDisplayName = formatPatientOsmDisplayName;

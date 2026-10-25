@@ -17,7 +17,10 @@ import { getPatientClassificationLabel } from "@/modules/patient-classification/
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getPatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import type { PatientBaselineNavigationState } from "@/modules/patient-baseline/services/patient-baseline-query-service";
-import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
+import {
+  getPatientDirectoryDetail,
+  getPatientResponsibleOsm,
+} from "@/modules/patient-directory/services/patient-directory-query-service";
 import type {
   PatientDirectoryDetail,
   PatientDirectorySummary,
@@ -40,6 +43,7 @@ import { PatientClassificationView } from "./patient-classification-view";
 import { CompletedPatientPrograms, PatientProgramView } from "./programs/patient-program-view";
 import { PatientProgramOpenControl } from "./programs/program-mutation-controls";
 import { resolvePatientCareNextStep } from "./patient-care-next-step";
+import { PatientResponsibleOsmSection, type PatientResponsibleOsmSectionState } from "./patient-responsible-osm-section";
 
 export const metadata: Metadata = {
   title: "รายละเอียดผู้ป่วย",
@@ -513,8 +517,22 @@ export default async function PatientDetailPage({
   const backHref = hasHospitalDirectoryAccess || isNetworkRead
     ? `/app/patients?hospitalId=${encodeURIComponent(patient.hospital.id)}`
     : "/app/patients/assigned";
+  const responsibleOsmStatePromise: Promise<PatientResponsibleOsmSectionState | null> = tab !== "overview"
+    ? Promise.resolve(null)
+    : isNetworkRead
+      ? Promise.resolve({ status: "NETWORK_RESTRICTED" })
+      : getPatientResponsibleOsm(actor, {
+        hospitalId: patient.hospital.id,
+        patientHospitalRelationshipId: patient.patientHospitalRelationshipId,
+      }).catch((error: unknown) => {
+        if (error instanceof NotFoundError || error instanceof ForbiddenError || error instanceof InfrastructureError) {
+          return { status: "ERROR" } as const;
+        }
 
-  const [classificationContext, baselineNavigation, programContext] = await Promise.all([
+        throw error;
+      });
+
+  const [classificationContext, baselineNavigation, programContext, responsibleOsmState] = await Promise.all([
     getPatientClassificationPageContext(actor, relationshipId, undefined, { includeHistory: tab === "profile" })
       .catch((error: unknown) => {
         if (error instanceof NotFoundError) notFound();
@@ -533,6 +551,7 @@ export default async function PatientDetailPage({
         if (error instanceof ForbiddenError) redirect("/app");
         throw error;
       }),
+    responsibleOsmStatePromise,
   ]);
 
   const latestProgram = programContext.active ?? programContext.latest ?? programContext.history[0] ?? null;
@@ -622,12 +641,21 @@ export default async function PatientDetailPage({
 
       <div className="pt-6">
         {tab === "overview" ? (
-          <PatientProgramView
-            baseline={baselineNavigation}
-            context={programContext}
-            overview={roundsOverview?.patientProgramId === programContext.active?.programId ? roundsOverview : null}
-            roundsError={roundsError}
-          />
+          <>
+            {responsibleOsmState ? (
+              <PatientResponsibleOsmSection
+                canManageAssignment={canManageAssignment}
+                relationshipId={patient.patientHospitalRelationshipId}
+                state={responsibleOsmState}
+              />
+            ) : null}
+            <PatientProgramView
+              baseline={baselineNavigation}
+              context={programContext}
+              overview={roundsOverview?.patientProgramId === programContext.active?.programId ? roundsOverview : null}
+              roundsError={roundsError}
+            />
+          </>
         ) : null}
 
         {tab === "history" ? (

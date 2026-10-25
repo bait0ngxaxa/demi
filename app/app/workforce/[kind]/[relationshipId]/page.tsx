@@ -9,17 +9,26 @@ import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
+  findPatientsAssignedToOsmInHospital,
+  type WorkforceOsmPatientPage,
+} from "@/modules/patient-directory/services/patient-directory-query-service";
+import {
   getWorkforceDetail,
   type WorkforceDetail,
 } from "@/modules/workforce/services/workforce-service";
 import {
   ForbiddenError,
+  InfrastructureError,
   NotFoundError,
   UnauthenticatedError,
   ValidationError,
 } from "@/shared/errors/application-error";
 
 import { WorkforceManagementControls } from "./workforce-management-controls";
+import {
+  WorkforceOsmAssignedPatientsSection,
+  type WorkforceOsmAssignedPatientsState,
+} from "./workforce-osm-assigned-patients-section";
 
 export const metadata: Metadata = {
   title: "รายละเอียดความสัมพันธ์บุคลากร",
@@ -27,7 +36,17 @@ export const metadata: Metadata = {
 
 type WorkforceDetailPageProps = {
   params: Promise<{ kind: string; relationshipId: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 };
+
+function resolvePatientPage(value: unknown): number {
+  if (typeof value !== "string" || !/^\d+$/u.test(value)) {
+    return 1;
+  }
+
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
 
 function relationshipStatusLabel(status: WorkforceDetail["relationshipStatus"]): string {
   switch (status) {
@@ -93,7 +112,13 @@ function hospitalStatusLabel(status: WorkforceDetail["hospital"]["status"]): str
   return status === "ACTIVE" ? "โรงพยาบาลใช้งานอยู่" : "โรงพยาบาลถูกระงับ";
 }
 
-function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX.Element {
+function WorkforceDetailView({
+  detail,
+  assignedPatients,
+}: {
+  detail: WorkforceDetail;
+  assignedPatients: WorkforceOsmAssignedPatientsState | null;
+}): React.JSX.Element {
   const isStaff = detail.kind === "staff";
   const professionLabel = detail.profession
     ? {
@@ -166,6 +191,14 @@ function WorkforceDetailView({ detail }: { detail: WorkforceDetail }): React.JSX
           </dl>
         </Panel>
 
+        {!isStaff && assignedPatients ? (
+          <WorkforceOsmAssignedPatientsSection
+            currentAssignmentCount={detail.currentAssignmentCount ?? 0}
+            relationshipId={detail.relationshipId}
+            state={assignedPatients}
+          />
+        ) : null}
+
         {detail.viewerScope === "OWNER" ? <WorkforceContactPhoneControl kind={detail.kind} relationshipId={detail.relationshipId} targetHospitalId={detail.hospital.id} expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()} contactPhone={detail.contactPhone} ended={detail.relationshipStatus === "ENDED"} /> : null}
 
         <WorkforceManagementControls detail={detail} />
@@ -198,10 +231,15 @@ async function resolveActor() {
 
 export default async function WorkforceDetailPage({
   params,
+  searchParams,
 }: WorkforceDetailPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
   const route = await params;
+  const query = searchParams ? await searchParams : {};
+  const requestedPatientPage = typeof query.patientsPage === "string"
+    ? resolvePatientPage(query.patientsPage)
+    : 1;
   let detail: WorkforceDetail;
 
   try {
@@ -218,5 +256,25 @@ export default async function WorkforceDetailPage({
     throw error;
   }
 
-  return <WorkforceDetailView detail={detail} />;
+  let assignedPatients: WorkforceOsmAssignedPatientsState | null = null;
+  if (detail.kind === "osm") {
+    try {
+      const page: WorkforceOsmPatientPage = await findPatientsAssignedToOsmInHospital(actor, {
+        hospitalId: detail.hospital.id,
+        osmUserId: detail.userId,
+        page: requestedPatientPage,
+      });
+      assignedPatients = { status: "READY", page };
+    } catch (error: unknown) {
+      if (error instanceof ForbiddenError) {
+        assignedPatients = { status: "SUMMARY_ONLY" };
+      } else if (error instanceof InfrastructureError || error instanceof ValidationError) {
+        assignedPatients = { status: "ERROR" };
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  return <WorkforceDetailView assignedPatients={assignedPatients} detail={detail} />;
 }

@@ -82,6 +82,18 @@ export const patientAssignedDirectoryQuerySchema = z
     }
   });
 
+export const workforceOsmPatientListQuerySchema = z
+  .object({
+    hospitalId: z.uuid(),
+    osmUserId: z.uuid(),
+    page: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .refine(Number.isSafeInteger, "Page must be a safe integer"),
+  })
+  .strict();
+
 export const patientDirectoryRelationshipIdSchema = z.uuid();
 
 export type PatientDirectoryLookupType = z.infer<typeof patientDirectoryLookupTypeSchema>;
@@ -91,3 +103,4 @@ export type PatientDirectoryClassificationFilter = z.infer<
 export type PatientDirectorySelfRegistrationFilter = z.infer<typeof selfRegistrationListFilterSchema>;
 export type PatientDirectoryQueryInput = z.infer<typeof patientDirectoryQuerySchema>;
 export type PatientAssignedDirectoryQueryInput = z.infer<typeof patientAssignedDirectoryQuerySchema>;
+export type WorkforceOsmPatientListQueryInput = z.infer<typeof workforceOsmPatientListQuerySchema>;
