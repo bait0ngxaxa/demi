@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getLineLiffId, getLineLoginEnv } from "@/lib/env/server";
+import { isLinePasswordRecoveryRequestConfigured } from "@/modules/line/services/line-password-recovery-configuration";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
@@ -77,5 +78,5 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   } catch {
     // The client displays a safe configuration state when the dedicated LINE configuration is missing.
   }
-  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} disconnection={disconnection} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
+  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} linePasswordRecoveryAvailable={isLinePasswordRecoveryRequestConfigured()} disconnection={disconnection} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
 }

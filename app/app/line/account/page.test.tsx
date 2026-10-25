@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
   actor: vi.fn(),
   summary: vi.fn(),
+  recoveryAvailable: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -16,6 +17,9 @@ vi.mock("@/components/ui/page-header", () => ({ PageHeader: ({ title }: { title:
 vi.mock("@/components/ui/panel", () => ({ Panel: ({ children }: { children: ReactNode }) => createElement("section", null, children) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mocks.actor }));
 vi.mock("@/modules/line/services/line-account-service", () => ({ getLineAccountSummary: mocks.summary }));
+vi.mock("@/modules/line/services/line-password-recovery-configuration", () => ({
+  isLinePasswordRecoveryRequestConfigured: mocks.recoveryAvailable,
+}));
 vi.mock("../../../line/account/line-password-recovery-nudge", () => ({
   LinePasswordRecoveryNudge: ({ userId, href }: { userId: string; href: string }) =>
     createElement("aside", { "data-user-id": userId }, createElement("a", { href }, "ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม")),
@@ -33,6 +37,7 @@ describe("application LINE account page", () => {
     mocks.connection.mockResolvedValue(undefined);
     mocks.actor.mockResolvedValue({ userId: "user-1", roles: ["PATIENT"] });
     mocks.summary.mockResolvedValue({ status: "UNLINKED" });
+    mocks.recoveryAvailable.mockReturnValue(true);
   });
 
   it("shows the dismissible LINE recovery nudge for an unlinked non-ADMIN account", async () => {
@@ -49,6 +54,12 @@ describe("application LINE account page", () => {
 
     mocks.summary.mockResolvedValue({ status: "UNLINKED" });
     mocks.actor.mockResolvedValue({ userId: "admin-1", roles: ["ADMIN"] });
+    expect(await renderPage()).not.toContain("ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม");
+  });
+
+  it("hides the recovery nudge when the LINE recovery request configuration is unavailable", async () => {
+    mocks.recoveryAvailable.mockReturnValue(false);
+
     expect(await renderPage()).not.toContain("ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม");
   });
 });

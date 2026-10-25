@@ -120,7 +120,7 @@ describe("account security form presentation", () => {
   });
 
   it("shows the hospital recovery instructions when no reset token is present", () => {
-    const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm));
+    const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: false }));
 
     expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลคุณ");
     expect(markup).toContain("วิดีโอคอล");

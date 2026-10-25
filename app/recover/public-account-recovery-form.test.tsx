@@ -38,7 +38,7 @@ describe("public account recovery", () => {
   it("offers both the Hospital and LINE recovery paths", async () => {
     window.history.replaceState(null, "", "/recover");
 
-    await act(async () => root.render(createElement(PublicAccountRecoveryForm)));
+    await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: true })));
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
     expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
     expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
@@ -55,6 +55,17 @@ describe("public account recovery", () => {
     expect(container.textContent).toContain("ตั้งรหัสผ่านใหม่");
     expect(container.querySelector('input[name="nationalId"]')).not.toBeNull();
     expect(container.querySelector('input[name="newPassword"]')).not.toBeNull();
+  });
+
+  it("hides the LINE entry and directs users to the Hospital process when LINE is not configured", async () => {
+    window.history.replaceState(null, "", "/recover");
+
+    await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: false })));
+
+    expect(container.textContent).toContain("การกู้คืนรหัสผ่านผ่าน LINE ยังไม่พร้อมให้บริการ");
+    expect(container.querySelector('a[href="/recover/line"]')).toBeNull();
+    expect(container.querySelector('a[href="#recover-hospital"]')?.textContent).toBe("ดูวิธีติดต่อโรงพยาบาล");
+    expect(container.querySelector("#recover-hospital")?.textContent).toContain("กรุณาติดต่อโรงพยาบาลที่ดูแลคุณ");
   });
 
   it("keeps the reset form usable and marks the password field when provider policy rejects it", async () => {

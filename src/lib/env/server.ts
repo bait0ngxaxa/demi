@@ -68,6 +68,10 @@ export const lineMessagingEnvSchema = z.object({
   DEMI_LINE_MESSAGING_BOT_USER_ID: z.string().trim().regex(/^U[0-9a-f]{32}$/iu),
 });
 
+export const lineMessagingPushEnvSchema = lineMessagingEnvSchema.pick({
+  DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: true,
+});
+
 export const lineLiffIdEnvSchema = z.string().trim().regex(/^\d{4,20}-[A-Za-z0-9]+$/u);
 
 export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
@@ -75,6 +79,7 @@ export type PatientEvidenceStorageEnv = SupabaseAdminEnv & {
 };
 export type LineLoginEnv = z.infer<typeof lineLoginEnvSchema>;
 export type LineMessagingEnv = z.infer<typeof lineMessagingEnvSchema>;
+export type LineMessagingPushEnv = z.infer<typeof lineMessagingPushEnvSchema>;
 
 /** The configured public application origin also used by LINE; never use request Host. */
 export function getApplicationPublicOrigin(): string {
@@ -218,6 +223,18 @@ export function getLineMessagingEnv(): LineMessagingEnv {
 
   if (!result.success) {
     throw new Error("DEMI LINE Messaging API configuration is unavailable");
+  }
+
+  return result.data;
+}
+
+export function getLineMessagingPushEnv(): LineMessagingPushEnv {
+  const result = lineMessagingPushEnvSchema.safeParse({
+    DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: process.env.DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN,
+  });
+
+  if (!result.success) {
+    throw new Error("DEMI LINE Messaging API push configuration is unavailable");
   }
 
   return result.data;

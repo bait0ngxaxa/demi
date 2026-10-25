@@ -221,6 +221,27 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(request?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("uses only the access token required for Push", async () => {
+    vi.stubEnv("DEMI_LINE_MESSAGING_CHANNEL_SECRET", undefined);
+    vi.stubEnv("DEMI_LINE_MESSAGING_BOT_USER_ID", undefined);
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.pushText(`U${"a".repeat(32)}`, "recovery message", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+      .resolves.toEqual({ kind: "ACCEPTED" });
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("fails Push safely when the access token is missing or malformed", async () => {
+    vi.stubEnv("DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN", " ");
+    const fetcher = vi.fn<typeof fetch>();
+    const client = new LineMessagingClient(fetcher);
+
+    await expect(client.pushText(`U${"a".repeat(32)}`, "recovery message", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+      .resolves.toEqual({ kind: "PERMANENT_FAILURE" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("keeps the monthly-limit 429 retryable because its documented response can be temporary", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ message: "You have reached your monthly limit." }), {

@@ -127,6 +127,7 @@ type LineAccountScreenProps = {
   initial: InitialStatus;
   accountStatus: InitialStatus["status"];
   canUnlink: boolean;
+  linePasswordRecoveryAvailable: boolean;
   liffState: LiffState;
   isInClient: boolean;
   friendshipSupported: boolean;
@@ -167,6 +168,7 @@ export function LineAccountScreen({
   initial,
   accountStatus,
   canUnlink,
+  linePasswordRecoveryAvailable,
   liffState,
   isInClient,
   friendshipSupported,
@@ -394,11 +396,19 @@ export function LineAccountScreen({
                       <Link href="/login?returnTo=%2Fline%2Faccount" className={primaryButtonClass}>
                         เข้าสู่ระบบ DEMI
                       </Link>
-                      <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-request-title">
-                        <h3 id="line-recovery-request-title" className="text-lg font-semibold text-ink">ลืมรหัสผ่าน?</h3>
-                        <p className="mt-2 text-sm leading-6 text-muted">ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE ที่ผูกกับบัญชี DEMI ของคุณ</p>
-                        <LinePasswordRecoveryRequestForm />
-                      </section>
+                      {linePasswordRecoveryAvailable ? (
+                        <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-request-title">
+                          <h3 id="line-recovery-request-title" className="text-lg font-semibold text-ink">ลืมรหัสผ่าน?</h3>
+                          <p className="mt-2 text-sm leading-6 text-muted">ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE ที่ผูกกับบัญชี DEMI ของคุณ</p>
+                          <LinePasswordRecoveryRequestForm />
+                        </section>
+                      ) : (
+                        <section className="mt-7 border-t border-line pt-6" aria-labelledby="line-recovery-unavailable-title">
+                          <h3 id="line-recovery-unavailable-title" className="text-lg font-semibold text-ink">กู้คืนรหัสผ่านผ่าน LINE ยังไม่พร้อมให้บริการ</h3>
+                          <p className="mt-2 text-sm leading-6 text-muted">กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอรีเซ็ตรหัสผ่าน</p>
+                          <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-focus-ring" href="/recover#recover-hospital">ดูวิธีติดต่อโรงพยาบาล</Link>
+                        </section>
+                      )}
                     </div>
                   ) : null}
 
@@ -520,6 +530,7 @@ export function LineAccountClient({
   initial,
   liffId,
   publicOrigin,
+  linePasswordRecoveryAvailable,
   disconnection,
   lifecycleReadiness,
   notificationPreference,
@@ -527,6 +538,7 @@ export function LineAccountClient({
   initial: InitialStatus;
   liffId: string | null;
   publicOrigin: string;
+  linePasswordRecoveryAvailable: boolean;
   disconnection?: LineDisconnectionStatus;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
@@ -821,6 +833,7 @@ export function LineAccountClient({
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}
+      linePasswordRecoveryAvailable={linePasswordRecoveryAvailable}
       liffState={liffState}
       isInClient={isInClient}
       friendshipSupported={friendshipSupported}

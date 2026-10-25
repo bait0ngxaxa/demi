@@ -62,6 +62,7 @@ import { createLineSubjectFingerprint } from "@/modules/line/services/line-ident
 import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import {
   completeLinePasswordRecoveryWithIdentityToken,
+  LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE,
   LinePasswordRecoveryCompletionError,
   openLinePasswordRecovery,
   requestLinePasswordRecovery,
@@ -1654,7 +1655,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
         messages.push((await requestLinePasswordRecovery({ nationalId }, dependencies)).message);
       }
 
-      expect(new Set(messages)).toEqual(new Set(["หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล"]));
+      expect(new Set(messages)).toEqual(new Set([LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE]));
       expect(dependencies.sendPush).toHaveBeenCalledOnce();
       expect(dependencies.sendPush).toHaveBeenCalledWith(eligible.lineUserId, expect.stringContaining("https://liff.line.me/1234567890-AbCdEf/recover?capability="), expect.any(String));
       expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain("#");
@@ -1669,7 +1670,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       const response = await requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies);
       const capabilityId = latestLineCapabilityId(dependencies);
 
-      expect(response.message).toBe("หากบัญชีนี้ผูก LINE ไว้ ระบบส่งลิงก์ตั้งรหัสผ่านใหม่ไปที่ LINE แล้ว ลิงก์ใช้ได้ 15 นาที — ถ้าไม่ได้รับให้ตรวจว่ายังเป็นเพื่อนกับ LINE OA ของ DEMI หรือติดต่อโรงพยาบาล");
+      expect(response.message).toBe(LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE);
       expect(dependencies.sendPush).toHaveBeenCalledOnce();
       expect(dependencies.sendPush.mock.calls[0]?.[1]).toContain(`?capability=${capabilityId}`);
       const availabilityInput = { capabilityId, idToken: "fresh-line-id-token-for-recovery" };

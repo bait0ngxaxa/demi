@@ -2,7 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import { getLineMessagingEnv } from "@/lib/env/server";
+import { getLineMessagingEnv, getLineMessagingPushEnv } from "@/lib/env/server";
 
 import { LineFailure } from "../domain/line-errors";
 import type { LineMenuDefinition } from "../rich-menu/catalog";
@@ -127,7 +127,7 @@ export class LineMessagingClient {
 
     let accessToken: string;
     try {
-      accessToken = getLineMessagingEnv().DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+      accessToken = getLineMessagingPushEnv().DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
     } catch {
       return { kind: "PERMANENT_FAILURE" };
     }

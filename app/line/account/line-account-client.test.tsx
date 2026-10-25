@@ -37,6 +37,7 @@ function renderScreen(
       currentPasswordError={state.currentPasswordError ?? ""}
       accountStatus={state.accountStatus ?? initial.status}
       canUnlink={state.canUnlink ?? initial.canUnlink}
+      linePasswordRecoveryAvailable={state.linePasswordRecoveryAvailable ?? false}
       liffState={state.liffState ?? "READY"}
       isInClient={state.isInClient ?? true}
       friendshipSupported={state.friendshipSupported ?? false}
@@ -86,8 +87,9 @@ describe("LINE account user experience", () => {
     const markup = renderToStaticMarkup(
       <LineAccountClient
         initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }}
-        liffId={null}
-        publicOrigin=""
+        liffId="1234567890-Recovery"
+        publicOrigin="https://demi.example.org"
+        linePasswordRecoveryAvailable={true}
         lifecycleReadiness={{ state: "NOT_CHECKED" }}
       />,
     );
@@ -96,6 +98,23 @@ describe("LINE account user experience", () => {
     expect(markup).toContain("เข้าสู่ระบบ DEMI");
     expect(markup).toContain("ขอลิงก์ตั้งรหัสผ่านใหม่ทาง LINE");
     expect(markup).toContain('name="nationalId"');
+  });
+
+  it("offers the Hospital process instead of a LINE request form when configuration is unavailable", () => {
+    const markup = renderToStaticMarkup(
+      <LineAccountClient
+        initial={{ ...emptyStatus, status: "UNAUTHENTICATED", canUnlink: false }}
+        liffId={null}
+        publicOrigin=""
+        linePasswordRecoveryAvailable={false}
+        lifecycleReadiness={{ state: "NOT_CHECKED" }}
+      />,
+    );
+
+    expect(markup).toContain("กู้คืนรหัสผ่านผ่าน LINE ยังไม่พร้อมให้บริการ");
+    expect(markup).toContain('href="/recover#recover-hospital"');
+    expect(markup).not.toContain('name="nationalId"');
+    expect(markup).not.toContain("DEMI_LINE_MESSAGING");
   });
 
   it("requires the current DEMI password before linking the open LINE account", () => {
@@ -115,6 +134,7 @@ describe("LINE account user experience", () => {
         initial={{ ...emptyStatus, status: "UNLINKED", canUnlink: false }}
         liffId="1234567890-AbCdEfGh"
         publicOrigin="https://demi.example.org"
+        linePasswordRecoveryAvailable={false}
         lifecycleReadiness={{ state: "READY" }}
         disconnection={{ state: "NONE", canRelink: true, obligations: [] }}
       />,

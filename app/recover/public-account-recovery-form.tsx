@@ -12,7 +12,7 @@ import {
 
 type Availability = "READY" | "INVALID";
 
-export function PublicAccountRecoveryForm(): React.JSX.Element {
+export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecoveryAvailable: boolean }): React.JSX.Element {
   const [token, setToken] = useState<string | null>(null);
   const [availability, setAvailability] = useState<{ token: string; status: Availability } | null>(null);
   const [completion, formAction, pending] = useActionState(
@@ -53,11 +53,22 @@ export function PublicAccountRecoveryForm(): React.JSX.Element {
       <Panel>
         <h1 className="break-words text-2xl font-semibold tracking-[-0.02em] text-text">กู้คืนรหัสผ่าน</h1>
         <section aria-labelledby="recover-line-heading" className="mt-5 border-b border-border pb-5">
-          <h2 className="text-lg font-semibold text-text" id="recover-line-heading">ลืมรหัสผ่าน · รับลิงก์ทาง LINE</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">ขอรับลิงก์สำหรับตั้งรหัสผ่านใหม่ผ่านบัญชี LINE ที่เชื่อมกับ DEMI</p>
-          <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/recover/line">เริ่มขอรับลิงก์ทาง LINE</Link>
+          <h2 className="text-lg font-semibold text-text" id="recover-line-heading">
+            {lineRecoveryAvailable ? "ลืมรหัสผ่าน · รับลิงก์ทาง LINE" : "กู้คืนรหัสผ่านผ่าน LINE"}
+          </h2>
+          {lineRecoveryAvailable ? (
+            <>
+              <p className="mt-2 text-sm leading-6 text-text-muted">ขอรับลิงก์สำหรับตั้งรหัสผ่านใหม่ผ่านบัญชี LINE ที่เชื่อมกับ DEMI</p>
+              <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/recover/line">เริ่มขอรับลิงก์ทาง LINE</Link>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-sm leading-6 text-text-muted" role="status">ขณะนี้การกู้คืนรหัสผ่านผ่าน LINE ยังไม่พร้อมให้บริการ กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อขอความช่วยเหลือ</p>
+              <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="#recover-hospital">ดูวิธีติดต่อโรงพยาบาล</Link>
+            </>
+          )}
         </section>
-        <section aria-labelledby="recover-hospital-heading" className="mt-5">
+        <section aria-labelledby="recover-hospital-heading" className="mt-5" id="recover-hospital">
           <h2 className="text-lg font-semibold text-text" id="recover-hospital-heading">ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน</h2>
           <p className="mt-2 break-words text-sm leading-6 text-text-muted">
             หากเข้าใช้บัญชีไม่ได้ กรุณาติดต่อโรงพยาบาลที่ดูแลคุณเพื่อขอรีเซ็ตรหัสผ่าน โดยยืนยันตัวตนต่อหน้า หรือผ่านวิดีโอคอล
