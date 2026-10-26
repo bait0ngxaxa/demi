@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Role } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { countSoleActiveOwnerHospitals } from "@/modules/hospital-governance/services/hospital-owner-recovery-readiness-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
+import { resolveLineRecoveryReadiness } from "@/modules/line/domain/line-recovery-readiness";
 import { isLinePasswordRecoveryRequestConfigured } from "@/modules/line/services/line-password-recovery-configuration";
 
 import { LinePasswordRecoveryNudge } from "../../../line/account/line-password-recovery-nudge";
@@ -16,10 +18,23 @@ export const metadata: Metadata = { title: "บัญชี LINE" };
 export default async function ApplicationLineAccountPage(): Promise<React.JSX.Element> {
   await connection();
   const actor = await getProtectedApplicationActor();
-  const summary = await getLineAccountSummary().catch(() => null);
+  const recoveryConfigured = isLinePasswordRecoveryRequestConfigured();
+  const isHospitalOwner = !actor.roles.includes(Role.ADMIN) && actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some((membership) =>
+    membership.membershipType === MembershipType.OWNER && membership.status === MembershipStatus.ACTIVE && membership.hospitalStatus === HospitalStatus.ACTIVE);
+  const [summary, soleOwnerHospitalCount] = await Promise.all([
+    getLineAccountSummary().catch(() => null),
+    isHospitalOwner ? countSoleActiveOwnerHospitals(actor).catch(() => null) : Promise.resolve(null),
+  ]);
   const unlinked = summary?.status === "UNLINKED";
   const linked = summary?.status === "LINKED";
-  const showRecoveryNudge = isLinePasswordRecoveryRequestConfigured() && unlinked && !actor.roles.includes(Role.ADMIN);
+  const showRecoveryNudge = recoveryConfigured && unlinked && !actor.roles.includes(Role.ADMIN) && !isHospitalOwner;
+  const recoveryReadiness = resolveLineRecoveryReadiness({
+    accountStatus: summary?.status ?? "UNAVAILABLE",
+    reachability: summary?.reachability ?? null,
+    reachabilityObservedAt: summary?.reachabilityObservedAt ?? null,
+    recoveryConfigured,
+    now: new Date(),
+  });
 
   return (
     <div className="min-w-0 max-w-3xl space-y-6">
@@ -39,6 +54,14 @@ export default async function ApplicationLineAccountPage(): Promise<React.JSX.El
         >
           จัดการการเชื่อมต่อ LINE
         </Link>
+        {isHospitalOwner ? (
+          <LinePasswordRecoveryNudge
+            href="/line/account"
+            readiness={recoveryReadiness}
+            soleOwnerHospitalCount={soleOwnerHospitalCount}
+            userId={actor.userId}
+          />
+        ) : null}
         {showRecoveryNudge ? <LinePasswordRecoveryNudge key={actor.userId} userId={actor.userId} href="/line/account" /> : null}
       </Panel>
     </div>

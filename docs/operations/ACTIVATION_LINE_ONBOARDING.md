@@ -1,5 +1,11 @@
 # การเปิดใช้งานบัญชีและเริ่มใช้ LINE (UX-A + UX-B)
 
+## ความพร้อมกู้คืนของ Hospital OWNER (2026-10-26)
+
+หน้า **ตั้งค่าบัญชีส่วนตัว → บัญชี LINE** แสดงคำแนะนำแบบปิดได้สำหรับผู้มีบทบาท Hospital OWNER และ active OWNER membership ใน Hospital ที่ยัง active เท่านั้น การผูก LINE เป็นทางเลือก; หาก OWNER ใช้ LINE ไม่ได้ Platform ADMIN ยังช่วยกู้คืนได้ และ Hospital ที่มี OWNER ใช้งานได้เพียงคนเดียวจะแสดงจำนวน Hospital ที่ตรวจพบโดย query จาก active OWNER membership ปัจจุบัน
+
+สถานะ “พร้อม” เป็นเพียงข้อมูลประกอบ UI: ต้องมี active binding, มี observation ที่ยืนยันว่าเป็นเพื่อนกับ DEMI และ observation ต้องมีอายุไม่เกิน 24 ชั่วโมง พร้อม configuration สำหรับคำขอกู้คืน LINE ระบบไม่ตีความ LINKED, observation ที่หายไป, timestamp ในอนาคต, สถานะ UNKNOWN/NOT_FRIEND หรือ observation ที่เก่ากว่า 24 ชั่วโมงว่าใช้รับลิงก์ได้ Rich Menu readiness ไม่ถูกใช้แทนสถานะการส่ง recovery ระบบไม่เรียก LINE provider ระหว่าง render; ผู้ใช้เปิดหน้าจัดการ LINE เพื่อใช้ status-check ที่มีอยู่ได้ สถานะนี้ไม่ preflight การส่ง LINE Push และไม่รับประกันว่าคำขอถัดไปจะส่งถึง หาก Push ล้มเหลว ระบบเดิมจะยกเลิก capability ที่ใช้ไม่ได้; ให้ใช้การกู้คืนแบบมีผู้ช่วย หาก configuration ไม่พร้อมหรือ status-check พบข้อผิดพลาด
+
 ## UX-C.1 final hardening — ข้อกำหนดปัจจุบัน (2026-10-26)
 
 เพิ่มเติมจาก implementation `73d2860` ด้านล่าง:

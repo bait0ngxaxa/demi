@@ -488,17 +488,18 @@ export async function getLineAccountSummary(dependencies: LineAccountDependencie
   status: "UNLINKED" | "LINKED" | "INELIGIBLE";
   canUnlink: boolean;
   reachability: LineReachability | null;
+  reachabilityObservedAt: Date | null;
   menuState: "UNKNOWN" | "APPLIED" | "MISMATCH" | "UNAVAILABLE" | null;
   cleanupState: "PENDING" | "CONFIRMED_CLEAN" | "MISMATCH" | "UNAVAILABLE" | "UNKNOWN" | null;
 }> {
   const session = await (dependencies.currentSession ?? getCurrentLineSession)();
   const user = await databaseOf(dependencies).user.findUnique({ where: { id: session.userId }, select: { status: true } });
   if (!user || user.status !== UserStatus.ACTIVE) {
-    return { status: "INELIGIBLE", canUnlink: false, reachability: null, menuState: null, cleanupState: null };
+    return { status: "INELIGIBLE", canUnlink: false, reachability: null, reachabilityObservedAt: null, menuState: null, cleanupState: null };
   }
   const binding = await databaseOf(dependencies).lineAccountBinding.findFirst({
     where: { userId: session.userId, unlinkedAt: null },
-    select: { reachability: true, menuSyncState: true, providerCleanupState: true },
+    select: { reachability: true, reachabilityObservedAt: true, menuSyncState: true, providerCleanupState: true },
   });
   if (!binding) {
     const cleanup = await databaseOf(dependencies).lineAccountBinding.findFirst({
@@ -509,13 +510,14 @@ export async function getLineAccountSummary(dependencies: LineAccountDependencie
       orderBy: [{ unlinkedAt: "desc" }, { id: "desc" }],
       select: { reachability: true, providerCleanupState: true },
     });
-    return { status: "UNLINKED", canUnlink: false, reachability: cleanup?.reachability ?? null, menuState: null, cleanupState: cleanup?.providerCleanupState ?? null };
+    return { status: "UNLINKED", canUnlink: false, reachability: null, reachabilityObservedAt: null, menuState: null, cleanupState: cleanup?.providerCleanupState ?? null };
   }
   const eligibleRoles = await resolveEligibleLineRoles(session.userId, databaseOf(dependencies));
   return {
     status: eligibleRoles.length ? "LINKED" : "INELIGIBLE",
     canUnlink: true,
     reachability: binding.reachability,
+    reachabilityObservedAt: binding.reachabilityObservedAt ?? null,
     menuState: binding.menuSyncState,
     cleanupState: binding.providerCleanupState,
   };

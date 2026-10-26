@@ -520,6 +520,13 @@ describe("LINE account lifecycle service", () => {
   });
 
   it("keeps unlink available for an ACTIVE account with no operational workspace", async () => {
+    const observedAt = new Date("2026-10-26T05:00:00.000Z");
+    const findActiveBinding = vi.fn().mockResolvedValue({
+      reachability: LineReachability.FRIEND,
+      reachabilityObservedAt: observedAt,
+      menuSyncState: LineMenuSyncState.UNKNOWN,
+      providerCleanupState: null,
+    });
     const database = {
       user: {
         findUnique: vi.fn().mockResolvedValue({
@@ -532,14 +539,13 @@ describe("LINE account lifecycle service", () => {
         }),
       },
       lineAccountBinding: {
-        findFirst: vi.fn().mockResolvedValue({
-          reachability: LineReachability.UNKNOWN,
-          menuSyncState: LineMenuSyncState.UNKNOWN,
-          providerCleanupState: null,
-        }),
+        findFirst: findActiveBinding,
       },
     };
     await expect(getLineAccountSummary({ database: database as unknown as PrismaClient, currentSession: async () => session }))
-      .resolves.toMatchObject({ status: "INELIGIBLE", canUnlink: true });
+      .resolves.toMatchObject({ status: "INELIGIBLE", canUnlink: true, reachability: LineReachability.FRIEND, reachabilityObservedAt: observedAt });
+    expect(findActiveBinding).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ reachabilityObservedAt: true }),
+    }));
   });
 });
