@@ -43,13 +43,12 @@ async function renderControl(
   eligibility: "OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED" = "OWNER_ELIGIBLE",
   targetKind: "patient" | "platform_admin" = "patient",
 ): Promise<void> {
+  const targetContext = targetKind === "platform_admin"
+    ? { targetKind: "platform_admin" as const, hospitalId: null, hospitalName: null, relationshipId: null, targetUserId: "33333333-3333-4333-8333-333333333333" }
+    : { targetKind: "patient" as const, hospitalId: "11111111-1111-4111-8111-111111111111", hospitalName: "โรงพยาบาลตัวอย่าง", relationshipId: "22222222-2222-4222-8222-222222222222" };
   await act(async () => {
     root.render(createElement(MediatedPasswordResetControl, {
-      hospitalId: "11111111-1111-4111-8111-111111111111",
-      hospitalName: "โรงพยาบาลตัวอย่าง",
-      relationshipId: "22222222-2222-4222-8222-222222222222",
-      ...(targetKind === "platform_admin" ? { relationshipId: null, targetUserId: "33333333-3333-4333-8333-333333333333" } : {}),
-      targetKind,
+      ...targetContext,
       targetName: "ผู้ใช้ตัวอย่าง",
       eligibility,
     }));
@@ -122,6 +121,13 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
 
     expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
     expect(container.textContent).toContain("ห้ามส่งต่อให้ผู้อื่น");
+    expect(mocks.issue).toHaveBeenCalledWith(expect.objectContaining({
+      targetKind: "platform_admin",
+      hospitalId: null,
+      relationshipId: null,
+      targetUserId: "33333333-3333-4333-8333-333333333333",
+    }));
+    expect(container.textContent).not.toContain("โรงพยาบาลตัวอย่าง");
   });
 
   it("hands the signed-out device straight to the in-person reset page without a copyable link, and hides actions outside OWNER scope", async () => {

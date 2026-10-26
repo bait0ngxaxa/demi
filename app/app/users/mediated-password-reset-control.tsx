@@ -20,15 +20,14 @@ const VERIFICATION_METHODS: readonly { value: CredentialRecoveryVerificationMeth
 ];
 
 type Props = {
-  hospitalId: string;
-  hospitalName: string;
-  relationshipId: string | null;
-  targetUserId?: string;
-  targetKind: MediatedPasswordResetTargetKind;
   targetName: string;
   eligibility: "OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED";
   locked?: boolean;
-};
+} & (
+  | { targetKind: "platform_admin"; hospitalId: null; hospitalName: null; relationshipId: null; targetUserId: string }
+  | { targetKind: "caregiver"; hospitalId: string; hospitalName: string; relationshipId: null; targetUserId: string }
+  | { targetKind: Exclude<MediatedPasswordResetTargetKind, "platform_admin" | "caregiver">; hospitalId: string; hospitalName: string; relationshipId: string; targetUserId?: never }
+);
 
 function formatThaiDate(value: string): string {
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(new Date(value));
@@ -67,14 +66,11 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
     event.preventDefault();
     if (!verificationMethod || busy) return;
     setBusy(true);
-    const input: MediatedPasswordResetIssueInput = {
-      hospitalId: props.hospitalId,
-      relationshipId: props.relationshipId,
-      targetKind: props.targetKind,
-      ...(props.targetUserId ? { targetUserId: props.targetUserId } : {}),
-      mode,
-      verificationMethod,
-    };
+    const input: MediatedPasswordResetIssueInput = props.targetKind === "platform_admin"
+      ? { targetKind: "platform_admin", targetUserId: props.targetUserId, hospitalId: null, relationshipId: null, mode, verificationMethod }
+      : props.targetKind === "caregiver"
+        ? { targetKind: "caregiver", targetUserId: props.targetUserId, hospitalId: props.hospitalId, relationshipId: null, mode, verificationMethod }
+        : { targetKind: props.targetKind, hospitalId: props.hospitalId, relationshipId: props.relationshipId, mode, verificationMethod };
     try {
       const response = await issueMediatedPasswordResetAction(input);
       setResult(response);
@@ -134,7 +130,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
         <div className="space-y-5 p-6">
           <div>
             <h3 className="text-xl font-semibold" id="mediated-reset-title">{props.locked ? "คืนบัญชีให้เจ้าของจริง" : "รีเซ็ตรหัสผ่าน / คืนบัญชี"}</h3>
-            <p className="mt-1 text-sm text-text-muted">{props.targetName} · {props.hospitalName}</p>
+            <p className="mt-1 text-sm text-text-muted">{props.targetName}{props.hospitalName ? ` · ${props.hospitalName}` : ""}</p>
           </div>
 
           {result?.status === "ISSUED" && result.mode === "IN_PERSON" ? (

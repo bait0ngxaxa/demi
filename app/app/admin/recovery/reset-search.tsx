@@ -54,12 +54,12 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
       {candidates.length > 0 ? (
         <div className="mt-5 space-y-4">
           <label className="grid gap-1 text-sm font-medium">
-            เลือกบัญชีและโรงพยาบาล
+            เลือกบัญชีและขอบเขต
             <select className="min-h-11 rounded-md border border-border bg-surface px-3" onChange={(event) => setSelectedIndex(event.target.value)} value={selectedIndex}>
               <option value="">เลือกบัญชี</option>
               {candidates.map((candidate, index) => (
                 <option key={`${candidate.targetKind}-${candidate.relationshipId ?? candidate.userId}-${candidate.hospitalId}`} value={String(index)}>
-                  {candidate.displayName} · {candidate.targetKind === "staff" ? "บุคลากร" : candidate.targetKind === "osm" ? "อสม." : candidate.targetKind === "patient" ? "ผู้ป่วย" : candidate.targetKind === "caregiver" ? "ผู้ดูแลญาติ" : "บัญชี ADMIN"} · {candidate.hospitalName} · {candidate.relationshipStatus}
+                  {candidate.displayName} · {candidate.targetKind === "staff" ? "บุคลากร" : candidate.targetKind === "osm" ? "อสม." : candidate.targetKind === "patient" ? "ผู้ป่วย" : candidate.targetKind === "caregiver" ? "ผู้ดูแลญาติ" : "บัญชี ADMIN"}{candidate.hospitalName ? ` · ${candidate.hospitalName}` : ""} · {candidate.relationshipStatus}
                 </option>
               ))}
             </select>
@@ -67,15 +67,36 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
           {selected ? (
             <div className="rounded-lg border border-border p-4">
               <p className="mb-3 text-sm leading-6 text-text-muted">ผู้ดูแลระบบต้องตรวจสอบตัวตนด้วยตนเองก่อนออกลิงก์</p>
-              <MediatedPasswordResetControl
-                eligibility="ADMIN_ALLOWED"
-                hospitalId={selected.hospitalId}
-                hospitalName={selected.hospitalName}
-                relationshipId={selected.relationshipId}
-                targetUserId={selected.targetKind === "platform_admin" || selected.targetKind === "caregiver" ? selected.userId : undefined}
-                targetKind={selected.targetKind}
-                targetName={selected.displayName}
-              />
+              {selected.targetKind === "platform_admin" ? (
+                <MediatedPasswordResetControl
+                  eligibility="ADMIN_ALLOWED"
+                  hospitalId={null}
+                  hospitalName={null}
+                  relationshipId={null}
+                  targetUserId={selected.userId}
+                  targetKind="platform_admin"
+                  targetName={selected.displayName}
+                />
+              ) : selected.targetKind === "caregiver" ? (
+                <MediatedPasswordResetControl
+                  eligibility="ADMIN_ALLOWED"
+                  hospitalId={selected.hospitalId}
+                  hospitalName={selected.hospitalName}
+                  relationshipId={null}
+                  targetUserId={selected.userId}
+                  targetKind="caregiver"
+                  targetName={selected.displayName}
+                />
+              ) : (
+                <MediatedPasswordResetControl
+                  eligibility="ADMIN_ALLOWED"
+                  hospitalId={selected.hospitalId}
+                  hospitalName={selected.hospitalName}
+                  relationshipId={selected.relationshipId}
+                  targetKind={selected.targetKind}
+                  targetName={selected.displayName}
+                />
+              )}
             </div>
           ) : null}
         </div>

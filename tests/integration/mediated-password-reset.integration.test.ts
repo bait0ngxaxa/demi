@@ -427,6 +427,11 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       },
     });
     const selfMembership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: owner.userId, hospitalId: hospital.id } });
+    const admin = await createAdmin();
+    const adminTargetCandidates = await searchMediatedPasswordResetTargets(admin, { nationalId: adminTarget.nationalId }, db);
+    expect(adminTargetCandidates).toEqual([
+      expect.objectContaining({ userId: adminTarget.userId, targetKind: "platform_admin", hospitalId: null, relationshipId: null }),
+    ]);
     const invalidTargets = [
       issueInput("staff", hospital.id, selfMembership.id),
       issueInput("staff", hospital.id, adminTarget.relationshipId),
@@ -449,10 +454,9 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     }, { database: db, now: () => now, ...patientWithCaregiverProvider });
     expect(await db.user.findUniqueOrThrow({ where: { id: caregiverTarget.userId } })).toMatchObject({ authSubject: patientWithCaregiverProvider.replacementSubject });
 
-    const admin = await createAdmin();
     const adminIssued = await issueMediatedPasswordReset(admin, issueInput("staff", hospital.id, multiHospitalTarget.relationshipId, "ONLINE"), { database: db, now: () => now });
     await expect(issueMediatedPasswordReset(admin, issueInput("staff", hospital.id, ownerMembership.id), { database: db, now: () => now })).resolves.toMatchObject({ mode: "IN_PERSON" });
-    await expect(issueMediatedPasswordReset(admin, issueInput("staff", hospital.id, adminTarget.relationshipId), { database: db, now: () => now })).resolves.toMatchObject({ mode: "IN_PERSON" });
+    await expect(issueMediatedPasswordReset(admin, issueInput("staff", hospital.id, adminTarget.relationshipId), { database: db, now: () => now })).rejects.toBeInstanceOf(ForbiddenError);
     const adminSelfMembership = await db.hospitalMembership.create({ data: { userId: admin.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
     await expect(issueMediatedPasswordReset(admin, issueInput("staff", hospital.id, adminSelfMembership.id), { database: db, now: () => now })).rejects.toBeInstanceOf(ForbiddenError);
 
@@ -461,7 +465,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const platformAdminReset = await issueMediatedPasswordReset(admin, {
       targetKind: "platform_admin",
       targetUserId: platformAdminTarget.userId,
-      hospitalId: hospital.id,
+      hospitalId: null,
       relationshipId: null,
       mode: "ONLINE",
       verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
@@ -575,18 +579,19 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
 
   it("recovers a peer ADMIN by its custom login identifier without treating that identifier as identity proof", async () => {
     const hospital = await createHospital();
+    await createHospital();
     const issuer = await createAdmin();
     const customIdentifier = "demi-admin.custom-01";
     const peer = await createIdentity({ nationalId: customIdentifier, role: Role.ADMIN, name: "ผู้ดูแลระบบตัวระบุพิเศษ" });
 
     const candidates = await searchMediatedPasswordResetTargets(issuer, { nationalId: customIdentifier }, db);
     expect(candidates).toHaveLength(1);
-    expect(candidates[0]).toMatchObject({ userId: peer.userId, targetKind: "platform_admin", hospitalId: hospital.id });
+    expect(candidates[0]).toMatchObject({ userId: peer.userId, targetKind: "platform_admin", hospitalId: null, hospitalName: null });
 
     const selfReset = issueMediatedPasswordReset(issuer, {
       targetKind: "platform_admin",
       targetUserId: issuer.userId,
-      hospitalId: hospital.id,
+      hospitalId: null,
       relationshipId: null,
       mode: "ONLINE",
       verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
@@ -602,7 +607,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const reset = await issueMediatedPasswordReset(issuer, {
       targetKind: "platform_admin",
       targetUserId: peer.userId,
-      hospitalId: hospital.id,
+      hospitalId: null,
       relationshipId: null,
       mode: "ONLINE",
       verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
@@ -733,6 +738,49 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       reconciliationRequiredAt: now,
     });
     expect(await createActorContextStore(db).findUserById(target.userId)).toBeNull();
+  });
+
+  it("lists and reconciles a quarantined Platform ADMIN reset with no Hospital context", async () => {
+    const issuer = await createAdmin();
+    const target = await createIdentity({ role: Role.ADMIN, name: "ผู้ดูแลที่รอตรวจสอบ" });
+    const issued = await issueMediatedPasswordReset(issuer, {
+      targetKind: "platform_admin",
+      targetUserId: target.userId,
+      hospitalId: null,
+      relationshipId: null,
+      mode: "ONLINE",
+      verificationMethod: "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
+    }, { database: db, now: () => now });
+    await expect(completeMediatedPasswordReset({
+      token: issued.token,
+      nationalId: target.nationalId,
+      newPassword: "new-password-for-rec3",
+      passwordConfirmation: "new-password-for-rec3",
+    }, {
+      database: db,
+      now: () => now,
+      createReplacementIdentity: async () => { throw new Error("provider outcome unknown"); },
+    })).rejects.toBeInstanceOf(InfrastructureError);
+
+    await expect(listQuarantinedMediatedPasswordResets(issuer, db)).resolves.toContainEqual(expect.objectContaining({
+      resetId: issued.resetId,
+      userId: target.userId,
+      hospitalId: null,
+      hospitalName: null,
+    }));
+    await expect(reconcileMediatedPasswordReset(issuer, { resetId: issued.resetId }, {
+      database: db,
+      now: () => now,
+      findProviderIdentityByLoginAlias: async () => null,
+      providerIdentityExists: async (authSubject) => authSubject === target.authSubject,
+    })).resolves.toEqual({ outcome: "ROLLED_BACK" });
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: issued.resetId } })).toMatchObject({
+      hospitalId: null,
+      relationshipId: null,
+      relationshipKind: "platform_admin",
+      revokedAt: now,
+      operationState: WorkforceActivationOperationState.NOT_STARTED,
+    });
   });
 
   it("finalizes the reset when deleting the old provider identity fails and retries the cleanup later", async () => {
@@ -1318,13 +1366,12 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
   });
 
   it("allows ADMIN peer reset, denies ADMIN self-reset, and uses the REC-1 switch for break-glass", async () => {
-    const hospital = await createHospital();
     const admin = await createAdmin();
     const peer = await createIdentity({ role: Role.ADMIN, name: "ผู้ดูแลอีกบัญชี" });
     const peerInput = {
       targetKind: "platform_admin" as const,
       targetUserId: peer.userId,
-      hospitalId: hospital.id,
+      hospitalId: null,
       relationshipId: null,
       mode: "ONLINE" as const,
       verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD" as const,
@@ -1338,6 +1385,12 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       osmHospitalRelationships: [],
     }, peerInput, db)).resolves.toBe("ADMIN_REQUIRED");
     const peerReset = await issueMediatedPasswordReset(admin, peerInput, { database: db, now: () => now });
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: peerReset.resetId } })).toMatchObject({
+      hospitalId: null,
+      relationshipId: null,
+      relationshipKind: "platform_admin",
+      verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
+    });
     const peerProvider = fakeProvider();
     await completeMediatedPasswordReset({
       token: peerReset.token,
@@ -1398,6 +1451,78 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     expect(await db.workforceActivation.findFirstOrThrow({
       where: { userId: breakGlassTarget.userId, verificationMethod: "BREAK_GLASS_CLI" },
     })).toMatchObject({ usedAt: now, operationState: WorkforceActivationOperationState.FINALIZED });
+  });
+
+  it("keeps a previously issued Hospital-scoped Platform ADMIN reset capability usable", async () => {
+    const hospital = await createHospital();
+    const issuer = await createAdmin();
+    const target = await createIdentity({ role: Role.ADMIN, name: "ผู้ดูแลจากลิงก์เดิม" });
+    const token = "R".repeat(43);
+    const reset = await db.workforceActivation.create({
+      data: {
+        userId: target.userId,
+        createdByUserId: issuer.userId,
+        tokenHash: createHash("sha256").update(token, "utf8").digest("hex"),
+        hospitalId: hospital.id,
+        relationshipId: null,
+        relationshipKind: "platform_admin",
+        purpose: WorkforceActivationPurpose.RESET,
+        mode: WorkforceActivationMode.REMOTE,
+        verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+    });
+    const provider = fakeProvider();
+
+    await completeMediatedPasswordReset({
+      token,
+      nationalId: target.nationalId,
+      newPassword: "new-password-for-rec3-legacy",
+      passwordConfirmation: "new-password-for-rec3-legacy",
+    }, { database: db, now: () => now, ...provider });
+
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: reset.id } })).toMatchObject({
+      hospitalId: hospital.id,
+      relationshipKind: "platform_admin",
+      usedAt: now,
+      operationState: WorkforceActivationOperationState.FINALIZED,
+    });
+    expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ authSubject: provider.replacementSubject });
+  });
+
+  it("enforces reset contexts in PostgreSQL while preserving inert legacy null-context reset rows", async () => {
+    const issuer = await createAdmin();
+    const target = await createIdentity({ role: Role.HOSPITAL, name: "ผู้ใช้ทดสอบ context" });
+    const common = {
+      userId: target.userId,
+      createdByUserId: issuer.userId,
+      mode: WorkforceActivationMode.REMOTE,
+      purpose: WorkforceActivationPurpose.RESET,
+      expiresAt: new Date(now.getTime() + 60_000),
+    };
+
+    await expect(db.workforceActivation.create({
+      data: {
+        ...common,
+        tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "0"),
+        hospitalId: null,
+        relationshipId: null,
+        relationshipKind: "staff",
+        verificationMethod: "IN_PERSON_ID_CARD",
+      },
+    })).rejects.toThrow("WorkforceActivation_context_check");
+
+    const legacyReset = await db.workforceActivation.create({
+      data: {
+        ...common,
+        tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
+        hospitalId: null,
+        relationshipId: null,
+        relationshipKind: null,
+        verificationMethod: null,
+      },
+    });
+    expect(legacyReset).toMatchObject({ purpose: WorkforceActivationPurpose.RESET, hospitalId: null, relationshipKind: null, verificationMethod: null });
   });
 
   it("reconciles a quarantined last-ADMIN break-glass reset through REC-1 and audits the operator note", async () => {
@@ -1513,6 +1638,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
           relationshipKind: "patient",
           tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
           purpose: WorkforceActivationPurpose.RESET,
+          verificationMethod: "IN_PERSON_ID_CARD",
           expiresAt: new Date(now.getTime() + 60 * 60_000),
           createdByUserId: owner.userId,
           createdAt: now,

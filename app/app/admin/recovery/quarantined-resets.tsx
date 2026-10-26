@@ -14,7 +14,7 @@ import {
 export type QuarantinedResetRow = {
   resetId: string;
   displayName: string;
-  hospitalName: string;
+  hospitalName: string | null;
   mode: "IN_PERSON" | "ONLINE";
   verificationMethod: string;
   claimedAt: string;
@@ -69,7 +69,7 @@ export function QuarantinedMediatedResets({ resets }: { resets: QuarantinedReset
           {resets.map((reset) => (
             <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={reset.resetId}>
               <div className="min-w-0">
-                <p className="break-words font-medium text-text">{reset.displayName} · {reset.hospitalName}</p>
+                <p className="break-words font-medium text-text">{reset.displayName}{reset.hospitalName ? ` · ${reset.hospitalName}` : ""}</p>
                 <p className="text-sm text-text-muted">
                   {reset.verificationMethod === "BREAK_GLASS_CLI" ? VERIFICATION_METHOD_LABELS.BREAK_GLASS_CLI : `${reset.mode === "IN_PERSON" ? "ต่อหน้า" : "ออนไลน์"} · ${VERIFICATION_METHOD_LABELS[reset.verificationMethod] ?? "วิธีที่บันทึกไว้"}`} · เริ่มตั้งรหัสผ่านเมื่อ {formatThaiDate(reset.claimedAt)}
                 </p>

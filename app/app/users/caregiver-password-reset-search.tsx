@@ -47,7 +47,7 @@ export function CaregiverPasswordResetSearch({ hospitalId, hospitalName }: { hos
       </form>
       {result?.status === "NO_MATCH" ? <p className="mt-3 text-sm text-muted" role="status">ไม่พบรายการที่ดำเนินการได้ ตรวจสอบข้อมูลแล้วลองอีกครั้ง</p> : null}
       {result?.status === "ERROR" ? <p className="mt-3 text-sm text-danger" role="alert">{result.message}</p> : null}
-      {candidate ? (
+      {candidate?.targetKind === "caregiver" ? (
         <div className="mt-4 rounded-lg border border-border p-4">
           <p className="mb-3 text-sm font-medium text-text">{candidate.displayName} · {hospitalName}</p>
           <MediatedPasswordResetControl

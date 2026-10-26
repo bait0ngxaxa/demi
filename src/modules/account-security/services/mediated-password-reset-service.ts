@@ -54,8 +54,8 @@ import {
   mediatedPasswordResetSearchSchema,
   platformAdminMediatedPasswordResetSearchSchema,
   type StoredCredentialRecoveryVerificationMethod,
-  type MediatedPasswordResetIssueInput,
   type MediatedPasswordResetMode,
+  type MediatedPasswordResetTargetContext,
   type MediatedPasswordResetTargetKind,
 } from "../schemas/account-security-schemas";
 import { createAccountRecoveryToken, hashAccountRecoveryToken } from "./account-recovery-token-service";
@@ -176,6 +176,17 @@ type TargetSnapshot = {
   } | null;
 };
 
+type LegacyHospitalScopedPlatformAdminResetContext = {
+  targetKind: "platform_admin";
+  targetUserId: string;
+  hospitalId: string;
+  relationshipId: null;
+};
+
+type MediatedPasswordResetAuthorizationContext =
+  | MediatedPasswordResetTargetContext
+  | LegacyHospitalScopedPlatformAdminResetContext;
+
 const targetUserSelect = {
   id: true,
   personId: true,
@@ -218,19 +229,16 @@ function toTargetSnapshot(user: TargetUserPayload): TargetSnapshot {
 
 async function locateTarget(
   transaction: Prisma.TransactionClient,
-  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind" | "targetUserId">,
+  input: MediatedPasswordResetAuthorizationContext,
 ): Promise<TargetSnapshot | null> {
   if (input.targetKind === "platform_admin") {
-    if (!input.targetUserId || input.relationshipId !== null) return null;
     const user = await transaction.user.findUnique({ where: { id: input.targetUserId }, select: targetUserSelect });
     return user ? toTargetSnapshot(user) : null;
   }
   if (input.targetKind === "caregiver") {
-    if (!input.targetUserId || input.relationshipId !== null) return null;
     const user = await transaction.user.findUnique({ where: { id: input.targetUserId }, select: targetUserSelect });
     return user ? toTargetSnapshot(user) : null;
   }
-  if (!input.relationshipId) return null;
   if (input.targetKind === "staff") {
     const relationship = await transaction.hospitalMembership.findFirst({
       where: { id: input.relationshipId, hospitalId: input.hospitalId },
@@ -375,9 +383,10 @@ async function allTargetRelationshipsInHospital(
 async function isOwnerScopedTarget(
   transaction: Prisma.TransactionClient,
   target: TargetSnapshot,
-  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind">,
+  input: MediatedPasswordResetAuthorizationContext,
   currentReset?: { storage: ResetStorage; id: string },
 ): Promise<boolean> {
+  if (input.targetKind === "platform_admin") return false;
   if (target.roles.some(({ role }) => role === Role.ADMIN)) return false;
   if (await isReconcilingCredential(transaction, target, currentReset)) return false;
 
@@ -407,7 +416,7 @@ async function isOwnerScopedTarget(
 async function isHeldChildOwnerResetTarget(
   transaction: Prisma.TransactionClient,
   target: TargetSnapshot,
-  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind">,
+  input: MediatedPasswordResetAuthorizationContext,
 ): Promise<boolean> {
   const lock = target.takeoverLock;
   if (
@@ -442,10 +451,13 @@ async function isHeldChildOwnerResetTarget(
 async function authorizeIssuerAndTarget(
   transaction: Prisma.TransactionClient,
   issuerUserId: string,
-  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind" | "targetUserId">,
+  input: MediatedPasswordResetAuthorizationContext,
   expectedTargetUserId?: string,
   currentReset?: { storage: ResetStorage; id: string },
 ): Promise<{ target: TargetSnapshot; mode: "OWNER" | "ADMIN" }> {
+  const hospitalLookup = input.targetKind === "platform_admin" && input.hospitalId === null
+    ? Promise.resolve(null)
+    : transaction.hospital.findUnique({ where: { id: input.hospitalId }, select: { status: true } });
   const [issuer, hospital, target] = await Promise.all([
     transaction.user.findUnique({
       where: { id: issuerUserId },
@@ -455,11 +467,11 @@ async function authorizeIssuerAndTarget(
         memberships: { select: { hospitalId: true, membershipType: true, status: true, hospital: { select: { status: true } } } },
       },
     }),
-    transaction.hospital.findUnique({ where: { id: input.hospitalId }, select: { status: true } }),
+    hospitalLookup,
     locateTarget(transaction, input),
   ]);
   if (!issuer || issuer.status !== UserStatus.ACTIVE) throw new ForbiddenError();
-  if (!hospital || !target) throw new NotFoundError();
+  if (!target) throw new NotFoundError();
   if (target.userId === issuerUserId || (expectedTargetUserId && target.userId !== expectedTargetUserId)) {
     throw new ForbiddenError();
   }
@@ -470,14 +482,16 @@ async function authorizeIssuerAndTarget(
   }
 
   const issuerRoles = issuer.roles.map(({ role }) => role);
-  if (await isHeldChildOwnerResetTarget(transaction, target, input)) {
-    if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held child OWNER account");
+  const targetIsPlatformAdmin = target.roles.some(({ role }) => role === Role.ADMIN);
+  if (input.targetKind === "platform_admin") {
+    if (!issuerRoles.includes(Role.ADMIN) || !targetIsPlatformAdmin) throw new ForbiddenError();
+    if (input.hospitalId !== null && (!hospital || hospital.status !== HospitalStatus.ACTIVE)) throw new NotFoundError();
     return { target, mode: "ADMIN" };
   }
-  if (hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
-
-  if (input.targetKind === "platform_admin") {
-    if (!issuerRoles.includes(Role.ADMIN) || !target.roles.some(({ role }) => role === Role.ADMIN)) throw new ForbiddenError();
+  if (targetIsPlatformAdmin) throw new ForbiddenError();
+  if (!hospital || hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
+  if (await isHeldChildOwnerResetTarget(transaction, target, input)) {
+    if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held child OWNER account");
     return { target, mode: "ADMIN" };
   }
   if (issuerRoles.includes(Role.ADMIN)) return { target, mode: "ADMIN" };
@@ -580,8 +594,8 @@ async function findReset(transaction: Prisma.TransactionClient, where: { tokenHa
   if (workforce?.relationshipKind && workforce.verificationMethod) {
     const targetKind = workforce.relationshipKind === "staff" || workforce.relationshipKind === "osm" || workforce.relationshipKind === "patient" || workforce.relationshipKind === "caregiver" || workforce.relationshipKind === "platform_admin" ? workforce.relationshipKind : null;
     if (!targetKind) throw new InfrastructureError("A workforce reset scope is invalid");
-    const breakGlass = workforce.verificationMethod === "BREAK_GLASS_CLI" && targetKind === "platform_admin" && workforce.hospitalId === null && workforce.relationshipId === null;
-    if (!workforce.hospitalId && !breakGlass) throw new InfrastructureError("A workforce reset hospital scope is missing");
+    const nullHospitalAdminReset = targetKind === "platform_admin" && workforce.hospitalId === null && workforce.relationshipId === null;
+    if (!workforce.hospitalId && !nullHospitalAdminReset) throw new InfrastructureError("A workforce reset context is invalid");
     return {
       storage: "WORKFORCE", id: workforce.id, userId: workforce.userId, hospitalId: workforce.hospitalId,
       relationshipId: workforce.relationshipId, targetKind, issuerUserId: workforce.createdByUserId,
@@ -625,9 +639,19 @@ async function findReset(transaction: Prisma.TransactionClient, where: { tokenHa
   return null;
 }
 
-function resetLocator(record: ResetRecord): Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind" | "targetUserId"> {
-  if (!record.hospitalId || record.targetKind === "line_self_service") throw new InfrastructureError("The mediated reset hospital scope is missing");
-  return { hospitalId: record.hospitalId, relationshipId: record.relationshipId, targetKind: record.targetKind, targetUserId: record.userId };
+function resetLocator(record: ResetRecord): MediatedPasswordResetAuthorizationContext {
+  if (record.targetKind === "platform_admin" && record.hospitalId === null && record.relationshipId === null) {
+    return { targetKind: "platform_admin", targetUserId: record.userId, hospitalId: null, relationshipId: null };
+  }
+  if (!record.hospitalId || record.targetKind === "line_self_service") throw new InfrastructureError("The mediated reset context is missing");
+  if (record.targetKind === "platform_admin") {
+    return { targetKind: "platform_admin", targetUserId: record.userId, hospitalId: record.hospitalId, relationshipId: null };
+  }
+  if (record.targetKind === "caregiver") {
+    return { targetKind: "caregiver", targetUserId: record.userId, hospitalId: record.hospitalId, relationshipId: null };
+  }
+  if (!record.relationshipId) throw new InfrastructureError("The mediated reset relationship is missing");
+  return { hospitalId: record.hospitalId, relationshipId: record.relationshipId, targetKind: record.targetKind };
 }
 
 function getDatabase(dependencies: MediatedPasswordResetDependencies): MediatedPasswordResetDatabase {
@@ -1774,15 +1798,40 @@ export async function reconcilePlatformAdminBreakGlassPassword(
   }
 }
 
-export type MediatedPasswordResetCandidate = {
+type HospitalRelationshipPasswordResetCandidate = {
   userId: string;
   displayName: string;
-  targetKind: MediatedPasswordResetTargetKind;
+  targetKind: "staff" | "osm" | "patient";
   hospitalId: string;
   hospitalName: string;
-  relationshipId: string | null;
+  relationshipId: string;
   relationshipStatus: string;
 };
+
+type HospitalCaregiverPasswordResetCandidate = {
+  userId: string;
+  displayName: string;
+  targetKind: "caregiver";
+  hospitalId: string;
+  hospitalName: string;
+  relationshipId: null;
+  relationshipStatus: string;
+};
+
+type PlatformAdminPasswordResetCandidate = {
+  userId: string;
+  displayName: string;
+  targetKind: "platform_admin";
+  hospitalId: null;
+  hospitalName: null;
+  relationshipId: null;
+  relationshipStatus: "PLATFORM_ADMIN";
+};
+
+export type MediatedPasswordResetCandidate =
+  | HospitalRelationshipPasswordResetCandidate
+  | HospitalCaregiverPasswordResetCandidate
+  | PlatformAdminPasswordResetCandidate;
 
 export type MediatedPasswordResetSearchOptions = {
   hospitalId?: string;
@@ -1860,56 +1909,56 @@ export async function searchMediatedPasswordResetTargets(
           if (!(error instanceof ForbiddenError || error instanceof ConflictError || error instanceof NotFoundError)) throw error;
         }
       } else if (!options.hospitalId && user?.authSubject && user.id !== actor.userId && resetEligibleStatus) {
-        const [memberships, osmRelationships, patientRelationships, heldOwnerMemberships] = await Promise.all([
-          transaction.hospitalMembership.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
-          transaction.osmHospitalRelationship.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
-          person?.patientProfile
-            ? transaction.patientHospitalRelationship.findMany({ where: { patientProfileId: person.patientProfile.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, endedAt: true, hospital: { select: { name: true } } } })
-            : Promise.resolve([]),
-          user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION && takeoverLocked && user.takeoverLock
-            ? transaction.hospitalMembership.findMany({
-                where: {
-                  id: { in: user.takeoverLock.heldOwnerMembershipIds },
-                  userId: user.id,
-                  membershipType: MembershipType.OWNER,
-                  status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
-                },
-                select: {
-                  id: true,
-                  hospitalId: true,
-                  status: true,
-                  invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
-                  hospital: { select: { name: true, status: true, serviceAreaEligibility: { select: { kind: true } } } },
-                },
-              })
-            : Promise.resolve([]),
-        ]);
         const displayName = `${user.person.givenName ?? ""} ${user.person.familyName ?? ""}`.trim() || "ไม่พบชื่อผู้ใช้";
-        result.push(...memberships.map((row) => ({ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
-        result.push(...osmRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "osm" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
-        result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? "ENDED" : "ACTIVE" })));
-        result.push(...heldOwnerMemberships.flatMap((row) =>
-          row.invitedViaServiceArea?.childHospitalId === row.hospitalId &&
-          row.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
-          row.hospital.status === HospitalStatus.PENDING_VERIFICATION
-            ? [{ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status }]
-            : []
-        ));
         if (user.roles.some(({ role }) => role === Role.ADMIN)) {
-          const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
-          result.push(...activeHospitals.map((hospital) => ({
+          result.push({
             userId: user.id,
             displayName,
-            targetKind: "platform_admin" as const,
-            hospitalId: hospital.id,
-            hospitalName: hospital.name,
+            targetKind: "platform_admin",
+            hospitalId: null,
+            hospitalName: null,
             relationshipId: null,
             relationshipStatus: "PLATFORM_ADMIN",
-          })));
-        }
-        if (user.roles.some(({ role }) => role === Role.CAREGIVER)) {
-          const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
-          result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" })));
+          });
+        } else {
+          const [memberships, osmRelationships, patientRelationships, heldOwnerMemberships] = await Promise.all([
+            transaction.hospitalMembership.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
+            transaction.osmHospitalRelationship.findMany({ where: { userId: user.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, status: true, hospital: { select: { name: true } } } }),
+            person?.patientProfile
+              ? transaction.patientHospitalRelationship.findMany({ where: { patientProfileId: person.patientProfile.id, hospital: { is: { status: HospitalStatus.ACTIVE } } }, select: { id: true, hospitalId: true, endedAt: true, hospital: { select: { name: true } } } })
+              : Promise.resolve([]),
+            user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION && takeoverLocked && user.takeoverLock
+              ? transaction.hospitalMembership.findMany({
+                  where: {
+                    id: { in: user.takeoverLock.heldOwnerMembershipIds },
+                    userId: user.id,
+                    membershipType: MembershipType.OWNER,
+                    status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
+                  },
+                  select: {
+                    id: true,
+                    hospitalId: true,
+                    status: true,
+                    invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
+                    hospital: { select: { name: true, status: true, serviceAreaEligibility: { select: { kind: true } } } },
+                  },
+                })
+              : Promise.resolve([]),
+          ]);
+          result.push(...memberships.map((row) => ({ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
+          result.push(...osmRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "osm" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
+          result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? "ENDED" : "ACTIVE" })));
+          result.push(...heldOwnerMemberships.flatMap((row) =>
+            row.invitedViaServiceArea?.childHospitalId === row.hospitalId &&
+            row.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
+            row.hospital.status === HospitalStatus.PENDING_VERIFICATION
+              ? [{ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status }]
+              : []
+          ));
+          if (user.roles.some(({ role }) => role === Role.CAREGIVER)) {
+            const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
+            result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" })));
+          }
         }
         if (!user.roles.some(({ role }) => role === Role.ADMIN) && !ordinaryNationalIdIsValid) result.length = 0;
       }
@@ -1930,7 +1979,7 @@ export async function searchMediatedPasswordResetTargets(
 
 export async function getMediatedPasswordResetEligibility(
   actor: ActorContext,
-  input: Pick<MediatedPasswordResetIssueInput, "hospitalId" | "relationshipId" | "targetKind" | "targetUserId">,
+  input: MediatedPasswordResetTargetContext,
   database: MediatedPasswordResetDatabase = getPrisma(),
 ): Promise<"OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED"> {
   try {
@@ -1948,7 +1997,7 @@ export type QuarantinedMediatedPasswordReset = {
   userId: string;
   displayName: string;
   hospitalId: string | null;
-  hospitalName: string;
+  hospitalName: string | null;
   mode: MediatedPasswordResetMode;
   verificationMethod: StoredCredentialRecoveryVerificationMethod;
   claimedAt: Date;
@@ -1971,9 +2020,9 @@ export async function listQuarantinedMediatedPasswordResets(
       const person = { select: { givenName: true, familyName: true } } as const;
       const [workforce, patient, line] = await Promise.all([
         transaction.workforceActivation.findMany({
-          where: { ...unreconciledWorkforceResetWhere, verificationMethod: { not: null }, OR: [{ hospitalId: { not: null } }, { hospitalId: null, verificationMethod: "BREAK_GLASS_CLI" }] },
+          where: { ...unreconciledWorkforceResetWhere, verificationMethod: { not: null }, OR: [{ hospitalId: { not: null } }, { hospitalId: null, relationshipKind: "platform_admin", relationshipId: null }] },
           orderBy: { claimedAt: "asc" },
-          select: { id: true, userId: true, hospitalId: true, mode: true, verificationMethod: true, claimedAt: true, operationState: true, user: { select: { person } }, hospital: { select: { name: true } } },
+          select: { id: true, userId: true, hospitalId: true, relationshipId: true, relationshipKind: true, mode: true, verificationMethod: true, claimedAt: true, operationState: true, user: { select: { person } }, hospital: { select: { name: true } } },
         }),
         transaction.accountRecovery.findMany({
           where: { ...unreconciledAccountRecoveryWhere, verificationMethod: { not: null }, hospitalId: { not: null } },
@@ -1989,9 +2038,10 @@ export async function listQuarantinedMediatedPasswordResets(
       const rows: QuarantinedMediatedPasswordReset[] = [];
       for (const row of workforce) {
         if (!row.claimedAt || !row.verificationMethod || (row.hospitalId && !row.hospital)) continue;
+        if (!row.hospitalId && (row.relationshipKind !== "platform_admin" || row.relationshipId !== null)) continue;
         rows.push({
           resetId: row.id, userId: row.userId, displayName: displayNameOf(row.user.person), hospitalId: row.hospitalId,
-          hospitalName: row.hospital?.name ?? "แพลตฟอร์ม · กู้คืนฉุกเฉินผ่าน CLI", mode: modeForRecord({ storage: "WORKFORCE", mode: row.mode }), verificationMethod: row.verificationMethod,
+          hospitalName: row.hospital?.name ?? null, mode: modeForRecord({ storage: "WORKFORCE", mode: row.mode }), verificationMethod: row.verificationMethod,
           claimedAt: row.claimedAt, operationState: row.operationState,
         });
       }

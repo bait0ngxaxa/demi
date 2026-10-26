@@ -5,6 +5,7 @@ import {
   accountRecoveryIssueSchema,
   authenticatedPasswordChangeSchema,
   mediatedPasswordResetCompletionSchema,
+  mediatedPasswordResetIssueSchema,
   mediatedPasswordResetSearchSchema,
   platformAdminMediatedPasswordResetSearchSchema,
 } from "./account-security-schemas";
@@ -104,5 +105,39 @@ describe("account security schemas", () => {
       newPassword: validPassword,
       passwordConfirmation: validPassword,
     }).success).toBe(false);
+  });
+
+  it("requires Platform ADMIN resets to have a null Hospital context and keeps other targets scoped", () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const hospitalId = "22222222-2222-4222-8222-222222222222";
+    const relationshipId = "33333333-3333-4333-8333-333333333333";
+    const base = { mode: "ONLINE" as const, verificationMethod: "IN_PERSON_ID_CARD" as const };
+
+    expect(mediatedPasswordResetIssueSchema.safeParse({
+      ...base,
+      targetKind: "platform_admin",
+      targetUserId: userId,
+      hospitalId: null,
+      relationshipId: null,
+    }).success).toBe(true);
+    expect(mediatedPasswordResetIssueSchema.safeParse({
+      ...base,
+      targetKind: "platform_admin",
+      targetUserId: userId,
+      hospitalId,
+      relationshipId: null,
+    }).success).toBe(false);
+    expect(mediatedPasswordResetIssueSchema.safeParse({
+      ...base,
+      targetKind: "patient",
+      hospitalId: null,
+      relationshipId,
+    }).success).toBe(false);
+    expect(mediatedPasswordResetIssueSchema.safeParse({
+      ...base,
+      targetKind: "patient",
+      hospitalId,
+      relationshipId,
+    }).success).toBe(true);
   });
 });

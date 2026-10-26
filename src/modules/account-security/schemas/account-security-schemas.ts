@@ -58,25 +58,31 @@ export const storedCredentialRecoveryVerificationMethodSchema = z.enum([
 ]);
 export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "caregiver", "platform_admin"]);
 
-export const mediatedPasswordResetIssueSchema = z
-  .object({
-    hospitalId: z.uuid(),
-    relationshipId: z.uuid().nullable(),
-    targetUserId: z.uuid().optional(),
-    targetKind: mediatedPasswordResetTargetKindSchema,
+export const mediatedPasswordResetIssueSchema = z.discriminatedUnion("targetKind", [
+  z.object({
+    hospitalId: z.null(),
+    relationshipId: z.null(),
+    targetUserId: z.uuid(),
+    targetKind: z.literal("platform_admin"),
     mode: mediatedPasswordResetModeSchema,
     verificationMethod: credentialRecoveryVerificationMethodSchema,
-  })
-  .strict()
-  .superRefine((input, context) => {
-    if (input.targetKind === "platform_admin" || input.targetKind === "caregiver") {
-      if (!input.targetUserId || input.relationshipId !== null) {
-        context.addIssue({ code: "custom", path: ["targetUserId"], message: "A direct user target is required" });
-      }
-    } else if (!input.relationshipId || input.targetUserId !== undefined) {
-      context.addIssue({ code: "custom", path: ["relationshipId"], message: "A target relationship is required" });
-    }
-  });
+  }).strict(),
+  z.object({
+    hospitalId: z.uuid(),
+    relationshipId: z.null(),
+    targetUserId: z.uuid(),
+    targetKind: z.literal("caregiver"),
+    mode: mediatedPasswordResetModeSchema,
+    verificationMethod: credentialRecoveryVerificationMethodSchema,
+  }).strict(),
+  z.object({
+    hospitalId: z.uuid(),
+    relationshipId: z.uuid(),
+    targetKind: z.enum(["staff", "osm", "patient"]),
+    mode: mediatedPasswordResetModeSchema,
+    verificationMethod: credentialRecoveryVerificationMethodSchema,
+  }).strict(),
+]);
 
 export const mediatedPasswordResetSearchSchema = z.object({ nationalId: thaiNationalIdSchema }).strict();
 export const platformAdminMediatedPasswordResetSearchSchema = z
@@ -138,6 +144,8 @@ export type AccountRecoveryCompletionInput = z.infer<
   typeof accountRecoveryCompletionSchema
 >;
 export type MediatedPasswordResetIssueInput = z.infer<typeof mediatedPasswordResetIssueSchema>;
+type WithoutResetDelivery<T> = T extends unknown ? Omit<T, "mode" | "verificationMethod"> : never;
+export type MediatedPasswordResetTargetContext = WithoutResetDelivery<MediatedPasswordResetIssueInput>;
 export type MediatedPasswordResetMode = z.infer<typeof mediatedPasswordResetModeSchema>;
 export type CredentialRecoveryVerificationMethod = z.infer<typeof credentialRecoveryVerificationMethodSchema>;
 export type StoredCredentialRecoveryVerificationMethod = z.infer<typeof storedCredentialRecoveryVerificationMethodSchema>;

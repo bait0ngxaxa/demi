@@ -75,13 +75,15 @@ self-reset are not approved.
   requester supplied. No image or National ID value is persisted; the audit stores the method,
   mode, issuer and outcome without PII.
 - `IN_PERSON` reuses the assisted ceremony, expires after 15 minutes, and requires handing the
-  device to the account owner, who enters their own National ID and sets the password. Issuing it
+  device to the account owner, who confirms their Thai National ID, or the registered login
+  identifier for a Platform ADMIN, and sets the password. Issuing it
   signs the issuer's session out first (if sign-out fails the just-issued reset is revoked and an
   error is shown) and the device then navigates once to the reset page; no copyable link or QR is
   shown for `IN_PERSON`. `ONLINE`
   issues one single-use bearer link valid for 24 hours; the OWNER delivers it out of band (including
-  LINE chat), and the owner opens it on their own device and enters their own National ID and new
-  password. Five incorrect National IDs revoke either capability.
+  LINE chat), and the owner opens it on their own device and confirms their Thai National ID, or
+  the registered login identifier for a Platform ADMIN, before setting a new password. Five
+  incorrect identity confirmations revoke either capability.
 - An active direct OWNER may reset a non-self MEMBER, OSM or patient only when all of the target's
   `HospitalMembership`, `OsmHospitalRelationship` and `PatientHospitalRelationship` rows, including
   ended rows, are scoped to that one Hospital, the target is not an ADMIN or an OWNER anywhere, and
@@ -90,12 +92,17 @@ self-reset are not approved.
   stays OWNER-eligible. Every other target, including multi-Hospital users, caregivers, any OWNER
   and any ADMIN, requires a platform ADMIN; ADMIN may not reset themself. Self-registered and
   invited active accounts follow the same rules.
-- ADMIN searches by exact National ID using the existing HMAC identity lookup; the lookup is audited
-  without storing the National ID or hash. A Hospital scope is selected and stored with the reset.
+- ADMIN searches ordinary targets by exact National ID and Platform ADMIN targets by their exact
+  registered login identifier, using the existing HMAC identity lookup; the lookup is audited
+  without storing the identifier or hash. A Hospital scope is selected only for Hospital-scoped
+  targets. A Platform ADMIN target has no Hospital or relationship context and appears once,
+  regardless of Hospital lifecycle or count. A peer ADMIN remains the only web issuer for that
+  target; self-reset is denied.
 - Workforce targets reuse `WorkforceActivation` with purpose `RESET`; patient-only targets reuse
   `AccountRecovery`. No third capability/token framework is introduced. Each operation binds target,
-  Hospital, purpose, mode, verification method and issuer. Issuer, active Hospital, scope, target and
-  exact relationship eligibility are re-authorized at completion. Per-User credential operations are
+  its discriminated Hospital or Platform ADMIN context, purpose, mode, verification method and
+  issuer. Issuer, Hospital when applicable, scope, target and exact relationship eligibility are
+  re-authorized at claim and credential switch. Per-User credential operations are
   serialized. Provider I/O occurs outside database locks.
 
 ### Credential replacement and reconciliation
@@ -223,3 +230,7 @@ The preceding rollout-gate paragraph records the former deployment behavior and 
 ## Clarification — Platform ADMIN custom login identifiers (2026-10-26)
 
 Authenticated Platform ADMIN search and the completion confirmation accept either the exact valid Thai National ID or the bounded login identifier accepted by `passwordLoginIdentifierSchema` for a bootstrapped ADMIN. Both resolve through the existing canonical identity index and its HMAC reference. This identifier is only an account locator: it does not establish identity or account ownership. A different active ADMIN must still perform and record one of the approved verification methods, deliver the single-use capability through the trusted handoff, and remain authorized at issuance, claim, and credential switch. The ADMIN receiving the capability confirms the exact registered login identifier only to ensure the capability targets the intended account. Failed confirmations remain throttled. Ordinary Hospital, Staff, OSM, Patient, and Caregiver recovery continues to require a valid Thai National ID.
+
+## Clarification — Platform ADMIN reset context (2026-10-26)
+
+A new peer-assisted Platform ADMIN reset records the exact target User with both `hospitalId` and `relationshipId` set to null. ADMIN search returns one canonical platform target independently of Hospital count or status. Issue, identity claim and credential switch still authorize an active ADMIN issuer, reject self-reset, verify an active ADMIN target, and preserve the recorded independent operator verification and single-use handoff. Hospital-scoped workforce, patient and caregiver resets retain their required Hospital and relationship checks. A forward-only PostgreSQL constraint distinguishes these contexts and keeps `BREAK_GLASS_CLI` exclusive to the null-Hospital Platform ADMIN server operation. Previously issued Hospital-scoped ADMIN resets keep their original active-Hospital check. Legacy null-context RESET rows without a REC-1 verification method remain stored for compatibility but are not recognized as mediated capabilities.
