@@ -32,6 +32,8 @@ function renderScreen(
       lifecycleReadiness={state.lifecycleReadiness ?? { state: "READY" }}
       notificationPreference={state.notificationPreference}
       preferenceUiGeneration={state.preferenceUiGeneration ?? 0}
+      menuCheckPending={state.menuCheckPending}
+      menuCheckComplete={state.menuCheckComplete}
       relinkEligibility={state.relinkEligibility ?? "ELIGIBLE"}
       currentPassword={state.currentPassword ?? ""}
       currentPasswordError={state.currentPasswordError ?? ""}
@@ -70,8 +72,8 @@ function renderScreen(
 
 describe("LINE account user experience", () => {
   it.each(["UNKNOWN", "MISMATCH", "UNAVAILABLE"] as const)("offers a manual menu refresh for %s without claiming readiness", (menuState) => {
-    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState });
-    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
+    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState }, { canRefreshReachability: true });
+    expect(markup).toContain(menuState === "UNKNOWN" ? "เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE" : "เชื่อมบัญชีแล้ว แต่เมนู LINE ยังไม่พร้อมใช้งาน");
     expect(markup).toContain(">ตรวจสอบสถานะเมนูอีกครั้ง</button>");
     expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
     expect(markup).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
@@ -188,7 +190,7 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
     expect(markup).toContain("พร้อมใช้งานผ่าน LINE แล้ว");
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
+    expect(markup).not.toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
     expect(markup).not.toContain("warning");
@@ -223,8 +225,8 @@ describe("LINE account user experience", () => {
     }, { canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE");
+    expect(markup).not.toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("เมนู LINE อาจยังไม่พร้อม");
     expect(markup).not.toContain("UNKNOWN");
   });
@@ -239,9 +241,9 @@ describe("LINE account user experience", () => {
     }, { canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
-    expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
+    expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
   });
 
   it("keeps a failed friendship check from hiding the linked result", () => {
@@ -254,11 +256,11 @@ describe("LINE account user experience", () => {
     }, { friendshipWarning: true, canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("บัญชีของคุณยังเชื่อมต่ออยู่");
+    expect(markup).toContain("บัญชียังเชื่อมอยู่");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
   });
 
-  it("offers the LIFF friendship action and a bounded refresh for a linked non-friend", () => {
+  it("offers LIFF friendship and explicit verification for a linked non-friend", () => {
     const markup = renderScreen({
       ...emptyStatus,
       status: "LINKED",
@@ -269,12 +271,12 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง</button>");
+    expect(markup).toContain("ตรวจสอบอีกครั้ง</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).not.toContain("MISMATCH");
   });
 
-  it.each(["UNKNOWN", "APPLIED"] as const)("makes return the only primary completion action for FRIEND with menu %s", (menuState) => {
+  it.each(["UNKNOWN", "APPLIED"] as const)("uses a primary return only for verified ready FRIEND with menu %s", (menuState) => {
     const markup = renderScreen({
       ...emptyStatus,
       status: "LINKED",
@@ -288,12 +290,14 @@ describe("LINE account user experience", () => {
       canRefreshReachability: true,
     });
 
-    expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">กลับไปที่ LINE<\/button>/u);
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
+    expect(markup).toMatch(menuState === "APPLIED"
+      ? /<button[^>]*class="[^"]*bg-brand [^"]*">กลับไปที่ LINE<\/button>/u
+      : /<button[^>]*class="[^"]*bg-surface [^"]*">กลับไปที่ LINE<\/button>/u);
+    expect(markup).not.toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(menuState === "APPLIED"
       ? "พร้อมใช้งานผ่าน LINE แล้ว"
-      : "เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
+      : "เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE");
   });
 
   it("shows the linked result and account controls for a DEMI account without an available LINE menu", () => {
@@ -306,7 +310,7 @@ describe("LINE account user experience", () => {
     expect(markup).toContain("เชื่อมต่อแล้ว");
     expect(markup).toContain("บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
+    expect(markup).not.toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("การเชื่อมต่อ LINE ล้มเหลว");
   });
 
@@ -340,13 +344,12 @@ describe("LINE account user experience", () => {
       canRefreshReachability: true,
     });
 
-    expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
-    expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
-    expect(markup).not.toContain("ยังตรวจสอบไม่สำเร็จ");
+    expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(markup).toContain("ยังตรวจสอบไม่สำเร็จ");
     expect(markup).not.toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).not.toContain("UNKNOWN");
     expect(markup).not.toContain("MISMATCH");
@@ -368,14 +371,13 @@ describe("LINE account user experience", () => {
       friendshipWarning: true,
     });
 
-    expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
     expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">เพิ่ม DEMI เป็นเพื่อน<\/button>/u);
     expect(markup).toMatch(/<button[^>]*class="[^"]*border-line-strong[^"]*">กลับไปที่ LINE<\/button>/u);
-    expect(markup).not.toContain("ตรวจสอบอีกครั้ง</button>");
+    expect(markup).toContain("ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("ระบบกำลังเตรียมเมนู LINE");
   });
 
@@ -457,7 +459,7 @@ describe("LINE account user experience", () => {
     }, { view: "UNLINK_CONFIRM" });
 
     expect(link).toContain("ยืนยันเชื่อมบัญชี");
-    expect(link).toContain("กำลังเชื่อม LINE ที่คุณใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบ");
+    expect(link).toContain("คุณกำลังเชื่อม LINE ที่ใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบในเบราว์เซอร์นี้");
     expect(unlink).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
     expect(unlink).toContain("ยืนยันยกเลิกการเชื่อมต่อ");
   });

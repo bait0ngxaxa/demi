@@ -1,5 +1,11 @@
 # DEMI Project Context
 
+## Mobile onboarding continuity — UX-C.0 / UX-C.1 (2026-10-26)
+
+UX-C.0 audits the current invitation → activation → optional LINE → DEMI/LINE login → explicit password-confirmed binding → friendship → Rich Menu → optional notification preference journey. [Audit and 20-scenario UAT record](./operations/MOBILE_ONBOARDING_AUDIT_UAT.md) separates code findings from unexecuted device hypotheses.
+
+**Binding** means the DEMI account and verified LINE identity have an active association; it is separate from **LINE readiness**, which requires LINKED + verified FRIEND + APPLIED Rich Menu. UNKNOWN is unverified, MISMATCH/UNAVAILABLE is not ready, and pending reconciliation is not confirmed completion. LINE menu authority remains derived from current persisted roles and permissions. Shared-device confirmation still requires the current DEMI password and session-bound intent; account switching ends that DEMI session and cancels its confirmation. Notification opt-in remains a separate persisted consent, never implied by activation or binding. First-time activation and password RESET retain distinct purposes; browser and LINE sessions are not transferred. UX-C.2 remains deferred and real-device UAT is pending. See [operational behavior and verification](./operations/ACTIVATION_LINE_ONBOARDING.md).
+
 ## Current language — Owner administration and care (2026-10-21)
 
 Current authority: [ADR-0019](./adr/0019-owner-administration-and-import-only-roster.md) for owner administration and care, [ADR-0020](./adr/0020-self-registration-by-national-id.md) for public self-registration, and [ADR-0021](./adr/0021-caregiver-accounts-by-invitation.md) for patient-invited caregiver accounts. Earlier status addenda are historical wherever they confer MEMBER/OSM administrative authority.

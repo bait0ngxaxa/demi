@@ -1,5 +1,21 @@
 # การเปิดใช้งานบัญชีและเริ่มใช้ LINE (UX-A + UX-B)
 
+## UX-C.1 — ความต่อเนื่องบนมือถือ (2026-10-26)
+
+เส้นทาง activation → เลือก LINE/เว็บ → login เมื่อจำเป็น → ยืนยัน password → binding → friendship → menu → optional opt-in ยังคงเดิม ดู [audit และ UAT 20 สถานการณ์](./MOBILE_ONBOARDING_AUDIT_UAT.md) สำหรับหลักฐานและรายการที่ยังไม่ได้ทดสอบบนอุปกรณ์จริง
+
+- ปุ่มตรวจเมนูไม่ reload หน้าแล้ว แต่ส่ง POST `/api/line/account/status` พร้อม LINE proof ใน body เท่านั้น ใช้ exact same-origin, bounded JSON, strict schema และ `refreshLineAccountReachability()` เดิมเพื่อยืนยัน session/LINE subject/ownership ก่อนเรียก reconciler กับ binding ที่ server resolve
+- Endpoint รอ `reconcileLineBinding()` เดิมหนึ่งครั้ง แล้วอ่าน summary ที่ persisted ใหม่ `CHECKED` หมายถึงการเรียกจบ ไม่ได้รับรองว่า menu พร้อม; ต้องตรวจ `LINKED + FRIEND + APPLIED` อีกชั้น `BUSY`/`MISSING` ส่ง `PENDING` และ UI ไม่ใช้ APPLIED เก่ามาประกาศพร้อมในครั้งนั้น ไม่วนตรวจเอง
+- Page load, link และ friendship refresh เดิมยังใช้ `after()` ไม่ได้หมายความว่างานเสร็จพร้อม response ปุ่ม explicit check ใช้ lease/version fencing และ bounded stale reconciliation เดิม ไม่สร้าง queue, table หรือ provider retry loop ใหม่
+- ขณะตรวจ แสดง busy ทันที ปิดปุ่มซ้ำและการ unlink/switch; client timeout 25 วินาที และ abort เมื่อ unmount/pagehide ผลล่าช้าไม่เปลี่ยนหน้าที่ออกไปแล้ว Browser abort **ไม่ได้ยกเลิกงาน server/provider ที่เริ่มแล้ว** งานนั้นยังถูกจำกัดด้วย timeout ของ provider และ lease/fencing เดิม ผู้ใช้ retry ภายหลังได้ หากติด lease จะแสดงว่ายังตรวจไม่เสร็จ
+- UNKNOWN menu แสดงกำลังตรวจ, MISMATCH/UNAVAILABLE แสดงเมนูยังไม่พร้อม, UNKNOWN friendship แสดงยังยืนยันสถานะ LINE ไม่ได้; NOT_FRIEND ให้เพิ่ม/ปลดบล็อก OA และตรวจด้วยตนเอง ทั้ง binding success และ already-linked แสดง readiness จริง แยกจากการเชื่อมสำเร็จ
+- Confirmation มีการยืนยันเพียงจุดเดียว ใช้ heading ที่รับ focus ได้แทนปุ่ม disabled และ Back คืน focus ส่วนสถานะ มีปุ่ม “ใช้บัญชี DEMI อื่น” โดยตรงพร้อมแจ้งว่าการออกจากระบบยกเลิก confirmation ใช้ sign-out/login เดิม ไม่มี principal selector หรือข้อมูลระบุตัวตนใหม่ ActorContext ปัจจุบันไม่มีชื่อที่เหมาะให้แยกบัญชี; หากไม่แน่ใจให้ login ใหม่ด้วยบัญชีที่ต้องการ
+- บัญชี linked ที่ต้อง login LINE เพื่อตรวจสถานะไม่สร้าง LINK intent เพิ่ม ส่วน unlinked ยังคง preflight และ link confirmation ตามเดิม การ login LINE ไม่สร้าง binding
+- กลับ LINE ด้วย closeWindow เฉพาะ in-client; ปุ่มกลับเด่นเมื่อพร้อมจริง ภายนอกให้กลับแชต OA ด้วยตนเองและมี `/app` เสมอ ไม่มีการรับประกัน deep link จะเปิดแอป
+- Activation/RESET, credentials/session ownership, notification preference และ scheduler/delivery ไม่เปลี่ยน การเชื่อมและการตั้งรหัสผ่านไม่ opt-in อัตโนมัติ UX-C.2 session handoff ยังไม่ทำ
+
+ผล verification ของ C.1 บันทึกใน audit/UAT document; ผล UX-A/B ด้านล่างเป็นหลักฐานของ commit เดิม ไม่ใช่การอ้างว่าทดสอบอุปกรณ์จริง
+
 วันที่: 2026-10-26 · ฐานก่อนแก้: `0c7fbc111136c98997dc4652eeda4c33533a5b54`
 
 เดิมหน้าสำเร็จมีเพียงปุ่มเข้าสู่ระบบ ผู้ใช้ไม่ทราบว่าการตั้งรหัสผ่านยังไม่ได้เชื่อม LINE และอาจต้องเข้าสู่ระบบใหม่เมื่อเปิด LINE คนละเบราว์เซอร์ การปรับนี้เปลี่ยนคำแนะนำและทางเลือกบน flow เดิม ไม่เปลี่ยนวิธียืนยันตัวตน

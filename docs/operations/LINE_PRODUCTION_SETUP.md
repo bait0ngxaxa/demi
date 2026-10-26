@@ -142,4 +142,6 @@ read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://
 
 ## การเปิดบัญชีครั้งแรกและเชื่อม LINE (UX-A + UX-B)
 
+UX-C.1 เพิ่ม explicit status check ที่ `/api/line/account/status` บน verified session + LINE proof เดิม โดยรอ leased reconciler ก่อนอ่าน persisted summary; ไม่ถือ scheduling acceptance จาก `after()` ว่าเสร็จ และไม่ polling หากติด lease ให้รอแล้วตรวจใหม่ UNKNOWN, MISMATCH/UNAVAILABLE, NOT_FRIEND และพร้อมจริงแสดงแยกกัน ไม่มีการแก้ provider configuration หรือ scheduler ดู [flow/ข้อจำกัด](./ACTIVATION_LINE_ONBOARDING.md) และ [mobile audit/UAT ที่ยัง pending](./MOBILE_ONBOARDING_AUDIT_UAT.md) การ abort บน browser ไม่รับรองว่างาน provider ฝั่ง server ถูกยกเลิกแล้ว
+
 หน้า activation ใช้ LIFF root จาก configuration ข้อ 3 ผ่าน deep-link builder เดิม และมีทางเข้าสู่เว็บเมื่อ integration ยังไม่พร้อม การตั้งรหัสผ่านไม่สร้าง session หรือ binding; LINE อาจต้อง login DEMI ใหม่เพราะเบราว์เซอร์ไม่แชร์ cookies จากนั้นยังต้องยืนยันรหัสผ่านเพื่อเชื่อมบัญชี การเป็นเพื่อนและ Rich Menu พร้อมเป็นคนละสถานะ การแจ้งเตือนนัดหมายยังต้อง opt-in เอง ดู [เส้นทางและ UAT](./ACTIVATION_LINE_ONBOARDING.md) การปรับ UX ไม่ต้องเปลี่ยน provider configuration หรือรันคำสั่ง reconcile เพิ่มเป็นขั้นตอน deploy

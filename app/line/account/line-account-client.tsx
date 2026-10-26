@@ -77,22 +77,24 @@ function parseCleanupResult(value: unknown): { cleanup: CleanupPresentation; dis
   return { cleanup: record.cleanup as CleanupPresentation, ...(disconnection.success ? { disconnection: disconnection.data } : {}) };
 }
 
-export async function refreshLineAccountFriendship(): Promise<Pick<InitialStatus, "reachability" | "cleanupState" | "menuState">> {
+export async function refreshLineAccountFriendship(options?: { checkMenu: true; signal: AbortSignal }): Promise<Pick<InitialStatus, "reachability" | "cleanupState" | "menuState"> & { reconciliationPending?: boolean; accountChanged?: boolean }> {
   const idToken = liff.getIDToken();
   const accessToken = liff.getAccessToken();
   if (!idToken || !accessToken) throw new Error(safeFailure);
-  const response = await fetch("/api/line/account/reachability", {
+  const response = await fetch(options ? "/api/line/account/status" : "/api/line/account/reachability", {
     method: "POST",
     credentials: "same-origin",
     cache: "no-store",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ idToken, accessToken }),
+    signal: options?.signal ?? AbortSignal.timeout(25_000),
   });
   if (!response.ok) throw new Error(safeFailure);
   const value = responseRecord(await response.json());
   const reachability = value.reachability;
   const cleanupState = value.cleanupState;
   const menuState = value.menuState;
+  if (options && value.reconciliation !== "CHECKED" && value.reconciliation !== "PENDING") throw new Error(safeFailure);
   if (
     (reachability !== "FRIEND" && reachability !== "NOT_FRIEND" && reachability !== "UNKNOWN" && reachability !== null) ||
     (cleanupState !== null && (typeof cleanupState !== "string" || !cleanupStates.has(cleanupState as CleanupPresentation))) ||
@@ -104,6 +106,7 @@ export async function refreshLineAccountFriendship(): Promise<Pick<InitialStatus
     reachability,
     cleanupState: cleanupState as InitialStatus["cleanupState"],
     menuState: menuState as InitialStatus["menuState"],
+    ...(options ? { reconciliationPending: value.reconciliation === "PENDING", accountChanged: value.status !== "LINKED" } : {}),
   };
 }
 
@@ -155,6 +158,8 @@ type LineAccountScreenProps = {
   onCancel: () => void;
   onRestart: () => void;
   onReload: () => void;
+  menuCheckPending?: boolean;
+  menuCheckComplete?: boolean;
 };
 
 export function LineAccountScreen({
@@ -195,19 +200,22 @@ export function LineAccountScreen({
   onCancel,
   onRestart,
   onReload,
+  menuCheckPending = false,
+  menuCheckComplete = false,
 }: LineAccountScreenProps): React.JSX.Element {
   const busy = view === "BUSY";
+  const statusCheckDisabled = busy || view === "UNLINK_CONFIRM" || reachabilityBusy || friendshipBusy;
   const linked = accountStatus === "LINKED" || (accountStatus === "INELIGIBLE" && canUnlink);
   const busyMessage = linked
     ? "กำลังยกเลิกการเชื่อมต่อ LINE..."
     : "กำลังเชื่อมบัญชี LINE...";
-  const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED";
+  const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED" && !menuCheckPending;
   const notFriend = accountStatus === "LINKED" && initial.reachability === "NOT_FRIEND";
   const hasFriendshipAction = notFriend && (
     (friendshipSupported && liffState === "READY") || liffState === "LOGIN_REQUIRED"
   );
   const showReachabilityRetry = accountStatus === "LINKED" && canRefreshReachability &&
-    !menuReady && !hasFriendshipAction &&
+    !menuReady &&
     (initial.reachability === "UNKNOWN" || initial.reachability === "NOT_FRIEND" || initial.reachability === null || friendshipWarning);
 
   const menuPending = accountStatus === "LINKED" && initial.reachability === "FRIEND" && !menuReady;
@@ -216,8 +224,10 @@ export function LineAccountScreen({
     : menuReady
       ? "พร้อมใช้งานผ่าน LINE แล้ว"
       : menuPending
-        ? "เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ"
-        : "เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE";
+        ? initial.menuState === "UNKNOWN" || initial.menuState === null || menuCheckPending
+          ? "เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE"
+          : "เชื่อมบัญชีแล้ว แต่เมนู LINE ยังไม่พร้อมใช้งาน"
+        : "เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้";
 
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
@@ -240,16 +250,13 @@ export function LineAccountScreen({
           {view === "SUCCESS" ? (
             <div className="space-y-4" role="status" aria-live="polite">
               <h2 id="line-account-status" className="text-2xl font-semibold text-success">
-                {successAction === "LINK" ? "เชื่อมบัญชี LINE สำเร็จ" : "ยกเลิกการเชื่อมต่อ LINE แล้ว"}
+                {successAction === "LINK" ? readinessMessage : "ยกเลิกการเชื่อมต่อ LINE แล้ว"}
               </h2>
               {successAction === "LINK" ? (
                 <>
                   <p className="text-base text-ink">บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว</p>
-                  <p className={menuReady ? "rounded-control bg-success-soft px-4 py-3 text-base text-success" : "rounded-control bg-surface-muted px-4 py-3 text-sm text-ink"}>
-                    {readinessMessage}
-                  </p>
                   {initial.reachability === "NOT_FRIEND" && friendshipSupported && liffState === "READY" ? (
-                    <button type="button" disabled={friendshipBusy || reachabilityBusy} onClick={onRequestFriendship} className={primaryButtonClass}>
+                    <button type="button" disabled={statusCheckDisabled} onClick={onRequestFriendship} className={primaryButtonClass}>
                       {friendshipBusy ? "กำลังเปิดหน้าเพิ่มเพื่อน..." : "เพิ่ม DEMI เป็นเพื่อน"}
                     </button>
                   ) : null}
@@ -260,7 +267,7 @@ export function LineAccountScreen({
                     <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>เข้าสู่ระบบ LINE</button>
                   ) : null}
                   {showReachabilityRetry ? (
-                    <button type="button" disabled={reachabilityBusy || friendshipBusy} onClick={onRefreshReachability} className={secondaryButtonClass}>
+                    <button type="button" disabled={statusCheckDisabled} onClick={onRefreshReachability} className={secondaryButtonClass}>
                       {reachabilityBusy ? "กำลังตรวจสอบ..." : "ตรวจสอบอีกครั้ง"}
                     </button>
                   ) : null}
@@ -284,7 +291,7 @@ export function LineAccountScreen({
                 </>
               )}
               {isInClient ? (
-                <button type="button" onClick={onReturnToLine} className={successAction === "LINK" && hasFriendshipAction ? secondaryButtonClass : primaryButtonClass}>
+                <button type="button" onClick={onReturnToLine} className={successAction === "LINK" && !menuReady ? secondaryButtonClass : primaryButtonClass}>
                   กลับไปที่ LINE
                 </button>
               ) : (
@@ -326,7 +333,7 @@ export function LineAccountScreen({
                   )}
 
                   {notFriend && friendshipSupported && liffState === "READY" ? (
-                    <button type="button" disabled={friendshipBusy} onClick={onRequestFriendship} className={primaryButtonClass}>
+                    <button type="button" disabled={statusCheckDisabled} onClick={onRequestFriendship} className={primaryButtonClass}>
                       {friendshipBusy ? "กำลังเปิดหน้าเพิ่มเพื่อน..." : "เพิ่ม DEMI เป็นเพื่อน"}
                     </button>
                   ) : notFriend && liffState === "LOGIN_REQUIRED" ? (
@@ -337,17 +344,12 @@ export function LineAccountScreen({
                     <p className="text-sm text-muted">กลับไปที่แชท LINE แล้วเพิ่ม DEMI เป็นเพื่อน จากนั้นกลับมาตรวจสอบอีกครั้ง</p>
                   ) : null}
 
-                  {friendshipWarning ? (
-                    <p role="status" className="text-sm text-muted">
-                      ยังตรวจสอบไม่สำเร็จ บัญชีของคุณยังเชื่อมต่ออยู่ กรุณาลองอีกครั้ง
-                    </p>
-                  ) : null}
 
                   {isInClient ? (
                     <button
                       type="button"
                       onClick={onReturnToLine}
-                      className={hasFriendshipAction ? secondaryButtonClass : primaryButtonClass}
+                      className={menuReady ? primaryButtonClass : secondaryButtonClass}
                     >
                       กลับไปที่ LINE
                     </button>
@@ -356,7 +358,7 @@ export function LineAccountScreen({
                   )}
 
                   {showReachabilityRetry ? (
-                    <button type="button" disabled={reachabilityBusy || friendshipBusy} onClick={onRefreshReachability} className={secondaryButtonClass}>
+                    <button type="button" disabled={statusCheckDisabled} onClick={onRefreshReachability} className={secondaryButtonClass}>
                       {reachabilityBusy ? "กำลังตรวจสอบ..." : "ตรวจสอบอีกครั้ง"}
                     </button>
                   ) : null}
@@ -390,7 +392,7 @@ export function LineAccountScreen({
                 </div>
               ) : (
                 <>
-                  <h2 id="line-account-status" className="text-xl">บัญชี LINE</h2>
+                  <h2 id="line-account-status" tabIndex={-1} className="text-xl">บัญชี LINE</h2>
                   <p className="mt-2 text-base text-muted" aria-live="polite">
                     {accountStatus === "UNAUTHENTICATED" && "กรุณาเข้าสู่ระบบ DEMI เพื่อยืนยันว่าคุณเป็นเจ้าของบัญชี ก่อนเชื่อม LINE"}
                     {accountStatus === "UNLINKED" && "ยังไม่ได้เชื่อมบัญชี LINE กับ DEMI"}
@@ -445,7 +447,7 @@ export function LineAccountScreen({
                           <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>เข้าสู่ระบบ LINE</button>
                         </div>
                       ) : null}
-                      {relinkEligibility === "ELIGIBLE" && liffState === "READY" ? (
+                      {relinkEligibility === "ELIGIBLE" && liffState === "READY" && view === "READY" ? (
                         <button type="button" disabled={busy} onClick={onBeginLink} className={primaryButtonClass}>
                           เชื่อมบัญชี LINE นี้
                         </button>
@@ -472,8 +474,9 @@ export function LineAccountScreen({
 
               {view === "LINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-line bg-surface-muted p-4" aria-labelledby="link-confirm-title">
-                  <h3 id="link-confirm-title" className="text-base">ยืนยันบัญชีที่เปิดอยู่</h3>
-                  <p className="mt-2 text-sm text-muted">กำลังเชื่อม LINE ที่คุณใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบ กรุณาตรวจสอบว่าเป็นบัญชีของคุณและยืนยันรหัสผ่านเพื่อความปลอดภัย หากเป็นบัญชี DEMI อื่น ให้กดกลับแล้วเลือกใช้บัญชี DEMI อื่น</p>
+                  <h3 id="link-confirm-title" tabIndex={-1} className="text-lg">ตรวจสอบบัญชีก่อนเชื่อม LINE</h3>
+                  <p className="mt-2 text-sm text-muted">คุณกำลังเชื่อม LINE ที่ใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบในเบราว์เซอร์นี้ กรุณายืนยันว่าเป็นบัญชีที่ต้องการเชื่อมด้วยรหัสผ่านของบัญชีนั้น</p>
+                  <p className="mt-2 text-sm text-muted">หากใช้เครื่องร่วมกับผู้อื่นหรือไม่แน่ใจ ให้เลือกใช้บัญชี DEMI อื่น การออกจากระบบจะยกเลิกการยืนยันครั้งนี้</p>
                   <label htmlFor="line-link-current-password" className="mt-4 grid gap-1 text-sm font-medium text-ink">
                     รหัสผ่านบัญชี DEMI ปัจจุบัน
                     <input
@@ -495,6 +498,10 @@ export function LineAccountScreen({
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy || !currentPassword} onClick={onConfirmLink} className={primaryButtonClass}>ยืนยันเชื่อมบัญชี</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
+                  </div>
+                  <div className="mt-3">
+                    <LineDemiAccountSwitch label="ใช้บัญชี DEMI อื่น" className={secondaryButtonClass} disabled={busy}
+                      hint="ออกจากระบบ แล้วเข้าสู่ระบบด้วยบัญชีที่ต้องการเชื่อม LINE" />
                   </div>
                 </div>
               ) : null}
@@ -530,10 +537,20 @@ export function LineAccountScreen({
         {accountStatus === "LINKED" && view !== "BUSY" ? (
           <div className="mt-5 space-y-3 text-sm leading-6 text-muted" role="status" aria-live="polite">
             <p>เมนูที่ใช้งานได้ขึ้นอยู่กับบทบาทและสิทธิ์ปัจจุบันใน DEMI การเชื่อมบัญชีไม่ได้เพิ่มสิทธิ์ให้คุณ</p>
+            {reachabilityBusy ? <p>กำลังตรวจสอบสถานะ LINE และเมนู…</p> : null}
+            {friendshipWarning ? <p>ยังตรวจสอบไม่สำเร็จ บัญชียังเชื่อมอยู่ กรุณาลองตรวจสอบอีกครั้ง หรือใช้งานผ่านเว็บ</p> : null}
+            {menuCheckPending && !reachabilityBusy ? <p>ระบบยังตรวจสอบเมนูไม่เสร็จ โปรดรอสักครู่แล้วตรวจสอบอีกครั้ง คุณใช้เว็บระหว่างรอได้</p> : null}
+            {menuCheckComplete && !menuCheckPending && !menuReady && !friendshipWarning && !reachabilityBusy ? <p>ตรวจสอบแล้ว ยังไม่ยืนยันความพร้อมใช้งาน LINE คุณตรวจสอบอีกครั้งภายหลังหรือใช้เว็บได้</p> : null}
             {menuPending ? (
               <>
-                <p>เมนูอาจใช้เวลาสักครู่ หากยังไม่พร้อม ให้ตรวจสอบสถานะอีกครั้ง หรือใช้งานผ่านเว็บระหว่างรอ</p>
-                <button type="button" onClick={onReload} disabled={reachabilityBusy || friendshipBusy} className={secondaryButtonClass}>ตรวจสอบสถานะเมนูอีกครั้ง</button>
+                <p>ตรวจสอบอีกครั้งเพื่อดูสถานะล่าสุด หรือใช้งานผ่านเว็บได้</p>
+                {canRefreshReachability ? (
+                  <button type="button" onClick={onRefreshReachability} disabled={statusCheckDisabled} aria-busy={reachabilityBusy} className={secondaryButtonClass}>
+                    {reachabilityBusy ? "กำลังตรวจสอบ…" : "ตรวจสอบสถานะเมนูอีกครั้ง"}
+                  </button>
+                ) : liffState === "LOGIN_REQUIRED" ? (
+                  <button type="button" onClick={onStartLineLogin} className={secondaryButtonClass}>เข้าสู่ระบบ LINE เพื่อตรวจสอบสถานะ</button>
+                ) : <p>กรุณาเปิดหน้าบัญชีจากแชต DEMI เพื่อตรวจสอบสถานะ LINE</p>}
               </>
             ) : null}
             {!menuReady && !menuPending && liffState === "LOGIN_REQUIRED" && !hasFriendshipAction ? (
@@ -586,6 +603,9 @@ export function LineAccountClient({
   const [summary, setSummary] = useState(initial);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshBusy, setRefreshBusy] = useState(false);
+  const [menuCheckPending, setMenuCheckPending] = useState(false);
+  const [menuCheckComplete, setMenuCheckComplete] = useState(false);
+  const statusRequest = useRef<AbortController | null>(null);
   const [friendshipBusy, setFriendshipBusy] = useState(false);
   const [isInClient, setIsInClient] = useState(false);
   const [friendshipSupported, setFriendshipSupported] = useState(false);
@@ -600,6 +620,7 @@ export function LineAccountClient({
   const initialSummary = useRef(initial);
   const confirmationRef = useRef<HTMLButtonElement>(null);
   const privateRoot = useRef<HTMLDivElement>(null);
+  const previousView = useRef(view);
   const relinkEligibility: RelinkEligibility = lifecycleReadiness.state === "READY"
     ? termination?.canRelink ? "ELIGIBLE" : "BLOCKED"
     : "UNVERIFIED";
@@ -649,7 +670,12 @@ export function LineAccountClient({
   }, [liffId, disconnection]);
 
   useEffect(() => {
-    const hide = (): void => { if (privateRoot.current) { privateRoot.current.hidden = true; privateRoot.current.inert = true; } };
+    const hide = (): void => {
+      const request = statusRequest.current;
+      statusRequest.current = null;
+      request?.abort();
+      if (privateRoot.current) { privateRoot.current.hidden = true; privateRoot.current.inert = true; }
+    };
     const restore = (event: PageTransitionEvent): void => { if (event.persisted) { hide(); window.location.reload(); } };
     const history = (): void => { hide(); window.location.reload(); };
     window.addEventListener("pagehide", hide);
@@ -659,8 +685,20 @@ export function LineAccountClient({
   }, []);
 
   useEffect(() => {
-    if (view === "LINK_CONFIRM" || view === "UNLINK_CONFIRM") confirmationRef.current?.focus();
+    if (view === "LINK_CONFIRM") privateRoot.current?.querySelector<HTMLElement>("#link-confirm-title")?.focus();
+    if (view === "UNLINK_CONFIRM") confirmationRef.current?.focus();
+    if (view === "READY" && (previousView.current === "LINK_CONFIRM" || previousView.current === "UNLINK_CONFIRM")) {
+      const heading = privateRoot.current?.querySelector<HTMLElement>("#line-account-status");
+      if (heading) { heading.tabIndex = -1; heading.focus(); }
+    }
+    previousView.current = view;
   }, [view]);
+
+  useEffect(() => () => {
+    const request = statusRequest.current;
+    statusRequest.current = null;
+    request?.abort();
+  }, []);
 
   useEffect(() => {
     if (view === "SUCCESS" || view === "FAILURE") {
@@ -694,6 +732,7 @@ export function LineAccountClient({
   }
 
   async function begin(action: "LINK" | "UNLINK"): Promise<void> {
+    if (statusRequest.current || refreshBusy || friendshipBusy) return;
     if (action === "LINK" && relinkEligibility !== "ELIGIBLE") return;
     if (action === "LINK") { setCurrentPassword(""); setCurrentPasswordError(""); }
     setView("BUSY");
@@ -802,21 +841,35 @@ export function LineAccountClient({
   }
 
   async function refreshReachability(): Promise<void> {
-    if (!canRefreshReachability || refreshBusy || friendshipBusy) return;
+    if (view !== "READY" && view !== "SUCCESS") return;
+    if (!canRefreshReachability || refreshBusy || friendshipBusy || statusRequest.current) return;
+    const controller = new AbortController();
+    statusRequest.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 25_000);
     setRefreshBusy(true);
     setRefreshFailed(false);
+    setMenuCheckComplete(false);
     try {
-      const updated = await refreshLineAccountFriendship();
+      const updated = await refreshLineAccountFriendship({ checkMenu: true, signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (updated.accountChanged) { reloadPage(); return; }
       setSummary((current) => ({ ...current, ...updated }));
+      setMenuCheckPending(updated.reconciliationPending ?? false);
+      setMenuCheckComplete(true);
       if (updated.menuState !== null) setProviderWarning(updated.menuState !== "APPLIED");
     } catch {
-      setRefreshFailed(true);
+      if (statusRequest.current === controller) setRefreshFailed(true);
     } finally {
-      setRefreshBusy(false);
+      window.clearTimeout(timeout);
+      if (statusRequest.current === controller) {
+        statusRequest.current = null;
+        setRefreshBusy(false);
+      }
     }
   }
 
   async function requestFriendship(): Promise<void> {
+    if (view !== "READY" && view !== "SUCCESS") return;
     if (!friendshipSupported || friendshipBusy || refreshBusy) return;
     setFriendshipBusy(true);
     setRefreshFailed(false);
@@ -844,7 +897,9 @@ export function LineAccountClient({
       return;
     }
     try {
-      if (termination) await postJson("/api/line/account/intents", { action: "LINK" }, parseIntent);
+      // Existing bindings need LINE authentication for status checks, not a new
+      // Link intent (which can be fenced by Relink policy or rate limiting).
+      if (termination && accountStatus === "UNLINKED") await postJson("/api/line/account/intents", { action: "LINK" }, parseIntent);
       liff.login({ redirectUri: publicOrigin + "/line/account" });
     } catch {
       setLiffState("UNAVAILABLE");
@@ -858,6 +913,7 @@ export function LineAccountClient({
   }
 
   function reloadPage(): void {
+    if (privateRoot.current) { privateRoot.current.hidden = true; privateRoot.current.inert = true; }
     window.location.reload();
   }
 
@@ -880,6 +936,8 @@ export function LineAccountClient({
       reachabilityBusy={refreshBusy}
       friendshipBusy={friendshipBusy}
       friendshipWarning={refreshFailed}
+      menuCheckPending={menuCheckPending}
+      menuCheckComplete={menuCheckComplete}
       view={view}
       successAction={successAction}
       message={message}
