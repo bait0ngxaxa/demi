@@ -139,3 +139,7 @@ read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://
 ตัวเลขผู้รับสำหรับ capacity planning อาจนับด้วย SQL ที่คืนเฉพาะจำนวน (ไม่ดึงตัวตน) และบันทึกผลใน operational record; ไม่ใช่ข้อกำหนดเปิดหรือปิด business behavior
 
 การทดสอบ capacity ด้วยข้อมูลสังเคราะห์เป็นแนวทางวางแผนของ operator ไม่ใช่ runtime gate; ห้ามนำผล local synthetic มาอ้างเป็น production measurement. ติดตั้งและ monitor timer ตาม topology ที่เลือก. หากเกิด 429 ให้รักษา backoff/retry key เดิมและตรวจ quota/rate limit ไม่เพิ่ม workers เพื่อเร่งฝ่า limit
+
+## การเปิดบัญชีครั้งแรกและเชื่อม LINE (UX-A + UX-B)
+
+หน้า activation ใช้ LIFF root จาก configuration ข้อ 3 ผ่าน deep-link builder เดิม และมีทางเข้าสู่เว็บเมื่อ integration ยังไม่พร้อม การตั้งรหัสผ่านไม่สร้าง session หรือ binding; LINE อาจต้อง login DEMI ใหม่เพราะเบราว์เซอร์ไม่แชร์ cookies จากนั้นยังต้องยืนยันรหัสผ่านเพื่อเชื่อมบัญชี การเป็นเพื่อนและ Rich Menu พร้อมเป็นคนละสถานะ การแจ้งเตือนนัดหมายยังต้อง opt-in เอง ดู [เส้นทางและ UAT](./ACTIVATION_LINE_ONBOARDING.md) การปรับ UX ไม่ต้องเปลี่ยน provider configuration หรือรันคำสั่ง reconcile เพิ่มเป็นขั้นตอน deploy

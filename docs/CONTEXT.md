@@ -36,6 +36,10 @@ Resolve apparent conflicts in this order: (1) latest confirmed Product Owner dir
 
 Current ownership decision: [ADR-0014](./adr/0014-operational-hospital-service-areas.md), partially superseding H1 of ADR-0013 while retaining H2–H5. The Phase A foundation does not complete network Patient reads or management UI. [Phase A handoff](./phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) records implementation and remaining decisions.
 
+## CURRENT-status addendum — invitation activation and LINE onboarding (2026-10-26)
+
+First-time Patient and workforce activation now explain optional LINE linking and offer configured LIFF entry or normal web login after confirmed success. Workforce RESET retains password-reset guidance without onboarding. `/login` explains the separate browser session only for the existing allowlisted `/line/account` return. LINE Account presents binding, friendship and menu readiness independently, offers explicit status refresh through existing reconciliation, and keeps appointment notifications an explicit persisted opt-in under current domain eligibility. No authentication, token lifecycle, authorization, provider, database or session-handoff contract changes. Caregiver claims and existing-account Child OWNER acceptance remain separate flows. See [journey and device UAT](./operations/ACTIVATION_LINE_ONBOARDING.md).
+
 ## CURRENT-status addendum — LINE appointment message action (2026-10-26)
 
 - The Patient “ตรวจสอบนัดหมาย” Rich Menu area and HELP Quick Reply are LINE message actions that send the exact text “นัด”, so the Patient sees their own message immediately. The webhook answers it through the existing exact-keyword path (`NEXT_APPOINTMENT` → `PATIENT_NEXT_APPOINTMENT`) with unchanged binding, ActorContext, Patient SELF authority, appointment read and copy.

@@ -38,13 +38,14 @@ export function AppointmentNotificationPreference({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="appointment-notification-preference" className="text-xl font-semibold">
-          การแจ้งเตือนนัดหมายทาง LINE
+          รับแจ้งเตือนนัดหมายผ่าน LINE
         </h2>
         <p className="rounded-control bg-surface-muted px-3 py-1 text-sm font-semibold" aria-live="polite">
           สถานะ: {enabled ? "เปิด" : "ปิด"}
         </p>
       </div>
       <div className="type-readable mt-4 space-y-3 text-sm text-muted">
+        <p>เลือกเปิดรับการแจ้งเตือนเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมาย ตามสิทธิ์และเงื่อนไขที่ระบบรองรับ</p>
         <p>ใช้แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัด ข้อความระบุเฉพาะประเภทนัด ไม่มีข้อมูลระบุตัวผู้ป่วยหรือรายละเอียดสุขภาพ</p>
         <p className="text-ink">
           ข้อความที่ส่ง: “มีนัดหมายประเภท {APPOINTMENT_TYPE_VALUES.map((type) => APPOINTMENT_TYPE_LABELS[type]).join(" / ")} อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ”

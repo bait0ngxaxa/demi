@@ -208,7 +208,16 @@ export function LineAccountScreen({
   );
   const showReachabilityRetry = accountStatus === "LINKED" && canRefreshReachability &&
     !menuReady && !hasFriendshipAction &&
-    (initial.reachability === "UNKNOWN" || initial.reachability === null || friendshipWarning);
+    (initial.reachability === "UNKNOWN" || initial.reachability === "NOT_FRIEND" || initial.reachability === null || friendshipWarning);
+
+  const menuPending = accountStatus === "LINKED" && initial.reachability === "FRIEND" && !menuReady;
+  const readinessMessage = notFriend
+    ? "เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน"
+    : menuReady
+      ? "พร้อมใช้งานผ่าน LINE แล้ว"
+      : menuPending
+        ? "เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ"
+        : "เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE";
 
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
@@ -219,6 +228,12 @@ export function LineAccountScreen({
           </Link>
           <h1 className="mt-5 text-3xl">บัญชี LINE</h1>
           <p className="type-readable mt-3 text-base text-muted">จัดการการเชื่อมต่อระหว่าง LINE กับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
+          <ol aria-label="ขั้นตอนใช้งานผ่าน LINE" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm leading-6 text-muted">
+            <li aria-current={accountStatus === "UNAUTHENTICATED" ? "step" : undefined}>1. เข้าสู่ระบบ DEMI</li>
+            <li aria-current={accountStatus === "UNLINKED" ? "step" : undefined}>2. ยืนยันเชื่อม LINE</li>
+            <li aria-current={notFriend ? "step" : undefined}>3. เพิ่มเพื่อน</li>
+            <li aria-current={menuReady ? "step" : undefined}>4. พร้อมใช้งาน</li>
+          </ol>
         </header>
 
         <section className="rounded-panel border border-line bg-surface p-5 shadow-surface sm:p-7" aria-labelledby="line-account-status">
@@ -230,17 +245,9 @@ export function LineAccountScreen({
               {successAction === "LINK" ? (
                 <>
                   <p className="text-base text-ink">บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว</p>
-                  {initial.reachability === "NOT_FRIEND" ? (
-                    <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-ink">
-                      เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้
-                    </p>
-                  ) : initial.reachability === "FRIEND" && initial.menuState === "APPLIED" ? (
-                    <p className="rounded-control bg-success-soft px-4 py-3 text-base text-success">พร้อมใช้งานผ่าน LINE แล้ว</p>
-                  ) : providerWarning ? (
-                    <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
-                      ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่
-                    </p>
-                  ) : null}
+                  <p className={menuReady ? "rounded-control bg-success-soft px-4 py-3 text-base text-success" : "rounded-control bg-surface-muted px-4 py-3 text-sm text-ink"}>
+                    {readinessMessage}
+                  </p>
                   {initial.reachability === "NOT_FRIEND" && friendshipSupported && liffState === "READY" ? (
                     <button type="button" disabled={friendshipBusy || reachabilityBusy} onClick={onRequestFriendship} className={primaryButtonClass}>
                       {friendshipBusy ? "กำลังเปิดหน้าเพิ่มเพื่อน..." : "เพิ่ม DEMI เป็นเพื่อน"}
@@ -298,7 +305,7 @@ export function LineAccountScreen({
                       </svg>
                       เชื่อมต่อแล้ว
                     </h2>
-                    <p className="mt-2 text-base text-ink">บัญชี LINE นี้เชื่อมกับ DEMI แล้ว</p>
+                    <p className="mt-2 text-base text-ink">บัญชี LINE ของคุณเชื่อมกับ DEMI แล้ว</p>
                   </div>
                   {accountStatus === "INELIGIBLE" ? (
                     <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -310,11 +317,11 @@ export function LineAccountScreen({
                     </p>
                   ) : notFriend ? (
                     <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-ink">
-                      เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้
+                      เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน
                     </p>
                   ) : (
                     <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
-                      ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่
+                      {readinessMessage}
                     </p>
                   )}
 
@@ -385,7 +392,7 @@ export function LineAccountScreen({
                 <>
                   <h2 id="line-account-status" className="text-xl">บัญชี LINE</h2>
                   <p className="mt-2 text-base text-muted" aria-live="polite">
-                    {accountStatus === "UNAUTHENTICATED" && "กรุณาเข้าสู่ระบบ DEMI ก่อนจัดการบัญชี LINE"}
+                    {accountStatus === "UNAUTHENTICATED" && "กรุณาเข้าสู่ระบบ DEMI เพื่อยืนยันว่าคุณเป็นเจ้าของบัญชี ก่อนเชื่อม LINE"}
                     {accountStatus === "UNLINKED" && "ยังไม่ได้เชื่อมบัญชี LINE กับ DEMI"}
                     {accountStatus === "INELIGIBLE" && "บัญชี DEMI นี้ยังไม่สามารถจัดการการเชื่อมต่อ LINE ได้"}
                     {accountStatus === "UNAVAILABLE" && "ยังโหลดข้อมูลไม่ได้"}
@@ -393,6 +400,7 @@ export function LineAccountScreen({
 
                   {accountStatus === "UNAUTHENTICATED" ? (
                     <div className="mt-6">
+                      <p className="mb-4 text-sm leading-6 text-muted">หากเพิ่งเปิดใช้งานบัญชี ให้ใช้เลขบัตรประชาชนและรหัสผ่านที่เพิ่งตั้งไว้ เบราว์เซอร์กับ LINE อาจไม่ได้ใช้การเข้าสู่ระบบร่วมกัน</p>
                       <Link href="/login?returnTo=%2Fline%2Faccount" className={primaryButtonClass}>
                         เข้าสู่ระบบ DEMI
                       </Link>
@@ -432,9 +440,10 @@ export function LineAccountScreen({
                         </p>
                       ) : null}
                       {relinkEligibility === "ELIGIBLE" && liffState === "LOGIN_REQUIRED" ? (
-                        <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>
-                          เข้าสู่ระบบ LINE
-                        </button>
+                        <div className="space-y-3">
+                          <p className="text-sm leading-6 text-muted">เข้าสู่ระบบ LINE เพื่อระบุบัญชี LINE ที่จะเชื่อมกับ DEMI จากนั้นคุณยังต้องยืนยันการเชื่อมด้วยตนเอง</p>
+                          <button type="button" onClick={onStartLineLogin} className={primaryButtonClass}>เข้าสู่ระบบ LINE</button>
+                        </div>
                       ) : null}
                       {relinkEligibility === "ELIGIBLE" && liffState === "READY" ? (
                         <button type="button" disabled={busy} onClick={onBeginLink} className={primaryButtonClass}>
@@ -464,7 +473,7 @@ export function LineAccountScreen({
               {view === "LINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-line bg-surface-muted p-4" aria-labelledby="link-confirm-title">
                   <h3 id="link-confirm-title" className="text-base">ยืนยันบัญชีที่เปิดอยู่</h3>
-                  <p className="mt-2 text-sm text-muted">เมื่อยืนยัน บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
+                  <p className="mt-2 text-sm text-muted">กำลังเชื่อม LINE ที่คุณใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบ กรุณาตรวจสอบว่าเป็นบัญชีของคุณและยืนยันรหัสผ่านเพื่อความปลอดภัย หากเป็นบัญชี DEMI อื่น ให้กดกลับแล้วเลือกใช้บัญชี DEMI อื่น</p>
                   <label htmlFor="line-link-current-password" className="mt-4 grid gap-1 text-sm font-medium text-ink">
                     รหัสผ่านบัญชี DEMI ปัจจุบัน
                     <input
@@ -517,6 +526,29 @@ export function LineAccountScreen({
           )}
           {recoveryContent}
         </section>
+
+        {accountStatus === "LINKED" && view !== "BUSY" ? (
+          <div className="mt-5 space-y-3 text-sm leading-6 text-muted" role="status" aria-live="polite">
+            <p>เมนูที่ใช้งานได้ขึ้นอยู่กับบทบาทและสิทธิ์ปัจจุบันใน DEMI การเชื่อมบัญชีไม่ได้เพิ่มสิทธิ์ให้คุณ</p>
+            {menuPending ? (
+              <>
+                <p>เมนูอาจใช้เวลาสักครู่ หากยังไม่พร้อม ให้ตรวจสอบสถานะอีกครั้ง หรือใช้งานผ่านเว็บระหว่างรอ</p>
+                <button type="button" onClick={onReload} disabled={reachabilityBusy || friendshipBusy} className={secondaryButtonClass}>ตรวจสอบสถานะเมนูอีกครั้ง</button>
+              </>
+            ) : null}
+            {!menuReady && !menuPending && liffState === "LOGIN_REQUIRED" && !hasFriendshipAction ? (
+              <button type="button" onClick={onStartLineLogin} className={secondaryButtonClass}>เข้าสู่ระบบ LINE เพื่อตรวจสอบสถานะ</button>
+            ) : null}
+            {view === "SUCCESS" && liffState === "UNAVAILABLE" ? (
+              <button type="button" onClick={onReload} className={secondaryButtonClass}>ลองเปิด LINE อีกครั้ง</button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="mt-5 space-y-3 text-sm leading-6 text-muted">
+          {!isInClient ? <p>หากเปิดแอป LINE ไม่ได้ ให้เปิดแชต DEMI แล้วเลือกเมนูบัญชี หากไม่มีแอป LINE คุณยังใช้ DEMI ผ่านเว็บไซต์ได้</p> : null}
+          <Link href="/app" className={secondaryButtonClass}>ใช้งาน DEMI ผ่านเว็บ</Link>
+        </div>
 
         {notificationPreference ? <AppointmentNotificationPreference key={preferenceUiGeneration} initial={notificationPreference} /> : null}
 
@@ -628,6 +660,13 @@ export function LineAccountClient({
 
   useEffect(() => {
     if (view === "LINK_CONFIRM" || view === "UNLINK_CONFIRM") confirmationRef.current?.focus();
+  }, [view]);
+
+  useEffect(() => {
+    if (view === "SUCCESS" || view === "FAILURE") {
+      const target = privateRoot.current?.querySelector<HTMLElement>(view === "SUCCESS" ? "#line-account-status" : '[role="alert"]');
+      if (target) { target.tabIndex = -1; target.focus(); }
+    }
   }, [view]);
 
   async function postJson<T>(path: string, body: unknown, parse: (value: unknown) => T): Promise<T> {

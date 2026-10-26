@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LINE_WEB_NAVIGATION_PATHS } from "../domain/line-navigation-intents";
 import { LineFailure } from "../domain/line-errors";
-import { buildLineIntentUrl } from "./line-deep-link-builder";
+import { buildLineIntentUrl, getPublicLineAccountEntryUrl } from "./line-deep-link-builder";
 
 describe("LINE intent deep links", () => {
   beforeEach(() => {
@@ -49,5 +49,22 @@ describe("LINE intent deep links", () => {
   it("fails with a typed configuration error when LIFF is required but missing", () => {
     expect(() => buildLineIntentUrl("SWITCH_WORKSPACE")).toThrowError(LineFailure);
     expect(() => buildLineIntentUrl("SWITCH_WORKSPACE")).toThrowError(expect.objectContaining({ code: "LINE_CONFIGURATION_MISSING" }));
+  });
+
+  it("returns the configured public account entry without activation credentials", () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+    expect(getPublicLineAccountEntryUrl()).toBe(buildLineIntentUrl("LINK_ACCOUNT"));
+    expect(new URL(getPublicLineAccountEntryUrl() ?? "").search).toBe("");
+  });
+
+  it.each(["", "https://evil.example/", "1234-Abc?returnTo=https://evil.example/", "1234-Abc#secret"])("fails safely for invalid or missing LIFF configuration %s", (value) => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", value);
+    expect(getPublicLineAccountEntryUrl()).toBeNull();
+  });
+
+  it("keeps web fallback available when the server origin is invalid", () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://user:password@evil.example/path");
+    expect(getPublicLineAccountEntryUrl()).toBeNull();
   });
 });

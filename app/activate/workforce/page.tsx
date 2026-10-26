@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
+import { getPublicLineAccountEntryUrl } from "@/modules/line/services/line-deep-link-builder";
 
 import { WorkforceActivationForm } from "./workforce-activation-form";
 
 export const metadata: Metadata = {
-  title: "เปิดใช้งานบัญชีบุคลากร",
+  title: "ตั้งรหัสผ่านบัญชี DEMI",
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };
 
-export default async function WorkforceActivationPage() {
+export default async function WorkforceActivationPage(): Promise<React.JSX.Element> {
   await connection();
 
   return (
@@ -27,27 +28,22 @@ export default async function WorkforceActivationPage() {
           <span className="h-9 w-1 rounded-full bg-brand-bright" aria-hidden="true" />
           <span className="text-2xl font-bold tracking-[-0.03em]">DEMI</span>
         </div>
-        <div className="relative mt-14 max-w-xl lg:my-auto lg:py-16">
-          <p className="text-sm font-semibold text-brand-bright">การเปิดใช้งานบัญชีบุคลากร</p>
-          <h1 className="mt-3 max-w-lg text-balance text-4xl font-semibold leading-tight tracking-[-0.03em] sm:text-5xl">
-            เปิดใช้งานบัญชี DEMI ครั้งแรก
+        <div className="relative mt-8 max-w-xl lg:my-auto lg:py-16">
+          <h1 className="mt-3 max-w-lg text-balance text-3xl font-semibold leading-tight tracking-[-0.03em] sm:text-4xl lg:text-5xl">
+            ตั้งรหัสผ่านบัญชี DEMI
           </h1>
           <p className="mt-5 max-w-lg text-base leading-7 text-brand-pale sm:text-lg sm:leading-8">
-            กรอกเลขบัตรประชาชนและตั้งรหัสผ่านของคุณเอง เพื่อเปิดใช้งานบัญชีที่โรงพยาบาลจัดเตรียมไว้ให้
+            กรอกเลขบัตรประชาชนและตั้งรหัสผ่านของคุณเองตามลิงก์ที่ได้รับจากโรงพยาบาล
           </p>
         </div>
-        <p className="relative mt-12 max-w-md text-sm leading-6 text-brand-pale/80">
+        <p className="relative mt-6 max-w-md lg:mt-12 text-sm leading-6 text-brand-pale/80">
           อย่าเปิดเผยรหัสผ่านให้ผู้ดูแลโรงพยาบาลหรือบุคคลอื่น
         </p>
       </section>
 
       <section className="flex px-6 py-10 sm:px-10 lg:min-h-svh lg:items-center lg:px-14 xl:px-20">
         <div className="mx-auto w-full max-w-md">
-          <h2 className="text-3xl font-semibold tracking-[-0.03em]">เปิดใช้งานครั้งแรก</h2>
-          <p className="mt-3 text-base leading-7 text-muted">
-            กรอกเลขบัตรประชาชนและตั้งรหัสผ่านของคุณเอง เมื่อเสร็จแล้วให้เข้าสู่ระบบ DEMI
-          </p>
-          <WorkforceActivationForm />
+          <WorkforceActivationForm lineAccountUrl={getPublicLineAccountEntryUrl()} />
         </div>
       </section>
     </main>

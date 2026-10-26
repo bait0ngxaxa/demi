@@ -76,6 +76,14 @@ export default async function LoginPage({
             ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบแทนเลขบัตรประชาชน
           </p>
 
+          {safeReturnTo === "/line/account" ? (
+            <Alert className="mt-5" variant="info">
+              <h3 className="font-semibold">อีกหนึ่งขั้นตอนก่อนใช้งานผ่าน LINE</h3>
+              <p className="mt-2">กรุณาเข้าสู่ระบบ DEMI ด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้ เมื่อเข้าสู่ระบบสำเร็จ ระบบจะพาคุณกลับไปเชื่อมบัญชี LINE</p>
+              <p className="mt-2">เบราว์เซอร์กับ LINE อาจไม่ได้ใช้การเข้าสู่ระบบร่วมกัน การเข้าสู่ระบบครั้งนี้ยังไม่เชื่อมบัญชีให้อัตโนมัติ</p>
+            </Alert>
+          ) : null}
+
           {loginHint ? (
             <Alert className="mt-5" variant="info">
               <p className="font-semibold">คำแนะนำสำหรับเข้าสู่ระบบ</p>

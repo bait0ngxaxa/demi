@@ -72,6 +72,19 @@ describe("Login page entry points and recovery guidance", () => {
     expect(markup).not.toContain("ตั้งรหัสผ่านใหม่สำเร็จแล้ว");
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
+
+  it("explains the separate DEMI session only for the validated LINE account return", async () => {
+    const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ returnTo: "/line/account" }) }));
+    expect(markup).toContain("อีกหนึ่งขั้นตอนก่อนใช้งานผ่าน LINE");
+    expect(markup).toContain("ระบบจะพาคุณกลับไปเชื่อมบัญชี LINE");
+    expect(markup).toContain("ยังไม่เชื่อมบัญชีให้อัตโนมัติ");
+  });
+
+  it.each([undefined, "https://evil.example/line/account", "//evil.example/line/account", "/line/account?returnTo=https://evil.example", ["/line/account", "/line/account"]])("does not trust an arbitrary or duplicated return destination %s", async (returnTo) => {
+    const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ returnTo }) }));
+    expect(markup).not.toContain("อีกหนึ่งขั้นตอนก่อนใช้งานผ่าน LINE");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
   it("redirects an already-authorized request before rendering the login client", async () => {
     mocks.resolveCurrentActorAccess.mockResolvedValueOnce({ status: "AUTHORIZED" });
     mocks.redirect.mockImplementationOnce(() => { throw new Error("redirect boundary"); });

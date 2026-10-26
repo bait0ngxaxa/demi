@@ -69,6 +69,39 @@ function renderScreen(
 }
 
 describe("LINE account user experience", () => {
+  it.each(["UNKNOWN", "MISMATCH", "UNAVAILABLE"] as const)("offers a manual menu refresh for %s without claiming readiness", (menuState) => {
+    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState });
+    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
+    expect(markup).toContain(">ตรวจสอบสถานะเมนูอีกครั้ง</button>");
+    expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(markup).not.toContain(">เชื่อมบัญชี LINE นี้</button>");
+    expect(markup).toContain('href="/app"');
+  });
+
+  it("allows a non-friend in an external browser to refresh after adding the OA manually", () => {
+    const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true, reachability: "NOT_FRIEND", menuState: "APPLIED" }, { isInClient: false, canRefreshReachability: true });
+    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
+    expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
+    expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    expect(markup).not.toContain(">กลับไปที่ LINE</button>");
+  });
+
+  it("explains LINE login and keeps a web fallback without LINE or a DEMI binding", () => {
+    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { liffState: "LOGIN_REQUIRED", isInClient: false });
+    expect(markup).toContain("เข้าสู่ระบบ LINE เพื่อระบุบัญชี LINE");
+    expect(markup).toContain("คุณยังต้องยืนยันการเชื่อมด้วยตนเอง");
+    expect(markup).toContain('href="/app"');
+    expect(markup).not.toContain("รับแจ้งเตือนนัดหมายผ่าน LINE");
+  });
+
+  it("keeps privacy-safe conflicts actionable without claiming a binding", () => {
+    const markup = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { view: "FAILURE", message: "ไม่สามารถเชื่อมบัญชีนี้ได้ กรุณาตรวจสอบบัญชีที่ใช้อยู่" });
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain("กรุณาตรวจสอบบัญชีที่ใช้อยู่");
+    expect(markup).toContain('href="/app"');
+    expect(markup).not.toContain("เชื่อมบัญชี LINE สำเร็จ");
+  });
+
   it("announces whether an account is being linked or unlinked", () => {
     const unlinkedMarkup = renderScreen(
       { ...emptyStatus, status: "UNLINKED", canUnlink: false },
@@ -172,7 +205,7 @@ describe("LINE account user experience", () => {
       notificationPreference: { enabled: false, canEnable: true },
     });
 
-    expect(markup).toContain("การแจ้งเตือนนัดหมายทาง LINE");
+    expect(markup).toContain("รับแจ้งเตือนนัดหมายผ่าน LINE");
     expect(markup).toContain("ใช้แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัด ข้อความระบุเฉพาะประเภทนัด ไม่มีข้อมูลระบุตัวผู้ป่วยหรือรายละเอียดสุขภาพ");
     expect(markup).toContain("สถานะ: ปิด");
     expect(markup).toContain("มีนัดหมายประเภท ติดตาม / ประเมิน / ให้ความรู้ อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
@@ -190,7 +223,7 @@ describe("LINE account user experience", () => {
     }, { canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
     expect(markup).not.toContain("ตรวจสอบอีกครั้ง");
     expect(markup).not.toContain("เมนู LINE อาจยังไม่พร้อม");
     expect(markup).not.toContain("UNKNOWN");
@@ -206,7 +239,7 @@ describe("LINE account user experience", () => {
     }, { canRefreshReachability: true });
 
     expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
   });
@@ -234,7 +267,7 @@ describe("LINE account user experience", () => {
       menuState: "UNKNOWN",
     }, { friendshipSupported: true, canRefreshReachability: true });
 
-    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
+    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).not.toContain("ตรวจสอบอีกครั้ง</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
@@ -260,7 +293,7 @@ describe("LINE account user experience", () => {
     expect(markup).not.toContain("เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(menuState === "APPLIED"
       ? "พร้อมใช้งานผ่าน LINE แล้ว"
-      : "ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+      : "เชื่อมบัญชีสำเร็จแล้ว กำลังเตรียมเมนูสำหรับคุณ");
   });
 
   it("shows the linked result and account controls for a DEMI account without an available LINE menu", () => {
@@ -309,7 +342,7 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
-    expect(markup).toContain("ระบบกำลังเตรียมเมนู LINE ตามสิทธิ์ของคุณ อาจใช้เวลาสักครู่");
+    expect(markup).toContain("เชื่อมบัญชีแล้ว กำลังตรวจสอบสถานะเพื่อนและเมนู LINE");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("ยังยืนยันสถานะ LINE ไม่ได้");
@@ -337,7 +370,7 @@ describe("LINE account user experience", () => {
 
     expect(markup).toContain("เชื่อมบัญชี LINE สำเร็จ");
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อนก่อนจึงจะใช้เมนูส่วนตัวได้");
+    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">เพิ่ม DEMI เป็นเพื่อน<\/button>/u);
@@ -424,7 +457,7 @@ describe("LINE account user experience", () => {
     }, { view: "UNLINK_CONFIRM" });
 
     expect(link).toContain("ยืนยันเชื่อมบัญชี");
-    expect(link).toContain("บัญชี LINE ที่กำลังเปิดอยู่นี้จะเชื่อมกับบัญชี DEMI");
+    expect(link).toContain("กำลังเชื่อม LINE ที่คุณใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบ");
     expect(unlink).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
     expect(unlink).toContain("ยืนยันยกเลิกการเชื่อมต่อ");
   });

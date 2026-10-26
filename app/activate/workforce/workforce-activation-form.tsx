@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { ActivationIntroduction, ActivationSuccess } from "@/components/activation/activation-onboarding";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName, LoadingSpinner } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
@@ -67,7 +68,7 @@ function createActivationTokenStore(): ActivationTokenStore {
   };
 }
 
-export function WorkforceActivationForm(): React.JSX.Element {
+export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccountUrl?: string | null }): React.JSX.Element {
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [preview, setPreview] = useState<WorkforceActivationPreviewState | null>(null);
@@ -152,18 +153,11 @@ export function WorkforceActivationForm(): React.JSX.Element {
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
 
   if (state.status === "SUCCESS") {
-    const isReset = purpose === "RESET";
-    const isChildOwner = purpose === "CHILD_OWNER_ONBOARDING";
-    const title = isReset
-      ? "ตั้งรหัสผ่านใหม่สำเร็จแล้ว"
-      : isChildOwner
-        ? "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการสำเร็จแล้ว"
-        : "ตั้งรหัสผ่านสำเร็จแล้ว";
-    const body = isReset
-      ? "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ"
-      : isChildOwner
-        ? "บัญชีผู้ดูแลหน่วยบริการของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้"
-        : "บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้";
+    if (purpose !== "RESET") {
+      return <ActivationSuccess lineAccountUrl={lineAccountUrl} statusRef={terminalStatusRef} />;
+    }
+    const title = "ตั้งรหัสผ่านใหม่สำเร็จแล้ว";
+    const body = "กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่ของคุณ";
 
     return (
       <section className="mt-8 space-y-4">
@@ -304,6 +298,8 @@ export function WorkforceActivationForm(): React.JSX.Element {
 
   return (
     <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
+      <h2 className="text-2xl font-semibold">{purpose === "RESET" ? "ตั้งรหัสผ่านใหม่" : "เปิดใช้งานบัญชี DEMI"}</h2>
+      {purpose !== "RESET" ? <ActivationIntroduction /> : null}
       <div className="rounded-[14px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         <p>
           {purpose === "RESET"

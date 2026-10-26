@@ -57,6 +57,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (!container.textContent?.includes("เปิดใช้งานบัญชีสำเร็จ!")) {
+    expect(container.querySelector('a[href^="https://liff.line.me/"]')).toBeNull();
+  }
   act(() => root.unmount());
   container.remove();
   window.history.replaceState(null, "", "/");
@@ -111,7 +114,7 @@ describe("Patient activation form", () => {
     });
 
     await act(async () => {
-      root.render(createElement(PatientActivationForm));
+      root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("ตรวจสอบลิงก์เปิดใช้งานไม่สำเร็จ");
@@ -134,7 +137,7 @@ describe("Patient activation form", () => {
     });
     mocks.completePatient.mockRejectedValue(new TypeError("Failed to fetch"));
     await act(async () => {
-      root.render(createElement(PatientActivationForm));
+      root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
     container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
@@ -163,7 +166,7 @@ describe("Patient activation form", () => {
         activationExpiresAt: "2026-10-16T00:00:00.000Z",
       });
       await act(async () => {
-        root.render(createElement(PatientActivationForm));
+        root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       });
       container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
       container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
@@ -232,9 +235,13 @@ describe("Patient activation form", () => {
       await submitActivation();
 
       const status = container.querySelector('[role="status"]');
-      expect(container.textContent).toContain("ตั้งรหัสผ่านสำเร็จแล้ว");
-      expect(container.textContent).toContain("บัญชีของคุณพร้อมใช้งานแล้ว");
-      expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
+      expect(container.querySelector('a[href="https://liff.line.me/1234567890-Test"]')).not.toBeNull();
+      expect(mocks.login).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe("/activate/patient");
+      expect(window.location.hash).toBe("");
+      expect(container.textContent).toContain("เปิดใช้งานบัญชีสำเร็จ!");
+      expect(container.textContent).toContain("บัญชี DEMI ของคุณพร้อมใช้งานแล้ว");
+      expect(container.querySelector('a[href="/login"]')?.textContent).toContain("เข้าสู่ระบบผ่านเว็บก่อน");
       expect(container.querySelector("form")).toBeNull();
       expect(status?.getAttribute("aria-live")).toBe("off");
       expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
@@ -251,7 +258,7 @@ describe("Patient activation form", () => {
       });
 
       await act(async () => {
-        root.render(createElement(PatientActivationForm));
+        root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       });
 
       expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
@@ -267,7 +274,7 @@ describe("Patient activation form", () => {
       purpose: "ACTIVATION" as const,
       label: "เปิดใช้งานบัญชี",
       pendingLabel: "กำลังเปิดใช้งานบัญชี...",
-      successTitle: "ตั้งรหัสผ่านสำเร็จแล้ว",
+      successTitle: "เปิดใช้งานบัญชีสำเร็จ!",
     },
     {
       purpose: "RESET" as const,
@@ -279,7 +286,7 @@ describe("Patient activation form", () => {
       purpose: "CHILD_OWNER_ONBOARDING" as const,
       label: "เปิดใช้งานบัญชี",
       pendingLabel: "กำลังเปิดใช้งานบัญชี...",
-      successTitle: "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการสำเร็จแล้ว",
+      successTitle: "เปิดใช้งานบัญชีสำเร็จ!",
     },
   ])("shows a purpose-specific confirmed completion for $purpose", async ({ purpose, label, pendingLabel, successTitle }) => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
@@ -292,9 +299,10 @@ describe("Patient activation form", () => {
     );
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm));
+      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       await Promise.resolve();
     });
+    expect(Boolean(container.querySelector('ol[aria-label="ขั้นตอนเริ่มใช้งาน DEMI"]'))).toBe(purpose !== "RESET");
     container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
     container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
@@ -305,19 +313,48 @@ describe("Patient activation form", () => {
     });
 
     expect(buttonByText(pendingLabel).disabled).toBe(true);
+    expect(container.querySelector('a[href^="https://liff.line.me/"]')).toBeNull();
 
     await act(async () => {
       finishCompletion?.();
     });
 
     expect(container.textContent).toContain(successTitle);
-    expect(container.querySelector('a[href="/login"]')?.textContent).toContain("ไปหน้าเข้าสู่ระบบ");
+    expect(container.querySelector('a[href="/login"]')?.textContent).toContain(purpose === "RESET" ? "ไปหน้าเข้าสู่ระบบ" : "เข้าสู่ระบบผ่านเว็บก่อน");
+    expect(Boolean(container.querySelector('a[href^="https://liff.line.me/"]'))).toBe(purpose !== "RESET");
+    expect(container.textContent?.includes("ขั้นตอนถัดไป: เชื่อม LINE")).toBe(purpose !== "RESET");
     expect(container.querySelector("form")).toBeNull();
     const status = container.querySelector('[role="status"]');
     expect(status?.getAttribute("aria-live")).toBe("off");
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(document.activeElement).toBe(status);
     expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);
+    expect(mocks.login).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/activate/workforce");
+  });
+
+  it.each(["CONFLICT", "FORBIDDEN", "UNAVAILABLE", "INVALID_INPUT"])("never offers LINE onboarding for a workforce %s completion", async (code) => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส***", purpose: "ACTIVATION" });
+    mocks.completeWorkforce.mockResolvedValue({ status: "ERROR", code, message: "ดำเนินการไม่สำเร็จ" });
+    await act(async () => root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
+    container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
+    container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
+    container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
+    await act(async () => buttonByText("เปิดใช้งานบัญชี").click());
+    expect(container.textContent).not.toContain("เปิดใช้งานบัญชีสำเร็จ!");
+    expect(container.querySelector('a[href^="https://liff.line.me/"]')).toBeNull();
+    expect(mocks.completeWorkforce).toHaveBeenCalledOnce();
+  });
+
+  it("does not introduce onboarding for an expired or consumed workforce invitation", async () => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({ status: "ERROR", message: "ลิงก์หมดอายุหรือถูกใช้แล้ว" });
+    await act(async () => root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
+    expect(container.textContent).toContain("ลิงก์หมดอายุหรือถูกใช้แล้ว");
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.querySelector("ol")).toBeNull();
+    expect(mocks.completeWorkforce).not.toHaveBeenCalled();
   });
 
   it("checks a one-time workforce activation through account sign-in guidance, not token replay", async () => {
@@ -330,7 +367,7 @@ describe("Patient activation form", () => {
     mocks.completeWorkforce.mockRejectedValue(new TypeError("Failed to fetch"));
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm));
+      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
     container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
     container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
@@ -359,7 +396,7 @@ describe("Patient activation form", () => {
     });
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm));
+      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       await Promise.resolve();
     });
 

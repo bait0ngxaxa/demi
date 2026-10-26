@@ -25,3 +25,12 @@ export function buildLineIntentUrl(intent: LineNavigationIntent): string {
   }
   return new URL(LINE_WEB_NAVIGATION_PATHS[intent], DEMI_LINE_PUBLIC_ORIGIN).toString();
 }
+
+/** Public presentation only; missing integration configuration must leave web access usable. */
+export function getPublicLineAccountEntryUrl(): string | null {
+  try {
+    return buildLineIntentUrl("LINK_ACCOUNT");
+  } catch {
+    return null;
+  }
+}

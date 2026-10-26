@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { ActivationIntroduction, ActivationSuccess } from "@/components/activation/activation-onboarding";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName, LoadingSpinner } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
@@ -74,7 +75,7 @@ function formatDate(date: string): string {
   }).format(new Date(date));
 }
 
-export function PatientActivationForm(): React.JSX.Element {
+export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUrl?: string | null }): React.JSX.Element {
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [details, setDetails] = useState<PatientActivationDetailsActionState | null>(null);
@@ -157,29 +158,7 @@ export function PatientActivationForm(): React.JSX.Element {
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
 
   if (state.status === "SUCCESS") {
-    return (
-      <section className="mt-8 space-y-4">
-        <div
-          aria-describedby="patient-activation-success-description"
-          aria-live="off"
-          aria-labelledby="patient-activation-success-title"
-          className="rounded-panel focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-          ref={terminalStatusRef}
-          role="status"
-          tabIndex={-1}
-        >
-          <Alert role="none" variant="success">
-            <h3 className="font-semibold" id="patient-activation-success-title">ตั้งรหัสผ่านสำเร็จแล้ว</h3>
-            <p className="mt-1" id="patient-activation-success-description">
-              บัญชีของคุณพร้อมใช้งานแล้ว สามารถเข้าสู่ระบบด้วยเลขบัตรประชาชนและรหัสผ่านที่ตั้งไว้
-            </p>
-          </Alert>
-        </div>
-        <Link className={buttonClassName({ className: "w-full" })} href="/login">
-          ไปหน้าเข้าสู่ระบบ
-        </Link>
-      </section>
-    );
+    return <ActivationSuccess lineAccountUrl={lineAccountUrl} statusRef={terminalStatusRef} />;
   }
 
   if (outcomeUnconfirmed) {
@@ -291,6 +270,8 @@ export function PatientActivationForm(): React.JSX.Element {
 
   return (
     <form action={formAction} className="mt-8 space-y-5" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
+      <h2 className="text-2xl font-semibold">ตั้งรหัสผ่านของคุณ</h2>
+      <ActivationIntroduction />
       <div className="rounded-[14px] border border-line bg-white px-4 py-4 text-sm leading-6 text-ink">
         <p className="font-semibold">บัญชีสำหรับ {visibleDetails.displayName}</p>
         <p className="mt-1 text-muted">โรงพยาบาล: {visibleDetails.hospitalName}</p>
