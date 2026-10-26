@@ -22,6 +22,7 @@ const {
   mockedGetPatientClassificationPageContext,
   mockedGetPatientDirectoryDetail,
   mockedGetPatientProgramPageContext,
+  mockedGetPatientResponsibleOsm,
   mockedGetProgramRoundsOverview,
   mockedGetProtectedApplicationActor,
   mockedNotFound,
@@ -32,6 +33,7 @@ const {
   mockedGetPatientClassificationPageContext: vi.fn(),
   mockedGetPatientDirectoryDetail: vi.fn(),
   mockedGetPatientProgramPageContext: vi.fn(),
+  mockedGetPatientResponsibleOsm: vi.fn(),
   mockedGetProgramRoundsOverview: vi.fn(),
   mockedGetProtectedApplicationActor: vi.fn(),
   mockedNotFound: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 }));
 vi.mock("@/modules/patient-directory/services/patient-directory-query-service", () => ({
   getPatientDirectoryDetail: mockedGetPatientDirectoryDetail,
+  getPatientResponsibleOsm: mockedGetPatientResponsibleOsm,
 }));
 vi.mock("@/modules/patient-baseline/services/patient-baseline-query-service", () => ({
   getPatientBaselineNavigationState: mockedGetPatientBaselineNavigationState,
@@ -237,6 +240,7 @@ describe("Patient detail page", () => {
     mockedConnection.mockResolvedValue(undefined);
     mockedGetProtectedApplicationActor.mockResolvedValue(actor);
     mockedGetPatientDirectoryDetail.mockResolvedValue(patientSummary);
+    mockedGetPatientResponsibleOsm.mockResolvedValue({ status: "UNASSIGNED" });
     mockedGetPatientBaselineNavigationState.mockResolvedValue({ baseline: null, canCreate: true });
     mockedGetPatientClassificationPageContext.mockResolvedValue({
       patient: {

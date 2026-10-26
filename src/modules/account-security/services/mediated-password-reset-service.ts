@@ -489,11 +489,11 @@ async function authorizeIssuerAndTarget(
     return { target, mode: "ADMIN" };
   }
   if (targetIsPlatformAdmin) throw new ForbiddenError();
-  if (!hospital || hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
   if (await isHeldChildOwnerResetTarget(transaction, target, input)) {
     if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held child OWNER account");
     return { target, mode: "ADMIN" };
   }
+  if (!hospital || hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
   if (issuerRoles.includes(Role.ADMIN)) return { target, mode: "ADMIN" };
 
   const ownerMembership = issuer.memberships.some(

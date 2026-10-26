@@ -29,6 +29,8 @@ async function clearDatabase(): Promise<void> {
   // Adjusted Goal Plans reference Follow-ups that may reference Goal Plans; clear the link first.
   await prisma.patientGoalPlan.updateMany({ where: { sourceFollowupId: { not: null } }, data: { sourceFollowupId: null } });
   await prisma.patientFollowup.deleteMany();
+  await prisma.appointmentLineNotification.deleteMany();
+  await prisma.patientAppointmentRescheduleRequest.deleteMany();
   await prisma.patientAppointmentAssigneeAcceptance.deleteMany();
   await prisma.patientAppointment.deleteMany();
   await prisma.patientGoalItem.deleteMany();

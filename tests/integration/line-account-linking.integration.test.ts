@@ -373,7 +373,14 @@ describe("Phase 17J.1 LINE PostgreSQL invariants", () => {
     const binding = await createBinding(userId, { unlinkedAt: new Date(), cleanupState: LineProviderCleanupState.UNAVAILABLE });
     await database.lineAccountBinding.update({ where: { id: binding.id }, data: { providerCleanupLastAttemptAt: new Date(), providerCleanupAttemptCount: 2 } });
     const dependencies = { database, currentSession: async () => ({ userId, sessionHash }), verifyIdentity: async () => ({ subject: binding.lineUserId ?? "" }), verifyFriendship: async () => ({ friend: true }) };
-    expect(await getLineAccountSummary(dependencies)).toEqual({ status: "UNLINKED", canUnlink: false, reachability: "UNKNOWN", menuState: null, cleanupState: "UNAVAILABLE" });
+    expect(await getLineAccountSummary(dependencies)).toEqual({
+      status: "UNLINKED",
+      canUnlink: false,
+      reachability: null,
+      reachabilityObservedAt: null,
+      menuState: null,
+      cleanupState: "UNAVAILABLE",
+    });
     await refreshLineAccountReachability({ idToken: "fresh-id", accessToken: "fresh-access" }, dependencies);
     const recovered = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
     expect(recovered.unlinkedAt).toEqual(binding.unlinkedAt);
