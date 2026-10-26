@@ -13,6 +13,7 @@ export function HospitalContentImageList({
   return (
     <div className="mt-5 min-w-0" aria-label={`ภาพประกอบ ${title}`}>
       <figure className="relative aspect-video min-w-0 overflow-hidden rounded-panel border border-border">
+        {/* eslint-disable-next-line @next/next/no-img-element -- authorized per-user image route (cookie auth, private no-store, signed-URL redirect); the shared Next optimizer cache must not serve it */}
         <img
           alt={`${title} ภาพที่ 1`}
           className={layout === "home" ? "h-full w-full object-cover" : "h-full w-full bg-surface-muted object-contain"}

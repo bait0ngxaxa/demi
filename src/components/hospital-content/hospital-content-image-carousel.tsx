@@ -25,6 +25,7 @@ export function HospitalContentImageCarousel({ imageIds, title }: { imageIds: re
     return (
       <figure className="mt-5 min-w-0 overflow-hidden rounded-panel border border-border">
         <div className={slideClass}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- authorized per-user image route (cookie auth, private no-store, signed-URL redirect); the shared Next optimizer cache must not serve it */}
           <img alt={`${title} ภาพที่ 1`} className={imageClass} decoding="async" loading="lazy" src={imageSource(imageIds[0] as string)} />
         </div>
       </figure>
@@ -67,6 +68,7 @@ export function HospitalContentImageCarousel({ imageIds, title }: { imageIds: re
         >
           {imageIds.map((imageId, slideIndex) => (
             <div aria-label={`ภาพที่ ${slideIndex + 1} จาก ${count}`} aria-roledescription="slide" className={slideClass} key={imageId} role="group">
+              {/* eslint-disable-next-line @next/next/no-img-element -- authorized per-user image route (cookie auth, private no-store, signed-URL redirect); the shared Next optimizer cache must not serve it */}
               <img alt={`${title} ภาพที่ ${slideIndex + 1}`} className={imageClass} decoding="async" loading="lazy" src={imageSource(imageId)} />
             </div>
           ))}

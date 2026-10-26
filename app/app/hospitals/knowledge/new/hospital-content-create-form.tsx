@@ -947,6 +947,7 @@ export function HospitalContentCreateForm({
                 <p className="text-sm text-text-muted">{images.length} รูป ตามลำดับที่แสดง</p>
                 <div className="mt-2 flex gap-2">
                   {images.map((image, index) => (
+                    // eslint-disable-next-line @next/next/no-img-element -- local blob: preview of an unsent file; the Next optimizer cannot fetch it
                     <img alt={`ตัวอย่างภาพที่ ${index + 1}`} className="aspect-[4/3] w-1/3 rounded-control bg-surface-muted object-contain" key={image.key} src={image.previewUrl} />
                   ))}
                 </div>

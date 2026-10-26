@@ -18,6 +18,7 @@ export function HospitalContentImageOrderList({
     <ol className="mt-4 space-y-3">
       {items.map((item, index) => (
         <li className="flex min-w-0 flex-col gap-3 rounded-panel border border-border p-3 sm:flex-row sm:items-center" key={item.key}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- blob: preview or authorized per-user image route; the shared Next optimizer cache must not serve either */}
           <img alt={`ภาพประกอบ ภาพที่ ${index + 1}`} className="aspect-[4/3] w-full rounded-control bg-surface-muted object-contain sm:w-36" decoding="async" loading="lazy" src={item.src} />
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <p className="mr-auto text-sm font-medium text-text">ภาพที่ {index + 1}</p>
