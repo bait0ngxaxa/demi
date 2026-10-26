@@ -1,5 +1,14 @@
 # UX-C.0 — Mobile onboarding audit and UAT
 
+## UX-C.1 final P2 follow-up (2026-10-26; supersedes resource-budget behavior at 73d2860)
+
+| Finding | Root cause | Implemented closure |
+| --- | --- | --- |
+| P2-01 | UI duplicate guard and reconciler lease did not cap sequential requests across instances | Existing PostgreSQL atomic buckets, dedicated ACCOUNT_STATUS_USER 6 and ACCOUNT_STATUS_GLOBAL 600 per five-minute fixed window; authenticated user only, hashed keys, fail closed; safe private/no-store 429 + Retry-After before provider calls |
+| P2-02 | Four verification calls at 10s each plus multiple 12s Messaging calls could outlive client 25s | Option A: one shared 12s abortable fetch deadline across verification/reconciliation/read-back; await existing failure persistence and lease release; host maxDuration 20s, client unchanged 25s. No raced/detached provider writes, new queue or after() continuation |
+
+See [current operational contract](./ACTIVATION_LINE_ONBOARDING.md) for budget margins, remote-write uncertainty, CHECKED/PENDING/error meanings, 429 UI cooldown, observability and lease recovery after host/storage failure. No authentication, activation, ownership, role projection, provider configuration or notification preference/delivery change. Real-device UAT below remains NOT EXECUTED; no deployment/live OA operation was performed. This is readiness for final code review, not a claim of production/device acceptance.
+
 Audit date: 2026-10-26. Base: `main`, `0393bad79bd47459580ec31747bf147da212b119`; clean working tree. Code inspection only, no device or real LINE account was used. UX-C.2 session handoff is deferred.
 
 ## Transition audit
@@ -104,3 +113,29 @@ git diff --check
 ```
 
 Regression coverage includes Patient/workforce/Child OWNER first-time activation, expired/consumed/uncertain outcomes, RESET, configured optional LINE entry, login return allowlist, explicit persisted notification opt-in, current-password/intent verification, binding conflict/idempotency/unlink/relink/recovery, role-specific menus and lease/version fencing. New tests cover status UNKNOWN/MISMATCH/UNAVAILABLE/FRIEND/APPLIED/NOT_FRIEND, unknown reachability, pending leases, provider failure, duplicate clicks, bounded timeout, unmount/pagehide cancellation, competing unlink confirmation, LINE login for existing bindings and shared-device confirmation/account switch. Physical viewport/zoom/assistive-technology behavior remains pending in the matrix above.
+
+## Final P2 verification — 2026-10-26
+
+| Actual check | Result |
+| --- | --- |
+| Focused unit/component/API regression command below | 44 files / 588 tests PASS |
+| Isolated PostgreSQL integration command below | 9 files / 206 tests PASS |
+| `npm run typecheck` | PASS |
+| `npm run lint` | Exit 0: 0 errors, 5 pre-existing no-img-element warnings in 4 unchanged Hospital knowledge/content files |
+| ESLint `--max-warnings=0` over all changed/new TS/TSX files | PASS, zero warnings |
+| `git diff --check` plus staged diff check and UTF-8/BOM/line-ending check | PASS |
+
+The nine new PostgreSQL cases use two independent Prisma pools (representing separate server instances), actual atomic bucket upserts and synthetic provider doubles: concurrent user quota admits exactly six; independent users/workflow categories; global ceiling admits exactly one remaining slot under concurrent updates; six successful full status operations followed by rejection before provider work; wrong LINE owner; occupied lease with old APPLIED; overlapping tab checks with no concurrent Messaging work; shared deadline across sequential slow verification and later manual retry; write timeout persists UNAVAILABLE/releases lease; lifecycle-version change/unlink prevents stale APPLIED. These are database tests, not a deployed multi-instance Vercel or device test.
+
+Unit/API tests additionally cover fail-closed storage failure, authenticated principal and session reuse, forged input rejection, 401/403 distinct from PENDING, private/no-store 429 and fixed-window Retry-After, CHECKED only after completion/summary, timeout without detached work, and unchanged workflow quotas. React tests cover passive cooldown with no silent retry, no stale readiness, manual recovery, unmount/pagehide cancellation, switching accounts, unlink overlap and unchanged password confirmation/notification opt-in. Earlier copy expectations were updated to distinguish last-known binding from an unverified current state. No remaining failure in these executed checks.
+
+```powershell
+npm run test -- app/activate/activation-interactions.test.tsx app/activate/activation-pages.test.tsx app/activate/workforce/workforce-activation-form.test.tsx app/line/account app/api/line/account app/login/login-page.test.tsx src/modules/line/services src/modules/line/adapters/line-login-client.test.ts src/modules/line/adapters/line-messaging-client.test.ts src/modules/line/transport/account-http.test.ts src/modules/line/transport/line-reconciliation-scheduler.test.ts src/modules/auth/schemas/login-schema.test.ts src/modules/auth/transport/login-return.test.ts src/modules/appointments/services/appointment-line-notification-preference-service.test.ts src/modules/appointments/transport/appointment-line-notification-actions.test.ts
+node --env-file=.env.integration node_modules/vitest/vitest.mjs run --config vitest.integration.config.mts tests/integration/line-account-status.integration.test.ts tests/integration/line-workflow-issuance.integration.test.ts tests/integration/line-account-linking.integration.test.ts tests/integration/patient-activation.integration.test.ts tests/integration/workforce.integration.test.ts tests/integration/line-authorization-lifecycle.integration.test.ts tests/integration/line-disconnection-orchestration.integration.test.ts tests/integration/parent-led-child-onboarding.integration.test.ts tests/integration/appointments.integration.test.ts
+npm run typecheck
+npm run lint
+```
+
+Global lint warning files verified unchanged against the reviewed HEAD: `app/app/hospitals/knowledge/hospital-content-image-order-list.tsx`, `app/app/hospitals/knowledge/new/hospital-content-create-form.tsx`, `src/components/hospital-content/hospital-content-image-carousel.tsx` (two warnings), `src/components/hospital-content/hospital-content-image-list.tsx`. No full repository test suite, build, development server, live provider operation, deployment or real-device UAT was performed. Existing manual UAT rows 15/16 should also verify cross-tab quota/429 cooldown and slow-provider recovery using authorized test accounts/provider doubles, with the same NOT EXECUTED status until actually performed. Effective deployed 20s function duration requires operator verification; source config and unit assertion were verified here.
+
+Both P2 findings are addressed in code and focused regression evidence; UX-C.1 is ready for final code review. Provider cancellation cannot guarantee rollback of a remotely accepted write, host/storage failure may leave the existing 90s lease until expiry, and no automatic continuation/completion is promised. Existing repair/manual checks reconcile that uncertainty. UX-C.2 remains out of scope.

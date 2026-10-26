@@ -39,7 +39,7 @@ const primaryButtonClass = "inline-flex min-h-12 w-full items-center justify-cen
 const secondaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-5 py-3 text-center font-semibold text-ink hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
 
 class LineRequestError extends Error {
-  constructor(message: string, readonly currentPasswordError?: string) {
+  constructor(message: string, readonly currentPasswordError?: string, readonly retryAfter = 0) {
     super(message);
     this.name = "LineRequestError";
   }
@@ -89,7 +89,14 @@ export async function refreshLineAccountFriendship(options?: { checkMenu: true; 
     body: JSON.stringify({ idToken, accessToken }),
     signal: options?.signal ?? AbortSignal.timeout(25_000),
   });
-  if (!response.ok) throw new Error(safeFailure);
+  if (!response.ok) {
+    if (response.status === 429 && options) {
+      const seconds = Number(response.headers.get("retry-after"));
+      throw new LineRequestError("ตรวจสอบสถานะบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่", undefined,
+        Number.isInteger(seconds) && seconds > 0 && seconds <= 300 ? seconds : 60);
+    }
+    throw new Error("ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง");
+  }
   const value = responseRecord(await response.json());
   const reachability = value.reachability;
   const cleanupState = value.cleanupState;
@@ -160,6 +167,8 @@ type LineAccountScreenProps = {
   onReload: () => void;
   menuCheckPending?: boolean;
   menuCheckComplete?: boolean;
+  statusCheckMessage?: string;
+  statusRetryAfter?: number;
 };
 
 export function LineAccountScreen({
@@ -202,24 +211,26 @@ export function LineAccountScreen({
   onReload,
   menuCheckPending = false,
   menuCheckComplete = false,
+  statusCheckMessage = "",
+  statusRetryAfter = 0,
 }: LineAccountScreenProps): React.JSX.Element {
   const busy = view === "BUSY";
-  const statusCheckDisabled = busy || view === "UNLINK_CONFIRM" || reachabilityBusy || friendshipBusy;
+  const statusCheckDisabled = busy || view === "UNLINK_CONFIRM" || reachabilityBusy || friendshipBusy || statusRetryAfter > 0;
   const linked = accountStatus === "LINKED" || (accountStatus === "INELIGIBLE" && canUnlink);
   const busyMessage = linked
     ? "กำลังยกเลิกการเชื่อมต่อ LINE..."
     : "กำลังเชื่อมบัญชี LINE...";
-  const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED" && !menuCheckPending;
+  const menuReady = accountStatus === "LINKED" && initial.reachability === "FRIEND" && initial.menuState === "APPLIED" && !menuCheckPending && !friendshipWarning;
   const notFriend = accountStatus === "LINKED" && initial.reachability === "NOT_FRIEND";
   const hasFriendshipAction = notFriend && (
     (friendshipSupported && liffState === "READY") || liffState === "LOGIN_REQUIRED"
   );
   const showReachabilityRetry = accountStatus === "LINKED" && canRefreshReachability &&
     !menuReady &&
-    (initial.reachability === "UNKNOWN" || initial.reachability === "NOT_FRIEND" || initial.reachability === null || friendshipWarning);
+    (initial.reachability === "UNKNOWN" || initial.reachability === "NOT_FRIEND" || initial.reachability === null);
 
   const menuPending = accountStatus === "LINKED" && initial.reachability === "FRIEND" && !menuReady;
-  const readinessMessage = notFriend
+  const readinessMessage = friendshipWarning ? "ยังยืนยันสถานะ LINE ปัจจุบันไม่ได้" : notFriend
     ? "เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน"
     : menuReady
       ? "พร้อมใช้งานผ่าน LINE แล้ว"
@@ -310,9 +321,9 @@ export function LineAccountScreen({
                         <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                         <path d="m7.5 12.5 3 3 6-7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
                       </svg>
-                      เชื่อมต่อแล้ว
+                      {friendshipWarning ? "สถานะล่าสุดที่ตรวจสอบได้" : "เชื่อมต่อแล้ว"}
                     </h2>
-                    <p className="mt-2 text-base text-ink">บัญชี LINE ของคุณเชื่อมกับ DEMI แล้ว</p>
+                    <p className="mt-2 text-base text-ink">{friendshipWarning ? "ข้อมูลก่อนตรวจสอบครั้งนี้: บัญชี LINE เชื่อมกับ DEMI" : "บัญชี LINE ของคุณเชื่อมกับ DEMI แล้ว"}</p>
                   </div>
                   {accountStatus === "INELIGIBLE" ? (
                     <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
@@ -538,8 +549,9 @@ export function LineAccountScreen({
           <div className="mt-5 space-y-3 text-sm leading-6 text-muted" role="status" aria-live="polite">
             <p>เมนูที่ใช้งานได้ขึ้นอยู่กับบทบาทและสิทธิ์ปัจจุบันใน DEMI การเชื่อมบัญชีไม่ได้เพิ่มสิทธิ์ให้คุณ</p>
             {reachabilityBusy ? <p>กำลังตรวจสอบสถานะ LINE และเมนู…</p> : null}
-            {friendshipWarning ? <p>ยังตรวจสอบไม่สำเร็จ บัญชียังเชื่อมอยู่ กรุณาลองตรวจสอบอีกครั้ง หรือใช้งานผ่านเว็บ</p> : null}
-            {menuCheckPending && !reachabilityBusy ? <p>ระบบยังตรวจสอบเมนูไม่เสร็จ โปรดรอสักครู่แล้วตรวจสอบอีกครั้ง คุณใช้เว็บระหว่างรอได้</p> : null}
+            {friendshipWarning ? <p>{statusCheckMessage || "ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง"} คุณยังใช้ DEMI ผ่านเว็บได้</p> : null}
+            {statusRetryAfter > 0 ? <p>กรุณารอประมาณ {statusRetryAfter} วินาทีก่อนตรวจสอบอีกครั้ง</p> : null}
+            {menuCheckPending && !reachabilityBusy ? <p>ระบบยังตรวจสอบเมนูไม่เสร็จ กรุณารอสักครู่แล้วลองอีกครั้ง</p> : null}
             {menuCheckComplete && !menuCheckPending && !menuReady && !friendshipWarning && !reachabilityBusy ? <p>ตรวจสอบแล้ว ยังไม่ยืนยันความพร้อมใช้งาน LINE คุณตรวจสอบอีกครั้งภายหลังหรือใช้เว็บได้</p> : null}
             {menuPending ? (
               <>
@@ -605,6 +617,8 @@ export function LineAccountClient({
   const [refreshBusy, setRefreshBusy] = useState(false);
   const [menuCheckPending, setMenuCheckPending] = useState(false);
   const [menuCheckComplete, setMenuCheckComplete] = useState(false);
+  const [statusCheckMessage, setStatusCheckMessage] = useState("");
+  const [statusRetryAfter, setStatusRetryAfter] = useState(0);
   const statusRequest = useRef<AbortController | null>(null);
   const [friendshipBusy, setFriendshipBusy] = useState(false);
   const [isInClient, setIsInClient] = useState(false);
@@ -699,6 +713,12 @@ export function LineAccountClient({
     statusRequest.current = null;
     request?.abort();
   }, []);
+
+  useEffect(() => {
+    if (statusRetryAfter <= 0) return;
+    const timer = window.setTimeout(() => setStatusRetryAfter(0), statusRetryAfter * 1000);
+    return () => window.clearTimeout(timer);
+  }, [statusRetryAfter]);
 
   useEffect(() => {
     if (view === "SUCCESS" || view === "FAILURE") {
@@ -842,12 +862,13 @@ export function LineAccountClient({
 
   async function refreshReachability(): Promise<void> {
     if (view !== "READY" && view !== "SUCCESS") return;
-    if (!canRefreshReachability || refreshBusy || friendshipBusy || statusRequest.current) return;
+    if (!canRefreshReachability || refreshBusy || friendshipBusy || statusRequest.current || statusRetryAfter > 0) return;
     const controller = new AbortController();
     statusRequest.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 25_000);
     setRefreshBusy(true);
     setRefreshFailed(false);
+    setStatusCheckMessage("");
     setMenuCheckComplete(false);
     try {
       const updated = await refreshLineAccountFriendship({ checkMenu: true, signal: controller.signal });
@@ -857,8 +878,12 @@ export function LineAccountClient({
       setMenuCheckPending(updated.reconciliationPending ?? false);
       setMenuCheckComplete(true);
       if (updated.menuState !== null) setProviderWarning(updated.menuState !== "APPLIED");
-    } catch {
-      if (statusRequest.current === controller) setRefreshFailed(true);
+    } catch (error: unknown) {
+      if (statusRequest.current === controller) {
+        setRefreshFailed(true);
+        setStatusCheckMessage(error instanceof LineRequestError ? error.message : "ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง");
+        if (error instanceof LineRequestError && error.retryAfter > 0) setStatusRetryAfter(error.retryAfter);
+      }
     } finally {
       window.clearTimeout(timeout);
       if (statusRequest.current === controller) {
@@ -938,6 +963,8 @@ export function LineAccountClient({
       friendshipWarning={refreshFailed}
       menuCheckPending={menuCheckPending}
       menuCheckComplete={menuCheckComplete}
+      statusCheckMessage={statusCheckMessage}
+      statusRetryAfter={statusRetryAfter}
       view={view}
       successAction={successAction}
       message={message}

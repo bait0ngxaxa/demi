@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { LineWorkflowFailure } from "../domain/line-workflow-errors";
-import { createLineWorkflowRateLimiter, lineWorkflowRateLimitInternals } from "./line-workflow-rate-limit";
+import { createLineWorkflowRateLimiter, getLineWorkflowRateLimitRetryAfter, LINE_WORKFLOW_RATE_LIMITS, lineWorkflowRateLimitInternals } from "./line-workflow-rate-limit";
 
 const NOW = new Date("2026-10-18T03:02:34.567Z");
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -14,6 +14,11 @@ function database(hitCount = 1) {
 }
 
 describe("PostgreSQL shared MINI workflow rate limiter", () => {
+  it("keeps dedicated account-status quotas separate and calculates the fixed-window retry boundary", () => {
+    expect(LINE_WORKFLOW_RATE_LIMITS).toMatchObject({ ACCOUNT_STATUS_USER: 6, ACCOUNT_STATUS_GLOBAL: 600, VERIFY_USER: 10, VERIFY_GLOBAL: 600, ACKNOWLEDGE: 60, CANCELLATION_REQUEST: 20 });
+    expect(getLineWorkflowRateLimitRetryAfter(new Date("2026-10-26T03:00:00Z"))).toBe(300);
+    expect(getLineWorkflowRateLimitRetryAfter(new Date("2026-10-26T03:04:59.999Z"))).toBe(1);
+  });
   it("uses fixed five-minute windows and a bounded expiration", async () => {
     const db = database();
     const limiter = createLineWorkflowRateLimiter(db as never);
@@ -48,5 +53,10 @@ describe("PostgreSQL shared MINI workflow rate limiter", () => {
     expect(error).toBeInstanceOf(LineWorkflowFailure);
     expect((error as LineWorkflowFailure).code).toBe("INFRASTRUCTURE_UNAVAILABLE");
     expect(db.$queryRaw).not.toHaveBeenCalled();
+  });
+  it("fails closed for status checks when the atomic counter write fails", async () => {
+    const db = database(); db.$queryRaw.mockRejectedValue(new Error("private counter failure"));
+    await expect(createLineWorkflowRateLimiter(db as never).consume("ACCOUNT_STATUS_USER", USER_ID, NOW))
+      .rejects.toMatchObject({ code: "INFRASTRUCTURE_UNAVAILABLE" });
   });
 });

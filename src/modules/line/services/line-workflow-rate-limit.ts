@@ -16,6 +16,8 @@ export const LINE_WORKFLOW_RATE_LIMITS = {
   VERIFY_USER: 10,
   ACKNOWLEDGE: 60,
   CANCELLATION_REQUEST: 20,
+  ACCOUNT_STATUS_USER: 6,
+  ACCOUNT_STATUS_GLOBAL: 600,
 } as const;
 
 export type LineWorkflowRateLimitCategory = keyof typeof LINE_WORKFLOW_RATE_LIMITS;
@@ -34,6 +36,11 @@ function rateLimitWindow(now: Date): { startsAt: Date; expiresAt: Date } {
   if (!Number.isFinite(timestamp)) throw new LineWorkflowFailure("INFRASTRUCTURE_UNAVAILABLE");
   const start = Math.floor(timestamp / WINDOW_MS) * WINDOW_MS;
   return { startsAt: new Date(start), expiresAt: new Date(start + 2 * WINDOW_MS) };
+}
+
+export function getLineWorkflowRateLimitRetryAfter(now: Date): number {
+  const { startsAt } = rateLimitWindow(now);
+  return Math.max(1, Math.ceil((startsAt.getTime() + WINDOW_MS - now.getTime()) / 1000));
 }
 
 /**

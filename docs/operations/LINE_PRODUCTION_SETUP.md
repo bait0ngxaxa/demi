@@ -1,5 +1,11 @@
 # LINE_PRODUCTION_SETUP — LINE provider และ channel สำหรับ production
 
+### UX-C.1 status-check resource limits (2026-10-26)
+
+`/api/line/account/status` ใช้ PostgreSQL atomic buckets เดิม แยก `ACCOUNT_STATUS_USER` 6/5 นาที และ `ACCOUNT_STATUS_GLOBAL` 600/5 นาที ก่อน LINE calls; storage ไม่พร้อมให้ fail closed 503 การจำกัดแยกจาก workflow quotas ปฏิเสธด้วย private/no-store 429 และ Retry-After ไม่มี provider call ต่อจากการปฏิเสธ
+
+เลือก synchronous Option A พร้อม deadline รวมทุก LINE call 12 วินาที (รวม verification/read-back) ผ่าน abortable fetch เดิม Route `maxDuration=20`, client 25 วินาที รอ reconciler จัดการ timeout และคืน lease ไม่มี Promise.race หรือ background continuation ของ status request CHECKED ต้องอ่าน persisted outcome หลัง attempt; BUSY/MISSING เป็น PENDING; deadline/provider/auth/storage failure เป็น error ไม่มี guaranteed provider rollback เมื่อ HTTP write timeout รายละเอียดการกลับมาตรวจแบบ manual และข้อจำกัด host kill/lease อยู่ใน [onboarding runbook](./ACTIVATION_LINE_ONBOARDING.md) ติดตาม aggregate 429/503/latency/timeout/BUSY โดยไม่ log credentials หรือ identity การตั้งค่า effective function duration และ real-device UAT ยังไม่ได้ตรวจบน deployment จริง ไม่มีการเปลี่ยน OA/provider configuration
+
 สถานะ: runbook ยังไม่ได้ทำกับ LINE Console จริง ใช้คู่กับ [17J.1 runbook](../phases/PHASE_17J1_LINE_EXTERNAL_SETUP_RUNBOOK.md), [B2.4 §13](../phases/PHASE_LINE_QA_B2_4_CONFIGURATION_SIMPLIFICATION.md#owner-setup-th) และ [C3 §5](../phases/PHASE_LINE_QA_C3_CONVERSATIONAL_REPLIES.md) เอกสารนี้เป็นบันทึกการตั้งค่า provider โดยผู้ดูแล ไม่ใช่ release approval หรือ application feature gate. Business behavior ถูกกำหนดจาก auth, grants, preference, lifecycle และข้อมูลปัจจุบันตาม [ADR-0010](../adr/0010-production-ready-mvp-and-deployment-neutral-runtime.md).
 
 ## 0. กฎที่ย้อนกลับไม่ได้

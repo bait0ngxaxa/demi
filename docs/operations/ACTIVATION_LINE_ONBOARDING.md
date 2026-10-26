@@ -1,5 +1,20 @@
 # การเปิดใช้งานบัญชีและเริ่มใช้ LINE (UX-A + UX-B)
 
+## UX-C.1 final hardening — ข้อกำหนดปัจจุบัน (2026-10-26)
+
+เพิ่มเติมจาก implementation `73d2860` ด้านล่าง:
+
+- Status request ต้องผ่าน exact same-origin / bounded strict schema → verified DEMI session → PostgreSQL quota → LINE token/subject/friendship verification → leased reconciliation → persisted summary ใช้ session ที่ server ตรวจแล้วซ้ำภายใน request ไม่รับ principal จาก client
+- ใช้ `LineWorkflowRateLimitBucket` เดิมและ atomic capped upsert เพิ่ม category `ACCOUNT_STATUS_USER` **6 ครั้งต่อผู้ใช้ / bucket 5 นาที** และ `ACCOUNT_STATUS_GLOBAL` **600 ครั้งรวม / bucket 5 นาที** แยกจาก workflow quotas ทั้งหมด เก็บ key hash ตาม purpose/category เดิม ไม่มี raw identity, table หรือ migration ใหม่ สอง bucket ไม่ได้เป็น transaction เดียว: user quota ที่ใช้แล้วไม่คืนเมื่อ global ปฏิเสธ ช่วยจำกัดการยิงซ้ำขณะ global เต็ม Fixed-window อาจมี burst ข้ามขอบ bucket ตาม convention เดิม
+- ปฏิเสธก่อน LINE provider calls ด้วย **429**, ข้อความ “ตรวจสอบสถานะบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่”, `Retry-After` จำนวนวินาทีถึง bucket ถัดไป และ `Cache-Control: private, no-store` ทุกผลตอบกลับ หาก shared storage ล้มเหลวส่ง sanitized 503 แบบ fail closed
+- เลือก **Option A**: LINE verification + Messaging API ทุก call ใช้ **AbortSignal deadline รวม 12 วินาที** เริ่มก่อน resolve session/quota ไม่ใช่ timeout ใหม่ 12 วินาทีต่อ call ใช้ injected fetcher เดิมของ adapters และรอ reconciler จัดการ error/persistence/finally คืน lease ไม่มี `Promise.race()`, floating background promise หรือ async continuation ใหม่ เมื่อ budget หมดส่ง error ไม่ส่ง CHECKED/PENDING ปลอม
+- Route ประกาศ `maxDuration = 20` วินาที; client คง 25 วินาที มี 8 วินาทีเผื่อ auth/DB/cleanup นอก provider budget และ 5 วินาทีระหว่าง host cap กับ client deadline Platform ต้องรองรับ config นี้ตาม [Next.js/Vercel duration](https://vercel.com/docs/functions/configuring-functions/duration); ยังไม่ได้ deploy หรือยืนยัน effective dashboard configuration ในงานนี้ Host kill/storage outage อาจขัดการคืน lease ต้องรอ lease เดิม 90 วินาทีหมดอายุ การเชื่อมบัญชีไม่ถูกล้าง
+- CHECKED = attempt จบและอ่าน persisted summary หลังจากนั้น; ยังต้อง LINKED + FRIEND + APPLIED จึงพร้อม PENDING = BUSY/MISSING ที่ยังยืนยัน completion ไม่ได้ ค่า APPLIED เก่าไม่แสดงพร้อมในกรณีนี้ Provider UNAVAILABLE, invalid identity/auth, storage failure หรือ deadline เป็น error ไม่เปลี่ยน binding เป็น unlinked
+- Abort ของ HTTP write ไม่รับประกัน provider ย้อนผลที่อาจรับไปแล้ว หาก timeout หลังส่ง write ถือผลไม่แน่นอน ใช้ UNAVAILABLE/ไม่มี confirmed read-back และ version-fenced persistence เดิม ไม่ลด lease หรือข้าม read-back ผู้ใช้ตรวจซ้ำภายหลังผ่าน quota และ lease ได้ ไม่มี automatic retry/polling Page/link/friendship `after()` เดิมยังแยกจาก endpoint นี้และไม่รับรอง completion
+- UI แสดง 429 และปิดปุ่มตรวจตาม `Retry-After` timer ไม่เรียก provider เองเมื่อครบเวลา Timeout แสดง “ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง” และแยกข้อมูล binding ที่เคยตรวจได้ออกจากสถานะปัจจุบันที่ยังไม่ยืนยัน ไม่อ้างว่ายัง linked จาก timeout เพียงอย่างเดียว มีเว็บ fallback และไม่ opt-in notification
+
+ติดตาม aggregate counts ของ 429/503, latency ของ status route, provider-budget abort, BUSY และ persisted UNAVAILABLE เพื่อหาความผิดปกติและปรับ capacity ตามหลักฐาน ห้าม log request body, credentials, invitation URL, principal/LINE subject, appointment หรือ clinical data การยืนยันบน Vercel และ real-device UAT ยัง pending ดู [audit/verification](./MOBILE_ONBOARDING_AUDIT_UAT.md)
+
 ## UX-C.1 — ความต่อเนื่องบนมือถือ (2026-10-26)
 
 เส้นทาง activation → เลือก LINE/เว็บ → login เมื่อจำเป็น → ยืนยัน password → binding → friendship → menu → optional opt-in ยังคงเดิม ดู [audit และ UAT 20 สถานการณ์](./MOBILE_ONBOARDING_AUDIT_UAT.md) สำหรับหลักฐานและรายการที่ยังไม่ได้ทดสอบบนอุปกรณ์จริง

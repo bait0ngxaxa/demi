@@ -255,8 +255,8 @@ describe("LINE account user experience", () => {
       menuState: "UNKNOWN",
     }, { friendshipWarning: true, canRefreshReachability: true });
 
-    expect(markup).toContain("เชื่อมต่อแล้ว");
-    expect(markup).toContain("บัญชียังเชื่อมอยู่");
+    expect(markup).toContain("สถานะล่าสุดที่ตรวจสอบได้");
+    expect(markup).toContain("ยังตรวจสอบสถานะ LINE ไม่สำเร็จ");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
   });
 
@@ -307,7 +307,7 @@ describe("LINE account user experience", () => {
       canUnlink: true,
     }, { canRefreshReachability: true, friendshipWarning: true });
 
-    expect(markup).toContain("เชื่อมต่อแล้ว");
+    expect(markup).toContain("สถานะล่าสุดที่ตรวจสอบได้");
     expect(markup).toContain("บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้");
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE");
     expect(markup).not.toContain(">ตรวจสอบอีกครั้ง</button>");
@@ -345,11 +345,11 @@ describe("LINE account user experience", () => {
     });
 
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้");
+    expect(markup).toContain("ยังยืนยันสถานะ LINE ปัจจุบันไม่ได้");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toContain(">ตรวจสอบอีกครั้ง</button>");
     expect(markup).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
-    expect(markup).toContain("ยังตรวจสอบไม่สำเร็จ");
+    expect(markup).toContain("ยังตรวจสอบสถานะ LINE ไม่สำเร็จ");
     expect(markup).not.toContain("เชื่อมบัญชีแล้ว แต่ต้องเพิ่ม DEMI เป็นเพื่อน");
     expect(markup).not.toContain("UNKNOWN");
     expect(markup).not.toContain("MISMATCH");
@@ -372,7 +372,7 @@ describe("LINE account user experience", () => {
     });
 
     expect(markup).toContain("บัญชี LINE นี้เชื่อมกับ DEMI เรียบร้อยแล้ว");
-    expect(markup).toContain("เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน");
+    expect(markup).toContain("ยังยืนยันสถานะ LINE ปัจจุบันไม่ได้");
     expect(markup).toContain(">เพิ่ม DEMI เป็นเพื่อน</button>");
     expect(markup).toContain(">กลับไปที่ LINE</button>");
     expect(markup).toMatch(/<button[^>]*class="[^"]*bg-brand [^"]*">เพิ่ม DEMI เป็นเพื่อน<\/button>/u);

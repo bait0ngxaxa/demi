@@ -76,10 +76,28 @@ describe("mobile LINE onboarding continuity interactions", () => {
   it("preserves binding on provider failure and allows an explicit retry", async () => {
     fetcher.mockRejectedValueOnce(new Error("private failure")).mockResolvedValueOnce(Response.json({ ...linked, reconciliation: "CHECKED" }));
     await mount(); await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
-    expect(container.textContent).toContain("ยังตรวจสอบไม่สำเร็จ บัญชียังเชื่อมอยู่");
+    expect(container.textContent).toContain("ยังตรวจสอบสถานะ LINE ไม่สำเร็จ");
     expect(container.textContent).not.toContain("private failure");
     await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("honors Retry-After without silently retrying and permits a later explicit check", async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ error: "rate limited" }, { status: 429, headers: { "retry-after": "150" } }))
+      .mockResolvedValueOnce(Response.json({ ...linked, menuState: "APPLIED", reconciliation: "CHECKED" }));
+    await mount(); vi.useFakeTimers();
+    await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
+    expect(container.textContent).toContain("ตรวจสอบสถานะบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่");
+    expect(container.textContent).toContain("150 วินาที");
+    expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(true);
+    expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
+    await act(async () => vi.advanceTimersByTimeAsync(149_000));
+    expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(false);
+    expect(fetcher).toHaveBeenCalledOnce();
+    await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
+    expect(container.textContent).toContain("พร้อมใช้งานผ่าน LINE แล้ว"); expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("aborts on unmount and ignores a late provider response", async () => {
@@ -112,7 +130,7 @@ describe("mobile LINE onboarding continuity interactions", () => {
     await mount(); vi.useFakeTimers();
     await act(async () => button("ตรวจสอบสถานะเมนูอีกครั้ง").click());
     await act(async () => vi.advanceTimersByTimeAsync(25_000));
-    expect(container.textContent).toContain("ยังตรวจสอบไม่สำเร็จ");
+    expect(container.textContent).toContain("ยังตรวจสอบสถานะ LINE ไม่สำเร็จ");
     expect(button("ตรวจสอบสถานะเมนูอีกครั้ง").disabled).toBe(false);
     await act(async () => vi.advanceTimersByTimeAsync(120_000)); expect(fetcher).toHaveBeenCalledOnce();
   });
