@@ -20,11 +20,11 @@ const richMenuInfoSchema = z.object({ richMenuId: z.string(), name: z.string(), 
 export type LineRichMenuAction =
   | { type: "uri"; label: string; uri: string }
   | { type: "richmenuswitch"; label: string; richMenuAliasId: string; data: string }
-  | { type: "postback"; label: string; data: string };
+  | { type: "message"; label: string; text: string };
 
 export type LineQuickReplyAction =
   | { type: "uri"; label: string; uri: string }
-  | { type: "postback"; label: string; data: string };
+  | { type: "message"; label: string; text: string };
 
 export type LineReplyMessage = {
   type: "text";
@@ -64,8 +64,8 @@ export function createLineRichMenuPayload(
     let providerAction: LineRichMenuAction;
     if (action.type === "uri") {
       providerAction = { type: "uri", label: action.label, uri: buildLineIntentUrl(action.intent) };
-    } else if (action.type === "postback") {
-      providerAction = { type: "postback", label: action.label, data: action.data };
+    } else if (action.type === "message") {
+      providerAction = { type: "message", label: action.label, text: action.text };
     } else {
       const targetKey = roleSet.length === 1 ? `${action.role}_DIRECT` : `${action.role}_${roleSet.join("_")}`;
       const targetMenu = getLineMenuDefinition(targetKey);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
+import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "../domain/line-reactive-marker";
 import { LINE_RICH_MENU_CATALOG, LINE_RICH_MENU_BY_KEY } from "./catalog";
 import { getLineMenuAreaBounds } from "./layout";
 
@@ -17,8 +17,9 @@ const roleLabels = {
 } as const;
 type MenuRole = keyof typeof roleLabels;
 const manageAccount = { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" } as const;
+const appointmentMessage = { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" } as const;
 const patientQuickActions = [
-  { type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+  appointmentMessage,
   { type: "uri", intent: "OPEN_PATIENT_APPOINTMENTS", label: "นัดหมายทั้งหมด" },
   { type: "uri", intent: "OPEN_PATIENT_WELLNESS", label: "บันทึกสุขภาพ" },
   { type: "uri", intent: "OPEN_PATIENT_MEDICATIONS", label: "ยาของฉัน" },
@@ -81,10 +82,8 @@ describe("DEMI shared Rich Menu catalog", () => {
       const menu = LINE_RICH_MENU_BY_KEY.get(`${selected}_${roles.join("_")}`);
       expect(menu?.context).toBe(selected === "HOSPITAL" ? "เมนูสำหรับคุณ" : "เลือกงานที่ต้องการ");
       const switchActions = menu?.actions.filter((action) => action.type === "richmenuswitch");
-      const appointmentActions = menu?.actions.filter((action) => action.type === "postback");
-      expect(appointmentActions).toEqual(selected === "PATIENT"
-        ? [{ type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER }]
-        : []);
+      const appointmentActions = menu?.actions.filter((action) => action.type === "message");
+      expect(appointmentActions).toEqual(selected === "PATIENT" ? [appointmentMessage] : []);
       const remainingRoles = roles.filter((role) => role !== selected);
       expect(switchActions?.map((action) => action.role)).toEqual(remainingRoles);
       expect(switchActions?.map((action) => action.label)).toEqual(remainingRoles.map(roleLabel));
@@ -122,9 +121,9 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(JSON.stringify(LINE_RICH_MENU_CATALOG)).not.toMatch(/userId|patientId|hospitalId|national|hn|token|session|clinical/iu);
   });
 
-  it("adds the exact appointment postback only to the four Patient presentation menus", () => {
+  it("adds the exact appointment message action only to the four Patient presentation menus", () => {
     const eligibleKeys = LINE_RICH_MENU_CATALOG
-      .filter((menu) => menu.actions.some((action) => action.type === "postback"))
+      .filter((menu) => menu.actions.some((action) => action.type === "message"))
       .map((menu) => menu.key);
     expect(eligibleKeys).toEqual([
       "PATIENT_DIRECT",
@@ -133,6 +132,9 @@ describe("DEMI shared Rich Menu catalog", () => {
       "PATIENT_PATIENT_OSM_HOSPITAL",
     ]);
     expect(LINE_RICH_MENU_CATALOG).toHaveLength(18);
+    expect(LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT).toBe("นัด");
+    const actionTypes = new Set(LINE_RICH_MENU_CATALOG.flatMap(({ actions }) => actions.map(({ type }) => type)));
+    expect(actionTypes).toEqual(new Set(["uri", "richmenuswitch", "message"]));
   });
 
   it("uses the same task label on each role menu and action", () => {

@@ -328,7 +328,7 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
       .resolves.toBe("REFUSED_INELIGIBLE");
 
     expect(replies[0]?.[0]?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
-    expect(replies[0]?.[0]?.quickReply?.items.map(({ action }) => action.type === "uri" ? action.uri : action.data)).toEqual([
+    expect(replies[0]?.[0]?.quickReply?.items.map(({ action }) => action.type === "uri" ? action.uri : action.text)).toEqual([
       "https://demi.example.org/app/patients/assigned",
       "https://demi.example.org/app/patients/assigned?task=screening",
       "https://demi.example.org/app/patients/assigned?task=followup",

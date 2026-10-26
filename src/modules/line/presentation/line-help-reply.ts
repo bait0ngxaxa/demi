@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { LineQuickReplyAction, LineReplyMessage } from "../adapters/line-messaging-client";
-import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
+import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "../domain/line-reactive-marker";
 import type { OperationalLineRole } from "../domain/line-types";
 import { buildLineIntentUrl, type LineNavigationIntent } from "../services/line-deep-link-builder";
 import { LINE_APPOINTMENT_REPLY_COPY } from "./line-appointment-reply";
@@ -18,12 +18,12 @@ export type LineHelpReplyInput = readonly OperationalLineRole[] | "INFRASTRUCTUR
 
 type QuickReplyDefinition =
   | { type: "uri"; label: string; intent: LineNavigationIntent }
-  | { type: "postback"; label: string; data: typeof LINE_PATIENT_NEXT_APPOINTMENT_MARKER };
+  | { type: "message"; label: string; text: typeof LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT };
 
-// Labels match the Rich Menu catalog. URIs are fixed intents only: no IDs.
+// Labels and actions match the Rich Menu catalog. URIs are fixed intents only: no IDs.
 const QUICK_REPLIES_BY_ROLE: Readonly<Record<OperationalLineRole, readonly QuickReplyDefinition[]>> = {
   PATIENT: [
-    { type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+    { type: "message", label: "ตรวจสอบนัดหมาย", text: LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT },
     { type: "uri", label: "นัดหมายทั้งหมด", intent: "OPEN_PATIENT_APPOINTMENTS" },
     { type: "uri", label: "บันทึกสุขภาพ", intent: "OPEN_PATIENT_WELLNESS" },
     { type: "uri", label: "ยาของฉัน", intent: "OPEN_PATIENT_MEDICATIONS" },
@@ -48,7 +48,7 @@ const MANAGE_ACCOUNT_QUICK_REPLY: QuickReplyDefinition = {
 function quickReplyAction(definition: QuickReplyDefinition): LineQuickReplyAction {
   return definition.type === "uri"
     ? { type: "uri", label: definition.label, uri: buildLineIntentUrl(definition.intent) }
-    : { type: "postback", label: definition.label, data: definition.data };
+    : { type: "message", label: definition.label, text: definition.text };
 }
 
 function textWithQuickReplies(

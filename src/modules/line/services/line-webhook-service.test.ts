@@ -177,7 +177,7 @@ describe("LINE webhook ingestion", () => {
     expect(harness.database.$transaction).not.toHaveBeenCalled();
   });
 
-  it("durably accepts the exact Patient appointment postback and emits only transient transport data", async () => {
+  it("durably accepts the exact legacy Patient appointment postback and emits only transient transport data", async () => {
     const harness = createDatabase();
     const event = patientNextAppointmentEvent(eventId("10"));
     const timestamp = event.timestamp;
@@ -208,6 +208,38 @@ describe("LINE webhook ingestion", () => {
     expect(JSON.stringify([...harness.receipts.values()])).not.toMatch(
       /replyToken|incoming-reply-token|lineUserId|scheduledAt|hospitalName|appointmentId|patientId/i,
     );
+  });
+
+  it("gives the Rich Menu message action text the same unthrottled appointment work as the legacy postback", async () => {
+    const harness = createDatabase();
+    const menuAction = LINE_RICH_MENU_BY_KEY.get("PATIENT_DIRECT")?.actions
+      .find((action) => action.type === "message");
+    if (menuAction?.type !== "message") throw new Error("Expected the Patient appointment message action");
+    const events = [
+      textMessageEvent(eventId("1A"), menuAction.text, { replyToken: "message-reply-token" }),
+      patientNextAppointmentEvent(eventId("1B"), { replyToken: "postback-reply-token" }),
+    ];
+
+    const result = await processLineWebhookRequest(
+      signedRequest(envelope(events)),
+      harness.database,
+      { monotonicNow: () => 1_000 },
+    );
+
+    expect(result).toMatchObject({ accepted: 2, duplicates: 0, ignored: 0 });
+    expect(result.reactiveWorkItems).toEqual([eventId("1A"), eventId("1B")].map((webhookEventId, index) => ({
+      intent: "PATIENT_NEXT_APPOINTMENT",
+      webhookEventId,
+      eventOccurredAt: new Date(1_791_254_400_000),
+      localExecutionDeadline: 46_000,
+      lineUserId,
+      replyToken: index === 0 ? "message-reply-token" : "postback-reply-token",
+      isRedelivery: false,
+    })));
+    for (const id of ["1A", "1B"]) {
+      expect(harness.receipts.get(eventId(id))).toMatchObject({ eventType: LineWebhookEventType.PATIENT_NEXT_APPOINTMENT });
+    }
+    expect(harness.transaction.lineAccountBinding.findMany).not.toHaveBeenCalled();
   });
 
   it("ignores marker case, whitespace, prefix/suffix, arbitrary text, and unknown postbacks", async () => {

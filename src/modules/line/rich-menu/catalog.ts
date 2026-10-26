@@ -1,13 +1,13 @@
 import type { OperationalLineRole } from "../domain/line-types";
 import type { LineWebNavigationIntent } from "../domain/line-navigation-intents";
-import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
+import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "../domain/line-reactive-marker";
 
 export const LINE_WORKSPACE_SWITCH_MARKER = "DEMI_LINE_WORKSPACE_SWITCH_V1";
 
 export type LineMenuAction =
   | { type: "uri"; label: string; intent: "LINK_ACCOUNT" | "MANAGE_ACCOUNT" | LineWebNavigationIntent }
   | { type: "richmenuswitch"; label: string; role: OperationalLineRole }
-  | { type: "postback"; label: string; data: typeof LINE_PATIENT_NEXT_APPOINTMENT_MARKER };
+  | { type: "message"; label: string; text: typeof LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT };
 
 export type LineMenuDefinition = {
   key: string;
@@ -29,10 +29,11 @@ const roleMenuContext = (role: OperationalLineRole): string =>
 const roleIntent = (role: OperationalLineRole): "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" =>
   role === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE";
 
+// A message action shows the Patient's own "นัด" bubble at once; the webhook keyword path answers it.
 const appointmentAction: LineMenuAction = {
-  type: "postback",
+  type: "message",
   label: "ตรวจสอบนัดหมาย",
-  data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
+  text: LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT,
 };
 
 const patientQuickActions: readonly LineMenuAction[] = [

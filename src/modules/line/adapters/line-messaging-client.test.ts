@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 import { LINE_RICH_MENU_BY_KEY, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { createLineRichMenuPayload, LineMessagingClient } from "./line-messaging-client";
 
@@ -29,22 +28,20 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(payload.selected).toBe(true);
   });
 
-  it("projects the Patient appointment action as an exact Rich Menu postback", () => {
-    const patientMenu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
-    if (!patientMenu) throw new Error("Expected the Patient presentation menu");
+  it.each(["PATIENT_DIRECT", "PATIENT_PATIENT_OSM", "PATIENT_PATIENT_HOSPITAL", "PATIENT_PATIENT_OSM_HOSPITAL"])(
+    "projects the Patient appointment action in %s as a native message action that sends exactly นัด",
+    (key) => {
+      const patientMenu = LINE_RICH_MENU_BY_KEY.get(key);
+      if (!patientMenu) throw new Error("Expected the Patient presentation menu");
 
-    const postbacks = createLineRichMenuPayload(patientMenu).areas
-      .map(({ action }) => action)
-      .filter((action) => action.type === "postback");
+      const payload = createLineRichMenuPayload(patientMenu);
+      const actions = payload.areas.map(({ action }) => action);
 
-    expect(postbacks).toEqual([
-      {
-        type: "postback",
-        label: "ตรวจสอบนัดหมาย",
-        data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER,
-      },
-    ]);
-  });
+      expect(actions[0]).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" });
+      expect(actions.filter((action) => action.type === "message")).toHaveLength(1);
+      expect(JSON.stringify(payload)).not.toMatch(/"postback"|DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1|displayText/u);
+    },
+  );
 
   it("projects Patient quick links as fixed ordinary-web URIs and keeps account management on LIFF", () => {
     const patientMenu = LINE_RICH_MENU_BY_KEY.get("PATIENT_PATIENT_OSM_HOSPITAL");
@@ -53,7 +50,7 @@ describe("DEMI LINE Messaging API boundary", () => {
     const actions = createLineRichMenuPayload(patientMenu).areas.map(({ action }) => action);
 
     expect(actions).toEqual([
-      { type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+      { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" },
       { type: "uri", label: "นัดหมายทั้งหมด", uri: "https://demi.example.org/app/personal/appointments" },
       { type: "uri", label: "บันทึกสุขภาพ", uri: "https://demi.example.org/app/personal/wellness" },
       { type: "uri", label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" },
@@ -152,7 +149,7 @@ describe("DEMI LINE Messaging API boundary", () => {
       quickReply: {
         items: [
           { type: "action" as const, action: { type: "uri" as const, label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" } },
-          { type: "action" as const, action: { type: "postback" as const, label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER } },
+          { type: "action" as const, action: { type: "message" as const, label: "ตรวจสอบนัดหมาย", text: "นัด" } },
         ],
       },
     }];

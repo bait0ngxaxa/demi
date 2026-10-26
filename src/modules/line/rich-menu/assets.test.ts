@@ -55,7 +55,7 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     for (const menu of LINE_RICH_MENU_CATALOG) {
       for (const action of menu.actions) {
         const icon = getLineRichMenuActionIcon(menu, { ...action, label: "เปลี่ยนข้อความทดสอบ" });
-        const expectedIcon = action.type === "postback" ? "calendar-check"
+        const expectedIcon = action.type === "message" ? "calendar-check"
           : action.type === "richmenuswitch" ? menu.key.startsWith("CHOOSER_") ? roles[action.role] : "arrow-left-right"
           : action.intent === "OPEN_WORK_WORKSPACE" && menu.key.startsWith("HOSPITAL_") ? "hospital"
           : expected[action.intent];

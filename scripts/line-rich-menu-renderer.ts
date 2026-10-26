@@ -48,7 +48,7 @@ type FontWeight = "Medium" | "Semi-Bold" | "Bold";
 
 type MenuActionManifest = {
   label: string;
-  kind: "uri" | "richmenuswitch" | "postback";
+  kind: "uri" | "richmenuswitch" | "message";
   intent: string | null;
   icon: LineRichMenuIcon;
   bounds: LineMenuBounds;
@@ -135,7 +135,7 @@ function isPrimaryAction(
 ): boolean {
   if (menu.key.startsWith("CHOOSER_")) return action.kind === "richmenuswitch";
   if (menu.key.startsWith("PATIENT_")) {
-    return action.kind === "postback" || (action.intent !== null && PATIENT_TASK_INTENTS.has(action.intent));
+    return action.kind === "message" || (action.intent !== null && PATIENT_TASK_INTENTS.has(action.intent));
   }
   if (menu.key.startsWith("OSM_")) {
     return action.intent !== null && OSM_TASK_INTENTS.has(action.intent);

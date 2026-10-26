@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LINE_WEB_NAVIGATION_PATHS } from "../domain/line-navigation-intents";
-import { LINE_PATIENT_NEXT_APPOINTMENT_MARKER } from "../domain/line-reactive-marker";
 import type { OperationalLineRole } from "../domain/line-types";
 import { buildLineHelpReply, LINE_HELP_REPLY_COPY } from "./line-help-reply";
 
@@ -24,12 +23,12 @@ describe("LINE HELP reply", () => {
   });
   afterEach(() => vi.unstubAllEnvs());
 
-  it("gives a Patient the appointment postback and the four Patient destinations", () => {
+  it("gives a Patient the appointment message action and the four Patient destinations", () => {
     const reply = buildLineHelpReply(["PATIENT"]);
 
     expect(reply.text).toBe("เลือกเมนูที่ต้องการด้านล่าง หรือพิมพ์ “นัด” เพื่อดูนัดหมายถัดไป");
     expect(actions(["PATIENT"])).toEqual([
-      { type: "postback", label: "ตรวจสอบนัดหมาย", data: LINE_PATIENT_NEXT_APPOINTMENT_MARKER },
+      { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" },
       { type: "uri", label: "นัดหมายทั้งหมด", uri: `${origin}/app/personal/appointments` },
       { type: "uri", label: "บันทึกสุขภาพ", uri: `${origin}/app/personal/wellness` },
       { type: "uri", label: "ยาของฉัน", uri: `${origin}/app/personal/medications` },
@@ -83,13 +82,14 @@ describe("LINE HELP reply", () => {
     [["HOSPITAL"]],
     [["PATIENT", "OSM", "HOSPITAL"]],
     [[]],
-  ] as const)("only emits allowlisted fixed-intent URIs and the fixed postback for %j", (roles) => {
+  ] as const)("only emits allowlisted fixed-intent URIs and the fixed appointment message for %j", (roles) => {
     for (const action of actions(roles)) {
       if (action.type === "uri") {
         expect(allowlistedUris.has(action.uri)).toBe(true);
         expect(action.uri).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-|U[0-9a-f]{32}/iu);
       } else {
-        expect(action.data).toBe(LINE_PATIENT_NEXT_APPOINTMENT_MARKER);
+        expect(roles).toContain("PATIENT");
+        expect(action).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" });
       }
     }
   });

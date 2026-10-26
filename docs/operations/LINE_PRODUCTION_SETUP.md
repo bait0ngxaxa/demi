@@ -96,6 +96,18 @@ sudo -u demi -H sh -c 'cd /srv/demi/current && node --env-file=/etc/demi/demi.en
 
 เมนูชุดเก่ายังอยู่ที่ LINE (reconcile ไม่ลบ) ให้รันข้อ 6.2 จากโฟลเดอร์ของ release ที่ rollback ไป (alias และเมนูเริ่มต้นจะชี้กลับไปที่ชุดนั้น) แล้วซ่อมเมนูรายคนด้วย `--repair --apply` ถ้าเมนูชุดเก่าถูกลบไปแล้ว คำสั่งจะสร้างใหม่จาก asset ของ release นั้นเอง
 
+### 6.5 เปลี่ยนปุ่ม “ตรวจสอบนัดหมาย” เป็น message action (2026-10-26)
+
+ปุ่มนี้ในเมนู Patient ทั้ง 4 แบบ (`PATIENT_DIRECT`, `PATIENT_PATIENT_OSM`, `PATIENT_PATIENT_HOSPITAL`, `PATIENT_PATIENT_OSM_HOSPITAL`) เปลี่ยนจาก postback เป็น `{"type":"message","label":"ตรวจสอบนัดหมาย","text":"นัด"}` ภาพไม่เปลี่ยน แต่ hash ของ definition เปลี่ยน การ deploy โค้ดอย่างเดียว**ไม่**เปลี่ยนเมนูที่ LINE ต้องทำตามลำดับนี้หลัง deploy release ที่มีการเปลี่ยนนี้
+
+1. Dry-run ตามข้อ 6.1 ผลที่คาดไว้: `สร้าง 4, ใช้ซ้ำ 14, อัปโหลดภาพ 0, สร้าง alias 0, ปรับ alias 4, เปลี่ยนเมนูเริ่มต้น ไม่` ถ้าตัวเลขต่างจากนี้ให้หยุดและตรวจก่อน
+2. Apply ตามข้อ 6.2 (ต้องได้รับอนุมัติก่อน)
+3. รันข้อ 6.1 ซ้ำ ต้องได้ `สร้าง 0, ใช้ซ้ำ 18, ...` ตามข้อ 6.3
+4. ผู้ใช้ที่เชื่อมบัญชีแล้วถูกผูกเมนูรายคนไว้กับ richMenuId เดิม ให้ย้ายไปเมนูใหม่ด้วย `--repair --limit=50` (ดูก่อน) แล้ว `--repair --apply --limit=50` ต่อด้วย `--after=<UUID>` จนครบ
+5. ตรวจในแอป LINE ด้วยบัญชี Patient จริง: แตะ “ตรวจสอบนัดหมาย” ต้องเห็นข้อความ “นัด” ของตัวเองขึ้นทันที แล้วได้คำตอบนัดหมายถัดไป (หรือข้อความว่าไม่มีนัด) ทดสอบปุ่ม Quick Reply เดียวกันหลังพิมพ์ “เมนู” ด้วย
+
+webhook ยังรับ postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` เดิมต่อไป เมนูเก่าที่ยังผูกอยู่ระหว่างทางจึงใช้งานได้ ห้ามลบ handler นี้
+
 ## 7. Runtime behavior and operational control
 
 ไม่มี application activation flags. Account link/recovery ใช้ Account Login configuration และ permanent proof/security rules. Appointment notifications and medication reminders are queued and delivered only for currently eligible recipients with active bindings and their own enabled preferences; caregiver appointment messages additionally require a current accepted appointment grant. MINI operations require complete valid provider configuration, signed LINE context, and current scope/lifecycle checks. Missing optional provider configuration fails only the relevant integration.

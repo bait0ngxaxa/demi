@@ -23,7 +23,7 @@ export type LineRichMenuIcon = typeof intentIcons[keyof typeof intentIcons]
   | typeof roleIcons[keyof typeof roleIcons] | "calendar-check" | "arrow-left-right";
 
 export function getLineRichMenuActionIcon(menu: LineMenuDefinition, action: LineMenuAction): LineRichMenuIcon {
-  if (action.type === "postback") return "calendar-check";
+  if (action.type === "message") return "calendar-check";
   if (action.type === "richmenuswitch") {
     return menu.key.startsWith("CHOOSER_") ? roleIcons[action.role] : "arrow-left-right";
   }
