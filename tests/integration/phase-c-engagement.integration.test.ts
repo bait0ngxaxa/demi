@@ -581,12 +581,68 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(new Set([...first.items, ...second.items].map(({ id }) => id))).toEqual(new Set(rows.map(({ id }) => id)));
     const cursor = first.nextCursor ?? "";
     await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, cursor: `${cursor}x` }, prisma)).rejects.toBeInstanceOf(ValidationError);
-    await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: SupportReportStatus.NEW, cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    // WB-DF-14 P1: the default view is NEW, so an explicit NEW continues it; ALL is a different view in both directions.
+    expect((await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: SupportReportStatus.NEW, cursor }, prisma)).items).toHaveLength(1);
+    await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: "ALL", cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    const allFirst = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: "ALL" }, prisma);
+    const allCursor = allFirst.nextCursor ?? "";
+    expect(allCursor).not.toBe("");
+    expect((await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: "ALL", cursor: allCursor }, prisma)).items).toHaveLength(1);
+    await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, cursor: allCursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
     await expect(listAdminSupportReports(otherAdmin.actor, { hospitalId: owner.hospitalId, cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
     const ownHistory = await listOwnSupportReports(owner.actor, {}, prisma);
     expect(ownHistory.items).toHaveLength(25);
     await expect(listOwnSupportReports(owner.actor, { cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
     expect((await listOwnSupportReports(owner.actor, { cursor: ownHistory.nextCursor ?? "" }, prisma)).items).toHaveLength(1);
+  });
+
+  // WB-DF-14 P1 (Product Owner 2026-10-26): the inbox opens on NEW; ALL is an explicit, validated choice.
+  it("opens the ADMIN inbox on NEW, lists every status only for an explicit ALL, and rejects an unknown status", async () => {
+    const owner = await createHospitalOwner();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    const admin = await createAdmin();
+    const fresh = await createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "รายงานใหม่" }, { database: prisma, now: () => reminderNow });
+    const handled = await createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "รายงานที่รับทราบแล้ว" }, { database: prisma, now: () => new Date(reminderNow.getTime() + 1_000) });
+    const current = await getAdminSupportReport(admin.actor, handled.id, prisma);
+    await updateAdminSupportReportStatus(admin.actor, { reportId: handled.id, expectedUpdatedAt: current.updatedAt, status: SupportReportStatus.ACKNOWLEDGED }, { database: prisma, now: () => reminderNow });
+
+    const byDefault = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId }, prisma);
+    expect(byDefault.status).toBe(SupportReportStatus.NEW);
+    expect(byDefault.items.map(({ id }) => id)).toEqual([fresh.id]);
+    const all = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: "ALL" }, prisma);
+    expect(all.status).toBe("ALL");
+    expect(all.items.map(({ id }) => id)).toEqual([handled.id, fresh.id]);
+    for (const status of ["", "all", "OPEN"]) {
+      await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    }
+  });
+
+  // WB-DF-14 P2 (Product Owner 2026-10-26): only the ADMIN detail names the reporter, by display name and current roles.
+  it("names the reporter with current roles on the ADMIN detail only, without any other identifier", async () => {
+    const owner = await createHospitalOwner();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    const unnamed = await createUser(Role.CAREGIVER);
+    const admin = await createAdmin();
+    await prisma.userRole.create({ data: { userId: patient.userId, role: Role.OSM } });
+    await prisma.person.update({ where: { id: unnamed.actor.personId }, data: { givenName: null, familyName: null } });
+    const patientReport = await createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "ผู้แจ้งหลายบทบาท" }, { database: prisma, now: () => reminderNow });
+    const unnamedReport = await createSupportReport(unnamed.actor, { category: "OTHER", message: "ผู้แจ้งไม่มีชื่อ" }, { database: prisma, now: () => reminderNow });
+    const person = await prisma.person.findUniqueOrThrow({ where: { id: patient.actor.personId }, select: { givenName: true, familyName: true } });
+
+    const detail = await getAdminSupportReport(admin.actor, patientReport.id, prisma);
+    expect(detail.reporter).toEqual({ displayName: `${person.givenName ?? ""} ${person.familyName ?? ""}`.trim(), roles: [Role.OSM, Role.PATIENT] });
+    expect((await getAdminSupportReport(admin.actor, unnamedReport.id, prisma)).reporter).toEqual({ displayName: "ไม่พบชื่อผู้ใช้", roles: [Role.CAREGIVER] });
+    // Current roles, not a snapshot: a later role change shows on the next read.
+    await prisma.userRole.delete({ where: { userId_role: { userId: patient.userId, role: Role.OSM } } });
+    expect((await getAdminSupportReport(admin.actor, patientReport.id, prisma)).reporter.roles).toEqual([Role.PATIENT]);
+    const serialized = JSON.stringify(detail);
+    for (const forbidden of [patient.userId, patient.actor.personId]) expect(serialized).not.toContain(forbidden);
+
+    const list = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: "ALL" }, prisma);
+    expect(list.items.length).toBeGreaterThan(0);
+    for (const item of list.items) expect(Object.keys(item).sort()).toEqual(["category", "createdAt", "hospitalName", "id", "resolvedAt", "status", "updatedAt"]);
+    expect(await getOwnSupportReport(patient.actor, patientReport.id, prisma)).not.toHaveProperty("reporter");
+    expect(JSON.stringify(await listOwnSupportReports(patient.actor, {}, prisma))).not.toContain("reporter");
   });
 
   it("rate limits reports per user and keeps contact email separate from authentication", async () => {

@@ -2,6 +2,7 @@
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError, ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
+import { SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE } from "../domain/support-report-messages";
 import { createSupportReport, updateAdminSupportReportStatus } from "../services/support-report-service";
 import { SupportReportRateLimitError } from "../services/support-report-service";
 
@@ -16,7 +17,7 @@ export async function createSupportReportAction(input: unknown): Promise<Support
     if (error instanceof ValidationError) return { status: "ERROR", code: "VALIDATION", message: "กรุณาเลือกหมวดหมู่และระบุข้อความไม่เกิน 1,000 ตัวอักษร" };
     if (error instanceof SupportReportRateLimitError) return { status: "ERROR", code: "RATE_LIMIT", message: "ส่งรายงานครบ 5 ครั้งสำหรับวันนี้แล้ว กรุณาลองใหม่พรุ่งนี้" };
     if (error instanceof ConflictError) return { status: "ERROR", code: "CONFLICT", message: "รายการเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด" };
-    if (error instanceof ForbiddenError || error instanceof ApplicationError && error.code === "UNAUTHENTICATED") return { status: "ERROR", code: "FORBIDDEN", message: "ส่งรายงานไม่ได้ บัญชีนี้ไม่มีสิทธิ์ส่ง หรือโรงพยาบาลที่เลือกไม่อยู่ในสิทธิ์ของคุณแล้ว" };
+    if (error instanceof ForbiddenError || error instanceof ApplicationError && error.code === "UNAUTHENTICATED") return { status: "ERROR", code: "FORBIDDEN", message: SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE };
     return { status: "ERROR", code: "UNAVAILABLE", message: "ส่งรายงานไม่สำเร็จ กรุณาลองใหม่ภายหลัง" };
   }
 }

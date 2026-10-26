@@ -24,6 +24,7 @@ vi.mock("@/modules/support/transport/server-actions", () => ({
 }));
 vi.mock("@/components/ui/notify", () => ({ notify: mocks.notify }));
 
+import { SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE } from "@/modules/support/domain/support-report-messages";
 import { SupportReportForm } from "./support-report-form";
 
 let container: HTMLDivElement;
@@ -294,6 +295,17 @@ describe("SupportReportForm notifications", () => {
     if (expectedToast === "error") expect(mocks.notify.error).toHaveBeenCalledTimes(1);
     else expect(mocks.notify.error).not.toHaveBeenCalled();
     expect(mocks.notify.error.mock.calls.flat().join(" ")).not.toContain("ข้อมูลที่ผู้ใช้กรอก");
+  });
+
+  it("shows the same FORBIDDEN message in the toast and the inline feedback as the Server Action returns", async () => {
+    mocks.create.mockResolvedValue({ status: "ERROR", code: "FORBIDDEN", message: SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE });
+    mount();
+    changeMessage("รายงานที่ถูกปฏิเสธ");
+
+    await submit();
+
+    expect(mocks.notify.error).toHaveBeenCalledWith(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE);
+    expect(statusTextContaining(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE)).toContain(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE);
   });
 
   it("treats UNAVAILABLE as unconfirmed and prevents another potentially duplicate report", async () => {

@@ -5,15 +5,16 @@ import { connection } from "next/server";
 import { SupportReportList } from "@/components/support/support-report-list";
 import { classNames } from "@/components/ui/class-names";
 import { PageHeader } from "@/components/ui/page-header";
-import { SUPPORT_REPORT_CATEGORY_LABELS, SUPPORT_REPORT_STATUS_LABELS } from "@/modules/support/domain/support-report";
+import { SUPPORT_REPORT_CATEGORY_LABELS, SUPPORT_REPORT_INBOX_ALL_STATUSES, SUPPORT_REPORT_STATUS_LABELS, type SupportReportInboxStatus } from "@/modules/support/domain/support-report";
 import { getAdminSupportInboxContext, type AdminSupportInboxFilters } from "@/modules/support/transport/support-report-page-context";
 
 export const metadata: Metadata = { title: "กล่องแจ้งปัญหา" };
 
 const textLinkClassName = "inline-flex min-h-11 items-center rounded-control font-medium text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
 
-type Filters = Omit<AdminSupportInboxFilters, "cursor">;
-type FilterOption = readonly [value: string | undefined, label: string];
+/** `status` is always the server-resolved value, so every link names its view explicitly (WB-DF-14 P1). */
+type Filters = Omit<AdminSupportInboxFilters, "cursor" | "status"> & { status: SupportReportInboxStatus };
+type FilterOption<TValue extends string | undefined> = readonly [value: TValue, label: string];
 
 function stringParam(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : value === undefined ? undefined : "";
@@ -21,16 +22,15 @@ function stringParam(value: string | string[] | undefined): string | undefined {
 
 function inboxHref(filters: Filters, cursor?: string): string {
   const query = new URLSearchParams();
-  if (filters.status) query.set("status", filters.status);
+  query.set("status", filters.status);
   if (filters.category) query.set("category", filters.category);
   if (filters.hospitalId) query.set("hospitalId", filters.hospitalId);
   if (cursor) query.set("cursor", cursor);
-  const search = query.toString();
-  return search ? `/app/admin/support?${search}` : "/app/admin/support";
+  return `/app/admin/support?${query.toString()}`;
 }
 
 /** The `LocalNavigation` segmented look, as links: a filter belongs in the URL so pages and reloads keep it. */
-function FilterSegments({ label, current, options, href }: { label: string; current: string | undefined; options: readonly FilterOption[]; href: (value: string | undefined) => string }): React.JSX.Element {
+function FilterSegments<TValue extends string | undefined>({ label, current, options, href }: { label: string; current: TValue; options: readonly FilterOption<TValue>[]; href: (value: TValue) => string }): React.JSX.Element {
   return <div className="space-y-2">
     <p className="text-sm font-medium text-text">{label}</p>
     <nav aria-label={`กรองตาม${label}`} className="flex w-fit max-w-full flex-wrap gap-1 rounded-panel bg-surface-muted p-1">
@@ -50,8 +50,8 @@ function FilterSegments({ label, current, options, href }: { label: string; curr
   </div>;
 }
 
-const statusOptions: readonly FilterOption[] = [[undefined, "ทั้งหมด"], ...Object.values(SupportReportStatus).map((status): FilterOption => [status, SUPPORT_REPORT_STATUS_LABELS[status]])];
-const categoryOptions: readonly FilterOption[] = [[undefined, "ทั้งหมด"], ...Object.values(SupportReportCategory).map((category): FilterOption => [category, SUPPORT_REPORT_CATEGORY_LABELS[category]])];
+const statusOptions: readonly FilterOption<SupportReportInboxStatus>[] = [...Object.values(SupportReportStatus).map((status): FilterOption<SupportReportInboxStatus> => [status, SUPPORT_REPORT_STATUS_LABELS[status]]), [SUPPORT_REPORT_INBOX_ALL_STATUSES, "ทั้งหมด"]];
+const categoryOptions: readonly FilterOption<string | undefined>[] = [[undefined, "ทั้งหมด"], ...Object.values(SupportReportCategory).map((category): FilterOption<string | undefined> => [category, SUPPORT_REPORT_CATEGORY_LABELS[category]])];
 
 /** WB-DF-14 (Product Owner 2026-10-26): the platform ADMIN receives every usage-problem report, across all Hospitals. */
 export default async function AdminSupportInboxPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }): Promise<React.JSX.Element> {
@@ -60,13 +60,19 @@ export default async function AdminSupportInboxPage({ searchParams }: { searchPa
   const status = stringParam(params.status);
   const category = stringParam(params.category);
   const hospitalId = stringParam(params.hospitalId);
-  const filters: Filters = {
+  const requested: AdminSupportInboxFilters = {
     ...(status === undefined ? {} : { status }),
     ...(category === undefined ? {} : { category }),
     ...(hospitalId === undefined ? {} : { hospitalId }),
   };
   const cursor = stringParam(params.cursor);
-  const page = await getAdminSupportInboxContext(cursor === undefined ? filters : { ...filters, cursor });
+  // The service resolves a missing status to NEW; the page renders and links that resolved view.
+  const page = await getAdminSupportInboxContext(cursor === undefined ? requested : { ...requested, cursor });
+  const filters: Filters = {
+    status: page.status,
+    ...(category === undefined ? {} : { category }),
+    ...(hospitalId === undefined ? {} : { hospitalId }),
+  };
   return <div className="min-w-0 max-w-5xl space-y-8">
     <PageHeader
       breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ" }, { label: "กล่องแจ้งปัญหา" }]}

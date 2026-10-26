@@ -13,6 +13,11 @@ export const SUPPORT_REPORT_STATUS_LABELS: Readonly<Record<SupportReportStatus, 
   [SupportReportStatus.RESOLVED]: "แก้ไขแล้ว",
 };
 
+/** WB-DF-14 P1 (Product Owner 2026-10-26): the ADMIN inbox opens on NEW; every status is an explicit `ALL` choice. */
+export const SUPPORT_REPORT_INBOX_ALL_STATUSES = "ALL";
+export const SUPPORT_REPORT_INBOX_DEFAULT_STATUS = SupportReportStatus.NEW;
+export type SupportReportInboxStatus = SupportReportStatus | typeof SUPPORT_REPORT_INBOX_ALL_STATUSES;
+
 /** WB-DF-14 (Product Owner 2026-10-26): every non-ADMIN account may report; the ADMIN is the recipient. */
 export const SUPPORT_REPORT_SUBMITTER_ROLES: readonly Role[] = [Role.PATIENT, Role.HOSPITAL, Role.OSM, Role.CAREGIVER];
 

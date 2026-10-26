@@ -6,7 +6,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 import { canSubmitSupportReport } from "../domain/support-report";
-import { getAdminSupportReport, getOwnSupportReport, listAdminSupportReports, listOwnSupportHospitals, listOwnSupportReports, type SupportReportDetail, type SupportReportPage } from "../services/support-report-service";
+import { getAdminSupportReport, getOwnSupportReport, listAdminSupportReports, listOwnSupportHospitals, listOwnSupportReports, type SupportReportAdminDetail, type SupportReportAdminInboxPage, type SupportReportDetail, type SupportReportPage } from "../services/support-report-service";
 
 async function actorOrRedirect(): Promise<ActorContext> {
   try { return await getProtectedApplicationActor(); }
@@ -24,8 +24,15 @@ export async function getSupportFormContext(): Promise<{ hospitals: Array<{ id: 
   return { hospitals: await listOwnSupportHospitals(actor) };
 }
 
-export async function getSupportHistoryContext(cursor?: string): Promise<SupportReportPage> {
+/** Consistent with the form: an ADMIN has no reporter pages. The service own-report filter remains the boundary. */
+async function submitterOrRedirect(): Promise<ActorContext> {
   const actor = await actorOrRedirect();
+  if (!canSubmitSupportReport(actor.roles)) redirect("/app");
+  return actor;
+}
+
+export async function getSupportHistoryContext(cursor?: string): Promise<SupportReportPage> {
+  const actor = await submitterOrRedirect();
   try { return await listOwnSupportReports(actor, cursor === undefined ? {} : { cursor }); }
   catch (error: unknown) {
     if (error instanceof ValidationError) redirect("/app/support/reports");
@@ -34,7 +41,7 @@ export async function getSupportHistoryContext(cursor?: string): Promise<Support
 }
 
 export async function getSupportHistoryDetailContext(reportId: string): Promise<SupportReportDetail> {
-  const actor = await actorOrRedirect();
+  const actor = await submitterOrRedirect();
   try { return await getOwnSupportReport(actor, reportId); }
   catch (error: unknown) {
     if (error instanceof NotFoundError) notFound();
@@ -50,7 +57,7 @@ async function adminOrRedirect(): Promise<ActorContext> {
   return actor;
 }
 
-export async function getAdminSupportInboxContext(filters: AdminSupportInboxFilters): Promise<SupportReportPage> {
+export async function getAdminSupportInboxContext(filters: AdminSupportInboxFilters): Promise<SupportReportAdminInboxPage> {
   const actor = await adminOrRedirect();
   try { return await listAdminSupportReports(actor, filters); }
   catch (error: unknown) {
@@ -60,7 +67,7 @@ export async function getAdminSupportInboxContext(filters: AdminSupportInboxFilt
   }
 }
 
-export async function getAdminSupportReportDetailContext(reportId: string): Promise<SupportReportDetail> {
+export async function getAdminSupportReportDetailContext(reportId: string): Promise<SupportReportAdminDetail> {
   const actor = await adminOrRedirect();
   try { return await getAdminSupportReport(actor, reportId); }
   catch (error: unknown) {

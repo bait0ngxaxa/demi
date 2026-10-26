@@ -8,7 +8,7 @@ import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospit
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { assertPlatformAdminInDatabase } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
-import { canSubmitSupportReport, SUPPORT_REPORT_SUBMITTER_ROLES } from "../domain/support-report";
+import { canSubmitSupportReport, SUPPORT_REPORT_INBOX_ALL_STATUSES, SUPPORT_REPORT_SUBMITTER_ROLES, type SupportReportInboxStatus } from "../domain/support-report";
 import { supportReportAdminInboxQuerySchema, supportReportCreateSchema, supportReportLocatorSchema, supportReportReporterHistoryQuerySchema, supportReportStatusSchema } from "../schemas/support-report-schemas";
 import { decodeSupportReportCursor, encodeSupportReportCursor, type SupportReportCursor } from "./support-report-cursor";
 
@@ -182,35 +182,49 @@ function assertAdmin(actor: ActorContext | null | undefined): asserts actor is A
   if (!actor || !actor.roles.includes(Role.ADMIN)) throw new ForbiddenError();
 }
 
-export async function listAdminSupportReports(actor: ActorContext | null | undefined, input: unknown, database: Database = getPrisma()): Promise<SupportReportPage> {
+export type SupportReportAdminInboxPage = SupportReportPage & { status: SupportReportInboxStatus };
+
+export async function listAdminSupportReports(actor: ActorContext | null | undefined, input: unknown, database: Database = getPrisma()): Promise<SupportReportAdminInboxPage> {
   assertAdmin(actor);
   const parsed = supportReportAdminInboxQuerySchema.safeParse(input);
   if (!parsed.success) throw new ValidationError("Support report inbox query is invalid");
   const { status, category, hospitalId } = parsed.data;
-  // The cursor is bound to the exact filter set, so a page of one filter cannot continue another.
-  const scope = `admin-inbox:status=${status ?? "*"}:category=${category ?? "*"}:hospital=${hospitalId?.toLowerCase() ?? "*"}`;
+  // The cursor is bound to the exact resolved filter set: a default NEW page cannot continue the ALL view, nor the reverse.
+  const scope = `admin-inbox:status=${status}:category=${category ?? "*"}:hospital=${hospitalId?.toLowerCase() ?? "*"}`;
   const cursor = parsed.data.cursor === undefined ? null : decodeSupportReportCursor(actor, scope, parsed.data.cursor);
   const rows = await database.$transaction(async (transaction) => {
     await assertPlatformAdminInDatabase(transaction, actor.userId);
     return transaction.supportReport.findMany({
-      where: { ...(status ? { status } : {}), ...(category ? { category } : {}), ...(hospitalId ? { hospitalId } : {}), ...afterCursor(cursor) },
+      where: { ...(status === SUPPORT_REPORT_INBOX_ALL_STATUSES ? {} : { status }), ...(category ? { category } : {}), ...(hospitalId ? { hospitalId } : {}), ...afterCursor(cursor) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: SUPPORT_REPORT_PAGE_SIZE + 1,
       select: listItemSelect,
     });
   });
-  return toPage(actor, scope, rows);
+  return { ...toPage(actor, scope, rows), status };
 }
 
-export async function getAdminSupportReport(actor: ActorContext | null | undefined, reportIdInput: unknown, database: Database = getPrisma()): Promise<SupportReportDetail> {
+/** WB-DF-14 P2 (Product Owner 2026-10-26): the ADMIN detail alone names the reporter and their current persisted roles. */
+export type SupportReportAdminDetail = SupportReportDetail & { reporter: { displayName: string; roles: Role[] } };
+
+const adminDetailSelect = {
+  ...detailSelect,
+  reporter: { select: { person: { select: { givenName: true, familyName: true } }, roles: { select: { role: true }, orderBy: { role: "asc" } } } },
+} satisfies Prisma.SupportReportSelect;
+
+function displayNameOf(person: { givenName: string | null; familyName: string | null }): string {
+  return `${person.givenName ?? ""} ${person.familyName ?? ""}`.trim() || "ไม่พบชื่อผู้ใช้";
+}
+
+export async function getAdminSupportReport(actor: ActorContext | null | undefined, reportIdInput: unknown, database: Database = getPrisma()): Promise<SupportReportAdminDetail> {
   assertAdmin(actor);
   const parsed = supportReportLocatorSchema.safeParse(reportIdInput);
   if (!parsed.success) throw new NotFoundError();
   const row = await database.$transaction(async (transaction) => {
     await assertPlatformAdminInDatabase(transaction, actor.userId);
-    return transaction.supportReport.findUnique({ where: { id: parsed.data }, select: detailSelect });
+    return transaction.supportReport.findUnique({ where: { id: parsed.data }, select: adminDetailSelect });
   });
   if (!row) throw new NotFoundError();
-  return toDetail(row);
+  return { ...toDetail(row), reporter: { displayName: displayNameOf(row.reporter.person), roles: row.reporter.roles.map(({ role }) => role) } };
 }
 
 export async function updateAdminSupportReportStatus(actor: ActorContext | null | undefined, input: unknown, dependencies: { database?: Database; now?: () => Date } = {}): Promise<{ status: SupportReportStatus; updatedAt: string }> {

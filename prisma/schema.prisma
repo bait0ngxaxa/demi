@@ -798,6 +798,7 @@ model SupportReport {
   statusUpdater     User?    @relation("SupportReportStatusUpdater", fields: [statusUpdaterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([status, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_admin_inbox_order_idx")
+  @@index([hospitalId, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_hospital_order_idx")
   @@index([reporterUserId, createdAt(sort: Desc)], map: "SupportReport_reporter_order_idx")
 }
 

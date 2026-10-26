@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => ({
   listAdmin: vi.fn(),
   getAdmin: vi.fn(),
   listOwnHospitals: vi.fn(),
+  listOwn: vi.fn(),
+  getOwn: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
-vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
+vi.mock("next/navigation", () => ({ redirect: mocks.redirect, notFound: mocks.notFound, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: () => mocks.getActor(),
 }));
@@ -20,15 +22,18 @@ vi.mock("@/modules/support/services/support-report-service", () => ({
   listAdminSupportReports: mocks.listAdmin,
   getAdminSupportReport: mocks.getAdmin,
   listOwnSupportHospitals: mocks.listOwnHospitals,
-  listOwnSupportReports: vi.fn(),
-  getOwnSupportReport: vi.fn(),
+  listOwnSupportReports: mocks.listOwn,
+  getOwnSupportReport: mocks.getOwn,
 }));
 
+import { renderToStaticMarkup } from "react-dom/server";
 import SupportPage from "../../support/page";
+import SupportReportHistoryDetailPage from "../../support/reports/[reportId]/page";
+import SupportReportHistoryPage from "../../support/reports/page";
 import AdminSupportReportDetailPage from "./[reportId]/page";
 import AdminSupportInboxPage from "./page";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 
 const admin: ActorContext = {
   userId: "11111111-1111-4111-8111-111111111111",
@@ -52,10 +57,11 @@ describe("Platform ADMIN support inbox routes", () => {
     vi.clearAllMocks();
     mocks.connection.mockResolvedValue(undefined);
     mocks.getActor.mockResolvedValue(admin);
-    mocks.listAdmin.mockResolvedValue({ items: [], nextCursor: null });
+    mocks.listAdmin.mockResolvedValue({ items: [], nextCursor: null, status: "NEW" });
     mocks.getAdmin.mockResolvedValue({
       id: reportId, category: "BUG", status: "NEW", createdAt: "2026-10-26T01:00:00.000Z", updatedAt: "2026-10-26T01:00:00.000Z",
       resolvedAt: null, hospitalName: null, hospital: null, message: "ข้อความรายงาน",
+      reporter: { displayName: "สมหญิง ทดสอบ", roles: [Role.PATIENT, Role.CAREGIVER] },
     });
     mocks.listOwnHospitals.mockResolvedValue([]);
     mocks.redirect.mockImplementation((href: string) => { throw new Error(`REDIRECT:${href}`); });
@@ -110,5 +116,54 @@ describe("Platform ADMIN support inbox routes", () => {
 
     expect(mocks.listOwnHospitals).toHaveBeenCalledWith(caregiver);
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  // WB-DF-14 P1 (Product Owner 2026-10-26).
+  it("opens on the server-resolved NEW view and links every status explicitly", async () => {
+    mocks.listAdmin.mockResolvedValue({ items: [], nextCursor: null, status: "NEW" });
+
+    const markup = renderToStaticMarkup(await inboxPage());
+
+    expect(mocks.listAdmin).toHaveBeenCalledWith(admin, {});
+    expect(markup).toMatch(/<a aria-current="true"[^>]*href="\/app\/admin\/support\?status=NEW"[^>]*>ใหม่<\/a>/u);
+    expect(markup).toContain('href="/app/admin/support?status=ALL"');
+    expect(markup).toContain('href="/app/admin/support?status=NEW&amp;category=BUG"');
+    expect(markup).not.toContain('href="/app/admin/support"');
+  });
+
+  it("keeps the explicit ALL view and Hospital filter in every inbox link", async () => {
+    mocks.listAdmin.mockResolvedValue({ items: [], nextCursor: "supportreportcur_v1_next", status: "ALL" });
+
+    const markup = renderToStaticMarkup(await inboxPage({ status: "ALL", hospitalId: "33333333-3333-4333-8333-333333333333" }));
+
+    expect(markup).toMatch(/<a aria-current="true"[^>]*href="\/app\/admin\/support\?status=ALL&amp;hospitalId=[^"]+"[^>]*>ทั้งหมด<\/a>/u);
+    expect(markup).toContain('href="/app/admin/support?status=ALL&amp;hospitalId=33333333-3333-4333-8333-333333333333&amp;cursor=supportreportcur_v1_next"');
+    expect(markup).toContain('href="/app/admin/support?status=ALL">แสดงทุกโรงพยาบาล');
+  });
+
+  it("redirects an unknown status to the default inbox", async () => {
+    mocks.listAdmin.mockRejectedValue(new ValidationError("Support report inbox query is invalid"));
+
+    await expect(inboxPage({ status: "OPEN" })).rejects.toThrow("REDIRECT:/app/admin/support");
+  });
+
+  // WB-DF-14 P2 (Product Owner 2026-10-26).
+  it("shows the reporter name and Thai role labels on the ADMIN detail", async () => {
+    const markup = renderToStaticMarkup(await detailPage());
+
+    expect(markup).toContain("ผู้แจ้ง");
+    expect(markup).toContain("สมหญิง ทดสอบ");
+    expect(markup).toContain("บทบาทของผู้แจ้ง");
+    expect(markup).toContain("ผู้ป่วย · ผู้ดูแลครอบครัว");
+  });
+
+  it("redirects an ADMIN away from the reporter history pages before any read", async () => {
+    for (const roles of [[Role.ADMIN], [Role.ADMIN, Role.PATIENT]]) {
+      mocks.getActor.mockResolvedValue({ ...admin, roles });
+      await expect(SupportReportHistoryPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/app");
+      await expect(SupportReportHistoryDetailPage({ params: Promise.resolve({ reportId }) })).rejects.toThrow("REDIRECT:/app");
+    }
+    expect(mocks.listOwn).not.toHaveBeenCalled();
+    expect(mocks.getOwn).not.toHaveBeenCalled();
   });
 });
