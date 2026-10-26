@@ -12,6 +12,7 @@ import {
 } from "@/modules/hospital-governance/policies/hospital-governance-policy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
+import { canSubmitSupportReport } from "@/modules/support/domain/support-report";
 import {
   hasDirectHospitalProvisioningScope,
 } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
@@ -212,17 +213,13 @@ function hasActiveWorkHospital(actor: ActorContext): boolean {
   );
 }
 
-function isActiveHospitalOwner(actor: ActorContext): boolean {
-  return actor.roles.includes(Role.HOSPITAL) && actor.hospitalMemberships.some(({ membershipType, status, hospitalStatus }) =>
-    membershipType === MembershipType.OWNER && status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE);
-}
-
 /** Platform governance items; the Work Home reads these instead of looking a group up by its label. */
 export function projectPlatformGovernanceNavigation(actor: ActorContext): {
   reporting: ApplicationNavigationItem | null;
   hospitals: ApplicationNavigationItem | null;
   onboarding: ApplicationNavigationItem | null;
   recovery: ApplicationNavigationItem | null;
+  support: ApplicationNavigationItem | null;
 } {
   const isAdmin = actor.roles.includes(Role.ADMIN);
   return {
@@ -243,6 +240,10 @@ export function projectPlatformGovernanceNavigation(actor: ActorContext): {
       : null,
     recovery: isAdmin
       ? { href: "/app/admin/recovery", label: "คืนบัญชีผู้ใช้", match: "prefix", prefetch: false }
+      : null,
+    // WB-DF-14 (Product Owner 2026-10-26): usage-problem reports go to the platform ADMIN, never a Hospital OWNER.
+    support: isAdmin
+      ? { href: "/app/admin/support", label: "กล่องแจ้งปัญหา", match: "prefix" }
       : null,
   };
 }
@@ -323,8 +324,8 @@ function projectWorkSections(
     ])),
     ...section("review-queue", "work", compact([
       canReviewPatientServiceRequests(actor) && { href: "/app/patients/service-requests", label: "คำขอรับบริการ", match: "prefix" },
-      isActiveHospitalOwner(actor) && { href: "/app/hospitals/support", label: "กล่องแจ้งปัญหา", match: "prefix" },
       governance.onboarding,
+      governance.support,
     ])),
     ...section("reports-info", "work", compact([
       canReadHospitalReports(actor)
@@ -428,7 +429,8 @@ export function projectApplicationNavigation(
     workspace === "personal" && { href: "/app/personal/profile", label: "ข้อมูลของฉัน", match: "prefix" },
     !isCaregiverOnly && { href: "/app/family", label: "ครอบครัวและผู้ดูแล", match: "prefix" },
     supportsAccountTools && { href: "/app/settings", label: "ตั้งค่าบัญชีส่วนตัว", match: "prefix" },
-    supportsAccountTools && !isCaregiverOnly && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
+    // WB-DF-14 (2026-10-26): every non-ADMIN account reports, CAREGIVER-only included; an ADMIN is the recipient.
+    canSubmitSupportReport(actor.roles) && { href: "/app/support", label: "แจ้งปัญหาการใช้งาน", match: "prefix" },
   ]);
 
   // One account section per workspace: at most one is visible at a time, always last.

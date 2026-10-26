@@ -222,6 +222,7 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/patients/assign-osm")) return "assign";
   if (pathname.startsWith("/app/patients")) return "patients";
   if (pathname.startsWith("/app/workforce")) return "workforce";
+  if (pathname.startsWith("/app/admin/support")) return "support";
   if (pathname.startsWith("/app/admin/recovery")) return "review";
   if (pathname.startsWith("/app/admin/hospital-onboarding")) return "review";
   if (pathname === "/app/hospitals/reporting" && new URLSearchParams(query).get("scope") === "network") return "areas";
@@ -232,7 +233,6 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/hospitals/knowledge")) return "publish";
   if (pathname.startsWith("/app/hospitals/content")) return "knowledge";
   if (pathname.startsWith("/app/hospitals/contacts")) return "contact";
-  if (pathname.startsWith("/app/hospitals/support")) return "support";
   if (pathname.startsWith("/app/admin/hospitals") || pathname.startsWith("/app/hospitals")) return "hospital";
 
   return "default";

@@ -12,6 +12,7 @@ import { getPatientPersonalHomePageContext } from "@/modules/patient-self/transp
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 import { isPatientAccessUnavailable } from "@/modules/patient-self/transport/patient-access-unavailable";
+import { canSubmitSupportReport } from "@/modules/support/domain/support-report";
 
 import { PatientAccessUnavailableState } from "./patient-access-unavailable-state";
 import { PatientPersonalHome } from "./patient-personal-home";
@@ -83,6 +84,7 @@ export default async function PatientPersonalPage(
       newsItems={newsPage?.status === "LOADED" ? newsPage.value.items : []}
       patient={patientPresentation}
       selectedHospital={selectedHospitalPresentation}
+      showSupportLink={canSubmitSupportReport(patient.actor.roles)}
       nextAppointment={nextAppointment?.status === "FAILED"
         ? "UNAVAILABLE"
         : nextAppointmentValue && selectedHospital

@@ -194,6 +194,9 @@ describe("server-projected mobile navigation", () => {
     ]);
     const adminMoreHrefs = hrefs(projectMoreNavigation(adminNavigation, primaryTabs(adminNavigation, "work")));
     expect(adminMoreHrefs).toContain("/app/admin/recovery");
+    // WB-DF-14 (Product Owner 2026-10-26): the ADMIN reaches the support inbox from More and never submits a report.
+    expect(adminMoreHrefs).toContain("/app/admin/support");
+    expect(hrefs(adminNavigation)).not.toContain("/app/support");
     expect(hrefs(adminNavigation)).not.toContain("/app/patients");
   });
 

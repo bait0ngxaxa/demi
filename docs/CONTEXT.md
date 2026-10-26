@@ -1,5 +1,9 @@
 # DEMI Project Context
 
+## CURRENT-status addendum — usage-problem reports go to the platform ADMIN (2026-10-26)
+
+Product Owner decision 2026-10-26 revises [WB-DF-14](./requirements/WB_ALIGNMENT_DECISIONS.md) and supersedes the earlier Hospital OWNER inbox. A **SupportReport** (แจ้งปัญหาการใช้งาน) is received, read and transitioned (`NEW` → `ACKNOWLEDGED` → `RESOLVED`) only by an ACTIVE platform ADMIN confirmed in the database (`/app/admin/support`). No Hospital role, OWNER included, can see any report. Every ACTIVE User without the ADMIN role may submit at `/app/support`, CAREGIVER-only accounts and Users without a Hospital included; a User holding ADMIN is refused on the server and has no submit entry. `SupportReport.hospitalId` is optional reporter-selected context (an ACTIVE Hospital of the reporter's current PATIENT/HOSPITAL/OSM relationship; CAREGIVER has no general Hospital scope) and never authorizes a reader. Reporters see only their own reports and statuses at `/app/support/reports`. There are no replies, comments or notifications.
+
 ## Mobile onboarding continuity — UX-C.0 / UX-C.1 (2026-10-26)
 
 UX-C.0 audits the current invitation → activation → optional LINE → DEMI/LINE login → explicit password-confirmed binding → friendship → Rich Menu → optional notification preference journey. [Audit and 20-scenario UAT record](./operations/MOBILE_ONBOARDING_AUDIT_UAT.md) separates code findings from unexecuted device hypotheses.

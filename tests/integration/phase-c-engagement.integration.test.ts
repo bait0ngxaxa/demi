@@ -10,10 +10,10 @@ import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryIntern
 import { MEDICATION_LINE_REMINDER_TEXT } from "@/modules/medications/domain/medication-line-reminders";
 import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
 import { runNotificationSchedulerTick } from "@/modules/notification-scheduler/services/notification-scheduler-tick-service";
-import { createSupportReport, getOwnerSupportReport, listOwnerSupportReports, SupportReportRateLimitError, updateOwnerSupportReportStatus } from "@/modules/support/services/support-report-service";
+import { createSupportReport, getAdminSupportReport, getOwnSupportReport, listAdminSupportReports, listOwnSupportReports, SupportReportRateLimitError, updateAdminSupportReportStatus } from "@/modules/support/services/support-report-service";
 import { updateOwnContactEmail } from "@/modules/account-settings/services/contact-setting-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
-import { ConflictError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 // Runs before each delivery-time source revalidation, letting a test advance its clock while one notification is processed.
 const revalidation = vi.hoisted(() => ({ beforeEach: (): void => undefined }));
@@ -453,45 +453,140 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     }
   });
 
-  it("routes reports from patient, OSM and staff to the hospital owner and audits status transitions", async () => {
+  // WB-DF-14 (Product Owner 2026-10-26): reports go to the platform ADMIN only; no Hospital role reads them.
+  async function createAdmin(): Promise<{ actor: ActorContext; userId: string }> {
+    return createUser(Role.ADMIN);
+  }
+
+  it("lets every non-ADMIN role submit, with or without a Hospital, and routes the report to the platform ADMIN inbox", async () => {
     const owner = await createHospitalOwner();
     const patient = await createPatient(owner.actor, owner.hospitalId);
     const osm = await createWorkforce(owner.hospitalId, Role.OSM);
     const member = await createWorkforce(owner.hospitalId, Role.HOSPITAL);
-    const reportIds: string[] = [];
-    for (const actor of [patient.actor, osm, member]) {
-      const created = await createSupportReport(actor, { hospitalId: owner.hospitalId, category: "BUG", message: "หน้าจอบันทึกไม่ตอบสนอง" }, { database: prisma, now: () => reminderNow });
-      reportIds.push(created.id);
+    const caregiver = await createUser(Role.CAREGIVER);
+    const admin = await createAdmin();
+    const withHospital: string[] = [];
+    for (const actor of [patient.actor, osm, member, owner.actor]) {
+      withHospital.push((await createSupportReport(actor, { hospitalId: owner.hospitalId, category: "BUG", message: "หน้าจอบันทึกไม่ตอบสนอง" }, { database: prisma, now: () => reminderNow })).id);
     }
-    const inbox = await listOwnerSupportReports(owner.actor, { hospitalId: owner.hospitalId }, prisma);
-    expect(new Set(inbox.items.map(({ id }) => id))).toEqual(new Set(reportIds));
-    expect(inbox.items).toHaveLength(3);
-    const initial = await getOwnerSupportReport(owner.actor, reportIds[0], prisma);
-    const acknowledged = await updateOwnerSupportReportStatus(owner.actor, { reportId: initial.id, expectedUpdatedAt: initial.updatedAt, status: SupportReportStatus.ACKNOWLEDGED }, { database: prisma, now: () => reminderNow });
-    const resolved = await updateOwnerSupportReportStatus(owner.actor, { reportId: initial.id, expectedUpdatedAt: acknowledged.updatedAt, status: SupportReportStatus.RESOLVED }, { database: prisma, now: () => reminderNow });
-    expect((await getOwnerSupportReport(owner.actor, initial.id, prisma)).status).toBe(SupportReportStatus.RESOLVED);
-    expect(await prisma.auditEvent.count({ where: { actorUserId: owner.userId, resourceId: initial.id, action: { in: ["support_report.acknowledged", "support_report.resolved"] } } })).toBe(2);
+    const caregiverReport = await createSupportReport(caregiver.actor, { category: "ACCESS", message: "เปิดหน้าครอบครัวไม่ได้" }, { database: prisma, now: () => reminderNow });
+    const patientWithoutHospital = await createSupportReport(patient.actor, { category: "OTHER", message: "ไม่เกี่ยวกับโรงพยาบาลใด" }, { database: prisma, now: () => reminderNow });
+
+    const inbox = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId }, prisma);
+    expect(new Set(inbox.items.map(({ id }) => id))).toEqual(new Set(withHospital));
+    expect(inbox.items.every(({ hospitalName }) => hospitalName === "โรงพยาบาลทดสอบ Phase C")).toBe(true);
+    for (const id of [caregiverReport.id, patientWithoutHospital.id]) {
+      const detail = await getAdminSupportReport(admin.actor, id, prisma);
+      expect(detail.hospital).toBeNull();
+    }
+    expect(await prisma.auditEvent.findFirst({ where: { actorUserId: caregiver.userId, resourceId: caregiverReport.id, action: "support_report.created" }, select: { metadata: true } })).toEqual({ metadata: { hospitalId: null, category: "ACCESS" } });
+
+    const initial = await getAdminSupportReport(admin.actor, withHospital[0], prisma);
+    expect(initial).toMatchObject({ status: SupportReportStatus.NEW, message: "หน้าจอบันทึกไม่ตอบสนอง", hospital: { id: owner.hospitalId } });
+    const acknowledged = await updateAdminSupportReportStatus(admin.actor, { reportId: initial.id, expectedUpdatedAt: initial.updatedAt, status: SupportReportStatus.ACKNOWLEDGED }, { database: prisma, now: () => reminderNow });
+    await expect(updateAdminSupportReportStatus(admin.actor, { reportId: initial.id, expectedUpdatedAt: initial.updatedAt, status: SupportReportStatus.RESOLVED }, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ConflictError);
+    const resolved = await updateAdminSupportReportStatus(admin.actor, { reportId: initial.id, expectedUpdatedAt: acknowledged.updatedAt, status: SupportReportStatus.RESOLVED }, { database: prisma, now: () => reminderNow });
     expect(new Date(resolved.updatedAt).getTime()).toBeGreaterThan(new Date(acknowledged.updatedAt).getTime());
+    expect(await getAdminSupportReport(admin.actor, initial.id, prisma)).toMatchObject({ status: SupportReportStatus.RESOLVED, resolvedAt: resolved.updatedAt });
+    expect(await prisma.supportReport.findUniqueOrThrow({ where: { id: initial.id }, select: { statusUpdaterUserId: true } })).toEqual({ statusUpdaterUserId: admin.userId });
+    expect(await prisma.auditEvent.count({ where: { actorUserId: admin.userId, resourceId: initial.id, action: { in: ["support_report.acknowledged", "support_report.resolved"] } } })).toBe(2);
+    await expect(updateAdminSupportReportStatus(admin.actor, { reportId: initial.id, expectedUpdatedAt: resolved.updatedAt, status: SupportReportStatus.RESOLVED }, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ConflictError);
+    expect((await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: SupportReportStatus.RESOLVED }, prisma)).items.map(({ id }) => id)).toEqual([initial.id]);
+    expect((await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, category: "ACCESS" }, prisma)).items).toEqual([]);
   });
 
-  it("paginates the complete owner inbox with a cursor bound to its owner and hospital", async () => {
+  it("refuses a submitter who holds ADMIN in the database, alone, combined, or missing from the session snapshot", async () => {
     const owner = await createHospitalOwner();
-    const otherOwner = await createUser(Role.HOSPITAL);
-    await prisma.hospitalMembership.create({ data: { userId: otherOwner.userId, hospitalId: owner.hospitalId, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE } });
-    otherOwner.actor.hospitalMemberships = [{ hospitalId: owner.hospitalId, membershipType: MembershipType.OWNER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }];
+    const admin = await createAdmin();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    await expect(createSupportReport(admin.actor, { category: "BUG", message: "รายงานถึงตัวเอง" }, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ForbiddenError);
+    await prisma.userRole.create({ data: { userId: patient.userId, role: Role.ADMIN } });
+    await expect(createSupportReport({ ...patient.actor, roles: [Role.PATIENT, Role.ADMIN] }, { category: "BUG", message: "ผู้ป่วยที่เป็น ADMIN" }, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ForbiddenError);
+    // A stale session without ADMIN is still refused by the persisted roles.
+    await expect(createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "session เก่า" }, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await prisma.supportReport.count({ where: { reporterUserId: { in: [admin.userId, patient.userId] } } })).toBe(0);
+  });
+
+  it("accepts only an ACTIVE Hospital the reporter is currently related to", async () => {
+    const owner = await createHospitalOwner();
+    const otherOwner = await createHospitalOwner();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    const caregiver = await createUser(Role.CAREGIVER);
+    const send = (actor: ActorContext, hospitalId: string) => createSupportReport(actor, { hospitalId, category: "BUG", message: "ทดสอบขอบเขตโรงพยาบาล" }, { database: prisma, now: () => reminderNow });
+    await expect(send(patient.actor, otherOwner.hospitalId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(send(caregiver.actor, owner.hospitalId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(send(patient.actor, randomUUID())).rejects.toBeInstanceOf(ForbiddenError);
+    await prisma.hospital.update({ where: { id: owner.hospitalId }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(send(patient.actor, owner.hospitalId)).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await prisma.supportReport.count({ where: { reporterUserId: { in: [patient.userId, caregiver.userId] } } })).toBe(0);
+    await expect(createSupportReport(patient.actor, { category: "BUG", message: "ไม่ระบุโรงพยาบาล" }, { database: prisma, now: () => reminderNow })).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  it("gives no Hospital OWNER, forged session, demoted or suspended ADMIN any inbox access", async () => {
+    const owner = await createHospitalOwner();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    const report = await createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "รายงานในโรงพยาบาลของ OWNER" }, { database: prisma, now: () => reminderNow });
+    const statusInput = { reportId: report.id, expectedUpdatedAt: report.createdAt, status: SupportReportStatus.ACKNOWLEDGED };
+    const forgedOwner: ActorContext = { ...owner.actor, roles: [Role.HOSPITAL, Role.ADMIN] };
+    const demoted = await createAdmin();
+    await prisma.userRole.delete({ where: { userId_role: { userId: demoted.userId, role: Role.ADMIN } } });
+    const suspended = await createAdmin();
+    await prisma.user.update({ where: { id: suspended.userId }, data: { status: UserStatus.SUSPENDED } });
+    for (const actor of [owner.actor, forgedOwner, demoted.actor, suspended.actor]) {
+      await expect(listAdminSupportReports(actor, { hospitalId: owner.hospitalId }, prisma)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(getAdminSupportReport(actor, report.id, prisma)).rejects.toBeInstanceOf(ForbiddenError);
+      await expect(updateAdminSupportReportStatus(actor, statusInput, { database: prisma, now: () => reminderNow })).rejects.toBeInstanceOf(ForbiddenError);
+    }
+    // The OWNER is not the reporter, so the reporter history does not expose it either.
+    await expect(getOwnSupportReport(owner.actor, report.id, prisma)).rejects.toBeInstanceOf(NotFoundError);
+    expect(await prisma.supportReport.findUniqueOrThrow({ where: { id: report.id }, select: { status: true, statusUpdaterUserId: true } })).toEqual({ status: SupportReportStatus.NEW, statusUpdaterUserId: null });
+  });
+
+  it("shows a reporter only their own reports and current statuses", async () => {
+    const owner = await createHospitalOwner();
+    const patient = await createPatient(owner.actor, owner.hospitalId);
+    const other = await createPatient(owner.actor, owner.hospitalId);
+    const admin = await createAdmin();
+    const own = await createSupportReport(patient.actor, { hospitalId: owner.hospitalId, category: "BUG", message: "รายงานของฉัน" }, { database: prisma, now: () => reminderNow });
+    const later = await createSupportReport(patient.actor, { category: "OTHER", message: "รายงานที่สองของฉัน" }, { database: prisma, now: () => new Date(reminderNow.getTime() + 1_000) });
+    const others = await createSupportReport(other.actor, { category: "BUG", message: "รายงานของคนอื่น" }, { database: prisma, now: () => reminderNow });
+    const detail = await getAdminSupportReport(admin.actor, own.id, prisma);
+    await updateAdminSupportReportStatus(admin.actor, { reportId: own.id, expectedUpdatedAt: detail.updatedAt, status: SupportReportStatus.ACKNOWLEDGED }, { database: prisma, now: () => reminderNow });
+
+    const history = await listOwnSupportReports(patient.actor, {}, prisma);
+    expect(history.items.map(({ id, status, hospitalName }) => ({ id, status, hospitalName }))).toEqual([
+      { id: later.id, status: SupportReportStatus.NEW, hospitalName: null },
+      { id: own.id, status: SupportReportStatus.ACKNOWLEDGED, hospitalName: "โรงพยาบาลทดสอบ Phase C" },
+    ]);
+    expect(history.nextCursor).toBeNull();
+    expect(await getOwnSupportReport(patient.actor, own.id, prisma)).toMatchObject({ message: "รายงานของฉัน", status: SupportReportStatus.ACKNOWLEDGED });
+    await expect(getOwnSupportReport(patient.actor, others.id, prisma)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(getOwnSupportReport(patient.actor, randomUUID(), prisma)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("paginates the ADMIN inbox with a cursor bound to its ADMIN and exact filters", async () => {
+    const owner = await createHospitalOwner();
+    const admin = await createAdmin();
+    const otherAdmin = await createAdmin();
     const rows = Array.from({ length: 26 }, (_, index) => ({
       id: randomUUID(), hospitalId: owner.hospitalId, reporterUserId: owner.userId,
       category: "OTHER" as const, message: `รายงานทดสอบ ${index}`, status: "NEW" as const,
       createdAt: new Date(reminderNow.getTime() + index), updatedAt: new Date(reminderNow.getTime() + index),
     }));
     await prisma.supportReport.createMany({ data: rows });
-    const first = await listOwnerSupportReports(owner.actor, { hospitalId: owner.hospitalId }, prisma);
+    const first = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId }, prisma);
     expect(first.items).toHaveLength(25); expect(first.nextCursor).toBeTruthy();
-    const second = await listOwnerSupportReports(owner.actor, { hospitalId: owner.hospitalId, cursor: first.nextCursor ?? undefined }, prisma);
+    const second = await listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, cursor: first.nextCursor ?? undefined }, prisma);
     expect(second.items).toHaveLength(1); expect(second.nextCursor).toBeNull();
     expect(new Set([...first.items, ...second.items].map(({ id }) => id))).toEqual(new Set(rows.map(({ id }) => id)));
-    await expect(listOwnerSupportReports(owner.actor, { hospitalId: owner.hospitalId, cursor: `${first.nextCursor}x` }, prisma)).rejects.toBeInstanceOf(ValidationError);
-    await expect(listOwnerSupportReports(otherOwner.actor, { hospitalId: owner.hospitalId, cursor: first.nextCursor ?? "" }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    const cursor = first.nextCursor ?? "";
+    await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, cursor: `${cursor}x` }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    await expect(listAdminSupportReports(admin.actor, { hospitalId: owner.hospitalId, status: SupportReportStatus.NEW, cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    await expect(listAdminSupportReports(otherAdmin.actor, { hospitalId: owner.hospitalId, cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    const ownHistory = await listOwnSupportReports(owner.actor, {}, prisma);
+    expect(ownHistory.items).toHaveLength(25);
+    await expect(listOwnSupportReports(owner.actor, { cursor }, prisma)).rejects.toBeInstanceOf(ValidationError);
+    expect((await listOwnSupportReports(owner.actor, { cursor: ownHistory.nextCursor ?? "" }, prisma)).items).toHaveLength(1);
   });
 
   it("rate limits reports per user and keeps contact email separate from authentication", async () => {

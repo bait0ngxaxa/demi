@@ -112,6 +112,8 @@ const personalSections = [
 ] as const;
 const patientAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/personal/profile", "/app/settings", "/app/support"]] as const;
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
+// WB-DF-14 (Product Owner 2026-10-26): an account holding ADMIN receives reports, so it has no submit entry.
+const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings"]] as const;
 const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "นำเข้าผู้ป่วย", ["/app/patients/provision"]] as const;
@@ -120,7 +122,8 @@ const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
   ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
   staffRegistration,
-  ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests", "/app/hospitals/support"]],
+  // WB-DF-14 (Product Owner 2026-10-26): the OWNER support inbox is removed; reports go to the platform ADMIN.
+  ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests"]],
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
   ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
@@ -195,7 +198,8 @@ const cases: Case[] = [
     workspaces: [],
     expected: { work: [
       ["home", null, ["/app"]],
-      ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding"]],
+      // WB-DF-14 (Product Owner 2026-10-26): the platform ADMIN receives usage-problem reports.
+      ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding", "/app/admin/support"]],
       ["administration", "กำกับดูแล", ["/app/admin/hospitals", "/app/admin/reporting", "/app/admin/recovery"]],
       ["account", "บัญชีและช่วยเหลือ", ["/app/family"]],
     ] },
@@ -209,10 +213,11 @@ const cases: Case[] = [
       ["home", null, ["/app"]],
       ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
       staffRegistration,
-      ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
+      // WB-DF-14 (Product Owner 2026-10-26): ADMIN inbox only; no OWNER inbox and no submit entry for ADMIN.
+      ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding", "/app/admin/support"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
       ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge", "/app/admin/hospitals", "/app/admin/reporting", "/app/admin/recovery"]],
-      workAccount,
+      adminWorkAccount,
     ] },
   },
   {
@@ -338,10 +343,11 @@ describe("UI-4 task-based navigation per actor", () => {
     const lost = (previousHrefs[name] ?? []).filter((href) => !reachable.has(href));
 
     // Password stays on Personal Settings; administration entry points are consolidated into their primary directories.
+    // WB-DF-14 (Product Owner 2026-10-26) removes the OWNER support inbox and the ADMIN submit entry on purpose.
     expect(lost).toEqual(subject.roles.includes(Role.PATIENT) ? ["/app/personal/password"] : name === "owner"
-      ? ["/app/workforce", "/app/hospitals/contact", "/app/patients/activation", "/app/patients/service-catalog"]
+      ? ["/app/workforce", "/app/hospitals/contact", "/app/hospitals/support", "/app/patients/activation", "/app/patients/service-catalog"]
       : name === "adminOwner"
-        ? ["/app/workforce", "/app/hospitals/contact", "/app/patients/activation"]
+        ? ["/app/workforce", "/app/hospitals/contact", "/app/hospitals/support", "/app/patients/activation", "/app/support"]
         : []);
   });
 
@@ -511,11 +517,12 @@ describe("application navigation visibility (unchanged policies)", () => {
     }
   });
 
-  it("limits a CAREGIVER-only account to family and settings navigation", () => {
+  it("limits a CAREGIVER-only account to family, settings and problem reporting navigation", () => {
     const groups = project(actor({ roles: [Role.CAREGIVER] }));
     const hrefs = allHrefs(groups);
 
-    expect(hrefs).toEqual(["/app/family", "/app/settings"]);
+    // WB-DF-14 (Product Owner 2026-10-26): every non-ADMIN account may report, CAREGIVER-only included.
+    expect(hrefs).toEqual(["/app/family", "/app/settings", "/app/support"]);
     expect(groups.some(({ workspace }) => workspace === "personal" || workspace === "work")).toBe(false);
     expect(hrefs.some((href) => href.startsWith("/app/personal") || href.startsWith("/app/patients") ||
       href.startsWith("/app/hospitals") || href.startsWith("/app/admin"))).toBe(false);

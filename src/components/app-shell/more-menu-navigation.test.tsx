@@ -135,6 +135,14 @@ describe("More menu page navigation", () => {
     expect(hospitalHtml).not.toContain("คืนบัญชีผู้ใช้");
   });
 
+  it("maps the ADMIN support inbox to the support icon and drops the removed OWNER inbox", () => {
+    // WB-DF-14 (Product Owner 2026-10-26).
+    expect(getMoreNavigationIcon("/app/admin/support")).toBe("support");
+    expect(getMoreNavigationIcon("/app/admin/support/11111111-1111-4111-8111-111111111111")).toBe("support");
+    expect(getMoreNavigationIcon("/app/support/reports")).toBe("support");
+    expect(getMoreNavigationIcon("/app/hospitals/support")).toBe("hospital");
+  });
+
   it.each(menuCases)("renders exactly the projected menu for $label in $workspace", ({
     roles,
     workspace,

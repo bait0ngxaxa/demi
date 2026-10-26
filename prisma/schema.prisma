@@ -782,7 +782,8 @@ model UserContactSetting {
 
 model SupportReport {
   id                    String                @id @default(uuid()) @db.Uuid
-  hospitalId            String                @db.Uuid
+  // WB-DF-14 (Product Owner 2026-10-26): optional reporter-selected context; never authorizes a reader.
+  hospitalId            String?               @db.Uuid
   reporterUserId        String                @db.Uuid
   statusUpdaterUserId   String?               @db.Uuid
   category              SupportReportCategory
@@ -792,11 +793,11 @@ model SupportReport {
   updatedAt             DateTime              @updatedAt @db.Timestamptz(3)
   resolvedAt            DateTime?             @db.Timestamptz(3)
 
-  hospital          Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  hospital          Hospital? @relation(fields: [hospitalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   reporter          User     @relation("SupportReportReporter", fields: [reporterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   statusUpdater     User?    @relation("SupportReportStatusUpdater", fields: [statusUpdaterUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
-  @@index([hospitalId, status, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_inbox_order_idx")
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)], map: "SupportReport_admin_inbox_order_idx")
   @@index([reporterUserId, createdAt(sort: Desc)], map: "SupportReport_reporter_order_idx")
 }
 

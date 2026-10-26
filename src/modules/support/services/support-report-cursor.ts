@@ -22,12 +22,13 @@ function canonical(cursor: SupportReportCursor): Buffer {
   return Buffer.from(JSON.stringify({ version: 1, createdAt: cursor.createdAt, id: cursor.id }), "utf8");
 }
 
-function signature(actor: ActorContext, hospitalId: string, payload: Buffer): Buffer {
+/** `scope` names the listing a cursor belongs to: the ADMIN inbox with its filters, or one reporter's own history. */
+function signature(actor: ActorContext, scope: string, payload: Buffer): Buffer {
   let key: string;
   try { key = getServerEnv().IDENTITY_HASH_SECRET; }
   catch { throw new InfrastructureError("Support report cursor could not be secured"); }
   return createHmac("sha256", key)
-    .update(`demi.support-report.cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000${hospitalId.toLowerCase()}\u0000createdAt-id-desc:25:all-hospital-reports\u0000`, "utf8")
+    .update(`demi.support-report.cursor.v2\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000${scope}\u0000createdAt-id-desc:25\u0000`, "utf8")
     .update(payload)
     .digest();
 }
@@ -38,23 +39,23 @@ function decodeBase64Url(value: string): Buffer | null {
   return bytes.toString("base64url") === value ? bytes : null;
 }
 
-export function encodeSupportReportCursor(actor: ActorContext, hospitalId: string, cursor: SupportReportCursor): string {
+export function encodeSupportReportCursor(actor: ActorContext, scope: string, cursor: SupportReportCursor): string {
   const parsed = cursorSchema.safeParse(cursor);
   if (!parsed.success || parsed.data.id !== parsed.data.id.toLowerCase()) throw new ValidationError("Support report cursor is invalid");
   const payload = canonical(parsed.data);
-  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, hospitalId, payload).toString("base64url")}`;
+  const token = `${PREFIX}${payload.toString("base64url")}.${signature(actor, scope, payload).toString("base64url")}`;
   if (token.length > MAX_CURSOR_LENGTH) throw new ValidationError("Support report cursor is invalid");
   return token;
 }
 
-export function decodeSupportReportCursor(actor: ActorContext, hospitalId: string, token: string): SupportReportCursor {
+export function decodeSupportReportCursor(actor: ActorContext, scope: string, token: string): SupportReportCursor {
   if (token.length > MAX_CURSOR_LENGTH || !token.startsWith(PREFIX)) throw new ValidationError("Support report cursor is invalid");
   const parts = token.slice(PREFIX.length).split(".");
   if (parts.length !== 2) throw new ValidationError("Support report cursor is invalid");
   const payload = decodeBase64Url(parts[0] ?? "");
   const suppliedSignature = decodeBase64Url(parts[1] ?? "");
   if (!payload || !suppliedSignature || suppliedSignature.byteLength !== 32) throw new ValidationError("Support report cursor is invalid");
-  if (!timingSafeEqual(signature(actor, hospitalId, payload), suppliedSignature)) throw new ValidationError("Support report cursor is invalid");
+  if (!timingSafeEqual(signature(actor, scope, payload), suppliedSignature)) throw new ValidationError("Support report cursor is invalid");
   let raw: unknown;
   try { raw = JSON.parse(payload.toString("utf8")); }
   catch { throw new ValidationError("Support report cursor is invalid"); }

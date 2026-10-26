@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { connection } from "next/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { getSupportFormContext } from "@/modules/support/transport/support-report-page-context";
@@ -9,5 +10,5 @@ export const metadata: Metadata = { title: "แจ้งปัญหาการ
 export default async function SupportPage(): Promise<React.JSX.Element> {
   await connection();
   const context = await getSupportFormContext();
-  return <div className="min-w-0 max-w-4xl space-y-6"><PageHeader title="แจ้งปัญหาการใช้งาน" description="ส่งรายละเอียดให้เจ้าของโรงพยาบาลตรวจสอบ" /><SupportReportForm hospitals={context.hospitals} /></div>;
+  return <div className="min-w-0 max-w-4xl space-y-6"><PageHeader title="แจ้งปัญหาการใช้งาน" description="ส่งรายละเอียดให้ผู้ดูแลระบบ DEMI ตรวจสอบ" /><Link className="inline-flex min-h-11 items-center rounded-control font-medium text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/support/reports">ดูรายงานที่ส่งแล้วและสถานะ</Link><SupportReportForm hospitals={context.hospitals} /></div>;
 }

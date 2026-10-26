@@ -10,7 +10,7 @@ type SupportResult =
   | { status: "ERROR"; code: "VALIDATION" | "RATE_LIMIT" | "CONFLICT" | "FORBIDDEN" | "UNAVAILABLE"; message: string };
 
 const mocks = vi.hoisted(() => ({
-  create: vi.fn<(input: { hospitalId: string; category: string; message: string }) => Promise<SupportResult>>(),
+  create: vi.fn<(input: { hospitalId?: string; category: string; message: string }) => Promise<SupportResult>>(),
   notify: {
     success: vi.fn<(message: string) => void>(),
     error: vi.fn<(message: string) => void>(),
@@ -116,7 +116,7 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
     expect(mocks.notify.success).toHaveBeenCalledWith("ส่งรายงานแล้ว");
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("");
-    expect(quietTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(quietTextContaining("ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ")).toContain("ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ");
     expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
 
     act(() => root.render(createElement(SupportReportForm, {
@@ -128,6 +128,40 @@ describe("SupportReportForm notifications", () => {
     await submit();
     expect(mocks.create).toHaveBeenCalledTimes(2);
     expect(mocks.notify.success).toHaveBeenCalledTimes(2);
+  });
+
+  // WB-DF-14 (Product Owner 2026-10-26): the Hospital is optional context; the platform ADMIN receives every report.
+  it("submits without a Hospital when the reporter has no eligible Hospital", async () => {
+    mocks.create.mockResolvedValue({ status: "SUCCESS", reportId: "report-1" });
+    mount([]);
+    changeMessage("ผู้ดูแลเปิดหน้าครอบครัวไม่ได้");
+
+    expect(container.querySelector("#support-hospital")).toBeNull();
+    expect(container.querySelector('input[name="hospitalId"]')).toBeNull();
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
+    await submit();
+
+    expect(mocks.create).toHaveBeenCalledWith({ category: "BUG", message: "ผู้ดูแลเปิดหน้าครอบครัวไม่ได้" });
+    expect(quietTextContaining("ผู้ดูแลระบบ DEMI จะตรวจสอบ")).toContain("ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ");
+    expect(container.textContent).not.toContain("เจ้าของโรงพยาบาล");
+  });
+
+  it("offers a not-specific choice when several Hospitals are eligible and then omits the Hospital", async () => {
+    mocks.create.mockResolvedValue({ status: "SUCCESS", reportId: "report-1" });
+    mount([
+      { id: "hospital-1", name: "โรงพยาบาลหนึ่ง", hospitalCode: "TEST-001" },
+      { id: "hospital-2", name: "โรงพยาบาลสอง", hospitalCode: "TEST-002" },
+    ]);
+    const options = Array.from(query<HTMLSelectElement>("#support-hospital").options, ({ value, textContent }) => [value, textContent]);
+    expect(options).toEqual([["hospital-1", "โรงพยาบาลหนึ่ง"], ["hospital-2", "โรงพยาบาลสอง"], ["", "ไม่เจาะจงโรงพยาบาล"]]);
+    expect(query<HTMLSelectElement>("#support-hospital").value).toBe("hospital-1");
+
+    changeHospital("");
+    changeMessage("ปัญหาทั่วไปของแอป");
+    await submit();
+
+    expect(mocks.create).toHaveBeenCalledWith({ category: "BUG", message: "ปัญหาทั่วไปของแอป" });
+    expect(query<HTMLSelectElement>("#support-hospital").value).toBe("");
   });
 
   it("prevents a second request and toast while one submission is pending", async () => {
@@ -181,7 +215,7 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.create).toHaveBeenCalledWith({ hospitalId: "hospital-1", category: "BUG", message: "รายงานของโรงพยาบาลหนึ่ง" });
     expect(query<HTMLTextAreaElement>("#support-message").value).toBe("ร่างใหม่ที่ยังไม่ได้ส่ง");
     expect(query<HTMLSelectElement>("#support-hospital").value).toBe("hospital-1");
-    expect(quietTextContaining("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ")).toContain("ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ");
+    expect(quietTextContaining("ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ")).toContain("ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ");
     expect(statusTextContaining("ส่งรายงานแล้ว")).toBeNull();
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
   });

@@ -1,11 +1,14 @@
 import "server-only";
 
+import { Role } from "@prisma/client";
 import { notFound, redirect } from "next/navigation";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
-import { getOwnerSupportReport, listOwnerSupportHospitals, listOwnerSupportReports, listOwnSupportHospitals } from "../services/support-report-service";
+import { canSubmitSupportReport } from "../domain/support-report";
+import { getAdminSupportReport, getOwnSupportReport, listAdminSupportReports, listOwnSupportHospitals, listOwnSupportReports, type SupportReportDetail, type SupportReportPage } from "../services/support-report-service";
 
-async function actorOrRedirect() {
+async function actorOrRedirect(): Promise<ActorContext> {
   try { return await getProtectedApplicationActor(); }
   catch (error: unknown) {
     if (error instanceof UnauthenticatedError) redirect("/login");
@@ -14,32 +17,55 @@ async function actorOrRedirect() {
   }
 }
 
-export async function getSupportFormContext() {
+/** WB-DF-14 (2026-10-26): every non-ADMIN account may report, with or without a Hospital to name. */
+export async function getSupportFormContext(): Promise<{ hospitals: Array<{ id: string; name: string; hospitalCode: string }> }> {
   const actor = await actorOrRedirect();
-  const hospitals = await listOwnSupportHospitals(actor);
-  if (hospitals.length === 0) redirect("/app");
-  return { hospitals };
+  if (!canSubmitSupportReport(actor.roles)) redirect("/app");
+  return { hospitals: await listOwnSupportHospitals(actor) };
 }
 
-export async function getSupportInboxContext(hospitalId: string | undefined, cursor?: string) {
+export async function getSupportHistoryContext(cursor?: string): Promise<SupportReportPage> {
   const actor = await actorOrRedirect();
-  const hospitals = await listOwnerSupportHospitals(actor);
-  if (hospitals.length === 0) redirect("/app");
-  const selectedId = hospitalId ?? hospitals[0]?.id;
-  if (!selectedId || !hospitals.some(({ id }) => id === selectedId)) notFound();
-  try { return { hospitals, selectedId, page: await listOwnerSupportReports(actor, cursor === undefined ? { hospitalId: selectedId } : { hospitalId: selectedId, cursor }) }; }
+  try { return await listOwnSupportReports(actor, cursor === undefined ? {} : { cursor }); }
   catch (error: unknown) {
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) notFound();
-    if (error instanceof ValidationError) redirect(`/app/hospitals/support?hospitalId=${encodeURIComponent(selectedId)}`);
+    if (error instanceof ValidationError) redirect("/app/support/reports");
     throw error;
   }
 }
 
-export async function getSupportReportDetailContext(reportId: string) {
+export async function getSupportHistoryDetailContext(reportId: string): Promise<SupportReportDetail> {
   const actor = await actorOrRedirect();
-  try { return await getOwnerSupportReport(actor, reportId); }
+  try { return await getOwnSupportReport(actor, reportId); }
   catch (error: unknown) {
-    if (error instanceof ForbiddenError || error instanceof NotFoundError) notFound();
+    if (error instanceof NotFoundError) notFound();
+    throw error;
+  }
+}
+
+export type AdminSupportInboxFilters = { status?: string; category?: string; hospitalId?: string; cursor?: string };
+
+async function adminOrRedirect(): Promise<ActorContext> {
+  const actor = await actorOrRedirect();
+  if (!actor.roles.includes(Role.ADMIN)) redirect("/app");
+  return actor;
+}
+
+export async function getAdminSupportInboxContext(filters: AdminSupportInboxFilters): Promise<SupportReportPage> {
+  const actor = await adminOrRedirect();
+  try { return await listAdminSupportReports(actor, filters); }
+  catch (error: unknown) {
+    if (error instanceof ForbiddenError) redirect("/app");
+    if (error instanceof ValidationError) redirect("/app/admin/support");
+    throw error;
+  }
+}
+
+export async function getAdminSupportReportDetailContext(reportId: string): Promise<SupportReportDetail> {
+  const actor = await adminOrRedirect();
+  try { return await getAdminSupportReport(actor, reportId); }
+  catch (error: unknown) {
+    if (error instanceof ForbiddenError) redirect("/app");
+    if (error instanceof NotFoundError) notFound();
     throw error;
   }
 }

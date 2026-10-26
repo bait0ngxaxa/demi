@@ -1,22 +1,32 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { HospitalStatus, MembershipStatus, MembershipType, Prisma, Role, SupportReportCategory, SupportReportStatus, UserStatus, type PrismaClient } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, Prisma, Role, SupportReportCategory, SupportReportStatus, UserStatus, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { assertPlatformAdminInDatabase } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
-import { supportReportCreateSchema, supportReportInboxQuerySchema, supportReportLocatorSchema, supportReportStatusSchema } from "../schemas/support-report-schemas";
-import { decodeSupportReportCursor, encodeSupportReportCursor } from "./support-report-cursor";
+import { canSubmitSupportReport, SUPPORT_REPORT_SUBMITTER_ROLES } from "../domain/support-report";
+import { supportReportAdminInboxQuerySchema, supportReportCreateSchema, supportReportLocatorSchema, supportReportReporterHistoryQuerySchema, supportReportStatusSchema } from "../schemas/support-report-schemas";
+import { decodeSupportReportCursor, encodeSupportReportCursor, type SupportReportCursor } from "./support-report-cursor";
 
 type Database = PrismaClient;
 export const SUPPORT_REPORTS_PER_BANGKOK_DAY = 5;
-export const SUPPORT_REPORT_INBOX_PAGE_SIZE = 25;
+export const SUPPORT_REPORT_PAGE_SIZE = 25;
 export class SupportReportRateLimitError extends ConflictError {
   constructor() { super("Daily support report limit reached"); this.name = "SupportReportRateLimitError"; }
 }
 
+export type SupportReportListItem = { id: string; category: SupportReportCategory; status: SupportReportStatus; createdAt: string; updatedAt: string; resolvedAt: string | null; hospitalName: string | null };
+export type SupportReportPage = { items: SupportReportListItem[]; nextCursor: string | null };
+export type SupportReportDetail = SupportReportListItem & { message: string; hospital: { id: string; name: string; hospitalCode: string } | null };
+
+/**
+ * Hospitals a reporter may name as optional context. CAREGIVER has no general Hospital scope (its only Hospital link is a
+ * Patient's appointment-read grant), so a CAREGIVER-only account reports without a Hospital.
+ */
 function activeRoleScope(actor: ActorContext): Prisma.HospitalWhereInput[] {
   const scopes: Prisma.HospitalWhereInput[] = [];
   const patientUser: Prisma.UserWhereInput = { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: Role.PATIENT } } };
@@ -48,14 +58,15 @@ function activeRoleScope(actor: ActorContext): Prisma.HospitalWhereInput[] {
   return scopes;
 }
 
-function assertActor(actor: ActorContext | null | undefined): asserts actor is ActorContext {
-  if (!actor || activeRoleScope(actor).length === 0) throw new ForbiddenError();
+function assertSubmitter(actor: ActorContext | null | undefined): asserts actor is ActorContext {
+  if (!actor || !canSubmitSupportReport(actor.roles)) throw new ForbiddenError();
 }
 
 export async function listOwnSupportHospitals(actor: ActorContext | null | undefined, database: Database = getPrisma()): Promise<Array<{ id: string; name: string; hospitalCode: string }>> {
-  assertActor(actor);
-  const hospitals = await database.hospital.findMany({ where: { status: HospitalStatus.ACTIVE, OR: activeRoleScope(actor) }, orderBy: [{ name: "asc" }, { hospitalCode: "asc" }], select: { id: true, name: true, hospitalCode: true } });
-  return hospitals;
+  assertSubmitter(actor);
+  const scopes = activeRoleScope(actor);
+  if (scopes.length === 0) return [];
+  return database.hospital.findMany({ where: { status: HospitalStatus.ACTIVE, OR: scopes }, orderBy: [{ name: "asc" }, { hospitalCode: "asc" }], select: { id: true, name: true, hospitalCode: true } });
 }
 
 function bangkokDayStart(now: Date): Date {
@@ -64,29 +75,39 @@ function bangkokDayStart(now: Date): Date {
   return new Date(carrier.getTime() - 7 * 60 * 60 * 1000);
 }
 
-async function assertCurrentActor(actor: ActorContext, transaction: Prisma.TransactionClient): Promise<void> {
-  const user = await transaction.user.findFirst({ where: { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: { in: [Role.PATIENT, Role.OSM, Role.HOSPITAL] } } } }, select: { id: true } });
+/** The persisted User decides: ACTIVE, holding a submitter role, and never ADMIN (an ADMIN would report to itself). */
+async function assertCurrentSubmitter(actor: ActorContext, transaction: Prisma.TransactionClient): Promise<void> {
+  const user = await transaction.user.findFirst({
+    where: { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: { in: [...SUPPORT_REPORT_SUBMITTER_ROLES] } }, none: { role: Role.ADMIN } } },
+    select: { id: true },
+  });
   if (!user) throw new ForbiddenError();
 }
 
 export async function createSupportReport(actor: ActorContext | null | undefined, input: unknown, dependencies: { database?: Database; now?: () => Date; idFactory?: () => string } = {}): Promise<{ id: string; createdAt: string }> {
-  assertActor(actor);
+  assertSubmitter(actor);
   const parsed = supportReportCreateSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError("Support report input is invalid");
   const database = dependencies.database ?? getPrisma();
   const now = new Date((dependencies.now?.() ?? new Date()).getTime());
   if (!Number.isFinite(now.getTime())) throw new InfrastructureError();
   const id = dependencies.idFactory?.() ?? randomUUID();
+  const requestedHospitalId = parsed.data.hospitalId;
   try {
     return await database.$transaction(async (transaction) => {
       await transaction.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${actor.userId}::uuid FOR UPDATE`;
-      await assertCurrentActor(actor, transaction);
-      const hospital = await transaction.hospital.findFirst({ where: { id: parsed.data.hospitalId, status: HospitalStatus.ACTIVE, OR: activeRoleScope(actor) }, select: { id: true } });
-      if (!hospital) throw new ForbiddenError();
+      await assertCurrentSubmitter(actor, transaction);
+      let hospitalId: string | null = null;
+      if (requestedHospitalId !== undefined) {
+        const scopes = activeRoleScope(actor);
+        const hospital = scopes.length === 0 ? null : await transaction.hospital.findFirst({ where: { id: requestedHospitalId, status: HospitalStatus.ACTIVE, OR: scopes }, select: { id: true } });
+        if (!hospital) throw new ForbiddenError();
+        hospitalId = hospital.id;
+      }
       const count = await transaction.supportReport.count({ where: { reporterUserId: actor.userId, createdAt: { gte: bangkokDayStart(now) } } });
       if (count >= SUPPORT_REPORTS_PER_BANGKOK_DAY) throw new SupportReportRateLimitError();
-      const report = await transaction.supportReport.create({ data: { id, hospitalId: hospital.id, reporterUserId: actor.userId, category: parsed.data.category, message: parsed.data.message, status: SupportReportStatus.NEW, createdAt: now, updatedAt: now }, select: { id: true, createdAt: true } });
-      await recordAuditEvent({ actorUserId: actor.userId, action: "support_report.created", resourceType: "SupportReport", resourceId: report.id, metadata: { hospitalId: hospital.id, category: parsed.data.category } }, transaction);
+      const report = await transaction.supportReport.create({ data: { id, hospitalId, reporterUserId: actor.userId, category: parsed.data.category, message: parsed.data.message, status: SupportReportStatus.NEW, createdAt: now, updatedAt: now }, select: { id: true, createdAt: true } });
+      await recordAuditEvent({ actorUserId: actor.userId, action: "support_report.created", resourceType: "SupportReport", resourceId: report.id, metadata: { hospitalId, category: parsed.data.category } }, transaction);
       return { id: report.id, createdAt: report.createdAt.toISOString() };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error: unknown) {
@@ -95,64 +116,105 @@ export async function createSupportReport(actor: ActorContext | null | undefined
   }
 }
 
-function activeOwnerHospitalScope(actor: ActorContext): Prisma.HospitalWhereInput {
-  return { status: HospitalStatus.ACTIVE, memberships: { some: { userId: actor.userId, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE, user: { personId: actor.personId, status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } } } };
+const listItemSelect = { id: true, category: true, status: true, createdAt: true, updatedAt: true, resolvedAt: true, hospital: { select: { name: true } } } satisfies Prisma.SupportReportSelect;
+type ListItemRow = Prisma.SupportReportGetPayload<{ select: typeof listItemSelect }>;
+
+function toListItem(row: ListItemRow): SupportReportListItem {
+  return { id: row.id, category: row.category, status: row.status, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), resolvedAt: row.resolvedAt?.toISOString() ?? null, hospitalName: row.hospital?.name ?? null };
 }
 
-function ownerHospitalWhere(actor: ActorContext, hospitalId: string): Prisma.HospitalWhereInput {
-  return { id: hospitalId, ...activeOwnerHospitalScope(actor) };
+function afterCursor(cursor: SupportReportCursor | null): Prisma.SupportReportWhereInput {
+  return cursor ? { OR: [
+    { createdAt: { lt: new Date(cursor.createdAt) } },
+    { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+  ] } : {};
 }
 
-export async function listOwnerSupportHospitals(actor: ActorContext | null | undefined, database: Database = getPrisma()): Promise<Array<{ id: string; name: string; hospitalCode: string }>> {
-  assertOwner(actor);
-  return database.hospital.findMany({ where: activeOwnerHospitalScope(actor), orderBy: [{ name: "asc" }, { hospitalCode: "asc" }], select: { id: true, name: true, hospitalCode: true } });
-}
-
-function assertOwner(actor: ActorContext | null | undefined): asserts actor is ActorContext {
-  if (!actor || !actor.roles.includes(Role.HOSPITAL) || !actor.hospitalMemberships.some(({ membershipType, status, hospitalStatus }) => membershipType === MembershipType.OWNER && status === MembershipStatus.ACTIVE && hospitalStatus === HospitalStatus.ACTIVE)) throw new ForbiddenError();
-}
-
-export async function listOwnerSupportReports(actor: ActorContext | null | undefined, input: unknown, database: Database = getPrisma()): Promise<{ hospital: { id: string; name: string; hospitalCode: string }; items: Array<{ id: string; category: SupportReportCategory; status: SupportReportStatus; createdAt: string; updatedAt: string }>; nextCursor: string | null }> {
-  assertOwner(actor);
-  const parsed = supportReportInboxQuerySchema.safeParse(input);
-  if (!parsed.success) throw new NotFoundError();
-  const hospital = await database.hospital.findFirst({ where: ownerHospitalWhere(actor, parsed.data.hospitalId), select: { id: true, name: true, hospitalCode: true } });
-  if (!hospital) throw new NotFoundError();
-  const cursor = parsed.data.cursor === undefined ? null : decodeSupportReportCursor(actor, hospital.id, parsed.data.cursor);
-  const rows = await database.supportReport.findMany({
-    where: {
-      hospitalId: hospital.id,
-      hospital: { is: activeOwnerHospitalScope(actor) },
-      ...(cursor ? { OR: [
-        { createdAt: { lt: new Date(cursor.createdAt) } },
-        { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
-      ] } : {}),
-    },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: SUPPORT_REPORT_INBOX_PAGE_SIZE + 1,
-    select: { id: true, category: true, status: true, createdAt: true, updatedAt: true },
-  });
-  const pageRows = rows.slice(0, SUPPORT_REPORT_INBOX_PAGE_SIZE);
+function toPage(actor: ActorContext, scope: string, rows: readonly ListItemRow[]): SupportReportPage {
+  const pageRows = rows.slice(0, SUPPORT_REPORT_PAGE_SIZE);
   const last = pageRows.at(-1);
   return {
-    hospital,
-    items: pageRows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() })),
-    nextCursor: rows.length > SUPPORT_REPORT_INBOX_PAGE_SIZE && last
-      ? encodeSupportReportCursor(actor, hospital.id, { version: 1, createdAt: last.createdAt.toISOString(), id: last.id })
+    items: pageRows.map(toListItem),
+    nextCursor: rows.length > SUPPORT_REPORT_PAGE_SIZE && last
+      ? encodeSupportReportCursor(actor, scope, { version: 1, createdAt: last.createdAt.toISOString(), id: last.id })
       : null,
   };
 }
 
-export async function getOwnerSupportReport(actor: ActorContext | null | undefined, reportIdInput: unknown, database: Database = getPrisma()): Promise<{ id: string; hospitalId: string; hospital: { name: string; hospitalCode: string }; category: SupportReportCategory; message: string; status: SupportReportStatus; createdAt: string; updatedAt: string }> {
-  assertOwner(actor);
-  const parsed = supportReportLocatorSchema.safeParse(reportIdInput);
-  if (!parsed.success) throw new NotFoundError();
-  const row = await database.supportReport.findFirst({ where: { id: parsed.data, hospital: { is: activeOwnerHospitalScope(actor) } }, select: { id: true, hospitalId: true, category: true, message: true, status: true, createdAt: true, updatedAt: true, hospital: { select: { name: true, hospitalCode: true } } } });
-  if (!row) throw new NotFoundError();
-  return { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+const REPORTER_HISTORY_SCOPE = "reporter-history";
+
+/** D4: a reporter reads only their own reports. The relation filter re-checks the persisted, ACTIVE reporter. */
+function ownReportsWhere(actor: ActorContext): Prisma.SupportReportWhereInput {
+  return { reporterUserId: actor.userId, reporter: { is: { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE } } };
 }
 
-export async function updateOwnerSupportReportStatus(actor: ActorContext | null | undefined, input: unknown, dependencies: { database?: Database; now?: () => Date } = {}): Promise<{ status: SupportReportStatus; updatedAt: string }> {
-  assertOwner(actor);
+export async function listOwnSupportReports(actor: ActorContext | null | undefined, input: unknown, database: Database = getPrisma()): Promise<SupportReportPage> {
+  if (!actor) throw new ForbiddenError();
+  const parsed = supportReportReporterHistoryQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Support report history query is invalid");
+  const cursor = parsed.data.cursor === undefined ? null : decodeSupportReportCursor(actor, REPORTER_HISTORY_SCOPE, parsed.data.cursor);
+  const rows = await database.supportReport.findMany({
+    where: { ...ownReportsWhere(actor), ...afterCursor(cursor) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: SUPPORT_REPORT_PAGE_SIZE + 1,
+    select: listItemSelect,
+  });
+  return toPage(actor, REPORTER_HISTORY_SCOPE, rows);
+}
+
+const detailSelect = { ...listItemSelect, message: true, hospital: { select: { id: true, name: true, hospitalCode: true } } } satisfies Prisma.SupportReportSelect;
+
+function toDetail(row: Prisma.SupportReportGetPayload<{ select: typeof detailSelect }>): SupportReportDetail {
+  return { ...toListItem(row), message: row.message, hospital: row.hospital };
+}
+
+/** Another user's report is indistinguishable from a missing one. */
+export async function getOwnSupportReport(actor: ActorContext | null | undefined, reportIdInput: unknown, database: Database = getPrisma()): Promise<SupportReportDetail> {
+  if (!actor) throw new ForbiddenError();
+  const parsed = supportReportLocatorSchema.safeParse(reportIdInput);
+  if (!parsed.success) throw new NotFoundError();
+  const row = await database.supportReport.findFirst({ where: { id: parsed.data, ...ownReportsWhere(actor) }, select: detailSelect });
+  if (!row) throw new NotFoundError();
+  return toDetail(row);
+}
+
+/** Session hint only; `assertPlatformAdminInDatabase` decides inside each transaction. */
+function assertAdmin(actor: ActorContext | null | undefined): asserts actor is ActorContext {
+  if (!actor || !actor.roles.includes(Role.ADMIN)) throw new ForbiddenError();
+}
+
+export async function listAdminSupportReports(actor: ActorContext | null | undefined, input: unknown, database: Database = getPrisma()): Promise<SupportReportPage> {
+  assertAdmin(actor);
+  const parsed = supportReportAdminInboxQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Support report inbox query is invalid");
+  const { status, category, hospitalId } = parsed.data;
+  // The cursor is bound to the exact filter set, so a page of one filter cannot continue another.
+  const scope = `admin-inbox:status=${status ?? "*"}:category=${category ?? "*"}:hospital=${hospitalId?.toLowerCase() ?? "*"}`;
+  const cursor = parsed.data.cursor === undefined ? null : decodeSupportReportCursor(actor, scope, parsed.data.cursor);
+  const rows = await database.$transaction(async (transaction) => {
+    await assertPlatformAdminInDatabase(transaction, actor.userId);
+    return transaction.supportReport.findMany({
+      where: { ...(status ? { status } : {}), ...(category ? { category } : {}), ...(hospitalId ? { hospitalId } : {}), ...afterCursor(cursor) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: SUPPORT_REPORT_PAGE_SIZE + 1,
+      select: listItemSelect,
+    });
+  });
+  return toPage(actor, scope, rows);
+}
+
+export async function getAdminSupportReport(actor: ActorContext | null | undefined, reportIdInput: unknown, database: Database = getPrisma()): Promise<SupportReportDetail> {
+  assertAdmin(actor);
+  const parsed = supportReportLocatorSchema.safeParse(reportIdInput);
+  if (!parsed.success) throw new NotFoundError();
+  const row = await database.$transaction(async (transaction) => {
+    await assertPlatformAdminInDatabase(transaction, actor.userId);
+    return transaction.supportReport.findUnique({ where: { id: parsed.data }, select: detailSelect });
+  });
+  if (!row) throw new NotFoundError();
+  return toDetail(row);
+}
+
+export async function updateAdminSupportReportStatus(actor: ActorContext | null | undefined, input: unknown, dependencies: { database?: Database; now?: () => Date } = {}): Promise<{ status: SupportReportStatus; updatedAt: string }> {
+  assertAdmin(actor);
   const parsed = supportReportStatusSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError();
   const database = dependencies.database ?? getPrisma();
@@ -160,7 +222,8 @@ export async function updateOwnerSupportReportStatus(actor: ActorContext | null 
   if (!Number.isFinite(now.getTime())) throw new InfrastructureError();
   try {
     return await database.$transaction(async (transaction) => {
-      const rows = await transaction.$queryRaw<Array<{ id: string; hospitalId: string; status: SupportReportStatus; updatedAt: Date }>>(Prisma.sql`SELECT r."id", r."hospitalId", r."status", r."updatedAt" FROM "SupportReport" r JOIN "HospitalMembership" m ON m."hospitalId" = r."hospitalId" AND m."userId" = ${actor.userId}::uuid AND m."membershipType" = 'OWNER'::"MembershipType" AND m."status" = 'ACTIVE'::"MembershipStatus" JOIN "Hospital" h ON h."id" = m."hospitalId" AND h."status" = 'ACTIVE'::"HospitalStatus" JOIN "User" u ON u."id" = m."userId" AND u."personId" = ${actor.personId}::uuid AND u."status" = 'ACTIVE'::"UserStatus" JOIN "UserRole" role ON role."userId" = u."id" AND role."role" = 'HOSPITAL'::"Role" WHERE r."id" = ${parsed.data.reportId}::uuid FOR UPDATE OF r`);
+      await assertPlatformAdminInDatabase(transaction, actor.userId);
+      const rows = await transaction.$queryRaw<Array<{ id: string; hospitalId: string | null; status: SupportReportStatus; updatedAt: Date }>>(Prisma.sql`SELECT r."id", r."hospitalId", r."status", r."updatedAt" FROM "SupportReport" r WHERE r."id" = ${parsed.data.reportId}::uuid FOR UPDATE OF r`);
       const current = rows[0];
       if (!current) throw new NotFoundError();
       if (current.updatedAt.getTime() !== new Date(parsed.data.expectedUpdatedAt).getTime()) throw new ConflictError();
@@ -177,4 +240,4 @@ export async function updateOwnerSupportReportStatus(actor: ActorContext | null 
   }
 }
 
-export const supportReportInternals = { activeRoleScope, bangkokDayStart, activeOwnerHospitalScope, ownerHospitalWhere, assertOwner };
+export const supportReportInternals = { activeRoleScope, bangkokDayStart };

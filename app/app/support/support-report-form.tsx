@@ -20,9 +20,13 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
   const draftRef = useRef({ category, message });
-  const selectedHospitalId = hospitals.some((hospital) => hospital.id === hospitalId)
-    ? hospitalId
-    : hospitals[0]?.id ?? "";
+  // WB-DF-14 (2026-10-26): the Hospital is optional context. One eligible Hospital is attached; with several the
+  // reporter may choose "" (not specific to a Hospital); with none the report carries no Hospital.
+  const selectedHospitalId = hospitalId === "" && hospitals.length > 1
+    ? ""
+    : hospitals.some((hospital) => hospital.id === hospitalId)
+      ? hospitalId
+      : hospitals[0]?.id ?? "";
   const selectedHospitalIdRef = useRef(selectedHospitalId);
 
   useCommittedLayoutEffect(() => {
@@ -38,7 +42,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (inFlightRef.current || unknownOutcome || selectedHospitalId === "") return;
+    if (inFlightRef.current || unknownOutcome) return;
     inFlightRef.current = true;
     const submittedHospitalId = selectedHospitalId;
     selectedHospitalIdRef.current = submittedHospitalId;
@@ -48,7 +52,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
       let result: Awaited<ReturnType<typeof createSupportReportAction>>;
       try {
         result = await createSupportReportAction({
-          hospitalId: submittedHospitalId,
+          ...(submittedHospitalId === "" ? {} : { hospitalId: submittedHospitalId }),
           category: submittedDraft.category,
           message: submittedDraft.message,
         });
@@ -79,7 +83,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
           draftRef.current = { ...draftRef.current, message: "" };
           setMessage("");
         }
-        setFeedback({ variant: "success", text: "ส่งรายงานแล้ว เจ้าของโรงพยาบาลจะตรวจสอบ" });
+        setFeedback({ variant: "success", text: "ส่งรายงานแล้ว ผู้ดูแลระบบ DEMI จะตรวจสอบ" });
         notify.success("ส่งรายงานแล้ว");
       } else if (result.status === "ERROR") {
         if (result.code === "UNAVAILABLE") {
@@ -90,7 +94,7 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
         setFeedback({ variant: "warning", text: result.message });
         if (result.code === "RATE_LIMIT") notify.warning("วันนี้ส่งรายงานครบจำนวนแล้ว");
         else if (result.code === "CONFLICT") notify.warning("ข้อมูลเปลี่ยนแปลงแล้ว โปรดตรวจสอบก่อนดำเนินการต่อ");
-        else if (result.code === "FORBIDDEN") notify.error("ไม่มีสิทธิ์ส่งรายงานไปยังโรงพยาบาลนี้");
+        else if (result.code === "FORBIDDEN") notify.error("ส่งรายงานไม่ได้");
       } else {
         setUnknownOutcome(true);
       }
@@ -115,13 +119,13 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
   }
 
   return <form className="max-w-2xl space-y-5" onSubmit={submit}>
-    {hospitals.length > 1 ? <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-hospital">โรงพยาบาล</label><select className="min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" disabled={pending || unknownOutcome} id="support-hospital" onChange={(event) => changeHospital(event.currentTarget.value)} value={selectedHospitalId}>{hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}</select></div> : <input name="hospitalId" type="hidden" value={selectedHospitalId} />}
+    {hospitals.length > 1 ? <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-hospital">โรงพยาบาลที่เกี่ยวข้อง (ไม่บังคับ)</label><select className="min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" disabled={pending || unknownOutcome} id="support-hospital" onChange={(event) => changeHospital(event.currentTarget.value)} value={selectedHospitalId}>{hospitals.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}<option value="">ไม่เจาะจงโรงพยาบาล</option></select></div> : hospitals.length === 1 ? <input name="hospitalId" type="hidden" value={selectedHospitalId} /> : null}
     <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-category">หมวดหมู่</label><select className="min-h-12 w-full rounded-control border border-border-strong bg-surface px-4 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="support-category" onChange={(event) => changeCategory(event.currentTarget.value)} value={category}><option value="BUG">พบข้อผิดพลาด</option><option value="ACCESS">เข้าใช้งานไม่ได้</option><option value="CONTENT">เนื้อหาหรือข้อมูล</option><option value="OTHER">อื่น ๆ</option></select></div>
     <div><label className="mb-2 block text-sm font-medium text-text" htmlFor="support-message">รายละเอียดปัญหา</label><textarea className="min-h-40 w-full rounded-control border border-border-strong bg-surface px-4 py-3 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="support-message" maxLength={1_000} onChange={(event) => changeMessage(event.currentTarget.value)} required value={message} /><p className="mt-1 text-right text-sm text-text-muted">{message.length}/1,000</p></div>
     <Alert variant="warning">โปรดอย่าระบุข้อมูลสุขภาพ ชื่อผู้ป่วย เลขประจำตัว หรือข้อมูลส่วนบุคคลที่ละเอียดอ่อนในรายงานนี้</Alert>
     {/* A success is announced by its Toast; other feedback keeps the Alert's live role. */}
     {feedback ? <Alert role={feedback.variant === "success" ? "none" : undefined} variant={feedback.variant}>{feedback.text}</Alert> : null}
-    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "note", message: "ระบบยังยืนยันผลการส่งรายงานในโรงพยาบาลที่เลือกขณะส่งไม่ได้", note: "รายงานปัญหาไม่มีรหัสป้องกันการส่งซ้ำ โปรดตรวจสอบกับเจ้าของโรงพยาบาลก่อนส่งคำขออีกครั้ง" }} />
-    <Button disabled={pending || unknownOutcome || hospitals.length === 0} loading={pending} type="submit">ส่งรายงานปัญหา</Button>
+    <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "note", message: "ระบบยังยืนยันผลการส่งรายงานไม่ได้", note: "รายงานปัญหาไม่มีรหัสป้องกันการส่งซ้ำ โปรดตรวจสอบในรายงานที่ส่งแล้วก่อนส่งอีกครั้ง" }} />
+    <Button disabled={pending || unknownOutcome} loading={pending} type="submit">ส่งรายงานปัญหา</Button>
   </form>;
 }

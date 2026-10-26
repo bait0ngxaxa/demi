@@ -54,6 +54,7 @@ export function PatientPersonalHome({
   nextAppointment,
   patient,
   selectedHospital,
+  showSupportLink = false,
 }: {
   activeHospitals?: readonly HomeHospitalOption[];
   knowledgeFailed?: boolean;
@@ -65,6 +66,8 @@ export function PatientPersonalHome({
   nextAppointment?: { href: string; scheduledAt: Date } | null | "UNAVAILABLE";
   patient: PatientPresentation | null;
   selectedHospital?: PatientHomeRelationship | null;
+  /** WB-DF-14 (2026-10-26): hidden for an account holding ADMIN, which receives reports instead of sending them. */
+  showSupportLink?: boolean;
 }): React.JSX.Element {
   if (patient === null) {
     return (
@@ -139,7 +142,7 @@ export function PatientPersonalHome({
           <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีข้อมูลติดต่อ</p>
         </section>
       ) : null}
-      <HomeSupportLink />
+      {showSupportLink ? <HomeSupportLink /> : null}
     </div>
   );
 }
