@@ -10,6 +10,7 @@ import { disconnectionStatusSchema, initializeLineAccountLiff, LineRecoveryPanel
 import { AppointmentNotificationPreference, type AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
 import { LineDemiAccountSwitch } from "./line-demi-account-switch";
 import { LinePasswordRecoveryRequestForm } from "../../recover/line/line-password-recovery-request-form";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -490,7 +491,7 @@ export function LineAccountScreen({
                   <p className="mt-2 text-sm text-muted">หากใช้เครื่องร่วมกับผู้อื่นหรือไม่แน่ใจ ให้เลือกใช้บัญชี DEMI อื่น การออกจากระบบจะยกเลิกการยืนยันครั้งนี้</p>
                   <label htmlFor="line-link-current-password" className="mt-4 grid gap-1 text-sm font-medium text-ink">
                     รหัสผ่านบัญชี DEMI ปัจจุบัน
-                    <input
+                    <PasswordInput
                       autoComplete="current-password"
                       aria-describedby={currentPasswordError ? "line-link-current-password-error" : undefined}
                       aria-invalid={currentPasswordError ? true : undefined}
@@ -500,7 +501,6 @@ export function LineAccountScreen({
                       name="currentPassword"
                       onChange={(event) => onCurrentPasswordChange(event.target.value)}
                       required
-                      type="password"
                       value={currentPassword}
                     />
                     {currentPasswordError ? <span id="line-link-current-password-error" className="font-normal text-danger">{currentPasswordError}</span> : null}

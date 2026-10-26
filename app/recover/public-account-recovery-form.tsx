@@ -9,6 +9,7 @@ import {
   checkMediatedPasswordResetAction,
   completeMediatedPasswordResetAction,
 } from "@/modules/account-security/transport/server-actions";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type Availability = "READY" | "INVALID";
 type ConfirmationKind = "THAI_NATIONAL_ID" | "PLATFORM_ADMIN_IDENTIFIER";
@@ -144,7 +145,7 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
         )}
         <label className="grid gap-1 text-sm font-medium">
           รหัสผ่านใหม่
-          <input
+          <PasswordInput
             aria-describedby={passwordError ? "recover-new-password-error" : undefined}
             aria-invalid={passwordError ? true : undefined}
             autoComplete="new-password"
@@ -153,13 +154,12 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
             minLength={12}
             name="newPassword"
             required
-            type="password"
           />
           {passwordError ? <span className="text-sm font-normal text-danger" id="recover-new-password-error">{passwordError}</span> : null}
         </label>
         <label className="grid gap-1 text-sm font-medium">
           ยืนยันรหัสผ่านใหม่
-          <input autoComplete="new-password" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={128} minLength={12} name="passwordConfirmation" required type="password" />
+          <PasswordInput autoComplete="new-password" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={128} minLength={12} name="passwordConfirmation" required />
         </label>
         {completion.status === "ERROR" ? <p className="text-sm text-danger" role="alert">{completion.message}</p> : null}
         <button className="min-h-11 rounded-md bg-brand px-5 font-semibold text-white disabled:opacity-60" disabled={pending} type="submit">

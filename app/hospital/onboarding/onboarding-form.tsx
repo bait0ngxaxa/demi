@@ -18,6 +18,7 @@ import {
   hospitalRoleLabel,
   type OnboardingHospitalOption,
 } from "./hospital-groups";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type HospitalOnboardingFormProps = {
   hospitals: readonly OnboardingHospitalOption[];
@@ -335,7 +336,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
           <label className="block text-sm font-semibold text-ink" htmlFor="password">
             รหัสผ่าน
           </label>
-          <input
+          <PasswordInput
             aria-describedby={fieldErrors.password ? "password-error" : undefined}
             aria-invalid={fieldErrors.password ? true : undefined}
             autoComplete="new-password"
@@ -346,7 +347,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             maxLength={128}
             name="password"
             required
-            type="password"
           />
           {fieldErrors.password ? (
             <p className="text-sm leading-6 text-danger" id="password-error">
@@ -359,7 +359,7 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
           <label className="block text-sm font-semibold text-ink" htmlFor="passwordConfirmation">
             ยืนยันรหัสผ่าน
           </label>
-          <input
+          <PasswordInput
             aria-describedby={
               fieldErrors.passwordConfirmation ? "passwordConfirmation-error" : undefined
             }
@@ -372,7 +372,6 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
             maxLength={128}
             name="passwordConfirmation"
             required
-            type="password"
           />
           {fieldErrors.passwordConfirmation ? (
             <p

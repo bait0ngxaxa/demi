@@ -32,6 +32,7 @@ import {
 } from "@/modules/family/transport/action-state";
 import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXT_V2 } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
+import { PasswordInput } from "@/components/ui/password-input";
 
 /**
  * AF-5: the exact acceptance text of every scope the Patient chose; accepting the invitation accepts all of them
@@ -180,11 +181,11 @@ function CaregiverAccountClaimForm({
         </div>
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password">รหัสผ่าน (อย่างน้อย 12 ตัวอักษร)</label>
-          <input autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password" maxLength={128} minLength={12} name="password" required type="password" />
+          <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password" maxLength={128} minLength={12} name="password" required />
         </div>
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password-confirmation">ยืนยันรหัสผ่าน</label>
-          <input autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required type="password" />
+          <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required />
         </div>
         {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
         <Button disabled={state.status === "PENDING"} loading={state.status === "PENDING"} type="submit">

@@ -17,6 +17,7 @@ import {
   completeWorkforceActivationAction,
   previewWorkforceActivationAction,
 } from "@/modules/workforce/transport/server-actions";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type ActivationTokenStore = {
   getSnapshot: () => string | null;
@@ -344,7 +345,7 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
         <label className="block text-sm font-semibold text-ink" htmlFor="password">
           รหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           aria-describedby={fieldErrors?.password ? "password-error" : undefined}
           aria-invalid={fieldErrors?.password ? true : undefined}
           autoComplete="new-password"
@@ -355,7 +356,6 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
           minLength={12}
           name="password"
           required
-          type="password"
         />
         {fieldErrors?.password ? (
           <p className="text-sm leading-6 text-danger" id="password-error">
@@ -368,7 +368,7 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
         <label className="block text-sm font-semibold text-ink" htmlFor="passwordConfirmation">
           ยืนยันรหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           aria-describedby={
             fieldErrors?.passwordConfirmation ? "passwordConfirmation-error" : undefined
           }
@@ -381,7 +381,6 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
           minLength={12}
           name="passwordConfirmation"
           required
-          type="password"
         />
         {fieldErrors?.passwordConfirmation ? (
           <p className="text-sm leading-6 text-danger" id="passwordConfirmation-error">

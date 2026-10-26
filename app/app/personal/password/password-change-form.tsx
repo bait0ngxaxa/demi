@@ -9,6 +9,7 @@ import {
   initialPasswordChangeActionState,
   type PasswordChangeActionState,
 } from "@/modules/account-security/transport/action-state";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function PasswordChangeForm(): React.JSX.Element {
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<PasswordChangeActionState, FormData>(
@@ -22,14 +23,14 @@ export function PasswordChangeForm(): React.JSX.Element {
         <label className="block text-sm font-semibold text-text" htmlFor="currentPassword">
           รหัสผ่านปัจจุบัน
         </label>
-        <input
+        <PasswordInput
           autoComplete="current-password"
-          className="mt-2 block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          containerClassName="mt-2"
+          className="block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           id="currentPassword"
           maxLength={128}
           name="currentPassword"
           required
-          type="password"
           aria-invalid={Boolean(state.fieldErrors?.currentPassword)}
           aria-describedby={state.fieldErrors?.currentPassword ? "currentPassword-error" : undefined}
         />
@@ -39,15 +40,15 @@ export function PasswordChangeForm(): React.JSX.Element {
         <label className="block text-sm font-semibold text-text" htmlFor="newPassword">
           รหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           autoComplete="new-password"
-          className="mt-2 block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          containerClassName="mt-2"
+          className="block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           id="newPassword"
           maxLength={128}
           minLength={12}
           name="newPassword"
           required
-          type="password"
         />
         <p className="mt-1 text-xs leading-5 text-text-muted">ใช้รหัสผ่านอย่างน้อย 12 ตัวอักษร</p>
       </div>
@@ -55,15 +56,15 @@ export function PasswordChangeForm(): React.JSX.Element {
         <label className="block text-sm font-semibold text-text" htmlFor="passwordConfirmation">
           ยืนยันรหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           autoComplete="new-password"
-          className="mt-2 block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          containerClassName="mt-2"
+          className="block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           id="passwordConfirmation"
           maxLength={128}
           minLength={12}
           name="passwordConfirmation"
           required
-          type="password"
         />
       </div>
 

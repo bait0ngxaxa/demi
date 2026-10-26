@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { accountRecoveryTokenSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import { initializeLineAccountLiff } from "../line-recovery-panel";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const openResponseSchema = z.object({ status: z.enum(["READY", "EXPIRED", "OTHER_LINE", "INELIGIBLE"]) });
 const completeResponseSchema = z.object({
@@ -231,7 +232,7 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
     <form action={complete} className="mt-5 space-y-4" aria-busy={busy}>
       <label className="grid gap-1 text-sm font-medium text-text" htmlFor="line-recovery-new-password">
         รหัสผ่านใหม่
-        <input
+        <PasswordInput
           autoComplete="new-password"
           aria-describedby={newPasswordError ? "line-recovery-password-error" : undefined}
           aria-invalid={newPasswordError ? true : undefined}
@@ -241,13 +242,12 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
           minLength={12}
           name="newPassword"
           required
-          type="password"
         />
         {newPasswordError ? <span id="line-recovery-password-error" className="text-sm font-normal text-danger">{newPasswordError}</span> : null}
       </label>
       <label className="grid gap-1 text-sm font-medium text-text" htmlFor="line-recovery-password-confirmation">
         ยืนยันรหัสผ่านใหม่
-        <input autoComplete="new-password" className="min-h-12 rounded-control border border-border bg-surface px-3 text-base text-text focus-visible:outline-2 focus-visible:outline-focus-ring" id="line-recovery-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required type="password" />
+        <PasswordInput autoComplete="new-password" className="min-h-12 rounded-control border border-border bg-surface px-3 text-base text-text focus-visible:outline-2 focus-visible:outline-focus-ring" id="line-recovery-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required />
       </label>
       {message ? <p className="text-sm text-danger" role="alert">{message}</p> : null}
       <button className="inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" disabled={busy} type="submit">

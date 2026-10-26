@@ -17,6 +17,7 @@ import {
   loginFamilyInvitationReturnToSchema,
   type LoginReturnTo,
 } from "@/modules/auth/schemas/login-schema";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type LoginFormProps = {
   applicationAccessDenied: boolean;
@@ -129,7 +130,7 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
         <label className="block text-sm font-semibold text-ink" htmlFor="password">
           รหัสผ่าน
         </label>
-        <input
+        <PasswordInput
           aria-describedby={errorMessage ? "login-error" : undefined}
           autoComplete="current-password"
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
@@ -138,7 +139,6 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
           maxLength={128}
           name="password"
           required
-          type="password"
         />
       </div>
 

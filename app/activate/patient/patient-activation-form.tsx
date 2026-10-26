@@ -17,6 +17,7 @@ import {
   type PatientActivationDetailsActionState,
   type PatientActivationCompletionActionState,
 } from "@/modules/patient-activation/transport/action-state";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type ActivationTokenStore = {
   getSnapshot: () => string | null;
@@ -288,7 +289,7 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
         <label className="block text-sm font-semibold text-ink" htmlFor="patient-password">
           รหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           aria-describedby={fieldErrors?.password ? "patient-password-error" : undefined}
           aria-invalid={fieldErrors?.password ? true : undefined}
           autoComplete="new-password"
@@ -299,7 +300,6 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
           minLength={12}
           name="password"
           required
-          type="password"
         />
         {fieldErrors?.password ? (
           <p className="text-sm leading-6 text-danger" id="patient-password-error">
@@ -312,7 +312,7 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
         <label className="block text-sm font-semibold text-ink" htmlFor="patient-password-confirmation">
           ยืนยันรหัสผ่านใหม่
         </label>
-        <input
+        <PasswordInput
           aria-describedby={
             fieldErrors?.passwordConfirmation
               ? "patient-password-confirmation-error"
@@ -327,7 +327,6 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
           minLength={12}
           name="passwordConfirmation"
           required
-          type="password"
         />
         {fieldErrors?.passwordConfirmation ? (
           <p

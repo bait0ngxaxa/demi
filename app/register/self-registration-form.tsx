@@ -7,6 +7,7 @@ import { z } from "zod";
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { thaiNationalIdFormatSchema } from "@/modules/identity/schemas/identity-schemas";
+import { PasswordInput } from "@/components/ui/password-input";
 
 const lookupValidationErrorSchema = z.object({
   message: z.literal("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง"),
@@ -490,7 +491,7 @@ export function SelfRegistrationForm(): React.JSX.Element {
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="registration-password">ตั้งรหัสผ่าน</label>
-        <input
+        <PasswordInput
           aria-describedby={fieldErrors.password ? "registration-password-error" : "registration-password-hint"}
           aria-invalid={fieldErrors.password ? true : undefined}
           autoComplete="new-password"
@@ -505,7 +506,6 @@ export function SelfRegistrationForm(): React.JSX.Element {
             setCompletionMessage(null);
           }}
           required
-          type="password"
           value={password}
         />
         {fieldErrors.password ? (
@@ -521,7 +521,7 @@ export function SelfRegistrationForm(): React.JSX.Element {
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="registration-password-confirmation">ยืนยันรหัสผ่าน</label>
-        <input
+        <PasswordInput
           aria-describedby={fieldErrors.passwordConfirmation ? "registration-password-confirmation-error" : undefined}
           aria-invalid={fieldErrors.passwordConfirmation ? true : undefined}
           autoComplete="new-password"
@@ -536,7 +536,6 @@ export function SelfRegistrationForm(): React.JSX.Element {
             setCompletionMessage(null);
           }}
           required
-          type="password"
           value={passwordConfirmation}
         />
         {fieldErrors.passwordConfirmation ? (
