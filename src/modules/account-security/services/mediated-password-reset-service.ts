@@ -25,7 +25,7 @@ import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { assertPlatformAdminInDatabase } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
-import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import { THAI_NATIONAL_IDENTITY_NAMESPACE, thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/line-account-service";
 import { assertChildOwnerInvitationContext } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
@@ -52,6 +52,7 @@ import {
   mediatedPasswordResetCompletionSchema,
   mediatedPasswordResetIssueSchema,
   mediatedPasswordResetSearchSchema,
+  platformAdminMediatedPasswordResetSearchSchema,
   type StoredCredentialRecoveryVerificationMethod,
   type MediatedPasswordResetIssueInput,
   type MediatedPasswordResetMode,
@@ -776,7 +777,7 @@ export async function revokeIssuedMediatedPasswordReset(
 export async function getMediatedPasswordResetAvailability(
   token: unknown,
   dependencies: Pick<MediatedPasswordResetDependencies, "database" | "now"> = {},
-): Promise<{ expiresAt: Date; mode: MediatedPasswordResetMode }> {
+): Promise<{ expiresAt: Date; mode: MediatedPasswordResetMode; confirmationKind: "THAI_NATIONAL_ID" | "PLATFORM_ADMIN_IDENTIFIER" }> {
   const parsed = accountRecoveryTokenSchema.safeParse(token);
   if (!parsed.success) throw new NotFoundError();
   const database = getDatabase(dependencies);
@@ -788,7 +789,11 @@ export async function getMediatedPasswordResetAvailability(
   if (!record || record.storage === "LINE_SELF_SERVICE" || record.claimedAt || record.usedAt || record.revokedAt || record.expiresAt <= currentTime(dependencies)) {
     throw new NotFoundError();
   }
-  return { expiresAt: record.expiresAt, mode: record.mode };
+  return {
+    expiresAt: record.expiresAt,
+    mode: record.mode,
+    confirmationKind: record.targetKind === "platform_admin" ? "PLATFORM_ADMIN_IDENTIFIER" : "THAI_NATIONAL_ID",
+  };
 }
 
 export type LinePasswordRecoveryAvailability = "READY" | "EXPIRED" | "OTHER_LINE" | "INELIGIBLE";
@@ -1055,7 +1060,7 @@ async function markReconciliationRequired(
 async function verifyIdentityAndClaim(
   database: MediatedPasswordResetDatabase,
   token: string,
-  nationalId: string,
+  identityConfirmation: { value: string; kind: "THAI_NATIONAL_ID" | "PLATFORM_ADMIN_IDENTIFIER" },
   now: Date,
   attemptThrottle: AuthAttemptThrottle,
   throttleInput: { scope: "RECOVERY_IDENTITY"; identityHash: string; clientIp: string | null; now: Date },
@@ -1073,9 +1078,12 @@ async function verifyIdentityAndClaim(
     await assertPasswordChangeRecoveryAvailable(transaction, refreshed.userId);
     const user = await transaction.user.findUnique({ where: { id: refreshed.userId }, select: { personId: true, authSubject: true } });
     if (!user?.authSubject) throw new ConflictError("The target credential changed");
-    const identityKeyHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: nationalId });
+    const identityKeyHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: identityConfirmation.value });
     const person = await transaction.person.findUnique({ where: { identityKeyHash }, select: { id: true } });
-    if (!person || person.id !== user.personId) {
+    const confirmationFormatIsAllowed = refreshed.targetKind === "platform_admin"
+      ? passwordLoginIdentifierSchema.safeParse(identityConfirmation.value).success
+      : identityConfirmation.kind === "THAI_NATIONAL_ID" && thaiNationalIdSchema.safeParse(identityConfirmation.value).success;
+    if (!confirmationFormatIsAllowed || !person || person.id !== user.personId) {
       const failedVerificationCount = refreshed.failedVerificationCount + 1;
       const revoked = failedVerificationCount >= MEDIATED_RESET_MAX_FAILED_IDENTITIES;
       await updateReset(transaction, refreshed, {
@@ -1579,18 +1587,24 @@ export async function completeMediatedPasswordReset(
 ): Promise<void> {
   const parsed = mediatedPasswordResetCompletionSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError("Password reset completion data is invalid");
+  const identityConfirmation = parsed.data.platformAdminIdentifier !== undefined
+    ? { value: parsed.data.platformAdminIdentifier, kind: "PLATFORM_ADMIN_IDENTIFIER" as const }
+    : parsed.data.nationalId !== undefined
+      ? { value: parsed.data.nationalId, kind: "THAI_NATIONAL_ID" as const }
+      : null;
+  if (!identityConfirmation) throw new ValidationError("Password reset identity confirmation is required");
   const database = getDatabase(dependencies);
   const now = currentTime(dependencies);
   const attemptThrottle = dependencies.attemptThrottle ?? createAuthAttemptThrottle({ database });
   const throttleInput = {
     scope: "RECOVERY_IDENTITY" as const,
-    identityHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: parsed.data.nationalId }),
+    identityHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: identityConfirmation.value }),
     clientIp: dependencies.clientIpAddress ?? null,
     now,
   };
   let claimed: { record: ResetRecord; previousAuthSubject: string };
   try {
-    claimed = await verifyIdentityAndClaim(database, parsed.data.token, parsed.data.nationalId, now, attemptThrottle, throttleInput);
+    claimed = await verifyIdentityAndClaim(database, parsed.data.token, identityConfirmation, now, attemptThrottle, throttleInput);
   } catch (error: unknown) {
     return asApplicationError(error);
   }
@@ -1783,8 +1797,8 @@ export async function searchMediatedPasswordResetTargets(
   options: MediatedPasswordResetSearchOptions = {},
 ): Promise<MediatedPasswordResetCandidate[]> {
   if (!actor?.userId) throw new ForbiddenError();
-  const parsed = mediatedPasswordResetSearchSchema.safeParse(input);
-  if (!parsed.success) throw new ValidationError("National ID lookup data is invalid");
+  const parsed = (options.hospitalId ? mediatedPasswordResetSearchSchema : platformAdminMediatedPasswordResetSearchSchema).safeParse(input);
+  if (!parsed.success) throw new ValidationError("Recovery identifier is invalid");
   if (options.hospitalId && !z.uuid().safeParse(options.hospitalId).success) throw new ValidationError("Hospital selection is invalid");
   const identityKeyHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: parsed.data.nationalId });
   const attemptThrottle = options.attemptThrottle ?? createAuthAttemptThrottle({ database });
@@ -1827,6 +1841,7 @@ export async function searchMediatedPasswordResetTargets(
       });
       const user = person?.user;
       const result: MediatedPasswordResetCandidate[] = [];
+      const ordinaryNationalIdIsValid = thaiNationalIdSchema.safeParse(parsed.data.nationalId).success;
       const takeoverLocked = Boolean(user?.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED);
       const resetEligibleStatus = user?.status === UserStatus.ACTIVE || (user?.status === UserStatus.SUSPENDED && takeoverLocked);
       if (options.hospitalId && user?.authSubject && user.id !== actor.userId && resetEligibleStatus) {
@@ -1896,6 +1911,7 @@ export async function searchMediatedPasswordResetTargets(
           const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
           result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" })));
         }
+        if (!user.roles.some(({ role }) => role === Role.ADMIN) && !ordinaryNationalIdIsValid) result.length = 0;
       }
       await recordAuditEvent({
         actorUserId: actor.userId,

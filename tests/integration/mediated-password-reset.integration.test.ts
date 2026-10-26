@@ -573,6 +573,95 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     await expect(searchMediatedPasswordResetTargets(owner, { nationalId: target.nationalId }, db)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
+  it("recovers a peer ADMIN by its custom login identifier without treating that identifier as identity proof", async () => {
+    const hospital = await createHospital();
+    const issuer = await createAdmin();
+    const customIdentifier = "demi-admin.custom-01";
+    const peer = await createIdentity({ nationalId: customIdentifier, role: Role.ADMIN, name: "ผู้ดูแลระบบตัวระบุพิเศษ" });
+
+    const candidates = await searchMediatedPasswordResetTargets(issuer, { nationalId: customIdentifier }, db);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ userId: peer.userId, targetKind: "platform_admin", hospitalId: hospital.id });
+
+    const selfReset = issueMediatedPasswordReset(issuer, {
+      targetKind: "platform_admin",
+      targetUserId: issuer.userId,
+      hospitalId: hospital.id,
+      relationshipId: null,
+      mode: "ONLINE",
+      verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
+    }, { database: db, now: () => now });
+    await expect(selfReset).rejects.toBeInstanceOf(ForbiddenError);
+
+    const owner = await createOwner(hospital.id);
+    await expect(searchMediatedPasswordResetTargets(owner, { nationalId: customIdentifier }, db, { hospitalId: hospital.id }))
+      .rejects.toBeInstanceOf(ValidationError);
+    await expect(searchMediatedPasswordResetTargets(owner, { nationalId: customIdentifier }, db))
+      .rejects.toBeInstanceOf(ForbiddenError);
+
+    const reset = await issueMediatedPasswordReset(issuer, {
+      targetKind: "platform_admin",
+      targetUserId: peer.userId,
+      hospitalId: hospital.id,
+      relationshipId: null,
+      mode: "ONLINE",
+      verificationMethod: "VIDEO_CALL_FACE_AND_ID_CARD",
+    }, { database: db, now: () => now });
+    await expect(getMediatedPasswordResetAvailability(reset.token, { database: db, now: () => now }))
+      .resolves.toMatchObject({ confirmationKind: "PLATFORM_ADMIN_IDENTIFIER" });
+
+    const provider = fakeProvider();
+    const completion = {
+      token: reset.token,
+      platformAdminIdentifier: customIdentifier,
+      newPassword: "new-password-for-custom-admin",
+      passwordConfirmation: "new-password-for-custom-admin",
+    };
+    const attemptThrottle = {
+      isBlocked: vi.fn(async () => false),
+      recordFailure: vi.fn(async () => undefined),
+    };
+    await expect(completeMediatedPasswordReset({ ...completion, platformAdminIdentifier: "demi-admin.wrong" }, {
+      database: db,
+      now: () => now,
+      attemptThrottle,
+      ...provider,
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: reset.resetId } }))
+      .toMatchObject({ failedVerificationCount: 1, claimedAt: null });
+    expect(attemptThrottle.recordFailure).toHaveBeenCalledWith(expect.objectContaining({ scope: "RECOVERY_IDENTITY" }));
+    expect(JSON.stringify(attemptThrottle.recordFailure.mock.calls)).not.toContain("demi-admin.wrong");
+    expect(provider.createReplacementIdentity).not.toHaveBeenCalled();
+
+    await completeMediatedPasswordReset(completion, { database: db, now: () => now, ...provider });
+    expect(await db.user.findUniqueOrThrow({ where: { id: peer.userId } }))
+      .toMatchObject({ authSubject: provider.replacementSubject, status: UserStatus.ACTIVE });
+    expect(provider.deleteProviderIdentity).toHaveBeenCalledWith(peer.authSubject);
+
+    const identityHash = hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: customIdentifier });
+    const relatedAudits = await db.auditEvent.findMany({
+      where: { OR: [{ actorUserId: issuer.userId }, { resourceId: peer.userId }] },
+      select: { metadata: true },
+    });
+    expect(JSON.stringify(relatedAudits)).not.toContain(customIdentifier);
+    expect(JSON.stringify(relatedAudits)).not.toContain(identityHash);
+  });
+
+  it("keeps bounded custom identifiers from resolving ordinary users through the Platform ADMIN search", async () => {
+    const hospital = await createHospital();
+    const admin = await createAdmin();
+    const ordinary = await createIdentity({ nationalId: "ordinary.login.custom-01", role: Role.HOSPITAL, name: "บัญชีทั่วไป" });
+    await db.hospitalMembership.create({
+      data: { userId: ordinary.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE },
+    });
+
+    await expect(searchMediatedPasswordResetTargets(admin, { nationalId: "ordinary.login.custom-01" }, db)).resolves.toEqual([]);
+
+    const audit = await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.admin_search", actorUserId: admin.userId } });
+    expect(audit.metadata).toMatchObject({ outcome: "NO_MATCH", candidateCount: 0 });
+    expect(JSON.stringify(audit.metadata)).not.toContain("ordinary.login.custom-01");
+  });
+
   it("does not offer self-reset or a suspended account without a takeover lock in the ADMIN search", async () => {
     const adminIdentity = await createIdentity({ role: Role.ADMIN, name: "ผู้ดูแลระบบ" });
     const admin: ActorContext = {

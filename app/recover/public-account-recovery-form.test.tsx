@@ -21,7 +21,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mocks.check.mockReset().mockResolvedValue({ status: "READY", expiresAt: "2026-10-23T03:00:00.000Z", mode: "ONLINE" });
+  mocks.check.mockReset().mockResolvedValue({ status: "READY", expiresAt: "2026-10-23T03:00:00.000Z", mode: "ONLINE", confirmationKind: "THAI_NATIONAL_ID" });
   mocks.useActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
   window.history.replaceState(null, "", `/recover#${"z".repeat(43)}`);
   container = document.createElement("div");
@@ -57,15 +57,36 @@ describe("public account recovery", () => {
     expect(container.querySelector('input[name="newPassword"]')).not.toBeNull();
   });
 
+  it("confirms a Platform ADMIN account with its registered login identifier while retaining the proof explanation", async () => {
+    mocks.check.mockResolvedValue({
+      status: "READY",
+      expiresAt: "2026-10-23T03:00:00.000Z",
+      mode: "ONLINE",
+      confirmationKind: "PLATFORM_ADMIN_IDENTIFIER",
+    });
+
+    await act(async () => {
+      root.render(createElement(PublicAccountRecoveryForm));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(container.querySelector('input[name="platformAdminIdentifier"]')).not.toBeNull();
+    expect(container.querySelector('input[name="nationalId"]')).toBeNull();
+    expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
+    expect(container.textContent).toContain("ไม่ใช้แทนการตรวจสอบตัวตน");
+    expect(container.textContent).toContain("ลิงก์ออนไลน์ใช้ได้ 24 ชั่วโมง");
+  });
+
   it("hides the LINE entry and directs users to the Hospital process when LINE is not configured", async () => {
     window.history.replaceState(null, "", "/recover");
 
     await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: false })));
 
-    expect(container.textContent).toContain("การกู้คืนรหัสผ่านผ่าน LINE ยังไม่พร้อมให้บริการ");
+    expect(container.textContent).toContain("ช่องทางนี้ยังไม่พร้อม");
     expect(container.querySelector('a[href="/recover/line"]')).toBeNull();
     expect(container.querySelector('a[href="#recover-hospital"]')?.textContent).toBe("ดูวิธีติดต่อโรงพยาบาล");
-    expect(container.querySelector("#recover-hospital")?.textContent).toContain("กรุณาติดต่อโรงพยาบาลที่ดูแลคุณ");
+    expect(container.querySelector("#recover-hospital")?.textContent).toContain("กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อขอความช่วยเหลือ");
   });
 
   it("keeps the reset form usable and marks the password field when provider policy rejects it", async () => {

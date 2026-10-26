@@ -39,13 +39,17 @@ afterEach(() => {
   if (originalLocationDescriptor) Object.defineProperty(window, "location", originalLocationDescriptor);
 });
 
-async function renderControl(eligibility: "OWNER_ELIGIBLE" | "ADMIN_REQUIRED" = "OWNER_ELIGIBLE"): Promise<void> {
+async function renderControl(
+  eligibility: "OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED" = "OWNER_ELIGIBLE",
+  targetKind: "patient" | "platform_admin" = "patient",
+): Promise<void> {
   await act(async () => {
     root.render(createElement(MediatedPasswordResetControl, {
       hospitalId: "11111111-1111-4111-8111-111111111111",
       hospitalName: "โรงพยาบาลตัวอย่าง",
       relationshipId: "22222222-2222-4222-8222-222222222222",
-      targetKind: "patient",
+      ...(targetKind === "platform_admin" ? { relationshipId: null, targetUserId: "33333333-3333-4333-8333-333333333333" } : {}),
+      targetKind,
       targetName: "ผู้ใช้ตัวอย่าง",
       eligibility,
     }));
@@ -97,6 +101,27 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(container.textContent).toContain("คัดลอกลิงก์");
     expect(container.textContent).toContain("แชร์ลิงก์");
     expect(mocks.locationReplace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the ADMIN identifier as account confirmation and requires an independent recorded identity check", async () => {
+    mocks.issue.mockResolvedValue({
+      status: "ISSUED",
+      mode: "ONLINE",
+      handoffUrl: `https://demi.example/recover#${"a".repeat(43)}`,
+      expiresAt: "2026-10-23T03:00:00.000Z",
+    });
+    await renderControl("ADMIN_ALLOWED", "platform_admin");
+    click("button");
+
+    expect(container.textContent).toContain("ตรวจสอบตัวตนของ ADMIN ผู้รับอย่างเป็นอิสระก่อน");
+    expect(container.textContent).toContain("ห้ามใช้หมายเลขที่ผู้ขอแจ้ง");
+
+    click('input[name="verificationMethod"][value="VIDEO_CALL_FACE_AND_ID_CARD"]');
+    click('input[name="mode"][value="ONLINE"]');
+    await submitForm();
+
+    expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
+    expect(container.textContent).toContain("ห้ามส่งต่อให้ผู้อื่น");
   });
 
   it("hands the signed-out device straight to the in-person reset page without a copyable link, and hides actions outside OWNER scope", async () => {

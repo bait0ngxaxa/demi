@@ -35,6 +35,9 @@ function formatThaiDate(value: string): string {
 }
 
 export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
+  const targetConfirmationLabel = props.targetKind === "platform_admin"
+    ? "ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้"
+    : "เลขบัตรประชาชนของเจ้าของบัญชี";
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [mode, setMode] = useState<MediatedPasswordResetMode>("IN_PERSON");
   const [verificationMethod, setVerificationMethod] = useState<CredentialRecoveryVerificationMethod | "">("");
@@ -137,12 +140,12 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
           {result?.status === "ISSUED" && result.mode === "IN_PERSON" ? (
             <div className="space-y-2" role="status">
               <p className="font-semibold">ออกจากระบบบัญชีของคุณแล้ว กำลังเปิดหน้าตั้งรหัสผ่าน…</p>
-              <p className="text-sm leading-6 text-text-muted">ส่งอุปกรณ์ให้เจ้าของบัญชีกรอกเลขบัตรประชาชนและตั้งรหัสผ่านด้วยตนเอง ภายในเวลาที่กำหนด</p>
+              <p className="text-sm leading-6 text-text-muted">ส่งอุปกรณ์ให้เจ้าของบัญชียืนยันบัญชีด้วย{targetConfirmationLabel}และตั้งรหัสผ่านด้วยตนเองภายในเวลาที่กำหนด</p>
             </div>
           ) : result?.status === "ISSUED" ? (
             <div className="space-y-4" role="status">
               <p className="font-semibold">ออกลิงก์แล้ว หมดอายุ {formatThaiDate(result.expiresAt)}</p>
-              <p className="text-sm leading-6 text-text-muted">ลิงก์ใช้ได้ครั้งเดียว ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเองและตั้งรหัสผ่านใหม่ ห้ามส่งต่อให้ผู้อื่น</p>
+              <p className="text-sm leading-6 text-text-muted">ลิงก์ใช้ได้ครั้งเดียว ให้ส่งตรงถึงเจ้าของบัญชีเพื่อยืนยันด้วย{targetConfirmationLabel}และตั้งรหัสผ่านใหม่ ห้ามส่งต่อให้ผู้อื่น</p>
               <div className="space-y-3 rounded-lg border border-border p-4">
                 {qrDataUrl ? <Image alt="QR code สำหรับเปิดลิงก์รีเซ็ตรหัสผ่าน" className="mx-auto h-60 w-60" height={240} src={qrDataUrl} unoptimized width={240} /> : null}
                 <label className="grid gap-1 text-sm font-medium">
@@ -166,7 +169,10 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
                     {method.label}
                   </label>
                 ))}
-                <p className="text-sm leading-6 text-text-muted">หากโทรกลับ ให้โทรเฉพาะหมายเลขในเวชระเบียนของโรงพยาบาล ห้ามใช้หมายเลขที่ผู้ขอแจ้ง</p>
+                <p className="text-sm leading-6 text-text-muted">หากโทรกลับ ให้ใช้เฉพาะหมายเลขในเวชระเบียนของโรงพยาบาล ห้ามใช้หมายเลขที่ผู้ขอแจ้ง</p>
+                {props.targetKind === "platform_admin" ? (
+                  <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบที่ออกลิงก์ต้องตรวจสอบตัวตนของ ADMIN ผู้รับอย่างเป็นอิสระก่อน การกรอกตัวระบุบัญชีและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
+                ) : null}
               </fieldset>
 
               <fieldset className="space-y-2">

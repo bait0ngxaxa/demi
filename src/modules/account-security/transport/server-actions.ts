@@ -192,13 +192,18 @@ export async function searchMediatedPasswordResetTargetsAction(
 }
 
 export type MediatedPasswordResetAvailabilityActionResult =
-  | { status: "READY"; expiresAt: string; mode: "IN_PERSON" | "ONLINE" }
+  | { status: "READY"; expiresAt: string; mode: "IN_PERSON" | "ONLINE"; confirmationKind: "THAI_NATIONAL_ID" | "PLATFORM_ADMIN_IDENTIFIER" }
   | { status: "INVALID" };
 
 export async function checkMediatedPasswordResetAction(token: string): Promise<MediatedPasswordResetAvailabilityActionResult> {
   try {
     const availability = await getMediatedPasswordResetAvailability(token);
-    return { status: "READY", expiresAt: availability.expiresAt.toISOString(), mode: availability.mode };
+    return {
+      status: "READY",
+      expiresAt: availability.expiresAt.toISOString(),
+      mode: availability.mode,
+      confirmationKind: availability.confirmationKind,
+    };
   } catch {
     return { status: "INVALID" };
   }
@@ -211,7 +216,10 @@ export async function completeMediatedPasswordResetAction(
   try {
     await completeMediatedPasswordReset({
       token: formData.get("token"),
-      nationalId: formData.get("nationalId"),
+      ...(typeof formData.get("nationalId") === "string" ? { nationalId: formData.get("nationalId") } : {}),
+      ...(typeof formData.get("platformAdminIdentifier") === "string"
+        ? { platformAdminIdentifier: formData.get("platformAdminIdentifier") }
+        : {}),
       newPassword: formData.get("newPassword"),
       passwordConfirmation: formData.get("passwordConfirmation"),
     }, { clientIpAddress: trustedClientIpAddress(await headers()) });

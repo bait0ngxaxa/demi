@@ -2,7 +2,7 @@
 
 ## Normal recovery
 
-Use the authenticated REC-1 ceremony for a second active ADMIN: an active platform ADMIN selects the other ADMIN in `/app/admin/recovery`, verifies the person's identity using one of the recorded methods, and has the target complete the National-ID step. An ADMIN cannot reset their own account through the web flow. OWNER co-owner and caregiver-only eligibility follows [ADR-0012 REC-2A](../adr/0012-global-credential-recovery-proof.md).
+Use the authenticated REC-1 ceremony for a second active ADMIN: an active platform ADMIN searches for the other ADMIN using the exact registered login identifier, verifies the person's identity using one of the recorded methods, and hands the single-use capability directly to that person. At completion, the target confirms the registered login identifier that matches the selected account. The identifier is only an account locator and is not proof of identity or ownership. National-ID Platform ADMIN accounts remain supported. Ordinary user recovery continues to require a valid Thai National ID. An ADMIN cannot reset their own account through the web flow. OWNER co-owner and caregiver-only eligibility follows [ADR-0012 REC-2A](../adr/0012-global-credential-recovery-proof.md).
 
 ## Last-ADMIN break-glass
 

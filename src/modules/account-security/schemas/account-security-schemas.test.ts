@@ -4,6 +4,9 @@ import {
   accountRecoveryCompletionSchema,
   accountRecoveryIssueSchema,
   authenticatedPasswordChangeSchema,
+  mediatedPasswordResetCompletionSchema,
+  mediatedPasswordResetSearchSchema,
+  platformAdminMediatedPasswordResetSearchSchema,
 } from "./account-security-schemas";
 
 const nationalId = "1000000000009";
@@ -81,5 +84,25 @@ describe("account security schemas", () => {
         passwordConfirmation: "other-password",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts custom login identifiers only through Platform ADMIN search and completion schemas", () => {
+    const customIdentifier = "demi-admin.recovery";
+
+    expect(platformAdminMediatedPasswordResetSearchSchema.safeParse({ nationalId: customIdentifier }).success).toBe(true);
+    expect(mediatedPasswordResetSearchSchema.safeParse({ nationalId: customIdentifier }).success).toBe(false);
+    expect(mediatedPasswordResetCompletionSchema.safeParse({
+      token: "A".repeat(43),
+      platformAdminIdentifier: customIdentifier,
+      newPassword: validPassword,
+      passwordConfirmation: validPassword,
+    }).success).toBe(true);
+    expect(mediatedPasswordResetCompletionSchema.safeParse({
+      token: "A".repeat(43),
+      platformAdminIdentifier: customIdentifier,
+      nationalId,
+      newPassword: validPassword,
+      passwordConfirmation: validPassword,
+    }).success).toBe(false);
   });
 });

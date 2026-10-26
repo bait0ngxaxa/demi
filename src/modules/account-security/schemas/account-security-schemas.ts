@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
+import { passwordLoginIdentifierSchema } from "@/modules/auth/schemas/login-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 
 export const authenticatedPasswordChangeSchema = z
@@ -78,16 +79,27 @@ export const mediatedPasswordResetIssueSchema = z
   });
 
 export const mediatedPasswordResetSearchSchema = z.object({ nationalId: thaiNationalIdSchema }).strict();
+export const platformAdminMediatedPasswordResetSearchSchema = z
+  .object({ nationalId: passwordLoginIdentifierSchema })
+  .strict();
 
 export const mediatedPasswordResetCompletionSchema = z
   .object({
     token: accountRecoveryTokenSchema,
-    nationalId: thaiNationalIdSchema,
+    nationalId: thaiNationalIdSchema.optional(),
+    platformAdminIdentifier: passwordLoginIdentifierSchema.optional(),
     newPassword: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
   })
   .strict()
   .superRefine((input, context) => {
+    if ((input.nationalId === undefined) === (input.platformAdminIdentifier === undefined)) {
+      context.addIssue({
+        code: "custom",
+        path: ["nationalId"],
+        message: "Exactly one account identity confirmation is required",
+      });
+    }
     if (input.newPassword !== input.passwordConfirmation) {
       context.addIssue({
         code: "custom",

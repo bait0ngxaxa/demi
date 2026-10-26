@@ -39,11 +39,11 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
   return (
     <Panel>
       <h2 className="text-xl font-semibold text-text">ค้นหาบัญชี</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">ค้นด้วยเลขบัตรประชาชนแบบตรงกันทุกหลัก การค้นหาและผลลัพธ์จะถูกบันทึกเป็น audit โดยไม่บันทึกเลขบัตรหรือ hash</p>
+      <p className="mt-2 text-sm leading-6 text-text-muted">ค้นหาด้วยเลขบัตรประชาชนของผู้ใช้ทั่วไป หรือชื่อเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้ โดยต้องตรงกันทุกตัว ระบบบันทึกเฉพาะผลการค้นหาและไม่เก็บตัวระบุหรือ hash ใน audit</p>
       <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={(event) => void search(event)}>
         <label className="grid flex-1 gap-1 text-sm font-medium">
-          เลขบัตรประชาชน
-          <input autoComplete="off" className="min-h-11 rounded-md border border-border bg-surface px-3" inputMode="numeric" maxLength={13} minLength={13} name="nationalId" pattern="[0-9]{13}" required />
+          เลขบัตรประชาชนหรือชื่อเข้าสู่ระบบ ADMIN
+          <input autoComplete="off" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={32} name="nationalId" required />
         </label>
         <button className={buttonClassName({ variant: "primary", size: "compact" })} disabled={pending} type="submit">{pending ? "กำลังค้นหา…" : "ค้นหา"}</button>
       </form>
