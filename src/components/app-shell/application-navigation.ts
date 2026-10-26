@@ -222,6 +222,7 @@ export function projectPlatformGovernanceNavigation(actor: ActorContext): {
   reporting: ApplicationNavigationItem | null;
   hospitals: ApplicationNavigationItem | null;
   onboarding: ApplicationNavigationItem | null;
+  recovery: ApplicationNavigationItem | null;
 } {
   const isAdmin = actor.roles.includes(Role.ADMIN);
   return {
@@ -239,6 +240,9 @@ export function projectPlatformGovernanceNavigation(actor: ActorContext): {
       capability: HOSPITAL_ONBOARDING_CAPABILITIES.review,
     }).allowed
       ? { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียน รพ.", match: "prefix" }
+      : null,
+    recovery: isAdmin
+      ? { href: "/app/admin/recovery", label: "คืนบัญชีผู้ใช้", match: "prefix", prefetch: false }
       : null,
   };
 }
@@ -297,7 +301,7 @@ function projectWorkSections(
     // ADR-0016: the same audience as the areas overview (OWNER of an active network PARENT).
     canOpenParentAreaOverview(actor, hospitalWorkspaces) && { href: "/app/hospitals/network", label: "จัดการลูกข่าย", match: "exact", prefetch: false },
   ]);
-  const platformAdministration = compact([governance.hospitals, governance.reporting]);
+  const platformAdministration = compact([governance.hospitals, governance.reporting, governance.recovery]);
   const administrationScope: NavigationAdministrationScope = hospitalAdministration.length > 0
     ? platformAdministration.length > 0 ? "both" : "hospital"
     : "platform";

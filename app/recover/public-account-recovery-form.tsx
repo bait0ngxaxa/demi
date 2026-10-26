@@ -70,7 +70,7 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
           </h2>
           {lineRecoveryAvailable ? (
             <>
-              <p className="mt-2 text-sm leading-6 text-text-muted">ขอรับลิงก์สำหรับตั้งรหัสผ่านใหม่ผ่านบัญชี LINE ที่เชื่อมกับ DEMI</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">ผู้ที่ผูกบัญชี LINE และผ่านเงื่อนไข สามารถขอรับลิงก์สำหรับตั้งรหัสผ่านใหม่ทาง LINE ได้</p>
               <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/recover/line">เริ่มขอรับลิงก์ทาง LINE</Link>
             </>
           ) : (

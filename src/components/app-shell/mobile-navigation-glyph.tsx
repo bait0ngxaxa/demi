@@ -222,6 +222,7 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname.startsWith("/app/patients/assign-osm")) return "assign";
   if (pathname.startsWith("/app/patients")) return "patients";
   if (pathname.startsWith("/app/workforce")) return "workforce";
+  if (pathname.startsWith("/app/admin/recovery")) return "review";
   if (pathname.startsWith("/app/admin/hospital-onboarding")) return "review";
   if (pathname === "/app/hospitals/reporting" && new URLSearchParams(query).get("scope") === "network") return "areas";
   if (pathname.startsWith("/app/hospitals/reporting/export")) return "export";

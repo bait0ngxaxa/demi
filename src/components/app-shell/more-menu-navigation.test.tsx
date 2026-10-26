@@ -121,6 +121,20 @@ afterEach(() => {
 });
 
 describe("More menu page navigation", () => {
+  it("exposes account recovery in ADMIN More navigation only", () => {
+    const adminNavigation = projectApplicationNavigation(actor([Role.ADMIN]));
+    const adminMore = projectMoreNavigation(adminNavigation, projectMobileNavigation(adminNavigation).tabsByWorkspace.work);
+    const hospitalNavigation = projectApplicationNavigation(actor([Role.HOSPITAL]));
+    const hospitalMore = projectMoreNavigation(hospitalNavigation, projectMobileNavigation(hospitalNavigation).tabsByWorkspace.work);
+    const adminHtml = renderNavigation(adminMore, "work");
+    const hospitalHtml = renderNavigation(hospitalMore, "work");
+
+    expect(adminHtml).toContain('href="/app/admin/recovery"');
+    expect(adminHtml).toContain("คืนบัญชีผู้ใช้");
+    expect(hospitalHtml).not.toContain("/app/admin/recovery");
+    expect(hospitalHtml).not.toContain("คืนบัญชีผู้ใช้");
+  });
+
   it.each(menuCases)("renders exactly the projected menu for $label in $workspace", ({
     roles,
     workspace,
@@ -193,6 +207,7 @@ describe("More menu page navigation", () => {
 
   it("uses local SVGs and a neutral glyph for unknown destinations", () => {
     expect(getMoreNavigationIcon("/app/unknown")).toBe("default");
+    expect(getMoreNavigationIcon("/app/admin/recovery")).toBe("review");
     expect(getMoreNavigationIcon("/app/hospitals/reporting?scope=network")).toBe("areas");
     expect(getMoreNavigationIcon("/app/hospitals/reporting?hospitalId=hospital")).toBe("reports");
     expect(renderToStaticMarkup(createElement(MobileNavigationGlyph, { icon: "default" }))).toContain("<svg");

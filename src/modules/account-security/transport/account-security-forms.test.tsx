@@ -122,8 +122,9 @@ describe("account security form presentation", () => {
   it("shows the hospital recovery instructions when no reset token is present", () => {
     const markup = renderToStaticMarkup(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: false }));
 
-    expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลคุณ");
-    expect(markup).toContain("วิดีโอคอล");
+    expect(markup).toContain("ติดต่อโรงพยาบาลที่ดูแลเพื่อขอความช่วยเหลือและยืนยันตัวตน");
+    expect(markup).toContain("หากเป็นเจ้าของโรงพยาบาลเพียงคนเดียวและไม่มี OWNER คนอื่นช่วยได้");
+    expect(markup).toContain("ADMIN อีกคนช่วยกู้คืนบัญชี");
     expect(markup).not.toContain("<form");
     expect(markup).not.toContain('name="newPassword"');
     expect(markup).not.toContain("providerAlias");

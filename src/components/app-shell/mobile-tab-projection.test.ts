@@ -192,6 +192,8 @@ describe("server-projected mobile navigation", () => {
       "admin-review",
       "more",
     ]);
+    const adminMoreHrefs = hrefs(projectMoreNavigation(adminNavigation, primaryTabs(adminNavigation, "work")));
+    expect(adminMoreHrefs).toContain("/app/admin/recovery");
     expect(hrefs(adminNavigation)).not.toContain("/app/patients");
   });
 

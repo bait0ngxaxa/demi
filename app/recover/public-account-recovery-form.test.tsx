@@ -41,6 +41,11 @@ describe("public account recovery", () => {
     await act(async () => root.render(createElement(PublicAccountRecoveryForm, { lineRecoveryAvailable: true })));
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
     expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
+    expect(container.textContent).toContain("ผูกบัญชี LINE และผ่านเงื่อนไข");
+    expect(container.textContent).toContain("เจ้าของโรงพยาบาลเพียงคนเดียว");
+    expect(container.textContent).toContain("ADMIN อีกคน");
+    expect(container.textContent).toContain("ผู้ปฏิบัติงานระบบ");
+    expect(container.textContent).not.toContain("admin:recover");
     expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
   });
 

@@ -133,7 +133,7 @@ const memberSections = () => [
   workAccount,
 ] as const;
 
-/** Every href each actor saw before UI-4 (frozen from the previous projection); only the password item may go. */
+/** Every href each actor saw before UI-4 (frozen from the previous projection); the new recovery item is additive. */
 const previousHrefs: Record<string, readonly string[]> = {
   patient: ["/app/personal", "/app/personal/care", "/app/personal/services", "/app/personal/medications", "/app/personal/wellness", "/app/personal/measurements", "/app/personal/news", "/app/personal/knowledge", "/app/personal/appointments", "/app/personal/profile", "/app/personal/password", "/app/family", "/app/settings", "/app/support"],
   osm: ["/app", "/app/hospitals/contacts", "/app/hospitals/content", "/app/patients/assigned", "/app/family", "/app/settings", "/app/support"],
@@ -196,7 +196,7 @@ const cases: Case[] = [
     expected: { work: [
       ["home", null, ["/app"]],
       ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding"]],
-      ["administration", "กำกับดูแล", ["/app/admin/hospitals", "/app/admin/reporting"]],
+      ["administration", "กำกับดูแล", ["/app/admin/hospitals", "/app/admin/reporting", "/app/admin/recovery"]],
       ["account", "บัญชีและช่วยเหลือ", ["/app/family"]],
     ] },
   },
@@ -211,7 +211,7 @@ const cases: Case[] = [
       staffRegistration,
       ["review-queue", "คำขอรอตรวจ", ["/app/hospitals/support", "/app/admin/hospital-onboarding"]],
       ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
-      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge", "/app/admin/hospitals", "/app/admin/reporting"]],
+      ["administration", "บริหารโรงพยาบาลและกำกับดูแล", ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge", "/app/admin/hospitals", "/app/admin/reporting", "/app/admin/recovery"]],
       workAccount,
     ] },
   },
@@ -436,8 +436,10 @@ describe("application navigation visibility (unchanged policies)", () => {
     expect(adminLabels).toContain("กำกับดูแล");
     expect(adminLabels).toContain("โรงพยาบาลทั้งหมด");
     expect(adminLabels).toContain("คำขอขึ้นทะเบียน รพ.");
+    expect(adminLabels).toContain("คืนบัญชีผู้ใช้");
     expect(hospitalLabels).not.toContain("กำกับดูแล");
     expect(hospitalLabels).not.toContain("โรงพยาบาลทั้งหมด");
+    expect(hospitalLabels).not.toContain("คืนบัญชีผู้ใช้");
   });
 
   it.each(runtimeEnvironments)("shows Global Reporting to Platform ADMIN on %s", (_name, environment) => {
