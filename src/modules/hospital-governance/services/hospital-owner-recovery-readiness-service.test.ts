@@ -21,9 +21,9 @@ const actor: ActorContext = {
 describe("Hospital OWNER recovery readiness context", () => {
   it("counts only active owners for active Hospitals the current OWNER belongs to", async () => {
     const findMany = vi.fn().mockResolvedValue([
-      { hospitalId: "hospital-one" },
-      { hospitalId: "hospital-two" },
-      { hospitalId: "hospital-two" },
+      { hospitalId: "hospital-one", userId: "owner-one" },
+      { hospitalId: "hospital-two", userId: "owner-one" },
+      { hospitalId: "hospital-two", userId: "owner-two" },
     ]);
 
     await expect(countSoleActiveOwnerHospitals(actor, {
@@ -38,8 +38,22 @@ describe("Hospital OWNER recovery readiness context", () => {
         hospital: { status: HospitalStatus.ACTIVE },
         user: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } },
       },
-      select: { hospitalId: true },
+      select: { hospitalId: true, userId: true },
     });
+  });
+
+  it("counts duplicate active memberships for one user as a sole OWNER", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { hospitalId: "hospital-one", userId: actor.userId },
+      { hospitalId: "hospital-one", userId: actor.userId },
+      { hospitalId: "hospital-two", userId: actor.userId },
+      { hospitalId: "hospital-two", userId: "co-owner" },
+      { hospitalId: "hospital-two", userId: "co-owner" },
+    ]);
+
+    await expect(countSoleActiveOwnerHospitals(actor, {
+      database: { hospitalMembership: { findMany } } as unknown as PrismaClient,
+    })).resolves.toBe(1);
   });
 
   it("does not query hospital ownership for non-Hospital actors", async () => {

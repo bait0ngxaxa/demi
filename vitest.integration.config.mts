@@ -13,6 +13,7 @@ export default defineConfig({
     environment: "node",
     fileParallelism: false,
     include: ["tests/integration/**/*.test.ts"],
-    setupFiles: ["./vitest.setup.ts", "./tests/integration/database-isolation.setup.ts"],
+    globalSetup: ["./tests/integration/database-isolation.global-setup.ts"],
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

@@ -27,12 +27,14 @@ export async function countSoleActiveOwnerHospitals(
       hospital: { status: HospitalStatus.ACTIVE },
       user: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } },
     },
-    select: { hospitalId: true },
+    select: { hospitalId: true, userId: true },
   });
-  const ownerCounts = new Map<string, number>();
+  const ownerIds = new Map<string, Set<string>>();
   for (const membership of memberships) {
-    ownerCounts.set(membership.hospitalId, (ownerCounts.get(membership.hospitalId) ?? 0) + 1);
+    const hospitalOwners = ownerIds.get(membership.hospitalId) ?? new Set<string>();
+    hospitalOwners.add(membership.userId);
+    ownerIds.set(membership.hospitalId, hospitalOwners);
   }
 
-  return ownedHospitalIds.filter((hospitalId) => ownerCounts.get(hospitalId) === 1).length;
+  return ownedHospitalIds.filter((hospitalId) => ownerIds.get(hospitalId)?.size === 1).length;
 }

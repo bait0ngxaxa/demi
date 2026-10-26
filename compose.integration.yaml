@@ -18,3 +18,5 @@ services:
       start_period: 5s
     tmpfs:
       - /var/lib/postgresql/data
+    volumes:
+      - ./scripts/integration-database-init.sql:/docker-entrypoint-initdb.d/demi-integration.sql:ro

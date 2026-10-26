@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { countSoleActiveOwnerHospitals } from "@/modules/hospital-governance/services/hospital-owner-recovery-readiness-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
@@ -841,6 +842,25 @@ describe("Phase 12D.0 Hospital Owner governance PostgreSQL workflow", () => {
       status: MembershipStatus.ACTIVE,
       profession: "DOCTOR",
     });
+  });
+
+  it("counts OWNER users with historical membership rows and rejects duplicate active memberships", async () => {
+    const hospital = await createHospital("RECOVERY-READINESS");
+    const owner = await createStaff({ label: "เจ้าของบัญชีเดียว", hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    await expect(prisma.hospitalMembership.create({
+      data: { userId: owner.userId, hospitalId: hospital.id, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE },
+    })).rejects.toMatchObject({ code: "P2002" });
+    await prisma.hospitalMembership.create({
+      data: { userId: owner.userId, hospitalId: hospital.id, membershipType: MembershipType.OWNER, status: MembershipStatus.ENDED },
+    });
+    expect(await countSoleActiveOwnerHospitals(owner.actor, { database: prisma })).toBe(1);
+
+    const coOwner = await createStaff({
+      label: "เจ้าของร่วมที่ระงับ", hospitalId: hospital.id, membershipType: MembershipType.OWNER, userStatus: UserStatus.SUSPENDED,
+    });
+    expect(await countSoleActiveOwnerHospitals(owner.actor, { database: prisma })).toBe(1);
+    await prisma.user.update({ where: { id: coOwner.userId }, data: { status: UserStatus.ACTIVE } });
+    expect(await countSoleActiveOwnerHospitals(owner.actor, { database: prisma })).toBe(0);
   });
 
   it("prevents concurrent demotions from leaving zero eligible Owners", async () => {

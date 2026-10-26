@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
+import { assertDisposableIntegrationDatabase, assertDisposableIntegrationEnvironment, readCommittedIntegrationEnvironment } from "./integration-environment.mjs";
+
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const integrationEnvPath = resolve(repositoryRoot, ".env.integration");
 const composePath = resolve(repositoryRoot, "compose.integration.yaml");
@@ -30,66 +32,22 @@ function fail(message) {
   process.exit(1);
 }
 
-function parseEnvFile(filePath) {
-  if (!existsSync(filePath)) {
-    fail(`${filePath} does not exist`);
-  }
-
-  const values = {};
-
-  for (const line of readFileSync(filePath, "utf8").split(/\r?\n/u)) {
-    const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)\s*$/u);
-
-    if (!match) {
-      continue;
-    }
-
-    values[match[1]] = match[2].replace(/^(?:"([\s\S]*)"|'([\s\S]*)')$/u, "$1$2");
-  }
-
-  return values;
-}
-
 function getIntegrationEnvironment() {
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
+    fail("integration commands refuse a production environment");
+  }
   const inheritedIntegrationEnvironment =
     process.env.DATABASE_URL &&
     process.env.DIRECT_URL &&
     process.env.DEMI_TEST_DATABASE_URL;
-  const configuredEnvironment = inheritedIntegrationEnvironment ? {} : parseEnvFile(integrationEnvPath);
+  const configuredEnvironment = inheritedIntegrationEnvironment ? {} : readCommittedIntegrationEnvironment();
   const environment = { ...process.env, ...configuredEnvironment };
-  const testUrl = environment.DEMI_TEST_DATABASE_URL;
-
-  if (environment.NODE_ENV === "production") {
-    fail("integration commands require NODE_ENV other than production");
-  }
-
-  if (!testUrl || environment.DATABASE_URL !== testUrl || environment.DIRECT_URL !== testUrl) {
-    fail("DATABASE_URL and DIRECT_URL must both equal DEMI_TEST_DATABASE_URL");
-  }
-
-  let parsedTestUrl;
-
   try {
-    parsedTestUrl = new URL(testUrl);
-  } catch {
-    fail("DEMI_TEST_DATABASE_URL must be a valid PostgreSQL URL");
+    assertDisposableIntegrationEnvironment(environment);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : "invalid integration environment");
   }
-
-  if (
-    !["postgres:", "postgresql:"].includes(parsedTestUrl.protocol) ||
-    !["127.0.0.1", "localhost", "::1"].includes(parsedTestUrl.hostname)
-  ) {
-    fail("the committed integration environment must target local PostgreSQL only");
-  }
-
   return environment;
-}
-
-function requireCommittedIntegrationTarget(environment) {
-  const committedEnvironment = parseEnvFile(integrationEnvPath);
-  if (environment.DEMI_TEST_DATABASE_URL !== committedEnvironment.DEMI_TEST_DATABASE_URL) {
-    fail("migrate:populated is limited to the repository's committed disposable integration database");
-  }
 }
 
 function run(command, args, options = {}) {
@@ -288,7 +246,14 @@ function databaseDown(runtime, environment) {
   }
 }
 
-function migrate(environment) {
+async function migrate(environment) {
+  const { PrismaClient } = await import("@prisma/client");
+  const database = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
+  try {
+    await assertDisposableIntegrationDatabase(database);
+  } finally {
+    await database.$disconnect();
+  }
   run(process.execPath, [resolve(repositoryRoot, "node_modules", "prisma", "build", "index.js"), "migrate", "deploy"], {
     env: environment,
   });
@@ -365,7 +330,7 @@ async function migratePopulated(environment, runtime) {
       await prisma.$disconnect();
     }
 
-    migrate(environment);
+    await migrate(environment);
 
     const verificationClient = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
     try {
@@ -460,7 +425,7 @@ async function migrateLinePopulated(environment, runtime) {
     await prisma.$disconnect();
     prisma = undefined;
 
-    migrate(environment);
+    await migrate(environment);
     const verify = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
     try {
       const [personAfter, userAfter, rolesAfter, bindings, intents, receipts, indexes] = await Promise.all([
@@ -554,7 +519,7 @@ async function migrateLineReactivePopulated(environment, runtime) {
     await prisma.$disconnect();
     prisma = undefined;
 
-    migrate(environment);
+    await migrate(environment);
 
     const verificationClient = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
     prisma = verificationClient;
@@ -744,7 +709,7 @@ async function migrateAppointmentEventKeysPopulated(environment, runtime) {
     await prisma.$disconnect();
     prisma = undefined;
 
-    migrate(environment);
+    await migrate(environment);
     const verify = new PrismaClient({ datasources: { db: { url: environment.DATABASE_URL } } });
     try {
       const normalized = await verify.appointmentLineNotification.findMany({
@@ -791,7 +756,7 @@ function test(environment) {
   );
 }
 
-function testFocused(environment, relativeTestPath) {
+async function testFocused(environment, relativeTestPath) {
   if (
     !relativeTestPath ||
     !/^tests\/integration\/[A-Za-z0-9._/-]+\.integration\.test\.ts$/u.test(relativeTestPath) ||
@@ -801,7 +766,7 @@ function testFocused(environment, relativeTestPath) {
   }
 
   generate(environment);
-  migrate(environment);
+  await migrate(environment);
   run(
     process.execPath,
     [
@@ -815,9 +780,9 @@ function testFocused(environment, relativeTestPath) {
   );
 }
 
-function verifyIntegration(environment) {
+async function verifyIntegration(environment) {
   generate(environment);
-  migrate(environment);
+  await migrate(environment);
   test(environment);
 }
 
@@ -830,17 +795,17 @@ if (!supportedActions.has(action)) {
 const environment = getIntegrationEnvironment();
 
 if (action === "migrate") {
-  migrate(environment);
+  await migrate(environment);
   process.exit(0);
 }
 
 if (action === "test") {
-  verifyIntegration(environment);
+  await verifyIntegration(environment);
   process.exit(0);
 }
 
 if (action === "test:focused") {
-  testFocused(environment, process.argv[3]);
+  await testFocused(environment, process.argv[3]);
   process.exit(0);
 }
 
@@ -859,20 +824,16 @@ if (action === "db:up") {
   try {
     databaseDown(runtime, environment);
     databaseUp(runtime, environment);
-    verifyIntegration(environment);
+    await verifyIntegration(environment);
   } finally {
     databaseDown(runtime, environment);
   }
 } else if (action === "migrate:populated") {
-  requireCommittedIntegrationTarget(environment);
   await migratePopulated(environment, runtime);
 } else if (action === "migrate:line-populated") {
-  requireCommittedIntegrationTarget(environment);
   await migrateLinePopulated(environment, runtime);
 } else if (action === "migrate:line-reactive-populated") {
-  requireCommittedIntegrationTarget(environment);
   await migrateLineReactivePopulated(environment, runtime);
 } else if (action === "migrate:appointments-populated") {
-  requireCommittedIntegrationTarget(environment);
   await migrateAppointmentEventKeysPopulated(environment, runtime);
 }

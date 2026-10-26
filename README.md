@@ -128,17 +128,11 @@ docker compose --env-file .env.integration -f compose.integration.yaml down --vo
 
 The container uses temporary storage, fixed test-only credentials, and a localhost-only published port. Use the manual WSL workflow above to manage the Docker lifecycle; `npm run test:integration` is the single integration test command and does not invoke Docker/WSL discovery.
 
-To use another dedicated local PostgreSQL test database instead, export these local connection variables before running:
+Destructive integration tests accept only the dedicated target in `.env.integration`: `demi_test` on `127.0.0.1:55432`, with `NODE_ENV=test` and all three connection variables (`DATABASE_URL`, `DIRECT_URL`, `DEMI_TEST_DATABASE_URL`) matching that file exactly. Arbitrary local databases and connection URL/schema overrides are refused.
 
-```bash
-export DEMI_TEST_DATABASE_URL=postgresql://test-user:test-password@localhost:5432/demi_test
-export DATABASE_URL=$DEMI_TEST_DATABASE_URL
-export DIRECT_URL=$DEMI_TEST_DATABASE_URL
-npm run prisma:migrate:test
-npm run test:integration
-```
+Compose provisions a database comment identifying this instance as disposable using `scripts/integration-database-init.sql`. The runner checks that server-side identity, database, user, and schema before applying migrations. Vitest `globalSetup` checks them again before any test modules load, then resets data once per test run while preserving migrations and restoring worker singleton state. Test files run sequentially and own their fixture cleanup; there is no full-database reset before each file. The reset code never provisions its own safety marker.
 
-On Windows PowerShell, use `$env:...` assignments instead. Integration commands refuse to run with `NODE_ENV=production`, require both `DATABASE_URL` and `DIRECT_URL` to equal `DEMI_TEST_DATABASE_URL`, and validate that the resulting PostgreSQL host is local/disposable.
+If an existing container predates this guard, recreate only the disposable integration container with `npm run test:db:reset` before testing. Do not add the marker to a development, shared, forwarded, or production database to bypass the guard. The integration test command continues to work without Docker/WSL discovery after the container has been provisioned.
 
 The application boundary is `Client → Server Action/HTTP API → Application Service → Policy → Prisma → PostgreSQL/Supabase`. No speculative `/api/v1` endpoints, LIFF SDK, native app, or clinical business modules are implemented in this phase.
 
