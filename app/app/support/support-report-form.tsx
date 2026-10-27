@@ -5,7 +5,6 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE } from "@/modules/support/domain/support-report-messages";
 import { createSupportReportAction } from "@/modules/support/transport/server-actions";
 
 type HospitalOption = { id: string; name: string; hospitalCode: string };
@@ -95,7 +94,8 @@ export function SupportReportForm({ hospitals }: { hospitals: readonly HospitalO
         setFeedback({ variant: "warning", text: result.message });
         if (result.code === "RATE_LIMIT") notify.warning("วันนี้ส่งรายงานครบจำนวนแล้ว");
         else if (result.code === "CONFLICT") notify.warning("ข้อมูลเปลี่ยนแปลงแล้ว โปรดตรวจสอบก่อนดำเนินการต่อ");
-        else if (result.code === "FORBIDDEN") notify.error(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE);
+        // The toast stays short static copy; the inline Alert above carries the full Server Action refusal.
+        else if (result.code === "FORBIDDEN") notify.error("ส่งรายงานไม่ได้");
       } else {
         setUnknownOutcome(true);
       }

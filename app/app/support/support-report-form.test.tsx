@@ -297,14 +297,14 @@ describe("SupportReportForm notifications", () => {
     expect(mocks.notify.error.mock.calls.flat().join(" ")).not.toContain("ข้อมูลที่ผู้ใช้กรอก");
   });
 
-  it("shows the same FORBIDDEN message in the toast and the inline feedback as the Server Action returns", async () => {
+  it("shows the Server Action FORBIDDEN refusal inline and keeps the toast short static copy", async () => {
     mocks.create.mockResolvedValue({ status: "ERROR", code: "FORBIDDEN", message: SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE });
     mount();
     changeMessage("รายงานที่ถูกปฏิเสธ");
 
     await submit();
 
-    expect(mocks.notify.error).toHaveBeenCalledWith(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE);
+    expect(mocks.notify.error).toHaveBeenCalledExactlyOnceWith("ส่งรายงานไม่ได้");
     expect(statusTextContaining(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE)).toContain(SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE);
   });
 
