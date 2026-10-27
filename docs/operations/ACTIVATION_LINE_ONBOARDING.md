@@ -21,6 +21,25 @@
 
 ติดตาม aggregate counts ของ 429/503, latency ของ status route, provider-budget abort, BUSY และ persisted UNAVAILABLE เพื่อหาความผิดปกติและปรับ capacity ตามหลักฐาน ห้าม log request body, credentials, invitation URL, principal/LINE subject, appointment หรือ clinical data การยืนยันบน Vercel และ real-device UAT ยัง pending ดู [audit/verification](./MOBILE_ONBOARDING_AUDIT_UAT.md)
 
+## LINE Disconnection แบบรวมขั้นตอน (2026-10-27)
+
+- หน้าบัญชี LINE ที่เชื่อมอยู่มีปุ่มเดียว “ยกเลิกการเชื่อมต่อ LINE” และยืนยันครั้งเดียว ระบบยกเลิก binding ทันที พยายามถอนสิทธิ์เฉพาะช่องทางที่มี token ของช่องทางนั้น แสดงสถานะการถอนสิทธิ์ตามจริง แล้วออกจากระบบ DEMI และไปหน้าเข้าสู่ระบบ `/login?returnTo=/line/account`
+- หากออกจากระบบไม่สำเร็จหลังยกเลิกการเชื่อมต่อแล้ว หน้าจอจะแจ้งว่ายกเลิกการเชื่อมต่อแล้วแต่ยังออกจากระบบไม่สำเร็จ และปุ่ม “ลองออกจากระบบอีกครั้ง” จะเรียกเฉพาะ `POST /api/line/account/sign-out` ไม่ unlink หรือถอนสิทธิ์ซ้ำ
+- MINI App: Account LIFF token ใช้แทน MINI token ไม่ได้ สถานะ MINI จึงยังเป็น “ยังไม่ยืนยันถอนสิทธิ์” เจ้าของเดิมจะต้องผ่าน Recovery เมื่อจะเชื่อมกลับ ส่วนบัญชี DEMI อื่นเชื่อม LINE เดียวกันได้ตามปกติโดยไม่เห็น Recovery ของเจ้าของเดิม
+- ข้อมูล Recovery ใน localStorage ใช้ได้เฉพาะ User/session ที่เริ่มไว้ ข้อมูลของ session อื่น ข้อมูลที่หมดอายุ หรือชุดรายการที่จัดการแล้ว จะถูกล้างทิ้งและไม่ถูกแสดง
+- การออกจากระบบปกติบนเว็บยังเป็นการออกจาก session เท่านั้น ไม่ยกเลิกการเชื่อมต่อ LINE
+
+UAT บนอุปกรณ์จริงของ flow นี้**ยังไม่ได้ทำ** รายการตรวจ (ใช้ LINE ทดสอบและฐานข้อมูลทดสอบเท่านั้น) ดูการตัดสินใจใน [ADR-0009](../adr/0009-demi-line-oa-liff-identity-and-messaging.md):
+
+1. A เชื่อม LINE แล้วกด “ยกเลิกการเชื่อมต่อ LINE” → ยืนยัน → หน้าจอแสดงยกเลิกแล้ว สถานะ LINE Login/MINI ตามจริง และไปหน้าเข้าสู่ระบบ
+2. เข้าสู่ระบบเป็น B ใน LINE เดิม → เห็นปุ่ม “เชื่อมบัญชี LINE นี้” ตามปกติ ไม่มีส่วน “ตรวจสอบสิทธิ์ LINE” หรือ dropdown
+3. B เชื่อมสำเร็จด้วยรหัสผ่านของ B → Rich Menu เป็นของ B และ A ยังเข้าเว็บ DEMI ได้ตามปกติ
+4. ขณะ A ยังเชื่อมอยู่ B เชื่อม LINE เดียวกันไม่ได้
+5. A เข้าสู่ระบบอีกครั้งแล้วจะเชื่อมกลับ → ต้องผ่าน Recovery เฉพาะรายการของ A ครั้งเดียวต่อการยกเลิกหนึ่งครั้ง
+6. เริ่ม Recovery ของ A ค้างไว้ แล้วออกจากระบบ และเข้าสู่ระบบเป็นบัญชีอื่นที่มี Recovery ของตัวเอง → ไม่เห็นรายการของ A ที่ค้างไว้
+7. ตัดเน็ตหลังกดยืนยันยกเลิก → “ลองใหม่” โหลดสถานะจริง ไม่ยกเลิกซ้ำ ส่วนการออกจากระบบที่ล้มเหลวให้ลองเฉพาะการออกจากระบบ
+8. ทดสอบทั้งใน LINE app (in-client) และเบราว์เซอร์ภายนอก รวมถึงการกดปุ่มยืนยันซ้ำเร็ว ๆ
+
 ## UX-C.1 — ความต่อเนื่องบนมือถือ (2026-10-26)
 
 เส้นทาง activation → เลือก LINE/เว็บ → login เมื่อจำเป็น → ยืนยัน password → binding → friendship → menu → optional opt-in ยังคงเดิม ดู [audit และ UAT 20 สถานการณ์](./MOBILE_ONBOARDING_AUDIT_UAT.md) สำหรับหลักฐานและรายการที่ยังไม่ได้ทดสอบบนอุปกรณ์จริง
@@ -28,7 +47,7 @@
 - ปุ่มตรวจเมนูไม่ reload หน้าแล้ว แต่ส่ง POST `/api/line/account/status` พร้อม LINE proof ใน body เท่านั้น ใช้ exact same-origin, bounded JSON, strict schema และ `refreshLineAccountReachability()` เดิมเพื่อยืนยัน session/LINE subject/ownership ก่อนเรียก reconciler กับ binding ที่ server resolve
 - Endpoint รอ `reconcileLineBinding()` เดิมหนึ่งครั้ง แล้วอ่าน summary ที่ persisted ใหม่ `CHECKED` หมายถึงการเรียกจบ ไม่ได้รับรองว่า menu พร้อม; ต้องตรวจ `LINKED + FRIEND + APPLIED` อีกชั้น `BUSY`/`MISSING` ส่ง `PENDING` และ UI ไม่ใช้ APPLIED เก่ามาประกาศพร้อมในครั้งนั้น ไม่วนตรวจเอง
 - Page load, link และ friendship refresh เดิมยังใช้ `after()` ไม่ได้หมายความว่างานเสร็จพร้อม response ปุ่ม explicit check ใช้ lease/version fencing และ bounded stale reconciliation เดิม ไม่สร้าง queue, table หรือ provider retry loop ใหม่
-- ขณะตรวจ แสดง busy ทันที ปิดปุ่มซ้ำและการ unlink/switch; client timeout 25 วินาที และ abort เมื่อ unmount/pagehide ผลล่าช้าไม่เปลี่ยนหน้าที่ออกไปแล้ว Browser abort **ไม่ได้ยกเลิกงาน server/provider ที่เริ่มแล้ว** งานนั้นยังถูกจำกัดด้วย timeout ของ provider และ lease/fencing เดิม ผู้ใช้ retry ภายหลังได้ หากติด lease จะแสดงว่ายังตรวจไม่เสร็จ
+- ขณะตรวจ แสดง busy ทันที ปิดปุ่มซ้ำและการ unlink; client timeout 25 วินาที และ abort เมื่อ unmount/pagehide ผลล่าช้าไม่เปลี่ยนหน้าที่ออกไปแล้ว Browser abort **ไม่ได้ยกเลิกงาน server/provider ที่เริ่มแล้ว** งานนั้นยังถูกจำกัดด้วย timeout ของ provider และ lease/fencing เดิม ผู้ใช้ retry ภายหลังได้ หากติด lease จะแสดงว่ายังตรวจไม่เสร็จ
 - UNKNOWN menu แสดงกำลังตรวจ, MISMATCH/UNAVAILABLE แสดงเมนูยังไม่พร้อม, UNKNOWN friendship แสดงยังยืนยันสถานะ LINE ไม่ได้; NOT_FRIEND ให้เพิ่ม/ปลดบล็อก OA และตรวจด้วยตนเอง ทั้ง binding success และ already-linked แสดง readiness จริง แยกจากการเชื่อมสำเร็จ
 - Confirmation มีการยืนยันเพียงจุดเดียว ใช้ heading ที่รับ focus ได้แทนปุ่ม disabled และ Back คืน focus ส่วนสถานะ มีปุ่ม “ใช้บัญชี DEMI อื่น” โดยตรงพร้อมแจ้งว่าการออกจากระบบยกเลิก confirmation ใช้ sign-out/login เดิม ไม่มี principal selector หรือข้อมูลระบุตัวตนใหม่ ActorContext ปัจจุบันไม่มีชื่อที่เหมาะให้แยกบัญชี; หากไม่แน่ใจให้ login ใหม่ด้วยบัญชีที่ต้องการ
 - บัญชี linked ที่ต้อง login LINE เพื่อตรวจสถานะไม่สร้าง LINK intent เพิ่ม ส่วน unlinked ยังคง preflight และ link confirmation ตามเดิม การ login LINE ไม่สร้าง binding

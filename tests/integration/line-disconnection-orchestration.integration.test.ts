@@ -254,6 +254,28 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     expect(await getLineDisconnectionStatus(deps)).toMatchObject({ state: "RECOVERY_RELEASED_UNVERIFIED", canRelink: true });
     await expect(prepareLineAccountRecovery(deps)).rejects.toThrow();
   });
+  it("UNLINK intents stay single-use and session-bound across replay, expiry, session change and refresh", async () => {
+    const binding = await fixture(); const deps = dependencies(binding); deps.terminate = vi.fn(async (): Promise<LineProviderEvidence> => "PROVIDER_204");
+    const otherSession = randomUUID();
+    const changedSession = { ...deps, currentSession: async () => ({ userId: binding.userId, sessionHash: hashLineSessionId(otherSession) }) };
+    const fromOldSession = await createLineAccountIntent("UNLINK", deps);
+    await expect(disconnectLineAccount({ ...fromOldSession, accessToken }, changedSession)).rejects.toMatchObject({ code: "LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED" });
+    const stale = await createLineAccountIntent("UNLINK", deps);
+    await database.lineAccountActionIntent.update({ where: { id: stale.intentId }, data: { expiresAt: now } });
+    await expect(disconnectLineAccount({ ...stale, accessToken }, deps)).rejects.toMatchObject({ code: "LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED" });
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).toMatchObject({ unlinkedAt: null, lifecycleVersion: 1 });
+    expect(deps.terminate).not.toHaveBeenCalled();
+
+    const { intent } = await unlink(binding, deps, accessToken);
+    const committed = { binding: await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } }), rows: await lifecycle(binding) };
+    await expect(disconnectLineAccount({ ...intent, accessToken }, deps)).rejects.toMatchObject({ code: "LINK_INTENT_INVALID_EXPIRED_OR_REPLAYED" });
+    // A refreshed page cannot start a second Disconnection for the revoked binding.
+    await expect(createLineAccountIntent("UNLINK", deps)).rejects.toThrow();
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).toEqual(committed.binding);
+    expect(await lifecycle(binding)).toEqual(committed.rows);
+    expect(deps.terminate).toHaveBeenCalledOnce();
+    expect(await database.auditEvent.count({ where: { action: "line.account.unlinked", resourceId: binding.id } })).toBe(1);
+  });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {
     const binding = await fixture(); const deps = dependencies(binding); const intent = await createLineAccountIntent("LINK", deps);
     await unlink(binding, deps); await database.lineAccountBinding.update({ where: { id: binding.id }, data: { unlinkedAt: null, providerCleanupState: null } });
