@@ -62,6 +62,18 @@ async function recoveryInput(binding: LineAccountBinding, deps = dependencies(bi
   return { intentId: prepared.intentId, challenge: prepared.challenge, idToken: "fresh-id-token-synthetic", riskAcknowledged: true as const,
     manualReviews: Object.fromEntries(prepared.reviews.map((row) => [row.id, "UNDETERMINED" as const])) };
 }
+async function otherUser() {
+  const person = await database.person.create({ data: { identityKeyHash: createHash("sha256").update(randomUUID()).digest("hex"), givenName: "ทดสอบ", familyName: "บัญชีใหม่" } }); people.push(person.id);
+  const user = await database.user.create({ data: { personId: person.id, authSubject: randomUUID(), status: "ACTIVE" } }); users.push(user.id);
+  return user;
+}
+/** A different DEMI User in its own session on the same device and LINE account. */
+function otherDependencies(userId: string): DisconnectionDependencies {
+  const otherSessionId = randomUUID();
+  return { ...dependencies({ userId } as LineAccountBinding),
+    currentSession: async () => ({ userId, sessionHash: hashLineSessionId(otherSessionId) }),
+    liveSession: async () => ({ userId, sessionId: otherSessionId, authSubject: randomUUID(), checkedAt: now }) };
+}
 async function lifecycle(binding: LineAccountBinding) { return database.lineAuthorizationLifecycle.findMany({ where: { bindingId: binding.id }, orderBy: { bindingVersion: "asc" } }); }
 
 describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
@@ -180,6 +192,67 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     // Never confirmed, cleared or moved by the transfer.
     expect((await lifecycle(owner)).map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt])).toEqual(pending.map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt]));
     await expect(createLineAccountIntent("LINK", ownerDeps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+  });
+  it("A's Full Disconnection without a MINI token leaves B ordinary Link and none of A's Recovery", async () => {
+    const withMini: LineChannelInventory = { channels: [...inventory.channels, mini] };
+    const owner = await fixture(); const ownerDeps = { ...dependencies(owner), inventory: withMini, authorizationInventory: withMini };
+    ownerDeps.terminate = async () => "PROVIDER_204";
+    const { result } = await unlink(owner, ownerDeps, accessToken);
+    expect(result.disconnection).toMatchObject({ state: "RECOVERY_REQUIRED", canRelink: false });
+    expect((await lifecycle(owner)).map((row) => row.remoteOutcome).sort()).toEqual(["REMOTE_CONFIRMED", "REMOTE_UNCONFIRMED"]);
+    const ownerRecovery = await recoveryInput(owner, ownerDeps);
+    const ownerHistory = await lifecycle(owner);
+
+    const other = await otherUser();
+    const otherDeps = { ...otherDependencies(other.id), inventory: withMini, authorizationInventory: withMini };
+    expect(await getLineDisconnectionStatus(otherDeps)).toEqual({ state: "NONE", canRelink: true, obligations: [] });
+    await expect(prepareLineAccountRecovery(otherDeps)).rejects.toThrow();
+    await expect(recoverLineAccount(ownerRecovery, otherDeps)).rejects.toThrow();
+
+    const linked = await linkLineAccount({ ...(await createLineAccountIntent("LINK", otherDeps)), idToken: "fresh-proof-B" }, otherDeps);
+    expect(linked.status).toBe("LINKED");
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } })).toMatchObject({ userId: other.id, unlinkedAt: null });
+    expect(await lifecycle(owner)).toEqual(ownerHistory);
+    expect(await database.lineAuthorizationLifecycle.count({ where: { binding: { userId: other.id }, requestedAt: { not: null } } })).toBe(0);
+    await expect(createLineAccountIntent("LINK", ownerDeps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    // Disconnection and transfer delete no User or Person.
+    expect(await database.user.count({ where: { id: { in: [owner.userId, other.id] }, status: "ACTIVE" } })).toBe(2);
+    expect(await database.person.count({ where: { id: { in: people } } })).toBe(people.length);
+  });
+  it("late A deauthorization after B links settles only A history and never B's binding or menu", async () => {
+    const owner = await fixture(); const ownerDeps = dependencies(owner); await unlink(owner, ownerDeps);
+    const attempt = await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction, { ownerUserId: owner.userId, bindingId: owner.id, bindingVersion: 2, tupleKey: account }, inventory, now));
+    if (!attempt) throw new Error("Expected A attempt");
+    const other = await otherUser(); const otherDeps = otherDependencies(other.id);
+    const linked = await linkLineAccount({ ...(await createLineAccountIntent("LINK", otherDeps)), idToken: "fresh-proof-B" }, otherDeps);
+    const bindingB = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } });
+    const lifecycleB = await database.lineAuthorizationLifecycle.findMany({ where: { bindingId: linked.bindingId } });
+    expect(await runSerializableTransaction(database, (transaction) => recordLineTerminationOutcome(transaction, attempt, "PROVIDER_204", now))).toBe(true);
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: linked.bindingId } })).toEqual(bindingB);
+    expect(await database.lineAuthorizationLifecycle.findMany({ where: { bindingId: linked.bindingId } })).toEqual(lifecycleB);
+    // A's retired cleanup locator cannot reset B's Rich Menu.
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: owner.id } })).toMatchObject({ userId: owner.userId, lineUserId: null, providerCleanupState: "CONFIRMED_CLEAN" });
+    expect((await lifecycle(owner)).find((row) => row.attemptId === attempt.attemptId)).toMatchObject({ remoteOutcome: "REMOTE_CONFIRMED" });
+  });
+  it("same-user relink reviews only the new generation; released history is never prompted again", async () => {
+    const withMini: LineChannelInventory = { channels: [...inventory.channels, mini] };
+    const binding = await fixture(); const deps = { ...dependencies(binding), inventory: withMini, authorizationInventory: withMini };
+    await unlink(binding, deps);
+    const first = await recoveryInput(binding, deps);
+    expect(Object.keys(first.manualReviews)).toHaveLength(2);
+    await recoverLineAccount(first, deps);
+    await linkLineAccount({ ...(await createLineAccountIntent("LINK", deps)), idToken: "relink-proof" }, deps);
+    await unlink(binding, deps);
+    // Safeguard retained: the new generation's unconfirmed MINI permission still needs Recovery.
+    await expect(createLineAccountIntent("LINK", deps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
+    const second = await prepareLineAccountRecovery(deps);
+    const generations = new Map((await lifecycle(binding)).map((row) => [row.id, row.bindingVersion]));
+    expect(second.reviews.map((row) => generations.get(row.id))).toEqual([4, 4]);
+    expect(second.reviews.some((row) => row.id in first.manualReviews)).toBe(false);
+    await recoverLineAccount({ intentId: second.intentId, challenge: second.challenge, idToken: "fresh-id-token-synthetic", riskAcknowledged: true,
+      manualReviews: Object.fromEntries(second.reviews.map((row) => [row.id, "NOT_LISTED" as const])) }, deps);
+    expect(await getLineDisconnectionStatus(deps)).toMatchObject({ state: "RECOVERY_RELEASED_UNVERIFIED", canRelink: true });
+    await expect(prepareLineAccountRecovery(deps)).rejects.toThrow();
   });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {
     const binding = await fixture(); const deps = dependencies(binding); const intent = await createLineAccountIntent("LINK", deps);

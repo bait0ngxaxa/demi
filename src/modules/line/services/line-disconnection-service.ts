@@ -20,7 +20,7 @@ import { isLineDisconnectionReadinessUnavailableAudit, unlinkLineAccount, type L
 import { authorizeLineRecoveryDecision, isLineTerminationDispatchAllowed, prepareLineRecoverySet, recordLineTerminationOutcome, releaseLineRecovery, reserveLineTerminationAttempt } from "./line-authorization-lifecycle-service";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
 import { getLineMiniAppDeauthorizationCredentials } from "./line-mini-app-configuration";
-import { getCurrentLineSession, hashLineSessionId, timingSafeHashMatch } from "./line-session-service";
+import { getCurrentLineSession, hashLineSessionId, lineRecoveryHandoffScope, timingSafeHashMatch } from "./line-session-service";
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 const targetOf = (binding: LineAccountBinding): { ownerUserId: string; bindingId: string; bindingVersion: number } => ({ ownerUserId: binding.userId, bindingId: binding.id, bindingVersion: binding.lifecycleVersion });
@@ -59,6 +59,13 @@ export async function getLineDisconnectionStatus(deps: DisconnectionDependencies
     : rows.some((row) => row.recoveryReleasedAt) ? "RECOVERY_RELEASED_UNVERIFIED" : rows.length ? "REMOTE_CONFIRMED" : "NONE";
   return { state, canRelink: !legacy && blocked.length === 0,
     obligations: rows.map((row) => ({ id: row.id, appName: lineChannelDisplayName(row.tupleDefinition), status: lineObligationStatus(row) })) };
+}
+
+/** Scope for the current session's browser Recovery handoff; never authority. */
+export async function getLineRecoveryHandoffScope(
+  dependencies: Pick<DisconnectionDependencies, "currentSession"> = {},
+): Promise<string> {
+  return lineRecoveryHandoffScope(await (dependencies.currentSession ?? getCurrentLineSession)());
 }
 
 /**

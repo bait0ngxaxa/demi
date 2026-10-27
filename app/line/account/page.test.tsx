@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireReadiness: vi.fn(),
   status: vi.fn(),
   history: vi.fn(),
+  handoffScope: vi.fn(),
   reconcile: vi.fn(),
   liffId: vi.fn(),
   loginEnv: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/modules/line/services/line-account-service", () => ({ getLineAccountS
 vi.mock("@/modules/line/services/line-disconnection-configuration", () => ({ requireLineDisconnectionReadiness: mocks.requireReadiness }));
 vi.mock("@/modules/line/services/line-disconnection-service", () => ({
   getLineDisconnectionStatus: mocks.status,
+  getLineRecoveryHandoffScope: mocks.handoffScope,
   hasLineLifecycleHistoryForCurrentOwner: mocks.history,
 }));
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: mocks.reconcile }));
@@ -66,6 +68,7 @@ const confirmedStatus: LineDisconnectionStatus = {
 type ClientProps = {
   initial: typeof linkedSummary | typeof unlinkedSummary | typeof ineligibleSummary | { status: "UNAUTHENTICATED" | "UNAVAILABLE"; canUnlink: false; reachability: null; menuState: null; cleanupState: null };
   disconnection?: LineDisconnectionStatus;
+  recoveryHandoffScope: string | null;
   lifecycleReadiness:
     | { state: "READY" }
     | { state: "DEGRADED"; history: "PRESENT" | "NONE" | "UNKNOWN" }
@@ -85,6 +88,7 @@ describe("Account page readiness composition", () => {
     mocks.requireReadiness.mockResolvedValue(readyInventory);
     mocks.status.mockResolvedValue(confirmedStatus);
     mocks.history.mockResolvedValue(false);
+    mocks.handoffScope.mockResolvedValue("a".repeat(64));
     mocks.reconcile.mockResolvedValue(undefined);
     mocks.liffId.mockReturnValue("1234567890-test");
     mocks.loginEnv.mockReturnValue({ DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org" });
@@ -124,6 +128,20 @@ describe("Account page readiness composition", () => {
     const props = await clientProps();
 
     expect(props.lifecycleReadiness).toEqual({ state: "DEGRADED", history: "NONE" });
+  });
+
+  it("scopes a Recovery handoff to the current session only while this owner has Recovery to resume", async () => {
+    expect((await clientProps()).recoveryHandoffScope).toBeNull();
+    expect(mocks.handoffScope).not.toHaveBeenCalled();
+
+    mocks.summary.mockResolvedValue(unlinkedSummary);
+    mocks.status.mockResolvedValue({ state: "RECOVERY_REQUIRED", canRelink: false, obligations: [] });
+    expect((await clientProps()).recoveryHandoffScope).toBe("a".repeat(64));
+
+    mocks.handoffScope.mockRejectedValue(new Error("session unavailable"));
+    const degraded = await clientProps();
+    expect(degraded.recoveryHandoffScope).toBeNull();
+    expect(degraded.lifecycleReadiness).toEqual({ state: "READY" });
   });
 
   it("restores server-derived eligibility and keeps provider-confirmed lifecycle status", async () => {

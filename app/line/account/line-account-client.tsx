@@ -613,6 +613,7 @@ export function LineAccountClient({
   publicOrigin,
   linePasswordRecoveryAvailable,
   disconnection,
+  recoveryHandoffScope = null,
   lifecycleReadiness,
   notificationPreference,
 }: {
@@ -621,6 +622,8 @@ export function LineAccountClient({
   publicOrigin: string;
   linePasswordRecoveryAvailable: boolean;
   disconnection?: LineDisconnectionStatus;
+  /** Server-derived for the current DEMI session; null disables handoff resume. */
+  recoveryHandoffScope?: string | null;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
 }): React.JSX.Element {
@@ -992,7 +995,7 @@ export function LineAccountClient({
       notificationPreference={appointmentPreference}
       preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
-      recoveryContent={lifecycleReadiness.state === "READY" && successAction !== "UNLINK" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
+      recoveryContent={lifecycleReadiness.state === "READY" && successAction !== "UNLINK" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} handoffScope={recoveryHandoffScope} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
       initial={summary}
       accountStatus={accountStatus}
       canUnlink={canUnlink}

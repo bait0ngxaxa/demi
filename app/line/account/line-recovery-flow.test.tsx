@@ -15,7 +15,9 @@ vi.mock("react", async (original) => ({
   },
   useRef: (initial: unknown) => { const index = h.refIndex++; return h.refs[index] ?? (h.refs[index] = { current: initial }); },
   useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
+  useEffect: (effect: () => void) => { effect(); },
 }));
+import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { LineRecoveryPanel } from "./line-recovery-panel";
 
 type Control = { onClick?: () => void; onChange?: (event: { target: { value?: string; checked?: boolean } }) => void; children?: ReactNode; disabled?: boolean; type?: string; value?: string };
@@ -25,9 +27,12 @@ function controls(node: ReactNode): Array<{ kind: unknown; props: Control }> {
   return [{ kind: node.type, props: node.props }, ...controls(node.props.children)];
 }
 const prepared = () => ({ intentId: "11111111-1111-4111-a111-111111111111", challenge: "c".repeat(43), expiresAt: new Date(Date.now() + 300000).toISOString(), reviews: [{ id: "22222222-2222-4222-a222-222222222222", appName: "DEMI ทดสอบ" }] });
+const scope = "a".repeat(64);
+const outstanding: LineDisconnectionStatus = { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [{ id: "22222222-2222-4222-a222-222222222222", appName: "DEMI ทดสอบ", status: "REMOTE_UNCONFIRMED" }] };
+const page = { status: outstanding, handoffScope: scope as string | null };
 function render() {
   h.stateIndex = 0; h.refIndex = 0;
-  return controls(LineRecoveryPanel({ status: { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [] }, liffId: "1234567890-test", publicOrigin: "https://demi.example.org", onReload: h.reload }));
+  return controls(LineRecoveryPanel({ status: page.status, handoffScope: page.handoffScope, liffId: "1234567890-test", publicOrigin: "https://demi.example.org", onReload: h.reload }));
 }
 function click(label: string): void {
   const selected = render().find((control) => control.kind === "button" && control.props.children === label);
@@ -43,7 +48,7 @@ async function prepareAndReview(): Promise<void> {
 }
 describe("Recovery-only LIFF interaction and transient proof transport", () => {
   beforeEach(() => {
-    vi.clearAllMocks(); h.states.length = 0; h.refs.length = 0; h.saved.clear();
+    vi.clearAllMocks(); h.states.length = 0; h.refs.length = 0; h.saved.clear(); page.status = outstanding; page.handoffScope = scope;
     h.init.mockResolvedValue(undefined); h.isInClient.mockReturnValue(false); h.isLoggedIn.mockReturnValue(true); h.getIDToken.mockReturnValue("fresh-line-id-token-only-in-body");
     h.fetch.mockImplementation(async (path: string) => Response.json(path.endsWith("/prepare") ? prepared() : { status: "RECOVERY_RELEASED_UNVERIFIED" }));
     vi.stubGlobal("fetch", h.fetch); vi.stubGlobal("window", { location: { assign: h.assign } });
@@ -96,5 +101,43 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     expect(h.fetch).toHaveBeenCalledOnce(); expect(h.reload).not.toHaveBeenCalled();
     expect(render().find((control) => control.kind === "p" && String(control.props.children).includes("ยังยืนยันไม่ได้"))).toBeDefined();
     expect(render().find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")?.props.disabled).toBe(false);
+  });
+  it("stores the server-derived session scope and refuses a handoff without one", async () => {
+    await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    expect(JSON.parse([...h.saved.values()][0])).toMatchObject({ scope });
+    h.saved.clear(); h.states.length = 0; h.refs.length = 0; h.login.mockClear(); page.handoffScope = null;
+    await prepareAndReview();
+    expect(render().find((control) => control.props.children === "ยืนยันตัวตนกับ LINE ใหม่")?.props.disabled).toBe(true);
+    expect(h.saved.size).toBe(0); expect(h.login).not.toHaveBeenCalled();
+  });
+  it("never resumes or shows another DEMI session's handoff and clears it", async () => {
+    await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    // Same device, User B (or a new session) now opens the Account screen.
+    h.states.length = 0; h.refs.length = 0; page.handoffScope = "b".repeat(64);
+    const controlsForB = render();
+    expect(controlsForB.find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")).toBeUndefined();
+    expect(controlsForB.find((control) => control.kind === "select")).toBeUndefined();
+    expect(controlsForB.find((control) => control.props.children === "ตรวจสอบเพื่อเชื่อมใหม่")).toBeDefined();
+    expect(h.saved.size).toBe(0); expect(h.fetch).toHaveBeenCalledTimes(1);
+  });
+  it.each<[string, LineDisconnectionStatus]>([
+    ["released", { ...outstanding, state: "RECOVERY_RELEASED_UNVERIFIED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "RECOVERY_RELEASED_UNVERIFIED" }] }],
+    ["replaced by a new obligation set", { ...outstanding, obligations: [{ ...outstanding.obligations[0], id: "33333333-3333-4333-a333-333333333333" }] }],
+    ["confirmed by LINE", { ...outstanding, state: "REMOTE_CONFIRMED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "REMOTE_CONFIRMED" }] }],
+  ])("does not prompt again for an obligation set already %s", async (_label, status) => {
+    await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    h.states.length = 0; h.refs.length = 0; page.status = status;
+    const after = render();
+    expect(after.find((control) => control.kind === "select")).toBeUndefined();
+    expect(after.find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")).toBeUndefined();
+    expect(h.saved.size).toBe(0);
+  });
+  it("discards an expired handoff from the same session", async () => {
+    await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    const [key, value] = [...h.saved.entries()][0];
+    h.saved.set(key, JSON.stringify({ ...JSON.parse(value), expiresAt: new Date(Date.now() - 1000).toISOString() }));
+    h.states.length = 0; h.refs.length = 0;
+    expect(render().find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")).toBeUndefined();
+    expect(h.saved.size).toBe(0);
   });
 });

@@ -1,19 +1,23 @@
 "use client";
 
 import liff from "@line/liff";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { z } from "zod";
 import type { LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 
 const preparedSchema = z.object({ intentId: z.string().uuid(), challenge: z.string().min(40).max(128), expiresAt: z.iso.datetime(), reviews: z.array(z.object({ id: z.string().uuid(), appName: z.string() })).min(1) });
 const reviewSchema = z.enum(["REMOVED", "NOT_LISTED", "UNDETERMINED"]);
-const handoffSchema = preparedSchema.extend({ manualReviews: z.record(z.string().uuid(), reviewSchema), riskAcknowledged: z.literal(true) });
+const scopeSchema = z.string().regex(/^[a-f0-9]{64}$/u);
+const handoffSchema = preparedSchema.extend({ scope: scopeSchema, manualReviews: z.record(z.string().uuid(), reviewSchema), riskAcknowledged: z.literal(true) });
 type Prepared = z.infer<typeof preparedSchema>;
 type Review = z.infer<typeof reviewSchema>;
 // localStorage, not sessionStorage: inside the LINE app the liff.line.me
 // handoff reopens DEMI in a new webview, which starts with empty sessionStorage.
-// The stored intent is session-bound, single-use and expires in five minutes.
+// The stored intent is session-bound, single-use and expires in five minutes;
+// it resumes only under the server-derived scope of the same DEMI session.
 const storageKey = "demi-line-recovery-intent-v1";
+// Rows Recovery can still release; anything else means this set was already handled.
+const settledStatuses = new Set(["REMOTE_CONFIRMED", "RECOVERY_RELEASED_UNVERIFIED", "PROVEN_ABSENT"]);
 function subscribeHandoff(callback: () => void): () => void {
   window.addEventListener("storage", callback);
   window.addEventListener("pageshow", callback);
@@ -22,10 +26,17 @@ function subscribeHandoff(callback: () => void): () => void {
 function handoffSnapshot(): string | null {
   try { return localStorage.getItem(storageKey); } catch { return null; }
 }
-function readHandoff(value: string | null): z.infer<typeof handoffSchema> | null {
+function removeHandoff(): void {
+  try { localStorage.removeItem(storageKey); } catch { /* storage unavailable */ }
+}
+/** Resumes only the exact session's unexpired handoff for a still-outstanding obligation set. */
+function readHandoff(value: string | null, scope: string | null, status: LineDisconnectionStatus): z.infer<typeof handoffSchema> | null {
+  if (!value || !scope || status.state !== "RECOVERY_REQUIRED") return null;
   try {
-    const result = handoffSchema.safeParse(JSON.parse(value ?? "null"));
-    return result.success && Date.parse(result.data.expiresAt) > Date.now() ? result.data : null;
+    const result = handoffSchema.safeParse(JSON.parse(value));
+    if (!result.success || result.data.scope !== scope || Date.parse(result.data.expiresAt) <= Date.now()) return null;
+    const outstanding = new Set(status.obligations.filter((row) => !settledStatuses.has(row.status)).map((row) => row.id));
+    return result.data.reviews.every((row) => outstanding.has(row.id)) ? result.data : null;
   } catch { return null; }
 }
 export const disconnectionStatusSchema = z.object({
@@ -72,12 +83,16 @@ export function LineDisconnectionNotice({ status }: { status: LineDisconnectionS
   </div>;
 }
 
-export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
-  status: LineDisconnectionStatus; liffId: string | null; publicOrigin: string; onReload: () => void;
+export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicOrigin, onReload }: {
+  status: LineDisconnectionStatus; handoffScope?: string | null; liffId: string | null; publicOrigin: string; onReload: () => void;
 }): React.JSX.Element {
   // SSR renders no browser evidence. Hydration reads transport state through
   // React's external-store boundary; SQL/Auth remain the sole authority.
-  const resumed = readHandoff(useSyncExternalStore(subscribeHandoff, handoffSnapshot, () => null));
+  const stored = useSyncExternalStore(subscribeHandoff, handoffSnapshot, () => null);
+  const resumed = readHandoff(stored, handoffScope, status);
+  const discard = stored !== null && resumed === null;
+  // Another DEMI session's, expired or already-handled handoff is cleared, never shown.
+  useEffect(() => { if (discard) removeHandoff(); }, [discard]);
   const [localPrepared, setPrepared] = useState<Prepared | null>(null);
   const [localReviews, setReviews] = useState<Record<string, Review>>({});
   const [localAcknowledged, setAcknowledged] = useState(false);
@@ -94,7 +109,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
     if (running.current) return;
     running.current = true; setBusy(true); setError("");
     try {
-      localStorage.removeItem(storageKey);
+      removeHandoff();
       const result = preparedSchema.parse(await post("/api/line/account/recovery/prepare", {}));
       setPrepared(result); setReviews({}); setAcknowledged(false);
       heading.current?.focus();
@@ -102,11 +117,11 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
   }
 
   async function verifyIdentity(): Promise<void> {
-    if (!prepared || !acknowledged || !liffId || !publicOrigin || running.current) return;
+    if (!prepared || !acknowledged || !liffId || !publicOrigin || !handoffScope || running.current) return;
     if (!prepared.reviews.every((row) => reviews[row.id])) return;
     running.current = true; setBusy(true); setError("");
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ ...prepared, manualReviews: reviews, riskAcknowledged: true }));
+      localStorage.setItem(storageKey, JSON.stringify({ ...prepared, scope: handoffScope, manualReviews: reviews, riskAcknowledged: true }));
       // Explicit recovery-only restart; no binding is created by this step.
       await initializeLineAccountLiff(liffId);
       if (liff.isInClient()) {
@@ -126,7 +141,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error();
       await post("/api/line/account/recovery", { intentId: prepared.intentId, challenge: prepared.challenge, idToken, riskAcknowledged: true, manualReviews: reviews });
-      localStorage.removeItem(storageKey);
+      removeHandoff();
       onReload();
     } catch { setError(failure); } finally { running.current = false; setBusy(false); }
   }
@@ -147,7 +162,7 @@ export function LineRecoveryPanel({ status, liffId, publicOrigin, onReload }: {
       </label>)}
       <p className="type-readable text-sm text-ink">ขั้นต่อไปจะยืนยันบัญชี LINE เดิมอีกครั้ง และอาจขอสิทธิ์ LINE ใหม่ การยืนยันนี้ยังไม่เชื่อมบัญชี DEMI</p>
       <label className="flex items-start gap-3 text-sm text-ink"><input className="mt-1 size-5 shrink-0 accent-brand" type="checkbox" checked={acknowledged} disabled={busy || identityReady} onChange={(event) => setAcknowledged(event.target.checked)} /><span>ฉันยอมรับว่าคำขอถอนสิทธิ์เดิมอาจเสร็จภายหลัง และทำให้การเชื่อมต่อ LINE ใหม่หยุดชั่วคราว หากเกิดขึ้น ฉันจะยืนยันตัวตนและเชื่อมใหม่ด้วยตนเอง</span></label>
-      <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id]) || !liffId} onClick={() => void (identityReady ? complete() : verifyIdentity())}>{identityReady ? "ยืนยันผลการตรวจสอบ" : "ยืนยันตัวตนกับ LINE ใหม่"}</button>
+      <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id]) || !liffId || (!identityReady && !handoffScope)} onClick={() => void (identityReady ? complete() : verifyIdentity())}>{identityReady ? "ยืนยันผลการตรวจสอบ" : "ยืนยันตัวตนกับ LINE ใหม่"}</button>
       <button type="button" disabled={busy} onClick={() => void begin()} className="min-h-12 w-full text-brand underline focus-visible:outline-2">เริ่มการตรวจสอบใหม่</button>
     </> : null}
     {busy ? <p role="status" className="text-sm text-muted">กำลังตรวจสอบ…</p> : null}

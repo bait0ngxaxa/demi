@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { getServerSupabaseClient } from "@/lib/auth/supabase-server";
 
-import { getCurrentLineSession, hashLineSessionId } from "./line-session-service";
+import { getCurrentLineSession, hashLineSessionId, lineRecoveryHandoffScope } from "./line-session-service";
 
 vi.mock("@/lib/db/prisma", () => ({ getPrisma: vi.fn() }));
 vi.mock("@/lib/auth/supabase-server", () => ({ getServerSupabaseClient: vi.fn() }));
@@ -31,6 +31,16 @@ describe("exact Supabase session binding", () => {
       },
     } as unknown as Awaited<ReturnType<typeof getServerSupabaseClient>>);
   }
+
+  it("derives a Recovery handoff scope unique to one DEMI User and session without exposing either", () => {
+    const own = { userId: demiUserId, sessionHash: hashLineSessionId(sessionId) };
+    const scope = lineRecoveryHandoffScope(own);
+    expect(scope).toMatch(/^[a-f0-9]{64}$/u);
+    expect(lineRecoveryHandoffScope({ ...own })).toBe(scope);
+    expect(lineRecoveryHandoffScope({ ...own, userId: "93da3ab8-2895-4cab-bb63-19f807246288" })).not.toBe(scope);
+    expect(lineRecoveryHandoffScope({ ...own, sessionHash: hashLineSessionId("80f59f2e-c97a-46d2-8c9f-bf35de411057") })).not.toBe(scope);
+    expect(scope).not.toContain(demiUserId.replaceAll("-", "")); expect(scope).not.toBe(own.sessionHash);
+  });
 
   it("maps the verified auth subject to exact DEMI User and returns only a session hash", async () => {
     setAuth({ sub: authSubject, session_id: sessionId });

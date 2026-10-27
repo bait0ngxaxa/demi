@@ -5,7 +5,7 @@ import { isLinePasswordRecoveryRequestConfigured } from "@/modules/line/services
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { getOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { getLineAccountSummary } from "@/modules/line/services/line-account-service";
-import { getLineDisconnectionStatus, hasLineLifecycleHistoryForCurrentOwner, type LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
+import { getLineDisconnectionStatus, getLineRecoveryHandoffScope, hasLineLifecycleHistoryForCurrentOwner, type LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { requireLineDisconnectionReadiness } from "@/modules/line/services/line-disconnection-configuration";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import { UnauthenticatedError } from "@/shared/errors/application-error";
@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 export default async function LineAccountPage(): Promise<React.JSX.Element> {
   await connection();
   let disconnection: LineDisconnectionStatus | undefined;
+  let recoveryHandoffScope: string | null = null;
   let initial: {
     status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
     canUnlink: boolean;
@@ -55,6 +56,13 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
     } catch {
       // Keep the independent Account summary usable; Link/Recovery remain fenced.
     }
+    if (configurationReady && disconnection?.state === "RECOVERY_REQUIRED") {
+      try {
+        recoveryHandoffScope = await getLineRecoveryHandoffScope();
+      } catch {
+        // Without a scope the client resumes no stored handoff; Recovery restarts explicitly.
+      }
+    }
 
     if (!configurationReady) {
       try {
@@ -78,5 +86,5 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   } catch {
     // The client displays a safe configuration state when the dedicated LINE configuration is missing.
   }
-  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} linePasswordRecoveryAvailable={isLinePasswordRecoveryRequestConfigured()} disconnection={disconnection} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
+  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} linePasswordRecoveryAvailable={isLinePasswordRecoveryRequestConfigured()} disconnection={disconnection} recoveryHandoffScope={recoveryHandoffScope} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
 }
