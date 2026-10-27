@@ -38,7 +38,8 @@ export type DisconnectionDependencies = LineAccountDependencies & {
 export type LineDisconnectionStatus = {
   state: "NONE" | "PENDING" | "RECOVERY_REQUIRED" | "REMOTE_CONFIRMED" | "RECOVERY_RELEASED_UNVERIFIED";
   canRelink: boolean;
-  obligations: Array<{ id: string; appName: string; status: ReturnType<typeof lineObligationStatus> }>;
+  /** bindingId groups one Recovery set; it is the owner's own record and grants nothing. */
+  obligations: Array<{ id: string; bindingId: string; appName: string; status: ReturnType<typeof lineObligationStatus> }>;
 };
 
 function dbOf(deps: DisconnectionDependencies): PrismaClient { return deps.database ?? getPrisma(); }
@@ -58,7 +59,7 @@ export async function getLineDisconnectionStatus(deps: DisconnectionDependencies
     ? blocked.every((row) => isLineRecoveryEligible(row, nowOf(deps))) ? "RECOVERY_REQUIRED" : "PENDING"
     : rows.some((row) => row.recoveryReleasedAt) ? "RECOVERY_RELEASED_UNVERIFIED" : rows.length ? "REMOTE_CONFIRMED" : "NONE";
   return { state, canRelink: !legacy && blocked.length === 0,
-    obligations: rows.map((row) => ({ id: row.id, appName: lineChannelDisplayName(row.tupleDefinition), status: lineObligationStatus(row) })) };
+    obligations: rows.map((row) => ({ id: row.id, bindingId: row.bindingId, appName: lineChannelDisplayName(row.tupleDefinition), status: lineObligationStatus(row) })) };
 }
 
 /** Scope for the current session's browser Recovery handoff; never authority. */

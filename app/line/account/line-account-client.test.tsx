@@ -541,8 +541,8 @@ describe("LINE account user experience", () => {
   it("never presents local unlink as provider deauthorization", () => {
     const base = { ...emptyStatus, status: "UNLINKED" as const, canUnlink: false };
     const unconfirmed = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", unlinkDisconnection: { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [
-      { id: "a1111111-1111-4111-a111-111111111111", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
-      { id: "b1111111-1111-4111-a111-111111111111", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
+      { id: "a1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
+      { id: "b1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
     ] } });
     expect(unconfirmed).toContain("LINE Login ของ DEMI: LINE ยืนยันถอนสิทธิ์แล้ว");
     expect(unconfirmed).toContain("DEMI MINI App: ยังไม่ยืนยันถอนสิทธิ์");

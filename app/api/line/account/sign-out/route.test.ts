@@ -1,35 +1,73 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-const mocks = vi.hoisted(() => ({ origin: vi.fn(), signOut: vi.fn(), unlink: vi.fn() }));
+const mocks = vi.hoisted(() => ({ origin: vi.fn(), read: vi.fn(), signOut: vi.fn(), completion: vi.fn(), unlink: vi.fn() }));
 vi.mock("@/modules/auth/services/authentication-service", () => ({ signOutCurrentSession: mocks.signOut }));
-vi.mock("@/modules/line/services/line-account-service", () => ({ unlinkLineAccount: mocks.unlink }));
+vi.mock("@/modules/line/services/line-account-service", () => ({ verifyLineUnlinkCompletion: mocks.completion, unlinkLineAccount: mocks.unlink }));
 vi.mock("@/modules/line/transport/account-http", () => ({
-  requireSameOrigin: mocks.origin,
+  requireSameOrigin: mocks.origin, readAccountJson: mocks.read,
   lineErrorResponse: () => Response.json({ error: "ไม่สามารถดำเนินการนี้ได้" }, { status: 403, headers: { "cache-control": "private, no-store" } }),
 }));
 import { POST } from "./route";
 
+const proof = { intentId: "c1111111-1111-4111-a111-111111111111", challenge: "u".repeat(43) };
 const request = (): Request => new Request("https://demi.example.org/api/line/account/sign-out", { method: "POST" });
 
 describe("DEMI sign-out after LINE Disconnection", () => {
   beforeEach(() => {
-    vi.clearAllMocks(); mocks.origin.mockResolvedValue(undefined); mocks.signOut.mockResolvedValue(undefined);
+    vi.clearAllMocks(); mocks.origin.mockResolvedValue(undefined); mocks.read.mockResolvedValue(proof);
+    mocks.completion.mockResolvedValue("COMMITTED"); mocks.signOut.mockResolvedValue(undefined);
   });
 
-  it("ends only the DEMI session and returns the fixed LINE login return path", async () => {
+  it("ends the session only after the server proves this session's UNLINK committed", async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" });
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(mocks.completion).toHaveBeenCalledWith(proof);
     expect(mocks.signOut).toHaveBeenCalledOnce(); expect(mocks.unlink).not.toHaveBeenCalled();
   });
 
-  it("is safe to retry: repeated calls never unlink and stay successful", async () => {
-    expect((await POST(request())).status).toBe(200);
-    expect((await POST(request())).status).toBe(200);
-    expect(mocks.signOut).toHaveBeenCalledTimes(2); expect(mocks.unlink).not.toHaveBeenCalled();
+  it("never signs out a different User or session that replaced the disconnecting one", async () => {
+    mocks.completion.mockResolvedValue("SESSION_CHANGED");
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "SESSION_CHANGED" });
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session when the UNLINK did not commit", async () => {
+    mocks.completion.mockResolvedValue("NOT_COMMITTED");
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "NOT_COMMITTED" });
+    expect(mocks.signOut).not.toHaveBeenCalled(); expect(mocks.unlink).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing proof", {}],
+    ["client-supplied identity", { ...proof, userId: "83da3ab8-2895-4cab-bb63-19f807246288" }],
+  ])("rejects %s before touching the session", async (_label, body) => {
+    mocks.read.mockResolvedValue(body);
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.completion).not.toHaveBeenCalled(); expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("rejects unmatched or stale proof and a cross-origin request without signing out", async () => {
+    mocks.completion.mockRejectedValue(new ForbiddenError());
+    expect((await POST(request())).status).toBe(403);
+    mocks.origin.mockRejectedValue(new ForbiddenError());
+    expect((await POST(request())).status).toBe(403);
+    expect(mocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("treats an already-ended session as signed out without another sign-out call", async () => {
+    mocks.completion.mockRejectedValue(new UnauthenticatedError());
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: "SIGNED_OUT" });
+    expect(mocks.signOut).not.toHaveBeenCalled();
   });
 
   it("reports a failed session invalidation without claiming sign-out", async () => {
@@ -38,11 +76,5 @@ describe("DEMI sign-out after LINE Disconnection", () => {
     expect(response.status).toBe(503);
     const body = await response.json() as Record<string, unknown>;
     expect(body).not.toHaveProperty("redirectTo"); expect(JSON.stringify(body)).not.toContain("invalidated");
-  });
-
-  it("rejects a cross-origin request before touching the session", async () => {
-    mocks.origin.mockRejectedValue(new ForbiddenError());
-    expect((await POST(request())).status).toBe(403);
-    expect(mocks.signOut).not.toHaveBeenCalled();
   });
 });

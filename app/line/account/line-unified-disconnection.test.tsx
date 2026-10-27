@@ -15,8 +15,8 @@ import { LineAccountClient } from "./line-account-client";
 const linked = { status: "LINKED", canUnlink: true, reachability: "FRIEND", menuState: "APPLIED", cleanupState: null } as const;
 const intent = { intentId: "c1111111-1111-4111-a111-111111111111", challenge: "u".repeat(43) };
 const unconfirmed = { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [
-  { id: "d1111111-1111-4111-a111-111111111111", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
-  { id: "e1111111-1111-4111-a111-111111111111", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
+  { id: "d1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
+  { id: "e1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
 ] };
 let container: HTMLDivElement;
 let root: Root;
@@ -66,6 +66,8 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(calls("/api/line/account/sign-out")).toBe(1);
     const unlinkBody = JSON.parse(String(fetcher.mock.calls.find(([url]) => url === "/api/line/account/unlink")?.[1]?.body)) as Record<string, unknown>;
     expect(unlinkBody).toEqual({ ...intent, accessToken: "account-access-token" });
+    // Sign-out carries only the UNLINK proof; the server derives User and session itself.
+    expect(JSON.parse(String(fetcher.mock.calls.find(([url]) => url === "/api/line/account/sign-out")?.[1]?.body))).toEqual(intent);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     expect(container.textContent).toContain("DEMI MINI App: ยังไม่ยืนยันถอนสิทธิ์");
     expect(container.textContent).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
@@ -108,16 +110,54 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(container.textContent).toContain("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
   });
 
-  it("never signs out or repeats the unlink when the unlink response is lost; retry reloads authoritative state", async () => {
+  it("does not sign out a session that replaced the disconnecting one", async () => {
     route({
       "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
-      "/api/line/account/unlink": async () => { throw new TypeError("network lost"); },
+      "/api/line/account/unlink": async () => Response.json({ status: "UNLINKED", cleanup: "PENDING", disconnection: unconfirmed }),
+      "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_CHANGED", error: "changed" }, { status: 409 }),
     });
     await mount(); await openConfirmation();
     await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
-    expect(calls("/api/line/account/sign-out")).toBe(0);
+    expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว แต่บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว");
+    expect(container.querySelector('a[href^="/login"]')).toBeNull();
+    expect(() => button("ลองออกจากระบบอีกครั้ง")).toThrow();
+    expect(calls("/api/line/account/sign-out")).toBe(1);
+  });
+
+  it("completes a committed unlink whose response was lost by asking the server, never resending Unlink", async () => {
+    route({
+      "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
+      "/api/line/account/unlink": async () => { throw new TypeError("network lost"); },
+      "/api/line/account/sign-out": async () => Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" }),
+    });
+    await mount(); await openConfirmation();
+    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    expect(calls("/api/line/account/unlink")).toBe(1);
+    expect(calls("/api/line/account/sign-out")).toBe(1);
+    expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
+    // Remote settlement was never observed, so it stays unconfirmed.
+    expect(container.textContent).toContain("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
+    expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
+  });
+
+  it("keeps the session when a lost Unlink did not commit and rechecks on retry without resending", async () => {
+    let checks = 0;
+    route({
+      "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
+      "/api/line/account/unlink": async () => { throw new TypeError("network lost"); },
+      "/api/line/account/sign-out": async () => (checks++ === 0
+        ? Response.json({ code: "NOT_COMMITTED", error: "not yet" }, { status: 409 })
+        : Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" })),
+    });
+    await mount(); await openConfirmation();
+    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    expect(container.textContent).not.toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    // The commit became visible later (for example a slow provider call): retry completes it.
     await act(async () => button("ลองใหม่").click());
     expect(calls("/api/line/account/unlink")).toBe(1);
     expect(calls("/api/line/account/intents")).toBe(1);
+    expect(calls("/api/line/account/sign-out")).toBe(2);
+    expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
   });
 });

@@ -35,13 +35,17 @@ function readHandoff(value: string | null, scope: string | null, status: LineDis
   try {
     const result = handoffSchema.safeParse(JSON.parse(value));
     if (!result.success || result.data.scope !== scope || Date.parse(result.data.expiresAt) <= Date.now()) return null;
-    const outstanding = new Set(status.obligations.filter((row) => !settledStatuses.has(row.status)).map((row) => row.id));
-    return result.data.reviews.every((row) => outstanding.has(row.id)) ? result.data : null;
+    // Exact set equality with the reviewed binding's outstanding rows: none settled, none added.
+    const reviewed = new Set(result.data.reviews.map((row) => row.id));
+    const target = status.obligations.find((row) => reviewed.has(row.id))?.bindingId;
+    const outstanding = status.obligations.filter((row) => row.bindingId === target && !settledStatuses.has(row.status));
+    return target !== undefined && reviewed.size === result.data.reviews.length && outstanding.length === reviewed.size &&
+      outstanding.every((row) => reviewed.has(row.id)) ? result.data : null;
   } catch { return null; }
 }
 export const disconnectionStatusSchema = z.object({
   state: z.enum(["NONE", "PENDING", "RECOVERY_REQUIRED", "REMOTE_CONFIRMED", "RECOVERY_RELEASED_UNVERIFIED"]),
-  canRelink: z.boolean(), obligations: z.array(z.object({ id: z.string().uuid(), appName: z.string(), status: z.enum(["REMOTE_CONFIRMED", "RECOVERY_RELEASED_UNVERIFIED", "REMOTE_UNCONFIRMED", "PENDING", "OBSERVED", "PROVEN_ABSENT"]) })),
+  canRelink: z.boolean(), obligations: z.array(z.object({ id: z.string().uuid(), bindingId: z.string().uuid(), appName: z.string(), status: z.enum(["REMOTE_CONFIRMED", "RECOVERY_RELEASED_UNVERIFIED", "REMOTE_UNCONFIRMED", "PENDING", "OBSERVED", "PROVEN_ABSENT"]) })),
 });
 const buttonClass = "min-h-12 w-full rounded-control bg-brand px-5 py-3 font-semibold text-white hover:bg-brand-strong disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
 const failure = "ยังยืนยันไม่ได้ กรุณาลองใหม่ คุณยังใช้ DEMI ด้วยการเข้าสู่ระบบตามปกติได้";

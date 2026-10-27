@@ -26,9 +26,9 @@ function controls(node: ReactNode): Array<{ kind: unknown; props: Control }> {
   if (!isValidElement<Control>(node)) return [];
   return [{ kind: node.type, props: node.props }, ...controls(node.props.children)];
 }
-const prepared = () => ({ intentId: "11111111-1111-4111-a111-111111111111", challenge: "c".repeat(43), expiresAt: new Date(Date.now() + 300000).toISOString(), reviews: [{ id: "22222222-2222-4222-a222-222222222222", appName: "DEMI ทดสอบ" }] });
+const prepared = () => ({ intentId: "11111111-1111-4111-a111-111111111111", challenge: "c".repeat(43), expiresAt: new Date(Date.now() + 300000).toISOString(), reviews: [{ id: "22222222-2222-4222-a222-222222222222", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI ทดสอบ" }] });
 const scope = "a".repeat(64);
-const outstanding: LineDisconnectionStatus = { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [{ id: "22222222-2222-4222-a222-222222222222", appName: "DEMI ทดสอบ", status: "REMOTE_UNCONFIRMED" }] };
+const outstanding: LineDisconnectionStatus = { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [{ id: "22222222-2222-4222-a222-222222222222", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI ทดสอบ", status: "REMOTE_UNCONFIRMED" }] };
 const page = { status: outstanding, handoffScope: scope as string | null };
 function render() {
   h.stateIndex = 0; h.refIndex = 0;
@@ -123,6 +123,7 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
   it.each<[string, LineDisconnectionStatus]>([
     ["released", { ...outstanding, state: "RECOVERY_RELEASED_UNVERIFIED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "RECOVERY_RELEASED_UNVERIFIED" }] }],
     ["replaced by a new obligation set", { ...outstanding, obligations: [{ ...outstanding.obligations[0], id: "33333333-3333-4333-a333-333333333333" }] }],
+    ["extended by a new outstanding obligation", { ...outstanding, obligations: [...outstanding.obligations, { id: "44444444-4444-4444-a444-444444444444", bindingId: outstanding.obligations[0].bindingId, appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" }] }],
     ["confirmed by LINE", { ...outstanding, state: "REMOTE_CONFIRMED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "REMOTE_CONFIRMED" }] }],
   ])("does not prompt again for an obligation set already %s", async (_label, status) => {
     await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
@@ -131,6 +132,14 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     expect(after.find((control) => control.kind === "select")).toBeUndefined();
     expect(after.find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")).toBeUndefined();
     expect(h.saved.size).toBe(0);
+  });
+  it("resumes its exact binding set even while another binding still has its own Recovery", async () => {
+    await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    h.states.length = 0; h.refs.length = 0;
+    page.status = { ...outstanding, obligations: [...outstanding.obligations,
+      { id: "55555555-5555-4555-a555-555555555555", bindingId: "c0000000-0000-4000-a000-000000000002", appName: "DEMI ทดสอบ", status: "REMOTE_UNCONFIRMED" }] };
+    expect(render().find((control) => control.props.children === "ยืนยันผลการตรวจสอบ")).toBeDefined();
+    expect(h.saved.size).toBe(1);
   });
   it("discards an expired handoff from the same session", async () => {
     await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();

@@ -158,7 +158,7 @@ describe("Account page readiness composition", () => {
     const recoveryReleased: LineDisconnectionStatus = {
       state: "RECOVERY_RELEASED_UNVERIFIED",
       canRelink: true,
-      obligations: [{ id: "00000000-0000-4000-8000-000000000000", appName: "DEMI ทดสอบ", status: "RECOVERY_RELEASED_UNVERIFIED" }],
+      obligations: [{ id: "00000000-0000-4000-8000-000000000000", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI ทดสอบ", status: "RECOVERY_RELEASED_UNVERIFIED" }],
     };
     mocks.status.mockResolvedValue(recoveryReleased);
 

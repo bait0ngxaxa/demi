@@ -30,6 +30,8 @@ export type LineSignOutState =
   | { state: "IDLE" }
   | { state: "PENDING" }
   | { state: "FAILED" }
+  /** The browser now holds another User or session; it is never signed out. */
+  | { state: "SESSION_CHANGED" }
   | { state: "REDIRECTING"; redirectTo: string };
 
 export type LineAccountLifecycleReadiness =
@@ -82,13 +84,43 @@ function parseCleanupResult(value: unknown): { cleanup: CleanupPresentation; dis
   return { cleanup: record.cleanup as CleanupPresentation, ...(disconnection.success ? { disconnection: disconnection.data } : {}) };
 }
 
-function parseSignOutResult(value: unknown): { redirectTo: string } {
-  const record = responseRecord(value);
-  // Same-origin login path only; the server fixes the destination.
-  if (record.status !== "SIGNED_OUT" || typeof record.redirectTo !== "string" || !record.redirectTo.startsWith("/login")) {
-    throw new Error(safeFailure);
+type SignOutAttempt =
+  | { outcome: "SIGNED_OUT"; redirectTo: string }
+  | { outcome: "NOT_COMMITTED" | "SESSION_CHANGED" | "FAILED" };
+
+const sessionChangedMessage = "บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว ระบบจึงไม่ออกจากระบบให้ กรุณาโหลดหน้าอีกครั้งเพื่อดูสถานะล่าสุด";
+
+/**
+ * Asks the server to end the DEMI session only if the submitted UNLINK intent
+ * committed for this exact session. Read-only for LINE: never resends Unlink.
+ */
+async function postLineSignOut(unlinkIntent: Intent): Promise<SignOutAttempt> {
+  let response: Response;
+  let value: unknown;
+  try {
+    response = await fetch("/api/line/account/sign-out", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(unlinkIntent),
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: AbortSignal.timeout(25_000),
+    });
+    value = await response.json();
+  } catch {
+    return { outcome: "FAILED" };
   }
-  return { redirectTo: record.redirectTo };
+  const record = isRecord(value) ? value : {};
+  if (response.ok) {
+    // Same-origin login path only; the server fixes the destination.
+    return record.status === "SIGNED_OUT" && typeof record.redirectTo === "string" && record.redirectTo.startsWith("/login")
+      ? { outcome: "SIGNED_OUT", redirectTo: record.redirectTo }
+      : { outcome: "FAILED" };
+  }
+  if (response.status === 409 && record.code === "NOT_COMMITTED") return { outcome: "NOT_COMMITTED" };
+  // A changed principal, or proof the server can no longer match to this session.
+  if (response.status === 409 || response.status === 403) return { outcome: "SESSION_CHANGED" };
+  return { outcome: "FAILED" };
 }
 
 export async function refreshLineAccountFriendship(options?: { checkMenu: true; signal: AbortSignal }): Promise<Pick<InitialStatus, "reachability" | "cleanupState" | "menuState"> & { reconciliationPending?: boolean; accountChanged?: boolean }> {
@@ -320,6 +352,12 @@ export function LineAccountScreen({
                     <div className="space-y-3">
                       <p role="status" className="text-sm text-muted">ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ</p>
                       <Link href={signOut.redirectTo} className={primaryButtonClass}>ไปหน้าเข้าสู่ระบบ DEMI</Link>
+                    </div>
+                  ) : null}
+                  {signOut.state === "SESSION_CHANGED" ? (
+                    <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="alert">
+                      <p>ยกเลิกการเชื่อมต่อ LINE แล้ว แต่{sessionChangedMessage}</p>
+                      <button type="button" onClick={onReload} className={secondaryButtonClass}>โหลดหน้าอีกครั้ง</button>
                     </div>
                   ) : null}
                   {signOut.state === "FAILED" ? (
@@ -653,6 +691,8 @@ export function LineAccountClient({
   // Synchronous fences: a second click can arrive before React re-renders.
   const unlinkRunning = useRef(false);
   const signOutRunning = useRef(false);
+  // The submitted UNLINK intent, memory only: the server's evidence for which session may end.
+  const unlinkProof = useRef<Intent | null>(null);
   const lastAction = useRef<"LINK" | "UNLINK" | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [currentPasswordError, setCurrentPasswordError] = useState("");
@@ -855,22 +895,62 @@ export function LineAccountClient({
     }
   }
 
+  function showUnlinked(result: { cleanup: CleanupPresentation; disconnection?: LineDisconnectionStatus } | null): void {
+    // The DEMI session ends next; the previous owner's Recovery is not offered here.
+    setUnlinkDisconnection(result?.disconnection ?? null);
+    setProviderWarning(result?.cleanup !== "CONFIRMED_CLEAN");
+    setSummary((current) => ({ ...current, status: "UNLINKED", canUnlink: false, cleanupState: result?.cleanup ?? "PENDING" }));
+    if (appointmentPreference) {
+      setAppointmentPreference({ enabled: false, canEnable: false });
+      setPreferenceUiGeneration((current) => current + 1);
+    }
+    setAccountStatus("UNLINKED");
+    setCanUnlink(false);
+    setSuccessAction("UNLINK");
+    setView("SUCCESS");
+  }
+
+  function applySignOut(attempt: SignOutAttempt): void {
+    if (attempt.outcome === "SESSION_CHANGED") { setSignOut({ state: "SESSION_CHANGED" }); return; }
+    // After an observed commit, NOT_COMMITTED is not evidence of anything; keep the retry.
+    if (attempt.outcome !== "SIGNED_OUT") { setSignOut({ state: "FAILED" }); return; }
+    // Navigation failure keeps the explicit login link visible.
+    setSignOut({ state: "REDIRECTING", redirectTo: attempt.redirectTo });
+    try { window.location.replace(attempt.redirectTo); } catch { /* manual link remains */ }
+  }
+
   async function endDemiSession(): Promise<void> {
     // Sign-out only: retries never issue a new unlink intent or deauthorization.
-    if (signOutRunning.current) return;
+    const proof = unlinkProof.current;
+    if (!proof || signOutRunning.current) return;
     signOutRunning.current = true;
     setSignOut({ state: "PENDING" });
-    let redirectTo: string;
-    try {
-      redirectTo = (await postJson("/api/line/account/sign-out", {}, parseSignOutResult)).redirectTo;
-    } catch {
-      signOutRunning.current = false;
-      setSignOut({ state: "FAILED" });
+    const attempt = await postLineSignOut(proof);
+    signOutRunning.current = false;
+    applySignOut(attempt);
+  }
+
+  /** A lost or failed Unlink response: ask the server whether it committed instead of resending it. */
+  async function resolveUncertainUnlink(failureMessage: string, retry: boolean): Promise<void> {
+    const proof = unlinkProof.current;
+    if (!proof) { reloadPage(); return; }
+    if (signOutRunning.current) return;
+    signOutRunning.current = true;
+    setView("BUSY");
+    setMessage("");
+    const attempt = await postLineSignOut(proof);
+    signOutRunning.current = false;
+    if (attempt.outcome === "SIGNED_OUT") { showUnlinked(null); applySignOut(attempt); return; }
+    if (attempt.outcome === "SESSION_CHANGED") {
+      unlinkProof.current = null;
+      setMessage(sessionChangedMessage);
+      setView("FAILURE");
       return;
     }
-    // Navigation failure keeps the explicit login link visible.
-    setSignOut({ state: "REDIRECTING", redirectTo });
-    try { window.location.replace(redirectTo); } catch { /* manual link remains */ }
+    // Still not committed on an explicit retry: the reloaded page is authoritative.
+    if (attempt.outcome === "NOT_COMMITTED" && retry) { reloadPage(); return; }
+    setMessage(failureMessage);
+    setView("FAILURE");
   }
 
   async function confirmUnlink(): Promise<void> {
@@ -878,29 +958,17 @@ export function LineAccountClient({
     unlinkRunning.current = true;
     lastAction.current = "UNLINK";
     const submitted = intent;
+    unlinkProof.current = submitted;
     setIntent(null);
     setView("BUSY");
     setMessage("");
     try {
       let accessToken: string | null = null;
       try { if (liffState === "READY") accessToken = liff.getAccessToken(); } catch { /* local unlink remains independent */ }
-      const result = await postJson("/api/line/account/unlink", { ...submitted, ...(accessToken ? { accessToken } : {}) }, parseCleanupResult);
-      // The DEMI session ends next; the previous owner's Recovery is not offered here.
-      setUnlinkDisconnection(result.disconnection ?? null);
-      setProviderWarning(result.cleanup !== "CONFIRMED_CLEAN");
-      setSummary((current) => ({ ...current, status: "UNLINKED", canUnlink: false, cleanupState: result.cleanup }));
-      if (appointmentPreference) {
-        setAppointmentPreference({ enabled: false, canEnable: false });
-        setPreferenceUiGeneration((current) => current + 1);
-      }
-      setAccountStatus("UNLINKED");
-      setCanUnlink(false);
-      setSuccessAction("UNLINK");
-      setView("SUCCESS");
+      showUnlinked(await postJson("/api/line/account/unlink", { ...submitted, ...(accessToken ? { accessToken } : {}) }, parseCleanupResult));
     } catch (error: unknown) {
-      // A lost response may hide a committed unlink; retry reloads authoritative state.
-      setMessage(error instanceof Error ? error.message : safeFailure);
-      setView("FAILURE");
+      // A lost response may hide a committed unlink; the server decides, never a resend.
+      await resolveUncertainUnlink(error instanceof Error ? error.message : safeFailure, false);
       return;
     }
     await endDemiSession();
@@ -1032,8 +1100,8 @@ export function LineAccountClient({
       onReturnToLine={returnToLine}
       onCancel={() => { setView("READY"); setIntent(null); setCurrentPassword(""); setCurrentPasswordError(""); }}
       onRestart={() => {
-        // An unlink failure may have committed; only a reload shows the authoritative binding.
-        if (lastAction.current === "UNLINK") { reloadPage(); return; }
+        // An unlink failure may have committed; ask the server again, never resend it.
+        if (lastAction.current === "UNLINK") { void resolveUncertainUnlink(message || safeFailure, true); return; }
         setIntent(null); setMessage(""); setView("READY");
       }}
       onReload={reloadPage}

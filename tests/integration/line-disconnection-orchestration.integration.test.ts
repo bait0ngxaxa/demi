@@ -3,7 +3,7 @@ import type { LineAccountBinding } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
-import { createLineAccountIntent, linkLineAccount as linkLineAccountCore } from "@/modules/line/services/line-account-service";
+import { createLineAccountIntent, linkLineAccount as linkLineAccountCore, verifyLineUnlinkCompletion } from "@/modules/line/services/line-account-service";
 import { disconnectLineAccount, getLineDisconnectionStatus, prepareLineAccountRecovery, recoverLineAccount, type DisconnectionDependencies } from "@/modules/line/services/line-disconnection-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import { hashLineSessionId } from "@/modules/line/services/line-session-service";
@@ -275,6 +275,26 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     expect(await lifecycle(binding)).toEqual(committed.rows);
     expect(deps.terminate).toHaveBeenCalledOnce();
     expect(await database.auditEvent.count({ where: { action: "line.account.unlinked", resourceId: binding.id } })).toBe(1);
+  });
+  it("final sign-out evidence binds the committed UNLINK to the exact User and session", async () => {
+    const binding = await fixture(); const deps = dependencies(binding);
+    const pending = await createLineAccountIntent("UNLINK", deps);
+    // Before commit (lost or slow response): no evidence, and checking never unlinks.
+    expect(await verifyLineUnlinkCompletion(pending, deps)).toBe("NOT_COMMITTED");
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).toMatchObject({ unlinkedAt: null, lifecycleVersion: 1 });
+    const { intent } = await unlink(binding, deps);
+    expect(await verifyLineUnlinkCompletion(intent, deps)).toBe("COMMITTED");
+    // Another tab switched the browser to User B, or A signed in again with a new session.
+    const other = await otherUser();
+    expect(await verifyLineUnlinkCompletion(intent, otherDependencies(other.id))).toBe("SESSION_CHANGED");
+    const newSession = randomUUID();
+    expect(await verifyLineUnlinkCompletion(intent, { ...deps, currentSession: async () => ({ userId: binding.userId, sessionHash: hashLineSessionId(newSession) }) })).toBe("SESSION_CHANGED");
+    // Proof cannot be guessed, borrowed from a LINK intent, or reused indefinitely.
+    await expect(verifyLineUnlinkCompletion({ ...intent, challenge: "x".repeat(43) }, deps)).rejects.toThrow();
+    const linkIntent = await createLineAccountIntent("LINK", otherDependencies(other.id));
+    await expect(verifyLineUnlinkCompletion(linkIntent, otherDependencies(other.id))).rejects.toThrow();
+    await expect(verifyLineUnlinkCompletion(intent, { ...deps, now: () => new Date(now.getTime() + 15 * 60_000 + 1) })).rejects.toThrow();
+    expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).toMatchObject({ lifecycleVersion: 2 });
   });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {
     const binding = await fixture(); const deps = dependencies(binding); const intent = await createLineAccountIntent("LINK", deps);
