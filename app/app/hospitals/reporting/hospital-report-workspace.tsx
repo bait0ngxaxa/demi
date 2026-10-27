@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { CountBarChart } from "@/components/reporting-charts/count-bar-chart";
+import { ProgramStatusDonut } from "@/components/reporting-charts/program-status-donut";
 import type {
   HospitalReportFact,
   HospitalReportFollowup,
@@ -28,6 +30,12 @@ import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/serv
 
 import { ExportPreview, PROGRAM_ENTRY_HREF } from "./export-preview";
 import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
+import {
+  SERVICE_PROCESS_CHART_DESCRIPTION,
+  roundProgressCategories,
+  serviceProcessCategories,
+  serviceProcessNote,
+} from "./report-chart-categories";
 
 type ReportView = "overview" | "service";
 
@@ -121,6 +129,16 @@ function HospitalReportingHierarchy({ hierarchy, network }: {
     {hierarchy.parentHospital ? `แม่ข่าย: ${hierarchy.parentHospital.name}` : hierarchy.classification === "MAIN"
       ? `ลูกข่าย ${hierarchy.directChildCount} แห่ง` : "ยังไม่อยู่ในเครือข่าย"}
   </p>;
+}
+
+function SummaryMetric({ label, value, hint }: { label: string; value: number; hint: string }): React.JSX.Element {
+  return (
+    <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
+      <dt className="text-sm text-text-muted">{label}</dt>
+      <dd className="mt-1 text-2xl font-semibold tabular-nums text-text">{value.toLocaleString("th-TH")}</dd>
+      <p className="mt-1 text-xs leading-5 text-text-muted">{hint}</p>
+    </div>
+  );
 }
 
 function MeasurementList({
@@ -633,22 +651,12 @@ export function HospitalReportWorkspace({
           </div>
         )}
 
-        <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
-          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
-            <dt className="text-sm text-text-muted">ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล</dt>
-            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.patientHospitalRelationships.value.toLocaleString("th-TH")}</dd>
-            <p className="mt-1 text-xs text-text-muted">นับการเชื่อมโยงผู้ป่วยกับโรงพยาบาล แยกจากจำนวน Program</p>
-          </div>
-          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
-            <dt className="text-sm text-text-muted">Program ทั้งหมด</dt>
-            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.programs.total.toLocaleString("th-TH")}</dd>
-            <p className="mt-1 text-xs text-text-muted">กำลังดำเนิน {page.counts.programs.active.toLocaleString("th-TH")} · สิ้นสุดแล้ว {page.counts.programs.completed.toLocaleString("th-TH")}</p>
-          </div>
-          <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
-            <dt className="text-sm text-text-muted">ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program</dt>
-            <dd className="mt-1 text-2xl font-semibold text-text">{page.counts.relationshipsWithoutProgram.value.toLocaleString("th-TH")}</dd>
-            <p className="mt-1 text-xs text-text-muted">ไม่มีการสร้างรายการ Program ขึ้นเอง</p>
-          </div>
+        <dl aria-label="ตัวเลขสรุปของรายงาน" className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @3xl/workspace:grid-cols-3 @7xl/workspace:grid-cols-6">
+          <SummaryMetric hint="นับการเชื่อมโยงผู้ป่วยกับโรงพยาบาล ไม่ใช่จำนวนผู้ป่วยที่ไม่ซ้ำกัน" label="ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล" value={page.counts.patientHospitalRelationships.value} />
+          <SummaryMetric hint="ผู้ป่วยหนึ่งคนอาจมีหลาย Program" label="Program ทั้งหมด" value={page.counts.programs.total} />
+          <SummaryMetric hint="สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก" label="Program ที่กำลังดำเนิน" value={page.counts.programs.active} />
+          <SummaryMetric hint="สิ้นสุดแล้วไม่ได้หมายถึงประสบความสำเร็จทางการรักษา" label="Program ที่สิ้นสุดแล้ว" value={page.counts.programs.completed} />
+          <SummaryMetric hint="ไม่มีการสร้างรายการ Program ขึ้นเอง" label="ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program" value={page.counts.relationshipsWithoutProgram.value} />
           <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
             <dt className="text-sm text-text-muted">DM / Pre-DM</dt>
             <dd className="mt-1 font-semibold text-text">ยังสรุปไม่ได้</dd>
@@ -657,13 +665,38 @@ export function HospitalReportWorkspace({
         </dl>
       </section>
 
-      <section aria-label="ความคืบหน้ารอบบริการ" className="mt-6">
-        <h2 className="text-lg font-semibold">ความคืบหน้ารอบบริการ</h2>
-        <p className="mt-1 text-sm text-text-muted">แต่ละ Program อยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับ Program ทั้งหมดในชุดข้อมูลนี้</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {page.roundProgress.rounds.map((count, round) => <Link key={round} className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=${round}&view=${view}`}>{round === 6 ? "ครบ 6 รอบ · รอ After" : `ครบ ${round} รอบ`} · {count.toLocaleString("th-TH")}</Link>)}
-          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=AFTER_RECORDED&view=${view}`}>บันทึก After แล้ว · รอจบ Program · {page.roundProgress.afterRecorded.toLocaleString("th-TH")}</Link>
-          <Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&progress=COMPLETED&view=${view}`}>สิ้นสุด Program · {page.roundProgress.completed.toLocaleString("th-TH")}</Link>
+      <section aria-labelledby="hospital-report-charts-heading" className="mt-8">
+        <h2 className="text-lg font-semibold text-text" id="hospital-report-charts-heading">ภาพรวมการจัดบริการ</h2>
+        <p className="mt-1 max-w-4xl text-sm leading-6 text-text-muted">
+          ตัวเลขทุกค่าในส่วนนี้นับจาก Program ทั้งหมดของชุดข้อมูลที่เลือก ไม่เปลี่ยนตามการค้นหา ตัวกรอง หรือหน้ารายการด้านล่าง
+        </p>
+        <div className="mt-4 grid min-w-0 gap-4 @5xl/workspace:grid-cols-2">
+          <ProgramStatusDonut
+            active={page.counts.programs.active}
+            completed={page.counts.programs.completed}
+            headingId="hospital-report-status-chart"
+            hrefs={{ active: `${cohortHref}&status=ACTIVE&view=${view}`, completed: `${cohortHref}&status=COMPLETED&view=${view}` }}
+          />
+          <CountBarChart
+            categories={serviceProcessCategories(page.serviceProcess)}
+            description={SERVICE_PROCESS_CHART_DESCRIPTION}
+            emptyMessage="ยังไม่มี Program ที่มีบันทึกกิจกรรมเหล่านี้"
+            headingId="hospital-report-service-process-chart"
+            listLabel="จำนวน Program ที่มีบันทึกกิจกรรมแต่ละประเภท"
+            note={serviceProcessNote(page.counts.programs.total)}
+            scaleMax={page.counts.programs.total}
+            title="บันทึกกิจกรรมบริการ 1"
+          />
+        </div>
+        <div className="mt-4">
+          <CountBarChart
+            categories={roundProgressCategories(page.roundProgress, (progress) => `${cohortHref}&progress=${progress}&view=${view}`)}
+            description="แต่ละ Program อยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับ Program ทั้งหมดในชุดข้อมูลนี้ กดชื่อกลุ่มเพื่อกรองรายการ Program ด้านล่าง"
+            emptyMessage="ยังไม่มี Program ในชุดข้อมูลนี้"
+            headingId="hospital-report-round-progress-chart"
+            listLabel="จำนวน Program แยกตามความคืบหน้ารอบบริการ"
+            title="ความคืบหน้ารอบบริการ"
+          />
         </div>
       </section>
       <div className="mt-5">

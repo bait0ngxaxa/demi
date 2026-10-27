@@ -225,6 +225,25 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).not.toContain("<table");
   });
 
+  it("presents full-cohort KPIs and charts before the Program filters and rows", () => {
+    const markup = render("service");
+
+    expect(markup).toContain("Program ที่กำลังดำเนิน");
+    expect(markup).toContain("Program ที่สิ้นสุดแล้ว");
+    expect(markup).toContain("ไม่ใช่จำนวนผู้ป่วยที่ไม่ซ้ำกัน");
+    expect(markup).toContain('id="hospital-report-status-chart"');
+    expect(markup).toContain('id="hospital-report-service-process-chart"');
+    expect(markup).toContain('id="hospital-report-round-progress-chart"');
+    expect(markup).toContain("จำนวน Program ที่มีบันทึกกิจกรรม ไม่ใช่การยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
+    expect(markup).toContain("ไม่เปลี่ยนตามการค้นหา ตัวกรอง หรือหน้ารายการด้านล่าง");
+    // Charts and their text equivalents reuse the existing filter query contract and keep the view.
+    expect(markup).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}&amp;status=ACTIVE&amp;view=service"`);
+    expect(markup).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}&amp;progress=6&amp;view=service"`);
+    expect(markup).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}&amp;progress=AFTER_RECORDED&amp;view=service"`);
+    expect(markup.indexOf('id="hospital-report-round-progress-chart"')).toBeLessThan(markup.indexOf('name="search"'));
+    expect(markup.indexOf('name="search"')).toBeLessThan(markup.indexOf("<details "));
+  });
+
   it("shows service presence, recorded targets and all progress facts without claiming delivery or success", () => {
     const markup = render("service", [program("33333333-3333-4333-8333-333333333333", PatientProgramStatus.ACTIVE)]);
 
@@ -270,6 +289,10 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).not.toContain("exact-Hospital");
     expect(markup).not.toContain("Platform ADMIN");
     expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
+    // The same exact-Hospital charts; their filter links stay on the Global ADMIN route.
+    expect(markup).toContain('id="hospital-report-service-process-chart"');
+    expect(markup).toContain(`href="/app/admin/reporting?hospitalId=${hospitalId}&amp;progress=COMPLETED&amp;view=overview"`);
+    expect(markup).not.toContain('href="/app/hospitals/reporting?');
   });
 
   it("does not create a fake Program row when only a relationship without a Program exists", () => {

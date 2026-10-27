@@ -86,4 +86,23 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).toContain(`href="/app?hospitalId=${parentHospitalId}"`);
     expect(markup).not.toContain(`href="/app?hospitalId=${childHospitalId}"`);
   });
+
+  it("charts only the nine allowlisted values without filter links or Program drill-down", () => {
+    const markup = renderToStaticMarkup(createElement(ParentChildHospitalReportWorkspace, {
+      hospitals,
+      parentGroups,
+      selection: { kind: "PARENT_CHILD", parentHospitalId, hospitalId: childHospitalId },
+      report,
+    }));
+
+    expect(markup).toContain('id="parent-child-report-status-chart"');
+    expect(markup).toContain('id="parent-child-report-service-process-chart"');
+    expect(markup).toContain("จำนวน Program ที่มีบันทึกกิจกรรม ไม่ใช่การยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
+    expect(markup).toContain("ห้ามนำตัวเลขแต่ละแถวมารวมกัน");
+    // No round progress (not in the nine values) and no report filter or Program links from the charts.
+    expect(markup).not.toContain("ความคืบหน้ารอบบริการ");
+    expect(markup).not.toMatch(/href="[^"]*(status|progress|cursor|search)=/u);
+    expect(markup).not.toContain("patientProgramId");
+    expect(markup).not.toMatch(/>[^<]*%[^<]*</u);
+  });
 });
