@@ -1,5 +1,7 @@
 # ADR-0020: Self-registration by national ID
 
+> **Dated amendment — 2026-10-27 (confirmed Product Owner rule):** [Hospital workforce / OSM compatibility](../requirements/HOSPITAL_OSM_COMPATIBILITY.md) supersedes any earlier permission for simultaneous Hospital OWNER/MEMBER + OSM relationships or combined activation. The restriction covers all Hospitals and all professions, including null/legacy values. ACTIVE, PROVISIONED, INVITED and SUSPENDED conflict; ENDED history and roles without non-ended relationships do not independently block onboarding. Preserve canonical identity reuse, PATIENT combinations, existing CAREGIVER combinations and same-category multi-Hospital relationships. Enforce at grants, invitations, restoration and activation using persisted relationships in SERIALIZABLE transactions. Existing conflicts require explicit reconciliation; no automatic relationship, credential, session or clinical-data repair. Earlier decision text below is retained as history; unrelated scope authorization, ADMIN restrictions and LINE/Work/Personal behavior remain unchanged.
+
 - Status: Accepted — Product Owner decision, 2026-10-22
 - Supersedes: The first-credential ownership restriction in ADR-0008 and ADR-0012 only for the bounded self-registration flow below.
 - Related: [ADR-0008](0008-workforce-provisioning-and-activation.md), [ADR-0012](0012-global-credential-recovery-proof.md), [ADR-0019](0019-owner-administration-and-import-only-roster.md).

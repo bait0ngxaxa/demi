@@ -20,6 +20,7 @@ import {
   retireHospitals,
   type HospitalRetirementIneligibility,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
+import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -62,6 +63,7 @@ const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, strin
 };
 
 function toErrorState(error: unknown, copy: ErrorCopy): HospitalNetworkActionState {
+  if (error instanceof WorkforceRelationshipConflictError) return { status: "ERROR", code: "CONFLICT", message: error.message };
   if (error instanceof HospitalRetirementIneligibleError) {
     const names = error.ineligible.map(({ hospitalCode, name, reason }) =>
       `${name ?? "โรงพยาบาลที่เลือก"}${hospitalCode ? ` (${hospitalCode})` : ""}: ${retirementIneligibilityCopy[reason]}`);

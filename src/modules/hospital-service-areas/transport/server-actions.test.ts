@@ -1,3 +1,4 @@
+import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -89,4 +90,19 @@ describe("network report cache invalidation", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/app/hospitals/reporting", "page");
     expect(mocks.revalidatePath).not.toHaveBeenCalledWith("/app/hospitals/areas", "page");
   });
+
+  it("shows the safe Thai workforce conflict through existing Child OWNER feedback", async () => {
+    vi.clearAllMocks();
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
+    mocks.actor.mockResolvedValue({ userId: "parent-owner" });
+    const error = new WorkforceRelationshipConflictError("HOSPITAL");
+    mocks.issueChildOwnerLink.mockRejectedValue(error);
+    const formData = new FormData();
+    formData.set("parentHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("childHospitalId", "22222222-2222-4222-8222-222222222222");
+    formData.set("mode", "REMOTE");
+    expect(await issueChildOwnerLinkAction({ status: "IDLE" }, formData)).toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
 });

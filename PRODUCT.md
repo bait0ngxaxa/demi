@@ -1,5 +1,7 @@
 # Product
 
+> **Confirmed relationship rule — 2026-10-27:** Hospital OWNER/MEMBER and OSM are mutually exclusive across all Hospitals while relationships are non-ended, regardless of profession (including null). ACTIVE/PROVISIONED/INVITED/SUSPENDED conflict; ENDED history and historical roles alone do not block onboarding. PATIENT and existing CAREGIVER combinations, same-category multi-Hospital relationships, ADMIN restrictions and Work/Personal/LINE scope behavior remain. Existing conflicts require explicit reconciliation; no automatic account/data repair. See [current requirements](docs/requirements/HOSPITAL_OSM_COMPATIBILITY.md).
+
 > **Current decision — 2026-10-21:** [ADR-0019](docs/adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
 
 <!-- impeccable:product-schema 1 -->

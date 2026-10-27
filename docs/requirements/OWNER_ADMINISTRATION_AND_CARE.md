@@ -1,5 +1,7 @@
 # ข้อกำหนดปัจจุบัน: OWNER บริหารโรงพยาบาล / MEMBER และ OSM ดูแลผู้ป่วย
 
+> **Confirmed amendment — 2026-10-27:** [Hospital/OSM compatibility](HOSPITAL_OSM_COMPATIBILITY.md) disallows new simultaneous non-ended OWNER/MEMBER + OSM relationships globally, regardless of profession. Existing mixed records require explicit reconciliation; this does not silently remove existing authority. HOSPITAL + PATIENT and other compatible multi-role behavior remain supported. Older text about holding HOSPITAL + OSM is historical where inconsistent.
+
 CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้และ [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) มีผลเหนือข้อความเก่าที่ให้ MEMBER/OSM ทำงานบริหาร รวมถึง ADR-0008 D1 วันที่ 2026-10-14 และ E1 delegated report export
 
 | ความสามารถ | OWNER โดยตรง | MEMBER | OSM | PATIENT | Platform ADMIN |

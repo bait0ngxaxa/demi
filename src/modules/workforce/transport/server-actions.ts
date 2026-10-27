@@ -8,6 +8,7 @@ import {
 } from "@/lib/env/server";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
@@ -105,6 +106,8 @@ function mapWorkforceError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
+  if (error instanceof WorkforceRelationshipConflictError) return { code: "CONFLICT", message: error.message };
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง" };
@@ -132,6 +135,8 @@ function mapCompletionError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
+  if (error instanceof WorkforceRelationshipConflictError) return { code: "CONFLICT", message: error.message };
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง" };
@@ -202,6 +207,8 @@ function mapOsmRelationshipError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
+  if (error instanceof WorkforceRelationshipConflictError) return { code: "CONFLICT", message: error.message };
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบข้อมูลความสัมพันธ์ อสม. ให้ถูกต้อง" };
@@ -229,6 +236,8 @@ function mapHospitalOwnerGovernanceError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
+  if (error instanceof WorkforceRelationshipConflictError) return { code: "CONFLICT", message: error.message };
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return {

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
+import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
 
 import {
@@ -13,6 +14,7 @@ import {
   previewWorkforceActivation,
   promoteHospitalOwner,
   provisionHospitalMember,
+  provisionOsm,
   provisionWorkforceBulk,
   regenerateWorkforceActivation,
   restoreHospitalMembership,
@@ -37,6 +39,7 @@ import {
   issueWorkforcePasswordResetAction,
   previewWorkforceActivationAction,
   provisionHospitalMemberAction,
+  provisionOsmAction,
   provisionWorkforceBulkAction,
   regenerateWorkforceActivationAction,
   startAssistedWorkforceActivationAction,
@@ -874,4 +877,29 @@ describe("WF-PHONE action", () => {
     expect(result.status).toBe("SUCCESS");
     expect(JSON.stringify(result)).not.toContain("0812345678");
   });
+
+  it.each(["HOSPITAL", "OSM"] as const)("presents the safe Thai %s compatibility conflict without identity details", async (kind) => {
+    mockedRevalidatePath.mockClear();
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner", personId: "person", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    const error = new WorkforceRelationshipConflictError(kind);
+    const service = kind === "OSM" ? vi.mocked(provisionOsm) : mockedProvisionHospitalMember;
+    service.mockRejectedValue(error);
+    const action = kind === "OSM" ? provisionOsmAction : provisionHospitalMemberAction;
+    const result = await action(initialWorkforceProvisionActionState, createStaffFormData());
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+    expect(JSON.stringify(result)).not.toContain("1000000000009");
+    expect(mockedRevalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("gives legacy mixed activation an actionable reconciliation message", async () => {
+    const error = new WorkforceRelationshipConflictError();
+    mockedCompleteWorkforceActivation.mockRejectedValue(error);
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+    expect(await completeWorkforceActivationAction("one-time-token", "ACTIVATION", initialWorkforceCompletionActionState, formData))
+      .toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+  });
+
 });

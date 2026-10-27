@@ -9,6 +9,8 @@ import {
   WorkforceActivationPurpose,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -1921,6 +1923,51 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await identityState(target.userId)).toEqual(before);
       if (kind === "HOSPITAL") expect(await prisma.hospitalMembership.findUniqueOrThrow({ where: { id: current.id } })).toEqual(current);
       else expect(await prisma.osmHospitalRelationship.findUniqueOrThrow({ where: { id: current.id } })).toEqual(current);
+    });
+  });
+
+
+  describe("Hospital/OSM diagnostic and orphan-role regression", () => {
+    it.each(["HOSPITAL", "OSM"] as const)("does not treat orphan %s UserRole as a non-ended relationship", async (orphanRole) => {
+      const hospital = await createHospital("ORPHAN-ROLE");
+      const owner = await createMember(hospital.id, MembershipType.OWNER, 9200);
+      const patient = await createPatientIdentity(hospital.id, 9201, UserStatus.ACTIVE);
+      await prisma.userRole.create({ data: { userId: patient.userId, role: orphanRole } });
+      const input = { nationalId: patient.nationalId, givenName: "ผู้ป่วย", familyName: "เดิม", contactPhone: "0812345678", targetHospitalId: hospital.id };
+      const result = orphanRole === "HOSPITAL" ? await provisionOsm(owner.actor, input) : await provisionHospitalMember(owner.actor, { ...input, profession: "OTHER" });
+      expect(result).toMatchObject({ userId: patient.userId, activationToken: null, reusedExistingUser: true });
+      expect(await prisma.userRole.count({ where: { userId: patient.userId } })).toBe(3);
+      expect(await prisma.workforceActivation.count()).toBe(0);
+    });
+
+    it("classifies current conflicts and both historical cases in a read-only PostgreSQL snapshot", async () => {
+      const a = await createHospital("AUDIT-A");
+      const b = await createHospital("AUDIT-B");
+      const conflict = await createMember(a.id, MembershipType.OWNER, 9201);
+      const ended = await createMember(a.id, MembershipType.MEMBER, 9202);
+      const historical = await createMember(a.id, MembershipType.MEMBER, 9203);
+      for (const target of [ended, historical]) await prisma.hospitalMembership.updateMany({ where: { userId: target.userId }, data: { status: MembershipStatus.ENDED } });
+      await prisma.osmHospitalRelationship.createMany({ data: [
+        { userId: conflict.userId, hospitalId: b.id, status: MembershipStatus.SUSPENDED },
+        { userId: ended.userId, hospitalId: b.id, status: MembershipStatus.ENDED },
+        { userId: historical.userId, hospitalId: b.id, status: MembershipStatus.ACTIVE },
+      ] });
+      const before = await Promise.all([conflict, ended, historical].map(({ userId }) => identityState(userId)));
+      const script = readFileSync(resolve("scripts/diagnostics/hospital-osm-compatibility.sql"), "utf8");
+      const query = script.slice(script.indexOf("WITH workforce AS"), script.lastIndexOf("COMMIT;"));
+      const rows = await prisma.$transaction(async (transaction) => {
+        await transaction.$executeRaw`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`;
+        // Static repository SQL only; no request input or connection credentials enter this statement.
+        return transaction.$queryRaw<Array<{ user_id: string; review_outcome: string; hospital_non_ended: bigint; osm_non_ended: bigint; status_breakdown: unknown; hospital_scopes: unknown }>>(Prisma.raw(query));
+      });
+      expect(rows).toHaveLength(3);
+      expect(rows.find(({ user_id }) => user_id === conflict.userId)).toMatchObject({ review_outcome: "CURRENT_CONFLICT", hospital_non_ended: BigInt(1), osm_non_ended: BigInt(1),
+        status_breakdown: expect.arrayContaining([{ category: "OSM", status: "SUSPENDED", count: 1 }]),
+        hospital_scopes: expect.arrayContaining([expect.objectContaining({ hospitalId: a.id, membershipType: "OWNER" }), expect.objectContaining({ hospitalId: b.id, status: "SUSPENDED" })]) });
+      expect(rows.find(({ user_id }) => user_id === ended.userId)).toMatchObject({ review_outcome: "ENDED_ONLY_HISTORY", hospital_non_ended: BigInt(0), osm_non_ended: BigInt(0) });
+      expect(rows.find(({ user_id }) => user_id === historical.userId)).toMatchObject({ review_outcome: "HISTORICAL_CATEGORY_OVERLAP", hospital_non_ended: BigInt(0), osm_non_ended: BigInt(1) });
+      expect(await Promise.all([conflict, ended, historical].map(({ userId }) => identityState(userId)))).toEqual(before);
+      expect(JSON.stringify(rows, (_key, value: unknown) => typeof value === "bigint" ? value.toString() : value)).not.toContain(nationalIdFor(9201));
     });
   });
 

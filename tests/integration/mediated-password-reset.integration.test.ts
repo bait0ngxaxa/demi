@@ -68,7 +68,7 @@ import {
   requestLinePasswordRecovery,
 } from "@/modules/line/services/line-password-recovery-service";
 import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
-import { provisionHospitalMember, provisionOsm } from "@/modules/workforce/services/workforce-service";
+import { provisionHospitalMember } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const db = getPrisma();

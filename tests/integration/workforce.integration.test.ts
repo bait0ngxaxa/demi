@@ -970,6 +970,17 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       prisma.auditEvent.count({ where: { action: "hospital_membership.suspended" } }),
     ).resolves.toBe(1);
 
+    // Legacy mixed data may be suspended, but restoration requires explicit relationship reconciliation first.
+    await expect(restoreHospitalMembership(primary.actor, {
+      relationshipId: target.membershipId,
+      targetHospitalId: primary.hospitalId,
+      expectedUpdatedAt: suspended.updatedAt.toISOString(),
+    })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await prisma.auditEvent.count({ where: { action: "hospital_membership.restored" } })).toBe(0);
+    expect(await prisma.hospitalMembership.findUniqueOrThrow({ where: { id: target.membershipId } })).toMatchObject({ status: MembershipStatus.SUSPENDED });
+    // Test fixture models a separately authorized reconciliation; production code never performs this automatically.
+    await prisma.osmHospitalRelationship.update({ where: { id: osmRelationship.id }, data: { status: MembershipStatus.ENDED } });
+
     const restored = await restoreHospitalMembership(primary.actor, {
       relationshipId: target.membershipId,
       targetHospitalId: primary.hospitalId,
