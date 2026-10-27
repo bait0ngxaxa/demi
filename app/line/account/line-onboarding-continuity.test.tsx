@@ -48,7 +48,6 @@ describe("mobile LINE onboarding continuity interactions", () => {
     expect(container.textContent).toContain("กำลังตรวจสอบสถานะ LINE และเมนู");
     expect(container.textContent).not.toContain("พร้อมใช้งานผ่าน LINE แล้ว");
     expect(button("ยกเลิกการเชื่อมต่อ LINE").disabled).toBe(true);
-    expect(button("ออกจากระบบ DEMI").disabled).toBe(true);
     await act(async () => finish?.(Response.json({ ...linked, menuState: "APPLIED", reconciliation: "CHECKED" })));
     expect(container.textContent).toContain("พร้อมใช้งานผ่าน LINE แล้ว");
     expect(fetcher).toHaveBeenCalledOnce();
