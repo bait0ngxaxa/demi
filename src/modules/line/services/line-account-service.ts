@@ -484,6 +484,36 @@ export async function unlinkLineAccount(
   }
 }
 
+const UNLINK_COMPLETION_WINDOW_MS = 15 * 60 * 1000;
+
+/** PROOF_EXPIRED: committed long enough ago that it no longer authorizes ending a session. */
+export type LineUnlinkCompletion = "COMMITTED" | "NOT_COMMITTED" | "SESSION_CHANGED" | "PROOF_EXPIRED";
+
+/**
+ * Server evidence for the Disconnection's final sign-out: whether the UNLINK
+ * proven by this challenge committed for the exact current User and session.
+ * Read-only; it never unlinks, so a lost Unlink response is resolved without
+ * resending it. A changed principal is reported, never signed out.
+ */
+export async function verifyLineUnlinkCompletion(
+  input: { intentId: string; challenge: string },
+  dependencies: LineAccountDependencies = {},
+): Promise<LineUnlinkCompletion> {
+  const session = await (dependencies.currentSession ?? getCurrentLineSession)();
+  const now = nowOf(dependencies);
+  const intent = await databaseOf(dependencies).lineAccountActionIntent.findUnique({
+    where: { id: input.intentId },
+    select: { userId: true, action: true, challengeHash: true, sessionHash: true, consumedAt: true, outcome: true },
+  });
+  if (!intent || intent.action !== LineAccountAction.UNLINK || !secureDigestMatch(intent.challengeHash, input.challenge)) {
+    throw new ForbiddenError();
+  }
+  if (intent.userId !== session.userId || !lineSessionHashMatches(intent.sessionHash, session.sessionHash)) return "SESSION_CHANGED";
+  if (!intent.consumedAt || intent.outcome !== LineAccountActionOutcome.SUCCEEDED) return "NOT_COMMITTED";
+  if (now.getTime() - intent.consumedAt.getTime() > UNLINK_COMPLETION_WINDOW_MS) return "PROOF_EXPIRED";
+  return "COMMITTED";
+}
+
 export async function getLineAccountSummary(dependencies: LineAccountDependencies = {}): Promise<{
   status: "UNLINKED" | "LINKED" | "INELIGIBLE";
   canUnlink: boolean;

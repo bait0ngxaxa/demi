@@ -5,7 +5,7 @@ const h = vi.hoisted(() => ({ init: vi.fn() }));
 vi.mock("@line/liff", () => ({ default: { init: h.init } }));
 import { LineDisconnectionNotice, LineRecoveryPanel, initializeLineAccountLiff } from "./line-recovery-panel";
 
-const status = (state: LineDisconnectionStatus["state"], outcome: LineDisconnectionStatus["obligations"][number]["status"]): LineDisconnectionStatus => ({ state, canRelink: state === "REMOTE_CONFIRMED" || state === "RECOVERY_RELEASED_UNVERIFIED", obligations: [{ id: "f3333333-3333-4333-a333-333333333333", appName: "DEMI ทดสอบ", status: outcome }] });
+const status = (state: LineDisconnectionStatus["state"], outcome: LineDisconnectionStatus["obligations"][number]["status"]): LineDisconnectionStatus => ({ state, canRelink: state === "REMOTE_CONFIRMED" || state === "RECOVERY_RELEASED_UNVERIFIED", obligations: [{ id: "f3333333-3333-4333-a333-333333333333", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI ทดสอบ", status: outcome }] });
 describe("Thai bounded Recovery/status UX", () => {
   afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
   it("shows local-only success and one recovery continuation without claiming provider success", () => {
@@ -19,7 +19,7 @@ describe("Thai bounded Recovery/status UX", () => {
     expect(html).toContain("กำลังรอผลการถอนสิทธิ์จาก LINE"); expect(html).toContain("ตรวจสอบสถานะอีกครั้ง"); expect(html).not.toContain("กำลังตรวจสอบ…");
   });
   it("labels confirmed removal only for actually confirmed obligations", () => {
-    const selected = status("RECOVERY_REQUIRED", "REMOTE_UNCONFIRMED"); selected.obligations.push({ id: "e3333333-3333-4333-a333-333333333333", appName: "DEMI อีกแอป", status: "REMOTE_CONFIRMED" });
+    const selected = status("RECOVERY_REQUIRED", "REMOTE_UNCONFIRMED"); selected.obligations.push({ id: "e3333333-3333-4333-a333-333333333333", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI อีกแอป", status: "REMOTE_CONFIRMED" });
     const html = renderToStaticMarkup(<LineDisconnectionNotice status={selected} />);
     expect(html).toContain("DEMI ทดสอบ: ยังไม่ยืนยันถอนสิทธิ์"); expect(html).toContain("DEMI อีกแอป: LINE ยืนยันถอนสิทธิ์แล้ว");
     expect(html).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");

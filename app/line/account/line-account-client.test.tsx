@@ -55,8 +55,9 @@ function renderScreen(
       onStartLineLogin={() => undefined}
       onBeginLink={() => undefined}
       onBeginUnlink={() => undefined}
-      onBeginUnlinkAndSwitch={() => undefined}
-      switchAfterUnlink={state.switchAfterUnlink ?? false}
+      unlinkDisconnection={state.unlinkDisconnection}
+      signOut={state.signOut}
+      onRetrySignOut={() => undefined}
       onConfirmLink={() => undefined}
       onCurrentPasswordChange={() => undefined}
       onConfirmUnlink={() => undefined}
@@ -397,7 +398,8 @@ describe("LINE account user experience", () => {
     expect(markup).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     expect(markup).toContain("บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว");
     expect(markup).toContain("เมนู LINE อาจใช้เวลาสักครู่ในการกลับสู่สถานะเริ่มต้น");
-    expect(markup).toContain(">กลับไปที่ LINE</button>");
+    expect(markup).toContain("กำลังออกจากระบบ DEMI…");
+    expect(markup).not.toContain(">กลับไปที่ LINE</button>");
     expect(markup).not.toContain("PENDING");
     expect(markup).not.toContain("UNKNOWN");
     expect(markup).not.toContain("provider");
@@ -501,23 +503,54 @@ describe("LINE account user experience", () => {
     expect(markup).not.toContain("ยังเริ่มการตรวจสอบเพื่อเชื่อมใหม่ได้");
   });
 
-  it("offers switching DEMI accounts inside LINE without implying logout unlinks LINE", () => {
+  it("offers exactly one Disconnection action for a linked account", () => {
     const linked = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true });
-    expect(linked).toContain(">ยกเลิกการเชื่อมต่อ LINE</button>");
-    expect(linked).toContain(">ยกเลิกการเชื่อมต่อ LINE และใช้บัญชี DEMI อื่น</button>");
-    expect(linked).toContain(">ออกจากระบบ DEMI</button>");
-    expect(linked).toContain("LINE ยังเชื่อมกับบัญชีนี้");
+    expect(linked.match(/>ยกเลิกการเชื่อมต่อ LINE<\/button>/gu)).toHaveLength(1);
+    expect(linked).not.toContain("ใช้บัญชี DEMI อื่น");
+    expect(linked).not.toContain(">ออกจากระบบ DEMI</button>");
+    expect(linked).toContain("ระบบจะออกจากบัญชี DEMI นี้ให้ด้วย");
 
+    const confirm = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, { view: "UNLINK_CONFIRM" });
+    expect(confirm.match(/>ยืนยันยกเลิกการเชื่อมต่อ<\/button>/gu)).toHaveLength(1);
+    expect(confirm).toContain("จากนั้นระบบจะออกจากบัญชี DEMI นี้ และพาไปหน้าเข้าสู่ระบบ");
+  });
+
+  it("keeps the session-only account switch where linking may happen on a shared device", () => {
     const unlinked = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false });
     expect(unlinked).toContain(">ใช้บัญชี DEMI อื่น</button>");
-    expect(unlinked).not.toContain(">ออกจากระบบ DEMI</button>");
+    const linkConfirm = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { view: "LINK_CONFIRM" });
+    expect(linkConfirm).toContain(">ใช้บัญชี DEMI อื่น</button>");
+    expect(linkConfirm).toContain("หากใช้เครื่องร่วมกับผู้อื่นหรือไม่แน่ใจ");
+  });
 
-    const afterUnlink = renderScreen({ ...emptyStatus, status: "UNLINKED", canUnlink: false }, { view: "SUCCESS", successAction: "UNLINK" });
-    expect(afterUnlink).toContain(">ใช้บัญชี DEMI อื่น</button>");
+  it("reports DEMI sign-out separately from the committed unlink", () => {
+    const base = { ...emptyStatus, status: "UNLINKED" as const, canUnlink: false };
+    const pending = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", signOut: { state: "PENDING" } });
+    expect(pending).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว"); expect(pending).toContain("กำลังออกจากระบบ DEMI…");
 
-    const confirm = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, { view: "UNLINK_CONFIRM", switchAfterUnlink: true });
-    expect(confirm).toContain("จากนั้นระบบจะออกจากบัญชี DEMI นี้");
-    expect(renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, { view: "UNLINK_CONFIRM" })).not.toContain("จากนั้นระบบจะออกจากบัญชี DEMI นี้");
+    const failed = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", signOut: { state: "FAILED" } });
+    expect(failed).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว แต่ยังออกจากระบบ DEMI ไม่สำเร็จ");
+    expect(failed).toContain(">ลองออกจากระบบอีกครั้ง</button>");
+    expect(failed).not.toContain(">ยกเลิกการเชื่อมต่อ LINE</button>");
+
+    const redirecting = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", signOut: { state: "REDIRECTING", redirectTo: "/login?returnTo=%2Fline%2Faccount" } });
+    expect(redirecting).toContain('href="/login?returnTo=%2Fline%2Faccount"');
+    expect(redirecting).toContain("ไปหน้าเข้าสู่ระบบ DEMI");
+  });
+
+  it("never presents local unlink as provider deauthorization", () => {
+    const base = { ...emptyStatus, status: "UNLINKED" as const, canUnlink: false };
+    const unconfirmed = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", unlinkDisconnection: { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [
+      { id: "a1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
+      { id: "b1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
+    ] } });
+    expect(unconfirmed).toContain("LINE Login ของ DEMI: LINE ยืนยันถอนสิทธิ์แล้ว");
+    expect(unconfirmed).toContain("DEMI MINI App: ยังไม่ยืนยันถอนสิทธิ์");
+    expect(unconfirmed).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
+    // Recovery belongs to the next sign-in of this same owner, not this success view.
+    expect(unconfirmed).not.toContain("ตรวจสอบเพื่อเชื่อมใหม่");
+    const unknown = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", unlinkDisconnection: null });
+    expect(unknown).toContain("ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
   });
 
   it("keeps the Link path available only when the server marks Relink eligible", () => {
@@ -551,7 +584,7 @@ describe("LINE account user experience", () => {
     });
 
     expect(markup).toContain("หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้");
-    expect(markup).toContain(">ตรวจสอบสถานะอีกครั้ง</button>");
+    expect(markup).toContain("กำลังออกจากระบบ DEMI…");
     expect(markup).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
   });
 

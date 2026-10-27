@@ -25,6 +25,17 @@ export function hashLineSessionId(sessionId: string): string {
     .digest("hex");
 }
 
+/**
+ * Opaque browser-handoff scope for one exact DEMI User and session. It only
+ * lets the client discard another session's Recovery handoff; it grants nothing.
+ */
+export function lineRecoveryHandoffScope(session: CurrentLineSession): string {
+  const { IDENTITY_HASH_SECRET } = getLineLoginEnv();
+  return createHmac("sha256", IDENTITY_HASH_SECRET)
+    .update(`DEMI_LINE_RECOVERY_HANDOFF_V1:${session.userId}:${session.sessionHash}`)
+    .digest("hex");
+}
+
 export function timingSafeHashMatch(leftHex: string, rightHex: string): boolean {
   if (!/^[a-f0-9]{64}$/u.test(leftHex) || !/^[a-f0-9]{64}$/u.test(rightHex)) return false;
   return timingSafeEqual(Buffer.from(leftHex, "hex"), Buffer.from(rightHex, "hex"));
