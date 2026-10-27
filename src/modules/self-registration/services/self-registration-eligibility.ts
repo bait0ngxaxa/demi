@@ -9,6 +9,7 @@ import {
   WorkforceActivationOperationState,
   type Prisma,
 } from "@prisma/client";
+import { hasConflictingWorkforceRelationships } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ConflictError } from "@/shared/errors/application-error";
 
 import {
@@ -208,6 +209,8 @@ function readEligibility(
   ) {
     return { outcome: "NOT_FOUND" };
   }
+
+  if (hasConflictingWorkforceRelationships(user.memberships, user.osmHospitalRelationships)) return { outcome: "NOT_FOUND" };
 
   const relationships = eligibleRelationships(user, now);
   if (relationships.length === 0) return { outcome: "NOT_FOUND" };

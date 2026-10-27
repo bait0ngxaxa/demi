@@ -520,4 +520,24 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     await expect(setHospitalSelfRegistrationEnabled({ ...owner.actor, roles: [Role.ADMIN, Role.HOSPITAL] }, { hospitalId: hospital.id, enabled: true }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it.each([MembershipStatus.ACTIVE, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.SUSPENDED])("does not issue public self-registration for mixed workforce relationships: %s", async (status) => {
+    const hospital = await createHospital();
+    const target = await createTarget(hospital.id, { kinds: ["MEMBER", "OSM"], membershipStatus: status });
+    expect(await lookupPublicSelfRegistration({ nationalId: target.nationalId }, { ipAddress: "198.51.100.80" })).toMatchObject({ outcome: "NOT_FOUND" });
+    expect(await prisma.workforceActivation.count({ where: { userId: target.userId } })).toBe(0);
+  });
+
+  it("revalidates self-registration when opposite workforce is added after lookup", async () => {
+    const hospital = await createHospital();
+    const target = await createTarget(hospital.id, { kinds: ["OSM", "PATIENT"] });
+    const lookup = await lookupFound(target.nationalId, "198.51.100.81");
+    await prisma.hospitalMembership.create({ data: { userId: target.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: "OTHER", status: MembershipStatus.SUSPENDED } });
+    const provider = vi.fn();
+    await expect(completePublicSelfRegistration({ token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, { now: () => lookup.now, provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(provider).not.toHaveBeenCalled();
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ status: UserStatus.PROVISIONED, authSubject: null });
+    expect(await prisma.auditEvent.count({ where: { action: "self_registration.completed" } })).toBe(0);
+  });
+
 });

@@ -114,6 +114,7 @@ function createDatabase(state: FakeState): WorkforceDatabase {
           : null;
       }),
     },
+    osmHospitalRelationship: { findFirst: vi.fn(async () => null) },
     hospitalMembership: {
       findFirst: vi.fn(async (args: unknown) => {
         const where = (args as {

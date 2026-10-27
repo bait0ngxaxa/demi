@@ -12,6 +12,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ConflictError } from "@/shared/errors/application-error";
 
@@ -48,6 +49,7 @@ export async function assertChildOwnerInvitationContext(
   transaction: Prisma.TransactionClient,
   input: { membershipId: string; childHospitalId: string; userId: string; expectedStatus: MembershipStatus },
 ): Promise<ChildOwnerInvitationContext> {
+  await assertWorkforceRelationshipsCompatible(transaction, input.userId, "HOSPITAL");
   const membership = await transaction.hospitalMembership.findFirst({
     where: {
       id: input.membershipId,
@@ -115,6 +117,7 @@ export async function activatePendingChildOwner(
     actorUserId: string | null;
   },
 ): Promise<void> {
+  await assertWorkforceRelationshipsCompatible(transaction, input.userId, "HOSPITAL");
   const activatedOwner = await transaction.hospitalMembership.updateMany({
     where: {
       id: input.membershipId,

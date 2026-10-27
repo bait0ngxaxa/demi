@@ -21,6 +21,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { assertPlatformAdminInDatabase } from "@/modules/hospital-governance/services/hospital-governance-service";
@@ -477,6 +478,7 @@ async function authorizeIssuerAndTarget(
   }
   if (!target.authSubject) throw new ConflictError("The target does not have a password identity to replace");
   const hasActiveTakeoverLock = target.takeoverLock !== null && target.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED;
+  if (hasActiveTakeoverLock) await assertWorkforceRelationshipsCompatible(transaction, target.userId);
   if (target.status !== UserStatus.ACTIVE && !(target.status === UserStatus.SUSPENDED && hasActiveTakeoverLock)) {
     throw new ConflictError("The target account is not available for password reset");
   }
@@ -1166,6 +1168,7 @@ async function restoreTakeoverRelationships(
 ): Promise<void> {
   const lock = target.takeoverLock;
   if (!lock || lock.providerState === UserTakeoverProviderState.RESOLVED) return;
+  await assertWorkforceRelationshipsCompatible(transaction, target.userId);
 
   await unlinkLineBindingForSuspectedTakeover(transaction, {
     userId: target.userId,

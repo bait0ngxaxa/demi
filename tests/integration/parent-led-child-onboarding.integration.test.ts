@@ -1,7 +1,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { HospitalStatus, IdentityAssurance, MembershipStatus, Role, UserStatus, UserTakeoverProviderState, WorkforceActivationPurpose, type HospitalServiceAreaFacilityKind } from "@prisma/client";
 import { AuthApiError } from "@supabase/supabase-js";
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore } from "@/modules/auth/services/actor-context-service";
@@ -876,4 +876,67 @@ describe("O1-E: denials", () => {
     expect((await db.hospital.findUniqueOrThrow({ where: { id: created.child.id } })).status).toBe(HospitalStatus.PENDING_VERIFICATION);
     expect(await db.workforceActivation.count({ where: { hospitalId: created.child.id, purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING } })).toBe(1);
   });
+
+  it.each([MembershipStatus.ACTIVE, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.SUSPENDED])("denies Child OWNER issuance to an existing OSM across Hospitals: %s", async (status) => {
+    const { parent, parentOwner } = await setup();
+    const other = await hospital();
+    const nid = nationalId();
+    const invitee = await user([Role.OSM], { nationalId: nid });
+    await db.osmHospitalRelationship.create({ data: { hospitalId: other.id, userId: invitee.userId, status } });
+    const before = { hospitals: await db.hospital.count(), memberships: await db.hospitalMembership.count(), activations: await db.workforceActivation.count(), audits: await db.auditEvent.count(), users: await db.user.count(), people: await db.person.count() };
+    await expect(createChildFacility(parentOwner, childInput(parent.id, { nationalId: nid }))).rejects.toMatchObject({ code: "CONFLICT" });
+    expect({ hospitals: await db.hospital.count(), memberships: await db.hospitalMembership.count(), activations: await db.workforceActivation.count(), audits: await db.auditEvent.count(), users: await db.user.count(), people: await db.person.count() }).toEqual(before);
+    expect(await db.userRole.findMany({ where: { userId: invitee.userId }, select: { role: true } })).toEqual([{ role: Role.OSM }]);
+  });
+
+  it("rechecks OSM relationships acquired after Child OWNER invitation before acceptance", async () => {
+    const { parent, parentOwner } = await setup();
+    const nid = nationalId();
+    const invitee = await user([Role.PATIENT], { nationalId: nid });
+    const created = await createChildFacility(parentOwner, childInput(parent.id, { nationalId: nid }));
+    const invitation = await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: created.child.id } });
+    await db.userRole.create({ data: { userId: invitee.userId, role: Role.OSM } });
+    await db.osmHospitalRelationship.create({ data: { userId: invitee.userId, hospitalId: parent.id, status: MembershipStatus.ACTIVE } });
+    const audits = await db.auditEvent.count();
+    await expect(acceptChildOwnerInvitation(invitee, { membershipId: invitation.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: invitation.id } })).toEqual(invitation);
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: created.child.id } })).toMatchObject({ status: HospitalStatus.PENDING_VERIFICATION });
+    expect(await db.userRole.count({ where: { userId: invitee.userId, role: Role.HOSPITAL } })).toBe(0);
+    expect(await db.auditEvent.count()).toBe(audits);
+  });
+
+  it("denies Child OWNER first activation and link regeneration for a legacy mixed pending account", async () => {
+    const { parent, parentOwner } = await setup();
+    const nid = nationalId();
+    const created = await createChildFacility(parentOwner, childInput(parent.id, { nationalId: nid }));
+    const invitation = await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: created.child.id } });
+    await db.userRole.create({ data: { userId: invitation.userId, role: Role.OSM } });
+    await db.osmHospitalRelationship.create({ data: { userId: invitation.userId, hospitalId: parent.id, status: MembershipStatus.SUSPENDED } });
+    const provider = vi.fn();
+    const credential = await db.workforceActivation.findFirstOrThrow({ where: { userId: invitation.userId } });
+    await expect(completeWorkforceActivation(token(created.invitation), { nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(issueChildOwnerLink(parentOwner, { parentHospitalId: parent.id, childHospitalId: created.child.id, mode: "REMOTE" })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(provider).not.toHaveBeenCalled();
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: credential.id } })).toEqual(credential);
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: invitation.id } })).toEqual(invitation);
+  });
+
+
+  it("denies public OWNER approval with a non-ended OSM relationship atomically", async () => {
+    const pending = await hospital(HospitalStatus.PENDING_VERIFICATION, "PARENT");
+    const other = await hospital();
+    const applicant = await user([Role.OSM], { status: UserStatus.PROVISIONED });
+    await db.user.update({ where: { id: applicant.userId }, data: { authSubject: randomUUID() } });
+    await db.osmHospitalRelationship.create({ data: { userId: applicant.userId, hospitalId: other.id, status: MembershipStatus.SUSPENDED } });
+    const application = await db.hospitalOnboardingApplication.create({ data: { hospitalId: pending.id, applicantUserId: applicant.userId, status: "PENDING" } });
+    const audits = await db.auditEvent.count();
+    await expect(approveHospitalOnboarding({ applicationId: application.id, reviewerUserId: admin.userId })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.hospitalOnboardingApplication.findUniqueOrThrow({ where: { id: application.id } })).toEqual(application);
+    expect(await db.hospital.findUniqueOrThrow({ where: { id: pending.id } })).toMatchObject({ status: HospitalStatus.PENDING_VERIFICATION });
+    expect(await db.user.findUniqueOrThrow({ where: { id: applicant.userId } })).toMatchObject({ status: UserStatus.PROVISIONED });
+    expect(await db.hospitalMembership.count({ where: { userId: applicant.userId } })).toBe(0);
+    expect(await db.userRole.count({ where: { userId: applicant.userId, role: Role.HOSPITAL } })).toBe(0);
+    expect(await db.auditEvent.count()).toBe(audits);
+  });
+
 });

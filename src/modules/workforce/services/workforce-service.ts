@@ -36,7 +36,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
@@ -628,6 +628,7 @@ async function issueInitialActivation(
   activationExpiresAt: Date | null;
   activationMode: WorkforceActivationModeValue | null;
 }> {
+  await assertWorkforceRelationshipsCompatible(transaction, input.userId, input.kind === "OSM" ? "OSM" : "HOSPITAL");
   await assertInitialCredentialStateInDatabase(transaction, input.userId);
   const existing = await findCurrentActivation(transaction, input.userId);
 
@@ -702,6 +703,7 @@ export async function issueChildOwnerActivation(
     generateCredential?: ActivationCredentialGenerator;
   },
 ): Promise<ChildOwnerActivationIssue> {
+  await assertWorkforceRelationshipsCompatible(transaction, input.userId, "HOSPITAL");
   await assertInitialCredentialStateInDatabase(transaction, input.userId);
   const current = await transaction.workforceActivation.findFirst({
     where: { userId: input.userId, usedAt: null, revokedAt: null },
@@ -2113,6 +2115,8 @@ async function promoteHospitalOwnerInTransaction(
     MembershipType.MEMBER,
   );
 
+  await assertWorkforceRelationshipsCompatible(transaction, current.userId, "HOSPITAL");
+
   const updated = await transaction.hospitalMembership.updateMany({
     where: {
       id: current.id,
@@ -2628,6 +2632,10 @@ async function transitionHospitalMembershipInTransaction(
     transition.expectedStatus,
   );
 
+  if (transition.nextStatus === MembershipStatus.ACTIVE) {
+    await assertWorkforceRelationshipsCompatible(transaction, current.userId, "HOSPITAL");
+  }
+
   const updated = await transaction.hospitalMembership.updateMany({
     where: {
       id: current.id,
@@ -2926,6 +2934,10 @@ async function transitionOsmRelationshipInTransaction(
     );
   }
 
+  if (transition.nextStatus === MembershipStatus.ACTIVE) {
+    await assertWorkforceRelationshipsCompatible(transaction, current.userId, "OSM");
+  }
+
   const updated = await transaction.osmHospitalRelationship.updateMany({
     where: {
       id: current.id,
@@ -3081,6 +3093,7 @@ async function regenerateActivationInTransaction(
     throw new ConflictError("Only a non-active workforce account can be regenerated");
   }
 
+  await assertWorkforceRelationshipsCompatible(transaction, user.id, input.request.kind === "OSM" ? "OSM" : "HOSPITAL");
   await assertInitialCredentialStateInDatabase(transaction, input.request.userId);
   await assertNoUnactivatedPatientIdentity(transaction, user.id);
   await assertSingleHospitalPendingScope(transaction, user.id, input.request.targetHospitalId);
@@ -3446,9 +3459,10 @@ function isInitialWorkforceScopeEligible(
   context: { hospitalId: string; relationshipId: string; kind: WorkforceKind },
   allowMappedSubject = false,
 ): boolean {
+  if (hasConflictingWorkforceRelationships(user.memberships, user.osmHospitalRelationships)) return false;
   if (user.status !== UserStatus.PROVISIONED || (!allowMappedSubject && user.authSubject) ||
     user.roles.some(({ role }) => role === Role.ADMIN || role === Role.PATIENT) || user.person.patientProfile ||
-    user.memberships.some(({ membershipType }) => membershipType === MembershipType.OWNER)) return false;
+    user.memberships.some(({ membershipType, status }) => membershipType === MembershipType.OWNER && status !== MembershipStatus.ENDED)) return false;
   const pendingStaff = user.memberships.filter(({ status }) => status === MembershipStatus.PROVISIONED);
   const pendingOsm = user.osmHospitalRelationships.filter(({ status }) => status === MembershipStatus.PROVISIONED);
   if ((pendingStaff.length && !user.roles.some(({ role }) => role === Role.HOSPITAL)) ||
@@ -3574,6 +3588,8 @@ async function claimWorkforceActivation(
           select: workforceActivationClaimTargetSelect,
         });
 
+        if (activation) await assertWorkforceRelationshipsCompatible(transaction, activation.userId);
+
         if (
           !isActivationUsable(activation, purposes, now) ||
           !isActivationTargetEligible(activation)
@@ -3690,6 +3706,7 @@ async function finalizeWorkforceActivationLocally(
         where: { id: claim.userId },
         select: { id: true, status: true, authSubject: true },
       });
+      if (activation) await assertWorkforceRelationshipsCompatible(transaction, activation.userId);
       const selfRegistration = activation?.purpose === WorkforceActivationPurpose.SELF_REGISTRATION;
 
       if (
@@ -3951,6 +3968,7 @@ async function transitionWorkforceProviderOperation(
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
     if (state === WorkforceActivationOperationState.PROVIDER_STARTED) {
+      await assertWorkforceRelationshipsCompatible(transaction, activation.userId);
       if (!isActivationTargetEligible(activation)) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
       await assertActivationContext(transaction, activation);

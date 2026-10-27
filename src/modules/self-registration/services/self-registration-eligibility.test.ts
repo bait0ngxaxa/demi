@@ -95,18 +95,21 @@ describe("self-registration eligibility", () => {
     }
   });
 
-  it("binds every eligible relationship across a mixed Patient and workforce identity", () => {
+  it.each(["HOSPITAL", "OSM"] as const)("keeps Patient + %s self-registration supported", (kind) => {
     const result = evaluate(user({
-      roles: [{ role: Role.PATIENT }, { role: Role.HOSPITAL }, { role: Role.OSM }],
-      memberships: [membership()],
-      osmHospitalRelationships: [osmRelationship()],
+      roles: [{ role: Role.PATIENT }, { role: kind }],
+      memberships: kind === "HOSPITAL" ? [membership()] : [],
+      osmHospitalRelationships: kind === "OSM" ? [osmRelationship()] : [],
       person: { patientProfile: { id: "profile-1", hospitalRelationships: [patientRelationship()] } },
     }));
-
     expect(result).toMatchObject({ outcome: "ELIGIBLE" });
-    if (result.outcome === "ELIGIBLE") {
-      expect(result.relationships.map(({ kind }) => kind).sort()).toEqual(["HOSPITAL_MEMBER", "OSM", "PATIENT"]);
-    }
+    if (result.outcome === "ELIGIBLE") expect(result.relationships.map(({ kind }) => kind).sort())
+      .toEqual(kind === "HOSPITAL" ? ["HOSPITAL_MEMBER", "PATIENT"] : ["OSM", "PATIENT"]);
+  });
+
+  it.each([MembershipStatus.ACTIVE, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.SUSPENDED])("fails closed on mixed relationships even without roles: %s", (status) => {
+    expect(evaluate(user({ roles: [{ role: Role.OSM }], memberships: [membership({ status })], osmHospitalRelationships: [osmRelationship()] })))
+      .toEqual({ outcome: "NOT_FOUND" });
   });
 
   it.each([

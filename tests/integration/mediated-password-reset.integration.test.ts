@@ -1016,9 +1016,6 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const hospital = await createHospital();
     const owner = await createOwner(hospital.id);
     const target = await createTarget("osm", hospital.id);
-    const memberRelationship = await db.hospitalMembership.create({
-      data: { userId: target.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE },
-    });
     const relationBeforeLock = await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: target.relationshipId } });
     await lockSuspectedTakeover(owner, {
       kind: "osm",
@@ -1049,12 +1046,11 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     }, { database: db, now: () => now, ...provider });
 
     expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ status: UserStatus.ACTIVE, authSubject: provider.replacementSubject });
-    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: memberRelationship.id } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     expect(await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: target.relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     expect(await db.userTakeoverLock.findUniqueOrThrow({ where: { userId: target.userId } })).toMatchObject({
       hospitalId: hospital.id,
       providerState: UserTakeoverProviderState.RESOLVED,
-      suspendedMembershipIds: [memberRelationship.id],
+      suspendedMembershipIds: [],
       suspendedOsmRelationshipIds: [target.relationshipId],
     });
     expect(await db.lineAccountBinding.findUniqueOrThrow({ where: { id: postLockBinding.id } })).toMatchObject({ unlinkedAt: now });
@@ -1073,7 +1069,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
 
     const firstGrant = await provisionHospitalMember(firstOwner, { contactPhone: "0812345678", ...person, targetHospitalId: first.id, profession: "NURSE" }, { revokeProviderSessions });
     const secondGrant = await provisionHospitalMember(secondOwner, { contactPhone: "0812345678", ...person, targetHospitalId: second.id, profession: "NURSE" }, { revokeProviderSessions });
-    const thirdGrant = await provisionOsm(thirdOwner, { contactPhone: "0812345678", ...person, targetHospitalId: third.id }, { revokeProviderSessions });
+    const thirdGrant = await provisionHospitalMember(thirdOwner, { contactPhone: "0812345678", ...person, targetHospitalId: third.id, profession: "NURSE" }, { revokeProviderSessions });
 
     // The lock is already CONFIRMED after the first grant: later grants are recorded without another provider revocation.
     expect(revokeProviderSessions).toHaveBeenCalledOnce();
@@ -1083,8 +1079,8 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     expect(await db.userTakeoverLock.findUniqueOrThrow({ where: { userId: caregiver.userId } })).toMatchObject({
       hospitalId: first.id,
       providerState: UserTakeoverProviderState.CONFIRMED,
-      suspendedMembershipIds: [firstGrant.relationshipId, secondGrant.relationshipId],
-      suspendedOsmRelationshipIds: [thirdGrant.relationshipId],
+      suspendedMembershipIds: [firstGrant.relationshipId, secondGrant.relationshipId, thirdGrant.relationshipId],
+      suspendedOsmRelationshipIds: [],
     });
     expect(await db.auditEvent.count({ where: { action: "user.takeover_lock_extended", resourceId: caregiver.userId } })).toBe(2);
     expect(await db.workforceActivation.count({ where: { userId: caregiver.userId } })).toBe(0);
@@ -1106,12 +1102,11 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       identityAssurance: IdentityAssurance.HOSPITAL_PROOFED,
       authSubject: provider.replacementSubject,
     });
-    for (const relationshipId of [firstGrant.relationshipId, secondGrant.relationshipId]) {
+    for (const relationshipId of [firstGrant.relationshipId, secondGrant.relationshipId, thirdGrant.relationshipId]) {
       expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     }
-    expect(await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: thirdGrant.relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     expect(await db.auditEvent.findFirstOrThrow({ where: { action: "user.takeover_lock_resolved", resourceId: caregiver.userId } }))
-      .toMatchObject({ metadata: { membershipsRestored: 2, osmRelationshipsRestored: 1 } });
+      .toMatchObject({ metadata: { membershipsRestored: 3, osmRelationshipsRestored: 0 } });
     const access = await resolveActorAccessByAuthSubject(provider.replacementSubject, createActorContextStore(db));
     expect(access).toMatchObject({ status: "AUTHORIZED", actor: { userId: caregiver.userId } });
     expect(access.status === "AUTHORIZED" ? access.actor.hospitalMemberships : []).toEqual(expect.arrayContaining([
@@ -2472,4 +2467,23 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       await expect(reconcile(line.userId, operationId)).resolves.toMatchObject({ outcome: "RELEASED" });
     });
   });
+
+  it("requires explicit reconciliation before recovery can restore a legacy mixed workforce account", async () => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    const admin = await createAdmin();
+    const target = await createTarget("osm", hospital.id);
+    const staff = await db.hospitalMembership.create({ data: { userId: target.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
+    const relationship = await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: target.relationshipId } });
+    await lockSuspectedTakeover(owner, { kind: "osm", relationshipId: relationship.id, targetHospitalId: hospital.id, expectedUpdatedAt: relationship.updatedAt.toISOString(), confirmation: "ไม่ใช่เจ้าของจริง" }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
+    const before = await db.user.findUniqueOrThrow({ where: { id: target.userId } });
+    const audits = await db.auditEvent.count();
+    await expect(issueMediatedPasswordReset(admin, issueInput("osm", hospital.id, target.relationshipId), { database: db, now: () => now })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toEqual(before);
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: staff.id } })).toMatchObject({ status: MembershipStatus.SUSPENDED });
+    expect(await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: relationship.id } })).toMatchObject({ status: MembershipStatus.SUSPENDED });
+    expect(await db.auditEvent.count()).toBe(audits);
+    expect(await db.workforceActivation.count({ where: { userId: target.userId } })).toBe(0);
+  });
+
 });

@@ -27,6 +27,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { generateUniqueHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import type { ActivationCredentialGenerator } from "@/modules/workforce/services/activation-token-service";
 import {
@@ -105,6 +106,7 @@ async function inviteChildOwnerInTransaction(
   },
 ): Promise<{ issue: ChildOwnerInvitationIssue; takeoverTask: CaregiverInvitationTakeoverTask | null }> {
   const { user } = await resolveWorkforceGrantee(transaction, { hospitalId: input.childHospitalId, ...input.invitee });
+  await assertWorkforceRelationshipsCompatible(transaction, user.id, "HOSPITAL");
   const open = await transaction.hospitalMembership.findFirst({
     where: { userId: user.id, hospitalId: input.childHospitalId, status: { not: MembershipStatus.ENDED } },
     select: { id: true },

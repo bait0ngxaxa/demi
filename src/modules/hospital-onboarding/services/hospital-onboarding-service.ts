@@ -12,6 +12,8 @@ import {
 } from "@prisma/client";
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
+import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { getPrisma } from "@/lib/db/prisma";
 import {
   provisionPasswordAuthIdentity,
@@ -526,7 +528,7 @@ export async function approveHospitalOnboarding(
   const now = dependencies.now ?? (() => new Date());
 
   try {
-    const result = await database.$transaction(async (transaction) => {
+    const result = await runSerializableTransaction(database, async (transaction) => {
       await assertPlatformAdmin(transaction, parsedReviewerId.data);
 
       const application = await transaction.hospitalOnboardingApplication.findUnique({
@@ -546,6 +548,8 @@ export async function approveHospitalOnboarding(
       if (application.status !== HospitalOnboardingApplicationStatus.PENDING) {
         throw new ConflictError("Hospital onboarding application has already been decided");
       }
+
+      await assertWorkforceRelationshipsCompatible(transaction, application.applicantUser.id, "HOSPITAL");
 
       const claimed = await transaction.hospitalOnboardingApplication.updateMany({
         where: {
