@@ -1849,6 +1849,71 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await prisma.workforceActivation.count()).toBe(1);
     });
 
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("classifies authorized local %s conflicts without leaking cross-Hospital conflicts", async (kind) => {
+      const { a, b, ownerA } = await setup();
+      const local = kind === "OSM" ? await createMember(a.id, MembershipType.MEMBER, 9003) : await createActiveOsm(a.id, 9003);
+      const remote = kind === "OSM" ? await createMember(b.id, MembershipType.MEMBER, 9004) : await createActiveOsm(b.id, 9004);
+      const beforeLocal = await identityState(local.userId);
+      const beforeRemote = await identityState(remote.userId);
+      const rows = [9003, 9004, 9005].map((sequence) => ({ ...person(sequence), ...(kind === "HOSPITAL_MEMBER" ? { profession: "OTHER" } : {}) }));
+      const input = { kind, targetHospitalId: a.id, submissionId: `${Date.now()}.${randomUUID()}`, rows };
+      const result = await provisionWorkforceBulk(ownerA.actor, input);
+      expect(result.rows).toMatchObject([
+        { rowNumber: 1, status: "invalid", reason: "ROLE_INCOMPATIBLE" },
+        { rowNumber: 2, status: "invalid", reason: "CONFLICT" },
+        { rowNumber: 3, status: "created" },
+      ]);
+      expect(await provisionWorkforceBulk(ownerA.actor, input)).toEqual(result);
+      const receipts = await prisma.workforceBulkRowReceipt.findMany({ where: { submissionId: input.submissionId }, orderBy: { rowNumber: "asc" } });
+      expect(receipts.map(({ result }) => result)).toMatchObject(result.rows);
+      for (const payload of [result.rows[1], receipts[1].result]) {
+        const serialized = JSON.stringify(payload);
+        for (const secret of [b.id, nationalIdFor(9004), "NURSE", "OSM", "HOSPITAL"]) expect(serialized).not.toContain(secret);
+      }
+      expect(await identityState(local.userId)).toMatchObject({ ...beforeLocal, audits: expect.any(Number) });
+      expect(await identityState(remote.userId)).toMatchObject({ ...beforeRemote, audits: expect.any(Number) });
+      await prisma.hospitalMembership.updateMany({ where: { userId: ownerA.userId, hospitalId: a.id }, data: { status: MembershipStatus.SUSPENDED } });
+      await expect(provisionWorkforceBulk(ownerA.actor, input)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
+    it("rechecks local disclosure before persisting a conflict receipt after the relationship ends", async () => {
+      const { a, b, ownerA } = await setup();
+      const target = await createMember(a.id, MembershipType.MEMBER, 9003);
+      await prisma.hospitalMembership.create({ data: { userId: target.userId, hospitalId: b.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
+      const input = { kind: "OSM" as const, targetHospitalId: a.id, submissionId: `${Date.now()}.${randomUUID()}`, rows: [person(9003)] };
+      const database = faultDatabase(async (call, phase) => {
+        if (call === 3 && phase === "before") await prisma.hospitalMembership.updateMany({ where: { userId: target.userId, hospitalId: a.id }, data: { status: MembershipStatus.ENDED } });
+      });
+      const result = await provisionWorkforceBulk(ownerA.actor, input, { database });
+      expect(result.rows).toEqual([{ rowNumber: 1, status: "invalid", reason: "CONFLICT" }]);
+      expect((await prisma.workforceBulkRowReceipt.findFirstOrThrow({ where: { submissionId: input.submissionId } })).result).toEqual(result.rows[0]);
+      expect(await provisionWorkforceBulk(ownerA.actor, input)).toEqual(result);
+      expect(await prisma.osmHospitalRelationship.count({ where: { userId: target.userId } })).toBe(0);
+    });
+
+    it.each(["PHONE", "PROFESSION", "LIFECYCLE"] as const)("keeps unrelated %s conflicts generic", async (scenario) => {
+      const { a, ownerA } = await setup();
+      const target = await createMember(a.id, MembershipType.MEMBER, 9003);
+      await prisma.hospitalMembership.updateMany({ where: { userId: target.userId }, data: { contactPhone: "0812345678", status: scenario === "LIFECYCLE" ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE } });
+      const row = { ...person(9003), profession: scenario === "PROFESSION" ? "DOCTOR" : "NURSE", contactPhone: scenario === "PHONE" ? "0891234567" : "0812345678" };
+      const input = { kind: "HOSPITAL_MEMBER" as const, targetHospitalId: a.id, submissionId: `${Date.now()}.${randomUUID()}`, rows: [row] };
+      const before = await identityState(target.userId);
+      const result = await provisionWorkforceBulk(ownerA.actor, input);
+      expect(result.rows).toEqual([{ rowNumber: 1, status: "invalid", reason: "CONFLICT" }]);
+      expect(await provisionWorkforceBulk(ownerA.actor, input)).toEqual(result);
+      expect(await identityState(target.userId)).toEqual(before);
+    });
+
+    it("replays legacy CONFLICT receipts without reclassifying or changing their fingerprint", async () => {
+      const { a, ownerA } = await setup();
+      await createMember(a.id, MembershipType.MEMBER, 9003);
+      const input = { kind: "OSM" as const, targetHospitalId: a.id, submissionId: `${Date.now()}.${randomUUID()}`, rows: [person(9003)] };
+      await provisionWorkforceBulk(ownerA.actor, input);
+      await prisma.workforceBulkRowReceipt.updateMany({ where: { submissionId: input.submissionId }, data: { result: { rowNumber: 1, status: "invalid", reason: "CONFLICT" } } });
+      expect((await provisionWorkforceBulk(ownerA.actor, input)).rows).toEqual([{ rowNumber: 1, status: "invalid", reason: "CONFLICT" }]);
+      await expect(provisionWorkforceBulk(ownerA.actor, { ...input, rows: [{ ...input.rows[0], givenName: "เปลี่ยน" }] })).rejects.toMatchObject({ code: "CONFLICT" });
+    });
+
     it.each([false, true])("serializes opposite grants for an existing identity cross=%s", async (crossHospital) => {
       const { a, b, ownerA, ownerB } = await setup();
       const patient = await createPatientIdentity(a.id, 9003, UserStatus.ACTIVE);

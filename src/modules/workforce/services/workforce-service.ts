@@ -36,7 +36,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE, WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
@@ -48,6 +48,7 @@ import {
 } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
 import {
   createIdentityStore,
+  hashIdentityReference,
   resolvePerson,
 } from "@/modules/identity/services/identity-service";
 import {
@@ -4240,7 +4241,7 @@ export type WorkforceBulkRowResult =
   | {
       rowNumber: number;
       status: "invalid";
-      reason: "INVALID_ROW" | "CONFLICT" | "UNAVAILABLE";
+      reason: "INVALID_ROW" | "CONFLICT" | "ROLE_INCOMPATIBLE" | "UNAVAILABLE";
     };
 
 export type WorkforceBulkProvisionResult = {
@@ -4389,8 +4390,6 @@ export async function provisionWorkforceBulk(
     } catch (error: unknown) {
       if (error instanceof ForbiddenError) throw error;
       // Domain writes rolled back. Persist an explicit failure separately; never overwrite a concurrently committed success.
-      const fallback: WorkforceBulkRowResult = { rowNumber, status: "invalid", reason:
-        error instanceof ValidationError ? "INVALID_ROW" : error instanceof ConflictError ? "CONFLICT" : "UNAVAILABLE" };
       try {
         const result = await runSerializable(database, async (transaction): Promise<WorkforceBulkRowResult> => {
           await assertWorkforceProvisionerInDatabase(transaction, actor.userId, targetHospitalId, kind);
@@ -4399,6 +4398,27 @@ export async function provisionWorkforceBulk(
             const saved = workforceBulkReceiptSchema.parse(existing.result);
             if (saved.status !== "invalid" || saved.reason !== "UNAVAILABLE" || existing.attempts >= WORKFORCE_BULK_MAX_ATTEMPTS) return saved;
           }
+          // The failed grant rolled back. Re-resolve the target and recheck scoped disclosure in this receipt
+          // transaction: a local relationship may have ended since the original conflict was detected.
+          let locallyIncompatible = false;
+          if (error instanceof WorkforceRelationshipConflictError) {
+            const rowInput = { ...(isRecord(row) ? row : {}), targetHospitalId };
+            const validated = kind === "OSM" ? osmProvisionSchema.safeParse(rowInput) : hospitalMemberProvisionSchema.safeParse(rowInput);
+            if (validated.success) {
+              const identityKeyHash = hashIdentityReference({ namespace: "thai-national-id", value: validated.data.nationalId });
+              const person = await transaction.person.findUnique({ where: { identityKeyHash }, select: { user: { select: { id: true } } } });
+              if (person?.user) {
+                try {
+                  await assertWorkforceRelationshipsCompatible(transaction, person.user.id, kind === "OSM" ? "OSM" : "HOSPITAL", { actorUserId: actor.userId, hospitalId: targetHospitalId });
+                } catch (currentError: unknown) {
+                  if (currentError instanceof WorkforceRelationshipConflictError) locallyIncompatible = true;
+                  else if (!(currentError instanceof ConflictError)) throw currentError;
+                }
+              }
+            }
+          }
+          const fallback: WorkforceBulkRowResult = { rowNumber, status: "invalid", reason:
+            error instanceof ValidationError ? "INVALID_ROW" : locallyIncompatible ? "ROLE_INCOMPATIBLE" : error instanceof ConflictError ? "CONFLICT" : "UNAVAILABLE" };
           await transaction.workforceBulkRowReceipt.upsert({ where: { actorUserId_submissionId_rowNumber: key },
             create: { ...key, result: fallback }, update: { result: fallback, attempts: { increment: 1 } } });
           return fallback;

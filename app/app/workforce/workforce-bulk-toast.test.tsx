@@ -180,6 +180,19 @@ function toastCalls(): unknown[][] {
 }
 
 describe("Workforce bulk provisioning Toasts", () => {
+  it.each([
+    ["INVALID_ROW", "ข้อมูลในแถวไม่ถูกต้อง"],
+    ["CONFLICT", "ข้อมูลขัดแย้งกับรายการเดิม กรุณาตรวจสอบและลองใหม่"],
+    ["ROLE_INCOMPATIBLE", "ไม่สามารถเพิ่มเป็นบุคลากรโรงพยาบาลและ อสม. พร้อมกันได้"],
+    ["UNAVAILABLE", "ระบบไม่พร้อม ลองใหม่ได้"],
+  ] as const)("shows the correct Thai explanation for %s", async (reason, copy) => {
+    mocks.bulkAction.mockResolvedValueOnce(bulkResult([{ rowNumber: 1, status: "invalid", reason }]));
+    await renderWorkspace();
+    await fillRow(0);
+    await act(async () => submitBulk());
+    expect(container.textContent).toContain(copy);
+  });
+
   it("announces full success only when every processed row is created", async () => {
     mocks.bulkAction.mockResolvedValueOnce(bulkResult([created(1), created(2)]));
     await renderWorkspace();

@@ -12,6 +12,12 @@ Confirmed Product Owner amendment — 2026-10-27.
 
 This amendment supersedes older examples allowing simultaneous Hospital workforce + OSM (including combined same-Hospital activation). Historical ADR/phase text remains evidence of the previous decision, not current permission.
 
+## Conflict disclosure and bulk receipts
+
+The global compatibility predicate is independent of what an actor may learn about the conflicting relationship. Category-specific feedback requires a current persisted ACTIVE direct OWNER of the ACTIVE target Hospital and a non-ended opposite-category relationship in that Hospital. Missing or ambiguous authority, cross-Hospital-only conflicts, activation and invitation paths without that proof use generic feedback; no external Hospital, category, profession, status or identity detail is included.
+
+Bulk stores `ROLE_INCOMPATIBLE` only after the same local proof is rechecked in the failure-receipt transaction. Other conflicts use `CONFLICT`; invalid rows and transient failures retain `INVALID_ROW` and `UNAVAILABLE`. Receipts preserve the result established at submission time, including legacy reason values, and are replayed only after current OWNER authorization is rechecked. A single rejected row does not roll back successful rows.
+
 ## Read-only audit for authorized reviewers
 
 Use [hospital-osm-compatibility.sql](../../scripts/diagnostics/hospital-osm-compatibility.sql) with an approved PostgreSQL connection and a read-only role:

@@ -92,7 +92,7 @@ describe("network report cache invalidation", () => {
     expect(mocks.revalidatePath).not.toHaveBeenCalledWith("/app/hospitals/areas", "page");
   });
 
-  it("shows the safe Thai workforce conflict through existing Child OWNER feedback", async () => {
+  it("keeps Child OWNER feedback generic even for a category-specific domain error", async () => {
     vi.clearAllMocks();
     vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
     mocks.actor.mockResolvedValue({ userId: "parent-owner" });
@@ -102,7 +102,9 @@ describe("network report cache invalidation", () => {
     formData.set("parentHospitalId", "11111111-1111-4111-8111-111111111111");
     formData.set("childHospitalId", "22222222-2222-4222-8222-222222222222");
     formData.set("mode", "REMOTE");
-    expect(await issueChildOwnerLinkAction({ status: "IDLE" }, formData)).toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+    const result = await issueChildOwnerLinkAction({ status: "IDLE" }, formData);
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toMatch(/อสม\.|บุคลากรโรงพยาบาล/u);
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 

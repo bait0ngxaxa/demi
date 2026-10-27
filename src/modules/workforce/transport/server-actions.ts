@@ -135,8 +135,6 @@ function mapCompletionError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
-  if (error instanceof WorkforceRelationshipConflictError) return { code: "CONFLICT", message: error.message };
-
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง" };

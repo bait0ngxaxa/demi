@@ -38,6 +38,7 @@ const professionLabels = {
 const bulkReasonLabels = {
   INVALID_ROW: "ข้อมูลในแถวไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้งกับรายการเดิม กรุณาตรวจสอบและลองใหม่",
+  ROLE_INCOMPATIBLE: "ไม่สามารถเพิ่มเป็นบุคลากรโรงพยาบาลและ อสม. พร้อมกันได้",
   UNAVAILABLE: "ระบบไม่พร้อม ลองใหม่ได้",
 } as const;
 

@@ -17,7 +17,7 @@ export const workforceBulkReceiptSchema = z.discriminatedUnion("status", [
   z.object({ rowNumber: z.number().int().min(1).max(50), status: z.enum(["created", "existing"]),
     userId: z.uuid(), relationshipId: z.uuid(), activationRequired: z.boolean() }).strict(),
   z.object({ rowNumber: z.number().int().min(1).max(50), status: z.literal("invalid"),
-    reason: z.enum(["INVALID_ROW", "CONFLICT", "UNAVAILABLE"]) }).strict(),
+    reason: z.enum(["INVALID_ROW", "CONFLICT", "ROLE_INCOMPATIBLE", "UNAVAILABLE"]) }).strict(),
 ]);
 
 function normalize(value: unknown, depth = 0): unknown {

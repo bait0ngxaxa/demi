@@ -46,7 +46,7 @@ export type WorkforceBulkRowResultState =
   | {
       rowNumber: number;
       status: "invalid";
-      reason: "INVALID_ROW" | "CONFLICT" | "UNAVAILABLE";
+      reason: "INVALID_ROW" | "CONFLICT" | "ROLE_INCOMPATIBLE" | "UNAVAILABLE";
     };
 
 export type WorkforceBulkResultState = {

@@ -520,7 +520,7 @@ describe("workforce Server Actions", () => {
     expect(result.status).toBe("ERROR");
   });
 
-  it("maps bulk rows back to their visible row numbers and never returns tokens", async () => {
+  it.each(["INVALID_ROW", "ROLE_INCOMPATIBLE"] as const)("maps %s back to visible row numbers and never returns tokens", async (reason) => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
     mockedProvisionWorkforceBulk.mockResolvedValue({
       kind: "OSM",
@@ -533,7 +533,7 @@ describe("workforce Server Actions", () => {
           relationshipId: "r1",
           activationRequired: true,
         },
-        { rowNumber: 2, status: "invalid", reason: "INVALID_ROW" },
+        { rowNumber: 2, status: "invalid", reason },
       ],
     });
     const formData = new FormData();
@@ -570,7 +570,7 @@ describe("workforce Server Actions", () => {
       result: {
         rows: [
           { rowNumber: 1, status: "created" },
-          { rowNumber: 3, status: "invalid", reason: "INVALID_ROW" },
+          { rowNumber: 3, status: "invalid", reason },
         ],
       },
     });
@@ -891,15 +891,16 @@ describe("WF-PHONE action", () => {
     expect(mockedRevalidatePath).not.toHaveBeenCalled();
   });
 
-  it("gives legacy mixed activation an actionable reconciliation message", async () => {
-    const error = new WorkforceRelationshipConflictError();
+  it("keeps activation feedback generic even for a category-specific domain error", async () => {
+    const error = new WorkforceRelationshipConflictError("OSM");
     mockedCompleteWorkforceActivation.mockRejectedValue(error);
     const formData = new FormData();
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
-    expect(await completeWorkforceActivationAction("one-time-token", "ACTIVATION", initialWorkforceCompletionActionState, formData))
-      .toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+    const result = await completeWorkforceActivationAction("one-time-token", "ACTIVATION", initialWorkforceCompletionActionState, formData);
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toMatch(/อสม\.|บุคลากรโรงพยาบาล/u);
   });
 
   it("returns generic feedback for a cross-Hospital conflict without identity details", async () => {
