@@ -296,6 +296,165 @@ describe("Hospital reporting query service", () => {
     } });
   });
 
+  describe("full-cohort dashboard aggregates", () => {
+    const serviceOneRelations = {
+      serviceOneRoutines: 1,
+      serviceOneFloatingCharts: 1,
+      serviceOneDreamCards: 3,
+      serviceOneConfidences: 1,
+    } as const;
+    type ServiceOneRelation = keyof typeof serviceOneRelations;
+
+    // Answers each Program count by the record relation its predicate names; other counts fall back.
+    function stubProgramCounts(
+      database: ReturnType<typeof createDatabase>,
+      values: Record<ServiceOneRelation, number>,
+      fallback: { filtered: number; afterRecorded: number },
+    ): ReturnType<typeof vi.fn> {
+      const count = vi.fn(async (args: { where: unknown }) => {
+        const serialized = JSON.stringify(args.where);
+        const relation = (Object.keys(serviceOneRelations) as ServiceOneRelation[])
+          .find((key) => serialized.includes(`"${key}"`));
+        if (relation) return values[relation];
+        return serialized.includes('"finalAssessment":{"isNot":null}') ? fallback.afterRecorded : fallback.filtered;
+      });
+      Object.assign(database.patientProgram, { count });
+      return count;
+    }
+
+    function serviceOneCountWhere(relation: ServiceOneRelation, cohort: "ACTIVE" | "INCLUDE_ENDED"): unknown {
+      return { where: { AND: [
+        {
+          patientHospitalRelationship: { is: { hospitalId: hospitalAId, ...(cohort === "ACTIVE" ? { endedAt: null } : {}) } },
+          status: { in: [PatientProgramStatus.ACTIVE, PatientProgramStatus.COMPLETED] },
+        },
+        { [relation]: { some: { roundNumber: serviceOneRelations[relation] } } },
+      ] } };
+    }
+
+    it.each(["ACTIVE", "INCLUDE_ENDED"] as const)(
+      "counts Programs with each Service 1 record in the exact %s cohort",
+      async (cohort) => {
+        const database = createDatabase();
+        const count = stubProgramCounts(database, {
+          serviceOneRoutines: 3, serviceOneFloatingCharts: 2, serviceOneDreamCards: 0, serviceOneConfidences: 1,
+        }, { filtered: 2, afterRecorded: 0 });
+
+        const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId, cohort }, { database });
+
+        expect(result.serviceProcess).toEqual({
+          programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 3 },
+          programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 2 },
+          // A true zero comes from the authorized count, not from a missing value.
+          programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+          programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+        });
+        for (const relation of Object.keys(serviceOneRelations) as ServiceOneRelation[]) {
+          expect(count).toHaveBeenCalledWith(serviceOneCountWhere(relation, cohort));
+        }
+      },
+    );
+
+    it("counts each Program once per record type even when its counts overlap across types", async () => {
+      // One Program holding every Service 1 record must appear in every bar, not be split between them.
+      const database = createDatabase({
+        programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })],
+      });
+      database.patientProgram.groupBy.mockResolvedValue([{ status: PatientProgramStatus.ACTIVE, _count: { _all: 1 } }]);
+      stubProgramCounts(database, {
+        serviceOneRoutines: 1, serviceOneFloatingCharts: 1, serviceOneDreamCards: 1, serviceOneConfidences: 1,
+      }, { filtered: 1, afterRecorded: 0 });
+
+      const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database });
+
+      const values = Object.values(result.serviceProcess).map(({ value }) => value);
+      expect(values).toEqual([1, 1, 1, 1]);
+      expect(Math.max(...values)).toBeLessThanOrEqual(result.counts.programs.total);
+    });
+
+    it("keeps summary, round progress and Service 1 counts independent of search, filters and pagination", async () => {
+      const database = createDatabase({
+        programs: [programRecord({ id: programA1Id, status: PatientProgramStatus.ACTIVE })],
+      });
+      database.patientProgram.groupBy.mockResolvedValue([
+        { status: PatientProgramStatus.ACTIVE, _count: { _all: 30 } },
+        { status: PatientProgramStatus.COMPLETED, _count: { _all: 12 } },
+      ]);
+      const count = stubProgramCounts(database, {
+        serviceOneRoutines: 25, serviceOneFloatingCharts: 24, serviceOneDreamCards: 9, serviceOneConfidences: 20,
+      }, { filtered: 1, afterRecorded: 4 });
+
+      const result = await getHospitalReportingPage(actor, {
+        hospitalId: hospitalAId, pageSize: 1, search: "สมชาย", status: "ACTIVE", progress: "0",
+      }, { database });
+
+      expect(result.page.total).toBe(1);
+      expect(result.page.items).toHaveLength(1);
+      expect(result.counts.programs).toEqual({ grain: "PATIENT_PROGRAM", total: 42, active: 30, completed: 12 });
+      expect(result.serviceProcess.programsWithRoutineRecord.value).toBe(25);
+      expect(result.roundProgress.afterRecorded).toBe(4);
+      expect(result.roundProgress.completed).toBe(12);
+      // Only the page-total count carries the user's filters; every aggregate uses the bare cohort scope.
+      const filteredCalls = count.mock.calls.filter(([args]) => JSON.stringify(args).includes("สมชาย"));
+      expect(filteredCalls).toHaveLength(1);
+      expect(JSON.stringify(database.patientProgram.groupBy.mock.calls)).not.toContain("สมชาย");
+    });
+
+    it.each([
+      {
+        name: "an empty Hospital",
+        active: 0, completed: 0, afterRecorded: 0, atLeast: [],
+        rounds: [0, 0, 0, 0, 0, 0, 0],
+      },
+      {
+        name: "ACTIVE Programs spread over 0-6 completed rounds",
+        active: 9, completed: 0, afterRecorded: 0, atLeast: [7, 6, 5, 4, 3, 2],
+        rounds: [2, 1, 1, 1, 1, 1, 2],
+      },
+      {
+        name: "an ACTIVE Program with After recorded beside COMPLETED Programs",
+        // The After-recorded Program completed all six rounds but is excluded from the round groupBy.
+        active: 3, completed: 4, afterRecorded: 1, atLeast: [2, 1, 1],
+        rounds: [0, 1, 0, 1, 0, 0, 0],
+      },
+    ])("partitions $name into mutually exclusive buckets that sum to all Programs", async (scenario) => {
+      const database = createDatabase();
+      Object.assign(database, { patientProgramRoundCompletion: { groupBy: vi.fn().mockResolvedValue(
+        scenario.atLeast.map((programs, index) => ({ roundNumber: index + 1, _count: { _all: programs } })),
+      ) } });
+      database.patientProgram.groupBy.mockResolvedValue([
+        { status: PatientProgramStatus.ACTIVE, _count: { _all: scenario.active } },
+        { status: PatientProgramStatus.COMPLETED, _count: { _all: scenario.completed } },
+      ]);
+      stubProgramCounts(database, {
+        serviceOneRoutines: 0, serviceOneFloatingCharts: 0, serviceOneDreamCards: 0, serviceOneConfidences: 0,
+      }, { filtered: scenario.active + scenario.completed, afterRecorded: scenario.afterRecorded });
+
+      const result = await getHospitalReportingPage(actor, { hospitalId: hospitalAId }, { database });
+
+      expect(result.roundProgress).toEqual({
+        rounds: scenario.rounds, afterRecorded: scenario.afterRecorded, completed: scenario.completed,
+      });
+      expect(result.roundProgress.rounds.every((value) => value >= 0)).toBe(true);
+      expect(result.roundProgress.rounds.reduce((sum, value) => sum + value, 0)
+        + result.roundProgress.afterRecorded + result.roundProgress.completed).toBe(result.counts.programs.total);
+    });
+
+    it("returns the same exact-Hospital Service 1 counts to the Global ADMIN operation", async () => {
+      const database = createDatabase();
+      const count = stubProgramCounts(database, {
+        serviceOneRoutines: 2, serviceOneFloatingCharts: 1, serviceOneDreamCards: 1, serviceOneConfidences: 0,
+      }, { filtered: 2, afterRecorded: 0 });
+
+      const result = await getGlobalAdminHospitalReportingPage(globalActor, { hospitalId: hospitalAId }, { database });
+
+      expect(result.serviceProcess.programsWithRoutineRecord.value).toBe(2);
+      expect(result.serviceProcess.programsWithConfidenceRecord.value).toBe(0);
+      expect(count).toHaveBeenCalledWith(serviceOneCountWhere("serviceOneRoutines", "ACTIVE"));
+      expect(mockedResolveAccess).not.toHaveBeenCalled();
+    });
+  });
+
   it.each([
     { search: "ต่างคน" }, { progress: "2" }, { status: "COMPLETED" }, { cohort: "INCLUDE_ENDED" },
   ])("rejects a continuation with changed filters %j before reading rows", async (change) => {

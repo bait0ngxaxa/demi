@@ -96,6 +96,12 @@ const page: HospitalReportingPageProjection = {
     relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 0 },
     programs: { grain: "PATIENT_PROGRAM", total: 0, active: 0, completed: 0 },
   },
+  serviceProcess: {
+    programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+    programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+    programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+    programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+  },
   filters: { search: "", progress: "", status: "" },
   roundProgress: { rounds: [0, 0, 0, 0, 0, 0, 0], afterRecorded: 0, completed: 0 },
   page: { items: [], total: 0, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },

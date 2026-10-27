@@ -144,6 +144,12 @@ function page(items: HospitalReportProgramRow[], total = items.length): Hospital
         completed: items.filter(({ lifecycle }) => lifecycle.status === PatientProgramStatus.COMPLETED).length,
       },
     },
+    serviceProcess: {
+      programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+      programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+      programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+      programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+    },
     filters: { search: "", progress: "", status: "" },
     roundProgress: { rounds: [total, 0, 0, 0, 0, 0, 0], afterRecorded: 0, completed: 0 },
     page: { items: items.map((item) => ({ ...item, completedRounds: 0, latestServiceDate: null })), total, number: 1, previousCursor: null, pageSize: 20, nextCursor: null },
