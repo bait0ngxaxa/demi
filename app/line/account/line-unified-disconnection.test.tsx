@@ -140,6 +140,50 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
   });
 
+  it("never reports an unlink as done when the session is gone and the Unlink outcome is unknown", async () => {
+    route({
+      "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
+      "/api/line/account/unlink": async () => { throw new TypeError("network lost"); },
+      "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_ABSENT", error: "x", redirectTo: "/login?returnTo=%2Fline%2Faccount" }, { status: 401 }),
+    });
+    await mount(); await openConfirmation();
+    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    expect(container.textContent).not.toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
+    expect(container.textContent).not.toContain("บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว");
+    expect(container.textContent).toContain("ระบบจึงยืนยันผลการยกเลิกการเชื่อมต่อ LINE ไม่ได้");
+    expect(calls("/api/line/account/unlink")).toBe(1);
+  });
+
+  it("finishes at login when the session already ended after an observed unlink", async () => {
+    route({
+      "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
+      "/api/line/account/unlink": async () => Response.json({ status: "UNLINKED", cleanup: "PENDING", disconnection: unconfirmed }),
+      "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_ABSENT", error: "x", redirectTo: "/login?returnTo=%2Fline%2Faccount" }, { status: 401 }),
+    });
+    await mount(); await openConfirmation();
+    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
+  });
+
+  it.each([
+    ["an expired proof", () => Response.json({ code: "PROOF_EXPIRED", error: "x" }, { status: 409 })],
+    ["a proof the server no longer holds", () => Response.json({ error: "x" }, { status: 403 })],
+  ])("explains %s on sign-out retry, offers ordinary logout, and never claims a session change", async (_label, expired) => {
+    let attempts = 0;
+    route({
+      "/api/line/account/intents": async () => Response.json(intent, { status: 201 }),
+      "/api/line/account/unlink": async () => Response.json({ status: "UNLINKED", cleanup: "PENDING", disconnection: unconfirmed }),
+      "/api/line/account/sign-out": async () => (attempts++ === 0 ? Response.json({ error: "x" }, { status: 503 }) : expired()),
+    });
+    await mount(); await openConfirmation();
+    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ลองออกจากระบบอีกครั้ง").click());
+    expect(container.textContent).toContain("หลักฐานการยกเลิกครั้งนี้หมดอายุ");
+    expect(container.textContent).not.toContain("บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว");
+    expect(button("ออกจากระบบ DEMI")).toBeDefined();
+    expect(calls("/api/line/account/unlink")).toBe(1); expect(calls("/api/line/account/intents")).toBe(1);
+  });
+
   it("keeps the session when a lost Unlink did not commit and rechecks on retry without resending", async () => {
     let checks = 0;
     route({

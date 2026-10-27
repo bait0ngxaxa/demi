@@ -32,6 +32,8 @@ export type LineSignOutState =
   | { state: "FAILED" }
   /** The browser now holds another User or session; it is never signed out. */
   | { state: "SESSION_CHANGED" }
+  /** The commit proof no longer authorizes sign-out; ordinary logout remains. */
+  | { state: "PROOF_EXPIRED" }
   | { state: "REDIRECTING"; redirectTo: string };
 
 export type LineAccountLifecycleReadiness =
@@ -84,11 +86,14 @@ function parseCleanupResult(value: unknown): { cleanup: CleanupPresentation; dis
   return { cleanup: record.cleanup as CleanupPresentation, ...(disconnection.success ? { disconnection: disconnection.data } : {}) };
 }
 
+/** Only SIGNED_OUT carries server evidence that the UNLINK committed. */
 type SignOutAttempt =
-  | { outcome: "SIGNED_OUT"; redirectTo: string }
-  | { outcome: "NOT_COMMITTED" | "SESSION_CHANGED" | "FAILED" };
+  | { outcome: "SIGNED_OUT" | "SESSION_ABSENT"; redirectTo: string }
+  | { outcome: "NOT_COMMITTED" | "SESSION_CHANGED" | "PROOF_EXPIRED" | "FAILED" };
 
 const sessionChangedMessage = "บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว ระบบจึงไม่ออกจากระบบให้ กรุณาโหลดหน้าอีกครั้งเพื่อดูสถานะล่าสุด";
+const sessionAbsentMessage = "การเข้าสู่ระบบ DEMI สิ้นสุดแล้ว ระบบจึงยืนยันผลการยกเลิกการเชื่อมต่อ LINE ไม่ได้ กรุณาเข้าสู่ระบบอีกครั้งเพื่อตรวจสอบสถานะ";
+const isLoginPath = (value: unknown): value is string => typeof value === "string" && value.startsWith("/login");
 
 /**
  * Asks the server to end the DEMI session only if the submitted UNLINK intent
@@ -113,13 +118,18 @@ async function postLineSignOut(unlinkIntent: Intent): Promise<SignOutAttempt> {
   const record = isRecord(value) ? value : {};
   if (response.ok) {
     // Same-origin login path only; the server fixes the destination.
-    return record.status === "SIGNED_OUT" && typeof record.redirectTo === "string" && record.redirectTo.startsWith("/login")
+    return record.status === "SIGNED_OUT" && isLoginPath(record.redirectTo)
       ? { outcome: "SIGNED_OUT", redirectTo: record.redirectTo }
       : { outcome: "FAILED" };
   }
-  if (response.status === 409 && record.code === "NOT_COMMITTED") return { outcome: "NOT_COMMITTED" };
-  // A changed principal, or proof the server can no longer match to this session.
-  if (response.status === 409 || response.status === 403) return { outcome: "SESSION_CHANGED" };
+  if (response.status === 401 && record.code === "SESSION_ABSENT") {
+    return isLoginPath(record.redirectTo) ? { outcome: "SESSION_ABSENT", redirectTo: record.redirectTo } : { outcome: "FAILED" };
+  }
+  if (response.status === 409 && (record.code === "NOT_COMMITTED" || record.code === "SESSION_CHANGED" || record.code === "PROOF_EXPIRED")) {
+    return { outcome: record.code };
+  }
+  // The server can no longer match this proof (for example an expired intent was removed).
+  if (response.status === 403) return { outcome: "PROOF_EXPIRED" };
   return { outcome: "FAILED" };
 }
 
@@ -358,6 +368,12 @@ export function LineAccountScreen({
                     <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="alert">
                       <p>ยกเลิกการเชื่อมต่อ LINE แล้ว แต่{sessionChangedMessage}</p>
                       <button type="button" onClick={onReload} className={secondaryButtonClass}>โหลดหน้าอีกครั้ง</button>
+                    </div>
+                  ) : null}
+                  {signOut.state === "PROOF_EXPIRED" ? (
+                    <div className="space-y-3 rounded-control bg-warning-soft px-4 py-3 text-sm text-warning" role="alert">
+                      <p>ยกเลิกการเชื่อมต่อ LINE แล้ว แต่หลักฐานการยกเลิกครั้งนี้หมดอายุ ระบบจึงไม่ออกจากระบบให้อัตโนมัติ คุณออกจากระบบเองได้ การออกจากระบบไม่ยกเลิกการเชื่อมต่อซ้ำ</p>
+                      <LineDemiAccountSwitch label="ออกจากระบบ DEMI" className={secondaryButtonClass} />
                     </div>
                   ) : null}
                   {signOut.state === "FAILED" ? (
@@ -910,10 +926,13 @@ export function LineAccountClient({
     setView("SUCCESS");
   }
 
+  /** Only after an observed or server-proven commit. */
   function applySignOut(attempt: SignOutAttempt): void {
     if (attempt.outcome === "SESSION_CHANGED") { setSignOut({ state: "SESSION_CHANGED" }); return; }
+    if (attempt.outcome === "PROOF_EXPIRED") { setSignOut({ state: "PROOF_EXPIRED" }); return; }
     // After an observed commit, NOT_COMMITTED is not evidence of anything; keep the retry.
-    if (attempt.outcome !== "SIGNED_OUT") { setSignOut({ state: "FAILED" }); return; }
+    // SESSION_ABSENT here means the session is already gone, so login is the next step.
+    if (attempt.outcome !== "SIGNED_OUT" && attempt.outcome !== "SESSION_ABSENT") { setSignOut({ state: "FAILED" }); return; }
     // Navigation failure keeps the explicit login link visible.
     setSignOut({ state: "REDIRECTING", redirectTo: attempt.redirectTo });
     try { window.location.replace(attempt.redirectTo); } catch { /* manual link remains */ }
@@ -940,13 +959,17 @@ export function LineAccountClient({
     setMessage("");
     const attempt = await postLineSignOut(proof);
     signOutRunning.current = false;
+    // SIGNED_OUT is the only outcome proving the UNLINK committed for this session.
     if (attempt.outcome === "SIGNED_OUT") { showUnlinked(null); applySignOut(attempt); return; }
-    if (attempt.outcome === "SESSION_CHANGED") {
+    if (attempt.outcome === "SESSION_CHANGED" || attempt.outcome === "SESSION_ABSENT") {
+      // Nothing proves the outcome here; retry reloads the page, which requires a fresh sign-in.
       unlinkProof.current = null;
-      setMessage(sessionChangedMessage);
+      setMessage(attempt.outcome === "SESSION_CHANGED" ? sessionChangedMessage : sessionAbsentMessage);
       setView("FAILURE");
       return;
     }
+    // Too old to authorize sign-out: the reloaded page shows the authoritative binding.
+    if (attempt.outcome === "PROOF_EXPIRED") { reloadPage(); return; }
     // Still not committed on an explicit retry: the reloaded page is authoritative.
     if (attempt.outcome === "NOT_COMMITTED" && retry) { reloadPage(); return; }
     setMessage(failureMessage);

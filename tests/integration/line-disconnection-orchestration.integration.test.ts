@@ -293,7 +293,7 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     await expect(verifyLineUnlinkCompletion({ ...intent, challenge: "x".repeat(43) }, deps)).rejects.toThrow();
     const linkIntent = await createLineAccountIntent("LINK", otherDependencies(other.id));
     await expect(verifyLineUnlinkCompletion(linkIntent, otherDependencies(other.id))).rejects.toThrow();
-    await expect(verifyLineUnlinkCompletion(intent, { ...deps, now: () => new Date(now.getTime() + 15 * 60_000 + 1) })).rejects.toThrow();
+    expect(await verifyLineUnlinkCompletion(intent, { ...deps, now: () => new Date(now.getTime() + 15 * 60_000 + 1) })).toBe("PROOF_EXPIRED");
     expect(await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).toMatchObject({ lifecycleVersion: 2 });
   });
   it("idempotent already-linked completion cannot bypass pending obligations", async () => {

@@ -37,11 +37,12 @@ describe("DEMI sign-out after LINE Disconnection", () => {
     expect(mocks.signOut).not.toHaveBeenCalled();
   });
 
-  it("keeps the session when the UNLINK did not commit", async () => {
-    mocks.completion.mockResolvedValue("NOT_COMMITTED");
+  it.each(["NOT_COMMITTED", "PROOF_EXPIRED"] as const)("keeps the session for %s and reports that exact cause", async (completion) => {
+    mocks.completion.mockResolvedValue(completion);
     const response = await POST(request());
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ code: "NOT_COMMITTED" });
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toMatchObject({ code: completion }); expect(body).not.toHaveProperty("status");
     expect(mocks.signOut).not.toHaveBeenCalled(); expect(mocks.unlink).not.toHaveBeenCalled();
   });
 
@@ -62,11 +63,13 @@ describe("DEMI sign-out after LINE Disconnection", () => {
     expect(mocks.signOut).not.toHaveBeenCalled();
   });
 
-  it("treats an already-ended session as signed out without another sign-out call", async () => {
+  it("reports a missing session as SESSION_ABSENT, never as signed out after a committed unlink", async () => {
     mocks.completion.mockRejectedValue(new UnauthenticatedError());
     const response = await POST(request());
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ status: "SIGNED_OUT" });
+    expect(response.status).toBe(401);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toMatchObject({ code: "SESSION_ABSENT", redirectTo: "/login?returnTo=%2Fline%2Faccount" });
+    expect(body).not.toHaveProperty("status");
     expect(mocks.signOut).not.toHaveBeenCalled();
   });
 

@@ -486,7 +486,8 @@ export async function unlinkLineAccount(
 
 const UNLINK_COMPLETION_WINDOW_MS = 15 * 60 * 1000;
 
-export type LineUnlinkCompletion = "COMMITTED" | "NOT_COMMITTED" | "SESSION_CHANGED";
+/** PROOF_EXPIRED: committed long enough ago that it no longer authorizes ending a session. */
+export type LineUnlinkCompletion = "COMMITTED" | "NOT_COMMITTED" | "SESSION_CHANGED" | "PROOF_EXPIRED";
 
 /**
  * Server evidence for the Disconnection's final sign-out: whether the UNLINK
@@ -509,7 +510,7 @@ export async function verifyLineUnlinkCompletion(
   }
   if (intent.userId !== session.userId || !lineSessionHashMatches(intent.sessionHash, session.sessionHash)) return "SESSION_CHANGED";
   if (!intent.consumedAt || intent.outcome !== LineAccountActionOutcome.SUCCEEDED) return "NOT_COMMITTED";
-  if (now.getTime() - intent.consumedAt.getTime() > UNLINK_COMPLETION_WINDOW_MS) throw new ForbiddenError();
+  if (now.getTime() - intent.consumedAt.getTime() > UNLINK_COMPLETION_WINDOW_MS) return "PROOF_EXPIRED";
   return "COMMITTED";
 }
 
