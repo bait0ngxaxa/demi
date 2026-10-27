@@ -524,15 +524,13 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await prisma.user.findUniqueOrThrow({ where: { id: owner.userId } })).toMatchObject({ status: UserStatus.ACTIVE });
     });
 
-    it.each([Role.HOSPITAL, Role.OSM])("rejects missing %s role in a combined same-Hospital pending activation", async (removedRole) => {
-      const { hospital, owner, pending, input, authSubject } = await setup();
-      await provisionHospitalMember(owner.actor, { contactPhone: "0812345678", nationalId: pending.nationalId, givenName: "สมชาย", familyName: "ทีม", targetHospitalId: hospital.id, profession: "NURSE" });
-      const token = removedRole === Role.OSM ? (await regenerateWorkforceActivation(owner.actor, {
-        userId: pending.userId, targetHospitalId: hospital.id, kind: "HOSPITAL_MEMBER", mode: "REMOTE",
-      })).activationToken : pending.token;
+    it.each([Role.HOSPITAL, Role.OSM])("rejects missing %s role in a legacy combined pending activation", async (removedRole) => {
+      const { hospital, pending, input, authSubject } = await setup();
+      await prisma.hospitalMembership.create({ data: { userId: pending.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: "NURSE", status: MembershipStatus.PROVISIONED } });
+      await prisma.userRole.create({ data: { userId: pending.userId, role: Role.HOSPITAL } });
       await prisma.userRole.deleteMany({ where: { userId: pending.userId, role: removedRole } });
       const provisionIdentity = vi.fn(provisioner(authSubject));
-      await expect(completeWorkforceActivation(token, input, { provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(completeWorkforceActivation(pending.token, input, { provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
       expect(provisionIdentity).not.toHaveBeenCalled();
     });
 
@@ -1313,16 +1311,15 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await identityState(patient.userId)).toEqual(before);
     });
 
-    it("keeps an ACTIVE PATIENT reusable for OSM and staff relationships without any new credential", async () => {
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("keeps an ACTIVE PATIENT reusable for %s without any new credential", async (kind) => {
       const { hospital, owner } = await setup();
       const patient = await createPatientIdentity(hospital.id, 12, UserStatus.ACTIVE);
-      const osm = await provisionOsm(owner.actor, { contactPhone: "0812345678", ...person(patient.nationalId), targetHospitalId: hospital.id });
-      const staff = await provisionHospitalMember(owner.actor, { contactPhone: "0812345678", ...person(patient.nationalId), targetHospitalId: hospital.id, profession: "NURSE" });
-
-      expect(osm).toMatchObject({ userId: patient.userId, reusedExistingUser: true, activationRequired: false, activationToken: null, relationshipStatus: MembershipStatus.ACTIVE });
-      expect(staff).toMatchObject({ userId: patient.userId, activationToken: null, relationshipStatus: MembershipStatus.ACTIVE });
+      const result = kind === "OSM"
+        ? await provisionOsm(owner.actor, { contactPhone: "0812345678", ...person(patient.nationalId), targetHospitalId: hospital.id })
+        : await provisionHospitalMember(owner.actor, { contactPhone: "0812345678", ...person(patient.nationalId), targetHospitalId: hospital.id, profession: "NURSE" });
+      expect(result).toMatchObject({ userId: patient.userId, reusedExistingUser: true, activationRequired: false, activationToken: null, relationshipStatus: MembershipStatus.ACTIVE });
       expect(await identityState(patient.userId)).toMatchObject({
-        user: { status: UserStatus.ACTIVE, authSubject: patient.authSubject }, roles: [Role.HOSPITAL, Role.OSM, Role.PATIENT], activations: 0, patientRelationships: 1,
+        user: { status: UserStatus.ACTIVE, authSubject: patient.authSubject }, roles: kind === "OSM" ? [Role.OSM, Role.PATIENT] : [Role.HOSPITAL, Role.PATIENT], activations: 0, patientRelationships: 1,
       });
       expect(await prisma.user.count({ where: { personId: patient.personId } })).toBe(1);
     });
@@ -1438,13 +1435,15 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await prisma.osmHospitalRelationship.count({ where: { userId: active.userId, status: MembershipStatus.ACTIVE } })).toBe(3);
     });
 
-    it("keeps same-Hospital MEMBER + OSM onboarding on one activation", async () => {
+    it("denies adding MEMBER to same-Hospital pending OSM without changing its activation", async () => {
       const { a, ownerA } = await setup();
       const pending = await provisionPendingOsm(ownerA, a.id, 22);
-      const staff = await provisionHospitalMember(ownerA.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: a.id, profession: "NURSE" });
-      expect(staff).toMatchObject({ userId: pending.userId, activationToken: null });
+      const before = await identityState(pending.userId);
+      await expect(provisionHospitalMember(ownerA.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: a.id, profession: "NURSE" }))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await identityState(pending.userId)).toEqual(before);
       await complete(pending.token, pending.nationalId);
-      expect(await prisma.hospitalMembership.findFirstOrThrow({ where: { userId: pending.userId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
+      expect(await prisma.hospitalMembership.count({ where: { userId: pending.userId } })).toBe(0);
       expect(await prisma.osmHospitalRelationship.findFirstOrThrow({ where: { userId: pending.userId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     });
 
@@ -1726,4 +1725,115 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await prisma.osmHospitalRelationship.count()).toBe(0);
     });
   });
+
+  describe("Hospital/OSM relationship compatibility", () => {
+    const person = (sequence: number) => ({ nationalId: nationalIdFor(sequence), givenName: "ทดสอบ", familyName: "ความสัมพันธ์", contactPhone: "0812345678" });
+    async function setup() {
+      const a = await createHospital("COMPAT-A");
+      const b = await createHospital("COMPAT-B");
+      const ownerA = await createMember(a.id, MembershipType.OWNER, 9001);
+      const ownerB = await createMember(b.id, MembershipType.OWNER, 9002);
+      return { a, b, ownerA, ownerB };
+    }
+
+    const hospitalCases = (["OWNER", "MEMBER"] as const).flatMap((membershipType) =>
+      (["DOCTOR", "NURSE", "COORDINATOR", "OTHER", null] as const).flatMap((profession) =>
+        (["ACTIVE", "PROVISIONED", "INVITED", "SUSPENDED"] as const).flatMap((status) =>
+          [false, true].map((crossHospital) => ({ membershipType, profession, status, crossHospital })))));
+    it.each(hospitalCases)("denies Hospital → OSM: $membershipType/$profession/$status cross=$crossHospital atomically", async ({ membershipType, profession, status, crossHospital }) => {
+      const { a, b, ownerA, ownerB } = await setup();
+      const target = await createMember(a.id, membershipType, 9003);
+      await prisma.hospitalMembership.updateMany({ where: { userId: target.userId }, data: { profession, status } });
+      const before = await identityState(target.userId);
+      const personBefore = await prisma.person.findUniqueOrThrow({ where: { id: target.actor.personId } });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await expect(provisionOsm((crossHospital ? ownerB : ownerA).actor, { ...person(9003), targetHospitalId: crossHospital ? b.id : a.id }))
+          .rejects.toMatchObject({ code: "CONFLICT" });
+      }
+      expect(await identityState(target.userId)).toEqual(before);
+      expect(await prisma.person.findUniqueOrThrow({ where: { id: target.actor.personId } })).toEqual(personBefore);
+    });
+
+    it.each((["ACTIVE", "PROVISIONED", "INVITED", "SUSPENDED"] as const).flatMap((status) =>
+      [false, true].map((crossHospital) => ({ status, crossHospital }))))("denies OSM → MEMBER: $status cross=$crossHospital", async ({ status, crossHospital }) => {
+      const { a, b, ownerA, ownerB } = await setup();
+      const target = await createActiveOsm(a.id, 9003);
+      await prisma.osmHospitalRelationship.updateMany({ where: { userId: target.userId }, data: { status } });
+      const before = await identityState(target.userId);
+      await expect(provisionHospitalMember((crossHospital ? ownerB : ownerA).actor, { ...person(9003), targetHospitalId: crossHospital ? b.id : a.id, profession: "OTHER" }))
+        .rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await identityState(target.userId)).toEqual(before);
+    });
+
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("allows ENDED-only opposite history and orphan roles for %s", async (kind) => {
+      const { a, b, ownerB } = await setup();
+      const target = kind === "OSM" ? await createMember(a.id, MembershipType.OWNER, 9003) : await createActiveOsm(a.id, 9003);
+      if (kind === "OSM") await prisma.hospitalMembership.updateMany({ where: { userId: target.userId }, data: { status: MembershipStatus.ENDED } });
+      else await prisma.osmHospitalRelationship.updateMany({ where: { userId: target.userId }, data: { status: MembershipStatus.ENDED } });
+      const result = kind === "OSM"
+        ? await provisionOsm(ownerB.actor, { ...person(9003), targetHospitalId: b.id })
+        : await provisionHospitalMember(ownerB.actor, { ...person(9003), targetHospitalId: b.id, profession: "NURSE" });
+      expect(result).toMatchObject({ userId: target.userId, reusedExistingUser: true, activationToken: null });
+      expect(await prisma.userRole.count({ where: { userId: target.userId } })).toBe(2);
+      if (kind === "OSM") expect(await prisma.hospitalMembership.count({ where: { userId: target.userId, status: MembershipStatus.ENDED } })).toBe(1);
+      else expect(await prisma.osmHospitalRelationship.count({ where: { userId: target.userId, status: MembershipStatus.ENDED } })).toBe(1);
+    });
+
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("keeps compatible %s identity reuse across Hospitals", async (kind) => {
+      const { a, b, ownerA, ownerB } = await setup();
+      const patient = await createPatientIdentity(a.id, 9003, UserStatus.ACTIVE);
+      for (const [owner, hospital] of [[ownerA, a], [ownerB, b]] as const) {
+        const input = { ...person(9003), targetHospitalId: hospital.id };
+        const result = kind === "OSM" ? await provisionOsm(owner.actor, input) : await provisionHospitalMember(owner.actor, { ...input, profession: "DOCTOR" });
+        expect(result).toMatchObject({ userId: patient.userId, activationToken: null });
+      }
+      expect(await prisma.userRole.count({ where: { userId: patient.userId } })).toBe(2);
+      expect(await prisma.patientHospitalRelationship.count()).toBe(1);
+      expect(await prisma.workforceActivation.count()).toBe(0);
+    });
+
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("preserves bulk %s conflict receipts, partial success and replay", async (kind) => {
+      const { a, b, ownerB } = await setup();
+      const target = kind === "OSM" ? await createMember(a.id, MembershipType.MEMBER, 9003) : await createActiveOsm(a.id, 9003);
+      const before = await identityState(target.userId);
+      const input = { kind, submissionId: `${Date.now()}.${randomUUID()}`, targetHospitalId: b.id,
+        rows: [9003, 9004].map((sequence) => ({ ...person(sequence), ...(kind === "HOSPITAL_MEMBER" ? { profession: "OTHER" } : {}) })) };
+      const result = await provisionWorkforceBulk(ownerB.actor, input);
+      expect(result.rows).toMatchObject([{ rowNumber: 1, status: "invalid", reason: "CONFLICT" }, { rowNumber: 2, status: "created" }]);
+      expect(await provisionWorkforceBulk(ownerB.actor, input)).toEqual(result);
+      expect(await identityState(target.userId)).toMatchObject({ ...before, audits: expect.any(Number) });
+      expect(await prisma.workforceActivation.count()).toBe(1);
+    });
+
+    it.each([false, true])("serializes opposite grants for an existing identity cross=%s", async (crossHospital) => {
+      const { a, b, ownerA, ownerB } = await setup();
+      const patient = await createPatientIdentity(a.id, 9003, UserStatus.ACTIVE);
+      const results = await Promise.allSettled([
+        provisionOsm(ownerA.actor, { ...person(9003), targetHospitalId: a.id }),
+        provisionHospitalMember((crossHospital ? ownerB : ownerA).actor, { ...person(9003), targetHospitalId: crossHospital ? b.id : a.id, profession: "OTHER" }),
+      ]);
+      expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(results.find(({ status }) => status === "rejected")).toMatchObject({ reason: { code: "CONFLICT" } });
+      const state = await identityState(patient.userId);
+      expect(state.memberships + state.osm).toBe(1);
+      expect(state.roles).toContain(Role.PATIENT);
+      expect(state.roles).toHaveLength(2);
+      expect(state.activations).toBe(0);
+    });
+
+    it("serializes opposite grants resolving the same new Person", async () => {
+      const { a, ownerA } = await setup();
+      const results = await Promise.allSettled([
+        provisionOsm(ownerA.actor, { ...person(9003), targetHospitalId: a.id }),
+        provisionHospitalMember(ownerA.actor, { ...person(9003), targetHospitalId: a.id, profession: "OTHER" }),
+      ]);
+      expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      const target = await prisma.user.findFirstOrThrow({ where: { person: { identityKeyHash: hashIdentityReference({ namespace: "thai-national-id", value: nationalIdFor(9003) }) } } });
+      const state = await identityState(target.id);
+      expect(state.memberships + state.osm).toBe(1);
+      expect(state.roles).toHaveLength(1);
+      expect(state.activations).toBe(1);
+    });
+  });
+
 });

@@ -36,6 +36,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
@@ -1160,6 +1161,7 @@ async function createOrReuseWorkforceIdentity(
   );
 
   const { personId, user, reusedExistingUser } = await resolveWorkforceGrantee(transaction, input);
+  await assertWorkforceRelationshipsCompatible(transaction, user.id, input.kind === "OSM" ? "OSM" : "HOSPITAL");
 
   await transaction.userRole.upsert({
     where: {
