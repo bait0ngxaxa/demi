@@ -173,6 +173,8 @@ export type HospitalReportingPageProjection = {
   /** Phase F: whether Patients whose care ended are part of this report. */
   cohort: HospitalReportCohort;
   counts: HospitalReportingSummary;
+  /** Full-cohort Program record-presence counts; independent of filters and pagination. */
+  serviceProcess: HospitalReportingServiceProcessSummary;
   filters: HospitalReportFilters;
   roundProgress: { rounds: readonly number[]; afterRecorded: number; completed: number };
   page: {
@@ -196,12 +198,18 @@ export type ParentChildHospitalReportingSection<T> = {
   value: T;
 };
 
-export type ParentChildHospitalReportingServiceProcessSummary = {
+/**
+ * Programs with the Service 1 result the workbook reports (round 1; dream card round 3). The four counts
+ * overlap: one Program can hold several records, so they must never be summed.
+ */
+export type HospitalReportingServiceProcessSummary = {
   programsWithRoutineRecord: { grain: "PATIENT_PROGRAM"; value: number };
   programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM"; value: number };
   programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM"; value: number };
   programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM"; value: number };
 };
+
+export type ParentChildHospitalReportingServiceProcessSummary = HospitalReportingServiceProcessSummary;
 
 export type ParentChildHospitalReportingProjection = {
   operation: "PARENT_CHILD_REPORT";
@@ -217,7 +225,7 @@ export type ParentChildHospitalReportingProjection = {
 
 export type ParentChildHospitalReportPageProjection = ParentChildHospitalReportingProjection;
 
-export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page" | "filters" | "roundProgress"> & {
+export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "page" | "filters" | "roundProgress" | "serviceProcess"> & {
   programs: readonly HospitalReportProgramRow[];
 };
 

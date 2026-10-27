@@ -2,6 +2,8 @@
 
 > **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
 
+> **Bounded dashboard enhancement — 2026-10-27 ([RPT-DASH-01](../phases/PHASE_RPT_DASH_01_HOSPITAL_SERVICE_DASHBOARD.md)):** exact-Hospital report pages (direct OWNER, Global ADMIN selected Hospital) แสดง KPI และกราฟจาก source-backed values เดิม และเพิ่ม `serviceProcess` (จำนวน Program ที่มีบันทึก Routine / Floating Chart / Dream Card / Confidence ตาม cohort ที่เลือก) ด้วย predicate เดียวกับ exact-Child summary. หน้า Parent exact-Child วาดกราฟจาก 9 ค่าเดิมเท่านั้น. ไม่เพิ่ม clinical metric, percentage, trend, network/global aggregate, export field, role หรือ capability และไม่ปลด real-data gate ใน §5.
+
 - **สถานะ:** `CONFIRMED_OWNER_REQUIREMENT` สำหรับ OR-RPT-01–05; เอกสารนี้เป็นแหล่งความจริงปัจจุบันด้าน product intent
 - **ปรับปรุง:** 2026-10-17
 - **ขอบเขต:** การอ่านและส่งออกผลรายงานของ Hospital; ไม่อนุมัติ runtime changes หรือการเปิดเผย field ที่ยังไม่ยืนยัน และไม่ถือ implementation evidence เป็น real-data release approval

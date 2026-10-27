@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CountBarChart } from "@/components/reporting-charts/count-bar-chart";
+import { ProgramStatusDonut } from "@/components/reporting-charts/program-status-donut";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -10,6 +12,7 @@ import type { ParentChildHospitalReportTargetGroup } from "@/modules/reporting/s
 
 import { ExportButton } from "./hospital-report-workspace";
 import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
+import { SERVICE_PROCESS_CHART_DESCRIPTION, serviceProcessCategories, serviceProcessNote } from "./report-chart-categories";
 
 export function ParentChildHospitalReportWorkspace({
   hospitals,
@@ -63,6 +66,25 @@ export function ParentChildHospitalReportWorkspace({
         <Alert className="mt-5" variant="info">
           แสดงรายงานของโรงพยาบาลลูกข่ายที่เลือกเท่านั้น สิทธิ์นี้ไม่ครอบคลุมการจัดการบัญชี ข้อมูลผู้ป่วย หรือรายงานของโรงพยาบาลอื่น ไฟล์ Excel มีเฉพาะตัวเลขสรุป 9 ค่านี้ ไม่รวมผู้ที่สิ้นสุดการดูแล และทุกการส่งออกถูกบันทึกไว้
         </Alert>
+
+        {/* Visualizes only the nine allowlisted values already rendered below; no links, tooltips or extra fields. */}
+        <div className="mt-6 grid min-w-0 gap-4 @5xl/workspace:grid-cols-2">
+          <ProgramStatusDonut
+            active={dashboard.programs.active}
+            completed={dashboard.programs.completed}
+            headingId="parent-child-report-status-chart"
+          />
+          <CountBarChart
+            categories={serviceProcessCategories(serviceProcess)}
+            description={SERVICE_PROCESS_CHART_DESCRIPTION}
+            emptyMessage="ยังไม่มี Program ที่มีบันทึกกิจกรรมเหล่านี้"
+            headingId="parent-child-report-service-process-chart"
+            listLabel="จำนวน Program ที่มีบันทึกกิจกรรมแต่ละประเภท"
+            note={serviceProcessNote(dashboard.programs.total)}
+            scaleMax={dashboard.programs.total}
+            title="บันทึกกิจกรรมบริการ 1"
+          />
+        </div>
 
         <section aria-labelledby="parent-child-report-dashboard-heading" className="mt-6 min-w-0">
           <div className="min-w-0">

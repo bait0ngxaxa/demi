@@ -51,6 +51,7 @@ import type {
   HospitalReportRecord,
   HospitalReportingDataset,
   HospitalReportingPageProjection,
+  HospitalReportingServiceProcessSummary,
   HospitalReportingSummary,
   ParentChildHospitalReportingProjection,
 } from "../projections/hospital-report-projection";
@@ -890,26 +891,14 @@ async function loadSummary(
   };
 }
 
-type ParentChildHospitalReportingSourceSnapshot = {
-  dashboard: HospitalReportingSummary;
-  serviceProcess: {
-    programsWithRoutineRecord: number;
-    programsWithFloatingChartRecord: number;
-    programsWithDreamCardRecord: number;
-    programsWithConfidenceRecord: number;
-  };
-};
-
-async function loadParentChildHospitalReportingSourceSnapshot(
+async function loadServiceProcessSummary(
   database: HospitalReportQueryDatabase,
   hospitalId: string,
-): Promise<ParentChildHospitalReportingSourceSnapshot> {
-  // This exact-Child active cohort is not a historical Parent disclosure filter: access follows only the current
-  // active network association (ADR-0016), so a former Parent loses the report immediately.
-  const programWhere = reportHospitalProgramWhere(hospitalId);
-  const [dashboard, programsWithRoutineRecord, programsWithFloatingChartRecord,
+  cohort: HospitalReportCohort = "ACTIVE",
+): Promise<HospitalReportingServiceProcessSummary> {
+  const programWhere = reportHospitalProgramWhere(hospitalId, cohort);
+  const [programsWithRoutineRecord, programsWithFloatingChartRecord,
     programsWithDreamCardRecord, programsWithConfidenceRecord] = await Promise.all([
-    loadSummary(database, hospitalId),
     // Programs (not per-round rows) with the result the workbook reports: round 1, dream card round 3.
     database.patientProgram.count({
       where: { AND: [programWhere, { serviceOneRoutines: { some: { roundNumber: SERVICE_ONE_HOME_ROUND } } }] },
@@ -926,14 +915,30 @@ async function loadParentChildHospitalReportingSourceSnapshot(
   ]);
 
   return {
-    dashboard,
-    serviceProcess: {
-      programsWithRoutineRecord,
-      programsWithFloatingChartRecord,
-      programsWithDreamCardRecord,
-      programsWithConfidenceRecord,
-    },
+    programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: programsWithRoutineRecord },
+    programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: programsWithFloatingChartRecord },
+    programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: programsWithDreamCardRecord },
+    programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: programsWithConfidenceRecord },
   };
+}
+
+type ParentChildHospitalReportingSourceSnapshot = {
+  dashboard: HospitalReportingSummary;
+  serviceProcess: HospitalReportingServiceProcessSummary;
+};
+
+async function loadParentChildHospitalReportingSourceSnapshot(
+  database: HospitalReportQueryDatabase,
+  hospitalId: string,
+): Promise<ParentChildHospitalReportingSourceSnapshot> {
+  // This exact-Child active cohort is not a historical Parent disclosure filter: access follows only the current
+  // active network association (ADR-0016), so a former Parent loses the report immediately.
+  const [dashboard, serviceProcess] = await Promise.all([
+    loadSummary(database, hospitalId),
+    loadServiceProcessSummary(database, hospitalId),
+  ]);
+
+  return { dashboard, serviceProcess };
 }
 
 function projectParentChildHospitalReportingContent(
@@ -942,27 +947,7 @@ function projectParentChildHospitalReportingContent(
   return {
     state: "AVAILABLE",
     dashboard: { state: "AVAILABLE", value: source.dashboard },
-    serviceProcess: {
-      state: "AVAILABLE",
-      value: {
-        programsWithRoutineRecord: {
-          grain: "PATIENT_PROGRAM",
-          value: source.serviceProcess.programsWithRoutineRecord,
-        },
-        programsWithFloatingChartRecord: {
-          grain: "PATIENT_PROGRAM",
-          value: source.serviceProcess.programsWithFloatingChartRecord,
-        },
-        programsWithDreamCardRecord: {
-          grain: "PATIENT_PROGRAM",
-          value: source.serviceProcess.programsWithDreamCardRecord,
-        },
-        programsWithConfidenceRecord: {
-          grain: "PATIENT_PROGRAM",
-          value: source.serviceProcess.programsWithConfidenceRecord,
-        },
-      },
-    },
+    serviceProcess: { state: "AVAILABLE", value: source.serviceProcess },
   };
 }
 
@@ -1091,7 +1076,7 @@ async function loadHospitalReportingPage(
   const scope = reportHospitalProgramWhere(access.hospital.id, cohort);
   const filteredWhere: Prisma.PatientProgramWhereInput = { ...scope, AND: [reportFiltersWhere(filters)] };
   const backwards = cursor?.direction === "previous";
-  const [records, summary, total, roundCounts, afterRecorded] = await Promise.all([
+  const [records, summary, total, roundCounts, afterRecorded, serviceProcess] = await Promise.all([
     database.patientProgram.findMany({
       where: { ...scope, ...reportCursorWhere(cursor), AND: [reportFiltersWhere(filters)] },
       orderBy: [{ startedAt: backwards ? "asc" : "desc" }, { id: backwards ? "asc" : "desc" }],
@@ -1106,6 +1091,7 @@ async function loadHospitalReportingPage(
       _count: { _all: true },
     }),
     database.patientProgram.count({ where: { AND: [scope, reportFiltersWhere({ search: "", status: "", progress: "AFTER_RECORDED" })] } }),
+    loadServiceProcessSummary(database, access.hospital.id, cohort),
   ]);
   const hasMore = records.length > pageSize;
   const slicedRecords = records.slice(0, pageSize);
@@ -1141,6 +1127,7 @@ async function loadHospitalReportingPage(
     },
     cohort,
     counts: summary,
+    serviceProcess,
     filters,
     roundProgress: { rounds, afterRecorded, completed: summary.programs.completed },
     page: {

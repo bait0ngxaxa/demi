@@ -464,10 +464,32 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
         endedAt: new Date(), endedByUserId: owner.userId, endReason: "สิ้นสุดการดูแลใน fixture",
       } });
     }
+    const programAt = (index: number): string => {
+      const id = programs[index];
+      if (id === undefined) throw new Error(`Missing fixture Program ${index}`);
+      return id;
+    };
+    // Service 1 records: two rows for one Program count once; an ended relationship counts only with history;
+    // a round-2 routine is not the reported round-1 result; another Hospital's record never counts.
+    await prisma.patientProgramServiceOneRoutine.create({ data: { patientProgramId: programAt(1), roundNumber: 1, recordedByUserId: owner.userId } });
+    await prisma.patientProgramServiceOneRoutine.create({ data: { patientProgramId: programAt(1), roundNumber: 2, recordedByUserId: owner.userId } });
+    await prisma.patientProgramServiceOneRoutine.create({ data: { patientProgramId: programAt(8), roundNumber: 1, recordedByUserId: owner.userId } });
+    await prisma.patientProgramServiceOneRoutine.create({ data: { patientProgramId: programAt(9), roundNumber: 1, recordedByUserId: owner.userId } });
+    await prisma.patientProgramServiceOneFloatingChart.create({ data: { patientProgramId: programAt(2), roundNumber: 1, recordedByUserId: owner.userId } });
+    await prisma.patientProgramServiceOneRoutine.create({ data: { patientProgramId: programAt(3), roundNumber: 2, recordedByUserId: owner.userId } });
     const active = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id });
     expect(active.roundProgress).toEqual({ rounds: [1, 1, 1, 1, 1, 1, 1], afterRecorded: 1, completed: 2 });
+    expect(active.serviceProcess).toEqual({
+      programsWithRoutineRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+      programsWithFloatingChartRecord: { grain: "PATIENT_PROGRAM", value: 1 },
+      programsWithDreamCardRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+      programsWithConfidenceRecord: { grain: "PATIENT_PROGRAM", value: 0 },
+    });
+    const searched = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, search: "UX-0" });
+    expect(searched.serviceProcess).toEqual(active.serviceProcess);
     expect(active.page.total).toBe(10);
     const history = await getHospitalReportingPage(owner.actor, { hospitalId: hospital.id, cohort: "INCLUDE_ENDED" });
+    expect(history.serviceProcess.programsWithRoutineRecord.value).toBe(2);
     expect(history.roundProgress).toEqual({ rounds: [1, 1, 1, 2, 1, 1, 1], afterRecorded: 2, completed: 3 });
     for (const report of [active, history]) {
       expect(report.roundProgress.rounds.reduce((sum, count) => sum + count, 0)
@@ -1235,6 +1257,8 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
 
     const directChildReport = await getHospitalReportingPage(childOwner.actor, { hospitalId: child.id });
     expect(parentChildProjection.content.dashboard.value).toEqual(directChildReport.counts);
+    // The direct OWNER dashboard reuses the exact-Child record-presence predicates for the same ACTIVE cohort.
+    expect(directChildReport.serviceProcess).toEqual(parentChildProjection.content.serviceProcess.value);
     expect(directChildReport.counts).toEqual({
       patientHospitalRelationships: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 3 },
       relationshipsWithoutProgram: { grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: 1 },
