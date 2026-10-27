@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
-import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { WorkforceRelationshipConflictError, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ForbiddenError, ConflictError } from "@/shared/errors/application-error";
 
 import {
@@ -900,6 +900,15 @@ describe("WF-PHONE action", () => {
     formData.set("passwordConfirmation", "target-owned-workforce-password");
     expect(await completeWorkforceActivationAction("one-time-token", "ACTIVATION", initialWorkforceCompletionActionState, formData))
       .toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
+  });
+
+  it("returns generic feedback for a cross-Hospital conflict without identity details", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner", personId: "person", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    mockedProvisionHospitalMember.mockRejectedValue(new ConflictError(WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE));
+    const result = await provisionHospitalMemberAction(initialWorkforceProvisionActionState, createStaffFormData());
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    const serialized = JSON.stringify(result);
+    for (const value of ["อสม.", "บุคลากรโรงพยาบาล", "1000000000009", "DOCTOR"]) expect(serialized).not.toContain(value);
   });
 
 });

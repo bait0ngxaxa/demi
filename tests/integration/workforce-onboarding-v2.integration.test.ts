@@ -19,6 +19,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { completePatientActivation, getPatientActivationDetails, issuePatientActivation } from "@/modules/patient-activation/services/patient-activation-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
 import {
   completeWorkforceActivation,
@@ -1417,7 +1418,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const before = await identityState(pending.userId);
 
       await expect(provisionOsm(ownerB.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: b.id }))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("โรงพยาบาลอื่น") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ไม่เข้าเงื่อนไข") });
       await expect(provisionHospitalMember(ownerB.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: b.id, profession: "NURSE" }))
         .rejects.toMatchObject({ code: "CONFLICT" });
       await expect(regenerateWorkforceActivation(ownerB.actor, { userId: pending.userId, targetHospitalId: b.id, kind: "OSM", mode: "REMOTE" }))
@@ -1770,6 +1771,44 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(await identityState(target.userId)).toEqual(before);
     });
 
+    it.each(["OSM", "HOSPITAL_MEMBER"] as const)("scoped disclosure hides cross-Hospital %s conflicts from the owner", async (kind) => {
+      const { a, b, ownerB } = await setup();
+      const target = kind === "OSM" ? await createMember(a.id, MembershipType.MEMBER, 9003) : await createActiveOsm(a.id, 9003);
+      let caught: unknown;
+      try {
+        const input = { ...person(9003), targetHospitalId: b.id };
+        if (kind === "OSM") await provisionOsm(ownerB.actor, input);
+        else await provisionHospitalMember(ownerB.actor, { ...input, profession: "OTHER" });
+      } catch (error) { caught = error; }
+      expect(caught).toMatchObject({ code: "CONFLICT", name: "ConflictError", message: "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ" });
+      const serialized = JSON.stringify({ ...(caught as object), message: (caught as Error).message, name: (caught as Error).name });
+      for (const secret of [a.id, nationalIdFor(9003), "บุคลากรโรงพยาบาล", "อสม.", "DOCTOR", "ACTIVE"]) expect(serialized).not.toContain(secret);
+      expect((await identityState(target.userId)).activations).toBe(0);
+    });
+
+    it("scoped disclosure explains a local conflict even with additional external relationships", async () => {
+      const { a, b, ownerA } = await setup();
+      const target = await createMember(a.id, MembershipType.MEMBER, 9003);
+      await prisma.hospitalMembership.create({ data: { userId: target.userId, hospitalId: b.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.SUSPENDED } });
+      await expect(provisionOsm(ownerA.actor, { ...person(9003), targetHospitalId: a.id }))
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("บุคลากรโรงพยาบาล") });
+    });
+
+    it("scoped disclosure explains a local OSM conflict to its authorized Hospital owner", async () => {
+      const { a, ownerA } = await setup();
+      await createActiveOsm(a.id, 9003);
+      await expect(provisionHospitalMember(ownerA.actor, { ...person(9003), targetHospitalId: a.id, profession: "NURSE" }))
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("อสม.") });
+    });
+
+    it("scoped disclosure defaults to generic for absent or forged authorization", async () => {
+      const { a } = await setup();
+      const target = await createMember(a.id, MembershipType.MEMBER, 9003);
+      const generic = "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ";
+      await expect(prisma.$transaction(tx => assertWorkforceRelationshipsCompatible(tx, target.userId, "OSM"))).rejects.toMatchObject({ code: "CONFLICT", message: generic });
+      await expect(prisma.$transaction(tx => assertWorkforceRelationshipsCompatible(tx, target.userId, "OSM", { actorUserId: target.userId, hospitalId: a.id }))).rejects.toMatchObject({ code: "CONFLICT", message: generic });
+    });
+
     it.each(["OSM", "HOSPITAL_MEMBER"] as const)("allows ENDED-only opposite history and orphan roles for %s", async (kind) => {
       const { a, b, ownerB } = await setup();
       const target = kind === "OSM" ? await createMember(a.id, MembershipType.OWNER, 9003) : await createActiveOsm(a.id, 9003);
@@ -1862,7 +1901,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const before = await identityState(pending.userId);
       const provider = vi.fn();
       await expect(completeWorkforceActivation(pending.token, completion(pending.nationalId), { provisionIdentity: provider }))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("กระทบยอด") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ไม่เข้าเงื่อนไข") });
       expect(provider).not.toHaveBeenCalled();
       await expect(regenerateWorkforceActivation(owner.actor, { userId: pending.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" }))
         .rejects.toMatchObject({ code: "CONFLICT" });

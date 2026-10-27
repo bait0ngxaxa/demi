@@ -36,7 +36,7 @@ import {
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
 import {
@@ -1016,7 +1016,7 @@ async function assertTargetUserCanReceiveWorkforce(
 const PATIENT_IDENTITY_CREDENTIAL_MESSAGE =
   "บัญชีนี้เป็นบัญชีผู้ป่วยที่ยังไม่ได้เปิดใช้งาน จึงไม่สามารถเพิ่มสิทธิ์บุคลากรหรือออกลิงก์เปิดใช้งานบุคลากรได้ ผู้ป่วยต้องเปิดใช้งานบัญชีของตนเองก่อน";
 const CROSS_HOSPITAL_PENDING_MESSAGE =
-  "บัญชีนี้มีสิทธิ์บุคลากรที่รอเปิดใช้งานในโรงพยาบาลอื่นอยู่แล้ว จึงยังเพิ่มสิทธิ์ในโรงพยาบาลนี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบก่อน";
+  WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE;
 
 /**
  * The first password is global to the User, not scoped to one role. A workforce issuer knows the national ID and
@@ -1163,7 +1163,7 @@ async function createOrReuseWorkforceIdentity(
   );
 
   const { personId, user, reusedExistingUser } = await resolveWorkforceGrantee(transaction, input);
-  await assertWorkforceRelationshipsCompatible(transaction, user.id, input.kind === "OSM" ? "OSM" : "HOSPITAL");
+  await assertWorkforceRelationshipsCompatible(transaction, user.id, input.kind === "OSM" ? "OSM" : "HOSPITAL", { actorUserId: input.actorUserId, hospitalId: input.hospitalId });
 
   await transaction.userRole.upsert({
     where: {

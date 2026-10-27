@@ -1,4 +1,5 @@
-import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { ConflictError } from "@/shared/errors/application-error";
+import { WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE, WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -103,6 +104,20 @@ describe("network report cache invalidation", () => {
     formData.set("mode", "REMOTE");
     expect(await issueChildOwnerLinkAction({ status: "IDLE" }, formData)).toMatchObject({ status: "ERROR", code: "CONFLICT", message: error.message });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("keeps Child OWNER cross-Hospital conflicts generic", async () => {
+    vi.clearAllMocks();
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example");
+    mocks.actor.mockResolvedValue({ userId: "parent-owner" });
+    mocks.issueChildOwnerLink.mockRejectedValue(new ConflictError(WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE));
+    const formData = new FormData();
+    formData.set("parentHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("childHospitalId", "22222222-2222-4222-8222-222222222222");
+    formData.set("mode", "REMOTE");
+    const result = await issueChildOwnerLinkAction({ status: "IDLE" }, formData);
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+    expect(JSON.stringify(result)).not.toMatch(/อสม\.|บุคลากรโรงพยาบาล/u);
   });
 
 });

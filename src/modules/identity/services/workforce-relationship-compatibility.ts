@@ -1,9 +1,12 @@
 import "server-only";
 
-import { MembershipStatus, type Prisma } from "@prisma/client";
+import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus, type Prisma } from "@prisma/client";
 import { ConflictError } from "@/shared/errors/application-error";
 
 export type WorkforceCategory = "HOSPITAL" | "OSM";
+
+export const WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE =
+  "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ";
 
 export class WorkforceRelationshipConflictError extends ConflictError {
   constructor(category?: WorkforceCategory) {
@@ -33,6 +36,7 @@ export async function assertWorkforceRelationshipsCompatible(
   transaction: Prisma.TransactionClient,
   userId: string,
   category?: WorkforceCategory,
+  disclosure?: { actorUserId: string; hospitalId: string },
 ): Promise<void> {
   const [membership, osm] = await Promise.all([
     transaction.hospitalMembership.findFirst({ where: { userId, status: { not: MembershipStatus.ENDED } }, select: { status: true } }),
@@ -40,6 +44,25 @@ export async function assertWorkforceRelationshipsCompatible(
   ]);
   if ((category === "OSM" && membership) || (category === "HOSPITAL" && osm) ||
     hasConflictingWorkforceRelationships(membership ? [membership] : [], osm ? [osm] : [])) {
-    throw new WorkforceRelationshipConflictError(category);
+    if (category && disclosure) {
+      // Disclosure requires both current persisted OWNER authority and an opposite-category relationship in that scope.
+      // The global conflict above remains authoritative even if this scoped read finds nothing.
+      const [owner, localConflict] = await Promise.all([
+        transaction.hospitalMembership.findFirst({
+          where: {
+            userId: disclosure.actorUserId, hospitalId: disclosure.hospitalId,
+            membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE,
+            hospital: { status: HospitalStatus.ACTIVE },
+            user: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } },
+          },
+          select: { id: true },
+        }),
+        category === "OSM"
+          ? transaction.hospitalMembership.findFirst({ where: { userId, hospitalId: disclosure.hospitalId, status: { not: MembershipStatus.ENDED } }, select: { id: true } })
+          : transaction.osmHospitalRelationship.findFirst({ where: { userId, hospitalId: disclosure.hospitalId, status: { not: MembershipStatus.ENDED } }, select: { id: true } }),
+      ]);
+      if (owner && localConflict) throw new WorkforceRelationshipConflictError(category);
+    }
+    throw new ConflictError(WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE);
   }
 }

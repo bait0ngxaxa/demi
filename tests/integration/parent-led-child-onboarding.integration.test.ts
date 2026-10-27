@@ -884,7 +884,10 @@ describe("O1-E: denials", () => {
     const invitee = await user([Role.OSM], { nationalId: nid });
     await db.osmHospitalRelationship.create({ data: { hospitalId: other.id, userId: invitee.userId, status } });
     const before = { hospitals: await db.hospital.count(), memberships: await db.hospitalMembership.count(), activations: await db.workforceActivation.count(), audits: await db.auditEvent.count(), users: await db.user.count(), people: await db.person.count() };
-    await expect(createChildFacility(parentOwner, childInput(parent.id, { nationalId: nid }))).rejects.toMatchObject({ code: "CONFLICT" });
+    const error = await createChildFacility(parentOwner, childInput(parent.id, { nationalId: nid })).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ code: "CONFLICT", name: "ConflictError" });
+    const serialized = JSON.stringify({ ...(error as object), message: (error as Error).message });
+    for (const secret of [other.id, nid, "อสม.", "บุคลากรโรงพยาบาล", status]) expect(serialized).not.toContain(secret);
     expect({ hospitals: await db.hospital.count(), memberships: await db.hospitalMembership.count(), activations: await db.workforceActivation.count(), audits: await db.auditEvent.count(), users: await db.user.count(), people: await db.person.count() }).toEqual(before);
     expect(await db.userRole.findMany({ where: { userId: invitee.userId }, select: { role: true } })).toEqual([{ role: Role.OSM }]);
   });
