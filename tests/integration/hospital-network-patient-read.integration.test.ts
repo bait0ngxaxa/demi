@@ -22,6 +22,7 @@ import {
 import { getPatientProgramPageContext } from "@/modules/patient-program/services/patient-program-query-service";
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { clearProgramRoundCompletions } from "./support/program-rounds";
 import {
   promoteHospitalOwner,
   setHospitalMembershipNetworkPatientReadGrant,
@@ -140,6 +141,7 @@ async function cleanup(): Promise<void> {
   await db.patientAppointmentCancellationRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointmentAssigneeAcceptance.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
+  await clearProgramRoundCompletions((await db.patientProgram.findMany({ where: { patientHospitalRelationship: relationshipWhere }, select: { id: true } })).map((program) => program.id));
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientHospitalProfile.deleteMany({ where: { relationship: relationshipWhere } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });

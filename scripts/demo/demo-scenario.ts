@@ -977,12 +977,15 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.patientAppointmentRescheduleRequest.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
     await tx.patientAppointmentCoordinationEvent.deleteMany({ where: { appointmentId: { in: appointmentIds } } });
 
-    // Program care data. Round completions and skips are append-only outside the demo-reset switch (20261102100000).
+    // Program care data. Round completions, skips, rounds and plan items are append-only outside the demo-reset
+    // switch (20261102100000, 20261124100000).
     await tx.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
     await tx.patientProgramRoundCompletion.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundStepSkip.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await tx.patientProgramRoundPlanItem.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await tx.patientProgramRound.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneArtifactAssociation.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneRoutineEntry.deleteMany({ where: { routine: program } });
     await tx.patientProgramServiceOneRoutine.deleteMany({ where: program });

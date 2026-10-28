@@ -4,13 +4,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ROUND_STEPS, type RoundStepState } from "../domain/round-steps";
+import { roundGuideline, type RoundStepState } from "../domain/round-steps";
 import { formatRoundDate, roundStepStatusLabel } from "./round-labels";
 import { RoundStepTimeline } from "./round-step-timeline";
 
 const at = new Date("2026-10-01T03:00:00Z");
-const steps: RoundStepState[] = ROUND_STEPS[1].slice(0, 4).map((definition, index) => ({
+const steps: RoundStepState[] = roundGuideline(1).slice(0, 4).map((definition, index) => ({
   ...definition,
+  planItemId: null,
   status: (["DONE", "SKIPPED", "LOCKED", "TODO"] as const)[index],
   evidence: index === 0 ? { at, byDisplayName: "สมศรี ผู้บันทึก" } : null,
   skip: index === 1 ? { stepCode: definition.code, reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", at, byDisplayName: null } : null,

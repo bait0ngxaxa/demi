@@ -17,6 +17,7 @@ import { correctPatientName, PatientNameCorrectionRequiresAdminError } from "@/m
 import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { clearProgramRoundCompletions } from "./support/program-rounds";
 import { getPatientSelfAssignedOsmPhone } from "@/modules/patient-self/services/patient-self-query-service";
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
@@ -130,6 +131,7 @@ async function cleanup(): Promise<void> {
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.lineAppointmentNotificationPreference.deleteMany({ where: { userId: { in: users } } });
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });
+  await clearProgramRoundCompletions((await db.patientProgram.findMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } }, select: { id: true } })).map((program) => program.id));
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientHospitalProfile.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });

@@ -9,6 +9,7 @@ import {
   buildProgramRoundsOverview,
   type ProgramRoundRecord,
 } from "@/modules/patient-program-rounds/services/round-query-service";
+import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 import { PatientSelfProgramRoundsView } from "./patient-self-program-rounds-view";
@@ -18,6 +19,24 @@ const programId = "22222222-2222-4222-8222-222222222222";
 const followupId = "dddddddd-dddd-4ddd-8ddd-000000000001";
 const recorder = { person: { givenName: "สมศรี", familyName: "อสม." } };
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
+function openedRounds(completedRounds: readonly number[]): Record<string, unknown>[] {
+  const numbers = new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)]);
+
+  return [...numbers].sort((left, right) => left - right).map((roundNumber) => ({
+    roundNumber,
+    planItems: roundGuideline(roundNumber).map((definition, index) => ({
+      id: `plan-${roundNumber}-${definition.code}`,
+      stepCode: definition.code,
+      customTitle: null,
+      position: index + 1,
+      removedAt: null,
+      doneAt: null,
+      doneByUser: null,
+    })),
+  }));
+}
+
 const record = {
   id: programId,
   patientHospitalRelationshipId: relationshipId,
@@ -26,6 +45,7 @@ const record = {
   initialBaseline: null,
   roundVitals: [],
   roundActivities: [],
+  rounds: openedRounds([1, 2]),
   roundCompletions: [1, 2].map((roundNumber) => ({ roundNumber, completedAt: new Date("2026-10-10T00:00:00Z"), completedByUser: recorder })),
   roundStepSkips: [
     { roundNumber: 3, stepCode: "DREAM_CARD", reasonCode: "PATIENT_DECLINED", note: null, createdAt: new Date("2026-10-20T00:00:00Z"), skippedByUser: recorder },

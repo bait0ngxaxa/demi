@@ -9,6 +9,8 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { RoundConflictError } from "@/modules/patient-program-rounds/domain/round-conflict-error";
+import { isStepInGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
@@ -168,6 +170,7 @@ function createDatabase(input: {
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue((input.completedRounds ?? []).map((roundNumber) => ({ roundNumber }))),
     },
+    ...openedRoundsWithGuidelinePlans(input.completedRounds ?? []),
   };
   const database = {
     $transaction: vi.fn(async (operation: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
@@ -178,6 +181,26 @@ function createDatabase(input: {
   return { database, transaction };
 }
 
+
+/** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
+function openedRoundsWithGuidelinePlans(completedRounds: readonly number[]) {
+  const opened = new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)]);
+
+  return {
+    patientProgramRound: {
+      findUnique: vi.fn(({ where }: { where: { patientProgramId_roundNumber: { roundNumber: number } } }) =>
+        Promise.resolve(opened.has(where.patientProgramId_roundNumber.roundNumber) ? { id: recordId } : null),
+      ),
+    },
+    patientProgramRoundPlanItem: {
+      findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) && isStepInGuideline(where.roundNumber, where.stepCode) ? { id: recordId } : null,
+        ),
+      ),
+    },
+  };
+}
 
 /** R2-G: a dated life table with one row. */
 function routineInput(roundNumber: number): Record<string, unknown> {
@@ -432,13 +455,16 @@ describe("Patient Program Service 1 service", () => {
     );
   });
 
-  it("rejects a tool in a round whose checklist does not list it (SR-D8/SR-D11)", async () => {
-    const { database, transaction } = createDatabase();
+  it("rejects a tool the open round's plan does not list (SR-D8/SR-D11, ADR-0022)", async () => {
+    const { database, transaction } = createDatabase({ completedRounds: [1, 2] });
 
     await expect(
       recordPatientProgramServiceOneRoutine(actor, routineInput(3), { database }),
-    ).rejects.toBeInstanceOf(ValidationError);
+    ).rejects.toThrow(new RoundConflictError("รายการนี้ไม่อยู่ในแผนของครั้งที่ 3"));
     expect(transaction.patientProgramServiceOneRoutine.create).not.toHaveBeenCalled();
+    await expect(
+      recordPatientProgramServiceOneRoutine(actor, routineInput(13), { database }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rejects browser-supplied actor fields through the strict service schema", async () => {

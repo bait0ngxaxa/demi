@@ -20,7 +20,8 @@ async function completedRounds(
 
 /**
  * SR-D5: run inside the caller's serializable transaction, after the Program was locked as ACTIVE
- * (`lockActivePatientProgram`). Round n accepts writes only while it is open and round n-1 is completed.
+ * (`lockActivePatientProgram`). Round n accepts writes only while it is opened (ADR-0022), not completed
+ * and round n-1 is completed.
  */
 export async function assertRoundWritable(
   transaction: Prisma.TransactionClient,
@@ -30,7 +31,16 @@ export async function assertRoundWritable(
   const completed = await completedRounds(transaction, patientProgramId);
 
   if (isRoundOpenForWrites(completed, roundNumber)) {
-    return;
+    const opened = await transaction.patientProgramRound.findUnique({
+      where: { patientProgramId_roundNumber: { patientProgramId, roundNumber } },
+      select: { id: true },
+    });
+
+    if (opened) {
+      return;
+    }
+
+    throw new RoundConflictError(`ครั้งที่ ${roundNumber} ยังไม่ได้เปิดบริการ`);
   }
 
   if (completed.has(roundNumber)) {

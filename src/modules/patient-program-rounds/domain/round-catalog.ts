@@ -3,14 +3,19 @@ import type {
   PatientProgramRoundToolCode,
 } from "@prisma/client";
 
-import { isStepInRound } from "./round-steps";
+import { isStepInGuideline } from "./round-steps";
 
 /**
  * Round numbering and ledger tool codes (docs/requirements/WB_ALIGNMENT_DECISIONS.md: WB-DF-01 round
- * mapping; Phase R1 SR-D1..D13). The required checklist of each round lives in ./round-steps.ts.
+ * mapping; Phase R1 SR-D1..D13; ADR-0022). The guideline and plan rules live in ./round-steps.ts.
  */
-export const PROGRAM_ROUND_NUMBERS = [1, 2, 3, 4, 5, 6] as const;
-export type ProgramRoundNumber = (typeof PROGRAM_ROUND_NUMBERS)[number];
+/** ADR-0022 (FR-D3): rounds 1-6 follow the guideline; staff may add rounds up to 12. */
+export const GUIDELINE_ROUND_COUNT = 6;
+export const MAX_PROGRAM_ROUNDS = 12;
+export const GUIDELINE_ROUND_NUMBERS: readonly number[] = Array.from(
+  { length: GUIDELINE_ROUND_COUNT },
+  (_, index) => index + 1,
+);
 
 /** Rounds whose vitals live in PatientProgramRoundVitals; rounds 3-6 use PatientFollowup. */
 export const ROUND_VITALS_ROUND_NUMBERS = [1, 2] as const;
@@ -33,7 +38,7 @@ export const LAST_FOLLOWUP_ROUND = 6;
 export const FOLLOWUP_ROUND_NUMBER_OFFSET = 2;
 
 /** SR-D13: round titles from the customer workbook. */
-const ROUND_TITLES: Readonly<Record<ProgramRoundNumber, string>> = {
+const ROUND_TITLES: Readonly<Record<number, string>> = {
   1: "รู้จักตัวเอง",
   2: "ทำแผนสุขภาพ เป้าหมายเล็กๆที่ตั้งไว้",
   3: "ติดตามการฝึกซ้อมพฤติกรรม",
@@ -42,8 +47,8 @@ const ROUND_TITLES: Readonly<Record<ProgramRoundNumber, string>> = {
   6: "ติดตามการฝึกซ้อมพฤติกรรม",
 };
 
-export function roundTitle(roundNumber: ProgramRoundNumber): string {
-  return `ครั้งที่ ${roundNumber} · ${ROUND_TITLES[roundNumber]}`;
+export function roundTitle(roundNumber: number): string {
+  return `ครั้งที่ ${roundNumber} · ${ROUND_TITLES[roundNumber] ?? "บริการเพิ่มเติม"}`;
 }
 
 export type RoundToolDefinition = {
@@ -87,8 +92,9 @@ export const SERVICE_ONE_TOOL_LINKED_RECORD_TYPES: Readonly<
   CONFIDENCE_RULER: "SERVICE_ONE_CONFIDENCE",
 };
 
-export function isProgramRoundNumber(value: unknown): value is ProgramRoundNumber {
-  return PROGRAM_ROUND_NUMBERS.some((round) => round === value);
+/** A Program round number: an integer 1-12. */
+export function isValidRoundNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_PROGRAM_ROUNDS;
 }
 
 export function isRoundVitalsRound(value: unknown): value is RoundVitalsRoundNumber {
@@ -109,12 +115,12 @@ export function toProgramRoundNumber(followupRoundNumber: number): number {
 
 /** Server-derived classification of a ledger entry; never taken from the client. */
 export function roundActivitySourceFor(
-  roundNumber: ProgramRoundNumber,
+  roundNumber: number,
   toolCode: PatientProgramRoundToolCode,
 ): "PLANNED" | "EXTRA" {
   const stepCode = toolCode === "HEALTH_PATH" && roundNumber === HEALTH_PATH_REVIEW_ROUND
     ? "HEALTH_PATH_REVIEW"
     : toolCode;
 
-  return isStepInRound(roundNumber, stepCode) ? "PLANNED" : "EXTRA";
+  return isStepInGuideline(roundNumber, stepCode) ? "PLANNED" : "EXTRA";
 }

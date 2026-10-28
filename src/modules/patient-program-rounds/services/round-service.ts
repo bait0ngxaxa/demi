@@ -23,19 +23,21 @@ import {
 import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import {
+  GUIDELINE_ROUND_COUNT,
   HEALTH_PATH_REVIEW_ROUND,
-  isProgramRoundNumber,
+  isValidRoundNumber,
   roundActivitySourceFor,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
   toFollowupRoundNumber,
-  type ProgramRoundNumber,
 } from "../domain/round-catalog";
 import { RoundConflictError } from "../domain/round-conflict-error";
 import {
   computeRoundStatus,
-  roundStepDefinition,
+  ROUND_ITEM_CATALOG,
+  roundPlan,
   VITALS_MEASUREMENTS,
+  type RoundStepCode,
   type VitalsMeasurement,
 } from "../domain/round-steps";
 import {
@@ -53,6 +55,7 @@ import {
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry } from "./round-ledger";
+import { findActivePlanItem, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
 import { assertRoundWritable } from "./round-sequencing";
 
@@ -468,7 +471,7 @@ async function findReviewTarget(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   toolCode: RoundReviewRequest["toolCode"],
-  roundNumber: ProgramRoundNumber,
+  roundNumber: number,
 ): Promise<{ linkedRecordId: string | null } | null> {
   if (toolCode === "HEALTH_PATH") {
     // SR-D9: the path review needs the round's own vitals (round 6 = Follow-up 4).
@@ -498,7 +501,7 @@ async function recordReviewInTransaction(
 ): Promise<PatientProgramRoundReviewResult> {
   const roundNumber = input.roundNumber;
 
-  if (!isProgramRoundNumber(roundNumber)) {
+  if (!isValidRoundNumber(roundNumber)) {
     throw new ValidationError("The program round is invalid");
   }
 
@@ -601,23 +604,40 @@ async function recordReviewInTransaction(
 async function loadRoundStatus(
   transaction: Prisma.TransactionClient,
   context: ActivePatientProgramMutationContext,
-  roundNumber: ProgramRoundNumber,
+  roundNumber: number,
 ) {
   const record = await loadProgramRoundRecord(
     transaction,
     context.program.id,
     context.access.patient.patientHospitalRelationshipId,
   );
+  const facts = buildProgramRoundFacts(record);
 
-  return computeRoundStatus(buildProgramRoundFacts(record), roundNumber);
+  return computeRoundStatus(facts, roundNumber, roundPlan(facts, roundNumber));
 }
 
-function assertSkippableStep(roundNumber: number, stepCode: string): ProgramRoundNumber {
-  if (!isProgramRoundNumber(roundNumber) || !roundStepDefinition(roundNumber, stepCode)?.skippable) {
-    throw new ValidationError("This step cannot be skipped in the selected round");
+const UNSKIPPABLE_STEP_MESSAGE = "This step cannot be skipped in the selected round";
+
+function assertSkipRound(roundNumber: number): number {
+  if (!isValidRoundNumber(roundNumber)) {
+    throw new ValidationError(UNSKIPPABLE_STEP_MESSAGE);
   }
 
   return roundNumber;
+}
+
+/** SR-D3 on plans: only a skippable step of the round's active plan can be skipped or unskipped. */
+async function assertSkippablePlanStep(
+  transaction: Prisma.TransactionClient,
+  patientProgramId: string,
+  roundNumber: number,
+  stepCode: RoundStepCode,
+): Promise<void> {
+  const item = await findActivePlanItem(transaction, patientProgramId, roundNumber, stepCode);
+
+  if (!item || !ROUND_ITEM_CATALOG[stepCode].skippable) {
+    throw new ValidationError(UNSKIPPABLE_STEP_MESSAGE);
+  }
 }
 
 async function skipStepInTransaction(
@@ -625,7 +645,7 @@ async function skipStepInTransaction(
   actor: ActorContext,
   input: RoundStepSkipRequest,
 ): Promise<PatientProgramRoundWriteResult> {
-  const roundNumber = assertSkippableStep(input.roundNumber, input.stepCode);
+  const roundNumber = assertSkipRound(input.roundNumber);
   const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
   const where = {
     patientProgramId_roundNumber_stepCode: {
@@ -648,6 +668,7 @@ async function skipStepInTransaction(
   }
 
   await assertRoundWritable(transaction, context.program.id, roundNumber);
+  await assertSkippablePlanStep(transaction, context.program.id, roundNumber, input.stepCode);
   const status = await loadRoundStatus(transaction, context, roundNumber);
 
   if (status.steps.find((state) => state.code === input.stepCode)?.status === "DONE") {
@@ -687,9 +708,10 @@ async function unskipStepInTransaction(
   actor: ActorContext,
   input: RoundStepUnskipRequest,
 ): Promise<PatientProgramRoundWriteResult> {
-  const roundNumber = assertSkippableStep(input.roundNumber, input.stepCode);
+  const roundNumber = assertSkipRound(input.roundNumber);
   const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
   await assertRoundWritable(transaction, context.program.id, roundNumber);
+  await assertSkippablePlanStep(transaction, context.program.id, roundNumber, input.stepCode);
   const removed = await transaction.patientProgramRoundStepSkip.deleteMany({
     where: { patientProgramId: context.program.id, roundNumber, stepCode: input.stepCode },
   });
@@ -716,8 +738,9 @@ async function completeRoundInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   input: RoundCompletionRequest,
+  now: Date,
 ): Promise<PatientProgramRoundWriteResult> {
-  if (!isProgramRoundNumber(input.roundNumber)) {
+  if (!isValidRoundNumber(input.roundNumber)) {
     throw new ValidationError("The program round is invalid");
   }
 
@@ -779,6 +802,17 @@ async function completeRoundInTransaction(
     },
     transaction,
   );
+
+  // ADR-0022: the next guideline round opens with its guideline plan in the same transaction.
+  if (roundNumber < GUIDELINE_ROUND_COUNT) {
+    await openGuidelineRound(transaction, {
+      patientProgramId: context.program.id,
+      patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+      roundNumber: roundNumber + 1,
+      openedByUserId: context.access.actor.userId,
+      openedAt: now,
+    });
+  }
 
   return writeResult("RECORDED", context, roundNumber);
 }
@@ -869,7 +903,7 @@ export async function completePatientProgramRound(
     actor,
     input,
     dependencies,
-    (transaction, authorizedActor, parsed) => completeRoundInTransaction(transaction, authorizedActor, parsed),
+    completeRoundInTransaction,
   );
 }
 

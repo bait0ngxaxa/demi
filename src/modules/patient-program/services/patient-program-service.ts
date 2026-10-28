@@ -9,6 +9,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { openGuidelineRound } from "@/modules/patient-program-rounds/services/round-plan-service";
 import {
   ApplicationError,
   ConflictError,
@@ -216,6 +217,14 @@ async function openInTransaction(
   });
 
   assertValidLifecycle(program);
+  // ADR-0022: round 1 opens with the Program, its plan seeded from the guideline.
+  await openGuidelineRound(transaction, {
+    patientProgramId: program.id,
+    patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+    roundNumber: 1,
+    openedByUserId: access.actor.userId,
+    openedAt: now,
+  });
   await recordAuditEvent(
     {
       actorUserId: access.actor.userId,

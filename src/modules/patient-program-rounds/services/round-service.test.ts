@@ -15,6 +15,7 @@ vi.mock("@/modules/patient-program/services/patient-program-lifecycle-service", 
   lockActivePatientProgram: mockedLock,
 }));
 
+import { isStepInGuideline, roundGuideline } from "../domain/round-steps";
 import {
   completePatientProgramRound,
   recordPatientProgramRoundProfile,
@@ -90,14 +91,33 @@ function storedVitals(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened. */
+function openedRoundNumbers(completedRounds: readonly number[]): number[] {
+  return [...new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)])];
+}
+
 /** The program record the completion and skip guards re-read inside the transaction. */
-function programRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function programRecord(overrides: Record<string, unknown> = {}, completedRounds: readonly number[] = []): Record<string, unknown> {
+  const completions = ((overrides.roundCompletions ?? []) as { roundNumber: number }[]).map((row) => row.roundNumber);
+
   return {
     id: programId,
     patientHospitalRelationshipId: relationshipId,
     status: "ACTIVE",
     patientHospitalRelationship: { hospitalProfile: null },
     initialBaseline: null,
+    rounds: openedRoundNumbers([...completedRounds, ...completions]).map((roundNumber) => ({
+      roundNumber,
+      planItems: roundGuideline(roundNumber).map((definition, index) => ({
+        id: `plan-${roundNumber}-${definition.code}`,
+        stepCode: definition.code,
+        customTitle: null,
+        position: index + 1,
+        removedAt: null,
+        doneAt: null,
+        doneByUser: null,
+      })),
+    })),
     roundVitals: [],
     roundActivities: [],
     roundCompletions: [],
@@ -131,9 +151,23 @@ function createDatabase(input: {
   profileUpdateCount?: number;
   vitalsUpdateCount?: number;
 } = {}) {
+  const opened = new Set(openedRoundNumbers(input.completedRounds ?? []));
   const transaction = {
     patientProgram: {
-      findFirst: vi.fn().mockResolvedValue(programRecord(input.program)),
+      findFirst: vi.fn().mockResolvedValue(programRecord(input.program, input.completedRounds)),
+    },
+    patientProgramRound: {
+      findUnique: vi.fn(({ where }: { where: { patientProgramId_roundNumber: { roundNumber: number } } }) =>
+        Promise.resolve(opened.has(where.patientProgramId_roundNumber.roundNumber) ? { id: recordId } : null),
+      ),
+      create: vi.fn().mockResolvedValue({ id: recordId }),
+    },
+    patientProgramRoundPlanItem: {
+      findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) && isStepInGuideline(where.roundNumber, where.stepCode) ? { id: recordId } : null,
+        ),
+      ),
     },
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue((input.completedRounds ?? []).map((roundNumber) => ({ roundNumber }))),
@@ -506,6 +540,51 @@ describe("round completion (SR-D1/SR-D4)", () => {
       }),
       expect.anything(),
     );
+    // ADR-0022: round 6 opens in the same transaction with its guideline plan.
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledOnce();
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patientProgramId: programId,
+        roundNumber: 6,
+        origin: "GUIDELINE",
+        openedAt: now,
+        openedByUserId: actorUserId,
+        planItems: {
+          create: ["VITALS", "HEALTH_PATH_REVIEW", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"].map((stepCode, index) => ({
+            stepCode,
+            position: index + 1,
+            origin: "GUIDELINE",
+            createdAt: now,
+          })),
+        },
+      }),
+      select: { id: true },
+    });
+  });
+
+  it("opens no round after the last guideline round (FR-D3: rounds 7-12 are added, never seeded)", async () => {
+    const earlier = [1, 2, 3, 4, 5];
+    const roundSixSkips = ["VITALS", "HEALTH_PATH_REVIEW", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"].map((stepCode) => ({
+      roundNumber: 6,
+      stepCode,
+      reasonCode: "PATIENT_DECLINED",
+      note: null,
+      createdAt: now,
+      skippedByUser: recorder,
+    }));
+    const { database, transaction } = createDatabase({
+      completedRounds: earlier,
+      program: {
+        roundCompletions: earlier.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })),
+        roundStepSkips: roundSixSkips,
+      },
+    });
+
+    await expect(completePatientProgramRound(actor, { ...completion, roundNumber: 6 }, deps(database))).resolves.toMatchObject({
+      operation: "RECORDED",
+      roundNumber: 6,
+    });
+    expect(transaction.patientProgramRound.create).not.toHaveBeenCalled();
   });
 
   it("is idempotent per nonce and per round, and refuses a locked round", async () => {

@@ -33,15 +33,13 @@ import {
 import {
   GOAL_PLAN_ROUND,
   isFollowupRound,
-  isProgramRoundNumber,
+  isValidRoundNumber,
   roundActivitySourceFor,
   toFollowupRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
-import {
-  isPerRoundToolInRound,
-  type PerRoundToolCode,
-} from "@/modules/patient-program-rounds/domain/round-steps";
+import type { PerRoundToolCode } from "@/modules/patient-program-rounds/domain/round-steps";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+import { assertActivePlanItem } from "@/modules/patient-program-rounds/services/round-plan-service";
 import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
 
 import {
@@ -361,7 +359,7 @@ function assertArtifactActivityInRound(activity: PatientProgramServiceOneArtifac
     return;
   }
 
-  assertToolInRound(activity, roundNumber);
+  assertToolRound(roundNumber);
 }
 
 const ACTIVITY_TOOL_CODES: Readonly<Record<PatientProgramServiceOneActivity, PerRoundToolCode>> = {
@@ -371,11 +369,20 @@ const ACTIVITY_TOOL_CODES: Readonly<Record<PatientProgramServiceOneActivity, Per
   CONFIDENCE: "CONFIDENCE_RULER",
 };
 
-/** SR-D8: a per-round result can only be recorded in a round whose checklist lists the tool. */
-function assertToolInRound(activity: PatientProgramServiceOneActivity, roundNumber: number): void {
-  if (!isProgramRoundNumber(roundNumber) || !isPerRoundToolInRound(roundNumber, ACTIVITY_TOOL_CODES[activity])) {
+function assertToolRound(roundNumber: number): void {
+  if (!isValidRoundNumber(roundNumber)) {
     throw new ValidationError("This Service 1 tool is not part of the selected round");
   }
+}
+
+/** SR-D8 on plans (ADR-0022): a per-round result needs the tool in the open round's active plan. */
+async function assertToolInPlan(
+  transaction: Prisma.TransactionClient,
+  patientProgramId: string,
+  activity: PatientProgramServiceOneActivity,
+  roundNumber: number,
+): Promise<void> {
+  await assertActivePlanItem(transaction, patientProgramId, roundNumber, ACTIVITY_TOOL_CODES[activity]);
 }
 
 function toArtifactAssociationResult(
@@ -467,6 +474,10 @@ async function associateArtifactInTransaction(
 
   await assertRoundWritable(transaction, patientProgramId, input.roundNumber);
 
+  if (input.activity !== "GOAL_PLAN") {
+    await assertToolInPlan(transaction, patientProgramId, input.activity, input.roundNumber);
+  }
+
   const association = await transaction.patientProgramServiceOneArtifactAssociation.create({
     data: {
       patientProgramId,
@@ -526,7 +537,7 @@ async function linkServiceOneRoundActivity(
     roundNumber: number;
   },
 ): Promise<void> {
-  if (!isProgramRoundNumber(input.roundNumber)) {
+  if (!isValidRoundNumber(input.roundNumber)) {
     throw new ValidationError("The program round is invalid");
   }
 
@@ -556,7 +567,7 @@ async function recordRoutineInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
-  assertToolInRound("ROUTINE", input.roundNumber);
+  assertToolRound(input.roundNumber);
   const existing = await transaction.patientProgramServiceOneRoutine.findUnique({
     where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: routineMutationSelect,
@@ -581,6 +592,7 @@ async function recordRoutineInTransaction(
   }
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+  await assertToolInPlan(transaction, program.id, "ROUTINE", input.roundNumber);
 
   const record = await transaction.patientProgramServiceOneRoutine.create({
     data: {
@@ -637,7 +649,7 @@ async function recordFloatingChartInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
-  assertToolInRound("FLOATING_CHART", input.roundNumber);
+  assertToolRound(input.roundNumber);
   const existing = await transaction.patientProgramServiceOneFloatingChart.findUnique({
     where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: floatingChartMutationSelect,
@@ -661,6 +673,7 @@ async function recordFloatingChartInTransaction(
   }
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+  await assertToolInPlan(transaction, program.id, "FLOATING_CHART", input.roundNumber);
 
   const record = await transaction.patientProgramServiceOneFloatingChart.create({
     data: {
@@ -722,7 +735,7 @@ async function recordDreamCardInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
-  assertToolInRound("DREAM_CARD", input.roundNumber);
+  assertToolRound(input.roundNumber);
   const existing = await transaction.patientProgramServiceOneDreamCard.findUnique({
     where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: dreamCardMutationSelect,
@@ -747,6 +760,7 @@ async function recordDreamCardInTransaction(
   }
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+  await assertToolInPlan(transaction, program.id, "DREAM_CARD", input.roundNumber);
 
   const record = await transaction.patientProgramServiceOneDreamCard.create({
     data: {
@@ -802,7 +816,7 @@ async function recordConfidenceInTransaction(
     input.patientProgramId.toLowerCase(),
   );
   const { access, program } = context;
-  assertToolInRound("CONFIDENCE", input.roundNumber);
+  assertToolRound(input.roundNumber);
   const existing = await transaction.patientProgramServiceOneConfidence.findUnique({
     where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber: input.roundNumber } },
     select: confidenceMutationSelect,
@@ -823,6 +837,7 @@ async function recordConfidenceInTransaction(
   }
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+  await assertToolInPlan(transaction, program.id, "CONFIDENCE", input.roundNumber);
 
   const record = await transaction.patientProgramServiceOneConfidence.create({
     data: {
@@ -997,7 +1012,7 @@ export async function associatePatientProgramServiceOneArtifact(
 
 export const patientProgramServiceOneInternals = {
   artifactAssociationSelect,
-  assertToolInRound,
+  assertToolRound,
   associateArtifactInTransaction,
   confidenceMutationSelect,
   findActivityRecord,

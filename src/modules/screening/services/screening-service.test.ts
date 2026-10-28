@@ -134,6 +134,10 @@ function createDatabase(input: {
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue([]),
     },
+    // ADR-0022: round 1 opens with the Program.
+    patientProgramRound: {
+      findUnique: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999998" }),
+    },
     screeningAssessment: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
       findFirst: vi.fn().mockResolvedValue(input.programScreening ?? null),

@@ -53,14 +53,16 @@ describe("round vitals request schema", () => {
 describe("round review request schema", () => {
   const review = { patientProgramId: programId, roundNumber: 3, toolCode: "PAM", submissionNonce: nonce };
 
-  it("accepts only reviewable tools in rounds 1-6", () => {
+  it("accepts only reviewable tools in rounds 1-12", () => {
     expect(roundReviewRequestSchema.safeParse(review).success).toBe(true);
     expect(roundReviewRequestSchema.safeParse({ ...review, toolCode: "HEALTH_PATH" }).success).toBe(true);
     // SR-D8: per-round tools are recorded again, never "reviewed".
     expect(roundReviewRequestSchema.safeParse({ ...review, toolCode: "DREAM_CARD" }).success).toBe(false);
     expect(roundReviewRequestSchema.safeParse({ ...review, toolCode: "KNOW_SELF" }).success).toBe(false);
     expect(roundReviewRequestSchema.safeParse({ ...review, toolCode: "HEALTHY_PLAN" }).success).toBe(false);
-    expect(roundReviewRequestSchema.safeParse({ ...review, roundNumber: 7 }).success).toBe(false);
+    // ADR-0022 (FR-D3): rounds after the guideline are numbered up to 12.
+    expect(roundReviewRequestSchema.safeParse({ ...review, roundNumber: 12 }).success).toBe(true);
+    expect(roundReviewRequestSchema.safeParse({ ...review, roundNumber: 13 }).success).toBe(false);
   });
 
   it("does not accept a client-chosen source or mode", () => {

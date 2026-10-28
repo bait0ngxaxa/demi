@@ -3,6 +3,7 @@ import { Prisma, Role } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { openGuidelineRound } from "@/modules/patient-program-rounds/services/round-plan-service";
 import { getOwnCurrentAssignedOsm, getOwnLatestStaffMeasurements } from "@/modules/patient-self/services/patient-self-health-query-service";
 import { NotFoundError } from "@/shared/errors/application-error";
 
@@ -37,6 +38,10 @@ describe("PH-1 actual PostgreSQL staff facts and current OSM", () => {
         waistCircumference: { value: 100, source: "ข้อมูลตั้งต้น" }, bmi: { value: 35.2 },
       });
       const program = await tx.patientProgram.create({ data: { ...scope, createdByUserId: f.actor.userId } });
+      // ADR-0022: round vitals need their round opened.
+      for (const roundNumber of [1, 2]) {
+        await openGuidelineRound(tx, { ...scope, patientProgramId: program.id, roundNumber, openedByUserId: f.actor.userId, openedAt: day(1) });
+      }
       await tx.patientProgramRoundVitals.create({ data: { ...scope, patientProgramId: program.id, roundNumber: 1, serviceDate: day(3), weight: 85,
         recordedByUserId: f.actor.userId, submissionNonce: randomUUID() } });
       expect((await getOwnLatestStaffMeasurements(f.actor, f.relationship.id, deps)).weight).toMatchObject({ value: 85, source: "บริการครั้งที่ 1" });

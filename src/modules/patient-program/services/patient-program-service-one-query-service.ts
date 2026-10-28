@@ -4,11 +4,10 @@ import { Prisma } from "@prisma/client";
 
 import {
   DREAM_CARD_ROUND,
-  PROGRAM_ROUND_NUMBERS,
+  GUIDELINE_ROUND_NUMBERS,
   SERVICE_ONE_HOME_ROUND,
-  type ProgramRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
-import { isPerRoundToolInRound } from "@/modules/patient-program-rounds/domain/round-steps";
+import { isPerRoundToolInGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import type { PatientProgramServiceOneFloatingChartScores } from "../schemas/patient-program-service-one-schemas";
 
 const recordedByUserSelect = {
@@ -152,7 +151,7 @@ export type PatientProgramServiceOneProjection = {
 };
 
 export type PatientProgramServiceOneRoundProjection = PatientProgramServiceOneProjection & {
-  roundNumber: ProgramRoundNumber;
+  roundNumber: number;
   /** Tools this round's checklist lists (SR-D8). */
   listedTools: readonly ("routine" | "floatingChart" | "dreamCard" | "confidence")[];
 };
@@ -311,7 +310,7 @@ export function toPatientProgramServiceOneProjection(
 export function toPatientProgramServiceOneRounds(
   record: PatientProgramServiceOneRecord | null | undefined,
 ): PatientProgramServiceOneRoundProjection[] {
-  return PROGRAM_ROUND_NUMBERS.map((roundNumber) => ({
+  return GUIDELINE_ROUND_NUMBERS.map((roundNumber) => ({
     roundNumber,
     listedTools: (
       [
@@ -321,7 +320,7 @@ export function toPatientProgramServiceOneRounds(
         ["confidence", "CONFIDENCE_RULER"],
       ] as const
     )
-      .filter(([, code]) => isPerRoundToolInRound(roundNumber, code))
+      .filter(([, code]) => isPerRoundToolInGuideline(roundNumber, code))
       .map(([key]) => key),
     ...toPatientProgramServiceOneProjection(record, roundNumber),
   })).filter((round) => round.listedTools.length > 0);

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
-import { REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
+import { MAX_PROGRAM_ROUNDS, REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
 
 export const ROUND_VITALS_STRUCTURAL_NUMBER_MAX = 1_000_000;
 export const ROUND_PREFERRED_NAME_MAX_LENGTH = 100;
@@ -11,7 +11,8 @@ export const ROUND_OCCUPATION_MAX_LENGTH = 200;
 export const ROUND_SKIP_NOTE_MAX_LENGTH = 500;
 
 export const roundSubmissionNonceSchema = z.string().uuid();
-export const roundNumberSchema = z.number().int().min(1).max(6);
+// ADR-0022: any round 1-12; a write also needs the round opened (round-sequencing).
+export const roundNumberSchema = z.number().int().min(1).max(MAX_PROGRAM_ROUNDS);
 export const roundVitalsRoundNumberSchema = z.number().int().min(1).max(2);
 
 const positiveMeasurementSchema = z

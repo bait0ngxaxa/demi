@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildProgramRoundDetail, buildProgramRoundsOverview, type ProgramRoundRecord } from "@/modules/patient-program-rounds/services/round-query-service";
+import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { parseRoundReturnPath } from "@/modules/patient-program-rounds/presentation/round-return-path";
 
 vi.mock("react", async (importOriginal) => ({
@@ -46,6 +47,24 @@ const nonces = {
   },
 };
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
+function openedRounds(completedRounds: readonly number[]): Record<string, unknown>[] {
+  const numbers = new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)]);
+
+  return [...numbers].sort((left, right) => left - right).map((roundNumber) => ({
+    roundNumber,
+    planItems: roundGuideline(roundNumber).map((definition, index) => ({
+      id: `plan-${roundNumber}-${definition.code}`,
+      stepCode: definition.code,
+      customTitle: null,
+      position: index + 1,
+      removedAt: null,
+      doneAt: null,
+      doneByUser: null,
+    })),
+  }));
+}
+
 function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
   return {
     id: programId,
@@ -53,6 +72,7 @@ function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
     status: "ACTIVE",
     patientHospitalRelationship: { hospitalProfile: { occupation: "เกษตรกร", preferredName: null, version: 1 } },
     initialBaseline: { heightCm: 160 },
+    rounds: openedRounds(((overrides.roundCompletions ?? []) as { roundNumber: number }[]).map((row) => row.roundNumber)),
     roundVitals: [],
     roundActivities: [],
     roundCompletions: [],

@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import { Prisma } from "@prisma/client";
+
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { GUIDELINE_ROUND_COUNT, toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { openGuidelineRound } from "@/modules/patient-program-rounds/services/round-plan-service";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -12,24 +15,60 @@ function programIdOf(input: unknown): string | null {
 }
 
 /**
- * Phase R1 (SR-D5): round n accepts writes only after round n-1 is completed. Tests of other domains
- * (Goal Plans, Follow-ups, reports) are not about that sequence, so they open the round they write to by
- * recording the earlier completions directly. Sequencing itself is covered by
- * patient-program-rounds.integration.test.ts through the real completion service.
+ * ADR-0022: opens guideline rounds 1..`upToRound` (at most 6) with their plans through the production opener,
+ * without completing any. Concurrent test writes may open the same round; the loser's unique violation is ignored.
  */
-export async function openProgramRound(patientProgramId: string, roundNumber: number): Promise<void> {
+export async function openGuidelineRounds(
+  patientProgramId: string,
+  upToRound: number,
+): Promise<{ patientHospitalRelationshipId: string; createdByUserId: string } | null> {
   const prisma = getPrisma();
   const program = await prisma.patientProgram.findUnique({
     where: { id: patientProgramId },
-    select: { patientHospitalRelationshipId: true, createdByUserId: true },
+    select: { patientHospitalRelationshipId: true, createdByUserId: true, startedAt: true },
   });
+
+  if (!program) {
+    return null;
+  }
+
+  for (let round = 1; round <= Math.min(upToRound, GUIDELINE_ROUND_COUNT); round += 1) {
+    try {
+      await prisma.$transaction((transaction) =>
+        openGuidelineRound(transaction, {
+          patientProgramId,
+          patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+          roundNumber: round,
+          openedByUserId: program.createdByUserId,
+          openedAt: program.startedAt,
+        }),
+      );
+    } catch (error: unknown) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
+        throw error;
+      }
+    }
+  }
+
+  return program;
+}
+
+/**
+ * Phase R1 (SR-D5): round n accepts writes only after round n-1 is completed. Tests of other domains
+ * (Goal Plans, Follow-ups, reports) are not about that sequence, so they open the round they write to by
+ * opening the guideline rounds up to it (ADR-0022, the production opener) and recording the earlier
+ * completions directly. Sequencing itself is covered by patient-program-rounds.integration.test.ts
+ * through the real completion service. A Program created without the Program service gets round 1 here.
+ */
+export async function openProgramRound(patientProgramId: string, roundNumber: number): Promise<void> {
+  const program = await openGuidelineRounds(patientProgramId, roundNumber);
 
   if (!program || roundNumber <= 1) {
     return;
   }
 
-  await prisma.patientProgramRoundCompletion.createMany({
-    data: Array.from({ length: Math.min(roundNumber - 1, 6) }, (_, index) => ({
+  await getPrisma().patientProgramRoundCompletion.createMany({
+    data: Array.from({ length: Math.min(roundNumber - 1, GUIDELINE_ROUND_COUNT) }, (_, index) => ({
       patientProgramId,
       patientHospitalRelationshipId: program.patientHospitalRelationshipId,
       roundNumber: index + 1,
@@ -75,7 +114,10 @@ export async function openFinalAssessmentRound(input: unknown): Promise<void> {
   }
 }
 
-/** Completions and skips are append-only outside the demo/test reset switch (migration 20261102100000). */
+/**
+ * Completions, skips, opened rounds and their plan items are append-only outside the demo/test reset switch
+ * (migrations 20261102100000 and 20261124100000). Cleanup only: a Program needs its rounds again afterwards.
+ */
 export async function clearProgramRoundCompletions(programIds?: readonly string[]): Promise<void> {
   const prisma = getPrisma();
   const where = programIds ? { patientProgramId: { in: [...programIds] } } : {};
@@ -84,6 +126,8 @@ export async function clearProgramRoundCompletions(programIds?: readonly string[
     prisma.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`,
     prisma.patientProgramRoundStepSkip.deleteMany({ where }),
     prisma.patientProgramRoundCompletion.deleteMany({ where }),
+    prisma.patientProgramRoundPlanItem.deleteMany({ where }),
+    prisma.patientProgramRound.deleteMany({ where }),
   ]);
 }
 
@@ -98,7 +142,7 @@ export function inRound<T>(service: ServiceCall<T>, roundFor: (input: Record<str
 
     const record = input as Record<string, unknown>;
     const roundNumber = roundFor(record);
-    if (roundNumber > 1 && typeof record.patientProgramId === "string") {
+    if (typeof record.patientProgramId === "string") {
       await openProgramRound(record.patientProgramId, roundNumber);
     }
 

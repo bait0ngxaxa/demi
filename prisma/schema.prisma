@@ -386,6 +386,20 @@ enum PatientProgramRoundStepCode {
   DREAM_CARD
   HEALTHY_PLAN
   HEALTH_PATH_REVIEW
+  // ADR-0022 (FR-D2): a staff-written free-text plan item.
+  CUSTOM
+}
+
+// ADR-0022: a round seeded from the guideline (rounds 1-6) or added after it (rounds 7-12, FR-D3).
+enum PatientProgramRoundOrigin {
+  GUIDELINE
+  EXTRA
+}
+
+// ADR-0022: a plan item seeded from the round guideline, or added to the plan by a recorder.
+enum PatientProgramRoundPlanItemOrigin {
+  GUIDELINE
+  ADDED
 }
 
 // R2-C: which instrument a Screening answers. COMBINED = the legacy PAM+PROMs set (satisfies both steps).
@@ -400,6 +414,8 @@ enum PatientProgramRoundSkipReason {
   PATIENT_UNABLE
   EQUIPMENT_UNAVAILABLE
   OTHER
+  // ADR-0022 (FR-D1): recorded by the system for every unresolved plan item when a round is ended.
+  NOT_DONE_AT_CLOSE
 }
 
 enum PatientServiceCode {
@@ -583,6 +599,10 @@ model User {
   patientProgramRoundVitalsRecorded PatientProgramRoundVitals[] @relation("PatientProgramRoundVitalsRecordedBy")
   patientProgramRoundCompletions PatientProgramRoundCompletion[] @relation("PatientProgramRoundCompletionCompletedBy")
   patientProgramRoundStepSkips PatientProgramRoundStepSkip[] @relation("PatientProgramRoundStepSkipSkippedBy")
+  patientProgramRoundsOpened PatientProgramRound[] @relation("PatientProgramRoundOpenedBy")
+  patientProgramRoundPlanItemsAdded PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemAddedBy")
+  patientProgramRoundPlanItemsRemoved PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemRemovedBy")
+  patientProgramRoundPlanItemsDone PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemDoneBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -1688,6 +1708,7 @@ model PatientProgram {
   roundVitals                 PatientProgramRoundVitals[]
   roundCompletions            PatientProgramRoundCompletion[]
   roundStepSkips              PatientProgramRoundStepSkip[]
+  rounds                      PatientProgramRound[]
 
   @@index([patientHospitalRelationshipId, status])
   @@index([patientHospitalRelationshipId, startedAt])
@@ -1747,7 +1768,7 @@ model PatientProgramRoundActivity {
   @@index([recordedByUserId, performedAt])
 }
 
-// Phase A: vitals for rounds 1-2 only; rounds 3-6 keep using PatientFollowup measurements.
+// Phase A: round vitals; ADR-0022 allows any opened round 1-12 (the service still writes rounds 1-2 only).
 model PatientProgramRoundVitals {
   id                            String   @id @default(uuid()) @db.Uuid
   patientProgramId              String   @db.Uuid
@@ -1770,6 +1791,61 @@ model PatientProgramRoundVitals {
 
   @@unique([patientProgramId, roundNumber])
   @@index([recordedByUserId, recordedAt])
+}
+
+// ADR-0022: an opened service round. Rows are never deleted, and frozen once the round is completed (DB triggers).
+model PatientProgramRound {
+  id                            String                    @id @default(uuid()) @db.Uuid
+  patientProgramId              String                    @db.Uuid
+  patientHospitalRelationshipId String                    @db.Uuid
+  // 1-12; GUIDELINE exactly for rounds 1-6 (DB CHECKs).
+  roundNumber                   Int
+  origin                        PatientProgramRoundOrigin
+  openedAt                      DateTime                  @db.Timestamptz(3)
+  openedByUserId                String                    @db.Uuid
+  submissionNonce               String                    @unique @db.Uuid
+
+  patientProgram PatientProgram                @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
+  openedByUser   User                          @relation("PatientProgramRoundOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
+  planItems      PatientProgramRoundPlanItem[]
+
+  @@unique([patientProgramId, roundNumber])
+  // Target of the plan items' composite foreign key.
+  @@unique([patientProgramId, patientHospitalRelationshipId, roundNumber])
+  @@index([openedByUserId, openedAt])
+}
+
+// ADR-0022: one item of a round's materialized plan, ordered by position. Removal is soft (removedAt);
+// active non-CUSTOM steps are unique per round (partial unique index). Frozen once the round is completed.
+model PatientProgramRoundPlanItem {
+  id                            String                            @id @default(uuid()) @db.Uuid
+  patientProgramId              String                            @db.Uuid
+  patientHospitalRelationshipId String                            @db.Uuid
+  roundNumber                   Int
+  stepCode                      PatientProgramRoundStepCode
+  // CUSTOM only (FR-D2), trimmed and never blank.
+  customTitle                   String?                           @db.VarChar(120)
+  position                      Int
+  origin                        PatientProgramRoundPlanItemOrigin
+  // Present exactly for ADDED items.
+  addedByUserId                 String?                           @db.Uuid
+  createdAt                     DateTime                          @default(now()) @db.Timestamptz(3)
+  removedAt                     DateTime?                         @db.Timestamptz(3)
+  removedByUserId               String?                           @db.Uuid
+  // CUSTOM "ทำแล้ว"; the recorder may be staff or the patient (FR-D4a), so it is not role-constrained.
+  doneAt                        DateTime?                         @db.Timestamptz(3)
+  doneByUserId                  String?                           @db.Uuid
+  doneNote                      String?                           @db.VarChar(500)
+
+  round         PatientProgramRound @relation(fields: [patientProgramId, patientHospitalRelationshipId, roundNumber], references: [patientProgramId, patientHospitalRelationshipId, roundNumber], onDelete: Restrict)
+  addedByUser   User?               @relation("PatientProgramRoundPlanItemAddedBy", fields: [addedByUserId], references: [id], onDelete: Restrict)
+  removedByUser User?               @relation("PatientProgramRoundPlanItemRemovedBy", fields: [removedByUserId], references: [id], onDelete: Restrict)
+  doneByUser    User?               @relation("PatientProgramRoundPlanItemDoneBy", fields: [doneByUserId], references: [id], onDelete: Restrict)
+
+  @@index([patientProgramId, patientHospitalRelationshipId, roundNumber, position])
+  @@index([addedByUserId])
+  @@index([removedByUserId])
+  @@index([doneByUserId])
 }
 
 // SR-D4: explicit, immutable completion of a numbered round (a DB trigger forbids update/delete).
@@ -1811,7 +1887,7 @@ model PatientProgramRoundStepSkip {
 model PatientProgramServiceOneRoutine {
   id               String   @id @default(uuid()) @db.Uuid
   patientProgramId String   @db.Uuid
-  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  // ADR-0022: one result per round whose active plan lists the tool (DB trigger).
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
@@ -1845,7 +1921,7 @@ model PatientProgramServiceOneRoutineEntry {
 model PatientProgramServiceOneFloatingChart {
   id               String   @id @default(uuid()) @db.Uuid
   patientProgramId String   @db.Uuid
-  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  // ADR-0022: one result per round whose active plan lists the tool (DB trigger).
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
@@ -1871,7 +1947,7 @@ model PatientProgramServiceOneFloatingChart {
 model PatientProgramServiceOneDreamCard {
   id               String   @id @default(uuid()) @db.Uuid
   patientProgramId String   @db.Uuid
-  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  // ADR-0022: one result per round whose active plan lists the tool (DB trigger).
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
@@ -1893,7 +1969,7 @@ model PatientProgramServiceOneDreamCard {
 model PatientProgramServiceOneConfidence {
   id               String   @id @default(uuid()) @db.Uuid
   patientProgramId String   @db.Uuid
-  // SR-D8: one result per round that lists the tool (allowed rounds are a DB CHECK).
+  // ADR-0022: one result per round whose active plan lists the tool (DB trigger).
   roundNumber      Int
   recordedByUserId String   @db.Uuid
   recordedAt       DateTime @default(now()) @db.Timestamptz(3)
