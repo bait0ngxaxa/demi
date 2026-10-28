@@ -26,7 +26,6 @@ import {
   GUIDELINE_ROUND_COUNT,
   HEALTH_PATH_REVIEW_ROUND,
   isValidRoundNumber,
-  roundActivitySourceFor,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
   toFollowupRoundNumber,
@@ -55,7 +54,7 @@ import {
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry } from "./round-ledger";
-import { findActivePlanItem, openGuidelineRound } from "./round-plan-service";
+import { classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
 import { assertRoundWritable } from "./round-sequencing";
 
@@ -566,7 +565,7 @@ async function recordReviewInTransaction(
     patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
     roundNumber,
     toolCode: input.toolCode,
-    source: roundActivitySourceFor(roundNumber, input.toolCode),
+    source: await classifyRoundActivity(transaction, program.id, roundNumber, input.toolCode),
     mode: "REVIEWED",
     linkedRecordType,
     linkedRecordId: linkedRecordType ? target.linkedRecordId : null,
@@ -626,18 +625,32 @@ function assertSkipRound(roundNumber: number): number {
   return roundNumber;
 }
 
-/** SR-D3 on plans: only a skippable step of the round's active plan can be skipped or unskipped. */
-async function assertSkippablePlanStep(
+/**
+ * SR-D3 on plans (ADR-0022, FR-1b): only an active, skippable item of the requested round's plan can be
+ * skipped or unskipped. A skip belongs to that one item, so several CUSTOM items each keep their own.
+ */
+async function loadSkippablePlanItem(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   roundNumber: number,
-  stepCode: RoundStepCode,
-): Promise<void> {
-  const item = await findActivePlanItem(transaction, patientProgramId, roundNumber, stepCode);
+  planItemId: string,
+): Promise<{ id: string; stepCode: RoundStepCode }> {
+  const item = await transaction.patientProgramRoundPlanItem.findUnique({
+    where: { id: planItemId },
+    select: { id: true, patientProgramId: true, roundNumber: true, stepCode: true, removedAt: true },
+  });
 
-  if (!item || !ROUND_ITEM_CATALOG[stepCode].skippable) {
+  if (
+    !item ||
+    item.patientProgramId !== patientProgramId ||
+    item.roundNumber !== roundNumber ||
+    item.removedAt !== null ||
+    !ROUND_ITEM_CATALOG[item.stepCode].skippable
+  ) {
     throw new ValidationError(UNSKIPPABLE_STEP_MESSAGE);
   }
+
+  return { id: item.id, stepCode: item.stepCode };
 }
 
 async function skipStepInTransaction(
@@ -646,20 +659,14 @@ async function skipStepInTransaction(
   input: RoundStepSkipRequest,
 ): Promise<PatientProgramRoundWriteResult> {
   const roundNumber = assertSkipRound(input.roundNumber);
+  const planItemId = input.planItemId.toLowerCase();
   const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
-  const where = {
-    patientProgramId_roundNumber_stepCode: {
-      patientProgramId: context.program.id,
-      roundNumber,
-      stepCode: input.stepCode,
-    },
-  };
   const existing = await transaction.patientProgramRoundStepSkip.findUnique({
-    where,
-    select: { reasonCode: true, note: true },
+    where: { planItemId },
+    select: { patientProgramId: true, roundNumber: true, reasonCode: true, note: true },
   });
 
-  if (existing) {
+  if (existing && existing.patientProgramId === context.program.id && existing.roundNumber === roundNumber) {
     if (existing.reasonCode === input.reasonCode && existing.note === (input.note ?? null)) {
       return writeResult("ALREADY_RECORDED", context, roundNumber);
     }
@@ -668,10 +675,10 @@ async function skipStepInTransaction(
   }
 
   await assertRoundWritable(transaction, context.program.id, roundNumber);
-  await assertSkippablePlanStep(transaction, context.program.id, roundNumber, input.stepCode);
+  const item = await loadSkippablePlanItem(transaction, context.program.id, roundNumber, planItemId);
   const status = await loadRoundStatus(transaction, context, roundNumber);
 
-  if (status.steps.find((state) => state.code === input.stepCode)?.status === "DONE") {
+  if (status.steps.find((state) => state.planItemId === item.id)?.status === "DONE") {
     throw new RoundConflictError("รายการนี้บันทึกแล้ว จึงไม่ต้องข้าม");
   }
 
@@ -680,7 +687,8 @@ async function skipStepInTransaction(
       patientProgramId: context.program.id,
       patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
       roundNumber,
-      stepCode: input.stepCode,
+      planItemId: item.id,
+      stepCode: item.stepCode,
       reasonCode: input.reasonCode,
       note: input.note ?? null,
       skippedByUserId: context.access.actor.userId,
@@ -695,7 +703,12 @@ async function skipStepInTransaction(
       action: "patient_program_round.step_skipped",
       resourceType: "PatientProgramRoundStepSkip",
       resourceId: context.program.id,
-      metadata: { ...auditMetadata(context, roundNumber), stepCode: input.stepCode, reasonCode: input.reasonCode },
+      metadata: {
+        ...auditMetadata(context, roundNumber),
+        planItemId: item.id,
+        stepCode: item.stepCode,
+        reasonCode: input.reasonCode,
+      },
     },
     transaction,
   );
@@ -711,10 +724,13 @@ async function unskipStepInTransaction(
   const roundNumber = assertSkipRound(input.roundNumber);
   const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
   await assertRoundWritable(transaction, context.program.id, roundNumber);
-  await assertSkippablePlanStep(transaction, context.program.id, roundNumber, input.stepCode);
-  const removed = await transaction.patientProgramRoundStepSkip.deleteMany({
-    where: { patientProgramId: context.program.id, roundNumber, stepCode: input.stepCode },
-  });
+  const item = await loadSkippablePlanItem(
+    transaction,
+    context.program.id,
+    roundNumber,
+    input.planItemId.toLowerCase(),
+  );
+  const removed = await transaction.patientProgramRoundStepSkip.deleteMany({ where: { planItemId: item.id } });
 
   if (removed.count === 0) {
     return writeResult("ALREADY_RECORDED", context, roundNumber);
@@ -726,7 +742,7 @@ async function unskipStepInTransaction(
       action: "patient_program_round.step_unskipped",
       resourceType: "PatientProgramRoundStepSkip",
       resourceId: context.program.id,
-      metadata: { ...auditMetadata(context, roundNumber), stepCode: input.stepCode },
+      metadata: { ...auditMetadata(context, roundNumber), planItemId: item.id, stepCode: item.stepCode },
     },
     transaction,
   );

@@ -2,11 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import type { Prisma } from "@prisma/client";
+import type { PatientProgramRoundToolCode, Prisma } from "@prisma/client";
 
 import { InfrastructureError } from "@/shared/errors/application-error";
 
-import { GUIDELINE_ROUND_COUNT } from "../domain/round-catalog";
+import { GUIDELINE_ROUND_COUNT, roundActivitySourceFor } from "../domain/round-catalog";
 import { RoundConflictError } from "../domain/round-conflict-error";
 import { roundGuideline, type RoundStepCode } from "../domain/round-steps";
 
@@ -64,12 +64,15 @@ export async function openGuidelineRound(
   });
 }
 
+/** A step the active plan lists at most once; CUSTOM items are identified by their plan item id. */
+export type SingularRoundStepCode = Exclude<RoundStepCode, "CUSTOM">;
+
 /** The round's active (not removed) plan item for `stepCode`, if its plan lists the step. */
 export async function findActivePlanItem(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   roundNumber: number,
-  stepCode: RoundStepCode,
+  stepCode: SingularRoundStepCode,
 ): Promise<{ id: string } | null> {
   return transaction.patientProgramRoundPlanItem.findFirst({
     where: { patientProgramId, roundNumber, stepCode, removedAt: null },
@@ -82,9 +85,24 @@ export async function assertActivePlanItem(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   roundNumber: number,
-  stepCode: RoundStepCode,
+  stepCode: SingularRoundStepCode,
 ): Promise<void> {
   if (!(await findActivePlanItem(transaction, patientProgramId, roundNumber, stepCode))) {
     throw new RoundConflictError(`รายการนี้ไม่อยู่ในแผนของครั้งที่ ${roundNumber}`);
   }
+}
+
+/** The ledger source of `toolCode` in the round, read from its active plan inside the writing transaction. */
+export async function classifyRoundActivity(
+  transaction: Prisma.TransactionClient,
+  patientProgramId: string,
+  roundNumber: number,
+  toolCode: PatientProgramRoundToolCode,
+): Promise<"PLANNED" | "EXTRA"> {
+  const items = await transaction.patientProgramRoundPlanItem.findMany({
+    where: { patientProgramId, roundNumber, removedAt: null },
+    select: { stepCode: true },
+  });
+
+  return roundActivitySourceFor(roundNumber, toolCode, items.map((item) => item.stepCode));
 }

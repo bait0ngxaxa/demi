@@ -1,7 +1,7 @@
 # ADR-0022: Plan-driven service rounds
 
 - Status: Accepted — Product Owner decisions FR-D1..FR-D7 and FR-D4a, 2026-10-28
-- Partially supersedes: SR-D1 and the "all resolved" rule of SR-D4 in [WB_ALIGNMENT_DECISIONS](../requirements/WB_ALIGNMENT_DECISIONS.md) §R1 (effective when FR-3 ships); the fixed per-round tool CHECKs of SR-D8/SR-D11 (replaced in FR-1).
+- Partially supersedes: SR-D1 and the "all resolved" rule of SR-D4 in [WB_ALIGNMENT_DECISIONS](../requirements/WB_ALIGNMENT_DECISIONS.md) §R1 (effective when FR-2 ships); the fixed per-round tool CHECKs of SR-D8/SR-D11 (replaced in FR-1).
 - Related: [ADR-0006](0006-transactional-business-operations.md), [ADR-0016](0016-network-patient-read.md), [ADR-0021](0021-caregiver-accounts-by-invitation.md)
 
 ## Context
@@ -25,14 +25,16 @@ In practice staff adapt each visit to the patient. The Product Owner confirmed o
 
 ### Kept and superseded rules
 
-Kept: SR-D3 (skip with a reason), SR-D5 (round n is writable only after round n-1 is completed), SR-D7 (stepper), immutable completion (SR-D4 apart from its "all resolved" condition) and the RT-1 labelled timeline. Superseded: SR-D1 (every item required) and the SR-D4 "all resolved" rule, replaced by FR-D1 in FR-3. The fixed tool rounds of SR-D8/SR-D11 are replaced by the round's plan in FR-1; one result per tool and round remains.
+Kept: SR-D3 (skip with a reason), SR-D5 (round n is writable only after round n-1 is completed), SR-D7 (stepper), immutable completion (SR-D4 apart from its "all resolved" condition) and the RT-1 labelled timeline. Superseded: SR-D1 (every item required) and the SR-D4 "all resolved" rule, replaced by FR-D1 in FR-2. The fixed tool rounds of SR-D8/SR-D11 are replaced by the round's plan in FR-1; one result per tool and round remains.
 
 ### Data model
 
 - `PatientProgramRound` is one opened round: Program, Hospital relationship (composite foreign key to `PatientProgram`, like its siblings), `roundNumber` 1-12, `origin` (`GUIDELINE` exactly for rounds 1-6, `EXTRA` for 7-12), `openedAt`, `openedByUserId`, and a unique `submissionNonce`. `(patientProgramId, roundNumber)` is unique. A round is never deleted, and its row is frozen once the round is completed.
 - `PatientProgramRoundPlanItem` is one item of a round's plan, referencing its round through a composite foreign key: `stepCode` (the step enum gains `CUSTOM`), `customTitle` (present exactly for CUSTOM, trimmed, never blank), `position`, `origin` (`GUIDELINE` or `ADDED`, with `addedByUserId` present exactly for ADDED), soft removal (`removedAt` and `removedByUserId` together), and the CUSTOM done mark (`doneAt` and `doneByUserId` together, `doneNote` only when done). Recorder columns are not constrained to staff roles because patients record in FR-4. One active non-CUSTOM item per step and round (partial unique index), so a removed step can be added again as a new item. Items are never deleted, an item's identity never changes, a removal is final, and the plan of a completed round is frozen.
 - The skip reason enum gains `NOT_DONE_AT_CLOSE`, which only the system writes.
-- Completions, skips and round vitals accept rounds 1-12 and require an opened round. A per-round tool result (ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, กราฟวัดลอยจม, ความฝันของฉัน) requires an active plan item for its tool in its round; a trigger replaces the fixed-round CHECKs.
+- A skip belongs to one plan item (FR-1b): `PatientProgramRoundStepSkip.planItemId` with a composite foreign key `(planItemId, patientProgramId, roundNumber, stepCode)` to the plan item, so a skip's step and round always equal its item's, and one skip per item (unique `planItemId`). Several CUSTOM items of a round can each be skipped, `NOT_DONE_AT_CLOSE` can resolve every unresolved item, and an item added again after a removal starts without the removed item's skip. A skip needs an active item, and a skipped item is unskipped before it is removed (triggers). Skip and unskip requests name the `planItemId`; the round status matches skips by item only.
+- Completions, skips, round vitals and ledger rows (`PatientProgramRoundActivity`, FR-1b) accept rounds 1-12; completions, skips and round vitals require an opened round. A round opens only as round 1 or after the previous round is completed (FR-1b trigger on `PatientProgramRound` insert; rows of the FR-1 data step predate it).
+- The ledger source is read from the plan (FR-1b): PLANNED when the round's active plan lists the tool's step (the health path as HEALTH_PATH_REVIEW in round 6), otherwise EXTRA, evaluated in the writing transaction. A per-round tool result (ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, กราฟวัดลอยจม, ความฝันของฉัน) requires an active plan item for its tool in its round; a trigger replaces the fixed-round CHECKs.
 - Round vitals may be recorded in any round (FR-4). A round's VITALS evidence is its round vitals or its Follow-up measurements: DONE when either source holds every required measurement. When both exist, the view shows the latest recorded one and names its source.
 - All guards are database triggers and constraints behind the service checks. The demo/test reset keeps the transaction-local `demi.service_area_purge = 'demo-reset'` escape for deletes.
 
@@ -42,8 +44,11 @@ A round's plan is stored when the round opens, not computed from the guideline w
 
 ### Phasing
 
-- **FR-1 (this ADR):** schema, triggers, data step, `ROUND_GUIDELINES` / `ROUND_ITEM_CATALOG`, round numbers as `number` with `isValidRoundNumber` (integer 1-12), status computed over the plan, round opening on Program creation and completion, plan checks for tool writes, skips and unskips. No visible behaviour change: the completion rule stays "every plan item resolved"; rounds 7-12 cannot be added yet; Follow-up mapping, the Final Assessment gate, authorization, UI and reports are unchanged.
-- **FR-2 … FR-6:** plan editing and adding rounds, the FR-D1 completion rule, the Follow-up and Final Assessment mapping, patient self-recording, then UI and reports. Each phase is delivered and reviewed separately.
+- **FR-1:** schema, triggers, data step, `ROUND_GUIDELINES` / `ROUND_ITEM_CATALOG`, round numbers as `number` with `isValidRoundNumber` (integer 1-12), status computed over the plan, round opening on Program creation and completion, plan checks for tool writes, skips and unskips. No visible behaviour change: the completion rule stays "every plan item resolved"; rounds 7-12 cannot be added yet; Follow-up mapping, the Final Assessment gate, authorization, UI and reports are unchanged.
+- **FR-1b:** skips keyed by plan item (CUSTOM items become skippable through the existing skip path), the ledger widened to rounds 1-12 with a plan-based source, and the round-opening order trigger. Still no visible behaviour change.
+- **FR-2:** services for plan editing, adding rounds 7-12 and the FR-D1 completion rule (with `NOT_DONE_AT_CLOSE`).
+- **FR-3:** the staff UI for plans, added rounds and ending a round.
+- **FR-4 … FR-6:** the Follow-up and Final Assessment mapping, patient self-recording, and reports. Each phase is delivered and reviewed separately.
 
 ## Consequences
 
@@ -53,7 +58,6 @@ A round's plan is stored when the round opens, not computed from the guideline w
 
 ## Open questions
 
-- `PatientProgramRoundStepSkip` is unique per (Program, round, step). It cannot hold skips for two CUSTOM items of one round, which FR-3's `NOT_DONE_AT_CLOSE` needs. FR-1 refuses CUSTOM skips; FR-3 must give skips a plan-item key.
-- `PatientProgramRoundActivity` (ledger) still accepts rounds 1-6 only, and the PLANNED/EXTRA ledger source is still derived from the guideline. Rounds 7-12 need both widened when they are introduced.
+- Resolved in FR-1b: skips per (Program, round, step) could not hold two CUSTOM skips or `NOT_DONE_AT_CLOSE` for several items; skips are now keyed by plan item. The ledger accepted rounds 1-6 only with a guideline-derived source; it now accepts 1-12 with a plan-based source. Round opening was ordered by the services only; a trigger now backs it.
 - HEALTH_PATH_REVIEW stays fixed to round 6, and HEALTHY_PLAN remains the interim round-4 rule. Whether either may be planned in other rounds is not decided.
 - Opening a round is not audited separately; Program creation and round completion, which open rounds, are.

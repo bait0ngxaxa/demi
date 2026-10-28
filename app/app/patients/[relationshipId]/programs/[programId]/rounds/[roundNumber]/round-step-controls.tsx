@@ -122,12 +122,13 @@ const SKIP_REASONS = Object.entries(ROUND_SKIP_REASON_LABELS) as [keyof typeof R
 /** SR-D3: skip a checklist step with a reason; OTHER needs a note (≤ 500 characters). */
 export function SkipStepControl({
   nextHref,
-  stepCode,
+  planItemId,
   stepLabel,
   target,
 }: {
   nextHref: string;
-  stepCode: string;
+  /** ADR-0022 (FR-1b): the skip belongs to this plan item. */
+  planItemId: string;
   stepLabel: string;
   target: RoundTarget;
 }): React.JSX.Element {
@@ -154,7 +155,7 @@ export function SkipStepControl({
         >
           <form action={action} className="space-y-5" onSubmit={submitPreservingInput(action)}>
             <RoundTargetInputs target={target} />
-            <input name="stepCode" type="hidden" value={stepCode} />
+            <input name="planItemId" type="hidden" value={planItemId} />
             <fieldset className="space-y-2" disabled={pending || unknownOutcome}>
               <legend className="text-sm font-semibold text-text">เหตุผล</legend>
               {SKIP_REASONS.map(([code, label]) => (
@@ -171,12 +172,12 @@ export function SkipStepControl({
                 </label>
               ))}
             </fieldset>
-            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`skip-note-${stepCode}`}>
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`skip-note-${planItemId}`}>
               <span>รายละเอียด{reason === "OTHER" ? " (ต้องระบุ)" : " (ไม่บังคับ)"}</span>
               <textarea
                 className={`${inputClassName} min-h-24 py-3`}
                 disabled={pending || unknownOutcome}
-                id={`skip-note-${stepCode}`}
+                id={`skip-note-${planItemId}`}
                 maxLength={500}
                 name="note"
                 required={reason === "OTHER"}
@@ -202,7 +203,7 @@ export function SkipStepControl({
 }
 
 /** SR-D3: recording the step replaces a skip; this removes the skip without recording. */
-export function UnskipStepControl({ stepCode, target }: { stepCode: string; target: RoundTarget }): React.JSX.Element {
+export function UnskipStepControl({ planItemId, target }: { planItemId: string; target: RoundTarget }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     unskipPatientProgramRoundStepAction,
     initialPatientProgramRoundActionState,
@@ -212,7 +213,7 @@ export function UnskipStepControl({ stepCode, target }: { stepCode: string; targ
   return (
     <form action={action} className="space-y-2">
       <RoundTargetInputs target={target} />
-      <input name="stepCode" type="hidden" value={stepCode} />
+      <input name="planItemId" type="hidden" value={planItemId} />
       <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
         {pending ? "กำลังยกเลิก…" : "ยกเลิกการข้าม"}
       </Button>

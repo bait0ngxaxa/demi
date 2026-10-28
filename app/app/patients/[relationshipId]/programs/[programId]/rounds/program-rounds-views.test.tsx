@@ -223,7 +223,7 @@ describe("round stepper (SR-D7)", () => {
   it("shows a skipped step with its reason and an unskip control", () => {
     const markup = renderDetail(1, "PAM", {
       roundStepSkips: [
-        { roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", createdAt: at, skippedByUser: recorder },
+        { roundNumber: 1, planItemId: "plan-1-PAM", stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", createdAt: at, skippedByUser: recorder },
       ],
     });
 
@@ -278,7 +278,7 @@ describe("round stepper (SR-D7)", () => {
     expect(pending).not.toContain("จบบริการครั้งที่ 5</button>");
 
     const skips = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
-      roundNumber: 5, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder,
+      roundNumber: 5, planItemId: `plan-5-${stepCode}`, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder,
     }));
     const ready = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion), roundStepSkips: skips });
     expect(ready).toContain("ผู้ป่วยปฏิเสธ");

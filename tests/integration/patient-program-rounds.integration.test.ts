@@ -29,8 +29,8 @@ import {
   recordPatientProgramRoundProfile,
   recordPatientProgramRoundReview,
   recordPatientProgramRoundVitals,
-  skipPatientProgramRoundStep,
-  unskipPatientProgramRoundStep,
+  skipPatientProgramRoundStep as skipPlanItem,
+  unskipPatientProgramRoundStep as unskipPlanItem,
 } from "@/modules/patient-program-rounds/services/round-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
@@ -47,7 +47,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 
 import { bookletGoalPayload, dreamCard, routineTable } from "./support/booklet-forms";
 import { RoundConflictError } from "@/modules/patient-program-rounds/domain/round-conflict-error";
-import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
+import { roundGuideline, type RoundStepCode } from "@/modules/patient-program-rounds/domain/round-steps";
 
 import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
 
@@ -301,6 +301,37 @@ function goalInput(programId: string, overrides: Record<string, unknown> = {}): 
     ...bookletGoalPayload(),
     ...overrides,
   };
+}
+
+/**
+ * FR-1b: skip requests name the plan item. These tests address a round's single item of a step by its step
+ * code; a step the round's active plan does not list gets an unknown item id.
+ */
+async function withPlanItem(input: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!("stepCode" in input)) {
+    return input;
+  }
+
+  const { stepCode, ...request } = input;
+  const item = await prisma.patientProgramRoundPlanItem.findFirst({
+    where: {
+      patientProgramId: String(input.patientProgramId).toLowerCase(),
+      roundNumber: Number(input.roundNumber),
+      stepCode: stepCode as RoundStepCode,
+      removedAt: null,
+    },
+    select: { id: true },
+  });
+
+  return { ...request, planItemId: item?.id ?? randomUUID() };
+}
+
+async function skipPatientProgramRoundStep(actor: ActorContext, input: Record<string, unknown>) {
+  return skipPlanItem(actor, await withPlanItem(input));
+}
+
+async function unskipPatientProgramRoundStep(actor: ActorContext, input: Record<string, unknown>) {
+  return unskipPlanItem(actor, await withPlanItem(input));
 }
 
 function completion(programId: string, roundNumber: number, submissionNonce = randomUUID()): Record<string, unknown> {
@@ -1028,7 +1059,7 @@ describe("Program service rounds: must-complete flow (Phase R1)", () => {
     ).rejects.toThrow(/has not been opened/u);
     await expect(
       prisma.patientProgramRoundStepSkip.create({
-        data: { ...base, skippedByUserId: fixture.osm.userId, roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: null },
+        data: { ...base, skippedByUserId: fixture.osm.userId, roundNumber: 1, planItemId: randomUUID(), stepCode: "PAM", reasonCode: "OTHER", note: null },
       }),
     ).rejects.toThrow();
     await expect(
@@ -1305,6 +1336,9 @@ describe("Plan-driven service rounds foundation (ADR-0022, FR-1)", () => {
     await expect(round(3, "EXTRA")).rejects.toThrow();
     await expect(round(7, "GUIDELINE")).rejects.toThrow();
     await expect(round(1, "GUIDELINE")).rejects.toMatchObject({ code: "P2002" });
+    // FR-1b: round 7 opens only once round 6 is completed.
+    await expect(round(7, "EXTRA")).rejects.toThrow(/previous round is completed/u);
+    await openProgramRound(fixture.programId, 7);
     await expect(round(7, "EXTRA")).resolves.toEqual({ roundNumber: 7 });
 
     // Rounds 7-12 open with an empty plan; a tool there needs a plan item first.
@@ -1318,9 +1352,9 @@ describe("Plan-driven service rounds foundation (ADR-0022, FR-1)", () => {
     const scope = { patientProgramId: fixture.programId, patientHospitalRelationshipId: fixture.relationshipId };
     await expect(
       prisma.patientProgramRoundStepSkip.create({
-        data: { ...scope, roundNumber: 8, stepCode: "VITALS", reasonCode: "PATIENT_DECLINED", skippedByUserId: fixture.osm.userId },
+        data: { ...scope, roundNumber: 8, planItemId: randomUUID(), stepCode: "VITALS", reasonCode: "PATIENT_DECLINED", skippedByUserId: fixture.osm.userId },
       }),
-    ).rejects.toThrow(/has not been opened/u);
+    ).rejects.toThrow(/needs an active plan item/u);
     await expect(
       prisma.patientProgramRoundVitals.create({
         data: { ...scope, roundNumber: 7, serviceDate: new Date("2026-08-17"), weight: 70, recordedByUserId: fixture.osm.userId, submissionNonce: randomUUID() },
@@ -1418,5 +1452,265 @@ describe("Plan-driven service rounds foundation (ADR-0022, FR-1)", () => {
       }),
     ).rejects.toBe(rollback);
     expect(await prisma.patientProgramRound.count({ where: { patientProgramId: { in: programs.map((program) => program.id) } } })).toBe(0);
+  });
+});
+
+describe("Round skips keyed by plan item, ledger range and round opening order (ADR-0022, FR-1b)", () => {
+  const migrationSql = readFileSync(
+    resolve(process.cwd(), "prisma/migrations/20261125100000_round_skips_by_plan_item/migration.sql"),
+    "utf8",
+  );
+  const dataStep = migrationSql.slice(
+    migrationSql.indexOf("-- BEGIN FR-1b data step"),
+    migrationSql.indexOf("-- END FR-1b data step"),
+  );
+  // The trigger toggles around the UPDATE do not apply to the temporary tables of the rehearsal.
+  const backfillStatements = [
+    /DO \$\$[\s\S]*?\$\$;/u.exec(dataStep)?.[0] ?? "",
+    /UPDATE "PatientProgramRoundStepSkip"[\s\S]*?;/u.exec(dataStep)?.[0] ?? "",
+  ];
+
+  beforeAll(async () => {
+    await prisma.$connect();
+    await clearDatabase();
+  });
+
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  function addPlanItem(fixture: Fixture, roundNumber: number, data: Record<string, unknown>) {
+    return prisma.patientProgramRoundPlanItem.create({
+      data: {
+        patientProgramId: fixture.programId,
+        patientHospitalRelationshipId: fixture.relationshipId,
+        roundNumber,
+        origin: "ADDED",
+        addedByUserId: fixture.osm.userId,
+        ...data,
+      } as unknown as Prisma.PatientProgramRoundPlanItemUncheckedCreateInput,
+      select: { id: true },
+    });
+  }
+
+  function rawSkip(fixture: Fixture, data: { planItemId: string; roundNumber: number; stepCode: RoundStepCode }) {
+    return prisma.patientProgramRoundStepSkip.create({
+      data: {
+        patientProgramId: fixture.programId,
+        patientHospitalRelationshipId: fixture.relationshipId,
+        reasonCode: "PATIENT_DECLINED",
+        skippedByUserId: fixture.osm.userId,
+        ...data,
+      },
+      select: { id: true },
+    });
+  }
+
+  async function guidelineItemId(fixture: Fixture, roundNumber: number, stepCode: RoundStepCode): Promise<string> {
+    const item = await prisma.patientProgramRoundPlanItem.findFirstOrThrow({
+      where: { patientProgramId: fixture.programId, roundNumber, stepCode, removedAt: null },
+      select: { id: true },
+    });
+
+    return item.id;
+  }
+
+  function removeItem(fixture: Fixture, id: string) {
+    return prisma.patientProgramRoundPlanItem.update({
+      where: { id },
+      data: { removedAt: new Date(), removedByUserId: fixture.osm.userId },
+      select: { id: true },
+    });
+  }
+
+  it("links every existing skip to its round's item of the step and fails loudly without exactly one", async () => {
+    expect(backfillStatements.every((statement) => statement.length > 0)).toBe(true);
+    const programId = randomUUID();
+    const rollback = new Error("roll back the backfill rehearsal");
+
+    const rehearse = (items: readonly (readonly [number, string, boolean])[], skips: readonly (readonly [number, string])[]) =>
+      prisma.$transaction(async (transaction) => {
+        // Temporary tables shadow the real ones for this transaction only (as in the FR-1 data step test).
+        await transaction.$executeRaw`
+          CREATE TEMPORARY TABLE "PatientProgramRoundPlanItem" (
+            "id" UUID PRIMARY KEY, "patientProgramId" UUID NOT NULL, "roundNumber" INTEGER NOT NULL,
+            "stepCode" "PatientProgramRoundStepCode" NOT NULL, "removedAt" TIMESTAMPTZ(3)
+          ) ON COMMIT DROP`;
+        await transaction.$executeRaw`
+          CREATE TEMPORARY TABLE "PatientProgramRoundStepSkip" (
+            "id" UUID PRIMARY KEY, "patientProgramId" UUID NOT NULL, "roundNumber" INTEGER NOT NULL,
+            "stepCode" "PatientProgramRoundStepCode" NOT NULL, "planItemId" UUID
+          ) ON COMMIT DROP`;
+        for (const [roundNumber, stepCode, removed] of items) {
+          await transaction.$executeRaw`
+            INSERT INTO "PatientProgramRoundPlanItem" ("id", "patientProgramId", "roundNumber", "stepCode", "removedAt")
+            VALUES (gen_random_uuid(), ${programId}::uuid, ${roundNumber}, ${stepCode}::"PatientProgramRoundStepCode", ${removed ? new Date() : null})`;
+        }
+        for (const [roundNumber, stepCode] of skips) {
+          await transaction.$executeRaw`
+            INSERT INTO "PatientProgramRoundStepSkip" ("id", "patientProgramId", "roundNumber", "stepCode")
+            VALUES (gen_random_uuid(), ${programId}::uuid, ${roundNumber}, ${stepCode}::"PatientProgramRoundStepCode")`;
+        }
+
+        for (const statement of backfillStatements) {
+          await transaction.$executeRawUnsafe(statement);
+        }
+
+        const linked = await transaction.$queryRaw<Array<{ roundNumber: number; stepCode: string; itemRound: number | null; itemStep: string | null }>>`
+          SELECT "skip"."roundNumber", "skip"."stepCode"::text AS "stepCode",
+                 "item"."roundNumber" AS "itemRound", "item"."stepCode"::text AS "itemStep"
+          FROM "PatientProgramRoundStepSkip" AS "skip"
+          LEFT JOIN "PatientProgramRoundPlanItem" AS "item" ON "item"."id" = "skip"."planItemId"
+          ORDER BY "skip"."roundNumber", "skip"."stepCode"::text`;
+        expect(linked).toEqual(
+          [...skips]
+            .sort((left, right) => left[0] - right[0] || left[1].localeCompare(right[1]))
+            .map(([roundNumber, stepCode]) => ({ roundNumber, stepCode, itemRound: roundNumber, itemStep: stepCode })),
+        );
+
+        throw rollback;
+      });
+
+    await expect(
+      rehearse(
+        [[1, "VITALS", false], [1, "PAM", false], [1, "PROMS", false], [2, "ROUTINE", false], [2, "VITALS", false]],
+        [[1, "PAM"], [1, "PROMS"], [2, "ROUTINE"]],
+      ),
+    ).rejects.toBe(rollback);
+    await expect(rehearse([[1, "VITALS", false]], [[1, "PAM"]])).rejects.toThrow(/do not match exactly one plan item/u);
+    await expect(rehearse([[1, "PAM", true], [1, "PAM", false]], [[1, "PAM"]])).rejects.toThrow(
+      /do not match exactly one plan item/u,
+    );
+  });
+
+  it("lets two CUSTOM items of one round each hold their own skip through the skip service", async () => {
+    const fixture = await createFixture("skip-custom");
+    const walk = await addPlanItem(fixture, 1, { stepCode: "CUSTOM", customTitle: "เดินรอบหมู่บ้าน", position: 20 });
+    const garden = await addPlanItem(fixture, 1, { stepCode: "CUSTOM", customTitle: "ทำสวน", position: 21 });
+    const target = { patientProgramId: fixture.programId, roundNumber: 1 };
+    const customStatuses = async () => {
+      const detail = await getProgramRoundDetail(fixture.owner.actor, fixture.relationshipId, fixture.programId, "1");
+      return detail.status.steps.filter((step) => step.code === "CUSTOM").map((step) => [step.planItemId, step.status]);
+    };
+
+    await expect(
+      skipPlanItem(fixture.osm.actor, { ...target, planItemId: walk.id, reasonCode: "PATIENT_DECLINED" }),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(await customStatuses()).toEqual([[walk.id, "SKIPPED"], [garden.id, "TODO"]]);
+
+    await expect(
+      skipPlanItem(fixture.osm.actor, { ...target, planItemId: garden.id, reasonCode: "PATIENT_UNABLE" }),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(await customStatuses()).toEqual([[walk.id, "SKIPPED"], [garden.id, "SKIPPED"]]);
+
+    await expect(unskipPlanItem(fixture.osm.actor, { ...target, planItemId: walk.id })).resolves.toMatchObject({
+      operation: "RECORDED",
+    });
+    expect(await customStatuses()).toEqual([[walk.id, "TODO"], [garden.id, "SKIPPED"]]);
+
+    // An item outside the round's plan is refused before anything is written.
+    await expect(
+      skipPlanItem(fixture.osm.actor, { ...target, planItemId: randomUUID(), reasonCode: "PATIENT_DECLINED" }),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(await prisma.patientProgramRoundStepSkip.count({ where: { patientProgramId: fixture.programId } })).toBe(1);
+  });
+
+  it("rejects a skip of a removed item and the removal of a skipped item", async () => {
+    const fixture = await createFixture("skip-removed");
+    const routine = await guidelineItemId(fixture, 1, "ROUTINE");
+    const ruler = await guidelineItemId(fixture, 1, "CONFIDENCE_RULER");
+
+    await removeItem(fixture, routine);
+    await expect(rawSkip(fixture, { planItemId: routine, roundNumber: 1, stepCode: "ROUTINE" })).rejects.toThrow(
+      /needs an active plan item/u,
+    );
+    await expect(
+      skipPlanItem(fixture.osm.actor, {
+        patientProgramId: fixture.programId,
+        roundNumber: 1,
+        planItemId: routine,
+        reasonCode: "PATIENT_DECLINED",
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    // The step added again starts without a skip and takes its own.
+    const readded = await addPlanItem(fixture, 1, { stepCode: "ROUTINE", position: 20 });
+    expect(await stepStatus(fixture, 1, "ROUTINE")).toBe("TODO");
+    await rawSkip(fixture, { planItemId: readded.id, roundNumber: 1, stepCode: "ROUTINE" });
+    expect(await stepStatus(fixture, 1, "ROUTINE")).toBe("SKIPPED");
+
+    await rawSkip(fixture, { planItemId: ruler, roundNumber: 1, stepCode: "CONFIDENCE_RULER" });
+    await expect(removeItem(fixture, ruler)).rejects.toThrow(/unskipped before it is removed/u);
+    await unskipPlanItem(fixture.osm.actor, { patientProgramId: fixture.programId, roundNumber: 1, planItemId: ruler });
+    await expect(removeItem(fixture, ruler)).resolves.toEqual({ id: ruler });
+  });
+
+  it("keeps a skip's step and round equal to its item's (composite foreign key)", async () => {
+    const fixture = await createFixture("skip-fk");
+    const routine = await guidelineItemId(fixture, 1, "ROUTINE");
+
+    await expect(rawSkip(fixture, { planItemId: routine, roundNumber: 1, stepCode: "PAM" })).rejects.toMatchObject({ code: "P2003" });
+    await openProgramRound(fixture.programId, 2);
+    const roundTwoRoutine = await guidelineItemId(fixture, 2, "ROUTINE");
+    // Round 1 is completed now; its item cannot carry a skip of the open round 2, nor another step's skip.
+    await expect(rawSkip(fixture, { planItemId: routine, roundNumber: 2, stepCode: "ROUTINE" })).rejects.toMatchObject({
+      code: "P2003",
+    });
+    await expect(rawSkip(fixture, { planItemId: roundTwoRoutine, roundNumber: 2, stepCode: "VITALS" })).rejects.toMatchObject({
+      code: "P2003",
+    });
+    await expect(rawSkip(fixture, { planItemId: roundTwoRoutine, roundNumber: 2, stepCode: "ROUTINE" })).resolves.toEqual({
+      id: expect.any(String),
+    });
+    await expect(rawSkip(fixture, { planItemId: roundTwoRoutine, roundNumber: 2, stepCode: "ROUTINE" })).rejects.toMatchObject({
+      code: "P2002",
+    });
+  });
+
+  it("accepts ledger rows in round 7 once it is opened and opens a round only after the one before it", async () => {
+    const fixture = await createFixture("ledger-order");
+    const scope = { patientProgramId: fixture.programId, patientHospitalRelationshipId: fixture.relationshipId };
+    const round = (roundNumber: number) =>
+      prisma.patientProgramRound.create({
+        data: {
+          ...scope,
+          roundNumber,
+          origin: roundNumber <= 6 ? "GUIDELINE" : "EXTRA",
+          openedAt: new Date(),
+          openedByUserId: fixture.osm.userId,
+          submissionNonce: randomUUID(),
+        },
+        select: { roundNumber: true },
+      });
+    const ledger = (roundNumber: number) =>
+      prisma.patientProgramRoundActivity.create({
+        data: {
+          ...scope,
+          roundNumber,
+          toolCode: "CONFIDENCE_RULER",
+          source: "EXTRA",
+          mode: "RECORDED",
+          performedAt: new Date(),
+          recordedByUserId: fixture.osm.userId,
+          submissionNonce: randomUUID(),
+        },
+        select: { roundNumber: true },
+      });
+
+    // Round 1 always opens; a later round only once the round before it is completed.
+    await clearProgramRoundCompletions([fixture.programId]);
+    await expect(round(3)).rejects.toThrow(/previous round is completed/u);
+    await expect(round(1)).resolves.toEqual({ roundNumber: 1 });
+    await expect(round(2)).rejects.toThrow(/previous round is completed/u);
+
+    await openProgramRound(fixture.programId, 7);
+    await expect(round(8)).rejects.toThrow(/previous round is completed/u);
+    await expect(round(7)).resolves.toEqual({ roundNumber: 7 });
+    await expect(ledger(7)).resolves.toEqual({ roundNumber: 7 });
+    await expect(ledger(13)).rejects.toThrow();
   });
 });

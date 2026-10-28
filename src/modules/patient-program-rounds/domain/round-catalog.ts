@@ -3,8 +3,6 @@ import type {
   PatientProgramRoundToolCode,
 } from "@prisma/client";
 
-import { isStepInGuideline } from "./round-steps";
-
 /**
  * Round numbering and ledger tool codes (docs/requirements/WB_ALIGNMENT_DECISIONS.md: WB-DF-01 round
  * mapping; Phase R1 SR-D1..D13; ADR-0022). The guideline and plan rules live in ./round-steps.ts.
@@ -113,14 +111,19 @@ export function toProgramRoundNumber(followupRoundNumber: number): number {
   return followupRoundNumber + FOLLOWUP_ROUND_NUMBER_OFFSET;
 }
 
-/** Server-derived classification of a ledger entry; never taken from the client. */
+/** The plan step a ledger tool fulfils in `roundNumber` (the health path is reviewed in round 6). */
+export function roundActivityStepCode(roundNumber: number, toolCode: PatientProgramRoundToolCode): string {
+  return toolCode === "HEALTH_PATH" && roundNumber === HEALTH_PATH_REVIEW_ROUND ? "HEALTH_PATH_REVIEW" : toolCode;
+}
+
+/**
+ * Server-derived classification of a ledger entry, never taken from the client (ADR-0022): PLANNED when
+ * the round's active plan lists the tool's step, otherwise EXTRA.
+ */
 export function roundActivitySourceFor(
   roundNumber: number,
   toolCode: PatientProgramRoundToolCode,
+  activePlanStepCodes: readonly string[],
 ): "PLANNED" | "EXTRA" {
-  const stepCode = toolCode === "HEALTH_PATH" && roundNumber === HEALTH_PATH_REVIEW_ROUND
-    ? "HEALTH_PATH_REVIEW"
-    : toolCode;
-
-  return isStepInGuideline(roundNumber, stepCode) ? "PLANNED" : "EXTRA";
+  return activePlanStepCodes.includes(roundActivityStepCode(roundNumber, toolCode)) ? "PLANNED" : "EXTRA";
 }

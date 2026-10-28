@@ -5,11 +5,9 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import {
-  roundActivitySourceFor,
-  SERVICE_ONE_HOME_ROUND,
-} from "@/modules/patient-program-rounds/domain/round-catalog";
+import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
+import { classifyRoundActivity } from "@/modules/patient-program-rounds/services/round-plan-service";
 import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
@@ -280,7 +278,7 @@ async function submitInTransaction(
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
       roundNumber: SERVICE_ONE_HOME_ROUND,
       toolCode: input.instrument,
-      source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, input.instrument),
+      source: await classifyRoundActivity(transaction, programLink.program.id, SERVICE_ONE_HOME_ROUND, input.instrument),
       mode: "RECORDED",
       linkedRecordType: "SCREENING_ASSESSMENT",
       linkedRecordId: assessment.id,

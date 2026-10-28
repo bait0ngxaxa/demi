@@ -15,7 +15,7 @@ vi.mock("@/modules/patient-program/services/patient-program-lifecycle-service", 
   lockActivePatientProgram: mockedLock,
 }));
 
-import { isStepInGuideline, roundGuideline } from "../domain/round-steps";
+import { isStepInGuideline, ROUND_ITEM_CATALOG, roundGuideline } from "../domain/round-steps";
 import {
   completePatientProgramRound,
   recordPatientProgramRoundProfile,
@@ -92,6 +92,19 @@ function storedVitals(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 /** ADR-0022: round 1 and each guideline round after a completed one are opened. */
+const STEP_CODES = Object.keys(ROUND_ITEM_CATALOG);
+
+/** The id of the guideline plan item of `stepCode` in a round (a UUID, as skip requests require). */
+function planItemId(roundNumber: number, stepCode: string): string {
+  return `00000000-0000-4000-8000-${String(roundNumber * 100 + STEP_CODES.indexOf(stepCode)).padStart(12, "0")}`;
+}
+
+function planItemFromId(id: string): { roundNumber: number; stepCode: string } {
+  const value = Number(id.slice(-12));
+
+  return { roundNumber: Math.floor(value / 100), stepCode: STEP_CODES[value % 100] ?? "" };
+}
+
 function openedRoundNumbers(completedRounds: readonly number[]): number[] {
   return [...new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)])];
 }
@@ -109,7 +122,7 @@ function programRecord(overrides: Record<string, unknown> = {}, completedRounds:
     rounds: openedRoundNumbers([...completedRounds, ...completions]).map((roundNumber) => ({
       roundNumber,
       planItems: roundGuideline(roundNumber).map((definition, index) => ({
-        id: `plan-${roundNumber}-${definition.code}`,
+        id: planItemId(roundNumber, definition.code),
         stepCode: definition.code,
         customTitle: null,
         position: index + 1,
@@ -166,6 +179,20 @@ function createDatabase(input: {
       findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
         Promise.resolve(
           opened.has(where.roundNumber) && isStepInGuideline(where.roundNumber, where.stepCode) ? { id: recordId } : null,
+        ),
+      ),
+      findUnique: vi.fn(({ where }: { where: { id: string } }) => {
+        const { roundNumber, stepCode } = planItemFromId(where.id);
+
+        return Promise.resolve(
+          opened.has(roundNumber) && isStepInGuideline(roundNumber, stepCode)
+            ? { id: where.id, patientProgramId: programId, roundNumber, stepCode, removedAt: null }
+            : null,
+        );
+      }),
+      findMany: vi.fn(({ where }: { where: { roundNumber: number } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) ? roundGuideline(where.roundNumber).map((step) => ({ stepCode: step.code })) : [],
         ),
       ),
     },
@@ -442,16 +469,32 @@ describe("round reviews", () => {
 });
 
 describe("step skips (SR-D3)", () => {
-  const skip = { patientProgramId: programId, roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "  ผู้ป่วยเหนื่อย  " };
+  const skip = {
+    patientProgramId: programId,
+    roundNumber: 1,
+    planItemId: planItemId(1, "PAM"),
+    reasonCode: "OTHER",
+    note: "  ผู้ป่วยเหนื่อย  ",
+  };
 
   it("requires a note for OTHER and a step of the round", async () => {
     const { database, transaction } = createDatabase();
 
     await expect(skipPatientProgramRoundStep(actor, { ...skip, note: " " }, deps(database))).rejects.toBeInstanceOf(ValidationError);
     await expect(skipPatientProgramRoundStep(actor, { ...skip, note: "x".repeat(501) }, deps(database))).rejects.toBeInstanceOf(ValidationError);
-    await expect(skipPatientProgramRoundStep(actor, { ...skip, stepCode: "DREAM_CARD" }, deps(database))).rejects.toBeInstanceOf(
+    await expect(skipPatientProgramRoundStep(actor, { ...skip, planItemId: planItemId(1, "DREAM_CARD") }, deps(database))).rejects.toBeInstanceOf(
       ValidationError,
     );
+    expect(transaction.patientProgramRoundStepSkip.create).not.toHaveBeenCalled();
+  });
+
+  it("skips only an item of the requested round's plan (FR-1b)", async () => {
+    const { database, transaction } = createDatabase({ completedRounds: [1] });
+
+    // An item of another round, even with a valid step, is not this round's item.
+    await expect(
+      skipPatientProgramRoundStep(actor, { ...skip, roundNumber: 2, planItemId: planItemId(1, "PAM") }, deps(database)),
+    ).rejects.toBeInstanceOf(ValidationError);
     expect(transaction.patientProgramRoundStepSkip.create).not.toHaveBeenCalled();
   });
 
@@ -460,17 +503,26 @@ describe("step skips (SR-D3)", () => {
 
     await expect(skipPatientProgramRoundStep(actor, skip, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
     expect(transaction.patientProgramRoundStepSkip.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", skippedByUserId: actorUserId }),
+      data: expect.objectContaining({
+        roundNumber: 1,
+        planItemId: planItemId(1, "PAM"),
+        stepCode: "PAM",
+        reasonCode: "OTHER",
+        note: "ผู้ป่วยเหนื่อย",
+        skippedByUserId: actorUserId,
+      }),
       select: { id: true },
     });
     const audit = mockedAudit.mock.calls[0]?.[0] as { action: string; metadata: Record<string, unknown> };
     expect(audit.action).toBe("patient_program_round.step_skipped");
-    expect(audit.metadata).toMatchObject({ stepCode: "PAM", reasonCode: "OTHER" });
+    expect(audit.metadata).toMatchObject({ planItemId: planItemId(1, "PAM"), stepCode: "PAM", reasonCode: "OTHER" });
     expect(JSON.stringify(audit)).not.toContain("ผู้ป่วยเหนื่อย");
   });
 
   it("is idempotent for the same skip and refuses skipping a recorded step", async () => {
-    const same = createDatabase({ skip: { reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย" } });
+    const same = createDatabase({
+      skip: { patientProgramId: programId, roundNumber: 1, reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย" },
+    });
     await expect(skipPatientProgramRoundStep(actor, skip, deps(same.database))).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
 
     const done = createDatabase({
@@ -484,7 +536,7 @@ describe("step skips (SR-D3)", () => {
   it("unskips before completion and refuses it after", async () => {
     const open = createDatabase();
     await expect(
-      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(open.database)),
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, planItemId: planItemId(1, "PAM") }, deps(open.database)),
     ).resolves.toMatchObject({ operation: "RECORDED" });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "patient_program_round.step_unskipped" }),
@@ -493,16 +545,19 @@ describe("step skips (SR-D3)", () => {
 
     const completed = createDatabase({ completedRounds: [1] });
     await expect(
-      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(completed.database)),
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, planItemId: planItemId(1, "PAM") }, deps(completed.database)),
     ).rejects.toMatchObject({ name: "RoundConflictError" });
     expect(completed.transaction.patientProgramRoundStepSkip.deleteMany).not.toHaveBeenCalled();
+    expect(open.transaction.patientProgramRoundStepSkip.deleteMany).toHaveBeenCalledWith({
+      where: { planItemId: planItemId(1, "PAM") },
+    });
   });
 });
 
 describe("round completion (SR-D1/SR-D4)", () => {
   const completion = { patientProgramId: programId, roundNumber: 5, submissionNonce: nonce };
   const allSkipped = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
-    roundNumber: 5, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: now, skippedByUser: recorder,
+    roundNumber: 5, planItemId: planItemId(5, stepCode), stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: now, skippedByUser: recorder,
   }));
   const before = [1, 2, 3, 4];
 
@@ -566,6 +621,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
     const earlier = [1, 2, 3, 4, 5];
     const roundSixSkips = ["VITALS", "HEALTH_PATH_REVIEW", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"].map((stepCode) => ({
       roundNumber: 6,
+      planItemId: planItemId(6, stepCode),
       stepCode,
       reasonCode: "PATIENT_DECLINED",
       note: null,

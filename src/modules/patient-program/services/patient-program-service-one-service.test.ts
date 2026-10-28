@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { RoundConflictError } from "@/modules/patient-program-rounds/domain/round-conflict-error";
-import { isStepInGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
+import { isStepInGuideline, roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
@@ -196,6 +196,11 @@ function openedRoundsWithGuidelinePlans(completedRounds: readonly number[]) {
       findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
         Promise.resolve(
           opened.has(where.roundNumber) && isStepInGuideline(where.roundNumber, where.stepCode) ? { id: recordId } : null,
+        ),
+      ),
+      findMany: vi.fn(({ where }: { where: { roundNumber: number } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) ? roundGuideline(where.roundNumber).map((step) => ({ stepCode: step.code })) : [],
         ),
       ),
     },

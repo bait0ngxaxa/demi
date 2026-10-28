@@ -14,69 +14,115 @@ function programIdOf(input: unknown): string | null {
   return typeof value === "string" && UUID.test(value) ? value.toLowerCase() : null;
 }
 
-/**
- * ADR-0022: opens guideline rounds 1..`upToRound` (at most 6) with their plans through the production opener,
- * without completing any. Concurrent test writes may open the same round; the loser's unique violation is ignored.
- */
-export async function openGuidelineRounds(
-  patientProgramId: string,
-  upToRound: number,
-): Promise<{ patientHospitalRelationshipId: string; createdByUserId: string } | null> {
-  const prisma = getPrisma();
-  const program = await prisma.patientProgram.findUnique({
+type ProgramOpening = { patientHospitalRelationshipId: string; createdByUserId: string; startedAt: Date };
+
+async function findProgramOpening(patientProgramId: string): Promise<ProgramOpening | null> {
+  return getPrisma().patientProgram.findUnique({
     where: { id: patientProgramId },
     select: { patientHospitalRelationshipId: true, createdByUserId: true, startedAt: true },
   });
+}
+
+/** Opens one guideline round through the production opener; a concurrent test write may already have opened it. */
+async function openRound(transaction: Prisma.TransactionClient, patientProgramId: string, program: ProgramOpening, roundNumber: number) {
+  await openGuidelineRound(transaction, {
+    patientProgramId,
+    patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+    roundNumber,
+    openedByUserId: program.createdByUserId,
+    openedAt: program.startedAt,
+  });
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
+/**
+ * ADR-0022: opens guideline rounds 1..`upToRound` (at most 6) with their plans, without leaving any round
+ * completed. A round opens only after the previous one is completed (FR-1b trigger), so the earlier rounds
+ * are completed for the opening and those completions are removed again in the same transaction with the
+ * demo/test reset switch. For fixtures that need rows in several rounds but no round progress (reports).
+ */
+export async function openGuidelineRounds(patientProgramId: string, upToRound: number): Promise<void> {
+  const program = await findProgramOpening(patientProgramId);
 
   if (!program) {
-    return null;
+    return;
   }
 
-  for (let round = 1; round <= Math.min(upToRound, GUIDELINE_ROUND_COUNT); round += 1) {
-    try {
-      await prisma.$transaction((transaction) =>
-        openGuidelineRound(transaction, {
-          patientProgramId,
-          patientHospitalRelationshipId: program.patientHospitalRelationshipId,
-          roundNumber: round,
-          openedByUserId: program.createdByUserId,
-          openedAt: program.startedAt,
-        }),
-      );
-    } catch (error: unknown) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) {
-        throw error;
+  await getPrisma().$transaction(async (transaction) => {
+    const lastRound = Math.min(upToRound, GUIDELINE_ROUND_COUNT);
+    const temporaryCompletionIds: string[] = [];
+
+    for (let round = 1; round <= lastRound; round += 1) {
+      await openRound(transaction, patientProgramId, program, round);
+
+      const completed = await transaction.patientProgramRoundCompletion.findFirst({
+        where: { patientProgramId, roundNumber: round },
+        select: { id: true },
+      });
+
+      if (round < lastRound && !completed) {
+        const completion = await transaction.patientProgramRoundCompletion.create({
+          data: {
+            patientProgramId,
+            patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+            roundNumber: round,
+            completedByUserId: program.createdByUserId,
+            submissionNonce: randomUUID(),
+          },
+          select: { id: true },
+        });
+        temporaryCompletionIds.push(completion.id);
       }
     }
-  }
 
-  return program;
+    await transaction.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
+    await transaction.patientProgramRoundCompletion.deleteMany({ where: { id: { in: temporaryCompletionIds } } });
+  });
 }
 
 /**
  * Phase R1 (SR-D5): round n accepts writes only after round n-1 is completed. Tests of other domains
  * (Goal Plans, Follow-ups, reports) are not about that sequence, so they open the round they write to by
- * opening the guideline rounds up to it (ADR-0022, the production opener) and recording the earlier
- * completions directly. Sequencing itself is covered by patient-program-rounds.integration.test.ts
+ * opening each guideline round through the production opener (ADR-0022) and recording its completion
+ * directly before the next one. Sequencing itself is covered by patient-program-rounds.integration.test.ts
  * through the real completion service. A Program created without the Program service gets round 1 here.
+ * Concurrent test writes may open or complete the same round; the loser's unique violation is ignored.
  */
 export async function openProgramRound(patientProgramId: string, roundNumber: number): Promise<void> {
-  const program = await openGuidelineRounds(patientProgramId, roundNumber);
+  const program = await findProgramOpening(patientProgramId);
 
-  if (!program || roundNumber <= 1) {
+  if (!program) {
     return;
   }
 
-  await getPrisma().patientProgramRoundCompletion.createMany({
-    data: Array.from({ length: Math.min(roundNumber - 1, GUIDELINE_ROUND_COUNT) }, (_, index) => ({
-      patientProgramId,
-      patientHospitalRelationshipId: program.patientHospitalRelationshipId,
-      roundNumber: index + 1,
-      completedByUserId: program.createdByUserId,
-      submissionNonce: randomUUID(),
-    })),
-    skipDuplicates: true,
-  });
+  const prisma = getPrisma();
+  for (let round = 1; round <= Math.min(roundNumber, GUIDELINE_ROUND_COUNT + 1); round += 1) {
+    if (round > 1) {
+      await prisma.patientProgramRoundCompletion.createMany({
+        data: [{
+          patientProgramId,
+          patientHospitalRelationshipId: program.patientHospitalRelationshipId,
+          roundNumber: round - 1,
+          completedByUserId: program.createdByUserId,
+          submissionNonce: randomUUID(),
+        }],
+        skipDuplicates: true,
+      });
+    }
+
+    if (round <= GUIDELINE_ROUND_COUNT) {
+      try {
+        await prisma.$transaction((transaction) => openRound(transaction, patientProgramId, program, round));
+      } catch (error: unknown) {
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+      }
+    }
+  }
 }
 
 /** The Program's first Goal Plan is round 2; an adjusted plan belongs to its Follow-up's (already open) round. */

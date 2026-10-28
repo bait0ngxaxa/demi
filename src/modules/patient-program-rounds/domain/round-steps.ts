@@ -189,6 +189,8 @@ export type RoundStepEvidence = {
 };
 
 export type RoundStepSkipFact = {
+  /** ADR-0022 (FR-1b): a skip belongs to one plan item. */
+  planItemId: string;
   stepCode: RoundStepCode;
   reasonCode: PatientProgramRoundSkipReason;
   note: string | null;
@@ -424,7 +426,9 @@ export function computeRoundStatus(
     const definition = planItemDefinition(roundNumber, item);
     const evidence = stepEvidence(facts, roundNumber, definition, item);
     // A recorded result replaces an earlier skip (SR-D3).
-    const skip = evidence ? null : (skips.find((candidate) => candidate.stepCode === definition.code) ?? null);
+    const skip = evidence || item.id === null
+      ? null
+      : (skips.find((candidate) => candidate.planItemId === item.id) ?? null);
     const status: RoundStepStatus = evidence ? "DONE" : skip ? "SKIPPED" : locked ? "LOCKED" : "TODO";
 
     const missingMeasurements = definition.code === "VITALS" ? vitalsOutcome(facts, roundNumber).missing : [];

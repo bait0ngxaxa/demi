@@ -1841,7 +1841,11 @@ model PatientProgramRoundPlanItem {
   addedByUser   User?               @relation("PatientProgramRoundPlanItemAddedBy", fields: [addedByUserId], references: [id], onDelete: Restrict)
   removedByUser User?               @relation("PatientProgramRoundPlanItemRemovedBy", fields: [removedByUserId], references: [id], onDelete: Restrict)
   doneByUser    User?               @relation("PatientProgramRoundPlanItemDoneBy", fields: [doneByUserId], references: [id], onDelete: Restrict)
+  // At most one (unique planItemId); one-to-many for Prisma because the foreign key is composite.
+  skips         PatientProgramRoundStepSkip[]
 
+  // Target of the skips' composite foreign key (FR-1b).
+  @@unique([id, patientProgramId, roundNumber, stepCode], name: "skipTarget", map: "PatientProgramRoundPlanItem_skip_target_key")
   @@index([patientProgramId, patientHospitalRelationshipId, roundNumber, position])
   @@index([addedByUserId])
   @@index([removedByUserId])
@@ -1871,6 +1875,8 @@ model PatientProgramRoundStepSkip {
   patientProgramId              String                        @db.Uuid
   patientHospitalRelationshipId String                        @db.Uuid
   roundNumber                   Int
+  // ADR-0022 (FR-1b): the skipped plan item; its step and round are the skip's (composite foreign key).
+  planItemId                    String                        @db.Uuid
   stepCode                      PatientProgramRoundStepCode
   reasonCode                    PatientProgramRoundSkipReason
   note                          String?                       @db.VarChar(500)
@@ -1879,8 +1885,10 @@ model PatientProgramRoundStepSkip {
 
   patientProgram PatientProgram @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   skippedByUser  User           @relation("PatientProgramRoundStepSkipSkippedBy", fields: [skippedByUserId], references: [id], onDelete: Restrict)
+  planItem       PatientProgramRoundPlanItem @relation(fields: [planItemId, patientProgramId, roundNumber, stepCode], references: [id, patientProgramId, roundNumber, stepCode], onDelete: Restrict, map: "PatientProgramRoundStepSkip_planItem_fkey")
 
-  @@unique([patientProgramId, roundNumber, stepCode])
+  @@unique([planItemId])
+  @@index([patientProgramId, roundNumber])
   @@index([skippedByUserId, createdAt])
 }
 

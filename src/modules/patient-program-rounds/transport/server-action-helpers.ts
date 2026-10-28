@@ -31,7 +31,7 @@ const STEP_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
-  "stepCode",
+  "planItemId",
   "reasonCode",
   "note",
 ]);
@@ -164,7 +164,7 @@ export function buildStepSkipInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
-    stepCode: getSingleString(formData, "stepCode"),
+    planItemId: getSingleString(formData, "planItemId"),
     reasonCode: getSingleString(formData, "reasonCode"),
     note: getOptionalText(formData, "note"),
   } satisfies Record<string, unknown>;
@@ -178,7 +178,7 @@ export function buildStepUnskipInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
-    stepCode: getSingleString(formData, "stepCode"),
+    planItemId: getSingleString(formData, "planItemId"),
   } satisfies Record<string, unknown>;
 }
 

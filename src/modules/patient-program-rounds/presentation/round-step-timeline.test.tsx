@@ -14,7 +14,7 @@ const steps: RoundStepState[] = roundGuideline(1).slice(0, 4).map((definition, i
   planItemId: null,
   status: (["DONE", "SKIPPED", "LOCKED", "TODO"] as const)[index],
   evidence: index === 0 ? { at, byDisplayName: "สมศรี ผู้บันทึก" } : null,
-  skip: index === 1 ? { stepCode: definition.code, reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", at, byDisplayName: null } : null,
+  skip: index === 1 ? { planItemId: `item-${index}`, stepCode: definition.code, reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", at, byDisplayName: null } : null,
   missingMeasurements: [],
 }));
 

@@ -659,10 +659,18 @@ export function ProgramRoundDetailView({
                     {step.status === "SKIPPED" ? (
                       <p className="break-words text-sm text-text-muted">ข้ามแล้ว · เหตุผล: {roundSkipDescription(step)}</p>
                     ) : null}
-                    {editable && step.skippable && step.status === "TODO" ? (
-                      <SkipStepControl nextHref={nextHref} stepCode={step.code} stepLabel={step.label} target={target} />
+                    {/* A preview step (planItemId null) belongs to an unopened round and is never writable. */}
+                    {editable && step.planItemId && step.skippable && step.status === "TODO" ? (
+                      <SkipStepControl
+                        nextHref={nextHref}
+                        planItemId={step.planItemId}
+                        stepLabel={step.label}
+                        target={target}
+                      />
                     ) : null}
-                    {editable && step.status === "SKIPPED" ? <UnskipStepControl stepCode={step.code} target={target} /> : null}
+                    {editable && step.planItemId && step.status === "SKIPPED" ? (
+                      <UnskipStepControl planItemId={step.planItemId} target={target} />
+                    ) : null}
                   </div>
                   <Link className={buttonClassName({ variant: "secondary" })} href={nextHref}>
                     ขั้นตอนถัดไป

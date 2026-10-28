@@ -38,10 +38,11 @@ describe("PH-1 actual PostgreSQL staff facts and current OSM", () => {
         waistCircumference: { value: 100, source: "ข้อมูลตั้งต้น" }, bmi: { value: 35.2 },
       });
       const program = await tx.patientProgram.create({ data: { ...scope, createdByUserId: f.actor.userId } });
-      // ADR-0022: round vitals need their round opened.
-      for (const roundNumber of [1, 2]) {
-        await openGuidelineRound(tx, { ...scope, patientProgramId: program.id, roundNumber, openedByUserId: f.actor.userId, openedAt: day(1) });
-      }
+      // ADR-0022: round vitals need their round opened; round 2 opens once round 1 is completed (FR-1b).
+      await openGuidelineRound(tx, { ...scope, patientProgramId: program.id, roundNumber: 1, openedByUserId: f.actor.userId, openedAt: day(1) });
+      await tx.patientProgramRoundCompletion.create({ data: { ...scope, patientProgramId: program.id, roundNumber: 1,
+        completedByUserId: f.actor.userId, submissionNonce: randomUUID() } });
+      await openGuidelineRound(tx, { ...scope, patientProgramId: program.id, roundNumber: 2, openedByUserId: f.actor.userId, openedAt: day(1) });
       await tx.patientProgramRoundVitals.create({ data: { ...scope, patientProgramId: program.id, roundNumber: 1, serviceDate: day(3), weight: 85,
         recordedByUserId: f.actor.userId, submissionNonce: randomUUID() } });
       expect((await getOwnLatestStaffMeasurements(f.actor, f.relationship.id, deps)).weight).toMatchObject({ value: 85, source: "บริการครั้งที่ 1" });

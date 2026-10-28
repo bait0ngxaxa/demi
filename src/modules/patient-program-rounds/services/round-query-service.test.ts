@@ -208,7 +208,7 @@ describe("round overview read model (SR-D1)", () => {
       program({
         roundVitals: [vitals(1)],
         roundStepSkips: [
-          { roundNumber: 1, stepCode: "PAM", reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder },
+          { roundNumber: 1, planItemId: "plan-1-PAM", stepCode: "PAM", reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder },
         ],
       }),
     );
@@ -292,7 +292,7 @@ describe("round detail read model", () => {
 
   it("allows completion only when every step is DONE or SKIPPED", () => {
     const skip = (stepCode: string) => ({
-      roundNumber: 1, stepCode, reasonCode: "OTHER", note: "เหตุผล", createdAt: at, skippedByUser: recorder,
+      roundNumber: 1, planItemId: `plan-1-${stepCode}`, stepCode, reasonCode: "OTHER", note: "เหตุผล", createdAt: at, skippedByUser: recorder,
     });
     const almost = program({
       roundVitals: [vitals(1)],
@@ -320,7 +320,7 @@ describe("round detail read model", () => {
     const record = program({
       serviceOneConfidences: [tool(1)],
       roundStepSkips: [
-        { roundNumber: 1, stepCode: "CONFIDENCE_RULER", reasonCode: "PATIENT_UNABLE", note: null, createdAt: at, skippedByUser: recorder },
+        { roundNumber: 1, planItemId: "plan-1-CONFIDENCE_RULER", stepCode: "CONFIDENCE_RULER", reasonCode: "PATIENT_UNABLE", note: null, createdAt: at, skippedByUser: recorder },
       ],
     });
 

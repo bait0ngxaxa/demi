@@ -138,6 +138,10 @@ function createDatabase(input: {
     patientProgramRound: {
       findUnique: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999998" }),
     },
+    // ADR-0022: round 1's opened guideline plan classifies the ledger row.
+    patientProgramRoundPlanItem: {
+      findMany: vi.fn().mockResolvedValue([{ stepCode: "PAM" }, { stepCode: "PROMS" }]),
+    },
     screeningAssessment: {
       findUnique: vi.fn().mockResolvedValue(input.existing ?? null),
       findFirst: vi.fn().mockResolvedValue(input.programScreening ?? null),

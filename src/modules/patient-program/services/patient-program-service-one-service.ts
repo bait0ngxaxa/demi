@@ -34,12 +34,14 @@ import {
   GOAL_PLAN_ROUND,
   isFollowupRound,
   isValidRoundNumber,
-  roundActivitySourceFor,
   toFollowupRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
 import type { PerRoundToolCode } from "@/modules/patient-program-rounds/domain/round-steps";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
-import { assertActivePlanItem } from "@/modules/patient-program-rounds/services/round-plan-service";
+import {
+  assertActivePlanItem,
+  classifyRoundActivity,
+} from "@/modules/patient-program-rounds/services/round-plan-service";
 import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
 
 import {
@@ -546,7 +548,7 @@ async function linkServiceOneRoundActivity(
     patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
     roundNumber: input.roundNumber,
     toolCode: input.toolCode,
-    source: roundActivitySourceFor(input.roundNumber, input.toolCode),
+    source: await classifyRoundActivity(transaction, context.program.id, input.roundNumber, input.toolCode),
     mode: "RECORDED",
     linkedRecordType: input.linkedRecordType,
     linkedRecordId: input.linkedRecordId,

@@ -48,7 +48,7 @@ const record = {
   rounds: openedRounds([1, 2]),
   roundCompletions: [1, 2].map((roundNumber) => ({ roundNumber, completedAt: new Date("2026-10-10T00:00:00Z"), completedByUser: recorder })),
   roundStepSkips: [
-    { roundNumber: 3, stepCode: "DREAM_CARD", reasonCode: "PATIENT_DECLINED", note: null, createdAt: new Date("2026-10-20T00:00:00Z"), skippedByUser: recorder },
+    { roundNumber: 3, planItemId: "plan-3-DREAM_CARD", stepCode: "DREAM_CARD", reasonCode: "PATIENT_DECLINED", note: null, createdAt: new Date("2026-10-20T00:00:00Z"), skippedByUser: recorder },
   ],
   screeningAssessments: [],
   serviceOneRoutines: [],

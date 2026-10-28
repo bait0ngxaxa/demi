@@ -125,20 +125,8 @@ export const roundReviewRequestSchema = z
 
 export type RoundReviewRequest = z.output<typeof roundReviewRequestSchema>;
 
-export const roundStepCodeSchema = z.enum([
-  "VITALS",
-  "KNOW_SELF",
-  "PAM",
-  "PROMS",
-  "FLOATING_CHART",
-  "CONFIDENCE_RULER",
-  "ROUTINE",
-  "HEALTH_PATH",
-  "HEALTH_PLAN_REVIEW",
-  "DREAM_CARD",
-  "HEALTHY_PLAN",
-  "HEALTH_PATH_REVIEW",
-]);
+// ADR-0022 (FR-1b): a skip names its plan item; CUSTOM items share a step code.
+export const roundPlanItemIdSchema = z.string().uuid();
 
 export const roundSkipReasonSchema = z.enum([
   "PATIENT_DECLINED",
@@ -152,7 +140,7 @@ export const roundStepSkipRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: roundNumberSchema,
-    stepCode: roundStepCodeSchema,
+    planItemId: roundPlanItemIdSchema,
     reasonCode: roundSkipReasonSchema,
     note: optionalTrimmedText(ROUND_SKIP_NOTE_MAX_LENGTH),
   })
@@ -169,7 +157,7 @@ export const roundStepUnskipRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: roundNumberSchema,
-    stepCode: roundStepCodeSchema,
+    planItemId: roundPlanItemIdSchema,
   })
   .strict();
 

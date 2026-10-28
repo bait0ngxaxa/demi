@@ -269,6 +269,7 @@ const programRoundSelect = {
     orderBy: [{ roundNumber: "asc" }, { createdAt: "asc" }],
     select: {
       roundNumber: true,
+      planItemId: true,
       stepCode: true,
       reasonCode: true,
       note: true,
@@ -485,6 +486,7 @@ export function buildProgramRoundFacts(
         byRound[skip.roundNumber] = [
           ...(byRound[skip.roundNumber] ?? []),
           {
+            planItemId: skip.planItemId,
             stepCode: skip.stepCode,
             reasonCode: skip.reasonCode,
             note: skip.note,

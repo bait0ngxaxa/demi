@@ -162,12 +162,20 @@ describe("round guideline (Canva ผลการจัดบริการ, 202
     expect(rounds("DREAM_CARD")).toEqual([3]);
   });
 
-  it("classifies ledger tools outside a round's checklist as EXTRA on the server", () => {
-    expect(roundActivitySourceFor(1, "PAM")).toBe("PLANNED");
-    expect(roundActivitySourceFor(5, "PAM")).toBe("EXTRA");
-    expect(roundActivitySourceFor(6, "HEALTH_PATH")).toBe("PLANNED");
-    expect(roundActivitySourceFor(3, "DREAM_CARD")).toBe("PLANNED");
-    expect(roundActivitySourceFor(1, "DREAM_CARD")).toBe("EXTRA");
+  it("classifies ledger tools by the round's active plan on the server (FR-1b)", () => {
+    const planOf = (roundNumber: number) => roundGuideline(roundNumber).map((step) => step.code);
+
+    expect(roundActivitySourceFor(1, "PAM", planOf(1))).toBe("PLANNED");
+    expect(roundActivitySourceFor(5, "PAM", planOf(5))).toBe("EXTRA");
+    expect(roundActivitySourceFor(6, "HEALTH_PATH", planOf(6))).toBe("PLANNED");
+    expect(roundActivitySourceFor(3, "DREAM_CARD", planOf(3))).toBe("PLANNED");
+    expect(roundActivitySourceFor(1, "DREAM_CARD", planOf(1))).toBe("EXTRA");
+    // A step added to a plan is PLANNED, also after the guideline rounds; a tool not in the plan is EXTRA.
+    expect(roundActivitySourceFor(5, "PAM", [...planOf(5), "PAM"])).toBe("PLANNED");
+    expect(roundActivitySourceFor(7, "CONFIDENCE_RULER", ["CONFIDENCE_RULER"])).toBe("PLANNED");
+    expect(roundActivitySourceFor(7, "ROUTINE", [])).toBe("EXTRA");
+    // The health path is reviewed as HEALTH_PATH_REVIEW in round 6 only.
+    expect(roundActivitySourceFor(6, "HEALTH_PATH", ["HEALTH_PATH"])).toBe("EXTRA");
   });
 });
 
@@ -186,7 +194,7 @@ describe("round status (SR-D1, SR-D5)", () => {
     const started = computeRoundStatus(facts({ tools: { CONFIDENCE_RULER: { 1: evidence }, ROUTINE: {}, FLOATING_CHART: {}, DREAM_CARD: {} } }), 1);
     expect(started).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 1, totalItems: 14, canComplete: false });
 
-    const skips = roundGuideline(5).map((step) => ({ stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
+    const skips = roundGuideline(5).map((step) => ({ planItemId: `item-5-${step.code}`, stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
     const allSkipped = computeRoundStatus(facts({ completions: { 1: completed, 2: completed, 3: completed, 4: completed }, skips: { 5: skips } }), 5);
     expect(allSkipped).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 9, canComplete: true });
 
@@ -238,13 +246,13 @@ describe("vitals step: items 1-7 need every measurement", () => {
   it("refuses completion until the vitals step is DONE or skipped", () => {
     const resolvedOthers = roundGuideline(5)
       .filter((step) => step.code !== "VITALS")
-      .map((step) => ({ stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
+      .map((step) => ({ planItemId: `item-5-${step.code}`, stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
     const opened = { 1: completed, 2: completed, 3: completed, 4: completed };
     const partial = { followups: { 5: followup(["weight"]) }, completions: opened };
 
     expect(computeRoundStatus(facts({ ...partial, skips: { 5: resolvedOthers } }), 5).canComplete).toBe(false);
 
-    const skipVitals = { stepCode: "VITALS" as const, reasonCode: "EQUIPMENT_UNAVAILABLE" as const, note: null, at: evidence.at, byDisplayName: null };
+    const skipVitals = { planItemId: "item-5-VITALS", stepCode: "VITALS" as const, reasonCode: "EQUIPMENT_UNAVAILABLE" as const, note: null, at: evidence.at, byDisplayName: null };
     const skipped = computeRoundStatus(facts({ ...partial, skips: { 5: [...resolvedOthers, skipVitals] } }), 5);
     expect(vitalsStep(skipped)?.status).toBe("SKIPPED");
     expect(skipped.canComplete).toBe(true);
@@ -266,7 +274,7 @@ describe("PAM and PROMs are independent steps (R2-C)", () => {
     const promsSkipped = computeRoundStatus(
       facts({
         screenings: { PAM: evidence, PROMS: null },
-        skips: { 1: [{ stepCode: "PROMS", reasonCode: "PATIENT_DECLINED", note: null, at: evidence.at, byDisplayName: null }] },
+        skips: { 1: [{ planItemId: "item-1-PROMS", stepCode: "PROMS", reasonCode: "PATIENT_DECLINED", note: null, at: evidence.at, byDisplayName: null }] },
       }),
       1,
     );
@@ -447,6 +455,28 @@ describe("round status over plans (ADR-0022)", () => {
     const done = computeRoundStatus(withPlan(1, [custom(1, "เดินรอบหมู่บ้าน", evidence)]), 1);
     expect(done.steps[0]).toMatchObject({ status: "DONE", evidence });
     expect(done).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 1, totalItems: 1, canComplete: true });
+  });
+
+  it("matches a skip to its own plan item only (FR-1b)", () => {
+    const skipOf = (planItemId: string, stepCode: RoundStepCode) => ({
+      planItemId,
+      stepCode,
+      reasonCode: "PATIENT_DECLINED" as const,
+      note: null,
+      at: evidence.at,
+      byDisplayName: null,
+    });
+    const customs = [custom(1, "เดินรอบหมู่บ้าน"), custom(2, "ทำสวน")];
+    const oneSkipped = computeRoundStatus(withPlan(1, customs, { skips: { 1: [skipOf("item-CUSTOM-1", "CUSTOM")] } }), 1);
+    expect(oneSkipped.steps.map((step) => [step.planItemId, step.status])).toEqual([
+      ["item-CUSTOM-1", "SKIPPED"],
+      ["item-CUSTOM-2", "TODO"],
+    ]);
+
+    // The skip of a removed item never applies to the same step added again.
+    const readded = [item({ stepCode: "ROUTINE", position: 1, removed: true }), item({ stepCode: "ROUTINE", position: 2 })];
+    const afterReadd = computeRoundStatus(withPlan(1, readded, { skips: { 1: [skipOf("item-ROUTINE-1", "ROUTINE")] } }), 1);
+    expect(afterReadd.steps.map((step) => [step.planItemId, step.status])).toEqual([["item-ROUTINE-2", "TODO"]]);
   });
 
   it("never completes an empty plan", () => {
