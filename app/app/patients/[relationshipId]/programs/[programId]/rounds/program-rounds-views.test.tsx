@@ -109,6 +109,15 @@ function renderDetail(
   );
 }
 
+it("labels patient-recorded evidence in the staff round timeline", () => {
+  const markup = renderDetail(1, "CONFIDENCE_RULER", {
+    patientHospitalRelationship: { patientProfile: { person: { user: { id: "patient-user" } } } },
+    serviceOneConfidences: [{ roundNumber: 1, score: 8, improvementPlan: null, recordedAt: at, recordedByUser: { id: "patient-user", person: { givenName: "ผู้ป่วย", familyName: null } } }],
+  });
+  expect(markup).toContain("ผู้ป่วยบันทึกเอง");
+  expect(markup).not.toContain("คุณบันทึกแล้ว");
+});
+
 describe("round overview cards (R1-D)", () => {
   it("shows the workbook titles, x/y progress, states and the After lock", () => {
     const markup = renderToStaticMarkup(

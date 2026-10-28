@@ -271,7 +271,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
               occupation={detail.patient.occupation}
               preferredName={detail.patient.preferredName}
               submissionNonce={context.nonces.vitals}
-            profileVersion={detail.patient.profileVersion}
+              profileVersion={detail.patient.profileVersion}
               target={target}
             />
           ) : null}

@@ -24,7 +24,7 @@ export function PatientRoundRecording({ round, step, relationship }: { round: Pr
   if (tool) {
     form = <ServiceOneToolStep canManage patientMode submissionNonce={nonce} nextHref={nextHref} programId={target.patientProgramId} relationshipId={target.patientHospitalRelationshipId} roundNumber={round.roundNumber} serviceOne={round.serviceOne} tool={tool} />;
   } else if (step.code === "VITALS") {
-    form = <RoundVitalsForm patientMode heightEditable={round.vitalsForm.heightEditable} latestHeightCm={round.vitalsForm.latestHeightCm} nextHref={nextHref} occupation={round.patient.occupation} patientDisplayName="คุณ" patientHospitalRelationshipId={target.patientHospitalRelationshipId} patientProgramId={target.patientProgramId} profile={null} roundNumber={round.roundNumber} submissionNonce={nonce} todayServiceDate={toServiceDateOnly(new Date())} />;
+    form = <RoundVitalsForm patientMode heightEditable latestHeightCm={round.vitalsForm.latestHeightCm} nextHref={nextHref} occupation={round.patient.occupation} patientDisplayName="คุณ" patientHospitalRelationshipId={target.patientHospitalRelationshipId} patientProgramId={target.patientProgramId} profile={null} roundNumber={round.roundNumber} submissionNonce={nonce} todayServiceDate={toServiceDateOnly(new Date())} />;
   } else if (step.code === "KNOW_SELF") {
     form = <RoundProfileForm patientMode nextHref={nextHref} occupation={round.patient.occupation} preferredName={round.patient.preferredName} profileVersion={round.patient.profileVersion} submissionNonce={nonce} target={target} />;
   } else if (step.code === "PAM" || step.code === "PROMS") {

@@ -1,3 +1,4 @@
+import { MIN_HEALTH_PATH_REVIEW_ROUND } from "./round-catalog";
 import type {
   PatientProgramRoundSkipReason,
   PatientProgramRoundStepCode,
@@ -169,10 +170,6 @@ export function isStepInGuideline(roundNumber: number, stepCode: string): boolea
 
 /** Per-round tools (SR-D8); a result needs an active plan item of its round (DB trigger). */
 export type PerRoundToolCode = "CONFIDENCE_RULER" | "ROUTINE" | "FLOATING_CHART" | "DREAM_CARD";
-
-export function isPerRoundToolInGuideline(roundNumber: number, tool: PerRoundToolCode): boolean {
-  return isStepInGuideline(roundNumber, tool);
-}
 
 export const ROUND_SKIP_REASON_LABELS: Readonly<Record<PatientProgramRoundSkipReason, string>> = {
   PATIENT_DECLINED: "ผู้ป่วยปฏิเสธ",
@@ -388,7 +385,7 @@ function stepEvidence(
     case "HEALTH_PATH":
       return facts.roundVitals[1] ?? null;
     case "HEALTH_PATH_REVIEW":
-      return facts.healthPathReviews ? facts.healthPathReviews[roundNumber] ?? null : roundNumber === 6 ? facts.healthPathReviewed : null;
+      return facts.healthPathReviews ? facts.healthPathReviews[roundNumber] ?? null : roundNumber === MIN_HEALTH_PATH_REVIEW_ROUND ? facts.healthPathReviewed : null;
     case "HEALTH_PLAN_REVIEW":
       if (definition.kind === "GOAL_PLAN") {
         return facts.firstGoalPlan;
@@ -481,7 +478,7 @@ export function roundPlanItemUnavailableReason(facts: ProgramRoundFacts, roundNu
     return otherRound !== roundNumber && computeRoundStatus(facts, otherRound, roundPlan(facts, otherRound)).steps.some((step) => step.code === stepCode && step.status === "DONE");
   })) return "รายการนี้ทำแล้วในโปรแกรมนี้";
   if (["HEALTH_PLAN_REVIEW", "HEALTHY_PLAN"].includes(stepCode) && !facts.firstGoalPlan) return "ต้องมีแผนเป้าหมายก่อนเพิ่มรายการนี้";
-  if (stepCode === "HEALTH_PATH_REVIEW" && (roundNumber < 6 || !facts.roundVitals[1])) return "ทบทวนเส้นทางสุขภาพได้ตั้งแต่ครั้งที่ 6 และต้องมีสัญญาณชีพครั้งที่ 1";
+  if (stepCode === "HEALTH_PATH_REVIEW" && (roundNumber < MIN_HEALTH_PATH_REVIEW_ROUND || !facts.roundVitals[1])) return "ทบทวนเส้นทางสุขภาพได้ตั้งแต่ครั้งที่ 6 และต้องมีสัญญาณชีพครั้งที่ 1";
   return null;
 }
 

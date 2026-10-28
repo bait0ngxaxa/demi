@@ -15,11 +15,7 @@ export const GUIDELINE_ROUND_NUMBERS: readonly number[] = Array.from(
   (_, index) => index + 1,
 );
 
-/** Rounds whose vitals live in PatientProgramRoundVitals; rounds 3-6 use PatientFollowup. */
-export const ROUND_VITALS_ROUND_NUMBERS = [1, 2] as const;
-export type RoundVitalsRoundNumber = (typeof ROUND_VITALS_ROUND_NUMBERS)[number];
-
-/** The program screening (PAM/PROMs) and the preferred name belong to round 1. */
+/** Default Before/home round for tools and screenings; active plans may place them later. */
 export const SERVICE_ONE_HOME_ROUND = 1;
 /** SR-D11: ความฝันของฉัน is recorded in round 3. */
 export const DREAM_CARD_ROUND = 3;
@@ -28,11 +24,10 @@ export const GOAL_PLAN_ROUND = 2;
 /** "แผนสุขภาพดีของฉัน" is answered by this round's Follow-up (interim rule, pending customer confirmation). */
 export const ADJUSTED_PLAN_ROUND = 4;
 /**
- * Follow-up rounds 3-6 map to PatientFollowup.roundNumber 1-4 (the workbook and the follow-up
+ * Follow-up rounds 3-12 map to PatientFollowup.roundNumber 1-10 (the workbook and the follow-up
  * service both number Program Follow-ups from 1).
  */
 export const FIRST_FOLLOWUP_ROUND = 3;
-export const LAST_FOLLOWUP_ROUND = 6;
 export const FOLLOWUP_ROUND_NUMBER_OFFSET = 2;
 
 /** SR-D13: round titles from the customer workbook. */
@@ -57,7 +52,6 @@ export type RoundToolDefinition = {
 export const ROUND_TOOLS: Readonly<Record<PatientProgramRoundToolCode, RoundToolDefinition>> = {
   PAM: { code: "PAM", label: "แบบประเมิน PAM" },
   PROMS: { code: "PROMS", label: "แบบประเมิน PROMs" },
-  // Retired by customer decision D1; the enum value stays for history.
   KNOW_SELF: { code: "KNOW_SELF", label: "รู้จักตัวเอง" },
   FLOATING_CHART: { code: "FLOATING_CHART", label: "กราฟวัดลอยจม" },
   CONFIDENCE_RULER: { code: "CONFIDENCE_RULER", label: "ไม้บรรทัดวัดใจ" },
@@ -72,12 +66,12 @@ export const ROUND_TOOLS: Readonly<Record<PatientProgramRoundToolCode, RoundTool
 
 /**
  * Ledger tools a later round can mark as reviewed: PAM/PROMs as an extra activity (CARE-13), and the
- * round 6 "ทบทวนเส้นทางสุขภาพ" confirmation (SR-D9), stored as HEALTH_PATH in round 6.
+ * round 6+ "ทบทวนเส้นทางสุขภาพ" confirmation (SR-D9), stored as HEALTH_PATH in the target round.
  */
 export const REVIEWABLE_TOOL_CODES = ["PAM", "PROMS", "HEALTH_PATH"] as const;
 export type ReviewableToolCode = (typeof REVIEWABLE_TOOL_CODES)[number];
 
-export const HEALTH_PATH_REVIEW_ROUND = 6;
+export const MIN_HEALTH_PATH_REVIEW_ROUND = GUIDELINE_ROUND_COUNT;
 
 export const SERVICE_ONE_TOOL_LINKED_RECORD_TYPES: Readonly<
   Partial<Record<PatientProgramRoundToolCode, PatientProgramRoundLinkedRecordType>>
@@ -95,12 +89,13 @@ export function isValidRoundNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= MAX_PROGRAM_ROUNDS;
 }
 
-export function isRoundVitalsRound(value: unknown): value is RoundVitalsRoundNumber {
-  return ROUND_VITALS_ROUND_NUMBERS.some((round) => round === value);
+/** WB-DF-05: staff may enter height in the first two guideline visits; patient self-measurements are separate. */
+export function isGuidelineHeightEntryRound(roundNumber: number): boolean {
+  return roundNumber === 1 || roundNumber === 2;
 }
 
 export function isFollowupRound(roundNumber: number): boolean {
-  return roundNumber >= FIRST_FOLLOWUP_ROUND && roundNumber <= MAX_PROGRAM_ROUNDS;
+  return isValidRoundNumber(roundNumber) && roundNumber >= FIRST_FOLLOWUP_ROUND;
 }
 
 export function toFollowupRoundNumber(roundNumber: number): number {
@@ -111,9 +106,9 @@ export function toProgramRoundNumber(followupRoundNumber: number): number {
   return followupRoundNumber + FOLLOWUP_ROUND_NUMBER_OFFSET;
 }
 
-/** The plan step a ledger tool fulfils in `roundNumber` (the health path is reviewed in round 6). */
+/** The plan step a ledger tool fulfils in `roundNumber` (the health path is reviewable from round 6). */
 export function roundActivityStepCode(roundNumber: number, toolCode: PatientProgramRoundToolCode): string {
-  return toolCode === "HEALTH_PATH" && roundNumber >= HEALTH_PATH_REVIEW_ROUND ? "HEALTH_PATH_REVIEW" : toolCode;
+  return toolCode === "HEALTH_PATH" && roundNumber >= MIN_HEALTH_PATH_REVIEW_ROUND ? "HEALTH_PATH_REVIEW" : toolCode;
 }
 
 /**

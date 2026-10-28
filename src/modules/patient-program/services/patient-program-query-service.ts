@@ -105,6 +105,7 @@ export const patientProgramSelect = {
 } satisfies Prisma.PatientProgramSelect;
 
 export const patientProgramDetailSelect = {
+  rounds: { orderBy: { roundNumber: "asc" }, select: { roundNumber: true, planItems: { where: { removedAt: null }, select: { stepCode: true } } } },
   ...patientProgramSelect,
   ...patientProgramServiceOneSelect,
 } satisfies Prisma.PatientProgramSelect;
@@ -251,7 +252,7 @@ export async function getPatientProgramDetail(
       throw new NotFoundError();
     }
 
-    const serviceOne = toPatientProgramServiceOneRounds(record);
+    const serviceOne = toPatientProgramServiceOneRounds(record, record.rounds);
 
     return {
       ...toProjection(record),

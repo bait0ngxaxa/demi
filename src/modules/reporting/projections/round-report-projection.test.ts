@@ -21,6 +21,13 @@ describe("flexible round report projection", () => {
     expect(completedExtraRounds(rounds)).toBe(count - 6);
     expect(rounds.every((round) => round.doneItems === 1 && round.plannedItems === 2 && round.skippedItems === 1 && round.notDoneAtCloseItems === 1 && round.patientRecordedItems === 1)).toBe(true);
   });
+  it("counts a derived health-path item as DONE without counting it as a patient recording action", () => {
+    const source = facts(1);
+    source.rounds[1] = { planItems: [...(source.rounds[1]?.planItems ?? []), { id: "derived", stepCode: "HEALTH_PATH", customTitle: null, position: 4, removed: false, done: null }] };
+    source.roundVitals[1] = { at: now, byDisplayName: null, byPatient: true, recordedAt: now, measurements: ["weight"] };
+    expect(projectRoundReports(source)[0]).toMatchObject({ doneItems: 2, patientRecordedItems: 1 });
+  });
+
   it("counts completed extra rounds only, including an opened empty plan in detail", () => {
     const source = facts(8); delete source.completions[8]; source.rounds[8] = { planItems: [] }; source.skips[8] = [];
     const rounds = projectRoundReports(source);

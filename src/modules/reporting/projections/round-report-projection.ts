@@ -1,4 +1,4 @@
-import { computeRoundStatus, roundPlan, type ProgramRoundFacts } from "@/modules/patient-program-rounds/domain/round-steps";
+import { computeRoundStatus, roundPlan, ROUND_ITEM_CATALOG, type ProgramRoundFacts } from "@/modules/patient-program-rounds/domain/round-steps";
 import { roundTitle } from "@/modules/patient-program-rounds/domain/round-catalog";
 
 export type RoundReport = {
@@ -23,7 +23,7 @@ export function projectRoundReports(facts: ProgramRoundFacts): RoundReport[] {
       plannedItems: status.steps.length,
       skippedItems: status.steps.filter((step) => step.status === "SKIPPED").length,
       notDoneAtCloseItems: status.steps.filter((step) => step.skip?.reasonCode === "NOT_DONE_AT_CLOSE").length,
-      patientRecordedItems: status.steps.filter((step) => step.status === "DONE" && step.evidence?.byPatient).length,
+      patientRecordedItems: status.steps.filter((step) => step.status === "DONE" && ROUND_ITEM_CATALOG[step.code].patientRecordable && step.evidence?.byPatient).length,
     };
   });
 }

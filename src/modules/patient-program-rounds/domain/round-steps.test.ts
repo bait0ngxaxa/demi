@@ -9,7 +9,7 @@ import {
   GUIDELINE_ROUND_COUNT,
   GUIDELINE_ROUND_NUMBERS,
   isFollowupRound,
-  isRoundVitalsRound,
+  isGuidelineHeightEntryRound,
   isValidRoundNumber,
   MAX_PROGRAM_ROUNDS,
   roundActivitySourceFor,
@@ -19,7 +19,6 @@ import {
 } from "./round-catalog";
 import {
   computeRoundStatus as computeRoundStatusOverPlan,
-  isPerRoundToolInGuideline,
   isRoundOpenForWrites,
   nextRoundStep,
   ROUND_GUIDELINES,
@@ -90,10 +89,10 @@ const followup = (measurements: readonly (typeof VITALS_MEASUREMENTS)[number][])
 const vitalsStep = (status: ReturnType<typeof computeRoundStatus>) => status.steps.find((step) => step.code === "VITALS");
 
 describe("round numbering (WB-DF-01, SR-D13, ADR-0022)", () => {
-  it("defines six guideline rounds and vitals storage only for rounds 1-2", () => {
+  it("defines six guideline rounds and staff height entry in rounds 1-2", () => {
     expect(GUIDELINE_ROUND_NUMBERS).toEqual([1, 2, 3, 4, 5, 6]);
     expect(GUIDELINE_ROUND_COUNT).toBe(6);
-    expect([1, 2, 3, 4, 5, 6].filter(isRoundVitalsRound)).toEqual([1, 2]);
+    expect([1, 2, 3, 4, 5, 6].filter(isGuidelineHeightEntryRound)).toEqual([1, 2]);
   });
 
   it("accepts integer round numbers 1-12 only (FR-D3)", () => {
@@ -106,6 +105,8 @@ describe("round numbering (WB-DF-01, SR-D13, ADR-0022)", () => {
 
   it("maps rounds 3-6 to the Follow-up service numbering 1-4 and back", () => {
     expect(FIRST_FOLLOWUP_ROUND).toBe(3);
+    expect(isFollowupRound(3.5)).toBe(false);
+    expect([7, 12, 13].map(isFollowupRound)).toEqual([true, true, false]);
     expect([1, 2, 3, 4, 5, 6].filter(isFollowupRound)).toEqual([3, 4, 5, 6]);
     expect([3, 4, 5, 6].map(toFollowupRoundNumber)).toEqual([1, 2, 3, 4]);
     expect([1, 2, 3, 4].map(toProgramRoundNumber)).toEqual([3, 4, 5, 6]);
@@ -154,7 +155,7 @@ describe("round guideline (Canva ผลการจัดบริการ, 202
 
   it("seeds the per-round tools in the guideline rounds (SR-D8/D11)", () => {
     const rounds = (tool: "CONFIDENCE_RULER" | "ROUTINE" | "FLOATING_CHART" | "DREAM_CARD") =>
-      GUIDELINE_ROUND_NUMBERS.filter((round) => isPerRoundToolInGuideline(round, tool));
+      GUIDELINE_ROUND_NUMBERS.filter((round) => roundGuideline(round).some((step) => step.code === tool));
 
     expect(rounds("CONFIDENCE_RULER")).toEqual([1, 2, 3, 4, 6]);
     expect(rounds("ROUTINE")).toEqual([1, 2, 4, 5]);

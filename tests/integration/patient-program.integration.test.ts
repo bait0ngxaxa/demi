@@ -712,7 +712,9 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       floatingChart: { recorded: false, summary: null },
       confidence: { recorded: false, score: null, improvementPlan: null },
     });
-    expect(roundResults(empty, 3)).toMatchObject({ dreamCard: { recorded: false, dream: null, description: null } });
+    // FR-6: this detail lists opened active plans; round 3 has not opened yet.
+    expect(roundResults(empty, 3)).toBeUndefined();
+    expect(empty.serviceOne.map((round) => round.roundNumber)).toEqual([1]);
 
     await recordPatientProgramServiceOneRoutine(
       owner.actor,

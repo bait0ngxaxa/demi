@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Prisma } from "@prisma/client";
 
-import { LAST_FOLLOWUP_ROUND } from "../domain/round-catalog";
+import { GUIDELINE_ROUND_COUNT } from "../domain/round-catalog";
 import { RoundConflictError } from "../domain/round-conflict-error";
 import { isRoundOpenForWrites } from "../domain/round-steps";
 
@@ -68,7 +68,7 @@ export async function currentOpenRound(transaction: Prisma.TransactionClient, pa
 export async function assertRoundsFinished(transaction: Prisma.TransactionClient, patientProgramId: string, subject: string): Promise<void> {
   const completed = await completedRounds(transaction, patientProgramId);
   const opened = await transaction.patientProgramRound.findMany({ where: { patientProgramId }, select: { roundNumber: true } });
-  if (opened.length < LAST_FOLLOWUP_ROUND || opened.some((round) => !completed.has(round.roundNumber))) {
+  if (opened.length < GUIDELINE_ROUND_COUNT || opened.some((round) => !completed.has(round.roundNumber))) {
     throw new RoundConflictError(`ต้องจบบริการทุกครั้งที่เปิดไว้ (อย่างน้อย 6 ครั้ง) ก่อนบันทึก${subject}`);
   }
 }

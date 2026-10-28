@@ -24,7 +24,7 @@ import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-
 
 import {
   GUIDELINE_ROUND_COUNT,
-  HEALTH_PATH_REVIEW_ROUND,
+  MIN_HEALTH_PATH_REVIEW_ROUND,
   isValidRoundNumber,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
@@ -565,7 +565,7 @@ async function recordReviewInTransaction(
     };
   }
 
-  if (input.toolCode === "HEALTH_PATH" && roundNumber < HEALTH_PATH_REVIEW_ROUND) {
+  if (input.toolCode === "HEALTH_PATH" && roundNumber < MIN_HEALTH_PATH_REVIEW_ROUND) {
     throw new ValidationError("The health path review requires round 6 or later");
   }
 

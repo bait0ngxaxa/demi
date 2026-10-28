@@ -132,7 +132,7 @@ export type HospitalReportProgramRow = {
     round1: HospitalReportRoundVitals;
     round2: HospitalReportRoundVitals;
   };
-  /** Latest recorded height (round 2, round 1, then Baseline) used for After BMI; not an After measurement. */
+  /** Latest recorded round height, then Baseline used for After BMI; not an After measurement. */
   latestHeightCm: HospitalReportFact<number>;
   /** WB-DF-04: kg/m^2 values only; Before from the Baseline, After from the Final Assessment weight. */
   bmi: {
@@ -140,7 +140,7 @@ export type HospitalReportProgramRow = {
     after: HospitalReportFact<number>;
   };
   /**
-   * PAM/PROMs from the screenings performed from round 1 of this Program (R2-C). PAM = total score.
+   * PAM/PROMs from the screenings performed in the active plan of an opened round of this Program (R2-C). PAM = total score.
    * PROMs = มีปัญหา/ไม่มีปัญหา (Q6); a legacy combined screening still reports its PROMs total.
    */
   screening: {
@@ -281,7 +281,7 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   pamProms: {
     coverage: "SOURCE_BACKED_PROGRAM_SCOPED",
-    source: "ScreeningAssessment.patientProgramId + instrument (screenings performed from round 1)",
+    source: "ScreeningAssessment.patientProgramId + instrument (screenings performed in the active plan of an opened round)",
     limitation: "Screenings recorded outside a Program round are not linked to a Program stage and are not reported.",
   },
   weeklyExercise: {
@@ -319,12 +319,12 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   },
   afterHeight: {
     coverage: "SOURCE_BACKED_LATEST_RECORDED",
-    source: "Latest PatientProgramRoundVitals.heightCm (round 2, then round 1), then PatientBaseline.heightCm",
+    source: "Latest PatientProgramRoundVitals.heightCm through the opened rounds, then PatientBaseline.heightCm",
     limitation: "Final Assessment records no height of its own; this is the latest recorded height.",
   },
   serviceRoundMeasurements: {
     coverage: "SOURCE_BACKED_NEW_RECORDS",
-    source: "PatientProgramRoundVitals for rounds 1-2; PatientFollowup measurements for rounds 3-6",
+    source: "PatientProgramRoundVitals for rounds 1-12 or current-round PatientFollowup measurements for rounds 3-12",
     limitation: "Programs without round vitals recorded show as not recorded for rounds 1-2.",
   },
   achievement: {

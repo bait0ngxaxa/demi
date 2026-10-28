@@ -174,7 +174,7 @@ describe("Patient care journey and Program workspace", () => {
     expect(journey).toContain(`/programs/${programId}/rounds/1`);
     expect(journey).not.toContain(`/programs/${programId}/rounds/2`);
     expect(journey).toContain('aria-disabled="true"');
-    expect(journey).toContain("จบครั้งที่ 6 ก่อนจึงจะเปิด After ได้");
+    expect(journey).toContain("ต้องเปิดอย่างน้อย 6 ครั้ง และจบทุกครั้งที่เปิดไว้ก่อนบันทึก After");
     expect(journey).not.toContain("ไม่จำเป็นต้องทำตามลำดับ");
     expect(journey).not.toContain(`/programs/${programId}#program-service-one`);
     expect(journey).not.toContain(`/programs/${programId}#program-goals`);

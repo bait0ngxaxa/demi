@@ -1,3 +1,4 @@
+import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -114,8 +115,14 @@ describe("Patient Program Service 1 read projection (SR-D8)", () => {
     });
   });
 
+  it("uses each opened active plan, including round 7 and removed guideline tools", () => {
+    const rounds = toPatientProgramServiceOneRounds(record(), [{ roundNumber: 1, planItems: [{ stepCode: "ROUTINE" }] }, { roundNumber: 7, planItems: [{ stepCode: "FLOATING_CHART" }, { stepCode: "CONFIDENCE_RULER" }] }]);
+    expect(rounds.map((round) => [round.roundNumber, round.listedTools])).toEqual([[1, ["routine"]], [7, ["floatingChart", "confidence"]]]);
+    expect(toPatientProgramServiceOneRounds(record(), [{ roundNumber: 8, planItems: [] }])).toEqual([]);
+  });
+
   it("lists only the tools each round's checklist names", () => {
-    const rounds = toPatientProgramServiceOneRounds(record());
+    const rounds = toPatientProgramServiceOneRounds(record(), Array.from({ length: 6 }, (_, index) => ({ roundNumber: index + 1, planItems: roundGuideline(index + 1).map((step) => ({ stepCode: step.code })) })));
 
     expect(rounds.map((round) => [round.roundNumber, round.listedTools])).toEqual([
       [1, ["routine", "floatingChart", "confidence"]],

@@ -37,9 +37,9 @@ import {
   ADJUSTED_PLAN_ROUND,
   GUIDELINE_ROUND_COUNT,
   GUIDELINE_ROUND_NUMBERS,
-  HEALTH_PATH_REVIEW_ROUND,
+  MIN_HEALTH_PATH_REVIEW_ROUND,
   isFollowupRound,
-  isRoundVitalsRound,
+  isGuidelineHeightEntryRound,
   isValidRoundNumber,
   roundTitle,
   ROUND_TOOLS,
@@ -90,7 +90,7 @@ export type ProgramRoundsOverview = {
   canManage?: boolean;
   addRoundUnavailableReason?: string | null;
   after: {
-    /** LOCKED until round 6 is completed (SR-D5). */
+    /** LOCKED until at least six rounds are opened and every opened round is completed. */
     state: "LOCKED" | "RECORDED" | "NOT_RECORDED";
     date: Date | null;
     recordedByDisplayName: string | null;
@@ -127,7 +127,7 @@ export type RoundPlanItem = {
   targetUnit: string | null;
   progressStatus: "DONE" | "PARTIAL" | "NOT_DONE" | "NOT_APPLICABLE" | null;
   achievedDays: number | null;
-  /** Program round (3-6) whose Follow-up recorded the progress shown; null when none was recorded. */
+  /** Program round (3-12) whose Follow-up recorded the progress shown; null when none was recorded. */
   progressRound: number | null;
 };
 
@@ -176,14 +176,14 @@ export type ProgramRoundDetail = {
     heightEditable: boolean;
     latestHeightCm: number | null;
   };
-  /** Rounds 3-6: Follow-up this round maps to, if recorded (PatientFollowup.roundNumber = round - 2). */
+  /** Rounds 3-12: Follow-up this round maps to, if recorded (PatientFollowup.roundNumber = round - 2). */
   followupId: string | null;
-  /** Rounds 3-6: the round is writable and its Follow-up is the next one to record. */
+  /** Rounds 3-12: the round is writable and its Follow-up is the next one to record. */
   canStartFollowup: boolean;
   serviceOne: PatientProgramServiceOneProjection;
   /** R2-C: the Program screening answering each step; a legacy combined screening answers both. */
   screenings: Readonly<Record<"PAM" | "PROMS", { id: string; combined: boolean } | null>>;
-  /** Rounds 3-6: the round's Follow-up plan review answers (R2-F), when recorded. */
+  /** Rounds 3-12: the round's Follow-up plan review answers (R2-F), when recorded. */
   planReview: {
     followedPlan: boolean | null;
     reflectionNote: string | null;
@@ -198,12 +198,12 @@ export type ProgramRoundDetail = {
     roundPlanAdjusted: boolean | null;
     adjustedGoalPlanId: string | null;
   };
-  /** Rounds 3-6 only, when the round has a source Goal Plan (D6). */
+  /** Rounds 3-12 only, when the round has a source Goal Plan (D6). */
   planFollowUp: RoundPlanFollowUp | null;
-  /** Round 1: the starting point; round 6: rounds 1-6 (SR-D9). Empty otherwise. */
+  /** Round 1: the starting point; round n >= 6: rounds 1..n (SR-D9). Empty otherwise. */
   healthPath: readonly RoundHealthPathRow[];
   extraActivities: readonly RoundExtraActivity[];
-  /** Extra PAM/PROMs reviews still available in this round (rounds 2-6, screening recorded). */
+  /** Extra PAM/PROMs reviews still available in this round (rounds 2-12, screening recorded). */
   extraOptions: readonly ("PAM" | "PROMS")[];
 };
 
@@ -458,11 +458,11 @@ export function buildProgramRoundFacts(
 
   const firstGoalPlan = program.goalPlans[0] ?? null;
   const pathReview = program.roundActivities.find(
-    (entry) => entry.roundNumber >= HEALTH_PATH_REVIEW_ROUND && entry.toolCode === "HEALTH_PATH",
+    (entry) => entry.roundNumber >= MIN_HEALTH_PATH_REVIEW_ROUND && entry.toolCode === "HEALTH_PATH",
   );
 
   return {
-    healthPathReviews: Object.fromEntries(program.roundActivities.filter((entry) => entry.toolCode === "HEALTH_PATH" && entry.roundNumber >= HEALTH_PATH_REVIEW_ROUND).map((entry) => [entry.roundNumber, evidence(entry.performedAt, entry.recordedByUser)])),
+    healthPathReviews: Object.fromEntries(program.roundActivities.filter((entry) => entry.toolCode === "HEALTH_PATH" && entry.roundNumber >= MIN_HEALTH_PATH_REVIEW_ROUND).map((entry) => [entry.roundNumber, evidence(entry.performedAt, entry.recordedByUser)])),
     programActive: program.status === PatientProgramStatus.ACTIVE,
     preferredName: program.patientHospitalRelationship.hospitalProfile?.preferredName ?? null,
     preferredNameEvidence: program.roundActivities.filter((entry) => entry.toolCode === "KNOW_SELF").sort((left, right) => right.performedAt.getTime() - left.performedAt.getTime()).map((entry) => ({ ...evidence(entry.performedAt, entry.recordedByUser), recordedRoundNumber: entry.roundNumber }))[0] ?? null,
@@ -534,7 +534,7 @@ export function buildProgramRoundFacts(
   };
 }
 
-/** The height recorded in the latest round up to `upToRound` (rounds 1-2 vitals, rounds 3-6 Follow-ups). */
+/** The height recorded in the latest round up to `upToRound` (round vitals or Follow-ups through any opened round). */
 function latestHeightCm(program: ProgramRoundRecord, upToRound: number): number | null {
   for (let round = upToRound; round >= 1; round -= 1) {
     const sources = [program.roundVitals.find((vitals) => vitals.roundNumber === round), findFollowupForRound(program, round)]
@@ -687,7 +687,7 @@ function buildHealthPath(
   const rounds =
     roundNumber === SERVICE_ONE_HOME_ROUND
       ? [SERVICE_ONE_HOME_ROUND]
-      : roundNumber >= HEALTH_PATH_REVIEW_ROUND
+      : roundNumber >= MIN_HEALTH_PATH_REVIEW_ROUND
         ? Array.from({ length: roundNumber }, (_, index) => index + 1)
         : [];
 
@@ -768,7 +768,7 @@ export function buildProgramRoundsOverview(
     addRoundUnavailableReason: program.status !== PatientProgramStatus.ACTIVE ? "โปรแกรมนี้จบแล้ว"
       : final ? "บันทึกการประเมินสุดท้ายแล้ว"
       : program.rounds.length >= 12 ? "ครบ 12 ครั้งแล้ว"
-      : program.rounds.length < 6 || program.rounds.some((round) => !facts.completions[round.roundNumber]) ? "ยังมีครั้งบริการที่ต้องจบก่อน" : null,
+      : program.rounds.length < GUIDELINE_ROUND_COUNT || program.rounds.some((round) => !facts.completions[round.roundNumber]) ? "ยังมีครั้งบริการที่ต้องจบก่อน" : null,
     after: {
       state: final ? "RECORDED" : program.rounds.length >= GUIDELINE_ROUND_COUNT && program.rounds.every((round) => facts.completions[round.roundNumber]) ? "NOT_RECORDED" : "LOCKED",
       date: final ? (final.serviceDate ?? final.recordedAt) : null,
@@ -824,7 +824,7 @@ export function buildProgramRoundDetail(
     planChoices: Object.values(ROUND_ITEM_CATALOG).map((item) => ({ code: item.code, label: item.code === "CUSTOM" ? "อื่น ๆ (กำหนดเอง)" : item.label, unavailableReason: roundPlanItemUnavailableReason(facts, roundNumber, item.code), recommended: roundGuideline(roundNumber).some((step) => step.code === item.code) && !status.steps.some((step) => step.code === item.code) })),
     vitals: buildRoundVitalsView(program, roundNumber, options),
     vitalsForm: {
-      heightEditable: isRoundVitalsRound(roundNumber),
+      heightEditable: isGuidelineHeightEntryRound(roundNumber),
       latestHeightCm: latestHeightCm(program, roundNumber),
     },
     followupId: followup?.id ?? null,

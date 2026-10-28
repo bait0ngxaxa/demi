@@ -308,7 +308,7 @@ function PatientNextStepPanel({
         : `เริ่มครั้งที่ ${nextStep.roundNumber} แล้วทำตามลำดับทีละครั้ง`;
       break;
     case "AFTER":
-      description = "ครบการจัดบริการทั้ง 6 ครั้งแล้ว บันทึก After เพื่อประเมินผลหลังการดูแล";
+      description = "จบทุกครั้งบริการที่เปิดไว้แล้ว บันทึก After เพื่อประเมินผลหลังการดูแล";
       break;
     case "PROGRAM":
       description = "บันทึก After แล้ว เปิดโปรแกรมเพื่อตรวจสอบและจบโปรแกรม";
