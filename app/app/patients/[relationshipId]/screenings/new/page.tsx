@@ -9,6 +9,7 @@ import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { CURRENT_INSTRUMENT_QUESTION_SETS } from "@/modules/screening/domain/question-sets";
 import { screeningInstrumentSchema } from "@/modules/screening/schemas/screening-schemas";
+import { getProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
 import { getScreeningPatientForSubmission } from "@/modules/screening/services/screening-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -103,9 +104,14 @@ export default async function NewScreeningPage({
       ? programIdCandidate.toLowerCase()
       : undefined;
   let patient;
+  let programRoundNumber = 1;
 
   try {
     patient = await getScreeningPatientForSubmission(actor, relationshipId);
+    if (programId) {
+      const overview = await getProgramRoundsOverview(actor, relationshipId, programId);
+      programRoundNumber = overview.rounds.find((round) => round.state !== "COMPLETED" && round.state !== "LOCKED")?.roundNumber ?? 1;
+    }
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -126,6 +132,7 @@ export default async function NewScreeningPage({
     <ScreeningForm
       patient={patient}
       programId={programId}
+      programRoundNumber={programRoundNumber}
       questionSet={CURRENT_INSTRUMENT_QUESTION_SETS[instrument.data]}
       relationshipId={relationshipId}
       submissionNonce={randomUUID()}

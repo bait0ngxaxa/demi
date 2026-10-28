@@ -88,14 +88,14 @@ export function PatientSelfProgramDetailView({
 
         <section aria-labelledby="patient-self-program-rounds-heading">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-rounds-heading">
-            การรับบริการครั้งที่ 1–6
+            การรับบริการรายครั้ง
           </h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            ดูประวัติการรับบริการแต่ละครั้งที่บันทึกไว้ (อ่านอย่างเดียว)
+            ดูรายการในแผนและประวัติแต่ละครั้ง บันทึกด้วยตนเองได้เฉพาะครั้งที่เปิดอยู่
           </p>
           <p className="mt-3">
             <Link className={linkClassName} href={`${programHref}/rounds`}>
-              ดูประวัติการรับบริการรายครั้ง
+              ดูรายการและการรับบริการรายครั้ง
             </Link>
           </p>
         </section>

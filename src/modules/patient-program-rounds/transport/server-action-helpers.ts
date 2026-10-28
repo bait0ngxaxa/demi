@@ -19,6 +19,7 @@ const VITALS_FORM_FIELDS = new Set([
 ]);
 
 const PROFILE_FORM_FIELDS = new Set([
+  "submissionNonce",
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
@@ -153,6 +154,7 @@ export function buildProfileInput(formData: FormData): unknown {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
     ...buildProfileFields(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
   } satisfies Record<string, unknown>;
 }
 

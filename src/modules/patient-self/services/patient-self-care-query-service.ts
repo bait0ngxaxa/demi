@@ -6,6 +6,7 @@ import {
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
   Prisma,
+  HospitalStatus,
   type AppointmentLocationType,
   type AppointmentStatus,
   type AppointmentType,
@@ -869,7 +870,7 @@ export async function getOwnPatientProgramRounds(
       relationship,
       overview,
       rounds: overview.rounds.map(({ roundNumber }) =>
-        buildProgramRoundDetail(program, roundNumber, { displayName: "" }, { canManage: false, options }),
+        buildProgramRoundDetail(program, roundNumber, { displayName: "" }, { canManage: false, canSelfRecord: relationship.careEndedAt === null && relationship.hospitalStatus === HospitalStatus.ACTIVE, options }),
       ),
     };
   } catch (error: unknown) {

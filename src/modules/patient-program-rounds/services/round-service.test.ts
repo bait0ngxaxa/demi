@@ -166,6 +166,7 @@ function createDatabase(input: {
 } = {}) {
   const opened = new Set(openedRoundNumbers(input.completedRounds ?? []));
   const transaction = {
+    auditEvent: { findFirst: vi.fn().mockResolvedValue(null) },
     patientProgram: {
       findFirst: vi.fn().mockResolvedValue(programRecord(input.program, input.completedRounds)),
     },
@@ -216,6 +217,7 @@ function createDatabase(input: {
         .mockResolvedValueOnce(input.vitalsByNonce ?? null)
         .mockResolvedValueOnce(input.vitalsForRound ?? null),
       create: vi.fn().mockResolvedValue(storedVitals()),
+      update: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve(storedVitals(data))),
       updateMany: vi.fn().mockResolvedValue({ count: input.vitalsUpdateCount ?? 1 }),
     },
     patientProgramRoundActivity: {
@@ -307,7 +309,7 @@ describe("round vitals and the round 1 profile fields", () => {
     );
   });
 
-  it("adds only the missing values to the round's existing record while the round is writable", async () => {
+  it("supplements missing values and permits re-recording while the round is writable", async () => {
     const { database, transaction } = createDatabase({ vitalsForRound: storedVitals() });
     const supplement = vitalsInput({ waistCircumference: 88, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 110 });
 
@@ -328,11 +330,12 @@ describe("round vitals and the round 1 profile fields", () => {
       expect.anything(),
     );
 
-    // Values already recorded stay as they are; a retry with the same values is a no-op.
+    // FR-D4a: re-recording is allowed before close; unchanged legacy supplements remain a no-op.
     const changed = createDatabase({ vitalsForRound: storedVitals() });
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71, bloodSugar: 110 }), deps(changed.database)),
-    ).rejects.toMatchObject({ name: "RoundConflictError", message: "ค่าที่บันทึกไว้แล้วแก้ไขไม่ได้ เพิ่มได้เฉพาะค่าที่ยังขาด" });
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(changed.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ weight: 71, bloodSugar: 110, recordedByUserId: actorUserId }) }));
     expect(changed.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
 
     const retried = createDatabase({ vitalsForRound: storedVitals() });
@@ -344,7 +347,8 @@ describe("round vitals and the round 1 profile fields", () => {
     const otherDate = createDatabase({ vitalsForRound: storedVitals() });
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ serviceDate: "2026-10-13", bloodSugar: 110 }), deps(otherDate.database)),
-    ).rejects.toMatchObject({ name: "RoundConflictError" });
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(otherDate.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ serviceDate: new Date("2026-10-13T00:00:00.000Z") }) }));
 
     const raced = createDatabase({ vitalsForRound: storedVitals(), vitalsUpdateCount: 0 });
     await expect(

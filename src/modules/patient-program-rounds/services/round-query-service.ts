@@ -99,6 +99,7 @@ export type ProgramRoundsOverview = {
 
 export type RoundVitalsView = {
   source: "ROUND_VITALS" | "FOLLOWUP";
+  byPatient?: boolean;
   serviceDate: Date | null;
   weight: number | null;
   heightCm: number | null;
@@ -156,6 +157,7 @@ export type ProgramRoundDetail = {
   title: string;
   /** The actor may record, skip and complete (same policy as every round write; the server re-checks). */
   canManage: boolean;
+  canSelfRecord?: boolean;
   patient: {
     displayName: string;
     occupation: string | null;
@@ -206,11 +208,12 @@ export type ProgramRoundDetail = {
 };
 
 type RecorderName = {
+  id?: string;
   person: { givenName: string | null; familyName: string | null };
 } | null;
 
 const recorderSelect = {
-  select: { person: { select: { givenName: true, familyName: true } } },
+  select: { id: true, person: { select: { givenName: true, familyName: true } } },
 } as const;
 
 const programRoundSelect = {
@@ -218,7 +221,7 @@ const programRoundSelect = {
   patientHospitalRelationshipId: true,
   status: true,
   patientHospitalRelationship: {
-    select: { hospitalProfile: { select: { occupation: true, preferredName: true, version: true } } },
+    select: { hospitalProfile: { select: { occupation: true, preferredName: true, version: true } }, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } },
   },
   initialBaseline: { select: { heightCm: true } },
   roundVitals: {
@@ -243,6 +246,7 @@ const programRoundSelect = {
       id: true,
       roundNumber: true,
       toolCode: true,
+      linkedRecordId: true,
       source: true,
       mode: true,
       performedAt: true,
@@ -414,7 +418,9 @@ export function buildProgramRoundFacts(
   options: RoundReadOptions = STAFF_READ,
 ): ProgramRoundFacts {
   const name = (user: RecorderName) => (options.recorderNames ? toDisplayName(user) : null);
+  const patientUserId = program.patientHospitalRelationship.patientProfile?.person.user?.id ?? null;
   const evidence = (at: Date | null, user: RecorderName): RoundStepEvidence => ({
+    byPatient: Boolean(user?.id && user.id === patientUserId),
     at,
     byDisplayName: name(user),
   });
@@ -459,11 +465,12 @@ export function buildProgramRoundFacts(
     healthPathReviews: Object.fromEntries(program.roundActivities.filter((entry) => entry.toolCode === "HEALTH_PATH" && entry.roundNumber >= HEALTH_PATH_REVIEW_ROUND).map((entry) => [entry.roundNumber, evidence(entry.performedAt, entry.recordedByUser)])),
     programActive: program.status === PatientProgramStatus.ACTIVE,
     preferredName: program.patientHospitalRelationship.hospitalProfile?.preferredName ?? null,
+    preferredNameEvidence: program.roundActivities.filter((entry) => entry.toolCode === "KNOW_SELF").sort((left, right) => right.performedAt.getTime() - left.performedAt.getTime()).map((entry) => ({ ...evidence(entry.performedAt, entry.recordedByUser), recordedRoundNumber: entry.roundNumber }))[0] ?? null,
     screenings: Object.fromEntries(
       (["PAM", "PROMS"] as const).map((step) => {
         const screening = screeningFor(program, step);
 
-        return [step, screening ? evidence(screening.submittedAt, screening.conductedByUser) : null];
+        return [step, screening ? { ...evidence(screening.submittedAt, screening.conductedByUser), recordedRoundNumber: program.roundActivities.find((entry) => entry.toolCode === step && entry.linkedRecordId === screening.id)?.roundNumber ?? SERVICE_ONE_HOME_ROUND } : null];
       }),
     ) as ProgramRoundFacts["screenings"],
     roundVitals: Object.fromEntries(
@@ -530,9 +537,10 @@ export function buildProgramRoundFacts(
 /** The height recorded in the latest round up to `upToRound` (rounds 1-2 vitals, rounds 3-6 Follow-ups). */
 function latestHeightCm(program: ProgramRoundRecord, upToRound: number): number | null {
   for (let round = upToRound; round >= 1; round -= 1) {
-    const height = isFollowupRound(round)
-      ? findFollowupForRound(program, round)?.heightCm
-      : program.roundVitals.find((vitals) => vitals.roundNumber === round)?.heightCm;
+    const sources = [program.roundVitals.find((vitals) => vitals.roundNumber === round), findFollowupForRound(program, round)]
+      .filter((source) => source?.heightCm != null)
+      .sort((left, right) => (right?.recordedAt.getTime() ?? 0) - (left?.recordedAt.getTime() ?? 0));
+    const height = sources[0]?.heightCm;
 
     if (height != null) {
       return height;
@@ -556,6 +564,7 @@ function buildVitals(
   if (roundVitals && (!followup || roundVitals.recordedAt.getTime() >= followup.recordedAt.getTime())) {
     return {
       source: "ROUND_VITALS",
+      byPatient: Boolean(roundVitals.recordedByUser?.id && roundVitals.recordedByUser.id === program.patientHospitalRelationship.patientProfile?.person.user?.id),
       serviceDate: roundVitals.serviceDate,
       weight: roundVitals.weight,
       heightCm,
@@ -571,6 +580,7 @@ function buildVitals(
   if (followup) {
     return {
       source: "FOLLOWUP",
+      byPatient: Boolean(followup.createdByUser?.id && followup.createdByUser.id === program.patientHospitalRelationship.patientProfile?.person.user?.id),
       serviceDate: followup.serviceDate ?? followup.recordedAt,
       weight: followup.weight,
       heightCm,
@@ -780,7 +790,7 @@ export function buildProgramRoundDetail(
   program: ProgramRoundRecord,
   roundNumber: number,
   patient: RoundPatientContext,
-  input: { canManage: boolean; options?: RoundReadOptions },
+  input: { canManage: boolean; canSelfRecord?: boolean; options?: RoundReadOptions },
 ): ProgramRoundDetail {
   const options = input.options ?? STAFF_READ;
   const facts = buildProgramRoundFacts(program, options);
@@ -802,6 +812,7 @@ export function buildProgramRoundDetail(
     roundNumber,
     title: roundTitle(roundNumber),
     canManage: input.canManage,
+    canSelfRecord: Boolean(input.canSelfRecord && status.writable),
     patient: {
       displayName: patient.displayName,
       occupation: profile?.occupation ?? null,

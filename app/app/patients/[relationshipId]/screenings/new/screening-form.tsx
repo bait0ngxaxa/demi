@@ -21,11 +21,15 @@ import type { ScreeningPatientSummary } from "@/modules/screening/services/scree
 
 type ScreeningFormProps = {
   relationshipId: string;
-  patient: ScreeningPatientSummary;
+  patient: Pick<ScreeningPatientSummary, "displayName" | "hospitalNumber"> & { hospital: Pick<ScreeningPatientSummary["hospital"], "name"> };
   questionSet: InstrumentQuestionSet;
   submissionNonce: string;
   /** Present when the screening is performed from round 1 of a Program (WB-DF-01). */
   programId?: string;
+  programRoundNumber?: number;
+  patientMode?: boolean;
+  embedded?: boolean;
+  nextHref?: string;
 };
 
 /** R2-B: the booklet shows five faces from worst (1) to best (5). */
@@ -38,7 +42,9 @@ function QuestionGroup({
   disabled,
   faces,
   onChange,
+  patientMode = false,
 }: {
+  patientMode?: boolean;
   number: number;
   question: InstrumentQuestion;
   value: string | undefined;
@@ -55,7 +61,7 @@ function QuestionGroup({
         {question.hint ? <span className="mt-1 block text-sm font-normal text-text-muted">{question.hint}</span> : null}
         <span className="mt-1 block text-xs font-normal text-text-muted">ต้องตอบ</span>
       </legend>
-      {question.guidance ? (
+      {question.guidance && !patientMode ? (
         <p className="mt-3 rounded-control bg-surface-muted px-3 py-2 text-sm leading-6 text-text-muted">
           คำแนะนำสำหรับผู้ประเมิน: {question.guidance}
         </p>
@@ -122,6 +128,10 @@ export function ScreeningForm({
   questionSet,
   submissionNonce,
   programId,
+  programRoundNumber = 1,
+  patientMode = false,
+  embedded = false,
+  nextHref,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<ScreeningActionState, FormData>(
@@ -134,12 +144,12 @@ export function ScreeningForm({
   useEffect(() => {
     if (state.status === "SUCCESS") {
       router.push(
-        programId
-          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/1?after=${questionSet.instrument}`
-          : `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`,
+        nextHref ?? (programId
+          ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(programId)}/rounds/${programRoundNumber}?after=${questionSet.instrument}`
+          : `/app/patients/${encodeURIComponent(relationshipId)}/screenings/${encodeURIComponent(state.result.screeningAssessmentId)}`),
       );
     }
-  }, [programId, questionSet.instrument, relationshipId, router, state]);
+  }, [nextHref, programId, programRoundNumber, questionSet.instrument, relationshipId, router, state]);
 
   const questions = questionSet.questions;
   const answeredCount = questions.filter((question) => Boolean(answers[question.key])).length;
@@ -148,7 +158,7 @@ export function ScreeningForm({
 
   return (
     <div className="max-w-5xl">
-      <PageHeader
+      {!embedded ? <PageHeader
         actions={<StatusBadge variant="info">แบบประเมิน {instrumentLabel}</StatusBadge>}
         breadcrumbs={[
           {
@@ -157,9 +167,9 @@ export function ScreeningForm({
           },
           { label: "แบบประเมินใหม่" },
         ]}
-        description="บันทึกคำตอบและผลการประเมินของผู้ป่วยในโรงพยาบาลนี้"
+        description={patientMode ? "ตอบแบบประเมินของคุณในครั้งบริการที่เปิดอยู่" : "บันทึกคำตอบและผลการประเมินของผู้ป่วยในโรงพยาบาลนี้"}
         title={questionSet.title}
-      />
+      /> : null}
 
       <form action={action} className="space-y-6 pt-8">
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
@@ -174,7 +184,7 @@ export function ScreeningForm({
           </Alert>
         )}
 
-        <Panel>
+        {!patientMode ? <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยและบริบทโรงพยาบาล</h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div>
@@ -189,12 +199,12 @@ export function ScreeningForm({
           <p className="mt-4 text-sm leading-6 text-text-muted">
             HN ของโรงพยาบาลนี้: {patient.hospitalNumber ?? "ไม่ระบุ"}
           </p>
-        </Panel>
+        </Panel> : null}
 
         <Panel>
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="max-w-3xl space-y-2">
-              {questionSet.intro.map((paragraph) => (
+              {(patientMode ? ["เลือกคำตอบที่ตรงกับความรู้สึกและประสบการณ์ของคุณในตอนนี้"] : questionSet.intro).map((paragraph) => (
                 <p className="text-sm leading-6 text-text-muted" key={paragraph}>
                   {paragraph}
                 </p>
@@ -211,6 +221,7 @@ export function ScreeningForm({
           <div className="mt-6 space-y-6">
             {questions.map((question, index) => (
               <QuestionGroup
+                patientMode={patientMode}
                 disabled={locked}
                 faces={questionSet.instrument === "PROMS"}
                 key={question.key}
@@ -242,7 +253,7 @@ export function ScreeningForm({
             </Button>
             <Link
               className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}/screenings`}
+              href={nextHref ?? `/app/patients/${encodeURIComponent(relationshipId)}/screenings`}
             >
               ยกเลิก
             </Link>

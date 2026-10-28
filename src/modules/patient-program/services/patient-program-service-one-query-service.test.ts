@@ -13,6 +13,7 @@ const artifactUploadedAt = new Date("2026-08-21T01:00:00.000Z");
 const evidenceAssociatedAt = new Date("2026-08-21T05:00:00.000Z");
 
 const recordedByUser = {
+  id: "staff-user",
   person: {
     givenName: "สมชาย",
     familyName: "ผู้บันทึก",

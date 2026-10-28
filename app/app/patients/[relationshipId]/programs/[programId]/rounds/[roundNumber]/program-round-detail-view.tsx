@@ -179,6 +179,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
     return (
       <ServiceOneToolStep
         canManage={editable}
+        submissionNonce={context.nonces.vitals}
         nextHref={nextHref}
         programId={detail.patientProgramId}
         relationshipId={detail.patientHospitalRelationshipId}
@@ -198,6 +199,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
         return (
           <div className="space-y-4">
             <RoundVitalsValues recorder vitals={detail.vitals} />
+            {editable && detail.vitals.source === "ROUND_VITALS" && detail.vitals.byPatient ? <details className="mt-4"><summary className="min-h-11 cursor-pointer rounded-control py-3 font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">บันทึกใหม่แทนค่าที่ผู้ป่วยบันทึก</summary><RoundVitalsForm heightEditable={detail.vitalsForm.heightEditable} initialValues={detail.vitals} defaultServiceDate={vitalsServiceDate ?? context.todayServiceDate} latestHeightCm={detail.vitalsForm.latestHeightCm} nextHref={nextHref} occupation={detail.patient.occupation} patientDisplayName={detail.patient.displayName} patientHospitalRelationshipId={detail.patientHospitalRelationshipId} patientProgramId={detail.patientProgramId} profile={null} roundNumber={detail.roundNumber} submissionNonce={context.nonces.vitals} todayServiceDate={context.todayServiceDate} /></details> : null}
             {missing.length > 0 ? (
               <Alert variant="warning">
                 ยังขาด: {missing.map((measurement) => VITALS_MEASUREMENT_LABELS[measurement]).join(" · ")}
@@ -206,7 +208,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
                   : " หากวัดค่าที่ขาดไม่ได้ ให้ข้ามขั้นตอนนี้พร้อมเหตุผล"}
               </Alert>
             ) : null}
-            {missing.length > 0 && editable && detail.vitals.source === "ROUND_VITALS" && vitalsServiceDate ? (
+            {missing.length > 0 && editable && !detail.vitals.byPatient && detail.vitals.source === "ROUND_VITALS" && vitalsServiceDate ? (
               <RoundVitalsForm
                 heightEditable={detail.vitalsForm.heightEditable}
                 latestHeightCm={detail.vitalsForm.latestHeightCm}
@@ -241,7 +243,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
           patientHospitalRelationshipId={detail.patientHospitalRelationshipId}
           patientProgramId={detail.patientProgramId}
           profile={
-            detail.roundNumber === 1
+            detail.roundNumber === 1 && detail.status.steps.some((item) => item.code === "KNOW_SELF")
               ? {
                   preferredName: detail.patient.preferredName,
                   occupation: detail.patient.occupation,
@@ -268,7 +270,8 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
               nextHref={nextHref}
               occupation={detail.patient.occupation}
               preferredName={detail.patient.preferredName}
-              profileVersion={detail.patient.profileVersion}
+              submissionNonce={context.nonces.vitals}
+            profileVersion={detail.patient.profileVersion}
               target={target}
             />
           ) : null}

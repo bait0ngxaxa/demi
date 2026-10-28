@@ -85,3 +85,10 @@ export async function ensureRoundLedgerEntry(
 
   return { entry, created: true };
 }
+
+/** Refreshes the evidence pointer's provenance only after an authorized, open-round re-recording. */
+export async function recordRoundLedgerEvidence(transaction: Prisma.TransactionClient, input: RoundLedgerEntryInput): Promise<RoundLedgerRecord> {
+  const { entry, created } = await ensureRoundLedgerEntry(transaction, input);
+  if (created) return entry;
+  return transaction.patientProgramRoundActivity.update({ where: { id: entry.id }, data: { recordedByUserId: input.recordedByUserId, performedAt: input.performedAt, source: input.source, mode: input.mode, linkedRecordType: input.linkedRecordType, linkedRecordId: input.linkedRecordId }, select: roundLedgerSelect });
+}

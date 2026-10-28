@@ -70,12 +70,16 @@ export function RoundProfileForm({
   occupation,
   preferredName,
   profileVersion,
+  patientMode = false,
+  submissionNonce,
   target,
 }: {
   nextHref: string;
   occupation: string | null;
   preferredName: string | null;
   profileVersion: number | null;
+  patientMode?: boolean;
+  submissionNonce?: string;
   target: RoundTarget;
 }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
@@ -88,6 +92,7 @@ export function RoundProfileForm({
     <form action={action} className="space-y-5" onSubmit={submitPreservingInput(action)}>
       <RoundTargetInputs target={target} />
       <input name="profileVersion" type="hidden" value={profileVersion ?? ""} />
+      {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
       <fieldset className="grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
         <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-know-self-preferred-name">
           <span>ชื่อที่อยากให้เรียก</span>
@@ -101,7 +106,7 @@ export function RoundProfileForm({
             type="text"
           />
         </label>
-        {occupation ? null : (
+        {occupation || patientMode ? null : (
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-know-self-occupation">
             <span>อาชีพ (ไม่บังคับ)</span>
             <input className={inputClassName} id="round-know-self-occupation" maxLength={200} name="occupation" type="text" />
@@ -111,7 +116,7 @@ export function RoundProfileForm({
       <ActionError state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-        {pending ? "กำลังบันทึก…" : "บันทึกและไปขั้นตอนถัดไป"}
+        {pending ? "กำลังบันทึก…" : patientMode ? "บันทึกชื่อที่อยากให้เรียก" : "บันทึกและไปขั้นตอนถัดไป"}
       </Button>
     </form>
   );

@@ -493,6 +493,8 @@ function RoutineEntriesView({ activity }: { activity: PatientProgramServiceOnePr
 function RoutineCard({
   activity,
   canManage,
+  patientMode = false,
+  submissionNonce,
   nextHref,
   programId,
   relationshipId,
@@ -500,6 +502,8 @@ function RoutineCard({
 }: {
   activity: PatientProgramServiceOneProjection["routine"];
   canManage: boolean;
+  patientMode?: boolean;
+  submissionNonce?: string;
   nextHref?: string | null;
   programId: string;
   relationshipId: string;
@@ -510,8 +514,8 @@ function RoutineCard({
     recordPatientProgramServiceOneRoutineAction,
     initialPatientProgramServiceOneActionState,
   );
-  const [routineDate, setRoutineDate] = useState("");
-  const [entries, setEntries] = useState<RoutineEntryDraft[]>([emptyRoutineEntry()]);
+  const [routineDate, setRoutineDate] = useState(activity.routineDate?.toISOString().slice(0, 10) ?? "");
+  const [entries, setEntries] = useState<RoutineEntryDraft[]>(() => activity.entries.length ? activity.entries.map((entry, index) => ({ key: `routine-${index}`, timeText: entry.timeText ?? "", activity: entry.activity, adjustment: entry.adjustment ?? "" })) : [emptyRoutineEntry()]);
   const filledEntries = entries.filter((entry) => entry.activity.trim() !== "");
   // R2-G: a table saved without rows still needs its photo, so the stepper stays on this step.
   const awaitsPhoto = filledEntries.length === 0;
@@ -540,7 +544,7 @@ function RoutineCard({
   }
 
   return (
-    <ActivityCard activity={activity} description="บันทึกตารางชีวิตของฉันเป็นรายการ หรือบันทึกวันที่แล้วแนบรูปหน้ากระดาษ" id="ROUTINE" title="ตารางชีวิตของฉัน">
+    <ActivityCard activity={activity} description={patientMode ? "บันทึกกิจวัตรและการปรับพฤติกรรมของคุณ" : "บันทึกตารางชีวิตของฉันเป็นรายการ หรือบันทึกวันที่แล้วแนบรูปหน้ากระดาษ"} id="ROUTINE" title="ตารางชีวิตของฉัน">
       {activity.recorded ? (
         <>
           <RecordedMeta activity={activity} />
@@ -550,6 +554,7 @@ function RoutineCard({
         <form className="mt-5 space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <input name="roundNumber" type="hidden" value={roundNumber} />
+          {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
           <input name="entries" type="hidden" value={JSON.stringify(serializedEntries)} />
           <label className="block max-w-xs space-y-2 text-sm font-semibold text-text" htmlFor="service-one-routine-date">
             <span>วัน เดือน ปี</span>
@@ -621,10 +626,10 @@ function RoutineCard({
             </Button>
           </fieldset>
           <p className="text-sm leading-6 text-text-muted">
-            กรอก “กิจวัตรประจำวัน” อย่างน้อย 1 แถว หรือบันทึกเฉพาะวันที่แล้วแนบรูปหน้ากระดาษ แถวที่ไม่มีกิจวัตรจะไม่ถูกบันทึก
+            {patientMode ? "กรอกกิจวัตรประจำวันอย่างน้อย 1 แถว แถวที่ไม่มีกิจวัตรจะไม่ถูกบันทึก" : "กรอก “กิจวัตรประจำวัน” อย่างน้อย 1 แถว หรือบันทึกเฉพาะวันที่แล้วแนบรูปหน้ากระดาษ แถวที่ไม่มีกิจวัตรจะไม่ถูกบันทึก"}
           </p>
-          <Button disabled={locked || routineDate === ""} loading={pending} size="compact" type="submit">
-            {pending ? "กำลังบันทึก…" : filledEntries.length > 0 ? "บันทึกตารางชีวิต" : "บันทึกวันที่ แล้วแนบรูป"}
+          <Button disabled={locked || routineDate === "" || (patientMode && filledEntries.length === 0)} loading={pending} size="compact" type="submit">
+            {pending ? "กำลังบันทึก…" : patientMode || filledEntries.length > 0 ? "บันทึกตารางชีวิต" : "บันทึกวันที่ แล้วแนบรูป"}
           </Button>
         </form>
       ) : (
@@ -635,7 +640,7 @@ function RoutineCard({
       ) : null}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
-      <EvidenceAttachmentControl
+      {!patientMode ? <EvidenceAttachmentControl
         activityKey="ROUTINE"
         canManage={canManage}
         evidence={activity.evidence}
@@ -644,7 +649,7 @@ function RoutineCard({
         recorded={activity.recorded}
         relationshipId={relationshipId}
         roundNumber={roundNumber}
-      />
+      /> : null}
     </ActivityCard>
   );
 }
@@ -652,6 +657,8 @@ function RoutineCard({
 function FloatingChartCard({
   activity,
   canManage,
+  patientMode = false,
+  submissionNonce,
   nextHref,
   programId,
   relationshipId,
@@ -659,13 +666,15 @@ function FloatingChartCard({
 }: {
   activity: PatientProgramServiceOneProjection["floatingChart"];
   canManage: boolean;
+  patientMode?: boolean;
+  submissionNonce?: string;
   nextHref?: string | null;
   programId: string;
   relationshipId: string;
   roundNumber: number;
 }): React.JSX.Element {
   const router = useRouter();
-  const [scores, setScores] = useState<PatientProgramServiceOneFloatingChartScores>({
+  const [scores, setScores] = useState<PatientProgramServiceOneFloatingChartScores>(activity.scores ?? {
     familyScore: 0,
     eatingScore: 0,
     workScore: 0,
@@ -709,6 +718,7 @@ function FloatingChartCard({
           <form className="space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
             <input name="patientProgramId" type="hidden" value={programId} />
             <input name="roundNumber" type="hidden" value={roundNumber} />
+          {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
             <fieldset className="space-y-4">
               <legend className="mb-3 text-sm font-semibold leading-6 text-text">ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย</legend>
               {FLOATING_CHART_DIMENSIONS.map(({ field, label }) => {
@@ -789,6 +799,7 @@ function FloatingChartCard({
                 disabled={pending || unknownOutcome}
                 id={`service-one-floating-${roundNumber}-summary`}
                 maxLength={2000}
+                defaultValue={activity.summary ?? ""}
                 name="summary"
                 placeholder="เขียนสรุปจากกิจกรรมนี้ได้ถ้าจำเป็น"
                 rows={4}
@@ -814,7 +825,7 @@ function FloatingChartCard({
       ) : null}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
-      <EvidenceAttachmentControl
+      {!patientMode ? <EvidenceAttachmentControl
         activityKey="FLOATING_CHART"
         canManage={canManage}
         evidence={activity.evidence}
@@ -823,7 +834,7 @@ function FloatingChartCard({
         recorded={activity.recorded}
         relationshipId={relationshipId}
         roundNumber={roundNumber}
-      />
+      /> : null}
     </ActivityCard>
   );
 }
@@ -893,6 +904,8 @@ const DREAM_CARD_FIELDS = [
 function DreamCard({
   activity,
   canManage,
+  patientMode = false,
+  submissionNonce,
   nextHref,
   programId,
   relationshipId,
@@ -900,6 +913,8 @@ function DreamCard({
 }: {
   activity: PatientProgramServiceOneProjection["dreamCard"];
   canManage: boolean;
+  patientMode?: boolean;
+  submissionNonce?: string;
   nextHref?: string | null;
   programId: string;
   relationshipId: string;
@@ -929,6 +944,7 @@ function DreamCard({
         <form className="mt-5 space-y-4" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <input name="roundNumber" type="hidden" value={roundNumber} />
+          {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
           {DREAM_CARD_FIELDS.map((field) => (
             <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`service-one-dream-${field.name}`} key={field.name}>
               <span>
@@ -940,6 +956,7 @@ function DreamCard({
                 disabled={pending || unknownOutcome}
                 id={`service-one-dream-${field.name}`}
                 maxLength={1000}
+                defaultValue={activity[field.name] ?? ""}
                 name={field.name}
                 required={field.required}
                 rows={3}
@@ -974,7 +991,7 @@ function DreamCard({
       ) : null}
       <ActionFeedback state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
-      <EvidenceAttachmentControl
+      {!patientMode ? <EvidenceAttachmentControl
         activityKey="DREAM_CARD"
         canManage={canManage}
         evidence={activity.evidence}
@@ -983,7 +1000,7 @@ function DreamCard({
         recorded={activity.recorded}
         relationshipId={relationshipId}
         roundNumber={roundNumber}
-      />
+      /> : null}
     </ActivityCard>
   );
 }
@@ -991,12 +1008,16 @@ function DreamCard({
 function ConfidenceCard({
   activity,
   canManage,
+  patientMode = false,
+  submissionNonce,
   nextHref,
   programId,
   roundNumber,
 }: {
   activity: PatientProgramServiceOneProjection["confidence"];
   canManage: boolean;
+  patientMode?: boolean;
+  submissionNonce?: string;
   nextHref?: string | null;
   programId: string;
   roundNumber: number;
@@ -1020,17 +1041,18 @@ function ConfidenceCard({
   }, [nextHref, router, state]);
 
   return (
-    <ActivityCard activity={activity} description="บันทึกคะแนนความมั่นใจ/การสะท้อนตนเองแบบชั่วคราวในช่วง 0–10" id="CONFIDENCE" title="ไม้บรรทัดวัดใจ">
+    <ActivityCard activity={activity} description={patientMode ? "เลือกคะแนนความมั่นใจของคุณ 0–10" : "บันทึกคะแนนความมั่นใจและการสะท้อนตนเองในช่วง 0–10"} id="CONFIDENCE" title="ไม้บรรทัดวัดใจ">
       {activity.recorded ? <RecordedMeta activity={activity} /> : canManage ? (
         <form className="mt-5 space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
           <input name="patientProgramId" type="hidden" value={programId} />
           <input name="roundNumber" type="hidden" value={roundNumber} />
+          {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
           <fieldset>
             <legend className="text-sm font-semibold text-text">เลือกคะแนนสะท้อนความมั่นใจ 0–10</legend>
             <div className="mt-3 grid grid-cols-6 gap-2 sm:grid-cols-11">
               {Array.from({ length: 11 }, (_, score) => (
                 <label className="group cursor-pointer" key={score}>
-                  <input className="peer sr-only" name="score" required type="radio" value={score} />
+                  <input className="peer sr-only" defaultChecked={activity.score === score} name="score" required type="radio" value={score} />
                   <span className="flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface text-sm font-semibold text-text transition-colors group-hover:border-action-primary group-hover:bg-brand-soft peer-checked:border-action-primary peer-checked:bg-brand-soft peer-checked:text-brand-strong peer-focus-visible:outline-none peer-focus-visible:ring-4 peer-focus-visible:ring-focus-ring peer-focus-visible:ring-offset-2">
                     {score}
                   </span>
@@ -1045,6 +1067,7 @@ function ConfidenceCard({
               disabled={pending || unknownOutcome}
               id="service-one-confidence-plan"
               maxLength={2000}
+              defaultValue={activity.improvementPlan ?? ""}
               name="improvementPlan"
               placeholder="เขียนสิ่งที่อยากลองทำต่อได้ถ้าจำเป็น"
               rows={4}
@@ -1081,6 +1104,8 @@ export type ServiceOneToolKey = "routine" | "floatingChart" | "dreamCard" | "con
 /** R1-D: one per-round Service 1 tool, embedded as a step of the round stepper. */
 export function ServiceOneToolStep({
   canManage,
+  patientMode = false,
+  submissionNonce,
   nextHref,
   programId,
   relationshipId,
@@ -1089,6 +1114,8 @@ export function ServiceOneToolStep({
   tool,
 }: {
   canManage: boolean;
+  patientMode?: boolean;
+  submissionNonce?: string;
   nextHref: string | null;
   programId: string;
   relationshipId: string;
@@ -1096,18 +1123,26 @@ export function ServiceOneToolStep({
   serviceOne: PatientProgramServiceOneProjection;
   tool: ServiceOneToolKey;
 }): React.JSX.Element {
-  const shared = { canManage, nextHref, programId, roundNumber };
+  const [editing, setEditing] = useState(false);
+  const shared = { canManage, nextHref, programId, roundNumber, patientMode, submissionNonce };
+  const display: PatientProgramServiceOneProjection = (editing || patientMode) && canManage ? { ...serviceOne, [tool]: { ...serviceOne[tool], recorded: false } } : serviceOne;
+  let form: React.JSX.Element;
 
   switch (tool) {
     case "routine":
-      return <RoutineCard {...shared} activity={serviceOne.routine} relationshipId={relationshipId} />;
+      form = <RoutineCard {...shared} activity={display.routine} relationshipId={relationshipId} />;
+      break;
     case "floatingChart":
-      return <FloatingChartCard {...shared} activity={serviceOne.floatingChart} relationshipId={relationshipId} />;
+      form = <FloatingChartCard {...shared} activity={display.floatingChart} relationshipId={relationshipId} />;
+      break;
     case "dreamCard":
-      return <DreamCard {...shared} activity={serviceOne.dreamCard} relationshipId={relationshipId} />;
+      form = <DreamCard {...shared} activity={display.dreamCard} relationshipId={relationshipId} />;
+      break;
     case "confidence":
-      return <ConfidenceCard {...shared} activity={serviceOne.confidence} />;
+      form = <ConfidenceCard {...shared} activity={display.confidence} />;
+      break;
   }
+  return <div className="space-y-4">{canManage && !patientMode && serviceOne[tool].recorded && !editing ? <Button type="button" variant="secondary" onClick={() => setEditing(true)}>บันทึกใหม่</Button> : null}{form}</div>;
 }
 
 const TOOL_LABELS: Readonly<Record<ServiceOneToolKey, string>> = {

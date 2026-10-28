@@ -52,7 +52,8 @@ import {
   type RoundStepUnskipRequest,
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
-import { ensureRoundLedgerEntry } from "./round-ledger";
+import { ensureRoundLedgerEntry, recordRoundLedgerEvidence } from "./round-ledger";
+import { findRoundRecordingReceipt, recordRoundRecordingReceipt } from "./round-recording-receipt";
 import { assertActivePlanItem, classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
 import { assertRoundWritable } from "./round-sequencing";
@@ -252,6 +253,7 @@ async function writeRoundProfileFields(
   transaction: Prisma.TransactionClient,
   context: ActivePatientProgramMutationContext,
   input: { preferredName?: string | null; occupation?: string | null; profileVersion?: number | null },
+  now: Date,
 ): Promise<void> {
   const preferredName = input.preferredName ?? null;
   const occupation = input.occupation ?? null;
@@ -260,6 +262,8 @@ async function writeRoundProfileFields(
     return;
   }
 
+  if (context.patientSelfRecording && occupation) throw new ForbiddenError();
+  if (preferredName) await assertActivePlanItem(transaction, context.program.id, context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND, "KNOW_SELF");
   const relationshipId = context.access.patient.patientHospitalRelationshipId;
   const profile = await transaction.patientHospitalProfile.findUnique({
     where: { patientHospitalRelationshipId: relationshipId },
@@ -302,12 +306,16 @@ async function writeRoundProfileFields(
       resourceType: "PatientHospitalProfile",
       resourceId: relationshipId,
       metadata: {
-        ...auditMetadata(context, SERVICE_ONE_HOME_ROUND),
+        ...auditMetadata(context, context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND),
         fields: Object.keys(data).join(","),
       },
     },
     transaction,
   );
+  if (preferredName) {
+    const roundNumber = context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND;
+    await recordRoundLedgerEvidence(transaction, { patientProgramId: context.program.id, patientHospitalRelationshipId: relationshipId, roundNumber, toolCode: "KNOW_SELF", source: await classifyRoundActivity(transaction, context.program.id, roundNumber, "KNOW_SELF"), mode: "RECORDED", linkedRecordType: null, linkedRecordId: null, recordedByUserId: context.access.actor.userId, performedAt: now });
+  }
 }
 
 /**
@@ -385,7 +393,10 @@ async function recordVitalsInTransaction(
   }
 
   const programId = input.patientProgramId.toLowerCase();
-  const context = await lockActivePatientProgram(transaction, actor, programId);
+  const context = await lockActivePatientProgram(transaction, actor, programId, { stepCode: "VITALS", roundNumber: input.roundNumber });
+  if (context.patientSelfRecording && (input.preferredName || input.occupation)) throw new ForbiddenError();
+  const receipt = await findRoundRecordingReceipt(transaction, context, input, "VITALS");
+  if (receipt) return { ...writeResult("ALREADY_RECORDED", context, input.roundNumber), roundVitalsId: receipt };
   const { access, program } = context;
   const relationshipId = access.patient.patientHospitalRelationshipId;
 
@@ -414,8 +425,20 @@ async function recordVitalsInTransaction(
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
 
+  if (existing && (input.preferredName || input.occupation)) throw new ValidationError("กรุณาบันทึกชื่อที่อยากให้เรียกแยกจากการบันทึกสัญญาณชีพซ้ำ");
   if (existing) {
-    return supplementVitalsInTransaction(transaction, context, existing, input);
+    const supplement = !context.patientSelfRecording && existing.recordedByUserId !== access.patient.userId && existing.serviceDate.toISOString().slice(0, 10) === input.serviceDate && VITALS_MEASUREMENTS.every((field) => input[field] == null || existing[field] === null || existing[field] === input[field]);
+    if (supplement) {
+      const result = await supplementVitalsInTransaction(transaction, context, existing, input);
+      await recordRoundRecordingReceipt(transaction, context, input, "VITALS", existing.id);
+      return result;
+    }
+    const replaceStaffValues = context.patientSelfRecording && existing.recordedByUserId !== access.actor.userId;
+    const supplied = Object.fromEntries(VITALS_MEASUREMENTS.filter((field) => replaceStaffValues || input[field] != null).map((field) => [field, input[field] ?? null]));
+    const record = await transaction.patientProgramRoundVitals.update({ where: { id: existing.id }, data: { ...supplied, serviceDate: serviceDateToUtcDate(input.serviceDate), recordedByUserId: access.actor.userId, recordedAt: now }, select: roundVitalsSelect });
+    await recordAuditEvent({ actorUserId: access.actor.userId, action: "patient_program_round.vitals_recorded", resourceType: "PatientProgramRoundVitals", resourceId: record.id, metadata: { ...auditMetadata(context, input.roundNumber), reRecorded: true } }, transaction);
+    await recordRoundRecordingReceipt(transaction, context, input, "VITALS", record.id);
+    return { ...writeResult("RECORDED", context, input.roundNumber), roundVitalsId: record.id };
   }
 
   const record = await transaction.patientProgramRoundVitals.create({
@@ -439,7 +462,7 @@ async function recordVitalsInTransaction(
   });
 
   if (input.roundNumber === SERVICE_ONE_HOME_ROUND) {
-    await writeRoundProfileFields(transaction, context, input);
+    await writeRoundProfileFields(transaction, context, input, now);
   }
 
   await recordAuditEvent(
@@ -453,6 +476,7 @@ async function recordVitalsInTransaction(
     transaction,
   );
 
+  await recordRoundRecordingReceipt(transaction, context, input, "VITALS", record.id);
   return { ...writeResult("RECORDED", context, record.roundNumber), roundVitalsId: record.id };
 }
 
@@ -460,12 +484,15 @@ async function recordProfileInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   input: RoundProfileRequest,
+  now: Date,
 ): Promise<PatientProgramRoundWriteResult> {
-  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase());
-  await assertRoundWritable(transaction, context.program.id, SERVICE_ONE_HOME_ROUND);
-  await writeRoundProfileFields(transaction, context, input);
-
-  return writeResult("RECORDED", context, SERVICE_ONE_HOME_ROUND);
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase(), { stepCode: "KNOW_SELF", roundNumber: input.roundNumber });
+  const receipt = await findRoundRecordingReceipt(transaction, context, input, "KNOW_SELF");
+  if (receipt) return writeResult("ALREADY_RECORDED", context, input.roundNumber);
+  await assertRoundWritable(transaction, context.program.id, input.roundNumber);
+  await writeRoundProfileFields(transaction, context, input, now);
+  await recordRoundRecordingReceipt(transaction, context, input, "KNOW_SELF", context.access.patient.patientHospitalRelationshipId);
+  return writeResult("RECORDED", context, input.roundNumber);
 }
 
 /** Resolves the existing Program-level result a review points at, or null when none exists. */
@@ -878,7 +905,7 @@ export async function recordPatientProgramRoundProfile(
     actor,
     input,
     dependencies,
-    (transaction, authorizedActor, parsed) => recordProfileInTransaction(transaction, authorizedActor, parsed),
+    (transaction, authorizedActor, parsed, now) => recordProfileInTransaction(transaction, authorizedActor, parsed, now),
   );
 }
 

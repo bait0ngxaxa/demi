@@ -13,7 +13,7 @@ export const ROUND_SKIP_NOTE_MAX_LENGTH = 500;
 export const roundSubmissionNonceSchema = z.string().uuid();
 // ADR-0022: any round 1-12; a write also needs the round opened (round-sequencing).
 export const roundNumberSchema = z.number().int().min(1).max(MAX_PROGRAM_ROUNDS);
-export const roundVitalsRoundNumberSchema = z.number().int().min(1).max(2);
+export const roundVitalsRoundNumberSchema = roundNumberSchema;
 
 const positiveMeasurementSchema = z
   .number()
@@ -100,7 +100,8 @@ export type RoundVitalsRequest = z.output<typeof roundVitalsRequestSchema>;
 export const roundProfileRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
-    roundNumber: z.literal(1),
+    roundNumber: roundNumberSchema,
+    submissionNonce: roundSubmissionNonceSchema.optional(),
   })
   .merge(roundProfileFieldsSchema)
   .strict()

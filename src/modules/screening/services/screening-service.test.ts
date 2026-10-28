@@ -136,10 +136,12 @@ function createDatabase(input: {
     },
     // ADR-0022: round 1 opens with the Program.
     patientProgramRound: {
+      findMany: vi.fn().mockResolvedValue([{ roundNumber: 1 }]),
       findUnique: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999998" }),
     },
     // ADR-0022: round 1's opened guideline plan classifies the ledger row.
     patientProgramRoundPlanItem: {
+      findFirst: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999997" }),
       findMany: vi.fn().mockResolvedValue([{ stepCode: "PAM" }, { stepCode: "PROMS" }]),
     },
     screeningAssessment: {
@@ -382,7 +384,7 @@ describe("Screening submission from round 1 of a Program (WB-DF-01, R2-C)", () =
       { database, now: () => now },
     );
 
-    expect(mockedLockProgram).toHaveBeenCalledWith(expect.anything(), hospitalActor(), programId);
+    expect(mockedLockProgram).toHaveBeenCalledWith(expect.anything(), hospitalActor(), programId, { stepCode: instrument });
     // One result per instrument; a legacy combined screening already answers both.
     expect(transaction.screeningAssessment.findFirst).toHaveBeenCalledWith({
       where: { patientProgramId: programId, instrument: { in: ["COMBINED", instrument] } },

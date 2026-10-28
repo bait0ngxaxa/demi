@@ -136,7 +136,7 @@ describe("Program round Server Actions", () => {
       recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, duplicate),
     ).resolves.toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     await expect(
-      recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, vitalsForm({ roundNumber: "3" })),
+      recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, vitalsForm({ roundNumber: "13" })),
     ).resolves.toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(mockedVitals).not.toHaveBeenCalled();
   });

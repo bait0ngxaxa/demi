@@ -2,7 +2,7 @@
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildProgramRoundDetail,
@@ -12,12 +12,18 @@ import {
 import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
+vi.mock("react", async (original) => ({ ...await original<typeof import("react")>(), useActionState: (_action: unknown, initial: unknown) => [initial, vi.fn(), false] }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }), unstable_rethrow: vi.fn() }));
+vi.mock("@/modules/patient-program-rounds/transport/server-actions", () => ({ completePatientProgramRoundAction: vi.fn(), recordPatientProgramRoundProfileAction: vi.fn(), recordPatientProgramRoundReviewAction: vi.fn(), recordPatientProgramRoundVitalsAction: vi.fn(), skipPatientProgramRoundStepAction: vi.fn(), unskipPatientProgramRoundStepAction: vi.fn(), addRoundPlanItemAction: vi.fn(), removeRoundPlanItemAction: vi.fn(), markCustomItemDoneAction: vi.fn(), unmarkCustomItemDoneAction: vi.fn(), addProgramRoundAction: vi.fn() }));
+vi.mock("@/modules/patient-program/transport/patient-program-service-one-server-actions", () => ({ associatePatientProgramServiceOneArtifactAction: vi.fn(), recordPatientProgramServiceOneConfidenceAction: vi.fn(), recordPatientProgramServiceOneDreamCardAction: vi.fn(), recordPatientProgramServiceOneFloatingChartAction: vi.fn(), recordPatientProgramServiceOneRoutineAction: vi.fn() }));
+vi.mock("@/modules/screening/transport/server-actions", () => ({ submitScreeningAction: vi.fn() }));
+
 import { PatientSelfProgramRoundsView } from "./patient-self-program-rounds-view";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const programId = "22222222-2222-4222-8222-222222222222";
 const followupId = "dddddddd-dddd-4ddd-8ddd-000000000001";
-const recorder = { person: { givenName: "สมศรี", familyName: "อสม." } };
+const recorder = { id: "staff-user", person: { givenName: "สมศรี", familyName: "อสม." } };
 
 /** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
 function openedRounds(completedRounds: readonly number[]): Record<string, unknown>[] {
@@ -139,5 +145,49 @@ describe("Patient SELF round history", () => {
     expect(timelines[2].querySelectorAll("li")[1].textContent).toContain("ทบทวนแผนสุขภาพยังไม่ได้บันทึก");
     expect(markup).not.toContain("สมศรี");
     expect(markup).not.toContain("<form");
+  });
+});
+
+
+describe("Patient self recording UI (FR-4)", () => {
+  function currentProgram(): ProgramRoundRecord {
+    const rounds = openedRounds([]) as unknown as ProgramRoundRecord["rounds"];
+    rounds[0].planItems.push({ id: "custom-1", stepCode: "CUSTOM", customTitle: "เดินรอบบ้าน", position: 10, removedAt: null, origin: "ADDED", doneAt: null, doneByUser: null, doneNote: null });
+    rounds[0].planItems.push({ id: "dream-1", stepCode: "DREAM_CARD", customTitle: null, position: 9, removedAt: null, origin: "ADDED", doneAt: null, doneByUser: null, doneNote: null });
+    return { ...record, rounds, roundCompletions: [], roundStepSkips: [], followups: [], serviceOneFloatingCharts: [], serviceOneConfidences: [] };
+  }
+  function render(program: ProgramRoundRecord, canSelfRecord: boolean): string {
+    const options = { recorderNames: false };
+    const rounds: PatientSelfProgramRounds = { relationship: { relationshipId, hospitalCode: "T", hospitalName: "โรงพยาบาล", hospitalNumber: null, hospitalStatus: "ACTIVE", careEndedAt: null }, overview: buildProgramRoundsOverview(program, options), rounds: [buildProgramRoundDetail(program, 1, { displayName: "" }, { canManage: false, canSelfRecord, options })] };
+    return renderToStaticMarkup(<PatientSelfProgramRoundsView programId={programId} relationshipId={relationshipId} rounds={rounds} />);
+  }
+  it("opens the shared allowed forms without staff guidance or forbidden controls", () => {
+    const markup = render(currentProgram(), true);
+    expect(markup).toContain("ครั้งบริการปัจจุบัน");
+    for (const name of ["weight", "preferredName", "instrument", "score", "entries", "familyScore", "dream", "note"]) expect(markup).toContain(`name="${name}"`);
+    expect(markup).toContain('value="PAM"');
+    expect(markup).toContain('value="PROMS"');
+    expect(markup).toContain("ทำแล้ว");
+    expect(markup).toContain('maxLength="500"');
+    expect(markup).toContain("เจ้าหน้าที่/อสม. จะบันทึกให้");
+    for (const text of ["ตัดออก", "ข้ามรายการนี้", "ยกเลิกการข้าม", "เพิ่มครั้งบริการ", "ยกเลิกทำแล้ว", "คำแนะนำสำหรับผู้ประเมิน", "แนบรูป"]) expect(markup).not.toContain(text);
+    const document = globalThis.document.createElement("div"); document.innerHTML = markup;
+    expect([...document.querySelectorAll("button")].some((button) => button.textContent?.includes("จบบริการ"))).toBe(false);
+    expect(document.querySelector('input[name="occupation"]')).toBeNull();
+  });
+  it("keeps read-only scopes and completed rounds free of write forms", () => {
+    const program = currentProgram();
+    expect(render(program, false)).not.toContain("<form");
+    const completed = { ...program, roundCompletions: [{ roundNumber: 1, completedAt: new Date(), completedByUser: recorder }] };
+    expect(render(completed, true)).not.toContain("<form");
+  });
+  it("shows own provenance without ever exposing staff recorder names", () => {
+    const program = currentProgram();
+    program.patientHospitalRelationship = { ...program.patientHospitalRelationship, patientProfile: { person: { user: { id: "patient-user" } } } };
+    program.serviceOneConfidences = [{ roundNumber: 1, recordedAt: new Date(), recordedByUser: { id: "patient-user", person: { givenName: "ชื่อผู้ป่วย", familyName: null } }, score: 7, improvementPlan: null }];
+    const markup = render(program, true);
+    expect(markup).toContain("คุณบันทึกแล้ว");
+    expect(markup).not.toContain("ชื่อผู้ป่วย");
+    expect(markup).not.toContain("สมศรี");
   });
 });

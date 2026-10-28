@@ -34,13 +34,16 @@ function vitalsRows(vitals: RoundVitalsView): VitalsRow[] {
 export function RoundVitalsValues({
   vitals,
   recorder,
+  audience = "STAFF",
 }: {
   vitals: RoundVitalsView;
   /** Staff views show who recorded the values. */
   recorder?: boolean;
+  audience?: "STAFF" | "PATIENT";
 }): React.JSX.Element {
-  const rows = recorder
-    ? [...vitalsRows(vitals), { label: "ผู้บันทึก", value: vitals.recordedByDisplayName ?? "ไม่ระบุ" }]
+  const rows = audience === "PATIENT" && vitals.byPatient
+    ? [...vitalsRows(vitals), { label: "การบันทึก", value: "คุณบันทึกแล้ว" }]
+    : recorder && audience === "STAFF" ? [...vitalsRows(vitals), { label: "ผู้บันทึก", value: vitals.byPatient ? "ผู้ป่วยบันทึกเอง" : vitals.recordedByDisplayName ?? "ไม่ระบุ" }]
     : vitalsRows(vitals);
 
   return (

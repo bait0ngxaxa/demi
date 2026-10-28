@@ -80,6 +80,14 @@ describe("Screening Server Action", () => {
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/screenings`);
   });
 
+  it("refreshes the own Program view after a Program screening", async () => {
+    const programId = "77777777-7777-4777-8777-777777777777";
+    const data = screeningFormData();
+    data.set("patientProgramId", programId);
+    expect(await submitScreeningAction(initialScreeningActionState, data)).toMatchObject({ status: "SUCCESS" });
+    expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
+  });
+
   it("submits PROMs on its own (R2-C)", async () => {
     await submitScreeningAction(initialScreeningActionState, screeningFormData("PROMS"));
 

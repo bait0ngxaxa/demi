@@ -41,6 +41,7 @@ import {
 function revalidateRoundPaths(relationshipId: string, programId: string): void {
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+  revalidatePath(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
 }
 
 async function runRoundAction(

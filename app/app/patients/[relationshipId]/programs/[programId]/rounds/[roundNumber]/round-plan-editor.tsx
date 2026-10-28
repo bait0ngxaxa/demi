@@ -64,15 +64,34 @@ export function RoundPlanEditor({ choices, target, submissionNonce }: { choices:
     </ModalDialog> : null}</div>;
 }
 
+export function CustomItemDoneForm({ planItemId, target, submissionNonce }: { planItemId: string; target: Target; submissionNonce: string }): React.JSX.Element {
+  return (
+    <MutationForm mutation={markCustomItemDoneAction} target={target} submissionNonce={submissionNonce} label="ทำแล้ว">
+      <input type="hidden" name="planItemId" value={planItemId} />
+      <label className="block space-y-2 text-sm font-semibold">
+        <span>หมายเหตุ (ไม่บังคับ ไม่เกิน 500 ตัวอักษร)</span>
+        <textarea className={`${inputClassName} min-h-24 py-3`} name="note" maxLength={500} rows={3} />
+      </label>
+    </MutationForm>
+  );
+}
+
 export function PlanItemControl({ step, target, submissionNonce }: { step: RoundStepState; target: Target; submissionNonce: string }): React.JSX.Element | null {
-  if(!step.planItemId) return null;
-  return <div className="mt-4 space-y-4">{step.code === "CUSTOM" ? <MutationForm mutation={step.status === "DONE" ? unmarkCustomItemDoneAction : markCustomItemDoneAction} target={target} submissionNonce={submissionNonce} label={step.status === "DONE" ? "ยกเลิกทำแล้ว" : "ทำแล้ว"}>
-    <input type="hidden" name="planItemId" value={step.planItemId} />{step.status !== "DONE" ? <label className="block space-y-2 text-sm font-semibold">
-      <span>หมายเหตุ (ไม่บังคับ ไม่เกิน 500 ตัวอักษร)</span>
-      <textarea className={`${inputClassName} min-h-24 py-3`} name="note" maxLength={500} rows={3} />
-    </label> : null}</MutationForm> : null}{step.status === "TODO" ? <MutationForm mutation={removeRoundPlanItemAction} target={target} submissionNonce={submissionNonce} label="ตัดออก" confirmation={`ตัด “${step.label}” ออกจากแผนหรือไม่`}>
-      <input type="hidden" name="planItemId" value={step.planItemId} />
-    </MutationForm> : null}</div>;
+  if (!step.planItemId) return null;
+  return (
+    <div className="mt-4 space-y-4">
+      {step.code === "CUSTOM" ? step.status === "DONE" ? (
+        <MutationForm mutation={unmarkCustomItemDoneAction} target={target} submissionNonce={submissionNonce} label="ยกเลิกทำแล้ว">
+          <input type="hidden" name="planItemId" value={step.planItemId} />
+        </MutationForm>
+      ) : <CustomItemDoneForm planItemId={step.planItemId} target={target} submissionNonce={submissionNonce} /> : null}
+      {step.status === "TODO" ? (
+        <MutationForm mutation={removeRoundPlanItemAction} target={target} submissionNonce={submissionNonce} label="ตัดออก" confirmation={`ตัด “${step.label}” ออกจากแผนหรือไม่`}>
+          <input type="hidden" name="planItemId" value={step.planItemId} />
+        </MutationForm>
+      ) : null}
+    </div>
+  );
 }
 
 export function AddProgramRoundControl({ target, submissionNonce }: { target: Target; submissionNonce: string }): React.JSX.Element {

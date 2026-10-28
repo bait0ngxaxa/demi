@@ -36,7 +36,7 @@ async function changePlan(
   const { runRoundWrite, writeResult, auditMetadata } = patientProgramRoundServiceInternals;
   const schema = operation === "added" ? addRoundPlanItemSchema : operation === "done" ? customItemDoneSchema : changeRoundPlanItemSchema;
   return runRoundWrite<z.output<typeof schema>, PlanWriteResult>(schema, "ข้อมูลรายการในแผนไม่ถูกต้อง", actor, input, dependencies, async (tx, authorizedActor, parsed, now) => {
-    const context = await lockActivePatientProgram(tx, authorizedActor, parsed.patientProgramId.toLowerCase());
+    const context = await lockActivePatientProgram(tx, authorizedActor, parsed.patientProgramId.toLowerCase(), operation === "done" ? { stepCode: "CUSTOM", roundNumber: parsed.roundNumber } : undefined);
     const requestHash = createHash("sha256").update(JSON.stringify({ operation, ...parsed })).digest("hex");
     const receipt = await tx.auditEvent.findFirst({
       where: { metadata: { path: ["submissionNonce"], equals: parsed.submissionNonce } },

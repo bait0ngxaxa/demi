@@ -13,6 +13,7 @@ type StepCode = string;
 
 type RoundStepTimelineProps = {
   steps: readonly RoundStepState[];
+  audience?: "STAFF" | "PATIENT";
   roundNumber: number;
   currentStep?: StepCode;
   completion: RoundCompletionFact | null;
@@ -31,7 +32,7 @@ function StateIcon({ status }: { status: RoundStepStatus }): React.JSX.Element {
 }
 
 export function RoundStepTimeline({
-  steps, roundNumber, currentStep, completion, locked, hrefForStep,
+  steps, roundNumber, currentStep, completion, locked, hrefForStep, audience = "STAFF",
 }: RoundStepTimelineProps): React.JSX.Element {
   const summaryStatus: RoundStepStatus = completion ? "DONE" : locked ? "LOCKED" : "TODO";
   const nodes = [
@@ -75,7 +76,7 @@ export function RoundStepTimeline({
             <span className="min-w-0 flex-1 break-words pb-3">
               <span className="block font-semibold text-text">{node.label}</span>
               {node.origin ? <span className="block text-xs text-text-muted">{node.origin === "GUIDELINE" ? "ตามแนวทาง" : "เพิ่มเอง"}</span> : null}
-              {node.byPatient ? <span className="block text-xs text-brand-strong">ผู้ป่วยบันทึกเอง</span> : null}
+              {node.byPatient ? <span className="block text-xs text-brand-strong">{audience === "PATIENT" ? "คุณบันทึกแล้ว" : "ผู้ป่วยบันทึกเอง"}</span> : null}
               <span className={`mt-1 flex items-center gap-1 ${node.status === "DONE" ? "text-success" : node.status === "SKIPPED" ? "text-warning" : "text-text-muted"}`}>
                 <StateIcon status={node.status} />{node.statusLabel}
               </span>

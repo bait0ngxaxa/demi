@@ -187,6 +187,7 @@ export type RoundStepEvidence = {
   at: Date | null;
   byDisplayName: string | null;
   byPatient?: boolean;
+  recordedRoundNumber?: number;
 };
 
 export type RoundStepSkipFact = {
@@ -244,6 +245,7 @@ export type RoundPlanFact = {
 export type ProgramRoundFacts = {
   programActive: boolean;
   preferredName: string | null;
+  preferredNameEvidence?: RoundStepEvidence | null;
   /** R2-C: per instrument; a legacy combined screening fills both. */
   screenings: Readonly<Record<"PAM" | "PROMS", RoundStepEvidence | null>>;
   /** PatientProgramRoundVitals by round. */
@@ -355,7 +357,7 @@ function vitalsOutcome(
   const complete = sources.find((source) => missingFrom(source, roundNumber).length === 0);
 
   return complete
-    ? { evidence: { at: complete.at, byDisplayName: complete.byDisplayName }, missing: [] }
+    ? { evidence: { at: complete.at, byDisplayName: complete.byDisplayName, byPatient: complete.byPatient }, missing: [] }
     : { evidence: null, missing: missingFrom(sources[0], roundNumber) };
 }
 
@@ -374,7 +376,7 @@ function stepEvidence(
     case "CUSTOM":
       return item.done;
     case "KNOW_SELF":
-      return facts.preferredName ? { at: null, byDisplayName: null } : null;
+      return facts.preferredName ? facts.preferredNameEvidence ?? { at: null, byDisplayName: null } : null;
     case "PAM":
     case "PROMS":
       return facts.screenings[definition.code];
@@ -430,11 +432,13 @@ export function computeRoundStatus(
   const activeItems = plan.filter((item) => !item.removed).sort((left, right) => left.position - right.position);
   const steps: RoundStepState[] = activeItems.map((item) => {
     const definition = planItemDefinition(roundNumber, item);
-    const evidence = stepEvidence(facts, roundNumber, definition, item);
-    // A recorded result replaces an earlier skip (SR-D3).
-    const skip = evidence || item.id === null
-      ? null
-      : (skips.find((candidate) => candidate.planItemId === item.id) ?? null);
+    const recorded = stepEvidence(facts, roundNumber, definition, item);
+    const storedSkip = item.id === null ? null : skips.find((candidate) => candidate.planItemId === item.id) ?? null;
+    // A later Program-level answer cannot rewrite the history of a closed round. Auto-close skips
+    // prove the item was TODO at close; manual skips may only be replaced before that close.
+    const frozenSkip = completion && storedSkip && (storedSkip.reasonCode === "NOT_DONE_AT_CLOSE" || (recorded?.recordedRoundNumber !== undefined && recorded.recordedRoundNumber > roundNumber));
+    const evidence = frozenSkip ? null : recorded;
+    const skip = evidence ? null : storedSkip;
     const status: RoundStepStatus = evidence ? "DONE" : skip ? "SKIPPED" : locked ? "LOCKED" : "TODO";
 
     const missingMeasurements = definition.code === "VITALS" ? vitalsOutcome(facts, roundNumber).missing : [];

@@ -58,6 +58,9 @@ export type RoundVitalsSupplement = {
 };
 
 export function RoundVitalsForm({
+  patientMode = false,
+  initialValues,
+  defaultServiceDate,
   heightEditable,
   latestHeightCm,
   nextHref,
@@ -71,6 +74,9 @@ export function RoundVitalsForm({
   supplement = null,
   todayServiceDate,
 }: {
+  patientMode?: boolean;
+  initialValues?: Partial<Record<VitalsMeasurement, number | null>>;
+  defaultServiceDate?: string;
   heightEditable: boolean;
   latestHeightCm: number | null;
   /** SR-D7: the next step after a successful save. */
@@ -91,8 +97,8 @@ export function RoundVitalsForm({
     recordPatientProgramRoundVitalsAction,
     initialPatientProgramRoundActionState,
   );
-  const [weight, setWeight] = useState("");
-  const [height, setHeight] = useState(latestHeightCm === null ? "" : String(latestHeightCm));
+  const [weight, setWeight] = useState(initialValues?.weight == null ? "" : String(initialValues.weight));
+  const [height, setHeight] = useState(initialValues?.heightCm != null ? String(initialValues.heightCm) : latestHeightCm === null ? "" : String(latestHeightCm));
   const bmi = calculateBodyMassIndex(parseOptionalNumber(weight), parseOptionalNumber(height));
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -121,7 +127,8 @@ export function RoundVitalsForm({
       {profile ? <input name="profileVersion" type="hidden" value={profile.profileVersion ?? ""} /> : null}
 
       <fieldset disabled={pending || unknownOutcome}>
-        <dl className="grid gap-4 sm:grid-cols-2">
+        {patientMode ? <p className="mb-4 text-sm text-text-muted">บันทึกสัญญาณชีพที่คุณวัดเอง กรอกเฉพาะค่าที่วัดได้</p> : null}
+        {!patientMode ? <dl className="grid gap-4 sm:grid-cols-2">
           <div>
             <dt className="text-sm font-semibold text-text-muted">ชื่อ-สกุล</dt>
             <dd className="mt-1 font-semibold text-text">{patientDisplayName}</dd>
@@ -132,9 +139,9 @@ export function RoundVitalsForm({
               <dd className="mt-1 font-semibold text-text">{occupation ?? "ไม่ได้บันทึก"}</dd>
             </div>
           )}
-        </dl>
+        </dl> : null}
 
-        {profile && !supplement ? (
+        {profile && !supplement && !patientMode ? (
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             {occupation ? null : (
               <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-1-occupation">
@@ -160,10 +167,10 @@ export function RoundVitalsForm({
           <input name="serviceDate" type="hidden" value={supplement.serviceDate} />
         ) : (
           <label className="mt-5 block max-w-sm space-y-2 text-sm font-semibold text-text" htmlFor={`round-${roundNumber}-service-date`}>
-            <span>วันที่ให้บริการ</span>
+            <span>{patientMode ? "วันที่วัด" : "วันที่ให้บริการ"}</span>
             <input
               className={inputClassName}
-              defaultValue={todayServiceDate}
+              defaultValue={defaultServiceDate ?? todayServiceDate}
               id={`round-${roundNumber}-service-date`}
               max={todayServiceDate}
               name="serviceDate"
@@ -182,7 +189,7 @@ export function RoundVitalsForm({
                 ? { onChange: (event: React.ChangeEvent<HTMLInputElement>) => setWeight(event.target.value), value: weight }
                 : isHeight
                   ? { onChange: (event: React.ChangeEvent<HTMLInputElement>) => setHeight(event.target.value), value: height }
-                  : {};
+                  : { defaultValue: initialValues?.[field.name] ?? "" };
 
             return (
               <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={inputId} key={field.name}>

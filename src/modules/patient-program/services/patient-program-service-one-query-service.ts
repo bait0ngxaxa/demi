@@ -12,6 +12,7 @@ import type { PatientProgramServiceOneFloatingChartScores } from "../schemas/pat
 
 const recordedByUserSelect = {
   select: {
+    id: true,
     person: {
       select: {
         givenName: true,
