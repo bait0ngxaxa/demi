@@ -15,6 +15,8 @@ import {
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
+import { getProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
+
 import { FollowupForm } from "../../../../followups/new/followup-form";
 
 export const metadata: Metadata = {
@@ -89,8 +91,12 @@ export default async function NewProgramFollowupPage({
     throw error;
   }
 
+  const overview = await getProgramRoundsOverview(actor, relationshipId, programId);
+  const openRound = overview.rounds.find((round) => round.state !== "COMPLETED" && round.state !== "LOCKED");
+
   return (
     <FollowupForm
+      programRoundNumber={openRound?.roundNumber}
       appointments={context.appointments.map((appointment) => ({
         appointmentId: appointment.appointmentId,
         type: appointment.type,

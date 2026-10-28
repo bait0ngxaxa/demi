@@ -100,7 +100,7 @@ export function isRoundVitalsRound(value: unknown): value is RoundVitalsRoundNum
 }
 
 export function isFollowupRound(roundNumber: number): boolean {
-  return roundNumber >= FIRST_FOLLOWUP_ROUND && roundNumber <= LAST_FOLLOWUP_ROUND;
+  return roundNumber >= FIRST_FOLLOWUP_ROUND && roundNumber <= MAX_PROGRAM_ROUNDS;
 }
 
 export function toFollowupRoundNumber(roundNumber: number): number {
@@ -113,7 +113,7 @@ export function toProgramRoundNumber(followupRoundNumber: number): number {
 
 /** The plan step a ledger tool fulfils in `roundNumber` (the health path is reviewed in round 6). */
 export function roundActivityStepCode(roundNumber: number, toolCode: PatientProgramRoundToolCode): string {
-  return toolCode === "HEALTH_PATH" && roundNumber === HEALTH_PATH_REVIEW_ROUND ? "HEALTH_PATH_REVIEW" : toolCode;
+  return toolCode === "HEALTH_PATH" && roundNumber >= HEALTH_PATH_REVIEW_ROUND ? "HEALTH_PATH_REVIEW" : toolCode;
 }
 
 /**

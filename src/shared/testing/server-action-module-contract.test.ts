@@ -103,6 +103,10 @@ describe('top-level "use server" module contract', () => {
 
     for (const filePath of sourceFiles) {
       const sourceText = await readFile(filePath, "utf8");
+      // Scan the first non-trivia token before allocating a full AST. The contract below only applies
+      // when that token is the "use server" directive; the scanner also decodes escaped string literals.
+      const scanner = ts.createScanner(ts.ScriptTarget.Latest, true, ts.LanguageVariant.Standard, sourceText);
+      if (scanner.scan() !== ts.SyntaxKind.StringLiteral || scanner.getTokenValue() !== "use server") continue;
       const sourceFile = ts.createSourceFile(
         filePath,
         sourceText,

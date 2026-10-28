@@ -354,7 +354,31 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     await createGoalPlanForProgram(owner.actor, goalInput(programA.patientProgramId, "แผนที่สองของ Program A"));
 
     for (let round = 1; round <= 7; round += 1) {
+      // FR-D5: paginated follow-ups beyond six visits still belong to opened rounds. This report
+      // fixture advances lifecycle rows directly; the rounds integration tests exercise staff writes.
+      if (round === 5) await openFinalAssessmentRound({ patientProgramId: programA.patientProgramId });
+      if (round >= 5) {
+        await prisma.patientProgramRound.create({ data: {
+          patientProgramId: programA.patientProgramId,
+          patientHospitalRelationshipId: patient.relationshipId,
+          roundNumber: round + 2,
+          origin: "EXTRA",
+          openedAt: new Date(),
+          openedByUserId: owner.userId,
+          submissionNonce: randomUUID(),
+          planItems: { create: [{ stepCode: "VITALS", position: 1, origin: "ADDED", addedByUserId: owner.userId }] },
+        } });
+      }
       await createFollowupForProgram(owner.actor, followupInput(programA.patientProgramId, 60 + round));
+      if (round >= 5) {
+        await prisma.patientProgramRoundCompletion.create({ data: {
+          patientProgramId: programA.patientProgramId,
+          patientHospitalRelationshipId: patient.relationshipId,
+          roundNumber: round + 2,
+          completedByUserId: owner.userId,
+          submissionNonce: randomUUID(),
+        } });
+      }
     }
 
     await createPatientFinalAssessment(

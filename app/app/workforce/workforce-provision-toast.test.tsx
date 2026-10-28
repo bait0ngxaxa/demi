@@ -86,6 +86,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
@@ -106,7 +108,7 @@ beforeEach(() => {
   originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { origin: "https://browser.example", search: "", replace: mocks.locationReplace },
+    value: { origin: new URL(document.URL).origin, href: document.URL, search: "", replace: mocks.locationReplace },
   });
   window.sessionStorage.clear();
   container = document.createElement("div");
@@ -289,8 +291,6 @@ describe("workforce three-step onboarding", () => {
   });
 
   it("asks before leaving an open handoff and lets the OWNER start the next person", async () => {
-    const confirm = vi.fn(() => false);
-    vi.stubGlobal("confirm", confirm);
     render();
     await stepToDelivery();
     await submitDelivery();
@@ -301,14 +301,14 @@ describe("workforce three-step onboarding", () => {
     expect(addAnother.getAttribute("aria-disabled")).toBeNull();
     const cancelledNavigation = new MouseEvent("click", { bubbles: true, cancelable: true });
     await act(async () => addAnother.dispatchEvent(cancelledNavigation));
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(document.querySelector("dialog[open]")?.textContent).toContain("ออกจากหน้านี้หรือไม่");
+    await act(async () => button("อยู่หน้านี้").click());
     expect(cancelledNavigation.defaultPrevented).toBe(true);
     expect(mocks.routerPush).not.toHaveBeenCalled();
 
-    confirm.mockReturnValue(true);
     await act(async () => addAnother.click());
+    await act(async () => button("ออกจากหน้า").click());
     expect(mocks.routerPush).toHaveBeenCalledWith(`/app/workforce/new?hospitalId=${HOSPITAL_ID}&step=1`);
-    expect(container.textContent).toContain("เลือกประเภทบุคลากร");
-    expect(container.textContent).not.toContain(ACTIVATION_URL);
+    expect(document.querySelector("dialog[open]")).toBeNull();
   });
 });

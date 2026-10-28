@@ -187,16 +187,16 @@ describe("round status (SR-D1, SR-D5)", () => {
     expect(isRoundOpenForWrites(new Set([1]), 1)).toBe(false);
   });
 
-  it("is IN_PROGRESS with one item and completable only when every step is resolved", () => {
+  it("allows completion with one DONE item, but never with only skipped items", () => {
     const one = computeRoundStatus(facts({ tools: { CONFIDENCE_RULER: { 5: evidence }, ROUTINE: { 5: evidence }, FLOATING_CHART: {}, DREAM_CARD: {} } }), 1);
     expect(one).toMatchObject({ state: "NOT_STARTED", resolvedItems: 0 });
 
     const started = computeRoundStatus(facts({ tools: { CONFIDENCE_RULER: { 1: evidence }, ROUTINE: {}, FLOATING_CHART: {}, DREAM_CARD: {} } }), 1);
-    expect(started).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 1, totalItems: 14, canComplete: false });
+    expect(started).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 1, totalItems: 14, canComplete: true });
 
     const skips = roundGuideline(5).map((step) => ({ planItemId: `item-5-${step.code}`, stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
     const allSkipped = computeRoundStatus(facts({ completions: { 1: completed, 2: completed, 3: completed, 4: completed }, skips: { 5: skips } }), 5);
-    expect(allSkipped).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 9, canComplete: true });
+    expect(allSkipped).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 9, canComplete: false });
 
     expect(computeRoundStatus(facts({ programActive: false, skips: { 1: [] } }), 1).writable).toBe(false);
   });
@@ -243,14 +243,14 @@ describe("vitals step: items 1-7 need every measurement", () => {
     expect(bare.steps.find((step) => step.code === "HEALTH_PLAN_REVIEW")?.status).toBe("DONE");
   });
 
-  it("refuses completion until the vitals step is DONE or skipped", () => {
+  it("allows completion without vitals when the plan review is DONE", () => {
     const resolvedOthers = roundGuideline(5)
       .filter((step) => step.code !== "VITALS")
       .map((step) => ({ planItemId: `item-5-${step.code}`, stepCode: step.code, reasonCode: "PATIENT_DECLINED" as const, note: null, at: evidence.at, byDisplayName: null }));
     const opened = { 1: completed, 2: completed, 3: completed, 4: completed };
     const partial = { followups: { 5: followup(["weight"]) }, completions: opened };
 
-    expect(computeRoundStatus(facts({ ...partial, skips: { 5: resolvedOthers } }), 5).canComplete).toBe(false);
+    expect(computeRoundStatus(facts({ ...partial, skips: { 5: resolvedOthers } }), 5).canComplete).toBe(true);
 
     const skipVitals = { planItemId: "item-5-VITALS", stepCode: "VITALS" as const, reasonCode: "EQUIPMENT_UNAVAILABLE" as const, note: null, at: evidence.at, byDisplayName: null };
     const skipped = computeRoundStatus(facts({ ...partial, skips: { 5: [...resolvedOthers, skipVitals] } }), 5);

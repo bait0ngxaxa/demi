@@ -13,6 +13,7 @@ const dependencies = vi.hoisted(() => ({
 vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
 vi.mock("next/navigation", () => ({
   redirect: (href: string) => { throw new Error(`REDIRECT:${href}`); },
+  useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/app/more",
   useSearchParams: () => new URLSearchParams(),
 }));

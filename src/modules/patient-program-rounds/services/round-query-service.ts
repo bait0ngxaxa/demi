@@ -41,7 +41,6 @@ import {
   isFollowupRound,
   isRoundVitalsRound,
   isValidRoundNumber,
-  LAST_FOLLOWUP_ROUND,
   roundTitle,
   ROUND_TOOLS,
   SERVICE_ONE_HOME_ROUND,
@@ -305,7 +304,6 @@ const programRoundSelect = {
     },
   },
   followups: {
-    where: { roundNumber: { lte: toFollowupRoundNumber(LAST_FOLLOWUP_ROUND) } },
     orderBy: { roundNumber: "asc" },
     select: {
       id: true,
@@ -444,10 +442,11 @@ export function buildProgramRoundFacts(
 
   const firstGoalPlan = program.goalPlans[0] ?? null;
   const pathReview = program.roundActivities.find(
-    (entry) => entry.roundNumber === HEALTH_PATH_REVIEW_ROUND && entry.toolCode === "HEALTH_PATH",
+    (entry) => entry.roundNumber >= HEALTH_PATH_REVIEW_ROUND && entry.toolCode === "HEALTH_PATH",
   );
 
   return {
+    healthPathReviews: Object.fromEntries(program.roundActivities.filter((entry) => entry.toolCode === "HEALTH_PATH" && entry.roundNumber >= HEALTH_PATH_REVIEW_ROUND).map((entry) => [entry.roundNumber, evidence(entry.performedAt, entry.recordedByUser)])),
     programActive: program.status === PatientProgramStatus.ACTIVE,
     preferredName: program.patientHospitalRelationship.hospitalProfile?.preferredName ?? null,
     screenings: Object.fromEntries(
@@ -666,8 +665,8 @@ function buildHealthPath(
   const rounds =
     roundNumber === SERVICE_ONE_HOME_ROUND
       ? [SERVICE_ONE_HOME_ROUND]
-      : roundNumber === HEALTH_PATH_REVIEW_ROUND
-        ? GUIDELINE_ROUND_NUMBERS
+      : roundNumber >= HEALTH_PATH_REVIEW_ROUND
+        ? Array.from({ length: roundNumber }, (_, index) => index + 1)
         : [];
 
   return rounds.map((round) => ({
@@ -743,7 +742,7 @@ export function buildProgramRoundsOverview(
     programStatus: program.status,
     rounds,
     after: {
-      state: final ? "RECORDED" : facts.completions[LAST_FOLLOWUP_ROUND] ? "NOT_RECORDED" : "LOCKED",
+      state: final ? "RECORDED" : program.rounds.length >= GUIDELINE_ROUND_COUNT && program.rounds.every((round) => facts.completions[round.roundNumber]) ? "NOT_RECORDED" : "LOCKED",
       date: final ? (final.serviceDate ?? final.recordedAt) : null,
       recordedByDisplayName: final && options.recorderNames ? toDisplayName(final.recordedBy) : null,
     },
@@ -803,7 +802,7 @@ export function buildProgramRoundDetail(
       isFollowupRound(roundNumber) &&
       status.writable &&
       followup === null &&
-      program.followups.length === toFollowupRoundNumber(roundNumber) - 1,
+      status.steps.some((step) => step.code === "VITALS" || step.code === "HEALTH_PLAN_REVIEW"),
     serviceOne: options.recorderNames
       ? toPatientProgramServiceOneProjection(program, roundNumber)
       : withoutPatientProgramServiceOneRecorders(toPatientProgramServiceOneProjection(program, roundNumber)),

@@ -97,7 +97,7 @@ async function clear(): Promise<void> {
 }
 
 describe("Phase 17F.2 appointment grants PostgreSQL", () => {
-  beforeAll(async () => { await db.$connect(); });
+  beforeAll(async () => { await db.$connect(); await clear(); });
   afterEach(clear);
   afterAll(async () => { await db.$disconnect(); });
 

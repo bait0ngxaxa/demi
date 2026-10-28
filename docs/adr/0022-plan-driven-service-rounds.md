@@ -19,7 +19,7 @@ In practice staff adapt each visit to the patient. The Product Owner confirmed o
 - **FR-D3 — Round count.** Rounds 1-6 follow the guideline by default; staff may add rounds up to 12. Rounds 7+ open with an empty plan.
 - **FR-D4 — Who records.** The assigned อสม. records first; MEMBER staff and the OWNER of the patient's own Hospital are the fallback (today's write access, unchanged). The registered patient may self-record in their own Program under FR-D4a. Plan editing (add/remove), skip/unskip, ending a round and adding a round stay with อสม./MEMBER/OWNER. A caregiver is read-only. A network Parent Hospital stays read-only for its Child facilities (ADR-0016).
 - **FR-D4a — Patient self-recording.** Only in the current open round of the patient's own ACTIVE Program, and only VITALS (self-measured), PAM, PROMS, CONFIDENCE_RULER, ROUTINE, FLOATING_CHART, DREAM_CARD, KNOW_SELF, and marking an existing CUSTOM item done. Never plan edits, skips, completion, adding a round, HEALTH_PLAN_REVIEW, a Goal Plan, HEALTHY_PLAN or HEALTH_PATH_REVIEW. Every patient-recorded fact keeps the patient as its recorder, and staff see "ผู้ป่วยบันทึกเอง". Staff and อสม. may re-record or correct it before the round is ended (existing replace semantics).
-- **FR-D5 — Follow-ups.** A Follow-up after round 6 is no longer extra history; every Follow-up belongs to an existing open round.
+- **FR-D5 — Follow-ups.** Every Program Follow-up belongs to the current opened, unfinished round (previous round completed), derived by the server. It requires round >= 3, no existing Follow-up in that round, and VITALS or HEALTH_PLAN_REVIEW in its active plan. PatientFollowup.roundNumber = service round minus 2; missing Follow-ups in earlier rounds do not shift that mapping. Relationship-only Follow-ups keep their numbering. Migration 20261126100000 refuses legacy Program Follow-ups numbered >= 5 without an opened corresponding round, reporting the count. There is no real user data in these development/demo databases; synthetic databases are reset rather than fabricating history.
 - **FR-D6 — Reports.** Reports keep the columns ครั้งที่ 1-6 and add "ครั้งเพิ่มเติม (จำนวน)"; details stay in the per-patient view.
 - **FR-D7 — Removing guideline items.** A guideline item may be removed from a round's plan. Removal is soft, audited and reversible by adding the item again.
 
@@ -34,7 +34,7 @@ Kept: SR-D3 (skip with a reason), SR-D5 (round n is writable only after round n-
 - The skip reason enum gains `NOT_DONE_AT_CLOSE`, which only the system writes.
 - A skip belongs to one plan item (FR-1b): `PatientProgramRoundStepSkip.planItemId` with a composite foreign key `(planItemId, patientProgramId, roundNumber, stepCode)` to the plan item, so a skip's step and round always equal its item's, and one skip per item (unique `planItemId`). Several CUSTOM items of a round can each be skipped, `NOT_DONE_AT_CLOSE` can resolve every unresolved item, and an item added again after a removal starts without the removed item's skip. A skip needs an active item, and a skipped item is unskipped before it is removed (triggers). Skip and unskip requests name the `planItemId`; the round status matches skips by item only.
 - Completions, skips, round vitals and ledger rows (`PatientProgramRoundActivity`, FR-1b) accept rounds 1-12; completions, skips and round vitals require an opened round. A round opens only as round 1 or after the previous round is completed (FR-1b trigger on `PatientProgramRound` insert; rows of the FR-1 data step predate it).
-- The ledger source is read from the plan (FR-1b): PLANNED when the round's active plan lists the tool's step (the health path as HEALTH_PATH_REVIEW in round 6), otherwise EXTRA, evaluated in the writing transaction. A per-round tool result (ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, กราฟวัดลอยจม, ความฝันของฉัน) requires an active plan item for its tool in its round; a trigger replaces the fixed-round CHECKs.
+- The ledger source is read from the plan (FR-1b): PLANNED when the round's active plan lists the tool's step (the health path as HEALTH_PATH_REVIEW in rounds >= 6), otherwise EXTRA, evaluated in the writing transaction. A per-round tool result (ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, กราฟวัดลอยจม, ความฝันของฉัน) requires an active plan item for its tool in its round; a trigger replaces the fixed-round CHECKs.
 - Round vitals may be recorded in any round (FR-4). A round's VITALS evidence is its round vitals or its Follow-up measurements: DONE when either source holds every required measurement. When both exist, the view shows the latest recorded one and names its source.
 - All guards are database triggers and constraints behind the service checks. The demo/test reset keeps the transaction-local `demi.service_area_purge = 'demo-reset'` escape for deletes.
 
@@ -46,9 +46,11 @@ A round's plan is stored when the round opens, not computed from the guideline w
 
 - **FR-1:** schema, triggers, data step, `ROUND_GUIDELINES` / `ROUND_ITEM_CATALOG`, round numbers as `number` with `isValidRoundNumber` (integer 1-12), status computed over the plan, round opening on Program creation and completion, plan checks for tool writes, skips and unskips. No visible behaviour change: the completion rule stays "every plan item resolved"; rounds 7-12 cannot be added yet; Follow-up mapping, the Final Assessment gate, authorization, UI and reports are unchanged.
 - **FR-1b:** skips keyed by plan item (CUSTOM items become skippable through the existing skip path), the ledger widened to rounds 1-12 with a plan-based source, and the round-opening order trigger. Still no visible behaviour change.
-- **FR-2:** services for plan editing, adding rounds 7-12 and the FR-D1 completion rule (with `NOT_DONE_AT_CLOSE`).
+- **FR-2:** services and server actions for plan editing, adding rounds 7-12, FR-D1 completion with `NOT_DONE_AT_CLOSE`, current-round Follow-ups and their data guard, the Final Assessment gate (at least six opened rounds, all opened rounds completed), and health-path review in rounds >= 6.
 - **FR-3:** the staff UI for plans, added rounds and ending a round.
-- **FR-4 … FR-6:** the Follow-up and Final Assessment mapping, patient self-recording, and reports. Each phase is delivered and reviewed separately.
+- **FR-4:** patient self-recording.
+- **FR-5:** reports.
+- **FR-6:** hardening and end-to-end coverage. Each phase is delivered separately.
 
 ## Consequences
 
@@ -59,5 +61,5 @@ A round's plan is stored when the round opens, not computed from the guideline w
 ## Open questions
 
 - Resolved in FR-1b: skips per (Program, round, step) could not hold two CUSTOM skips or `NOT_DONE_AT_CLOSE` for several items; skips are now keyed by plan item. The ledger accepted rounds 1-6 only with a guideline-derived source; it now accepts 1-12 with a plan-based source. Round opening was ordered by the services only; a trigger now backs it.
-- HEALTH_PATH_REVIEW stays fixed to round 6, and HEALTHY_PLAN remains the interim round-4 rule. Whether either may be planned in other rounds is not decided.
-- Opening a round is not audited separately; Program creation and round completion, which open rounds, are.
+- Resolved in FR-2: HEALTH_PATH_REVIEW is addable in rounds >= 6 with round-1 vitals and reviews rounds 1..n. HEALTH_PLAN_REVIEW and HEALTHY_PLAN additions require an existing Goal Plan; the round-2 guideline still creates the first Goal Plan.
+- Guideline opening is audited by its containing Program creation or round completion. Staff-added EXTRA rounds are audited separately as patient_program_round.opened.

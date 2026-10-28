@@ -210,6 +210,7 @@ function createDatabase(input: {
       deleteMany: vi.fn().mockResolvedValue({ count: input.removedSkips ?? 1 }),
     },
     patientProgramRoundVitals: {
+      findFirst: vi.fn().mockResolvedValue(input.followup ?? null),
       findUnique: vi
         .fn()
         .mockResolvedValueOnce(input.vitalsByNonce ?? null)
@@ -568,7 +569,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
     });
 
     await expect(completePatientProgramRound(actor, completion, deps(database))).rejects.toMatchObject({
-      message: "ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้",
+      message: "ต้องทำอย่างน้อย 1 รายการในแผนก่อนจบบริการ",
     });
     expect(transaction.patientProgramRoundCompletion.create).not.toHaveBeenCalled();
   });
@@ -576,7 +577,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
   it("completes with database time, the actor and an audit of counts only", async () => {
     const { database, transaction } = createDatabase({
       completedRounds: before,
-      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped },
+      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped, serviceOneRoutines: [{ roundNumber: 5, recordedAt: now, recordedByUser: recorder, routineDate: null }] },
     });
 
     await expect(completePatientProgramRound(actor, completion, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
@@ -591,7 +592,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "patient_program_round.completed",
-        metadata: expect.objectContaining({ roundNumber: 5, doneSteps: 0, skippedSteps: 3 }),
+        metadata: expect.objectContaining({ roundNumber: 5, doneSteps: 1, skippedSteps: 2, notDoneSteps: 0 }),
       }),
       expect.anything(),
     );
@@ -633,6 +634,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
       program: {
         roundCompletions: earlier.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })),
         roundStepSkips: roundSixSkips,
+        serviceOneConfidences: [{ roundNumber: 6, recordedAt: now, recordedByUser: recorder }],
       },
     });
 

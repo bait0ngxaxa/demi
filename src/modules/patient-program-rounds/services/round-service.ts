@@ -28,7 +28,6 @@ import {
   isValidRoundNumber,
   SERVICE_ONE_HOME_ROUND,
   SERVICE_ONE_TOOL_LINKED_RECORD_TYPES,
-  toFollowupRoundNumber,
 } from "../domain/round-catalog";
 import { RoundConflictError } from "../domain/round-conflict-error";
 import {
@@ -54,7 +53,7 @@ import {
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry } from "./round-ledger";
-import { classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
+import { assertActivePlanItem, classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
 import { assertRoundWritable } from "./round-sequencing";
 
@@ -74,6 +73,9 @@ export type PatientProgramRoundWriteResult = {
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   roundNumber: number;
+  done?: number;
+  skipped?: number;
+  notDone?: number;
 };
 
 export type PatientProgramRoundVitalsResult = PatientProgramRoundWriteResult & {
@@ -134,7 +136,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
   }
 
   if (isKnownRequestError(error, "P2002") || isKnownRequestError(error, "P2034")) {
-    return new ConflictError("ข้อมูลครั้งนี้ถูกบันทึกพร้อมกับคำขออื่น กรุณาตรวจสอบข้อมูลล่าสุด");
+    return new RoundConflictError("ข้อมูลครั้งนี้ถูกบันทึกพร้อมกับคำขออื่น กรุณาตรวจสอบข้อมูลล่าสุด");
   }
 
   if (isKnownRequestError(error, "P2003")) {
@@ -162,6 +164,7 @@ async function runSerializable<T>(
       }
 
       retryCount += 1;
+      await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** (retryCount - 1) + Math.floor(Math.random() * 10)));
     }
   }
 }
@@ -470,12 +473,10 @@ async function findReviewTarget(
   transaction: Prisma.TransactionClient,
   patientProgramId: string,
   toolCode: RoundReviewRequest["toolCode"],
-  roundNumber: number,
 ): Promise<{ linkedRecordId: string | null } | null> {
   if (toolCode === "HEALTH_PATH") {
-    // SR-D9: the path review needs the round's own vitals (round 6 = Follow-up 4).
-    const followup = await transaction.patientFollowup.findFirst({
-      where: { patientProgramId, roundNumber: toFollowupRoundNumber(roundNumber) },
+    const followup = await transaction.patientProgramRoundVitals.findFirst({
+      where: { patientProgramId, roundNumber: 1 },
       select: { id: true },
     });
 
@@ -537,20 +538,21 @@ async function recordReviewInTransaction(
     };
   }
 
-  if (input.toolCode === "HEALTH_PATH" && roundNumber !== HEALTH_PATH_REVIEW_ROUND) {
-    throw new ValidationError("The health path review belongs to round 6");
+  if (input.toolCode === "HEALTH_PATH" && roundNumber < HEALTH_PATH_REVIEW_ROUND) {
+    throw new ValidationError("The health path review requires round 6 or later");
   }
 
   if (input.toolCode !== "HEALTH_PATH" && roundNumber === SERVICE_ONE_HOME_ROUND) {
     throw new RoundConflictError("เครื่องมือนี้บันทึกในครั้งที่ 1 ไม่ต้องทบทวนซ้ำในครั้งเดียวกัน");
   }
 
-  const target = await findReviewTarget(transaction, program.id, input.toolCode, roundNumber);
+  if (input.toolCode === "HEALTH_PATH") await assertActivePlanItem(transaction, program.id, roundNumber, "HEALTH_PATH_REVIEW");
+  const target = await findReviewTarget(transaction, program.id, input.toolCode);
 
   if (!target) {
     throw new RoundConflictError(
       input.toolCode === "HEALTH_PATH"
-        ? "บันทึกสัญญาณชีพของครั้งที่ 6 (การติดตามผล) ก่อน จึงจะทบทวนเส้นทางสุขภาพได้"
+        ? "บันทึกสัญญาณชีพของครั้งที่ 1 ก่อน จึงจะทบทวนเส้นทางสุขภาพได้"
         : "ยังไม่มีผลแบบประเมินให้ทบทวน กรุณาบันทึกในครั้งที่ 1 ก่อน",
     );
   }
@@ -772,7 +774,7 @@ async function completeRoundInTransaction(
       throw new ConflictError("This round completion token has already been used");
     }
 
-    return writeResult("ALREADY_RECORDED", context, roundNumber);
+    return { ...writeResult("ALREADY_RECORDED", context, roundNumber), ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)) };
   }
 
   const existing = await transaction.patientProgramRoundCompletion.findUnique({
@@ -781,7 +783,7 @@ async function completeRoundInTransaction(
   });
 
   if (existing) {
-    return writeResult("ALREADY_RECORDED", context, roundNumber);
+    return { ...writeResult("ALREADY_RECORDED", context, roundNumber), ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)) };
   }
 
   await assertRoundWritable(transaction, context.program.id, roundNumber);
@@ -789,7 +791,15 @@ async function completeRoundInTransaction(
   const status = await loadRoundStatus(transaction, context, roundNumber);
 
   if (!status.canComplete) {
-    throw new RoundConflictError("ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้");
+    throw new RoundConflictError("ต้องทำอย่างน้อย 1 รายการในแผนก่อนจบบริการ");
+  }
+
+  const notDone = status.steps.filter((step) => step.status === "TODO");
+  if (notDone.length > 0) {
+    await transaction.patientProgramRoundStepSkip.createMany({ data: notDone.map((step) => {
+      if (!step.planItemId) throw new RoundConflictError("รายการในแผนยังไม่ได้เปิดบริการ");
+      return { patientProgramId: context.program.id, patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId, roundNumber, planItemId: step.planItemId, stepCode: step.code, reasonCode: "NOT_DONE_AT_CLOSE" as const, note: null, skippedByUserId: context.access.actor.userId };
+    }) });
   }
 
   const completion = await transaction.patientProgramRoundCompletion.create({
@@ -812,6 +822,7 @@ async function completeRoundInTransaction(
       resourceId: completion.id,
       metadata: {
         ...auditMetadata(context, roundNumber),
+        notDoneSteps: notDone.length,
         doneSteps: status.steps.filter((state) => state.status === "DONE").length,
         skippedSteps: status.steps.filter((state) => state.status === "SKIPPED").length,
       },
@@ -830,7 +841,15 @@ async function completeRoundInTransaction(
     });
   }
 
-  return writeResult("RECORDED", context, roundNumber);
+  return { ...writeResult("RECORDED", context, roundNumber), ...completionCounts(status) };
+}
+
+function completionCounts(status: Awaited<ReturnType<typeof loadRoundStatus>>): { done: number; skipped: number; notDone: number } {
+  return {
+    done: status.steps.filter((step) => step.status === "DONE").length,
+    skipped: status.steps.filter((step) => step.status === "SKIPPED" && step.skip?.reasonCode !== "NOT_DONE_AT_CLOSE").length,
+    notDone: status.steps.filter((step) => step.status === "TODO" || step.skip?.reasonCode === "NOT_DONE_AT_CLOSE").length,
+  };
 }
 
 export async function recordPatientProgramRoundVitals(
@@ -924,6 +943,10 @@ export async function completePatientProgramRound(
 }
 
 export const patientProgramRoundServiceInternals = {
+  auditMetadata,
+  loadRoundStatus,
+  runRoundWrite,
+  writeResult,
   completeRoundInTransaction,
   findReviewTarget,
   hasSameVitals,

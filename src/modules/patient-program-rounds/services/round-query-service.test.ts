@@ -290,7 +290,7 @@ describe("round detail read model", () => {
     expect(detail.patient).toMatchObject({ preferredName: "ป้าใจ", occupation: null, profileVersion: 4 });
   });
 
-  it("allows completion only when every step is DONE or SKIPPED", () => {
+  it("allows completion when at least one active item is DONE", () => {
     const skip = (stepCode: string) => ({
       roundNumber: 1, planItemId: `plan-1-${stepCode}`, stepCode, reasonCode: "OTHER", note: "เหตุผล", createdAt: at, skippedByUser: recorder,
     });
@@ -303,7 +303,7 @@ describe("round detail read model", () => {
       serviceOneFloatingCharts: [tool(1)],
       serviceOneConfidences: [tool(1)],
     });
-    expect(buildProgramRoundDetail(almost, 1, patient, staff).status.canComplete).toBe(false);
+    expect(buildProgramRoundDetail(almost, 1, patient, staff).status.canComplete).toBe(true);
 
     const ready = program({ ...almost, roundStepSkips: [skip("ROUTINE")] } as Record<string, unknown>);
     const status = buildProgramRoundDetail(ready, 1, patient, staff).status;

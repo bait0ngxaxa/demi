@@ -117,7 +117,7 @@ export const ROUND_ITEM_CATALOG: Readonly<Record<RoundStepCode, RoundItemCatalog
   // Interim default, PENDING customer confirmation: answered by the round's Follow-up planAdjusted.
   HEALTHY_PLAN: catalogEntry("HEALTHY_PLAN", "แผนสุขภาพดีของฉัน", "GOAL_PLAN", STAFF_REVIEW),
   // SR-D9: read-only timeline of the rounds, DONE when the actor confirms the review (round 6).
-  HEALTH_PATH_REVIEW: catalogEntry("HEALTH_PATH_REVIEW", "ทบทวนเส้นทางสุขภาพ", "DERIVED", { ...STAFF_REVIEW, repeatable: false }),
+  HEALTH_PATH_REVIEW: catalogEntry("HEALTH_PATH_REVIEW", "ทบทวนเส้นทางสุขภาพ", "DERIVED", STAFF_REVIEW),
   // FR-D2: a free-text item; its title is its label and it is DONE once marked "ทำแล้ว".
   CUSTOM: catalogEntry("CUSTOM", "รายการเพิ่มเติม", "CUSTOM", PER_ROUND),
 };
@@ -250,6 +250,7 @@ export type ProgramRoundFacts = {
   tools: Readonly<Record<PerRoundToolCode, Partial<Record<number, RoundStepEvidence>>>>;
   firstGoalPlan: RoundStepEvidence | null;
   healthPathReviewed: RoundStepEvidence | null;
+  healthPathReviews?: Partial<Record<number, RoundStepEvidence>>;
   completions: Partial<Record<number, RoundCompletionFact>>;
   skips: Partial<Record<number, readonly RoundStepSkipFact[]>>;
   /** Opened rounds and their plans (ADR-0022). */
@@ -283,7 +284,7 @@ export type RoundStatus = {
   completion: RoundCompletionFact | null;
   /** Writes are accepted (SR-D5): Program active, round opened and open, previous round completed. */
   writable: boolean;
-  /** Every plan item DONE or SKIPPED while the round is writable; never for an empty plan. */
+  /** FR-D1: at least one active plan item DONE while the round is writable. */
   canComplete: boolean;
 };
 
@@ -380,7 +381,7 @@ function stepEvidence(
     case "HEALTH_PATH":
       return facts.roundVitals[1] ?? null;
     case "HEALTH_PATH_REVIEW":
-      return facts.healthPathReviewed;
+      return facts.healthPathReviews ? facts.healthPathReviews[roundNumber] ?? null : roundNumber === 6 ? facts.healthPathReviewed : null;
     case "HEALTH_PLAN_REVIEW":
       if (definition.kind === "GOAL_PLAN") {
         return facts.firstGoalPlan;
@@ -456,11 +457,24 @@ export function computeRoundStatus(
     totalItems,
     completion,
     writable,
-    canComplete: writable && steps.length > 0 && resolved.length === steps.length,
+    canComplete: writable && steps.some((step) => step.status === "DONE"),
   };
 }
 
 export const ROUND_SUMMARY_STEP = "SUMMARY" as const;
+
+/** Shared by plan writers and the editor's disabled choices. Authorization is checked separately. */
+export function roundPlanItemUnavailableReason(facts: ProgramRoundFacts, roundNumber: number, stepCode: RoundStepCode): string | null {
+  const current = computeRoundStatus(facts, roundNumber, roundPlan(facts, roundNumber));
+  if (stepCode !== "CUSTOM" && current.steps.some((step) => step.code === stepCode)) return "รายการนี้อยู่ในแผนแล้ว";
+  if (ROUND_ITEM_CATALOG[stepCode].oncePerProgram && Object.keys(facts.rounds).some((key) => {
+    const otherRound = Number(key);
+    return otherRound !== roundNumber && computeRoundStatus(facts, otherRound, roundPlan(facts, otherRound)).steps.some((step) => step.code === stepCode && step.status === "DONE");
+  })) return "รายการนี้ทำแล้วในโปรแกรมนี้";
+  if (["HEALTH_PLAN_REVIEW", "HEALTHY_PLAN"].includes(stepCode) && !facts.firstGoalPlan) return "ต้องมีแผนเป้าหมายก่อนเพิ่มรายการนี้";
+  if (stepCode === "HEALTH_PATH_REVIEW" && (roundNumber < 6 || !facts.roundVitals[1])) return "ทบทวนเส้นทางสุขภาพได้ตั้งแต่ครั้งที่ 6 และต้องมีสัญญาณชีพครั้งที่ 1";
+  return null;
+}
 
 /**
  * SR-D7: after saving `afterCode`, go to the next unresolved step after it, then any unresolved step

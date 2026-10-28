@@ -47,6 +47,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
@@ -63,7 +65,7 @@ beforeEach(() => {
   originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, "location");
   Object.defineProperty(window, "location", {
     configurable: true,
-    value: { origin: "https://browser.example", search: "", replace: mocks.locationReplace },
+    value: { origin: "https://browser.example", href: "https://browser.example/app/workforce", search: "", replace: mocks.locationReplace },
   });
   vi.stubGlobal("confirm", vi.fn(() => true));
   container = document.createElement("div");
@@ -99,13 +101,13 @@ function button(label: string): HTMLButtonElement {
 
 describe("workforce detail activation handoff", () => {
   it("requires confirmation before replacing a still-usable link and cancels cleanly", async () => {
-    const confirm = vi.fn(() => false);
-    vi.stubGlobal("confirm", confirm);
     render(true);
 
     await act(async () => button("ออกลิงก์ใหม่").click());
 
-    expect(confirm).toHaveBeenCalledWith("ลิงก์ที่ยังใช้ได้จะถูกยกเลิกและแสดงซ้ำไม่ได้ ต้องการออกลิงก์ใหม่หรือไม่");
+    expect(document.querySelector("dialog[open]")?.textContent).toContain("ลิงก์ที่ยังใช้ได้จะถูกยกเลิก");
+    await act(async () => button("ยกเลิก").click());
+    expect(document.querySelector("dialog[open]")).toBeNull();
     expect(mocks.remoteAction).not.toHaveBeenCalled();
   });
 
@@ -113,6 +115,8 @@ describe("workforce detail activation handoff", () => {
     render(true);
     await act(async () => button("ออกลิงก์ใหม่").click());
 
+    expect(mocks.remoteAction).not.toHaveBeenCalled();
+    await act(async () => button("ดำเนินการต่อ").click());
     expect(mocks.remoteAction).toHaveBeenCalledOnce();
     expect(container.textContent).toContain(ACTIVATION_URL);
     expect(container.textContent).toContain("ส*** บ***");

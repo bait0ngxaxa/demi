@@ -110,6 +110,7 @@ export type FollowupFormScope =
 
 type FollowupFormProps = {
   scope: FollowupFormScope;
+  programRoundNumber?: number;
   patient: PatientContext;
   appointments: AppointmentOption[];
   goalPlans: GoalPlanOption[];
@@ -246,6 +247,7 @@ function ProgressEditor({
 }
 
 export function FollowupForm({
+  programRoundNumber,
   scope,
   patient,
   appointments,
@@ -368,6 +370,7 @@ export function FollowupForm({
 
   return (
     <div className="max-w-5xl">
+      {programRoundNumber ? <p className="text-sm font-semibold text-text">บันทึกสำหรับครั้งที่ {programRoundNumber}</p> : null}
       <PageHeader
         actions={
           <StatusBadge variant="info">
@@ -393,7 +396,7 @@ export function FollowupForm({
         ]}
         description={
           scope.kind === "program"
-            ? "บันทึกการติดตามผลเป็นรอบใหม่ของโปรแกรมนี้ โดยไม่บังคับให้ต้องเลือกแผนเป้าหมาย"
+            ? "บันทึกการติดตามผลในครั้งบริการที่เปิดอยู่ของโปรแกรมนี้"
             : "บันทึกการติดตามผลเป็นรายการใหม่ในประวัติความสัมพันธ์ของโรงพยาบาล"
         }
         title="บันทึกการติดตามผล"

@@ -50,6 +50,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
@@ -111,7 +113,7 @@ function submitSlipForm(): SubmitEvent {
   const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]');
   if (!submit) throw new Error("Missing print submit button");
   const event = new SubmitEvent("submit", { bubbles: true, cancelable: true, submitter: submit });
-  form.dispatchEvent(event);
+  act(() => form.dispatchEvent(event));
   return event;
 }
 
@@ -126,12 +128,21 @@ describe("workforce slip cancellation confirmation", () => {
     expect(slipForm().getAttribute("target")).toBe("_blank");
 
     const denied = submitSlipForm();
-    expect(mocks.confirm).toHaveBeenCalledWith(expect.stringContaining("มี 1 คนที่ยังมีลิงก์ใช้ได้"));
+    expect(document.querySelector("dialog[open]")?.textContent).toContain("มี 1 คนที่ยังมีลิงก์ใช้ได้");
     expect(denied.defaultPrevented).toBe(true);
 
-    mocks.confirm.mockReturnValue(true);
-    const accepted = submitSlipForm();
-    expect(accepted.defaultPrevented).toBe(false);
+    const cancel = Array.from(document.querySelectorAll("dialog button")).find((b) => b.textContent === "ยกเลิก");
+    if (!(cancel instanceof HTMLButtonElement)) throw new Error("Missing cancellation");
+    act(() => cancel.click());
+    expect(document.querySelector("dialog[open]")).toBeNull();
+    const requestSubmit = vi.spyOn(slipForm(), "requestSubmit").mockImplementation(() => {
+      expect(submitSlipForm().defaultPrevented).toBe(false);
+    });
+    submitSlipForm();
+    const confirm = Array.from(document.querySelectorAll("dialog button")).find((b) => b.textContent === "ออกลิงก์ใหม่และพิมพ์ใบ");
+    if (!(confirm instanceof HTMLButtonElement)) throw new Error("Missing confirmation");
+    act(() => confirm.click());
+    expect(requestSubmit).toHaveBeenCalledOnce();
   });
 
   it("does not ask for cancellation confirmation when selection has no usable link", async () => {

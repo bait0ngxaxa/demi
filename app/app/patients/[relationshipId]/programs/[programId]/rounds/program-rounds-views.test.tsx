@@ -272,7 +272,7 @@ describe("round stepper (SR-D7)", () => {
     }
   });
 
-  it("lists every item on the summary and offers completion only when all are resolved", () => {
+  it("lists every item on the summary and offers completion with one DONE item", () => {
     const pending = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion) });
     expect(pending).toContain("ยังขาด 3 ขั้นตอน");
     expect(pending).not.toContain("จบบริการครั้งที่ 5</button>");
@@ -280,7 +280,7 @@ describe("round stepper (SR-D7)", () => {
     const skips = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
       roundNumber: 5, planItemId: `plan-5-${stepCode}`, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder,
     }));
-    const ready = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion), roundStepSkips: skips });
+    const ready = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion), roundStepSkips: skips, serviceOneRoutines: [{ id: "routine-5", roundNumber: 5, routineDate: null, entries: [], recordedAt: at, recordedByUser: recorder }] });
     expect(ready).toContain("ผู้ป่วยปฏิเสธ");
     expect(ready).toContain("จบบริการครั้งที่ 5");
     expect(ready).toContain(`value="${nonces.completion}"`);
