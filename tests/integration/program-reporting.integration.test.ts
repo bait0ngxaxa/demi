@@ -1,3 +1,6 @@
+import { addProgramRound, addRoundPlanItem, markCustomItemDone } from "@/modules/patient-program-rounds/services/round-plan-write-service";
+import { completePatientProgramRound } from "@/modules/patient-program-rounds/services/round-service";
+import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import {
   HospitalStatus,
   MembershipStatus,
@@ -331,6 +334,30 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
   afterAll(async () => {
     await prisma.$disconnect();
   });
+
+  it.each([6, 8, 12])("reports %i real service rounds and their early-close counts in Program and Hospital projections", async (count) => {
+    const hospital = await createHospital(`FR5-${count}`);
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const patient = await createPatient(owner.actor, hospital.id, `fr5-${count}`);
+    const program = await openPatientProgram(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
+    for (let roundNumber = 1; roundNumber <= count; roundNumber += 1) {
+      const request = () => ({ patientProgramId: program.patientProgramId, roundNumber, submissionNonce: randomUUID() });
+      if (roundNumber >= 7) await addProgramRound(owner.actor, { patientProgramId: program.patientProgramId, submissionNonce: randomUUID() });
+      const done = await addRoundPlanItem(owner.actor, { ...request(), stepCode: "CUSTOM", customTitle: "ทำแล้ว" });
+      await addRoundPlanItem(owner.actor, { ...request(), stepCode: "CUSTOM", customTitle: "ยังไม่ได้ทำ" });
+      await markCustomItemDone(owner.actor, { ...request(), planItemId: done.planItemId });
+      await completePatientProgramRound(owner.actor, request());
+    }
+    const detail = await getProgramReportingProjection(owner.actor, patient.relationshipId, program.patientProgramId);
+    const dataset = await getHospitalReportingDatasetForExport(owner.actor, { hospitalId: hospital.id });
+    expect(detail.rounds).toHaveLength(count);
+    expect(detail.extraRoundsCompleted).toBe(count - 6);
+    expect(dataset.programs[0].rounds).toEqual(detail.rounds);
+    expect(dataset.programs[0].extraRoundsCompleted).toBe(count - 6);
+    for (const round of detail.rounds) expect(round).toMatchObject({ completed: true, doneItems: 1, patientRecordedItems: 0 });
+    expect(detail.rounds.every((round) => round.notDoneAtCloseItems >= 1)).toBe(true);
+    if (count > 6) expect(detail.rounds[6]).toMatchObject({ plannedItems: 2, doneItems: 1, notDoneAtCloseItems: 1 });
+  }, 20_000);
 
   it("projects exact Program history with neutral missing states and explicit pagination", async () => {
     const hospital = await createHospital("ISOLATION");

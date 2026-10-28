@@ -38,6 +38,7 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
   }));
 
   return {
+    rounds: [], extraRoundsCompleted: 0,
     patientProgramId: input.id,
     patientHospitalRelationshipId: relationshipId,
     patient: {
@@ -131,6 +132,28 @@ function dataset(): HospitalReportingDataset {
 }
 
 describe("Hospital reporting customer workbook export", () => {
+  it("keeps columns 1-6 and exports completed extras, not-done and patient-recorded counts", async () => {
+    const record = program({ id: activeProgramId, status: PatientProgramStatus.ACTIVE });
+    record.rounds = Array.from({ length: 8 }, (_, index) => ({ roundNumber: index + 1, title: `ครั้งที่ ${index + 1}`, completed: true, plannedItems: 3, doneItems: 1, skippedItems: 2, notDoneAtCloseItems: 2, patientRecordedItems: 1, vitals: { weight: 66, bloodSugar: 123 } }));
+    record.extraRoundsCompleted = 2;
+    const workbook = new ExcelJS.Workbook();
+    const bytes = await generateHospitalReportWorkbook({ ...dataset(), programs: [record] });
+    await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+    const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
+    const service = workbook.getWorksheet("รายงานการจัดบริการ");
+    expect(dashboard?.getCell("AR8").value).toBe("ครั้งเพิ่มเติม (จำนวน)");
+    expect(dashboard?.getCell("AR9").value).toBe(2);
+    expect(dashboard?.getCell("W9").value).toBe(123);
+    expect(dashboard?.getCell("X9").value).toBe(66);
+    expect(service?.getCell("BN9").value).toBe(2);
+    expect(dashboard?.getCell("AS8").text).toContain("ครั้งที่ 1");
+    expect(dashboard?.getCell("AX8").text).toContain("ครั้งที่ 6");
+    expect(dashboard?.getCell("AS9").text).toContain("ทำแล้ว 1/3");
+    expect(dashboard?.getCell("AS9").text).toContain("ยังไม่ได้ทำเมื่อจบบริการ 2");
+    expect(dashboard?.getCell("AY9").text).toContain("ครั้งที่ 8");
+    expect(dashboard?.getCell("AY9").text).toContain("ผู้ป่วยบันทึกเอง 1");
+  });
+
   it("generates the two customer worksheets, retains zero/missing distinctions and continues all Follow-ups", async () => {
     const bytes = await generateHospitalReportWorkbook(dataset(), new Date("2026-10-11T05:00:00.000Z"));
     const workbook = new ExcelJS.Workbook();
@@ -153,7 +176,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("A1").value).not.toContain("DEMO-A");
     expect(dashboard.getCell("B2").value).toBe(1);
     expect(dashboard.getCell("D2").value).toContain("นิยาม");
-    expect(dashboard.columnCount).toBe(43);
+    expect(dashboard.columnCount).toBe(52);
     expect(dashboard.getCell("B9").value).toBe("สมชาย");
     expect(dashboard.getCell("C9").value).toBe("ใจดี");
     expect(dashboard.getCell("D9").value).toBe("LOCAL-001");
@@ -163,8 +186,11 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("Q9").value).toBe("ยังไม่บันทึกสัญญาณชีพครั้งนี้");
     expect(dashboard.getCell("Q10").value).toBeNull();
     expect(dashboard.getCell("W9").value).toBe(1);
-    expect(dashboard.getCell("W10").value).toBe(5);
-    expect(dashboard.getCell("AC10").value).toBe(7);
+    expect(dashboard.getCell("W10").value).toBeNull();
+    expect(dashboard.getCell("AZ9").text).toContain("ครั้งที่ 7");
+    expect(dashboard.getCell("AZ9").text).toContain("น้ำตาล 5");
+    expect(dashboard.getCell("AC10").value).toBeNull();
+    expect(dashboard.getCell("AZ9").text).toContain("ครั้งที่ 9");
     expect(dashboard.getCell("A10").value).toBe("");
     expect(dashboard.getCell("B10").value).toBe("สมชาย");
     expect(dashboard.getCell("D10").value).toBe("LOCAL-001");
@@ -181,7 +207,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("A2").value).toContain("โรงพยาบาลทดสอบ");
     expect(service.getCell("A2").value).not.toContain("DEMO-A");
     expect(service.getCell("B3").value).toBe(1);
-    expect(service.columnCount).toBe(65);
+    expect(service.columnCount).toBe(74);
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
     expect(service.getCell("S8").value).toBe("ทำ");
@@ -191,7 +217,8 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("AF9").value).toBe(3);
     expect(service.getCell("AG9").value).toBe("ยังไม่บันทึกเวลาครบทุกกิจกรรม");
     expect(service.getCell("AH9").value).toBeInstanceOf(Date);
-    expect(service.getCell("AH10").value).toBeInstanceOf(Date);
+    expect(service.getCell("AH10").value).toBeNull();
+    expect(service.getCell("BV9").text).toContain("ครั้งที่ 7");
     expect(service.getCell("AH11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
     expect(service.getCell("A10").value).toBe("");
     expect(service.getCell("B10").value).toBe("สมชาย");
@@ -242,8 +269,8 @@ describe("Hospital reporting customer workbook export", () => {
     const service = workbook.getWorksheet("รายงานการจัดบริการ")!;
     expect(dashboard.getCell(33, 2).value).toBe("สมชาย");
     expect(service.getCell(33, 2).value).toBe("สมชาย");
-    expect(dashboard.columnCount).toBe(43);
-    expect(service.columnCount).toBe(65);
+    expect(dashboard.columnCount).toBe(52);
+    expect(service.columnCount).toBe(74);
     expect(service.getCell("AH34").value).toBe("หมายเหตุ");
     expect(service.getCell("AH40").value).toContain("ภาพรวมความครบถ้วนการจัดบริการ");
   });
@@ -257,8 +284,8 @@ describe("Hospital reporting customer workbook export", () => {
     await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 
     expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
-    expect(workbook.getWorksheet("Dashboard ภาพรวม")?.columnCount).toBe(43);
-    expect(workbook.getWorksheet("รายงานการจัดบริการ")?.columnCount).toBe(65);
+    expect(workbook.getWorksheet("Dashboard ภาพรวม")?.columnCount).toBe(52);
+    expect(workbook.getWorksheet("รายงานการจัดบริการ")?.columnCount).toBe(74);
     expect(workbook.getWorksheet("Dashboard ภาพรวม")?.getCell("A9").value ?? null).toBeNull();
     expect(workbook.getWorksheet("รายงานการจัดบริการ")?.getCell("A9").value ?? null).toBeNull();
   });

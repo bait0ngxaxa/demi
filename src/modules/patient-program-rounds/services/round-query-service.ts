@@ -216,7 +216,7 @@ const recorderSelect = {
   select: { id: true, person: { select: { givenName: true, familyName: true } } },
 } as const;
 
-const programRoundSelect = {
+export const programRoundSelect = {
   id: true,
   patientHospitalRelationshipId: true,
   status: true,
@@ -551,7 +551,7 @@ function latestHeightCm(program: ProgramRoundRecord, upToRound: number): number 
 }
 
 /** A round's vitals: its round vitals or its Follow-up measurements, whichever was recorded last. */
-function buildVitals(
+export function buildRoundVitalsView(
   program: ProgramRoundRecord,
   roundNumber: number,
   options: RoundReadOptions,
@@ -693,7 +693,7 @@ function buildHealthPath(
 
   return rounds.map((round) => ({
     roundNumber: round,
-    vitals: buildVitals(program, round, options),
+    vitals: buildRoundVitalsView(program, round, options),
   }));
 }
 
@@ -822,7 +822,7 @@ export function buildProgramRoundDetail(
     },
     status,
     planChoices: Object.values(ROUND_ITEM_CATALOG).map((item) => ({ code: item.code, label: item.code === "CUSTOM" ? "อื่น ๆ (กำหนดเอง)" : item.label, unavailableReason: roundPlanItemUnavailableReason(facts, roundNumber, item.code), recommended: roundGuideline(roundNumber).some((step) => step.code === item.code) && !status.steps.some((step) => step.code === item.code) })),
-    vitals: buildVitals(program, roundNumber, options),
+    vitals: buildRoundVitalsView(program, roundNumber, options),
     vitalsForm: {
       heightEditable: isRoundVitalsRound(roundNumber),
       latestHeightCm: latestHeightCm(program, roundNumber),

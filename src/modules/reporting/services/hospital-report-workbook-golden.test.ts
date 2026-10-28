@@ -103,6 +103,7 @@ const FOLLOWUPS = Array.from({ length: 5 }, (_, index) => followupAt(index));
 
 function goldenProgram(): HospitalReportProgramRow {
   return {
+    rounds: [], extraRoundsCompleted: 0,
     patientProgramId: programId,
     patientHospitalRelationshipId: "22222222-2222-4222-8222-222222222222",
     patient: {
@@ -237,7 +238,7 @@ const DASHBOARD_ROUND_LETTERS = ["Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z
 
 // R24A-D11: round 1 = Service 1, round 2 = Goal Plan, rounds 3–6 = Follow-ups (4 per row).
 function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
-  const followups = row === 9 ? FOLLOWUPS.slice(0, 4) : FOLLOWUPS.slice(4);
+  const followups = row === 9 ? FOLLOWUPS.slice(0, 4) : [];
   return DASHBOARD_ROUND_LETTERS.map((column, index): ColumnContract => {
     const round = Math.floor(index / 3) + 1;
     const field = index % 3;
@@ -250,7 +251,7 @@ function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
     }
     const followup = followups[round - 3];
     if (!followup) {
-      const isFirstEmptySlot = round - 3 === followups.length && field === 0;
+      const isFirstEmptySlot = row === 9 && round - 3 === followups.length && field === 0;
       return [column, isFirstEmptySlot ? NO_MORE_FOLLOWUPS : null, "SOURCE_READY"];
     }
     if (field === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "SOURCE_READY"];
@@ -297,13 +298,13 @@ function followupServiceColumns(row: 9 | 10): ColumnContract[] {
     ["AX", "AY", "AZ", "BA", "BB", "BC", "BD", "BE"],
     ["BF", "BG", "BH", "BI", "BJ", "BK", "BL", "BM"],
   ] as const;
-  const followups = row === 9 ? FOLLOWUPS.slice(0, 4) : FOLLOWUPS.slice(4);
+  const followups = row === 9 ? FOLLOWUPS.slice(0, 4) : [];
   return blocks.flatMap((block, slot): ColumnContract[] => {
     const followup = followups[slot];
     if (!followup) {
       return block.map((column): ColumnContract => [
         column,
-        column === starts[followups.length] ? NO_MORE_FOLLOWUPS : null,
+        row === 9 && column === starts[followups.length] ? NO_MORE_FOLLOWUPS : null,
         column === block[3] ? "SOURCE_MISSING" : "SOURCE_READY",
       ]);
     }
@@ -411,11 +412,15 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       "Dashboard ภาพรวม",
       "รายงานการจัดบริการ",
     ]);
-    expect(dashboard.columnCount).toBe(43);
-    expect(service.columnCount).toBe(65);
+    expect(dashboard.columnCount).toBe(52);
+    expect(service.columnCount).toBe(74);
+    expect(dashboard.getCell("AR8").value).toBe("ครั้งเพิ่มเติม (จำนวน)");
+    expect(service.getCell("BN8").value).toBe("ครั้งเพิ่มเติม (จำนวน)");
+    expect(dashboard.getCell("AZ9").text).toContain("ครั้งที่ 7");
+    expect(service.getCell("BV9").text).toContain("ครั้งที่ 7");
   });
 
-  it("pins every Dashboard ภาพรวม customer column A–AQ and continues the fifth Follow-up", () => {
+  it("pins every Dashboard ภาพรวม customer column A–AQ and keeps round 7 out of the first six round columns", () => {
     expect(DASHBOARD_ROW_9).toHaveLength(43);
     for (const [column, expected] of DASHBOARD_ROW_9) {
       expect(normalizedCell(dashboard, `${column}9`), `Dashboard ภาพรวม!${column}9`).toEqual(expected);
@@ -425,7 +430,7 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     }
   });
 
-  it("pins every รายงานการจัดบริการ customer column A–BM and continues the fifth Follow-up", () => {
+  it("pins every รายงานการจัดบริการ customer column A–BM and keeps round 7 out of the first six round columns", () => {
     expect(SERVICE_ROW_9).toHaveLength(65);
     for (const [column, expected] of SERVICE_ROW_9) {
       expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toEqual(expected);

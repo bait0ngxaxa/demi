@@ -1,5 +1,8 @@
 import "server-only";
 
+import { loadRoundReports } from "./round-report-query-service";
+import { completedExtraRounds, type RoundReport } from "../projections/round-report-projection";
+
 import { illnessDuration } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 
 import { Buffer } from "node:buffer";
@@ -87,7 +90,7 @@ const REPORT_TRANSACTION_OPTIONS = {
   timeout: 25_000,
 } as const;
 // Progress buckets changed meaning; older continuations must restart under the new partition.
-const REPORT_CURSOR_VERSION = 4;
+const REPORT_CURSOR_VERSION = 5;
 const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
 const REPORT_CURSOR_ORDERING = "startedAt:desc,id:desc";
 const REPORT_CURSOR_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
@@ -722,6 +725,7 @@ function toHospitalReportProgramRow(
   record: HospitalReportProgramRecord | HospitalReportExportProgramRecord,
   counts: { goalPlans: number; followups: number },
   weeklyExercise: HospitalReportProgramRow["weeklyExercise"],
+  rounds: readonly RoundReport[] = [],
 ): HospitalReportProgramRow {
   const relationship = record.patientHospitalRelationship;
   const assignment = relationship.osmAssignments[0];
@@ -729,9 +733,10 @@ function toHospitalReportProgramRow(
   const finalAssessment = record.finalAssessment;
   const round1 = record.roundVitals.find((vitals) => vitals.roundNumber === 1);
   const round2 = record.roundVitals.find((vitals) => vitals.roundNumber === 2);
-  const latestHeightCm = round2?.heightCm ?? round1?.heightCm ?? baseline?.heightCm ?? null;
+  const latestHeightCm = record.roundVitals.filter((vitals) => vitals.heightCm !== null).at(-1)?.heightCm ?? baseline?.heightCm ?? null;
 
   return {
+    rounds, extraRoundsCompleted: completedExtraRounds(rounds),
     patientProgramId: record.id,
     patientHospitalRelationshipId: relationship.id,
     patient: {
@@ -1096,17 +1101,18 @@ async function loadHospitalReportingPage(
   const hasMore = records.length > pageSize;
   const slicedRecords = records.slice(0, pageSize);
   const pageRecords = backwards ? slicedRecords.reverse() : slicedRecords;
-  const [childCounts, weeklyExercise] = await Promise.all([
+  const [childCounts, weeklyExercise, roundReports] = await Promise.all([
     countProgramRelatedRows(
       database,
       access.hospital.id,
       pageRecords.map((record) => record.id),
     ),
     loadWeeklyExerciseFacts(database, pageRecords),
+    loadRoundReports(database, pageRecords.map((record) => record.id)),
   ]);
   const items = pageRecords.map((record) => {
     const row = toHospitalReportProgramRow(record,
-      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 }, weeklyExercise.get(record.id)!);
+      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 }, weeklyExercise.get(record.id)!, roundReports.get(record.id) ?? []);
     const dates = [...record.roundVitals.map((vital) => toServiceDateOnly(vital.serviceDate)),
       ...record.followups.flatMap((followup) => followup.serviceDate ? [toServiceDateOnly(followup.serviceDate)] : []),
       ...(record.finalAssessment?.serviceDate ? [toServiceDateOnly(record.finalAssessment.serviceDate)] : [])];
@@ -1115,7 +1121,7 @@ async function loadHospitalReportingPage(
   const number = cursor?.page ?? 1;
   const atLeast = new Map(roundCounts.map((group) => [group.roundNumber, group._count._all]));
   const rounds = Array.from({ length: 7 }, (_, round) =>
-    (round === 0 ? summary.programs.active - afterRecorded : atLeast.get(round) ?? 0) - (atLeast.get(round + 1) ?? 0));
+    (round === 0 ? summary.programs.active - afterRecorded : atLeast.get(round) ?? 0) - (round < 6 ? atLeast.get(round + 1) ?? 0 : 0));
   const firstRecord = pageRecords.at(0);
   const lastRecord = pageRecords.at(-1);
 
@@ -1403,12 +1409,13 @@ async function loadHospitalReportingDataset(
   const childCounts = new Map(
     programRecords.map((record) => [record.id, { goalPlans: record.goalPlans.length, followups: record.followups.length }]),
   );
-  const weeklyExercise = await loadWeeklyExerciseFacts(database, programRecords);
+  const [weeklyExercise, roundReports] = await Promise.all([loadWeeklyExerciseFacts(database, programRecords), loadRoundReports(database, programRecords.map((record) => record.id))]);
   const programs = programRecords.map((record) =>
     toHospitalReportProgramRow(
       record,
       childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 },
       weeklyExercise.get(record.id)!,
+      roundReports.get(record.id) ?? [],
     ),
   );
 

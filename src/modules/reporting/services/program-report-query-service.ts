@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadRoundReports } from "./round-report-query-service";
+
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { Buffer } from "node:buffer";
 import { z } from "zod";
@@ -461,17 +463,19 @@ export async function getProgramReportingProjection(
       throw new NotFoundError();
     }
 
-    const [linkedBaseline, finalAssessment, goalPlans, followups] = await Promise.all([
+    const [linkedBaseline, finalAssessment, goalPlans, followups, roundReports] = await Promise.all([
       loadLinkedBaseline(database, program),
       loadFinalAssessment(database, normalizedProgramId, normalizedRelationshipId),
       loadGoalPlans(database, normalizedProgramId, normalizedRelationshipId, normalizedOptions.goalPlans),
       loadFollowups(database, normalizedProgramId, normalizedRelationshipId, normalizedOptions.followups),
+      loadRoundReports(database, [normalizedProgramId]),
     ]);
 
     return toProgramReportingProjection({
       program,
       hospital: access.patient.hospital,
       patientDisplayName: access.patient.displayName,
+      rounds: roundReports.get(normalizedProgramId) ?? [],
       linkedBaseline,
       finalAssessment,
       goalPlans,

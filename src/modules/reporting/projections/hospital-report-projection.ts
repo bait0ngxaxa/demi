@@ -1,3 +1,4 @@
+import type { RoundReport } from "./round-report-projection";
 import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@prisma/client";
 
 import type { FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
@@ -70,6 +71,8 @@ export type HospitalReportFollowup = {
 export type HospitalReportServiceOneActivity = HospitalReportRecord<{ recordedAt: string }>;
 
 export type HospitalReportProgramRow = {
+  rounds: readonly RoundReport[];
+  extraRoundsCompleted: number;
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   patient: {

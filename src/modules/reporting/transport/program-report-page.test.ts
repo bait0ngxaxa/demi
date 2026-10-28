@@ -99,6 +99,7 @@ function page<T>(items: T[], overrides: Partial<ProgramReportPage<T>> = {}): Pro
 
 function report(overrides: Partial<ProgramReportingProjection> = {}): ProgramReportingProjection {
   return {
+    rounds: [], extraRoundsCompleted: 0,
     patientProgramId: programId,
     patientHospitalRelationshipId: relationshipId,
     hospitalId,
@@ -475,6 +476,9 @@ describe("Program factual report presentation", () => {
     expect(markup).toContain("<dl");
     expect(markup).toContain("break-words");
     expect(markup).toContain("sm:grid-cols-2");
-    expect(markup).not.toContain("<table");
+    expect(markup).toContain("<table");
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain('role="region"');
+    expect(markup).toContain('tabindex="0"');
   });
 });

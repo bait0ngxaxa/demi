@@ -1,3 +1,4 @@
+vi.mock("./round-report-query-service", () => ({ loadRoundReports: vi.fn().mockResolvedValue(new Map()) }));
 import {
   FollowupActivityProgressStatus,
   HospitalStatus,

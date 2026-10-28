@@ -1,3 +1,4 @@
+import { RoundReportTable } from "@/modules/reporting/presentation/round-report-table";
 import Link from "next/link";
 import type { FollowupActivityProgressStatus } from "@prisma/client";
 import type { ReactNode } from "react";
@@ -693,6 +694,7 @@ export function ProgramReportView({
       />
 
       <div className="space-y-8 pt-8">
+        <Panel><RoundReportTable rounds={report.rounds} extraRoundsCompleted={report.extraRoundsCompleted} /></Panel>
         <Panel>
           <h2 className="text-2xl font-semibold tracking-[-0.03em] text-text">ข้อมูลผู้ป่วยและโรงพยาบาล</h2>
           <MetadataGrid
