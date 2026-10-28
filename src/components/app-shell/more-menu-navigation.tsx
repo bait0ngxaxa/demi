@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 import { classNames } from "@/components/ui/class-names";
 
-import { confirmMobileNavigation } from "./mobile-navigation-guard";
+import { useMobileNavigationGuard } from "./mobile-navigation-guard";
 import { getNavigationItemIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
 import { compareNavigationSections } from "./navigation-sections";
 import { resolveActiveNavigationHrefs } from "./navigation-state";
@@ -25,6 +25,7 @@ export function MoreMenuNavigation({
 }: MoreMenuNavigationProps): React.JSX.Element {
   const pathname = usePathname() ?? "";
   const search = useSearchParams()?.toString() ?? "";
+  const navigationGuard = useMobileNavigationGuard();
   // Same section order as the desktop sidebar (NAVIGATION_SECTION_ORDER).
   const visibleGroups = groups
     .filter(({ workspace }) => workspace === undefined || workspace === "all" || workspace === selectedWorkspace)
@@ -56,11 +57,7 @@ export function MoreMenuNavigation({
                           : "text-text hover:bg-surface-muted hover:text-brand-strong",
                       )}
                       href={item.href}
-                      onNavigate={(event) => {
-                        if (!confirmMobileNavigation()) {
-                          event.preventDefault();
-                        }
-                      }}
+                      onNavigate={(event) => navigationGuard.onNavigate(item.href, event)}
                       prefetch={item.prefetch}
                     >
                       <span
@@ -97,6 +94,7 @@ export function MoreMenuNavigation({
           </section>
         );
       })}
+      {navigationGuard.dialog}
     </nav>
   );
 }

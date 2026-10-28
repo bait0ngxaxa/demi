@@ -11,7 +11,7 @@ import {
   resolveSelectedWorkspaceContext,
 } from "./navigation-state";
 import { useNavigationWorkspaceContext } from "./navigation-workspace-provider";
-import { confirmMobileNavigation } from "./mobile-navigation-guard";
+import { useMobileNavigationGuard } from "./mobile-navigation-guard";
 import { MobileNavigationGlyph } from "./mobile-navigation-glyph";
 import { resolveActiveMobileTabId } from "./mobile-navigation-state";
 import type { MobileNavigationProjection, MobileNavigationTab } from "./mobile-tab-projection";
@@ -56,6 +56,7 @@ export function MobileBottomNavigation({
     projection.availableWorkspaces,
     navigationWorkspace ?? getWorkspaceContextForPathname(pathname, searchParams.toString()),
   );
+  const navigationGuard = useMobileNavigationGuard();
 
   if (!selectedWorkspace) {
     return null;
@@ -77,34 +78,35 @@ export function MobileBottomNavigation({
         className="m-0 grid h-full list-none p-0"
         style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
       >
-        {tabs.map((tab) => (
-          <li className="min-w-0" key={`${selectedWorkspace}:${tab.id}`}>
-            {tab.href ? (
-              <Link
-                aria-current={activeTabId === tab.id ? "page" : undefined}
-                aria-label={tab.accessibleLabel}
-                className={classNames(
-                  "flex h-full min-h-11 min-w-0 flex-col items-center justify-center rounded-control px-1 text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-inset motion-reduce:transition-none",
-                  activeTabId === tab.id
-                    ? "type-nav-active bg-brand-soft text-brand-strong"
-                    : "hover:bg-surface-muted hover:text-text",
-                )}
-                href={tab.id === "more" && projection.availableWorkspaces.length > 1
-                  ? `${tab.href}?workspace=${selectedWorkspace}`
-                  : tab.href}
-                onNavigate={(event) => {
-                  if (!confirmMobileNavigation()) {
-                    event.preventDefault();
-                  }
-                }}
-                prefetch={false}
-              >
-                <MobileTabLinkContent tab={tab} />
-              </Link>
-            ) : null}
-          </li>
-        ))}
+        {tabs.map((tab) => {
+          const href = tab.href && tab.id === "more" && projection.availableWorkspaces.length > 1
+            ? `${tab.href}?workspace=${selectedWorkspace}`
+            : tab.href;
+
+          return (
+            <li className="min-w-0" key={`${selectedWorkspace}:${tab.id}`}>
+              {href ? (
+                <Link
+                  aria-current={activeTabId === tab.id ? "page" : undefined}
+                  aria-label={tab.accessibleLabel}
+                  className={classNames(
+                    "flex h-full min-h-11 min-w-0 flex-col items-center justify-center rounded-control px-1 text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-inset motion-reduce:transition-none",
+                    activeTabId === tab.id
+                      ? "type-nav-active bg-brand-soft text-brand-strong"
+                      : "hover:bg-surface-muted hover:text-text",
+                  )}
+                  href={href}
+                  onNavigate={(event) => navigationGuard.onNavigate(href, event)}
+                  prefetch={false}
+                >
+                  <MobileTabLinkContent tab={tab} />
+                </Link>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
+      {navigationGuard.dialog}
     </nav>
   );
 }

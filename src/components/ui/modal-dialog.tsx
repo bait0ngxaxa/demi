@@ -145,9 +145,11 @@ export function ModalDialog({
           </svg>
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6" ref={bodyRef}>
-        {children}
-      </div>
+      {children !== null && children !== undefined ? (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6" ref={bodyRef}>
+          {children}
+        </div>
+      ) : null}
       {footer ? (
         <footer className="shrink-0 border-t border-border bg-surface-muted px-5 py-4 sm:px-6">
           {footer}

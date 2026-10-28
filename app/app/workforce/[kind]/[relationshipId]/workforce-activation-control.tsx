@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ActivationPresentation } from "@/components/workforce/activation-presentation";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { initialWorkforceActivationActionState, type WorkforceActivationActionState } from "@/modules/workforce/transport/action-state";
@@ -54,6 +55,10 @@ export function WorkforceActivationControl({
   const session = useScopedMutationSession<WorkforceActivationActionState>({ scope: `${hospitalId}:${relationshipId}` });
   const [hasUsableLink, setHasUsableLink] = useState(activationLinkUsable);
   const [handoff, setHandoff] = useState<Extract<WorkforceActivationActionState, { status: "SUCCESS" }>['result'] | null>(null);
+  const [replacementRequest, setReplacementRequest] = useState<"remote" | "assisted" | null>(null);
+  const remoteFormRef = useRef<HTMLFormElement>(null);
+  const assistedFormRef = useRef<HTMLFormElement>(null);
+  const confirmedReplacementRef = useRef(false);
   const navigatedAssistedUrls = useRef<Set<string>>(new Set());
 
   const remote = useScopedMutation(session, {
@@ -91,10 +96,30 @@ export function WorkforceActivationControl({
   const remoteError = session.latest?.kind === "remote" && latestState?.status === "ERROR" ? latestState : null;
   const assistedError = session.latest?.kind === "assisted" && latestState?.status === "ERROR" ? latestState : null;
 
-  function confirmReplacement(event: React.FormEvent<HTMLFormElement>): void {
-    if (hasUsableLink && !window.confirm("ลิงก์ที่ยังใช้ได้จะถูกยกเลิกและแสดงซ้ำไม่ได้ ต้องการออกลิงก์ใหม่หรือไม่")) {
-      event.preventDefault();
+  function confirmReplacement(
+    kind: "remote" | "assisted",
+    event: React.FormEvent<HTMLFormElement>,
+  ): void {
+    if (confirmedReplacementRef.current) {
+      confirmedReplacementRef.current = false;
+      return;
     }
+
+    if (hasUsableLink) {
+      event.preventDefault();
+      setReplacementRequest(kind);
+    }
+  }
+
+  function submitConfirmedReplacement(): void {
+    const form = replacementRequest === "remote" ? remoteFormRef.current : assistedFormRef.current;
+    if (!form) {
+      return;
+    }
+
+    confirmedReplacementRef.current = true;
+    setReplacementRequest(null);
+    form.requestSubmit();
   }
 
   function renderRequestFields(): React.JSX.Element {
@@ -117,11 +142,11 @@ export function WorkforceActivationControl({
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap gap-3">
-          <form action={remote.action} onSubmit={confirmReplacement}>
+          <form action={remote.action} onSubmit={(event) => confirmReplacement("remote", event)} ref={remoteFormRef}>
             {renderRequestFields()}
             <Button disabled={remote.pending || assisted.pending || session.unconfirmed} loading={remote.pending} type="submit">ออกลิงก์ใหม่</Button>
           </form>
-          <form action={assisted.action} onSubmit={confirmReplacement}>
+          <form action={assisted.action} onSubmit={(event) => confirmReplacement("assisted", event)} ref={assistedFormRef}>
             {renderRequestFields()}
             <Button disabled={remote.pending || assisted.pending || session.unconfirmed} loading={assisted.pending} type="submit" variant="secondary">ช่วยเปิดใช้งานบนเครื่องนี้</Button>
           </form>
@@ -139,6 +164,16 @@ export function WorkforceActivationControl({
       />
       {remoteError && !session.unconfirmed ? <Alert className="mt-3" role="alert" variant={remoteError.code === "CONFLICT" ? "warning" : "danger"}>{remoteError.message}</Alert> : null}
       {assistedError && !session.unconfirmed ? <Alert className="mt-3" role="alert" variant={assistedError.code === "CONFLICT" ? "warning" : "danger"}>{assistedError.message}</Alert> : null}
+      <ConfirmDialog
+        cancelLabel="ยกเลิก"
+        confirmLabel="ดำเนินการต่อ"
+        confirmVariant="destructive"
+        description="ลิงก์ที่ยังใช้ได้จะถูกยกเลิกและแสดงซ้ำไม่ได้ ต้องการออกลิงก์ใหม่หรือไม่"
+        onCancel={() => setReplacementRequest(null)}
+        onConfirm={submitConfirmedReplacement}
+        open={replacementRequest !== null}
+        title="ยืนยันการออกลิงก์"
+      />
     </section>
   );
 }

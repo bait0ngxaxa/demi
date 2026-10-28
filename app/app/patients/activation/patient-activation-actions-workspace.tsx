@@ -5,6 +5,7 @@ import { useActionState, useCallback, useEffect, useState, useTransition } from 
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   connectionFailureMessage,
@@ -81,6 +82,11 @@ function createFeedbackScope() {
 
 type PatientActivationLookupType = "NAME" | "NATIONAL_ID" | "HOSPITAL_NUMBER";
 
+type PendingGuardedNavigation = {
+  href: string;
+  external: boolean;
+};
+
 function parseLookupType(value: string): PatientActivationLookupType {
   if (value === "NATIONAL_ID" || value === "HOSPITAL_NUMBER") {
     return value;
@@ -102,6 +108,7 @@ export function PatientActivationActionsWorkspace({
 }: PatientActivationActionsWorkspaceProps): React.JSX.Element {
   const router = useRouter();
   const [feedbackScope] = useState(createFeedbackScope);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingGuardedNavigation | null>(null);
   useEffect(() => {
     feedbackScope.enter(selectedHospitalId);
     return () => feedbackScope.leave();
@@ -177,14 +184,35 @@ export function PatientActivationActionsWorkspace({
     }
 
     function confirmLeave(event: MouseEvent): void {
-      const anchor = (event.target as Element | null)?.closest("a[href]");
-      if (!anchor || anchor.getAttribute("target") === "_blank") {
+      const target = event.target;
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey ||
+        !(target instanceof Element)
+      ) {
         return;
       }
-      if (!window.confirm("ลิงก์เปิดใช้งานที่ยังไม่ได้ส่งต่อจะหายไปและแสดงซ้ำไม่ได้ ต้องการออกจากหน้านี้หรือไม่")) {
-        event.preventDefault();
-        event.stopPropagation();
+
+      const anchor = target.closest<HTMLAnchorElement>("a[href]");
+      if (!anchor || (anchor.target && anchor.target !== "_self") || anchor.hasAttribute("download")) {
+        return;
       }
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.protocol !== "http:" && destination.protocol !== "https:") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingNavigation({
+        href: destination.origin === window.location.origin
+          ? `${destination.pathname}${destination.search}${destination.hash}`
+          : destination.href,
+        external: destination.origin !== window.location.origin,
+      });
     }
 
     document.addEventListener("click", confirmLeave, true);
@@ -198,6 +226,23 @@ export function PatientActivationActionsWorkspace({
     startHospitalSwitch(() => {
       router.push(`/app/patients/activation?hospitalId=${encodeURIComponent(hospitalId)}`);
     });
+  }
+
+  function continueNavigation(): void {
+    if (!pendingNavigation) {
+      return;
+    }
+
+    const destination = new URL(pendingNavigation.href, window.location.href);
+    setPendingNavigation(null);
+    if (pendingNavigation.external) {
+      window.location.assign(destination.href);
+      return;
+    }
+
+    if (destination.origin === window.location.origin) {
+      router.push(`${destination.pathname}${destination.search}${destination.hash}`);
+    }
   }
 
   const errorMessage = mapLookupError(lookupState);
@@ -409,6 +454,16 @@ export function PatientActivationActionsWorkspace({
           </section>
         ) : null}
       </div>
+    <ConfirmDialog
+      cancelLabel="อยู่หน้านี้"
+      confirmLabel="ออกจากหน้า"
+      confirmVariant="destructive"
+      description="ลิงก์เปิดใช้งานที่ยังไม่ได้ส่งต่อจะหายไปและแสดงซ้ำไม่ได้ ต้องการออกจากหน้านี้หรือไม่"
+      onCancel={() => setPendingNavigation(null)}
+      onConfirm={continueNavigation}
+      open={pendingNavigation !== null}
+      title="ออกจากหน้านี้หรือไม่?"
+    />
     </div>
   );
 }

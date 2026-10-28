@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -235,6 +236,9 @@ function PendingActivationGroup({
   const selectedRows = rows.filter(({ userId }) => selected.has(userId));
   const cancellableCount = selectedRows.filter(({ activationStatus }) => activationStatus === "PENDING").length;
   const allSelected = rows.length > 0 && selected.size >= Math.min(rows.length, MAX_SLIP_SELECTION);
+  const slipFormRef = useRef<HTMLFormElement>(null);
+  const [confirmPrintOpen, setConfirmPrintOpen] = useState(false);
+  const confirmedPrintRef = useRef(false);
 
   function toggle(userId: string): void {
     setSelected((current) => {
@@ -245,6 +249,29 @@ function PendingActivationGroup({
     });
   }
 
+  function submitSlipForm(event: React.FormEvent<HTMLFormElement>): void {
+    if (confirmedPrintRef.current) {
+      confirmedPrintRef.current = false;
+      return;
+    }
+
+    if (cancellableCount > 0) {
+      event.preventDefault();
+      setConfirmPrintOpen(true);
+    }
+  }
+
+  function confirmPrint(): void {
+    const form = slipFormRef.current;
+    if (!form) {
+      return;
+    }
+
+    confirmedPrintRef.current = true;
+    setConfirmPrintOpen(false);
+    form.requestSubmit();
+  }
+
   return (
     <section className="min-w-0 overflow-hidden rounded-panel border border-border bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-4 sm:px-6">
@@ -253,9 +280,7 @@ function PendingActivationGroup({
           <Button disabled={pending} onClick={() => setSelected(allSelected ? new Set() : new Set(rows.slice(0, MAX_SLIP_SELECTION).map(({ userId }) => userId)))} size="compact" type="button" variant="secondary">
             {allSelected ? "ยกเลิกการเลือก" : "เลือกทั้งหมด"}
           </Button>
-          <form action="/app/workforce/slips" id={slipFormId} method="post" onSubmit={(event) => {
-            if (cancellableCount > 0 && !window.confirm(`มี ${cancellableCount} คนที่ยังมีลิงก์ใช้ได้ การออกลิงก์ใหม่จะยกเลิกลิงก์เหล่านี้ ต้องการดำเนินการและพิมพ์ใบหรือไม่`)) event.preventDefault();
-          }} target="_blank">
+          <form action="/app/workforce/slips" id={slipFormId} method="post" onSubmit={submitSlipForm} ref={slipFormRef} target="_blank">
             <input name="targetHospitalId" type="hidden" value={hospitalId} />
             <input name="kind" type="hidden" value={kind} />
             <Button disabled={pending || selected.size === 0} size="compact" type="submit">ออกลิงก์ใหม่และพิมพ์ใบ ({selected.size})</Button>
@@ -281,6 +306,16 @@ function PendingActivationGroup({
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        cancelLabel="ยกเลิก"
+        confirmLabel="ออกลิงก์ใหม่และพิมพ์ใบ"
+        confirmVariant="destructive"
+        description={`มี ${cancellableCount} คนที่ยังมีลิงก์ใช้ได้ การออกลิงก์ใหม่จะยกเลิกลิงก์เหล่านี้ ต้องการดำเนินการและพิมพ์ใบหรือไม่`}
+        onCancel={() => setConfirmPrintOpen(false)}
+        onConfirm={confirmPrint}
+        open={confirmPrintOpen}
+        title="ออกลิงก์ใหม่และพิมพ์ใบ?"
+      />
     </section>
   );
 }

@@ -4,7 +4,7 @@ import { MembershipStatus, MembershipType, Profession, Role, HospitalStatus } fr
 import { act, createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const navigationState = vi.hoisted(() => ({
   pathname: "/app/more",
@@ -14,6 +14,7 @@ const navigationState = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   usePathname: () => navigationState.pathname,
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: (href: string) => { navigationState.navigatedHref = href; } }),
 }));
 
 vi.mock("next/link", () => ({
@@ -97,6 +98,9 @@ const menuCases: readonly {
 
 let container: HTMLDivElement | undefined;
 let root: Root | undefined;
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+let originalScrollTo: PropertyDescriptor | undefined;
 
 function renderNavigation(
   groups: readonly ApplicationNavigationGroup[],
@@ -105,8 +109,39 @@ function renderNavigation(
   return renderToStaticMarkup(createElement(MoreMenuNavigation, { groups, selectedWorkspace }));
 }
 
+function dialogButton(label: string): HTMLButtonElement {
+  const button = Array.from(container?.querySelectorAll<HTMLButtonElement>("dialog button") ?? [])
+    .find((item) => item.textContent?.includes(label));
+  if (!button) throw new Error(`Missing dialog button: ${label}`);
+  return button;
+}
+
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value(): void {} });
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.setAttribute("open", ""); },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    },
+  });
+});
+
+afterAll(() => {
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+  if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
 
 afterEach(() => {
@@ -204,13 +239,14 @@ describe("More menu page navigation", () => {
       createElement(MoreMenuNavigation, { groups, selectedWorkspace: "personal" }),
     )));
 
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const familyLink = container.querySelector<HTMLAnchorElement>('a[href="/app/family"]');
     if (!familyLink) throw new Error("Missing projected family destination");
     act(() => familyLink.click());
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("มีรายการกำลังดำเนินการอยู่"));
+    expect(container.querySelector("dialog")?.textContent).toContain("มีรายการกำลังดำเนินการอยู่");
     expect(navigationState.navigatedHref).toBeNull();
+    act(() => dialogButton("อยู่หน้านี้").click());
+    expect(container.querySelector("dialog")).toBeNull();
   });
 
   it("uses local SVGs and a neutral glyph for unknown destinations", () => {

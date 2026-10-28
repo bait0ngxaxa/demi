@@ -2,7 +2,7 @@
 
 import { act, createElement, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const routerState = vi.hoisted(() => ({
   currentHref: "/app/patients/assigned?task=screening",
@@ -17,6 +17,7 @@ const routerState = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   usePathname: () => routerState.currentHref.split("?")[0],
   useSearchParams: () => new URLSearchParams(routerState.currentHref.split("?")[1] ?? ""),
+  useRouter: () => ({ push: (href: string) => routerState.navigate?.(href) }),
 }));
 
 vi.mock("next/link", () => ({
@@ -89,6 +90,9 @@ const navigation: readonly ApplicationNavigationGroup[] = [
 const projection = projectMobileNavigation(navigation);
 let container: HTMLDivElement;
 let root: Root;
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+let originalScrollTo: PropertyDescriptor | undefined;
 
 function RouterHarness(): React.JSX.Element {
   const [, setCurrentHref] = useState(routerState.currentHref);
@@ -137,6 +141,30 @@ function RouterHarness(): React.JSX.Element {
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", { configurable: true, value(): void {} });
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.setAttribute("open", ""); },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void {
+      this.removeAttribute("open");
+      this.dispatchEvent(new Event("close"));
+    },
+  });
+});
+
+afterAll(() => {
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+  if (originalScrollTo) Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollTo");
 });
 
 afterEach(() => {
@@ -175,6 +203,13 @@ function goBack(): void {
   act(() => routerState.back?.());
 }
 
+function dialogButton(label: string): HTMLButtonElement {
+  const button = Array.from(container.querySelectorAll<HTMLButtonElement>("dialog button"))
+    .find((item) => item.textContent?.includes(label));
+  if (!button) throw new Error(`Missing dialog button: ${label}`);
+  return button;
+}
+
 describe("unified mobile bottom navigation", () => {
   it("uses a More history entry and browser back restores the previous page and workspace", () => {
     mount("/app/personal/appointments");
@@ -211,23 +246,23 @@ describe("unified mobile bottom navigation", () => {
   it("asks before navigating from More when a pending action is active", () => {
     routerState.pendingAction = true;
     mount("/app/patients/assigned?task=screening");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     act(() => moreLink().click());
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("มีรายการกำลังดำเนินการอยู่"));
+    expect(container.querySelector("dialog")?.textContent).toContain("มีรายการกำลังดำเนินการอยู่");
     expect(routerState.currentHref).toBe("/app/patients/assigned?task=screening");
     expect(moreLink().getAttribute("aria-current")).toBeNull();
+    act(() => dialogButton("อยู่หน้านี้").click());
+    expect(container.querySelector("dialog")).toBeNull();
   });
 
   it("allows the More link after the user confirms leaving a pending action", () => {
     routerState.pendingAction = true;
     mount("/app/patients/assigned?task=screening");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     act(() => moreLink().click());
+    act(() => dialogButton("เปลี่ยนหน้า").click());
 
-    expect(confirm).toHaveBeenCalledTimes(1);
     expect(routerState.currentHref).toBe("/app/more?workspace=work");
     expect(moreLink().getAttribute("aria-current")).toBe("page");
   });
@@ -248,12 +283,11 @@ describe("unified mobile bottom navigation", () => {
   it("asks before changing tabs when an unresolved outcome is active", () => {
     routerState.unknownOutcome = true;
     mount("/app/personal/wellness");
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     const appointments = container.querySelector<HTMLAnchorElement>('[aria-label="นัดหมาย"]');
     act(() => appointments?.click());
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("ระบบยังยืนยันผลการบันทึกไม่ได้"));
+    expect(container.querySelector("dialog")?.textContent).toContain("ระบบยังยืนยันผลการบันทึกไม่ได้");
     expect(routerState.currentHref).toBe("/app/personal/wellness");
     expect(container.querySelector('[aria-label="สุขภาพ"]')?.getAttribute("aria-current")).toBe("page");
   });
