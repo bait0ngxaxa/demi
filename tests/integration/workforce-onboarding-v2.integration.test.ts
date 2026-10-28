@@ -1062,9 +1062,12 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       traced.$on("query", ({ query }) => queries.push(query));
       try {
         const first = await listWorkforce(owner.actor, { targetHospitalId: hospital.id }, traced);
+        // Prisma query events may reach Node after the query promise resolves.
+        await new Promise<void>((resolve) => setImmediate(resolve));
         const firstCount = queries.length;
         queries.length = 0;
         const next = await listWorkforce(owner.actor, { targetHospitalId: hospital.id, osmCursor: first.pageInfo.osmNextCursor ?? undefined, staffCursor: first.pageInfo.staffNextCursor ?? undefined }, traced);
+        await new Promise<void>((resolve) => setImmediate(resolve));
         expect(firstCount).toBeLessThanOrEqual(12);
         expect(queries.length).toBe(firstCount);
         expect(next.rows.length).toBeLessThanOrEqual(50);

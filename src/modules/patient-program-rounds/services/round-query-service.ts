@@ -49,6 +49,9 @@ import {
 } from "../domain/round-catalog";
 import {
   computeRoundStatus,
+  ROUND_ITEM_CATALOG,
+  roundGuideline,
+  roundPlanItemUnavailableReason,
   roundPlan,
   type PerRoundToolCode,
   type ProgramRoundFacts,
@@ -73,6 +76,8 @@ export type RoundSummary = {
   state: RoundState;
   resolvedItems: number;
   totalItems: number;
+  planResolvedItems?: number;
+  planTotalItems?: number;
   completedAt: Date | null;
   completedByDisplayName: string | null;
 };
@@ -82,6 +87,8 @@ export type ProgramRoundsOverview = {
   patientProgramId: string;
   programStatus: PatientProgramStatus;
   rounds: readonly RoundSummary[];
+  canManage?: boolean;
+  addRoundUnavailableReason?: string | null;
   after: {
     /** LOCKED until round 6 is completed (SR-D5). */
     state: "LOCKED" | "RECORDED" | "NOT_RECORDED";
@@ -160,6 +167,7 @@ export type ProgramRoundDetail = {
     dateOfBirth: Date | null;
   };
   status: RoundStatus;
+  planChoices?: readonly { code: keyof typeof ROUND_ITEM_CATALOG; label: string; unavailableReason: string | null; recommended: boolean }[];
   vitals: RoundVitalsView | null;
   vitalsForm: {
     /** WB-DF-05: editable in rounds 1-2, display-only afterwards. */
@@ -256,6 +264,8 @@ const programRoundSelect = {
           id: true,
           stepCode: true,
           customTitle: true,
+          origin: true,
+          doneNote: true,
           position: true,
           removedAt: true,
           doneAt: true,
@@ -505,6 +515,8 @@ export function buildProgramRoundFacts(
             id: item.id,
             stepCode: item.stepCode,
             customTitle: item.customTitle,
+            origin: item.origin,
+            doneNote: item.doneNote,
             position: item.position,
             removed: item.removedAt !== null,
             done: item.doneAt ? evidence(item.doneAt, item.doneByUser) : null,
@@ -731,6 +743,8 @@ export function buildProgramRoundsOverview(
       state: status.state,
       resolvedItems: status.resolvedItems,
       totalItems: status.totalItems,
+      planResolvedItems: status.steps.filter((step) => step.status === "DONE" || step.status === "SKIPPED").length,
+      planTotalItems: status.steps.length,
       completedAt: status.completion?.completedAt ?? null,
       completedByDisplayName: status.completion?.completedByDisplayName ?? null,
     };
@@ -741,6 +755,10 @@ export function buildProgramRoundsOverview(
     patientProgramId: program.id,
     programStatus: program.status,
     rounds,
+    addRoundUnavailableReason: program.status !== PatientProgramStatus.ACTIVE ? "โปรแกรมนี้จบแล้ว"
+      : final ? "บันทึกการประเมินสุดท้ายแล้ว"
+      : program.rounds.length >= 12 ? "ครบ 12 ครั้งแล้ว"
+      : program.rounds.length < 6 || program.rounds.some((round) => !facts.completions[round.roundNumber]) ? "ยังมีครั้งบริการที่ต้องจบก่อน" : null,
     after: {
       state: final ? "RECORDED" : program.rounds.length >= GUIDELINE_ROUND_COUNT && program.rounds.every((round) => facts.completions[round.roundNumber]) ? "NOT_RECORDED" : "LOCKED",
       date: final ? (final.serviceDate ?? final.recordedAt) : null,
@@ -792,6 +810,7 @@ export function buildProgramRoundDetail(
       dateOfBirth: patient.dateOfBirth ?? null,
     },
     status,
+    planChoices: Object.values(ROUND_ITEM_CATALOG).map((item) => ({ code: item.code, label: item.code === "CUSTOM" ? "อื่น ๆ (กำหนดเอง)" : item.label, unavailableReason: roundPlanItemUnavailableReason(facts, roundNumber, item.code), recommended: roundGuideline(roundNumber).some((step) => step.code === item.code) && !status.steps.some((step) => step.code === item.code) })),
     vitals: buildVitals(program, roundNumber, options),
     vitalsForm: {
       heightEditable: isRoundVitalsRound(roundNumber),
@@ -899,7 +918,7 @@ export async function getProgramRoundsOverview(
       access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
     );
 
-    return { ...overview, patientDisplayName: access.patient.displayName };
+    return { ...overview, canManage: decidePatientProgramPolicy({ actor: access.actor, capability: PATIENT_PROGRAM_MANAGE_CAPABILITY, target: access.target }).allowed, patientDisplayName: access.patient.displayName };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

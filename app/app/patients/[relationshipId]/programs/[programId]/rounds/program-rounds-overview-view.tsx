@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
+import { AddProgramRoundControl } from "./[roundNumber]/round-plan-editor";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
@@ -33,10 +35,10 @@ export function ProgramRoundsOverviewView({
         breadcrumbs={[
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
           { href: programPath, label: "รายละเอียดโปรแกรม" },
-          { label: "การจัดบริการครั้งที่ 1–6" },
+          { label: "การจัดบริการรายครั้ง" },
         ]}
         description={`ผู้ป่วย: ${overview.patientDisplayName} · ทำทีละครั้งตามลำดับ ครั้งถัดไปเปิดเมื่อจบบริการครั้งก่อนหน้า`}
-        title="การจัดบริการครั้งที่ 1–6"
+        title="การจัดบริการรายครั้ง"
       />
 
       <div className="space-y-6 pt-8">
@@ -57,6 +59,7 @@ export function ProgramRoundsOverviewView({
           ))}
         </ol>
 
+        {overview.canManage && overview.programStatus === "ACTIVE" ? overview.addRoundUnavailableReason === null ? <AddProgramRoundControl target={{ patientHospitalRelationshipId: relationshipId, patientProgramId: programId, roundNumber: overview.rounds.length + 1 }} submissionNonce={randomUUID()} /> : <p className="text-sm text-text-muted">เพิ่มครั้งบริการไม่ได้: {overview.addRoundUnavailableReason}</p> : null}
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -65,7 +68,7 @@ export function ProgramRoundsOverviewView({
                 {after.state === "RECORDED"
                   ? `วันที่ ${formatRoundDate(after.date)} · ผู้บันทึก ${after.recordedByDisplayName ?? "ไม่ระบุ"}`
                   : after.state === "LOCKED"
-                    ? "🔒 ต้องจบครั้งที่ 6 ก่อน"
+                    ? "ต้องเปิดอย่างน้อย 6 ครั้ง และจบบริการทุกครั้งก่อน"
                     : "ยังไม่มีการประเมินสุดท้าย"}
               </p>
             </div>
@@ -80,7 +83,7 @@ export function ProgramRoundsOverviewView({
         </Panel>
 
         <p className="text-sm leading-6 text-text-muted">
-          แต่ละครั้งต้องบันทึกทุกรายการ หรือข้ามพร้อมเหตุผล แล้วกด “จบบริการครั้งที่ n” เมื่อจบแล้วครั้งนั้นเป็นแบบอ่านอย่างเดียว
+          เมื่อมีรายการที่ทำแล้วอย่างน้อย 1 รายการ กด “จบบริการครั้งที่ n” เมื่อจบแล้วครั้งนั้นเป็นแบบอ่านอย่างเดียว
         </p>
 
         <Link className={buttonClassName({ variant: "secondary" })} href={programPath}>

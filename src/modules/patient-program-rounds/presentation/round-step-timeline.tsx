@@ -2,13 +2,14 @@ import Link from "next/link";
 
 import {
   ROUND_SUMMARY_STEP,
+  roundStepKey,
   type RoundCompletionFact,
   type RoundStepState,
   type RoundStepStatus,
 } from "../domain/round-steps";
 import { formatRoundDate, roundLockedLabel, roundSkipDescription, roundStepStatusLabel } from "./round-labels";
 
-type StepCode = RoundStepState["code"] | typeof ROUND_SUMMARY_STEP;
+type StepCode = string;
 
 type RoundStepTimelineProps = {
   steps: readonly RoundStepState[];
@@ -35,8 +36,10 @@ export function RoundStepTimeline({
   const summaryStatus: RoundStepStatus = completion ? "DONE" : locked ? "LOCKED" : "TODO";
   const nodes = [
     ...steps.map((step) => ({
-      code: step.code,
+      code: roundStepKey(step),
       label: step.label,
+      origin: step.origin,
+      byPatient: step.evidence?.byPatient,
       status: step.status,
       statusLabel: roundStepStatusLabel(step),
       meta: step.status === "DONE"
@@ -46,6 +49,8 @@ export function RoundStepTimeline({
           : step.status === "LOCKED" ? roundLockedLabel(roundNumber) : "ยังไม่ได้บันทึก",
     })),
     {
+      origin: undefined,
+      byPatient: false,
       code: ROUND_SUMMARY_STEP,
       label: `สรุปและจบบริการครั้งที่ ${roundNumber}`,
       status: summaryStatus,
@@ -69,6 +74,8 @@ export function RoundStepTimeline({
             </span>
             <span className="min-w-0 flex-1 break-words pb-3">
               <span className="block font-semibold text-text">{node.label}</span>
+              {node.origin ? <span className="block text-xs text-text-muted">{node.origin === "GUIDELINE" ? "ตามแนวทาง" : "เพิ่มเอง"}</span> : null}
+              {node.byPatient ? <span className="block text-xs text-brand-strong">ผู้ป่วยบันทึกเอง</span> : null}
               <span className={`mt-1 flex items-center gap-1 ${node.status === "DONE" ? "text-success" : node.status === "SKIPPED" ? "text-warning" : "text-text-muted"}`}>
                 <StateIcon status={node.status} />{node.statusLabel}
               </span>

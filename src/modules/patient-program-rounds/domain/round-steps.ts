@@ -186,6 +186,7 @@ export const ROUND_SKIP_REASON_LABELS: Readonly<Record<PatientProgramRoundSkipRe
 export type RoundStepEvidence = {
   at: Date | null;
   byDisplayName: string | null;
+  byPatient?: boolean;
 };
 
 export type RoundStepSkipFact = {
@@ -228,6 +229,8 @@ export type RoundPlanItemFact = {
   customTitle: string | null;
   position: number;
   removed: boolean;
+  origin?: "GUIDELINE" | "ADDED";
+  doneNote?: string | null;
   /** CUSTOM "ทำแล้ว". */
   done: RoundStepEvidence | null;
 };
@@ -262,6 +265,8 @@ export type RoundStepStatus = "DONE" | "SKIPPED" | "TODO" | "LOCKED";
 export type RoundStepState = RoundStepDefinition & {
   /** The plan item; null in the guideline preview of a round not opened yet. */
   planItemId: string | null;
+  origin?: "GUIDELINE" | "ADDED";
+  doneNote?: string | null;
   status: RoundStepStatus;
   evidence: RoundStepEvidence | null;
   skip: RoundStepSkipFact | null;
@@ -434,7 +439,7 @@ export function computeRoundStatus(
 
     const missingMeasurements = definition.code === "VITALS" ? vitalsOutcome(facts, roundNumber).missing : [];
 
-    return { ...definition, planItemId: item.id, status, evidence, skip, missingMeasurements };
+    return { ...definition, planItemId: item.id, origin: item.origin, doneNote: item.doneNote, status, evidence, skip, missingMeasurements };
   });
   const resolved = steps.filter((state) => state.status === "DONE" || state.status === "SKIPPED");
   const resolvedItems = resolved.reduce((total, state) => total + state.items.length, 0);
@@ -483,10 +488,15 @@ export function roundPlanItemUnavailableReason(facts: ProgramRoundFacts, roundNu
 export function nextRoundStep(
   steps: readonly RoundStepState[],
   afterCode: string | null,
-): RoundStepCode | typeof ROUND_SUMMARY_STEP {
-  const index = afterCode ? steps.findIndex((state) => state.code === afterCode) : -1;
+): string {
+  const index = afterCode ? steps.findIndex((state) => roundStepKey(state) === afterCode) : -1;
   const ordered = [...steps.slice(index + 1), ...steps.slice(0, Math.max(index, 0))];
   const next = ordered.find((state) => state.status === "TODO");
 
-  return next?.code ?? ROUND_SUMMARY_STEP;
+  return next ? roundStepKey(next) : ROUND_SUMMARY_STEP;
+}
+
+/** CUSTOM titles may repeat, so navigation uses the materialized item identity. */
+export function roundStepKey(step: Pick<RoundStepState, "code" | "planItemId">): string {
+  return step.code === "CUSTOM" && step.planItemId ? step.planItemId : step.code;
 }

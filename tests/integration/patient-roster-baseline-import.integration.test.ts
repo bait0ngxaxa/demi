@@ -62,10 +62,10 @@ const nationalIds = {
   existingWithoutBaseline: "1000000000033",
   sameImport: "1000000000041",
   blankHeight: "1000000000050",
-  concurrent: "1000000000130",
-  rollback: "1000000000148",
-  independentValid: "1000000000155",
-  independentConflict: "1000000000163",
+  concurrent: "1000000000131",
+  rollback: "1000000000149",
+  independentValid: "1000000000157",
+  independentConflict: "1000000000165",
 } as const;
 
 /** A valid Thai national ID for a numeric seed (13th digit is the mod-11 check digit). */

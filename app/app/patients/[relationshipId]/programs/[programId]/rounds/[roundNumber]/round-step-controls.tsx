@@ -10,7 +10,7 @@ import { inputClassName } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { ROUND_SKIP_REASON_LABELS } from "@/modules/patient-program-rounds/domain/round-steps";
+import { ROUND_SKIP_REASON_LABELS, type RoundStepState } from "@/modules/patient-program-rounds/domain/round-steps";
 import {
   initialPatientProgramRoundActionState,
   type PatientProgramRoundActionState,
@@ -117,7 +117,7 @@ export function RoundProfileForm({
   );
 }
 
-const SKIP_REASONS = Object.entries(ROUND_SKIP_REASON_LABELS) as [keyof typeof ROUND_SKIP_REASON_LABELS, string][];
+const SKIP_REASONS = Object.entries(ROUND_SKIP_REASON_LABELS).filter(([code]) => code !== "NOT_DONE_AT_CLOSE") as [keyof typeof ROUND_SKIP_REASON_LABELS, string][];
 
 /** SR-D3: skip a checklist step with a reason; OTHER needs a note (≤ 500 characters). */
 export function SkipStepControl({
@@ -230,14 +230,16 @@ function toOutcome(state: PatientProgramRoundActionState): ConfirmableActionOutc
 /** SR-D4: "จบบริการครั้งที่ n" after confirming that the round becomes read-only. */
 export function CompleteRoundControl({
   roundsHref,
+  steps = [],
   submissionNonce,
   target,
 }: {
   roundsHref: string;
+  steps?: readonly RoundStepState[];
   submissionNonce: string;
   target: RoundTarget;
 }): React.JSX.Element {
-  const [state, action, pending] = useMutationActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     completePatientProgramRoundAction,
     initialPatientProgramRoundActionState,
   );
@@ -250,15 +252,17 @@ export function CompleteRoundControl({
       confirmation={{
         title: `จบบริการครั้งที่ ${target.roundNumber} หรือไม่`,
         description: "เมื่อจบแล้ว ข้อมูลของครั้งนี้จะเป็นแบบอ่านอย่างเดียว แก้ไข เพิ่ม หรือยกเลิกการข้ามไม่ได้อีก",
+        details: <div className="space-y-3">{(["DONE", "SKIPPED", "TODO"] as const).map((status) => <div key={status}><h3 className="font-semibold">{status === "DONE" ? "ทำแล้ว" : status === "SKIPPED" ? "ข้ามแล้ว" : "ยังไม่ได้ทำเมื่อจบบริการ"} ({steps.filter((step) => step.status === status).length})</h3><ul className="list-disc pl-5">{steps.filter((step) => step.status === status).map((step) => <li key={step.planItemId ?? step.code}>{step.label}</li>)}</ul></div>)}<p>รายการที่ยังไม่ได้ทำจะถูกบันทึกเป็น “ยังไม่ได้ทำเมื่อจบบริการ”</p></div>,
         confirmLabel: `จบบริการครั้งที่ ${target.roundNumber}`,
       }}
-      outcome={toOutcome(state)}
+      outcome={unknownOutcome ? "unknown" : toOutcome(state)}
       pending={pending}
       resultKey={state}
     >
       <RoundTargetInputs target={target} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
-      <Button disabled={pending} loading={pending} type="submit">
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+      <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังบันทึก…" : `จบบริการครั้งที่ ${target.roundNumber}`}
       </Button>
       <ActionError state={state} />
