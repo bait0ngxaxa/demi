@@ -28,6 +28,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     onLockChange?.(activity.current.readPending || ["WRITE_PENDING", "UNRESOLVED_CREATE", "REVIEW_REQUIRED"].includes(activity.current.write));
   }
   const [recoveringCreate, setRecoveringCreate] = useState(false);
+  const [reviewRequired, setReviewRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pending, startTransition] = useTransition();
   const generation = useRef(0);
@@ -76,7 +77,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
           const confirmed = activity.current.write === "CONFIRMED";
           activity.current.write = "IDLE";
           publishLock();
-          setSelected(undefined); setBlocked(false);
+          setSelected(undefined); setBlocked(false); setReviewRequired(false);
           if (!confirmed && !afterMutation) setFeedback({ status: "IDLE" });
           if (confirmed || afterMutation) setNonce(crypto.randomUUID());
         }
@@ -92,6 +93,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     const unresolved = !selected && !state.result && state.status !== "CREATE_CONSUMED" && (recoveringCreate || state.status === "UNCONFIRMED" || state.status === "CONFLICT");
     activity.current.write = state.result ? "CONFIRMED" : unresolved ? "UNRESOLVED_CREATE" : selected && (state.status === "CONFLICT" || state.status === "UNCONFIRMED") ? "REVIEW_REQUIRED" : "IDLE";
     setRecoveringCreate(unresolved);
+    setReviewRequired(activity.current.write === "REVIEW_REQUIRED");
     publishLock();
     if (state.result) {
       setBlocked(true);
@@ -112,6 +114,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
     {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
     <p className="max-w-prose text-text-muted">บันทึกกิจกรรมที่คุณทำจริง เพื่อดูรายการส่วนตัวของคุณ</p>
+    {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
     {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><ExerciseReadback item={feedback.result.item} /></section> : null}
@@ -119,11 +122,11 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
       <ExerciseEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
       {selected ? <ExerciseDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        <Button variant="ghost" disabled={saving || pending || recoveringCreate} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING") return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
+        <Button variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING" || activity.current.write === "REVIEW_REQUIRED") return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
     </div></Panel>
     <section aria-label="ประวัติการออกกำลังกาย" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกการออกกำลังกายของฉัน</h3>
       {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกการออกกำลังกาย</p> : <ul className="divide-y divide-border">{page.items.map((item) => <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><ExerciseReadback item={item} />
-        <Button variant="secondary" disabled={saving || pending || recoveringCreate} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING") return; activity.current.write = "IDLE"; publishLock(); setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
+        <Button variant="secondary" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING" || activity.current.write === "REVIEW_REQUIRED") return; activity.current.write = "IDLE"; publishLock(); setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}
     </section>

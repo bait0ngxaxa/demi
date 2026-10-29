@@ -25,12 +25,43 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
   async function mount(withRecord = false): Promise<{ authority: ReturnType<typeof createWellnessPrivateAuthority>; lock: ReturnType<typeof vi.fn> }> {
     const authority = createWellnessPrivateAuthority(vi.fn());
     const lock = vi.fn();
-    const props = { initialPage: { items: withRecord ? [persisted] : [], nextCursor: null }, today: date, initialNonce: nonce, authority, date, onLockChange: lock };
+    const props = { initialPage: { items: withRecord ? [persisted, { ...persisted, id: "22222222-2222-4222-8222-222222222222" }] : [], nextCursor: null }, today: date, initialNonce: nonce, authority, date, onLockChange: lock };
     await act(() => root.render(kind === "meal" ? <PersonalMealWorkspace {...props} /> : <PersonalExerciseWorkspace {...props} />));
     await act(() => kind === "meal" ? host.querySelector<HTMLInputElement>('[value="SNACK"]')?.click() : button("เดิน").click());
     return { authority, lock };
   }
   const save = kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย";
+  it.each([
+    ["edit", "UNCONFIRMED"], ["edit", "CONFLICT"],
+    ["delete", "UNCONFIRMED"], ["delete", "CONFLICT"],
+  ] as const)("prevents new intent and other record selection after %s %s until a successful review read", async (operation, status) => {
+    const { lock } = await mount(true);
+    await act(() => button("แก้ไข / ลบ").click());
+    mock[kind].mockResolvedValue({ status, message: "ต้องทบทวนรายการเดิม" });
+    if (operation === "delete") {
+      await act(() => button("ลบบันทึกนี้").click());
+      await act(() => button("ยืนยันลบ").click());
+    } else await act(() => button("บันทึกการแก้ไข").click());
+    const originalVersion = host.querySelector<HTMLInputElement>('[name="expectedUpdatedAt"]')?.value;
+    expect(button("เริ่มบันทึกใหม่").disabled).toBe(true);
+    const recordButtons = [...host.querySelectorAll<HTMLButtonElement>("button")].filter((item) => item.textContent === "แก้ไข / ลบ");
+    expect(recordButtons).toHaveLength(2);
+    expect(recordButtons.every((item) => item.disabled)).toBe(true);
+    await act(() => { button("เริ่มบันทึกใหม่").click(); recordButtons[1].click(); });
+    expect(host.querySelector<HTMLInputElement>('[name="entryId"]')?.value).toBe(persisted.id);
+    expect(host.querySelector<HTMLInputElement>('[name="expectedUpdatedAt"]')?.value).toBe(originalVersion);
+    expect(lock.mock.lastCall).toEqual([true]);
+    const list = kind === "meal" ? mock.meals : mock.exercises;
+    list.mockRejectedValueOnce(new Error("offline"));
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(button("เริ่มบันทึกใหม่").disabled).toBe(true);
+    expect(lock.mock.lastCall).toEqual([true]);
+    list.mockResolvedValue({ status: "SUCCESS", page: { items: [persisted], nextCursor: null } });
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(lock.mock.lastCall).toEqual([false]);
+    expect(button("เริ่มบันทึกใหม่").disabled).toBe(false);
+    expect(button("แก้ไข / ลบ").disabled).toBe(false);
+  });
   it("requires refreshed versions after an edit conflict, rather than retrying stale edits", async () => {
     const { lock } = await mount(true);
     await act(() => button("แก้ไข / ลบ").click());
