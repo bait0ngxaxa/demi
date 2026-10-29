@@ -28,10 +28,11 @@ export default async function PersonalWellnessPage(): Promise<React.JSX.Element>
   let workspace: Parameters<typeof PersonalWellnessWorkspace>[0];
   let actorKey: string;
   try {
+    const today = weightGoalBangkokToday(new Date());
     // Each domain resolves current persisted SELF independently; render no private sibling data on denial.
     const [mealPage, exercisePage, weightGoal] = await Promise.all([
-      listOwnPersonalMeals(actor, {}),
-      listOwnPersonalExercises(actor, {}),
+      listOwnPersonalMeals(actor, { occurredOn: today }),
+      listOwnPersonalExercises(actor, { occurredOn: today }),
       getOwnPersonalWeightGoal(actor),
     ]);
     actorKey = createHash("sha256").update(`personal-wellness:${actor.userId}:${actor.personId}`).digest("hex");
@@ -39,7 +40,7 @@ export default async function PersonalWellnessPage(): Promise<React.JSX.Element>
       mealPage,
       exercisePage,
       weightGoal,
-      today: weightGoalBangkokToday(new Date()),
+      today,
       mealNonce: randomUUID(),
       exerciseNonce: randomUUID(),
       weightGoalNonce: randomUUID(),

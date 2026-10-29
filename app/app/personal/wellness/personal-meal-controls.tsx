@@ -37,23 +37,25 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked} className="space-y-4">
-      <fieldset className="space-y-2" aria-describedby={`${prefix}-category-help`}>
+      <fieldset className="space-y-2" aria-invalid={Boolean(state.fieldErrors?.category)} aria-describedby={`${prefix}-category-help`}>
         <legend className="mb-2 text-sm font-medium">หมวดมื้ออาหาร</legend>
         <div className="grid grid-cols-2 gap-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-12 cursor-pointer items-center gap-2 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
-          <input type="radio" name="category" value={value} required checked={category === value} onChange={() => setCategory(value)} aria-invalid={Boolean(state.fieldErrors?.category)} className="accent-brand" />
+          <input type="radio" name="category" value={value} required checked={category === value} onChange={() => setCategory(value)} aria-controls={`${prefix}-details`} className="accent-brand" />
           <span className="min-w-0 text-sm font-medium">{MEAL_CATEGORY_LABELS[value]}<span className="block text-xs">{item ? "เลือกมื้ออาหาร" : "เพิ่มบันทึก"}</span></span>
         </label>)}</div>
         <p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p>
       </fieldset>
+      <div id={`${prefix}-details`} hidden={!category} className="space-y-4">
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
         <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-description`} className="block text-sm font-medium">รายละเอียด (ไม่บังคับ)</label>
         <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />
         <p id={`${prefix}-description-help`} className="text-sm text-text-muted">{state.fieldErrors?.description ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
+      </div>
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
-    <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
+    <Button type="submit" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
   </form>;
 }
 export function MealDeleteForm({ item, coordination }: { item: PersonalMealDto; coordination: Coordination }): React.JSX.Element {

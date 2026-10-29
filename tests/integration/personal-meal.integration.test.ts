@@ -220,6 +220,27 @@ describe("Personal Meal Journal real PostgreSQL", () => {
     await expect(create(a, { submissionNonce: randomUUID(), ...fields }, { ...deps, now: () => new Date("2026-10-02T16:59:59.999Z") })).rejects.toMatchObject({ code: "VALIDATION" });
     expect(item(await create(a, { submissionNonce: randomUUID(), ...fields }, { ...deps, now: () => new Date("2026-10-02T17:00:00.000Z") })).occurredOn).toBe(fields.occurredOn);
   });
+  it("reads accurate private daily totals beyond pagination and binds continuations to the date", async () => {
+    const a = await actor(); const b = await actor(); const patientProfileId = await owner(a);
+    await db.personalMealEntry.createMany({ data: Array.from({ length: 62 }, (_, index) => ({ patientProfileId, category: "SNACK", description: "อาหารสังเคราะห์",
+      occurredOn: toMealDateCarrier(index < 61 ? "2026-10-03" : "2026-10-02"), createdAt: new Date(now.getTime() + index), updatedAt: now })) });
+    const first = await list(a, { occurredOn: "2026-10-03" }, db);
+    expect(first.items).toHaveLength(50); expect(first.dailySummary).toEqual({ occurredOn: "2026-10-03", count: 61 });
+    const second = await list(a, { occurredOn: "2026-10-03", cursor: first.nextCursor }, db);
+    expect(second.items).toHaveLength(11); expect(second.nextCursor).toBeNull(); expect(second.dailySummary).toEqual(first.dailySummary);
+    expect([...first.items, ...second.items].every((entry) => entry.occurredOn === "2026-10-03")).toBe(true);
+    await expect(list(a, { occurredOn: "2026-10-02", cursor: first.nextCursor }, db)).rejects.toMatchObject({ code: "CONFLICT" });
+    const other = await list(b, { occurredOn: "2026-10-03" }, db); expect(other.items).toEqual([]); expect(other.dailySummary?.count).toBe(0);
+    await expect(list(b, { occurredOn: "2026-10-03", cursor: first.nextCursor }, db)).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(list(a, { occurredOn: "2026-02-30" }, db)).rejects.toMatchObject({ code: "VALIDATION" });
+    const moved = item(await update(a, { ...token(first.items[0]), ...fields, occurredOn: "2026-10-02" }, deps));
+    expect((await list(a, { occurredOn: "2026-10-03" }, db)).dailySummary?.count).toBe(60);
+    expect((await list(a, { occurredOn: "2026-10-02" }, db)).dailySummary?.count).toBe(2);
+    await remove(a, token(moved), deps);
+    expect((await list(a, { occurredOn: "2026-10-02" }, db)).dailySummary?.count).toBe(1);
+    await db.user.update({ where: { id: a.userId }, data: { status: "SUSPENDED" } });
+    await expect(list(a, { occurredOn: "2026-10-03" }, db)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
   it("bounded >50 deterministic history, secure continuations and stale/missing anchors", async () => {
     const a = await actor(); const b = await actor(); const patientProfileId = await owner(a);
     await db.personalMealEntry.createMany({ data: Array.from({ length: 103 }, (_, index) => ({ id: randomUUID(), patientProfileId, category: "SNACK", description: fields.description,

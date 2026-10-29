@@ -26,6 +26,7 @@ vi.mock("react", async (importOriginal) => {
     ...original,
     useState: (initial: unknown) => {
       const stateIndex = harness.stateCursor++;
+      if (stateIndex > 1) return [initial, () => undefined];
       if (stateIndex === 0) {
         if (!harness.sessionInitialized) { harness.session = typeof initial === "function" ? (initial as () => unknown)() : initial; harness.sessionInitialized = true; }
         return [harness.session, (value: unknown) => {
@@ -36,6 +37,8 @@ vi.mock("react", async (importOriginal) => {
       return [harness.authority, (value: unknown) => { harness.authority = value; }];
     },
     useEffect: (effect: () => void | (() => void)) => { harness.effect ??= effect; },
+    useRef: (initial: unknown) => ({ current: initial }),
+    useTransition: () => [false, () => undefined],
   };
 });
 

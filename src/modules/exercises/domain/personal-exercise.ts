@@ -13,7 +13,7 @@ export type PersonalExerciseDto = {
   id: string; activityName: string; occurredOn: string; durationMinutes: number | null; note: string | null;
   createdAt: string; updatedAt: string;
 };
-export type PersonalExercisePage = { items: PersonalExerciseDto[]; nextCursor: string | null };
+export type PersonalExercisePage = { items: PersonalExerciseDto[]; nextCursor: string | null; dailySummary?: { occurredOn: string; count: number; recordedDurationCount: number; durationMinutes: number | null } };
 
 // A Date here is strictly a Prisma DATE carrier, never an Exercise occurrence instant.
 export function isExerciseCivilDate(value: string): boolean {

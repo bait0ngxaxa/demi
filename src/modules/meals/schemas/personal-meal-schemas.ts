@@ -14,7 +14,7 @@ const version = { entryId: mealIdSchema, expectedUpdatedAt: mealVersionSchema };
 export const mealCreateSchema = z.object({ submissionNonce: mealIdSchema, ...fields }).strict();
 export const mealUpdateSchema = z.object({ ...version, ...fields }).strict();
 export const mealDeleteSchema = z.object(version).strict();
-export const mealListSchema = z.object({ cursor: z.string().min(1).max(MEAL_CURSOR_MAX_LENGTH).optional() }).strict();
+export const mealListSchema = z.object({ cursor: z.string().min(1).max(MEAL_CURSOR_MAX_LENGTH).optional(), occurredOn: mealDateSchema.optional() }).strict();
 export const mealCursorSchema = z.object({
   version: z.literal(1), patientProfileId: mealIdSchema, id: mealIdSchema,
   occurredOn: mealDateSchema, createdAt: mealVersionSchema, updatedAt: mealVersionSchema,

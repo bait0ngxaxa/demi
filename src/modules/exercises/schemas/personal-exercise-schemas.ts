@@ -23,7 +23,7 @@ const version = { entryId: exerciseIdSchema, expectedUpdatedAt: exerciseVersionS
 export const exerciseCreateSchema = z.object({ submissionNonce: exerciseIdSchema, ...fields }).strict();
 export const exerciseUpdateSchema = z.object({ ...version, ...fields }).strict();
 export const exerciseDeleteSchema = z.object(version).strict();
-export const exerciseListSchema = z.object({ cursor: z.string().min(1).max(EXERCISE_CURSOR_MAX_LENGTH).optional() }).strict();
+export const exerciseListSchema = z.object({ cursor: z.string().min(1).max(EXERCISE_CURSOR_MAX_LENGTH).optional(), occurredOn: exerciseDateSchema.optional() }).strict();
 export const exerciseCursorSchema = z.object({
   version: z.literal(1), patientProfileId: exerciseIdSchema, id: exerciseIdSchema,
   occurredOn: exerciseDateSchema, createdAt: exerciseVersionSchema, updatedAt: exerciseVersionSchema,

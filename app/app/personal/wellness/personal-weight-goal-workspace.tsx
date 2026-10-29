@@ -22,10 +22,12 @@ export function PersonalWeightGoalWorkspace({
   initialGoal,
   initialNonce,
   authority,
+  onLockChange,
 }: {
   initialGoal: PersonalWeightGoalDto | null;
   initialNonce: string;
   authority: WellnessPrivateAuthority;
+  onLockChange?: (locked: boolean) => void;
 }): React.JSX.Element {
   const [goal, setGoal] = useState(initialGoal);
   const [nonce, setNonce] = useState(initialNonce);
@@ -81,6 +83,7 @@ export function PersonalWeightGoalWorkspace({
       return;
     }
     setFeedback(state);
+    onLockChange?.(state.status === "UNCONFIRMED" || state.status === "CONFLICT" || state.status === "CREATE_CONSUMED");
     const result = state.result;
     if (!result) {
       if (state.status === "CREATE_CONSUMED") {
@@ -129,6 +132,7 @@ export function PersonalWeightGoalWorkspace({
         setEditing(false);
         setConfirmingRemove(false);
         setFeedback({ status: "IDLE" });
+        onLockChange?.(false);
       } else {
         setFeedback(state);
       }
@@ -148,6 +152,7 @@ export function PersonalWeightGoalWorkspace({
   const isActive = (): boolean => active.current && authority.isActive();
   const onPending = (value: boolean): void => {
       if (active.current && authority.isActive()) setSaving(value);
+      onLockChange?.(value);
   };
   const coordination: Coordination = { authority, isActive, blocked: saving || pending, onResult, onPending };
   const reviewCoordination: Coordination = {

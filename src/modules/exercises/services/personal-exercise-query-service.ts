@@ -27,9 +27,11 @@ export async function listOwnPersonalExercises(actor: ActorContext | null | unde
     if (!parsed.success) throw new ValidationError();
     return await runSerializableTransaction(database, async (tx) => {
       const patientProfileId = await resolvePersonalExerciseOwner(actor, tx);
+      const scope: Prisma.PersonalExerciseEntryWhereInput = { patientProfileId, ...(parsed.data.occurredOn ? { occurredOn: toExerciseDateCarrier(parsed.data.occurredOn) } : {}) };
       let seek: Prisma.PersonalExerciseEntryWhereInput = {};
       if (parsed.data.cursor) {
         const position = decodeExerciseCursor(actor, patientProfileId, parsed.data.cursor);
+        if (parsed.data.occurredOn && position.occurredOn !== parsed.data.occurredOn) throw new ConflictError();
         const anchor = await tx.personalExerciseEntry.findFirst({ where: { id: position.id, patientProfileId }, select: personalExerciseSelect });
         if (!anchor) throw new NotFoundError();
         const dto = toPersonalExerciseDto(anchor);
@@ -38,11 +40,14 @@ export async function listOwnPersonalExercises(actor: ActorContext | null | unde
         const createdAt = new Date(position.createdAt);
         seek = { OR: [{ occurredOn: { lt: occurredOn } }, { occurredOn, createdAt: { lt: createdAt } }, { occurredOn, createdAt, id: { lt: position.id } }] };
       }
-      const rows = await tx.personalExerciseEntry.findMany({ where: { patientProfileId, ...seek },
+      const rows = await tx.personalExerciseEntry.findMany({ where: { AND: [scope, seek] },
         orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: EXERCISE_PAGE_SIZE + 1, select: personalExerciseSelect });
       const items = rows.slice(0, EXERCISE_PAGE_SIZE).map(toPersonalExerciseDto);
       const last = items.at(-1);
-      return { items, nextCursor: rows.length > EXERCISE_PAGE_SIZE && last ? encodeExerciseCursor(actor, { version: 1, patientProfileId,
+      // Aggregate the entire date scope in the same authorized snapshot, never the displayed page.
+      const totals = parsed.data.occurredOn ? await tx.personalExerciseEntry.aggregate({ where: scope, _count: { _all: true, durationMinutes: true }, _sum: { durationMinutes: true } }) : undefined;
+      const dailySummary = totals && parsed.data.occurredOn ? { occurredOn: parsed.data.occurredOn, count: totals._count._all, recordedDurationCount: totals._count.durationMinutes, durationMinutes: totals._sum.durationMinutes } : undefined;
+      return { items, ...(dailySummary ? { dailySummary } : {}), nextCursor: rows.length > EXERCISE_PAGE_SIZE && last ? encodeExerciseCursor(actor, { version: 1, patientProfileId,
         id: last.id, occurredOn: last.occurredOn, createdAt: last.createdAt, updatedAt: last.updatedAt }) : null };
     }, 0);
   } catch (error: unknown) { throw normalizeExerciseError(error); }

@@ -10,10 +10,11 @@ vi.mock("@/modules/exercises/services/personal-exercise-query-service", () => ({
 vi.mock("@/modules/weight-goals/services/personal-weight-goal-query-service", () => ({ getOwnPersonalWeightGoal: mock.weightGoal }));
 vi.mock("./personal-wellness-workspace", () => ({ PersonalWellnessWorkspace: () => <p>ข้อมูลที่คุณบันทึก</p> }));
 import Page from "./page";
+import { weightGoalBangkokToday } from "@/modules/weight-goals/domain/personal-weight-goal";
 describe("private Wellness page", () => {
   beforeEach(() => { vi.clearAllMocks(); mock.actor.mockResolvedValue({ userId: "own", personId: "person" }); mock.list.mockResolvedValue({ items: [], nextCursor: null }); mock.exercises.mockResolvedValue({ items: [], nextCursor: null }); mock.weightGoal.mockResolvedValue(null); });
   it("uses request-time rendering then independently resolves all three authenticated SELF domains", async () => {
-    expect(renderToStaticMarkup(await Page())).toContain("ข้อมูลที่คุณบันทึก"); expect(mock.connection).toHaveBeenCalledOnce(); expect(mock.exercises).toHaveBeenCalledWith({ userId: "own", personId: "person" }, {}); expect(mock.list).toHaveBeenCalledWith({ userId: "own", personId: "person" }, {}); expect(mock.weightGoal).toHaveBeenCalledWith({ userId: "own", personId: "person" });
+    expect(renderToStaticMarkup(await Page())).toContain("ข้อมูลที่คุณบันทึก"); expect(mock.connection).toHaveBeenCalledOnce(); expect(mock.exercises).toHaveBeenCalledWith({ userId: "own", personId: "person" }, { occurredOn: weightGoalBangkokToday(new Date()) }); expect(mock.list).toHaveBeenCalledWith({ userId: "own", personId: "person" }, { occurredOn: weightGoalBangkokToday(new Date()) }); expect(mock.weightGoal).toHaveBeenCalledWith({ userId: "own", personId: "person" });
   });
   it("uses opaque actor remount key and independent fresh create nonces", async () => {
     const first = await Page(); mock.actor.mockResolvedValue({ userId: "second", personId: "other" }); const second = await Page();

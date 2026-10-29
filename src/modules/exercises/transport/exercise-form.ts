@@ -6,7 +6,7 @@ export type ExerciseOperation = "create" | "update" | "delete" | "list";
 const limits: Record<ExerciseOperation, Record<string, number>> = {
   create: { submissionNonce: 36, activityName: EXERCISE_ACTIVITY_RAW_MAX, durationMinutes: EXERCISE_DURATION_RAW_MAX, occurredOn: 10, note: EXERCISE_NOTE_RAW_MAX },
   update: { entryId: 36, expectedUpdatedAt: 40, activityName: EXERCISE_ACTIVITY_RAW_MAX, durationMinutes: EXERCISE_DURATION_RAW_MAX, occurredOn: 10, note: EXERCISE_NOTE_RAW_MAX },
-  delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: EXERCISE_CURSOR_MAX_LENGTH },
+  delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: EXERCISE_CURSOR_MAX_LENGTH, occurredOn: 10 },
 };
 export function parseExerciseForm(formData: FormData, operation: ExerciseOperation): Record<string, string | number | null> {
   const fields: Record<string, string> = {};

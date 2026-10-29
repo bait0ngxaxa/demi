@@ -27,9 +27,11 @@ export async function listOwnPersonalMeals(actor: ActorContext | null | undefine
     if (!parsed.success) throw new ValidationError();
     return await runSerializableTransaction(database, async (tx) => {
       const patientProfileId = await resolvePersonalMealOwner(actor, tx);
+      const scope: Prisma.PersonalMealEntryWhereInput = { patientProfileId, ...(parsed.data.occurredOn ? { occurredOn: toMealDateCarrier(parsed.data.occurredOn) } : {}) };
       let seek: Prisma.PersonalMealEntryWhereInput = {};
       if (parsed.data.cursor) {
         const position = decodeMealCursor(actor, patientProfileId, parsed.data.cursor);
+        if (parsed.data.occurredOn && position.occurredOn !== parsed.data.occurredOn) throw new ConflictError();
         const anchor = await tx.personalMealEntry.findFirst({ where: { id: position.id, patientProfileId }, select: personalMealSelect });
         if (!anchor) throw new NotFoundError();
         const dto = toPersonalMealDto(anchor);
@@ -38,11 +40,12 @@ export async function listOwnPersonalMeals(actor: ActorContext | null | undefine
         const createdAt = new Date(position.createdAt);
         seek = { OR: [{ occurredOn: { lt: occurredOn } }, { occurredOn, createdAt: { lt: createdAt } }, { occurredOn, createdAt, id: { lt: position.id } }] };
       }
-      const rows = await tx.personalMealEntry.findMany({ where: { patientProfileId, ...seek },
+      const rows = await tx.personalMealEntry.findMany({ where: { AND: [scope, seek] },
         orderBy: [{ occurredOn: "desc" }, { createdAt: "desc" }, { id: "desc" }], take: MEAL_PAGE_SIZE + 1, select: personalMealSelect });
       const items = rows.slice(0, MEAL_PAGE_SIZE).map(toPersonalMealDto);
       const last = items.at(-1);
-      return { items, nextCursor: rows.length > MEAL_PAGE_SIZE && last ? encodeMealCursor(actor, { version: 1, patientProfileId,
+      const dailySummary = parsed.data.occurredOn ? { occurredOn: parsed.data.occurredOn, count: await tx.personalMealEntry.count({ where: scope }) } : undefined;
+      return { items, ...(dailySummary ? { dailySummary } : {}), nextCursor: rows.length > MEAL_PAGE_SIZE && last ? encodeMealCursor(actor, { version: 1, patientProfileId,
         id: last.id, occurredOn: last.occurredOn, createdAt: last.createdAt, updatedAt: last.updatedAt }) : null };
     }, 0);
   } catch (error: unknown) { throw normalizeMealError(error); }

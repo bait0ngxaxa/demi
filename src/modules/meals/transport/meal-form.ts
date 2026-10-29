@@ -5,7 +5,7 @@ export type MealOperation = "create" | "update" | "delete" | "list";
 const limits: Record<MealOperation, Record<string, number>> = {
   create: { submissionNonce: 36, category: 9, occurredOn: 10, description: 2000 },
   update: { entryId: 36, expectedUpdatedAt: 40, category: 9, occurredOn: 10, description: 2000 },
-  delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: MEAL_CURSOR_MAX_LENGTH },
+  delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: MEAL_CURSOR_MAX_LENGTH, occurredOn: 10 },
 };
 export function parseMealForm(formData: FormData, operation: MealOperation): Record<string, string> {
   const fields: Record<string, string> = {};

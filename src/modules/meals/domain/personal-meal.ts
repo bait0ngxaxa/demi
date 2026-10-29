@@ -11,7 +11,7 @@ export type PersonalMealDto = {
   id: string; category: MealCategory; occurredOn: string; description: string | null;
   createdAt: string; updatedAt: string;
 };
-export type PersonalMealPage = { items: PersonalMealDto[]; nextCursor: string | null };
+export type PersonalMealPage = { items: PersonalMealDto[]; nextCursor: string | null; dailySummary?: { occurredOn: string; count: number } };
 
 // A Date here is strictly a Prisma DATE carrier, never a consumption instant.
 export function isMealCivilDate(value: string): boolean {

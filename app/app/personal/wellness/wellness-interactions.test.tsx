@@ -61,9 +61,11 @@ describe("Thai interactive journal editors", () => {
   });
   it("selects each meal category as the actual submitted value", async () => {
     await act(() => root.render(<MealEditor today="2026-10-29" nonce={nonce} coordination={coordination()} />));
+    expect(host.querySelector("textarea")?.closest("[hidden]")).not.toBeNull();
     for (const category of ["BREAKFAST", "LUNCH", "DINNER", "SNACK"]) {
       await act(() => host.querySelector<HTMLInputElement>(`[value="${category}"]`)?.click());
       expect(new FormData(host.querySelector("form") ?? undefined).get("category")).toBe(category);
+      expect(host.querySelector("textarea")?.closest("[hidden]")).toBeNull();
     }
     expect(host.querySelector("textarea[name=description]")).not.toBeNull();
   });
