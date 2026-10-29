@@ -53,7 +53,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
   it("create/editor optional description, explicit four categories/version and escaped literal readback", () => {
     const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
     expect(create).toContain('name="submissionNonce"'); expect(create).toContain("รายละเอียด (ไม่บังคับ)"); expect(create).toContain('type="date"');
-    expect(create.match(/<option value="(?:BREAKFAST|LUNCH|DINNER|SNACK)"/gu)).toHaveLength(4); expect(create).not.toContain("OTHER");
+    expect(create.match(/type="radio"[^>]*name="category"[^>]*value="(?:BREAKFAST|LUNCH|DINNER|SNACK)"/gu)).toHaveLength(4); expect(create).not.toContain("OTHER");
     const edit = renderToStaticMarkup(<MealEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />);
     expect(edit).toContain("บันทึกการแก้ไข"); expect(edit).toContain('name="expectedUpdatedAt"'); expect(edit).not.toContain('name="submissionNonce"');
     const readback = renderToStaticMarkup(<MealReadback item={row} />); expect(readback).toContain("&lt;script&gt;"); expect(readback).not.toContain("<script>"); expect(readback).toContain("**literal**"); expect(readback).toContain(row.occurredOn);

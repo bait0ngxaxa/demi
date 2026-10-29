@@ -10,6 +10,7 @@ import { createPersonalExerciseAction, updatePersonalExerciseAction, deletePerso
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
+const activityOptions = ["เดิน", "วิ่ง", "ปั่นจักรยาน", "แบดมินตัน", "ฟุตบอล"];
 function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination): [ExerciseActionState, (form: FormData) => void, boolean] {
   return useActionState(async (previous: ExerciseActionState, form: FormData) => {
     const authorityGeneration = coordination.authority.captureGeneration();
@@ -30,6 +31,7 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
   const [durationMinutes, setDurationMinutes] = useState(item?.durationMinutes?.toString() ?? "");
   const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
   const [note, setNote] = useState(item?.note ?? "");
+  const [search, setSearch] = useState("");
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
@@ -38,6 +40,15 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked} className="space-y-4">
+      <div className="space-y-3">
+        <label htmlFor={`${prefix}-search`} className="block text-sm font-medium">เลือกกิจกรรม หรือกรอกเอง</label>
+        <Input id={`${prefix}-search`} type="search" maxLength={120} placeholder="ค้นหากิจกรรม" value={search} onChange={(event) => setSearch(event.target.value)} />
+        <div className="flex flex-wrap gap-2" aria-label="กิจกรรมที่เลือกได้">
+          {activityOptions.filter((name) => name.includes(search.trim())).map((name) => <Button key={name} size="compact" variant={activityName === name ? "primary" : "secondary"} aria-pressed={activityName === name} onClick={() => setActivityName(name)}>{name}</Button>)}
+          <Button size="compact" variant="secondary" onClick={() => { setActivityName(""); document.getElementById(`${prefix}-activity`)?.focus(); }}>อื่น ๆ / กรอกเอง</Button>
+        </div>
+        {search.trim() && !activityOptions.some((name) => name.includes(search.trim())) ? <p role="status" className="text-sm text-text-muted">ไม่พบกิจกรรม สามารถกรอกชื่อกิจกรรมของคุณได้</p> : null}
+      </div>
       <div className="space-y-2"><label htmlFor={`${prefix}-activity`} className="block text-sm font-medium">กิจกรรมที่ทำ</label>
         <Input id={`${prefix}-activity`} name="activityName" required maxLength={EXERCISE_ACTIVITY_RAW_MAX} value={activityName} onChange={(e) => setActivityName(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.activityName)} aria-describedby={`${prefix}-activity-help`} />
         <p id={`${prefix}-activity-help`} className="text-sm text-text-muted">{state.fieldErrors?.activityName ?? "ไม่เกิน 120 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>

@@ -3,7 +3,6 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import { MEAL_CATEGORIES, MEAL_CATEGORY_LABELS, type PersonalMealDto } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
@@ -38,10 +37,14 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked} className="space-y-4">
-      <div className="space-y-2"><label htmlFor={`${prefix}-category`} className="block text-sm font-medium">หมวดมื้ออาหาร</label>
-        <Select id={`${prefix}-category`} name="category" value={category} onChange={(e) => setCategory(e.target.value as typeof category)} required aria-invalid={Boolean(state.fieldErrors?.category)} aria-describedby={`${prefix}-category-help`}>
-          <option value="">เลือกหมวดมื้ออาหาร</option>{MEAL_CATEGORIES.map((value) => <option key={value} value={value}>{MEAL_CATEGORY_LABELS[value]}</option>)}
-        </Select><p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p></div>
+      <fieldset className="space-y-2" aria-describedby={`${prefix}-category-help`}>
+        <legend className="mb-2 text-sm font-medium">หมวดมื้ออาหาร</legend>
+        <div className="grid grid-cols-2 gap-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-12 cursor-pointer items-center gap-2 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
+          <input type="radio" name="category" value={value} required checked={category === value} onChange={() => setCategory(value)} aria-invalid={Boolean(state.fieldErrors?.category)} className="accent-brand" />
+          <span className="min-w-0 text-sm font-medium">{MEAL_CATEGORY_LABELS[value]}<span className="block text-xs">{item ? "เลือกมื้ออาหาร" : "เพิ่มบันทึก"}</span></span>
+        </label>)}</div>
+        <p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p>
+      </fieldset>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
         <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
