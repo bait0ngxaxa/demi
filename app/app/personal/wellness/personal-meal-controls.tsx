@@ -10,22 +10,35 @@ import { createPersonalMealAction, updatePersonalMealAction, deletePersonalMealA
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: MealActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
-function useMealAction(action: (previous: MealActionState, form: FormData) => Promise<MealActionState>, coordination: Coordination): [MealActionState, (form: FormData) => void, boolean] {
-  return useActionState(async (previous: MealActionState, form: FormData) => {
+function useMealAction(action: (previous: MealActionState, form: FormData) => Promise<MealActionState>, coordination: Coordination, create = false): [MealActionState, (form: FormData) => void, boolean, boolean] {
+  const payload = useRef<FormData | null>(null);
+  const [recovery, setRecovery] = useState<"EDITABLE" | "RETRY_ORIGINAL">("EDITABLE");
+  const recovering = recovery === "RETRY_ORIGINAL";
+  const [state, dispatch, pending] = useActionState(async (previous: MealActionState, form: FormData) => {
     const authorityGeneration = coordination.authority.captureGeneration();
     if (!coordination.isActive()) return { status: "IDLE" } as const;
     coordination.onPending(true);
     let state: MealActionState;
-    try { state = await action(previous, form); }
+    const submitted = payload.current ?? form;
+    const snapshot = new FormData();
+    for (const [key, value] of submitted) snapshot.append(key, value);
+    try { state = await action(previous, snapshot); }
     catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" }; }
     if (!coordination.isActive() || !coordination.authority.isCurrent(authorityGeneration)) return { status: "IDLE" } as const;
+    if (create) {
+      // A read or failed retry cannot prove that the original write rolled back.
+      const unresolved = !state.result && state.status !== "CREATE_CONSUMED" && (payload.current !== null || state.status === "UNCONFIRMED" || state.status === "CONFLICT");
+      payload.current = unresolved ? submitted : null;
+      setRecovery(unresolved ? "RETRY_ORIGINAL" : "EDITABLE");
+    }
     coordination.onPending(false);
     coordination.onResult(state);
     return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
+  return [state, dispatch, pending, recovering];
 }
 export function MealEditor({ item, today, nonce, coordination }: { item?: PersonalMealDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {
-  const [state, action, pending] = useMealAction(item ? updatePersonalMealAction : createPersonalMealAction, coordination);
+  const [state, action, pending, recovering] = useMealAction(item ? updatePersonalMealAction : createPersonalMealAction, coordination, !item);
   const [category, setCategory] = useState(item?.category ?? "");
   const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
   const [description, setDescription] = useState(item?.description ?? "");
@@ -36,7 +49,7 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
   const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
-    <fieldset disabled={blocked} className="space-y-4">
+    <fieldset disabled={blocked || recovering} className="space-y-4">
       <fieldset className="space-y-2" aria-invalid={Boolean(state.fieldErrors?.category)} aria-describedby={`${prefix}-category-help`}>
         <legend className="mb-2 text-sm font-medium">หมวดมื้ออาหาร</legend>
         <div className="grid grid-cols-2 gap-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-12 cursor-pointer items-center gap-2 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
@@ -55,7 +68,8 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
       </div>
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
-    <Button type="submit" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
+    {recovering ? <p className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
+    <Button type="submit" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
   </form>;
 }
 export function MealDeleteForm({ item, coordination }: { item: PersonalMealDto; coordination: Coordination }): React.JSX.Element {

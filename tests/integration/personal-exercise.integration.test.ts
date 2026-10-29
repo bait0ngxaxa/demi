@@ -78,6 +78,21 @@ describe("Personal Exercise Journal real PostgreSQL", () => {
     await db.$connect();
   });
   afterEach(cleanup); afterAll(async () => { await db.$disconnect(); });
+  it("reconciles a committed create whose response was lost without another row or audit", async () => {
+    const a = await actor(); const submissionNonce = randomUUID();
+    const payload = { submissionNonce, ...fields };
+    const lostResponse = { $transaction: async (...args: Parameters<PrismaClient["$transaction"]>) => {
+      await db.$transaction(...args);
+      throw new Error("synthetic response loss after commit");
+    } } as unknown as PrismaClient;
+    await expect(create(a, payload, { ...deps, database: lostResponse })).rejects.toBeDefined();
+    const replay = await create(a, payload, deps);
+    expect(replay.outcome).toBe("REPLAY");
+    const row = item(replay);
+    expect(await db.personalExerciseEntry.count({ where: { patientProfileId: await owner(a) } })).toBe(1);
+    expect(await db.personalExerciseCreateReceipt.count({ where: { patientProfileId: await owner(a), submissionNonce } })).toBe(1);
+    expect(await db.auditEvent.count({ where: { resourceId: row.id, action: "personal_exercise.created" } })).toBe(1);
+  });
   it("create/replay/current edit/NOOP/delete receipts and minimized audits", async () => {
     const a = await actor(); const nonce = randomUUID(); const row = await make(a, nonce);
     expect(row.occurredOn).toBe(fields.occurredOn); expect(await detail(a, row.id, db)).toEqual(row);

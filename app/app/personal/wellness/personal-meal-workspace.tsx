@@ -20,6 +20,8 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce, author
   const [nonce, setNonce] = useState(initialNonce);
   const [feedback, setFeedback] = useState<MealActionState>({ status: "IDLE" });
   const [blocked, setBlocked] = useState(false);
+  const unresolvedCreate = useRef(false);
+  const [recoveringCreate, setRecoveringCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pending, startTransition] = useTransition();
   const generation = useRef(0);
@@ -57,8 +59,8 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce, author
         setPage((current) => ({ items: append ? [...new Map([...current.items, ...next.items].map((item) => [item.id, item])).values()] : next.items, nextCursor: next.nextCursor, dailySummary: next.dailySummary }));
         onSummary?.(next.dailySummary);
         if (afterMutation) editorHeading.current?.focus();
-        onLockChange?.(false);
-        if (!append) { setSelected(undefined); setBlocked(false); if (!afterMutation) setFeedback({ status: "IDLE" }); if (afterMutation || feedback.status === "SUCCESS") setNonce(crypto.randomUUID()); }
+        onLockChange?.(unresolvedCreate.current);
+        if (!append && !unresolvedCreate.current) { setSelected(undefined); setBlocked(false); if (!afterMutation) setFeedback({ status: "IDLE" }); if (afterMutation || feedback.status === "SUCCESS") setNonce(crypto.randomUUID()); }
       } else {
         setFeedback(result);
       }
@@ -68,7 +70,11 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce, author
     if (!active.current || !authority.isActive()) return;
     if (state.status === "DENIED") { authority.invalidate(); clearPrivateState(); return; }
     setFeedback(state);
-    onLockChange?.(state.status === "UNCONFIRMED" || state.status === "CONFLICT");
+    if (!selected) {
+      unresolvedCreate.current = !state.result && state.status !== "CREATE_CONSUMED" && (unresolvedCreate.current || state.status === "UNCONFIRMED" || state.status === "CONFLICT");
+      setRecoveringCreate(unresolvedCreate.current);
+    }
+    onLockChange?.(unresolvedCreate.current || state.status === "UNCONFIRMED" || state.status === "CONFLICT");
     if (state.result) {
       setBlocked(true);
       const result = state.result;
@@ -90,11 +96,11 @@ export function PersonalMealWorkspace({ initialPage, today, initialNonce, author
       <MealEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} nonce={nonce} coordination={coordination} />
       {selected ? <MealDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        <Button variant="ghost" disabled={saving || pending} onClick={() => { setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); onLockChange?.(false); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
+        <Button variant="ghost" disabled={saving || pending || recoveringCreate} onClick={() => { if (unresolvedCreate.current) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); onLockChange?.(false); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
     </div></Panel>
     <section aria-label="ประวัติมื้ออาหาร" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกมื้ออาหารของฉัน</h3>
       {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกมื้ออาหาร</p> : <ul className="divide-y divide-border">{page.items.map((item) => <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><MealReadback item={item} />
-        <Button variant="secondary" disabled={saving || pending} onClick={() => { setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
+        <Button variant="secondary" disabled={saving || pending || recoveringCreate} onClick={() => { if (unresolvedCreate.current) return; setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}
     </section>

@@ -11,22 +11,35 @@ import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
 const activityOptions = ["เดิน", "วิ่ง", "ปั่นจักรยาน", "แบดมินตัน", "ฟุตบอล"];
-function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination): [ExerciseActionState, (form: FormData) => void, boolean] {
-  return useActionState(async (previous: ExerciseActionState, form: FormData) => {
+function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination, create = false): [ExerciseActionState, (form: FormData) => void, boolean, boolean] {
+  const payload = useRef<FormData | null>(null);
+  const [recovery, setRecovery] = useState<"EDITABLE" | "RETRY_ORIGINAL">("EDITABLE");
+  const recovering = recovery === "RETRY_ORIGINAL";
+  const [state, dispatch, pending] = useActionState(async (previous: ExerciseActionState, form: FormData) => {
     const authorityGeneration = coordination.authority.captureGeneration();
     if (!coordination.isActive()) return { status: "IDLE" } as const;
     coordination.onPending(true);
     let state: ExerciseActionState;
-    try { state = await action(previous, form); }
+    const submitted = payload.current ?? form;
+    const snapshot = new FormData();
+    for (const [key, value] of submitted) snapshot.append(key, value);
+    try { state = await action(previous, snapshot); }
     catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" }; }
     if (!coordination.isActive() || !coordination.authority.isCurrent(authorityGeneration)) return { status: "IDLE" } as const;
+    if (create) {
+      // A read or failed retry cannot prove that the original write rolled back.
+      const unresolved = !state.result && state.status !== "CREATE_CONSUMED" && (payload.current !== null || state.status === "UNCONFIRMED" || state.status === "CONFLICT");
+      payload.current = unresolved ? submitted : null;
+      setRecovery(unresolved ? "RETRY_ORIGINAL" : "EDITABLE");
+    }
     coordination.onPending(false);
     coordination.onResult(state);
     return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
+  return [state, dispatch, pending, recovering];
 }
 export function ExerciseEditor({ item, today, nonce, coordination }: { item?: PersonalExerciseDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {
-  const [state, action, pending] = useExerciseAction(item ? updatePersonalExerciseAction : createPersonalExerciseAction, coordination);
+  const [state, action, pending, recovering] = useExerciseAction(item ? updatePersonalExerciseAction : createPersonalExerciseAction, coordination, !item);
   const [activityName, setActivityName] = useState(item?.activityName ?? "");
   const [durationMinutes, setDurationMinutes] = useState(item?.durationMinutes?.toString() ?? "");
   const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
@@ -39,7 +52,7 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
   const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
   return <form action={action} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
-    <fieldset disabled={blocked} className="space-y-4">
+    <fieldset disabled={blocked || recovering} className="space-y-4">
       <div className="space-y-3">
         <label htmlFor={`${prefix}-search`} className="block text-sm font-medium">เลือกกิจกรรม หรือกรอกเอง</label>
         <Input id={`${prefix}-search`} type="search" maxLength={120} placeholder="ค้นหากิจกรรม" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -63,7 +76,8 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
         <p id={`${prefix}-note-help`} className="text-sm text-text-muted">{state.fieldErrors?.note ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
-    <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && (state.status === "UNCONFIRMED" || state.status === "CONFLICT") ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
+    {recovering ? <p className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
+    <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
   </form>;
 }
 export function ExerciseDeleteForm({ item, coordination }: { item: PersonalExerciseDto; coordination: Coordination }): React.JSX.Element {
