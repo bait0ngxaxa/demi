@@ -13,6 +13,7 @@ let host: HTMLDivElement;
 let root: Root;
 const nonce = "11111111-1111-4111-8111-111111111111";
 const date = "2026-10-29";
+const persisted = { id: nonce, occurredOn: date, createdAt: `${date}T00:00:00.000Z`, updatedAt: `${date}T00:00:00.000Z`, category: "SNACK" as const, description: "เดิม", activityName: "เดิน", durationMinutes: 10, note: "เดิม" };
 function button(label: string): HTMLButtonElement {
   const found = [...host.querySelectorAll("button")].find((element) => element.textContent === label);
   if (!found) throw new Error(`Missing ${label}`);
@@ -21,15 +22,59 @@ function button(label: string): HTMLButtonElement {
 beforeEach(() => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
-  async function mount(): Promise<{ authority: ReturnType<typeof createWellnessPrivateAuthority>; lock: ReturnType<typeof vi.fn> }> {
+  async function mount(withRecord = false): Promise<{ authority: ReturnType<typeof createWellnessPrivateAuthority>; lock: ReturnType<typeof vi.fn> }> {
     const authority = createWellnessPrivateAuthority(vi.fn());
     const lock = vi.fn();
-    const props = { initialPage: { items: [], nextCursor: null }, today: date, initialNonce: nonce, authority, date, onLockChange: lock };
+    const props = { initialPage: { items: withRecord ? [persisted] : [], nextCursor: null }, today: date, initialNonce: nonce, authority, date, onLockChange: lock };
     await act(() => root.render(kind === "meal" ? <PersonalMealWorkspace {...props} /> : <PersonalExerciseWorkspace {...props} />));
     await act(() => kind === "meal" ? host.querySelector<HTMLInputElement>('[value="SNACK"]')?.click() : button("เดิน").click());
     return { authority, lock };
   }
   const save = kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย";
+  it("requires refreshed versions after an edit conflict, rather than retrying stale edits", async () => {
+    const { lock } = await mount(true);
+    await act(() => button("แก้ไข / ลบ").click());
+    mock[kind].mockResolvedValue({ status: "CONFLICT", message: "รายการเปลี่ยนแล้ว" });
+    await act(() => button("บันทึกการแก้ไข").click());
+    expect(button("บันทึกการแก้ไข").disabled).toBe(true);
+    expect(lock.mock.lastCall).toEqual([true]);
+    const current = { ...persisted, updatedAt: `${date}T00:01:00.000Z` };
+    (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValue({ status: "SUCCESS", page: { items: [current], nextCursor: null } });
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(lock.mock.lastCall).toEqual([false]);
+    await act(() => button("แก้ไข / ลบ").click());
+    expect(host.querySelector<HTMLInputElement>('[name="expectedUpdatedAt"]')?.value).toBe(current.updatedAt);
+    expect(button("บันทึกการแก้ไข").disabled).toBe(false);
+  });
+  it("a read failure during unresolved create preserves payload, retry and navigation protection", async () => {
+    const { lock } = await mount();
+    mock[kind].mockResolvedValue({ status: "UNCONFIRMED", message: "ผลยังไม่แน่นอน" });
+    await act(() => button(save).click());
+    const original = [...mock[kind].mock.calls[0][1].entries()];
+    (kind === "meal" ? mock.meals : mock.exercises).mockRejectedValue(new Error("offline"));
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(lock.mock.lastCall).toEqual([true]);
+    expect(button("เริ่มบันทึกใหม่").disabled).toBe(true);
+    // Even a synthetic changed value must not change the saved retry snapshot.
+    const input = host.querySelector<HTMLInputElement>('[name="occurredOn"]');
+    await act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "2026-10-01");
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect([...mock[kind].mock.calls[1][1].entries()]).toEqual(original);
+  });
+  it("releases a pending read on unmount and ignores its late result", async () => {
+    const { lock } = await mount();
+    let resolve: (value: unknown) => void = () => undefined;
+    (kind === "meal" ? mock.meals : mock.exercises).mockReturnValue(new Promise((done) => { resolve = done; }));
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(lock.mock.lastCall).toEqual([true]);
+    await act(() => root.render(null));
+    expect(lock.mock.lastCall).toEqual([false]);
+    await act(() => resolve({ status: "SUCCESS", page: { items: [persisted], nextCursor: null } }));
+    expect(host.textContent).toBe("");
+  });
   it.each(["error", "throw"])("releases a failed %s read without rewriting mutation feedback", async (failure) => {
     const { lock } = await mount();
     const list = kind === "meal" ? mock.meals : mock.exercises;
@@ -65,6 +110,7 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
     expect(button("เริ่มบันทึกใหม่").disabled).toBe(true);
     expect(lock.mock.lastCall).toEqual([true]);
+    expect(host.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
     const item = { id: nonce, occurredOn: date, createdAt: `${date}T00:00:00Z`, updatedAt: `${date}T00:00:00Z`, category: "SNACK", description: null, activityName: "เดิน", durationMinutes: null, note: null };
     mock[kind].mockResolvedValue({ status: "SUCCESS", message: "ดำเนินการแล้ว", result: { outcome: "REPLAY", item } });
     (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValue({ status: "SUCCESS", page: { items: [item], nextCursor: null } });

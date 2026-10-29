@@ -61,3 +61,64 @@ Nothing from Phase E is implemented. Approval must specify all of:
 7. Data provenance, correction history and treatment of changing source data.
 8. Privacy, consent, retention, visibility and any secondary use.
 9. A separate domain contract for personal weight observations and any proposed weight-progress linkage.
+
+## Remediation — baseline `fb6b7282` (2026-10-29)
+
+This section records the remediation of the implementation above. Earlier verification, isolated SSR screenshots and the earlier **SHIP** verdict are historical baseline evidence only; they do not establish acceptance of this remediation. The implementation commits are `bbbac8b` (F1, unresolved create intent), `895283f` (F2, separate read/mutation locks) and `d6797a2` (F4, Bangkok recording dates). The current source also includes the focused journal retry/lifecycle refinements reviewed during this remediation.
+
+### F1 — preserve an unresolved journal create intent
+
+The Meal and Exercise workspaces previously allowed ordinary new-intent actions to replace the nonce after an uncertain create. Retry fields also remained editable, so the same nonce could be sent with different values. A successful list read could discard unresolved context without reconciling its receipt. The recovery form now disables editing; because native submission omits disabled controls, retry explicitly uses a retained snapshot instead of rebuilding the request from the disabled form.
+
+Each journal create hook now retains the original submitted `FormData` in memory and copies that retained payload for each retry. An uncertain response or retryable conflict freezes the editable fields and offers “ลองคำขอเดิมอีกครั้ง”. Ordinary new-intent actions, record selection and selected-day switching cannot discard the unresolved create. A later failed retry does not release recovery: the same payload and nonce survive until a confirmed mutation result or `CREATE_CONSUMED`. A list read alone cannot prove rollback. The retained payload is not persisted in browser storage. Server services, receipts, nonce contracts and transactional authorization are unchanged; this remediation concerns the Meal and Exercise journal create hooks, not a new Weight Goal recovery contract.
+
+### F2 — separate read activity from mutation authority
+
+The same Boolean navigation-lock signal represented reads and writes. Successful reads could clear unresolved mutation protection, while failed reads never released their lock. Mutation pending callbacks could overwrite those signals, and read feedback could overwrite mutation feedback. Each journal now owns an activity ref with `readPending` and write state `IDLE`, `WRITE_PENDING`, `UNRESOLVED_CREATE`, `REVIEW_REQUIRED` or `CONFIRMED`. It synchronously publishes the derived navigation lock when those activities change. Completing a read releases only that read's activity; unresolved creates and existing-record review requirements retain their write lock.
+
+Read warnings and mutation feedback occupy separate state and feedback regions. A refresh failure can warn that the list/summary is unavailable while keeping the confirmed result or unresolved retry instruction visible. Daily aggregates are withheld while a fresh authoritative read is unavailable. Request generations, private-authority generations and active/unmount guards reject late responses; unmount invalidates the pending read and releases that journal's published lock. A successful fresh read can reconcile an existing-record review, but cannot resolve an uncertain create. No server mutation, permission or persistence rule changed.
+
+### F4 — maintain the live Bangkok recording-date limit
+
+The browser date controls previously lacked a live maximum for Thai recording dates. A server-provided day could become stale after hydration delay, midnight or a sleeping tab. The workspace now reconciles Bangkok today after hydration, schedules the next Bangkok midnight, and refreshes the limit on focus and visibility changes. Both journal recording-date inputs and the daily date selector receive the live maximum. The date-submit handler independently recomputes Bangkok today and rejects a future date before requesting the selected day.
+
+Updating this limit preserves the selected day and all editor drafts. It does not rewrite recording dates or Weight Goal targets. The existing optional Weight Goal date, 1–26 week slider, explicit “ใช้ระยะเวลานี้” action and server target-date validation remain unchanged. Server validation remains authoritative.
+
+### F3 — reference comparison is BLOCKED
+
+The three requested reference images were not attached or accessibly provided, and no corresponding reference fixtures were found in the repository. Screenshot-to-implementation differences are therefore **UNKNOWN**. Source inspection establishes the implementation below; it cannot establish fidelity to an unavailable image.
+
+| Requested layout / interaction reference area | Actual implementation inspected | Screenshot-to-implementation differences |
+| --- | --- | --- |
+| Overall Wellness layout and daily calendar/overview | Existing Thai page header, section shortcuts, native date selector and daily readback; responsive stacking uses the existing workspace and tokens. Live Bangkok date limit and event guard apply. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+| Meal selection and entry | Four native category radio cards reveal manual fields; unresolved creates freeze fields and retain the original payload/nonce for retry. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+| Exercise selection and entry | Searchable Thai activity conveniences with manual entry, journal readback, independent read warnings and protected create recovery. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+| Weight Goal duration/date interaction | Native 1–26 week range, explicit apply action and optional manual target date; existing target rules retained. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+| Mobile navigation and touch ergonomics | Existing section anchors, stacked responsive controls and shared mobile touch-target primitives retained. No fresh rendered geometry measurement in remediation. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+| Date history, empty, loading and confirmation states | Date-scoped persisted history, empty copy, pending controls, delete confirmation and separate refresh/recovery feedback remain; component behavior is tested. | **UNKNOWN — reference unavailable; F3 BLOCKED** |
+
+Native controls, Thai content, clinical green semantic tokens, existing typography, Panel, Button, Input, Alert and focus treatments are retained. No new visual system, imagery or raster asset was introduced. `DESIGN.md`, `PRODUCT.md` and `.impeccable/design.json` remain unchanged. The previously noted sidecar drift is not canonized or repaired by this task.
+
+
+### Remediation file responsibilities
+
+| Files | Responsibility |
+| --- | --- |
+| `personal-meal-controls.tsx`, `personal-exercise-controls.tsx` | In-memory original-request snapshot, immutable retry fields/payload, persistent unknown-outcome navigation marker and recording-date maximum. |
+| `personal-meal-workspace.tsx`, `personal-exercise-workspace.tsx` | Separate read/write activity, guarded new intent/history selection, safe refresh cleanup, warnings and confirmed feedback. |
+| `personal-wellness-workspace.tsx` | Live Bangkok maximum, event-time date validation and unavailable aggregate copy. |
+| `journal-recovery.test.tsx` | Both journals: lost response, same payload/nonce retry, failed retries/reads, consumed/replayed creates, edit conflict, unmount and authority invalidation. |
+| `daily-wellness-interactions.test.tsx`, `wellness-private-response-matrix.test.tsx` | Both-domain date protection, failed aggregate navigation, stale/replaced reads, write/read overlap, timezone and midnight behavior. |
+| `personal-meal-workspace.test.tsx`, `personal-exercise-workspace.test.tsx`, `personal-wellness-workspace.test.tsx`, `wellness-interactions.test.tsx` | Static contract alignment, frozen recovery fields, recording maximum and unrestricted future Weight Goal dates. |
+| `tests/integration/personal-meal.integration.test.ts`, `tests/integration/personal-exercise.integration.test.ts` | Real PostgreSQL commit-then-response-loss replay with one row, receipt and create audit. |
+| `docs/ui/PATIENT_WELLNESS_UX.md` | Root causes, design, actual evidence and blocked F3 acceptance. |
+
+### Remediation verification and remaining limits
+
+- Independent finish reviewer: no material source or interaction issue found; formal disposition is **RECAPTURE** because reference images and fresh visual captures are missing. This is not visual-fidelity acceptance.
+- The detector was run once over five UI files and returned `[]`. This finding does not replace visual or authenticated browser verification.
+- Real PostgreSQL verification **PASS**, three files / 85 tests: Meal 29 tests, Exercise plus Weight Goal 56 tests. The response-loss scenario commits a real transaction before losing the response; retry returns `REPLAY` with one persisted row, one surviving receipt and one audit event.
+- Remediation `npm run typecheck` PASS and `npm run lint -- --max-warnings 0` PASS. An earlier lint invocation overlapped a test-file write and reported a transient parse error; the stable-file targeted lint and subsequent whole-repository lint passed. The first `npm run build` compiled but exhausted its default approximately 2 GiB Node heap during type checking. One resource-adjusted retry with command-local `NODE_OPTIONS=--max-old-space-size=6144` PASS, including TypeScript, page data collection and generation of all 58 static pages. No check, repository config or environment file was weakened or changed. The one final full-suite run (`npm run test`) completed 541 files / 6,015 tests: 540 files / 6,014 tests passed; one Wellness composition assertion still required date inputs to have no maximum, contrary to approved F4. That deterministic failure was reproduced alone and the assertion changed to require the Bangkok maximum on all three recording-date inputs. The affected four-file run passed 37 tests, then the complete Wellness scope passed 15 files / 108 tests. All production code is unchanged since the broad run. No second full-suite run was performed for this isolated test-expectation correction. Existing LINE tests emitted nonfatal jsdom navigation diagnostics. Targeted ESLint was also rerun for the changed composition test.
+- Browser attempt: the local production server started successfully. Its configured canonical-origin redirect sent the browser to the existing deployment, whose active session was Admin and correctly showed the Patient-only denial. That deployment is not evidence for this local patch; authenticated Patient browser flows and fresh remediation screenshots remain unverified. No account, permissions, auth configuration or credentials were changed. The temporary server/tab and disposable PostgreSQL container were stopped after verification, preserving database data. Ignored `.next/wellness-review/` screenshots remain previous-baseline isolated SSR evidence only, not reference comparison or remediation acceptance.
+- Reference comparison and fresh responsive captures remain outstanding. Authenticated Patient mobile flows, device/browser native-date behavior, sleeping-tab/midnight behavior on real devices and BFCache UAT remain unverified in a real browser/device session. Mounted interaction and real-database checks do not establish those visual/device results.
+- No schema, migration, dependency, authentication, authorization, clinical calculation or clinical interpretation changes were introduced. Phase E remains deferred under the separate Product Owner decisions listed above.

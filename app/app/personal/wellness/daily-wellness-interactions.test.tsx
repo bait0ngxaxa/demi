@@ -3,10 +3,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DailyWellnessRead } from "./daily-wellness-action";
-const mock = vi.hoisted(() => ({ daily: vi.fn(), create: vi.fn(), list: vi.fn() }));
+const mock = vi.hoisted(() => ({ daily: vi.fn(), create: vi.fn(), list: vi.fn(), exerciseCreate: vi.fn() }));
 vi.mock("./daily-wellness-action", () => ({ readDailyWellnessAction: mock.daily }));
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: mock.create, updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: mock.list }));
-vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: vi.fn(), updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: vi.fn() }));
+vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: mock.exerciseCreate, updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: vi.fn() }));
 vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn() }));
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -118,14 +118,16 @@ describe("Daily Wellness interactions", () => {
     await chooseDate("2026-10-01");
     expect(host.textContent).not.toContain("61 รายการ"); expect(host.querySelector("form")).toBeNull();
   });
-  it("keeps an uncertain create on the same nonce and blocks changing date until reviewed", async () => {
-    mock.create.mockResolvedValue({ status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" });
-    await act(() => host.querySelector<HTMLInputElement>('[name="category"][value="SNACK"]')?.click());
-    await act(() => button("บันทึกมื้ออาหาร").click());
+  it.each(["meal", "exercise"])("keeps an uncertain %s create on the same nonce and blocks changing date until reviewed", async (kind) => {
+    const create = kind === "meal" ? mock.create : mock.exerciseCreate;
+    const initialNonce = kind === "meal" ? nonce : props.exerciseNonce;
+    create.mockResolvedValue({ status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" });
+    await act(() => kind === "meal" ? host.querySelector<HTMLInputElement>('[name="category"][value="SNACK"]')?.click() : button("เดิน").click());
+    await act(() => button(kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย").click());
     await chooseDate("2026-10-01");
     expect(mock.daily).not.toHaveBeenCalled(); expect(host.textContent).toContain("ทบทวนผลคำขอเดิมก่อนเปลี่ยนวัน");
     await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
-    expect(mock.create).toHaveBeenCalledTimes(2);
-    expect(mock.create.mock.calls.map((args) => args[1].get("submissionNonce"))).toEqual([nonce, nonce]);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls.map((args) => args[1].get("submissionNonce"))).toEqual([initialNonce, initialNonce]);
   });
 });

@@ -15,7 +15,7 @@ describe("Wellness composition", () => {
     expect(html).toContain('name="submissionNonce" value="11111111-1111-4111-8111-111111111111"'); expect(html).toContain('name="submissionNonce" value="22222222-2222-4222-8222-222222222222"');
     expect(html).toContain("ยังไม่ได้ตั้งเป้าหมายน้ำหนักส่วนตัว"); expect(html).toContain("ตั้งเป้าหมายน้ำหนัก");
     for (const text of ["คะแนน", "แคลอรี", "Goal", "patientProfileId", "personId", "userId", "33333333-3333-4333-8333-333333333333"]) expect(html).not.toContain(text);
-    expect(html).not.toMatch(/type="date"[^>]*\smax=/u);
+    expect(html.match(/type="date"[^>]*\smax="2026-10-04"/gu)).toHaveLength(3);
   });
   it("links the Rich Menu Wellness destination to self-measurements", () => {
     const html = renderToStaticMarkup(<PersonalWellnessWorkspace mealPage={{ items: [], nextCursor: null }} exercisePage={{ items: [], nextCursor: null }} weightGoal={null} today="2026-10-04" mealNonce="11111111-1111-4111-8111-111111111111" exerciseNonce="22222222-2222-4222-8222-222222222222" weightGoalNonce="33333333-3333-4333-8333-333333333333" />);
