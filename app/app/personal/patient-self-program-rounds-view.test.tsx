@@ -209,4 +209,26 @@ describe("Patient self recording UI (FR-4)", () => {
     expect(own?.querySelector('input[name="weight"]')).not.toBeNull();
     expect(own?.textContent).not.toContain("เจ้าหน้าที่/อสม. บันทึกให้แล้ว");
   });
+  it("FR-7b: hides the round 3 vitals form once the round's Follow-up holds measurements", () => {
+    function roundThree(weight: number | null): string {
+      const program = {
+        ...record,
+        roundCompletions: [1, 2].map((roundNumber) => ({ roundNumber, completedAt: new Date("2026-10-10T00:00:00Z"), completedByUser: recorder })),
+        roundStepSkips: [],
+        followups: record.followups.map((followup) => ({ ...followup, weight })),
+      } as ProgramRoundRecord;
+      const options = { recorderNames: false };
+      const rounds: PatientSelfProgramRounds = { relationship: { relationshipId, hospitalCode: "T", hospitalName: "โรงพยาบาล", hospitalNumber: null, hospitalStatus: "ACTIVE", careEndedAt: null }, overview: buildProgramRoundsOverview(program, options), rounds: [buildProgramRoundDetail(program, 3, { displayName: "" }, { canManage: false, canSelfRecord: true, options })] };
+      return renderToStaticMarkup(<PatientSelfProgramRoundsView programId={programId} relationshipId={relationshipId} rounds={rounds} />);
+    }
+    const vitalsItem = (markup: string) => {
+      const document = globalThis.document.createElement("div"); document.innerHTML = markup;
+      return [...document.querySelectorAll("li")].find((item) => item.querySelector("h3")?.textContent === ROUND_ITEM_CATALOG.VITALS.label);
+    };
+    const measured = vitalsItem(roundThree(62));
+    expect(measured?.textContent).toContain("เจ้าหน้าที่/อสม. บันทึกให้แล้ว");
+    expect(measured?.querySelector('input[name="weight"]')).toBeNull();
+    const empty = vitalsItem(roundThree(null));
+    expect(empty?.querySelector('input[name="weight"]')).not.toBeNull();
+  });
 });

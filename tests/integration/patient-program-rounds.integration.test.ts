@@ -2146,6 +2146,45 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
     await expect(recordPatientProgramServiceOneConfidence(patient, { patientProgramId: fixture.programId, roundNumber: 1, submissionNonce: recordingNonce, score: 6 })).resolves.toMatchObject({ operation: "RECORDED" });
   });
 
+  it("FR-7b: refuses patient round 3 vitals once the round's staff Follow-up holds measurements and writes nothing", async () => {
+    const fixture = await createFixture("fr7b-followup");
+    const patient = await patientActor(fixture);
+    await openProgramRound(fixture.programId, 3);
+    await createFollowupForProgram(fixture.osm.actor, followupInput(fixture.programId));
+    const counts = async () => ({
+      vitals: await prisma.patientProgramRoundVitals.count({ where: { patientProgramId: fixture.programId } }),
+      ledger: await prisma.patientProgramRoundActivity.count({ where: { patientProgramId: fixture.programId } }),
+      receipts: await prisma.auditEvent.count({ where: { action: "patient_program_round.recording_request", actorUserId: patient.userId } }),
+    });
+    const before = await counts();
+    const own = await getOwnPatientProgramRounds(patient, fixture.relationshipId, fixture.programId);
+    expect(own.rounds.find((round) => round.roundNumber === 3)?.staffRecordedSteps).toContain("VITALS");
+    await expect(recordPatientProgramRoundVitals(patient, vitalsInput(fixture.programId, { roundNumber: 3, serviceDate: "2026-08-21" })))
+      .rejects.toMatchObject({ name: "RoundConflictError", message: "เจ้าหน้าที่/อสม. บันทึกรายการนี้แล้ว" });
+    expect(await counts()).toEqual({ ...before, vitals: 0 });
+    const staffView = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, 3);
+    expect(staffView.vitals).toMatchObject({ source: "FOLLOWUP", weight: 72, bloodSugar: 105 });
+  }, 15_000);
+
+  it("FR-7b: allows patient vitals when the Follow-up holds no measurement, and a later staff Follow-up is shown", async () => {
+    const empty = await createFixture("fr7b-empty");
+    const emptyPatient = await patientActor(empty);
+    await openProgramRound(empty.programId, 3);
+    await createFollowupForProgram(empty.osm.actor, followupInput(empty.programId, { weight: null, bloodSugar: null }));
+    await expect(recordPatientProgramRoundVitals(emptyPatient, vitalsInput(empty.programId, { roundNumber: 3, serviceDate: "2026-08-21" })))
+      .resolves.toMatchObject({ operation: "RECORDED" });
+
+    const later = await createFixture("fr7b-later");
+    const laterPatient = await patientActor(later);
+    await openProgramRound(later.programId, 3);
+    await recordPatientProgramRoundVitals(laterPatient, vitalsInput(later.programId, { roundNumber: 3, serviceDate: "2026-08-19" }));
+    await createFollowupForProgram(later.osm.actor, followupInput(later.programId));
+    const staffView = await getProgramRoundDetail(later.osm.actor, later.relationshipId, later.programId, 3);
+    expect(staffView.vitals).toMatchObject({ source: "FOLLOWUP", byPatient: false, weight: 72, bloodSugar: 105 });
+    await expect(recordPatientProgramRoundVitals(laterPatient, vitalsInput(later.programId, { roundNumber: 3, serviceDate: "2026-08-19", weight: 71 })))
+      .rejects.toMatchObject({ name: "RoundConflictError" });
+  }, 20_000);
+
   it("FR-7: both receipt lookups are served by AuditEvent_round_plan_submission_nonce_key", async () => {
     for (const query of [roundPlanReceiptQuery(randomUUID()), roundRecordingReceiptQuery(randomUUID())]) {
       const plan = await prisma.$transaction(async (transaction) => {
@@ -2155,7 +2194,8 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
       });
       const text = plan.map((row) => row["QUERY PLAN"]).join("\n");
       // A key lookup, not a scan of every receipt (Prisma's JSON-path filter only reaches the index predicate).
-      expect(text).toContain('Index Scan using "AuditEvent_round_plan_submission_nonce_key"');
+      // The planner may pick a plain or a bitmap index scan depending on table statistics; both use the key.
+      expect(text).toMatch(/(Bitmap )?Index Scan (using|on) "AuditEvent_round_plan_submission_nonce_key"/);
       expect(text).toContain("Index Cond: ((metadata ->> 'submissionNonce'::text)");
     }
   });

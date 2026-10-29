@@ -53,7 +53,7 @@ import {
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry, recordRoundLedgerEvidence } from "./round-ledger";
-import { assertPatientMayRecordOver } from "./round-record-ownership";
+import { assertPatientMayRecordVitals } from "./round-record-ownership";
 import { findRoundRecordingReceipt, recordRoundRecordingReceipt } from "./round-recording-receipt";
 import { assertActivePlanItem, classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
@@ -412,7 +412,8 @@ async function supplementVitalsInTransaction(
 
 /**
  * FR-7 re-record of the round's existing vitals row while the round is writable:
- * - the patient may re-record only their own row and never blanks a value they did not supply;
+ * - the patient may re-record only their own row (checked by assertPatientMayRecordVitals before this
+ *   call) and never blanks a value they did not supply;
  * - staff replacing a patient row write the full submitted set (missing values become null), so every
  *   value shown is attributable to the recorder;
  * - staff on a staff row supplement missing values or update the supplied ones.
@@ -425,8 +426,6 @@ async function reRecordVitalsInTransaction(
   now: Date,
 ): Promise<PatientProgramRoundVitalsResult> {
   const { access } = context;
-  assertPatientMayRecordOver(context, existing);
-
   const replacesPatientRecord =
     !context.patientSelfRecording &&
     access.patient.userId !== null &&
@@ -533,6 +532,7 @@ async function recordVitalsInTransaction(
   });
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
+  await assertPatientMayRecordVitals(transaction, context, existing, input.roundNumber);
 
   if (existing && (input.preferredName || input.occupation)) {
     throw new ValidationError("กรุณาบันทึกชื่อที่อยากให้เรียกแยกจากการบันทึกสัญญาณชีพซ้ำ");

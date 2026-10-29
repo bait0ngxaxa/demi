@@ -1,4 +1,4 @@
-# Flexible service rounds FR-2–FR-7 — delivery and verification
+# Flexible service rounds FR-2–FR-7b — delivery and verification
 
 วันที่ตัดสินใจผลิตภัณฑ์: 2026-10-28 · สาขา `feat/flexible-service-rounds` · ฐาน `431b8c5` · กติกา [ADR-0022](../adr/0022-plan-driven-service-rounds.md)
 
@@ -11,7 +11,8 @@
 | FR-4 | `4fae29b` | ผู้ป่วยบันทึก 9 ประเภทรายการผ่านบริการเดิม, ตรวจสิทธิ์ปัจจุบันจาก DB, nonce receipt, เจ้าหน้าที่บันทึกซ้ำ, provenance และฟอร์มร่วม | `20261127100000_round_recording_receipts` |
 | FR-5 | `afa7ca6` | รายงานทุกครั้งที่เปิด, จำนวนรอบเพิ่มเติมที่จบ, done/planned, NOT_DONE_AT_CLOSE, จำนวนผู้ป่วยบันทึกเอง; Excel คงคอลัมน์เดิมและเพิ่มคอลัมน์ใหม่ | ไม่มี |
 | FR-6 | `dcb979f` | ลบขอบเขตรอบเก่าที่ไม่ใช้, อ่านรายการเครื่องมือจากแผน active, ปรับข้อความ/เอกสาร, เส้นทางบริการถึงรายงานและ concurrency | ไม่มี |
-| FR-7 | commit สุดท้ายของสาขา (ชื่อ `fix(rounds): protect staff records from patient overwrite (FR-7)`) | ผู้ป่วยบันทึกทับรายการของเจ้าหน้าที่/อสม. ไม่ได้ (vitals และเครื่องมือ 4 ชนิด), เจ้าหน้าที่บันทึกทับ vitals ของผู้ป่วยแทนที่ทั้งชุดพร้อม audit `replacedPatientRecord`, receipt lookup ใช้ partial unique index พร้อม action predicate, policy รับค่าที่คำนวณจริง, จัดรูปแบบโค้ด FR-2–FR-6 | แก้ `20261127100000_round_recording_receipts` เอา `BEGIN;`/`COMMIT;` ออก (ความหมายเดิม) |
+| FR-7 | `abe99c3` | ผู้ป่วยบันทึกทับรายการของเจ้าหน้าที่/อสม. ไม่ได้ (vitals และเครื่องมือ 4 ชนิด), เจ้าหน้าที่บันทึกทับ vitals ของผู้ป่วยแทนที่ทั้งชุดพร้อม audit `replacedPatientRecord`, receipt lookup ใช้ partial unique index พร้อม action predicate, policy รับค่าที่คำนวณจริง, จัดรูปแบบโค้ด FR-2–FR-6 | แก้ `20261127100000_round_recording_receipts` เอา `BEGIN;`/`COMMIT;` ออก (ความหมายเดิม) |
+| FR-7b | commit สุดท้ายของสาขา (ชื่อ `fix(rounds): patient vitals never out-rank staff follow-up vitals (FR-7b)`) | ครั้งที่ ≥ 3: เมื่อ Follow-up ของครั้งนั้นมีค่าสัญญาณชีพใด ๆ ผู้ป่วยบันทึก vitals ไม่ได้ (ไม่มี row/ledger/receipt) และหน้าผู้ป่วยแสดง "เจ้าหน้าที่/อสม. บันทึกให้แล้ว" แทนฟอร์ม; แก้ assertion EXPLAIN ของ FR-7 ให้รับ Bitmap Index Scan ที่มี Index Cond บน nonce | ไม่มี |
 
 | เฟส | คำสั่ง lint | คำสั่ง typecheck | คำสั่ง unit ชุดเต็ม | คำสั่ง integration ชุดเต็ม |
 |---|---|---|---|---|
@@ -21,6 +22,7 @@
 | FR-5 | `npm run lint` ผ่าน | `npm run typecheck` ผ่าน | `npm test -- --maxWorkers=2` ผ่าน 535 ไฟล์ / 5,962 เทส | `npm run test:integration` ผ่าน 71 ไฟล์ / 1,296 เทส |
 | FR-6 | `npm run lint` ผ่าน | `npm run typecheck` ผ่าน | `npm test -- --maxWorkers=2` ผ่าน 535 ไฟล์ / 5,965 เทส | `npm run test:integration` ผ่าน 71 ไฟล์ / 1,299 เทส |
 | FR-7 | `npm run lint` ผ่าน | `npm run typecheck` ผ่าน | `npm test -- --maxWorkers=2` ผ่าน 536 ไฟล์ / 5,970 เทส | `npm run test:integration` ผ่าน 71 ไฟล์ / 1,304 เทส |
+| FR-7b | `npm run lint` ผ่าน | `npm run typecheck` ผ่าน (หลังย้าย `.next/dev/types/validator.ts` ที่ dev server เขียนเสียออก) | `npm test -- --maxWorkers=2` ผ่าน 536 ไฟล์ / 5,971 เทส | `npm run test:integration` ผ่าน 71 ไฟล์ / 1,306 เทส (รอบที่สามหลังแก้ assertion) |
 
 FR-4 หลังชุดเต็มพบชนิด error ของเจ้าหน้าที่เปลี่ยนใน branch ปฏิเสธสิทธิ์ จึงคืน error เดิม และตรวจ `npm test -- src/modules/patient-program/services/patient-program-lifecycle-service.test.ts src/modules/patient-program/services/patient-program-service-one-service.test.ts src/modules/patient-program-rounds/services/round-service.test.ts src/modules/screening/services/screening-service.test.ts --maxWorkers=2` ผ่าน 3 ไฟล์ที่ตรง filter / 48 เทส, `npx eslint src/modules/patient-program/services/patient-program-lifecycle-service.ts src/modules/screening/transport/server-actions.ts src/modules/screening/transport/server-actions.test.ts` ผ่าน, `npm run typecheck` ผ่าน และ integration ชุดเต็มยืนยันผ่านหลังแก้ โดยไม่เปลี่ยนสิทธิ์หรือผ่อน assertions
 
@@ -65,9 +67,22 @@ FR-6 ชุดเต็มครั้งแรกมี 1,298 เทสผ่�
 - FR-7: ผู้ป่วยถูกปฏิเสธก่อนเขียนใด ๆ เมื่อแถวของรอบ (vitals หรือเครื่องมือ) บันทึกโดยผู้ใช้อื่น จึงไม่มี ledger/receipt ใหม่; retry ด้วย nonce เดิมของผู้ป่วยยังได้ `ALREADY_RECORDED` จาก receipt UI ผู้ป่วยใช้ `staffRecordedSteps` ที่ server คำนวณจากกติกาเดียวกัน จึงซ่อนฟอร์มของ vitals ที่เจ้าหน้าที่บันทึกไม่ครบด้วย
 - FR-7 index: SQL จาก Prisma JSON-path คือ `("metadata"#>ARRAY[$n]::text[])::jsonb = $m` ซึ่งไม่ตรง expression `(metadata->>'submissionNonce')` ของ index; ตรวจ `EXPLAIN` ด้วยมือ (`enable_seqscan = off`) ได้แค่ Bitmap Index Scan ตาม predicate ของ action แล้วกรอง nonce ทีหลัง จึงเปลี่ยนทั้งสอง lookup เป็น `$queryRaw` ที่ใช้ expression เดียวกับ index และ action แบบค่าคงที่ ผลคือ `Index Scan` พร้อม `Index Cond: ((metadata ->> 'submissionNonce'::text) = …)` ซึ่ง integration test ตรวจไว้
 - FR-7 migration: `npm run prisma:migrations:check` ตรวจลำดับเท่านั้น ไม่ได้ห้ามแก้ไฟล์ การเอา `BEGIN;`/`COMMIT;` ออกเปลี่ยน checksum ของ migration ที่ apply แล้วในฐาน dev/demo (ไม่มีข้อมูลจริง) ฐานเหล่านั้นอาจต้อง `prisma migrate resolve` หรือ reset
+- FR-7b: ตรวจในธุรกรรม serializable เดียวกันหลัง Program lock ผ่าน `assertPatientMayRecordVitals` (row ของครั้งนั้น และ Follow-up ที่ round = ครั้ง − 2) ใช้กับทั้งการสร้างและการบันทึกซ้ำของผู้ป่วย ดังนั้นแถวของผู้ป่วยที่บันทึกก่อน Follow-up ยังอยู่เหมือนเดิม แต่หลังเจ้าหน้าที่บันทึก Follow-up ที่มีค่าแล้ว ผู้ป่วยบันทึกซ้ำไม่ได้ และ Follow-up ที่ใหม่กว่าเป็นค่าที่แสดงตามกติกา latest-recorded `followupHoldsVitals` อยู่ใน domain และใช้ร่วมกับ `staffRecordedRoundSteps`
+- FR-7b ชุดเต็มรอบแรกรันพร้อม typecheck จึงมี timeout 5 วินาที 5 เทสใน `hospital-reporting` และ `workforce-onboarding-v2` และ assertion `not.toContain("126")` ใน `patient-roster-baseline-import` ที่ล้มเพราะ UUID สุ่มมี `126` (flaky เดิม ไม่แก้ในงานนี้) ทั้งสามไฟล์ผ่านเมื่อรันแยก ชุดเต็มรอบสองพบ assertion EXPLAIN ของ FR-7 ที่ผูกกับ `Index Scan` อย่างเดียว ขณะที่ planner เลือก `Bitmap Index Scan` ที่มี `Index Cond` บน nonce จึงขยาย assertion ให้รับทั้งสองแบบ โดยยังบังคับ `Index Cond`
 - ไม่มีคำถามผลิตภัณฑ์ที่ค้างจากข้อกำหนดนี้ ไม่มี push, squash, amend หรือแก้ประวัติ commit ก่อนหน้า
 
 ## ไฟล์ที่เปลี่ยนต่อเฟส
+
+### FR-7b (8 ไฟล์)
+
+- `app/app/personal/patient-self-program-rounds-view.test.tsx`
+- `docs/adr/0022-plan-driven-service-rounds.md`
+- `docs/phases/FLEXIBLE_SERVICE_ROUNDS_VERIFICATION.md`
+- `src/modules/patient-program-rounds/domain/round-steps.ts`
+- `src/modules/patient-program-rounds/services/round-query-service.ts`
+- `src/modules/patient-program-rounds/services/round-record-ownership.ts`
+- `src/modules/patient-program-rounds/services/round-service.ts`
+- `tests/integration/patient-program-rounds.integration.test.ts`
 
 ### FR-7 (19 ไฟล์)
 

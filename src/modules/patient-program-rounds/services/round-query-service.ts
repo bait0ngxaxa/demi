@@ -49,6 +49,7 @@ import {
 } from "../domain/round-catalog";
 import {
   computeRoundStatus,
+  followupHoldsVitals,
   ROUND_ITEM_CATALOG,
   roundGuideline,
   roundPlanItemUnavailableReason,
@@ -561,13 +562,17 @@ function staffRecordedRoundSteps(program: ProgramRoundRecord, roundNumber: numbe
   const patientUserId = program.patientHospitalRelationship.patientProfile?.person.user?.id ?? null;
   const byOther = (user: RecorderName): boolean => !patientUserId || user?.id !== patientUserId;
   const vitals = program.roundVitals.find((record) => record.roundNumber === roundNumber);
+  // FR-7b: Follow-up measurements of the round are staff vitals evidence the patient cannot out-rank.
+  const staffVitals =
+    (vitals !== undefined && byOther(vitals.recordedByUser)) ||
+    followupHoldsVitals(findFollowupForRound(program, roundNumber));
   const tools = (Object.keys(PER_ROUND_TOOL_RECORDS) as PerRoundToolCode[]).filter((tool) =>
     program[PER_ROUND_TOOL_RECORDS[tool]].some(
       (record) => record.roundNumber === roundNumber && byOther(record.recordedByUser),
     ),
   );
 
-  return [...(vitals && byOther(vitals.recordedByUser) ? (["VITALS"] as const) : []), ...tools];
+  return [...(staffVitals ? (["VITALS"] as const) : []), ...tools];
 }
 
 /** A round's vitals: its round vitals or its Follow-up measurements, whichever was recorded last. */

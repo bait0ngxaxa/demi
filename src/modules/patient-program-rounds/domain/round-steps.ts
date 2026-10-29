@@ -54,6 +54,13 @@ export const VITALS_MEASUREMENTS = [
 
 export type VitalsMeasurement = (typeof VITALS_MEASUREMENTS)[number];
 
+/** FR-7b: a round's Follow-up holding any vitals measurement is staff vitals evidence of that round. */
+export function followupHoldsVitals(
+  followup: Partial<Record<VitalsMeasurement, number | null>> | null | undefined,
+): boolean {
+  return Boolean(followup && VITALS_MEASUREMENTS.some((measurement) => followup[measurement] != null));
+}
+
 export const VITALS_MEASUREMENT_LABELS: Readonly<Record<VitalsMeasurement, string>> = {
   weight: "น้ำหนัก",
   heightCm: "ส่วนสูง",
