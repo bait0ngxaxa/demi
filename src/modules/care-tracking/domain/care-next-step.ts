@@ -1,7 +1,11 @@
-import type {
-  ProgramRoundsOverview,
-  RoundSummary,
-} from "@/modules/patient-program-rounds/services/round-query-service";
+import { GUIDELINE_ROUND_COUNT } from "@/modules/patient-program-rounds/domain/round-catalog";
+import type { RoundState } from "@/modules/patient-program-rounds/domain/round-steps";
+
+/** The part of a Program's rounds overview the next step reads (structurally a `ProgramRoundsOverview`). */
+export type CareNextStepRoundsOverview = {
+  rounds: readonly { roundNumber: number; state: RoundState }[];
+  after: { state: "LOCKED" | "RECORDED" | "NOT_RECORDED" };
+};
 
 export type PatientCareNextStepInput = {
   access: "DIRECT" | "NETWORK";
@@ -9,14 +13,14 @@ export type PatientCareNextStepInput = {
   canCreateBaseline: boolean;
   activeProgram: { programId: string; canManage: boolean } | null;
   canOpenProgram: boolean;
-  roundsOverview: Pick<ProgramRoundsOverview, "rounds" | "after"> | null;
+  roundsOverview: CareNextStepRoundsOverview | null;
 };
 
 export type PatientCareNextStep =
   | { type: "NONE"; reason: "READ_ONLY" | "NO_ACTION" | "PROGRAM_NOT_MANAGEABLE" }
   | { type: "BASELINE" }
   | { type: "OPEN_PROGRAM" }
-  | { type: "ROUND"; programId: string; roundNumber: RoundSummary["roundNumber"]; state: RoundSummary["state"] }
+  | { type: "ROUND"; programId: string; roundNumber: number; state: RoundState }
   | { type: "AFTER"; programId: string }
   | { type: "PROGRAM"; programId: string }
   | { type: "ROUNDS_OVERVIEW"; programId: string };
@@ -56,7 +60,9 @@ export function resolvePatientCareNextStep(
       };
     }
 
-    if (overview.rounds.length !== 6) {
+    // ADR-0022 Final Assessment gate: at least six opened rounds, all completed. Every listed round is
+    // completed here and a completion needs an opened round, so the listed rounds are the opened ones.
+    if (overview.rounds.length < GUIDELINE_ROUND_COUNT) {
       return { type: "ROUNDS_OVERVIEW", programId: input.activeProgram.programId };
     }
 
