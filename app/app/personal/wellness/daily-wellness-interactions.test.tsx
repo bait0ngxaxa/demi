@@ -3,10 +3,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DailyWellnessRead } from "./daily-wellness-action";
-const mock = vi.hoisted(() => ({ daily: vi.fn(), create: vi.fn(), list: vi.fn(), exerciseCreate: vi.fn() }));
+const mock = vi.hoisted(() => ({ daily: vi.fn(), create: vi.fn(), list: vi.fn(), exerciseCreate: vi.fn(), exerciseList: vi.fn() }));
 vi.mock("./daily-wellness-action", () => ({ readDailyWellnessAction: mock.daily }));
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: mock.create, updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: mock.list }));
-vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: mock.exerciseCreate, updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: vi.fn() }));
+vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: mock.exerciseCreate, updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: mock.exerciseList }));
 vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn() }));
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -33,6 +33,28 @@ async function chooseDate(value: string): Promise<void> {
 beforeEach(async () => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(() => root.render(<PersonalWellnessWorkspace {...props} />)); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Daily Wellness interactions", () => {
+  it("puts daily overview first and uses confirmed server totals in the activity footer, never draft duration", async () => {
+    const overview = host.querySelector('[aria-label="ภาพรวมรายวัน"]');
+    const navigation = host.querySelector('[aria-label="หัวข้อสุขภาพ"]');
+    expect(overview && navigation && Boolean(overview.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    const footer = (): Element | null => host.querySelector('[aria-label="สรุปกิจกรรมที่บันทึกแล้ว"]');
+    expect(footer()?.textContent).toContain("3 รายการ");
+    expect(footer()?.textContent).toContain("25 นาที");
+    await act(() => button("เดิน").click());
+    await act(() => {
+      const duration = host.querySelector('[name="durationMinutes"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(duration, "90");
+      duration?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(footer()?.textContent).toContain("25 นาที");
+    expect(footer()?.textContent).not.toContain("90 นาที");
+    mock.exerciseCreate.mockResolvedValue({ status: "SUCCESS", message: "บันทึกแล้ว", result: { outcome: "CREATED", item: { id: nonce, activityName: "เดิน", occurredOn: date, durationMinutes: 90, note: null, createdAt: `${date}T00:00:00.000Z`, updatedAt: `${date}T00:00:00.000Z` } } });
+    mock.exerciseList.mockRejectedValue(new Error("offline"));
+    await act(() => button("บันทึกการออกกำลังกาย").click());
+    expect(footer()?.textContent).toContain("ข้อมูลสรุปล่าสุดยังไม่พร้อม");
+    expect(footer()?.textContent).not.toContain("25 นาที");
+    expect(host.textContent).toContain("บันทึกแล้ว");
+  });
   it("rejects tomorrow and invalid recording dates before requesting data", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-29T12:00:00Z"));

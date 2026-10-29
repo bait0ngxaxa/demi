@@ -17,6 +17,7 @@ export function ExerciseReadback({ item }: { item: PersonalExerciseDto }): React
 }
 export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalExercisePage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalExercisePage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
+  const [dailySummary, setDailySummary] = useState(initialPage.dailySummary);
   const [selected, setSelected] = useState<PersonalExerciseDto | undefined>();
   const [nonce, setNonce] = useState(initialNonce);
   const [feedback, setFeedback] = useState<ExerciseActionState>({ status: "IDLE" });
@@ -45,6 +46,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     active.current = false;
     generation.current += 1;
     setPage({ items: [], nextCursor: null });
+    setDailySummary(undefined);
     setSelected(undefined);
     setNonce("");
     setFeedback({ status: "IDLE" });
@@ -56,6 +58,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     publishLock();
     setReadError("");
     onSummary?.(undefined);
+    setDailySummary(undefined);
     const authorityGeneration = authority.captureGeneration();
     startTransition(async () => {
       const form = new FormData();
@@ -72,6 +75,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
         const next = result.page;
         setPage((current) => ({ items: append ? [...new Map([...current.items, ...next.items].map((item) => [item.id, item])).values()] : next.items, nextCursor: next.nextCursor, dailySummary: next.dailySummary }));
         onSummary?.(next.dailySummary);
+        setDailySummary(next.dailySummary);
         if (afterMutation) editorHeading.current?.focus();
         if (!append && activity.current.write !== "UNRESOLVED_CREATE" && activity.current.write !== "WRITE_PENDING") {
           const confirmed = activity.current.write === "CONFIRMED";
@@ -113,7 +117,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
   return <div className="space-y-6">
     <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
     {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
-    <p className="max-w-prose text-text-muted">บันทึกกิจกรรมที่คุณทำจริง เพื่อดูรายการส่วนตัวของคุณ</p>
+    <p className="max-w-prose text-text-muted">เลือกกิจกรรมที่คุณทำจริง หรือกรอกเอง</p>
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
@@ -121,10 +125,15 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">{selected ? "แก้ไขบันทึกการออกกำลังกาย" : "บันทึกการออกกำลังกาย"}</h3>
       <ExerciseEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
       {selected ? <ExerciseDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
+      <div aria-label="สรุปกิจกรรมที่บันทึกแล้ว" className="space-y-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h4 className="font-semibold">สรุปกิจกรรมที่บันทึกแล้ว</h4>
+          <p role="status" className="text-sm text-brand-strong">{dailySummary ? dailySummary.count === 0 ? "ยังไม่มีบันทึกการออกกำลังกาย" : `${dailySummary.count.toLocaleString("th-TH")} รายการ · ${dailySummary.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `รวมเฉพาะเวลาที่ระบุ ${dailySummary.durationMinutes.toLocaleString("th-TH")} นาที`}` : "ข้อมูลสรุปล่าสุดยังไม่พร้อม"}</p></div>
+        <a href="#exercise-history" className="inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand-soft px-4 text-sm font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">ดูรายการออกกำลังกาย</a>
+      </div>
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
         <Button variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING" || activity.current.write === "REVIEW_REQUIRED") return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
     </div></Panel>
-    <section aria-label="ประวัติการออกกำลังกาย" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกการออกกำลังกายของฉัน</h3>
+    <section id="exercise-history" aria-label="ประวัติการออกกำลังกาย" className="space-y-4"><h3 className="text-xl font-semibold">บันทึกการออกกำลังกายของฉัน</h3>
       {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกการออกกำลังกาย</p> : <ul className="divide-y divide-border">{page.items.map((item) => <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><ExerciseReadback item={item} />
         <Button variant="secondary" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING" || activity.current.write === "REVIEW_REQUIRED") return; activity.current.write = "IDLE"; publishLock(); setSelected(item); setBlocked(false); setFeedback({ status: "IDLE" }); }}>แก้ไข / ลบ</Button></li>)}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}

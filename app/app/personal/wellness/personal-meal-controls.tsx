@@ -44,6 +44,8 @@ export function MealEditor({ item, today, maxDate, nonce, coordination }: { item
   const [description, setDescription] = useState(item?.description ?? "");
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
+  const detailsHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { if (category) detailsHeading.current?.focus(); }, [category]);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
   // Retryable create conflicts/ambiguity keep the SAME nonce. Consumed creates require explicit new intent.
   const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
@@ -52,13 +54,14 @@ export function MealEditor({ item, today, maxDate, nonce, coordination }: { item
     <fieldset disabled={blocked || recovering} className="space-y-4">
       <fieldset className="space-y-2" aria-invalid={Boolean(state.fieldErrors?.category)} aria-describedby={`${prefix}-category-help`}>
         <legend className="mb-2 text-sm font-medium">หมวดมื้ออาหาร</legend>
-        <div className="grid grid-cols-2 gap-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-12 cursor-pointer items-center gap-2 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
+        <div className="grid gap-3 sm:grid-cols-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
           <input type="radio" name="category" value={value} required checked={category === value} onChange={() => setCategory(value)} aria-controls={`${prefix}-details`} className="accent-brand" />
-          <span className="min-w-0 text-sm font-medium">{MEAL_CATEGORY_LABELS[value]}<span className="block text-xs">{item ? "เลือกมื้ออาหาร" : "เพิ่มบันทึก"}</span></span>
+          <span className="min-w-0 flex-1 text-base font-medium">{MEAL_CATEGORY_LABELS[value]}</span><span className="text-sm font-medium text-brand-strong">{item ? "เลือกมื้ออาหาร" : "เพิ่มบันทึก"}</span>
         </label>)}</div>
         <p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p>
       </fieldset>
       <div id={`${prefix}-details`} hidden={!category} className="space-y-4">
+      <h4 ref={detailsHeading} tabIndex={-1} className="text-base font-semibold">รายละเอียดมื้ออาหาร</h4>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
         <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={maxDate} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
@@ -69,7 +72,7 @@ export function MealEditor({ item, today, maxDate, nonce, coordination }: { item
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
     {recovering ? <p data-navigation-guard="unknown-outcome" className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
-    <Button type="submit" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
+    <Button type="submit" className="w-full sm:w-auto" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
   </form>;
 }
 export function MealDeleteForm({ item, coordination }: { item: PersonalMealDto; coordination: Coordination }): React.JSX.Element {

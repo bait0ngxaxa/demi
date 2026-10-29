@@ -95,7 +95,6 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   const linkClassName = "inline-flex min-h-12 items-center justify-center rounded-control border border-border bg-surface px-4 text-sm font-semibold text-brand-strong hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
   return <div className="min-w-0 max-w-4xl space-y-6">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
-    <nav aria-label="หัวข้อสุขภาพ" className="grid grid-cols-2 gap-2 sm:grid-cols-3"><a className={linkClassName} href="#meal">บันทึกอาหาร</a><a className={linkClassName} href="#exercise">บันทึกกิจกรรม</a><a className={`${linkClassName} col-span-2 sm:col-span-1`} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
     <Panel aria-label="ภาพรวมรายวัน">
       <div className="space-y-5">
         <form onSubmit={changeDate} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
@@ -107,14 +106,15 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
         <div aria-live="polite" aria-busy={pending} className="space-y-3">
           <h2 className="text-xl font-semibold">ภาพรวมวันที่ <time dateTime={date}>{date}</time></h2>
           <dl className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-control bg-surface-muted p-4"><dt className="text-sm text-text-muted">มื้ออาหารที่บันทึก</dt><dd className="mt-1 font-semibold">{mealSummary ? mealSummary.count ? `${mealSummary.count.toLocaleString("th-TH")} รายการ` : "ยังไม่มีบันทึกมื้ออาหาร" : "ข้อมูลสรุปล่าสุดยังไม่พร้อม กรุณาโหลดรายการล่าสุดในหัวข้อนี้"}</dd></div>
-            <div className="rounded-control bg-surface-muted p-4"><dt className="text-sm text-text-muted">กิจกรรมที่บันทึก</dt><dd className="mt-1 font-semibold">{exerciseSummary ? exerciseSummary.count ? `${exerciseSummary.count.toLocaleString("th-TH")} รายการ` : "ยังไม่มีบันทึกการออกกำลังกาย" : "ข้อมูลสรุปล่าสุดยังไม่พร้อม กรุณาโหลดรายการล่าสุดในหัวข้อนี้"}</dd>
+            <div className="rounded-control bg-surface-muted p-4"><dt className="text-sm text-text-muted">มื้ออาหารที่บันทึก</dt><dd className={`mt-2 font-semibold leading-relaxed text-brand-strong ${mealSummary?.count ? "text-2xl" : "text-base"}`}>{mealSummary ? mealSummary.count ? `${mealSummary.count.toLocaleString("th-TH")} รายการ` : "ยังไม่มีบันทึกมื้ออาหาร" : "ข้อมูลสรุปล่าสุดยังไม่พร้อม กรุณาโหลดรายการล่าสุดในหัวข้อนี้"}</dd></div>
+            <div className="rounded-control bg-surface-muted p-4"><dt className="text-sm text-text-muted">กิจกรรมที่บันทึก</dt><dd className={`mt-2 font-semibold leading-relaxed text-brand-strong ${exerciseSummary?.count ? "text-2xl" : "text-base"}`}>{exerciseSummary ? exerciseSummary.count ? `${exerciseSummary.count.toLocaleString("th-TH")} รายการ` : "ยังไม่มีบันทึกการออกกำลังกาย" : "ข้อมูลสรุปล่าสุดยังไม่พร้อม กรุณาโหลดรายการล่าสุดในหัวข้อนี้"}</dd>
               {exerciseSummary && exerciseSummary.count > 0 ? <dd className="mt-1 text-sm text-text-muted">{exerciseSummary.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `รวมเฉพาะเวลาที่ระบุ ${exerciseSummary.durationMinutes.toLocaleString("th-TH")} นาที`}{exerciseSummary.recordedDurationCount < exerciseSummary.count && exerciseSummary.recordedDurationCount > 0 ? ` · ไม่ระบุเวลา ${exerciseSummary.count - exerciseSummary.recordedDurationCount} รายการ` : ""}</dd> : null}
             </div>
           </dl>
         </div>
       </div>
     </Panel>
+    <nav aria-label="หัวข้อสุขภาพ" className="grid grid-cols-2 gap-2 sm:grid-cols-3"><a className={linkClassName} href="#meal">บันทึกอาหาร</a><a className={linkClassName} href="#exercise">บันทึกกิจกรรม</a><a className={`${linkClassName} col-span-2 sm:col-span-1`} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
     <fieldset disabled={pending} className="min-w-0 space-y-8">
       <legend className="sr-only">บันทึกสุขภาพส่วนตัว</legend>
       <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace key={`meal:${date}:${session.mealNonce}`} initialPage={session.mealPage} today={date} maxDate={bangkokToday} initialNonce={session.mealNonce} authority={authority} date={date} onSummary={setMealSummary} onLockChange={(value) => { locks.current.meal = value; }} /></section>

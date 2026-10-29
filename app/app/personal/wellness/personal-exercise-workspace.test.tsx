@@ -45,7 +45,7 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     // bool state stub keeps editor confirmation/pending controls deterministic.
     simulation.confirming = true;
     const empty = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
-    expect(empty).toContain("ยังไม่มีบันทึกการออกกำลังกาย"); expect(empty).toContain("บันทึกกิจกรรมที่คุณทำจริง");
+    expect(empty).toContain("ยังไม่มีบันทึกการออกกำลังกาย"); expect(empty).toContain("เลือกกิจกรรมที่คุณทำจริง");
     for (const text of ["เป้าหมายน้ำหนัก", "คะแนน", "แคลอรี", "แพทย์รับรอง", "ครบทุกมื้อ"]) expect(empty).not.toContain(text);
     const history = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [row], nextCursor: "opaque" }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
     expect(history).toContain("ดูรายการก่อนหน้า"); expect(history).not.toContain("?cursor="); expect(history).not.toContain("opaque");
