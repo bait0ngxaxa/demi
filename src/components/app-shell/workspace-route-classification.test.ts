@@ -20,6 +20,7 @@ const ROUTE_FOLDER_WORKSPACES: Readonly<Record<string, "personal" | "work" | "sh
   more: "shared",
   patients: "work",
   personal: "personal",
+  services: "work",
   settings: "shared",
   support: "shared",
   users: "work",

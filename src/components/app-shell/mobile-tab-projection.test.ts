@@ -218,11 +218,14 @@ describe("server-projected mobile navigation", () => {
       "/app",
       "/app/appointments",
       "/app/patients",
-      "/app/patients?task=service",
+      "/app/services",
       "/app/more",
     ]);
     expect(memberTabs[3]?.icon).toBe("care");
-    expect(resolveActiveMobileTabId("/app/patients", "task=service", memberTabs)).toBe("service");
+    expect(resolveActiveMobileTabId("/app/services", "", memberTabs)).toBe("service");
+    expect(resolveActiveMobileTabId("/app/services", "hospitalId=h&stage=IN_ROUND&page=2", memberTabs)).toBe("service");
+    // CT-2: the directory is the patients tab again; its former service task URL redirects to /app/services.
+    expect(resolveActiveMobileTabId("/app/patients", "", memberTabs)).toBe("patients");
     expect(memberMoreHrefs).toContain("/app/hospitals/reporting/export");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=screening");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=followup");

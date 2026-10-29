@@ -296,7 +296,8 @@ async function resolveScope(
  * PatientBaseline.recordedOn, PatientProgram.startedAt, PatientProgramRound.openedAt,
  * PatientProgramRoundCompletion.completedAt, PatientProgramRoundVitals.recordedAt, PatientFollowup.recordedAt,
  * PatientProgramRoundActivity.performedAt and PatientFinalAssessment.recordedAt, over all of the relationship's
- * Programs. Columns without a time zone hold UTC (Prisma), so they are read AT TIME ZONE 'UTC'.
+ * Programs. Every source is timestamptz except PatientBaseline.recordedOn, a date read as midnight UTC, so the
+ * result does not depend on the session TimeZone.
  */
 function buildCoarseStatement(relationshipIds: readonly string[], now: Date): Prisma.Sql {
   return Prisma.sql`
@@ -343,7 +344,7 @@ function buildCoarseStatement(relationshipIds: readonly string[], now: Date): Pr
         FROM "PatientProgramRoundVitals" AS vitals
         JOIN program ON program."id" = vitals."patientProgramId"
         UNION ALL
-        SELECT followup."patientHospitalRelationshipId", (followup."recordedAt" AT TIME ZONE 'UTC')
+        SELECT followup."patientHospitalRelationshipId", followup."recordedAt"
         FROM "PatientFollowup" AS followup
         JOIN scope ON scope."id" = followup."patientHospitalRelationshipId"
         UNION ALL
@@ -556,6 +557,56 @@ async function loadPageItems(
       roundStrip: rounds?.roundStrip ?? [],
     };
   });
+}
+
+export type CareTrackingScopeOption = {
+  hospitalId: string;
+  hospitalName: string;
+  access: "DIRECT";
+};
+
+/**
+ * CT-2: the Hospitals the "จัดบริการ" workspace offers, from the same read builders as getCareTrackingPage:
+ * the Patient directory's direct scopes (OWNER/MEMBER), then the Hospitals of an active OSM. Network Children
+ * are not listed (CT-3). Every page load still re-proves the chosen scope.
+ */
+export async function listCareTrackingScopes(
+  actor: ActorContext | null | undefined,
+  dependencies: Pick<CareTrackingQueryDependencies, "database"> = {},
+): Promise<CareTrackingScopeOption[]> {
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  const readsAsStaff = actor.roles.includes(Role.HOSPITAL);
+  const readsAsOsm = decideOsmAssignedPatientReadPolicy({ actor, capability: PATIENT_READ_CAPABILITY }).allowed;
+
+  if (!readsAsStaff && !readsAsOsm) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const hospitalSelect = { id: true, name: true } satisfies Prisma.HospitalSelect;
+    const orderBy = [{ name: "asc" }, { id: "asc" }] satisfies Prisma.HospitalOrderByWithRelationInput[];
+    const [staffHospitals, osmHospitals] = await Promise.all([
+      readsAsStaff
+        ? database.hospital.findMany({ where: buildAuthorizedHospitalWhere(actor.userId), select: hospitalSelect, orderBy })
+        : [],
+      readsAsOsm
+        ? database.hospital.findMany({ where: buildOsmActiveHospitalWhere(actor.userId), select: hospitalSelect, orderBy })
+        : [],
+    ]);
+    const staffIds = new Set(staffHospitals.map(({ id }) => id));
+
+    return [...staffHospitals, ...osmHospitals.filter(({ id }) => !staffIds.has(id))].map((hospital) => ({
+      hospitalId: hospital.id,
+      hospitalName: hospital.name,
+      access: "DIRECT",
+    }));
+  } catch {
+    throw new InfrastructureError("Care tracking scopes could not be loaded");
+  }
 }
 
 /**

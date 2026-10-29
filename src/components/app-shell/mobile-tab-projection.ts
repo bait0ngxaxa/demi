@@ -288,7 +288,7 @@ function projectWorkTabs(
     }
   }
 
-  const careService = findNavigationItem(navigation, "work", "/app/patients?task=service");
+  const careService = findNavigationItem(navigation, "work", "/app/services");
   if (careService) {
     tabs.push(
       tabFromItem(careService, {

@@ -71,7 +71,7 @@ describe("application workspace projection", () => {
     expect(actions.map(({ href }) => href)).toEqual([
       `/app/appointments?hospitalId=${hospitalId}`,
       `/app/patients?hospitalId=${hospitalId}`,
-      `/app/patients?task=service&hospitalId=${hospitalId}`,
+      `/app/services?hospitalId=${hospitalId}`,
       `/app/appointments/new?hospitalId=${hospitalId}`,
       `/app/users?hospitalId=${hospitalId}`,
       `/app/hospitals/settings?hospitalId=${hospitalId}`,
@@ -139,7 +139,7 @@ describe("application workspace projection", () => {
     expect(userAction).toBeUndefined();
 
     expect(hrefs).toContain(`/app/patients?hospitalId=${hospitalId}`);
-    expect(hrefs).toContain(`/app/patients?task=service&hospitalId=${hospitalId}`);
+    expect(hrefs).toContain(`/app/services?hospitalId=${hospitalId}`);
     expect(hrefs.some((href) => href.includes("task=screening") || href.includes("task=followup"))).toBe(false);
     expect(hrefs).toContain(`/app/appointments/new?hospitalId=${hospitalId}`);
     expect(hrefs).toContain(`/app/hospitals/content?hospitalId=${hospitalId}`);

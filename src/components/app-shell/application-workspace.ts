@@ -79,20 +79,15 @@ function navigationItemsForSections(
 
 function isDirectHospitalCareItem(item: ApplicationNavigationItem): boolean {
   const [pathname = "", query = ""] = item.href.split("?", 2);
-  if (pathname === "/app/appointments" || pathname === "/app/appointments/new") return true;
-  if (pathname !== "/app/patients") return false;
-
-  const task = new URLSearchParams(query).get("task");
-  return task === null || task === "service";
+  if (pathname === "/app/appointments" || pathname === "/app/appointments/new" || pathname === "/app/services") return true;
+  return pathname === "/app/patients" && !new URLSearchParams(query).has("task");
 }
 
 function careActionDescription(item: ApplicationNavigationItem): string {
   if (item.href === "/app/appointments") return "ดูนัดหมายของโรงพยาบาลนี้";
   if (item.href === "/app/appointments/new") return "เลือกผู้ป่วยและบันทึกนัดหมายใหม่ในโรงพยาบาลนี้";
   if (item.href === "/app/patients") return "ค้นหาและเลือกผู้ป่วยในโรงพยาบาลนี้เพื่อเปิดข้อมูลและดูแลต่อเนื่อง";
-
-  const task = new URLSearchParams(item.href.split("?", 2)[1] ?? "").get("task");
-  if (task === "service") return "เลือกผู้ป่วยเพื่อดูขั้นตอนจัดบริการถัดไป";
+  if (item.href === "/app/services") return "ติดตามความคืบหน้าและเริ่มขั้นตอนถัดไปของผู้ป่วยแต่ละคน";
   return "เปิดงานดูแลผู้ป่วยในโรงพยาบาลนี้";
 }
 

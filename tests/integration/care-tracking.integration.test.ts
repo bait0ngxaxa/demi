@@ -19,6 +19,7 @@ import { CARE_SIGNALS, CARE_STAGES } from "@/modules/care-tracking/domain/care-s
 import {
   careTrackingQueryInternals,
   getCareTrackingPage,
+  listCareTrackingScopes,
   type CareTrackingPage,
 } from "@/modules/care-tracking/services/care-tracking-query-service";
 import { attachHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
@@ -219,6 +220,7 @@ async function cleanup(): Promise<void> {
     await tx.hospitalServiceArea.deleteMany({ where: { parentHospitalId: { in: hospitals } } });
   });
   await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
+  await db.patientFollowup.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientAppointmentCancellationRequest.deleteMany({ where: { appointment: { patientHospitalRelationship: relationshipWhere } } });
   await db.patientAppointment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientFinalAssessment.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
@@ -434,4 +436,76 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     const page = await getCareTrackingPage(owner, { hospitalId });
     expect(page.summary.total).toBe(500);
   }, 120_000);
+
+  it("reads the same last activity whatever the session TimeZone (timestamptz follow-ups)", async () => {
+    const hospitalId = await hospital();
+    const owner = await staff(hospitalId, MembershipType.OWNER);
+    const [relationshipId] = await bulkPatients(hospitalId, owner.userId, 1, "เขตเวลา");
+    // The follow-up is the latest source, so a session-dependent cast of it would move lastActivityAt.
+    const recordedAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    await db.patientFollowup.create({
+      data: { patientHospitalRelationshipId: relationshipId, createdByUserId: owner.userId, roundNumber: 1, submissionNonce: randomUUID(), submissionRequestHash: "f".repeat(64), recordedAt },
+    });
+    const statement = careTrackingQueryInternals.buildCoarseStatement([relationshipId], new Date());
+    const lastActivityIn = (timeZone: "UTC" | "Asia/Bangkok"): Promise<Date | null> => db.$transaction(async (transaction) => {
+      if (timeZone === "UTC") await transaction.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
+      else await transaction.$executeRaw`SET LOCAL TIME ZONE 'Asia/Bangkok'`;
+      const [row] = await transaction.$queryRaw<{ lastActivityAt: Date | null }[]>(statement);
+      return row?.lastActivityAt ?? null;
+    });
+
+    const utc = await lastActivityIn("UTC");
+    const bangkok = await lastActivityIn("Asia/Bangkok");
+
+    expect(utc?.toISOString()).toBe(recordedAt.toISOString());
+    expect(bangkok?.toISOString()).toBe(utc?.toISOString());
+  });
+
+  it("lists the direct and OSM scopes of the จัดบริการ workspace without network Children", async () => {
+    const f = await careFixture();
+    const mixed = await staff(f.otherHospitalId, MembershipType.MEMBER);
+    await db.userRole.create({ data: { userId: mixed.userId, role: Role.OSM } });
+    await db.osmHospitalRelationship.create({ data: { userId: mixed.userId, hospitalId: f.hospitalId, status: MembershipStatus.ACTIVE } });
+    const mixedActor: ActorContext = {
+      ...mixed,
+      roles: [Role.HOSPITAL, Role.OSM],
+      osmHospitalRelationships: [{ hospitalId: f.hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+    };
+    const hospitalIds = async (actor: ActorContext): Promise<string[]> => (await listCareTrackingScopes(actor)).map(({ hospitalId }) => hospitalId);
+
+    expect(await hospitalIds(f.owner)).toEqual([f.hospitalId]);
+    expect(await hospitalIds(f.member)).toEqual([f.hospitalId]);
+    expect(await hospitalIds(f.assignedOsm)).toEqual([f.hospitalId]);
+    expect(await hospitalIds(mixedActor)).toEqual([f.otherHospitalId, f.hospitalId]);
+    expect((await listCareTrackingScopes(f.owner)).every(({ access }) => access === "DIRECT")).toBe(true);
+    await expect(listCareTrackingScopes(await roleActor(Role.CAREGIVER))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listCareTrackingScopes(await roleActor(Role.PATIENT))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listCareTrackingScopes(null)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("reports getCareTrackingPage latency for a Hospital with 2,000 patients", async () => {
+    const hospitalId = await hospital();
+    const owner = await staff(hospitalId, MembershipType.OWNER);
+    await bulkPatients(hospitalId, owner.userId, 2_000, "ประสิทธิภาพ");
+    await db.$executeRaw`ANALYZE`;
+    const run = async (): Promise<number> => {
+      const started = performance.now();
+      const page = await getCareTrackingPage(owner, { hospitalId });
+      const elapsed = performance.now() - started;
+      expect(page.summary.total).toBe(2_000);
+      return elapsed;
+    };
+
+    for (let warmup = 0; warmup < 3; warmup += 1) await run();
+    const samples: number[] = [];
+    for (let sample = 0; sample < 30; sample += 1) samples.push(await run());
+    samples.sort((left, right) => left - right);
+    const percentile = (fraction: number): number => samples[Math.min(samples.length - 1, Math.ceil(fraction * samples.length) - 1)] ?? Number.NaN;
+    const p50 = percentile(0.5);
+    const p95 = percentile(0.95);
+
+    // CT-2 budget: p95 < 300 ms on the integration database. Reported, not enforced (no optimisation in CT-2).
+    console.info(`Care tracking getCareTrackingPage, 2,000 patients, ${samples.length} runs: p50 ${p50.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms (budget p95 < 300 ms: ${p95 < 300 ? "within" : "OVER"})`);
+    expect(Number.isFinite(p95)).toBe(true);
+  }, 300_000);
 });

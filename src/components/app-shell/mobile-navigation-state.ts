@@ -51,18 +51,6 @@ function resolveAssignedTaskTab(
   return null;
 }
 
-function resolveDirectCareTaskTab(
-  search: string,
-  tabs: readonly MobileNavigationTab[],
-): string | null {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const taskModes = params.getAll("task");
-
-  return taskModes.length === 1 && taskModes[0] === "service" && findTabById(tabs, "service")
-    ? "service"
-    : null;
-}
-
 function isPatientDetailPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
 
@@ -138,8 +126,7 @@ export function resolveActiveMobileTabId(
 
   const patientDirectoryTab = findTabById(tabs, "patients");
   if (pathname === patientDirectoryPath) {
-    return resolveDirectCareTaskTab(search, tabs) ??
-      (patientDirectoryTab?.activeRoute === "patient-detail" ? patientDirectoryTab.id : null);
+    return patientDirectoryTab?.activeRoute === "patient-detail" ? patientDirectoryTab.id : null;
   }
 
   const patientDetailTab = resolvePatientDetailTab(pathname, tabs);

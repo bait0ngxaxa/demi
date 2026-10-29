@@ -78,7 +78,7 @@ const ownerTiles = (id: string, areas = false) => [
   withHospital("/app/hospitals/reporting", id),
   withHospital("/app/users", id),
   withHospital("/app/hospitals/knowledge", id),
-  withHospital("/app/patients?task=service", id),
+  withHospital("/app/services", id),
   withHospital("/app/appointments/new", id),
   withHospital("/app/patients/provision", id),
   ...(areas ? ["/app/hospitals/reporting?scope=network"] : []),
@@ -134,7 +134,7 @@ const cases: Case[] = [
     tiles: [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
-      withHospital("/app/patients?task=service", hospitalA),
+      withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -203,7 +203,7 @@ const cases: Case[] = [
     tiles: [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
-      withHospital("/app/patients?task=service", hospitalA),
+      withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -235,7 +235,7 @@ describe("work home projection per actor", () => {
     expect(home.tiles.map(({ href }) => href)).toEqual([
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
-      withHospital("/app/patients?task=service", hospitalA),
+      withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
       "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
@@ -307,7 +307,7 @@ describe("work home projection per actor", () => {
 
   it("uses existing care and task glyphs for direct Hospital tasks", () => {
     const taskHrefs = [
-      withHospital("/app/patients?task=service", hospitalA),
+      withHospital("/app/services", hospitalA),
     ];
     const tiles = projectWorkHomeTiles(
       taskHrefs.map((href) => ({ href, label: "งานดูแล" })),
