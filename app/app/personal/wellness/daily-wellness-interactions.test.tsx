@@ -33,6 +33,20 @@ async function chooseDate(value: string): Promise<void> {
 beforeEach(async () => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(() => root.render(<PersonalWellnessWorkspace {...props} />)); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Daily Wellness interactions", () => {
+  it("allows date navigation after a confirmed write followed by a failed aggregate read", async () => {
+    const item = { id: nonce, category: "SNACK", occurredOn: date, description: null, createdAt: `${date}T00:00:00.000Z`, updatedAt: `${date}T00:00:00.000Z` };
+    mock.create.mockResolvedValue({ status: "SUCCESS", message: "บันทึกยืนยันแล้ว", result: { outcome: "CREATED", item } });
+    mock.list.mockRejectedValue(new Error("offline"));
+    await act(() => host.querySelector<HTMLInputElement>('[name="category"][value="SNACK"]')?.click());
+    await act(() => button("บันทึกมื้ออาหาร").click());
+    expect(host.textContent).toContain("บันทึกยืนยันแล้ว");
+    expect(host.textContent).not.toContain("61 รายการ");
+    expect(host.textContent).toContain("ข้อมูลสรุปล่าสุดยังไม่พร้อม");
+    mock.daily.mockResolvedValue({ status: "SUCCESS", mealPage: { items: [], nextCursor: null }, exercisePage: { items: [], nextCursor: null } });
+    await chooseDate("2026-10-01");
+    expect(mock.daily).toHaveBeenCalledOnce();
+    expect(host.querySelector('time[datetime="2026-10-01"]')).not.toBeNull();
+  });
   it("uses server totals, shows partial duration and loads an older day into both editors", async () => {
     expect(host.textContent).toContain("61 รายการ"); expect(host.textContent).toContain("รวมเฉพาะเวลาที่ระบุ 25 นาที"); expect(host.textContent).toContain("ไม่ระบุเวลา 1 รายการ");
     mock.daily.mockResolvedValue({ status: "SUCCESS", mealPage: { items: [], nextCursor: null, dailySummary: { occurredOn: "2026-10-01", count: 0 } }, exercisePage: { items: [], nextCursor: null, dailySummary: { occurredOn: "2026-10-01", count: 0, recordedDurationCount: 0, durationMinutes: null } } });

@@ -5,7 +5,7 @@ const simulation = vi.hoisted(() => ({ state: { status: "IDLE" } as MealActionSt
 vi.mock("react", async (importOriginal) => {
   const original = await importOriginal<typeof import("react")>();
   return { ...original, useActionState: () => [simulation.state, () => undefined, simulation.pending],
-    useState: (initial: unknown) => [typeof initial === "boolean" && !simulation.workspace ? simulation.confirming : initial, () => undefined] };
+    useState: (initial: unknown) => [initial === "EDITABLE" && ["UNCONFIRMED", "CONFLICT"].includes(simulation.state.status) ? "RETRY_ORIGINAL" : typeof initial === "boolean" && !simulation.workspace ? simulation.confirming : initial, () => undefined] };
 });
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: vi.fn(), updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: vi.fn() }));
 import { MealEditor, MealDeleteForm } from "./personal-meal-controls";
@@ -37,7 +37,8 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
   it("transient create conflict retains enabled same-nonce retry", () => {
     simulation.state = { status: "CONFLICT" };
     const html = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
-    expect(html).toContain(row.id); expect(html).toContain("ลองคำขอเดิมอีกครั้ง"); expect(html).not.toContain(' disabled=""');
+    expect(html).toContain(row.id); expect(html).toContain("ลองคำขอเดิมอีกครั้ง"); expect(html).toContain('<fieldset disabled=""');
+    expect(html).toMatch(/<button(?=[^>]*type="submit")(?![^>]*\sdisabled=")[^>]*>/u);
   });
   beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; simulation.workspace = false; });
   it("empty/real Meal only, source copy, loading, bounded paginated history", () => {
@@ -72,7 +73,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     const html = renderToStaticMarkup(<MealEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />);
     expect(html).toContain("อาหารไทย"); expect(html).toContain('aria-invalid="true"'); expect(html).toContain("aria-describedby"); expect(html).toContain("ยาวเกินไป"); expect(html).not.toContain("<fieldset disabled");
     simulation.state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" };
-    const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).not.toContain("<fieldset disabled");
+    const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).toContain("<fieldset disabled");
     expect(renderToStaticMarkup(<MealEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />)).toContain("<fieldset disabled");
   });
   it("guards mobile navigation only while a meal outcome is unconfirmed and separates session expiry from denial", () => {

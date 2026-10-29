@@ -30,6 +30,34 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     return { authority, lock };
   }
   const save = kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย";
+  it.each(["error", "throw"])("releases a failed %s read without rewriting mutation feedback", async (failure) => {
+    const { lock } = await mount();
+    const list = kind === "meal" ? mock.meals : mock.exercises;
+    if (failure === "throw") list.mockRejectedValue(new Error("offline"));
+    else list.mockResolvedValue({ status: "ERROR", message: "read failed" });
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(lock.mock.lastCall).toEqual([false]);
+    expect(host.textContent).toContain("ยังโหลดรายการและข้อมูลสรุปล่าสุดไม่ได้");
+    list.mockResolvedValue({ status: "SUCCESS", page: { items: [], nextCursor: null } });
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(host.textContent).not.toContain("ยังโหลดรายการและข้อมูลสรุปล่าสุดไม่ได้");
+    expect(lock.mock.lastCall).toEqual([false]);
+  });
+  it("keeps confirmed feedback and withholds aggregate when refresh fails; retry recovers", async () => {
+    const { lock } = await mount();
+    const item = { id: nonce, occurredOn: date, createdAt: `${date}T00:00:00Z`, updatedAt: `${date}T00:00:00Z`, category: "SNACK", description: null, activityName: "เดิน", durationMinutes: null, note: null };
+    mock[kind].mockResolvedValue({ status: "SUCCESS", message: "confirmed write", result: { outcome: "CREATED", item } });
+    const list = kind === "meal" ? mock.meals : mock.exercises;
+    list.mockRejectedValue(new Error("offline"));
+    await act(() => button(save).click());
+    expect(host.textContent).toContain("confirmed write");
+    expect(host.textContent).toContain("ยังโหลดรายการและข้อมูลสรุปล่าสุดไม่ได้");
+    expect(lock.mock.lastCall).toEqual([false]);
+    list.mockResolvedValue({ status: "SUCCESS", page: { items: [item], nextCursor: null } });
+    await act(() => button("โหลดรายการล่าสุด").click());
+    expect(host.textContent).toContain("confirmed write");
+    expect(button("เริ่มบันทึกใหม่").disabled).toBe(false);
+  });
   it("keeps recovery through a failed retry, then accepts replay as terminal", async () => {
     const { lock } = await mount();
     mock[kind].mockResolvedValueOnce({ status: "UNCONFIRMED" }).mockResolvedValueOnce({ status: "ERROR", message: "ลองใหม่" });

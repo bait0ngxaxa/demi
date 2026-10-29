@@ -156,13 +156,14 @@ const weightGoal: PersonalWeightGoalDto = {
   updatedAt: "2026-10-04T00:00:00.000Z",
 };
 
-function workspace(domain: Domain, authority: ReturnType<typeof createWellnessPrivateAuthority>): unknown {
+function workspace(domain: Domain, authority: ReturnType<typeof createWellnessPrivateAuthority>, onLockChange?: (locked: boolean) => void): unknown {
   if (domain === "Meal") {
     return renderWithHooks("Meal", () => PersonalMealWorkspace({
       initialPage: { items: [], nextCursor: null },
       today: "2026-10-04",
       initialNonce: "11111111-1111-4111-8111-111111111111",
       authority,
+      onLockChange,
     }));
   }
   if (domain === "Exercise") {
@@ -171,6 +172,7 @@ function workspace(domain: Domain, authority: ReturnType<typeof createWellnessPr
       today: "2026-10-04",
       initialNonce: "22222222-2222-4222-8222-222222222222",
       authority,
+      onLockChange,
     }));
   }
   return renderWithHooks("Weight", () => PersonalWeightGoalWorkspace({
@@ -220,12 +222,12 @@ function readState(domain: Domain): ActionState {
   return { status: "SUCCESS", currentGoal: weightGoal };
 }
 
-function preparePendingRead(domain: Domain, authority: ReturnType<typeof createWellnessPrivateAuthority>) {
+function preparePendingRead(domain: Domain, authority: ReturnType<typeof createWellnessPrivateAuthority>, onLockChange?: (locked: boolean) => void) {
   const response = deferred<ActionState>();
   if (domain === "Meal") serverActions.listMeals.mockReturnValueOnce(response.promise);
   if (domain === "Exercise") serverActions.listExercises.mockReturnValueOnce(response.promise);
   if (domain === "Weight") serverActions.readWeightGoal.mockReturnValueOnce(response.promise);
-  let tree = workspace(domain, authority);
+  let tree = workspace(domain, authority, onLockChange);
   if (domain === "Weight") {
     tree = openEditor(tree, domain, authority);
     const coordination = editorElement(tree, domain).props.coordination as unknown as {
@@ -294,6 +296,38 @@ describe("shared Wellness privacy response matrix", () => {
     harness.transitions.length = 0;
     harness.actions.length = 0;
     for (const action of Object.values(serverActions)) action.mockReset();
+  });
+
+  it.each(["Meal", "Exercise"] as const)("%s replaced reads cannot overwrite newer state or release another request's lock", async (domain) => {
+    const authority = createWellnessPrivateAuthority(vi.fn());
+    const lock = vi.fn();
+    workspace(domain, authority, lock);
+    const first = preparePendingRead(domain, authority, lock);
+    const second = preparePendingRead(domain, authority, lock);
+    first.response.resolve(readState(domain));
+    await first.pending;
+    expect(lock.mock.lastCall).toEqual([true]);
+    expect(harness.states.get(`${domain}:0`)).toEqual({ items: [], nextCursor: null });
+    second.response.resolve(readState(domain));
+    await second.pending;
+    expect(lock.mock.lastCall).toEqual([false]);
+    expect(harness.states.get(`${domain}:0`)).toMatchObject({ items: [domain === "Meal" ? meal : exercise] });
+  });
+
+  it.each(["Meal", "Exercise"] as const)("%s discards an older read when a write starts and remains unresolved", async (domain) => {
+    const authority = createWellnessPrivateAuthority(vi.fn());
+    const read = preparePendingRead(domain, authority);
+    const mutation = preparePendingMutation(domain, authority);
+    mutation.response.resolve({ status: "UNCONFIRMED" });
+    await mutation.pending;
+    const writes = harness.writes.length;
+    read.response.resolve(readState(domain));
+    await read.pending;
+    expect(harness.writes).toHaveLength(writes);
+    expect(harness.states.get(`${domain}:0`)).toEqual({ items: [], nextCursor: null });
+    const tree = workspace(domain, authority);
+    const newIntent = elements(tree).find((element) => textContent(element.props.children) === "เริ่มบันทึกใหม่");
+    expect(newIntent?.props.disabled).toBe(true);
   });
 
   it.each(responseMatrix)("$source DENIED prevents a pending $target $kind response from restoring private state", async ({ source, target, kind }) => {
