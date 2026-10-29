@@ -37,7 +37,7 @@ function useMealAction(action: (previous: MealActionState, form: FormData) => Pr
   }, { status: "IDLE" });
   return [state, dispatch, pending, recovering];
 }
-export function MealEditor({ item, today, nonce, coordination }: { item?: PersonalMealDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {
+export function MealEditor({ item, today, maxDate, nonce, coordination }: { item?: PersonalMealDto; today: string; maxDate?: string; nonce: string; coordination: Coordination }): React.JSX.Element {
   const [state, action, pending, recovering] = useMealAction(item ? updatePersonalMealAction : createPersonalMealAction, coordination, !item);
   const [category, setCategory] = useState(item?.category ?? "");
   const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
@@ -60,7 +60,7 @@ export function MealEditor({ item, today, nonce, coordination }: { item?: Person
       </fieldset>
       <div id={`${prefix}-details`} hidden={!category} className="space-y-4">
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่รับประทาน</label>
-        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
+        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={maxDate} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-description`} className="block text-sm font-medium">รายละเอียด (ไม่บังคับ)</label>
         <textarea id={`${prefix}-description`} className={`${inputClassName} py-3`} name="description" rows={4} maxLength={2000} value={description} onChange={(e) => setDescription(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.description)} aria-describedby={`${prefix}-description-help`} />

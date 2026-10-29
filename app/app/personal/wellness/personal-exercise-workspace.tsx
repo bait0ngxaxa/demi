@@ -15,7 +15,7 @@ export function ExerciseReadback({ item }: { item: PersonalExerciseDto }): React
     <p className="text-text-muted">{item.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `${item.durationMinutes.toLocaleString("th-TH")} นาที`}</p>
     <p className="whitespace-pre-wrap break-words text-text-muted">{item.note ?? "ไม่ได้บันทึกเพิ่มเติม"}</p></div>;
 }
-export function PersonalExerciseWorkspace({ initialPage, today, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalExercisePage; today: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalExercisePage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
+export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalExercisePage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalExercisePage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
   const [selected, setSelected] = useState<PersonalExerciseDto | undefined>();
   const [nonce, setNonce] = useState(initialNonce);
@@ -116,7 +116,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, initialNonce, au
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
     {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><ExerciseReadback item={feedback.result.item} /></section> : null}
     <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">{selected ? "แก้ไขบันทึกการออกกำลังกาย" : "บันทึกการออกกำลังกาย"}</h3>
-      <ExerciseEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} nonce={nonce} coordination={coordination} />
+      <ExerciseEditor key={selected ? `${selected.id}:${selected.updatedAt}` : nonce} item={selected} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
       {selected ? <ExerciseDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} /> : null}
       <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
         <Button variant="ghost" disabled={saving || pending || recoveringCreate} onClick={() => { if (activity.current.write === "UNRESOLVED_CREATE" || activity.current.write === "WRITE_PENDING") return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>

@@ -7,6 +7,7 @@ import { Panel } from "@/components/ui/panel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { readDailyWellnessAction } from "./daily-wellness-action";
+import { mealBangkokToday, isMealCivilDate } from "@/modules/meals/domain/personal-meal";
 import type { PersonalMealPage } from "@/modules/meals/domain/personal-meal";
 import type { PersonalExercisePage } from "@/modules/exercises/domain/personal-exercise";
 import type { PersonalWeightGoalDto } from "@/modules/weight-goals/domain/personal-weight-goal";
@@ -25,6 +26,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   const [mealSummary, setMealSummary] = useState(mealPage.dailySummary);
   const [exerciseSummary, setExerciseSummary] = useState(exercisePage.dailySummary);
   const [dateError, setDateError] = useState("");
+  const [bangkokToday, setBangkokToday] = useState(today);
   const [pending, startTransition] = useTransition();
   const locks = useRef({ meal: false, exercise: false, weight: false });
   const request = useRef(0);
@@ -32,6 +34,9 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     event.preventDefault();
     if (!session || pending || !authority.isActive()) return;
     if (Object.values(locks.current).some(Boolean)) { setDateError("กรุณารอการบันทึกหรือทบทวนผลคำขอเดิมก่อนเปลี่ยนวัน"); return; }
+    const currentToday = mealBangkokToday(new Date());
+    setBangkokToday(currentToday);
+    if (!isMealCivilDate(dateDraft) || dateDraft > currentToday) { setDateError("กรุณาเลือกวันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย"); return; }
     const captured = ++request.current;
     const generation = authority.captureGeneration();
     startTransition(async () => {
@@ -65,6 +70,23 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     };
   }, [authority]);
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    function updateLimit(): void {
+      clearTimeout(timer);
+      const now = new Date();
+      const current = mealBangkokToday(now);
+      setBangkokToday(current);
+      const nextMidnight = Date.parse(`${current}T00:00:00+07:00`) + 86_400_000;
+      timer = setTimeout(updateLimit, Math.max(1, nextMidnight - now.getTime()));
+    }
+    // Reconcile hydration delay, sleeping tabs and clock changes without resetting drafts.
+    timer = setTimeout(updateLimit, 0);
+    window.addEventListener("focus", updateLimit);
+    document.addEventListener("visibilitychange", updateLimit);
+    return () => { clearTimeout(timer); window.removeEventListener("focus", updateLimit); document.removeEventListener("visibilitychange", updateLimit); };
+  }, []);
+
   if (session === null) return <div className="max-w-4xl space-y-6">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
     <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>
@@ -77,7 +99,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     <Panel aria-label="ภาพรวมรายวัน">
       <div className="space-y-5">
         <form onSubmit={changeDate} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-2"><label htmlFor="wellness-date" className="block text-sm font-medium">วันที่บันทึก (เวลาไทย)</label><Input id="wellness-date" type="date" min="0001-01-01" required value={dateDraft} disabled={pending} aria-describedby="wellness-date-help" onChange={(event) => setDateDraft(event.target.value)} /></div>
+          <div className="min-w-0 flex-1 space-y-2"><label htmlFor="wellness-date" className="block text-sm font-medium">วันที่บันทึก (เวลาไทย)</label><Input id="wellness-date" type="date" min="0001-01-01" max={bangkokToday} required value={dateDraft} disabled={pending} aria-describedby="wellness-date-help" onChange={(event) => setDateDraft(event.target.value)} /></div>
           <Button type="submit" loading={pending}>ดูบันทึกตามวันที่</Button>
         </form>
         <p id="wellness-date-help" className="text-sm text-text-muted">เลือกวันเพื่อดูประวัติหรือบันทึกย้อนหลัง การเปิดวันใหม่จะเริ่มแบบฟอร์มอาหารและกิจกรรมใหม่</p>
@@ -95,8 +117,8 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     </Panel>
     <fieldset disabled={pending} className="min-w-0 space-y-8">
       <legend className="sr-only">บันทึกสุขภาพส่วนตัว</legend>
-      <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace key={`meal:${date}:${session.mealNonce}`} initialPage={session.mealPage} today={date} initialNonce={session.mealNonce} authority={authority} date={date} onSummary={setMealSummary} onLockChange={(value) => { locks.current.meal = value; }} /></section>
-      <section id="exercise" aria-label="การออกกำลังกาย" className="scroll-mt-24 border-t border-border pt-8"><PersonalExerciseWorkspace key={`exercise:${date}:${session.exerciseNonce}`} initialPage={session.exercisePage} today={date} initialNonce={session.exerciseNonce} authority={authority} date={date} onSummary={setExerciseSummary} onLockChange={(value) => { locks.current.exercise = value; }} /></section>
+      <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace key={`meal:${date}:${session.mealNonce}`} initialPage={session.mealPage} today={date} maxDate={bangkokToday} initialNonce={session.mealNonce} authority={authority} date={date} onSummary={setMealSummary} onLockChange={(value) => { locks.current.meal = value; }} /></section>
+      <section id="exercise" aria-label="การออกกำลังกาย" className="scroll-mt-24 border-t border-border pt-8"><PersonalExerciseWorkspace key={`exercise:${date}:${session.exerciseNonce}`} initialPage={session.exercisePage} today={date} maxDate={bangkokToday} initialNonce={session.exerciseNonce} authority={authority} date={date} onSummary={setExerciseSummary} onLockChange={(value) => { locks.current.exercise = value; }} /></section>
       <section id="weight-goal" aria-label="เป้าหมายน้ำหนัก" className="scroll-mt-24 border-t border-border pt-8"><PersonalWeightGoalWorkspace initialGoal={session.weightGoal} initialNonce={session.weightGoalNonce} authority={authority} onLockChange={(value) => { locks.current.weight = value; }} /></section>
     </fieldset>
     <div className="space-y-2 border-t border-border pt-5">

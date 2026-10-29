@@ -33,6 +33,47 @@ async function chooseDate(value: string): Promise<void> {
 beforeEach(async () => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(() => root.render(<PersonalWellnessWorkspace {...props} />)); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Daily Wellness interactions", () => {
+  it("rejects tomorrow and invalid recording dates before requesting data", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-29T12:00:00Z"));
+    try {
+      await chooseDate("2026-10-30");
+      expect(mock.daily).not.toHaveBeenCalled();
+      expect(host.querySelector<HTMLInputElement>("#wellness-date")?.max).toBe(date);
+      const form = host.querySelector<HTMLInputElement>("#wellness-date")?.form;
+      await chooseDate("");
+      await act(() => form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+      expect(mock.daily).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(["2026-10-30", "2026-10-29"])("accepts Bangkok today/yesterday %s in another browser timezone", async (chosen) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-29T17:30:00Z"));
+    const formatter = Intl.DateTimeFormat;
+    // Emulate a browser whose default calendar day is still October 29.
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (locales, options) {
+      return new formatter(locales, { timeZone: "America/Los_Angeles", ...options });
+    });
+    try {
+      expect(new Intl.DateTimeFormat("en-CA").format(new Date())).toBe("2026-10-29");
+      mock.daily.mockResolvedValue({ status: "SUCCESS", mealPage: props.mealPage, exercisePage: props.exercisePage });
+      await act(() => window.dispatchEvent(new Event("focus")));
+      await chooseDate(chosen);
+      expect(mock.daily.mock.calls[0][0].get("occurredOn")).toBe(chosen);
+      expect(host.querySelector<HTMLInputElement>("#wellness-date")?.max).toBe("2026-10-30");
+    } finally { vi.restoreAllMocks(); vi.useRealTimers(); }
+  });
+  it("updates Bangkok recording limits at midnight without changing drafts or weight target rules", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-29T16:59:59Z"));
+    try {
+      await act(() => { root.render(<PersonalWellnessWorkspace {...props} key="midnight" />); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1001); });
+      expect(host.querySelector<HTMLInputElement>("#wellness-date")?.max).toBe("2026-10-30");
+      expect([...host.querySelectorAll<HTMLInputElement>('[name="occurredOn"]')].map((input) => input.max)).toEqual(["2026-10-30", "2026-10-30"]);
+      expect(host.querySelector<HTMLInputElement>("#wellness-date")?.value).toBe(date);
+    } finally { vi.useRealTimers(); }
+  });
   it("allows date navigation after a confirmed write followed by a failed aggregate read", async () => {
     const item = { id: nonce, category: "SNACK", occurredOn: date, description: null, createdAt: `${date}T00:00:00.000Z`, updatedAt: `${date}T00:00:00.000Z` };
     mock.create.mockResolvedValue({ status: "SUCCESS", message: "บันทึกยืนยันแล้ว", result: { outcome: "CREATED", item } });

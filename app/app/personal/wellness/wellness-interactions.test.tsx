@@ -33,6 +33,12 @@ function button(label: string): HTMLButtonElement {
 beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Thai interactive journal editors", () => {
+  it("retains an existing future weight goal date without a recording-date maximum", async () => {
+    const goal = { id: nonce, targetWeightKg: "65", targetDate: "2030-12-31", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+    await act(() => root.render(<PersonalWeightGoalEditor goal={goal} nonce={nonce} coordination={coordination()} />));
+    expect(host.querySelector<HTMLInputElement>('[name="targetDate"]')?.value).toBe(goal.targetDate);
+    expect(host.querySelector<HTMLInputElement>('[name="targetDate"]')?.max).toBe("");
+  });
   it("preserves a saved past target date until duration is explicitly applied; allows clearing", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-12-31T17:00:00Z"));

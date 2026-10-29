@@ -38,7 +38,7 @@ function useExerciseAction(action: (previous: ExerciseActionState, form: FormDat
   }, { status: "IDLE" });
   return [state, dispatch, pending, recovering];
 }
-export function ExerciseEditor({ item, today, nonce, coordination }: { item?: PersonalExerciseDto; today: string; nonce: string; coordination: Coordination }): React.JSX.Element {
+export function ExerciseEditor({ item, today, maxDate, nonce, coordination }: { item?: PersonalExerciseDto; today: string; maxDate?: string; nonce: string; coordination: Coordination }): React.JSX.Element {
   const [state, action, pending, recovering] = useExerciseAction(item ? updatePersonalExerciseAction : createPersonalExerciseAction, coordination, !item);
   const [activityName, setActivityName] = useState(item?.activityName ?? "");
   const [durationMinutes, setDurationMinutes] = useState(item?.durationMinutes?.toString() ?? "");
@@ -66,7 +66,7 @@ export function ExerciseEditor({ item, today, nonce, coordination }: { item?: Pe
         <Input id={`${prefix}-activity`} name="activityName" required maxLength={EXERCISE_ACTIVITY_RAW_MAX} value={activityName} onChange={(e) => setActivityName(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.activityName)} aria-describedby={`${prefix}-activity-help`} />
         <p id={`${prefix}-activity-help`} className="text-sm text-text-muted">{state.fieldErrors?.activityName ?? "ไม่เกิน 120 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่ออกกำลังกาย</label>
-        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
+        <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={maxDate} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-duration`} className="block text-sm font-medium">ระยะเวลา (นาที, ไม่บังคับ)</label>
         <Input id={`${prefix}-duration`} name="durationMinutes" type="number" inputMode="numeric" min={1} max={EXERCISE_DURATION_MAX} step={1} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.durationMinutes)} aria-describedby={`${prefix}-duration-help`} />
