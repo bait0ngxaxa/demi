@@ -3,6 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { FamilyHealthSummary } from "@/modules/family/services/family-health-summary-query-service";
+import { buildServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
+import { progressRelationship, progressPatient } from "../../../../tests/support/service-progress";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
@@ -20,7 +22,7 @@ const full: FamilyHealthSummary = {
   profile: { age: 66, careTeams: [{ hospitalName: "รพ.สต. บ้านใหม่", parentHospitalName: "โรงพยาบาลแม่ข่าย", osmDisplayName: "อสม. สมศรี", hospitalPhone: "021234567" }] },
   nextAppointment: { appointment: { grantId, appointmentId: "66666666-6666-4666-8666-666666666666", hospitalName: "รพ.สต. บ้านใหม่",
     type: AppointmentType.FOLLOW_UP, scheduledAt: new Date("2026-11-01T03:00:00.000Z"), status: AppointmentStatus.SCHEDULED } },
-  healthPlan: { plans: [{ hospitalName: "รพ.สต. บ้านใหม่", roundNumber: 2, createdAt: new Date("2026-10-01T00:00:00.000Z"), primaryGoalLabel: "ลดน้ำหนัก",
+  healthPlan: { serviceProgress: [], plans: [{ hospitalName: "รพ.สต. บ้านใหม่", roundNumber: 2, createdAt: new Date("2026-10-01T00:00:00.000Z"), primaryGoalLabel: "ลดน้ำหนัก",
     targets: { weightLossKg: 3, waistCm: null, bloodSugarMgDl: null, hba1cPercent: null },
     activities: [{ activityLabel: "เดินเร็ว", targetDays: 5, targetValue: 30, targetUnit: "นาที" }] }] },
   medications: { items: [{ medicationId: "77777777-7777-4777-8777-777777777777", medicationName: "เมทฟอร์มิน", times: ["08:00", "20:00"] }] },
@@ -39,7 +41,7 @@ describe("AF-5 family health summary view", () => {
 
   it("omits a block without its grant instead of showing it empty, and says when nothing is shared", () => {
     const markup = renderToStaticMarkup(<FamilyHealthSummaryView summary={base} />);
-    for (const heading of ["นัดถัดไป", "ผู้ดูแลและการติดต่อ", "แผนสุขภาพปัจจุบัน", "ยาที่ใช้อยู่", "อายุ"]) expect(markup).not.toContain(heading);
+    for (const heading of ["นัดถัดไป", "ผู้ดูแลและการติดต่อ", "แผนสุขภาพปัจจุบัน", "บริการปัจจุบัน", "ยาที่ใช้อยู่", "อายุ"]) expect(markup).not.toContain(heading);
     expect(markup).toContain("ผู้ป่วยยังไม่ได้แชร์ข้อมูลสุขภาพกับคุณ");
   });
 
@@ -51,6 +53,15 @@ describe("AF-5 family health summary view", () => {
     expect(markup).toContain("ยังไม่มีรายการยาที่ใช้อยู่");
     expect(markup).not.toContain("อายุ");
     expect(markup).not.toContain("แผนสุขภาพปัจจุบัน");
+  });
+
+  it("shows granted progress with all three lists, no recorder names, forms or record links, and no appointment hint without its grant", () => {
+    const record = progressRelationship();
+    record.programs[0].serviceOneConfidences = [{ roundNumber: 1, recordedAt: new Date(), recordedByUser: progressPatient, score: 7, improvementPlan: "บันทึกลับ" }];
+    const progress = buildServiceProgress(record, undefined, { readOnly: true }).progress;
+    const markup = renderToStaticMarkup(<FamilyHealthSummaryView summary={{ ...base, healthPlan: { plans: [], serviceProgress: [progress] } }} />);
+    for (const text of ["บริการปัจจุบัน", "ครั้งที่ 1 · ทำแล้ว", "ผู้ป่วยบันทึกเองได้", "เจ้าหน้าที่/อสม. จะทำให้", "ทำแล้ว", "ผู้ป่วยบันทึกเอง", "ครั้งปัจจุบัน"]) expect(markup).toContain(text);
+    expect(markup).not.toMatch(/<form|<button|<summary|\/record\/|\/app\/personal\/care|ชื่อเจ้าหน้าที่ลับ|ชื่อผู้ป่วย|บันทึกลับ|ยังไม่มีนัด|นัดถัดไป/u);
   });
 });
 

@@ -8,7 +8,7 @@ import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/ide
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { toMedicationTimeCarrier } from "@/modules/medications/domain/medication-local-time";
 import { createCaregiverAccountFromInvitation } from "@/modules/family/services/caregiver-account-claim-service";
-import { acceptAppointmentGrant, proposeAppointmentGrant } from "@/modules/family/services/appointment-grant-service";
+import { acceptAppointmentGrant, proposeAppointmentGrant, revokeAppointmentGrant } from "@/modules/family/services/appointment-grant-service";
 import {
   acceptCaregiverInvitation,
   createCaregiverInvitation,
@@ -21,6 +21,7 @@ import {
 import { acceptResourceGrant, proposeResourceGrant, revokeResourceGrant } from "@/modules/family/services/caregiver-resource-grant-service";
 import { getDelegatedAppointment, listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
 import { getFamilyHealthSummary } from "@/modules/family/services/family-health-summary-query-service";
+import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
 
 const db = getPrisma();
 const now = new Date("2026-10-23T03:00:00.000Z");
@@ -73,7 +74,7 @@ async function addCareData(f: Fixture) {
   await db.personalMedication.create({ data: { patientProfileId: f.profileId, medicationName: "เมทฟอร์มิน", instructionText: "หลังอาหาร",
     schedules: { create: [{ localTime: toMedicationTimeCarrier("20:00") }, { localTime: toMedicationTimeCarrier("08:00") }] } } });
   await db.personalMedication.create({ data: { patientProfileId: f.profileId, medicationName: "ยาที่หยุดแล้ว", status: "STOPPED", stoppedAt: days(-1) } });
-  return { upcoming: upcoming.id, past: past.id };
+  return { upcoming: upcoming.id, past: past.id, doctor };
 }
 
 async function oneStepAdd(f: Fixture, input: Record<string, unknown>) {
@@ -83,12 +84,16 @@ async function oneStepAdd(f: Fixture, input: Record<string, unknown>) {
 }
 
 async function clear(): Promise<void> {
+  await clearProgramRoundCompletions();
+  await db.patientProgramRoundVitals.deleteMany();
+  await db.patientProgramServiceOneConfidence.deleteMany();
   await db.auditEvent.deleteMany();
   await db.appointmentLineNotification.deleteMany();
   await db.caregiverResourceGrant.deleteMany();
   await db.caregiverAppointmentGrant.deleteMany();
   await db.patientAppointment.deleteMany();
   await db.patientGoalPlan.deleteMany();
+  await db.patientProgram.deleteMany();
   await db.medicationSchedule.deleteMany();
   await db.personalMedication.deleteMany();
   await db.patientOsmAssignment.deleteMany();
@@ -113,6 +118,51 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
   beforeAll(async () => { await db.$connect(); });
   afterEach(clear);
   afterAll(async () => { await db.$disconnect(); });
+
+  it("PP-2: reads progress only with an active HEALTH_PLAN grant, hides private data and checks the relationship again", async () => {
+    const f = await patientFixture();
+    const { doctor } = await addCareData(f);
+    const program = await db.patientProgram.create({ data: { patientHospitalRelationshipId: f.relationshipA, createdByUserId: doctor.userId } });
+    await openProgramRound(program.id, 1);
+    await db.patientProgramServiceOneConfidence.create({ data: { patientProgramId: program.id, roundNumber: 1, recordedByUserId: f.patient.userId, score: 8, improvementPlan: "ข้อความส่วนตัว" } });
+    await db.patientProgramRoundVitals.create({ data: { patientProgramId: program.id, patientHospitalRelationshipId: f.relationshipA, roundNumber: 1, recordedByUserId: doctor.userId, submissionNonce: randomUUID(), serviceDate: now, weight: 70 } });
+    const { caregiver, invitation } = await oneStepAdd(f, { relationshipLabel: "CHILD" });
+    const { relationshipId } = await acceptCaregiverInvitation(caregiver, invitation.plaintextToken, deps);
+
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan).toBeNull();
+    const pending = await proposeResourceGrant(f.patient, { caregiverRelationshipId: relationshipId, resource: "HEALTH_PLAN" }, deps);
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan).toBeNull();
+    await acceptResourceGrant(caregiver, pending.grantId, deps);
+
+    const summary = await getFamilyHealthSummary(caregiver, relationshipId, deps);
+    const services = summary.healthPlan?.serviceProgress;
+    expect(services).toHaveLength(2);
+    const service = services?.find(({ relationshipId: id }) => id === f.relationshipA);
+    // Existing round facts derive HEALTH_PATH from the vitals row, even while VITALS remains partial.
+    expect(service?.currentRound).toMatchObject({ number: 1, doneItems: 2 });
+    expect(service?.currentRound?.done).toContainEqual(expect.objectContaining({ byPatient: true }));
+    expect(service?.currentRound?.staffWillDo.some(({ label }) => label.includes("สัญญาณชีพ"))).toBe(true);
+    expect(service).not.toHaveProperty("nextAppointment");
+    expect(service).not.toHaveProperty("recordingRound");
+    expect(JSON.stringify(services)).not.toMatch(/หมอ|ทดสอบครอบครัว|ข้อความส่วนตัว|บันทึกของเจ้าหน้าที่|recordedBy|doneNote|score/u);
+
+    // Appointment access is a separate, exact-Hospital grant; HEALTH_PLAN alone never reveals a date.
+    const appointment = await proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, deps);
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan?.serviceProgress.every((row) => row.nextAppointment === undefined)).toBe(true);
+    await acceptAppointmentGrant(caregiver, appointment.grantId, deps);
+    const withAppointment = (await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan?.serviceProgress;
+    expect(withAppointment?.find(({ relationshipId: id }) => id === f.relationshipA)?.nextAppointment).toEqual({ scheduledAt: days(3) });
+    expect(withAppointment?.find(({ relationshipId: id }) => id === f.relationshipB)).not.toHaveProperty("nextAppointment");
+    await revokeAppointmentGrant(f.patient, appointment.grantId, deps);
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan?.serviceProgress.every((row) => row.nextAppointment === undefined)).toBe(true);
+
+    await revokeResourceGrant(f.patient, pending.grantId, deps);
+    expect((await getFamilyHealthSummary(caregiver, relationshipId, deps)).healthPlan).toBeNull();
+    const renewed = await proposeResourceGrant(f.patient, { caregiverRelationshipId: relationshipId, resource: "HEALTH_PLAN" }, deps);
+    await acceptResourceGrant(caregiver, renewed.grantId, deps);
+    await revokeCaregiverRelationship(f.patient, relationshipId, deps);
+    await expect(getFamilyHealthSummary(caregiver, relationshipId, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
 
   it("creates the labeled relationship and exactly the chosen grants in one acceptance", async () => {
     const f = await patientFixture();
