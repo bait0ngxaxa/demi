@@ -166,7 +166,8 @@ function createDatabase(input: {
 } = {}) {
   const opened = new Set(openedRoundNumbers(input.completedRounds ?? []));
   const transaction = {
-    auditEvent: { findFirst: vi.fn().mockResolvedValue(null) },
+    // Recording receipt lookup (FR-7: raw SQL that matches the partial unique index).
+    $queryRaw: vi.fn().mockResolvedValue([]),
     patientProgram: {
       findFirst: vi.fn().mockResolvedValue(programRecord(input.program, input.completedRounds)),
     },
@@ -354,6 +355,54 @@ describe("round vitals and the round 1 profile fields", () => {
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ bloodSugar: 110 }), deps(raced.database)),
     ).rejects.toMatchObject({ name: "RoundConflictError" });
+  });
+
+  it("FR-7: rejects a patient re-record of a staff row and fully replaces a patient row for staff", async () => {
+    const patientUserId = "88888888-8888-4888-8888-888888888888";
+    const patientAccess = { ...locked.access, patient: { ...locked.access.patient, userId: patientUserId } };
+
+    mockedLock.mockResolvedValueOnce({
+      ...locked,
+      access: { ...patientAccess, actor: { ...actor, userId: patientUserId, roles: [Role.PATIENT] } },
+      patientSelfRecording: true,
+      recordingRoundNumber: 1,
+    });
+    const staffRow = createDatabase({ vitalsForRound: storedVitals() });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71 }), deps(staffRow.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError", message: "เจ้าหน้าที่/อสม. บันทึกรายการนี้แล้ว" });
+    expect(staffRow.transaction.patientProgramRoundVitals.update).not.toHaveBeenCalled();
+    expect(staffRow.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+    expect(mockedAudit).not.toHaveBeenCalled();
+
+    mockedLock.mockResolvedValueOnce({ ...locked, access: patientAccess });
+    const patientRow = createDatabase({
+      vitalsForRound: storedVitals({ recordedByUserId: patientUserId, waistCircumference: 90 }),
+    });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71 }), deps(patientRow.database)),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(patientRow.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          weight: 71,
+          heightCm: 160,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: null,
+          recordedByUserId: actorUserId,
+        }),
+      }),
+    );
+    expect(patientRow.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "patient_program_round.vitals_recorded",
+        metadata: expect.objectContaining({ reRecorded: true, replacedPatientRecord: true }),
+      }),
+      expect.anything(),
+    );
   });
 
   it("refuses a supplement to a completed round", async () => {

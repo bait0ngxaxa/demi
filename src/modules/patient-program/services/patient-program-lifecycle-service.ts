@@ -52,28 +52,76 @@ export async function lockActivePatientProgram(
 ): Promise<ActivePatientProgramMutationContext> {
   let access: PatientProgramAccessContext;
   let patientSelfRecording = false;
+  let ownActiveRelationship = false;
+
   try {
-    access = await resolvePatientProgramByIdAccessContext(actor, patientProgramId, PATIENT_PROGRAM_MANAGE_CAPABILITY, transaction);
+    access = await resolvePatientProgramByIdAccessContext(
+      actor,
+      patientProgramId,
+      PATIENT_PROGRAM_MANAGE_CAPABILITY,
+      transaction,
+    );
   } catch (error: unknown) {
-    if (!recording || !(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error;
-    if (!actor.roles.includes(Role.PATIENT)) throw error;
-    const locator = await transaction.patientProgram.findUnique({ where: { id: patientProgramId }, select: { patientHospitalRelationshipId: true, patientHospitalRelationship: { select: { hospitalId: true } } } });
-    if (!locator) throw new ForbiddenError();
+    if (!recording || !(error instanceof ForbiddenError || error instanceof NotFoundError)) {
+      throw error;
+    }
+
+    if (!actor.roles.includes(Role.PATIENT)) {
+      throw error;
+    }
+
+    const locator = await transaction.patientProgram.findUnique({
+      where: { id: patientProgramId },
+      select: {
+        patientHospitalRelationshipId: true,
+        patientHospitalRelationship: { select: { hospitalId: true } },
+      },
+    });
+
+    if (!locator) {
+      throw new ForbiddenError();
+    }
+
     let relationship;
+
     try {
-      relationship = await resolveOwnPatientRelationshipContext(actor, locator.patientHospitalRelationshipId, { database: transaction });
+      relationship = await resolveOwnPatientRelationshipContext(actor, locator.patientHospitalRelationshipId, {
+        database: transaction,
+      });
     } catch (scopeError: unknown) {
-      if (scopeError instanceof NotFoundError) throw new ForbiddenError();
+      if (scopeError instanceof NotFoundError) {
+        throw new ForbiddenError();
+      }
+
       throw scopeError;
     }
-    if (relationship.careEndedAt !== null || relationship.hospitalStatus !== HospitalStatus.ACTIVE) throw new ForbiddenError();
+
+    ownActiveRelationship =
+      relationship.careEndedAt === null && relationship.hospitalStatus === HospitalStatus.ACTIVE;
+
+    // Defence in depth; the self-recording policy below decides on the same computed value.
+    if (!ownActiveRelationship) {
+      throw new ForbiddenError();
+    }
+
     access = {
       actor: { ...actor, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] },
-      patient: { userId: actor.userId, patientHospitalRelationshipId: relationship.relationshipId, displayName: "ผู้ป่วย", hospitalNumber: relationship.hospitalNumber, hospital: { id: locator.patientHospitalRelationship.hospitalId, name: relationship.hospitalName } },
-      target: { hospitalId: locator.patientHospitalRelationship.hospitalId, hospitalStatus: relationship.hospitalStatus, assignedOsmUserId: null },
+      patient: {
+        userId: actor.userId,
+        patientHospitalRelationshipId: relationship.relationshipId,
+        displayName: "ผู้ป่วย",
+        hospitalNumber: relationship.hospitalNumber,
+        hospital: { id: locator.patientHospitalRelationship.hospitalId, name: relationship.hospitalName },
+      },
+      target: {
+        hospitalId: locator.patientHospitalRelationship.hospitalId,
+        hospitalStatus: relationship.hospitalStatus,
+        assignedOsmUserId: null,
+      },
     };
     patientSelfRecording = true;
   }
+
   const program = await transaction.patientProgram.findFirst({
     where: {
       id: patientProgramId,
@@ -86,8 +134,13 @@ export async function lockActivePatientProgram(
     throw new NotFoundError();
   }
 
-  if (program.status !== PatientProgramStatus.ACTIVE || program.completedAt !== null) {
-    if (patientSelfRecording) throw new RoundConflictError("ไม่สามารถบันทึกข้อมูลในโปรแกรมที่เสร็จสิ้นแล้ว");
+  const programActive = program.status === PatientProgramStatus.ACTIVE && program.completedAt === null;
+
+  if (!programActive) {
+    if (patientSelfRecording) {
+      throw new RoundConflictError("ไม่สามารถบันทึกข้อมูลในโปรแกรมที่เสร็จสิ้นแล้ว");
+    }
+
     throw new ConflictError("ไม่สามารถบันทึกข้อมูลในโปรแกรมที่เสร็จสิ้นแล้ว");
   }
 
@@ -108,13 +161,31 @@ export async function lockActivePatientProgram(
   }
 
   let recordingRoundNumber = recording?.roundNumber;
+
   if (patientSelfRecording && recording) {
     const current = await currentOpenRound(transaction, program.id);
-    const items = await transaction.patientProgramRoundPlanItem.findMany({ where: { patientProgramId: program.id, roundNumber: current, removedAt: null }, select: { stepCode: true } });
-    const decision = decidePatientSelfRoundRecordPolicy({ actor: access.actor, capability: PATIENT_PROGRAM_ROUND_SELF_RECORD, ownActiveRelationship: true, programActive: true, roundNumber: recording.roundNumber ?? current, currentOpenRoundNumber: current, stepCode: recording.stepCode, activePlanStepCodes: items.map((item) => item.stepCode) });
-    if (!decision.allowed) throw new RoundConflictError("บันทึกได้เฉพาะรายการที่ผู้ป่วยบันทึกเองได้ในแผนครั้งที่เปิดอยู่");
+    const items = await transaction.patientProgramRoundPlanItem.findMany({
+      where: { patientProgramId: program.id, roundNumber: current, removedAt: null },
+      select: { stepCode: true },
+    });
+    const decision = decidePatientSelfRoundRecordPolicy({
+      actor: access.actor,
+      capability: PATIENT_PROGRAM_ROUND_SELF_RECORD,
+      ownActiveRelationship,
+      programActive,
+      roundNumber: recording.roundNumber ?? current,
+      currentOpenRoundNumber: current,
+      stepCode: recording.stepCode,
+      activePlanStepCodes: items.map((item) => item.stepCode),
+    });
+
+    if (!decision.allowed) {
+      throw new RoundConflictError("บันทึกได้เฉพาะรายการที่ผู้ป่วยบันทึกเองได้ในแผนครั้งที่เปิดอยู่");
+    }
+
     recordingRoundNumber = current;
   }
+
   return { access, program, ...(recording ? { patientSelfRecording, recordingRoundNumber } : {}) };
 }
 

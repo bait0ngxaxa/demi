@@ -9,7 +9,7 @@ import {
   buildProgramRoundsOverview,
   type ProgramRoundRecord,
 } from "@/modules/patient-program-rounds/services/round-query-service";
-import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
+import { ROUND_ITEM_CATALOG, roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
 vi.mock("react", async (original) => ({ ...await original<typeof import("react")>(), useActionState: (_action: unknown, initial: unknown) => [initial, vi.fn(), false] }));
@@ -189,5 +189,24 @@ describe("Patient self recording UI (FR-4)", () => {
     expect(markup).toContain("คุณบันทึกแล้ว");
     expect(markup).not.toContain("ชื่อผู้ป่วย");
     expect(markup).not.toContain("สมศรี");
+  });
+  it("FR-7: hides the vitals form for a staff-recorded partial row and keeps it for the patient's own", () => {
+    function withPartialVitals(recordedByUser: { id: string; person: { givenName: string | null; familyName: string | null } }): ProgramRoundRecord {
+      const program = currentProgram();
+      program.patientHospitalRelationship = { ...program.patientHospitalRelationship, patientProfile: { person: { user: { id: "patient-user" } } } };
+      program.roundVitals = [{ id: "vitals-1", roundNumber: 1, serviceDate: new Date("2026-10-20T00:00:00Z"), recordedAt: new Date("2026-10-20T04:00:00Z"), weight: 70, heightCm: null, waistCircumference: null, systolicBloodPressure: null, diastolicBloodPressure: null, bloodSugar: null, recordedByUser }];
+      return program;
+    }
+    const vitalsItem = (markup: string) => {
+      const document = globalThis.document.createElement("div"); document.innerHTML = markup;
+      return [...document.querySelectorAll("li")].find((item) => item.querySelector("h3")?.textContent === ROUND_ITEM_CATALOG.VITALS.label);
+    };
+    const staff = vitalsItem(render(withPartialVitals(recorder), true));
+    expect(staff?.textContent).toContain("เจ้าหน้าที่/อสม. บันทึกให้แล้ว");
+    expect(staff?.querySelector('input[name="weight"]')).toBeNull();
+    expect(staff?.textContent).not.toContain("สมศรี");
+    const own = vitalsItem(render(withPartialVitals({ id: "patient-user", person: { givenName: null, familyName: null } }), true));
+    expect(own?.querySelector('input[name="weight"]')).not.toBeNull();
+    expect(own?.textContent).not.toContain("เจ้าหน้าที่/อสม. บันทึกให้แล้ว");
   });
 });

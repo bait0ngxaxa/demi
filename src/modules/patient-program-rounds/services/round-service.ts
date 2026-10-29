@@ -53,6 +53,7 @@ import {
   type RoundVitalsRequest,
 } from "../schemas/round-schemas";
 import { ensureRoundLedgerEntry, recordRoundLedgerEvidence } from "./round-ledger";
+import { assertPatientMayRecordOver } from "./round-record-ownership";
 import { findRoundRecordingReceipt, recordRoundRecordingReceipt } from "./round-recording-receipt";
 import { assertActivePlanItem, classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
@@ -176,7 +177,12 @@ async function runRoundWrite<TInput, TResult>(
   actor: ActorContext | null | undefined,
   input: unknown,
   dependencies: PatientProgramRoundServiceDependencies,
-  operation: (transaction: Prisma.TransactionClient, actor: ActorContext, input: TInput, now: Date) => Promise<TResult>,
+  operation: (
+    transaction: Prisma.TransactionClient,
+    actor: ActorContext,
+    input: TInput,
+    now: Date,
+  ) => Promise<TResult>,
 ): Promise<TResult> {
   const parsed = schema.safeParse(input);
 
@@ -262,8 +268,19 @@ async function writeRoundProfileFields(
     return;
   }
 
-  if (context.patientSelfRecording && occupation) throw new ForbiddenError();
-  if (preferredName) await assertActivePlanItem(transaction, context.program.id, context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND, "KNOW_SELF");
+  if (context.patientSelfRecording && occupation) {
+    throw new ForbiddenError();
+  }
+
+  if (preferredName) {
+    await assertActivePlanItem(
+      transaction,
+      context.program.id,
+      context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND,
+      "KNOW_SELF",
+    );
+  }
+
   const relationshipId = context.access.patient.patientHospitalRelationshipId;
   const profile = await transaction.patientHospitalProfile.findUnique({
     where: { patientHospitalRelationshipId: relationshipId },
@@ -314,7 +331,18 @@ async function writeRoundProfileFields(
   );
   if (preferredName) {
     const roundNumber = context.recordingRoundNumber ?? SERVICE_ONE_HOME_ROUND;
-    await recordRoundLedgerEvidence(transaction, { patientProgramId: context.program.id, patientHospitalRelationshipId: relationshipId, roundNumber, toolCode: "KNOW_SELF", source: await classifyRoundActivity(transaction, context.program.id, roundNumber, "KNOW_SELF"), mode: "RECORDED", linkedRecordType: null, linkedRecordId: null, recordedByUserId: context.access.actor.userId, performedAt: now });
+    await recordRoundLedgerEvidence(transaction, {
+      patientProgramId: context.program.id,
+      patientHospitalRelationshipId: relationshipId,
+      roundNumber,
+      toolCode: "KNOW_SELF",
+      source: await classifyRoundActivity(transaction, context.program.id, roundNumber, "KNOW_SELF"),
+      mode: "RECORDED",
+      linkedRecordType: null,
+      linkedRecordId: null,
+      recordedByUserId: context.access.actor.userId,
+      performedAt: now,
+    });
   }
 }
 
@@ -382,6 +410,76 @@ async function supplementVitalsInTransaction(
   return { ...writeResult("RECORDED", context, existing.roundNumber), roundVitalsId: existing.id };
 }
 
+/**
+ * FR-7 re-record of the round's existing vitals row while the round is writable:
+ * - the patient may re-record only their own row and never blanks a value they did not supply;
+ * - staff replacing a patient row write the full submitted set (missing values become null), so every
+ *   value shown is attributable to the recorder;
+ * - staff on a staff row supplement missing values or update the supplied ones.
+ */
+async function reRecordVitalsInTransaction(
+  transaction: Prisma.TransactionClient,
+  context: ActivePatientProgramMutationContext,
+  existing: PersistedRoundVitals,
+  input: RoundVitalsRequest,
+  now: Date,
+): Promise<PatientProgramRoundVitalsResult> {
+  const { access } = context;
+  assertPatientMayRecordOver(context, existing);
+
+  const replacesPatientRecord =
+    !context.patientSelfRecording &&
+    access.patient.userId !== null &&
+    existing.recordedByUserId === access.patient.userId;
+  const supplement =
+    !context.patientSelfRecording &&
+    !replacesPatientRecord &&
+    existing.serviceDate.toISOString().slice(0, 10) === input.serviceDate &&
+    VITALS_MEASUREMENTS.every(
+      (field) => input[field] == null || existing[field] === null || existing[field] === input[field],
+    );
+
+  if (supplement) {
+    const result = await supplementVitalsInTransaction(transaction, context, existing, input);
+    await recordRoundRecordingReceipt(transaction, context, input, "VITALS", existing.id);
+    return result;
+  }
+
+  const measurements = Object.fromEntries(
+    VITALS_MEASUREMENTS
+      .filter((field) => replacesPatientRecord || input[field] != null)
+      .map((field) => [field, input[field] ?? null]),
+  );
+  const record = await transaction.patientProgramRoundVitals.update({
+    where: { id: existing.id },
+    data: {
+      ...measurements,
+      serviceDate: serviceDateToUtcDate(input.serviceDate),
+      recordedByUserId: access.actor.userId,
+      recordedAt: now,
+    },
+    select: roundVitalsSelect,
+  });
+
+  await recordAuditEvent(
+    {
+      actorUserId: access.actor.userId,
+      action: "patient_program_round.vitals_recorded",
+      resourceType: "PatientProgramRoundVitals",
+      resourceId: record.id,
+      metadata: {
+        ...auditMetadata(context, input.roundNumber),
+        reRecorded: true,
+        ...(replacesPatientRecord ? { replacedPatientRecord: true } : {}),
+      },
+    },
+    transaction,
+  );
+  await recordRoundRecordingReceipt(transaction, context, input, "VITALS", record.id);
+
+  return { ...writeResult("RECORDED", context, input.roundNumber), roundVitalsId: record.id };
+}
+
 async function recordVitalsInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
@@ -393,10 +491,21 @@ async function recordVitalsInTransaction(
   }
 
   const programId = input.patientProgramId.toLowerCase();
-  const context = await lockActivePatientProgram(transaction, actor, programId, { stepCode: "VITALS", roundNumber: input.roundNumber });
-  if (context.patientSelfRecording && (input.preferredName || input.occupation)) throw new ForbiddenError();
+  const context = await lockActivePatientProgram(transaction, actor, programId, {
+    stepCode: "VITALS",
+    roundNumber: input.roundNumber,
+  });
+
+  if (context.patientSelfRecording && (input.preferredName || input.occupation)) {
+    throw new ForbiddenError();
+  }
+
   const receipt = await findRoundRecordingReceipt(transaction, context, input, "VITALS");
-  if (receipt) return { ...writeResult("ALREADY_RECORDED", context, input.roundNumber), roundVitalsId: receipt };
+
+  if (receipt) {
+    return { ...writeResult("ALREADY_RECORDED", context, input.roundNumber), roundVitalsId: receipt };
+  }
+
   const { access, program } = context;
   const relationshipId = access.patient.patientHospitalRelationshipId;
 
@@ -425,20 +534,12 @@ async function recordVitalsInTransaction(
 
   await assertRoundWritable(transaction, program.id, input.roundNumber);
 
-  if (existing && (input.preferredName || input.occupation)) throw new ValidationError("กรุณาบันทึกชื่อที่อยากให้เรียกแยกจากการบันทึกสัญญาณชีพซ้ำ");
+  if (existing && (input.preferredName || input.occupation)) {
+    throw new ValidationError("กรุณาบันทึกชื่อที่อยากให้เรียกแยกจากการบันทึกสัญญาณชีพซ้ำ");
+  }
+
   if (existing) {
-    const supplement = !context.patientSelfRecording && existing.recordedByUserId !== access.patient.userId && existing.serviceDate.toISOString().slice(0, 10) === input.serviceDate && VITALS_MEASUREMENTS.every((field) => input[field] == null || existing[field] === null || existing[field] === input[field]);
-    if (supplement) {
-      const result = await supplementVitalsInTransaction(transaction, context, existing, input);
-      await recordRoundRecordingReceipt(transaction, context, input, "VITALS", existing.id);
-      return result;
-    }
-    const replaceStaffValues = context.patientSelfRecording && existing.recordedByUserId !== access.actor.userId;
-    const supplied = Object.fromEntries(VITALS_MEASUREMENTS.filter((field) => replaceStaffValues || input[field] != null).map((field) => [field, input[field] ?? null]));
-    const record = await transaction.patientProgramRoundVitals.update({ where: { id: existing.id }, data: { ...supplied, serviceDate: serviceDateToUtcDate(input.serviceDate), recordedByUserId: access.actor.userId, recordedAt: now }, select: roundVitalsSelect });
-    await recordAuditEvent({ actorUserId: access.actor.userId, action: "patient_program_round.vitals_recorded", resourceType: "PatientProgramRoundVitals", resourceId: record.id, metadata: { ...auditMetadata(context, input.roundNumber), reRecorded: true } }, transaction);
-    await recordRoundRecordingReceipt(transaction, context, input, "VITALS", record.id);
-    return { ...writeResult("RECORDED", context, input.roundNumber), roundVitalsId: record.id };
+    return reRecordVitalsInTransaction(transaction, context, existing, input, now);
   }
 
   const record = await transaction.patientProgramRoundVitals.create({
@@ -486,12 +587,26 @@ async function recordProfileInTransaction(
   input: RoundProfileRequest,
   now: Date,
 ): Promise<PatientProgramRoundWriteResult> {
-  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase(), { stepCode: "KNOW_SELF", roundNumber: input.roundNumber });
+  const context = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase(), {
+    stepCode: "KNOW_SELF",
+    roundNumber: input.roundNumber,
+  });
   const receipt = await findRoundRecordingReceipt(transaction, context, input, "KNOW_SELF");
-  if (receipt) return writeResult("ALREADY_RECORDED", context, input.roundNumber);
+
+  if (receipt) {
+    return writeResult("ALREADY_RECORDED", context, input.roundNumber);
+  }
+
   await assertRoundWritable(transaction, context.program.id, input.roundNumber);
   await writeRoundProfileFields(transaction, context, input, now);
-  await recordRoundRecordingReceipt(transaction, context, input, "KNOW_SELF", context.access.patient.patientHospitalRelationshipId);
+  await recordRoundRecordingReceipt(
+    transaction,
+    context,
+    input,
+    "KNOW_SELF",
+    context.access.patient.patientHospitalRelationshipId,
+  );
+
   return writeResult("RECORDED", context, input.roundNumber);
 }
 
@@ -573,7 +688,10 @@ async function recordReviewInTransaction(
     throw new RoundConflictError("เครื่องมือนี้บันทึกในครั้งที่ 1 ไม่ต้องทบทวนซ้ำในครั้งเดียวกัน");
   }
 
-  if (input.toolCode === "HEALTH_PATH") await assertActivePlanItem(transaction, program.id, roundNumber, "HEALTH_PATH_REVIEW");
+  if (input.toolCode === "HEALTH_PATH") {
+    await assertActivePlanItem(transaction, program.id, roundNumber, "HEALTH_PATH_REVIEW");
+  }
+
   const target = await findReviewTarget(transaction, program.id, input.toolCode);
 
   if (!target) {
@@ -801,7 +919,10 @@ async function completeRoundInTransaction(
       throw new ConflictError("This round completion token has already been used");
     }
 
-    return { ...writeResult("ALREADY_RECORDED", context, roundNumber), ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)) };
+    return {
+      ...writeResult("ALREADY_RECORDED", context, roundNumber),
+      ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)),
+    };
   }
 
   const existing = await transaction.patientProgramRoundCompletion.findUnique({
@@ -810,7 +931,10 @@ async function completeRoundInTransaction(
   });
 
   if (existing) {
-    return { ...writeResult("ALREADY_RECORDED", context, roundNumber), ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)) };
+    return {
+      ...writeResult("ALREADY_RECORDED", context, roundNumber),
+      ...completionCounts(await loadRoundStatus(transaction, context, roundNumber)),
+    };
   }
 
   await assertRoundWritable(transaction, context.program.id, roundNumber);
@@ -822,11 +946,26 @@ async function completeRoundInTransaction(
   }
 
   const notDone = status.steps.filter((step) => step.status === "TODO");
+
   if (notDone.length > 0) {
-    await transaction.patientProgramRoundStepSkip.createMany({ data: notDone.map((step) => {
-      if (!step.planItemId) throw new RoundConflictError("รายการในแผนยังไม่ได้เปิดบริการ");
-      return { patientProgramId: context.program.id, patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId, roundNumber, planItemId: step.planItemId, stepCode: step.code, reasonCode: "NOT_DONE_AT_CLOSE" as const, note: null, skippedByUserId: context.access.actor.userId };
-    }) });
+    await transaction.patientProgramRoundStepSkip.createMany({
+      data: notDone.map((step) => {
+        if (!step.planItemId) {
+          throw new RoundConflictError("รายการในแผนยังไม่ได้เปิดบริการ");
+        }
+
+        return {
+          patientProgramId: context.program.id,
+          patientHospitalRelationshipId: context.access.patient.patientHospitalRelationshipId,
+          roundNumber,
+          planItemId: step.planItemId,
+          stepCode: step.code,
+          reasonCode: "NOT_DONE_AT_CLOSE" as const,
+          note: null,
+          skippedByUserId: context.access.actor.userId,
+        };
+      }),
+    });
   }
 
   const completion = await transaction.patientProgramRoundCompletion.create({
@@ -871,11 +1010,17 @@ async function completeRoundInTransaction(
   return { ...writeResult("RECORDED", context, roundNumber), ...completionCounts(status) };
 }
 
-function completionCounts(status: Awaited<ReturnType<typeof loadRoundStatus>>): { done: number; skipped: number; notDone: number } {
+function completionCounts(
+  status: Awaited<ReturnType<typeof loadRoundStatus>>,
+): { done: number; skipped: number; notDone: number } {
   return {
     done: status.steps.filter((step) => step.status === "DONE").length,
-    skipped: status.steps.filter((step) => step.status === "SKIPPED" && step.skip?.reasonCode !== "NOT_DONE_AT_CLOSE").length,
-    notDone: status.steps.filter((step) => step.status === "TODO" || step.skip?.reasonCode === "NOT_DONE_AT_CLOSE").length,
+    skipped: status.steps.filter(
+      (step) => step.status === "SKIPPED" && step.skip?.reasonCode !== "NOT_DONE_AT_CLOSE",
+    ).length,
+    notDone: status.steps.filter(
+      (step) => step.status === "TODO" || step.skip?.reasonCode === "NOT_DONE_AT_CLOSE",
+    ).length,
   };
 }
 
@@ -905,7 +1050,8 @@ export async function recordPatientProgramRoundProfile(
     actor,
     input,
     dependencies,
-    (transaction, authorizedActor, parsed, now) => recordProfileInTransaction(transaction, authorizedActor, parsed, now),
+    (transaction, authorizedActor, parsed, now) =>
+      recordProfileInTransaction(transaction, authorizedActor, parsed, now),
   );
 }
 

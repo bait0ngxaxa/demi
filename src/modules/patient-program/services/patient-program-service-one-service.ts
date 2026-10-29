@@ -1,5 +1,6 @@
 import "server-only";
 
+import { assertPatientMayRecordOver } from "@/modules/patient-program-rounds/services/round-record-ownership";
 import { findRoundRecordingReceipt, recordRoundRecordingReceipt } from "@/modules/patient-program-rounds/services/round-recording-receipt";
 
 import { Prisma, type PrismaClient } from "@prisma/client";
@@ -581,6 +582,7 @@ async function recordRoutineInTransaction(
 
   if (receipt && existing) return toMutationResult("ROUTINE", "ALREADY_RECORDED", existing, access.target.hospitalId, access.patient.patientHospitalRelationshipId);
   if (receipt && !existing) throw new ConflictError("ไม่พบรายการที่บันทึกไว้ของคำขอนี้");
+  assertPatientMayRecordOver(context, existing);
   if (existing && !input.submissionNonce) {
     const sameTable =
       existing.routineDate?.toISOString().slice(0, 10) === input.routineDate &&
@@ -676,6 +678,7 @@ async function recordFloatingChartInTransaction(
 
   if (receipt && existing) return toMutationResult("FLOATING_CHART", "ALREADY_RECORDED", existing, access.target.hospitalId, access.patient.patientHospitalRelationshipId);
   if (receipt && !existing) throw new ConflictError("ไม่พบรายการที่บันทึกไว้ของคำขอนี้");
+  assertPatientMayRecordOver(context, existing);
   if (existing && !input.submissionNonce) {
     if (
       existing.summary !== input.summary ||
@@ -779,6 +782,7 @@ async function recordDreamCardInTransaction(
 
   if (receipt && existing) return toMutationResult("DREAM_CARD", "ALREADY_RECORDED", existing, access.target.hospitalId, access.patient.patientHospitalRelationshipId);
   if (receipt && !existing) throw new ConflictError("ไม่พบรายการที่บันทึกไว้ของคำขอนี้");
+  assertPatientMayRecordOver(context, existing);
   if (existing && !input.submissionNonce) {
     if (
       existing.dream !== input.dream ||
@@ -871,6 +875,7 @@ async function recordConfidenceInTransaction(
 
   if (receipt && existing) return toMutationResult("CONFIDENCE", "ALREADY_RECORDED", existing, access.target.hospitalId, access.patient.patientHospitalRelationshipId);
   if (receipt && !existing) throw new ConflictError("ไม่พบรายการที่บันทึกไว้ของคำขอนี้");
+  assertPatientMayRecordOver(context, existing);
   if (existing && !input.submissionNonce) {
     if (existing.score !== input.score || existing.improvementPlan !== input.improvementPlan) {
       throw new ConflictError("คะแนนความมั่นใจถูกบันทึกแล้วและไม่สามารถแก้ไขในรอบนี้ได้");

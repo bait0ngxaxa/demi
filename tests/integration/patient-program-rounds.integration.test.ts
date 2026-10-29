@@ -5,7 +5,7 @@ import {
   MembershipType,
   Role,
   UserStatus,
-  type Prisma,
+  Prisma,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -34,6 +34,7 @@ import {
   unskipPatientProgramRoundStep as unskipPlanItem,
 } from "@/modules/patient-program-rounds/services/round-service";
 import { addRoundPlanItem, removeRoundPlanItem, markCustomItemDone, unmarkCustomItemDone, addProgramRound } from "@/modules/patient-program-rounds/services/round-plan-write-service";
+import { roundPlanReceiptQuery, roundRecordingReceiptQuery } from "@/modules/patient-program-rounds/services/round-recording-receipt";
 import { getOwnPatientProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
@@ -2071,4 +2072,91 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
     expect(await prisma.patientProgramRoundVitals.count({ where: { patientProgramId: fixture.programId } })).toBe(0);
   });
 
+  it("FR-7: rejects a patient re-record over staff vitals and tools and writes nothing", async () => {
+    const fixture = await createFixture("fr7-staff-rows");
+    const patient = await patientActor(fixture);
+    await addRoundPlanItem(fixture.osm.actor, { ...request(fixture), stepCode: "DREAM_CARD" });
+    await recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(fixture.programId, { waistCircumference: undefined, bloodSugar: undefined }));
+    await recordPatientProgramServiceOneConfidence(fixture.osm.actor, { ...request(fixture), score: 5, improvementPlan: "เดินทุกวัน" });
+    await recordPatientProgramServiceOneRoutine(fixture.osm.actor, { ...request(fixture), ...routineTable() });
+    await recordPatientProgramServiceOneFloatingChart(fixture.osm.actor, { ...request(fixture), ...floatingChartScores, summary: "เจ้าหน้าที่บันทึก" });
+    await recordPatientProgramServiceOneDreamCard(fixture.osm.actor, { ...request(fixture), ...dreamCard() });
+    const where = { where: { patientProgramId: fixture.programId } };
+    const snapshot = async () => ({
+      vitals: await prisma.patientProgramRoundVitals.findFirstOrThrow(where),
+      confidence: await prisma.patientProgramServiceOneConfidence.findFirstOrThrow(where),
+      routine: await prisma.patientProgramServiceOneRoutine.findFirstOrThrow({ ...where, include: { entries: true } }),
+      chart: await prisma.patientProgramServiceOneFloatingChart.findFirstOrThrow(where),
+      dream: await prisma.patientProgramServiceOneDreamCard.findFirstOrThrow(where),
+      ledger: await prisma.patientProgramRoundActivity.findMany({ ...where, orderBy: { id: "asc" } }),
+      audits: await prisma.auditEvent.count({ where: { metadata: { path: ["patientProgramId"], equals: fixture.programId } } }),
+    });
+    const before = await snapshot();
+    // The staff partial vitals row is not DONE, so the patient view keeps the item but offers no form.
+    const own = await getOwnPatientProgramRounds(patient, fixture.relationshipId, fixture.programId);
+    expect(own.rounds[0].status.steps.find((step) => step.code === "VITALS")?.status).toBe("TODO");
+    expect([...own.rounds[0].staffRecordedSteps].sort()).toEqual(["CONFIDENCE_RULER", "DREAM_CARD", "FLOATING_CHART", "ROUTINE", "VITALS"]);
+    for (const attempt of [
+      () => recordPatientProgramRoundVitals(patient, vitalsInput(fixture.programId, { waistCircumference: 80, bloodSugar: 100 })),
+      () => recordPatientProgramServiceOneConfidence(patient, { ...request(fixture), score: 9 }),
+      () => recordPatientProgramServiceOneRoutine(patient, { ...request(fixture), ...routineTable() }),
+      () => recordPatientProgramServiceOneFloatingChart(patient, { ...request(fixture), ...floatingChartScores, summary: "ผู้ป่วยบันทึกทับ" }),
+      () => recordPatientProgramServiceOneDreamCard(patient, { ...request(fixture), ...dreamCard(), dream: "ผู้ป่วยบันทึกทับ" }),
+    ]) {
+      await expect(attempt()).rejects.toMatchObject({ name: "RoundConflictError", message: "เจ้าหน้าที่/อสม. บันทึกรายการนี้แล้ว" });
+    }
+    expect(await snapshot()).toEqual(before);
+    expect(before.vitals).toMatchObject({ recordedByUserId: fixture.osm.userId, waistCircumference: null, bloodSugar: null });
+  }, 20_000);
+
+  it("FR-7: a patient re-record of their own vitals keeps the values it did not supply", async () => {
+    const fixture = await createFixture("fr7-own");
+    const patient = await patientActor(fixture);
+    await recordPatientProgramRoundVitals(patient, vitalsInput(fixture.programId));
+    await recordPatientProgramRoundVitals(patient, vitalsInput(fixture.programId, { weight: 73, waistCircumference: undefined, bloodSugar: undefined }));
+    expect(await prisma.patientProgramRoundVitals.findFirstOrThrow({ where: { patientProgramId: fixture.programId } })).toMatchObject({
+      weight: 73, heightCm: 162, waistCircumference: 92, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 118, recordedByUserId: patient.userId,
+    });
+  });
+
+  it("FR-7: staff re-recording a patient vitals row replaces the full set, takes provenance and is audited", async () => {
+    const fixture = await createFixture("fr7-replace");
+    const patient = await patientActor(fixture);
+    await recordPatientProgramRoundVitals(patient, vitalsInput(fixture.programId));
+    const result = await recordPatientProgramRoundVitals(fixture.osm.actor, vitalsInput(fixture.programId, { weight: 70, waistCircumference: undefined, bloodSugar: undefined }));
+    expect(await prisma.patientProgramRoundVitals.findFirstOrThrow({ where: { patientProgramId: fixture.programId } })).toMatchObject({
+      weight: 70, heightCm: 162, waistCircumference: null, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: null, recordedByUserId: fixture.osm.userId,
+    });
+    const audit = await prisma.auditEvent.findFirstOrThrow({ where: { action: "patient_program_round.vitals_recorded", resourceId: result.roundVitalsId, actorUserId: fixture.osm.userId } });
+    expect(audit.metadata).toMatchObject({ reRecorded: true, replacedPatientRecord: true });
+    const staffView = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, 1);
+    expect(staffView.vitals).toMatchObject({ byPatient: false, weight: 70, bloodSugar: null });
+  });
+
+  it("FR-7: receipt lookups ignore an unrelated audit event that carries the same submissionNonce key", async () => {
+    const fixture = await createFixture("fr7-receipt");
+    const patient = await patientActor(fixture);
+    const nonce = randomUUID();
+    await prisma.auditEvent.create({ data: { actorUserId: fixture.osm.userId, action: "patient_program.unrelated", resourceType: "Unrelated", resourceId: fixture.programId, metadata: { submissionNonce: nonce, requestHash: "unrelated" } } });
+    const added = await addRoundPlanItem(fixture.osm.actor, { patientProgramId: fixture.programId, roundNumber: 1, submissionNonce: nonce, stepCode: "CUSTOM", customTitle: "เดินรอบบ้าน" });
+    expect(added).toMatchObject({ operation: "RECORDED" });
+    expect(await prisma.patientProgramRoundPlanItem.findUniqueOrThrow({ where: { id: added.planItemId } })).toMatchObject({ customTitle: "เดินรอบบ้าน" });
+    const recordingNonce = randomUUID();
+    await prisma.auditEvent.create({ data: { actorUserId: patient.userId, action: "patient_program.unrelated", resourceType: "Unrelated", resourceId: fixture.programId, metadata: { submissionNonce: recordingNonce, requestHash: "unrelated" } } });
+    await expect(recordPatientProgramServiceOneConfidence(patient, { patientProgramId: fixture.programId, roundNumber: 1, submissionNonce: recordingNonce, score: 6 })).resolves.toMatchObject({ operation: "RECORDED" });
+  });
+
+  it("FR-7: both receipt lookups are served by AuditEvent_round_plan_submission_nonce_key", async () => {
+    for (const query of [roundPlanReceiptQuery(randomUUID()), roundRecordingReceiptQuery(randomUUID())]) {
+      const plan = await prisma.$transaction(async (transaction) => {
+        // Tiny test tables favour a sequential scan; disabling it shows whether the index can serve the query.
+        await transaction.$executeRaw`SET LOCAL enable_seqscan = off`;
+        return transaction.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN ${query}`);
+      });
+      const text = plan.map((row) => row["QUERY PLAN"]).join("\n");
+      // A key lookup, not a scan of every receipt (Prisma's JSON-path filter only reaches the index predicate).
+      expect(text).toContain('Index Scan using "AuditEvent_round_plan_submission_nonce_key"');
+      expect(text).toContain("Index Cond: ((metadata ->> 'submissionNonce'::text)");
+    }
+  });
 });

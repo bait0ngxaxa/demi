@@ -59,6 +59,7 @@ import {
   type RoundPlanFact,
   type RoundState,
   type RoundStatus,
+  type RoundStepCode,
   type RoundStepEvidence,
   type RoundVitalsFact,
   VITALS_MEASUREMENTS,
@@ -171,6 +172,11 @@ export type ProgramRoundDetail = {
   status: RoundStatus;
   planChoices?: readonly { code: keyof typeof ROUND_ITEM_CATALOG; label: string; unavailableReason: string | null; recommended: boolean }[];
   vitals: RoundVitalsView | null;
+  /**
+   * FR-7: steps whose record of this round (its vitals row or per-round tool row, complete or not) was made
+   * by someone other than the patient. The patient cannot replace such a record.
+   */
+  staffRecordedSteps: readonly RoundStepCode[];
   vitalsForm: {
     /** WB-DF-05: editable in rounds 1-2, display-only afterwards. */
     heightEditable: boolean;
@@ -550,6 +556,20 @@ function latestHeightCm(program: ProgramRoundRecord, upToRound: number): number 
   return program.initialBaseline?.heightCm ?? null;
 }
 
+/** FR-7: the same recorder rule the round writes enforce on the patient self-recording path. */
+function staffRecordedRoundSteps(program: ProgramRoundRecord, roundNumber: number): RoundStepCode[] {
+  const patientUserId = program.patientHospitalRelationship.patientProfile?.person.user?.id ?? null;
+  const byOther = (user: RecorderName): boolean => !patientUserId || user?.id !== patientUserId;
+  const vitals = program.roundVitals.find((record) => record.roundNumber === roundNumber);
+  const tools = (Object.keys(PER_ROUND_TOOL_RECORDS) as PerRoundToolCode[]).filter((tool) =>
+    program[PER_ROUND_TOOL_RECORDS[tool]].some(
+      (record) => record.roundNumber === roundNumber && byOther(record.recordedByUser),
+    ),
+  );
+
+  return [...(vitals && byOther(vitals.recordedByUser) ? (["VITALS"] as const) : []), ...tools];
+}
+
 /** A round's vitals: its round vitals or its Follow-up measurements, whichever was recorded last. */
 export function buildRoundVitalsView(
   program: ProgramRoundRecord,
@@ -823,6 +843,7 @@ export function buildProgramRoundDetail(
     status,
     planChoices: Object.values(ROUND_ITEM_CATALOG).map((item) => ({ code: item.code, label: item.code === "CUSTOM" ? "อื่น ๆ (กำหนดเอง)" : item.label, unavailableReason: roundPlanItemUnavailableReason(facts, roundNumber, item.code), recommended: roundGuideline(roundNumber).some((step) => step.code === item.code) && !status.steps.some((step) => step.code === item.code) })),
     vitals: buildRoundVitalsView(program, roundNumber, options),
+    staffRecordedSteps: staffRecordedRoundSteps(program, roundNumber),
     vitalsForm: {
       heightEditable: isGuidelineHeightEntryRound(roundNumber),
       latestHeightCm: latestHeightCm(program, roundNumber),

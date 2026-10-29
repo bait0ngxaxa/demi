@@ -15,7 +15,7 @@ import {
 } from "@/modules/patient-program/presentation/floating-chart-display";
 import type { PatientSelfProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 
-import { PatientRoundRecording } from "./patient-round-recording";
+import { isRecordedByStaff, PatientRoundRecording } from "./patient-round-recording";
 import { ROUND_ITEM_CATALOG } from "@/modules/patient-program-rounds/domain/round-steps";
 import { roundStepStatusLabel } from "@/modules/patient-program-rounds/presentation/round-labels";
 
@@ -94,7 +94,7 @@ export function PatientSelfProgramRoundsView({
                 {round.canSelfRecord ? <ol className="divide-y divide-border">{round.status.steps.map((step) => <li className="py-4" key={step.planItemId ?? step.code}>
                   <h3 className="font-semibold text-text">{step.label}</h3>
                   <p className="mt-1 text-sm text-text-muted">{step.evidence?.byPatient ? "คุณบันทึกแล้ว" : roundStepStatusLabel(step)}</p>
-                  {!ROUND_ITEM_CATALOG[step.code].patientRecordable ? <p className="mt-1 text-sm text-text-muted">{step.status === "DONE" ? "เจ้าหน้าที่/อสม. บันทึกให้แล้ว" : "เจ้าหน้าที่/อสม. จะบันทึกให้"}</p> : null}
+                  {!ROUND_ITEM_CATALOG[step.code].patientRecordable ? <p className="mt-1 text-sm text-text-muted">{step.status === "DONE" ? "เจ้าหน้าที่/อสม. บันทึกให้แล้ว" : "เจ้าหน้าที่/อสม. จะบันทึกให้"}</p> : isRecordedByStaff(round, step) ? <p className="mt-1 text-sm text-text-muted">เจ้าหน้าที่/อสม. บันทึกให้แล้ว</p> : null}
                   {step.doneNote ? <p className="mt-2 whitespace-pre-wrap text-sm text-text">{step.doneNote}</p> : null}
                   <PatientRoundRecording round={round} step={step} relationship={rounds.relationship} />
                 </li>)}</ol> : <RoundStepTimeline
