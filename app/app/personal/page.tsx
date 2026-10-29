@@ -16,6 +16,7 @@ import { canSubmitSupportReport } from "@/modules/support/domain/support-report"
 
 import { PatientAccessUnavailableState } from "./patient-access-unavailable-state";
 import { PatientPersonalHome } from "./patient-personal-home";
+import { getOwnServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 
 export const metadata: Metadata = {
   title: "พื้นที่ส่วนตัว",
@@ -41,6 +42,7 @@ export default async function PatientPersonalPage(
   }
 
   const activeHospitals = getActivePatientHospitals(patient);
+  const serviceProgress = await loadHomeSection(() => getOwnServiceProgress(patient.actor));
   const selectedHospital = selectPatientPersonalHomeHospital(patient, params.hospital);
   // Each section fails on its own: an infrastructure error renders that section's fallback only.
   const [nextAppointment, newsPage, knowledgePage] = selectedHospital
@@ -75,6 +77,8 @@ export default async function PatientPersonalPage(
 
   return (
     <PatientPersonalHome
+      serviceProgress={serviceProgress.status === "LOADED" ? serviceProgress.value.find(({ programId }) => programId !== null) ?? null : null}
+      serviceProgressFailed={serviceProgress.status === "FAILED"}
       activeHospitals={activeHospitalOptions}
       // Hospital workspaces only gate the Work areas entry; the Personal top menu never reads them.
       menu={projectHomeTopMenu(projectApplicationNavigation(patient.actor, []), "personal")}

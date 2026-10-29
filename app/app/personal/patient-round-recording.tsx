@@ -34,10 +34,12 @@ export function PatientRoundRecording({
   round,
   step,
   relationship,
+  returnHref,
 }: {
   round: ProgramRoundDetail;
   step: RoundStepState;
   relationship: PatientSelfRelationshipContext;
+  returnHref?: string;
 }): React.JSX.Element | null {
   if (
     !round.canSelfRecord ||
@@ -55,7 +57,7 @@ export function PatientRoundRecording({
     patientProgramId: round.patientProgramId,
     roundNumber: round.roundNumber,
   };
-  const nextHref = `/app/personal/care/${encodeURIComponent(target.patientHospitalRelationshipId)}/programs/${encodeURIComponent(target.patientProgramId)}/rounds#round-${round.roundNumber}`;
+  const nextHref = returnHref ?? `/app/personal/care/${encodeURIComponent(target.patientHospitalRelationshipId)}/programs/${encodeURIComponent(target.patientProgramId)}/rounds#round-${round.roundNumber}`;
   const tool = TOOL_KEYS[step.code];
   let form: React.JSX.Element;
 
@@ -127,7 +129,7 @@ export function PatientRoundRecording({
       />
     );
   } else if (step.code === "CUSTOM") {
-    form = <CustomItemDoneForm target={target} submissionNonce={nonce} planItemId={step.planItemId} />;
+    form = <CustomItemDoneForm target={target} submissionNonce={nonce} planItemId={step.planItemId} nextHref={returnHref} />;
   } else {
     return null;
   }
@@ -135,7 +137,7 @@ export function PatientRoundRecording({
   return (
     <details className="mt-3">
       <summary className="min-h-11 cursor-pointer rounded-control py-3 text-sm font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2">
-        บันทึกด้วยตนเอง · {step.label}
+        {returnHref ? "บันทึก" : "บันทึกด้วยตนเอง"} · {step.label}
       </summary>
       <div className="pt-3" key={nonce}>
         {form}

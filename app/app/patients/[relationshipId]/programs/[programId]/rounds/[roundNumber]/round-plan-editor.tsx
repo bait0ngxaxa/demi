@@ -48,6 +48,7 @@ function MutationForm({
   children,
   confirmation,
   onStatus,
+  nextHref,
 }: {
   mutation: Mutation;
   target: Target;
@@ -56,6 +57,7 @@ function MutationForm({
   children?: React.ReactNode;
   confirmation?: string;
   onStatus?: (status: MutationStatus) => void;
+  nextHref?: string;
 }): React.JSX.Element {
   const router = useRouter();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
@@ -65,9 +67,10 @@ function MutationForm({
 
   useEffect(() => {
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
+      if (state.status === "SUCCESS" && nextHref) router.push(nextHref);
       router.refresh();
     }
-  }, [router, state]);
+  }, [nextHref, router, state]);
 
   useEffect(() => {
     onStatus?.(pending || unknownOutcome ? "busy" : state.status === "SUCCESS" ? "success" : "idle");
@@ -217,13 +220,15 @@ export function CustomItemDoneForm({
   planItemId,
   target,
   submissionNonce,
+  nextHref,
 }: {
   planItemId: string;
   target: Target;
   submissionNonce: string;
+  nextHref?: string;
 }): React.JSX.Element {
   return (
-    <MutationForm mutation={markCustomItemDoneAction} target={target} submissionNonce={submissionNonce} label="ทำแล้ว">
+    <MutationForm mutation={markCustomItemDoneAction} target={target} submissionNonce={submissionNonce} label="ทำแล้ว" nextHref={nextHref}>
       <input type="hidden" name="planItemId" value={planItemId} />
       <label className="block space-y-2 text-sm font-semibold">
         <span>หมายเหตุ (ไม่บังคับ ไม่เกิน 500 ตัวอักษร)</span>

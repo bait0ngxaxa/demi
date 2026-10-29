@@ -10,6 +10,7 @@ import PersonalAppointmentsPage from "./appointments/page";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import {
   getPatientSelfRelationshipNavigationPageContext,
+  getPatientServiceProgressPageContext,
   getPersonalAppointmentHubPageContext,
 } from "@/modules/patient-self/transport/patient-self-care-page-context";
 import {
@@ -20,7 +21,8 @@ import { PATIENT_ACCESS_UNAVAILABLE } from "@/modules/patient-self/transport/pat
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 vi.mock("next/server", () => ({ connection: vi.fn().mockResolvedValue(undefined) }));
-const homeServices = vi.hoisted(() => ({ nextAppointment: vi.fn(), content: vi.fn() }));
+const homeServices = vi.hoisted(() => ({ nextAppointment: vi.fn(), content: vi.fn(), serviceProgress: vi.fn() }));
+vi.mock("@/modules/patient-self/services/patient-service-progress-query-service", () => ({ getOwnServiceProgress: homeServices.serviceProgress }));
 vi.mock("@/modules/patient-self/services/patient-self-care-query-service", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/modules/patient-self/services/patient-self-care-query-service")>()),
   getOwnNextAppointmentForRelationship: homeServices.nextAppointment,
@@ -30,6 +32,7 @@ vi.mock("next/link", () => ({ default: ({ prefetch, ...props }: ComponentProps<"
 vi.mock("@/modules/line/transport/line-reconciliation-scheduler", () => ({ scheduleCurrentLineAccountReconciliation: vi.fn() }));
 vi.mock("@/modules/patient-self/transport/patient-self-care-page-context", () => ({
   getPatientSelfRelationshipNavigationPageContext: vi.fn(),
+  getPatientServiceProgressPageContext: vi.fn(),
   getPersonalAppointmentHubPageContext: vi.fn(),
 }));
 vi.mock("@/modules/patient-self/transport/patient-self-page-context", () => ({
@@ -133,6 +136,8 @@ describe("Patient Personal pages", () => {
     vi.clearAllMocks();
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(completeContext);
     homeServices.nextAppointment.mockResolvedValue(null);
+    homeServices.serviceProgress.mockResolvedValue([]);
+    vi.mocked(getPatientServiceProgressPageContext).mockResolvedValue([]);
     homeServices.content.mockResolvedValue({ category: null, items: [], nextCursor: null, emptyState: "EMPTY_B" });
     vi.mocked(getPatientSelfPageContext).mockResolvedValue(profileOnlyContext);
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue(profileOnlyContext.hospitalRelationships);
@@ -363,7 +368,7 @@ describe("Patient Personal pages", () => {
 
   it.each([
     { page: PersonalHomePage, title: "พื้นที่ส่วนตัว" },
-    { page: PersonalCarePage, title: "ข้อมูลการดูแล" },
+    { page: PersonalCarePage, title: "ติดตาม" },
     { page: PersonalAppointmentsPage, title: "นัดหมาย" },
   ])("explains a denied $title entry instead of redirecting, without Patient data", async ({ page, title }) => {
     vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue(PATIENT_ACCESS_UNAVAILABLE);
