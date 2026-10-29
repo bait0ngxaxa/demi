@@ -29,8 +29,9 @@ describe("LINE intent deep links", () => {
     expect(buildLineIntentUrl("START_OSM_SCREENING")).toBe(
       "https://demi.example.org/app/patients/assigned?task=screening",
     );
+    // CT-3: the follow-up entry opens the จัดบริการ workspace.
     expect(buildLineIntentUrl("START_OSM_FOLLOWUP")).toBe(
-      "https://demi.example.org/app/patients/assigned?task=followup",
+      "https://demi.example.org/app/services",
     );
   });
 

@@ -50,7 +50,6 @@ export type MobileNavigationTab = {
     | "personal-home"
     | "assigned-patients"
     | "osm-screening"
-    | "osm-followup"
     | "patient-detail"
     | "more";
   badgeCount?: number;
@@ -238,15 +237,6 @@ function projectWorkTabs(
         match: "exact",
         activeRoute: "osm-screening",
       }),
-      tabFromItem(assignedPatients, {
-        id: "followup",
-        href: `${assignedPatients.href}?task=followup`,
-        label: "ติดตาม",
-        accessibleLabel: "ติดตามผู้ป่วย",
-        icon: "followup",
-        match: "exact",
-        activeRoute: "osm-followup",
-      }),
     );
   }
 
@@ -288,7 +278,7 @@ function projectWorkTabs(
     }
   }
 
-  const careService = findNavigationItem(navigation, "work", "/app/patients?task=service");
+  const careService = findNavigationItem(navigation, "work", "/app/services");
   if (careService) {
     tabs.push(
       tabFromItem(careService, {

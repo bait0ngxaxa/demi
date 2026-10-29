@@ -72,7 +72,7 @@ describe("DEMI LINE Messaging API boundary", () => {
     expect(actions).toEqual([
       { type: "uri", label: "ผู้ป่วยที่ดูแล", uri: "https://demi.example.org/app/patients/assigned" },
       { type: "uri", label: "คัดกรองผู้ป่วย", uri: "https://demi.example.org/app/patients/assigned?task=screening" },
-      { type: "uri", label: "บันทึกติดตาม", uri: "https://demi.example.org/app/patients/assigned?task=followup" },
+      { type: "uri", label: "บันทึกติดตาม", uri: "https://demi.example.org/app/services" },
       { type: "uri", label: "งานทั้งหมด", uri: "https://demi.example.org/app" },
       { type: "richmenuswitch", label: "ข้อมูลของฉัน", richMenuAliasId: "d17j1_p_poh", data: LINE_WORKSPACE_SWITCH_MARKER },
       { type: "richmenuswitch", label: "งานโรงพยาบาล", richMenuAliasId: "d17j1_h_poh", data: LINE_WORKSPACE_SWITCH_MARKER },

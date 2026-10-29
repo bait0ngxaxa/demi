@@ -3,7 +3,8 @@ export const LINE_WEB_NAVIGATION_PATHS = {
   OPEN_WORK_WORKSPACE: "/app",
   OPEN_OSM_ASSIGNED_PATIENTS: "/app/patients/assigned",
   START_OSM_SCREENING: "/app/patients/assigned?task=screening",
-  START_OSM_FOLLOWUP: "/app/patients/assigned?task=followup",
+  // CT-3: the OSM follow-up queue is the จัดบริการ workspace.
+  START_OSM_FOLLOWUP: "/app/services",
   OPEN_PATIENT_PROVISIONING: "/app/patients/provision",
   OPEN_PATIENT_APPOINTMENTS: "/app/personal/appointments",
   OPEN_PATIENT_WELLNESS: "/app/personal/wellness",
@@ -13,11 +14,18 @@ export const LINE_WEB_NAVIGATION_PATHS = {
 
 export type LineWebNavigationIntent = keyof typeof LINE_WEB_NAVIGATION_PATHS;
 
+/**
+ * The START_OSM_FOLLOWUP URL before CT-3. Messages and rich menus already sent still open it, so it keeps its
+ * login return and the assigned list redirects it to /app/services.
+ */
+export const LEGACY_OSM_FOLLOWUP_PATH = "/app/patients/assigned?task=followup";
+
 export const LINE_QUICK_ACTION_RETURN_PATHS = [
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WORKSPACE,
   LINE_WEB_NAVIGATION_PATHS.OPEN_OSM_ASSIGNED_PATIENTS,
   LINE_WEB_NAVIGATION_PATHS.START_OSM_SCREENING,
   LINE_WEB_NAVIGATION_PATHS.START_OSM_FOLLOWUP,
+  LEGACY_OSM_FOLLOWUP_PATH,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_PROVISIONING,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_APPOINTMENTS,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WELLNESS,

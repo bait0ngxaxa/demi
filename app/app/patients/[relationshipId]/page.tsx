@@ -42,7 +42,7 @@ import { PatientAccountRecoveryPanel } from "./account-recovery-panel";
 import { PatientClassificationView } from "./patient-classification-view";
 import { CompletedPatientPrograms, PatientProgramView } from "./programs/patient-program-view";
 import { PatientProgramOpenControl } from "./programs/program-mutation-controls";
-import { resolvePatientCareNextStep } from "./patient-care-next-step";
+import { resolvePatientCareNextStep } from "@/modules/care-tracking/domain/care-next-step";
 import { PatientResponsibleOsmSection, type PatientResponsibleOsmSectionState } from "./patient-responsible-osm-section";
 
 export const metadata: Metadata = {

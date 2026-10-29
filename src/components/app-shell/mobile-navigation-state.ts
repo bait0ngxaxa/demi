@@ -44,23 +44,7 @@ function resolveAssignedTaskTab(
     return "screening";
   }
 
-  if (taskModes[0] === "followup" && findTabById(tabs, "followup")) {
-    return "followup";
-  }
-
   return null;
-}
-
-function resolveDirectCareTaskTab(
-  search: string,
-  tabs: readonly MobileNavigationTab[],
-): string | null {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const taskModes = params.getAll("task");
-
-  return taskModes.length === 1 && taskModes[0] === "service" && findTabById(tabs, "service")
-    ? "service"
-    : null;
 }
 
 function isPatientDetailPath(pathname: string): boolean {
@@ -88,10 +72,6 @@ function resolvePatientDetailTab(
   }
   if (segments.includes("screenings") && findTabById(tabs, "screening")) {
     return "screening";
-  }
-
-  if (segments.includes("followups") && findTabById(tabs, "followup")) {
-    return "followup";
   }
 
   return findTabById(tabs, "patients")?.id ?? null;
@@ -138,8 +118,7 @@ export function resolveActiveMobileTabId(
 
   const patientDirectoryTab = findTabById(tabs, "patients");
   if (pathname === patientDirectoryPath) {
-    return resolveDirectCareTaskTab(search, tabs) ??
-      (patientDirectoryTab?.activeRoute === "patient-detail" ? patientDirectoryTab.id : null);
+    return patientDirectoryTab?.activeRoute === "patient-detail" ? patientDirectoryTab.id : null;
   }
 
   const patientDetailTab = resolvePatientDetailTab(pathname, tabs);

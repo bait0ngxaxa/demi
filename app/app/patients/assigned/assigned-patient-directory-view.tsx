@@ -30,7 +30,8 @@ type AssignedPatientDirectoryViewProps = {
   taskMode: AssignedPatientTaskMode | null;
 };
 
-type AssignedPatientTaskMode = "screening" | "followup";
+// CT-3: the former "followup" mode is the จัดบริการ workspace (/app/services).
+type AssignedPatientTaskMode = "screening";
 
 const taskPresentation: Record<AssignedPatientTaskMode, {
   title: string;
@@ -41,11 +42,6 @@ const taskPresentation: Record<AssignedPatientTaskMode, {
     title: "คัดกรองผู้ป่วย",
     description: "เลือกผู้ป่วยที่ได้รับมอบหมาย ระบบจะแสดงแบบคัดกรองตามสิทธิ์ปัจจุบันของคุณ",
     selectionAction: "เริ่มคัดกรองผู้ป่วยรายนี้",
-  },
-  followup: {
-    title: "บันทึกติดตาม",
-    description: "เลือกผู้ป่วยที่ได้รับมอบหมาย ระบบจะตรวจสอบความสัมพันธ์และสิทธิ์ก่อนเปิดแบบบันทึก",
-    selectionAction: "บันทึกติดตามผู้ป่วยรายนี้",
   },
 };
 
@@ -87,15 +83,7 @@ function PatientRow({ item, taskMode }: {
   taskMode: AssignedPatientTaskMode | null;
 }): React.JSX.Element {
   const relationshipPath = `/app/patients/${encodeURIComponent(item.patientHospitalRelationshipId)}`;
-  // A new follow-up round belongs to the active Program, matching the follow-up history CTA.
-  const followupPath = item.activeProgramId
-    ? `${relationshipPath}/programs/${encodeURIComponent(item.activeProgramId)}/followups/new`
-    : `${relationshipPath}/followups/new`;
-  const href = taskMode === "screening"
-    ? `${relationshipPath}/screenings/new`
-    : taskMode === "followup"
-      ? followupPath
-      : relationshipPath;
+  const href = taskMode === "screening" ? `${relationshipPath}/screenings/new` : relationshipPath;
 
   return (
     <li>

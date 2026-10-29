@@ -180,7 +180,8 @@ describe("application home workspace routing", () => {
     expect(section(html, "work-home-heading")).toContain(`href="/app/appointments?hospitalId=${hospitalId}"`);
     const grid = section(html, "work-home-menu-heading");
     expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${hospitalId}"`);
-    expect(grid).toContain(`href="/app/patients/assigned?task=followup&amp;hospitalId=${hospitalId}"`);
+    expect(grid).toContain(`href="/app/services?hospitalId=${hospitalId}"`);
+    expect(grid).not.toContain("task=followup");
     expect(html).not.toContain(`/app/patients?hospitalId=${hospitalId}`);
     expect(html).not.toContain("นำเข้าผู้ป่วย");
     expect(html).not.toContain("/app/workforce");
@@ -409,7 +410,7 @@ describe("application home workspace routing", () => {
       const grid = section(await renderHome(osmAt(hospitalId, secondId), HospitalStatus.ACTIVE, { hospitalId: secondId }), "work-home-menu-heading");
 
       expect(grid).toContain(`href="/app/patients/assigned?task=screening&amp;hospitalId=${secondId}"`);
-      expect(grid).toContain(`href="/app/patients/assigned?task=followup&amp;hospitalId=${secondId}"`);
+      expect(grid).toContain(`href="/app/services?hospitalId=${secondId}"`);
       expect(grid).not.toContain(hospitalId);
     });
 

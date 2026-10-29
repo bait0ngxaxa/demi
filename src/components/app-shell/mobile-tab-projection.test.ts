@@ -135,6 +135,9 @@ describe("server-projected mobile navigation", () => {
       "/app/patients/assigned?task=screening",
       "/app/more",
     ]);
+    // CT-D2: no follow-up tab; จัดบริการ is in More, within the four-tab limit plus More.
+    expect(projectMobileNavigation(navigation).tabsByWorkspace.work.some(({ id }) => id === "followup")).toBe(false);
+    expect(projectMoreNavigation(navigation, workTabs).flatMap(({ items }) => items.map(({ href }) => href))).toContain("/app/services");
   });
 
   it("keeps the OSM mobile label short and announces the assigned appointment count", () => {
@@ -218,11 +221,14 @@ describe("server-projected mobile navigation", () => {
       "/app",
       "/app/appointments",
       "/app/patients",
-      "/app/patients?task=service",
+      "/app/services",
       "/app/more",
     ]);
     expect(memberTabs[3]?.icon).toBe("care");
-    expect(resolveActiveMobileTabId("/app/patients", "task=service", memberTabs)).toBe("service");
+    expect(resolveActiveMobileTabId("/app/services", "", memberTabs)).toBe("service");
+    expect(resolveActiveMobileTabId("/app/services", "hospitalId=h&stage=IN_ROUND&page=2", memberTabs)).toBe("service");
+    // CT-2: the directory is the patients tab again; its former service task URL redirects to /app/services.
+    expect(resolveActiveMobileTabId("/app/patients", "", memberTabs)).toBe("patients");
     expect(memberMoreHrefs).toContain("/app/hospitals/reporting/export");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=screening");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=followup");
@@ -285,7 +291,9 @@ describe("server-projected mobile navigation", () => {
     expect(moreHrefs).not.toContain("/app");
     expect(moreHrefs).not.toContain("/app/patients/assigned");
     expect(moreHrefs).not.toContain("/app/patients/assigned?task=screening");
-    expect(moreHrefs).toContain("/app/patients/assigned?task=followup");
+    expect(moreHrefs).not.toContain("/app/patients/assigned?task=followup");
+    // CT-D2: จัดบริการ does not fit the four primary slots, so it stays reachable from More.
+    expect(moreHrefs).toContain("/app/services");
   });
 
   it("retains every authorized navigation entry in a primary slot or More", () => {

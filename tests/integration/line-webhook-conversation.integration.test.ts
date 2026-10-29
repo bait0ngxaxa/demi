@@ -331,7 +331,7 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
     expect(replies[0]?.[0]?.quickReply?.items.map(({ action }) => action.type === "uri" ? action.uri : action.text)).toEqual([
       "https://demi.example.org/app/patients/assigned",
       "https://demi.example.org/app/patients/assigned?task=screening",
-      "https://demi.example.org/app/patients/assigned?task=followup",
+      "https://demi.example.org/app/services",
       "https://demi.example.org/app",
     ]);
     expect(replies[1]).toEqual(replies[2]);

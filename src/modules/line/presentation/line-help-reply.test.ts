@@ -41,7 +41,7 @@ describe("LINE HELP reply", () => {
     expect(actions(["OSM"])).toEqual([
       { type: "uri", label: "ผู้ป่วยที่ดูแล", uri: `${origin}/app/patients/assigned` },
       { type: "uri", label: "คัดกรองผู้ป่วย", uri: `${origin}/app/patients/assigned?task=screening` },
-      { type: "uri", label: "บันทึกติดตาม", uri: `${origin}/app/patients/assigned?task=followup` },
+      { type: "uri", label: "บันทึกติดตาม", uri: `${origin}/app/services` },
     ]);
     expect(buildLineHelpReply(["HOSPITAL"]).text).toBe("เลือกเมนูที่ต้องการด้านล่าง");
     expect(actions(["HOSPITAL"])).toEqual([

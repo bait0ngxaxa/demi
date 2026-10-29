@@ -259,13 +259,14 @@ export const patientDetailSelect = {
   },
 } satisfies Prisma.PatientHospitalRelationshipSelect;
 
-function patientResponsibleOsmSelect(hospitalId: string) {
+export function patientResponsibleOsmSelect(hospitalId: string) {
   return {
     osmAssignments: {
       where: { endedAt: null },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 1,
       select: {
+        osmUserId: true,
         createdAt: true,
         osmUser: {
           select: {
@@ -285,6 +286,39 @@ function patientResponsibleOsmSelect(hospitalId: string) {
       },
     },
   } satisfies Prisma.PatientHospitalRelationshipSelect;
+}
+
+type PatientResponsibleOsmAssignmentRecord = Prisma.PatientHospitalRelationshipGetPayload<{
+  select: ReturnType<typeof patientResponsibleOsmSelect>;
+}>["osmAssignments"][number];
+
+/** The current assignment counts only while its OSM is active, holds the role and serves the Hospital. */
+export function toPatientResponsibleOsmProjection(
+  currentAssignment: PatientResponsibleOsmAssignmentRecord | undefined,
+): PatientResponsibleOsmProjection {
+  if (!currentAssignment) {
+    return { status: "UNASSIGNED" };
+  }
+
+  const hasEligibleHospitalRelationship = currentAssignment.osmUser.osmHospitalRelationships.some(
+    (relationship) =>
+      relationship.status === MembershipStatus.ACTIVE &&
+      relationship.hospital.status === HospitalStatus.ACTIVE,
+  );
+  const isCurrentOsm =
+    currentAssignment.osmUser.status === UserStatus.ACTIVE &&
+    currentAssignment.osmUser.roles.length > 0 &&
+    hasEligibleHospitalRelationship;
+
+  if (!isCurrentOsm) {
+    return { status: "UNAVAILABLE" };
+  }
+
+  return {
+    status: "ASSIGNED",
+    displayName: toDisplayName(currentAssignment.osmUser.person, "ไม่ระบุชื่อ"),
+    assignedAt: currentAssignment.createdAt,
+  };
 }
 
 function buildCurrentOsmHospitalRelationshipWhere(
@@ -402,7 +436,7 @@ function buildPatientRelationshipWhere(
   };
 }
 
-function buildOsmActiveHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+export function buildOsmActiveHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
   return {
     status: HospitalStatus.ACTIVE,
     osmHospitalRelationships: {
@@ -881,30 +915,7 @@ export async function getPatientResponsibleOsm(
       throw new NotFoundError();
     }
 
-    const currentAssignment = relationship.osmAssignments[0];
-    if (!currentAssignment) {
-      return { status: "UNASSIGNED" };
-    }
-
-    const hasEligibleHospitalRelationship = currentAssignment.osmUser.osmHospitalRelationships.some(
-      (relationship) =>
-        relationship.status === MembershipStatus.ACTIVE &&
-        relationship.hospital.status === HospitalStatus.ACTIVE,
-    );
-    const isCurrentOsm =
-      currentAssignment.osmUser.status === UserStatus.ACTIVE &&
-      currentAssignment.osmUser.roles.length > 0 &&
-      hasEligibleHospitalRelationship;
-
-    if (!isCurrentOsm) {
-      return { status: "UNAVAILABLE" };
-    }
-
-    return {
-      status: "ASSIGNED",
-      displayName: toDisplayName(currentAssignment.osmUser.person, "ไม่ระบุชื่อ"),
-      assignedAt: currentAssignment.createdAt,
-    };
+    return toPatientResponsibleOsmProjection(relationship.osmAssignments[0]);
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ForbiddenError) {
       throw error;

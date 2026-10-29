@@ -86,7 +86,8 @@ describe("Follow-up detail fieldwork continuation", () => {
     mocks.getActor.mockResolvedValue(osmActor);
     const html = await render();
 
-    expect(html).toContain('href="/app/patients/assigned?task=followup"');
+    // CT-3: the OSM's next patient is chosen in the จัดบริการ workspace.
+    expect(html).toContain('href="/app/services"');
     expect(html).toContain("เลือกผู้ป่วยรายถัดไปเพื่อบันทึกติดตาม");
     expect(html).toContain(`href="/app/patients/${relationshipId}/followups"`);
     expect(html).toContain(`href="/app/patients/${relationshipId}"`);

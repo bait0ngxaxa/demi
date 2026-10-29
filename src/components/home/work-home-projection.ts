@@ -59,7 +59,7 @@ export function projectWorkNavigationOrder(navigation: readonly ApplicationNavig
     "/app/hospitals/reporting",
     "/app/users",
     "/app/hospitals/knowledge",
-    "/app/patients?task=service",
+    "/app/services",
     "/app/appointments/new",
   ];
   return [

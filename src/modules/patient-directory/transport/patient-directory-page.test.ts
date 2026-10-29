@@ -112,16 +112,24 @@ describe("Patient Directory page Hospital context", () => {
     );
   });
 
-  it.each(["service"] as const)("accepts the %s direct Hospital task mode", async (task) => {
-    const page = await PatientDirectoryPage({
-      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task }),
-    });
+  it.each([
+    [{ task: "service", hospitalId: scopes[0].hospitalId }, `/app/services?hospitalId=${scopes[0].hospitalId}`],
+    [{ task: "service", hospitalId: "not-a-hospital", lookupType: "NAME", page: "2" }, "/app/services?hospitalId=not-a-hospital"],
+    [{ task: "service" }, "/app/services"],
+    [{ task: ["service", "other"], hospitalId: ["a&b", "c"] }, "/app/services?hospitalId=a%26b"],
+  ])("CT-2: redirects the former service task %j to %s before any directory read", async (params, destination) => {
+    await expect(PatientDirectoryPage({ searchParams: Promise.resolve(params) })).rejects.toThrow(`REDIRECT:${destination}`);
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedListPatientDirectoryScopes).not.toHaveBeenCalled();
+    expect(mockedFindPatientDirectory).not.toHaveBeenCalled();
+  });
 
-    expect(page.props.taskMode).toBe(task);
-    expect(mockedFindPatientDirectory).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
-    );
+  it("redirects the former service task for a network scope too, where /app/services re-proves the Hospital", async () => {
+    mockedListPatientDirectoryScopes.mockResolvedValue([{ ...scopes[0], access: "NETWORK" }]);
+
+    await expect(PatientDirectoryPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "service" }),
+    })).rejects.toThrow(`REDIRECT:/app/services?hospitalId=${scopes[0].hospitalId}`);
   });
 
   it.each(["import", "screening", "followup"])("ignores the %s task without changing the directory query", async (task) => {
@@ -129,23 +137,12 @@ describe("Patient Directory page Hospital context", () => {
       searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task }),
     });
 
-    expect(page.props.taskMode).toBeNull();
+    expect(mockedRedirect).not.toHaveBeenCalled();
+    expect(page.props).not.toHaveProperty("taskMode");
     expect(mockedFindPatientDirectory).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ targetHospitalId: scopes[0].hospitalId }),
     );
-  });
-
-  it("does not activate a write-oriented task for a read-only network scope", async () => {
-    mockedListPatientDirectoryScopes.mockResolvedValue([
-      { ...scopes[0], access: "NETWORK" },
-    ]);
-
-    const page = await PatientDirectoryPage({
-      searchParams: Promise.resolve({ hospitalId: scopes[0].hospitalId, task: "service" }),
-    });
-
-    expect(page.props.taskMode).toBeNull();
   });
 
   it("offers bulk OSM assignment only to an active OWNER of the selected Hospital", async () => {

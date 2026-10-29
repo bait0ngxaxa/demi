@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProgramRoundsOverview } from "@/modules/patient-program-rounds/services/round-query-service";
 
-import { resolvePatientCareNextStep, type PatientCareNextStepInput } from "./patient-care-next-step";
+import { resolvePatientCareNextStep, type PatientCareNextStepInput } from "./care-next-step";
 
 const activeProgram = { programId: "program-1", canManage: true };
 
@@ -122,6 +122,27 @@ describe("resolvePatientCareNextStep", () => {
   it("does not treat a partial round list as a completed care journey", () => {
     const overview = roundsOverview(["COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED", "COMPLETED"], "NOT_RECORDED");
     expect(resolve({ activeProgram, roundsOverview: overview })).toEqual({ type: "ROUNDS_OVERVIEW", programId: "program-1" });
+  });
+
+  it("links to After when seven opened rounds are all complete (ADR-0022 rounds 7-12)", () => {
+    expect(resolve({
+      activeProgram,
+      roundsOverview: roundsOverview(Array.from({ length: 7 }, () => "COMPLETED" as const), "NOT_RECORDED"),
+    })).toEqual({ type: "AFTER", programId: "program-1" });
+  });
+
+  it("links to the Program after After was recorded following twelve rounds", () => {
+    expect(resolve({
+      activeProgram,
+      roundsOverview: roundsOverview(Array.from({ length: 12 }, () => "COMPLETED" as const), "RECORDED"),
+    })).toEqual({ type: "PROGRAM", programId: "program-1" });
+  });
+
+  it("continues an open extra round before After", () => {
+    expect(resolve({
+      activeProgram,
+      roundsOverview: roundsOverview([...Array.from({ length: 6 }, () => "COMPLETED" as const), "IN_PROGRESS"], "LOCKED"),
+    })).toEqual({ type: "ROUND", programId: "program-1", roundNumber: 7, state: "IN_PROGRESS" });
   });
 
   it("does not offer the active Program when its manage permission is absent", () => {

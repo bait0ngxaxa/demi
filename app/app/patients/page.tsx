@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { z } from "zod";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -39,17 +38,15 @@ type PatientDirectoryPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const patientDirectoryTaskModeSchema = z.enum(["service"]);
-type PatientDirectoryTaskMode = z.infer<typeof patientDirectoryTaskModeSchema>;
-
 function firstSearchParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function parseTaskMode(value: string | string[] | undefined): PatientDirectoryTaskMode | null {
-  if (typeof value !== "string") return null;
-  const parsed = patientDirectoryTaskModeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+/** CT-2: the former "จัดบริการ" task mode of the directory is the /app/services workspace. */
+function legacyServiceTaskRedirect(params: Record<string, string | string[] | undefined>): string | null {
+  if (firstSearchParam(params.task) !== "service") return null;
+  const hospitalId = firstSearchParam(params.hospitalId);
+  return hospitalId ? `/app/services?${new URLSearchParams({ hospitalId }).toString()}` : "/app/services";
 }
 
 async function resolveActor(): Promise<ActorContext> {
@@ -80,6 +77,13 @@ export default async function PatientDirectoryPage({
   searchParams,
 }: PatientDirectoryPageProps): Promise<React.JSX.Element> {
   await connection();
+  const params = await searchParams;
+  const legacyRedirect = legacyServiceTaskRedirect(params);
+
+  if (legacyRedirect) {
+    redirect(legacyRedirect);
+  }
+
   const actor = await resolveActor();
   let scopes;
 
@@ -97,7 +101,6 @@ export default async function PatientDirectoryPage({
     redirect("/app");
   }
 
-  const params = await searchParams;
   const requestedHospitalId = firstSearchParam(params.hospitalId);
   const selectedScope =
     requestedHospitalId === undefined
@@ -107,7 +110,6 @@ export default async function PatientDirectoryPage({
   if (!selectedScope) {
     redirect("/app/patients");
   }
-  const taskMode = selectedScope.access === "DIRECT" ? parseTaskMode(params.task) : null;
 
   const requestedLookupType = firstSearchParam(params.lookupType);
   const lookupType: PatientDirectoryLookupType =
@@ -164,7 +166,6 @@ export default async function PatientDirectoryPage({
       selfRegistrationFilter={result?.selfRegistrationFilter ?? selfRegistrationFilter}
       lookupType={result?.lookupType ?? lookupType}
       result={result}
-      taskMode={taskMode}
       classificationCounts={classificationCounts}
       canAssignOsm={
         decidePatientOsmAssignmentPolicy({

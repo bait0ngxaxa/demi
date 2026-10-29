@@ -114,13 +114,14 @@ const patientAccount = ["account", "บัญชีและช่วยเห�
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 // WB-DF-14 (Product Owner 2026-10-26): an account holding ADMIN receives reports, so it has no submit entry.
 const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings"]] as const;
-const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
+// CT-D2 (2026-10-29): จัดบริการ replaces the OSM "รอติดตาม" queue; "รอคัดกรอง" stays.
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/services"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "นำเข้าผู้ป่วย", ["/app/patients/provision"]] as const;
 const ownerAdministration = ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge"];
 const ownerSections = (areas: boolean) => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/services", "/app/appointments/new"]],
   staffRegistration,
   // WB-DF-14 (Product Owner 2026-10-26): the OWNER support inbox is removed; reports go to the platform ADMIN.
   ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests"]],
@@ -130,7 +131,7 @@ const ownerSections = (areas: boolean) => [
 ] as const;
 const memberSections = () => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients?task=service", "/app/appointments/new"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/services", "/app/appointments/new"]],
   // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
   ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
@@ -211,7 +212,7 @@ const cases: Case[] = [
     // Request and service-catalog policies deny ADMIN, exactly as before UI-4.
     expected: { work: [
       ["home", null, ["/app"]],
-      ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/patients?task=service", "/app/appointments/new"]],
+      ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/services", "/app/appointments/new"]],
       staffRegistration,
       // WB-DF-14 (Product Owner 2026-10-26): ADMIN inbox only; no OWNER inbox and no submit entry for ADMIN.
       ["review-queue", "คำขอรอตรวจ", ["/app/admin/hospital-onboarding", "/app/admin/support"]],
@@ -263,7 +264,7 @@ describe("UI-4 task-based navigation per actor", () => {
     const memberHrefs = allHrefs(project(member));
 
     expect(memberHrefs).toEqual(expect.arrayContaining([
-      "/app/patients?task=service",
+      "/app/services",
       "/app/appointments/new",
     ]));
     expect(memberHrefs).not.toContain("/app/patients?task=screening");
@@ -291,7 +292,7 @@ describe("UI-4 task-based navigation per actor", () => {
     });
     const projected = allHrefs(project(subject));
 
-    expect(projected).not.toContain("/app/patients?task=service");
+    expect(projected).not.toContain("/app/services");
     expect(projected).not.toContain("/app/patients?task=screening");
     expect(projected).not.toContain("/app/patients?task=followup");
     expect(projected).not.toContain("/app/appointments/new");
@@ -314,12 +315,24 @@ describe("UI-4 task-based navigation per actor", () => {
       "/app/appointments",
       "/app/patients/assigned",
       "/app/patients/assigned?task=screening",
-      "/app/patients/assigned?task=followup",
       "/app/patients",
       "/app/patients/assign-osm",
-      "/app/patients?task=service",
+      "/app/services",
       "/app/appointments/new",
     ]);
+  });
+
+  it("gives an OSM จัดบริการ instead of รอติดตาม and keeps ผู้ป่วยที่ดูแล and รอคัดกรอง (CT-D2)", () => {
+    const care = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }))
+      .find(({ id }) => id === "care")?.items ?? [];
+
+    expect(care.map(({ href, label }) => [href, label])).toEqual([
+      ["/app/appointments", "รายการนัดหมาย"],
+      ["/app/patients/assigned", "ผู้ป่วยที่ดูแล"],
+      ["/app/patients/assigned?task=screening", "รอคัดกรอง"],
+      ["/app/services", "จัดบริการ"],
+    ]);
+    expect(care.some(({ label }) => label === "รอติดตาม")).toBe(false);
   });
 
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {
@@ -595,6 +608,15 @@ describe("application navigation active state", () => {
     expect(isNavigationItemActive("/app/workforce", { href: "/app", label: "หน้าหลัก", match: "exact" })).toBe(false);
     expect(isNavigationItemActive("/app/admin/hospital-onboarding/request-id", { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียน รพ.", match: "prefix" })).toBe(true);
     expect(isNavigationItemActive("/app/hospitals/knowledge/record-id", { href: "/app/hospitals/knowledge", label: "เผยแพร่ข่าวสาร", match: "prefix" })).toBe(true);
+  });
+
+  it("marks the จัดบริการ item active on /app/services with any workspace params, and not on the directory", () => {
+    const care = project(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] })).find(({ id }) => id === "care")?.items ?? [];
+    const service = care.find(({ label }) => label === "จัดบริการ");
+
+    expect(service).toMatchObject({ href: "/app/services", match: "exact" });
+    expect([...resolveActiveNavigationHrefs("/app/services", "hospitalId=x&stage=IN_ROUND&page=2", care)]).toEqual(["/app/services"]);
+    expect([...resolveActiveNavigationHrefs("/app/patients", "hospitalId=x", care)]).toEqual(["/app/patients"]);
   });
 
   it("marks only the OSM task item whose query matches, ignoring unrelated query params", () => {
