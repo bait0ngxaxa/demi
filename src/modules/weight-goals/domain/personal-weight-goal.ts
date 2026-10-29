@@ -67,3 +67,11 @@ export function weightGoalBangkokToday(now: Date): string {
   const part = (kind: string): string => parts.find(({ type }) => type === kind)?.value ?? "";
   return `${part("year").padStart(4, "0")}-${part("month")}-${part("day")}`;
 }
+
+// Duration is an input convenience only. Persist the resulting civil targetDate.
+export function weightGoalDateAfterWeeks(weeks: number, now: Date): string {
+  if (!Number.isInteger(weeks) || weeks < 1 || weeks > 26) throw new RangeError("Invalid goal duration");
+  const date = toWeightGoalDateCarrier(weightGoalBangkokToday(now));
+  date.setUTCDate(date.getUTCDate() + weeks * 7);
+  return fromWeightGoalDateCarrier(date);
+}

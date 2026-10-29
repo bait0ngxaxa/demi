@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { PersonalWeightGoalDto } from "@/modules/weight-goals/domain/personal-weight-goal";
+import { weightGoalDateAfterWeeks } from "@/modules/weight-goals/domain/personal-weight-goal";
 import type { PersonalWeightGoalActionState } from "@/modules/weight-goals/transport/action-state";
 import {
   createPersonalWeightGoalAction,
@@ -65,6 +66,7 @@ export function PersonalWeightGoalEditor({
   const [state, action, pending] = useWeightGoalAction(goal ? updatePersonalWeightGoalAction : createPersonalWeightGoalAction, coordination);
   const [targetWeightKg, setTargetWeightKg] = useState(goal?.targetWeightKg ?? "");
   const [targetDate, setTargetDate] = useState(goal?.targetDate ?? "");
+  const [weeks, setWeeks] = useState(4);
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   const uncertain = state.status === "UNCONFIRMED";
@@ -95,6 +97,13 @@ export function PersonalWeightGoalEditor({
         <p id={`${prefix}-weight-help`} className="text-sm text-text-muted">
           {state.fieldErrors?.targetWeightKg ?? "ทศนิยมได้ไม่เกิน 3 ตำแหน่ง"}
         </p>
+      </div>
+      <div className="space-y-3 rounded-control bg-surface-muted p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><label htmlFor={`${prefix}-weeks`} className="text-sm font-medium">ระยะเวลาจากวันนี้</label><output htmlFor={`${prefix}-weeks`} className="font-semibold text-brand-strong">{weeks} สัปดาห์</output></div>
+        <input id={`${prefix}-weeks`} type="range" min={1} max={26} step={1} value={weeks} onChange={(event) => setWeeks(Number(event.target.value))} aria-valuetext={`${weeks} สัปดาห์`} aria-describedby={`${prefix}-weeks-help`} className="min-h-11 w-full accent-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" />
+        <div className="flex justify-between text-xs text-text-muted"><span>1 สัปดาห์</span><span>26 สัปดาห์</span></div>
+        <p id={`${prefix}-weeks-help`} className="text-sm text-text-muted">เลื่อนแล้วกดใช้ระยะเวลาเพื่อเปลี่ยนวันที่เป้าหมาย โดยนับจากวันนี้ตามเวลาไทย วันที่เดิมจะคงอยู่จนกว่าคุณจะเลือกเปลี่ยน</p>
+        <Button variant="secondary" size="compact" onClick={() => setTargetDate(weightGoalDateAfterWeeks(weeks, new Date()))}>ใช้ระยะเวลานี้</Button>
       </div>
       <div className="space-y-2">
         <label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่เป้าหมาย (ไม่บังคับ)</label>

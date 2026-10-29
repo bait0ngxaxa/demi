@@ -4,8 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: vi.fn(), updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn() }));
 vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: vi.fn(), updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn() }));
+vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn() }));
 import { MealEditor } from "./personal-meal-controls";
 import { ExerciseEditor } from "./personal-exercise-controls";
+import { PersonalWeightGoalEditor } from "./personal-weight-goal-controls";
 import { createWellnessPrivateAuthority } from "./wellness-private-authority";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -31,6 +33,20 @@ function button(label: string): HTMLButtonElement {
 beforeEach(() => { host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Thai interactive journal editors", () => {
+  it("preserves a saved past target date until duration is explicitly applied; allows clearing", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-31T17:00:00Z"));
+    try {
+      const goal = { id: nonce, targetWeightKg: "65", targetDate: "2025-02-01", createdAt: "2025-01-01T00:00:00.000Z", updatedAt: "2025-01-01T00:00:00.000Z" };
+      await act(() => root.render(<PersonalWeightGoalEditor goal={goal} nonce={nonce} coordination={coordination()} />));
+      await act(() => input('[type="range"]', "1"));
+      expect(host.querySelector<HTMLInputElement>('[name="targetDate"]')?.value).toBe("2025-02-01");
+      await act(() => button("ใช้ระยะเวลานี้").click());
+      expect(host.querySelector<HTMLInputElement>('[name="targetDate"]')?.value).toBe("2027-01-08");
+      await act(() => input('[name="targetDate"]', ""));
+      expect(new FormData(host.querySelector("form") ?? undefined).get("targetDate")).toBe("");
+    } finally { vi.useRealTimers(); }
+  });
   it("selects, searches and replaces an exercise with a custom activity without changing nonce", async () => {
     await act(() => root.render(<ExerciseEditor today="2026-10-29" nonce={nonce} coordination={coordination()} />));
     await act(() => button("เดิน").click());
