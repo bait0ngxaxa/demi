@@ -34,11 +34,14 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>
   </div>;
 
-  const linkClassName = "inline-flex min-h-11 items-center rounded-control px-4 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
-  return <div className="max-w-4xl space-y-8">
+  const linkClassName = "inline-flex min-h-12 items-center justify-center rounded-control border border-border bg-surface px-4 text-sm font-semibold text-brand-strong hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
+  return <div className="min-w-0 max-w-4xl space-y-8">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
-    <p className="text-sm leading-6 text-text-muted">บันทึกสุขภาพเป็นข้อมูลที่คุณบันทึกเอง ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
-    <nav aria-label="หัวข้อสุขภาพ" className="flex flex-wrap gap-2"><a className={linkClassName} href="#meal">อาหาร</a><a className={linkClassName} href="#exercise">การออกกำลังกาย</a><a className={linkClassName} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
+    <div className="space-y-4">
+      <div className="space-y-2"><h2 className="text-xl font-semibold">ดูแลตัวเองในทุกวัน</h2><p className="text-text-muted">เลือกมื้ออาหาร บันทึกกิจกรรมที่ทำ และตั้งเป้าหมายในแบบของคุณ</p></div>
+      <nav aria-label="หัวข้อสุขภาพ" className="grid grid-cols-2 gap-2 sm:grid-cols-3"><a className={linkClassName} href="#meal">บันทึกอาหาร</a><a className={linkClassName} href="#exercise">บันทึกกิจกรรม</a><a className={`${linkClassName} col-span-2 sm:col-span-1`} href="#weight-goal">เป้าหมายน้ำหนัก</a></nav>
+      <p className="text-sm leading-6 text-text-muted">บันทึกสุขภาพเป็นข้อมูลที่คุณบันทึกเอง ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
+    </div>
     <p className="text-sm leading-6 text-text-muted">บันทึกน้ำหนัก ความดัน และน้ำตาลที่คุณวัดเองได้ที่ <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/personal/measurements">ตัวฉันในตอนนี้</Link></p>
     <section id="meal" aria-label="อาหาร" className="scroll-mt-24"><PersonalMealWorkspace initialPage={session.mealPage} today={today} initialNonce={session.mealNonce} authority={authority} /></section>
     <section id="exercise" aria-label="การออกกำลังกาย" className="scroll-mt-24 border-t border-border pt-8"><PersonalExerciseWorkspace initialPage={session.exercisePage} today={today} initialNonce={session.exerciseNonce} authority={authority} /></section>
