@@ -168,7 +168,8 @@ describe("application workspace projection", () => {
     const hrefs = (projection.hospitals[0]?.actions ?? []).map(({ href }) => href);
 
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
-    expect(hrefs).toEqual([`/app/appointments?hospitalId=${hospitalId}`]);
+    // CT-D2: the OSM's จัดบริการ workspace for that Hospital, never the general directory.
+    expect(hrefs).toEqual([`/app/appointments?hospitalId=${hospitalId}`, `/app/services?hospitalId=${hospitalId}`]);
   });
 
   it("keeps PATIENT landing explicit without inventing Patient data links", () => {
@@ -233,8 +234,8 @@ describe("application workspace projection", () => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [hospitalId, secondId].map((id) => ({ hospitalId: id, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE })) }), [workspace(), workspace({ hospitalId: secondId })]);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
     expect(projection.hospitals.map(({ actions }) => actions.map(({ href }) => href))).toEqual([
-      [`/app/appointments?hospitalId=${hospitalId}`],
-      [`/app/appointments?hospitalId=${secondId}`],
+      [`/app/appointments?hospitalId=${hospitalId}`, `/app/services?hospitalId=${hospitalId}`],
+      [`/app/appointments?hospitalId=${secondId}`, `/app/services?hospitalId=${secondId}`],
     ]);
     expect(projection.requestActions).toHaveLength(0);
     expect(projection.supportingActions).toHaveLength(0);

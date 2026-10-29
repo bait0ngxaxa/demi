@@ -44,10 +44,6 @@ function resolveAssignedTaskTab(
     return "screening";
   }
 
-  if (taskModes[0] === "followup" && findTabById(tabs, "followup")) {
-    return "followup";
-  }
-
   return null;
 }
 
@@ -76,10 +72,6 @@ function resolvePatientDetailTab(
   }
   if (segments.includes("screenings") && findTabById(tabs, "screening")) {
     return "screening";
-  }
-
-  if (segments.includes("followups") && findTabById(tabs, "followup")) {
-    return "followup";
   }
 
   return findTabById(tabs, "patients")?.id ?? null;

@@ -66,9 +66,9 @@ const path = (href: string): string => href.split("?")[0] ?? href;
 const withHospital = (href: string, hospitalId: string): string => `${href}${href.includes("?") ? "&" : "?"}hospitalId=${hospitalId}`;
 const appointmentsAt = (hospitalId: string): string => withHospital("/app/appointments", hospitalId);
 const screening = "/app/patients/assigned?task=screening";
-const followup = "/app/patients/assigned?task=followup";
 const screeningAt = (id: string): string => `${screening}&hospitalId=${id}`;
-const followupAt = (id: string): string => `${followup}&hospitalId=${id}`;
+// CT-D2: the OSM's จัดบริการ workspace replaces the former follow-up task tile.
+const servicesAt = (id: string): string => `/app/services?hospitalId=${id}`;
 const governance = ["/app/admin/reporting", "/app/admin/hospitals", "/app/admin/hospital-onboarding"];
 const ownerRequests = ["/app/patients/service-requests"];
 // Home pins core care and OWNER tools before remaining Work navigation destinations.
@@ -112,7 +112,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: appointmentsAt(hospitalA),
-    tiles: [appointmentsAt(hospitalA), screeningAt(hospitalA), followupAt(hospitalA)],
+    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)],
     shared: [],
   },
   {
@@ -122,7 +122,7 @@ const cases: Case[] = [
     requested: hospitalB.toUpperCase(),
     scope: "hospital", selected: hospitalB,
     hero: appointmentsAt(hospitalB),
-    tiles: [appointmentsAt(hospitalB), screeningAt(hospitalB), followupAt(hospitalB)],
+    tiles: [appointmentsAt(hospitalB), servicesAt(hospitalB), screeningAt(hospitalB)],
     shared: [],
   },
   {
@@ -185,7 +185,7 @@ const cases: Case[] = [
     workspaces: [workspace(hospitalA)],
     scope: "hospital", selected: hospitalA,
     hero: appointmentsAt(hospitalA),
-    tiles: [appointmentsAt(hospitalA), screeningAt(hospitalA), followupAt(hospitalA)],
+    tiles: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)],
     shared: [],
   },
   {
@@ -295,11 +295,11 @@ describe("work home projection per actor", () => {
   it("keys icons by href with a neutral default and keeps unknown hrefs after ordered ones", () => {
     const tiles = projectWorkHomeTiles([
       { href: "/app/unknown", label: "อื่น ๆ" },
-      { href: followup, label: "ติดตาม" },
+      { href: screening, label: "คัดกรอง" },
       { href: withHospital("/app/workforce", hospitalA), label: "บุคลากร" },
-    ], ["/app/patients/assigned?task=followup", "/app/workforce"]);
+    ], ["/app/patients/assigned?task=screening", "/app/workforce"]);
     expect(tiles.map(({ href, icon }) => [href, icon])).toEqual([
-      [followup, "followup"],
+      [screening, "screening"],
       [withHospital("/app/workforce", hospitalA), "workforce"],
       ["/app/unknown", "default"],
     ]);

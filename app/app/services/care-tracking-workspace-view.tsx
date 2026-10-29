@@ -31,6 +31,7 @@ import type { RoundState } from "@/modules/patient-program-rounds/domain/round-s
 import { RoundStepTimeline } from "@/modules/patient-program-rounds/presentation/round-step-timeline";
 
 import {
+  scopeKey,
   SERVICES_PATH,
   servicesHref,
   servicesSearchParams,
@@ -51,6 +52,14 @@ const ROUND_STRIP_STATE_LABELS: Readonly<Record<RoundState, string>> = {
   IN_PROGRESS: "กำลังทำ",
   NOT_STARTED: "ยังไม่เริ่ม",
   LOCKED: "ยังเปิดไม่ได้",
+};
+
+/** CT-3: the state is readable without colour or hover (touch devices); the sr-only text stays the name. */
+const ROUND_STRIP_STATE_GLYPHS: Readonly<Record<RoundState, "check" | "half" | "lock" | null>> = {
+  COMPLETED: "check",
+  IN_PROGRESS: "half",
+  NOT_STARTED: null,
+  LOCKED: "lock",
 };
 
 const ROUND_STRIP_STATE_CLASSES: Readonly<Record<RoundState, string>> = {
@@ -154,19 +163,36 @@ function SignalBadges({ item }: { item: CareTrackingItem }): React.JSX.Element |
   );
 }
 
+function RoundStateGlyph({ state }: { state: RoundState }): React.JSX.Element | null {
+  const glyph = ROUND_STRIP_STATE_GLYPHS[state];
+  if (glyph === null) return null;
+
+  if (glyph === "lock") {
+    return (
+      <svg className="size-3 shrink-0" data-glyph="lock" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24">
+        <rect height="10" rx="2" width="14" x="5" y="11" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </svg>
+    );
+  }
+
+  return <span data-glyph={glyph}>{glyph === "check" ? "✓" : "◐"}</span>;
+}
+
 function RoundStrip({ entries }: { entries: readonly CareTrackingRoundStripEntry[] }): React.JSX.Element | null {
   if (entries.length === 0) return null;
 
   return (
     <ol aria-label="ความคืบหน้าแต่ละครั้ง" className="flex flex-wrap gap-1.5">
       {entries.map(({ roundNumber, state }) => (
-        <li key={roundNumber}>
+        <li data-round-state={state} key={roundNumber}>
           <span
             aria-hidden="true"
-            className={`flex size-7 items-center justify-center rounded-full border text-xs font-semibold ${ROUND_STRIP_STATE_CLASSES[state]}`}
+            className={`flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-full border px-1.5 text-xs font-semibold leading-none ${ROUND_STRIP_STATE_CLASSES[state]}`}
             title={`ครั้งที่ ${roundNumber} ${ROUND_STRIP_STATE_LABELS[state]}`}
           >
             {roundNumber}
+            <RoundStateGlyph state={state} />
           </span>
           <span className="sr-only">ครั้งที่ {roundNumber} {ROUND_STRIP_STATE_LABELS[state]}</span>
         </li>
@@ -257,16 +283,18 @@ function FilterChips({ state, result }: { state: ServicesUrlState; result: CareT
   );
 }
 
-function CareTrackingRow({ item }: { item: CareTrackingItem }): React.JSX.Element {
+function CareTrackingRow({ item, readOnly }: { item: CareTrackingItem; readOnly: boolean }): React.JSX.Element {
+  // A network read opens the same Patient page the directory uses; that page re-proves the network read.
   const patientPath = `/app/patients/${encodeURIComponent(item.relationshipId)}`;
-  const action = careNextStepAction(item.relationshipId, item.nextStep);
+  // ADR-0016: a network Child is read-only whatever the read model says, so it never offers an action.
+  const action = readOnly ? null : careNextStepAction(item.relationshipId, item.nextStep);
 
   return (
     <li className="grid gap-4 px-5 py-5 sm:px-7 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,11rem)] lg:gap-6">
       <div className="min-w-0">
         <h3 className="break-words text-lg font-semibold text-text">{item.displayName}</h3>
         <p className="mt-1 text-sm text-text-muted">HN {item.hospitalNumber ?? "ไม่ระบุ"}</p>
-        {item.assignedOsmDisplayName ? (
+        {item.assignedOsmDisplayName && !readOnly ? (
           <p className="mt-1 break-words text-sm text-text-muted">อสม. {item.assignedOsmDisplayName}</p>
         ) : null}
       </div>
@@ -314,6 +342,8 @@ function CareTrackingRow({ item }: { item: CareTrackingItem }): React.JSX.Elemen
           >
             {action.label}
           </Link>
+        ) : readOnly ? (
+          <p className="text-sm text-text-muted">{noActionLabel({ type: "NONE", reason: "READ_ONLY" })}</p>
         ) : item.nextStep.type === "NONE" ? (
           <p className="text-sm text-text-muted">{noActionLabel(item.nextStep)}</p>
         ) : null}
@@ -367,13 +397,19 @@ function CareTrackingPagination({ state, result }: { state: ServicesUrlState; re
   );
 }
 
+function scopeLabel(scope: CareTrackingScopeOption): string {
+  return scope.access === "NETWORK"
+    ? `${scope.hospitalName} (ลูกข่ายของ${scope.parentHospitalName} · อ่านอย่างเดียว)`
+    : scope.hospitalName;
+}
+
 function hasFilters(state: ServicesUrlState): boolean {
   return state.stages.length > 0 || state.signals.length > 0 || state.search !== "" || state.includeEnded;
 }
 
 function EmptyState({ state, result }: { state: ServicesUrlState; result: CareTrackingPage }): React.JSX.Element {
   const noPatientsInScope = result.summary.total === 0 && !hasFilters(state);
-  const clearHref = servicesHref({ hospitalId: state.hospitalId, stages: [], signals: [], search: "", includeEnded: false, page: 1 });
+  const clearHref = servicesHref({ ...state, stages: [], signals: [], search: "", includeEnded: false, page: 1 });
 
   return (
     <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
@@ -402,6 +438,8 @@ export function CareTrackingWorkspaceView({
   result,
   errorMessage,
 }: CareTrackingWorkspaceViewProps): React.JSX.Element {
+  const readOnly = selectedScope.access === "NETWORK" || result?.hospital.access === "NETWORK";
+
   return (
     <div className="content-workspace">
       <PageHeader
@@ -420,9 +458,9 @@ export function CareTrackingWorkspaceView({
             <Form action={SERVICES_PATH} className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
               <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold sm:max-w-md">
                 <span className="sr-only">เลือกโรงพยาบาล</span>
-                <Select defaultValue={selectedScope.hospitalId} key={selectedScope.hospitalId} name="hospitalId">
+                <Select defaultValue={scopeKey(selectedScope)} key={scopeKey(selectedScope)} name="scope">
                   {scopes.map((scope) => (
-                    <option key={scope.hospitalId} value={scope.hospitalId}>{scope.hospitalName}</option>
+                    <option key={scopeKey(scope)} value={scopeKey(scope)}>{scopeLabel(scope)}</option>
                   ))}
                 </Select>
               </label>
@@ -431,14 +469,24 @@ export function CareTrackingWorkspaceView({
               </PendingSubmitButton>
             </Form>
           ) : (
-            <p className="mt-2 text-lg font-semibold text-brand-strong">{selectedScope.hospitalName}</p>
+            <p className="mt-2 text-lg font-semibold text-brand-strong">{scopeLabel(selectedScope)}</p>
           )}
+          {selectedScope.access === "NETWORK" ? (
+            <Alert className="mt-4" variant="info">
+              <p className="font-semibold">ข้อมูลลูกข่าย (อ่านอย่างเดียว)</p>
+              <p className="mt-1">
+                เปิดดูผ่านเครือข่ายของ{selectedScope.parentHospitalName} ดูความคืบหน้าได้อย่างเดียว
+                แก้ไขหรือบันทึกข้อมูลไม่ได้ และทุกการเปิดดูจะถูกบันทึกไว้
+              </p>
+            </Alert>
+          ) : null}
         </Panel>
 
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">ค้นหาผู้ป่วย</h2>
           <Form action={SERVICES_PATH} className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <input name="hospitalId" type="hidden" value={state.hospitalId} />
+            {state.childHospitalId ? <input name="childHospitalId" type="hidden" value={state.childHospitalId} /> : null}
             {state.stages.map((stage) => <input key={stage} name="stage" type="hidden" value={stage} />)}
             {state.signals.map((signal) => <input key={signal} name="signal" type="hidden" value={signal} />)}
             <label className="block space-y-2 text-sm font-semibold">
@@ -498,7 +546,9 @@ export function CareTrackingWorkspaceView({
                     <span>ขั้นตอนถัดไป</span>
                   </div>
                   <ul aria-label="รายชื่อผู้ป่วยสำหรับจัดบริการ" className="divide-y divide-border">
-                    {result.items.map((item) => <CareTrackingRow item={item} key={item.relationshipId} />)}
+                    {result.items.map((item) => (
+                      <CareTrackingRow item={item} key={item.relationshipId} readOnly={readOnly} />
+                    ))}
                   </ul>
                 </div>
                 <CareTrackingPagination result={result} state={state} />

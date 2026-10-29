@@ -190,7 +190,6 @@ export function getMoreNavigationIcon(href: string): MobileNavigationIcon {
   if (pathname === "/app/patients/assigned") {
     const task = new URLSearchParams(query).get("task");
     if (task === "screening") return "screening";
-    if (task === "followup") return "followup";
   }
   if (pathname === "/app/services") return "care";
   if (pathname === "/app" || pathname === "/app/personal") return "home";

@@ -31,7 +31,7 @@ const result: PatientAssignedDirectoryPage = {
 function render(
   page: PatientAssignedDirectoryPage | null = result,
   errorMessage: string | null = null,
-  taskMode: "screening" | "followup" | null = null,
+  taskMode: "screening" | null = null,
 ): string {
   return renderToStaticMarkup(<AssignedPatientDirectoryView
     lookupType={page?.lookupType ?? "NAME"}
@@ -135,22 +135,15 @@ describe("assigned patient operational directory", () => {
     expect(html).not.toContain('href="/app/patients/relationship-1"');
   });
 
-  it("keeps follow-up mode through paging and opens the existing relationship follow-up form", () => {
-    const html = render({ ...result, hasPreviousPage: true }, null, "followup");
-
-    expect(html).toContain("บันทึกติดตาม");
-    expect(html).toContain('href="/app/patients/relationship-1/followups/new"');
-    expect(html).toContain("บันทึกติดตามผู้ป่วยรายนี้");
-    expect(html).toContain('href="/app/patients/assigned?lookupType=NAME&amp;task=followup"');
-  });
-
-  it("opens the active Program follow-up round instead of a relationship follow-up", () => {
+  it("has no follow-up task mode any more (CT-3: the จัดบริการ workspace)", () => {
     const first = result.items[0];
     if (!first) throw new Error("Missing fixture");
-    const html = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "followup");
+    const html = render({ ...result, hasPreviousPage: true, items: [{ ...first, activeProgramId: "program-1" }] });
 
-    expect(html).toContain('href="/app/patients/relationship-1/programs/program-1/followups/new"');
-    expect(html).not.toContain('href="/app/patients/relationship-1/followups/new"');
+    expect(html).not.toContain("task=followup");
+    expect(html).not.toContain("followups/new");
+    expect(html).not.toContain("บันทึกติดตาม");
+    expect(html).toContain('href="/app/patients/relationship-1"');
 
     const screening = render({ ...result, items: [{ ...first, activeProgramId: "program-1" }] }, null, "screening");
     expect(screening).toContain('href="/app/patients/relationship-1/screenings/new"');

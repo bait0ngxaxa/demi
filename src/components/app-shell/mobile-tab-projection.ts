@@ -50,7 +50,6 @@ export type MobileNavigationTab = {
     | "personal-home"
     | "assigned-patients"
     | "osm-screening"
-    | "osm-followup"
     | "patient-detail"
     | "more";
   badgeCount?: number;
@@ -237,15 +236,6 @@ function projectWorkTabs(
         icon: "screening",
         match: "exact",
         activeRoute: "osm-screening",
-      }),
-      tabFromItem(assignedPatients, {
-        id: "followup",
-        href: `${assignedPatients.href}?task=followup`,
-        label: "ติดตาม",
-        accessibleLabel: "ติดตามผู้ป่วย",
-        icon: "followup",
-        match: "exact",
-        activeRoute: "osm-followup",
       }),
     );
   }

@@ -45,15 +45,6 @@ const workTabs: MobileNavigationTab[] = [
     activeRoute: "osm-screening",
   },
   {
-    id: "followup",
-    href: "/app/patients/assigned?task=followup",
-    label: "ติดตาม",
-    accessibleLabel: "ติดตามผู้ป่วย",
-    icon: "followup",
-    match: "exact",
-    activeRoute: "osm-followup",
-  },
-  {
     id: "admin-hospitals",
     href: "/app/admin/hospitals",
     label: "รพ.",
@@ -151,8 +142,9 @@ describe("mobile navigation active route", () => {
     expect(resolveActiveMobileTabId("/app/patients/assigned", "task=screening", workTabs)).toBe(
       "screening",
     );
+    // CT-3: the former follow-up task mode has no tab; the page redirects it to /app/services.
     expect(resolveActiveMobileTabId("/app/patients/assigned", "?task=followup", workTabs)).toBe(
-      "followup",
+      "patients",
     );
     expect(resolveActiveMobileTabId("/app/patients/assigned", "task=unknown", workTabs)).toBe(
       "patients",
@@ -181,14 +173,14 @@ describe("mobile navigation active route", () => {
     ).toBe("screening");
     expect(
       resolveActiveMobileTabId(`/app/patients/${relationshipId}/followups/followup-id`, "", workTabs),
-    ).toBe("followup");
+    ).toBe("patients");
     expect(
       resolveActiveMobileTabId(
         `/app/patients/${relationshipId}/programs/program-id/followups/followup-id`,
         "",
         workTabs,
       ),
-    ).toBe("followup");
+    ).toBe("patients");
     expect(
       resolveActiveMobileTabId(`/app/patients/${relationshipId}/programs/program-id`, "", workTabs),
     ).toBe("patients");
@@ -208,7 +200,7 @@ describe("mobile navigation active route", () => {
   it("updates active selection as route history moves between task modes and details", () => {
     const historyRoutes = [
       ["/app/patients/assigned", "task=screening", "screening"],
-      ["/app/patients/assigned", "task=followup", "followup"],
+      ["/app/patients/assigned", "task=followup", "patients"],
       ["/app/patients/assigned", "task=screening", "screening"],
       ["/app/patients/assigned", "", "patients"],
     ] as const;

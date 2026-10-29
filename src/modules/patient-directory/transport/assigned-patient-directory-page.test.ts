@@ -65,15 +65,12 @@ describe("assigned Patient directory page", () => {
     expect(page.props).toMatchObject({ lookupType: "HOSPITAL_NUMBER", value: "HN-001", result });
   });
 
-  it.each([
-    ["screening", "screening"],
-    ["followup", "followup"],
-  ] as const)("accepts only the bounded %s task mode", async (task, expectedMode) => {
+  it("accepts only the bounded screening task mode", async () => {
     const page = await AssignedPatientDirectoryPage({
-      searchParams: Promise.resolve({ task }),
+      searchParams: Promise.resolve({ task: "screening" }),
     });
 
-    expect(page.props.taskMode).toBe(expectedMode);
+    expect(page.props.taskMode).toBe("screening");
     expect(mockedFindAssignedPatientDirectory).toHaveBeenCalledWith(expect.anything(), {
       lookupType: "NAME",
       value: "",
@@ -82,10 +79,23 @@ describe("assigned Patient directory page", () => {
     });
   });
 
+  it.each([
+    [{ task: "followup" }, "/app/services"],
+    [{ task: "followup", hospitalId: "44444444-4444-4444-8444-444444444444" }, "/app/services?hospitalId=44444444-4444-4444-8444-444444444444"],
+    [{ task: ["followup", "screening"], hospitalId: ["44444444-4444-4444-8444-444444444444", "x"] }, "/app/services?hospitalId=44444444-4444-4444-8444-444444444444"],
+  ])("redirects the former follow-up queue %j to the จัดบริการ workspace (CT-3)", async (searchParams, location) => {
+    await expect(AssignedPatientDirectoryPage({ searchParams: Promise.resolve(searchParams) }))
+      .rejects.toThrow(`REDIRECT:${location}`);
+    expect(mockedRedirect).toHaveBeenCalledWith(location);
+    // Before any session or roster read, so a LINE message sent earlier lands on the workspace (or its login).
+    expect(mockedGetProtectedApplicationActor).not.toHaveBeenCalled();
+    expect(mockedFindAssignedPatientDirectory).not.toHaveBeenCalled();
+  });
+
   it("forwards the Hospital locator to the service, which validates and only narrows it", async () => {
     const hospitalId = "44444444-4444-4444-8444-444444444444";
     await AssignedPatientDirectoryPage({
-      searchParams: Promise.resolve({ task: "followup", hospitalId: [hospitalId, "99999999-9999-4999-8999-999999999999"] }),
+      searchParams: Promise.resolve({ task: "screening", hospitalId: [hospitalId, "99999999-9999-4999-8999-999999999999"] }),
     });
 
     expect(mockedFindAssignedPatientDirectory).toHaveBeenCalledWith(expect.anything(), {

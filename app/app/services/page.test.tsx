@@ -26,6 +26,7 @@ vi.mock("@/modules/care-tracking/services/care-tracking-query-service", () => ({
 
 const hospitalA = "11111111-1111-4111-8111-111111111111";
 const hospitalB = "44444444-4444-4444-8444-444444444444";
+const childHospital = "66666666-6666-4666-8666-666666666666";
 const member: ActorContext = {
   userId: "22222222-2222-4222-8222-222222222222",
   personId: "33333333-3333-4333-8333-333333333333",
@@ -61,6 +62,7 @@ describe("CT-2 /app/services page", () => {
     vi.mocked(listCareTrackingScopes).mockResolvedValue([
       { hospitalId: hospitalA, hospitalName: "โรงพยาบาล ก", access: "DIRECT" },
       { hospitalId: hospitalB, hospitalName: "โรงพยาบาล ข", access: "DIRECT" },
+      { access: "NETWORK", hospitalId: hospitalA, parentHospitalName: "โรงพยาบาล ก", childHospitalId: childHospital, hospitalName: "รพ.สต. ลูกข่าย" },
     ]);
     vi.mocked(getCareTrackingPage).mockResolvedValue(emptyPage());
   });
@@ -95,6 +97,33 @@ describe("CT-2 /app/services page", () => {
 
   it("redirects an out-of-scope Hospital to the workspace default", async () => {
     await expect(renderPage({ hospitalId: "55555555-5555-4555-8555-555555555555" })).rejects.toThrow("NEXT_REDIRECT:/app/services");
+    expect(getCareTrackingPage).not.toHaveBeenCalled();
+  });
+
+  it("reads a listed network Child through its Parent with the filters (CT-3)", async () => {
+    vi.mocked(getCareTrackingPage).mockResolvedValueOnce({ ...emptyPage(), hospital: { id: childHospital, name: "รพ.สต. ลูกข่าย", access: "NETWORK" } });
+    const html = await renderPage({ hospitalId: hospitalA, childHospitalId: childHospital, signal: "stale" });
+
+    expect(getCareTrackingPage).toHaveBeenCalledWith(member, {
+      hospitalId: hospitalA, childHospitalId: childHospital, stages: [], signals: ["stale"], search: "", includeEnded: false, page: 1,
+    });
+    expect(html).toContain("ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+  });
+
+  it.each([
+    { hospitalId: hospitalB, childHospitalId: childHospital },
+    { hospitalId: hospitalA, childHospitalId: "77777777-7777-4777-8777-777777777777" },
+    { hospitalId: childHospital },
+  ])("redirects a Child that is not listed under that Parent (%j)", async (params) => {
+    await expect(renderPage(params)).rejects.toThrow(/^NEXT_REDIRECT:\/app\/services$/u);
+    expect(getCareTrackingPage).not.toHaveBeenCalled();
+  });
+
+  it("turns the Hospital selector's scope value into the scope's own URL", async () => {
+    await expect(renderPage({ scope: `${hospitalA}:${childHospital}`, stage: "IN_ROUND" }))
+      .rejects.toThrow(`NEXT_REDIRECT:/app/services?hospitalId=${hospitalA}&childHospitalId=${childHospital}`);
+    await expect(renderPage({ scope: hospitalB })).rejects.toThrow(`NEXT_REDIRECT:/app/services?hospitalId=${hospitalB}`);
+    await expect(renderPage({ scope: "unknown" })).rejects.toThrow(/^NEXT_REDIRECT:\/app\/services$/u);
     expect(getCareTrackingPage).not.toHaveBeenCalled();
   });
 

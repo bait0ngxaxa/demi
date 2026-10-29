@@ -19,6 +19,8 @@ describe("quick-action return path propagation through Proxy", () => {
 
   it.each([
     ["/app/patients/assigned?task=screening", "/app/patients/assigned?task=screening"],
+    ["/app/services", "/app/services"],
+    // CT-3: the pre-CT-3 follow-up URL in messages already sent keeps its login return.
     ["/app/patients/assigned?task=followup", "/app/patients/assigned?task=followup"],
     ["/app/personal/appointments", "/app/personal/appointments"],
   ])("passes the bounded path from %s to the session proxy", async (url, returnTo) => {

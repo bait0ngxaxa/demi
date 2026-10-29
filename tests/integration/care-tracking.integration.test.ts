@@ -15,7 +15,14 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { CARE_SIGNALS, CARE_STAGES } from "@/modules/care-tracking/domain/care-stage";
+import {
+  CARE_SIGNALS,
+  CARE_STAGES,
+  deriveCareSignals,
+  deriveCareStage,
+  type CareCoarseFacts,
+  type CareStage,
+} from "@/modules/care-tracking/domain/care-stage";
 import {
   careTrackingQueryInternals,
   getCareTrackingPage,
@@ -247,6 +254,10 @@ async function cleanup(): Promise<void> {
   people.length = 0;
 }
 
+function statementInput(now: Date) {
+  return { now, stages: [], signals: [], includeEnded: false, page: 1, pageSize: 20 };
+}
+
 function ids(page: CareTrackingPage): string[] {
   return page.items.map((item) => item.relationshipId);
 }
@@ -338,11 +349,15 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
 
   it("reads one network Child read-only for the Parent, audited, and nothing else", async () => {
     const f = await careFixture();
+    // The Child's own OSM is assigned, yet a network read never shows OSM names (CT-3).
+    const childOsm = await osm(f.childHospitalId);
+    await assignOsmToPatient(f.childOwner, { patientHospitalRelationshipId: f.patients.childPatient.relationshipId, osmUserId: childOsm.userId });
     const page = await getCareTrackingPage(f.owner, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId });
 
     expect(page.hospital).toMatchObject({ id: f.childHospitalId, access: "NETWORK" });
     expect(ids(page)).toEqual([f.patients.childPatient.relationshipId]);
     expect(page.items[0]).toMatchObject({ stage: "IN_ROUND", assignedOsmDisplayName: null, nextStep: { type: "NONE", reason: "READ_ONLY" } });
+    expect((await getCareTrackingPage(f.childOwner, { hospitalId: f.childHospitalId })).items[0]?.assignedOsmDisplayName).toBe("อสม. ประจำหมู่บ้าน");
     expect(page.items[0]?.currentRound?.steps.every((step) => step.evidence === null || step.evidence.byDisplayName === null)).toBe(true);
     const audits = await db.auditEvent.findMany({ where: { actorUserId: f.owner.userId, action: "patient.network_read" }, select: { resourceType: true, resourceId: true, metadata: true } });
     expect(audits).toEqual([{ resourceType: "Hospital", resourceId: f.childHospitalId, metadata: { parentHospitalId: f.hospitalId, childHospitalId: f.childHospitalId, scope: "care-tracking" } }]);
@@ -351,6 +366,15 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     await expect(getCareTrackingPage(f.member, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getCareTrackingPage(f.childOwner, { hospitalId: f.childHospitalId, childHospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getCareTrackingPage(f.assignedOsm, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId })).rejects.toBeInstanceOf(ForbiddenError);
+
+    // Another Parent's Child is refused through the actor's own Parent and through the other Parent alike.
+    const otherParentId = await hospital("PARENT");
+    const otherParentOwner = await staff(otherParentId, MembershipType.OWNER);
+    const otherChildId = await hospital();
+    await attachHospitalServiceArea(otherParentOwner, { parentHospitalId: otherParentId, childHospitalId: otherChildId });
+    await expect(getCareTrackingPage(f.owner, { hospitalId: f.hospitalId, childHospitalId: otherChildId })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(getCareTrackingPage(f.owner, { hospitalId: otherParentId, childHospitalId: otherChildId })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await db.auditEvent.count({ where: { actorUserId: f.owner.userId, action: "patient.network_read" } })).toBe(1);
   });
 
   it("searches by name terms and exact HN", async () => {
@@ -411,16 +435,16 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     }
   });
 
-  it("explains the coarse statement for a Hospital with 500 patients", async () => {
+  it("explains the tracking statement for a Hospital with 500 patients", async () => {
     const hospitalId = await hospital();
     const owner = await staff(hospitalId, MembershipType.OWNER);
     const relationshipIds = await bulkPatients(hospitalId, owner.userId, 500, "แผน");
     await db.$executeRaw`ANALYZE`;
 
-    const statement = careTrackingQueryInternals.buildCoarseStatement(relationshipIds, new Date());
+    const statement = careTrackingQueryInternals.buildTrackingStatement(relationshipIds, statementInput(new Date()));
     const plan = await db.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${statement}`);
     const text = plan.map((row) => row["QUERY PLAN"]).join("\n");
-    console.info(`Care tracking coarse statement, 500 patients:\n${text}`);
+    console.info(`Care tracking tracking statement, 500 patients:\n${text}`);
     expect(text).toContain("Execution Time");
 
     // The test tables hold little more than this Hospital, so the planner may prefer sequential scans; with
@@ -430,7 +454,7 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
       return transaction.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN ${statement}`);
     });
     const indexedText = indexedPlan.map((row) => row["QUERY PLAN"]).join("\n");
-    console.info(`Care tracking coarse statement with sequential scans disabled:\n${indexedText}`);
+    console.info(`Care tracking tracking statement with sequential scans disabled:\n${indexedText}`);
     expect(indexedText).not.toContain("Seq Scan");
 
     const page = await getCareTrackingPage(owner, { hospitalId });
@@ -446,7 +470,7 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     await db.patientFollowup.create({
       data: { patientHospitalRelationshipId: relationshipId, createdByUserId: owner.userId, roundNumber: 1, submissionNonce: randomUUID(), submissionRequestHash: "f".repeat(64), recordedAt },
     });
-    const statement = careTrackingQueryInternals.buildCoarseStatement([relationshipId], new Date());
+    const statement = careTrackingQueryInternals.buildTrackingStatement([relationshipId], statementInput(new Date()));
     const lastActivityIn = (timeZone: "UTC" | "Asia/Bangkok"): Promise<Date | null> => db.$transaction(async (transaction) => {
       if (timeZone === "UTC") await transaction.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
       else await transaction.$executeRaw`SET LOCAL TIME ZONE 'Asia/Bangkok'`;
@@ -461,7 +485,7 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     expect(bangkok?.toISOString()).toBe(utc?.toISOString());
   });
 
-  it("lists the direct and OSM scopes of the จัดบริการ workspace without network Children", async () => {
+  it("lists the direct, OSM and network Child scopes of the จัดบริการ workspace", async () => {
     const f = await careFixture();
     const mixed = await staff(f.otherHospitalId, MembershipType.MEMBER);
     await db.userRole.create({ data: { userId: mixed.userId, role: Role.OSM } });
@@ -473,14 +497,113 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     };
     const hospitalIds = async (actor: ActorContext): Promise<string[]> => (await listCareTrackingScopes(actor)).map(({ hospitalId }) => hospitalId);
 
-    expect(await hospitalIds(f.owner)).toEqual([f.hospitalId]);
-    expect(await hospitalIds(f.member)).toEqual([f.hospitalId]);
+    expect(await listCareTrackingScopes(f.owner)).toEqual([
+      { access: "DIRECT", hospitalId: f.hospitalId, hospitalName: "โรงพยาบาลติดตามการดูแล" },
+      { access: "NETWORK", hospitalId: f.hospitalId, parentHospitalName: "โรงพยาบาลติดตามการดูแล", childHospitalId: f.childHospitalId, hospitalName: "รพ.สต.ติดตามการดูแล" },
+    ]);
+    // A MEMBER without the OWNER-issued network Patient read grant reads no Child.
+    expect(await listCareTrackingScopes(f.member)).toEqual([{ access: "DIRECT", hospitalId: f.hospitalId, hospitalName: "โรงพยาบาลติดตามการดูแล" }]);
+    // The Child's own OWNER reads it directly, never as a network scope.
+    expect(await listCareTrackingScopes(f.childOwner)).toEqual([{ access: "DIRECT", hospitalId: f.childHospitalId, hospitalName: "รพ.สต.ติดตามการดูแล" }]);
     expect(await hospitalIds(f.assignedOsm)).toEqual([f.hospitalId]);
     expect(await hospitalIds(mixedActor)).toEqual([f.otherHospitalId, f.hospitalId]);
-    expect((await listCareTrackingScopes(f.owner)).every(({ access }) => access === "DIRECT")).toBe(true);
+
+    // CT-D2: the OSM's workspace scope lists their assigned patients only.
+    const [osmScope] = await listCareTrackingScopes(f.assignedOsm);
+    expect(ids(await getCareTrackingPage(f.assignedOsm, { hospitalId: osmScope?.hospitalId, includeEnded: true }))).toEqual([f.patients.inRound.relationshipId]);
     await expect(listCareTrackingScopes(await roleActor(Role.CAREGIVER))).rejects.toBeInstanceOf(ForbiddenError);
     await expect(listCareTrackingScopes(await roleActor(Role.PATIENT))).rejects.toBeInstanceOf(ForbiddenError);
     await expect(listCareTrackingScopes(null)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("derives the same stage in SQL as deriveCareStage on a fixture matrix", async () => {
+    const matrix: CareCoarseFacts[] = [];
+    for (const careEnded of [false, true]) {
+      for (const baselineRecorded of [false, true]) {
+        for (const completedProgramExists of [false, true]) {
+          matrix.push({ careEnded, baselineRecorded, completedProgramExists, activeProgram: null });
+          for (const openedRounds of [0, 1, 5, 6, 7, 8]) {
+            for (const completedRounds of new Set([0, Math.max(0, openedRounds - 1), openedRounds])) {
+              for (const currentOpenRound of [null, 1, 6, 7]) {
+                for (const finalAssessmentRecorded of [false, true]) {
+                  matrix.push({
+                    careEnded, baselineRecorded, completedProgramExists,
+                    activeProgram: { openedRounds, completedRounds, currentOpenRound, finalAssessmentRecorded },
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    const column = <T,>(pick: (facts: CareCoarseFacts) => T): T[] => matrix.map(pick);
+    const noRound = -1;
+    const rows = await db.$queryRaw<{ stage: string }[]>(Prisma.sql`
+      SELECT ${careTrackingQueryInternals.buildCareStageCase()} AS "stage"
+      FROM (
+        SELECT raw.*, NULLIF(raw."rawOpenRound", ${noRound}::int) AS "currentOpenRound"
+        FROM unnest(
+          ${column((facts) => facts.careEnded)}::boolean[],
+          ${column((facts) => facts.baselineRecorded)}::boolean[],
+          ${column((facts) => facts.activeProgram !== null)}::boolean[],
+          ${column((facts) => facts.activeProgram?.openedRounds ?? 0)}::int[],
+          ${column((facts) => facts.activeProgram?.completedRounds ?? 0)}::int[],
+          ${column((facts) => facts.activeProgram?.currentOpenRound ?? noRound)}::int[],
+          ${column((facts) => facts.activeProgram?.finalAssessmentRecorded ?? false)}::boolean[],
+          ${column((facts) => facts.completedProgramExists)}::boolean[]
+        ) WITH ORDINALITY AS raw(
+          "careEnded", "baselineRecorded", "hasActiveProgram", "openedRounds", "completedRounds", "rawOpenRound",
+          "finalAssessmentRecorded", "completedProgramExists", "position"
+        )
+      ) AS facts
+      ORDER BY facts."position"
+    `);
+
+    expect(rows.map(({ stage }) => stage)).toEqual(matrix.map(deriveCareStage));
+    expect(new Set(rows.map(({ stage }) => stage))).toEqual(new Set(CARE_STAGES));
+  });
+
+  it("derives the same signals in SQL as deriveCareSignals on a fixture matrix", async () => {
+    const now = new Date("2026-10-29T03:00:00.000Z");
+    const none = 0;
+    const cases: { stage: CareStage; hasOverdueAppointment: boolean; activitySeconds: number; nextSeconds: number }[] = [];
+    // Offsets in seconds from now; `none` stands for a missing date. -30 days exactly is the stale boundary.
+    for (const stage of CARE_STAGES) {
+      for (const hasOverdueAppointment of [false, true]) {
+        for (const activitySeconds of [none, -31 * 86_400, -30 * 86_400, -30 * 86_400 - 1, -29 * 86_400]) {
+          for (const nextSeconds of [none, 86_400]) {
+            cases.push({ stage, hasOverdueAppointment, activitySeconds, nextSeconds });
+          }
+        }
+      }
+    }
+    const at = (seconds: number): Date | null => seconds === none ? null : new Date(now.getTime() + seconds * 1000);
+    const rows = await db.$queryRaw<{ overdueAppointment: boolean; noUpcomingAppointment: boolean; stale: boolean }[]>(Prisma.sql`
+      SELECT ${careTrackingQueryInternals.buildCareSignalColumns(now)}
+      FROM (
+        SELECT raw."stage", raw."hasOverdueAppointment", raw."position",
+          CASE WHEN raw."activitySeconds" = ${none}::int THEN NULL
+            ELSE ${now}::timestamptz + make_interval(secs => raw."activitySeconds") END AS "lastActivityAt",
+          CASE WHEN raw."nextSeconds" = ${none}::int THEN NULL
+            ELSE ${now}::timestamptz + make_interval(secs => raw."nextSeconds") END AS "nextAppointmentAt"
+        FROM unnest(
+          ${cases.map(({ stage }) => stage)}::text[],
+          ${cases.map(({ hasOverdueAppointment }) => hasOverdueAppointment)}::boolean[],
+          ${cases.map(({ activitySeconds }) => activitySeconds)}::int[],
+          ${cases.map(({ nextSeconds }) => nextSeconds)}::int[]
+        ) WITH ORDINALITY AS raw("stage", "hasOverdueAppointment", "activitySeconds", "nextSeconds", "position")
+      ) AS facts
+      ORDER BY facts."position"
+    `);
+
+    expect(rows).toEqual(cases.map((entry) => deriveCareSignals({
+      stage: entry.stage,
+      now,
+      lastActivityAt: at(entry.activitySeconds),
+      nextAppointmentAt: at(entry.nextSeconds),
+      hasOverdueAppointment: entry.hasOverdueAppointment,
+    })));
   });
 
   it("reports getCareTrackingPage latency for a Hospital with 2,000 patients", async () => {
@@ -504,7 +627,8 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     const p50 = percentile(0.5);
     const p95 = percentile(0.95);
 
-    // CT-2 budget: p95 < 300 ms on the integration database. Reported, not enforced (no optimisation in CT-2).
+    // Budget: p95 < 300 ms on the integration database. Reported, not enforced (timing depends on the machine);
+    // CT-3 moved stage/signal filtering, counting, sorting and paging into the tracking statement for it.
     console.info(`Care tracking getCareTrackingPage, 2,000 patients, ${samples.length} runs: p50 ${p50.toFixed(1)} ms, p95 ${p95.toFixed(1)} ms (budget p95 < 300 ms: ${p95 < 300 ? "within" : "OVER"})`);
     expect(Number.isFinite(p95)).toBe(true);
   }, 300_000);

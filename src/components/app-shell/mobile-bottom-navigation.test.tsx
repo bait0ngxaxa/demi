@@ -271,13 +271,15 @@ describe("unified mobile bottom navigation", () => {
     mount();
 
     expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
-    const followup = container.querySelector<HTMLAnchorElement>('[aria-label="ติดตามผู้ป่วย"]');
-    expect(followup?.getAttribute("href")).toBe("/app/patients/assigned?task=followup");
-    act(() => followup?.click());
-    expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
-
-    navigate("/app/patients/assigned");
+    // CT-3: the former follow-up task tab is gone (its URL redirects to /app/services).
+    expect(container.querySelector('[aria-label="ติดตามผู้ป่วย"]')).toBeNull();
+    const assigned = container.querySelector<HTMLAnchorElement>('[aria-label="ผู้ป่วยที่ดูแล"]');
+    act(() => assigned?.click());
     expect(container.querySelector('[aria-label="ผู้ป่วยที่ดูแล"]')?.getAttribute("aria-current")).toBe("page");
+    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBeNull();
+
+    navigate("/app/patients/assigned?task=screening");
+    expect(container.querySelector('[aria-label="คัดกรองผู้ป่วย"]')?.getAttribute("aria-current")).toBe("page");
   });
 
   it("asks before changing tabs when an unresolved outcome is active", () => {

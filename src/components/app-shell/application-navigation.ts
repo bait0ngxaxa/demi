@@ -313,10 +313,10 @@ function projectWorkSections(
       canReadWorkAppointments(actor) && { href: "/app/appointments", label: "รายการนัดหมาย", match: "prefix" },
       assignedPatients && { href: "/app/patients/assigned", label: "ผู้ป่วยที่ดูแล", match: "exact", badgeCount: awaitingOsmAcceptanceCount },
       assignedPatients && { href: "/app/patients/assigned?task=screening", label: "รอคัดกรอง", match: "exact" },
-      assignedPatients && { href: "/app/patients/assigned?task=followup", label: "รอติดตาม", match: "exact" },
       canReadPatientCare && { href: "/app/patients", label: "รายชื่อผู้ป่วย", match: "exact" },
       canAssignOsm(actor) && { href: "/app/patients/assign-osm", label: "มอบหมาย อสม.", match: "prefix" },
-      canReadPatientCare && { href: "/app/services", label: "จัดบริการ", match: "exact" },
+      // CT-D2: an OSM tracks their assigned patients here; the former "รอติดตาม" queue redirects to it.
+      (canReadPatientCare || assignedPatients) && { href: "/app/services", label: "จัดบริการ", match: "exact" },
       canReadPatientCare && { href: "/app/appointments/new", label: "นัดหมายใหม่", match: "exact" },
     ])),
     ...section("registration", "work", compact([

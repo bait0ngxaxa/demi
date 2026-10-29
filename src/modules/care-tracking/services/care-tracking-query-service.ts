@@ -15,6 +15,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   buildNetworkReadableChildHospitalWhere,
   findNetworkChild,
+  listNetworkScopes,
   recordNetworkPatientRead,
 } from "@/modules/hospital-service-areas/services/hospital-network-access";
 import {
@@ -40,7 +41,7 @@ import {
   decidePatientProgramPolicy,
   PATIENT_PROGRAM_MANAGE_CAPABILITY,
 } from "@/modules/patient-program/policies/patient-program-policy";
-import { roundTitle } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { GUIDELINE_ROUND_COUNT, roundTitle } from "@/modules/patient-program-rounds/domain/round-catalog";
 import {
   computeRoundStatus,
   roundPlan,
@@ -62,13 +63,12 @@ import {
 
 import { resolvePatientCareNextStep, type PatientCareNextStep } from "../domain/care-next-step";
 import {
+  ACTIVE_CARE_STAGES,
   CARE_SIGNALS,
   CARE_STAGE_LABELS,
   CARE_STAGES,
-  deriveCareSignals,
-  deriveCareStage,
+  CARE_STALE_DAYS,
   ENDED_CARE_STAGES,
-  hasAnyCareSignal,
   type CareSignal,
   type CareSignals,
   type CareStage,
@@ -142,47 +142,68 @@ type CareTrackingScope = {
   where: Prisma.PatientHospitalRelationshipWhereInput;
 };
 
-/** Per-relationship facts computed by the coarse statement. */
-type CoarseRow = {
-  relationshipId: string;
-  baselineRecorded: boolean;
-  activeProgramId: string | null;
-  openedRounds: number;
-  completedRounds: number;
-  currentOpenRound: number | null;
-  finalAssessmentRecorded: boolean;
-  completedProgramExists: boolean;
-  lastActivityAt: Date | null;
-  nextAppointmentAt: Date | null;
-  nextAppointmentType: AppointmentType | null;
-  hasOverdueAppointment: boolean;
-};
-
+/** The facts of one page patient, read by the tracking statement. */
 type TrackedPatient = {
   relationshipId: string;
-  givenName: string;
-  familyName: string;
   displayName: string;
   hospitalNumber: string | null;
   careEnded: boolean;
-  coarse: CoarseRow;
+  baselineRecorded: boolean;
+  currentOpenRound: number | null;
+  lastActivityAt: Date | null;
+  nextAppointmentAt: Date | null;
+  nextAppointmentType: AppointmentType | null;
   stage: CareStage;
   signals: CareSignals;
 };
 
+/**
+ * One row per page patient, each carrying the summary and paging columns. Without a patient on the page the
+ * statement still returns one row, with the patient columns null.
+ */
+type TrackingRow = {
+  summaryTotal: number;
+  stageCounts: Partial<Record<CareStage, number>>;
+  overdueAppointmentCount: number;
+  noUpcomingAppointmentCount: number;
+  staleCount: number;
+  total: number;
+  page: number;
+  relationshipId: string | null;
+  hospitalNumber: string | null;
+  givenName: string | null;
+  familyName: string | null;
+  careEnded: boolean;
+  baselineRecorded: boolean;
+  currentOpenRound: number | null;
+  lastActivityAt: Date | null;
+  nextAppointmentAt: Date | null;
+  nextAppointmentType: AppointmentType | null;
+  stage: CareStage;
+  overdueAppointment: boolean;
+  noUpcomingAppointment: boolean;
+  stale: boolean;
+};
+
+type TrackingStatementInput = {
+  now: Date;
+  stages: readonly CareStage[];
+  signals: readonly CareSignal[];
+  includeEnded: boolean;
+  page: number;
+  pageSize: number;
+};
+
 const NETWORK_READ: RoundReadOptions = { recorderNames: false };
 const STAFF_READ: RoundReadOptions = { recorderNames: true };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const ACTIVE_STAGE_VALUES = CARE_STAGES.filter((stage) => ACTIVE_CARE_STAGES.has(stage));
+const ENDED_STAGE_VALUES = CARE_STAGES.filter((stage) => ENDED_CARE_STAGES.has(stage));
 
 const patientRoleWhere = {
   patientProfile: { person: { user: { roles: { some: { role: Role.PATIENT } } } } },
 } satisfies Prisma.PatientHospitalRelationshipWhereInput;
-
-const scopeRelationshipSelect = {
-  id: true,
-  hospitalNumber: true,
-  endedAt: true,
-  patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
-} satisfies Prisma.PatientHospitalRelationshipSelect;
 
 function getDatabase(dependencies: CareTrackingQueryDependencies): CareTrackingDatabase {
   return dependencies.database ?? getPrisma();
@@ -292,18 +313,67 @@ async function resolveScope(
 }
 
 /**
- * One statement for every relationship in scope. "Last care activity" is the latest of:
+ * deriveCareStage over the columns "careEnded", "baselineRecorded", "hasActiveProgram", "openedRounds",
+ * "completedRounds", "currentOpenRound", "finalAssessmentRecorded" and "completedProgramExists". Keep the two in
+ * step: the integration parity test compares them on a fixture matrix.
+ */
+function buildCareStageCase(): Prisma.Sql {
+  return Prisma.sql`CASE
+      WHEN "careEnded" THEN 'CARE_ENDED'
+      WHEN "hasActiveProgram" THEN CASE
+        WHEN "finalAssessmentRecorded" THEN 'AWAITING_PROGRAM_END'
+        WHEN "currentOpenRound" IS NOT NULL THEN
+          CASE WHEN "currentOpenRound" > ${GUIDELINE_ROUND_COUNT}::int THEN 'IN_EXTRA_ROUND' ELSE 'IN_ROUND' END
+        WHEN "openedRounds" >= ${GUIDELINE_ROUND_COUNT}::int AND "completedRounds" = "openedRounds" THEN 'AWAITING_AFTER'
+        ELSE 'IN_ROUND'
+      END
+      WHEN "completedProgramExists" THEN 'PROGRAM_COMPLETED'
+      WHEN "baselineRecorded" THEN 'READY_FOR_PROGRAM'
+      ELSE 'NOT_STARTED'
+    END`;
+}
+
+/** deriveCareSignals over "stage", "hasOverdueAppointment", "nextAppointmentAt" and "lastActivityAt". */
+function buildCareSignalColumns(now: Date): Prisma.Sql {
+  const staleBefore = new Date(now.getTime() - CARE_STALE_DAYS * DAY_MS);
+
+  return Prisma.sql`
+      "hasOverdueAppointment" AS "overdueAppointment",
+      ("stage" = ANY(${ACTIVE_STAGE_VALUES}::text[]) AND "nextAppointmentAt" IS NULL) AS "noUpcomingAppointment",
+      ("stage" = ANY(${ACTIVE_STAGE_VALUES}::text[])
+        AND ("lastActivityAt" IS NULL OR "lastActivityAt" < ${staleBefore}::timestamptz)) AS "stale"`;
+}
+
+/**
+ * One statement for every relationship in scope: the coarse facts, stage and signals, the summary counts, the
+ * stage/signal filters, the sort and the page. "Last care activity" is the latest of:
  * PatientBaseline.recordedOn, PatientProgram.startedAt, PatientProgramRound.openedAt,
  * PatientProgramRoundCompletion.completedAt, PatientProgramRoundVitals.recordedAt, PatientFollowup.recordedAt,
  * PatientProgramRoundActivity.performedAt and PatientFinalAssessment.recordedAt, over all of the relationship's
  * Programs. Every source is timestamptz except PatientBaseline.recordedOn, a date read as midnight UTC, so the
- * result does not depend on the session TimeZone.
+ * result does not depend on the session TimeZone. Sort: any signal first, then next appointment (soonest, none
+ * last), then last activity (oldest, none first), then name in the database collation (as the Patient directory).
  */
-function buildCoarseStatement(relationshipIds: readonly string[], now: Date): Prisma.Sql {
+function buildTrackingStatement(relationshipIds: readonly string[], input: TrackingStatementInput): Prisma.Sql {
+  const stageCounts = Prisma.join(
+    CARE_STAGES.map((stage) => Prisma.sql`${stage}::text, COUNT(*) FILTER (WHERE tracked."stage" = ${stage}::text)`),
+  );
+  const signalFilter = Prisma.join(
+    CARE_SIGNALS.map((signal) => {
+      const column = signal === "overdueAppointment"
+        ? Prisma.sql`"overdueAppointment"`
+        : signal === "noUpcomingAppointment" ? Prisma.sql`"noUpcomingAppointment"` : Prisma.sql`"stale"`;
+      return Prisma.sql`(${column} AND ${signal}::text = ANY(${[...input.signals]}::text[]))`;
+    }),
+    " OR ",
+  );
+
   return Prisma.sql`
     WITH scope AS (
-      SELECT relationship."id"
+      SELECT relationship."id", relationship."endedAt", relationship."hospitalNumber", person."givenName", person."familyName"
       FROM "PatientHospitalRelationship" AS relationship
+      JOIN "PatientProfile" AS profile ON profile."id" = relationship."patientProfileId"
+      JOIN "Person" AS person ON person."id" = profile."personId"
       WHERE relationship."id" = ANY(${[...relationshipIds]}::uuid[])
     ),
     program AS (
@@ -363,100 +433,148 @@ function buildCoarseStatement(relationshipIds: readonly string[], now: Date): Pr
         appointment."patientHospitalRelationshipId" AS "relationshipId", appointment."scheduledAt", appointment."type"
       FROM "PatientAppointment" AS appointment
       JOIN scope ON scope."id" = appointment."patientHospitalRelationshipId"
-      WHERE appointment."status" = 'SCHEDULED' AND appointment."scheduledAt" >= ${now}::timestamptz
+      WHERE appointment."status" = 'SCHEDULED' AND appointment."scheduledAt" >= ${input.now}::timestamptz
       ORDER BY appointment."patientHospitalRelationshipId", appointment."scheduledAt", appointment."id"
     ),
     overdue AS (
       SELECT DISTINCT appointment."patientHospitalRelationshipId" AS "relationshipId"
       FROM "PatientAppointment" AS appointment
       JOIN scope ON scope."id" = appointment."patientHospitalRelationshipId"
-      WHERE appointment."status" = 'SCHEDULED' AND appointment."scheduledAt" < ${now}::timestamptz
+      WHERE appointment."status" = 'SCHEDULED' AND appointment."scheduledAt" < ${input.now}::timestamptz
+    ),
+    coarse AS (
+      SELECT
+        scope."id",
+        scope."hospitalNumber",
+        scope."givenName",
+        scope."familyName",
+        (scope."endedAt" IS NOT NULL) AS "careEnded",
+        EXISTS (
+          SELECT 1 FROM "PatientBaseline" AS baseline WHERE baseline."patientHospitalRelationshipId" = scope."id"
+        ) AS "baselineRecorded",
+        (active_program."id" IS NOT NULL) AS "hasActiveProgram",
+        COALESCE(round_stats."openedRounds", 0) AS "openedRounds",
+        COALESCE(round_stats."completedRounds", 0) AS "completedRounds",
+        round_stats."currentOpenRound",
+        (final_assessment."id" IS NOT NULL) AS "finalAssessmentRecorded",
+        EXISTS (
+          SELECT 1 FROM program AS completed_program
+          WHERE completed_program."patientHospitalRelationshipId" = scope."id" AND completed_program."status" = 'COMPLETED'
+        ) AS "completedProgramExists",
+        activity."lastActivityAt",
+        next_appointment."scheduledAt" AS "nextAppointmentAt",
+        next_appointment."type"::text AS "nextAppointmentType",
+        (overdue."relationshipId" IS NOT NULL) AS "hasOverdueAppointment"
+      FROM scope
+      LEFT JOIN program AS active_program
+        ON active_program."patientHospitalRelationshipId" = scope."id" AND active_program."status" = 'ACTIVE'
+      LEFT JOIN round_stats ON round_stats."patientProgramId" = active_program."id"
+      LEFT JOIN "PatientFinalAssessment" AS final_assessment ON final_assessment."patientProgramId" = active_program."id"
+      LEFT JOIN activity ON activity."relationshipId" = scope."id"
+      LEFT JOIN next_appointment ON next_appointment."relationshipId" = scope."id"
+      LEFT JOIN overdue ON overdue."relationshipId" = scope."id"
+    ),
+    staged AS (
+      SELECT coarse.*, ${buildCareStageCase()} AS "stage" FROM coarse
+    ),
+    tracked AS (
+      -- CT-D5: completed Programs and ended care are hidden unless asked for.
+      SELECT staged.*, ${buildCareSignalColumns(input.now)}
+      FROM staged
+      WHERE ${input.includeEnded}::boolean OR NOT ("stage" = ANY(${ENDED_STAGE_VALUES}::text[]))
+    ),
+    summary AS (
+      SELECT
+        COUNT(*)::int AS "summaryTotal",
+        jsonb_build_object(${stageCounts}) AS "stageCounts",
+        COUNT(*) FILTER (WHERE tracked."overdueAppointment")::int AS "overdueAppointmentCount",
+        COUNT(*) FILTER (WHERE tracked."noUpcomingAppointment")::int AS "noUpcomingAppointmentCount",
+        COUNT(*) FILTER (WHERE tracked."stale")::int AS "staleCount"
+      FROM tracked
+    ),
+    filtered AS (
+      SELECT tracked.* FROM tracked
+      WHERE (cardinality(${[...input.stages]}::text[]) = 0 OR "stage" = ANY(${[...input.stages]}::text[]))
+        AND (cardinality(${[...input.signals]}::text[]) = 0 OR ${signalFilter})
+    ),
+    ordered AS (
+      SELECT filtered.*, ROW_NUMBER() OVER (
+        ORDER BY
+          ("overdueAppointment" OR "noUpcomingAppointment" OR "stale") DESC,
+          "nextAppointmentAt" ASC NULLS LAST,
+          "lastActivityAt" ASC NULLS FIRST,
+          COALESCE(BTRIM("givenName"), ''),
+          COALESCE(BTRIM("familyName"), ''),
+          "id"
+      ) AS "position"
+      FROM filtered
+    ),
+    page_window AS (
+      SELECT counted."total",
+        LEAST(${input.page}::bigint, GREATEST(1, CEIL(counted."total"::numeric / ${input.pageSize}::int)))::int AS "page"
+      FROM (SELECT COUNT(*)::int AS "total" FROM filtered) AS counted
     )
     SELECT
-      scope."id"::text AS "relationshipId",
-      EXISTS (
-        SELECT 1 FROM "PatientBaseline" AS baseline WHERE baseline."patientHospitalRelationshipId" = scope."id"
-      ) AS "baselineRecorded",
-      active_program."id"::text AS "activeProgramId",
-      COALESCE(round_stats."openedRounds", 0) AS "openedRounds",
-      COALESCE(round_stats."completedRounds", 0) AS "completedRounds",
-      round_stats."currentOpenRound",
-      (final_assessment."id" IS NOT NULL) AS "finalAssessmentRecorded",
-      EXISTS (
-        SELECT 1 FROM program AS completed_program
-        WHERE completed_program."patientHospitalRelationshipId" = scope."id" AND completed_program."status" = 'COMPLETED'
-      ) AS "completedProgramExists",
-      activity."lastActivityAt",
-      next_appointment."scheduledAt" AS "nextAppointmentAt",
-      next_appointment."type"::text AS "nextAppointmentType",
-      (overdue."relationshipId" IS NOT NULL) AS "hasOverdueAppointment"
-    FROM scope
-    LEFT JOIN program AS active_program
-      ON active_program."patientHospitalRelationshipId" = scope."id" AND active_program."status" = 'ACTIVE'
-    LEFT JOIN round_stats ON round_stats."patientProgramId" = active_program."id"
-    LEFT JOIN "PatientFinalAssessment" AS final_assessment ON final_assessment."patientProgramId" = active_program."id"
-    LEFT JOIN activity ON activity."relationshipId" = scope."id"
-    LEFT JOIN next_appointment ON next_appointment."relationshipId" = scope."id"
-    LEFT JOIN overdue ON overdue."relationshipId" = scope."id"
+      summary."summaryTotal", summary."stageCounts", summary."overdueAppointmentCount",
+      summary."noUpcomingAppointmentCount", summary."staleCount",
+      page_window."total", page_window."page",
+      page_row."id"::text AS "relationshipId",
+      page_row."hospitalNumber", page_row."givenName", page_row."familyName",
+      page_row."careEnded", page_row."baselineRecorded", page_row."currentOpenRound",
+      page_row."lastActivityAt", page_row."nextAppointmentAt", page_row."nextAppointmentType",
+      page_row."stage", page_row."overdueAppointment", page_row."noUpcomingAppointment", page_row."stale"
+    FROM summary
+    CROSS JOIN page_window
+    LEFT JOIN ordered AS page_row
+      ON page_row."position" > (page_window."page" - 1)::bigint * ${input.pageSize}::int
+      AND page_row."position" <= page_window."page"::bigint * ${input.pageSize}::int
+    ORDER BY page_row."position"
   `;
-}
-
-async function loadCoarseRows(
-  database: CareTrackingDatabase,
-  relationshipIds: readonly string[],
-  now: Date,
-): Promise<CoarseRow[]> {
-  return database.$queryRaw<CoarseRow[]>(buildCoarseStatement(relationshipIds, now));
 }
 
 function emptyCounts<K extends string>(keys: readonly K[]): Record<K, number> {
   return Object.fromEntries(keys.map((key) => [key, 0])) as Record<K, number>;
 }
 
-function summarize(patients: readonly TrackedPatient[]): CareTrackingSummary {
+function toSummary(row: TrackingRow | undefined): CareTrackingSummary {
   const stages = emptyCounts(CARE_STAGES);
-  const signals = emptyCounts(CARE_SIGNALS);
-
-  for (const patient of patients) {
-    stages[patient.stage] += 1;
-    for (const signal of CARE_SIGNALS) {
-      if (patient.signals[signal]) {
-        signals[signal] += 1;
-      }
-    }
+  for (const stage of CARE_STAGES) {
+    stages[stage] = Number(row?.stageCounts[stage] ?? 0);
   }
 
-  return { total: patients.length, stages, signals };
+  return {
+    total: row?.summaryTotal ?? 0,
+    stages,
+    signals: {
+      overdueAppointment: row?.overdueAppointmentCount ?? 0,
+      noUpcomingAppointment: row?.noUpcomingAppointmentCount ?? 0,
+      stale: row?.staleCount ?? 0,
+    },
+  };
 }
 
-const nameCollator = new Intl.Collator("th");
-
-function compareOptionalDates(left: Date | null, right: Date | null, nulls: "first" | "last"): number {
-  if (left === null || right === null) {
-    if (left === right) return 0;
-    return (left === null) === (nulls === "first") ? -1 : 1;
+function toTrackedPatient(row: TrackingRow): TrackedPatient[] {
+  if (row.relationshipId === null) {
+    return [];
   }
 
-  return left.getTime() - right.getTime();
-}
-
-/** Any signal first, then next appointment (soonest, none last), then last activity (oldest, none first), then name. */
-function compareTrackedPatients(left: TrackedPatient, right: TrackedPatient): number {
-  return (
-    Number(hasAnyCareSignal(right.signals)) - Number(hasAnyCareSignal(left.signals)) ||
-    compareOptionalDates(left.coarse.nextAppointmentAt, right.coarse.nextAppointmentAt, "last") ||
-    compareOptionalDates(left.coarse.lastActivityAt, right.coarse.lastActivityAt, "first") ||
-    nameCollator.compare(left.givenName, right.givenName) ||
-    nameCollator.compare(left.familyName, right.familyName) ||
-    (left.relationshipId < right.relationshipId ? -1 : left.relationshipId > right.relationshipId ? 1 : 0)
-  );
-}
-
-function matchesFilters(patient: TrackedPatient, input: CareTrackingQueryInput): boolean {
-  const stageMatches = !input.stages?.length || input.stages.includes(patient.stage);
-  const signalMatches = !input.signals?.length || input.signals.some((signal) => patient.signals[signal]);
-
-  return stageMatches && signalMatches;
+  return [{
+    relationshipId: row.relationshipId,
+    displayName: toDisplayName({ givenName: row.givenName, familyName: row.familyName }),
+    hospitalNumber: row.hospitalNumber,
+    careEnded: row.careEnded,
+    baselineRecorded: row.baselineRecorded,
+    currentOpenRound: row.currentOpenRound,
+    lastActivityAt: row.lastActivityAt,
+    nextAppointmentAt: row.nextAppointmentAt,
+    nextAppointmentType: row.nextAppointmentType,
+    stage: row.stage,
+    signals: {
+      overdueAppointment: row.overdueAppointment,
+      noUpcomingAppointment: row.noUpcomingAppointment,
+      stale: row.stale,
+    },
+  }];
 }
 
 function buildRoundView(
@@ -527,9 +645,9 @@ async function loadPageItems(
     // CTA hints only; every write re-checks its own policy. Ended care and network reads never write.
     const writable = scope.access === "DIRECT" && !patient.careEnded;
     const canManage = writable && decidePatientProgramPolicy({ actor, capability: PATIENT_PROGRAM_MANAGE_CAPABILITY, target }).allowed;
-    const canCreateBaseline = writable && !patient.coarse.baselineRecorded &&
+    const canCreateBaseline = writable && !patient.baselineRecorded &&
       decidePatientBaselinePolicy({ actor, capability: PATIENT_BASELINE_CREATE_CAPABILITY, target }).allowed;
-    const rounds = program ? buildRoundView(program, patient.coarse.currentOpenRound, options) : null;
+    const rounds = program ? buildRoundView(program, patient.currentOpenRound, options) : null;
 
     return {
       relationshipId: patient.relationshipId,
@@ -540,14 +658,14 @@ async function loadPageItems(
       stage: patient.stage,
       stageLabel: CARE_STAGE_LABELS[patient.stage],
       signals: patient.signals,
-      lastActivityAt: patient.coarse.lastActivityAt,
+      lastActivityAt: patient.lastActivityAt,
       nextAppointment:
-        patient.coarse.nextAppointmentAt && patient.coarse.nextAppointmentType
-          ? { scheduledAt: patient.coarse.nextAppointmentAt, type: patient.coarse.nextAppointmentType }
+        patient.nextAppointmentAt && patient.nextAppointmentType
+          ? { scheduledAt: patient.nextAppointmentAt, type: patient.nextAppointmentType }
           : null,
       nextStep: resolvePatientCareNextStep({
         access: scope.access,
-        baselineExists: patient.coarse.baselineRecorded,
+        baselineExists: patient.baselineRecorded,
         canCreateBaseline,
         activeProgram: program ? { programId: program.id, canManage } : null,
         canOpenProgram: canManage && program === null,
@@ -559,16 +677,21 @@ async function loadPageItems(
   });
 }
 
-export type CareTrackingScopeOption = {
-  hospitalId: string;
-  hospitalName: string;
-  access: "DIRECT";
-};
+export type CareTrackingScopeOption =
+  | { access: "DIRECT"; hospitalId: string; hospitalName: string }
+  | {
+      /** ADR-0016: one read-only Child, read through the Parent `hospitalId` (CT-D3). */
+      access: "NETWORK";
+      hospitalId: string;
+      parentHospitalName: string;
+      childHospitalId: string;
+      hospitalName: string;
+    };
 
 /**
- * CT-2: the Hospitals the "จัดบริการ" workspace offers, from the same read builders as getCareTrackingPage:
- * the Patient directory's direct scopes (OWNER/MEMBER), then the Hospitals of an active OSM. Network Children
- * are not listed (CT-3). Every page load still re-proves the chosen scope.
+ * The Hospitals the "จัดบริการ" workspace offers, from the same read builders as getCareTrackingPage: the Patient
+ * directory's direct scopes (OWNER/MEMBER), then the Hospitals of an active OSM, then (CT-3) every network Child
+ * the actor reads for, as the directory lists them. Every page load still re-proves the chosen scope.
  */
 export async function listCareTrackingScopes(
   actor: ActorContext | null | undefined,
@@ -589,21 +712,31 @@ export async function listCareTrackingScopes(
     const database = getDatabase(dependencies);
     const hospitalSelect = { id: true, name: true } satisfies Prisma.HospitalSelect;
     const orderBy = [{ name: "asc" }, { id: "asc" }] satisfies Prisma.HospitalOrderByWithRelationInput[];
-    const [staffHospitals, osmHospitals] = await Promise.all([
+    const [staffHospitals, osmHospitals, networks] = await Promise.all([
       readsAsStaff
         ? database.hospital.findMany({ where: buildAuthorizedHospitalWhere(actor.userId), select: hospitalSelect, orderBy })
         : [],
       readsAsOsm
         ? database.hospital.findMany({ where: buildOsmActiveHospitalWhere(actor.userId), select: hospitalSelect, orderBy })
         : [],
+      readsAsStaff ? listNetworkScopes(database, actor.userId, "PATIENT_READ") : [],
     ]);
     const staffIds = new Set(staffHospitals.map(({ id }) => id));
+    const direct = [...staffHospitals, ...osmHospitals.filter(({ id }) => !staffIds.has(id))].map(
+      (hospital): CareTrackingScopeOption => ({ access: "DIRECT", hospitalId: hospital.id, hospitalName: hospital.name }),
+    );
+    // ADR-0016: Children after direct scopes and never duplicating a Hospital the actor reads directly.
+    const network = networks.flatMap(({ parent, children }) => children
+      .filter(({ id }) => !staffIds.has(id))
+      .map((child): CareTrackingScopeOption => ({
+        access: "NETWORK",
+        hospitalId: parent.id,
+        parentHospitalName: parent.name,
+        childHospitalId: child.id,
+        hospitalName: child.name,
+      })));
 
-    return [...staffHospitals, ...osmHospitals.filter(({ id }) => !staffIds.has(id))].map((hospital) => ({
-      hospitalId: hospital.id,
-      hospitalName: hospital.name,
-      access: "DIRECT",
-    }));
+    return [...direct, ...network];
   } catch {
     throw new InfrastructureError("Care tracking scopes could not be loaded");
   }
@@ -611,8 +744,8 @@ export async function listCareTrackingScopes(
 
 /**
  * CT-1 read model of the "จัดบริการ" workspace. A fixed number of SQL statements per request: scope proof
- * (and the network audit), the in-scope relationships, one coarse statement for all of them, and one batched
- * load for the page. Stage, signals, counts, sort and paging are computed over every in-scope patient.
+ * (and the network audit), the in-scope relationship ids from the existing read builders, one tracking statement
+ * (stage, signals, counts, filters, sort and page over every in-scope patient), and one batched load for the page.
  */
 export async function getCareTrackingPage(
   actor: ActorContext | null | undefined,
@@ -631,73 +764,29 @@ export async function getCareTrackingPage(
     const scope = await resolveScope(database, actor, parsed);
     const relationships = await database.patientHospitalRelationship.findMany({
       where: { AND: [scope.where, buildSearchWhere(parsed.search)] },
-      select: scopeRelationshipSelect,
+      select: { id: true },
     });
-    const coarseRows = relationships.length > 0
-      ? await loadCoarseRows(database, relationships.map((relationship) => relationship.id), now)
-      : [];
-    const coarseById = new Map(coarseRows.map((row) => [row.relationshipId, row]));
-
-    const visible = relationships.flatMap((relationship): TrackedPatient[] => {
-      const coarse = coarseById.get(relationship.id);
-      if (!coarse) {
-        return [];
-      }
-
-      const careEnded = relationship.endedAt !== null;
-      const stage = deriveCareStage({
-        careEnded,
-        baselineRecorded: coarse.baselineRecorded,
-        activeProgram: coarse.activeProgramId
-          ? {
-              openedRounds: coarse.openedRounds,
-              completedRounds: coarse.completedRounds,
-              currentOpenRound: coarse.currentOpenRound,
-              finalAssessmentRecorded: coarse.finalAssessmentRecorded,
-            }
-          : null,
-        completedProgramExists: coarse.completedProgramExists,
-      });
-
-      // CT-D5: completed Programs and ended care are hidden unless asked for.
-      if (ENDED_CARE_STAGES.has(stage) && !parsed.includeEnded) {
-        return [];
-      }
-
-      const person = relationship.patientProfile.person;
-
-      return [{
-        relationshipId: relationship.id,
-        givenName: person.givenName?.trim() ?? "",
-        familyName: person.familyName?.trim() ?? "",
-        displayName: toDisplayName(person),
-        hospitalNumber: relationship.hospitalNumber,
-        careEnded,
-        coarse,
-        stage,
-        signals: deriveCareSignals({
-          stage,
+    const rows = relationships.length > 0
+      ? await database.$queryRaw<TrackingRow[]>(buildTrackingStatement(relationships.map(({ id }) => id), {
           now,
-          lastActivityAt: coarse.lastActivityAt,
-          nextAppointmentAt: coarse.nextAppointmentAt,
-          hasOverdueAppointment: coarse.hasOverdueAppointment,
-        }),
-      }];
-    });
-
-    const filtered = visible.filter((patient) => matchesFilters(patient, parsed)).sort(compareTrackedPatients);
-    const totalPages = Math.max(1, Math.ceil(filtered.length / CARE_TRACKING_PAGE_SIZE));
-    const page = Math.min(parsed.page, totalPages);
-    const pagePatients = filtered.slice((page - 1) * CARE_TRACKING_PAGE_SIZE, page * CARE_TRACKING_PAGE_SIZE);
+          stages: parsed.stages ?? [],
+          signals: parsed.signals ?? [],
+          includeEnded: parsed.includeEnded ?? false,
+          page: parsed.page,
+          pageSize: CARE_TRACKING_PAGE_SIZE,
+        }))
+      : [];
+    const first = rows[0];
+    const total = first?.total ?? 0;
 
     return {
       hospital: { ...scope.hospital, access: scope.access },
-      summary: summarize(visible),
-      items: await loadPageItems(database, actor, scope, pagePatients),
-      page,
+      summary: toSummary(first),
+      items: await loadPageItems(database, actor, scope, rows.flatMap(toTrackedPatient)),
+      page: first?.page ?? 1,
       pageSize: CARE_TRACKING_PAGE_SIZE,
-      total: filtered.length,
-      totalPages,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / CARE_TRACKING_PAGE_SIZE)),
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ValidationError) {
@@ -709,9 +798,8 @@ export async function getCareTrackingPage(
 }
 
 export const careTrackingQueryInternals = {
-  buildCoarseStatement,
+  buildCareSignalColumns,
+  buildCareStageCase,
   buildSearchWhere,
-  compareTrackedPatients,
-  matchesFilters,
-  summarize,
+  buildTrackingStatement,
 };

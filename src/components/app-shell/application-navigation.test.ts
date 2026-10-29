@@ -114,7 +114,8 @@ const patientAccount = ["account", "บัญชีและช่วยเห�
 const workAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings", "/app/support"]] as const;
 // WB-DF-14 (Product Owner 2026-10-26): an account holding ADMIN receives reports, so it has no submit entry.
 const adminWorkAccount = ["account", "บัญชีและช่วยเหลือ", ["/app/family", "/app/settings"]] as const;
-const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/patients/assigned?task=followup"]] as const;
+// CT-D2 (2026-10-29): จัดบริการ replaces the OSM "รอติดตาม" queue; "รอคัดกรอง" stays.
+const osmCare = ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients/assigned", "/app/patients/assigned?task=screening", "/app/services"]] as const;
 const osmReports = ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/content", "/app/hospitals/contacts"]] as const;
 const staffRegistration = ["registration", "นำเข้าผู้ป่วย", ["/app/patients/provision"]] as const;
 const ownerAdministration = ["/app/users", "/app/hospitals/settings", "/app/hospitals/knowledge"];
@@ -314,12 +315,24 @@ describe("UI-4 task-based navigation per actor", () => {
       "/app/appointments",
       "/app/patients/assigned",
       "/app/patients/assigned?task=screening",
-      "/app/patients/assigned?task=followup",
       "/app/patients",
       "/app/patients/assign-osm",
       "/app/services",
       "/app/appointments/new",
     ]);
+  });
+
+  it("gives an OSM จัดบริการ instead of รอติดตาม and keeps ผู้ป่วยที่ดูแล and รอคัดกรอง (CT-D2)", () => {
+    const care = project(actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalId)] }))
+      .find(({ id }) => id === "care")?.items ?? [];
+
+    expect(care.map(({ href, label }) => [href, label])).toEqual([
+      ["/app/appointments", "รายการนัดหมาย"],
+      ["/app/patients/assigned", "ผู้ป่วยที่ดูแล"],
+      ["/app/patients/assigned?task=screening", "รอคัดกรอง"],
+      ["/app/services", "จัดบริการ"],
+    ]);
+    expect(care.some(({ label }) => label === "รอติดตาม")).toBe(false);
   });
 
   it.each(cases)("$name: exact section ids, headings, order and item hrefs", ({ subject, workspaces, expected }) => {

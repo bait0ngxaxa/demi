@@ -22,6 +22,14 @@ const programId = "33333333-3333-4333-8333-333333333333";
 const patientPath = `/app/patients/${relationshipId}`;
 const programPath = `${patientPath}/programs/${programId}`;
 const scope: CareTrackingScopeOption = { hospitalId, hospitalName: "โรงพยาบาล ก", access: "DIRECT" };
+const childHospitalId = "55555555-5555-4555-8555-555555555555";
+const networkScope: CareTrackingScopeOption = {
+  access: "NETWORK",
+  hospitalId,
+  parentHospitalName: "โรงพยาบาล ก",
+  childHospitalId,
+  hospitalName: "รพ.สต. ลูกข่าย",
+};
 
 const steps: RoundStepState[] = roundGuideline(2).slice(0, 3).map((definition, index) => ({
   ...definition,
@@ -73,6 +81,7 @@ function page(overrides: Partial<CareTrackingPage> = {}): CareTrackingPage {
 
 const baseState: ServicesUrlState = {
   hospitalId,
+  childHospitalId: null,
   stages: ["IN_ROUND"],
   signals: ["stale"],
   search: "สมชาย",
@@ -80,11 +89,16 @@ const baseState: ServicesUrlState = {
   page: 2,
 };
 
-function render(options: { state?: Partial<ServicesUrlState>; result?: CareTrackingPage | null; scopes?: CareTrackingScopeOption[] } = {}): HTMLDivElement {
+function render(options: {
+  state?: Partial<ServicesUrlState>;
+  result?: CareTrackingPage | null;
+  scopes?: CareTrackingScopeOption[];
+  selectedScope?: CareTrackingScopeOption;
+} = {}): HTMLDivElement {
   const container = document.createElement("div");
   container.innerHTML = renderToStaticMarkup(createElement(CareTrackingWorkspaceView, {
     scopes: options.scopes ?? [scope],
-    selectedScope: scope,
+    selectedScope: options.selectedScope ?? scope,
     state: { ...baseState, ...options.state },
     result: options.result === undefined ? page() : options.result,
     errorMessage: null,
@@ -275,12 +289,96 @@ describe("CT-2 จัดบริการ workspace view", () => {
   });
 
   it("offers the Hospital selector only for several scopes and resets the filters there", () => {
-    expect(render().querySelector('select[name="hospitalId"]')).toBeNull();
-    const view = render({ scopes: [scope, { hospitalId: "44444444-4444-4444-8444-444444444444", hospitalName: "โรงพยาบาล ข", access: "DIRECT" }] });
-    const form = view.querySelector('select[name="hospitalId"]')?.closest("form") as HTMLFormElement;
+    expect(render().querySelector('select[name="scope"]')).toBeNull();
+    const view = render({ scopes: [scope, { hospitalId: "44444444-4444-4444-8444-444444444444", hospitalName: "โรงพยาบาล ข", access: "DIRECT" }, networkScope] });
+    const form = view.querySelector('select[name="scope"]')?.closest("form") as HTMLFormElement;
 
-    expect(form.querySelectorAll("option")).toHaveLength(2);
+    expect([...form.querySelectorAll("option")].map((option) => [option.value, option.textContent])).toEqual([
+      [hospitalId, "โรงพยาบาล ก"],
+      ["44444444-4444-4444-8444-444444444444", "โรงพยาบาล ข"],
+      [`${hospitalId}:${childHospitalId}`, "รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · อ่านอย่างเดียว)"],
+    ]);
+    expect(form.querySelector<HTMLOptionElement>("option[selected]")?.value).toBe(hospitalId);
     expect(form.querySelectorAll("input")).toHaveLength(0);
+  });
+
+  it("shows each round's state as a glyph next to its number and keeps the sr-only text", () => {
+    const strip = render({
+      result: page({
+        items: [item({
+          roundStrip: [
+            { roundNumber: 1, state: "COMPLETED" },
+            { roundNumber: 2, state: "IN_PROGRESS" },
+            { roundNumber: 3, state: "NOT_STARTED" },
+            { roundNumber: 4, state: "LOCKED" },
+          ],
+        })],
+      }),
+    }).querySelector('ol[aria-label="ความคืบหน้าแต่ละครั้ง"]') as HTMLOListElement;
+    const marker = (state: string): HTMLElement => strip.querySelector(`li[data-round-state="${state}"] > span[aria-hidden="true"]`) as HTMLElement;
+
+    expect(marker("COMPLETED").textContent).toBe("1✓");
+    expect(marker("IN_PROGRESS").textContent).toBe("2◐");
+    expect(marker("NOT_STARTED").textContent).toBe("3");
+    expect(marker("NOT_STARTED").querySelector("[data-glyph]")).toBeNull();
+    expect(marker("LOCKED").textContent).toBe("4");
+    expect(marker("LOCKED").querySelector('svg[data-glyph="lock"]')).not.toBeNull();
+    expect([...strip.querySelectorAll(".sr-only")].map((label) => label.textContent)).toEqual([
+      "ครั้งที่ 1 จบแล้ว", "ครั้งที่ 2 กำลังทำ", "ครั้งที่ 3 ยังไม่เริ่ม", "ครั้งที่ 4 ยังเปิดไม่ได้",
+    ]);
+  });
+
+  describe("CT-3 network Child (read-only)", () => {
+    const networkPage = (): CareTrackingPage => page({
+      hospital: { id: childHospitalId, name: networkScope.hospitalName, access: "NETWORK" },
+      items: [item({ assignedOsmDisplayName: null, nextStep: { type: "NONE", reason: "READ_ONLY" } })],
+    });
+    const renderNetwork = (overrides: Parameters<typeof render>[0] = {}): HTMLDivElement => render({
+      scopes: [scope, networkScope],
+      selectedScope: networkScope,
+      state: { childHospitalId },
+      result: networkPage(),
+      ...overrides,
+    });
+
+    it("shows the read-only banner and the Child with its Parent", () => {
+      const view = renderNetwork({ scopes: [networkScope] });
+      const banner = [...view.querySelectorAll("p")].find((paragraph) => paragraph.textContent === "ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+
+      expect(banner).toBeDefined();
+      expect(view.textContent).toContain("เปิดดูผ่านเครือข่ายของโรงพยาบาล ก");
+      expect(view.textContent).toContain("ทุกการเปิดดูจะถูกบันทึกไว้");
+      expect(view.textContent).toContain("รพ.สต. ลูกข่าย (ลูกข่ายของโรงพยาบาล ก · อ่านอย่างเดียว)");
+      expect(render().textContent).not.toContain("ข้อมูลลูกข่าย (อ่านอย่างเดียว)");
+    });
+
+    it("offers no primary action and no OSM name, only the Patient page link", () => {
+      // Even a next step that would link is withheld for a network read.
+      const view = renderNetwork({ result: page({
+        hospital: { id: childHospitalId, name: networkScope.hospitalName, access: "NETWORK" },
+        items: [item({ nextStep: { type: "ROUND", programId, roundNumber: 2, state: "IN_PROGRESS" } })],
+      }) });
+      const row = view.querySelector('ul[aria-label="รายชื่อผู้ป่วยสำหรับจัดบริการ"] > li') as HTMLLIElement;
+
+      expect([...row.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toEqual([patientPath]);
+      expect(row.querySelector("form, button, input, select, textarea")).toBeNull();
+      expect(row.textContent).toContain("ดูข้อมูลได้อย่างเดียว");
+      expect(row.textContent).not.toContain("อสม.");
+    });
+
+    it("keeps the Parent and the Child in the search, chips, pagination and clear link", () => {
+      const view = renderNetwork();
+      const searchForm = view.querySelector('input[name="search"]')?.closest("form") as HTMLFormElement;
+      const hidden = [...searchForm.querySelectorAll<HTMLInputElement>("input[type=hidden]")].map((input) => [input.name, input.value]);
+      const next = view.querySelector('nav[aria-label="หน้ารายการจัดบริการ"] a:last-of-type');
+
+      expect(hidden.slice(0, 2)).toEqual([["hospitalId", hospitalId], ["childHospitalId", childHospitalId]]);
+      expect(chipTarget(chip(view, "เกินนัด")).get("childHospitalId")).toBe(childHospitalId);
+      expect(hrefParams(next?.getAttribute("href") ?? null).get("childHospitalId")).toBe(childHospitalId);
+      const empty = renderNetwork({ result: page({ hospital: networkPage().hospital, items: [], total: 0, totalPages: 1, page: 1 }) });
+      const clear = [...empty.querySelectorAll("a")].find((link) => link.textContent === "ล้างตัวกรอง");
+      expect(clear?.getAttribute("href")).toBe(`/app/services?hospitalId=${hospitalId}&childHospitalId=${childHospitalId}`);
+    });
   });
 
   it("labels every signal in text", () => {

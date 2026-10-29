@@ -110,7 +110,7 @@ function projectHospitalCareActions(
   return navigationItemsForSections(navigation, ["care"])
     .filter((item) => hasDirectPatientScope
       ? isDirectHospitalCareItem(item)
-      : hasOsmAppointmentScope && item.href === "/app/appointments")
+      : hasOsmAppointmentScope && (item.href === "/app/appointments" || item.href === "/app/services"))
     .map((item) => ({
       href: withHospitalContext(item.href, workspace.hospitalId),
       label: item.label,

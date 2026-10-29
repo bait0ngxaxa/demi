@@ -18,8 +18,12 @@ import {
 
 import { CareTrackingWorkspaceView } from "./care-tracking-workspace-view";
 import {
+  findServicesScope,
   firstSearchParam,
   parseServicesFilters,
+  scopeKey,
+  scopeServicesState,
+  servicesHref,
   SERVICES_PATH,
   type ServicesSearchParams,
   type ServicesUrlState,
@@ -61,7 +65,10 @@ async function resolveScopes(actor: ActorContext): Promise<CareTrackingScopeOpti
   }
 }
 
-/** CT-2: the "จัดบริการ" workspace over getCareTrackingPage, for direct scopes (OWNER/MEMBER, assigned OSM). */
+/**
+ * The "จัดบริการ" workspace over getCareTrackingPage: direct scopes (OWNER/MEMBER, an assigned OSM) and, CT-3,
+ * one read-only network Child addressed by its Parent `hospitalId` and `childHospitalId`.
+ */
 export default async function ServicesPage({ searchParams }: ServicesPageProps): Promise<React.JSX.Element> {
   await connection();
   const actor = await resolveActor();
@@ -72,23 +79,31 @@ export default async function ServicesPage({ searchParams }: ServicesPageProps):
   }
 
   const params = await searchParams;
+  // The Hospital selector submits one `scope` value; the workspace URL keeps hospitalId and childHospitalId.
+  const requestedScopeKey = firstSearchParam(params.scope);
+  if (requestedScopeKey !== undefined) {
+    const switched = scopes.find((scope) => scopeKey(scope) === requestedScopeKey);
+    redirect(switched ? servicesHref(scopeServicesState(switched)) : SERVICES_PATH);
+  }
+
   const requestedHospitalId = firstSearchParam(params.hospitalId);
   const selectedScope = requestedHospitalId === undefined
     ? scopes[0]
-    : scopes.find(({ hospitalId }) => hospitalId === requestedHospitalId);
+    : findServicesScope(scopes, requestedHospitalId, firstSearchParam(params.childHospitalId));
 
   if (!selectedScope) {
     redirect(SERVICES_PATH);
   }
 
   const filters = parseServicesFilters(params);
-  let state: ServicesUrlState = { hospitalId: selectedScope.hospitalId, ...filters };
+  let state: ServicesUrlState = { ...scopeServicesState(selectedScope), ...filters };
   let result: CareTrackingPage | null = null;
   let errorMessage: string | null = null;
 
   try {
     result = await getCareTrackingPage(actor, {
       hospitalId: selectedScope.hospitalId,
+      ...(selectedScope.access === "NETWORK" ? { childHospitalId: selectedScope.childHospitalId } : {}),
       stages: [...filters.stages],
       signals: [...filters.signals],
       search: filters.search,
@@ -111,7 +126,7 @@ export default async function ServicesPage({ searchParams }: ServicesPageProps):
   return (
     <CareTrackingWorkspaceView
       errorMessage={errorMessage}
-      key={selectedScope.hospitalId}
+      key={scopeKey(selectedScope)}
       result={result}
       scopes={scopes}
       selectedScope={selectedScope}
