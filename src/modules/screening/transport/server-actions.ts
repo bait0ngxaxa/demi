@@ -140,6 +140,7 @@ function revalidateScreeningPaths(relationshipId: string): void {
 function revalidateProgramRoundPaths(relationshipId: string, programId: string): void {
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+  revalidatePath(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
 }
 
 export async function submitScreeningAction(

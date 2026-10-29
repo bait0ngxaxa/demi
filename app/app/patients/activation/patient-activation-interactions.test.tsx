@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   find: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   issue: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   refresh: vi.fn(),
+  push: vi.fn(),
   notifyError: vi.fn<(message: string) => void>(),
   notifyInfo: vi.fn<(message: string) => void>(),
   notifySuccess: vi.fn<(message: string) => void>(),
@@ -25,7 +26,7 @@ vi.mock("@/components/ui/notify", () => ({
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
-  useRouter: () => ({ push: vi.fn(), refresh: mocks.refresh }),
+  useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }),
 }));
 vi.mock("@/modules/patient-activation/transport/server-actions", () => ({
   findPatientActivationCandidatesAction: mocks.find,
@@ -49,6 +50,8 @@ let container: HTMLDivElement;
 let root: Root;
 
 beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  HTMLDialogElement.prototype.close = function () { this.open = false; };
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
@@ -482,24 +485,18 @@ describe("Patient activation search and link issuance", () => {
     it("asks before an in-app link is followed while a link is unhandled", async () => {
       mocks.issue.mockResolvedValue(issuedResponse);
       await issueFor();
-      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      mocks.push.mockClear();
       const link = container.querySelector<HTMLAnchorElement>("a[href]")!;
       const stayed = new MouseEvent("click", { bubbles: true, cancelable: true });
-      link.dispatchEvent(stayed);
-      expect(confirm).toHaveBeenCalledTimes(1);
+      act(() => link.dispatchEvent(stayed));
+      expect(document.querySelector("dialog[open]")?.textContent).toContain("ลิงก์เปิดใช้งาน");
       expect(stayed.defaultPrevented).toBe(true);
 
-      confirm.mockReturnValue(true);
-      let preventedByGuard: boolean | null = null;
-      const record = (event: Event): void => {
-        preventedByGuard = event.defaultPrevented;
-        event.preventDefault(); // keep jsdom from attempting a real navigation
-      };
-      window.addEventListener("click", record);
-      link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      window.removeEventListener("click", record);
-      expect(preventedByGuard).toBe(false);
-      confirm.mockRestore();
+      act(() => buttonByText("อยู่หน้านี้").click());
+      expect(mocks.push).not.toHaveBeenCalled();
+      act(() => link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
+      act(() => buttonByText("ออกจากหน้า").click());
+      expect(mocks.push).toHaveBeenCalledWith(link.getAttribute("href"));
     });
 
     it("does not intercept links when nothing is waiting", async () => {

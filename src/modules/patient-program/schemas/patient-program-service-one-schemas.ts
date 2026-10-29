@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_PROGRAM_ROUNDS } from "@/modules/patient-program-rounds/domain/round-catalog";
 
 import { patientEvidenceArtifactIdSchema } from "@/modules/patient-evidence/schemas/patient-evidence-schemas";
 import { serviceDateSchema } from "@/shared/time/service-date";
@@ -47,7 +48,7 @@ const floatingChartScoresSchema = z.object({
   wellbeingScore: floatingChartScoreSchema,
 }).strict();
 /** SR-D8: Service 1 tools are recorded per round; the service checks that the round lists the tool. */
-const serviceOneRoundNumberSchema = z.number().int().min(1).max(6);
+const serviceOneRoundNumberSchema = z.number().int().min(1).max(MAX_PROGRAM_ROUNDS);
 
 export type PatientProgramServiceOneFloatingChartScores = z.output<typeof floatingChartScoresSchema>;
 
@@ -100,6 +101,7 @@ export const patientProgramServiceOneRoutineRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: serviceOneRoundNumberSchema,
+    submissionNonce: z.string().uuid().optional(),
     routineDate: serviceDateSchema,
     entries: z.array(routineEntrySchema).max(ROUTINE_MAX_ENTRIES),
   })
@@ -109,6 +111,7 @@ export const patientProgramServiceOneFloatingChartRequestSchema = floatingChartS
   .extend({
     patientProgramId: patientProgramIdSchema,
     roundNumber: serviceOneRoundNumberSchema,
+    submissionNonce: z.string().uuid().optional(),
     summary: optionalTextSchema,
   })
   .strict();
@@ -118,6 +121,7 @@ export const patientProgramServiceOneDreamCardRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: serviceOneRoundNumberSchema,
+    submissionNonce: z.string().uuid().optional(),
     dream: z.string().trim().min(1).max(DREAM_CARD_FIELD_MAX_LENGTH),
     obstacle: optionalTrimmedText(DREAM_CARD_FIELD_MAX_LENGTH),
     weeklyGoal: z.string().trim().min(1).max(DREAM_CARD_FIELD_MAX_LENGTH),
@@ -128,6 +132,7 @@ export const patientProgramServiceOneConfidenceRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: serviceOneRoundNumberSchema,
+    submissionNonce: z.string().uuid().optional(),
     score: confidenceScoreSchema,
     improvementPlan: optionalTextSchema,
   })

@@ -10,6 +10,7 @@ vi.mock("@/modules/patient-program/services/patient-program-access-service", () 
   resolvePatientProgramAccessContext: mockedAccess,
 }));
 
+import { roundGuideline } from "../domain/round-steps";
 import {
   buildProgramRoundDetail,
   buildProgramRoundsOverview,
@@ -47,6 +48,24 @@ const patient = { displayName: "สมชาย ผู้ป่วย" };
 const staff = { canManage: true };
 const at = new Date("2026-10-01T03:00:00.000Z");
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
+function openedRounds(completions: readonly { roundNumber: number }[]): Record<string, unknown>[] {
+  const numbers = new Set([1, ...completions.map((completed) => completed.roundNumber + 1).filter((round) => round <= 6)]);
+
+  return [...numbers].sort((left, right) => left - right).map((roundNumber) => ({
+    roundNumber,
+    planItems: roundGuideline(roundNumber).map((definition, index) => ({
+      id: `plan-${roundNumber}-${definition.code}`,
+      stepCode: definition.code,
+      customTitle: null,
+      position: index + 1,
+      removedAt: null,
+      doneAt: null,
+      doneByUser: null,
+    })),
+  }));
+}
+
 function program(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
   return {
     id: programId,
@@ -54,6 +73,7 @@ function program(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
     status: PatientProgramStatus.ACTIVE,
     patientHospitalRelationship: { hospitalProfile: { occupation: "เกษตรกร", preferredName: null, version: 3 } },
     initialBaseline: { heightCm: 160 },
+    rounds: openedRounds((overrides.roundCompletions ?? []) as { roundNumber: number }[]),
     roundVitals: [],
     roundActivities: [],
     roundCompletions: [],
@@ -188,7 +208,7 @@ describe("round overview read model (SR-D1)", () => {
       program({
         roundVitals: [vitals(1)],
         roundStepSkips: [
-          { roundNumber: 1, stepCode: "PAM", reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder },
+          { roundNumber: 1, planItemId: "plan-1-PAM", stepCode: "PAM", reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder },
         ],
       }),
     );
@@ -270,9 +290,9 @@ describe("round detail read model", () => {
     expect(detail.patient).toMatchObject({ preferredName: "ป้าใจ", occupation: null, profileVersion: 4 });
   });
 
-  it("allows completion only when every step is DONE or SKIPPED", () => {
+  it("allows completion when at least one active item is DONE", () => {
     const skip = (stepCode: string) => ({
-      roundNumber: 1, stepCode, reasonCode: "OTHER", note: "เหตุผล", createdAt: at, skippedByUser: recorder,
+      roundNumber: 1, planItemId: `plan-1-${stepCode}`, stepCode, reasonCode: "OTHER", note: "เหตุผล", createdAt: at, skippedByUser: recorder,
     });
     const almost = program({
       roundVitals: [vitals(1)],
@@ -283,7 +303,7 @@ describe("round detail read model", () => {
       serviceOneFloatingCharts: [tool(1)],
       serviceOneConfidences: [tool(1)],
     });
-    expect(buildProgramRoundDetail(almost, 1, patient, staff).status.canComplete).toBe(false);
+    expect(buildProgramRoundDetail(almost, 1, patient, staff).status.canComplete).toBe(true);
 
     const ready = program({ ...almost, roundStepSkips: [skip("ROUTINE")] } as Record<string, unknown>);
     const status = buildProgramRoundDetail(ready, 1, patient, staff).status;
@@ -300,7 +320,7 @@ describe("round detail read model", () => {
     const record = program({
       serviceOneConfidences: [tool(1)],
       roundStepSkips: [
-        { roundNumber: 1, stepCode: "CONFIDENCE_RULER", reasonCode: "PATIENT_UNABLE", note: null, createdAt: at, skippedByUser: recorder },
+        { roundNumber: 1, planItemId: "plan-1-CONFIDENCE_RULER", stepCode: "CONFIDENCE_RULER", reasonCode: "PATIENT_UNABLE", note: null, createdAt: at, skippedByUser: recorder },
       ],
     });
 
@@ -549,6 +569,29 @@ describe("round queries authorize through the Program read policy", () => {
     await expect(getProgramRoundsOverview(actor, relationshipId, "not-a-uuid", { database })).rejects.toBeInstanceOf(
       NotFoundError,
     );
+  });
+
+  it("rejects round numbers outside 1-12 before reading, and rounds after the guideline until opened (ADR-0022)", async () => {
+    const database = databaseWith(null);
+
+    for (const roundNumber of ["0", "13", "1.5", "07"]) {
+      await expect(getProgramRoundDetail(actor, relationshipId, programId, roundNumber, { database })).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    }
+    expect(mockedAccess).not.toHaveBeenCalled();
+
+    const completedAll = [1, 2, 3, 4, 5, 6].map(completion);
+    expect(() => buildProgramRoundDetail(program({ roundCompletions: completedAll }), 7, patient, staff)).toThrow(NotFoundError);
+
+    const added = program({
+      roundCompletions: completedAll,
+      rounds: [...openedRounds([1, 2, 3, 4, 5, 6].map((roundNumber) => ({ roundNumber }))), { roundNumber: 7, planItems: [] }],
+    });
+    const detail = buildProgramRoundDetail(added, 7, patient, staff);
+    expect(detail).toMatchObject({ roundNumber: 7, title: "ครั้งที่ 7 · บริการเพิ่มเติม" });
+    expect(detail.status).toMatchObject({ steps: [], writable: true, canComplete: false });
+    expect(buildProgramRoundsOverview(added).rounds.map((round) => round.roundNumber)).toEqual([1, 2, 3, 4, 5, 6, 7]);
   });
 });
 

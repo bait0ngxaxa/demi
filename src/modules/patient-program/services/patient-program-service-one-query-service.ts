@@ -4,15 +4,14 @@ import { Prisma } from "@prisma/client";
 
 import {
   DREAM_CARD_ROUND,
-  PROGRAM_ROUND_NUMBERS,
   SERVICE_ONE_HOME_ROUND,
-  type ProgramRoundNumber,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
-import { isPerRoundToolInRound } from "@/modules/patient-program-rounds/domain/round-steps";
+import type { RoundStepCode } from "@/modules/patient-program-rounds/domain/round-steps";
 import type { PatientProgramServiceOneFloatingChartScores } from "../schemas/patient-program-service-one-schemas";
 
 const recordedByUserSelect = {
   select: {
+    id: true,
     person: {
       select: {
         givenName: true,
@@ -152,7 +151,7 @@ export type PatientProgramServiceOneProjection = {
 };
 
 export type PatientProgramServiceOneRoundProjection = PatientProgramServiceOneProjection & {
-  roundNumber: ProgramRoundNumber;
+  roundNumber: number;
   /** Tools this round's checklist lists (SR-D8). */
   listedTools: readonly ("routine" | "floatingChart" | "dreamCard" | "confidence")[];
 };
@@ -310,8 +309,9 @@ export function toPatientProgramServiceOneProjection(
 /** Rounds that list at least one Service 1 tool, each with its own results. */
 export function toPatientProgramServiceOneRounds(
   record: PatientProgramServiceOneRecord | null | undefined,
+  rounds: readonly { roundNumber: number; planItems: readonly { stepCode: RoundStepCode }[] }[] = [],
 ): PatientProgramServiceOneRoundProjection[] {
-  return PROGRAM_ROUND_NUMBERS.map((roundNumber) => ({
+  return rounds.map(({ roundNumber, planItems }) => ({
     roundNumber,
     listedTools: (
       [
@@ -321,7 +321,7 @@ export function toPatientProgramServiceOneRounds(
         ["confidence", "CONFIDENCE_RULER"],
       ] as const
     )
-      .filter(([, code]) => isPerRoundToolInRound(roundNumber, code))
+      .filter(([, code]) => planItems.some((item) => item.stepCode === code))
       .map(([key]) => key),
     ...toPatientProgramServiceOneProjection(record, roundNumber),
   })).filter((round) => round.listedTools.length > 0);

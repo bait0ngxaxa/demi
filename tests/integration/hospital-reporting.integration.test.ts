@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
+import { clearProgramRoundCompletions, openGuidelineRounds, openProgramRound } from "./support/program-rounds";
 
 import {
   FollowupActivityProgressStatus,
@@ -272,6 +272,8 @@ async function createProgram(
     select: { id: true },
   });
   fixture.programIds.push(program.id);
+  // ADR-0022: the raw Service 1 rows below need their round's plan; reports do not read rounds themselves.
+  await openGuidelineRounds(program.id, 6);
   return program;
 }
 

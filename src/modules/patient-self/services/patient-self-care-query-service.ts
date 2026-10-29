@@ -6,6 +6,7 @@ import {
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
   Prisma,
+  HospitalStatus,
   type AppointmentLocationType,
   type AppointmentStatus,
   type AppointmentType,
@@ -41,7 +42,6 @@ import {
   patientProgramIdSchema,
   patientProgramRelationshipIdSchema,
 } from "@/modules/patient-program/schemas/patient-program-schemas";
-import { PROGRAM_ROUND_NUMBERS } from "@/modules/patient-program-rounds/domain/round-catalog";
 import {
   buildProgramRoundDetail,
   buildProgramRoundsOverview,
@@ -864,12 +864,13 @@ export async function getOwnPatientProgramRounds(
     );
     // The same status rule as the staff views, without recorder names (read-only, SR-D3 skips visible).
     const options = { recorderNames: false };
+    const overview = buildProgramRoundsOverview(program, options);
 
     return {
       relationship,
-      overview: buildProgramRoundsOverview(program, options),
-      rounds: PROGRAM_ROUND_NUMBERS.map((roundNumber) =>
-        buildProgramRoundDetail(program, roundNumber, { displayName: "" }, { canManage: false, options }),
+      overview,
+      rounds: overview.rounds.map(({ roundNumber }) =>
+        buildProgramRoundDetail(program, roundNumber, { displayName: "" }, { canManage: false, canSelfRecord: relationship.careEndedAt === null && relationship.hospitalStatus === HospitalStatus.ACTIVE, options }),
       ),
     };
   } catch (error: unknown) {

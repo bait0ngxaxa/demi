@@ -2,6 +2,8 @@ import "server-only";
 
 import { Role } from "@prisma/client";
 
+import { ROUND_ITEM_CATALOG, type RoundStepCode } from "@/modules/patient-program-rounds/domain/round-steps";
+
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { APPOINTMENT_READ_CAPABILITY } from "@/modules/appointments/policies/appointment-policy";
 import { FOLLOWUP_READ_CAPABILITY } from "@/modules/followups/policies/followup-policy";
@@ -71,4 +73,23 @@ export function assertPatientSelfReadPolicy(input: {
   if (!decision.allowed) {
     throw new ForbiddenError();
   }
+}
+
+/** FR-D4a: this capability never authorizes plan or staff workflow mutations. */
+export const PATIENT_PROGRAM_ROUND_SELF_RECORD = "PATIENT_PROGRAM_ROUND_SELF_RECORD" as const;
+
+export function decidePatientSelfRoundRecordPolicy(input: {
+  actor: ActorContext | null | undefined;
+  capability: unknown;
+  ownActiveRelationship: boolean;
+  programActive: boolean;
+  roundNumber: number;
+  currentOpenRoundNumber: number | null;
+  stepCode: RoundStepCode;
+  activePlanStepCodes: readonly RoundStepCode[];
+}): { allowed: boolean; reason: "self_round_record" | "forbidden" | "round_not_writable" | "item_not_recordable" } {
+  if (input.capability !== PATIENT_PROGRAM_ROUND_SELF_RECORD || !input.actor?.roles.includes(Role.PATIENT) || !input.actor.userId.trim() || !input.actor.personId.trim() || !input.ownActiveRelationship) return { allowed: false, reason: "forbidden" };
+  if (!input.programActive || input.currentOpenRoundNumber === null || input.roundNumber !== input.currentOpenRoundNumber) return { allowed: false, reason: "round_not_writable" };
+  if (!ROUND_ITEM_CATALOG[input.stepCode]?.patientRecordable || !input.activePlanStepCodes.includes(input.stepCode)) return { allowed: false, reason: "item_not_recordable" };
+  return { allowed: true, reason: "self_round_record" };
 }

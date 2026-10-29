@@ -19,6 +19,7 @@ const VITALS_FORM_FIELDS = new Set([
 ]);
 
 const PROFILE_FORM_FIELDS = new Set([
+  "submissionNonce",
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
@@ -31,7 +32,7 @@ const STEP_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
-  "stepCode",
+  "planItemId",
   "reasonCode",
   "note",
 ]);
@@ -153,6 +154,7 @@ export function buildProfileInput(formData: FormData): unknown {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
     ...buildProfileFields(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
   } satisfies Record<string, unknown>;
 }
 
@@ -164,7 +166,7 @@ export function buildStepSkipInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
-    stepCode: getSingleString(formData, "stepCode"),
+    planItemId: getSingleString(formData, "planItemId"),
     reasonCode: getSingleString(formData, "reasonCode"),
     note: getOptionalText(formData, "note"),
   } satisfies Record<string, unknown>;
@@ -178,7 +180,7 @@ export function buildStepUnskipInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getRoundNumber(formData),
-    stepCode: getSingleString(formData, "stepCode"),
+    planItemId: getSingleString(formData, "planItemId"),
   } satisfies Record<string, unknown>;
 }
 

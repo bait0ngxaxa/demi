@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
+import { roundStepKey } from "@/modules/patient-program-rounds/domain/round-steps";
+import { RoundPlanEditor, PlanItemControl } from "./round-plan-editor";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
@@ -6,7 +9,6 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
-  ROUND_SUMMARY_STEP,
   VITALS_MEASUREMENT_LABELS,
   type RoundStepState,
 } from "@/modules/patient-program-rounds/domain/round-steps";
@@ -37,7 +39,7 @@ import { RoundReviewButton } from "./round-review-button";
 import { CompleteRoundControl, RoundProfileForm, SkipStepControl, UnskipStepControl } from "./round-step-controls";
 import { RoundVitalsForm } from "./round-vitals-form";
 
-export type RoundCurrentStep = RoundStepState["code"] | typeof ROUND_SUMMARY_STEP;
+export type RoundCurrentStep = string;
 
 export type ProgramRoundNonces = {
   vitals: string;
@@ -143,7 +145,7 @@ function FollowupEntry({ context }: { context: StepContext }): React.JSX.Element
   }
 
   if (!detail.canStartFollowup) {
-    return <p className="text-sm text-text-muted">บันทึกการติดตามผลของครั้งก่อนหน้าให้ครบก่อน</p>;
+    return <p className="text-sm text-text-muted">ครั้งนี้ต้องมีรายการสัญญาณชีพหรือทบทวนแผนสุขภาพในแผนที่เปิดอยู่</p>;
   }
 
   const query = [
@@ -177,6 +179,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
     return (
       <ServiceOneToolStep
         canManage={editable}
+        submissionNonce={context.nonces.vitals}
         nextHref={nextHref}
         programId={detail.patientProgramId}
         relationshipId={detail.patientHospitalRelationshipId}
@@ -196,6 +199,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
         return (
           <div className="space-y-4">
             <RoundVitalsValues recorder vitals={detail.vitals} />
+            {editable && detail.vitals.source === "ROUND_VITALS" && detail.vitals.byPatient ? <details className="mt-4"><summary className="min-h-11 cursor-pointer rounded-control py-3 font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">บันทึกใหม่แทนค่าที่ผู้ป่วยบันทึก</summary><RoundVitalsForm heightEditable={detail.vitalsForm.heightEditable} initialValues={detail.vitals} defaultServiceDate={vitalsServiceDate ?? context.todayServiceDate} latestHeightCm={detail.vitalsForm.latestHeightCm} nextHref={nextHref} occupation={detail.patient.occupation} patientDisplayName={detail.patient.displayName} patientHospitalRelationshipId={detail.patientHospitalRelationshipId} patientProgramId={detail.patientProgramId} profile={null} roundNumber={detail.roundNumber} submissionNonce={context.nonces.vitals} todayServiceDate={context.todayServiceDate} /></details> : null}
             {missing.length > 0 ? (
               <Alert variant="warning">
                 ยังขาด: {missing.map((measurement) => VITALS_MEASUREMENT_LABELS[measurement]).join(" · ")}
@@ -204,7 +208,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
                   : " หากวัดค่าที่ขาดไม่ได้ ให้ข้ามขั้นตอนนี้พร้อมเหตุผล"}
               </Alert>
             ) : null}
-            {missing.length > 0 && editable && detail.vitals.source === "ROUND_VITALS" && vitalsServiceDate ? (
+            {missing.length > 0 && editable && !detail.vitals.byPatient && detail.vitals.source === "ROUND_VITALS" && vitalsServiceDate ? (
               <RoundVitalsForm
                 heightEditable={detail.vitalsForm.heightEditable}
                 latestHeightCm={detail.vitalsForm.latestHeightCm}
@@ -239,7 +243,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
           patientHospitalRelationshipId={detail.patientHospitalRelationshipId}
           patientProgramId={detail.patientProgramId}
           profile={
-            detail.roundNumber === 1
+            detail.roundNumber === 1 && detail.status.steps.some((item) => item.code === "KNOW_SELF")
               ? {
                   preferredName: detail.patient.preferredName,
                   occupation: detail.patient.occupation,
@@ -266,6 +270,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
               nextHref={nextHref}
               occupation={detail.patient.occupation}
               preferredName={detail.patient.preferredName}
+              submissionNonce={context.nonces.vitals}
               profileVersion={detail.patient.profileVersion}
               target={target}
             />
@@ -309,7 +314,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
       return (
         <div className="space-y-3">
           <p className="text-sm leading-6 text-text-muted">
-            จุดเริ่มต้นของเส้นทางสุขภาพมาจากสัญญาณชีพของครั้งนี้ ไม่มีแบบฟอร์มแยก ขั้นตอนนี้เสร็จเมื่อบันทึกสัญญาณชีพแล้ว
+            จุดเริ่มต้นของเส้นทางสุขภาพมาจากสัญญาณชีพครั้งที่ 1 ไม่มีแบบฟอร์มแยก ขั้นตอนนี้เสร็จเมื่อบันทึกสัญญาณชีพแล้ว
           </p>
           <HealthPathTimeline rows={detail.healthPath} />
         </div>
@@ -318,10 +323,10 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
       return (
         <div className="space-y-4">
           <p className="text-sm leading-6 text-text-muted">
-            ทบทวนสัญญาณชีพและ BMI ของครั้งที่ 1–6 ร่วมกับผู้ป่วย แล้วยืนยันว่าได้ทบทวนแล้ว
+            ทบทวนสัญญาณชีพและ BMI ของครั้งที่ 1–{detail.roundNumber} ร่วมกับผู้ป่วย แล้วยืนยันว่าได้ทบทวนแล้ว
           </p>
           <HealthPathTimeline rows={detail.healthPath} />
-          {step.status === "DONE" || !editable ? null : detail.vitals ? (
+          {step.status === "DONE" || !editable ? null : detail.healthPath.some((row) => row.roundNumber === 1 && row.vitals) ? (
             <RoundReviewButton
               label="ยืนยันว่าได้ทบทวนเส้นทางสุขภาพแล้ว"
               nextHref={nextHref}
@@ -332,7 +337,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
               toolCode="HEALTH_PATH"
             />
           ) : (
-            <p className="text-sm text-text-muted">บันทึกสัญญาณชีพของครั้งนี้ (แบบบันทึกการติดตามผล) ก่อน จึงจะยืนยันได้</p>
+            <p className="text-sm text-text-muted">ต้องมีสัญญาณชีพครั้งที่ 1 ก่อน จึงจะยืนยันการทบทวนได้</p>
           )}
         </div>
       );
@@ -441,7 +446,7 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
     <div className="space-y-5">
       <ul className="divide-y divide-border">
         {status.steps.map((step) => (
-          <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between" key={step.code}>
+          <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between" key={step.planItemId ?? step.code}>
             <div className="min-w-0">
               <p className="font-semibold text-text">{step.label}</p>
               {step.items.length > 1 ? <p className="text-xs text-text-subtle">{step.items.join(" · ")}</p> : null}
@@ -467,6 +472,7 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
         </Alert>
       ) : status.canComplete && context.editable ? (
         <CompleteRoundControl
+          steps={status.steps}
           roundsHref={buildPatientRoundsPath(detail.patientHospitalRelationshipId, detail.patientProgramId)}
           submissionNonce={context.nonces.completion}
           target={{
@@ -478,7 +484,7 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
       ) : (
         <p className="text-sm leading-6 text-text-muted">
           {unresolved.length > 0
-            ? `จบบริการครั้งนี้ได้เมื่อทุกรายการบันทึกแล้วหรือข้ามพร้อมเหตุผล (ยังขาด ${unresolved.length} ขั้นตอน)`
+            ? `ต้องมีรายการในแผนที่ทำแล้วอย่างน้อย 1 รายการก่อนจบบริการ (ยังไม่ได้ทำ ${unresolved.length} รายการ)`
             : "บัญชีนี้ไม่มีสิทธิ์จบบริการครั้งนี้"}
         </p>
       )}
@@ -551,12 +557,14 @@ export function ProgramRoundDetailView({
   const age = detail.patient.dateOfBirth ? ageInFullYears(detail.patient.dateOfBirth, new Date()) : null;
   // SR-D4/SR-D5: completed and locked rounds are read-only; the server re-checks every write.
   const editable = detail.canManage && status.writable;
-  const stepIndex = status.steps.findIndex((step) => step.code === currentStep);
+  const stepIndex = status.steps.findIndex((step) => roundStepKey(step) === currentStep);
   const step = stepIndex >= 0 ? status.steps[stepIndex] : null;
   const stepCount = status.steps.length + 1;
-  const percent = status.totalItems === 0 ? 0 : Math.round((status.resolvedItems / status.totalItems) * 100);
+  const total = status.steps.length;
+  const resolved = status.steps.filter((item) => item.status === "DONE" || item.status === "SKIPPED").length;
+  const percent = total === 0 ? 0 : Math.round((resolved / total) * 100);
   const nextHref = step
-    ? buildRoundAfterStepPath(relationshipId, programId, detail.roundNumber, step.code)
+    ? buildRoundAfterStepPath(relationshipId, programId, detail.roundNumber, roundStepKey(step))
     : roundsPath;
   const context: StepContext = { detail, editable, nextHref, nonces, programPath, roundPath, todayServiceDate };
   const target = { patientHospitalRelationshipId: relationshipId, patientProgramId: programId, roundNumber: detail.roundNumber };
@@ -581,7 +589,7 @@ export function ProgramRoundDetailView({
         }
         breadcrumbs={[
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
-          { href: roundsPath, label: "การจัดบริการครั้งที่ 1–6" },
+          { href: roundsPath, label: "การจัดบริการรายครั้ง" },
           { label: `ครั้งที่ ${detail.roundNumber}` },
         ]}
         description={`ผู้ป่วย: ${detail.patient.displayName}${detail.patient.preferredName ? ` (เรียกว่า “${detail.patient.preferredName}”)` : ""}${age !== null ? ` · อายุ ${age} ปี` : ""}`}
@@ -604,18 +612,20 @@ export function ProgramRoundDetailView({
           <Alert variant="info">บัญชีนี้อ่านข้อมูลครั้งนี้ได้ แต่ไม่มีสิทธิ์บันทึก ข้าม หรือจบบริการ</Alert>
         ) : null}
 
+        {editable ? <RoundPlanEditor choices={detail.planChoices ?? []} submissionNonce={randomUUID()} target={target} /> : null}
+        {total === 0 ? <Panel><p className="text-sm text-text-muted">ยังไม่มีรายการ เพิ่มรายการที่จะทำในครั้งนี้</p></Panel> : null}
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="font-semibold text-text">
-              {status.resolvedItems}/{status.totalItems} รายการ
+              {resolved}/{total} รายการในแผน
             </span>
             <span className="text-text-muted">บันทึกแล้วหรือข้ามพร้อมเหตุผล</span>
           </div>
           <div
-            aria-label={`ความคืบหน้า ${status.resolvedItems} จาก ${status.totalItems} รายการ`}
-            aria-valuemax={status.totalItems}
+            aria-label={`ความคืบหน้า ${resolved} จาก ${total} รายการ`}
+            aria-valuemax={total}
             aria-valuemin={0}
-            aria-valuenow={status.resolvedItems}
+            aria-valuenow={resolved}
             className="h-2 overflow-hidden rounded-full bg-surface-muted"
             role="progressbar"
           >
@@ -650,7 +660,8 @@ export function ProgramRoundDetailView({
               {step?.code === "VITALS" && healthHistory ? <div className="mt-2">{healthHistory}</div> : null}
 
               <div className="mt-5">
-                {step ? <StepContent context={context} step={step} /> : <RoundSummary context={context} />}
+                {step?.code === "CUSTOM" ? <div className="space-y-3"><p>{step.doneNote}</p>{!editable ? <p className="text-sm text-text-muted">{roundStepStatusLabel(step)}</p> : null}</div> : step ? <StepContent context={context} step={step} /> : <RoundSummary context={context} />}
+                {editable && step?.planItemId ? <PlanItemControl key={`${step.planItemId}-${step.status}`} step={step} target={target} submissionNonce={randomUUID()} /> : null}
               </div>
 
               {step ? (
@@ -659,10 +670,18 @@ export function ProgramRoundDetailView({
                     {step.status === "SKIPPED" ? (
                       <p className="break-words text-sm text-text-muted">ข้ามแล้ว · เหตุผล: {roundSkipDescription(step)}</p>
                     ) : null}
-                    {editable && step.skippable && step.status === "TODO" ? (
-                      <SkipStepControl nextHref={nextHref} stepCode={step.code} stepLabel={step.label} target={target} />
+                    {/* A preview step (planItemId null) belongs to an unopened round and is never writable. */}
+                    {editable && step.planItemId && step.skippable && step.status === "TODO" ? (
+                      <SkipStepControl
+                        nextHref={nextHref}
+                        planItemId={step.planItemId}
+                        stepLabel={step.label}
+                        target={target}
+                      />
                     ) : null}
-                    {editable && step.status === "SKIPPED" ? <UnskipStepControl stepCode={step.code} target={target} /> : null}
+                    {editable && step.planItemId && step.status === "SKIPPED" ? (
+                      <UnskipStepControl planItemId={step.planItemId} target={target} />
+                    ) : null}
                   </div>
                   <Link className={buttonClassName({ variant: "secondary" })} href={nextHref}>
                     ขั้นตอนถัดไป
@@ -676,7 +695,7 @@ export function ProgramRoundDetailView({
         </div>
 
         <Link className={buttonClassName({ variant: "secondary" })} href={roundsPath}>
-          กลับไปภาพรวมครั้งที่ 1–6
+          กลับไปภาพรวมบริการ
         </Link>
       </div>
     </div>

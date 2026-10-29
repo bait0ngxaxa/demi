@@ -99,7 +99,8 @@ describe("Patient Program Service 1 evidence server actions", () => {
       `/app/patients/${relationshipId}/programs/${programId}`,
     );
     expect(mockedRevalidatePath).toHaveBeenNthCalledWith(4, `/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
-    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(5, `/app/patients/${relationshipId}/evidence`);
+    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(5, `/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
+    expect(mockedRevalidatePath).toHaveBeenNthCalledWith(6, `/app/patients/${relationshipId}/evidence`);
   });
 
   it("maps a duplicate association to a safe conflict state", async () => {

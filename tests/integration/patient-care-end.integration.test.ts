@@ -44,6 +44,7 @@ import { resolvePatientProgramAccessContext } from "@/modules/patient-program/se
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { PatientProvisioningConflictError } from "@/modules/patient-provisioning/services/patient-provisioning-transaction";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { clearProgramRoundCompletions } from "./support/program-rounds";
 import { getOwnPatientAppointmentDetail, getOwnPatientAppointmentHistory, getOwnPatientCareJourney } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { resolveOwnPatientContext } from "@/modules/patient-self/services/patient-self-query-service";
 import { createPatientServiceRequest, listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
@@ -160,6 +161,7 @@ async function cleanup(): Promise<void> {
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });
   await db.patientServiceRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalServiceOffering.deleteMany({ where: { hospitalId: { in: hospitals } } });
+  await clearProgramRoundCompletions((await db.patientProgram.findMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } }, select: { id: true } })).map((program) => program.id));
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientActivation.deleteMany({ where: { hospitalId: { in: hospitals } } });

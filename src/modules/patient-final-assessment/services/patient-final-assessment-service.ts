@@ -202,7 +202,7 @@ async function createInTransaction(
     throw new ConflictError("This Program already has a Final Assessment");
   }
 
-  // SR-D5: the After assessment follows a completed round 6.
+  // FR-2: at least six opened rounds, with every opened round completed.
   await assertRoundsFinished(transaction, locked.program.id, "การประเมินหลังจบโปรแกรม");
 
   const finalAssessment = await transaction.patientFinalAssessment.create({

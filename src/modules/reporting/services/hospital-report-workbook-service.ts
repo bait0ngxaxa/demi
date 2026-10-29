@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { RoundReport } from "../projections/round-report-projection";
+
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -401,14 +403,23 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
         row.getCell(roundColumn + 2).value = unavailable(program.unavailable.achievementRate);
       }
     }
-    followups.forEach((followup, followupIndex) => {
-      const column = followupStartColumn + followupIndex * 3;
+    followups.forEach((followup) => {
+      if (followup.roundNumber > 4) return;
+      const column = followupStartColumn + (followup.roundNumber - 1) * 3;
       row.getCell(column).value = factCell(followup.measurements.bloodSugar);
       row.getCell(column + 1).value = factCell(followup.measurements.weight);
       writeAchievementRateCell(row, column + 2, followup);
     });
-    if (followups.length < DASHBOARD_FOLLOWUPS_PER_ROW) {
-      const nextFollowupColumn = followupStartColumn + followups.length * 3;
+    if (continuation === 1) {
+      for (const round of program.rounds) {
+        if (round.roundNumber < 3 || round.roundNumber > 6 || !round.vitals) continue;
+        const column = followupStartColumn + (round.roundNumber - 3) * 3;
+        row.getCell(column).value = round.vitals.bloodSugar ?? "ยังไม่บันทึก";
+        row.getCell(column + 1).value = round.vitals.weight ?? "ยังไม่บันทึก";
+      }
+    }
+    if (followups.length === 0 && !program.rounds.some((round) => round.roundNumber === 3 && round.vitals)) {
+      const nextFollowupColumn = followupStartColumn;
       row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
     }
 
@@ -494,8 +505,9 @@ function writeServiceFollowupCells(
   program: HospitalReportProgramRow,
   followups: readonly HospitalReportFollowup[],
 ): void {
-  followups.forEach((followup, index) => {
-    const baseColumn = 34 + index * 8;
+  followups.forEach((followup) => {
+    if (followup.roundNumber > 4) return;
+    const baseColumn = 34 + (followup.roundNumber - 1) * 8;
     row.getCell(baseColumn).value = followupDate(followup);
     setExcelDate(row, baseColumn);
     row.getCell(baseColumn + 1).value = followup.achievement?.achievedDays ?? NO_ACHIEVEMENT_LABEL;
@@ -504,8 +516,8 @@ function writeServiceFollowupCells(
     setAnswerCells(row, baseColumn + 4, followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
     setAnswerCells(row, baseColumn + 6, followup.hasObstacle, ["มี", "ไม่มี"]);
   });
-  if (followups.length < SERVICE_FOLLOWUPS_PER_ROW) {
-    const nextFollowupColumn = 34 + followups.length * 8;
+  if (followups.length === 0) {
+    const nextFollowupColumn = 34;
     row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
   }
 }
@@ -557,6 +569,33 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
   });
 }
 
+function roundReportCell(round: RoundReport | undefined): string {
+  return round ? `ทำแล้ว ${round.doneItems}/${round.plannedItems} รายการในแผน; ข้าม ${round.skippedItems}; ยังไม่ได้ทำเมื่อจบบริการ ${round.notDoneAtCloseItems}; ผู้ป่วยบันทึกเอง ${round.patientRecordedItems}` : "ยังไม่เปิดครั้งบริการ";
+}
+
+/** Append after the native columns; their positions and clinical meanings stay fixed. */
+function writeRoundReportColumns(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
+  const start = sheet.name === DASHBOARD_SHEET_NAME ? 44 : 66;
+  const headers = ["ครั้งเพิ่มเติม (จำนวน)", ...Array.from({ length: 6 }, (_, index) => `ครั้งที่ ${index + 1} · รายการในแผน`), "รายละเอียดครั้งเพิ่มเติม", "การติดตามครั้งเพิ่มเติม"];
+  headers.forEach((header, index) => {
+    const cell = sheet.getCell(8, start + index);
+    cell.value = header;
+    cell.style = { ...sheet.getCell(8, start - 1).style, alignment: { vertical: "top", wrapText: true } };
+    sheet.getColumn(start + index).width = index === 0 ? 22 : 42;
+  });
+  sheet.getRow(8).height = Math.max(sheet.getRow(8).height ?? 0, 60);
+  let rowNumber = DATA_START_ROW;
+  for (const program of programs) {
+    const row = sheet.getRow(rowNumber);
+    row.getCell(start).value = program.extraRoundsCompleted;
+    for (let round = 1; round <= 6; round += 1) row.getCell(start + round).value = roundReportCell(program.rounds.find((item) => item.roundNumber === round));
+    row.getCell(start + 7).value = assertCellText(program.rounds.filter((round) => round.roundNumber >= 7).map((round) => `${round.title} (${round.completed ? "จบบริการแล้ว" : "ยังไม่จบบริการ"}): ${roundReportCell(round)}`).join("\n") || "ไม่มีครั้งเพิ่มเติม");
+    row.getCell(start + 8).value = assertCellText(program.followups.items.filter((followup) => followup.roundNumber >= 5).map((followup) => `ครั้งที่ ${followup.roundNumber + 2}: ${followup.serviceDate ?? followup.recordedAt}; น้ำตาล ${factCell(followup.measurements.bloodSugar)}; น้ำหนัก ${factCell(followup.measurements.weight)}; รอบเอว ${factCell(followup.measurements.waistCircumference)}; ความดัน ${factCell(followup.measurements.systolicBloodPressure)}/${factCell(followup.measurements.diastolicBloodPressure)}; จำนวนวันที่ทำได้ ${followup.achievement?.achievedDays ?? "ไม่มีข้อมูล"}; ผลสำเร็จ ${followup.achievement ? `${followup.achievement.ratePercent}%` : "ไม่มีข้อมูล"}; ปรับแผน ${followup.planAdjusted === null ? "ไม่มีข้อมูล" : followup.planAdjusted ? "ปรับ" : "ไม่ปรับ"}; อุปสรรค ${followup.hasObstacle === null ? "ไม่มีข้อมูล" : followup.hasObstacle ? "มี" : "ไม่มี"}`).join("\n") || "ไม่มีการติดตามครั้งเพิ่มเติม");
+    for (let column = start; column <= start + 8; column += 1) row.getCell(column).alignment = { vertical: "top", wrapText: true };
+    rowNumber += rowsPerProgram(program, DASHBOARD_FOLLOWUPS_PER_ROW);
+  }
+}
+
 export async function generateHospitalReportWorkbook(
   dataset: HospitalReportingDataset,
   generatedAt: Date = new Date(),
@@ -595,6 +634,8 @@ export async function generateHospitalReportWorkbook(
   setHeaderFacts(serviceSheet, dataset);
   writeDashboardRows(dashboardSheet, dataset.programs);
   writeServiceRows(serviceSheet, dataset.programs);
+  writeRoundReportColumns(dashboardSheet, dataset.programs);
+  writeRoundReportColumns(serviceSheet, dataset.programs);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }

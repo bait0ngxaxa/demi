@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { ProgramRoundsOverviewView } from "./program-rounds-overview-view";
 
 export const metadata: Metadata = {
-  title: "ภาพรวมการจัดบริการครั้งที่ 1–6",
+  title: "ภาพรวมการจัดบริการรายครั้ง",
 };
 
 type ProgramRoundsPageProps = {

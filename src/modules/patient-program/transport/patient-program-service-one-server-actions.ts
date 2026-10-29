@@ -82,13 +82,14 @@ function parseJsonField(formData: FormData, field: string): unknown {
 }
 
 function buildRoutineInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "routineDate", "entries"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "routineDate", "entries"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
     routineDate: getSingleString(formData, "routineDate"),
     entries: parseJsonField(formData, "entries"),
   };
@@ -98,7 +99,7 @@ function buildFloatingChartInput(formData: FormData): unknown {
   if (
     hasUnexpectedOrDuplicateFields(
       formData,
-      new Set(["patientProgramId", "roundNumber", "summary", ...FLOATING_CHART_SCORE_FIELDS]),
+      new Set(["patientProgramId", "roundNumber", "submissionNonce", "summary", ...FLOATING_CHART_SCORE_FIELDS]),
     )
   ) {
     return null;
@@ -107,19 +108,21 @@ function buildFloatingChartInput(formData: FormData): unknown {
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
     summary: getSingleString(formData, "summary"),
     ...Object.fromEntries(FLOATING_CHART_SCORE_FIELDS.map((field) => [field, getSingleInteger(formData, field)])),
   };
 }
 
 function buildDreamCardInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "dream", "obstacle", "weeklyGoal"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "dream", "obstacle", "weeklyGoal"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
     dream: getSingleString(formData, "dream"),
     obstacle: getSingleString(formData, "obstacle"),
     weeklyGoal: getSingleString(formData, "weeklyGoal"),
@@ -127,13 +130,14 @@ function buildDreamCardInput(formData: FormData): unknown {
 }
 
 function buildConfidenceInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "score", "improvementPlan"]))) {
+  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "score", "improvementPlan"]))) {
     return null;
   }
 
   return {
     patientProgramId: getSingleString(formData, "patientProgramId"),
     roundNumber: getSingleInteger(formData, "roundNumber"),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
     score: getSingleInteger(formData, "score"),
     improvementPlan: getSingleString(formData, "improvementPlan"),
   };
@@ -273,6 +277,7 @@ function revalidatePatientProgramServiceOnePaths(
   revalidatePath(`/app/patients/${relationshipId}/programs`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+  revalidatePath(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
 }
 
 export async function recordPatientProgramServiceOneRoutineAction(

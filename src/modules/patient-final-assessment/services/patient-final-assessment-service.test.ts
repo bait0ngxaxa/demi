@@ -136,6 +136,7 @@ function createDatabase(input: {
         ? vi.fn().mockRejectedValue(input.createError)
         : vi.fn().mockResolvedValue(input.createResult ?? finalAssessmentRecord()),
     },
+    patientProgramRound: { findMany: vi.fn().mockResolvedValue([1, 2, 3, 4, 5, 6].map((roundNumber) => ({ roundNumber }))) },
     // SR-D5: the After assessment needs round 6 completed (all six by default).
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue((input.completedRounds ?? [1, 2, 3, 4, 5, 6]).map((roundNumber) => ({ roundNumber }))),
@@ -180,7 +181,7 @@ describe("Patient Final Assessment service", () => {
       createPatientFinalAssessment(actor, validInput(), { database, now: () => recordedAt }),
     ).rejects.toMatchObject({
       name: "RoundConflictError",
-      message: "ต้องจบบริการครั้งที่ 6 ก่อน จึงจะบันทึกการประเมินหลังจบโปรแกรมได้",
+      message: "ต้องจบบริการทุกครั้งที่เปิดไว้ (อย่างน้อย 6 ครั้ง) ก่อนบันทึกการประเมินหลังจบโปรแกรม",
     });
     expect(transaction.patientFinalAssessment.create).not.toHaveBeenCalled();
   });

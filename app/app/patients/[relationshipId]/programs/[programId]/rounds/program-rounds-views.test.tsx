@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildProgramRoundDetail, buildProgramRoundsOverview, type ProgramRoundRecord } from "@/modules/patient-program-rounds/services/round-query-service";
+import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { parseRoundReturnPath } from "@/modules/patient-program-rounds/presentation/round-return-path";
 
 vi.mock("react", async (importOriginal) => ({
@@ -13,6 +14,11 @@ vi.mock("react", async (importOriginal) => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/modules/patient-program-rounds/transport/server-actions", () => ({
+  addRoundPlanItemAction: vi.fn(),
+  removeRoundPlanItemAction: vi.fn(),
+  markCustomItemDoneAction: vi.fn(),
+  unmarkCustomItemDoneAction: vi.fn(),
+  addProgramRoundAction: vi.fn(),
   completePatientProgramRoundAction: vi.fn(),
   recordPatientProgramRoundProfileAction: vi.fn(),
   recordPatientProgramRoundReviewAction: vi.fn(),
@@ -46,6 +52,24 @@ const nonces = {
   },
 };
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened with their guideline plan. */
+function openedRounds(completedRounds: readonly number[]): Record<string, unknown>[] {
+  const numbers = new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)]);
+
+  return [...numbers].sort((left, right) => left - right).map((roundNumber) => ({
+    roundNumber,
+    planItems: roundGuideline(roundNumber).map((definition, index) => ({
+      id: `plan-${roundNumber}-${definition.code}`,
+      stepCode: definition.code,
+      customTitle: null,
+      position: index + 1,
+      removedAt: null,
+      doneAt: null,
+      doneByUser: null,
+    })),
+  }));
+}
+
 function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
   return {
     id: programId,
@@ -53,6 +77,7 @@ function record(overrides: Record<string, unknown> = {}): ProgramRoundRecord {
     status: "ACTIVE",
     patientHospitalRelationship: { hospitalProfile: { occupation: "เกษตรกร", preferredName: null, version: 1 } },
     initialBaseline: { heightCm: 160 },
+    rounds: openedRounds(((overrides.roundCompletions ?? []) as { roundNumber: number }[]).map((row) => row.roundNumber)),
     roundVitals: [],
     roundActivities: [],
     roundCompletions: [],
@@ -84,6 +109,15 @@ function renderDetail(
   );
 }
 
+it("labels patient-recorded evidence in the staff round timeline", () => {
+  const markup = renderDetail(1, "CONFIDENCE_RULER", {
+    patientHospitalRelationship: { patientProfile: { person: { user: { id: "patient-user" } } } },
+    serviceOneConfidences: [{ roundNumber: 1, score: 8, improvementPlan: null, recordedAt: at, recordedByUser: { id: "patient-user", person: { givenName: "ผู้ป่วย", familyName: null } } }],
+  });
+  expect(markup).toContain("ผู้ป่วยบันทึกเอง");
+  expect(markup).not.toContain("คุณบันทึกแล้ว");
+});
+
 describe("round overview cards (R1-D)", () => {
   it("shows the workbook titles, x/y progress, states and the After lock", () => {
     const markup = renderToStaticMarkup(
@@ -105,8 +139,8 @@ describe("round overview cards (R1-D)", () => {
     expect(markup).toContain("สมศรี อสม.");
     expect(markup).toContain("ยังไม่เริ่ม");
     expect(markup).toContain("ต้องจบครั้งที่ 2 ก่อน");
-    expect(markup).toContain("0/10 รายการ");
-    expect(markup).toContain("🔒 ต้องจบครั้งที่ 6 ก่อน");
+    expect(markup).toContain("0/4 รายการในแผน");
+    expect(markup).toContain("ต้องเปิดอย่างน้อย 6 ครั้ง และจบบริการทุกครั้งก่อน");
   });
 });
 
@@ -149,7 +183,7 @@ describe("round stepper (SR-D7)", () => {
     expect(markup).toContain('name="occupation"');
     expect(markup).toContain('name="profileVersion"');
     expect(markup).toContain("ข้ามรายการนี้");
-    expect(markup).toContain("0/14 รายการ");
+    expect(markup).toContain("0/8 รายการในแผน");
     expect(markup).toContain('aria-current="step"');
     expect(markup).toContain(`${roundPath(1)}?after=VITALS`);
   });
@@ -203,7 +237,7 @@ describe("round stepper (SR-D7)", () => {
   it("shows a skipped step with its reason and an unskip control", () => {
     const markup = renderDetail(1, "PAM", {
       roundStepSkips: [
-        { roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", createdAt: at, skippedByUser: recorder },
+        { roundNumber: 1, planItemId: "plan-1-PAM", stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", createdAt: at, skippedByUser: recorder },
       ],
     });
 
@@ -252,15 +286,15 @@ describe("round stepper (SR-D7)", () => {
     }
   });
 
-  it("lists every item on the summary and offers completion only when all are resolved", () => {
+  it("lists every item on the summary and offers completion with one DONE item", () => {
     const pending = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion) });
-    expect(pending).toContain("ยังขาด 3 ขั้นตอน");
+    expect(pending).toContain("ยังไม่ได้ทำ 3 รายการ");
     expect(pending).not.toContain("จบบริการครั้งที่ 5</button>");
 
     const skips = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
-      roundNumber: 5, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder,
+      roundNumber: 5, planItemId: `plan-5-${stepCode}`, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: at, skippedByUser: recorder,
     }));
-    const ready = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion), roundStepSkips: skips });
+    const ready = renderDetail(5, "SUMMARY", { roundCompletions: [1, 2, 3, 4].map(completion), roundStepSkips: skips, serviceOneRoutines: [{ id: "routine-5", roundNumber: 5, routineDate: null, entries: [], recordedAt: at, recordedByUser: recorder }] });
     expect(ready).toContain("ผู้ป่วยปฏิเสธ");
     expect(ready).toContain("จบบริการครั้งที่ 5");
     expect(ready).toContain(`value="${nonces.completion}"`);
@@ -280,5 +314,37 @@ describe("round stepper (SR-D7)", () => {
     const readOnly = renderDetail(1, "VITALS", {}, false);
     expect(readOnly).toContain("ไม่มีสิทธิ์บันทึก");
     expect(readOnly).not.toContain("<form");
+  });
+});
+
+
+describe("flexible staff rounds (FR-3)", () => {
+  it("shows add round only to staff when every opened round is completed", () => {
+    const overview = buildProgramRoundsOverview(record({ roundCompletions: [1, 2, 3, 4, 5, 6].map(completion) }));
+    const render = (canManage: boolean, addRoundUnavailableReason: string | null) => renderToStaticMarkup(<ProgramRoundsOverviewView overview={{ ...overview, canManage, addRoundUnavailableReason, patientDisplayName: "ผู้ป่วย" }} />);
+    expect(render(true, null)).toContain("เพิ่มครั้งบริการ</button>");
+    for (const reason of ["ยังมีครั้งบริการที่ต้องจบก่อน", "ครบ 12 ครั้งแล้ว", "บันทึกการประเมินสุดท้ายแล้ว"]) {
+      expect(render(true, reason)).not.toContain("เพิ่มครั้งบริการ</button>");
+      expect(render(true, reason)).toContain(reason);
+    }
+    expect(render(false, null)).not.toContain("เพิ่มครั้งบริการ</button>");
+  });
+  it("uses independent links for CUSTOM items and shows added provenance", () => {
+    const program = record({ rounds: [{ roundNumber: 1, planItems: ["one", "two"].map((id, index) => ({ id, stepCode: "CUSTOM", customTitle: id, position: index + 1, origin: "ADDED", removedAt: null, doneAt: null, doneByUser: null, doneNote: null })) }] });
+    const detail = buildProgramRoundDetail(program, 1, { displayName: "ผู้ป่วย" }, { canManage: true });
+    const markup = renderToStaticMarkup(<ProgramRoundDetailView detail={detail} currentStep="two" nonces={nonces} todayServiceDate="2026-10-01" />);
+    expect(markup).toContain("?step=one");
+    expect(markup).toContain("?step=two");
+    expect(markup).toContain("เพิ่มเอง");
+    expect(markup).toContain("0/2 รายการในแผน");
+    expect(markup).toContain('name="planItemId" value="two"');
+  });
+  it("shows empty extra plans and hides every write control without access", () => {
+    const program = record({ roundCompletions: [1, 2, 3, 4, 5, 6].map(completion), rounds: [...openedRounds([1, 2, 3, 4, 5]), { roundNumber: 7, planItems: [] }] });
+    const detail = buildProgramRoundDetail(program, 7, { displayName: "ผู้ป่วย" }, { canManage: false });
+    const markup = renderToStaticMarkup(<ProgramRoundDetailView detail={detail} currentStep="SUMMARY" nonces={nonces} todayServiceDate="2026-10-01" />);
+    expect(markup).toContain("ยังไม่มีรายการ เพิ่มรายการที่จะทำในครั้งนี้");
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain("เพิ่มรายการ</button>");
   });
 });

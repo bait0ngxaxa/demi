@@ -38,6 +38,7 @@ const hierarchy: HospitalHierarchyContext = {
 
 function program(id: string, status: PatientProgramStatus): HospitalReportProgramRow {
   return {
+    rounds: [], extraRoundsCompleted: 0,
     patientProgramId: id,
     patientHospitalRelationshipId: relationshipId,
     patient: {
@@ -203,11 +204,11 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup.match(/<details /gu)).toHaveLength(2);
     expect(markup).not.toContain("<details open");
     expect(markup.indexOf("ความคืบหน้ารอบบริการ")).toBeLessThan(markup.indexOf("<details "));
-    expect(markup).toContain("ครบ 6 รอบ · รอ After");
+    expect(markup).toContain("ครบอย่างน้อย 6 รอบ");
     expect(markup).toContain("บันทึก After แล้ว · รอจบ Program");
     expect(markup).toContain("progress=AFTER_RECORDED");
     expect(markup).not.toContain("progress=WAITING_AFTER");
-    expect(markup).toContain("จัดบริการแล้ว 0/6");
+    expect(markup).toContain("จัดบริการแล้ว 0 ครั้ง");
     expect(markup).toContain("หน้า 1 จาก 1");
     expect(markup).toContain("ใช้งานอยู่");
     expect(markup).not.toContain("โรงพยาบาลลูกข่ายรอยืนยัน");
@@ -222,7 +223,8 @@ describe("Hospital reporting dashboard presentation", () => {
     const visibleText = markup.replace(/<[^>]*>/gu, "");
     expect(visibleText).not.toContain("33333333-3333-4333-8333-333333333333");
     expect(visibleText).not.toContain("walk");
-    expect(markup).not.toContain("<table");
+    expect(markup).toContain("<table");
+    expect(markup).toContain("overflow-x-auto");
   });
 
   it("presents full-cohort KPIs and charts before the Program filters and rows", () => {

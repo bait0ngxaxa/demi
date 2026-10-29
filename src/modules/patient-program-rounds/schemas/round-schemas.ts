@@ -3,7 +3,7 @@ import { z } from "zod";
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
-import { REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
+import { MAX_PROGRAM_ROUNDS, REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
 
 export const ROUND_VITALS_STRUCTURAL_NUMBER_MAX = 1_000_000;
 export const ROUND_PREFERRED_NAME_MAX_LENGTH = 100;
@@ -11,8 +11,9 @@ export const ROUND_OCCUPATION_MAX_LENGTH = 200;
 export const ROUND_SKIP_NOTE_MAX_LENGTH = 500;
 
 export const roundSubmissionNonceSchema = z.string().uuid();
-export const roundNumberSchema = z.number().int().min(1).max(6);
-export const roundVitalsRoundNumberSchema = z.number().int().min(1).max(2);
+// ADR-0022: any round 1-12; a write also needs the round opened (round-sequencing).
+export const roundNumberSchema = z.number().int().min(1).max(MAX_PROGRAM_ROUNDS);
+export const roundVitalsRoundNumberSchema = roundNumberSchema;
 
 const positiveMeasurementSchema = z
   .number()
@@ -99,7 +100,8 @@ export type RoundVitalsRequest = z.output<typeof roundVitalsRequestSchema>;
 export const roundProfileRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
-    roundNumber: z.literal(1),
+    roundNumber: roundNumberSchema,
+    submissionNonce: roundSubmissionNonceSchema.optional(),
   })
   .merge(roundProfileFieldsSchema)
   .strict()
@@ -124,20 +126,8 @@ export const roundReviewRequestSchema = z
 
 export type RoundReviewRequest = z.output<typeof roundReviewRequestSchema>;
 
-export const roundStepCodeSchema = z.enum([
-  "VITALS",
-  "KNOW_SELF",
-  "PAM",
-  "PROMS",
-  "FLOATING_CHART",
-  "CONFIDENCE_RULER",
-  "ROUTINE",
-  "HEALTH_PATH",
-  "HEALTH_PLAN_REVIEW",
-  "DREAM_CARD",
-  "HEALTHY_PLAN",
-  "HEALTH_PATH_REVIEW",
-]);
+// ADR-0022 (FR-1b): a skip names its plan item; CUSTOM items share a step code.
+export const roundPlanItemIdSchema = z.string().uuid();
 
 export const roundSkipReasonSchema = z.enum([
   "PATIENT_DECLINED",
@@ -151,7 +141,7 @@ export const roundStepSkipRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: roundNumberSchema,
-    stepCode: roundStepCodeSchema,
+    planItemId: roundPlanItemIdSchema,
     reasonCode: roundSkipReasonSchema,
     note: optionalTrimmedText(ROUND_SKIP_NOTE_MAX_LENGTH),
   })
@@ -168,7 +158,7 @@ export const roundStepUnskipRequestSchema = z
   .object({
     patientProgramId: patientProgramIdSchema,
     roundNumber: roundNumberSchema,
-    stepCode: roundStepCodeSchema,
+    planItemId: roundPlanItemIdSchema,
   })
   .strict();
 

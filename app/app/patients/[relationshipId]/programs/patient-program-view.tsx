@@ -169,7 +169,7 @@ export function PatientProgramView({
             <div className="mt-5">
               <h3 className="font-semibold text-text">ความคืบหน้าการจัดบริการ</h3>
               <div className="mt-3 overflow-x-auto pb-2">
-                <ol aria-label="การจัดบริการ 6 ครั้งตามลำดับ" className="flex min-w-max gap-2">
+                <ol aria-label="การจัดบริการตามลำดับ" className="flex min-w-max gap-2">
                   {overview.rounds.map((round) => (
                     <RoundStep
                       currentRoundNumber={nextRoundNumber}
@@ -190,7 +190,7 @@ export function PatientProgramView({
                   {overview.after.state === "RECORDED"
                     ? `บันทึกเมื่อ ${overview.after.date ? formatRoundDate(overview.after.date) : "ไม่ระบุวันที่"}`
                     : overview.after.state === "LOCKED"
-                      ? "จบครั้งที่ 6 ก่อนจึงจะเปิด After ได้"
+                      ? "ต้องเปิดอย่างน้อย 6 ครั้ง และจบทุกครั้งที่เปิดไว้ก่อนบันทึก After"
                       : "ยังไม่มีการประเมินสุดท้าย"}
                 </p>
               </div>

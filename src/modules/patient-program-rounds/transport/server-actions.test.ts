@@ -34,6 +34,7 @@ import {
 const programId = "33333333-3333-4333-8333-333333333333";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
 const nonce = "77777777-7777-4777-8777-777777777777";
+const planItemId = "88888888-8888-4888-8888-888888888888";
 const actor = { userId: "44444444-4444-4444-8444-444444444444" };
 
 function vitalsForm(extra: Record<string, string> = {}): FormData {
@@ -135,7 +136,7 @@ describe("Program round Server Actions", () => {
       recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, duplicate),
     ).resolves.toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     await expect(
-      recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, vitalsForm({ roundNumber: "3" })),
+      recordPatientProgramRoundVitalsAction(initialPatientProgramRoundActionState, vitalsForm({ roundNumber: "13" })),
     ).resolves.toMatchObject({ status: "ERROR", code: "INVALID_INPUT" });
     expect(mockedVitals).not.toHaveBeenCalled();
   });
@@ -163,7 +164,7 @@ describe("Program round Server Actions", () => {
   it("requires a reason for a skip and a note for OTHER before calling the service", async () => {
     const skipForm = (extra: Record<string, string>) => {
       const formData = new FormData();
-      for (const [key, value] of Object.entries({ patientProgramId: programId, roundNumber: "1", stepCode: "PAM", ...extra })) {
+      for (const [key, value] of Object.entries({ patientProgramId: programId, roundNumber: "1", planItemId, ...extra })) {
         formData.append(key, value);
       }
       return formData;
@@ -184,7 +185,7 @@ describe("Program round Server Actions", () => {
     expect(mockedSkip).toHaveBeenCalledWith(actor, {
       patientProgramId: programId,
       roundNumber: 1,
-      stepCode: "PAM",
+      planItemId,
       reasonCode: "PATIENT_DECLINED",
       note: null,
     });

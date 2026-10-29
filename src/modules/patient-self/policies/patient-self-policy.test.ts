@@ -15,6 +15,8 @@ import { SCREENING_READ_CAPABILITY, SCREENING_SUBMIT_CAPABILITY } from "@/module
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 import {
+  PATIENT_PROGRAM_ROUND_SELF_RECORD,
+  decidePatientSelfRoundRecordPolicy,
   assertPatientSelfReadPolicy,
   decidePatientSelfReadPolicy,
 } from "./patient-self-policy";
@@ -116,5 +118,24 @@ describe("Patient self-read policy", () => {
     PATIENT_BASELINE_CREATE_CAPABILITY,
   ])("does not allow a mutation capability through SELF: %s", (capability) => {
     expect(decidePatientSelfReadPolicy({ actor: actor(), capability }).allowed).toBe(false);
+  });
+});
+
+
+describe("Patient current-round self recording (FR-D4a)", () => {
+  const allowed = ["VITALS", "PAM", "PROMS", "CONFIDENCE_RULER", "ROUTINE", "FLOATING_CHART", "DREAM_CARD", "KNOW_SELF", "CUSTOM"] as const;
+  const target = { actor: actor(), capability: PATIENT_PROGRAM_ROUND_SELF_RECORD, ownActiveRelationship: true, programActive: true, roundNumber: 7, currentOpenRoundNumber: 7, activePlanStepCodes: allowed };
+  it.each(allowed)("allows %s only in the own active current plan", (stepCode) => {
+    expect(decidePatientSelfRoundRecordPolicy({ ...target, stepCode }).allowed).toBe(true);
+    expect(decidePatientSelfRoundRecordPolicy({ ...target, stepCode, activePlanStepCodes: [] }).allowed).toBe(false);
+  });
+  it.each(["HEALTH_PLAN_REVIEW", "HEALTHY_PLAN", "HEALTH_PATH", "HEALTH_PATH_REVIEW"] as const)("never grants the patient %s", (stepCode) => {
+    expect(decidePatientSelfRoundRecordPolicy({ ...target, stepCode, activePlanStepCodes: [stepCode] }).allowed).toBe(false);
+  });
+  it("fails closed for missing/foreign/inactive scope, a locked or completed round, and staff-only capabilities", () => {
+    const input = { ...target, stepCode: "VITALS" as const };
+    for (const change of [{ actor: null }, { actor: actor([Role.CAREGIVER]) }, { actor: actor([Role.HOSPITAL]) }, { actor: actor([Role.OSM]) }, { ownActiveRelationship: false }, { programActive: false }, { currentOpenRoundNumber: null }, { roundNumber: 6 }, { roundNumber: 8 }, { capability: PATIENT_PROGRAM_MANAGE_CAPABILITY }]) {
+      expect(decidePatientSelfRoundRecordPolicy({ ...input, ...change }).allowed).toBe(false);
+    }
   });
 });

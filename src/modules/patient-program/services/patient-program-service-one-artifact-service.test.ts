@@ -9,6 +9,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { isStepInGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { ConflictError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
@@ -117,6 +118,15 @@ function createDatabase(input: {
     },
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    // ADR-0022: the written round is opened with its guideline plan.
+    patientProgramRound: {
+      findUnique: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }),
+    },
+    patientProgramRoundPlanItem: {
+      findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
+        Promise.resolve(isStepInGuideline(where.roundNumber, where.stepCode) ? { id: "99999999-9999-4999-8999-999999999998" } : null),
+      ),
     },
     patientProgramServiceOneArtifactAssociation: {
       findFirst: vi

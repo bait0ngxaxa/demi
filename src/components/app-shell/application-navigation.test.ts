@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -418,10 +418,10 @@ describe("orphan entries reuse their pages' policies", () => {
 
 describe("no code keys navigation by Thai group labels", () => {
   function sourceFiles(directory: string): string[] {
-    return readdirSync(directory).flatMap((entry) => {
-      const path = join(directory, entry);
-      if (statSync(path).isDirectory()) return entry === "node_modules" ? [] : sourceFiles(path);
-      return /\.(ts|tsx)$/u.test(entry) && !/\.test\.(ts|tsx)$/u.test(entry) ? [path] : [];
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : sourceFiles(path);
+      return /\.(ts|tsx)$/u.test(entry.name) && !/\.test\.(ts|tsx)$/u.test(entry.name) ? [path] : [];
     });
   }
 

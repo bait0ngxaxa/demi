@@ -13,6 +13,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
@@ -758,6 +759,21 @@ describe("Patient SELF care read projections", () => {
       roundActivities: [],
       roundCompletions: [],
       roundStepSkips: [],
+      // ADR-0022: round 1 is opened with its guideline plan.
+      rounds: [
+        {
+          roundNumber: 1,
+          planItems: roundGuideline(1).map((definition, index) => ({
+            id: `plan-1-${definition.code}`,
+            stepCode: definition.code,
+            customTitle: null,
+            position: index + 1,
+            removedAt: null,
+            doneAt: null,
+            doneByUser: null,
+          })),
+        },
+      ],
       patientHospitalRelationship: {
       findFirst: vi.fn().mockResolvedValue(null), hospitalProfile: null },
       screeningAssessments: [],

@@ -17,7 +17,8 @@ import {
 } from "@/modules/patient-program/services/patient-program-access-service";
 import { PATIENT_PROGRAM_MANAGE_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
 import { toProgramRoundNumber } from "@/modules/patient-program-rounds/domain/round-catalog";
-import { assertFollowupRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
+import { RoundConflictError } from "@/modules/patient-program-rounds/domain/round-conflict-error";
+import { assertFollowupRoundWritable, currentOpenRound } from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
@@ -439,11 +440,16 @@ async function createInTransaction(
     orderBy: [{ roundNumber: "desc" }],
     select: { roundNumber: true },
   });
-  const roundNumber = (latest?.roundNumber ?? 0) + 1;
+  const roundNumber = normalized.patientProgramId
+    ? (await currentOpenRound(transaction, normalized.patientProgramId)) - 2
+    : (latest?.roundNumber ?? 0) + 1;
 
   if (normalized.patientProgramId) {
     // SR-D5: Follow-up k is the vitals and plan review of Program round k + 2.
     await assertFollowupRoundWritable(transaction, normalized.patientProgramId, toProgramRoundNumber(roundNumber));
+    if (await transaction.patientFollowup.findFirst({ where: { patientProgramId: normalized.patientProgramId, roundNumber }, select: { id: true } })) {
+      throw new RoundConflictError("ครั้งนี้บันทึกติดตามผลแล้ว");
+    }
   }
 
   const followup = await transaction.patientFollowup.create({

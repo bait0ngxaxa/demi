@@ -1,3 +1,5 @@
+import { completedExtraRounds } from "./round-report-projection";
+import type { RoundReport } from "./round-report-projection";
 import type {
   FollowupActivityProgressStatus,
   PatientProgramStatus,
@@ -137,6 +139,8 @@ export type ProgramReportPage<T> = {
 };
 
 export type ProgramReportingProjection = {
+  rounds: readonly RoundReport[];
+  extraRoundsCompleted: number;
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   hospitalId: string;
@@ -483,6 +487,7 @@ export function toProgramReportFollowup(
 }
 
 export function toProgramReportingProjection(input: {
+  rounds?: readonly RoundReport[];
   program: ProgramReportProgramSource;
   hospital: { id: string; name: string };
   patientDisplayName: string;
@@ -499,6 +504,8 @@ export function toProgramReportingProjection(input: {
   }
 
   return {
+    rounds: input.rounds ?? [],
+    extraRoundsCompleted: completedExtraRounds(input.rounds ?? []),
     patientProgramId: input.program.id,
     patientHospitalRelationshipId: input.program.patientHospitalRelationshipId,
     hospitalId: input.hospital.id,

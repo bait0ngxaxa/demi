@@ -20,6 +20,9 @@ export type PatientProgramRoundActionState =
         patientProgramId: string;
         patientHospitalRelationshipId: string;
         roundNumber: number;
+        done?: number;
+        skipped?: number;
+        notDone?: number;
       };
     };
 

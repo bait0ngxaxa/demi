@@ -466,8 +466,13 @@ describe("report pipeline end to end (P1 Part D)", () => {
     }
 
     const identity = ["ทดสอบสมชาย", `รายงาน${suffix}`, `HN-${suffix}`, 4, `ทดสอบอสม ทดสอบ${suffix} (มอบหมายปัจจุบัน)`, startedOn];
-    expect(dashboard.columnCount).toBe(43);
-    expect(service.columnCount).toBe(65);
+    expect(dashboard.columnCount).toBe(52);
+    expect(service.columnCount).toBe(74);
+    expect(dashboard.getCell("AR8").text).toBe("ครั้งเพิ่มเติม (จำนวน)");
+    expect(dashboard.getCell("AR9").value).toBe(0);
+    expect(service.getCell("BN9").value).toBe(0);
+    expect(dashboard.getCell("AS9").text).toContain("ผู้ป่วยบันทึกเอง 0");
+    expect(dashboard.getCell("AS9").text).toContain("ยังไม่ได้ทำเมื่อจบบริการ 0");
     expect(cells(dashboard, 9, 1, 43)).toEqual([
       1, ...identity,
       // Before: CVD %, HbA1c, DTX, BW, BMI, height, waist, systolic, diastolic.

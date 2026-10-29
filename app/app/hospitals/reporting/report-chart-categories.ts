@@ -32,8 +32,8 @@ export function roundProgressCategories(
   return [
     ...roundProgress.rounds.map((count, round) => ({
       key: `round-${round}`,
-      axisLabel: round === 6 ? "6 รอบ · รอ After" : `${round} รอบ`,
-      label: round === 6 ? "ครบ 6 รอบ · รอ After" : `ครบ ${round} รอบ`,
+      axisLabel: round === 6 ? "6 รอบขึ้นไป" : `${round} รอบ`,
+      label: round === 6 ? "ครบอย่างน้อย 6 รอบ" : `ครบ ${round} รอบ`,
       value: countValue(count),
       href: progressHref(String(round)),
     })),

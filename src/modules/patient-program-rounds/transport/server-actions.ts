@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  addRoundPlanItem, removeRoundPlanItem, markCustomItemDone, unmarkCustomItemDone, addProgramRound,
+  addRoundPlanItemSchema, changeRoundPlanItemSchema, customItemDoneSchema, addProgramRoundSchema,
+} from "../services/round-plan-write-service";
 
 import {
   roundCompletionRequestSchema,
@@ -37,6 +41,7 @@ import {
 function revalidateRoundPaths(relationshipId: string, programId: string): void {
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
+  revalidatePath(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
 }
 
 async function runRoundAction(
@@ -61,6 +66,7 @@ async function runRoundAction(
         patientProgramId: result.patientProgramId,
         patientHospitalRelationshipId: result.patientHospitalRelationshipId,
         roundNumber: result.roundNumber,
+        ...(result.done !== undefined ? { done: result.done, skipped: result.skipped, notDone: result.notDone } : {}),
       },
     };
   } catch (error: unknown) {
@@ -138,4 +144,24 @@ export async function completePatientProgramRoundAction(
     "ไม่สามารถจบบริการครั้งนี้ได้ กรุณาลองใหม่อีกครั้ง",
     completePatientProgramRound,
   );
+}
+
+export async function addRoundPlanItemAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
+  return runRoundAction({ patientProgramId: formData.get("patientProgramId"), roundNumber: Number(formData.get("roundNumber")), submissionNonce: formData.get("submissionNonce"), stepCode: formData.get("stepCode"), ...(formData.get("stepCode") === "CUSTOM" ? { customTitle: formData.get("customTitle") } : {}) }, addRoundPlanItemSchema, "กรุณาเลือกรายการ หรือระบุชื่อไม่เกิน 120 ตัวอักษร", addRoundPlanItem);
+}
+
+export async function removeRoundPlanItemAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
+  return runRoundAction({ patientProgramId: formData.get("patientProgramId"), roundNumber: Number(formData.get("roundNumber")), submissionNonce: formData.get("submissionNonce"), planItemId: formData.get("planItemId") }, changeRoundPlanItemSchema, "ไม่สามารถตัดรายการนี้ออกได้", removeRoundPlanItem);
+}
+
+export async function markCustomItemDoneAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
+  return runRoundAction({ patientProgramId: formData.get("patientProgramId"), roundNumber: Number(formData.get("roundNumber")), submissionNonce: formData.get("submissionNonce"), planItemId: formData.get("planItemId"), note: formData.get("note") ?? "" }, customItemDoneSchema, "หมายเหตุต้องไม่เกิน 500 ตัวอักษร", markCustomItemDone);
+}
+
+export async function unmarkCustomItemDoneAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
+  return runRoundAction({ patientProgramId: formData.get("patientProgramId"), roundNumber: Number(formData.get("roundNumber")), submissionNonce: formData.get("submissionNonce"), planItemId: formData.get("planItemId") }, changeRoundPlanItemSchema, "ไม่สามารถยกเลิกการทำรายการนี้ได้", unmarkCustomItemDone);
+}
+
+export async function addProgramRoundAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
+  return runRoundAction({ patientProgramId: formData.get("patientProgramId"), submissionNonce: formData.get("submissionNonce") }, addProgramRoundSchema, "ไม่สามารถเพิ่มครั้งบริการได้", addProgramRound);
 }

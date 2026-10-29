@@ -54,6 +54,7 @@ export const patientProgramRelationshipAccessSelect = {
           familyName: true,
           user: {
             select: {
+              id: true,
               roles: { select: { role: true } },
             },
           },
@@ -74,6 +75,7 @@ export type PatientProgramRelationshipAccessRecord = Prisma.PatientHospitalRelat
 }>;
 
 export type PatientProgramPatientSummary = {
+  userId?: string | null;
   patientHospitalRelationshipId: string;
   displayName: string;
   hospitalNumber: string | null;
@@ -263,6 +265,7 @@ export async function resolvePatientProgramAccessContext(
   return {
     actor: authoritativeActor,
     patient: {
+      userId: record.patientProfile.person.user?.id ?? null,
       patientHospitalRelationshipId: record.id,
       displayName: toDisplayName(record.patientProfile.person),
       hospitalNumber: record.hospitalNumber,

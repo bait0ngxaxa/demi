@@ -10,7 +10,7 @@ import { inputClassName } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { ROUND_SKIP_REASON_LABELS } from "@/modules/patient-program-rounds/domain/round-steps";
+import { ROUND_SKIP_REASON_LABELS, type RoundStepState } from "@/modules/patient-program-rounds/domain/round-steps";
 import {
   initialPatientProgramRoundActionState,
   type PatientProgramRoundActionState,
@@ -70,12 +70,16 @@ export function RoundProfileForm({
   occupation,
   preferredName,
   profileVersion,
+  patientMode = false,
+  submissionNonce,
   target,
 }: {
   nextHref: string;
   occupation: string | null;
   preferredName: string | null;
   profileVersion: number | null;
+  patientMode?: boolean;
+  submissionNonce?: string;
   target: RoundTarget;
 }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
@@ -88,6 +92,7 @@ export function RoundProfileForm({
     <form action={action} className="space-y-5" onSubmit={submitPreservingInput(action)}>
       <RoundTargetInputs target={target} />
       <input name="profileVersion" type="hidden" value={profileVersion ?? ""} />
+      {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
       <fieldset className="grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome}>
         <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-know-self-preferred-name">
           <span>ชื่อที่อยากให้เรียก</span>
@@ -101,7 +106,7 @@ export function RoundProfileForm({
             type="text"
           />
         </label>
-        {occupation ? null : (
+        {occupation || patientMode ? null : (
           <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="round-know-self-occupation">
             <span>อาชีพ (ไม่บังคับ)</span>
             <input className={inputClassName} id="round-know-self-occupation" maxLength={200} name="occupation" type="text" />
@@ -111,23 +116,24 @@ export function RoundProfileForm({
       <ActionError state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-        {pending ? "กำลังบันทึก…" : "บันทึกและไปขั้นตอนถัดไป"}
+        {pending ? "กำลังบันทึก…" : patientMode ? "บันทึกชื่อที่อยากให้เรียก" : "บันทึกและไปขั้นตอนถัดไป"}
       </Button>
     </form>
   );
 }
 
-const SKIP_REASONS = Object.entries(ROUND_SKIP_REASON_LABELS) as [keyof typeof ROUND_SKIP_REASON_LABELS, string][];
+const SKIP_REASONS = Object.entries(ROUND_SKIP_REASON_LABELS).filter(([code]) => code !== "NOT_DONE_AT_CLOSE") as [keyof typeof ROUND_SKIP_REASON_LABELS, string][];
 
 /** SR-D3: skip a checklist step with a reason; OTHER needs a note (≤ 500 characters). */
 export function SkipStepControl({
   nextHref,
-  stepCode,
+  planItemId,
   stepLabel,
   target,
 }: {
   nextHref: string;
-  stepCode: string;
+  /** ADR-0022 (FR-1b): the skip belongs to this plan item. */
+  planItemId: string;
   stepLabel: string;
   target: RoundTarget;
 }): React.JSX.Element {
@@ -154,7 +160,7 @@ export function SkipStepControl({
         >
           <form action={action} className="space-y-5" onSubmit={submitPreservingInput(action)}>
             <RoundTargetInputs target={target} />
-            <input name="stepCode" type="hidden" value={stepCode} />
+            <input name="planItemId" type="hidden" value={planItemId} />
             <fieldset className="space-y-2" disabled={pending || unknownOutcome}>
               <legend className="text-sm font-semibold text-text">เหตุผล</legend>
               {SKIP_REASONS.map(([code, label]) => (
@@ -171,12 +177,12 @@ export function SkipStepControl({
                 </label>
               ))}
             </fieldset>
-            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`skip-note-${stepCode}`}>
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`skip-note-${planItemId}`}>
               <span>รายละเอียด{reason === "OTHER" ? " (ต้องระบุ)" : " (ไม่บังคับ)"}</span>
               <textarea
                 className={`${inputClassName} min-h-24 py-3`}
                 disabled={pending || unknownOutcome}
-                id={`skip-note-${stepCode}`}
+                id={`skip-note-${planItemId}`}
                 maxLength={500}
                 name="note"
                 required={reason === "OTHER"}
@@ -202,7 +208,7 @@ export function SkipStepControl({
 }
 
 /** SR-D3: recording the step replaces a skip; this removes the skip without recording. */
-export function UnskipStepControl({ stepCode, target }: { stepCode: string; target: RoundTarget }): React.JSX.Element {
+export function UnskipStepControl({ planItemId, target }: { planItemId: string; target: RoundTarget }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     unskipPatientProgramRoundStepAction,
     initialPatientProgramRoundActionState,
@@ -212,7 +218,7 @@ export function UnskipStepControl({ stepCode, target }: { stepCode: string; targ
   return (
     <form action={action} className="space-y-2">
       <RoundTargetInputs target={target} />
-      <input name="stepCode" type="hidden" value={stepCode} />
+      <input name="planItemId" type="hidden" value={planItemId} />
       <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
         {pending ? "กำลังยกเลิก…" : "ยกเลิกการข้าม"}
       </Button>
@@ -229,14 +235,16 @@ function toOutcome(state: PatientProgramRoundActionState): ConfirmableActionOutc
 /** SR-D4: "จบบริการครั้งที่ n" after confirming that the round becomes read-only. */
 export function CompleteRoundControl({
   roundsHref,
+  steps = [],
   submissionNonce,
   target,
 }: {
   roundsHref: string;
+  steps?: readonly RoundStepState[];
   submissionNonce: string;
   target: RoundTarget;
 }): React.JSX.Element {
-  const [state, action, pending] = useMutationActionState<PatientProgramRoundActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
     completePatientProgramRoundAction,
     initialPatientProgramRoundActionState,
   );
@@ -249,15 +257,17 @@ export function CompleteRoundControl({
       confirmation={{
         title: `จบบริการครั้งที่ ${target.roundNumber} หรือไม่`,
         description: "เมื่อจบแล้ว ข้อมูลของครั้งนี้จะเป็นแบบอ่านอย่างเดียว แก้ไข เพิ่ม หรือยกเลิกการข้ามไม่ได้อีก",
+        details: <div className="space-y-3">{(["DONE", "SKIPPED", "TODO"] as const).map((status) => <div key={status}><h3 className="font-semibold">{status === "DONE" ? "ทำแล้ว" : status === "SKIPPED" ? "ข้ามแล้ว" : "ยังไม่ได้ทำเมื่อจบบริการ"} ({steps.filter((step) => step.status === status).length})</h3><ul className="list-disc pl-5">{steps.filter((step) => step.status === status).map((step) => <li key={step.planItemId ?? step.code}>{step.label}</li>)}</ul></div>)}<p>รายการที่ยังไม่ได้ทำจะถูกบันทึกเป็น “ยังไม่ได้ทำเมื่อจบบริการ”</p></div>,
         confirmLabel: `จบบริการครั้งที่ ${target.roundNumber}`,
       }}
-      outcome={toOutcome(state)}
+      outcome={unknownOutcome ? "unknown" : toOutcome(state)}
       pending={pending}
       resultKey={state}
     >
       <RoundTargetInputs target={target} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
-      <Button disabled={pending} loading={pending} type="submit">
+      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+      <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังบันทึก…" : `จบบริการครั้งที่ ${target.roundNumber}`}
       </Button>
       <ActionError state={state} />

@@ -100,6 +100,10 @@ function createDatabase(input: {
       create: ReturnType<typeof vi.fn>;
       updateMany: ReturnType<typeof vi.fn>;
     };
+    patientProgramRound: {
+      findUnique: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+    };
   };
 } {
   const completionRecords = [input.currentProgram ?? null, input.completedProgram ?? null];
@@ -126,6 +130,10 @@ function createDatabase(input: {
         ? vi.fn().mockRejectedValue(input.createError)
         : vi.fn().mockResolvedValue(input.createResult ?? programRecord()),
       updateMany: vi.fn().mockResolvedValue({ count: input.updateCount ?? 1 }),
+    },
+    patientProgramRound: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: "99999999-9999-4999-8999-999999999999" }),
     },
   };
   const database = {
@@ -173,6 +181,24 @@ describe("Patient Program service", () => {
         createdAt: startedAt,
       },
       select: expect.anything(),
+    });
+    // ADR-0022: round 1 opens with the Program, its plan copied from the guideline in order.
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledOnce();
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patientProgramId: programId,
+        patientHospitalRelationshipId: relationshipId,
+        roundNumber: 1,
+        origin: "GUIDELINE",
+        openedAt: startedAt,
+        openedByUserId: actorUserId,
+        planItems: {
+          create: ["VITALS", "KNOW_SELF", "PAM", "PROMS", "FLOATING_CHART", "CONFIDENCE_RULER", "ROUTINE", "HEALTH_PATH"].map(
+            (stepCode, index) => ({ stepCode, position: index + 1, origin: "GUIDELINE", createdAt: startedAt }),
+          ),
+        },
+      }),
+      select: { id: true },
     });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({

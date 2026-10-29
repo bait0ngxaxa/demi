@@ -28,6 +28,7 @@ import {
 } from "@/modules/patient-directory/services/patient-directory-query-service";
 import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { clearProgramRoundCompletions } from "./support/program-rounds";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const prisma = getPrisma();
@@ -37,6 +38,7 @@ async function clearDatabase(): Promise<void> {
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
+  await clearProgramRoundCompletions();
   await prisma.patientProgram.deleteMany();
   await prisma.patientHospitalHealthHistory.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();

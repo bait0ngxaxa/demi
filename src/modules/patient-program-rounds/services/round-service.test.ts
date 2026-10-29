@@ -15,6 +15,7 @@ vi.mock("@/modules/patient-program/services/patient-program-lifecycle-service", 
   lockActivePatientProgram: mockedLock,
 }));
 
+import { isStepInGuideline, ROUND_ITEM_CATALOG, roundGuideline } from "../domain/round-steps";
 import {
   completePatientProgramRound,
   recordPatientProgramRoundProfile,
@@ -90,14 +91,46 @@ function storedVitals(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
+/** ADR-0022: round 1 and each guideline round after a completed one are opened. */
+const STEP_CODES = Object.keys(ROUND_ITEM_CATALOG);
+
+/** The id of the guideline plan item of `stepCode` in a round (a UUID, as skip requests require). */
+function planItemId(roundNumber: number, stepCode: string): string {
+  return `00000000-0000-4000-8000-${String(roundNumber * 100 + STEP_CODES.indexOf(stepCode)).padStart(12, "0")}`;
+}
+
+function planItemFromId(id: string): { roundNumber: number; stepCode: string } {
+  const value = Number(id.slice(-12));
+
+  return { roundNumber: Math.floor(value / 100), stepCode: STEP_CODES[value % 100] ?? "" };
+}
+
+function openedRoundNumbers(completedRounds: readonly number[]): number[] {
+  return [...new Set([1, ...completedRounds.map((round) => round + 1).filter((round) => round <= 6)])];
+}
+
 /** The program record the completion and skip guards re-read inside the transaction. */
-function programRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function programRecord(overrides: Record<string, unknown> = {}, completedRounds: readonly number[] = []): Record<string, unknown> {
+  const completions = ((overrides.roundCompletions ?? []) as { roundNumber: number }[]).map((row) => row.roundNumber);
+
   return {
     id: programId,
     patientHospitalRelationshipId: relationshipId,
     status: "ACTIVE",
     patientHospitalRelationship: { hospitalProfile: null },
     initialBaseline: null,
+    rounds: openedRoundNumbers([...completedRounds, ...completions]).map((roundNumber) => ({
+      roundNumber,
+      planItems: roundGuideline(roundNumber).map((definition, index) => ({
+        id: planItemId(roundNumber, definition.code),
+        stepCode: definition.code,
+        customTitle: null,
+        position: index + 1,
+        removedAt: null,
+        doneAt: null,
+        doneByUser: null,
+      })),
+    })),
     roundVitals: [],
     roundActivities: [],
     roundCompletions: [],
@@ -131,9 +164,39 @@ function createDatabase(input: {
   profileUpdateCount?: number;
   vitalsUpdateCount?: number;
 } = {}) {
+  const opened = new Set(openedRoundNumbers(input.completedRounds ?? []));
   const transaction = {
+    // Recording receipt lookup (FR-7: raw SQL that matches the partial unique index).
+    $queryRaw: vi.fn().mockResolvedValue([]),
     patientProgram: {
-      findFirst: vi.fn().mockResolvedValue(programRecord(input.program)),
+      findFirst: vi.fn().mockResolvedValue(programRecord(input.program, input.completedRounds)),
+    },
+    patientProgramRound: {
+      findUnique: vi.fn(({ where }: { where: { patientProgramId_roundNumber: { roundNumber: number } } }) =>
+        Promise.resolve(opened.has(where.patientProgramId_roundNumber.roundNumber) ? { id: recordId } : null),
+      ),
+      create: vi.fn().mockResolvedValue({ id: recordId }),
+    },
+    patientProgramRoundPlanItem: {
+      findFirst: vi.fn(({ where }: { where: { roundNumber: number; stepCode: string } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) && isStepInGuideline(where.roundNumber, where.stepCode) ? { id: recordId } : null,
+        ),
+      ),
+      findUnique: vi.fn(({ where }: { where: { id: string } }) => {
+        const { roundNumber, stepCode } = planItemFromId(where.id);
+
+        return Promise.resolve(
+          opened.has(roundNumber) && isStepInGuideline(roundNumber, stepCode)
+            ? { id: where.id, patientProgramId: programId, roundNumber, stepCode, removedAt: null }
+            : null,
+        );
+      }),
+      findMany: vi.fn(({ where }: { where: { roundNumber: number } }) =>
+        Promise.resolve(
+          opened.has(where.roundNumber) ? roundGuideline(where.roundNumber).map((step) => ({ stepCode: step.code })) : [],
+        ),
+      ),
     },
     patientProgramRoundCompletion: {
       findMany: vi.fn().mockResolvedValue((input.completedRounds ?? []).map((roundNumber) => ({ roundNumber }))),
@@ -149,11 +212,13 @@ function createDatabase(input: {
       deleteMany: vi.fn().mockResolvedValue({ count: input.removedSkips ?? 1 }),
     },
     patientProgramRoundVitals: {
+      findFirst: vi.fn().mockResolvedValue(input.followup ?? null),
       findUnique: vi
         .fn()
         .mockResolvedValueOnce(input.vitalsByNonce ?? null)
         .mockResolvedValueOnce(input.vitalsForRound ?? null),
       create: vi.fn().mockResolvedValue(storedVitals()),
+      update: vi.fn().mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve(storedVitals(data))),
       updateMany: vi.fn().mockResolvedValue({ count: input.vitalsUpdateCount ?? 1 }),
     },
     patientProgramRoundActivity: {
@@ -245,7 +310,7 @@ describe("round vitals and the round 1 profile fields", () => {
     );
   });
 
-  it("adds only the missing values to the round's existing record while the round is writable", async () => {
+  it("supplements missing values and permits re-recording while the round is writable", async () => {
     const { database, transaction } = createDatabase({ vitalsForRound: storedVitals() });
     const supplement = vitalsInput({ waistCircumference: 88, systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 110 });
 
@@ -266,11 +331,12 @@ describe("round vitals and the round 1 profile fields", () => {
       expect.anything(),
     );
 
-    // Values already recorded stay as they are; a retry with the same values is a no-op.
+    // FR-D4a: re-recording is allowed before close; unchanged legacy supplements remain a no-op.
     const changed = createDatabase({ vitalsForRound: storedVitals() });
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71, bloodSugar: 110 }), deps(changed.database)),
-    ).rejects.toMatchObject({ name: "RoundConflictError", message: "ค่าที่บันทึกไว้แล้วแก้ไขไม่ได้ เพิ่มได้เฉพาะค่าที่ยังขาด" });
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(changed.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ weight: 71, bloodSugar: 110, recordedByUserId: actorUserId }) }));
     expect(changed.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
 
     const retried = createDatabase({ vitalsForRound: storedVitals() });
@@ -282,12 +348,61 @@ describe("round vitals and the round 1 profile fields", () => {
     const otherDate = createDatabase({ vitalsForRound: storedVitals() });
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ serviceDate: "2026-10-13", bloodSugar: 110 }), deps(otherDate.database)),
-    ).rejects.toMatchObject({ name: "RoundConflictError" });
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(otherDate.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ serviceDate: new Date("2026-10-13T00:00:00.000Z") }) }));
 
     const raced = createDatabase({ vitalsForRound: storedVitals(), vitalsUpdateCount: 0 });
     await expect(
       recordPatientProgramRoundVitals(actor, vitalsInput({ bloodSugar: 110 }), deps(raced.database)),
     ).rejects.toMatchObject({ name: "RoundConflictError" });
+  });
+
+  it("FR-7: rejects a patient re-record of a staff row and fully replaces a patient row for staff", async () => {
+    const patientUserId = "88888888-8888-4888-8888-888888888888";
+    const patientAccess = { ...locked.access, patient: { ...locked.access.patient, userId: patientUserId } };
+
+    mockedLock.mockResolvedValueOnce({
+      ...locked,
+      access: { ...patientAccess, actor: { ...actor, userId: patientUserId, roles: [Role.PATIENT] } },
+      patientSelfRecording: true,
+      recordingRoundNumber: 1,
+    });
+    const staffRow = createDatabase({ vitalsForRound: storedVitals() });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71 }), deps(staffRow.database)),
+    ).rejects.toMatchObject({ name: "RoundConflictError", message: "เจ้าหน้าที่/อสม. บันทึกรายการนี้แล้ว" });
+    expect(staffRow.transaction.patientProgramRoundVitals.update).not.toHaveBeenCalled();
+    expect(staffRow.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+    expect(mockedAudit).not.toHaveBeenCalled();
+
+    mockedLock.mockResolvedValueOnce({ ...locked, access: patientAccess });
+    const patientRow = createDatabase({
+      vitalsForRound: storedVitals({ recordedByUserId: patientUserId, waistCircumference: 90 }),
+    });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71 }), deps(patientRow.database)),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(patientRow.transaction.patientProgramRoundVitals.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          weight: 71,
+          heightCm: 160,
+          waistCircumference: null,
+          systolicBloodPressure: null,
+          diastolicBloodPressure: null,
+          bloodSugar: null,
+          recordedByUserId: actorUserId,
+        }),
+      }),
+    );
+    expect(patientRow.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+    expect(mockedAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "patient_program_round.vitals_recorded",
+        metadata: expect.objectContaining({ reRecorded: true, replacedPatientRecord: true }),
+      }),
+      expect.anything(),
+    );
   });
 
   it("refuses a supplement to a completed round", async () => {
@@ -408,16 +523,32 @@ describe("round reviews", () => {
 });
 
 describe("step skips (SR-D3)", () => {
-  const skip = { patientProgramId: programId, roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "  ผู้ป่วยเหนื่อย  " };
+  const skip = {
+    patientProgramId: programId,
+    roundNumber: 1,
+    planItemId: planItemId(1, "PAM"),
+    reasonCode: "OTHER",
+    note: "  ผู้ป่วยเหนื่อย  ",
+  };
 
   it("requires a note for OTHER and a step of the round", async () => {
     const { database, transaction } = createDatabase();
 
     await expect(skipPatientProgramRoundStep(actor, { ...skip, note: " " }, deps(database))).rejects.toBeInstanceOf(ValidationError);
     await expect(skipPatientProgramRoundStep(actor, { ...skip, note: "x".repeat(501) }, deps(database))).rejects.toBeInstanceOf(ValidationError);
-    await expect(skipPatientProgramRoundStep(actor, { ...skip, stepCode: "DREAM_CARD" }, deps(database))).rejects.toBeInstanceOf(
+    await expect(skipPatientProgramRoundStep(actor, { ...skip, planItemId: planItemId(1, "DREAM_CARD") }, deps(database))).rejects.toBeInstanceOf(
       ValidationError,
     );
+    expect(transaction.patientProgramRoundStepSkip.create).not.toHaveBeenCalled();
+  });
+
+  it("skips only an item of the requested round's plan (FR-1b)", async () => {
+    const { database, transaction } = createDatabase({ completedRounds: [1] });
+
+    // An item of another round, even with a valid step, is not this round's item.
+    await expect(
+      skipPatientProgramRoundStep(actor, { ...skip, roundNumber: 2, planItemId: planItemId(1, "PAM") }, deps(database)),
+    ).rejects.toBeInstanceOf(ValidationError);
     expect(transaction.patientProgramRoundStepSkip.create).not.toHaveBeenCalled();
   });
 
@@ -426,17 +557,26 @@ describe("step skips (SR-D3)", () => {
 
     await expect(skipPatientProgramRoundStep(actor, skip, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
     expect(transaction.patientProgramRoundStepSkip.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ roundNumber: 1, stepCode: "PAM", reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย", skippedByUserId: actorUserId }),
+      data: expect.objectContaining({
+        roundNumber: 1,
+        planItemId: planItemId(1, "PAM"),
+        stepCode: "PAM",
+        reasonCode: "OTHER",
+        note: "ผู้ป่วยเหนื่อย",
+        skippedByUserId: actorUserId,
+      }),
       select: { id: true },
     });
     const audit = mockedAudit.mock.calls[0]?.[0] as { action: string; metadata: Record<string, unknown> };
     expect(audit.action).toBe("patient_program_round.step_skipped");
-    expect(audit.metadata).toMatchObject({ stepCode: "PAM", reasonCode: "OTHER" });
+    expect(audit.metadata).toMatchObject({ planItemId: planItemId(1, "PAM"), stepCode: "PAM", reasonCode: "OTHER" });
     expect(JSON.stringify(audit)).not.toContain("ผู้ป่วยเหนื่อย");
   });
 
   it("is idempotent for the same skip and refuses skipping a recorded step", async () => {
-    const same = createDatabase({ skip: { reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย" } });
+    const same = createDatabase({
+      skip: { patientProgramId: programId, roundNumber: 1, reasonCode: "OTHER", note: "ผู้ป่วยเหนื่อย" },
+    });
     await expect(skipPatientProgramRoundStep(actor, skip, deps(same.database))).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
 
     const done = createDatabase({
@@ -450,7 +590,7 @@ describe("step skips (SR-D3)", () => {
   it("unskips before completion and refuses it after", async () => {
     const open = createDatabase();
     await expect(
-      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(open.database)),
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, planItemId: planItemId(1, "PAM") }, deps(open.database)),
     ).resolves.toMatchObject({ operation: "RECORDED" });
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "patient_program_round.step_unskipped" }),
@@ -459,16 +599,19 @@ describe("step skips (SR-D3)", () => {
 
     const completed = createDatabase({ completedRounds: [1] });
     await expect(
-      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, stepCode: "PAM" }, deps(completed.database)),
+      unskipPatientProgramRoundStep(actor, { patientProgramId: programId, roundNumber: 1, planItemId: planItemId(1, "PAM") }, deps(completed.database)),
     ).rejects.toMatchObject({ name: "RoundConflictError" });
     expect(completed.transaction.patientProgramRoundStepSkip.deleteMany).not.toHaveBeenCalled();
+    expect(open.transaction.patientProgramRoundStepSkip.deleteMany).toHaveBeenCalledWith({
+      where: { planItemId: planItemId(1, "PAM") },
+    });
   });
 });
 
 describe("round completion (SR-D1/SR-D4)", () => {
   const completion = { patientProgramId: programId, roundNumber: 5, submissionNonce: nonce };
   const allSkipped = ["VITALS", "HEALTH_PLAN_REVIEW", "ROUTINE"].map((stepCode) => ({
-    roundNumber: 5, stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: now, skippedByUser: recorder,
+    roundNumber: 5, planItemId: planItemId(5, stepCode), stepCode, reasonCode: "PATIENT_DECLINED", note: null, createdAt: now, skippedByUser: recorder,
   }));
   const before = [1, 2, 3, 4];
 
@@ -479,7 +622,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
     });
 
     await expect(completePatientProgramRound(actor, completion, deps(database))).rejects.toMatchObject({
-      message: "ยังมีรายการที่ยังไม่ได้บันทึกหรือข้าม จึงยังจบบริการครั้งนี้ไม่ได้",
+      message: "ต้องทำอย่างน้อย 1 รายการในแผนก่อนจบบริการ",
     });
     expect(transaction.patientProgramRoundCompletion.create).not.toHaveBeenCalled();
   });
@@ -487,7 +630,7 @@ describe("round completion (SR-D1/SR-D4)", () => {
   it("completes with database time, the actor and an audit of counts only", async () => {
     const { database, transaction } = createDatabase({
       completedRounds: before,
-      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped },
+      program: { roundCompletions: before.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })), roundStepSkips: allSkipped, serviceOneRoutines: [{ roundNumber: 5, recordedAt: now, recordedByUser: recorder, routineDate: null }] },
     });
 
     await expect(completePatientProgramRound(actor, completion, deps(database))).resolves.toMatchObject({ operation: "RECORDED" });
@@ -502,10 +645,57 @@ describe("round completion (SR-D1/SR-D4)", () => {
     expect(mockedAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "patient_program_round.completed",
-        metadata: expect.objectContaining({ roundNumber: 5, doneSteps: 0, skippedSteps: 3 }),
+        metadata: expect.objectContaining({ roundNumber: 5, doneSteps: 1, skippedSteps: 2, notDoneSteps: 0 }),
       }),
       expect.anything(),
     );
+    // ADR-0022: round 6 opens in the same transaction with its guideline plan.
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledOnce();
+    expect(transaction.patientProgramRound.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patientProgramId: programId,
+        roundNumber: 6,
+        origin: "GUIDELINE",
+        openedAt: now,
+        openedByUserId: actorUserId,
+        planItems: {
+          create: ["VITALS", "HEALTH_PATH_REVIEW", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"].map((stepCode, index) => ({
+            stepCode,
+            position: index + 1,
+            origin: "GUIDELINE",
+            createdAt: now,
+          })),
+        },
+      }),
+      select: { id: true },
+    });
+  });
+
+  it("opens no round after the last guideline round (FR-D3: rounds 7-12 are added, never seeded)", async () => {
+    const earlier = [1, 2, 3, 4, 5];
+    const roundSixSkips = ["VITALS", "HEALTH_PATH_REVIEW", "HEALTH_PLAN_REVIEW", "CONFIDENCE_RULER"].map((stepCode) => ({
+      roundNumber: 6,
+      planItemId: planItemId(6, stepCode),
+      stepCode,
+      reasonCode: "PATIENT_DECLINED",
+      note: null,
+      createdAt: now,
+      skippedByUser: recorder,
+    }));
+    const { database, transaction } = createDatabase({
+      completedRounds: earlier,
+      program: {
+        roundCompletions: earlier.map((roundNumber) => ({ roundNumber, completedAt: now, completedByUser: recorder })),
+        roundStepSkips: roundSixSkips,
+        serviceOneConfidences: [{ roundNumber: 6, recordedAt: now, recordedByUser: recorder }],
+      },
+    });
+
+    await expect(completePatientProgramRound(actor, { ...completion, roundNumber: 6 }, deps(database))).resolves.toMatchObject({
+      operation: "RECORDED",
+      roundNumber: 6,
+    });
+    expect(transaction.patientProgramRound.create).not.toHaveBeenCalled();
   });
 
   it("is idempotent per nonce and per round, and refuses a locked round", async () => {

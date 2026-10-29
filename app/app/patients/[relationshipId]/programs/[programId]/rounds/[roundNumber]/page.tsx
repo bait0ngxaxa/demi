@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { nextRoundStep, ROUND_SUMMARY_STEP } from "@/modules/patient-program-rounds/domain/round-steps";
+import { nextRoundStep, roundStepKey, ROUND_SUMMARY_STEP } from "@/modules/patient-program-rounds/domain/round-steps";
 import { buildRoundStepPath } from "@/modules/patient-program-rounds/presentation/round-labels";
 import { getProgramRoundDetail } from "@/modules/patient-program-rounds/services/round-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -69,7 +69,7 @@ export default async function ProgramRoundPage({
 
   const steps = detail.status.steps;
   const isStep = (code: string | null): code is RoundCurrentStep =>
-    code === ROUND_SUMMARY_STEP || steps.some((step) => step.code === code);
+    code === ROUND_SUMMARY_STEP || steps.some((step) => roundStepKey(step) === code);
   const after = single(query.after);
 
   // SR-D7: after a save the stepper lands on the next unresolved step (or the summary).

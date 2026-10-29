@@ -7,6 +7,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
+import { clearProgramRoundCompletions } from "./support/program-rounds";
 import { getPatientHealthHistory, getPatientHealthInformation, updatePatientHealthHistory } from "@/modules/patient-hospital-profile/services/patient-health-history-service";
 import { updateStaffPatientHospitalProfile } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import { createAppointment, rescheduleAppointment, cancelAppointment, completeAppointment, submitAppointmentRescheduleRequest, rejectAppointmentRescheduleRequest } from "@/modules/appointments/services/appointment-service";
@@ -65,6 +66,7 @@ async function cleanup(): Promise<void> {
   await db.patientAppointment.deleteMany({ where: appointmentWhere });
   await db.lineAppointmentNotificationPreference.deleteMany({ where: { userId: { in: users } } });
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });
+  await clearProgramRoundCompletions((await db.patientProgram.findMany({ where: { patientHospitalRelationship: relationshipWhere }, select: { id: true } })).map((program) => program.id));
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationship: relationshipWhere } });
   await db.patientHospitalHealthHistory.deleteMany({ where: { relationship: relationshipWhere } });
   await db.patientHospitalProfile.deleteMany({ where: { relationship: relationshipWhere } });

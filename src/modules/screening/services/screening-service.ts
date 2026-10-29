@@ -1,16 +1,14 @@
 import "server-only";
 
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma, Role, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import {
-  roundActivitySourceFor,
-  SERVICE_ONE_HOME_ROUND,
-} from "@/modules/patient-program-rounds/domain/round-catalog";
+import { SERVICE_ONE_HOME_ROUND } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { ensureRoundLedgerEntry } from "@/modules/patient-program-rounds/services/round-ledger";
-import { assertRoundWritable } from "@/modules/patient-program-rounds/services/round-sequencing";
+import { assertActivePlanItem, classifyRoundActivity } from "@/modules/patient-program-rounds/services/round-plan-service";
+import { assertRoundWritable, currentOpenRound } from "@/modules/patient-program-rounds/services/round-sequencing";
 import { lockActivePatientProgram } from "@/modules/patient-program/services/patient-program-lifecycle-service";
 import {
   ApplicationError,
@@ -164,12 +162,15 @@ async function submitInTransaction(
   input: ScreeningSubmitRequest,
   now: Date,
 ): Promise<ScreeningSubmissionResult> {
-  const access = await resolveScreeningAccessContext(
-    actor,
-    input.patientHospitalRelationshipId,
-    SCREENING_SUBMIT_CAPABILITY,
-    transaction,
-  );
+  let programLink: Awaited<ReturnType<typeof lockActivePatientProgram>> | null = null;
+  let programRoundNumber = SERVICE_ONE_HOME_ROUND;
+  if (input.patientProgramId && actor.roles.includes(Role.PATIENT)) {
+    programLink = await lockActivePatientProgram(transaction, actor, input.patientProgramId.toLowerCase(), { stepCode: input.instrument });
+    if (programLink.patientSelfRecording && programLink.access.patient.patientHospitalRelationshipId !== input.patientHospitalRelationshipId.toLowerCase()) throw new ForbiddenError();
+  }
+  const access = programLink?.patientSelfRecording
+    ? { patient: programLink.access.patient, target: programLink.access.target }
+    : await resolveScreeningAccessContext(actor, input.patientHospitalRelationshipId, SCREENING_SUBMIT_CAPABILITY, transaction);
   const questionSet = CURRENT_INSTRUMENT_QUESTION_SETS[input.instrument];
   const scoring = CURRENT_INSTRUMENT_SCORING[input.instrument];
   const scoringVersion = scoring.version;
@@ -220,13 +221,12 @@ async function submitInTransaction(
     });
   }
 
-  let programLink: Awaited<ReturnType<typeof lockActivePatientProgram>> | null = null;
-
   if (input.patientProgramId) {
-    programLink = await lockActivePatientProgram(
+    programLink ??= await lockActivePatientProgram(
       transaction,
       actor,
       input.patientProgramId.toLowerCase(),
+      { stepCode: input.instrument },
     );
 
     if (
@@ -244,12 +244,13 @@ async function submitInTransaction(
 
     if (linked) {
       throw new ConflictError(
-        `โปรแกรมนี้มีแบบประเมิน ${input.instrument === "PAM" ? "PAM" : "PROMs"} ที่บันทึกในครั้งที่ 1 แล้ว`,
+        `โปรแกรมนี้มีแบบประเมิน ${input.instrument === "PAM" ? "PAM" : "PROMs"} ที่บันทึกในโปรแกรมนี้แล้ว`,
       );
     }
 
-    // SR-D5: the program screening is a round 1 step.
-    await assertRoundWritable(transaction, programLink.program.id, SERVICE_ONE_HOME_ROUND);
+    programRoundNumber = programLink.recordingRoundNumber ?? await currentOpenRound(transaction, programLink.program.id);
+    await assertRoundWritable(transaction, programLink.program.id, programRoundNumber);
+    await assertActivePlanItem(transaction, programLink.program.id, programRoundNumber, input.instrument);
   }
 
   const assessment = await transaction.screeningAssessment.create({
@@ -278,9 +279,9 @@ async function submitInTransaction(
     await ensureRoundLedgerEntry(transaction, {
       patientProgramId: programLink.program.id,
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-      roundNumber: SERVICE_ONE_HOME_ROUND,
+      roundNumber: programRoundNumber,
       toolCode: input.instrument,
-      source: roundActivitySourceFor(SERVICE_ONE_HOME_ROUND, input.instrument),
+      source: await classifyRoundActivity(transaction, programLink.program.id, programRoundNumber, input.instrument),
       mode: "RECORDED",
       linkedRecordType: "SCREENING_ASSESSMENT",
       linkedRecordId: assessment.id,
