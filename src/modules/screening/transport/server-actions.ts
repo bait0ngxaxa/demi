@@ -141,6 +141,8 @@ function revalidateProgramRoundPaths(relationshipId: string, programId: string):
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}`);
   revalidatePath(`/app/patients/${relationshipId}/programs/${programId}/rounds`, "layout");
   revalidatePath(`/app/personal/care/${relationshipId}/programs/${programId}`, "layout");
+  revalidatePath("/app/personal/care");
+  revalidatePath("/app/personal");
 }
 
 export async function submitScreeningAction(

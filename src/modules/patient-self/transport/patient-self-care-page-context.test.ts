@@ -12,6 +12,7 @@ import {
   listOwnPatientAppointmentHub,
 } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { listOwnPatientRelationshipNavigation } from "@/modules/patient-self/services/patient-self-query-service";
+import { getOwnServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PATIENT_ACCESS_UNAVAILABLE } from "./patient-access-unavailable";
@@ -19,6 +20,7 @@ import {
   getPatientSelfCareJourneyPageContext,
   getPatientSelfRelationshipNavigationPageContext,
   getPersonalAppointmentHubPageContext,
+  getPatientServiceProgressPageContext,
 } from "./patient-self-care-page-context";
 
 const { mockedRedirect } = vi.hoisted(() => ({ mockedRedirect: vi.fn() }));
@@ -26,6 +28,7 @@ const { mockedRedirect } = vi.hoisted(() => ({ mockedRedirect: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: mockedRedirect, notFound: vi.fn() }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: vi.fn() }));
 vi.mock("@/modules/patient-self/services/patient-self-query-service", () => ({ listOwnPatientRelationshipNavigation: vi.fn() }));
+vi.mock("@/modules/patient-self/services/patient-service-progress-query-service", () => ({ getOwnServiceProgress: vi.fn() }));
 vi.mock("@/modules/patient-self/services/patient-self-care-query-service", () => ({
   getOwnPatientCareJourney: vi.fn(),
   listOwnPatientAppointmentHub: vi.fn(),
@@ -50,6 +53,14 @@ describe("Patient self care page context", () => {
     mockedRedirect.mockImplementation((path: string) => {
       throw new Error(`NEXT_REDIRECT:${path}`);
     });
+  });
+
+  it("keeps SELF service progress on the same protected entry and denied state", async () => {
+    vi.mocked(getOwnServiceProgress).mockResolvedValue([]);
+    await expect(getPatientServiceProgressPageContext(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_CARE)).resolves.toEqual([]);
+    expect(getOwnServiceProgress).toHaveBeenCalledWith(workforceActor);
+    vi.mocked(getOwnServiceProgress).mockRejectedValue(new ForbiddenError());
+    await expect(getPatientServiceProgressPageContext()).resolves.toBe(PATIENT_ACCESS_UNAVAILABLE);
   });
 
   it.each([

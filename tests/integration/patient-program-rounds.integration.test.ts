@@ -36,6 +36,7 @@ import {
 import { addRoundPlanItem, removeRoundPlanItem, markCustomItemDone, unmarkCustomItemDone, addProgramRound } from "@/modules/patient-program-rounds/services/round-plan-write-service";
 import { roundPlanReceiptQuery, roundRecordingReceiptQuery } from "@/modules/patient-program-rounds/services/round-recording-receipt";
 import { getOwnPatientProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
+import { getOwnServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import {
   associatePatientProgramServiceOneArtifact,
@@ -1878,6 +1879,29 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
     return { userId: user.id, personId: user.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
   }
   function request(fixture: Fixture, roundNumber = 1): { patientProgramId: string; roundNumber: number; submissionNonce: string } { return { patientProgramId: fixture.programId, roundNumber, submissionNonce: randomUUID() }; }
+
+  it("PP-1: opens ติดตาม, records an allowed item and sees it done on return, without another patient's or ended care", async () => {
+    const fixture = await createFixture("pp1-self");
+    const patient = await patientActor(fixture);
+    const other = await createFixture("pp1-other");
+    const ownProfile = await prisma.patientProfile.findUniqueOrThrow({ where: { personId: patient.personId } });
+    const secondHospital = await createHospital("pp1-own-second");
+    const secondOwn = await prisma.patientHospitalRelationship.create({ data: { patientProfileId: ownProfile.id, hospitalId: secondHospital.id } });
+    const before = await getOwnServiceProgress(patient, { database: prisma });
+    expect(before.map(({ relationshipId }) => relationshipId).sort()).toEqual([fixture.relationshipId, secondOwn.id].sort());
+    expect(before.some(({ relationshipId }) => relationshipId === other.relationshipId)).toBe(false);
+    const current = before.find(({ relationshipId }) => relationshipId === fixture.relationshipId);
+    expect(current?.currentRound?.selfRecordable.some(({ planItemId }) => current.recordingRound?.status.steps.find((step) => step.planItemId === planItemId)?.code === "CONFIDENCE_RULER")).toBe(true);
+    await recordPatientProgramServiceOneConfidence(patient, { ...request(fixture), score: 8 });
+    const servicesAfter = await getOwnServiceProgress(patient, { database: prisma });
+    const after = servicesAfter.find(({ relationshipId }) => relationshipId === fixture.relationshipId);
+    const ruler = after?.recordingRound?.status.steps.find(({ code }) => code === "CONFIDENCE_RULER");
+    expect(after?.currentRound?.done).toContainEqual(expect.objectContaining({ planItemId: ruler?.planItemId, byPatient: true }));
+    expect(after?.currentRound?.selfRecordable.some(({ planItemId }) => planItemId === ruler?.planItemId)).toBe(false);
+    expect(JSON.stringify(after)).not.toContain("completedByUser");
+    await prisma.patientHospitalRelationship.update({ where: { id: fixture.relationshipId }, data: { endedAt: new Date(), endedByUserId: fixture.owner.userId, endReason: "PP-1 test" } });
+    expect((await getOwnServiceProgress(patient, { database: prisma })).map(({ relationshipId }) => relationshipId)).toEqual([secondOwn.id]);
+  }, 20_000);
 
   it("FR-6: removes and re-adds in round 1, ends rounds 1-6 early, adds two CUSTOM items in round 7, then records Final and the extra-round report", async () => {
     const fixture = await createFixture("fr6-seven");

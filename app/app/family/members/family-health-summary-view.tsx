@@ -5,6 +5,7 @@ import { Panel } from "@/components/ui/panel";
 import { APPOINTMENT_TYPE_LABELS } from "@/modules/appointments/domain/appointment-definitions";
 import { formatFamilyParticipantName } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import type { FamilyHealthSummary } from "@/modules/family/services/family-health-summary-query-service";
+import { ServiceProgressCard } from "@/modules/patient-self/presentation/service-progress-card";
 
 import { RefreshDelegatedRead } from "../grants/[grantId]/appointments/refresh-delegated-read";
 import { personalAppointmentHubHref } from "../../personal/appointments/personal-appointment-hub-href";
@@ -105,6 +106,17 @@ export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSumm
               </ul>
             )}
           </Block>
+        ) : null}
+
+        {summary.healthPlan ? (
+          <section aria-labelledby="family-current-service-heading">
+            <h2 className="text-xl font-semibold text-text" id="family-current-service-heading">บริการปัจจุบัน</h2>
+            <div className="mt-4 space-y-4">
+              {summary.healthPlan.serviceProgress.length === 0 ? <Empty>ยังไม่มีหน่วยบริการที่ดูแลอยู่</Empty> : summary.healthPlan.serviceProgress.map((progress) => (
+                <ServiceProgressCard key={progress.relationshipId} progress={progress} />
+              ))}
+            </div>
+          </section>
         ) : null}
 
         {summary.healthPlan ? (

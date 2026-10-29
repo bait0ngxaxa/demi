@@ -115,6 +115,8 @@ describe("Program round Server Actions", () => {
       profileVersion: null,
     });
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/programs/${programId}`);
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/personal/care");
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/personal");
     expect(mockedRevalidatePath).toHaveBeenCalledWith(
       `/app/patients/${relationshipId}/programs/${programId}/rounds`,
       "layout",

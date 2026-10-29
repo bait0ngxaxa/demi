@@ -39,6 +39,13 @@ import {
   listOwnPatientRelationshipNavigation,
 } from "../services/patient-self-query-service";
 import { PATIENT_ACCESS_UNAVAILABLE, type PatientAccessUnavailable } from "./patient-access-unavailable";
+import { getOwnServiceProgress } from "../services/patient-service-progress-query-service";
+
+export async function getPatientServiceProgressPageContext(
+  returnTo?: LoginReturnTo,
+): Promise<Awaited<ReturnType<typeof getOwnServiceProgress>> | PatientAccessUnavailable> {
+  return withPatientSelfPageContext(getOwnServiceProgress, returnTo, PATIENT_ACCESS_UNAVAILABLE);
+}
 
 async function resolveActor(returnTo?: LoginReturnTo): Promise<ActorContext> {
   try {

@@ -6,6 +6,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { getGoalActivity, getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import { fromMedicationTimeCarrier } from "@/modules/medications/domain/medication-local-time";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
+import { buildServiceProgress, serviceProgressRelationshipSelect, type ServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 import { InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
 
 import { FAMILY_APPOINTMENT_PAGE_SIZE, FAMILY_APPOINTMENT_WINDOW_MS } from "../domain/appointment-grant-contract";
@@ -36,6 +37,7 @@ export type FamilyHealthSummary = {
     appointment: { grantId: string; appointmentId: string; hospitalName: string; type: AppointmentType; scheduledAt: Date; status: AppointmentStatus } | null;
   } | null;
   healthPlan: {
+    serviceProgress: ServiceProgress[];
     plans: Array<{
       hospitalName: string; roundNumber: number; createdAt: Date; primaryGoalLabel: string;
       targets: { weightLossKg: number | null; waistCm: number | null; bloodSugarMgDl: number | null; hba1cPercent: number | null };
@@ -104,7 +106,7 @@ export async function getFamilyHealthSummary(
       const appointmentGrants = await transaction.caregiverAppointmentGrant.findMany({
         where: { caregiverRelationshipId: id, ...appointmentGrantCaregiverWhere(actor, "ACTIVE") },
         take: FAMILY_APPOINTMENT_PAGE_SIZE,
-        select: { id: true, patientHospitalRelationship: { select: {
+        select: { id: true, patientHospitalRelationshipId: true, patientHospitalRelationship: { select: {
           hospital: { select: { name: true } },
           appointments: {
             where: { status: "SCHEDULED", scheduledAt: { gte: now, lt: new Date(now.getTime() + FAMILY_APPOINTMENT_WINDOW_MS) } },
@@ -118,7 +120,7 @@ export async function getFamilyHealthSummary(
         where: resourceGrant("HEALTH_PLAN"),
         select: { patientProfile: { select: { hospitalRelationships: {
           where: ongoingHospitalWhere, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: HOSPITAL_LIMIT,
-          select: { hospital: { select: { name: true } }, goalPlans: {
+          select: { ...serviceProgressRelationshipSelect, goalPlans: {
             orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1,
             select: { roundNumber: true, createdAt: true, templateKey: true, templateVersion: true, primaryGoalCode: true,
               goalWeightLossKg: true, goalWaistCm: true, goalBloodSugarMgDl: true, goalHba1cPercent: true,
@@ -142,6 +144,15 @@ export async function getFamilyHealthSummary(
         })))
         .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime() || left.appointmentId.localeCompare(right.appointmentId))[0] ?? null;
 
+      // An absent appointment grant omits the entire appointment line, including any empty-state hint.
+      // Keep the existing exact-Hospital 90-day appointment scope even when HEALTH_PLAN is active.
+      const appointmentByRelationship = new Map(appointmentGrants.map((grant) => [
+        grant.patientHospitalRelationshipId,
+        grant.patientHospitalRelationship.appointments[0]
+          ? { scheduledAt: grant.patientHospitalRelationship.appointments[0].scheduledAt }
+          : null,
+      ]));
+
       return {
         relationshipId: id,
         patient: relationship.patientProfile.person,
@@ -156,7 +167,10 @@ export async function getFamilyHealthSummary(
           })),
         } : null,
         nextAppointment: appointmentGrants.length > 0 ? { appointment: next } : null,
-        healthPlan: planGrant ? { plans: planGrant.patientProfile.hospitalRelationships.flatMap((row) => row.goalPlans.map((plan) => {
+        healthPlan: planGrant ? {
+          serviceProgress: planGrant.patientProfile.hospitalRelationships.map((row) =>
+            buildServiceProgress(row, appointmentByRelationship.get(row.id), { readOnly: true }).progress),
+          plans: planGrant.patientProfile.hospitalRelationships.flatMap((row) => row.goalPlans.map((plan) => {
           const template = getGoalTemplate(plan.templateKey, plan.templateVersion);
           const primaryGoal = template?.primaryGoals.find((goal) => goal.code === plan.primaryGoalCode);
           if (!template || !primaryGoal) throw new InfrastructureError("The historical Goal Plan template is unavailable");

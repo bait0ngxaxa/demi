@@ -10,6 +10,8 @@ import type { HospitalContentPatientListItem } from "@/modules/hospital-content/
 import type { PatientHospitalContactProjection } from "@/modules/hospital-contact/types/hospital-contact-projections";
 
 import { personalAppointmentHubHref } from "./appointments/personal-appointment-hub-href";
+import type { ServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
+import { PatientCurrentServiceCard } from "./patient-current-service-card";
 
 type PatientPresentation = {
   person: { givenName: string | null; familyName: string | null };
@@ -45,6 +47,8 @@ function withSelectedHospital(shortcut: HomeShortcut, relationshipId: string | n
 }
 
 export function PatientPersonalHome({
+  serviceProgress = null,
+  serviceProgressFailed = false,
   activeHospitals,
   knowledgeFailed = false,
   knowledgeItems,
@@ -56,6 +60,8 @@ export function PatientPersonalHome({
   selectedHospital,
   showSupportLink = false,
 }: {
+  serviceProgress?: ServiceProgress | null;
+  serviceProgressFailed?: boolean;
   activeHospitals?: readonly HomeHospitalOption[];
   knowledgeFailed?: boolean;
   knowledgeItems?: readonly HospitalContentPatientListItem[];
@@ -106,6 +112,7 @@ export function PatientPersonalHome({
       >
         <HomeNextAppointment nextAppointment={nextAppointment ?? null} />
       </HomeHero>
+      {serviceProgressFailed ? <Alert className="mt-6" variant="warning">โหลดความคืบหน้าบริการไม่สำเร็จ กรุณาลองเปิดหน้าติดตามอีกครั้ง</Alert> : <PatientCurrentServiceCard progress={serviceProgress} />}
       <HomeShortcutGrid shortcuts={menu.map((shortcut) => withSelectedHospital(shortcut, currentHospital?.relationshipId ?? null))} />
       {/* Two columns once the workspace is at least 64rem wide; one column below (UI-4.1). */}
       <div className="grid min-w-0 gap-x-8 @5xl/workspace:grid-cols-2">
