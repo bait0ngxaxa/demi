@@ -9,7 +9,9 @@ import {
   addRoundPlanItemSchema, changeRoundPlanItemSchema, customItemDoneSchema, addProgramRoundSchema,
 } from "../services/round-plan-write-service";
 
+import { recordRoundAchieveScore } from "../services/round-achieve-score-service";
 import {
+  roundAchieveScoreRequestSchema,
   roundCompletionRequestSchema,
   roundProfileRequestSchema,
   roundReviewRequestSchema,
@@ -29,6 +31,7 @@ import {
 
 import type { PatientProgramRoundActionState } from "./action-state";
 import {
+  buildAchieveScoreInput,
   buildCompletionInput,
   buildProfileInput,
   buildReviewInput,
@@ -166,4 +169,16 @@ export async function unmarkCustomItemDoneAction(_previous: PatientProgramRoundA
 
 export async function addProgramRoundAction(_previous: PatientProgramRoundActionState, formData: FormData): Promise<PatientProgramRoundActionState> {
   return runRoundAction({ patientProgramId: formData.get("patientProgramId"), submissionNonce: formData.get("submissionNonce") }, addProgramRoundSchema, "ไม่สามารถเพิ่มครั้งบริการได้", addProgramRound);
+}
+
+export async function recordRoundAchieveScoreAction(
+  _previousState: PatientProgramRoundActionState,
+  formData: FormData,
+): Promise<PatientProgramRoundActionState> {
+  return runRoundAction(
+    buildAchieveScoreInput(formData),
+    roundAchieveScoreRequestSchema,
+    "กรุณากรอก Achieve score เป็นร้อยละ 0–100 ทศนิยมไม่เกิน 1 ตำแหน่ง หรือเว้นว่างเพื่อล้างค่า",
+    recordRoundAchieveScore,
+  );
 }

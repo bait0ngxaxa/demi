@@ -125,7 +125,6 @@ function program(id: string, status: PatientProgramStatus): HospitalReportProgra
     illnessDuration: { state: "NOT_RECORDED" },
     weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "NOT_RECORDED" } },
     unavailable: {
-      achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
   };

@@ -1,4 +1,4 @@
-import type { RoundReport } from "../projections/round-report-projection";
+import { roundAchieveScore, roundAchieveScoreText, type RoundReport } from "../projections/round-report-projection";
 
 const GUIDELINE_COLUMNS = 6;
 const ROUND_HEADERS = [
@@ -8,6 +8,7 @@ const ROUND_HEADERS = [
   "ข้าม",
   "ยังไม่ได้ทำเมื่อจบบริการ",
   "ผู้ป่วยบันทึกเอง",
+  "Achieve score",
 ] as const;
 
 export function RoundReportTable({
@@ -55,6 +56,7 @@ export function RoundReportTable({
                           <p>ข้าม {round.skippedItems}</p>
                           <p>ยังไม่ได้ทำเมื่อจบบริการ {round.notDoneAtCloseItems}</p>
                           <p>ผู้ป่วยบันทึกเอง {round.patientRecordedItems}</p>
+                          <p>Achieve score: {roundAchieveScoreText(roundAchieveScore(round))}</p>
                         </>
                       ) : (
                         "ยังไม่เปิดครั้งบริการ"
@@ -92,6 +94,7 @@ export function RoundReportTable({
                   <td className="px-3 py-3 tabular-nums">{round.skippedItems}</td>
                   <td className="px-3 py-3 tabular-nums">{round.notDoneAtCloseItems}</td>
                   <td className="px-3 py-3 tabular-nums">{round.patientRecordedItems}</td>
+                  <td className="px-3 py-3">{roundAchieveScoreText(roundAchieveScore(round))}</td>
                 </tr>
               ))}
           </tbody>

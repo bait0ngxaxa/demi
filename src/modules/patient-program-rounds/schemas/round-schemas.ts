@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import { oneDecimalPercentSchema } from "@/shared/clinical/cvd-risk-score";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
 import { MAX_PROGRAM_ROUNDS, REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
@@ -173,5 +174,12 @@ export const roundCompletionRequestSchema = z
   .strict();
 
 export type RoundCompletionRequest = z.output<typeof roundCompletionRequestSchema>;
+
+/** AS-1: the staff-entered Achieve score of an opened round, % 0-100 with one decimal; null clears it. */
+export const roundAchieveScoreRequestSchema = roundCompletionRequestSchema
+  .extend({ score: oneDecimalPercentSchema.nullable() })
+  .strict();
+
+export type RoundAchieveScoreRequest = z.output<typeof roundAchieveScoreRequestSchema>;
 
 export const roundSchemaInternals = { vitalsMeasurementFieldNames };

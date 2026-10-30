@@ -117,6 +117,7 @@ export const userRelationRules = {
   patientProgramRoundPlanItemsAdded: "EMPTY",
   patientProgramRoundPlanItemsRemoved: "EMPTY",
   patientProgramRoundPlanItemsDone: "EMPTY",
+  patientProgramRoundAchieveScoresRecorded: "EMPTY",
   patientEvidenceArtifactsCreated: "EMPTY",
   patientProgramServiceOneRoutinesRecorded: "EMPTY",
   patientProgramServiceOneFloatingChartsRecorded: "EMPTY",

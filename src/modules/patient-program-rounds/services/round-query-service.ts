@@ -10,9 +10,11 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import {
   decidePatientProgramPolicy,
+  hasDirectHospitalProgramManageScope,
   PATIENT_PROGRAM_MANAGE_CAPABILITY,
   PATIENT_PROGRAM_READ_CAPABILITY,
 } from "@/modules/patient-program/policies/patient-program-policy";
@@ -212,6 +214,20 @@ export type ProgramRoundDetail = {
   extraActivities: readonly RoundExtraActivity[];
   /** Extra PAM/PROMs reviews still available in this round (rounds 2-12, screening recorded). */
   extraOptions: readonly ("PAM" | "PROMS")[];
+  /**
+   * AS-1: the hospital's Achieve score of this opened round. Only for a direct Hospital OWNER/MEMBER (a
+   * staff-only metric); null for everyone else and for a round that is not opened yet.
+   */
+  achieveScore: RoundAchieveScoreView | null;
+};
+
+export type RoundAchieveScoreView = {
+  /** % 0-100 with one decimal; null when not recorded or cleared. */
+  score: number | null;
+  /** While the Program is ACTIVE, also after the round ended (the server re-checks). */
+  editable: boolean;
+  /** BR-04 rate of the round's Follow-up, shown as a hint; null without a scorable Follow-up. */
+  computedRatePercent: number | null;
 };
 
 type RecorderName = {
@@ -388,6 +404,26 @@ function findFollowupForRound(program: ProgramRoundRecord, roundNumber: number) 
         (followup) => followup.roundNumber === toFollowupRoundNumber(roundNumber),
       ) ?? null)
     : null;
+}
+
+/**
+ * BR-04 rate of the round's Program Follow-up (rounds 3-12): null when the round has no Follow-up,
+ * otherwise its rate, or null when it cannot be scored (no source Goal Plan or missing achieved days).
+ */
+export function roundFollowupAchievementRate(
+  program: ProgramRoundRecord,
+  roundNumber: number,
+): { ratePercent: number | null } | null {
+  const followup = findFollowupForRound(program, roundNumber);
+
+  if (!followup) {
+    return null;
+  }
+
+  const plan = program.goalPlans.find((candidate) => candidate.id === followup.sourceGoalPlanId);
+  const achievement = plan ? computeFollowupAchievement(followup.activityProgress, plan.items) : null;
+
+  return { ratePercent: achievement?.ratePercent ?? null };
 }
 
 function adjustedPlanFor(program: ProgramRoundRecord, followupId: string) {
@@ -882,6 +918,29 @@ export function buildProgramRoundDetail(
     planFollowUp: buildPlanFollowUp(program, roundNumber),
     healthPath: buildHealthPath(program, roundNumber, options),
     ...buildExtras(program, roundNumber, options),
+    achieveScore: null,
+  };
+}
+
+/** AS-1: staff path only; the caller has proven the direct Hospital OWNER/MEMBER scope. */
+async function loadRoundAchieveScoreView(
+  database: PatientProgramRoundQueryDatabase,
+  program: ProgramRoundRecord,
+  roundNumber: number,
+): Promise<RoundAchieveScoreView | null> {
+  if (!program.rounds.some((round) => round.roundNumber === roundNumber)) {
+    return null;
+  }
+
+  const record = await database.patientProgramRoundAchieveScore.findUnique({
+    where: { patientProgramId_roundNumber: { patientProgramId: program.id, roundNumber } },
+    select: { score: true },
+  });
+
+  return {
+    score: record?.score?.toNumber() ?? null,
+    editable: program.status === PatientProgramStatus.ACTIVE,
+    computedRatePercent: roundFollowupAchievementRate(program, roundNumber)?.ratePercent ?? null,
   };
 }
 
@@ -993,7 +1052,7 @@ export async function getProgramRoundDetail(
       access.patient.patientHospitalRelationshipId,
     );
 
-    return buildProgramRoundDetail(
+    const detail = buildProgramRoundDetail(
       program,
       parsedRound,
       {
@@ -1009,6 +1068,10 @@ export async function getProgramRoundDetail(
         options: access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
       },
     );
+
+    return hasDirectHospitalProgramManageScope({ actor: access.actor, target: access.target })
+      ? { ...detail, achieveScore: await loadRoundAchieveScoreView(database, program, parsedRound) }
+      : detail;
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

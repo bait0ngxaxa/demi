@@ -10,6 +10,7 @@ import type {
   HospitalReportProgramRow,
   HospitalReportingDataset,
 } from "../projections/hospital-report-projection";
+import type { RoundReport } from "../projections/round-report-projection";
 import { generateHospitalReportWorkbook } from "./hospital-report-workbook-service";
 
 /**
@@ -206,7 +207,6 @@ function goldenProgram(): HospitalReportProgramRow {
     illnessDuration: { state: "RECORDED", value: 9 },
     weeklyExercise: { before: { state: "RECORDED", value: 37.5 }, after: { state: "RECORDED", value: 150 } },
     unavailable: {
-      achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
   };
@@ -244,8 +244,8 @@ function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
     const field = index % 3;
     if (round <= 2) {
       if (row === 10) return [column, null, "SOURCE_MISSING"];
-      // Phase A: rounds 1-2 DTX/BW come from PatientProgramRoundVitals; the rate stays unapproved.
-      if (field === 2) return [column, DERIVATION_UNAPPROVED, "SOURCE_MISSING"];
+      // Phase A: rounds 1-2 DTX/BW come from PatientProgramRoundVitals; AS-D2: the score is staff-entered only.
+      if (field === 2) return [column, "ยังไม่บันทึก", "SOURCE_READY"];
       const vitals = round === 1 ? [118, 74] : [112, 73];
       return [column, vitals[field] ?? null, "SOURCE_READY"];
     }
@@ -500,7 +500,7 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
       SOURCE_READY: count("SOURCE_READY"),
       DECISION_OPEN: count("DECISION_OPEN"),
       SOURCE_MISSING: count("SOURCE_MISSING"),
-    }).toEqual({ SOURCE_READY: 102, DECISION_OPEN: 0, SOURCE_MISSING: 6 });
+    }).toEqual({ SOURCE_READY: 104, DECISION_OPEN: 0, SOURCE_MISSING: 4 });
   });
 });
 
@@ -546,5 +546,108 @@ describe("customer workbook golden columns for the booklet forms (R2)", () => {
       expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toEqual(value);
     }
     expect(normalizedCell(await serviceSheet(false), "L9")).toBe("ไม่มีปัญหา");
+  });
+});
+
+/**
+ * AS-1 golden case: the staff-entered Achieve score (AS-D1/AS-D2) and the "ครั้งนี้ไม่ได้ติดตามผล" label of a
+ * completed round without its Follow-up (AS-D3). Rounds 3–4 have Follow-ups 1–2, round 5 ended without
+ * Follow-up 3, round 6 is still open without one, and round 7 is an extra round with a staff score.
+ */
+describe("customer workbook golden columns for the staff-entered Achieve score (AS-1)", () => {
+  const NO_FOLLOWUP = "ครั้งนี้ไม่ได้ติดตามผล";
+
+  function round(
+    roundNumber: number,
+    completed: boolean,
+    achieveScore: number | null,
+    followup: HospitalReportFollowup | null,
+  ): RoundReport {
+    return {
+      roundNumber,
+      title: `ครั้งที่ ${roundNumber}`,
+      completed,
+      vitals: null,
+      doneItems: 1,
+      plannedItems: 1,
+      skippedItems: 0,
+      notDoneAtCloseItems: 0,
+      patientRecordedItems: 0,
+      achieveScore,
+      followup: followup ? { ratePercent: followup.achievement?.ratePercent ?? null } : null,
+    };
+  }
+
+  function asOneProgram(): HospitalReportProgramRow {
+    const followups = FOLLOWUPS.slice(0, 2);
+
+    return {
+      ...goldenProgram(),
+      followups: { totalCount: followups.length, items: followups, hasMore: false },
+      rounds: [
+        round(1, true, 55.5, null),
+        round(2, true, null, null),
+        round(3, true, 90, FOLLOWUPS[0] ?? null),
+        round(4, true, null, FOLLOWUPS[1] ?? null),
+        round(5, true, null, null),
+        round(6, false, null, null),
+        round(7, false, 80, null),
+      ],
+      extraRoundsCompleted: 0,
+    };
+  }
+
+  let dashboard: ExcelJS.Worksheet;
+  let service: ExcelJS.Worksheet;
+
+  beforeAll(async () => {
+    const generated = await loadWorkbook(await generateHospitalReportWorkbook(
+      { ...goldenDataset(), programs: [asOneProgram()] },
+      new Date("2026-10-12T03:00:00.000Z"),
+    ));
+    dashboard = sheetOrThrow(generated, "Dashboard ภาพรวม");
+    service = sheetOrThrow(generated, "รายงานการจัดบริการ");
+  });
+
+  it("fills rounds 1–2 with the staff score and the not-recorded label otherwise", () => {
+    expect(normalizedCell(dashboard, "Q9")).toBe(118);
+    expect(dashboard.getCell("S9").value).toBeCloseTo(0.555, 10);
+    expect(dashboard.getCell("S9").numFmt).toBe("0.0%");
+    expect(normalizedCell(dashboard, "V9")).toBe("ยังไม่บันทึก");
+  });
+
+  it("lets the staff score override the computed rate and falls back to the computed rate", () => {
+    const [followupOne, followupTwo] = FOLLOWUPS;
+    expect(normalizedCell(dashboard, "W9")).toBe(followupOne?.measurements.bloodSugar.state === "RECORDED" ? followupOne.measurements.bloodSugar.value : null);
+    expect(dashboard.getCell("Y9").value).toBeCloseTo(0.9, 10);
+    expect(normalizedCell(dashboard, "AB9")).toEqual(followupTwo ? rateCell(followupTwo) : null);
+    // The service sheet keeps the computed Follow-up rate.
+    expect(normalizedCell(service, "AJ9")).toEqual(followupOne ? rateCell(followupOne) : null);
+  });
+
+  it("labels every Follow-up cell of a completed round without its Follow-up", () => {
+    for (const column of ["AC", "AD", "AE"]) {
+      expect(normalizedCell(dashboard, `${column}9`), `Dashboard ภาพรวม!${column}9`).toBe(NO_FOLLOWUP);
+    }
+    for (const column of ["AX", "AY", "AZ", "BB", "BD"]) {
+      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toBe(NO_FOLLOWUP);
+    }
+    for (const column of ["BA", "BC", "BE"]) {
+      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toBeNull();
+    }
+  });
+
+  it("leaves an open round without a Follow-up unchanged", () => {
+    for (const column of ["AF", "AG", "AH"]) {
+      expect(normalizedCell(dashboard, `${column}9`), `Dashboard ภาพรวม!${column}9`).toBeNull();
+    }
+    for (const column of ["BF", "BG", "BH", "BJ", "BL"]) {
+      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toBeNull();
+    }
+  });
+
+  it("includes the score in the extra-round detail", () => {
+    expect(dashboard.getCell("AY9").text).toContain("ครั้งที่ 7");
+    expect(dashboard.getCell("AY9").text).toContain("Achieve score 80% (โรงพยาบาลประเมิน)");
   });
 });

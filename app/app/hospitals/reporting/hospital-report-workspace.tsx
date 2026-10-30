@@ -267,7 +267,6 @@ function ProgramOverview({
             </ol>
           )}
           {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูรายละเอียดทั้งหมดได้ที่รายงาน Program" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
-          <p className="mt-3 text-sm text-text-muted">คะแนนผลสำเร็จ: {unavailableText(program.unavailable.achievementRate)}</p>
         </section>
 
         <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">

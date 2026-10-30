@@ -1,6 +1,12 @@
 import "server-only";
 
-import type { RoundReport } from "../projections/round-report-projection";
+import {
+  NO_FOLLOWUP_LABEL,
+  roundAchieveScore,
+  roundAchieveScoreText,
+  roundEndedWithoutFollowup,
+  type RoundReport,
+} from "../projections/round-report-projection";
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -82,10 +88,22 @@ function setExcelDate(row: ExcelJS.Row, column: number): void {
   cell.style = { ...cell.style, numFmt: "dd/mm/yyyy" };
 }
 
-function setExcelPercent(row: ExcelJS.Row, column: number, ratePercent: number): void {
+function setExcelPercent(row: ExcelJS.Row, column: number, ratePercent: number, numFmt = "0%"): void {
   const cell = row.getCell(column);
   cell.value = ratePercent / 100;
-  cell.style = { ...cell.style, numFmt: "0%" };
+  cell.style = { ...cell.style, numFmt };
+}
+
+// AS-D1: the staff-entered Achieve score keeps its one decimal.
+function setStaffAchieveScore(row: ExcelJS.Row, column: number, round: RoundReport | undefined): boolean {
+  const score = roundAchieveScore(round);
+  if (score.kind !== "STAFF") return false;
+  setExcelPercent(row, column, score.percent, "0.0%");
+  return true;
+}
+
+function roundReport(program: HospitalReportProgramRow, roundNumber: number): RoundReport | undefined {
+  return program.rounds.find((round) => round.roundNumber === roundNumber);
 }
 
 const NO_ACHIEVEMENT_LABEL = "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
@@ -394,13 +412,16 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(16).value = baselineMeasurementCell(program, "diastolicBloodPressure");
 
     if (continuation === 1) {
-      for (const [roundColumn, roundVitals] of [
-        [startColumn, program.roundVitals.round1],
-        [startColumn + 3, program.roundVitals.round2],
+      for (const [roundColumn, roundVitals, roundNumber] of [
+        [startColumn, program.roundVitals.round1, 1],
+        [startColumn + 3, program.roundVitals.round2, 2],
       ] as const) {
         row.getCell(roundColumn).value = roundVitalsCell(roundVitals, "bloodSugar");
         row.getCell(roundColumn + 1).value = roundVitalsCell(roundVitals, "weight");
-        row.getCell(roundColumn + 2).value = unavailable(program.unavailable.achievementRate);
+        // AS-D2: rounds 1-2 have no computed score; only the staff-entered one fills them.
+        if (!setStaffAchieveScore(row, roundColumn + 2, roundReport(program, roundNumber))) {
+          row.getCell(roundColumn + 2).value = "ยังไม่บันทึก";
+        }
       }
     }
     followups.forEach((followup) => {
@@ -421,6 +442,22 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     if (followups.length === 0 && !program.rounds.some((round) => round.roundNumber === 3 && round.vitals)) {
       const nextFollowupColumn = followupStartColumn;
       row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
+    }
+    if (continuation === 1) {
+      for (let roundNumber = 3; roundNumber <= 6; roundNumber += 1) {
+        const round = roundReport(program, roundNumber);
+        const column = followupStartColumn + (roundNumber - 3) * 3;
+        // AS-D3: DTX/BW stay from the round vitals when present.
+        if (roundEndedWithoutFollowup(round)) {
+          if (!round?.vitals) {
+            row.getCell(column).value = NO_FOLLOWUP_LABEL;
+            row.getCell(column + 1).value = NO_FOLLOWUP_LABEL;
+          }
+          row.getCell(column + 2).value = NO_FOLLOWUP_LABEL;
+        }
+        // AS-D1: a staff-entered score overrides the computed Follow-up rate.
+        setStaffAchieveScore(row, column + 2, round);
+      }
     }
 
     row.getCell(35).value = program.lifecycle.completedAt.state === "RECORDED"
@@ -566,7 +603,19 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
       writeRoundTwoGoalCells(row, program);
     }
     writeServiceFollowupCells(row, program, followups);
+    if (continuation === 1) writeServiceNoFollowupCells(row, program);
   });
+}
+
+// AS-D3: every Follow-up-derived cell of a completed round 3-6 that ended without its Follow-up.
+function writeServiceNoFollowupCells(row: ExcelJS.Row, program: HospitalReportProgramRow): void {
+  for (let roundNumber = 3; roundNumber <= 6; roundNumber += 1) {
+    if (!roundEndedWithoutFollowup(roundReport(program, roundNumber))) continue;
+    const baseColumn = 34 + (roundNumber - 3) * 8;
+    for (const offset of [0, 1, 2, 4, 6]) row.getCell(baseColumn + offset).value = NO_FOLLOWUP_LABEL;
+    row.getCell(baseColumn + 5).value = "";
+    row.getCell(baseColumn + 7).value = "";
+  }
 }
 
 function roundReportCell(round: RoundReport | undefined): string {
@@ -589,7 +638,7 @@ function writeRoundReportColumns(sheet: ExcelJS.Worksheet, programs: readonly Ho
     const row = sheet.getRow(rowNumber);
     row.getCell(start).value = program.extraRoundsCompleted;
     for (let round = 1; round <= 6; round += 1) row.getCell(start + round).value = roundReportCell(program.rounds.find((item) => item.roundNumber === round));
-    row.getCell(start + 7).value = assertCellText(program.rounds.filter((round) => round.roundNumber >= 7).map((round) => `${round.title} (${round.completed ? "จบบริการแล้ว" : "ยังไม่จบบริการ"}): ${roundReportCell(round)}`).join("\n") || "ไม่มีครั้งเพิ่มเติม");
+    row.getCell(start + 7).value = assertCellText(program.rounds.filter((round) => round.roundNumber >= 7).map((round) => `${round.title} (${round.completed ? "จบบริการแล้ว" : "ยังไม่จบบริการ"}): ${roundReportCell(round)}; Achieve score ${roundAchieveScoreText(roundAchieveScore(round))}`).join("\n") || "ไม่มีครั้งเพิ่มเติม");
     row.getCell(start + 8).value = assertCellText(program.followups.items.filter((followup) => followup.roundNumber >= 5).map((followup) => `ครั้งที่ ${followup.roundNumber + 2}: ${followup.serviceDate ?? followup.recordedAt}; น้ำตาล ${factCell(followup.measurements.bloodSugar)}; น้ำหนัก ${factCell(followup.measurements.weight)}; รอบเอว ${factCell(followup.measurements.waistCircumference)}; ความดัน ${factCell(followup.measurements.systolicBloodPressure)}/${factCell(followup.measurements.diastolicBloodPressure)}; จำนวนวันที่ทำได้ ${followup.achievement?.achievedDays ?? "ไม่มีข้อมูล"}; ผลสำเร็จ ${followup.achievement ? `${followup.achievement.ratePercent}%` : "ไม่มีข้อมูล"}; ปรับแผน ${followup.planAdjusted === null ? "ไม่มีข้อมูล" : followup.planAdjusted ? "ปรับ" : "ไม่ปรับ"}; อุปสรรค ${followup.hasObstacle === null ? "ไม่มีข้อมูล" : followup.hasObstacle ? "มี" : "ไม่มี"}`).join("\n") || "ไม่มีการติดตามครั้งเพิ่มเติม");
     for (let column = start; column <= start + 8; column += 1) row.getCell(column).alignment = { vertical: "top", wrapText: true };
     rowNumber += rowsPerProgram(program, DASHBOARD_FOLLOWUPS_PER_ROW);

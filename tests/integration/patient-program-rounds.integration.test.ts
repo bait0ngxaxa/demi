@@ -33,8 +33,9 @@ import {
   skipPatientProgramRoundStep as skipPlanItem,
   unskipPatientProgramRoundStep as unskipPlanItem,
 } from "@/modules/patient-program-rounds/services/round-service";
+import { recordRoundAchieveScore } from "@/modules/patient-program-rounds/services/round-achieve-score-service";
 import { addRoundPlanItem, removeRoundPlanItem, markCustomItemDone, unmarkCustomItemDone, addProgramRound } from "@/modules/patient-program-rounds/services/round-plan-write-service";
-import { roundPlanReceiptQuery, roundRecordingReceiptQuery } from "@/modules/patient-program-rounds/services/round-recording-receipt";
+import { roundAchieveScoreReceiptQuery, roundPlanReceiptQuery, roundRecordingReceiptQuery } from "@/modules/patient-program-rounds/services/round-recording-receipt";
 import { getOwnPatientProgramRounds } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { getOwnServiceProgress } from "@/modules/patient-self/services/patient-service-progress-query-service";
 import { openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
@@ -2209,8 +2210,8 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
       .rejects.toMatchObject({ name: "RoundConflictError" });
   }, 20_000);
 
-  it("FR-7: both receipt lookups are served by AuditEvent_round_plan_submission_nonce_key", async () => {
-    for (const query of [roundPlanReceiptQuery(randomUUID()), roundRecordingReceiptQuery(randomUUID())]) {
+  it("FR-7/AS-1: every receipt lookup is served by AuditEvent_round_plan_submission_nonce_key", async () => {
+    for (const query of [roundPlanReceiptQuery(randomUUID()), roundRecordingReceiptQuery(randomUUID()), roundAchieveScoreReceiptQuery(randomUUID())]) {
       const plan = await prisma.$transaction(async (transaction) => {
         // Tiny test tables favour a sequential scan; disabling it shows whether the index can serve the query.
         await transaction.$executeRaw`SET LOCAL enable_seqscan = off`;
@@ -2222,5 +2223,167 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
       expect(text).toMatch(/(Bitmap )?Index Scan (using|on) "AuditEvent_round_plan_submission_nonce_key"/);
       expect(text).toContain("Index Cond: ((metadata ->> 'submissionNonce'::text)");
     }
+  });
+});
+
+describe("Staff-entered round Achieve score (AS-1)", () => {
+  beforeAll(async () => { await prisma.$connect(); await clearDatabase(); });
+  afterEach(clearDatabase);
+  afterAll(async () => { await prisma.$disconnect(); });
+
+  async function createMember(hospitalId: string): Promise<ActorContext & { userId: string }> {
+    const { userId, personId } = await createUser("member");
+    await prisma.userRole.create({ data: { userId, role: Role.HOSPITAL } });
+    await prisma.hospitalMembership.create({
+      data: { userId, hospitalId, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE },
+    });
+    return {
+      userId,
+      personId,
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [
+        { hospitalId, membershipType: MembershipType.MEMBER, profession: null, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+      osmHospitalRelationships: [],
+    };
+  }
+
+  async function ownPatientActor(fixture: Fixture): Promise<ActorContext> {
+    const relationship = await prisma.patientHospitalRelationship.findUniqueOrThrow({ where: { id: fixture.relationshipId }, select: { patientProfile: { select: { personId: true } } } });
+    const user = await prisma.user.update({ where: { personId: relationship.patientProfile.personId }, data: { status: UserStatus.ACTIVE }, select: { id: true, personId: true } });
+    return { userId: user.id, personId: user.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+  }
+
+  function scoreInput(fixture: Fixture, roundNumber: number, score: number | null, submissionNonce = randomUUID()) {
+    return { patientProgramId: fixture.programId, roundNumber, score, submissionNonce };
+  }
+
+  async function storedScore(fixture: Fixture, roundNumber: number): Promise<number | null | undefined> {
+    const row = await prisma.patientProgramRoundAchieveScore.findUnique({
+      where: { patientProgramId_roundNumber: { patientProgramId: fixture.programId, roundNumber } },
+      select: { score: true },
+    });
+    return row ? (row.score?.toNumber() ?? null) : undefined;
+  }
+
+  async function scoreAudits(fixture: Fixture) {
+    const events = await prisma.auditEvent.findMany({
+      where: { action: "patient_program_round.achieve_score_recorded" },
+      orderBy: { createdAt: "asc" },
+      select: { actorUserId: true, metadata: true },
+    });
+    return events.filter((event) => (event.metadata as { patientProgramId?: string } | null)?.patientProgramId === fixture.programId);
+  }
+
+  it("lets OWNER and MEMBER record, correct and clear a score on an open and a completed round, audited with old/new", async () => {
+    const fixture = await createFixture("as1-record");
+    const member = await createMember(fixture.hospitalId);
+
+    await expect(recordRoundAchieveScore(fixture.owner.actor, scoreInput(fixture, 1, 72.5))).resolves.toMatchObject({ operation: "RECORDED", score: 72.5 });
+    await expect(recordRoundAchieveScore(member, scoreInput(fixture, 1, 80))).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(await storedScore(fixture, 1)).toBe(80);
+    await expect(recordRoundAchieveScore(member, scoreInput(fixture, 1, null))).resolves.toMatchObject({ operation: "RECORDED", score: null });
+    expect(await storedScore(fixture, 1)).toBeNull();
+
+    // AS-D1: the score is often judged at the next visit, so a completed round stays recordable.
+    await skipRestAndComplete(fixture, 1);
+    await expect(recordRoundAchieveScore(fixture.owner.actor, scoreInput(fixture, 1, 64.3))).resolves.toMatchObject({ operation: "RECORDED" });
+    expect(await storedScore(fixture, 1)).toBe(64.3);
+    await expect(recordRoundAchieveScore(member, scoreInput(fixture, 2, 50))).resolves.toMatchObject({ operation: "RECORDED" });
+    await expectSequenced(recordRoundAchieveScore(member, scoreInput(fixture, 3, 50)));
+
+    const audits = await scoreAudits(fixture);
+    expect(audits.map(({ metadata }) => {
+      const value = metadata as { roundNumber: number; previousScore: number | null; score: number | null };
+      return [value.roundNumber, value.previousScore, value.score];
+    })).toEqual([[1, null, 72.5], [1, 72.5, 80], [1, 80, null], [1, null, 64.3], [2, null, 50]]);
+    expect(audits[1]?.actorUserId).toBe(member.userId);
+
+    // The staff detail shows the score; the assigned OSM and the patient's own view never carry it.
+    const staffDetail = await getProgramRoundDetail(fixture.owner.actor, fixture.relationshipId, fixture.programId, "1");
+    expect(staffDetail.achieveScore).toEqual({ score: 64.3, editable: true, computedRatePercent: null });
+    const osmDetail = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "1");
+    expect(osmDetail.achieveScore).toBeNull();
+    const own = await getOwnPatientProgramRounds(await ownPatientActor(fixture), fixture.relationshipId, fixture.programId);
+    expect(own.rounds.every((round) => round.achieveScore === null)).toBe(true);
+
+    // Reports: the staff score is part of the round report.
+    const dataset = await getHospitalReportingDatasetForExport(fixture.owner.actor, { hospitalId: fixture.hospitalId });
+    const row = dataset.programs.find((program) => program.patientProgramId === fixture.programId);
+    expect(row?.rounds.find((round) => round.roundNumber === 1)).toMatchObject({ achieveScore: 64.3, followup: null });
+    expect(row?.rounds.find((round) => round.roundNumber === 2)).toMatchObject({ achieveScore: 50 });
+  });
+
+  it("is idempotent by nonce and never reapplies an older request after a correction", async () => {
+    const fixture = await createFixture("as1-nonce");
+    const first = scoreInput(fixture, 1, 60);
+
+    await recordRoundAchieveScore(fixture.owner.actor, first);
+    await expect(recordRoundAchieveScore(fixture.owner.actor, first)).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
+    await recordRoundAchieveScore(fixture.owner.actor, scoreInput(fixture, 1, 75));
+    await expect(recordRoundAchieveScore(fixture.owner.actor, first)).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
+    expect(await storedScore(fixture, 1)).toBe(75);
+    await expect(recordRoundAchieveScore(fixture.owner.actor, { ...first, score: 61 })).rejects.toBeInstanceOf(RoundConflictError);
+    const member = await createMember(fixture.hospitalId);
+    await expect(recordRoundAchieveScore(member, first)).rejects.toBeInstanceOf(RoundConflictError);
+
+    // An unchanged value is receipted too, so its retry cannot undo a later correction.
+    const unchanged = scoreInput(fixture, 1, 75);
+    await expect(recordRoundAchieveScore(fixture.owner.actor, unchanged)).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
+    await recordRoundAchieveScore(fixture.owner.actor, scoreInput(fixture, 1, 90));
+    await expect(recordRoundAchieveScore(fixture.owner.actor, unchanged)).resolves.toMatchObject({ operation: "ALREADY_RECORDED" });
+    expect(await storedScore(fixture, 1)).toBe(90);
+    expect(await scoreAudits(fixture)).toHaveLength(4);
+  });
+
+  it("forbids the assigned OSM, the patient, a caregiver, network read and another hospital", async () => {
+    const fixture = await createFixture("as1-denied");
+    const parent = await createHospital("as1-parent");
+    const parentOwner = await createOwner(parent.id);
+    await prisma.hospitalServiceAreaEligibility.createMany({ data: [
+      { hospitalId: parent.id, kind: "PARENT", verifiedAt: new Date() },
+      { hospitalId: fixture.hospitalId, kind: "CHILD", verifiedAt: new Date() },
+    ] });
+    await prisma.hospitalServiceArea.create({ data: { parentHospitalId: parent.id, childHospitalId: fixture.hospitalId, createdByUserId: parentOwner.userId } });
+    const outsideOwner = await createOwner((await createHospital("as1-outside")).id);
+    const caregiver = await createUser("as1-caregiver");
+    await prisma.userRole.create({ data: { userId: caregiver.userId, role: Role.CAREGIVER } });
+    const denied: ActorContext[] = [
+      fixture.osm.actor,
+      await ownPatientActor(fixture),
+      { ...caregiver, roles: [Role.CAREGIVER], hospitalMemberships: [], osmHospitalRelationships: [] },
+      parentOwner.actor,
+      outsideOwner.actor,
+    ];
+
+    for (const actor of denied) {
+      await expectDenied(recordRoundAchieveScore(actor, scoreInput(fixture, 1, 50)));
+    }
+    expect(await prisma.patientProgramRoundAchieveScore.count()).toBe(0);
+    expect(await scoreAudits(fixture)).toHaveLength(0);
+  });
+
+  it("enforces the 0-100 range, an opened round, a fixed round and no deletion in the database", async () => {
+    const fixture = await createFixture("as1-shape");
+    for (const score of [100.1, -1, 12.34]) {
+      await expect(recordRoundAchieveScore(fixture.owner.actor, scoreInput(fixture, 1, score))).rejects.toBeInstanceOf(ValidationError);
+    }
+    const row = (score: number, roundNumber = 1) => ({
+      patientProgramId: fixture.programId,
+      patientHospitalRelationshipId: fixture.relationshipId,
+      roundNumber,
+      score,
+      recordedByUserId: fixture.owner.userId,
+      recordedAt: new Date(),
+      submissionNonce: randomUUID(),
+    });
+    await expect(prisma.patientProgramRoundAchieveScore.create({ data: row(100.1) })).rejects.toThrow();
+    await expect(prisma.patientProgramRoundAchieveScore.create({ data: row(-1) })).rejects.toThrow();
+    // Round 2 is not opened yet (composite foreign key to PatientProgramRound).
+    await expect(prisma.patientProgramRoundAchieveScore.create({ data: row(50, 2) })).rejects.toThrow();
+    await prisma.patientProgramRoundAchieveScore.create({ data: row(100) });
+    await expect(prisma.patientProgramRoundAchieveScore.deleteMany({ where: { patientProgramId: fixture.programId } })).rejects.toThrow();
+    await skipRestAndComplete(fixture, 1);
+    await expect(prisma.patientProgramRoundAchieveScore.updateMany({ where: { patientProgramId: fixture.programId }, data: { roundNumber: 2 } })).rejects.toThrow();
   });
 });

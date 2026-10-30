@@ -96,6 +96,7 @@ export default async function ProgramRoundPage({
       nonces={{
         vitals: randomUUID(),
         completion: randomUUID(),
+        achieveScore: randomUUID(),
         review: { PAM: randomUUID(), PROMS: randomUUID(), HEALTH_PATH: randomUUID() },
       }}
       todayServiceDate={toServiceDateOnly(new Date())}

@@ -44,6 +44,14 @@ const COMPLETION_FORM_FIELDS = new Set([
   "submissionNonce",
 ]);
 
+const ACHIEVE_SCORE_FORM_FIELDS = new Set([
+  "patientHospitalRelationshipId",
+  "patientProgramId",
+  "roundNumber",
+  "submissionNonce",
+  "score",
+]);
+
 const REVIEW_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
@@ -209,6 +217,20 @@ export function buildReviewInput(formData: FormData): unknown {
   } satisfies Record<string, unknown>;
 }
 
+/** AS-1: a blank score clears the round's Achieve score. */
+export function buildAchieveScoreInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, ACHIEVE_SCORE_FORM_FIELDS)) {
+    return null;
+  }
+
+  return {
+    patientProgramId: getSingleString(formData, "patientProgramId"),
+    roundNumber: getRoundNumber(formData),
+    submissionNonce: getSingleString(formData, "submissionNonce"),
+    score: getOptionalNumber(formData, "score"),
+  } satisfies Record<string, unknown>;
+}
+
 export function mapPatientProgramRoundError(error: unknown): {
   code: "INVALID_INPUT" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";
   message: string;
@@ -259,6 +281,7 @@ export function mapPatientProgramRoundError(error: unknown): {
 }
 
 export const patientProgramRoundTransportInternals = {
+  buildAchieveScoreInput,
   buildCompletionInput,
   buildProfileInput,
   buildReviewInput,

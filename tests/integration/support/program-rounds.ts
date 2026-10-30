@@ -161,8 +161,8 @@ export async function openFinalAssessmentRound(input: unknown): Promise<void> {
 }
 
 /**
- * Completions, skips, opened rounds and their plan items are append-only outside the demo/test reset switch
- * (migrations 20261102100000 and 20261124100000). Cleanup only: a Program needs its rounds again afterwards.
+ * Completions, skips, opened rounds, their plan items and Achieve scores are append-only outside the demo/test
+ * reset switch (migrations 20261102100000, 20261124100000 and 20261130100000). Cleanup only: a Program needs its rounds again afterwards.
  */
 export async function clearProgramRoundCompletions(programIds?: readonly string[]): Promise<void> {
   const prisma = getPrisma();
@@ -173,6 +173,7 @@ export async function clearProgramRoundCompletions(programIds?: readonly string[
     prisma.patientProgramRoundStepSkip.deleteMany({ where }),
     prisma.patientProgramRoundCompletion.deleteMany({ where }),
     prisma.patientProgramRoundPlanItem.deleteMany({ where }),
+    prisma.patientProgramRoundAchieveScore.deleteMany({ where }),
     prisma.patientProgramRound.deleteMany({ where }),
   ]);
 }

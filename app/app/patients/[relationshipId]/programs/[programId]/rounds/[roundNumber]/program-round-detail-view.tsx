@@ -35,6 +35,7 @@ import type {
 import { ageInFullYears } from "@/shared/time/age";
 
 import { ServiceOneToolStep, type ServiceOneToolKey } from "../../service-one-workspace";
+import { RoundAchieveScoreForm } from "./round-achieve-score-form";
 import { RoundReviewButton } from "./round-review-button";
 import { CompleteRoundControl, RoundProfileForm, SkipStepControl, UnskipStepControl } from "./round-step-controls";
 import { RoundVitalsForm } from "./round-vitals-form";
@@ -44,6 +45,7 @@ export type RoundCurrentStep = string;
 export type ProgramRoundNonces = {
   vitals: string;
   completion: string;
+  achieveScore: string;
   review: Record<"PAM" | "PROMS" | "HEALTH_PATH", string>;
 };
 
@@ -691,6 +693,9 @@ export function ProgramRoundDetailView({
             </Panel>
 
             <ExtraActivities context={context} />
+            {detail.achieveScore ? (
+              <RoundAchieveScoreForm achieveScore={detail.achieveScore} submissionNonce={nonces.achieveScore} target={target} />
+            ) : null}
           </div>
         </div>
 

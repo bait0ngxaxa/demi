@@ -821,7 +821,6 @@ function toHospitalReportProgramRow(
     illnessDuration: toFact(illnessDuration(relationship.healthHistory?.diagnosisYear)),
     weeklyExercise,
     unavailable: {
-      achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
   };

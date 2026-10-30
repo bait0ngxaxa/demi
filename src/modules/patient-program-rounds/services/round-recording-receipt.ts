@@ -47,6 +47,16 @@ export function roundRecordingReceiptQuery(submissionNonce: string): Prisma.Sql 
     LIMIT 1`;
 }
 
+/** AS-1: the audited Achieve score change is its own receipt (same partial unique index). */
+export function roundAchieveScoreReceiptQuery(submissionNonce: string): Prisma.Sql {
+  return Prisma.sql`
+    SELECT "actorUserId"::text AS "actorUserId", "resourceId", "metadata"->>'requestHash' AS "requestHash"
+    FROM "AuditEvent"
+    WHERE ("metadata"->>'submissionNonce') = ${submissionNonce}
+      AND "action" = 'patient_program_round.achieve_score_recorded'
+    LIMIT 1`;
+}
+
 export async function findRoundSubmissionReceipt(
   transaction: Prisma.TransactionClient,
   query: Prisma.Sql,

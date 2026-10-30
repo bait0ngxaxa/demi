@@ -1,6 +1,6 @@
 # ADR-0022: Plan-driven service rounds
 
-- Status: Accepted — Product Owner decisions FR-D1..FR-D7 and FR-D4a, 2026-10-28
+- Status: Accepted — Product Owner decisions FR-D1..FR-D7 and FR-D4a, 2026-10-28; AS-D1..AS-D3, 2026-10-30
 - Partially supersedes: SR-D1 and the "all resolved" rule of SR-D4 in [WB_ALIGNMENT_DECISIONS](../requirements/WB_ALIGNMENT_DECISIONS.md) §R1 (effective when FR-2 ships); the fixed per-round tool CHECKs of SR-D8/SR-D11 (replaced in FR-1).
 - Related: [ADR-0006](0006-transactional-business-operations.md), [ADR-0016](0016-network-patient-read.md), [ADR-0021](0021-caregiver-accounts-by-invitation.md)
 
@@ -56,6 +56,28 @@ A round's plan is stored when the round opens, not computed from the guideline w
 - **FR-5:** reports.
 - **FR-6:** hardening and end-to-end coverage. Each phase is delivered separately.
 - **FR-7:** review fixes: the FR-D4a overwrite rules, plan and recording receipt lookups that use the partial unique index (`AuditEvent_round_plan_submission_nonce_key`) with an action predicate, and the self-recording policy fed the computed relationship and Program state. FR-7b extends the overwrite rule to the round's Follow-up vitals.
+
+## AS-1 — Staff-entered Achieve score per round (Product Owner decisions AS-D1..AS-D3, 2026-10-30)
+
+### Decisions
+
+- **AS-D1 — The hospital records the Achieve score.** Each opened round (1-12) may hold a staff-entered Achieve score. Reports show it in the Dashboard "Achieve score" column of rounds 1-6 and in the extra-round detail of rounds 7+.
+- **AS-D2 — Rounds 1-2.** These rounds have no computed score; only the staff-entered value fills them, otherwise "ยังไม่บันทึก".
+- **AS-D3 — A round without a Follow-up.** A completed round 3-6 that ended without its Program Follow-up shows "ครั้งนี้ไม่ได้ติดตามผล" in every Follow-up-derived cell of that round on both sheets (Dashboard DTX/BW/Achieve score, service sheet date, achieved days, rate, plan adjusted and obstacle). DTX/BW keep the round vitals when present. An open round is unchanged.
+- "ผลลัพธ์ที่ได้" (BR-05) stays out of scope. The CVD risk score needs no change (D7, already staff-entered in the Baseline and Final Assessment forms).
+
+### Defaults taken (the Owner may revise)
+
+- **Scale:** percent 0-100 with one decimal, the unit of the computed BR-04 Follow-up achievement rate.
+- **Precedence:** a staff-entered score wins. Rounds 3-6 without one use the computed rate, with no extra note. The service sheet "อัตราความสำเร็จตามเป้า" columns keep the computed rate. On the Dashboard, a completed round without a Follow-up that has a staff score shows the score (the score is not Follow-up-derived). The round page shows the computed rate next to the input as a hint.
+- **Who:** the direct Hospital OWNER/MEMBER of the patient's Hospital only (the manage policy without the assigned อสม.). Patients, caregivers, network Parent read and other Hospitals are refused. The score is a staff metric: the patient and caregiver round views never carry it, and the staff round detail exposes it only to OWNER/MEMBER.
+- **When:** while the Program is ACTIVE, for every opened round, also after the round is completed (the score is often judged at the next visit). Every change is audited as `patient_program_round.achieve_score_recorded` with the previous and new value.
+
+### Data model
+
+- `PatientProgramRoundAchieveScore` (migration 20261130100000) holds one row per `(patientProgramId, roundNumber)`, with a composite foreign key to `PatientProgramRound` (the round must be opened). It is a separate table because the round row is frozen once completed. `score` is `NUMERIC(4,1)`, CHECK 0-100, and null means cleared. `recordedByUserId`/`recordedAt` name the latest write and `submissionNonce` (unique) is that write's request token. A trigger forbids deletes outside the demo/test reset switch and any change of the row's round.
+- Idempotency: the row only carries the latest token, so each accepted request also writes its audit event with the nonce and a request hash. This includes a request that leaves the value unchanged. The audit action joins the partial unique index `AuditEvent_round_plan_submission_nonce_key`. A retried request answers `ALREADY_RECORDED` and never reapplies its value after a later correction. A nonce reused with other data, or by another user, is a conflict.
+- The coverage registry entry `achieveScore` is `SOURCE_BACKED_STAFF_ENTERED_DERIVED_FALLBACK`. The former `unavailable.achievementRate` (`DERIVATION_UNAPPROVED`) is removed.
 
 ## Consequences
 
