@@ -12,8 +12,6 @@
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "admin:recover": "node scripts/admin-recover.mjs",
     "account:password-change:reconcile": "node scripts/password-change-reconcile.mjs",
-    "demo:seed": "node scripts/demo-seed.mjs seed",
-    "demo:reset": "node scripts/demo-seed.mjs reset",
     "env:check": "node scripts/env-check.mjs",
     "prisma:generate": "prisma generate",
     "line:rich-menu:assets": "jiti scripts/generate-line-rich-menu-assets.ts",

@@ -42,7 +42,7 @@ function isUniqueViolation(error: unknown): boolean {
  * ADR-0022: opens guideline rounds 1..`upToRound` (at most 6) with their plans, without leaving any round
  * completed. A round opens only after the previous one is completed (FR-1b trigger), so the earlier rounds
  * are completed for the opening and those completions are removed again in the same transaction with the
- * demo/test reset switch. For fixtures that need rows in several rounds but no round progress (reports).
+ * test/maintenance purge switch. For fixtures that need rows in several rounds but no round progress (reports).
  */
 export async function openGuidelineRounds(patientProgramId: string, upToRound: number): Promise<void> {
   const program = await findProgramOpening(patientProgramId);
@@ -78,6 +78,7 @@ export async function openGuidelineRounds(patientProgramId: string, upToRound: n
       }
     }
 
+    // This transaction-local test/maintenance purge switch is not a demo feature.
     await transaction.$executeRaw`SELECT set_config('demi.service_area_purge', 'demo-reset', true)`;
     await transaction.patientProgramRoundCompletion.deleteMany({ where: { id: { in: temporaryCompletionIds } } });
   });
@@ -161,8 +162,8 @@ export async function openFinalAssessmentRound(input: unknown): Promise<void> {
 }
 
 /**
- * Completions, skips, opened rounds, their plan items and Achieve scores are append-only outside the demo/test
- * reset switch (migrations 20261102100000, 20261124100000 and 20261130100000). Cleanup only: a Program needs its rounds again afterwards.
+ * Completions, skips, opened rounds, their plan items and Achieve scores are append-only outside the test/maintenance
+ * purge switch (migrations 20261102100000, 20261124100000 and 20261130100000). Cleanup only: a Program needs its rounds again afterwards.
  */
 export async function clearProgramRoundCompletions(programIds?: readonly string[]): Promise<void> {
   const prisma = getPrisma();

@@ -40,7 +40,7 @@ Kept: SR-D3 (skip with a reason), SR-D5 (round n is writable only after round n-
 - Completions, skips, round vitals and ledger rows (`PatientProgramRoundActivity`, FR-1b) accept rounds 1-12; completions, skips and round vitals require an opened round. A round opens only as round 1 or after the previous round is completed (FR-1b trigger on `PatientProgramRound` insert; rows of the FR-1 data step predate it).
 - The ledger source is read from the plan (FR-1b): PLANNED when the round's active plan lists the tool's step (the health path as HEALTH_PATH_REVIEW in rounds >= 6), otherwise EXTRA, evaluated in the writing transaction. A per-round tool result (ไม้บรรทัดวัดใจ, ตารางชีวิตของฉัน, กราฟวัดลอยจม, ความฝันของฉัน) requires an active plan item for its tool in its round; a trigger replaces the fixed-round CHECKs.
 - Round vitals may be recorded in any round (FR-4). A round's VITALS evidence is its round vitals or its Follow-up measurements: DONE when either source holds every required measurement. When both exist, the view shows the latest recorded one and names its source.
-- All guards are database triggers and constraints behind the service checks. The demo/test reset keeps the transaction-local `demi.service_area_purge = 'demo-reset'` escape for deletes.
+- All guards are database triggers and constraints behind the service checks. Test/maintenance purges use the transaction-local `demi.service_area_purge = 'demo-reset'` switch for deletes.
 
 ### Why the plan is materialized
 
@@ -75,13 +75,13 @@ A round's plan is stored when the round opens, not computed from the guideline w
 
 ### Data model
 
-- `PatientProgramRoundAchieveScore` (migration 20261130100000) holds one row per `(patientProgramId, roundNumber)`, with a composite foreign key to `PatientProgramRound` (the round must be opened). It is a separate table because the round row is frozen once completed. `score` is `NUMERIC(4,1)`, CHECK 0-100, and null means cleared. `recordedByUserId`/`recordedAt` name the latest write and `submissionNonce` (unique) is that write's request token. A trigger forbids deletes outside the demo/test reset switch and any change of the row's round.
+- `PatientProgramRoundAchieveScore` (migration 20261130100000) holds one row per `(patientProgramId, roundNumber)`, with a composite foreign key to `PatientProgramRound` (the round must be opened). It is a separate table because the round row is frozen once completed. `score` is `NUMERIC(4,1)`, CHECK 0-100, and null means cleared. `recordedByUserId`/`recordedAt` name the latest write and `submissionNonce` (unique) is that write's request token. A trigger forbids deletes outside the test/maintenance purge switch and any change of the row's round.
 - Idempotency: the row only carries the latest token, so each accepted request also writes its audit event with the nonce and a request hash. This includes a request that leaves the value unchanged. The audit action joins the partial unique index `AuditEvent_round_plan_submission_nonce_key`. A retried request answers `ALREADY_RECORDED` and never reapplies its value after a later correction. A nonce reused with other data, or by another user, is a conflict.
 - The coverage registry entry `achieveScore` is `SOURCE_BACKED_STAFF_ENTERED_DERIVED_FALLBACK`. The former `unavailable.achievementRate` (`DERIVATION_UNAPPROVED`) is removed.
 
 ## Consequences
 
-- Every round fact now needs an opened round. Writers that bypass the services (tests, scripts) must open the round first; the demo reset deletes plan items and rounds under the reset switch.
+- Every round fact now needs an opened round. Writers that bypass the services (tests, scripts) must open the round first; test/maintenance cleanup deletes plan items and rounds under the purge switch.
 - Round writes gain one or two lookups (round opened, active plan item) inside the same serializable transaction.
 - A tool write for a step the plan does not list is refused with the round conflict message "รายการนี้ไม่อยู่ในแผนของครั้งที่ n" (previously a validation error).
 
