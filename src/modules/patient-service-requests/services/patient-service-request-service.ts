@@ -5,6 +5,7 @@ import {
   MembershipStatus,
   MembershipType,
   PatientServiceCode,
+  PatientServiceRequestSlot,
   PatientServiceRequestStatus,
   Prisma,
   Role,
@@ -17,8 +18,11 @@ import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { assignOsmToPatientInTransaction } from "@/modules/patient-assignment/services/patient-osm-assignment-transaction";
-import { createPatientOsmAssignmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
+import { SERVICE_APPOINTMENT_TYPE } from "@/modules/appointments/domain/appointment-service-definitions";
+import { createServiceRequestAppointmentInTransaction } from "@/modules/appointments/services/appointment-service";
+import { createPatientServiceRequestLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
+import { currentAssignedOsmRecipient } from "@/modules/appointments/services/appointment-line-notification-recipient-service";
+import { serviceDateToUtcDate } from "@/shared/time/service-date";
 import {
   ConflictError,
   ForbiddenError,
@@ -27,16 +31,17 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
+import { isValidPreferredDate } from "../domain/patient-service-definitions";
 import {
   PATIENT_SERVICE_REQUEST_CAPABILITIES,
   decidePatientServiceRequestPolicy,
 } from "../policies/patient-service-request-policy";
 import {
   hospitalServiceRequestListSchema,
-  hospitalServiceRequestReviewInputSchema,
-  hospitalServiceRequestReviewSchema,
+  patientServiceRequestConfirmSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
+  patientServiceRequestRejectSchema,
   type HospitalServiceRequestListInput,
 } from "../schemas/patient-service-request-schemas";
 
@@ -48,11 +53,21 @@ export type PatientServiceRequestDependencies = {
   transactionRetries?: number;
 };
 
-export type PatientServiceRequestStatusView = {
+/** ADR-0023: the patient's stated preference; null on requests made before SR-B. */
+export type PatientServiceRequestPreferenceView = {
+  /** YYYY-MM-DD on the Asia/Bangkok calendar. */
+  preferredDate: string | null;
+  preferredSlot: PatientServiceRequestSlot | null;
+  note: string | null;
+};
+
+export type PatientServiceRequestStatusView = PatientServiceRequestPreferenceView & {
   requestId: string;
   serviceCode: PatientServiceCode;
   status: PatientServiceRequestStatus;
   preferredOsmName: string | null;
+  /** SR-D1: why the hospital rejected the request; shown to the patient. */
+  rejectionReason: string | null;
   createdAt: Date;
 };
 
@@ -63,11 +78,12 @@ export type PatientServiceRelationshipView = {
   /** Phase F: care with this Hospital ended; request history only, no new requests. */
   careEnded: boolean;
   offerings: readonly { offeringId: string; code: PatientServiceCode }[];
-  osmChoices: readonly { relationshipId: string; displayName: string }[];
+  /** SR-D3: the ACTIVE อสม. of the Hospital, the patient's assigned อสม. first. */
+  osmChoices: readonly { relationshipId: string; displayName: string; assigned: boolean }[];
   requests: readonly PatientServiceRequestStatusView[];
 };
 
-export type HospitalPatientServiceRequestView = {
+export type HospitalPatientServiceRequestView = PatientServiceRequestPreferenceView & {
   requestId: string;
   appointmentId: string | null;
   relationshipId: string;
@@ -82,8 +98,18 @@ export type HospitalPatientServiceRequestView = {
   currentOsmUserId: string | null;
   currentOsmName: string | null;
   osmChoices: readonly { userId: string; displayName: string }[];
+  rejectionReason: string | null;
   createdAt: Date;
 };
+
+export type PatientServiceRequestConfirmResult = {
+  requestId: string;
+  appointmentId: string;
+  patientHospitalRelationshipId: string;
+};
+
+/** Shown as is: the patient already has an open request for this service. */
+export const DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE = "มีคำขอบริการนี้ที่ยังรอโรงพยาบาลดำเนินการอยู่แล้ว";
 
 export type HospitalPatientServiceRequestPage = {
   requests: readonly HospitalPatientServiceRequestView[];
@@ -210,6 +236,19 @@ async function assertPersistedHospitalReviewer(
   }
 }
 
+function toPreferenceView(request: {
+  preferredDate: Date | null;
+  preferredSlot: PatientServiceRequestSlot | null;
+  note: string | null;
+}): PatientServiceRequestPreferenceView {
+  return {
+    // A DATE column reads back as UTC midnight of that calendar date.
+    preferredDate: request.preferredDate ? request.preferredDate.toISOString().slice(0, 10) : null,
+    preferredSlot: request.preferredSlot,
+    note: request.note,
+  };
+}
+
 function fullName(givenName: string | null, familyName: string | null): string {
   const name = [givenName, familyName]
     .map((value) => value?.trim())
@@ -255,6 +294,12 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
         },
       },
     },
+    osmAssignments: {
+      where: { endedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 1,
+      select: { osmUserId: true },
+    },
     serviceRequests: {
       where: { requestedByUserId },
       orderBy: { createdAt: "desc" },
@@ -262,6 +307,10 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
         id: true,
         status: true,
         createdAt: true,
+        preferredDate: true,
+        preferredSlot: true,
+        note: true,
+        rejectionReason: true,
         offering: { select: { code: true } },
         preferredOsm: {
           select: { person: { select: { givenName: true, familyName: true } } },
@@ -311,11 +360,15 @@ export async function listOwnPatientServiceRequests(
       const hospitalActive = relationship.hospital.status === HospitalStatus.ACTIVE;
       const careEnded = relationship.endedAt !== null;
       const acceptsRequests = hospitalActive && !careEnded;
+      const assignedOsmUserId = relationship.osmAssignments[0]?.osmUserId ?? null;
       const osmChoices = acceptsRequests
-        ? relationship.hospital.osmHospitalRelationships.map(({ id, user: osm }) => ({
-            relationshipId: id,
-            displayName: fullName(osm.person.givenName, osm.person.familyName),
-          }))
+        ? relationship.hospital.osmHospitalRelationships
+            .map(({ id, user: osm }) => ({
+              relationshipId: id,
+              displayName: fullName(osm.person.givenName, osm.person.familyName),
+              assigned: osm.id === assignedOsmUserId,
+            }))
+            .sort((left, right) => Number(right.assigned) - Number(left.assigned))
         : [];
 
       return {
@@ -331,9 +384,11 @@ export async function listOwnPatientServiceRequests(
           : [],
         osmChoices,
         requests: relationship.serviceRequests.map((request) => ({
+          ...toPreferenceView(request),
           requestId: request.id,
           serviceCode: request.offering.code,
           status: request.status,
+          rejectionReason: request.rejectionReason,
           preferredOsmName: request.preferredOsm
             ? fullName(
                 request.preferredOsm.person.givenName,
@@ -370,6 +425,12 @@ export async function createPatientServiceRequest(
     return await runSerializableTransaction(
       getDatabase(dependencies),
       async (transaction) => {
+        const now = getNow(dependencies);
+        // SR-D6: the window follows the server clock, never the client's.
+        if (!isValidPreferredDate(parsed.data.preferredDate, now)) {
+          throw new ValidationError("The preferred date must be from tomorrow to 60 days ahead");
+        }
+
         const patient = await assertPersistedPatient(transaction, actor);
         const relationship = await transaction.patientHospitalRelationship.findFirst({
           where: {
@@ -426,6 +487,20 @@ export async function createPatientServiceRequest(
           preferredOsmUserId = osmRelationship.userId;
         }
 
+        // The partial unique index enforces this too; checking first gives the patient a clear message.
+        const open = await transaction.patientServiceRequest.findFirst({
+          where: {
+            patientHospitalRelationshipId: relationship.id,
+            offeringId: offering.id,
+            status: { in: [PatientServiceRequestStatus.PENDING, PatientServiceRequestStatus.APPROVED] },
+          },
+          select: { id: true },
+        });
+
+        if (open) {
+          throw new ConflictError(DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE);
+        }
+
         const request = await transaction.patientServiceRequest.create({
           data: {
             patientHospitalRelationshipId: relationship.id,
@@ -433,9 +508,24 @@ export async function createPatientServiceRequest(
             offeringId: offering.id,
             requestedByUserId: actor.userId,
             preferredOsmUserId,
+            preferredDate: serviceDateToUtcDate(parsed.data.preferredDate),
+            preferredSlot: parsed.data.preferredSlot,
+            note: parsed.data.note ?? null,
+            createdAt: now,
           },
-          select: { id: true, status: true },
+          select: { id: true, status: true, createdAt: true },
         });
+
+        const recipientOsmUserId = preferredOsmUserId ??
+          await currentAssignedOsmRecipient(transaction, relationship.id);
+        if (recipientOsmUserId) {
+          await createPatientServiceRequestLineNotificationIntent(transaction, {
+            serviceRequestId: request.id,
+            patientHospitalRelationshipId: relationship.id,
+            osmUserId: recipientOsmUserId,
+            sourceUpdatedAt: request.createdAt,
+          }, now);
+        }
 
         return { requestId: request.id, status: request.status };
       },
@@ -513,19 +603,47 @@ export async function withdrawOwnPatientServiceRequest(
   }
 }
 
-export async function reviewPatientServiceRequest(
+async function findReviewableRequest(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  requestId: string,
+) {
+  const request = await transaction.patientServiceRequest.findUnique({
+    where: { id: requestId, relationship: { is: activePatientHospitalRelationshipWhere } },
+    select: {
+      id: true,
+      hospitalId: true,
+      patientHospitalRelationshipId: true,
+      status: true,
+      offering: { select: { code: true } },
+    },
+  });
+
+  if (!request) {
+    throw new NotFoundError();
+  }
+
+  // ADR-0019: only a direct OWNER of the request's Hospital reviews it.
+  assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.review, request.hospitalId);
+  await assertPersistedHospitalReviewer(transaction, actor.userId, request.hospitalId);
+
+  return request;
+}
+
+/**
+ * ADR-0023 (SR-D1, SR-D2): "ยืนยันนัด" books the request's home-visit appointment in the same transaction and
+ * moves the request to STARTED. The chosen อสม. may be any ACTIVE อสม. of the Hospital; the patient's
+ * `PatientOsmAssignment` never changes. A retry with the same nonce returns the same appointment.
+ */
+export async function confirmPatientServiceRequest(
   actor: ActorContext | null | undefined,
   input: unknown,
-  decision: "APPROVE" | "REJECT",
   dependencies: PatientServiceRequestDependencies = {},
-): Promise<PatientServiceRequestStatus> {
-  const reviewInput = hospitalServiceRequestReviewInputSchema.safeParse(input);
-  const parsed = reviewInput.success
-    ? hospitalServiceRequestReviewSchema.safeParse({ ...reviewInput.data, decision })
-    : reviewInput;
+): Promise<PatientServiceRequestConfirmResult> {
+  const parsed = patientServiceRequestConfirmSchema.safeParse(input);
 
   if (!parsed.success) {
-    throw new ValidationError("Patient service request reference is invalid");
+    throw new ValidationError("Patient service request confirmation is invalid");
   }
 
   if (!actor) {
@@ -536,101 +654,103 @@ export async function reviewPatientServiceRequest(
     return await runSerializableTransaction(
       getDatabase(dependencies),
       async (transaction) => {
-        const request = await transaction.patientServiceRequest.findUnique({
-          where: { id: parsed.data.requestId, relationship: { is: activePatientHospitalRelationshipWhere } },
-          select: {
-            id: true,
-            hospitalId: true,
-            patientHospitalRelationshipId: true,
-            preferredOsmUserId: true,
-            status: true,
-            offering: { select: { code: true } },
-            relationship: {
-              select: {
-                osmAssignments: {
-                  where: { endedAt: null },
-                  orderBy: { createdAt: "desc" },
-                  take: 1,
-                  select: { id: true, osmUserId: true },
-                },
-              },
-            },
+        const request = await findReviewableRequest(transaction, actor, parsed.data.requestId);
+        const now = getNow(dependencies);
+
+        if (new Date(parsed.data.scheduledAt).getTime() <= now.getTime()) {
+          throw new ValidationError("The appointment time must be in the future");
+        }
+
+        const appointment = await createServiceRequestAppointmentInTransaction(
+          transaction,
+          actor,
+          {
+            patientHospitalRelationshipId: request.patientHospitalRelationshipId,
+            submissionNonce: parsed.data.submissionNonce,
+            scheduledAt: parsed.data.scheduledAt,
+            type: SERVICE_APPOINTMENT_TYPE[request.offering.code],
+            serviceCode: request.offering.code,
+            responsibleUserId: null,
+            assignedOsmUserId: parsed.data.osmUserId,
+            durationMinutes: parsed.data.durationMinutes ?? null,
+            locationType: "HOME_VISIT",
+            locationDetail: parsed.data.locationDetail ?? null,
+            note: parsed.data.note ?? null,
           },
-        });
+          now,
+          { serviceRequestId: request.id },
+        );
 
-        if (!request) {
-          throw new NotFoundError();
-        }
+        return {
+          requestId: request.id,
+          appointmentId: appointment.appointmentId,
+          patientHospitalRelationshipId: appointment.patientHospitalRelationshipId,
+        };
+      },
+      dependencies.transactionRetries,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
 
-        assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.review, request.hospitalId);
-        await assertPersistedHospitalReviewer(transaction, actor.userId, request.hospitalId);
+/** ADR-0023 (SR-D1): a rejection needs a reason, which the patient sees. */
+export async function rejectPatientServiceRequest(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientServiceRequestDependencies = {},
+): Promise<PatientServiceRequestStatus> {
+  const parsed = patientServiceRequestRejectSchema.safeParse(input);
 
-        const expectedStatus = PatientServiceRequestStatus.PENDING;
-        const nextStatus = parsed.data.decision === "APPROVE"
-          ? PatientServiceRequestStatus.APPROVED
-          : PatientServiceRequestStatus.REJECTED;
+  if (!parsed.success) {
+    throw new ValidationError("Patient service request rejection is invalid");
+  }
 
-        if (request.status !== expectedStatus) {
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializableTransaction(
+      getDatabase(dependencies),
+      async (transaction) => {
+        const request = await findReviewableRequest(transaction, actor, parsed.data.requestId);
+
+        if (request.status !== PatientServiceRequestStatus.PENDING) {
           throw new ConflictError("This Patient service request is not in a reviewable state");
-        }
-
-        const selectedOsmUserId = parsed.data.osmUserId ?? null;
-        const currentAssignment = request.relationship.osmAssignments[0] ?? null;
-        if (
-          parsed.data.decision === "APPROVE" &&
-          currentAssignment &&
-          currentAssignment.osmUserId !== selectedOsmUserId &&
-          parsed.data.confirmReassignment !== true
-        ) {
-          throw new ConflictError("Confirm the OSM change before approving this request");
         }
 
         const now = getNow(dependencies);
         const changed = await transaction.patientServiceRequest.updateMany({
-          where: { id: request.id, status: expectedStatus },
-          data: { status: nextStatus, reviewedByUserId: actor.userId, reviewedAt: now },
+          where: { id: request.id, status: PatientServiceRequestStatus.PENDING },
+          data: {
+            status: PatientServiceRequestStatus.REJECTED,
+            rejectionReason: parsed.data.reason,
+            reviewedByUserId: actor.userId,
+            reviewedAt: now,
+          },
         });
 
         if (changed.count !== 1) {
           throw new ConflictError("This Patient service request changed concurrently");
         }
 
-        if (parsed.data.decision === "APPROVE" && selectedOsmUserId) {
-          const assignment = await assignOsmToPatientInTransaction(
-            transaction,
-            actor,
-            { patientHospitalRelationshipId: request.patientHospitalRelationshipId, osmUserId: selectedOsmUserId },
-            now,
-          );
-          if (assignment.operation !== "NOOP" && assignment.assignmentId) {
-            await createPatientOsmAssignmentLineNotificationIntent(transaction, {
-              assignmentId: assignment.assignmentId,
-              patientHospitalRelationshipId: request.patientHospitalRelationshipId,
-              osmUserId: selectedOsmUserId,
-              sourceUpdatedAt: now,
-            }, now);
-          }
-        }
-
         await recordAuditEvent(
           {
             actorUserId: actor.userId,
-            action: parsed.data.decision === "APPROVE"
-              ? "PATIENT_SERVICE_REQUEST_APPROVED"
-              : "PATIENT_SERVICE_REQUEST_REJECTED",
+            action: "PATIENT_SERVICE_REQUEST_REJECTED",
             resourceType: "PatientServiceRequest",
             resourceId: request.id,
             metadata: {
               hospitalId: request.hospitalId,
               serviceCode: request.offering.code,
-              status: nextStatus,
-              ...(parsed.data.decision === "APPROVE" ? { osmAssigned: true } : {}),
+              status: PatientServiceRequestStatus.REJECTED,
             },
           },
           transaction,
         );
 
-        return nextStatus;
+        return PatientServiceRequestStatus.REJECTED;
       },
       dependencies.transactionRetries,
     );
@@ -704,6 +824,10 @@ export async function listHospitalPatientServiceRequests(
         preferredOsmUserId: true,
         status: true,
         createdAt: true,
+        preferredDate: true,
+        preferredSlot: true,
+        note: true,
+        rejectionReason: true,
         offering: { select: { code: true } },
         appointments: { select: { id: true } },
         relationship: {
@@ -759,6 +883,7 @@ export async function listHospitalPatientServiceRequests(
         ? { createdAt: last.createdAt.toISOString(), requestId: last.id }
         : null,
       requests: visible.map((request) => ({
+        ...toPreferenceView(request),
         requestId: request.id,
         appointmentId: request.appointments[0]?.id ?? null,
         relationshipId: request.relationship.id,
@@ -789,6 +914,7 @@ export async function listHospitalPatientServiceRequests(
           userId: osm.userId,
           displayName: fullName(osm.user.person.givenName, osm.user.person.familyName),
         })),
+        rejectionReason: request.rejectionReason,
         createdAt: request.createdAt,
       })),
     };

@@ -105,6 +105,7 @@ function requestHash(
     locationDetail: "ห้องตรวจ 1",
     note: "รายละเอียดที่ไม่ควรอยู่ใน audit",
     ...overrides,
+    serviceCode: overrides.serviceCode ?? null,
     assignedOsmUserId: overrides.assignedOsmUserId ?? null,
   };
 

@@ -8,7 +8,7 @@ import { resolvePatientImportTemplateTarget } from "@/modules/patient-provisioni
 import { importPatientRoster, previewPatientRosterImport } from "@/modules/patient-provisioning/services/patient-roster-import-service";
 import { provisionPatient } from "@/modules/patient-provisioning/services/patient-provisioning-service";
 import { assertPatientActivationActorInDatabase } from "@/modules/patient-activation/services/patient-activation-service";
-import { listHospitalPatientServiceRequests, reviewPatientServiceRequest } from "@/modules/patient-service-requests/services/patient-service-request-service";
+import { listHospitalPatientServiceRequests, rejectPatientServiceRequest } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { HOSPITAL_REPORT_CAPABILITIES } from "@/modules/reporting/policies/hospital-report-policy";
 import { resolveHospitalReportingAccessContext } from "@/modules/reporting/services/hospital-report-access-service";
 import { listWorkforce, listWorkforceHospitals, previewWorkforceActivation, provisionOsm, regenerateWorkforceActivation } from "@/modules/workforce/services/workforce-service";
@@ -161,10 +161,10 @@ describe("persisted Owner administration", () => {
     const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, offeringId: offering.id, requestedByUserId: requester.id } });
     const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
     for (const subject of [member, osm, staleOwner]) {
-      await expect(reviewPatientServiceRequest(subject, { requestId: serviceRequest.id, osmUserId: osm.userId }, "APPROVE")).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(rejectPatientServiceRequest(subject, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "PENDING" });
-    await expect(reviewPatientServiceRequest(owner, { requestId: serviceRequest.id, osmUserId: osm.userId }, "APPROVE")).resolves.toBe("APPROVED");
+    await expect(rejectPatientServiceRequest(owner, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).resolves.toBe("REJECTED");
   });
 
   it("disables legacy manual patient creation even for OWNER", async () => {

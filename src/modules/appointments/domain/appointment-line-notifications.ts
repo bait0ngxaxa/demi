@@ -3,7 +3,15 @@ import "server-only";
 import {
   AppointmentLineNotificationEventKind,
   LineReachability,
+  type PatientServiceCode,
+  type PatientServiceRequestSlot,
 } from "@prisma/client";
+
+import {
+  PATIENT_SERVICE_LABELS,
+  PATIENT_SERVICE_REQUEST_SLOT_LABELS,
+} from "@/modules/patient-service-requests/domain/patient-service-definitions";
+
 import {
   APPOINTMENT_TYPE_LABELS,
   type AppointmentTypeValue,
@@ -11,6 +19,18 @@ import {
 
 export function appointmentLineNotificationText(type: AppointmentTypeValue): string {
   return `มีนัดหมายประเภท ${APPOINTMENT_TYPE_LABELS[type]} อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ`;
+}
+
+/** ADR-0023 (SR-B): informational; the date is a calendar date, so it is formatted without a time zone shift. */
+export function patientServiceRequestLineNotificationText(input: {
+  serviceCode: PatientServiceCode;
+  preferredDate: Date | null;
+  preferredSlot: PatientServiceRequestSlot | null;
+}): string {
+  const when = input.preferredDate && input.preferredSlot
+    ? ` วันที่ ${new Intl.DateTimeFormat("th-TH", { dateStyle: "long", timeZone: "UTC" }).format(input.preferredDate)} ${PATIENT_SERVICE_REQUEST_SLOT_LABELS[input.preferredSlot]}`
+    : "";
+  return `มีคำขอรับบริการ${PATIENT_SERVICE_LABELS[input.serviceCode]}${when} กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ`;
 }
 
 export const APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS = 3;

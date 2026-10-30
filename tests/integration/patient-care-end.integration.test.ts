@@ -384,7 +384,7 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     const row = await db.patientAppointment.findUniqueOrThrow({ where: { id: future.appointmentId } });
     await expect(acknowledgeOwnPatientAppointment(f.patient, { patientHospitalRelationshipId: f.relationshipId, appointmentId: future.appointmentId, expectedUpdatedAt: row.updatedAt.toISOString() }, dependencies))
       .rejects.toBeInstanceOf(NotFoundError);
-    await expect(createPatientServiceRequest(f.patient, { relationshipId: f.relationshipId, offeringId: offering.id }, dependencies)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(createPatientServiceRequest(f.patient, { relationshipId: f.relationshipId, offeringId: offering.id, preferredDate: "2026-10-20", preferredSlot: "MORNING" }, dependencies)).rejects.toBeInstanceOf(NotFoundError);
     const services = await listOwnPatientServiceRequests(f.patient, dependencies);
     expect(services.find(({ relationshipId }) => relationshipId === f.relationshipId)).toMatchObject({ careEnded: true, offerings: [] });
 

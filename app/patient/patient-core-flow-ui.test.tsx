@@ -6,7 +6,8 @@ vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: vi.fn(),
   withdrawOwnPatientServiceRequestAction: vi.fn(),
   setHospitalServiceOfferingAction: vi.fn(),
-  reviewPatientServiceRequestAction: vi.fn(),
+  confirmPatientServiceRequestAction: vi.fn(),
+  rejectPatientServiceRequestAction: vi.fn(),
 }));
 
 import { HospitalServiceCatalogWorkspace } from "../app/patients/service-catalog/hospital-service-catalog-workspace";
@@ -22,6 +23,7 @@ describe("Patient service request presentation", () => {
   it("uses preference language and avoids exposing the OSM User ID in Patient markup", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientServicesWorkspace, {
+        preferredDateBounds: { min: "2026-10-02", max: "2026-11-30" },
         relationships: [
           {
             relationshipId,
@@ -29,14 +31,33 @@ describe("Patient service request presentation", () => {
             hospitalActive: true,
             careEnded: false,
             offerings: [{ offeringId, code: "SCREENING" as const }],
-            osmChoices: [{ relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล" }],
+            // The service lists the assigned อสม. first.
+            osmChoices: [
+              { relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล", assigned: true },
+              { relationshipId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง อสม.", assigned: false },
+            ],
             requests: [
               {
                 requestId: "66666666-6666-4666-8666-666666666666",
                 serviceCode: "SCREENING" as const,
                 status: "PENDING" as const,
                 preferredOsmName: "สมใจ ผู้ดูแล",
+                preferredDate: "2026-10-05",
+                preferredSlot: "AFTERNOON" as const,
+                note: "สะดวกหลังบ่ายสอง",
+                rejectionReason: null,
                 createdAt: new Date("2026-10-01T00:00:00.000Z"),
+              },
+              {
+                requestId: "88888888-8888-4888-8888-888888888888",
+                serviceCode: "FOLLOW_UP" as const,
+                status: "REJECTED" as const,
+                preferredOsmName: null,
+                preferredDate: "2026-10-03",
+                preferredSlot: "ANY" as const,
+                note: null,
+                rejectionReason: "ช่วงนี้ไม่มี อสม. ว่าง",
+                createdAt: new Date("2026-09-30T00:00:00.000Z"),
               },
             ],
           },
@@ -44,8 +65,18 @@ describe("Patient service request presentation", () => {
       }),
     );
 
-    expect(markup).toContain("ความประสงค์");
-    expect(markup).toContain("ให้โรงพยาบาลจัดผู้ดูแลให้");
+    // ADR-0023 (SR-D3, SR-D6): date, slot and note; the assigned อสม. is preselected; a rejection shows its reason.
+    expect(markup).toContain('type="date"');
+    expect(markup).toContain('min="2026-10-02"');
+    expect(markup).toContain('max="2026-11-30"');
+    expect(markup).toContain('name="preferredSlot"');
+    expect(markup).toContain('name="note"');
+    expect(markup).toContain(`<option value="${osmRelationshipId}" selected="">สมใจ ผู้ดูแล (อสม. ผู้ดูแลของคุณ)</option>`);
+    expect(markup.indexOf("(อสม. ผู้ดูแลของคุณ)")).toBeLessThan(markup.indexOf("สมหญิง อสม."));
+    expect(markup).toContain("ไม่ระบุ — ให้โรงพยาบาลจัดให้");
+    expect(markup).toContain("5 ตุลาคม 2569 · บ่าย");
+    expect(markup).toContain("หมายเหตุ: สะดวกหลังบ่ายสอง");
+    expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");
     expect(markup).toContain("รอโรงพยาบาลตรวจสอบ");
     expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนใน Program");
     expect(markup).not.toContain("อสม.ที่ได้รับมอบหมาย");

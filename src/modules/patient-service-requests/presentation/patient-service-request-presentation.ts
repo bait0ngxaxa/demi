@@ -1,29 +1,35 @@
 import type {
   PatientServiceCode,
+  PatientServiceRequestSlot,
   PatientServiceRequestStatus,
 } from "@prisma/client";
 
-import { PATIENT_SERVICE_LABELS } from "../domain/patient-service-definitions";
+import { serviceDateToUtcDate } from "@/shared/time/service-date";
+
+import {
+  PATIENT_SERVICE_LABELS,
+  PATIENT_SERVICE_REQUEST_SLOT_LABELS,
+} from "../domain/patient-service-definitions";
 import type { HospitalServiceRequestListInput } from "../schemas/patient-service-request-schemas";
 
 export const hospitalServiceRequestGroups = [
   {
     key: "PENDING",
     label: "รอตรวจสอบ",
-    description: "ตรวจคำขอของผู้ป่วย แล้วเลือกอนุมัติหรือไม่อนุมัติ",
+    description: "ตรวจคำขอของผู้ป่วย แล้วยืนยันนัดเยี่ยมบ้านหรือไม่อนุมัติพร้อมเหตุผล",
     empty: "ไม่มีคำขอรอตรวจสอบในกลุ่มนี้ สามารถเลือกดูคำขอที่อนุมัติแล้วหรือประวัติได้",
   },
   {
     key: "APPROVED",
     label: "อนุมัติแล้ว",
-    description: "คำขอได้รับการอนุมัติแล้ว เปิดงานดูแลผู้ป่วยเพื่อดำเนินงานต่อ และยืนยันสถานะเมื่อเริ่มให้บริการ",
+    description: "คำขอที่อนุมัติไว้ก่อนเปลี่ยนเป็นการยืนยันนัด ยังรอยืนยันนัดเยี่ยมบ้าน",
     empty: "ไม่มีคำขอที่อยู่ในสถานะอนุมัติแล้วในกลุ่มนี้",
   },
   {
     key: "HISTORY",
-    label: "เริ่มบริการและประวัติ",
-    description: "คำขอที่เริ่มให้บริการ ไม่อนุมัติ หรือถอนแล้ว แสดงเพื่ออ่านประวัติ ไม่มีการดำเนินการตรวจสอบเพิ่มเติม",
-    empty: "ยังไม่มีคำขอที่เริ่มให้บริการ ไม่อนุมัติ หรือถอนแล้วในกลุ่มนี้",
+    label: "ยืนยันนัดและประวัติ",
+    description: "คำขอที่ยืนยันนัดแล้ว ไม่อนุมัติ หรือถอนแล้ว แสดงเพื่ออ่านประวัติ ไม่มีการดำเนินการตรวจสอบเพิ่มเติม",
+    empty: "ยังไม่มีคำขอที่ยืนยันนัด ไม่อนุมัติ หรือถอนแล้วในกลุ่มนี้",
   },
 ] as const;
 
@@ -50,9 +56,10 @@ export function patientServiceRequestStatusLabel(
     case "PENDING":
       return "รอโรงพยาบาลตรวจสอบ";
     case "APPROVED":
-      return "อนุมัติคำขอแล้ว";
+      return "อนุมัติคำขอแล้ว รอยืนยันนัด";
     case "STARTED":
-      return "เริ่มให้บริการแล้ว";
+      // ADR-0023: STARTED means the appointment is booked.
+      return "ยืนยันนัดแล้ว";
     case "REJECTED":
       return "ไม่อนุมัติคำขอ";
     case "WITHDRAWN":
@@ -82,4 +89,24 @@ export function formatPatientServiceRequestDate(date: Date, timeZone?: string): 
     timeStyle: "short",
     timeZone,
   }).format(date);
+}
+
+export function patientServiceRequestSlotLabel(slot: PatientServiceRequestSlot): string {
+  return PATIENT_SERVICE_REQUEST_SLOT_LABELS[slot];
+}
+
+/** A preferred date is a calendar date (YYYY-MM-DD), so it is formatted without a time zone shift. */
+export function formatPatientServicePreferredDate(preferredDate: string): string {
+  return new Intl.DateTimeFormat("th-TH", { dateStyle: "long", timeZone: "UTC" }).format(
+    serviceDateToUtcDate(preferredDate),
+  );
+}
+
+/** "ยืนยันนัด" prefill: the start of the preferred slot, as a Bangkok `datetime-local` value. */
+export function preferredSlotDateTimeInput(
+  preferredDate: string | null,
+  preferredSlot: PatientServiceRequestSlot | null,
+): string {
+  if (!preferredDate || !preferredSlot) return "";
+  return `${preferredDate}T${preferredSlot === "AFTERNOON" ? "13:00" : "09:00"}`;
 }

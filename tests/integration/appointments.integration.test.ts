@@ -8,7 +8,6 @@ import {
   LineReachability,
   MembershipStatus,
   MembershipType,
-  PatientServiceCode,
   Profession,
   Role,
   UserStatus,
@@ -20,11 +19,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { APPOINTMENT_TYPE_VALUES } from "@/modules/appointments/domain/appointment-definitions";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
-import { setHospitalServiceOffering } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
-import {
-  createPatientServiceRequest,
-  reviewPatientServiceRequest,
-} from "@/modules/patient-service-requests/services/patient-service-request-service";
+import { createPatientOsmAssignmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import {
   getAppointmentDetail,
@@ -1348,26 +1343,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         hospitalNumber: "HN-AF3-PRIVATE",
       });
       await activateProvisionedPatient(patient.userId);
-      const patientActor: ActorContext = {
-        userId: patient.userId,
-        personId: patient.personId,
-        roles: [Role.PATIENT],
-        hospitalMemberships: [],
-        osmHospitalRelationships: [],
-      };
-      await setHospitalServiceOffering(owner.actor, {
-        hospitalId: hospital.id,
-        code: PatientServiceCode.SCREENING,
-        enabled: true,
-      }, { database: prisma });
-      const offering = await prisma.hospitalServiceOffering.findUniqueOrThrow({
-        where: { hospitalId_code: { hospitalId: hospital.id, code: PatientServiceCode.SCREENING } },
-        select: { id: true },
-      });
-      const serviceRequest = await createPatientServiceRequest(patientActor, {
-        relationshipId: patient.relationshipId,
-        offeringId: offering.id,
-      }, { database: prisma });
 
       const bindAndEnable = async (actor: ActorContext): Promise<string> => {
         const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
@@ -1386,10 +1361,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       };
       const osmLineUserId = await bindAndEnable(osm.actor);
       const staffLineUserId = await bindAndEnable(owner.actor);
-      await reviewPatientServiceRequest(owner.actor, {
-        requestId: serviceRequest.requestId,
+      // ADR-0023: a service request no longer assigns the อสม.; the assignment is made directly.
+      await assignOsmToPatient(owner.actor, {
+        patientHospitalRelationshipId: patient.relationshipId,
         osmUserId: osm.userId,
-      }, "APPROVE", { database: prisma });
+      }, { database: prisma });
       const appointment = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, {
         assignedOsmUserId: osm.userId,
         locationType: "HOME_VISIT",
@@ -1405,7 +1381,6 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       }, { database: prisma });
 
       const expectedEvents = [
-        AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED,
         AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
         AppointmentLineNotificationEventKind.OSM_RESCHEDULE_REQUESTED,
       ];
@@ -1414,9 +1389,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         select: { eventKind: true, recipientUserId: true, state: true },
         orderBy: { eventKind: "asc" },
       });
-      expect(queued).toHaveLength(3);
+      expect(queued).toHaveLength(2);
       expect(queued.every(({ state }) => state === AppointmentLineNotificationState.PENDING)).toBe(true);
-      expect(queued.filter(({ recipientUserId }) => recipientUserId === osm.userId)).toHaveLength(2);
+      expect(queued.filter(({ recipientUserId }) => recipientUserId === osm.userId)).toHaveLength(1);
       expect(queued.filter(({ recipientUserId }) => recipientUserId === owner.userId)).toHaveLength(1);
 
       const calls: Array<{ lineUserId: string; text: string; retryKey: string }> = [];
@@ -1433,12 +1408,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         drainAppointmentLineNotificationOutbox(drainDependencies),
         drainAppointmentLineNotificationOutbox(drainDependencies),
       ]);
-      expect(first.providerAccepted + second.providerAccepted).toBe(3);
-      expect(calls).toHaveLength(3);
-      expect(calls.filter(({ lineUserId }) => lineUserId === osmLineUserId)).toHaveLength(2);
+      expect(first.providerAccepted + second.providerAccepted).toBe(2);
+      expect(calls).toHaveLength(2);
+      expect(calls.filter(({ lineUserId }) => lineUserId === osmLineUserId)).toHaveLength(1);
       expect(calls.filter(({ lineUserId }) => lineUserId === staffLineUserId)).toHaveLength(1);
       expect(calls.map(({ text }) => text)).toEqual(expect.arrayContaining([
-        "มีผู้ป่วยที่ได้รับมอบหมายให้คุณดูแล กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ",
         "มีนัดเยี่ยมบ้านที่ได้รับมอบหมายให้คุณ กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ",
         "มีคำขอเลื่อนนัดรอทบทวน กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ",
       ]));
@@ -1454,21 +1428,22 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         familyName: "ข้อมูลทดสอบ",
       });
       await activateProvisionedPatient(nextPatient.userId);
-      const nextPatientActor: ActorContext = {
-        userId: nextPatient.userId,
-        personId: nextPatient.personId,
-        roles: [Role.PATIENT],
-        hospitalMemberships: [],
-        osmHospitalRelationships: [],
-      };
-      const nextRequest = await createPatientServiceRequest(nextPatientActor, {
-        relationshipId: nextPatient.relationshipId,
-        offeringId: offering.id,
-      }, { database: prisma });
-      await reviewPatientServiceRequest(owner.actor, {
-        requestId: nextRequest.requestId,
+      await assignOsmToPatient(owner.actor, {
+        patientHospitalRelationshipId: nextPatient.relationshipId,
         osmUserId: osm.userId,
-      }, "APPROVE", { database: prisma });
+      }, { database: prisma });
+      // ADR-0023: requests no longer assign, so no service writes OSM_PATIENT_ASSIGNED any more; an existing
+      // row must still be dropped once its assignment ends.
+      const legacyAssignment = await prisma.patientOsmAssignment.findFirstOrThrow({
+        where: { patientHospitalRelationshipId: nextPatient.relationshipId, endedAt: null },
+        select: { id: true, createdAt: true },
+      });
+      await prisma.$transaction((transaction) => createPatientOsmAssignmentLineNotificationIntent(transaction, {
+        assignmentId: legacyAssignment.id,
+        patientHospitalRelationshipId: nextPatient.relationshipId,
+        osmUserId: osm.userId,
+        sourceUpdatedAt: legacyAssignment.createdAt,
+      }, new Date()));
       const nextOsmLineUserId = await bindAndEnable(nextOsm.actor);
       const handedOverAppointment = await createAppointment(owner.actor, appointmentInput(nextPatient.relationshipId, {
         assignedOsmUserId: osm.userId,

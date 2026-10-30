@@ -285,6 +285,8 @@ enum AppointmentLineNotificationEventKind {
   OSM_PATIENT_ASSIGNED
   OSM_APPOINTMENT_ASSIGNED
   OSM_RESCHEDULE_REQUESTED
+  // ADR-0023 (SR-B): informational, about a new PatientServiceRequest; it has no appointment yet.
+  OSM_SERVICE_REQUESTED
 }
 
 enum AppointmentLineNotificationRecipientKind {
@@ -2115,6 +2117,7 @@ model PatientServiceRequest {
   startedBy    User?                        @relation("PatientServiceRequestStarter", fields: [startedByUserId], references: [id], onDelete: SetNull)
   withdrawnBy  User?                        @relation("PatientServiceRequestWithdrawer", fields: [withdrawnByUserId], references: [id], onDelete: SetNull)
   appointments PatientAppointment[]
+  lineNotificationIntents AppointmentLineNotification[]
 
   @@unique([id, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, createdAt])
@@ -2411,6 +2414,7 @@ model AppointmentLineNotification {
   appointmentId               String?                               @db.Uuid
   patientOsmAssignmentId      String?                               @db.Uuid
   rescheduleRequestId         String?                               @db.Uuid
+  patientServiceRequestId     String?                               @db.Uuid
   patientHospitalRelationshipId String                              @db.Uuid
   eventKey                    String                                @db.VarChar(255)
   sourceUpdatedAt              DateTime                              @db.Timestamptz(3)
@@ -2440,6 +2444,7 @@ model AppointmentLineNotification {
   appointment               PatientAppointment?        @relation(fields: [appointmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
   patientOsmAssignment      PatientOsmAssignment?       @relation(fields: [patientOsmAssignmentId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
   rescheduleRequest         PatientAppointmentRescheduleRequest? @relation(fields: [rescheduleRequestId], references: [id], onDelete: Restrict)
+  patientServiceRequest     PatientServiceRequest?     @relation(fields: [patientServiceRequestId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict, onUpdate: Restrict)
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   recipient                 User?                      @relation("AppointmentLineNotificationRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
   binding                   LineAccountBinding?        @relation(fields: [bindingId], references: [id], onDelete: Restrict)
@@ -2447,6 +2452,7 @@ model AppointmentLineNotification {
 
   @@unique([eventKey, recipientUserId])
   @@index([recipientGrantId])
+  @@index([patientServiceRequestId])
   @@index([state, dueAt])
   @@index([state, leaseExpiresAt])
   @@index([state, terminalAt])

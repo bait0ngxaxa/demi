@@ -60,6 +60,26 @@ export async function currentAssignedOsmRecipient(
   return osm?.id ?? null;
 }
 
+/** ADR-0023: an ACTIVE อสม. with an ACTIVE relationship to this ACTIVE Hospital (a one-off visit needs no assignment). */
+export async function isActiveHospitalOsm(
+  transaction: Transaction,
+  userId: string,
+  hospitalId: string,
+): Promise<boolean> {
+  const osm = await transaction.user.findFirst({
+    where: {
+      id: userId,
+      status: UserStatus.ACTIVE,
+      roles: { some: { role: Role.OSM } },
+      osmHospitalRelationships: {
+        some: { hospitalId, status: MembershipStatus.ACTIVE, hospital: { status: HospitalStatus.ACTIVE } },
+      },
+    },
+    select: { id: true },
+  });
+  return osm !== null;
+}
+
 /** Whether this caregiver has an ACTIVE appointment grant for this relationship. */
 async function hasActiveCaregiverAppointmentGrantFor(
   transaction: Transaction,

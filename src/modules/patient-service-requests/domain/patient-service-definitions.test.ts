@@ -4,7 +4,15 @@ import {
   PATIENT_SERVICE_LABELS,
   PATIENT_SERVICE_REQUEST_SLOT_LABELS,
   isValidPreferredDate,
+  preferredDateBounds,
 } from "./patient-service-definitions";
+
+describe("preferredDateBounds (ADR-0023 SR-D6)", () => {
+  it("gives the first and last selectable dates on the Bangkok calendar", () => {
+    expect(preferredDateBounds(new Date("2026-11-01T16:59:59.999Z"))).toEqual({ min: "2026-11-02", max: "2026-12-31" });
+    expect(preferredDateBounds(new Date("2026-11-01T17:00:00.000Z"))).toEqual({ min: "2026-11-03", max: "2027-01-01" });
+  });
+});
 
 describe("Patient service definitions (ADR-0023)", () => {
   it("labels the three services and the preferred slots in Thai", () => {

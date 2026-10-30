@@ -19,6 +19,8 @@ import {
   APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
   APPOINTMENT_READ_CAPABILITY,
   APPOINTMENT_REQUEST_CANCEL_CAPABILITY,
+  VISIT_OSM_APPOINTMENT_CAPABILITIES,
+  appointmentPolicyInternals,
   decideAppointmentPolicy,
 } from "./appointment-policy";
 
@@ -376,5 +378,56 @@ describe("OSM home-visit authority", () => {
     expect(decideAppointmentPolicy({ actor: osm, target: home, capability: APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY }).allowed).toBe(true);
     expect(decideAppointmentPolicy({ actor: osm, target: target(), capability: APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY }).allowed).toBe(false);
     expect(decideAppointmentPolicy({ actor: actor({ roles: [Role.PATIENT] }), target: target({ patientUserId: actorUserId }), capability: APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY }).allowed).toBe(true);
+  });
+});
+
+describe("One-off visiting อสม. scope (ADR-0023 SR-B)", () => {
+  const assignedOsmUserId = "66666666-6666-4666-8666-666666666666";
+  const requestId = "77777777-7777-4777-8777-777777777777";
+  const scheduledAt = new Date("2026-11-02T03:00:00.000Z");
+  const osm = actor({
+    roles: [Role.OSM],
+    hospitalMemberships: [],
+    osmHospitalRelationships: [{ hospitalId: hospitalA, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+  });
+  const appointment = { assignedOsmUserId: actorUserId, sourceServiceRequestId: requestId, status: "SCHEDULED", scheduledAt };
+  const visitTarget = target({ patientCurrentOsmUserId: assignedOsmUserId });
+  const scope = appointmentPolicyInternals.hasOneOffVisitOsmScope;
+
+  it("covers only the appointment's actions an assigned อสม. has, never managing or the patient record", () => {
+    expect(VISIT_OSM_APPOINTMENT_CAPABILITIES).toEqual([
+      APPOINTMENT_READ_CAPABILITY,
+      APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+      APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY,
+      APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY,
+      APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
+    ]);
+    // The relationship-level decision stays assignment-based.
+    expect(decideAppointmentPolicy({ actor: osm, target: visitTarget, capability: APPOINTMENT_READ_CAPABILITY }).allowed).toBe(false);
+  });
+
+  it("holds for the appointment's อสม. from confirmation until 24 hours after the scheduled time", () => {
+    expect(scope(osm, visitTarget, appointment, new Date("2026-11-01T00:00:00.000Z"))).toBe(true);
+    expect(scope(osm, visitTarget, appointment, new Date("2026-11-03T03:00:00.000Z"))).toBe(true);
+    expect(scope(osm, visitTarget, appointment, new Date("2026-11-03T03:00:00.001Z"))).toBe(false);
+    // No current assignment is a one-off visit too.
+    expect(scope(osm, target(), appointment, scheduledAt)).toBe(true);
+  });
+
+  it.each([
+    ["another อสม. of the appointment", { appointment: { ...appointment, assignedOsmUserId: assignedOsmUserId } }],
+    ["a hospital-booked appointment", { appointment: { ...appointment, sourceServiceRequestId: null } }],
+    ["the patient's assigned อสม. (assignment scope applies)", { target: target({ patientCurrentOsmUserId: actorUserId }) }],
+    ["a completed appointment", { appointment: { ...appointment, status: "COMPLETED" } }],
+    ["a cancelled appointment", { appointment: { ...appointment, status: "CANCELLED" } }],
+    ["an inactive Hospital", { target: target({ patientCurrentOsmUserId: assignedOsmUserId, hospitalStatus: HospitalStatus.SUSPENDED }) }],
+    ["a suspended อสม. relationship", { actor: actor({ roles: [Role.OSM], hospitalMemberships: [], osmHospitalRelationships: [{ hospitalId: hospitalA, status: MembershipStatus.SUSPENDED, hospitalStatus: HospitalStatus.ACTIVE }] }) }],
+    ["an อสม. of another Hospital", { actor: actor({ roles: [Role.OSM], hospitalMemberships: [], osmHospitalRelationships: [{ hospitalId: hospitalB, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] }) }],
+    ["a non-OSM actor", { actor: actor() }],
+  ] as const)("does not hold for %s", (_case, change) => {
+    const subject = "actor" in change ? change.actor : osm;
+    const subjectTarget = "target" in change ? change.target : visitTarget;
+    const subjectAppointment = "appointment" in change ? change.appointment : appointment;
+    expect(scope(subject, subjectTarget, subjectAppointment, scheduledAt)).toBe(false);
   });
 });

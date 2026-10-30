@@ -3,96 +3,150 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { APPOINTMENT_DEFAULT_DURATION_MINUTES } from "@/modules/appointments/domain/appointment-definitions";
+import { PATIENT_SERVICE_REQUEST_REJECTION_REASON_MAX_LENGTH } from "@/modules/patient-service-requests/domain/patient-service-definitions";
+import { preferredSlotDateTimeInput } from "@/modules/patient-service-requests/presentation/patient-service-request-presentation";
 import type { HospitalPatientServiceRequestView } from "@/modules/patient-service-requests/services/patient-service-request-service";
 
+const inputClassName = "min-h-11 w-full rounded-control border border-border bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
+const labelClassName = "block space-y-1 text-sm font-semibold text-text";
+
+function bangkokIso(value: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+07:00` : "";
+}
+
+/**
+ * ADR-0023 (SR-D1): "ยืนยันนัด" books the home visit (PENDING, or a legacy APPROVED request); "ไม่อนุมัติ"
+ * needs a reason. Any ACTIVE อสม. of the Hospital may be chosen; another than the assigned one visits once.
+ */
 export function HospitalPatientServiceRequestReviewControls({
-  requestId,
-  status,
-  action,
+  request,
+  submissionNonce,
+  confirmAction,
+  rejectAction,
   pending,
   blocked = false,
-  preferredOsmUserId,
-  currentOsmUserId,
-  currentOsmName,
-  osmChoices,
 }: {
-  requestId: string;
-  status: HospitalPatientServiceRequestView["status"];
-  action: (formData: FormData) => void;
+  request: HospitalPatientServiceRequestView;
+  /** Server-issued, so a retry of the same confirmation books the same appointment. */
+  submissionNonce: string;
+  confirmAction: (formData: FormData) => void;
+  rejectAction: (formData: FormData) => void;
   pending: boolean;
   /** Set while an earlier review has an unconfirmed outcome. */
   blocked?: boolean;
-  preferredOsmUserId: string | null;
-  currentOsmUserId: string | null;
-  currentOsmName: string | null;
-  osmChoices: HospitalPatientServiceRequestView["osmChoices"];
 }): React.JSX.Element | null {
-  const preferredIsEligible = osmChoices.some(({ userId }) => userId === preferredOsmUserId);
-  const [selectedOsmUserId, setSelectedOsmUserId] = useState(preferredIsEligible ? preferredOsmUserId ?? "" : "");
-  const [confirmReassignment, setConfirmReassignment] = useState(false);
-  if (status !== "PENDING") {
+  const { requestId, status, osmChoices } = request;
+  const eligible = (userId: string | null) => osmChoices.some((osm) => osm.userId === userId);
+  const [osmUserId, setOsmUserId] = useState(
+    eligible(request.preferredOsmUserId)
+      ? request.preferredOsmUserId ?? ""
+      : eligible(request.currentOsmUserId) ? request.currentOsmUserId ?? "" : "",
+  );
+  const [scheduledAtLocal, setScheduledAtLocal] = useState(
+    preferredSlotDateTimeInput(request.preferredDate, request.preferredSlot),
+  );
+  if (status !== "PENDING" && status !== "APPROVED") {
     return null;
   }
-  const needsReassignmentConfirmation = Boolean(currentOsmUserId && selectedOsmUserId && currentOsmUserId !== selectedOsmUserId);
-  const inputClassName = "min-h-11 w-full rounded-control border border-border bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
+  const oneOffVisit = Boolean(osmUserId && osmUserId !== request.currentOsmUserId);
+  const disabled = pending || blocked;
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <p className="mb-3 text-sm leading-6 text-text-muted" id={`review-help-${requestId}`}>
-        อนุมัติพร้อมเลือก อสม. ผู้ดูแล ระบบจะมอบหมายและแจ้งผู้ดูแลในรายการเดียวกัน หากเปลี่ยนผู้ดูแลปัจจุบันต้องยืนยันก่อน
+    <div className="mt-4 space-y-5 border-t border-border pt-4">
+      <p className="text-sm leading-6 text-text-muted" id={`review-help-${requestId}`}>
+        ยืนยันนัดเยี่ยมบ้านเพื่อสร้างนัดหมายและแจ้ง อสม. ผู้ไปเยี่ยม การเลือก อสม. ที่ไม่ใช่ผู้ดูแลปัจจุบันเป็นการเยี่ยมครั้งนี้เท่านั้น ไม่เปลี่ยนผู้ดูแลของผู้ป่วย
       </p>
-      <form action={action} aria-busy={pending} aria-describedby={`review-help-${requestId}`} className="flex flex-wrap gap-2">
+      <form action={confirmAction} aria-busy={pending} aria-describedby={`review-help-${requestId}`} className="grid gap-4 sm:grid-cols-2">
         <input name="requestId" type="hidden" value={requestId} />
-        <label className="w-full max-w-xl text-sm font-semibold text-text" htmlFor={`review-osm-${requestId}`}>
-          อสม. ผู้ดูแล
+        <input name="submissionNonce" type="hidden" value={submissionNonce} />
+        <input name="scheduledAt" readOnly type="hidden" value={bangkokIso(scheduledAtLocal)} />
+        <label className={labelClassName} htmlFor={`confirm-at-${requestId}`}>
+          <span>วันและเวลานัด</span>
+          <input
+            className={inputClassName}
+            disabled={disabled}
+            id={`confirm-at-${requestId}`}
+            onChange={(event) => setScheduledAtLocal(event.currentTarget.value)}
+            required
+            type="datetime-local"
+            value={scheduledAtLocal}
+          />
         </label>
-        <select
-          className={inputClassName}
-          disabled={pending || blocked || osmChoices.length === 0}
-          id={`review-osm-${requestId}`}
-          name="osmUserId"
-          onChange={(event) => {
-            setSelectedOsmUserId(event.currentTarget.value);
-            setConfirmReassignment(false);
-          }}
-          value={selectedOsmUserId}
-        >
-          <option value="">เลือก อสม. ผู้ดูแล</option>
-          {osmChoices.map((osm) => (
-            <option key={osm.userId} value={osm.userId}>{osm.displayName}</option>
-          ))}
-        </select>
+        <label className={labelClassName} htmlFor={`confirm-osm-${requestId}`}>
+          <span>อสม. ผู้ไปเยี่ยม</span>
+          <select
+            className={inputClassName}
+            disabled={disabled || osmChoices.length === 0}
+            id={`confirm-osm-${requestId}`}
+            name="osmUserId"
+            onChange={(event) => setOsmUserId(event.currentTarget.value)}
+            required
+            value={osmUserId}
+          >
+            <option value="">เลือก อสม.</option>
+            {osmChoices.map((osm) => (
+              <option key={osm.userId} value={osm.userId}>
+                {osm.userId === request.currentOsmUserId ? `${osm.displayName} (ผู้ดูแลปัจจุบัน)` : osm.displayName}
+              </option>
+            ))}
+          </select>
+        </label>
         {osmChoices.length === 0 ? (
-          <p className="w-full text-sm text-text-muted">ยังไม่มี อสม. ที่ใช้งานได้ในโรงพยาบาลนี้ จึงยังอนุมัติคำขอไม่ได้</p>
+          <p className="text-sm text-text-muted sm:col-span-2">ยังไม่มี อสม. ที่ใช้งานได้ในโรงพยาบาลนี้ จึงยังยืนยันนัดไม่ได้</p>
         ) : null}
-        {currentOsmUserId ? (
-          <p className="w-full text-sm leading-6 text-text-muted">
-            ผู้ดูแลปัจจุบัน: {currentOsmName ?? "อสม. ผู้ดูแล"}
+        {oneOffVisit ? (
+          <p className="text-sm leading-6 text-text-muted sm:col-span-2">
+            เยี่ยมครั้งเดียว: อสม. ที่เลือกเห็นเฉพาะนัดนี้ ผู้ดูแลปัจจุบัน{request.currentOsmName ? ` (${request.currentOsmName})` : ""} ไม่เปลี่ยน
           </p>
         ) : null}
-        {needsReassignmentConfirmation ? (
-          <label className="flex w-full items-start gap-3 rounded-control border border-border p-3 text-sm leading-6 text-text">
-            <input
-              checked={confirmReassignment}
-              className="mt-1 size-4 accent-action-primary focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-              name="confirmReassignment"
-              onChange={(event) => setConfirmReassignment(event.currentTarget.checked)}
-              required
-              type="checkbox"
-              value="true"
-            />
-            <span>ยืนยันเปลี่ยนผู้ดูแลจาก {currentOsmName ?? "อสม. ปัจจุบัน"} เป็นผู้ดูแลที่เลือก</span>
-          </label>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={pending || blocked || !selectedOsmUserId || (needsReassignmentConfirmation && !confirmReassignment)} name="decision" size="compact" type="submit" value="APPROVE">
-            อนุมัติและมอบหมาย
-          </Button>
-          <Button disabled={pending || blocked} name="decision" size="compact" type="submit" value="REJECT" variant="secondary">
-            ไม่อนุมัติคำขอ
+        <label className={labelClassName} htmlFor={`confirm-duration-${requestId}`}>
+          <span>ระยะเวลา (นาที, ไม่บังคับ)</span>
+          <input
+            className={inputClassName}
+            defaultValue={APPOINTMENT_DEFAULT_DURATION_MINUTES}
+            disabled={disabled}
+            id={`confirm-duration-${requestId}`}
+            max={480}
+            min={5}
+            name="durationMinutes"
+            type="number"
+          />
+        </label>
+        <label className={labelClassName} htmlFor={`confirm-location-${requestId}`}>
+          <span>รายละเอียดสถานที่ (ไม่บังคับ)</span>
+          <input className={inputClassName} disabled={disabled} id={`confirm-location-${requestId}`} maxLength={500} name="locationDetail" type="text" />
+        </label>
+        <label className={`${labelClassName} sm:col-span-2`} htmlFor={`confirm-note-${requestId}`}>
+          <span>หมายเหตุนัดหมาย (ไม่บังคับ)</span>
+          <textarea className={`${inputClassName} min-h-20`} disabled={disabled} id={`confirm-note-${requestId}`} maxLength={2000} name="note" />
+        </label>
+        <div className="sm:col-span-2">
+          <Button disabled={disabled || !osmUserId || !scheduledAtLocal} size="compact" type="submit">
+            ยืนยันนัด
           </Button>
         </div>
       </form>
+
+      {status === "PENDING" ? (
+        <form action={rejectAction} aria-busy={pending} className="space-y-2 border-t border-border pt-4">
+          <input name="requestId" type="hidden" value={requestId} />
+          <label className={labelClassName} htmlFor={`reject-reason-${requestId}`}>
+            <span>เหตุผลที่ไม่อนุมัติ (ผู้ป่วยจะเห็นข้อความนี้)</span>
+            <textarea
+              className={`${inputClassName} min-h-20`}
+              disabled={disabled}
+              id={`reject-reason-${requestId}`}
+              maxLength={PATIENT_SERVICE_REQUEST_REJECTION_REASON_MAX_LENGTH}
+              name="reason"
+              required
+            />
+          </label>
+          <Button disabled={disabled} size="compact" type="submit" variant="secondary">
+            ไม่อนุมัติคำขอ
+          </Button>
+        </form>
+      ) : null}
     </div>
   );
 }

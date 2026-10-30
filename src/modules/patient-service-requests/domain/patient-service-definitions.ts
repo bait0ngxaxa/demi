@@ -33,10 +33,17 @@ function addCalendarDays(dateOnly: string, days: number): string {
  * The caller validates the YYYY-MM-DD shape; ISO dates compare correctly as strings.
  */
 export function isValidPreferredDate(preferredDate: string, now: Date): boolean {
+  const { min, max } = preferredDateBounds(now);
+
+  return preferredDate >= min && preferredDate <= max;
+}
+
+/** SR-D6: the first and last selectable preferred dates (YYYY-MM-DD) at `now`, for date pickers. */
+export function preferredDateBounds(now: Date): { min: string; max: string } {
   const today = toServiceDateOnly(now);
 
-  return (
-    preferredDate >= addCalendarDays(today, 1) &&
-    preferredDate <= addCalendarDays(today, PREFERRED_DATE_MAX_DAYS_AHEAD)
-  );
+  return {
+    min: addCalendarDays(today, 1),
+    max: addCalendarDays(today, PREFERRED_DATE_MAX_DAYS_AHEAD),
+  };
 }

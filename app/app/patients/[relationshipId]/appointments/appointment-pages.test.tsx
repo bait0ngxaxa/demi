@@ -40,7 +40,7 @@ const detail: AppointmentDetail & { contactPhones: { assignedOsmPhone: string | 
   assignedOsmUserId: null, assignedOsmDisplayName: null, currentAssigneeAcceptance: null, canAcceptAssignment: false,
   responsibleUserId: null, responsibleDisplayName: null, responsibleProfession: null,
   osmAtCreationDisplayName: "อสม. เมื่อสร้างนัด", currentAcknowledgement: null, cancellationRequests: [], coordinationEvents: [],
-  createdByDisplayName: "เจ้าหน้าที่ผู้สร้าง", type: "EDUCATION", status: "SCHEDULED",
+  createdByDisplayName: "เจ้าหน้าที่ผู้สร้าง", type: "EDUCATION", serviceCode: null, fromServiceRequest: false, status: "SCHEDULED",
   scheduledAt: new Date("2026-10-14T03:00:00.000Z"), durationMinutes: 30,
   locationType: "CLINIC", locationDetail: "ห้องตรวจ ก", note: null,
   createdAt: new Date("2026-10-13T03:00:00.000Z"), updatedAt: new Date("2026-10-13T03:00:00.000Z"),

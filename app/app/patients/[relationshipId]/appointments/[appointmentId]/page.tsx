@@ -321,7 +321,11 @@ export default async function AppointmentDetailPage({
   try {
     [detail, programContext, rescheduleHistory] = await Promise.all([
       getAppointmentDetail(actor, relationshipId, appointmentId),
-      getPatientProgramPageContext(actor, relationshipId),
+      // ADR-0023 (SR-B): a one-off visiting อสม. reads this appointment only, never the patient's Program.
+      getPatientProgramPageContext(actor, relationshipId).catch((error: unknown) => {
+        if (error instanceof ForbiddenError) return { active: null };
+        throw error;
+      }),
       getAppointmentRescheduleHistory(actor, relationshipId, appointmentId),
     ]);
     if (programContext.active) {

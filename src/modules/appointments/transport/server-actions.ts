@@ -46,9 +46,9 @@ import type {
 const CREATE_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "submissionNonce",
-  "sourceServiceRequestId",
   "scheduledAt",
   "type",
+  "serviceCode",
   "responsibleUserId",
   "assignedOsmUserId",
   "durationMinutes",
@@ -184,9 +184,9 @@ function buildCreateInput(formData: FormData): unknown {
   return {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     submissionNonce: getSingleString(formData, "submissionNonce"),
-    sourceServiceRequestId: getNullableUuid(formData, "sourceServiceRequestId"),
     scheduledAt: getSingleString(formData, "scheduledAt"),
     type: getSingleString(formData, "type"),
+    serviceCode: getNullableString(formData, "serviceCode"),
     responsibleUserId: getNullableUuid(formData, "responsibleUserId"),
     assignedOsmUserId: getNullableUuid(formData, "assignedOsmUserId"),
     durationMinutes: getNullableInteger(formData, "durationMinutes"),

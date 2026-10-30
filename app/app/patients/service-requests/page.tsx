@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -43,5 +45,8 @@ export default async function HospitalPatientServiceRequestsPage({
     throw error;
   }
 
-  return <HospitalPatientServiceRequestsWorkspace page={requests} invalidQuery={!parsed.success} />;
+  // ADR-0023: one confirmation nonce per rendered request, so a retried "ยืนยันนัด" is idempotent.
+  const submissionNonces = Object.fromEntries(requests.requests.map(({ requestId }) => [requestId, randomUUID()]));
+
+  return <HospitalPatientServiceRequestsWorkspace page={requests} invalidQuery={!parsed.success} submissionNonces={submissionNonces} />;
 }

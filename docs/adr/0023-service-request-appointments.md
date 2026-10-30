@@ -37,14 +37,30 @@ APPROVED (legacy) ──book─────────────────�
 
 The enum values are kept. STARTED now means the appointment is booked. APPROVED is legacy: no new writes after SR-B; existing APPROVED rows stay readable and can still be booked.
 
-### Visiting อสม. access (open, decided before SR-B)
+### Visiting อสม. access (SR-B: appointment level only)
 
-Today an อสม. reads and records only for patients currently assigned to them. A one-off visit needs the visiting อสม. to see the patient without being assigned. SR-B defines that access; its window and scope are an open decision for the Product Owner. Proposed default:
+An อสม. reads and records only for patients currently assigned to them. A one-off visiting อสม. (`isOneOffVisitOsm`: the appointment comes from a request and its อสม. is not the patient's current assignment) gets, conservatively, access to that one appointment only; access to the care record is SR-B2, for the Product Owner.
 
-- Window: from confirmation until the appointment is completed, cancelled or no-show, or 24 hours after `scheduledAt`, whichever comes first.
-- Scope: read the patient's identity, contact and address and the appointment; record only the items of the requested service.
+- Who: the appointment's `assignedOsmUserId`, an ACTIVE อสม. with an ACTIVE relationship to the appointment's ACTIVE Hospital (`hasOneOffVisitOsmScope`, the `visitOsm` scope of `resolveAppointmentAccessContext` when the caller names the appointment).
+- Window: from confirmation while the appointment is SCHEDULED and no later than 24 hours after `scheduledAt`; completing, cancelling or no-show ends it.
+- Scope: the appointment's detail as its อสม. sees it (patient display name, the contacts and location the appointment shows its อสม.), and the appointment actions of an assigned อสม. (`VISIT_OSM_APPOINTMENT_CAPABILITIES`): acknowledge on the patient's behalf, accept, ask to reschedule, record coordination. The appointment is listed in the อสม.'s work appointments. An assigned อสม. has no completion action, so neither has the visiting one; editing, cancelling and requesting cancellation are not included either.
+- Not included: the patient directory and profile, appointment history, Program, rounds, screening, follow-ups, goals, evidence and care tracking; every other access service is unchanged and stays assignment-based.
 
-`isOneOffVisitOsm` (the appointment's อสม. is set, differs from the current assignment, and the appointment comes from a request) identifies these appointments; SR-A does not use it for access.
+The appointment's อสม. is checked when it is booked or changed: the patient's current assignment for a hospital booking, any ACTIVE อสม. of the Hospital for an appointment from a request.
+
+### Confirming and rejecting (SR-B)
+
+- `confirmPatientServiceRequest` books the appointment through the staff booking path in one serializable transaction: type from the service, `serviceCode`, HOME_VISIT, the chosen อสม., `sourceServiceRequestId`; the request (PENDING, or legacy APPROVED) moves to STARTED with the reviewer and starter. It never assigns the อสม. The appointment nonce makes a retry return the same appointment. A request is booked only this way; `createAppointment` no longer accepts `sourceServiceRequestId`.
+- `rejectPatientServiceRequest` needs a reason (trimmed, at most 500 characters), stored in `rejectionReason` and shown to the patient. Only a PENDING request is rejected.
+- Both stay with an ACTIVE direct OWNER of the request's Hospital ([ADR-0019](0019-owner-administration-and-import-only-roster.md)).
+- A patient request needs a preferred date and slot, checked on the server clock; a second open request (PENDING or APPROVED) for the same service is refused with a message. The patient may still withdraw a PENDING or legacy APPROVED request.
+- A hospital booking may name a service (`serviceCode`), which sets the type; `type` alone is still accepted. Editing keeps the service and its type.
+
+### Notifications (SR-B)
+
+- A new request queues `OSM_SERVICE_REQUESTED` for the preferred อสม., else the patient's assigned อสม. (none without either): "มีคำขอรับบริการ<service> วันที่ <date> <slot> กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ", with the same LINE binding and preference checks as other intents and no patient detail. It is sent only while the request is PENDING and its recipient still the one it names. The row names its request (`patientServiceRequestId`); the event value and the column come in two migrations because PostgreSQL cannot use a new enum value in the transaction that adds it.
+- A confirmed visit queues the staff-booking notifications; `OSM_APPOINTMENT_ASSIGNED` goes to the visiting อสม., who is checked at send time as an ACTIVE อสม. of the Hospital.
+- Requests no longer assign an อสม., so nothing writes `OSM_PATIENT_ASSIGNED` any more; queued rows are still delivered or dropped as before.
 
 ### Data model (SR-A)
 
@@ -55,8 +71,9 @@ Today an อสม. reads and records only for patients currently assigned to th
 ### Phasing
 
 - **SR-A:** this ADR, the migration, domain definitions (`SERVICE_APPOINTMENT_TYPE`, service and slot labels, `isValidPreferredDate`, `isOneOffVisitOsm`) and the create schema accepting `preferredDate`, `preferredSlot` and `note` (optional, not yet stored). The only behaviour changes are the enabled defaults and new Hospitals' offerings; booking from a request stores the service. No authorization, UI flow or notification change.
-- **SR-B:** services: create with preferences, confirm (appointment in the same transaction, no reassignment), reject with a reason, visiting อสม. access.
-- **SR-C:** patient and staff UI and notifications.
+- **SR-B:** services: create with preferences, confirm (appointment in the same transaction, no reassignment), reject with a reason, visiting อสม. access at appointment level, the new-request notification, and the minimum UI to use them.
+- **SR-B2:** the visiting อสม.'s access to the care record, once the Product Owner decides it.
+- **SR-C:** patient and staff UX polish and notifications.
 
 ## Consequences
 
@@ -66,4 +83,5 @@ Today an อสม. reads and records only for patients currently assigned to th
 
 ## Open questions
 
-- The visiting อสม. access window and scope above, to be confirmed before SR-B.
+- SR-B2: whether a visiting อสม. may read or record the care items of the requested service.
+- Whether a visiting อสม. hears about a reschedule or cancellation of the visit (the patient's assigned อสม. and caregivers do).
