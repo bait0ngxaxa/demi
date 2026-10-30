@@ -109,7 +109,6 @@ function program(input: { id: string; status: PatientProgramStatus; followups?: 
     illnessDuration: { state: "NOT_RECORDED" },
     weeklyExercise: { before: { state: "NOT_RECORDED" }, after: { state: "NOT_RECORDED" } },
     unavailable: {
-      achievementRate: "DERIVATION_UNAPPROVED",
       outcome: "SOURCE_MISSING",
     },
   };

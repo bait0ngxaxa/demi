@@ -122,6 +122,20 @@ export function assertPatientProgramPolicy(input: {
   }
 }
 
+/**
+ * AS-1: the staff-entered round Achieve score is a Hospital metric. It follows the manage policy through the
+ * direct Hospital scope only (OWNER/MEMBER of the patient's Hospital), never the assigned อสม.
+ */
+export function hasDirectHospitalProgramManageScope(input: {
+  actor: ActorContext | null | undefined;
+  target: PatientProgramPolicyTarget;
+}): boolean {
+  return (
+    decidePatientProgramPolicy({ ...input, capability: PATIENT_PROGRAM_MANAGE_CAPABILITY }).reason ===
+    "active_direct_hospital_scope"
+  );
+}
+
 export const patientProgramPolicyInternals = {
   hasActiveDirectHospitalScope,
   hasExactActiveOsmAssignment,

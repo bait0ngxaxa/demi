@@ -985,6 +985,7 @@ async function resetDemoScope(scope: DemoScope, deleteAuthUser: (authSubject: st
     await tx.patientProgramRoundActivity.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundVitals.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRoundPlanItem.deleteMany({ where: { patientProgramId: { in: programIds } } });
+    await tx.patientProgramRoundAchieveScore.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramRound.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneArtifactAssociation.deleteMany({ where: { patientProgramId: { in: programIds } } });
     await tx.patientProgramServiceOneRoutineEntry.deleteMany({ where: { routine: program } });

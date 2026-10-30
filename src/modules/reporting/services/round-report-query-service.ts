@@ -5,6 +5,7 @@ import {
   buildProgramRoundFacts,
   buildRoundVitalsView,
   programRoundSelect,
+  roundFollowupAchievementRate,
 } from "@/modules/patient-program-rounds/services/round-query-service";
 import { projectRoundReports, type RoundReport } from "../projections/round-report-projection";
 
@@ -17,10 +18,20 @@ export async function loadRoundReports(
     return new Map();
   }
 
-  const programs = await database.patientProgram.findMany({
-    where: { id: { in: [...programIds] } },
-    select: programRoundSelect,
-  });
+  const [programs, achieveScores] = await Promise.all([
+    database.patientProgram.findMany({
+      where: { id: { in: [...programIds] } },
+      select: programRoundSelect,
+    }),
+    // AS-1: staff-entered scores are read only here, never through the shared round projection.
+    database.patientProgramRoundAchieveScore.findMany({
+      where: { patientProgramId: { in: [...programIds] }, score: { not: null } },
+      select: { patientProgramId: true, roundNumber: true, score: true },
+    }),
+  ]);
+  const scoreByRound = new Map(
+    achieveScores.map((row) => [`${row.patientProgramId}:${row.roundNumber}`, row.score?.toNumber() ?? null]),
+  );
 
   return new Map(
     programs.map((program) => [
@@ -28,7 +39,12 @@ export async function loadRoundReports(
       projectRoundReports(buildProgramRoundFacts(program)).map((round) => {
         const vitals = buildRoundVitalsView(program, round.roundNumber, { recorderNames: false });
 
-        return { ...round, vitals: vitals ? { weight: vitals.weight, bloodSugar: vitals.bloodSugar } : null };
+        return {
+          ...round,
+          vitals: vitals ? { weight: vitals.weight, bloodSugar: vitals.bloodSugar } : null,
+          achieveScore: scoreByRound.get(`${program.id}:${round.roundNumber}`) ?? null,
+          followup: roundFollowupAchievementRate(program, round.roundNumber),
+        };
       }),
     ]),
   );

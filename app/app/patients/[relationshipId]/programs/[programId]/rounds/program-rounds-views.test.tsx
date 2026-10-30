@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { buildProgramRoundDetail, buildProgramRoundsOverview, type ProgramRoundRecord } from "@/modules/patient-program-rounds/services/round-query-service";
+import { buildProgramRoundDetail, buildProgramRoundsOverview, type ProgramRoundDetail, type ProgramRoundRecord } from "@/modules/patient-program-rounds/services/round-query-service";
 import { roundGuideline } from "@/modules/patient-program-rounds/domain/round-steps";
 import { parseRoundReturnPath } from "@/modules/patient-program-rounds/presentation/round-return-path";
 
@@ -15,6 +15,7 @@ vi.mock("react", async (importOriginal) => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/modules/patient-program-rounds/transport/server-actions", () => ({
   addRoundPlanItemAction: vi.fn(),
+  recordRoundAchieveScoreAction: vi.fn(),
   removeRoundPlanItemAction: vi.fn(),
   markCustomItemDoneAction: vi.fn(),
   unmarkCustomItemDoneAction: vi.fn(),
@@ -45,6 +46,7 @@ const roundPath = (round: number) => `/app/patients/${relationshipId}/programs/$
 const nonces = {
   vitals: "55555555-5555-4555-8555-555555555555",
   completion: "66666666-6666-4666-8666-666666666666",
+  achieveScore: "88888888-8888-4888-8888-888888888888",
   review: {
     PAM: "77777777-7777-4777-8777-777777777771",
     PROMS: "77777777-7777-4777-8777-777777777772",
@@ -346,5 +348,30 @@ describe("flexible staff rounds (FR-3)", () => {
     expect(markup).toContain("ยังไม่มีรายการ เพิ่มรายการที่จะทำในครั้งนี้");
     expect(markup).not.toContain("<form");
     expect(markup).not.toContain("เพิ่มรายการ</button>");
+  });
+});
+
+describe("staff Achieve score field (AS-1)", () => {
+  function renderWithScore(achieveScore: ProgramRoundDetail["achieveScore"]): string {
+    const detail = { ...buildProgramRoundDetail(record(), 1, { displayName: "สมชาย ผู้ป่วย" }, { canManage: true }), achieveScore };
+
+    return renderToStaticMarkup(createElement(ProgramRoundDetailView, { currentStep: "SUMMARY", detail, nonces, todayServiceDate: "2026-10-14" }));
+  }
+
+  it("shows the editable field with the computed rate hint for direct Hospital staff", () => {
+    const markup = renderWithScore({ score: 72.5, editable: true, computedRatePercent: 67 });
+
+    expect(markup).toContain("Achieve score (%)");
+    expect(markup).toContain('name="score"');
+    expect(markup).toContain('value="72.5"');
+    expect(markup).toContain("67%");
+  });
+
+  it("is read-only once the Program has ended and absent without the staff projection", () => {
+    const readOnly = renderWithScore({ score: null, editable: false, computedRatePercent: null });
+
+    expect(readOnly).toContain("Achieve score: ยังไม่บันทึก");
+    expect(readOnly).not.toContain('name="score"');
+    expect(renderWithScore(null)).not.toContain("Achieve score");
   });
 });

@@ -603,7 +603,7 @@ describe("Hospital reporting query service", () => {
         cvdRiskScore: { state: "RECORDED", value: 12.5 },
       },
     });
-    expect(row?.unavailable).toEqual({ achievementRate: "DERIVATION_UNAPPROVED", outcome: "SOURCE_MISSING" });
+    expect(row?.unavailable).toEqual({ outcome: "SOURCE_MISSING" });
     // A legacy combined screening answers both columns and keeps its PROMs total.
     expect(row?.screening).toEqual({
       pam: { state: "PRESENT", value: { submittedAt: "2026-08-17T03:00:00.000Z", score: 15 } },

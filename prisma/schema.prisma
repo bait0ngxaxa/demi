@@ -613,6 +613,7 @@ model User {
   patientProgramRoundPlanItemsAdded PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemAddedBy")
   patientProgramRoundPlanItemsRemoved PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemRemovedBy")
   patientProgramRoundPlanItemsDone PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemDoneBy")
+  patientProgramRoundAchieveScoresRecorded PatientProgramRoundAchieveScore[] @relation("PatientProgramRoundAchieveScoreRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
@@ -1820,11 +1821,34 @@ model PatientProgramRound {
   patientProgram PatientProgram                @relation(fields: [patientProgramId, patientHospitalRelationshipId], references: [id, patientHospitalRelationshipId], onDelete: Restrict)
   openedByUser   User                          @relation("PatientProgramRoundOpenedBy", fields: [openedByUserId], references: [id], onDelete: Restrict)
   planItems      PatientProgramRoundPlanItem[]
+  achieveScores  PatientProgramRoundAchieveScore[]
 
   @@unique([patientProgramId, roundNumber])
   // Target of the plan items' composite foreign key.
   @@unique([patientProgramId, patientHospitalRelationshipId, roundNumber])
   @@index([openedByUserId, openedAt])
+}
+
+// AS-1 (ADR-0022): the staff-entered Achieve score of one opened round, % 0-100 with one decimal (DB CHECK).
+// A separate row because the round row is frozen once completed; the score may change after completion while
+// the Program is ACTIVE. A null score is a cleared score. recordedBy/recordedAt name the latest write, and
+// submissionNonce is that write's request token. Never deleted (demo/test reset aside).
+model PatientProgramRoundAchieveScore {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientProgramId              String   @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  roundNumber                   Int
+  score                         Decimal? @db.Decimal(4, 1)
+  recordedByUserId              String   @db.Uuid
+  recordedAt                    DateTime @db.Timestamptz(3)
+  updatedAt                     DateTime @updatedAt @db.Timestamptz(3)
+  submissionNonce               String   @unique @db.Uuid
+
+  round          PatientProgramRound @relation(fields: [patientProgramId, patientHospitalRelationshipId, roundNumber], references: [patientProgramId, patientHospitalRelationshipId, roundNumber], onDelete: Restrict)
+  recordedByUser User                @relation("PatientProgramRoundAchieveScoreRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientProgramId, roundNumber])
+  @@index([recordedByUserId, recordedAt])
 }
 
 // ADR-0022: one item of a round's materialized plan, ordered by position. Removal is soft (removedAt);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProgramRoundFacts, RoundPlanItemFact } from "@/modules/patient-program-rounds/domain/round-steps";
-import { completedExtraRounds, projectRoundReports } from "./round-report-projection";
+import { completedExtraRounds, projectRoundReports, roundAchieveScore, roundEndedWithoutFollowup, type RoundReport } from "./round-report-projection";
 
 const now = new Date("2026-10-28T00:00:00Z");
 function facts(count: number): ProgramRoundFacts {
@@ -33,5 +33,25 @@ describe("flexible round report projection", () => {
     const rounds = projectRoundReports(source);
     expect(completedExtraRounds(rounds)).toBe(1);
     expect(rounds[7]).toMatchObject({ completed: false, plannedItems: 0, doneItems: 0, notDoneAtCloseItems: 0 });
+  });
+});
+
+describe("round Achieve score precedence (AS-1)", () => {
+  const base: RoundReport = { roundNumber: 3, title: "ครั้งที่ 3", completed: true, doneItems: 1, plannedItems: 1, skippedItems: 0, notDoneAtCloseItems: 0, patientRecordedItems: 0 };
+
+  it("prefers the staff score, then the Follow-up rate", () => {
+    expect(roundAchieveScore({ ...base, achieveScore: 72.5, followup: { ratePercent: 60 } })).toEqual({ kind: "STAFF", percent: 72.5 });
+    expect(roundAchieveScore({ ...base, achieveScore: null, followup: { ratePercent: 60 } })).toEqual({ kind: "FOLLOWUP", percent: 60 });
+    expect(roundAchieveScore({ ...base, followup: { ratePercent: null } })).toEqual({ kind: "FOLLOWUP_NOT_SCORABLE" });
+  });
+
+  it("has no computed score in rounds 1-2 and labels a completed round without Follow-up", () => {
+    expect(roundAchieveScore({ ...base, roundNumber: 2, followup: null })).toEqual({ kind: "NOT_RECORDED" });
+    expect(roundAchieveScore({ ...base, followup: null })).toEqual({ kind: "NO_FOLLOWUP" });
+    expect(roundAchieveScore({ ...base, completed: false, followup: null })).toEqual({ kind: "NOT_RECORDED" });
+    expect(roundEndedWithoutFollowup({ ...base, followup: null })).toBe(true);
+    expect(roundEndedWithoutFollowup({ ...base, completed: false, followup: null })).toBe(false);
+    expect(roundEndedWithoutFollowup({ ...base, roundNumber: 2, followup: null })).toBe(false);
+    expect(roundAchieveScore(undefined)).toEqual({ kind: "NOT_RECORDED" });
   });
 });

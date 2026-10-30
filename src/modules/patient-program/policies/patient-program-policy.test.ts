@@ -12,6 +12,7 @@ import {
   PATIENT_PROGRAM_MANAGE_CAPABILITY,
   PATIENT_PROGRAM_READ_CAPABILITY,
   decidePatientProgramPolicy,
+  hasDirectHospitalProgramManageScope,
 } from "./patient-program-policy";
 
 const hospitalA = "11111111-1111-4111-8111-111111111111";
@@ -156,5 +157,31 @@ describe("Patient Program policy", () => {
         target: target({ hospitalStatus: HospitalStatus.SUSPENDED }),
       }),
     ).toMatchObject({ allowed: false, reason: "inactive_target_hospital" });
+  });
+});
+
+describe("round Achieve score scope (AS-1)", () => {
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows a direct %s of the patient's Hospital", (membershipType) => {
+    const staff = actor();
+    staff.hospitalMemberships = staff.hospitalMemberships.map((membership) => ({ ...membership, membershipType }));
+
+    expect(hasDirectHospitalProgramManageScope({ actor: staff, target: target() })).toBe(true);
+    expect(hasDirectHospitalProgramManageScope({ actor: staff, target: target({ hospitalId: hospitalB }) })).toBe(false);
+    expect(hasDirectHospitalProgramManageScope({ actor: staff, target: target({ hospitalStatus: HospitalStatus.SUSPENDED }) })).toBe(false);
+  });
+
+  it("denies the assigned อสม. even though the manage policy allows them", () => {
+    const osm = actor({
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [
+        { hospitalId: hospitalA, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+    });
+    const assigned = target({ assignedOsmUserId: actorUserId });
+
+    expect(decidePatientProgramPolicy({ actor: osm, capability: PATIENT_PROGRAM_MANAGE_CAPABILITY, target: assigned }).allowed).toBe(true);
+    expect(hasDirectHospitalProgramManageScope({ actor: osm, target: assigned })).toBe(false);
+    expect(hasDirectHospitalProgramManageScope({ actor: null, target: target() })).toBe(false);
   });
 });

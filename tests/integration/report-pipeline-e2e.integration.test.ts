@@ -457,7 +457,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const programRecord = await prisma.patientProgram.findUniqueOrThrow({ where: { id: programId }, select: { startedAt: true, completedAt: true } });
     const startedOn = programRecord.startedAt.toISOString().slice(0, 10);
     const completedOn = programRecord.completedAt!.toISOString().slice(0, 10);
-    const roundAchievementUnavailable = "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง";
+    // AS-D2: rounds 1-2 have no computed score; without a staff-entered one the cell is not recorded.
+    const roundAchieveScoreNotRecorded = "ยังไม่บันทึก";
 
     // Header counts: both relationships are counted, only the Program becomes a row.
     for (const [sheet, countRow] of [[dashboard, 2], [service, 3]] as const) {
@@ -478,8 +479,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
       // Before: CVD %, HbA1c, DTX, BW, BMI, height, waist, systolic, diastolic.
       22, 8.2, 180, 80, 31.2, 160, 95, 140, 90,
       // Rounds 1–2 (round vitals) and rounds 3–6 (Follow-ups 1–4): DTX, BW, achievement.
-      170, 79, roundAchievementUnavailable,
-      160, 78, roundAchievementUnavailable,
+      170, 79, roundAchieveScoreNotRecorded,
+      160, 78, roundAchieveScoreNotRecorded,
       150, 77, 0.5,
       140, 76, 0.88,
       132, 75, 1,

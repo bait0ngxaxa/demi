@@ -509,9 +509,12 @@ describe("round queries authorize through the Program read policy", () => {
     });
   });
 
-  function databaseWith(record: ProgramRoundRecord | null): PatientProgramRoundQueryDatabase {
+  function databaseWith(record: ProgramRoundRecord | null, achieveScore: number | null = null): PatientProgramRoundQueryDatabase {
     return {
       patientProgram: { findFirst: vi.fn().mockResolvedValue(record) },
+      patientProgramRoundAchieveScore: {
+        findUnique: vi.fn().mockResolvedValue(achieveScore === null ? null : { score: { toNumber: () => achieveScore } }),
+      },
       patientHospitalRelationship: {
         findUnique: vi.fn().mockResolvedValue({
           patientProfile: { dateOfBirth: new Date("1960-10-16T00:00:00.000Z") },
@@ -537,6 +540,35 @@ describe("round queries authorize through the Program read policy", () => {
     ).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: programId, patientHospitalRelationshipId: relationshipId } }),
     );
+  });
+
+  it("projects the staff Achieve score for direct Hospital staff only (AS-1)", async () => {
+    const database = databaseWith(program({ roundVitals: [vitals(1)] }), 72.5);
+
+    await expect(getProgramRoundDetail(actor, relationshipId, programId, "1", { database })).resolves.toMatchObject({
+      achieveScore: { score: 72.5, editable: true, computedRatePercent: null },
+    });
+
+    const osm: ActorContext = {
+      ...actor,
+      roles: [Role.OSM],
+      hospitalMemberships: [],
+      osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
+    };
+    mockedAccess.mockResolvedValueOnce({
+      actor: osm,
+      patient: { patientHospitalRelationshipId: relationshipId, displayName: patient.displayName, hospitalNumber: null, hospital: { id: hospitalId, name: "โรงพยาบาล" } },
+      target: { hospitalId, hospitalStatus: HospitalStatus.ACTIVE, assignedOsmUserId: actorUserId },
+    });
+    const osmDatabase = databaseWith(program({ roundVitals: [vitals(1)] }), 72.5);
+    await expect(getProgramRoundDetail(osm, relationshipId, programId, "1", { database: osmDatabase })).resolves.toMatchObject({
+      canManage: true,
+      achieveScore: null,
+    });
+    expect(
+      (osmDatabase as unknown as { patientProgramRoundAchieveScore: { findUnique: ReturnType<typeof vi.fn> } })
+        .patientProgramRoundAchieveScore.findUnique,
+    ).not.toHaveBeenCalled();
   });
 
   it("fails closed when access is denied and never reads the Program", async () => {
