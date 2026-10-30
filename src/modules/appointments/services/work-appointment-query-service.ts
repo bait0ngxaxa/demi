@@ -1,5 +1,8 @@
 import "server-only";
 
+import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+import type { PatientServiceCode } from "@prisma/client";
+
 import {
   AppointmentCancellationRequestStatus,
   HospitalStatus,
@@ -71,6 +74,9 @@ export type WorkAppointmentResponsibleOption = {
 };
 
 export type WorkAppointmentListItem = {
+  serviceCode: PatientServiceCode | null;
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   appointmentId: string;
   relationshipId: string;
   scheduledAt: Date;
@@ -610,6 +616,7 @@ function workAppointmentSelect(hospitalId: string) {
     scheduledAt: true,
     durationMinutes: true,
     type: true,
+    serviceCode: true,
     locationType: true,
     status: true,
     responsibleUser: {
@@ -667,7 +674,7 @@ type WorkAppointmentRecord = Prisma.PatientAppointmentGetPayload<{
   select: ReturnType<typeof workAppointmentSelect>;
 }>;
 
-function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAppointmentListItem {
+function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audience?: { hospitalRead: boolean; osmRead: boolean; actorUserId: string }): WorkAppointmentListItem {
   const currentOsmUserId = record.patientHospitalRelationship.osmAssignments[0]?.osmUserId ?? null;
   // ADR-0023: a one-off visit from a service request has its own อสม., not the patient's current one.
   const hasCurrentAssignment = Boolean(
@@ -690,6 +697,13 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAp
     !hasCurrentReschedule,
   );
   return {
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit: Boolean(audience && (audience.hospitalRead || (audience.osmRead && record.assignedOsmUserId === audience.actorUserId))) && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: currentOsmUserId,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    }),
     appointmentId: record.id,
     relationshipId: record.patientHospitalRelationshipId,
     scheduledAt: record.scheduledAt,
@@ -1133,7 +1147,7 @@ export async function listWorkAppointments(
       hospitals: scopes.map(toPublicHospitalScope),
       tab,
       filters,
-      items: records.map((record) => toWorkAppointmentItem(record, now)),
+      items: records.map((record) => toWorkAppointmentItem(record, now, { hospitalRead: resolvedScope.directRead || resolvedScope.networkRead, osmRead: resolvedScope.osmRead, actorUserId: actor.userId })),
       nextCursor,
       hasNextPage: nextCursor !== null,
       canCreate: publicScope.canCreate,

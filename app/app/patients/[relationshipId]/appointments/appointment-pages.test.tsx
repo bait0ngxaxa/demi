@@ -36,6 +36,7 @@ const appointmentId = "22222222-2222-4222-8222-222222222222";
 const detail: AppointmentDetail & { contactPhones: { assignedOsmPhone: string | null; hospitalPhone: string | null; patientPhone: string | null } } = {
   contactPhones: { assignedOsmPhone: null, hospitalPhone: "02-111-1111", patientPhone: "0899999999" },
   patient: { patientHospitalRelationshipId: relationshipId, displayName: "สมใจ ผู้ป่วยทดสอบ", hospitalNumber: "HN-001", hospital: { id: "hospital-a", name: "โรงพยาบาล ก" } },
+  source: "HOSPITAL", isOneOffVisit: false,
   appointmentId, canManage: true, canProxyPatientActions: false, canRecordCoordination: false,
   assignedOsmUserId: null, assignedOsmDisplayName: null, currentAssigneeAcceptance: null, canAcceptAssignment: false,
   responsibleUserId: null, responsibleDisplayName: null, responsibleProfession: null,
@@ -143,4 +144,12 @@ describe("Work appointment journey", () => {
     expect(markup).not.toContain("อนุมัติโดยแก้ไขวันเวลานัดหมาย");
   });
 
+});
+
+it.each([true, false])("SR-C renders service/source and the server one-off visibility (%s)", async (isOneOffVisit) => {
+  mocks.detail.mockResolvedValue({ ...detail, serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST", isOneOffVisit });
+  const markup = await render();
+  expect(markup).toContain("เสริมพลังใจ");
+  expect(markup).toContain("ขอรับบริการ");
+  expect(markup.includes("เยี่ยมครั้งนี้เท่านั้น (ไม่ใช่ อสม. ผู้ดูแล)")).toBe(isOneOffVisit);
 });

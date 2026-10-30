@@ -1,5 +1,7 @@
 import "server-only";
 
+import { appointmentSource, type AppointmentSource } from "@/modules/appointments/domain/appointment-service-definitions";
+
 import { Prisma, type Profession } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -23,6 +25,8 @@ import { appointmentGrantNow, rethrowAppointmentGrantError, type AppointmentGran
 export const delegatedAppointmentSelect = {
   id: true,
   type: true,
+  serviceCode: true,
+  sourceServiceRequestId: true,
   scheduledAt: true,
   durationMinutes: true,
   locationType: true,
@@ -56,7 +60,8 @@ export type DelegatedAppointmentExtension = {
   osmAtCreationDisplayName: string | null;
   parentHospitalName: string | null;
 };
-export type DelegatedAppointment = Omit<AppointmentRecord, "id"> & {
+export type DelegatedAppointment = Omit<AppointmentRecord, "id" | "sourceServiceRequestId"> & {
+  source: AppointmentSource;
   appointmentId: string; hospitalName: string; extension: DelegatedAppointmentExtension | null;
 };
 export type DelegatedAppointmentPage = {
@@ -77,7 +82,7 @@ type GrantScope = {
 };
 
 function toAppointment(record: AppointmentRecord | AppointmentV2Record, scope: GrantScope): DelegatedAppointment {
-  const base = { appointmentId: record.id, hospitalName: scope.hospitalName, type: record.type, scheduledAt: record.scheduledAt,
+  const base = { serviceCode: record.serviceCode, source: appointmentSource(record.sourceServiceRequestId), appointmentId: record.id, hospitalName: scope.hospitalName, type: record.type, scheduledAt: record.scheduledAt,
     durationMinutes: record.durationMinutes, locationType: record.locationType, status: record.status };
   if (scope.contractVersion !== FAMILY_APPOINTMENT_READ_CONTRACT_V2 || !("locationDetail" in record)) return { ...base, extension: null };
   return { ...base, extension: {

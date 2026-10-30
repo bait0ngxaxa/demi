@@ -1,5 +1,7 @@
 import "server-only";
 
+import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+
 import {
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
@@ -79,6 +81,9 @@ export type AppointmentCoordinationSummary = {
 };
 
 export type AppointmentHistoryItem = {
+  serviceCode: PatientServiceCode | null;
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   appointmentId: string;
   scheduledAt: Date;
   type: AppointmentTypeValue;
@@ -101,6 +106,8 @@ export type AppointmentHistory = {
 };
 
 export type AppointmentDetail = {
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   canHospitalManage?: boolean;
   patient: AppointmentPatientSummary;
   canManage: boolean;
@@ -166,6 +173,9 @@ function appointmentHistorySelect(hospitalId: string) {
   updatedAt: true,
   scheduledAt: true,
   type: true,
+  serviceCode: true,
+  sourceServiceRequestId: true,
+  assignedOsmUserId: true,
   status: true,
   durationMinutes: true,
   locationType: true,
@@ -418,8 +428,19 @@ function toCoordinationEvents(
   }));
 }
 
-function toHistoryItem(record: AppointmentHistoryRecord): AppointmentHistoryItem {
+function toHistoryItem(
+  record: AppointmentHistoryRecord,
+  currentOsmUserId: string | null = null,
+  showOneOffVisit = false,
+): AppointmentHistoryItem {
   return {
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit: showOneOffVisit && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: currentOsmUserId,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    }),
     appointmentId: record.id,
     scheduledAt: record.scheduledAt,
     type: record.type,
@@ -444,6 +465,7 @@ function toDetail(
   canProxyPatientActions: boolean,
   canHospitalManage: boolean = canManage,
   canAcceptAssignment = false,
+  isOneOffVisit = false,
 ): AppointmentDetail {
   return {
     patient,
@@ -468,6 +490,8 @@ function toDetail(
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     type: record.type,
     serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit,
     fromServiceRequest: record.sourceServiceRequestId !== null,
     scheduledAt: record.scheduledAt,
     durationMinutes: record.durationMinutes,
@@ -583,7 +607,7 @@ export async function getAppointmentHistory(
     });
     return {
       patient: access.patient,
-      items: records.map(toHistoryItem),
+      items: records.map((record) => toHistoryItem(record, access.target.patientCurrentOsmUserId ?? null, access.scopes.directHospital || access.scopes.networkRead)),
       canManage: access.scopes.directHospital,
       canCreate: access.scopes.directHospital || access.scopes.exactOsmAssignment,
     };
@@ -652,8 +676,13 @@ export async function getAppointmentDetail(
       appointmentContactAudienceForScope(access.scopes),
     );
 
+    const showOneOffVisit = (access.scopes.directHospital || access.scopes.networkRead || access.scopes.visitOsm) && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: access.target.patientCurrentOsmUserId ?? null,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    });
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment || access.scopes.visitOsm, access.scopes.directHospital, canAcceptAssignment), contactPhones };
+      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment || access.scopes.visitOsm, access.scopes.directHospital, canAcceptAssignment, showOneOffVisit), contactPhones };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

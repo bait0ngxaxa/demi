@@ -62,6 +62,8 @@ export type PatientServiceRequestPreferenceView = {
 };
 
 export type PatientServiceRequestStatusView = PatientServiceRequestPreferenceView & {
+  relationshipId: string;
+  appointmentId: string | null;
   requestId: string;
   serviceCode: PatientServiceCode;
   status: PatientServiceRequestStatus;
@@ -305,6 +307,7 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
+        appointments: { select: { id: true }, take: 1 },
         status: true,
         createdAt: true,
         preferredDate: true,
@@ -386,6 +389,8 @@ export async function listOwnPatientServiceRequests(
         requests: relationship.serviceRequests.map((request) => ({
           ...toPreferenceView(request),
           requestId: request.id,
+          relationshipId: relationship.id,
+          appointmentId: request.appointments[0]?.id ?? null,
           serviceCode: request.offering.code,
           status: request.status,
           rejectionReason: request.rejectionReason,
@@ -806,6 +811,20 @@ export async function listHospitalPatientServiceRequests(
       throw new ForbiddenError();
     }
 
+    // Match the pending cursor to the complete sort tuple, including the null-date tail.
+    const recencyBoundary: Prisma.PatientServiceRequestWhereInput[] = after ? [
+      { createdAt: { lt: new Date(after.createdAt) } },
+      { createdAt: new Date(after.createdAt), id: { lt: after.requestId } },
+    ] : [];
+    const cursorWhere: Prisma.PatientServiceRequestWhereInput = !after ? {} : group !== "PENDING"
+      ? { OR: recencyBoundary }
+      : after.preferredDate
+        ? { OR: [
+            { preferredDate: { gt: serviceDateToUtcDate(after.preferredDate) } },
+            { preferredDate: null },
+            { preferredDate: serviceDateToUtcDate(after.preferredDate), OR: recencyBoundary },
+          ] }
+        : { preferredDate: null, OR: recencyBoundary };
     const requests = await database.patientServiceRequest.findMany({
       where: {
         hospitalId: { in: hospitalIds },
@@ -813,10 +832,7 @@ export async function listHospitalPatientServiceRequests(
         status: group === "HISTORY"
           ? { in: [PatientServiceRequestStatus.STARTED, PatientServiceRequestStatus.REJECTED, PatientServiceRequestStatus.WITHDRAWN] }
           : group,
-        ...(after ? { OR: [
-          { createdAt: { lt: new Date(after.createdAt) } },
-          { createdAt: new Date(after.createdAt), id: { lt: after.requestId } },
-        ] } : {}),
+        ...cursorWhere,
       },
       select: {
         id: true,
@@ -870,7 +886,9 @@ export async function listHospitalPatientServiceRequests(
           select: { person: { select: { givenName: true, familyName: true } } },
         },
       },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      orderBy: group === "PENDING"
+        ? [{ preferredDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }]
+        : [{ createdAt: "desc" }, { id: "desc" }],
       take: HOSPITAL_REQUEST_PAGE_SIZE + 1,
     });
 
@@ -880,7 +898,7 @@ export async function listHospitalPatientServiceRequests(
       group,
       after,
       nextCursor: requests.length > HOSPITAL_REQUEST_PAGE_SIZE && last
-        ? { createdAt: last.createdAt.toISOString(), requestId: last.id }
+        ? { createdAt: last.createdAt.toISOString(), requestId: last.id, ...(group === "PENDING" ? { preferredDate: last.preferredDate ? last.preferredDate.toISOString().slice(0, 10) : null } : {}) }
         : null,
       requests: visible.map((request) => ({
         ...toPreferenceView(request),

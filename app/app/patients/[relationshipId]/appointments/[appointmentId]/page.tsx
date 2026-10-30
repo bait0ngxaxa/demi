@@ -1,3 +1,4 @@
+import { AppointmentServiceSource, OneOffVisitNote } from "../../../../appointment-service-source";
 import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import { RescheduleRequestSection } from "../reschedule-request-section";
 import type { Metadata } from "next";
@@ -13,7 +14,6 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  APPOINTMENT_TYPE_LABELS,
   appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
@@ -164,8 +164,9 @@ function AppointmentDetailView({
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]">ข้อมูลนัดหมาย</h2>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                {APPOINTMENT_TYPE_LABELS[detail.type]}
+                <AppointmentServiceSource type={detail.type} serviceCode={detail.serviceCode} source={detail.source} />
               </p>
+              <OneOffVisitNote visible={detail.isOneOffVisit} />
             </div>
             <StatusBadge variant={statusVariant(detail.status)}>
               {APPOINTMENT_STATUS_LABELS[detail.status]}

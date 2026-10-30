@@ -1,4 +1,7 @@
 import "server-only";
+
+import { appointmentSource, type AppointmentSource } from "@/modules/appointments/domain/appointment-service-definitions";
+import type { PatientServiceCode } from "@prisma/client";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
 import { loadAppointmentContactPhones } from "@/modules/appointments/services/appointment-contact-phone-service";
 
@@ -214,6 +217,8 @@ export type PatientSelfFollowupDetail = PatientSelfFollowupHistoryItem & {
 };
 
 export type PatientSelfAppointmentItem = {
+  serviceCode: PatientServiceCode | null;
+  source: AppointmentSource;
   appointmentId: string;
   type: AppointmentType;
   scheduledAt: Date;
@@ -415,6 +420,8 @@ function appointmentSelect<TMembershipSelect extends Prisma.HospitalMembershipSe
   return {
   id: true,
   type: true,
+  serviceCode: true,
+  sourceServiceRequestId: true,
   scheduledAt: true,
   durationMinutes: true,
   locationType: true,
@@ -559,6 +566,8 @@ function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentIte
 
   return {
     appointmentId: record.id,
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
     type: record.type,
     scheduledAt: record.scheduledAt,
     durationMinutes: record.durationMinutes,

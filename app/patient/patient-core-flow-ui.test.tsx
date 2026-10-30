@@ -38,7 +38,7 @@ describe("Patient service request presentation", () => {
             ],
             requests: [
               {
-                requestId: "66666666-6666-4666-8666-666666666666",
+                relationshipId: "relationship", appointmentId: null, requestId: "66666666-6666-4666-8666-666666666666",
                 serviceCode: "SCREENING" as const,
                 status: "PENDING" as const,
                 preferredOsmName: "สมใจ ผู้ดูแล",
@@ -49,7 +49,7 @@ describe("Patient service request presentation", () => {
                 createdAt: new Date("2026-10-01T00:00:00.000Z"),
               },
               {
-                requestId: "88888888-8888-4888-8888-888888888888",
+                relationshipId: "relationship", appointmentId: null, requestId: "88888888-8888-4888-8888-888888888888",
                 serviceCode: "FOLLOW_UP" as const,
                 status: "REJECTED" as const,
                 preferredOsmName: null,
@@ -77,7 +77,7 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("5 ตุลาคม 2569 · บ่าย");
     expect(markup).toContain("หมายเหตุ: สะดวกหลังบ่ายสอง");
     expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");
-    expect(markup).toContain("รอโรงพยาบาลตรวจสอบ");
+    expect(markup).toContain("รอโรงพยาบาลยืนยัน");
     expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนใน Program");
     expect(markup).not.toContain("อสม.ที่ได้รับมอบหมาย");
     expect(markup).not.toContain(osmUserId);

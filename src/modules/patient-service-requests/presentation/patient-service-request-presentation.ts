@@ -41,6 +41,7 @@ export function hospitalServiceRequestListHref(
   if (after) {
     query.set("afterDate", after.createdAt);
     query.set("afterId", after.requestId);
+    if (after.preferredDate !== undefined) query.set("afterPreferredDate", after.preferredDate ?? "none");
   }
   return `/app/patients/service-requests?${query.toString()}`;
 }
@@ -54,14 +55,14 @@ export function patientServiceRequestStatusLabel(
 ): string {
   switch (status) {
     case "PENDING":
-      return "รอโรงพยาบาลตรวจสอบ";
+      return "รอโรงพยาบาลยืนยัน";
     case "APPROVED":
       return "อนุมัติคำขอแล้ว รอยืนยันนัด";
     case "STARTED":
       // ADR-0023: STARTED means the appointment is booked.
       return "ยืนยันนัดแล้ว";
     case "REJECTED":
-      return "ไม่อนุมัติคำขอ";
+      return "ไม่อนุมัติ";
     case "WITHDRAWN":
       return "ถอนคำขอแล้ว";
   }

@@ -24,6 +24,6 @@ describe("Patient service request presentation", () => {
   });
 
   it("labels PENDING as awaiting Hospital review", () => {
-    expect(patientServiceRequestStatusLabel("PENDING")).toBe("รอโรงพยาบาลตรวจสอบ");
+    expect(patientServiceRequestStatusLabel("PENDING")).toBe("รอโรงพยาบาลยืนยัน");
   });
 });

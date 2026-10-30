@@ -7,6 +7,12 @@ export const SERVICE_APPOINTMENT_TYPE: Record<PatientServiceCode, AppointmentTyp
   EMPOWERMENT: "EDUCATION",
 };
 
+export type AppointmentSource = "HOSPITAL" | "PATIENT_REQUEST";
+
+export function appointmentSource(sourceServiceRequestId: string | null): AppointmentSource {
+  return sourceServiceRequestId == null ? "HOSPITAL" : "PATIENT_REQUEST";
+}
+
 export type OneOffVisitOsmInput = {
   appointmentOsmUserId: string | null;
   assignedOsmUserId: string | null;

@@ -49,7 +49,7 @@ beforeEach(() => {
 describe("Hospital confirm action (ADR-0023 SR-D1)", () => {
   it("passes the booking fields with the server-issued nonce and invalidates request and appointment readback", async () => {
     const result = await confirmPatientServiceRequestAction({ status: "IDLE" }, confirmForm());
-    expect(result).toMatchObject({ status: "SUCCESS", message: expect.stringContaining("ยืนยันนัดแล้ว") });
+    expect(result).toMatchObject({ status: "SUCCESS", message: expect.stringContaining("ยืนยันนัดแล้ว"), appointment: { relationshipId, appointmentId: "55555555-5555-4555-8555-555555555555" } });
     expect(mocks.confirm).toHaveBeenCalledWith({ userId: "trusted-reviewer" }, {
       requestId, osmUserId, submissionNonce: nonce, scheduledAt: "2026-11-02T09:00:00+07:00",
       durationMinutes: 30, locationDetail: null, note: null,

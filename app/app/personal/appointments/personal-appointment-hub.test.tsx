@@ -24,6 +24,7 @@ const relationship = (relationshipId: string, hospitalName: string, careEndedAt:
   relationshipId, hospitalCode: hospitalName, hospitalName, hospitalNumber: null, hospitalStatus: HospitalStatus.ACTIVE, careEndedAt,
 });
 const appointment = {
+  serviceCode: null, source: "HOSPITAL" as const,
   appointmentId, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: 30, locationType: AppointmentLocationType.CLINIC,
   locationDetail: null, status: AppointmentStatus.SCHEDULED, updatedAt: scheduledAt, responsibleDisplayName: null,
   responsibleProfession: null, osmAtCreationDisplayName: null, acknowledgement: null, cancellationRequests: [],
@@ -71,7 +72,7 @@ describe("AF-4 appointment hub view", () => {
   it("shows a family member's shared upcoming appointments read-only through the grant routes", () => {
     const markup = renderToStaticMarkup(<PersonalAppointmentHub context={{
       ...selfContext, selected: family, self: null,
-      family: { appointments: [{ appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
+      family: { appointments: [{ serviceCode: null, source: "HOSPITAL", appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
     }} />);
 
     expect(markup).toContain("นัดหมายของ แม่ ใจดี ที่ รพ.สต. บ้านใหม่");
@@ -128,4 +129,12 @@ describe("legacy per-Hospital appointment route", () => {
     expect(markup).toContain("สิ้นสุดการดูแลแล้ว");
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
+});
+
+it.each(["upcoming", "history"] as const)("SR-C shows service/source and request entry on the %s hub", (tab) => {
+  const markup = renderToStaticMarkup(<PersonalAppointmentHub context={{ ...selfContext, tab, self: selfContext.self ? { ...selfContext.self, tab, appointments: [{ ...appointment, serviceCode: "FOLLOW_UP", source: "PATIENT_REQUEST", relationshipId: ownA, hospitalName: "โรงพยาบาล ก" }] } : null }} />);
+  expect(markup).toContain("ติดตาม");
+  expect(markup).toContain("ขอรับบริการ");
+  expect(markup).toContain('href="/app/personal/services"');
+  expect(markup).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
 });

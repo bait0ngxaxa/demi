@@ -67,6 +67,7 @@ describe("AF-5 family health summary view", () => {
 
 describe("AF-5 family appointment projection by contract version", () => {
   const appointment = {
+    serviceCode: null, source: "HOSPITAL" as const,
     appointmentId: "appointment-locator", hospitalName: "รพ.สต. บ้านใหม่", type: AppointmentType.FOLLOW_UP,
     scheduledAt: new Date("2026-11-01T03:00:00.000Z"), durationMinutes: 30, locationType: AppointmentLocationType.HOME_VISIT, status: AppointmentStatus.SCHEDULED,
   };

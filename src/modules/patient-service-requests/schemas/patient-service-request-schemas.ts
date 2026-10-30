@@ -89,8 +89,11 @@ export const hospitalServiceRequestListSchema = z.object({
   group: z.enum(["PENDING", "APPROVED", "HISTORY"]).default("PENDING"),
   after: z.object({
     createdAt: z.iso.datetime(),
+    preferredDate: serviceDateSchema.nullable().optional(),
     requestId: z.uuid(),
   }).strict().optional(),
-}).strict();
+}).strict().refine((input) => input.group !== "PENDING" || !input.after || input.after.preferredDate !== undefined, {
+  message: "Pending cursor requires its preferred date (null for legacy requests)",
+});
 
 export type HospitalServiceRequestListInput = z.infer<typeof hospitalServiceRequestListSchema>;

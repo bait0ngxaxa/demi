@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,6 +9,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import type { PatientServiceRequestStatusView } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import type { PatientServiceCode, PatientServiceRequestSlot, PatientServiceRequestStatus } from "@prisma/client";
 import { PATIENT_SERVICE_REQUEST_NOTE_MAX_LENGTH } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import {
@@ -150,7 +152,7 @@ export function PatientServiceRequestForm({
       {state.status === "SUCCESS" ? (
         <Alert variant="success">
           <p className="font-semibold">ส่งคำขอแล้ว</p>
-          <p className="mt-1">สถานะปัจจุบัน: รอโรงพยาบาลตรวจสอบ โรงพยาบาลจะยืนยันวันเวลานัดให้</p>
+          <p className="mt-1">สถานะปัจจุบัน: รอโรงพยาบาลยืนยัน โรงพยาบาลจะยืนยันวันเวลานัดให้</p>
         </Alert>
       ) : null}
       {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
@@ -202,17 +204,7 @@ export function WithdrawPatientServiceRequestButton({
 export function PatientServiceRequestHistoryItem({
   request,
 }: {
-  request: {
-    requestId: string;
-    serviceCode: PatientServiceCode;
-    status: PatientServiceRequestStatus;
-    preferredOsmName: string | null;
-    preferredDate: string | null;
-    preferredSlot: PatientServiceRequestSlot | null;
-    note: string | null;
-    rejectionReason: string | null;
-    createdAt: Date;
-  };
+  request: PatientServiceRequestStatusView;
 }): React.JSX.Element {
   return (
     <li className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0">
@@ -239,6 +231,9 @@ export function PatientServiceRequestHistoryItem({
           <StatusBadge variant={patientServiceRequestStatusVariant(request.status)}>
             {patientServiceRequestStatusLabel(request.status)}
           </StatusBadge>
+          {request.status === "STARTED" && request.appointmentId ? (
+            <Link className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/personal/appointments/${encodeURIComponent(request.relationshipId)}/${encodeURIComponent(request.appointmentId)}`} prefetch={false}>ดูนัดหมาย</Link>
+          ) : null}
           <WithdrawPatientServiceRequestButton requestId={request.requestId} status={request.status} />
         </div>
       </div>

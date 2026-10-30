@@ -179,7 +179,7 @@ export async function confirmPatientServiceRequestAction(
     revalidatePath("/app/personal/services");
     revalidatePath("/app/appointments");
     revalidatePath(`/app/patients/${result.patientHospitalRelationshipId}/appointments`);
-    return { status: "SUCCESS", message: "ยืนยันนัดแล้ว ระบบแจ้ง อสม. ผู้ไปเยี่ยมให้ตอบรับนัด" };
+    return { status: "SUCCESS", message: "ยืนยันนัดแล้ว ระบบแจ้ง อสม. ผู้ไปเยี่ยมให้ตอบรับนัด", appointment: { relationshipId: result.patientHospitalRelationshipId, appointmentId: result.appointmentId } };
   } catch (error: unknown) {
     return conflictState(error);
   }

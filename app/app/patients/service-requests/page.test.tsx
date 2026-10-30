@@ -39,3 +39,9 @@ describe("Hospital service requests page", () => {
     await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow(`redirect:${path}`);
   });
 });
+
+it.each(["2026-11-02", "none"])("SR-C reads the pending preferred-date cursor %s", async (preferredDate) => {
+  const after = { createdAt: "2026-10-01T00:00:00.000Z", requestId: "11111111-1111-4111-8111-111111111111", preferredDate: preferredDate === "none" ? null : preferredDate };
+  await Page({ searchParams: Promise.resolve({ group: "PENDING", afterDate: after.createdAt, afterId: after.requestId, afterPreferredDate: preferredDate }) });
+  expect(mocks.list).toHaveBeenCalledWith({ userId: "trusted" }, {}, { group: "PENDING", after });
+});

@@ -28,6 +28,7 @@ import {
   rescheduleAppointment,
   submitAppointmentRescheduleRequest,
 } from "@/modules/appointments/services/appointment-service";
+import { getOwnPatientAppointmentDetail, listOwnPatientAppointmentHub } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
   getAppointmentDetail,
   getAppointmentHistory,
@@ -879,6 +880,19 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     });
     expect(await prisma.patientServiceRequest.findUniqueOrThrow({ where: { id: request.requestId }, select: { status: true, reviewedByUserId: true, startedByUserId: true } }))
       .toEqual({ status: PatientServiceRequestStatus.STARTED, reviewedByUserId: owner.userId, startedByUserId: owner.userId });
+    const ownRequests = await listOwnPatientServiceRequests(patientActor);
+    expect(ownRequests[0]?.requests[0]).toMatchObject({ appointmentId: confirmed.appointmentId, relationshipId: patient.relationshipId, status: "STARTED" });
+    const patientDetail = await getOwnPatientAppointmentDetail(patientActor, patient.relationshipId, confirmed.appointmentId);
+    expect(patientDetail).toMatchObject({ serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST" });
+    expect(patientDetail).not.toHaveProperty("sourceServiceRequestId");
+    expect(patientDetail).not.toHaveProperty("isOneOffVisit");
+    const hub = await listOwnPatientAppointmentHub(patientActor, {});
+    expect(hub.appointments[0]).toMatchObject({ serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST" });
+    for (const projected of [
+      await getAppointmentDetail(owner.actor, patient.relationshipId, confirmed.appointmentId),
+      (await getAppointmentHistory(owner.actor, patient.relationshipId)).items[0],
+      (await listWorkAppointments(owner.actor, { hospitalId: owner.actor.hospitalMemberships[0]?.hospitalId })).items[0],
+    ]) expect(projected).toMatchObject({ serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST", isOneOffVisit: true });
     // SR-D2: the patient's assignment is unchanged.
     expect(await assignmentSnapshot(patient.relationshipId)).toEqual(before);
     // The staff-booked appointment notifications fire, the visiting อสม. hears about the visit.
@@ -896,6 +910,31 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       .rejects.toMatchObject({ code: "CONFLICT" });
     await expect(confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, visitOsm.userId)))
       .rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("SR-C paginates pending requests by preferred date, then recency/id, with legacy dates last", async () => {
+    const { hospital, owner, offering } = await setupVisit("SRC-QUEUE");
+    const rows: Array<{ id: string; date: string | null; createdAt: Date }> = [];
+    // Enough equal dates and legacy rows to cross both date and null-date page boundaries.
+    for (let index = 0; index < 43; index += 1) {
+      const patient = await createActivePatient({ hospitalId: hospital.id });
+      const date = index < 21 ? preferredDateAhead(2) : index < 24 ? preferredDateAhead(6) : null;
+      const createdAt = new Date(Date.UTC(2026, 9, 1, 0, index % 3));
+      const row = await prisma.patientServiceRequest.create({ data: {
+        patientHospitalRelationshipId: patient.relationshipId, hospitalId: hospital.id, offeringId: offering.id,
+        requestedByUserId: patient.userId, preferredDate: date ? serviceDateToUtcDate(date) : null,
+        preferredSlot: date ? "ANY" : null, createdAt,
+      }, select: { id: true } });
+      rows.push({ id: row.id, date, createdAt });
+    }
+    const expected = [...rows].sort((a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+    const first = await listHospitalPatientServiceRequests(owner.actor);
+    const second = await listHospitalPatientServiceRequests(owner.actor, {}, { group: "PENDING", after: first.nextCursor ?? undefined });
+    const third = await listHospitalPatientServiceRequests(owner.actor, {}, { group: "PENDING", after: second.nextCursor ?? undefined });
+    expect(first.nextCursor?.preferredDate).toBe(preferredDateAhead(2));
+    expect(second.nextCursor?.preferredDate).toBeNull();
+    expect(third.nextCursor).toBeNull();
+    expect([...first.requests, ...second.requests, ...third.requests].map((row) => row.requestId)).toEqual(expected.map((row) => row.id));
   });
 
   it("notifies the assigned อสม. when the patient leaves the choice to the hospital, and nobody when there is none", async () => {
@@ -944,9 +983,12 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       canHospitalManage: false,
       serviceCode: PatientServiceCode.EMPOWERMENT,
       fromServiceRequest: true,
+      source: "PATIENT_REQUEST",
+      isOneOffVisit: true,
     });
     const upcoming = await listWorkAppointments(visitOsm.actor, { hospitalId: hospital.id, tab: "UPCOMING" });
     expect(upcoming.items.map((item) => item.appointmentId)).toEqual([appointmentId]);
+    expect(upcoming.items[0]).toMatchObject({ serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST", isOneOffVisit: true });
     expect(upcoming.items[0]?.osmAcceptanceStatus).toBe("WAITING");
     const awaiting = await listWorkAppointments(visitOsm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" });
     expect(awaiting.items.map((item) => item.appointmentId)).toEqual([appointmentId]);

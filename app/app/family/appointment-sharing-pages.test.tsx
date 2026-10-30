@@ -18,7 +18,8 @@ const grant = { participant, grantId: "grant-locator", hospitalName: "หน่�
   contractVersion: "family-appointment-read-v1" as const };
 const overview: AppointmentGrantManagement = { patient: { grants: [grant, { ...grant, grantId: "active-locator", status: "ACTIVE", acceptedAt: now }], nextCursor: null,
   hospitals: [{ relationshipId: "phr-locator", hospitalName: "หน่วยบริการทดสอบ" }], nextHospitalsCursor: null }, caregiver: { grants: [grant, { ...grant, grantId: "read-locator", status: "ACTIVE", acceptedAt: now }], nextCursor: null } };
-const appointment = { appointmentId: "appointment-locator", hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP" as const, scheduledAt: now, durationMinutes: null, locationType: null, status: "CANCELLED" as const, extension: null };
+const appointment = {
+  serviceCode: null, source: "HOSPITAL" as const, appointmentId: "appointment-locator", hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP" as const, scheduledAt: now, durationMinutes: null, locationType: null, status: "CANCELLED" as const, extension: null };
 
 describe("bounded appointment sharing UI", () => {
   it("identifies exact participants/Hospital, own selection, pending/active and exact revoke/accept row", () => {

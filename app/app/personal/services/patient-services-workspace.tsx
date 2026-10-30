@@ -53,6 +53,21 @@ export function PatientServicesWorkspace({
                 </StatusBadge>
               </div>
 
+              <section aria-labelledby={`${sectionId}-history`} className="mt-6 border-t border-border pt-5">
+                <h3 className="text-base font-semibold text-text" id={`${sectionId}-history`}>
+                  คำขอของคุณ
+                </h3>
+                {relationship.requests.length > 0 ? (
+                  <ul className="mt-4 divide-y divide-border">
+                    {[...relationship.requests].sort((left, right) => Number(right.status === "PENDING" || right.status === "APPROVED") - Number(left.status === "PENDING" || left.status === "APPROVED")).map((request) => (
+                      <PatientServiceRequestHistoryItem key={request.requestId} request={request} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีคำขอบริการสำหรับโรงพยาบาลนี้</p>
+                )}
+              </section>
+
               <section aria-labelledby={`${sectionId}-offerings`} className="mt-6 border-t border-border pt-5">
                 <h3 className="text-base font-semibold text-text" id={`${sectionId}-offerings`}>
                   ขอเพิ่มบริการ
@@ -79,22 +94,6 @@ export function PatientServicesWorkspace({
                   </Alert>
                 )}
               </section>
-
-              <section aria-labelledby={`${sectionId}-history`} className="mt-6 border-t border-border pt-5">
-                <h3 className="text-base font-semibold text-text" id={`${sectionId}-history`}>
-                  ประวัติคำขอ
-                </h3>
-                {relationship.requests.length > 0 ? (
-                  <ul className="mt-4 divide-y divide-border">
-                    {relationship.requests.map((request) => (
-                      <PatientServiceRequestHistoryItem key={request.requestId} request={request} />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีคำขอบริการสำหรับโรงพยาบาลนี้</p>
-                )}
-              </section>
-
             </Panel>
             );
           })}

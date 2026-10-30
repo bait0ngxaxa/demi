@@ -68,7 +68,7 @@ export function AppointmentAssignmentControls({
     <Panel>
       <section aria-labelledby="appointment-assignment-heading" className="space-y-3">
         <h2 className="text-lg font-semibold" id="appointment-assignment-heading">การตอบรับงานของ อสม.</h2>
-        <p className="text-sm leading-6 text-text-muted">อสม. ผู้ดูแลปัจจุบัน: {assignedOsmDisplayName}</p>
+        <p className="text-sm leading-6 text-text-muted">อสม. ผู้รับผิดชอบนัดนี้: {assignedOsmDisplayName}</p>
         {acceptedAt ? (
           <p className="text-sm font-semibold text-text" role="status">อสม. ตอบรับนัดหมายแล้ว · {formatTime(acceptedAt)}</p>
         ) : canAcceptAssignment ? (

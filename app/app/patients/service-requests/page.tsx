@@ -25,7 +25,7 @@ export default async function HospitalPatientServiceRequestsPage({
   const parsed = hospitalServiceRequestListSchema.safeParse({
     group: query.group,
     after: query.afterDate !== undefined || query.afterId !== undefined
-      ? { createdAt: query.afterDate, requestId: query.afterId }
+      ? { createdAt: query.afterDate, requestId: query.afterId, ...(query.afterPreferredDate !== undefined ? { preferredDate: query.afterPreferredDate === "none" ? null : query.afterPreferredDate } : {}) }
       : undefined,
   });
 

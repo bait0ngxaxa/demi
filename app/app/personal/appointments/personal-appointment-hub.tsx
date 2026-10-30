@@ -263,6 +263,7 @@ export function PersonalAppointmentHub({ context }: { context: PersonalAppointme
     <div className="max-w-5xl">
       {selected?.kind === "FAMILY" ? <RefreshDelegatedRead /> : null}
       <PageHeader
+        actions={selected?.kind === "SELF" ? <Link className={buttonClassName({ variant: "primary" })} href="/app/personal/services" prefetch={false}>ขอรับบริการ</Link> : null}
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "นัดหมาย" }]}
         description="นัดหมายที่จะถึงและประวัติการนัดหมายของคุณและสมาชิกครอบครัวที่แชร์ให้คุณ"
         title="นัดหมาย"

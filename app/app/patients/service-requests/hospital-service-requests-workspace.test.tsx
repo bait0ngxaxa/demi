@@ -192,3 +192,22 @@ describe("Hospital request review workspace", () => {
     expect(markup).toContain(`afterId=${request.requestId}`);
   });
 });
+
+it("SR-C keeps the created appointment link above the queue after confirmation removes the request", () => {
+  hooks.state = { status: "SUCCESS", message: "ยืนยันนัดแล้ว", appointment: { relationshipId: request.relationshipId, appointmentId: "booked" } };
+  const markup = render([]);
+  expect(markup).toContain(`href="/app/patients/${request.relationshipId}/appointments/booked"`);
+  expect(markup).toContain("เปิดนัดหมายที่ยืนยันแล้ว");
+});
+
+it("SR-C renders the service-ordered queue and retains the null-date cursor in its next link", () => {
+  const rows = [
+    { ...request, requestId: "near", preferredDate: "2026-11-02" },
+    { ...request, requestId: "far", preferredDate: "2026-11-09" },
+    { ...request, requestId: "legacy", preferredDate: null, preferredSlot: null },
+  ];
+  const markup = render(rows, { nextCursor: { requestId: request.requestId, createdAt: request.createdAt.toISOString(), preferredDate: null } });
+  expect(markup.indexOf('id="service-request-near"')).toBeLessThan(markup.indexOf('id="service-request-far"'));
+  expect(markup.indexOf('id="service-request-far"')).toBeLessThan(markup.indexOf('id="service-request-legacy"'));
+  for (const text of ["คัดกรอง", "บ่าย", "สมชาย อสม.", "สะดวกหลังบ่ายสอง", "afterPreferredDate=none"]) expect(markup).toContain(text);
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { OneOffVisitNote } from "../../../../appointment-service-source";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PatientServiceCode, Profession } from "@prisma/client";
@@ -385,6 +386,8 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                     : "เลือกแพทย์ พยาบาล หรือ อสม. ผู้ดูแลปัจจุบันของผู้ป่วย อสม. ทำงานเฉพาะนัดเยี่ยมบ้าน"}
               </span>
             </label>
+
+            {visitOsm ? <OneOffVisitNote visible /> : null}
 
             <label className={labelClassName} htmlFor="appointment-duration">
               <span>ระยะเวลา (นาที, ไม่บังคับ)</span>

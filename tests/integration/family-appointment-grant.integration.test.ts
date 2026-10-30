@@ -110,8 +110,15 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     await acceptAppointmentGrant(f.caregiver, grantId, deps);
     const page = await listDelegatedAppointments(f.caregiver, { grantId }, deps);
     // AF-5: a new proposal is the v2 contract; its additions are present and null here.
-    expect(page.appointments).toEqual([{ appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
+    expect(page.appointments).toEqual([{ serviceCode: null, source: "HOSPITAL", appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
       extension: { locationDetail: "SECRET-LOCATION", responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null } }]);
+    await db.patientAppointment.update({ where: { id }, data: { serviceCode: "FOLLOW_UP" } });
+    const withService = await getDelegatedAppointment(f.caregiver, grantId, id, deps);
+    expect(withService.serviceCode).toBe("FOLLOW_UP");
+    expect(withService.source).toBe("HOSPITAL");
+    expect(withService).not.toHaveProperty("sourceServiceRequestId");
+    expect(withService).not.toHaveProperty("isOneOffVisit");
+    await db.patientAppointment.update({ where: { id }, data: { serviceCode: null } });
     // E4 (ก-20): the detail adds the Hospital contact phone only; the Patient phone is never projected to a caregiver.
     expect(await getDelegatedAppointment(f.caregiver, grantId, id, deps)).toEqual({ ...page.appointments[0], contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } });
     const management = await getAppointmentGrantManagement(f.caregiver, {}, deps);

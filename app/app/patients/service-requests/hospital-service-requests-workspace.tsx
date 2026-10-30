@@ -33,7 +33,10 @@ import {
 import { HospitalPatientServiceRequestReviewControls } from "./hospital-service-request-controls";
 
 function ReviewFeedback({ state }: { state: PatientServiceMutationActionState }): React.JSX.Element | null {
-  if (state.status === "SUCCESS") return <Alert variant="success">{state.message ?? "บันทึกผลแล้ว"}</Alert>;
+  if (state.status === "SUCCESS") return <Alert variant="success">
+    <p>{state.message ?? "บันทึกผลแล้ว"}</p>
+    {state.appointment ? <Link className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/patients/${encodeURIComponent(state.appointment.relationshipId)}/appointments/${encodeURIComponent(state.appointment.appointmentId)}`} prefetch={false}>เปิดนัดหมายที่ยืนยันแล้ว</Link> : null}
+  </Alert>;
   if (state.status !== "ERROR") return null;
   return (
     <Alert variant={state.conflict ? "warning" : "danger"} role="alert">
@@ -110,7 +113,7 @@ export function HospitalPatientServiceRequestsWorkspace({
       <section aria-labelledby="request-group-heading" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="request-group-heading">{group.label}</h2>
         <p className="mt-2 max-w-prose text-sm leading-6 text-text-muted">{group.description}</p>
-        <p className="mt-2 text-sm text-text-muted">แสดงครั้งละไม่เกิน 20 คำขอ เรียงตามวันที่ส่งล่าสุด</p>
+        <p className="mt-2 text-sm text-text-muted">แสดงครั้งละไม่เกิน 20 คำขอ {page.group === "PENDING" ? "เรียงตามวันที่สะดวกใกล้ที่สุดก่อน คำขอเดิมที่ไม่ระบุวันที่อยู่ท้ายสุด" : "เรียงตามวันที่ส่งล่าสุด"}</p>
 
         {page.requests.length === 0 ? (
           <Alert className="mt-5" variant="neutral">

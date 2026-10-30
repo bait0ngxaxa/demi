@@ -14,8 +14,8 @@ describe("appointment grant contract", () => {
     for (const key of ["patientProfileId", "caregiverUserId", "hospitalId", "status", "contractVersion", "fields", "capability", "role"]) expect(proposeAppointmentGrantSchema.safeParse({ ...input, [key]: "untrusted" }).success).toBe(false);
     expect(appointmentGrantIdSchema.safeParse("not-a-uuid").success).toBe(false);
   });
-  it("dedicated select fetches exactly locators plus five appointment source fields", () => {
-    expect(delegatedAppointmentSelect).toEqual({ id: true, type: true, scheduledAt: true, durationMinutes: true, locationType: true, status: true });
+  it("dedicated select fetches exactly appointment fields plus service and source locator", () => {
+    expect(delegatedAppointmentSelect).toEqual({ id: true, type: true, serviceCode: true, sourceServiceRequestId: true, scheduledAt: true, durationMinutes: true, locationType: true, status: true });
     const serialized = JSON.stringify(appointmentGrantManagementSelects);
     expect(serialized).not.toMatch(/hospitalNumber|hospitalCode|dateOfBirth|identityKeyHash|phone|email|appointments|note|locationDetail/);
   });

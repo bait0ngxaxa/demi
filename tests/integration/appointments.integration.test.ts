@@ -2510,6 +2510,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     ]);
     expect(pending.items[1]?.pendingRequestBadges).toEqual({ reschedule: true, staleReschedule: true, cancellation: true });
     expect(Object.keys(pending.items[1] ?? {}).sort()).toEqual([
+      "serviceCode",
+      "source",
+      "isOneOffVisit",
       "appointmentId",
       "durationMinutes",
       "hasUnassignedOsm",
