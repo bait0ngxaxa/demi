@@ -6,7 +6,7 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { ConflictError } from "@/shared/errors/application-error";
 
-import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "../domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_LATEST_READ_CONTRACT } from "../domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_CONTRACTS } from "../domain/caregiver-sharing-contract";
 import {
   caregiverInvitationRequestedScopesSchema,
@@ -114,12 +114,12 @@ export async function activateCaregiverRelationship(
 
   for (const patientHospitalRelationshipId of scopes.appointmentRelationshipIds) {
     const grant = await transaction.caregiverAppointmentGrant.create({
-      data: { ...lifecycle, patientHospitalRelationshipId, contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 },
+      data: { ...lifecycle, patientHospitalRelationshipId, contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT },
       select: { id: true },
     });
     await recordAuditEvent({
       actorUserId: caregiver.userId, action: "caregiver_appointment_grant.accepted", resourceType: "caregiver_appointment_grant",
-      resourceId: grant.id, metadata: { contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2, source: "INVITATION" },
+      resourceId: grant.id, metadata: { contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT, source: "INVITATION" },
     }, transaction);
   }
   for (const resource of scopes.resources) {

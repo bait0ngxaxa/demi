@@ -72,7 +72,7 @@ describe("AF-4 appointment hub view", () => {
   it("shows a family member's shared upcoming appointments read-only through the grant routes", () => {
     const markup = renderToStaticMarkup(<PersonalAppointmentHub context={{
       ...selfContext, selected: family, self: null,
-      family: { appointments: [{ serviceCode: null, source: "HOSPITAL", appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
+      family: { appointments: [{ appointmentId, hospitalName: family.hospitalName, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: null, locationType: null, status: AppointmentStatus.SCHEDULED, extension: null }], nextCursor: null, contractVersion: "family-appointment-read-v1" },
     }} />);
 
     expect(markup).toContain("นัดหมายของ แม่ ใจดี ที่ รพ.สต. บ้านใหม่");

@@ -1,5 +1,5 @@
 import { AppointmentServiceSource } from "../../../../appointment-service-source";
-import { APPOINTMENT_LOCATION_LABELS, APPOINTMENT_STATUS_LABELS, appointmentResponsiblePresentation } from "@/modules/appointments/domain/appointment-definitions";
+import { APPOINTMENT_LOCATION_LABELS, APPOINTMENT_STATUS_LABELS, APPOINTMENT_TYPE_LABELS, appointmentResponsiblePresentation } from "@/modules/appointments/domain/appointment-definitions";
 import type { DelegatedAppointment, DelegatedAppointmentDetail } from "@/modules/family/services/delegated-appointment-query-service";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-phones";
@@ -7,10 +7,12 @@ import { AppointmentContactPhoneEntries } from "../../../../appointment-contact-
 export function AppointmentFields({ appointment }: { appointment: DelegatedAppointment | DelegatedAppointmentDetail }): React.JSX.Element {
   const extension = appointment.extension;
   // AF-5 v2 adds the parent Hospital, location detail, the appointer and the OSM at creation; v1 shows none of them.
+  // SR-C1: service and source are projected only under v3, so v1/v2 keep the plain type label.
   const responsible = extension ? appointmentResponsiblePresentation(extension.responsibleDisplayName, extension.responsibleProfession) : null;
   const fields: [string, React.ReactNode][] = [
     ["หน่วยบริการ", extension?.parentHospitalName ? `${appointment.hospitalName} · ${extension.parentHospitalName}` : appointment.hospitalName],
-    ["ประเภทนัด", <AppointmentServiceSource key="type" type={appointment.type} serviceCode={appointment.serviceCode} source={appointment.source} />],
+    ["ประเภทนัด", appointment.source === undefined ? APPOINTMENT_TYPE_LABELS[appointment.type]
+      : <AppointmentServiceSource key="type" type={appointment.type} serviceCode={appointment.serviceCode ?? null} source={appointment.source} />],
     ["วันและเวลา", new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(appointment.scheduledAt)],
     ["ระยะเวลา", appointment.durationMinutes === null ? "ยังไม่ระบุ" : `${appointment.durationMinutes} นาที`],
     ["รูปแบบสถานที่", appointment.locationType === null ? "ยังไม่ระบุ" : APPOINTMENT_LOCATION_LABELS[appointment.locationType]],

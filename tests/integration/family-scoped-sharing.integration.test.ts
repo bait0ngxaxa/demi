@@ -180,7 +180,7 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     expect(await db.caregiverRelationship.findUniqueOrThrow({ where: { id: accepted.relationshipId }, select: { relationshipLabel: true, status: true } }))
       .toEqual({ relationshipLabel: "CHILD", status: "ACTIVE" });
     expect(await db.caregiverAppointmentGrant.findMany({ select: { patientHospitalRelationshipId: true, contractVersion: true, status: true, proposedByUserId: true, acceptedByUserId: true } }))
-      .toEqual([{ patientHospitalRelationshipId: f.relationshipA, contractVersion: "family-appointment-read-v2", status: "ACTIVE", proposedByUserId: f.patient.userId, acceptedByUserId: caregiver.userId }]);
+      .toEqual([{ patientHospitalRelationshipId: f.relationshipA, contractVersion: "family-appointment-read-v3", status: "ACTIVE", proposedByUserId: f.patient.userId, acceptedByUserId: caregiver.userId }]);
     expect((await db.caregiverResourceGrant.findMany({ select: { resource: true, status: true }, orderBy: { resource: "asc" } })))
       .toEqual([{ resource: "PROFILE_SUMMARY", status: "ACTIVE" }, { resource: "MEDICATION", status: "ACTIVE" }]);
     const actions = (await db.auditEvent.findMany({ select: { action: true } })).map(({ action }) => action);
@@ -356,7 +356,7 @@ describe("AF-5 family appointment read v2 (PostgreSQL)", () => {
     await expect(listDelegatedAppointments(caregiver, { grantId: v1GrantId, tab: "history" }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(getDelegatedAppointment(caregiver, v1GrantId, ids.past, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-    // The Patient proposes v2; the v1 projection stays until the caregiver accepts (no silent widening).
+    // The Patient proposes the latest version; the v1 projection stays until the caregiver accepts (no silent widening).
     const { grantId: v2GrantId } = await proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, deps);
     await expect(proposeAppointmentGrant(f.patient, { caregiverRelationshipId: relationshipId, patientHospitalRelationshipId: f.relationshipA }, deps)).rejects.toMatchObject({ code: "CONFLICT" });
     expect((await listDelegatedAppointments(caregiver, { grantId: v1GrantId }, deps)).appointments[0]?.extension).toBeNull();

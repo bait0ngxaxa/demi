@@ -49,12 +49,22 @@ describe("SR-C appointment surfaces", () => {
     }
   });
 
-  it.each([null, "family-appointment-read-v2"])("shows service/source without changing caregiver fields (%s)", (version) => {
-    const markup = renderToStaticMarkup(<AppointmentFields appointment={{ ...appointment, hospitalName: "โรงพยาบาล", extension: version ? { locationDetail: null, responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null } : null }} />);
-    expect(markup).toContain("เสริมพลังใจ");
+  const extension = { locationDetail: null, responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null };
+  it("shows service/source on a caregiver v3 projection without changing the other fields", () => {
+    const markup = renderToStaticMarkup(<AppointmentFields appointment={{ ...appointment, hospitalName: "โรงพยาบาล", extension }} />);
+    expect(markup).toContain("ให้ความรู้ · เสริมพลังใจ");
     expect(markup).toContain("ขอรับบริการ");
     expect(markup).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
-    expect(markup.match(/<dt /g)).toHaveLength(version ? 9 : 6);
+    expect(markup.match(/<dt /g)).toHaveLength(9);
+  });
+
+  it.each([null, extension])("SR-C1: a v1/v2 caregiver projection has no service/source keys and renders the plain type (%#)", (versionExtension) => {
+    const projected = { appointmentId: "appointment", hospitalName: "โรงพยาบาล", type: "EDUCATION" as const, scheduledAt: at, durationMinutes: 30,
+      locationType: "HOME_VISIT" as const, status: "SCHEDULED" as const, extension: versionExtension };
+    const markup = renderToStaticMarkup(<AppointmentFields appointment={projected} />);
+    expect(markup).toContain("ให้ความรู้");
+    for (const text of ["เสริมพลังใจ", "ขอรับบริการ", "โรงพยาบาลนัด"]) expect(markup).not.toContain(text);
+    expect(markup.match(/<dt /g)).toHaveLength(versionExtension ? 9 : 6);
   });
 
   it.each(["DIRECT", "OSM"] as const)("shows both sources and the server-projected one-off note in %s work lists", (access) => {
