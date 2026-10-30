@@ -11,6 +11,7 @@ import {
   Prisma,
   Profession,
   PatientServiceRequestStatus,
+  type PatientServiceCode,
   Role,
   UserStatus,
   type PrismaClient,
@@ -460,7 +461,11 @@ async function createInTransaction(
     locationType: fields.locationType,
   });
 
-  let sourceRequest: { id: string; status: PatientServiceRequestStatus } | null = null;
+  let sourceRequest: {
+    id: string;
+    status: PatientServiceRequestStatus;
+    offering: { code: PatientServiceCode };
+  } | null = null;
   if (sourceServiceRequestId) {
     if (!access.scopes.directHospital || !fields.assignedOsmUserId) throw new ForbiddenError();
     sourceRequest = await transaction.patientServiceRequest.findFirst({
@@ -469,7 +474,7 @@ async function createInTransaction(
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, offering: { select: { code: true } } },
     });
     if (!sourceRequest || sourceRequest.status !== PatientServiceRequestStatus.APPROVED) {
       throw new ConflictError("The approved Patient service request is no longer available");
@@ -482,6 +487,8 @@ async function createInTransaction(
       osmAssignmentIdAtCreation: access.target.assignedOsmAssignmentId,
       assignedOsmUserId: fields.assignedOsmUserId,
       sourceServiceRequestId,
+      // ADR-0023 (SR-D4): an appointment booked from a request keeps the requested service.
+      serviceCode: sourceRequest?.offering.code ?? null,
       responsibleUserId: fields.responsibleUserId,
       createdByUserId: actor.userId,
       type: fields.type,

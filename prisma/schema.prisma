@@ -424,12 +424,20 @@ enum PatientServiceCode {
   EMPOWERMENT
 }
 
+// ADR-0023: STARTED means the appointment is booked ("ยืนยันนัดแล้ว"); APPROVED is legacy (readable, still bookable).
 enum PatientServiceRequestStatus {
   PENDING
   APPROVED
   REJECTED
   STARTED
   WITHDRAWN
+}
+
+// ADR-0023 (SR-D6): the patient's preferred slot; staff set the exact time on confirmation.
+enum PatientServiceRequestSlot {
+  MORNING
+  AFTERNOON
+  ANY
 }
 
 enum PatientAccessRequestStatus {
@@ -1472,6 +1480,8 @@ model PatientAppointment {
   osmAssignmentIdAtCreation     String?                 @db.Uuid
   assignedOsmUserId             String?                 @db.Uuid
   sourceServiceRequestId        String?                 @db.Uuid
+  // ADR-0023 (SR-D4): required when booked from a request (SQL CHECK); optional for hospital bookings.
+  serviceCode                   PatientServiceCode?
   responsibleUserId            String?                 @db.Uuid
   createdByUserId               String                  @db.Uuid
   type                          AppointmentType
@@ -2058,7 +2068,7 @@ model HospitalServiceOffering {
   id              String            @id @default(uuid()) @db.Uuid
   hospitalId      String            @db.Uuid
   code            PatientServiceCode
-  enabled         Boolean           @default(false)
+  enabled         Boolean           @default(true)
   createdByUserId String            @db.Uuid
   updatedByUserId String            @db.Uuid
   createdAt       DateTime          @default(now())
@@ -2081,6 +2091,12 @@ model PatientServiceRequest {
   offeringId                    String                     @db.Uuid
   requestedByUserId              String                     @db.Uuid
   preferredOsmUserId             String?                    @db.Uuid
+  // ADR-0023 (SR-D6): date and slot both set or both null (SQL CHECK); null on requests made before SR-B.
+  preferredDate                  DateTime?                  @db.Date
+  preferredSlot                  PatientServiceRequestSlot?
+  note                           String?                    @db.VarChar(500)
+  // Only on REJECTED requests (SQL CHECK); required for every rejection from SR-B on.
+  rejectionReason                String?                    @db.VarChar(500)
   status                         PatientServiceRequestStatus @default(PENDING)
   reviewedByUserId               String?                    @db.Uuid
   reviewedAt                     DateTime?

@@ -6,8 +6,11 @@ import {
   PatientServiceRequestStatus,
   Role,
   UserStatus,
+  type Prisma,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
@@ -590,8 +593,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
       locationDetail: null,
       note: null,
     });
-    expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: appointment.appointmentId }, select: { sourceServiceRequestId: true } }))
-      .toEqual({ sourceServiceRequestId: request.requestId });
+    expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: appointment.appointmentId }, select: { sourceServiceRequestId: true, serviceCode: true } }))
+      .toEqual({ sourceServiceRequestId: request.requestId, serviceCode: PatientServiceCode.SCREENING });
     await expect(withdrawOwnPatientServiceRequest(patientActor, { requestId: request.requestId })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
     expect(await prisma.patientProgram.count()).toBe(0);
@@ -759,5 +762,282 @@ describe("Patient service requests PostgreSQL workflow", () => {
     expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
     expect(results.filter(({ status }) => status === "rejected")).toHaveLength(1);
     expect(await prisma.patientServiceRequest.count({ where: { patientHospitalRelationshipId: patient.relationshipId, status: { in: [PatientServiceRequestStatus.PENDING, PatientServiceRequestStatus.APPROVED] } } })).toBe(1);
+  });
+});
+
+describe("Service request appointments schema (ADR-0023, SR-A)", () => {
+  const migrationSql = readFileSync(
+    resolve(process.cwd(), "prisma/migrations/20261128100000_service_request_appointments/migration.sql"),
+    "utf8",
+  );
+  // Data step statements are separated by a blank line; the DO block has none inside.
+  const dataStepStatements = migrationSql
+    .slice(migrationSql.indexOf("-- BEGIN SR-A data step"), migrationSql.indexOf("-- END SR-A data step"))
+    .split(/;\s*\n\s*\n/u)
+    .map((statement) => statement.replace(/^\s*--.*$/gmu, "").trim().replace(/;$/u, ""))
+    .filter(Boolean);
+  const rollback = new Error("roll back the SR-A data step rehearsal");
+
+  beforeAll(async () => {
+    await prisma.$connect();
+  });
+
+  beforeEach(async () => {
+    await clearDatabase();
+  });
+
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  // Temporary tables shadow the real ones for this transaction only (as in the FR-1 data step test).
+  async function createShadowTables(transaction: Prisma.TransactionClient): Promise<void> {
+    await transaction.$executeRaw`CREATE TEMPORARY TABLE "User" ("id" UUID PRIMARY KEY) ON COMMIT DROP`;
+    await transaction.$executeRaw`
+      CREATE TEMPORARY TABLE "Hospital" ("id" UUID PRIMARY KEY, "registeredByUserId" UUID) ON COMMIT DROP`;
+    await transaction.$executeRaw`
+      CREATE TEMPORARY TABLE "HospitalMembership" (
+        "hospitalId" UUID NOT NULL, "userId" UUID NOT NULL, "membershipType" "MembershipType" NOT NULL,
+        "status" "MembershipStatus" NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL
+      ) ON COMMIT DROP`;
+    await transaction.$executeRaw`
+      CREATE TEMPORARY TABLE "HospitalServiceOffering" (
+        "id" UUID PRIMARY KEY, "hospitalId" UUID NOT NULL, "code" "PatientServiceCode" NOT NULL, "enabled" BOOLEAN NOT NULL,
+        "createdByUserId" UUID NOT NULL, "updatedByUserId" UUID NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL,
+        "updatedAt" TIMESTAMP(3) NOT NULL, UNIQUE ("hospitalId", "code")
+      ) ON COMMIT DROP`;
+    await transaction.$executeRaw`
+      CREATE TEMPORARY TABLE "PatientServiceRequest" (
+        "id" UUID PRIMARY KEY, "offeringId" UUID NOT NULL, "status" "PatientServiceRequestStatus" NOT NULL
+      ) ON COMMIT DROP`;
+    await transaction.$executeRaw`
+      CREATE TEMPORARY TABLE "PatientAppointment" (
+        "id" UUID PRIMARY KEY, "sourceServiceRequestId" UUID, "serviceCode" "PatientServiceCode"
+      ) ON COMMIT DROP`;
+  }
+
+  async function runDataStep(transaction: Prisma.TransactionClient): Promise<void> {
+    for (const statement of dataStepStatements) {
+      await transaction.$executeRawUnsafe(statement);
+    }
+  }
+
+  it("backfills request appointments and adds only the missing offerings, attributed to the earliest ACTIVE OWNER or the registrar", async () => {
+    const [endedOwner, laterOwner, earliestOwner, member, registrarOwned, registrarPending] =
+      Array.from({ length: 6 }, () => randomUUID());
+    const owned = randomUUID();
+    const pending = randomUUID();
+    const complete = randomUUID();
+    const existingAt = new Date("2026-09-01T00:00:00.000Z");
+    const offering = {
+      ownedScreening: randomUUID(),
+      completeScreening: randomUUID(),
+      completeFollowUp: randomUUID(),
+      completeEmpowerment: randomUUID(),
+    };
+    const requests = Object.values(PatientServiceRequestStatus).map((status) => ({ id: randomUUID(), status }));
+    const startedRequest = requests.find(({ status }) => status === PatientServiceRequestStatus.STARTED);
+    const approvedRequest = requests.find(({ status }) => status === PatientServiceRequestStatus.APPROVED);
+    if (!startedRequest || !approvedRequest) throw new Error("fixture needs STARTED and APPROVED requests");
+    const fromEmpowerment = randomUUID();
+    const fromScreening = randomUUID();
+    const hospitalBooked = randomUUID();
+
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        await createShadowTables(transaction);
+        for (const id of [endedOwner, laterOwner, earliestOwner, member, registrarOwned, registrarPending]) {
+          await transaction.$executeRaw`INSERT INTO "User" ("id") VALUES (${id}::uuid)`;
+        }
+        await transaction.$executeRaw`
+          INSERT INTO "Hospital" ("id", "registeredByUserId") VALUES
+            (${owned}::uuid, ${registrarOwned}::uuid), (${pending}::uuid, ${registrarPending}::uuid), (${complete}::uuid, NULL)`;
+        await transaction.$executeRaw`
+          INSERT INTO "HospitalMembership" ("hospitalId", "userId", "membershipType", "status", "createdAt") VALUES
+            (${owned}::uuid, ${endedOwner}::uuid, 'OWNER', 'ENDED', '2025-01-01'),
+            (${owned}::uuid, ${member}::uuid, 'MEMBER', 'ACTIVE', '2025-06-01'),
+            (${owned}::uuid, ${laterOwner}::uuid, 'OWNER', 'ACTIVE', '2026-02-01'),
+            (${owned}::uuid, ${earliestOwner}::uuid, 'OWNER', 'ACTIVE', '2026-01-01')`;
+        await transaction.$executeRaw`
+          INSERT INTO "HospitalServiceOffering" ("id", "hospitalId", "code", "enabled", "createdByUserId", "updatedByUserId", "createdAt", "updatedAt") VALUES
+            (${offering.ownedScreening}::uuid, ${owned}::uuid, 'SCREENING', false, ${laterOwner}::uuid, ${laterOwner}::uuid, ${existingAt}, ${existingAt}),
+            (${offering.completeScreening}::uuid, ${complete}::uuid, 'SCREENING', true, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt}),
+            (${offering.completeFollowUp}::uuid, ${complete}::uuid, 'FOLLOW_UP', false, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt}),
+            (${offering.completeEmpowerment}::uuid, ${complete}::uuid, 'EMPOWERMENT', true, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt})`;
+        for (const request of requests) {
+          const offeringId = request === approvedRequest ? offering.ownedScreening : offering.completeEmpowerment;
+          await transaction.$executeRaw`
+            INSERT INTO "PatientServiceRequest" ("id", "offeringId", "status")
+            VALUES (${request.id}::uuid, ${offeringId}::uuid, ${request.status}::"PatientServiceRequestStatus")`;
+        }
+        await transaction.$executeRaw`
+          INSERT INTO "PatientAppointment" ("id", "sourceServiceRequestId", "serviceCode") VALUES
+            (${fromEmpowerment}::uuid, ${startedRequest.id}::uuid, NULL),
+            (${fromScreening}::uuid, ${approvedRequest.id}::uuid, NULL),
+            (${hospitalBooked}::uuid, NULL, NULL)`;
+
+        await runDataStep(transaction);
+
+        const appointments = await transaction.$queryRaw<Array<{ id: string; serviceCode: PatientServiceCode | null }>>`
+          SELECT "id"::text AS "id", "serviceCode" FROM "PatientAppointment"`;
+        expect(new Map(appointments.map(({ id, serviceCode }) => [id, serviceCode]))).toEqual(new Map([
+          [fromEmpowerment, PatientServiceCode.EMPOWERMENT],
+          [fromScreening, PatientServiceCode.SCREENING],
+          [hospitalBooked, null],
+        ]));
+
+        const offerings = await transaction.$queryRaw<Array<{
+          id: string; hospitalId: string; code: PatientServiceCode; enabled: boolean;
+          createdByUserId: string; updatedByUserId: string; createdAt: Date;
+        }>>`
+          SELECT "id"::text AS "id", "hospitalId"::text AS "hospitalId", "code", "enabled",
+                 "createdByUserId"::text AS "createdByUserId", "updatedByUserId"::text AS "updatedByUserId", "createdAt"
+          FROM "HospitalServiceOffering" ORDER BY "hospitalId", "code"`;
+        const byHospital = (hospitalId: string) => offerings
+          .filter((row) => row.hospitalId === hospitalId)
+          .map(({ code, enabled, createdByUserId, updatedByUserId }) => ({ code, enabled, createdByUserId, updatedByUserId }));
+
+        expect(byHospital(owned)).toEqual([
+          { code: "SCREENING", enabled: false, createdByUserId: laterOwner, updatedByUserId: laterOwner },
+          { code: "FOLLOW_UP", enabled: true, createdByUserId: earliestOwner, updatedByUserId: earliestOwner },
+          { code: "EMPOWERMENT", enabled: true, createdByUserId: earliestOwner, updatedByUserId: earliestOwner },
+        ]);
+        expect(byHospital(pending)).toEqual(Object.values(PatientServiceCode).map((code) => ({
+          code, enabled: true, createdByUserId: registrarPending, updatedByUserId: registrarPending,
+        })));
+        expect(byHospital(complete)).toEqual([
+          { code: "SCREENING", enabled: true, createdByUserId: member, updatedByUserId: member },
+          { code: "FOLLOW_UP", enabled: false, createdByUserId: member, updatedByUserId: member },
+          { code: "EMPOWERMENT", enabled: true, createdByUserId: member, updatedByUserId: member },
+        ]);
+        const existingIds: readonly string[] = Object.values(offering);
+        expect(offerings.filter(({ id }) => existingIds.includes(id)).map(({ createdAt }) => createdAt.getTime()))
+          .toEqual(Array(4).fill(existingAt.getTime()));
+
+        const requestStatuses = await transaction.$queryRaw<Array<{ id: string; status: PatientServiceRequestStatus }>>`
+          SELECT "id"::text AS "id", "status" FROM "PatientServiceRequest"`;
+        expect(new Map(requestStatuses.map(({ id, status }) => [id, status])))
+          .toEqual(new Map(requests.map(({ id, status }) => [id, status])));
+
+        // Rerunning the data step adds nothing.
+        await runDataStep(transaction);
+        const [total] = await transaction.$queryRaw<Array<{ count: bigint }>>`
+          SELECT count(*) AS "count" FROM "HospitalServiceOffering"`;
+        expect(Number(total?.count)).toBe(9);
+
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+  });
+
+  it("refuses Hospitals that need offerings but have no ACTIVE OWNER or registering user, reporting the count", async () => {
+    const endedOwner = randomUUID();
+    const missingRegistrar = randomUUID();
+    const withEndedOwner = randomUUID();
+
+    await expect(
+      prisma.$transaction(async (transaction) => {
+        await createShadowTables(transaction);
+        await transaction.$executeRaw`INSERT INTO "User" ("id") VALUES (${endedOwner}::uuid)`;
+        await transaction.$executeRaw`
+          INSERT INTO "Hospital" ("id", "registeredByUserId") VALUES
+            (${withEndedOwner}::uuid, NULL), (gen_random_uuid(), ${missingRegistrar}::uuid)`;
+        await transaction.$executeRaw`
+          INSERT INTO "HospitalMembership" ("hospitalId", "userId", "membershipType", "status", "createdAt")
+          VALUES (${withEndedOwner}::uuid, ${endedOwner}::uuid, 'OWNER', 'ENDED', '2025-01-01')`;
+
+        await runDataStep(transaction);
+      }),
+    ).rejects.toThrow(/SR-A: 2 Hospital\(s\) need service offerings/u);
+  });
+
+  it("keeps legacy requests valid and enforces the preference, note, rejection reason and appointment service CHECKs", async () => {
+    const hospital = await createHospital("SR-A-CHECKS");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const offering = await enableService(owner.actor, hospital.id);
+    const requestIds = new Map<PatientServiceRequestStatus, string>();
+    for (const status of Object.values(PatientServiceRequestStatus)) {
+      const patient = await createActivePatient({ hospitalId: hospital.id });
+      const created = await prisma.patientServiceRequest.create({
+        data: {
+          patientHospitalRelationshipId: patient.relationshipId,
+          hospitalId: hospital.id,
+          offeringId: offering.id,
+          requestedByUserId: patient.userId,
+          status,
+        },
+        select: { id: true, preferredDate: true, preferredSlot: true, note: true, rejectionReason: true },
+      });
+      expect(created).toMatchObject({ preferredDate: null, preferredSlot: null, note: null, rejectionReason: null });
+      requestIds.set(status, created.id);
+    }
+    const pendingId = requestIds.get(PatientServiceRequestStatus.PENDING);
+    const rejectedId = requestIds.get(PatientServiceRequestStatus.REJECTED);
+    if (!pendingId || !rejectedId) throw new Error("fixture needs PENDING and REJECTED requests");
+
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "preferredSlot" = 'MORNING' WHERE "id" = ${pendingId}::uuid`)
+      .rejects.toThrow(/PatientServiceRequest_preference_check/u);
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "preferredDate" = '2026-11-02' WHERE "id" = ${pendingId}::uuid`)
+      .rejects.toThrow(/PatientServiceRequest_preference_check/u);
+    await expect(prisma.patientServiceRequest.update({
+      where: { id: pendingId },
+      data: { preferredDate: new Date("2026-11-02T00:00:00.000Z"), preferredSlot: "ANY", note: "ขอช่วงบ่าย" },
+      select: { preferredDate: true, preferredSlot: true, note: true },
+    })).resolves.toEqual({ preferredDate: new Date("2026-11-02T00:00:00.000Z"), preferredSlot: "ANY", note: "ขอช่วงบ่าย" });
+    for (const note of ["", "  ", " ขอช่วงบ่าย"]) {
+      await expect(prisma.$executeRaw`
+        UPDATE "PatientServiceRequest" SET "note" = ${note} WHERE "id" = ${pendingId}::uuid`)
+        .rejects.toThrow(/PatientServiceRequest_note_check/u);
+    }
+
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "rejectionReason" = 'ไม่อยู่ในพื้นที่' WHERE "id" = ${pendingId}::uuid`)
+      .rejects.toThrow(/PatientServiceRequest_rejection_reason_check/u);
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "rejectionReason" = ' ' WHERE "id" = ${rejectedId}::uuid`)
+      .rejects.toThrow(/PatientServiceRequest_rejection_reason_check/u);
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "rejectionReason" = 'ไม่อยู่ในพื้นที่' WHERE "id" = ${rejectedId}::uuid`)
+      .resolves.toBe(1);
+    await expect(prisma.$executeRaw`
+      UPDATE "PatientServiceRequest" SET "status" = 'PENDING' WHERE "id" = ${rejectedId}::uuid`)
+      .rejects.toThrow(/PatientServiceRequest_rejection_reason_check/u);
+
+    const sourced = await prisma.patientServiceRequest.findUniqueOrThrow({
+      where: { id: pendingId },
+      select: { id: true, patientHospitalRelationshipId: true },
+    });
+    const appointment = {
+      patientHospitalRelationshipId: sourced.patientHospitalRelationshipId,
+      createdByUserId: owner.userId,
+      type: "ASSESSMENT" as const,
+      scheduledAt: new Date("2030-01-01T03:30:00.000Z"),
+    };
+    await expect(prisma.patientAppointment.create({
+      data: { ...appointment, sourceServiceRequestId: sourced.id, submissionNonce: randomUUID() },
+    })).rejects.toThrow(/PatientAppointment_source_request_service_check/u);
+    await expect(prisma.patientAppointment.create({
+      data: { ...appointment, sourceServiceRequestId: sourced.id, serviceCode: "SCREENING", submissionNonce: randomUUID() },
+      select: { serviceCode: true },
+    })).resolves.toEqual({ serviceCode: "SCREENING" });
+    await expect(prisma.patientAppointment.create({
+      data: { ...appointment, submissionNonce: randomUUID() },
+      select: { serviceCode: true },
+    })).resolves.toEqual({ serviceCode: null });
+  });
+
+  it("offers a service by default", async () => {
+    const hospital = await createHospital("SR-A-DEFAULT");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    await expect(prisma.hospitalServiceOffering.create({
+      data: { hospitalId: hospital.id, code: "FOLLOW_UP", createdByUserId: owner.userId, updatedByUserId: owner.userId },
+      select: { enabled: true },
+    })).resolves.toEqual({ enabled: true });
   });
 });

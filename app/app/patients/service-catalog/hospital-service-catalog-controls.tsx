@@ -31,11 +31,7 @@ export function HospitalServiceOfferingControl({
       <div>
         <p className="font-semibold text-text">{patientServiceLabel(code)}</p>
         <p className="mt-1 text-sm leading-6 text-text-muted">
-          {code === "SCREENING"
-            ? "เปิดรับคำขอบริการประเภทคัดกรอง"
-            : code === "FOLLOW_UP"
-              ? "เปิดรับคำขอบริการประเภทติดตาม"
-              : "เปิดรับคำขอบริการประเภทเสริมพลัง"}
+          เปิดรับคำขอบริการประเภท{patientServiceLabel(code)}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">

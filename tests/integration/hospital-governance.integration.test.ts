@@ -435,6 +435,14 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
     })).toEqual({
       serviceAreaEligibility: { kind: "PARENT", classifiedByUserId: admin.userId },
     });
+    // ADR-0023 (SR-D5): a new Hospital offers every service, recorded as set by its registrar.
+    expect(await prisma.hospitalServiceOffering.findMany({
+      where: { hospitalId: created.id },
+      orderBy: { code: "asc" },
+      select: { code: true, enabled: true, createdByUserId: true, updatedByUserId: true },
+    })).toEqual(["SCREENING", "FOLLOW_UP", "EMPOWERMENT"].map((code) => ({
+      code, enabled: true, createdByUserId: admin.userId, updatedByUserId: admin.userId,
+    })));
     const generated = await registerHospital(admin.actor, { submissionNonce: randomUUID(), name: "โรงพยาบาลรหัสอัตโนมัติ" });
     expect(generated.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
     expect(generated.hospitalCode).not.toBe(created.hospitalCode);

@@ -3,6 +3,7 @@ import type {
   PatientServiceRequestStatus,
 } from "@prisma/client";
 
+import { PATIENT_SERVICE_LABELS } from "../domain/patient-service-definitions";
 import type { HospitalServiceRequestListInput } from "../schemas/patient-service-request-schemas";
 
 export const hospitalServiceRequestGroups = [
@@ -39,14 +40,7 @@ export function hospitalServiceRequestListHref(
 }
 
 export function patientServiceLabel(code: PatientServiceCode): string {
-  switch (code) {
-    case "SCREENING":
-      return "คัดกรอง";
-    case "FOLLOW_UP":
-      return "ติดตาม";
-    case "EMPOWERMENT":
-      return "เสริมพลัง";
-  }
+  return PATIENT_SERVICE_LABELS[code];
 }
 
 export function patientServiceRequestStatusLabel(
