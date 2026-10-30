@@ -45,7 +45,7 @@ describe("bounded Hospital request list", () => {
     expect(mocks.requests).toHaveBeenCalledOnce();
     expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({
       where: { hospitalId: { in: [hospitalA, hospitalB] }, relationship: { is: { endedAt: null } }, status: "PENDING" },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 21,
+      orderBy: [{ preferredDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }], take: 21,
     }));
     expect(mocks.memberships).toHaveBeenCalledWith({
       where: { userId: actor.userId, membershipType: "OWNER", status: "ACTIVE", hospital: { status: "ACTIVE" } },
@@ -67,7 +67,7 @@ describe("bounded Hospital request list", () => {
     mocks.requests.mockResolvedValue(Array.from({ length: size }, (_, index) => row(`00000000-0000-4000-8000-${String(index).padStart(12, "0")}`)));
     const page = await listHospitalPatientServiceRequests(actor);
     expect(page.requests).toHaveLength(Math.min(size, 20));
-    expect(page.nextCursor).toEqual(size > 20 ? { createdAt: createdAt.toISOString(), requestId: page.requests.at(-1)?.requestId } : null);
+    expect(page.nextCursor).toEqual(size > 20 ? { createdAt: createdAt.toISOString(), requestId: page.requests.at(-1)?.requestId, preferredDate: null } : null);
     expect(page).not.toHaveProperty("total");
   });
 
@@ -127,4 +127,20 @@ describe("bounded Hospital request list", () => {
     const input: HospitalServiceRequestListInput = { group: "APPROVED", after: { requestId, createdAt: createdAt.toISOString() } };
     expect(hospitalServiceRequestListSchema.parse(input)).toEqual(input);
   });
+});
+
+it.each(["2026-11-02", null])("SR-C continues the pending date order across its %s boundary", async (preferredDate) => {
+  const after = { requestId, createdAt: createdAt.toISOString(), preferredDate };
+  await listHospitalPatientServiceRequests(actor, {}, { group: "PENDING", after });
+  const recency = [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: requestId } }];
+  expect(mocks.requests).toHaveBeenCalledWith(expect.objectContaining({
+    where: expect.objectContaining(preferredDate ? { OR: [
+      { preferredDate: { gt: new Date(`${preferredDate}T00:00:00.000Z`) } },
+      { preferredDate: null }, { preferredDate: new Date(`${preferredDate}T00:00:00.000Z`), OR: recency },
+    ] } : { preferredDate: null, OR: recency }),
+    orderBy: [{ preferredDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }],
+  }));
+});
+it("rejects an old pending recency cursor instead of silently skipping dated requests", () => {
+  expect(hospitalServiceRequestListSchema.safeParse({ group: "PENDING", after: { requestId, createdAt: createdAt.toISOString() } }).success).toBe(false);
 });

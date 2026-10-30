@@ -5,6 +5,8 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
+import { isOneOffVisitOsm } from "../domain/appointment-service-definitions";
+
 export const APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY = "appointment:request-reschedule" as const;
 export const APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY = "appointment:home-visit-manage" as const;
 export const APPOINTMENT_READ_CAPABILITY = "appointment:read" as const;
@@ -87,6 +89,58 @@ function hasExactActiveOsmAssignment(actor: ActorContext, target: AppointmentPol
           relationship.status === MembershipStatus.ACTIVE &&
           relationship.hospitalStatus === HospitalStatus.ACTIVE,
       ),
+  );
+}
+
+/**
+ * ADR-0023 (SR-B): what a one-off visiting อสม. may do with the one appointment they visit for. Every other
+ * capability (and every other module's care record) stays assignment-based.
+ */
+export const VISIT_OSM_APPOINTMENT_CAPABILITIES: readonly AppointmentCapability[] = [
+  APPOINTMENT_READ_CAPABILITY,
+  APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
+  APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY,
+  APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY,
+  APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
+];
+
+/** Access ends 24 hours after the scheduled time, or earlier when the appointment leaves SCHEDULED. */
+export const VISIT_OSM_ACCESS_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export type VisitOsmAppointment = {
+  assignedOsmUserId: string | null;
+  sourceServiceRequestId: string | null;
+  status: string;
+  scheduledAt: Date;
+};
+
+/**
+ * ADR-0023 (SR-B): the actor is the appointment's อสม., an ACTIVE อสม. of its ACTIVE Hospital, the appointment
+ * is a one-off visit from a service request, and it is SCHEDULED no later than 24 hours past its time.
+ */
+function hasOneOffVisitOsmScope(
+  actor: ActorContext,
+  target: AppointmentPolicyTarget,
+  appointment: VisitOsmAppointment,
+  now: Date,
+): boolean {
+  return (
+    actor.roles.includes(Role.OSM) &&
+    target.hospitalStatus === HospitalStatus.ACTIVE &&
+    appointment.assignedOsmUserId === actor.userId &&
+    actor.osmHospitalRelationships.some(
+      (relationship) =>
+        relationship.hospitalId === target.hospitalId &&
+        relationship.status === MembershipStatus.ACTIVE &&
+        relationship.hospitalStatus === HospitalStatus.ACTIVE,
+    ) &&
+    isOneOffVisitOsm({
+      appointmentOsmUserId: appointment.assignedOsmUserId,
+      assignedOsmUserId: target.patientCurrentOsmUserId,
+      sourceServiceRequestId: appointment.sourceServiceRequestId,
+    }) &&
+    appointment.status === "SCHEDULED" &&
+    now.getTime() <= appointment.scheduledAt.getTime() + VISIT_OSM_ACCESS_GRACE_MS
   );
 }
 
@@ -215,4 +269,5 @@ export function assertAppointmentPolicy(input: {
 export const appointmentPolicyInternals = {
   hasActiveDirectHospitalScope,
   hasExactActiveOsmAssignment,
+  hasOneOffVisitOsmScope,
 };

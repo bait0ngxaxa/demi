@@ -11,7 +11,20 @@ import {
   expectedAppointmentStatusForNotification,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
+  patientServiceRequestLineNotificationText,
 } from "./appointment-line-notifications";
+
+describe("service request LINE notification text (ADR-0023 SR-B)", () => {
+  it("names the service, the calendar date in Thai and the slot, and nothing about the patient", () => {
+    expect(patientServiceRequestLineNotificationText({
+      serviceCode: "EMPOWERMENT",
+      preferredDate: new Date("2026-11-02T00:00:00.000Z"),
+      preferredSlot: "AFTERNOON",
+    })).toBe("มีคำขอรับบริการเสริมพลังใจ วันที่ 2 พฤศจิกายน 2569 บ่าย กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(patientServiceRequestLineNotificationText({ serviceCode: "SCREENING", preferredDate: null, preferredSlot: null }))
+      .toBe("มีคำขอรับบริการคัดกรอง กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+  });
+});
 
 describe("appointment LINE notification policy", () => {
   it.each([

@@ -6,7 +6,7 @@ import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
-import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, FAMILY_APPOINTMENT_READ_CONTRACTS } from "../domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_LATEST_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACTS, isFamilyAppointmentReadContract, olderFamilyAppointmentReadContracts } from "../domain/appointment-grant-contract";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
@@ -62,22 +62,22 @@ export async function proposeAppointmentGrant(
         select: { id: true },
       });
       if (!parent || !phr || parent.caregiverUser.personId !== parent.sourceInvitation.caregiverPersonId) throw new NotFoundError();
-      // AF-5: new proposals use v2. An ACTIVE v1 grant may receive a v2 proposal (the upgrade); it keeps v1 until
-      // the caregiver accepts v2. Any other actionable grant for the same scope blocks a second proposal.
+      // AF-5/SR-C1: new proposals use the latest version. An ACTIVE older grant may receive one (the upgrade); it
+      // keeps its own projection until the caregiver accepts. Any other actionable grant for the scope blocks a proposal.
       const existing = await transaction.caregiverAppointmentGrant.findFirst({
         where: { caregiverRelationshipId: parent.id, patientHospitalRelationshipId: phr.id, OR: [
-          { status: "PENDING" }, { status: "ACTIVE", contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 },
+          { status: "PENDING" }, { status: "ACTIVE", contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT },
         ] }, select: { id: true },
       });
       if (existing) throw new ConflictError("Appointment sharing already exists");
       const grant = await transaction.caregiverAppointmentGrant.create({
         data: { caregiverRelationshipId: parent.id, patientProfileId: patient.id, patientPersonId: patient.personId,
           caregiverUserId: parent.caregiverUserId, caregiverPersonId: parent.caregiverUser.personId,
-          patientHospitalRelationshipId: phr.id, contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2,
+          patientHospitalRelationshipId: phr.id, contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
           proposedByUserId: actor.userId, proposedAt: now }, select: { id: true },
       });
       await recordAuditEvent({ actorUserId: actor.userId, action: "caregiver_appointment_grant.proposed",
-        resourceType: "caregiver_appointment_grant", resourceId: grant.id, metadata: { contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 } }, transaction);
+        resourceType: "caregiver_appointment_grant", resourceId: grant.id, metadata: { contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT } }, transaction);
       return { grantId: grant.id };
     });
   } catch (error: unknown) { rethrowAppointmentGrantError(error); }
@@ -97,12 +97,13 @@ export async function acceptAppointmentGrant(
         where, select: { contractVersion: true, caregiverRelationshipId: true, patientHospitalRelationshipId: true },
       });
       if (!grant) throw new NotFoundError();
-      // AF-5: accepting v2 supersedes the ACTIVE v1 grant of the same scope in the same transaction, so the
-      // caregiver never holds two projections and the wider one starts only with this acceptance.
-      const superseded = grant.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT_V2
+      // AF-5/SR-C1: accepting a version supersedes the ACTIVE older-version grant of the same scope in the same
+      // transaction, so the caregiver never holds two projections and the wider one starts only with this acceptance.
+      const older = isFamilyAppointmentReadContract(grant.contractVersion) ? olderFamilyAppointmentReadContracts(grant.contractVersion) : [];
+      const superseded = older.length
         ? await transaction.caregiverAppointmentGrant.findFirst({
             where: { caregiverRelationshipId: grant.caregiverRelationshipId, patientHospitalRelationshipId: grant.patientHospitalRelationshipId,
-              contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT, status: "ACTIVE" }, select: { id: true },
+              contractVersion: { in: older }, status: "ACTIVE" }, select: { id: true, contractVersion: true },
           })
         : null;
       if (superseded) {
@@ -112,7 +113,7 @@ export async function acceptAppointmentGrant(
         if (revoked.count !== 1) throw new ConflictError("The appointment sharing state changed concurrently");
         await recordAuditEvent({ actorUserId: actor.userId, action: "caregiver_appointment_grant.revoked",
           resourceType: "caregiver_appointment_grant", resourceId: superseded.id,
-          metadata: { contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT, priorStatus: "ACTIVE", reason: "SUPERSEDED", supersededBy: parsed.data } }, transaction);
+          metadata: { contractVersion: superseded.contractVersion, priorStatus: "ACTIVE", reason: "SUPERSEDED", supersededBy: parsed.data } }, transaction);
       }
       const changed = await transaction.caregiverAppointmentGrant.updateMany({
         where, data: { status: "ACTIVE", acceptedByUserId: actor.userId, acceptedAt: now },

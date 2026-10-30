@@ -5,16 +5,19 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
+  DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE,
+  confirmPatientServiceRequest,
   createPatientServiceRequest,
-  reviewPatientServiceRequest,
+  rejectPatientServiceRequest,
   withdrawOwnPatientServiceRequest,
 } from "../services/patient-service-request-service";
 import { setHospitalServiceOffering } from "../services/patient-service-catalog-service";
 import {
   hospitalServiceOfferingMutationSchema,
-  hospitalServiceRequestReviewSchema,
+  patientServiceRequestConfirmSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
+  patientServiceRequestRejectSchema,
 } from "../schemas/patient-service-request-schemas";
 import type { PatientServiceMutationActionState } from "./action-state";
 
@@ -33,12 +36,20 @@ function mapMutationError(error: unknown): PatientServiceMutationActionState {
       return { status: "ERROR", message: "ไม่พบรายการที่ต้องการดำเนินการ" };
     }
 
-    if (error.code === "CONFLICT" && error.message.includes("Confirm the OSM change")) {
-      return { status: "ERROR", message: "ผู้ป่วยมี อสม. ผู้ดูแลอยู่แล้ว กรุณายืนยันการเปลี่ยนผู้ดูแลก่อนอนุมัติ", conflict: true };
+    if (error.code === "CONFLICT" && error.message === DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE) {
+      return { status: "ERROR", message: DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE };
     }
 
     if (error.code === "CONFLICT") {
       return { status: "ERROR", message: "คำขอซ้ำหรือสถานะเปลี่ยนไปแล้ว กรุณาตรวจสอบรายการอีกครั้ง" };
+    }
+
+    if (error.code === "VALIDATION" && error.message.startsWith("The preferred date")) {
+      return { status: "ERROR", message: "วันที่สะดวกต้องอยู่ระหว่างพรุ่งนี้ถึง 60 วันข้างหน้า" };
+    }
+
+    if (error.code === "VALIDATION" && error.message.startsWith("The appointment time")) {
+      return { status: "ERROR", message: "วันเวลานัดต้องเป็นเวลาในอนาคต" };
     }
 
     if (error.code === "VALIDATION") {
@@ -85,10 +96,13 @@ export async function createPatientServiceRequestAction(
     relationshipId: formString(formData, "relationshipId"),
     offeringId: formString(formData, "offeringId"),
     preferredOsmRelationshipId: preferredOsmRelationshipId || null,
+    preferredDate: formString(formData, "preferredDate"),
+    preferredSlot: formString(formData, "preferredSlot"),
+    note: formString(formData, "note"),
   });
 
   if (!parsed.success) {
-    return { status: "ERROR", message: "กรุณาเลือกบริการและตรวจสอบผู้ดูแลที่ต้องการ" };
+    return { status: "ERROR", message: "กรุณาเลือกบริการ วันที่และช่วงเวลาที่สะดวก" };
   }
 
   try {
@@ -126,43 +140,71 @@ export async function withdrawOwnPatientServiceRequestAction(
   }
 }
 
-export async function reviewPatientServiceRequestAction(
+function conflictState(error: unknown): PatientServiceMutationActionState {
+  const state = mapMutationError(error);
+  if (state.status === "ERROR" && error instanceof ApplicationError && error.code === "CONFLICT") {
+    revalidatePath("/app/patients/service-requests");
+    return { ...state, conflict: true };
+  }
+  return state;
+}
+
+function optionalInteger(value: string): number | null {
+  if (!value.trim()) return null;
+  return /^\d+$/.test(value.trim()) ? Number(value.trim()) : Number.NaN;
+}
+
+export async function confirmPatientServiceRequestAction(
   _previousState: PatientServiceMutationActionState,
   formData: FormData,
 ): Promise<PatientServiceMutationActionState> {
-  const decision = formString(formData, "decision");
-  const parsed = hospitalServiceRequestReviewSchema.safeParse({
+  const parsed = patientServiceRequestConfirmSchema.safeParse({
     requestId: formString(formData, "requestId"),
-    decision,
-    osmUserId: decision === "APPROVE" ? formString(formData, "osmUserId") || null : null,
-    confirmReassignment: decision === "APPROVE" && formString(formData, "confirmReassignment") === "true",
+    scheduledAt: formString(formData, "scheduledAt"),
+    durationMinutes: optionalInteger(formString(formData, "durationMinutes")),
+    locationDetail: formString(formData, "locationDetail") || null,
+    osmUserId: formString(formData, "osmUserId"),
+    note: formString(formData, "note") || null,
+    submissionNonce: formString(formData, "submissionNonce"),
   });
 
   if (!parsed.success) {
-    return { status: "ERROR", message: "ไม่พบคำขอหรือการดำเนินการที่เลือก" };
+    return { status: "ERROR", message: "กรุณาเลือกวันเวลานัดและ อสม. ผู้ไปเยี่ยมให้ครบ" };
   }
 
   try {
     const actor = await getProtectedApplicationActor();
-    await reviewPatientServiceRequest(actor, {
-      requestId: parsed.data.requestId,
-      osmUserId: parsed.data.osmUserId,
-      confirmReassignment: parsed.data.confirmReassignment,
-    }, parsed.data.decision);
+    const result = await confirmPatientServiceRequest(actor, parsed.data);
     revalidatePath("/app/patients/service-requests");
     revalidatePath("/app/personal/services");
-    return {
-      status: "SUCCESS",
-      message: parsed.data.decision === "APPROVE"
-        ? "อนุมัติคำขอและมอบหมาย อสม. แล้ว สามารถสร้างนัดหมายจากรายการนี้ได้"
-        : "บันทึกผลไม่อนุมัติแล้ว",
-    };
+    revalidatePath("/app/appointments");
+    revalidatePath(`/app/patients/${result.patientHospitalRelationshipId}/appointments`);
+    return { status: "SUCCESS", message: "ยืนยันนัดแล้ว ระบบแจ้ง อสม. ผู้ไปเยี่ยมให้ตอบรับนัด", appointment: { relationshipId: result.patientHospitalRelationshipId, appointmentId: result.appointmentId } };
   } catch (error: unknown) {
-    const state = mapMutationError(error);
-    if (state.status === "ERROR" && error instanceof ApplicationError && error.code === "CONFLICT") {
-      revalidatePath("/app/patients/service-requests");
-      return { ...state, conflict: true };
-    }
-    return state;
+    return conflictState(error);
+  }
+}
+
+export async function rejectPatientServiceRequestAction(
+  _previousState: PatientServiceMutationActionState,
+  formData: FormData,
+): Promise<PatientServiceMutationActionState> {
+  const parsed = patientServiceRequestRejectSchema.safeParse({
+    requestId: formString(formData, "requestId"),
+    reason: formString(formData, "reason"),
+  });
+
+  if (!parsed.success) {
+    return { status: "ERROR", message: "กรุณาระบุเหตุผลที่ไม่อนุมัติ (ไม่เกิน 500 ตัวอักษร)" };
+  }
+
+  try {
+    const actor = await getProtectedApplicationActor();
+    await rejectPatientServiceRequest(actor, parsed.data);
+    revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app/personal/services");
+    return { status: "SUCCESS", message: "บันทึกผลไม่อนุมัติแล้ว ผู้ป่วยจะเห็นเหตุผลนี้" };
+  } catch (error: unknown) {
+    return conflictState(error);
   }
 }

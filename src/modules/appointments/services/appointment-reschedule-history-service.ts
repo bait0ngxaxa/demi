@@ -19,8 +19,8 @@ export async function getAppointmentRescheduleHistory(actor: ActorContext, relat
   let canRequest = false;
   let canReview = false;
   try {
-    const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, db);
-    canRequest = access.scopes.patientSelf || access.scopes.exactOsmAssignment;
+    const access = await resolveAppointmentAccessContext(actor, relationshipId, APPOINTMENT_READ_CAPABILITY, db, undefined, { appointmentId });
+    canRequest = access.scopes.patientSelf || access.scopes.exactOsmAssignment || access.scopes.visitOsm;
     canReview = access.scopes.directHospital;
   } catch (error: unknown) {
     if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error;

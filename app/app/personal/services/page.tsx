@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
+import { preferredDateBounds } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import { listOwnPatientServiceRequests } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -31,5 +32,5 @@ export default async function PatientServicesPage(): Promise<React.JSX.Element> 
     throw error;
   }
 
-  return <PatientServicesWorkspace relationships={relationships} />;
+  return <PatientServicesWorkspace preferredDateBounds={preferredDateBounds(new Date())} relationships={relationships} />;
 }

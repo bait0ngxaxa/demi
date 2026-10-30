@@ -61,3 +61,4 @@ Architecture Decision Record (ADR) ใช้บันทึก decision ที�
 
 - [ADR-0019 — Owner-only administration and Excel-only patient onboarding](./0019-owner-administration-and-import-only-roster.md): supersedes MEMBER OSM administration, delegated report export and manual patient registration.
 - [ADR-0022 — Plan-driven service rounds](./0022-plan-driven-service-rounds.md): each opened round has a materialized plan seeded from the guideline (rounds 1-6, up to 12); partially supersedes SR-D1/SR-D4 and the fixed tool rounds of SR-D8/SR-D11.
+- [ADR-0023 — Service requests become appointment requests](./0023-service-request-appointments.md): a patient requests an อสม. home visit for one service with a preferred date and slot; the hospital confirms it as an appointment (one-off visit, assignment unchanged); offerings default to enabled; supersedes the approve-then-book lifecycle (SR-B).

@@ -39,8 +39,19 @@ describe("Appointment schemas", () => {
     }).type).toBe("EDUCATION");
   });
 
+  it("derives the type from an optional service and still accepts a type alone (ADR-0023 SR-D4)", () => {
+    expect(appointmentCreateRequestSchema.parse(validCreateInput())).toMatchObject({ type: "FOLLOW_UP", serviceCode: null });
+    const withoutType = { ...validCreateInput(), type: undefined };
+    expect(appointmentCreateRequestSchema.parse({ ...withoutType, serviceCode: "SCREENING" }))
+      .toMatchObject({ type: "ASSESSMENT", serviceCode: "SCREENING" });
+    expect(appointmentCreateRequestSchema.parse({ ...validCreateInput(), type: "EDUCATION", serviceCode: "EMPOWERMENT" }))
+      .toMatchObject({ type: "EDUCATION", serviceCode: "EMPOWERMENT" });
+    expect(appointmentCreateRequestSchema.safeParse({ ...validCreateInput(), serviceCode: "SCREENING" }).success).toBe(false);
+    expect(appointmentCreateRequestSchema.safeParse(withoutType).success).toBe(false);
+  });
+
   it("rejects unknown fields and client authority fields", () => {
-    for (const field of ["hospitalId", "patientId", "actorUserId", "createdByUserId", "status", "role"]) {
+    for (const field of ["hospitalId", "patientId", "actorUserId", "createdByUserId", "status", "role", "sourceServiceRequestId"]) {
       expect(
         appointmentCreateRequestSchema.safeParse({ ...validCreateInput(), [field]: relationshipId }).success,
       ).toBe(false);

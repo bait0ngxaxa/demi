@@ -181,6 +181,32 @@ export async function listManagedHospitalServiceCatalog(
   }
 }
 
+/**
+ * ADR-0023 (SR-D5): a new Hospital offers every service until staff switch one off. Runs in the Hospital's
+ * creating transaction, with its creator as the recorded actor; the creation itself is the audited event.
+ */
+export async function createDefaultHospitalServiceOfferingsInTransaction(
+  transaction: Prisma.TransactionClient,
+  hospitalIds: readonly string[],
+  actorUserId: string,
+): Promise<void> {
+  if (hospitalIds.length === 0) {
+    return;
+  }
+
+  await transaction.hospitalServiceOffering.createMany({
+    data: hospitalIds.flatMap((hospitalId) =>
+      supportedServiceCodes.map((code) => ({
+        hospitalId,
+        code,
+        enabled: true,
+        createdByUserId: actorUserId,
+        updatedByUserId: actorUserId,
+      })),
+    ),
+  });
+}
+
 export async function setHospitalServiceOffering(
   actor: ActorContext | null | undefined,
   input: unknown,

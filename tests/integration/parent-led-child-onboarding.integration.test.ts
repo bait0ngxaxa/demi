@@ -196,6 +196,11 @@ describe("O1-A: ADMIN bulk Parent registration", () => {
       where: { id: { in: ids } }, orderBy: { name: "asc" },
       select: { status: true, registeredByUserId: true, serviceAreaEligibility: { select: { kind: true } } },
     })).toEqual(Array(3).fill({ status: "PENDING_VERIFICATION", registeredByUserId: admin.userId, serviceAreaEligibility: { kind: "PARENT" } }));
+    // ADR-0023 (SR-D5): every new Hospital offers every service, recorded as set by the registering ADMIN.
+    // (hospitalId, code) is unique, so nine matching rows are the three services of each Hospital.
+    expect(await db.hospitalServiceOffering.count({
+      where: { hospitalId: { in: ids }, enabled: true, createdByUserId: admin.userId, updatedByUserId: admin.userId },
+    })).toBe(9);
     const listed = (await listOnboardingHospitals()).map(({ id }) => id);
     for (const id of ids) expect(listed).toContain(id);
 
@@ -303,6 +308,14 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
     await expect(createChildFacility(parentOwner, { ...input, submissionNonce: randomUUID(), hospitalCode: "MINE-1" })).rejects.toMatchObject({ code: "VALIDATION" });
     const created = await createChildFacility(parentOwner, input);
     const activationToken = token(created.invitation);
+    // ADR-0023 (SR-D5): the Child offers every service, recorded as set by the Parent OWNER who created it.
+    expect(await db.hospitalServiceOffering.findMany({
+      where: { hospitalId: created.child.id },
+      orderBy: { code: "asc" },
+      select: { code: true, enabled: true, createdByUserId: true, updatedByUserId: true },
+    })).toEqual(["SCREENING", "FOLLOW_UP", "EMPOWERMENT"].map((code) => ({
+      code, enabled: true, createdByUserId: parentOwner.userId, updatedByUserId: parentOwner.userId,
+    })));
     expect(created.child).toMatchObject({ hospitalCode: expect.stringMatching(/^H-[2-9A-HJKMNP-Z]{6}$/u), name: input.name });
 
     const child = await db.hospital.findUniqueOrThrow({

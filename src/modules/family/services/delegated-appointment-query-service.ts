@@ -1,9 +1,10 @@
 import "server-only";
 
-import { Prisma, type Profession } from "@prisma/client";
+import { Prisma, type PatientServiceCode, type Profession } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { NotFoundError } from "@/shared/errors/application-error";
+import { appointmentSource, type AppointmentSource } from "@/modules/appointments/domain/appointment-service-definitions";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
 import { loadAppointmentContactPhones } from "@/modules/appointments/services/appointment-contact-phone-service";
 import {
@@ -11,6 +12,8 @@ import {
   FAMILY_APPOINTMENT_READ_CONTRACT,
   FAMILY_APPOINTMENT_READ_CONTRACT_V2,
   FAMILY_APPOINTMENT_WINDOW_MS,
+  familyAppointmentContractIncludesDetail,
+  familyAppointmentContractIncludesServiceSource,
   isFamilyAppointmentReadContract,
   type FamilyAppointmentReadContract,
 } from "../domain/appointment-grant-contract";
@@ -33,7 +36,7 @@ export const delegatedAppointmentSelect = {
  * AF-5 v2 additions only. People are projected by name (and the appointer's profession at the appointment's
  * Hospital); no phone, note, interaction or Patient field is selected.
  */
-function delegatedAppointmentV2Select(hospitalId: string) {
+export function delegatedAppointmentV2Select(hospitalId: string) {
   return {
     ...delegatedAppointmentSelect,
     locationDetail: true,
@@ -45,10 +48,17 @@ function delegatedAppointmentV2Select(hospitalId: string) {
   } satisfies Prisma.PatientAppointmentSelect;
 }
 
+/** SR-C1 v3 additions only: the service code and the source locator, reduced to a source label before returning. */
+export function delegatedAppointmentV3Select(hospitalId: string) {
+  return { ...delegatedAppointmentV2Select(hospitalId), serviceCode: true, sourceServiceRequestId: true } satisfies Prisma.PatientAppointmentSelect;
+}
+
 type AppointmentRecord = Prisma.PatientAppointmentGetPayload<{ select: typeof delegatedAppointmentSelect }>;
 type AppointmentV2Record = Prisma.PatientAppointmentGetPayload<{ select: ReturnType<typeof delegatedAppointmentV2Select> }>;
+type AppointmentV3Record = Prisma.PatientAppointmentGetPayload<{ select: ReturnType<typeof delegatedAppointmentV3Select> }>;
+type DelegatedAppointmentRecord = AppointmentRecord | AppointmentV2Record | AppointmentV3Record;
 export type DelegatedAppointmentTab = "upcoming" | "history";
-/** Present only under a v2 grant. */
+/** Present only under a v2 or later grant. */
 export type DelegatedAppointmentExtension = {
   locationDetail: string | null;
   responsibleDisplayName: string | null;
@@ -56,9 +66,11 @@ export type DelegatedAppointmentExtension = {
   osmAtCreationDisplayName: string | null;
   parentHospitalName: string | null;
 };
+/** Keys present only under a v3 grant; v1 and v2 projections omit them entirely. */
+export type DelegatedAppointmentServiceSource = { serviceCode: PatientServiceCode | null; source: AppointmentSource };
 export type DelegatedAppointment = Omit<AppointmentRecord, "id"> & {
   appointmentId: string; hospitalName: string; extension: DelegatedAppointmentExtension | null;
-};
+} & Partial<DelegatedAppointmentServiceSource>;
 export type DelegatedAppointmentPage = {
   appointments: DelegatedAppointment[]; nextCursor: string | null; contractVersion: FamilyAppointmentReadContract;
 };
@@ -76,10 +88,12 @@ type GrantScope = {
   parentHospitalName: string | null;
 };
 
-function toAppointment(record: AppointmentRecord | AppointmentV2Record, scope: GrantScope): DelegatedAppointment {
+function toAppointment(record: DelegatedAppointmentRecord, scope: GrantScope): DelegatedAppointment {
   const base = { appointmentId: record.id, hospitalName: scope.hospitalName, type: record.type, scheduledAt: record.scheduledAt,
-    durationMinutes: record.durationMinutes, locationType: record.locationType, status: record.status };
-  if (scope.contractVersion !== FAMILY_APPOINTMENT_READ_CONTRACT_V2 || !("locationDetail" in record)) return { ...base, extension: null };
+    durationMinutes: record.durationMinutes, locationType: record.locationType, status: record.status,
+    ...(familyAppointmentContractIncludesServiceSource(scope.contractVersion) && "serviceCode" in record
+      ? { serviceCode: record.serviceCode, source: appointmentSource(record.sourceServiceRequestId) } : {}) };
+  if (!familyAppointmentContractIncludesDetail(scope.contractVersion) || !("locationDetail" in record)) return { ...base, extension: null };
   return { ...base, extension: {
     locationDetail: record.locationDetail,
     responsibleDisplayName: record.responsibleUser ? displayName(record.responsibleUser.person) : null,
@@ -90,7 +104,7 @@ function toAppointment(record: AppointmentRecord | AppointmentV2Record, scope: G
 }
 
 /**
- * Upcoming (both versions): SCHEDULED/CANCELLED in [now, now + 90 days). History (v2 only): any status in
+ * Upcoming (every version): SCHEDULED/CANCELLED in [now, now + 90 days). History (v2 and later): any status in
  * [now - 90 days, now). The grant predicate is part of every row query.
  */
 function appointmentWhere(actor: ActorContext, grantId: string, now: Date, tab: DelegatedAppointmentTab): Prisma.PatientAppointmentWhereInput {
@@ -127,12 +141,17 @@ async function loadGrantScope(
     patientHospitalRelationshipId: grant.patientHospitalRelationshipId,
     hospitalId: hospital.id,
     hospitalName: hospital.name,
-    parentHospitalName: grant.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT_V2 ? hospital.serviceAreaAssignments[0]?.parent.name ?? null : null,
+    parentHospitalName: familyAppointmentContractIncludesDetail(grant.contractVersion) ? hospital.serviceAreaAssignments[0]?.parent.name ?? null : null,
   };
 }
 
+/** Each version selects only what its acceptance text names. */
 function selectFor(scope: GrantScope) {
-  return scope.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT ? delegatedAppointmentSelect : delegatedAppointmentV2Select(scope.hospitalId);
+  switch (scope.contractVersion) {
+    case FAMILY_APPOINTMENT_READ_CONTRACT: return delegatedAppointmentSelect;
+    case FAMILY_APPOINTMENT_READ_CONTRACT_V2: return delegatedAppointmentV2Select(scope.hospitalId);
+    default: return delegatedAppointmentV3Select(scope.hospitalId);
+  }
 }
 
 export async function listDelegatedAppointments(
@@ -147,15 +166,15 @@ export async function listDelegatedAppointments(
     // One snapshot for authority, Hospital name, cursor and rows. A pre-commit authorized read may be in flight.
     return await (dependencies.database ?? getPrisma()).$transaction(async (transaction) => {
       const scope = await loadGrantScope(transaction, actor, parsed.data.grantId);
-      // v1 consent covers upcoming appointments only; history needs the caregiver's v2 acceptance.
-      if (tab === "history" && scope.contractVersion !== FAMILY_APPOINTMENT_READ_CONTRACT_V2) throw new NotFoundError();
+      // v1 consent covers upcoming appointments only; history needs the caregiver's v2 (or later) acceptance.
+      if (tab === "history" && !familyAppointmentContractIncludesDetail(scope.contractVersion)) throw new NotFoundError();
       const where = appointmentWhere(actor, parsed.data.grantId, now, tab);
       const anchor = parsed.data.cursor ? await transaction.patientAppointment.findFirst({
         where: { AND: [where, { id: parsed.data.cursor }] }, select: { id: true, scheduledAt: true },
       }) : null;
       if (parsed.data.cursor && !anchor) throw new NotFoundError();
       const direction = tab === "upcoming" ? "gt" : "lt";
-      const rows: Array<AppointmentRecord | AppointmentV2Record> = await transaction.patientAppointment.findMany({
+      const rows: DelegatedAppointmentRecord[] = await transaction.patientAppointment.findMany({
         where: { AND: [where, ...(anchor ? [{ OR: [
           { scheduledAt: { [direction]: anchor.scheduledAt } }, { scheduledAt: anchor.scheduledAt, id: { [direction]: anchor.id } },
         ] }] : [])] },
@@ -207,8 +226,8 @@ export async function getDelegatedAppointment(
   try {
     return await (dependencies.database ?? getPrisma()).$transaction(async (transaction) => {
       const scope = await loadGrantScope(transaction, actor, grant.data);
-      const tabs: DelegatedAppointmentTab[] = scope.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT_V2 ? ["upcoming", "history"] : ["upcoming"];
-      const row: AppointmentRecord | AppointmentV2Record | null = await transaction.patientAppointment.findFirst({
+      const tabs: DelegatedAppointmentTab[] = familyAppointmentContractIncludesDetail(scope.contractVersion) ? ["upcoming", "history"] : ["upcoming"];
+      const row: DelegatedAppointmentRecord | null = await transaction.patientAppointment.findFirst({
         where: { AND: [{ OR: tabs.map((tab) => appointmentWhere(actor, grant.data, now, tab)) }, { id: appointment.data }] },
         select: selectFor(scope),
       });

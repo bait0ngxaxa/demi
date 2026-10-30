@@ -11,18 +11,21 @@ import {
 
 export function PatientServicesWorkspace({
   relationships,
+  preferredDateBounds,
 }: {
   relationships: readonly PatientServiceRelationshipView[];
+  /** SR-D6: tomorrow to +60 days on the Bangkok calendar, from the server clock. */
+  preferredDateBounds: { min: string; max: string };
 }): React.JSX.Element {
   return (
     <div className="max-w-4xl">
       <PageHeader
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "บริการของฉัน" }]}
-        description="ส่งคำขอรับบริการจากโรงพยาบาลที่เชื่อมกับบัญชีของคุณ โรงพยาบาลจะตรวจสอบก่อนเริ่มให้บริการ"
+        description="ขอให้ อสม. มาเยี่ยมบ้านเพื่อรับบริการ โรงพยาบาลจะยืนยันวันเวลานัดให้"
         title="บริการของฉัน"
       />
       <p className="mt-3 text-sm leading-6 text-text-muted">
-        โรงพยาบาลจะตรวจสอบคำขอรับบริการ การส่งคำขอไม่ได้สร้างโปรแกรมการดูแล นัดหมาย หรือมอบหมาย อสม. ให้อัตโนมัติ
+        เลือกวันและช่วงเวลาที่สะดวก โรงพยาบาลจะยืนยันนัดหรือแจ้งเหตุผลหากไม่อนุมัติ การส่งคำขอไม่ได้เปลี่ยน อสม. ผู้ดูแลของคุณ
       </p>
 
       {relationships.length === 0 ? (
@@ -50,6 +53,21 @@ export function PatientServicesWorkspace({
                 </StatusBadge>
               </div>
 
+              <section aria-labelledby={`${sectionId}-history`} className="mt-6 border-t border-border pt-5">
+                <h3 className="text-base font-semibold text-text" id={`${sectionId}-history`}>
+                  คำขอของคุณ
+                </h3>
+                {relationship.requests.length > 0 ? (
+                  <ul className="mt-4 divide-y divide-border">
+                    {[...relationship.requests].sort((left, right) => Number(right.status === "PENDING" || right.status === "APPROVED") - Number(left.status === "PENDING" || left.status === "APPROVED")).map((request) => (
+                      <PatientServiceRequestHistoryItem key={request.requestId} request={request} />
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีคำขอบริการสำหรับโรงพยาบาลนี้</p>
+                )}
+              </section>
+
               <section aria-labelledby={`${sectionId}-offerings`} className="mt-6 border-t border-border pt-5">
                 <h3 className="text-base font-semibold text-text" id={`${sectionId}-offerings`}>
                   ขอเพิ่มบริการ
@@ -63,6 +81,7 @@ export function PatientServicesWorkspace({
                       relationshipId={relationship.relationshipId}
                       offerings={relationship.offerings}
                       osmChoices={relationship.osmChoices}
+                      preferredDateBounds={preferredDateBounds}
                     />
                   </>
                 ) : (
@@ -75,22 +94,6 @@ export function PatientServicesWorkspace({
                   </Alert>
                 )}
               </section>
-
-              <section aria-labelledby={`${sectionId}-history`} className="mt-6 border-t border-border pt-5">
-                <h3 className="text-base font-semibold text-text" id={`${sectionId}-history`}>
-                  ประวัติคำขอ
-                </h3>
-                {relationship.requests.length > 0 ? (
-                  <ul className="mt-4 divide-y divide-border">
-                    {relationship.requests.map((request) => (
-                      <PatientServiceRequestHistoryItem key={request.requestId} request={request} />
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm leading-6 text-text-muted">ยังไม่มีคำขอบริการสำหรับโรงพยาบาลนี้</p>
-                )}
-              </section>
-
             </Panel>
             );
           })}

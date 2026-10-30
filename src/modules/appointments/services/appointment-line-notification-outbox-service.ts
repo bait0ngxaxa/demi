@@ -25,6 +25,11 @@ type SourceIntentInput = {
 type SourceIntentOptions = {
   includeOsm?: boolean;
   onlyOsmUserId?: string;
+  /**
+   * ADR-0023 (SR-D2): `onlyOsmUserId` is the one-off visiting อสม. of an appointment from a service request,
+   * whom the caller has checked; they are not among the patient's assignment-based recipients.
+   */
+  onlyOsmIsVisitOsm?: boolean;
 };
 
 type DeliveryReadiness =
@@ -120,7 +125,9 @@ export async function createAppointmentLineNotificationIntent(
       return options.includeOsm !== false || recipient.kind !== AppointmentLineNotificationRecipientKind.OSM;
     });
   const recipients = options.onlyOsmUserId
-    ? selectedAdditionalRecipients
+    ? options.onlyOsmIsVisitOsm
+      ? [{ kind: AppointmentLineNotificationRecipientKind.OSM, userId: options.onlyOsmUserId, grantId: null }]
+      : selectedAdditionalRecipients
     : [
         { kind: AppointmentLineNotificationRecipientKind.PATIENT, userId: patientRecipientUserId, grantId: null },
         ...selectedAdditionalRecipients,
@@ -171,6 +178,7 @@ async function createUserIntent(
     appointmentId: string | null;
     patientOsmAssignmentId?: string | null;
     rescheduleRequestId?: string | null;
+    patientServiceRequestId?: string | null;
     patientHospitalRelationshipId: string;
     sourceUpdatedAt: Date;
     recipientKind: AppointmentLineNotificationRecipientKind;
@@ -185,6 +193,7 @@ async function createUserIntent(
       appointmentId: input.appointmentId,
       patientOsmAssignmentId: input.patientOsmAssignmentId ?? null,
       rescheduleRequestId: input.rescheduleRequestId ?? null,
+      patientServiceRequestId: input.patientServiceRequestId ?? null,
       patientHospitalRelationshipId: input.patientHospitalRelationshipId,
       eventKey: input.eventKey,
       sourceUpdatedAt: input.sourceUpdatedAt,
@@ -231,6 +240,33 @@ export async function createPatientOsmAssignmentLineNotificationIntent(
     eventKey: `${AppointmentLineNotificationEventKind.OSM_PATIENT_ASSIGNED}:${assignment.id}`,
     appointmentId: null,
     patientOsmAssignmentId: assignment.id,
+    patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+    sourceUpdatedAt: input.sourceUpdatedAt,
+    recipientKind: AppointmentLineNotificationRecipientKind.OSM,
+    recipientUserId: input.osmUserId,
+    now,
+  });
+}
+
+/**
+ * ADR-0023 (SR-B): tells the preferred อสม., or else the assigned อสม., about a new service request. The caller
+ * picks the recipient; delivery re-checks it and that the request is still PENDING.
+ */
+export async function createPatientServiceRequestLineNotificationIntent(
+  transaction: Prisma.TransactionClient,
+  input: {
+    serviceRequestId: string;
+    patientHospitalRelationshipId: string;
+    osmUserId: string;
+    sourceUpdatedAt: Date;
+  },
+  now: Date,
+): Promise<void> {
+  await createUserIntent(transaction, {
+    eventKind: AppointmentLineNotificationEventKind.OSM_SERVICE_REQUESTED,
+    eventKey: `${AppointmentLineNotificationEventKind.OSM_SERVICE_REQUESTED}:${input.serviceRequestId}`,
+    appointmentId: null,
+    patientServiceRequestId: input.serviceRequestId,
     patientHospitalRelationshipId: input.patientHospitalRelationshipId,
     sourceUpdatedAt: input.sourceUpdatedAt,
     recipientKind: AppointmentLineNotificationRecipientKind.OSM,

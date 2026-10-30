@@ -14,7 +14,7 @@ import {
   type DelegatedAppointmentPage,
   type DelegatedAppointmentSubject,
 } from "@/modules/family/services/delegated-appointment-query-service";
-import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "@/modules/family/domain/appointment-grant-contract";
+import { familyAppointmentContractIncludesDetail } from "@/modules/family/domain/appointment-grant-contract";
 import {
   ForbiddenError,
   NotFoundError,
@@ -243,7 +243,7 @@ export async function getPersonalAppointmentHubPageContext(
       self: selected?.kind === "SELF"
         ? await listOwnPatientAppointmentHub(actor, { tab, hospital: value("hospital"), cursor: value("cursor") })
         : null,
-      family: selected?.kind === "FAMILY" && (tab === "upcoming" || selected.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT_V2)
+      family: selected?.kind === "FAMILY" && (tab === "upcoming" || familyAppointmentContractIncludesDetail(selected.contractVersion))
         ? await loadFamilyAppointments(actor, selected.grantId, tab, cursor.success ? cursor.data : undefined)
         : null,
     };

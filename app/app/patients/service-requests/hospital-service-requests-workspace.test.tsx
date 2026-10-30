@@ -9,7 +9,10 @@ vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
   useActionState: () => [hooks.state, hooks.action, hooks.pending],
 }));
-vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({ reviewPatientServiceRequestAction: vi.fn() }));
+vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
+  confirmPatientServiceRequestAction: vi.fn(),
+  rejectPatientServiceRequestAction: vi.fn(),
+}));
 
 import { HospitalPatientServiceRequestsWorkspace } from "./hospital-service-requests-workspace";
 import { HospitalPatientServiceRequestReviewControls } from "./hospital-service-request-controls";
@@ -26,14 +29,29 @@ const request: HospitalPatientServiceRequestView = {
   status: "PENDING",
   preferredOsmName: "สมชาย อสม.",
   preferredOsmUserId: "77777777-7777-4777-8777-777777777777",
-  currentOsmUserId: null,
-  currentOsmName: null,
-  osmChoices: [{ userId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." }],
+  currentOsmUserId: "99999999-9999-4999-8999-999999999999",
+  currentOsmName: "สมศรี อสม.",
+  osmChoices: [
+    { userId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." },
+    { userId: "99999999-9999-4999-8999-999999999999", displayName: "สมศรี อสม." },
+  ],
+  preferredDate: "2026-11-02",
+  preferredSlot: "AFTERNOON",
+  note: "สะดวกหลังบ่ายสอง",
+  rejectionReason: null,
   createdAt: new Date("2026-10-01T00:00:00.000Z"),
 };
+const nonce = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 function render(requests: readonly HospitalPatientServiceRequestView[], extra: Partial<HospitalPatientServiceRequestPage> = {}): string {
-  return renderToStaticMarkup(<HospitalPatientServiceRequestsWorkspace page={{ requests, group: "PENDING", after: undefined, nextCursor: null, ...extra }} />);
+  const submissionNonces = Object.fromEntries(requests.map(({ requestId }) => [requestId, nonce]));
+  return renderToStaticMarkup(<HospitalPatientServiceRequestsWorkspace page={{ requests, group: "PENDING", after: undefined, nextCursor: null, ...extra }} submissionNonces={submissionNonces} />);
+}
+
+function controls(overrides: Partial<HospitalPatientServiceRequestView> = {}): string {
+  return renderToStaticMarkup(
+    <HospitalPatientServiceRequestReviewControls confirmAction={hooks.action} pending={false} rejectAction={hooks.action} request={{ ...request, ...overrides }} submissionNonce={nonce} />,
+  );
 }
 
 beforeEach(() => {
@@ -56,29 +74,45 @@ describe("Hospital request review workspace", () => {
 
   it.each([
     ["APPROVED", "ไม่มีคำขอที่อยู่ในสถานะอนุมัติแล้ว"],
-    ["HISTORY", "ยังไม่มีคำขอที่เริ่มให้บริการ"],
+    ["HISTORY", "ยังไม่มีคำขอที่ยืนยันนัด"],
   ] as const)("explains empty %s", (group, copy) => {
     expect(render([], { group })).toContain(copy);
   });
 
   it.each([
-    ["PENDING", ["APPROVE", "REJECT"]],
-    ["APPROVED", []],
+    ["PENDING", ["ยืนยันนัด", "ไม่อนุมัติคำขอ"]],
+    ["APPROVED", ["ยืนยันนัด"]],
     ["STARTED", []],
     ["REJECTED", []],
     ["WITHDRAWN", []],
-  ] as const)("exposes exactly the persisted %s actions", (status, actions) => {
-    const markup = renderToStaticMarkup(<HospitalPatientServiceRequestReviewControls action={hooks.action} currentOsmName={request.currentOsmName} currentOsmUserId={request.currentOsmUserId} osmChoices={request.osmChoices} pending={false} preferredOsmUserId={request.preferredOsmUserId} requestId={request.requestId} status={status} />);
-    const decisions = [...markup.matchAll(/<button\b[^>]*>/g)]
-      .filter(([tag]) => tag.includes('name="decision"'))
-      .map(([tag]) => tag.match(/value="([A-Z]+)"/)?.[1]);
-    expect(decisions).toEqual(actions);
+  ] as const)("exposes exactly the persisted %s actions (ADR-0023)", (status, actions) => {
+    const markup = controls({ status });
+    const buttons = [...markup.matchAll(/<button\b[^>]*>([^<]*)<\/button>/g)].map(([, label]) => label);
+    expect(buttons).toEqual(actions);
     if (actions.length > 0) {
       expect(markup).toContain(`value="${request.requestId}"`);
+      expect(markup).toContain(`name="submissionNonce" value="${nonce}"`);
       expect(markup).toContain(`aria-describedby="review-help-${request.requestId}"`);
     } else {
       expect(markup).toBe("");
     }
+    expect(markup).not.toContain("confirmReassignment");
+  });
+
+  it("prefills the preferred date and slot, preselects the preferred อสม. and requires a rejection reason", () => {
+    const markup = controls();
+    expect(markup).toContain('value="2026-11-02T13:00"');
+    expect(markup).toContain('value="2026-11-02T13:00:00+07:00"');
+    expect(markup).toContain('<option value="77777777-7777-4777-8777-777777777777" selected="">สมชาย อสม.</option>');
+    expect(markup).toContain("สมศรี อสม. (ผู้ดูแลปัจจุบัน)");
+    expect(markup).toContain("เยี่ยมครั้งเดียว");
+    expect(markup).toMatch(/<textarea[^>]*name="reason"[^>]*required=""/);
+  });
+
+  it("preselects the assigned อสม. when the patient left the choice to the hospital", () => {
+    const markup = controls({ preferredOsmUserId: null, preferredOsmName: null });
+    expect(markup).toContain('<option value="99999999-9999-4999-8999-999999999999" selected="">สมศรี อสม. (ผู้ดูแลปัจจุบัน)</option>');
+    expect(markup).not.toContain("เยี่ยมครั้งเดียว");
   });
 
   it("keeps the same Patient distinct across Hospitals and links a started request to its exact appointment", () => {
@@ -97,25 +131,33 @@ describe("Hospital request review workspace", () => {
 
   it.each(["APPROVED", "STARTED"] as const)("keeps %s handoff truthful and preference separate from assignment", (status) => {
     const markup = render([{ ...request, status }], { group: status === "APPROVED" ? "APPROVED" : "HISTORY" });
-    expect(markup).toContain(status === "APPROVED" ? "สร้างนัดหมายเพื่อส่งต่องานให้ อสม." : "สร้างนัดหมายจากคำขอนี้แล้ว");
+    expect(markup).toContain(status === "APPROVED" ? "ยืนยันนัดเพื่อสร้างนัดหมายให้ อสม." : "ยืนยันนัดจากคำขอนี้แล้ว");
     expect(markup).toContain("ไม่ใช่ผู้รับผิดชอบที่ได้รับมอบหมายหรือการตอบรับงาน");
-    if (status === "APPROVED") {
-      expect(markup).toContain('href="/app/patients/22222222-2222-4222-8222-222222222222/appointments/new?serviceRequestId=11111111-1111-4111-8111-111111111111"');
-    }
+    expect(markup).toContain("2 พฤศจิกายน 2569 · บ่าย");
+    expect(markup).toContain("สะดวกหลังบ่ายสอง");
+    // ADR-0023: no separate "create appointment from this request" step any more.
+    expect(markup).not.toContain("appointments/new?serviceRequestId=");
     if (status === "STARTED") expect(markup).toContain("สถานะไม่ได้ยืนยันว่าบริการเสร็จสิ้น");
+  });
+
+  it("shows the rejection reason on a rejected request", () => {
+    const markup = render([{ ...request, status: "REJECTED", rejectionReason: "ไม่มี อสม. ว่าง" }], { group: "HISTORY" });
+    expect(markup).toContain("เหตุผลที่ไม่อนุมัติ");
+    expect(markup).toContain("ไม่มี อสม. ว่าง");
   });
 
   it.each(["STARTED", "REJECTED", "WITHDRAWN"] as const)("renders %s history read-only", (status) => {
     const markup = render([{ ...request, status }], { group: "HISTORY" });
     expect(markup).toContain("ประวัติคำขอ · อ่านอย่างเดียว");
-    expect(markup).not.toContain('name="decision"');
+    expect(markup).not.toContain("<button");
     if (status !== "STARTED") expect(markup).not.toContain("#patient-care");
   });
 
-  it("disables every review button during a mutation without attributing pending to APPROVE", () => {
+  it("disables every review control during a mutation", () => {
     hooks.pending = true;
     const markup = render([request, { ...request, requestId: "other" }]);
-    expect(markup.match(/disabled=""/g)).toHaveLength(6);
+    // Per card: date, อสม., duration, location, note, confirm button, reason, reject button.
+    expect(markup.match(/disabled=""/g)).toHaveLength(16);
     expect(markup).toContain('aria-busy="true"');
     expect(markup).toContain("กำลังบันทึกผลการดำเนินการ");
   });
@@ -125,7 +167,7 @@ describe("Hospital request review workspace", () => {
     const markup = render([]);
     expect(markup).toContain("อนุมัติคำขอแล้ว");
     expect(markup).toContain('role="status"');
-    expect(markup).not.toContain('name="decision"');
+    expect(markup).not.toContain("<button");
   });
 
   it("distinguishes conflicts from ordinary errors and renders fresh status without stale actions", () => {
@@ -133,7 +175,7 @@ describe("Hospital request review workspace", () => {
     const conflict = render([]);
     expect(conflict).toContain("สถานะคำขอเปลี่ยนไปแล้ว");
     expect(conflict).toContain("อ่านสถานะล่าสุดจากระบบแล้ว");
-    expect(conflict).not.toContain('name="decision"');
+    expect(conflict).not.toContain("<button");
     hooks.state = { status: "ERROR", message: "ไม่มีสิทธิ์" };
     const denied = render([request]);
     expect(denied).toContain("บันทึกไม่สำเร็จ");
@@ -149,4 +191,23 @@ describe("Hospital request review workspace", () => {
     expect(markup).toContain("group=HISTORY&amp;afterDate=");
     expect(markup).toContain(`afterId=${request.requestId}`);
   });
+});
+
+it("SR-C keeps the created appointment link above the queue after confirmation removes the request", () => {
+  hooks.state = { status: "SUCCESS", message: "ยืนยันนัดแล้ว", appointment: { relationshipId: request.relationshipId, appointmentId: "booked" } };
+  const markup = render([]);
+  expect(markup).toContain(`href="/app/patients/${request.relationshipId}/appointments/booked"`);
+  expect(markup).toContain("เปิดนัดหมายที่ยืนยันแล้ว");
+});
+
+it("SR-C renders the service-ordered queue and retains the null-date cursor in its next link", () => {
+  const rows = [
+    { ...request, requestId: "near", preferredDate: "2026-11-02" },
+    { ...request, requestId: "far", preferredDate: "2026-11-09" },
+    { ...request, requestId: "legacy", preferredDate: null, preferredSlot: null },
+  ];
+  const markup = render(rows, { nextCursor: { requestId: request.requestId, createdAt: request.createdAt.toISOString(), preferredDate: null } });
+  expect(markup.indexOf('id="service-request-near"')).toBeLessThan(markup.indexOf('id="service-request-far"'));
+  expect(markup.indexOf('id="service-request-far"')).toBeLessThan(markup.indexOf('id="service-request-legacy"'));
+  for (const text of ["คัดกรอง", "บ่าย", "สมชาย อสม.", "สะดวกหลังบ่ายสอง", "afterPreferredDate=none"]) expect(markup).toContain(text);
 });

@@ -72,6 +72,23 @@ describe("bounded appointment sharing UI", () => {
     expect(markup).toContain("สิทธิ์แบบเดิม");
     for (const text of ["หน่วยบริการแม่ข่าย", "รายละเอียดสถานที่", "90 วันย้อนหลัง", "ไม่เห็นเบอร์โทรส่วนตัวของผู้ป่วยหรือของ อสม."]) expect(markup).toContain(text);
   });
+  it("SR-C1: an active v2 grant explains in Thai that service/source is missing and offers the v3 upgrade; v3 rows offer none", () => {
+    const scope = { caregiverRelationshipId: "parent-locator", patientHospitalRelationshipId: "phr-locator" };
+    const active = { ...grant, status: "ACTIVE" as const, acceptedAt: now, scope };
+    const render = (contractVersion: "family-appointment-read-v2" | "family-appointment-read-v3") => renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
+      management={{ patient: { ...overview.patient!, grants: [{ ...active, grantId: `${contractVersion}-locator`, contractVersion }] }, caregiver: { grants: [], nextCursor: null } }} />);
+    const v2 = render("family-appointment-read-v2");
+    expect(v2).toContain("ผู้ดูแลไม่เห็นว่านัดเป็นบริการใด");
+    expect(v2).toContain("เสนอสิทธิ์แบบใหม่");
+    const v3 = render("family-appointment-read-v3");
+    expect(v3).not.toContain("สิทธิ์แบบเดิม");
+    expect(v3).not.toContain("เสนอสิทธิ์แบบใหม่");
+  });
+  it("SR-C1: a pending v3 proposal shows the v3 acceptance text to the caregiver", () => {
+    const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
+      management={{ patient: null, caregiver: { grants: [{ ...grant, grantId: "v3-locator", contractVersion: "family-appointment-read-v3" }], nextCursor: null } }} />);
+    expect(markup).toContain("ประเภทนัด บริการและที่มาของนัด");
+  });
   it("AF-5: resource grants are listed per side and each scope has an explicit accept or revoke action", () => {
     const item = { grantId: "resource-locator", caregiverRelationshipId: "parent-locator", resource: "MEDICATION" as const, status: "ACTIVE" as const,
       proposedAt: now, acceptedAt: now, participant };

@@ -33,7 +33,7 @@ const relationship = {
   hospitalStatus: HospitalStatus.SUSPENDED, careEndedAt: null,
 };
 const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
-  appointmentId: APPT, type: "FOLLOW_UP" as never, scheduledAt: new Date("2026-11-01T03:00:00Z"), durationMinutes: 30,
+  appointmentId: APPT, serviceCode: null, source: "HOSPITAL", type: "FOLLOW_UP" as never, scheduledAt: new Date("2026-11-01T03:00:00Z"), durationMinutes: 30,
   locationType: "HOSPITAL" as never, locationDetail: "อาคารสังเคราะห์", status: "SCHEDULED" as never, updatedAt: new Date("2026-10-01T00:00:00Z"),
   responsibleDisplayName: "ผู้ดูแลสังเคราะห์", responsibleProfession: null, osmAtCreationDisplayName: null,
   acknowledgement: null,

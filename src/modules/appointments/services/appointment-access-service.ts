@@ -20,12 +20,13 @@ import { assertDirectOrNetworkPatientRead } from "@/modules/hospital-service-are
 
 import {
   APPOINTMENT_READ_CAPABILITY,
+  VISIT_OSM_APPOINTMENT_CAPABILITIES,
   appointmentPolicyInternals,
   decideAppointmentPolicy,
   type AppointmentCapability,
   type AppointmentPolicyTarget,
 } from "../policies/appointment-policy";
-import { appointmentRelationshipIdSchema } from "../schemas/appointment-schemas";
+import { appointmentIdSchema, appointmentRelationshipIdSchema } from "../schemas/appointment-schemas";
 
 export type AppointmentAccessDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -88,7 +89,18 @@ export type AppointmentAccessContext = {
     directHospital: boolean;
     /** ADR-0016: read-only access through an active network Parent; never sufficient for any write. */
     networkRead: boolean;
+    /**
+     * ADR-0023 (SR-B): the actor is the one-off visiting อสม. of `options.appointmentId`; it covers that
+     * appointment only and only `VISIT_OSM_APPOINTMENT_CAPABILITIES`.
+     */
+    visitOsm: boolean;
   };
+};
+
+export type AppointmentAccessOptions = {
+  /** The appointment the caller acts on; only then may a one-off visiting อสม. be resolved. */
+  appointmentId?: string;
+  now?: Date;
 };
 
 function getDatabase(database?: AppointmentAccessDatabase): AppointmentAccessDatabase {
@@ -178,6 +190,7 @@ export async function resolveAppointmentAccessContext(
   capability: AppointmentCapability,
   database?: AppointmentAccessDatabase,
   createFields?: Pick<AppointmentPolicyTarget, "locationType" | "responsibleUserId">,
+  options: AppointmentAccessOptions = {},
 ): Promise<AppointmentAccessContext> {
   if (!actor) {
     throw new ForbiddenError();
@@ -220,12 +233,14 @@ export async function resolveAppointmentAccessContext(
     capability,
     target,
   });
+  const visitOsm = !decision.allowed &&
+    await resolveVisitOsmScope(db, authoritativeActor, target, record.id, capability, options);
 
   // ADR-0016: READ may fall back to an audited network read; every write path additionally
   // requires a direct scope or a manage capability, which a network reader never holds.
   const access = await assertDirectOrNetworkPatientRead(
     () => {
-      if (!decision.allowed) throw new ForbiddenError();
+      if (!decision.allowed && !visitOsm) throw new ForbiddenError();
     },
     capability === APPOINTMENT_READ_CAPABILITY,
     db,
@@ -252,13 +267,43 @@ export async function resolveAppointmentAccessContext(
       directHospital: authoritativeActor.roles.includes(Role.HOSPITAL) &&
         appointmentPolicyInternals.hasActiveDirectHospitalScope(authoritativeActor, target.hospitalId),
       networkRead: access === "NETWORK",
+      visitOsm,
     },
   };
+}
+
+async function resolveVisitOsmScope(
+  database: AppointmentAccessDatabase,
+  actor: ActorContext,
+  target: AppointmentPolicyTarget,
+  patientHospitalRelationshipId: string,
+  capability: AppointmentCapability,
+  options: AppointmentAccessOptions,
+): Promise<boolean> {
+  const appointmentId = appointmentIdSchema.safeParse(options.appointmentId);
+  if (
+    !appointmentId.success ||
+    !actor.roles.includes(Role.OSM) ||
+    !VISIT_OSM_APPOINTMENT_CAPABILITIES.includes(capability)
+  ) {
+    return false;
+  }
+
+  const appointment = await database.patientAppointment.findFirst({
+    where: { id: appointmentId.data, patientHospitalRelationshipId },
+    select: { assignedOsmUserId: true, sourceServiceRequestId: true, status: true, scheduledAt: true },
+  });
+
+  return Boolean(
+    appointment &&
+    appointmentPolicyInternals.hasOneOffVisitOsmScope(actor, target, appointment, options.now ?? new Date()),
+  );
 }
 
 export const appointmentAccessInternals = {
   hasPatientRole,
   loadAuthoritativeActor,
+  resolveVisitOsmScope,
   toDisplayName,
 };
 

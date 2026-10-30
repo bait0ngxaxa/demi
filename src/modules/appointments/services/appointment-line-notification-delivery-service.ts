@@ -28,6 +28,7 @@ import {
   APPOINTMENT_LINE_NOTIFICATION_TERMINAL_RETENTION_MS,
   appointmentLineNotificationText,
   appointmentLineNotificationRetryDelayMs,
+  patientServiceRequestLineNotificationText,
   expectedAppointmentStatusForNotification,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
@@ -35,6 +36,7 @@ import {
 import {
   currentAssignedOsmRecipient,
   hasActiveCaregiverAppointmentGrant,
+  isActiveHospitalOsm,
 } from "./appointment-line-notification-recipient-service";
 
 type DeliveryDatabase = PrismaClient;
@@ -254,6 +256,10 @@ async function currentEligibility(
       return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีผู้ป่วยที่ได้รับมอบหมายให้คุณดูแล กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
     }
 
+    if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_SERVICE_REQUESTED) {
+      return patientServiceRequestEligibility(transaction, notification, recipientUserId, now);
+    }
+
     if (!notification.appointmentId) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
     }
@@ -263,6 +269,7 @@ async function currentEligibility(
         id: true,
         createdByUserId: true,
         assignedOsmUserId: true,
+        sourceServiceRequestId: true,
         patientHospitalRelationshipId: true,
         updatedAt: true,
         status: true,
@@ -310,10 +317,13 @@ async function currentEligibility(
     }
 
     if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED) {
+      // ADR-0023 (SR-D2): a one-off visiting อสม. is not the patient's assigned อสม.
       if (
         notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
         appointment.assignedOsmUserId !== recipientUserId ||
-        await currentAssignedOsmRecipient(transaction, relationship.id) !== recipientUserId
+        !(appointment.sourceServiceRequestId
+          ? await isActiveHospitalOsm(transaction, recipientUserId, relationship.hospital.id)
+          : await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId)
       ) {
         return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
       }
@@ -385,6 +395,56 @@ async function currentEligibility(
 
     return resolveLineEligibility(transaction, notification, recipientUserId, now, appointmentLineNotificationText(appointment.type));
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+/** ADR-0023 (SR-B): sent only while the request is PENDING and its recipient is still the one it names. */
+async function patientServiceRequestEligibility(
+  transaction: Prisma.TransactionClient,
+  notification: Claim,
+  recipientUserId: string,
+  now: Date,
+): Promise<CurrentEligibility> {
+  if (!notification.patientServiceRequestId) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
+  }
+  const request = await transaction.patientServiceRequest.findUnique({
+    where: { id: notification.patientServiceRequestId },
+    select: {
+      patientHospitalRelationshipId: true,
+      hospitalId: true,
+      status: true,
+      createdAt: true,
+      preferredOsmUserId: true,
+      preferredDate: true,
+      preferredSlot: true,
+      offering: { select: { code: true } },
+      relationship: { select: { endedAt: true, hospital: { select: { status: true } } } },
+    },
+  });
+  if (
+    !request ||
+    request.patientHospitalRelationshipId !== notification.patientHospitalRelationshipId ||
+    request.createdAt.getTime() !== notification.sourceUpdatedAt.getTime() ||
+    request.status !== "PENDING"
+  ) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.STALE_SOURCE };
+  }
+  if (
+    notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
+    isPatientHospitalRelationshipEnded(request.relationship) ||
+    request.relationship.hospital.status !== HospitalStatus.ACTIVE ||
+    !(request.preferredOsmUserId
+      ? request.preferredOsmUserId === recipientUserId &&
+        await isActiveHospitalOsm(transaction, recipientUserId, request.hospitalId)
+      : await currentAssignedOsmRecipient(transaction, request.patientHospitalRelationshipId) === recipientUserId)
+  ) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+  }
+  return resolveLineEligibility(transaction, notification, recipientUserId, now, patientServiceRequestLineNotificationText({
+    serviceCode: request.offering.code,
+    preferredDate: request.preferredDate,
+    preferredSlot: request.preferredSlot,
+  }));
 }
 
 async function settleClaim(

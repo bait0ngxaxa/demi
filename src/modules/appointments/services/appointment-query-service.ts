@@ -1,10 +1,13 @@
 import "server-only";
 
+import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+
 import {
   AppointmentCancellationRequestStatus,
   AppointmentInteractionSource,
   Prisma,
   Profession,
+  type PatientServiceCode,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -78,6 +81,9 @@ export type AppointmentCoordinationSummary = {
 };
 
 export type AppointmentHistoryItem = {
+  serviceCode: PatientServiceCode | null;
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   appointmentId: string;
   scheduledAt: Date;
   type: AppointmentTypeValue;
@@ -100,6 +106,8 @@ export type AppointmentHistory = {
 };
 
 export type AppointmentDetail = {
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   canHospitalManage?: boolean;
   patient: AppointmentPatientSummary;
   canManage: boolean;
@@ -119,6 +127,10 @@ export type AppointmentDetail = {
   coordinationEvents: AppointmentCoordinationSummary[];
   createdByDisplayName: string;
   type: AppointmentTypeValue;
+  /** ADR-0023 (SR-D4): set for an appointment from a service request; optional for a hospital booking. */
+  serviceCode: PatientServiceCode | null;
+  /** ADR-0023: booked from a patient's service request. */
+  fromServiceRequest: boolean;
   scheduledAt: Date;
   durationMinutes: number | null;
   locationType: AppointmentLocationValue | null;
@@ -134,7 +146,6 @@ export type AppointmentCreateContext = {
   patient: AppointmentPatientSummary;
   responsibleMembers: ResponsibleHospitalMember[];
   currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
-  sourceServiceRequestId: string | null;
 };
 
 export type AppointmentRescheduleContext = AppointmentCreateContext & {
@@ -162,6 +173,9 @@ function appointmentHistorySelect(hospitalId: string) {
   updatedAt: true,
   scheduledAt: true,
   type: true,
+  serviceCode: true,
+  sourceServiceRequestId: true,
+  assignedOsmUserId: true,
   status: true,
   durationMinutes: true,
   locationType: true,
@@ -216,6 +230,8 @@ function appointmentDetailSelect(hospitalId: string) {
   assignedOsmUserId: true,
   responsibleUserId: true,
   type: true,
+  serviceCode: true,
+  sourceServiceRequestId: true,
   scheduledAt: true,
   durationMinutes: true,
   locationType: true,
@@ -313,10 +329,12 @@ function appointmentContactAudienceForScope(scopes: {
   directHospital: boolean;
   exactOsmAssignment: boolean;
   networkRead: boolean;
+  visitOsm: boolean;
 }): AppointmentContactAudience {
   if (scopes.patientSelf) return "PATIENT_SELF";
   if (scopes.directHospital) return "HOSPITAL_STAFF";
-  if (scopes.exactOsmAssignment) return "ASSIGNED_OSM_OR_HOSPITAL_STAFF";
+  // ADR-0023 (SR-B): the visiting อสม. sees the contacts the appointment shows its อสม.
+  if (scopes.exactOsmAssignment || scopes.visitOsm) return "ASSIGNED_OSM_OR_HOSPITAL_STAFF";
   if (scopes.networkRead) return "NETWORK_READ";
   return "NONE";
 }
@@ -410,8 +428,19 @@ function toCoordinationEvents(
   }));
 }
 
-function toHistoryItem(record: AppointmentHistoryRecord): AppointmentHistoryItem {
+function toHistoryItem(
+  record: AppointmentHistoryRecord,
+  currentOsmUserId: string | null = null,
+  showOneOffVisit = false,
+): AppointmentHistoryItem {
   return {
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit: showOneOffVisit && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: currentOsmUserId,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    }),
     appointmentId: record.id,
     scheduledAt: record.scheduledAt,
     type: record.type,
@@ -436,6 +465,7 @@ function toDetail(
   canProxyPatientActions: boolean,
   canHospitalManage: boolean = canManage,
   canAcceptAssignment = false,
+  isOneOffVisit = false,
 ): AppointmentDetail {
   return {
     patient,
@@ -459,6 +489,10 @@ function toDetail(
     coordinationEvents: toCoordinationEvents(record.coordinationEvents),
     createdByDisplayName: toDisplayName(record.createdByUser.person),
     type: record.type,
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit,
+    fromServiceRequest: record.sourceServiceRequestId !== null,
     scheduledAt: record.scheduledAt,
     durationMinutes: record.durationMinutes,
     locationType: record.locationType,
@@ -573,7 +607,7 @@ export async function getAppointmentHistory(
     });
     return {
       patient: access.patient,
-      items: records.map(toHistoryItem),
+      items: records.map((record) => toHistoryItem(record, access.target.patientCurrentOsmUserId ?? null, access.scopes.directHospital || access.scopes.networkRead)),
       canManage: access.scopes.directHospital,
       canCreate: access.scopes.directHospital || access.scopes.exactOsmAssignment,
     };
@@ -606,6 +640,8 @@ export async function getAppointmentDetail(
       parsedRelationshipId.data,
       APPOINTMENT_READ_CAPABILITY,
       database,
+      undefined,
+      { appointmentId: parsedAppointmentId.data },
     );
     const record = await database.patientAppointment.findFirst({
       where: {
@@ -620,12 +656,13 @@ export async function getAppointmentDetail(
     }
 
     const currentAcceptance = toCurrentAssigneeAcceptance(record);
+    const isOsmOfAppointment = (access.scopes.exactOsmAssignment &&
+      access.target.patientCurrentOsmUserId === record.assignedOsmUserId) || access.scopes.visitOsm;
     const hasOpenRescheduleRequest = record.rescheduleRequests.some(
       (request) => request.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
     );
     const canAcceptAssignment = Boolean(
-      access.scopes.exactOsmAssignment &&
-      access.target.patientCurrentOsmUserId === record.assignedOsmUserId &&
+      isOsmOfAppointment &&
       record.assignedOsmUserId === access.authoritativeActor.userId &&
       record.status === "SCHEDULED" &&
       record.scheduledAt.getTime() > Date.now() &&
@@ -639,8 +676,13 @@ export async function getAppointmentDetail(
       appointmentContactAudienceForScope(access.scopes),
     );
 
+    const showOneOffVisit = (access.scopes.directHospital || access.scopes.networkRead || access.scopes.visitOsm) && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: access.target.patientCurrentOsmUserId ?? null,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    });
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
-      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment, access.scopes.directHospital, canAcceptAssignment), contactPhones };
+      target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment || access.scopes.visitOsm, access.scopes.directHospital, canAcceptAssignment, showOneOffVisit), contactPhones };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -673,7 +715,6 @@ export async function getAppointmentCreateContext(
   actor: ActorContext | null | undefined,
   relationshipId: unknown,
   dependencies: AppointmentQueryDependencies = {},
-  sourceServiceRequestIdInput?: unknown,
 ): Promise<AppointmentCreateContext> {
   try {
     const database = getDatabase(dependencies);
@@ -684,25 +725,6 @@ export async function getAppointmentCreateContext(
       database,
     );
 
-    let sourceServiceRequestId: string | null = null;
-    if (sourceServiceRequestIdInput !== undefined && sourceServiceRequestIdInput !== null && sourceServiceRequestIdInput !== "") {
-      const parsedRequestId = appointmentIdSchema.safeParse(sourceServiceRequestIdInput);
-      if (!parsedRequestId.success) throw new NotFoundError();
-      if (!access.scopes.directHospital) throw new ForbiddenError();
-      const sourceRequest = await database.patientServiceRequest.findFirst({
-        where: {
-          id: parsedRequestId.data,
-          patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
-          hospitalId: access.target.hospitalId,
-          status: "APPROVED",
-          relationship: { is: { endedAt: null, hospital: { status: "ACTIVE" } } },
-        },
-        select: { id: true },
-      });
-      if (!sourceRequest) throw new NotFoundError();
-      sourceServiceRequestId = sourceRequest.id;
-    }
-
     return {
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
@@ -712,7 +734,6 @@ export async function getAppointmentCreateContext(
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
-      sourceServiceRequestId,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -767,7 +788,6 @@ export async function getAppointmentRescheduleContext(
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
-      sourceServiceRequestId: null,
       responsibleMembers: access.scopes.directHospital ? await getRescheduleResponsibleMembers(
         database,
         access.target.hospitalId,

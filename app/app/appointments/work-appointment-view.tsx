@@ -1,3 +1,4 @@
+import { AppointmentServiceSource, OneOffVisitNote } from "../appointment-service-source";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -73,9 +74,10 @@ function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.
             <p className="mt-1 text-sm leading-6 text-text-muted">{item.hospitalName}</p>
             <p className="mt-2 text-sm font-semibold text-text">{formatDate(item.scheduledAt)}</p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              {APPOINTMENT_TYPE_LABELS[item.type]} · {item.locationType ? APPOINTMENT_LOCATION_LABELS[item.locationType] : "ไม่ระบุสถานที่"}
+              <AppointmentServiceSource type={item.type} serviceCode={item.serviceCode} source={item.source} /> · {item.locationType ? APPOINTMENT_LOCATION_LABELS[item.locationType] : "ไม่ระบุสถานที่"}
               {item.durationMinutes ? ` · ${item.durationMinutes} นาที` : ""}
             </p>
+            <OneOffVisitNote visible={item.isOneOffVisit} />
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
               {responsible.heading}: {responsible.displayName}
             </p>

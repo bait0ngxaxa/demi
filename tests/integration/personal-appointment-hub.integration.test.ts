@@ -160,7 +160,7 @@ describe("AF-4 personal appointment hub PostgreSQL", () => {
 
     await acceptAppointmentGrant(caregiver, grantId, grantDeps);
     expect(await listDelegatedAppointmentSubjects(caregiver, grantDeps)).toEqual([
-      { grantId, caregiverRelationshipId: parent.id, contractVersion: "family-appointment-read-v2",
+      { grantId, caregiverRelationshipId: parent.id, contractVersion: "family-appointment-read-v3",
         patient: { givenName: "ทดสอบ", familyName: "ศูนย์นัด" }, hospitalName: "รพ.สต. บ้านทดสอบ" },
     ]);
     expect(await listDelegatedAppointmentSubjects(f.patient, grantDeps)).toEqual([]);

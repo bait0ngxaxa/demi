@@ -7,7 +7,13 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS, FAMILY_APPOINTMENT_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
+import {
+  FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS,
+  FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
+  FAMILY_APPOINTMENT_READ_CONTRACT,
+  FAMILY_APPOINTMENT_READ_CONTRACT_V2,
+  type FamilyAppointmentReadContract,
+} from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
 import type { ResourceGrantManagement, ResourceGrantManagementItem } from "@/modules/family/services/caregiver-resource-grant-service";
 import { formatFamilyManagementDate, formatFamilyParticipantName } from "@/modules/family/presentation/caregiver-relationship-presentation";
@@ -50,9 +56,16 @@ function ProposeForm({ relationships, hospitals }: { relationships: readonly Fam
   </form>;
 }
 
+/** What an ACTIVE older-version grant still hides compared with the latest version, in plain Thai. */
+const OLDER_CONTRACT_SCOPE_NOTES: Partial<Record<FamilyAppointmentReadContract, string>> = {
+  [FAMILY_APPOINTMENT_READ_CONTRACT]: "สิทธิ์แบบเดิม: ผู้ดูแลเห็นเฉพาะนัดที่จะถึง ไม่เห็นรายละเอียดสถานที่ ผู้รับผิดชอบ ประวัตินัด หรือบริการและที่มาของนัด จนกว่าจะยอมรับสิทธิ์แบบใหม่",
+  [FAMILY_APPOINTMENT_READ_CONTRACT_V2]: "สิทธิ์แบบเดิม: ผู้ดูแลไม่เห็นว่านัดเป็นบริการใด และไม่เห็นว่าเป็นนัดที่โรงพยาบาลนัดหรือที่ผู้ป่วยขอรับบริการ จนกว่าจะยอมรับสิทธิ์แบบใหม่",
+};
+
 function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementItem; perspective: "patient" | "caregiver" }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
   const careEnded = grant.careEnded === true && grant.status !== "REVOKED";
+  const olderScopeNote = grant.status === "ACTIVE" && grant.contractVersion !== FAMILY_APPOINTMENT_LATEST_READ_CONTRACT ? OLDER_CONTRACT_SCOPE_NOTES[grant.contractVersion] : undefined;
   const label = careEnded ? "สิ้นสุดการดูแลแล้ว" : grant.status === "PENDING" ? "รอผู้ดูแลยอมรับ" : grant.status === "ACTIVE" ? "ยอมรับสิทธิ์แล้ว" : "ยกเลิกสิทธิ์แล้ว";
   return <li className="space-y-3 py-5 first:pt-0">
     <p className="break-words font-semibold text-text">{formatFamilyParticipantName(grant.participant, perspective === "patient" ? "ไม่ระบุชื่อผู้ดูแล" : "ไม่ระบุชื่อผู้ป่วย")}</p>
@@ -62,7 +75,7 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
     <p className="text-sm text-text-muted">เสนอเมื่อ {formatFamilyManagementDate(grant.proposedAt)}</p>
     {grant.acceptedAt ? <p className="text-sm text-text-muted">ยอมรับเมื่อ {formatFamilyManagementDate(grant.acceptedAt)}</p> : null}
     {grant.revokedAt ? <p className="text-sm text-text-muted">ยกเลิกเมื่อ {formatFamilyManagementDate(grant.revokedAt)}</p> : null}
-    {grant.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT && grant.status === "ACTIVE" ? <p className="type-readable text-sm leading-7 text-text-muted">สิทธิ์แบบเดิม: ผู้ดูแลเห็นเฉพาะนัดที่จะถึง ไม่เห็นรายละเอียดสถานที่ ผู้รับผิดชอบ หรือประวัตินัด จนกว่าจะยอมรับสิทธิ์แบบใหม่</p> : null}
+    {olderScopeNote ? <p className="type-readable text-sm leading-7 text-text-muted">{olderScopeNote}</p> : null}
     {perspective === "caregiver" && grant.status === "PENDING" ? <p className="type-readable text-sm leading-7 text-text-muted">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS[grant.contractVersion]}</p> : null}
     {grant.status !== "REVOKED" && (perspective === "patient" || grant.status === "PENDING") ? <form action={action}>
       <input type="hidden" name="grantId" value={grant.grantId} />
@@ -70,14 +83,14 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
         {pending ? "กำลังบันทึก..." : perspective === "caregiver" ? "ยอมรับสิทธิ์ดูนัดหมาย" : grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย"}
       </Button>
     </form> : null}
-    {perspective === "patient" && grant.scope && grant.status === "ACTIVE" && grant.contractVersion === FAMILY_APPOINTMENT_READ_CONTRACT ? <UpgradeGrant grant={grant} scope={grant.scope} /> : null}
+    {perspective === "patient" && grant.scope && olderScopeNote ? <UpgradeGrant grant={grant} scope={grant.scope} /> : null}
     {perspective === "caregiver" && grant.status === "ACTIVE" ? <Link prefetch={false} className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={personalAppointmentHubHref({ subject: grant.grantId, tab: "upcoming" })}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
     <Feedback state={state} />
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
   </li>;
 }
 
-/** AF-5: proposes the v2 contract for the same scope; the v1 grant keeps working until the caregiver accepts. */
+/** AF-5/SR-C1: proposes the latest contract for the same scope; the older grant keeps working until the caregiver accepts. */
 function UpgradeGrant({ grant, scope }: { grant: AppointmentGrantManagementItem; scope: NonNullable<AppointmentGrantManagementItem["scope"]> }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   return <form action={action}>

@@ -1,3 +1,4 @@
+import { AppointmentServiceSource } from "../appointment-service-source";
 import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
@@ -5,7 +6,6 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  APPOINTMENT_TYPE_LABELS,
   appointmentResponsiblePresentation,
   type AppointmentStatusValue,
   type AppointmentTypeValue,
@@ -96,7 +96,7 @@ export function PatientSelfAppointmentRow({
               <p className="mt-1 break-words text-sm font-semibold leading-6 text-text">{hospitalName}</p>
             ) : null}
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-              {APPOINTMENT_TYPE_LABELS[appointment.type as AppointmentTypeValue]} · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
+              <AppointmentServiceSource type={appointment.type as AppointmentTypeValue} serviceCode={appointment.serviceCode} source={appointment.source} /> · {appointmentLocationLabel(appointment.locationType as AppointmentLocationValue | null)}
             </p>
             {appointment.locationDetail ? (
               <p className="mt-1 break-words text-sm leading-6 text-text-muted">
@@ -217,7 +217,7 @@ export function PatientSelfAppointmentDetailContent({
           <div className="min-w-0">
             <dt className="text-sm font-semibold text-text-muted">ประเภทนัดหมาย</dt>
             <dd className="mt-1 break-words font-semibold text-text">
-              {APPOINTMENT_TYPE_LABELS[detail.type as AppointmentTypeValue]}
+              <AppointmentServiceSource type={detail.type as AppointmentTypeValue} serviceCode={detail.serviceCode} source={detail.source} />
             </dd>
           </div>
           <div className="min-w-0">

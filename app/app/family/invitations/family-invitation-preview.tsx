@@ -30,7 +30,7 @@ import {
   initialFamilyMutationActionState,
   type CaregiverInvitationRequestedSharingView,
 } from "@/modules/family/transport/action-state";
-import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXT_V2 } from "@/modules/family/domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS, FAMILY_APPOINTMENT_LATEST_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
 import { PasswordInput } from "@/components/ui/password-input";
 
@@ -52,7 +52,7 @@ function RequestedSharing({ sharing }: { sharing: CaregiverInvitationRequestedSh
                 <p className="font-semibold">
                   นัดหมาย: {sharing.appointmentHospitalNames ? sharing.appointmentHospitalNames.join(", ") : `${sharing.appointmentHospitalCount} หน่วยบริการที่ผู้ป่วยเลือก`}
                 </p>
-                <p className="type-readable mt-1 text-sm leading-6">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXT_V2}</p>
+                <p className="type-readable mt-1 text-sm leading-6">{FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS[FAMILY_APPOINTMENT_LATEST_READ_CONTRACT]}</p>
               </li>
             ) : null}
             {sharing.resources.map((resource) => (

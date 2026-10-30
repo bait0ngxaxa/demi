@@ -11,6 +11,7 @@ import {
   Prisma,
   Profession,
   PatientServiceRequestStatus,
+  type PatientServiceCode,
   Role,
   UserStatus,
   type PrismaClient,
@@ -46,6 +47,7 @@ import {
   type AppointmentLocationValue,
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
+import { SERVICE_APPOINTMENT_TYPE } from "../domain/appointment-service-definitions";
 import {
   appointmentPatientRescheduleRequestSchema,
   appointmentRescheduleRejectionSchema,
@@ -122,6 +124,7 @@ export type AppointmentCancellationReviewResult = {
 type NormalizedAppointmentFields = {
   scheduledAt: Date;
   type: AppointmentTypeValue;
+  serviceCode: PatientServiceCode | null;
   responsibleUserId: string | null;
   assignedOsmUserId: string | null;
   durationMinutes: number | null;
@@ -154,6 +157,8 @@ const appointmentCurrentSelect = {
   patientHospitalRelationshipId: true,
   responsibleUserId: true,
   assignedOsmUserId: true,
+  sourceServiceRequestId: true,
+  serviceCode: true,
   scheduledAt: true,
   status: true,
   createdAt: true,
@@ -248,6 +253,7 @@ function normalizeAppointmentFields(
   return {
     scheduledAt: toDate(input.scheduledAt, "Appointment scheduled time"),
     type: input.type,
+    serviceCode: "serviceCode" in input ? input.serviceCode ?? null : null,
     responsibleUserId: input.responsibleUserId?.toLowerCase() ?? null,
     assignedOsmUserId: input.assignedOsmUserId?.toLowerCase() ?? null,
     durationMinutes: input.durationMinutes ?? null,
@@ -276,6 +282,8 @@ function createAppointmentRequestHash(
     locationType: fields.locationType,
     locationDetail: fields.locationDetail,
     note: fields.note,
+    // ADR-0023: added only when set, so fingerprints of appointments without a service are unchanged.
+    ...(fields.serviceCode ? { serviceCode: fields.serviceCode } : {}),
   };
 
   return createHash("sha256").update(JSON.stringify(canonicalPayload), "utf8").digest("hex");
@@ -364,6 +372,8 @@ async function assertAssignedOsmIsCurrentAndEligible(
     assignedOsmUserId: string | null;
     responsibleUserId: string | null;
     locationType: AppointmentLocationValue | null;
+    /** ADR-0023 (SR-D2): an appointment from a service request may go to any ACTIVE อสม. of the Hospital. */
+    sourceServiceRequestId: string | null;
   },
 ): Promise<void> {
   if (!input.assignedOsmUserId) return;
@@ -372,7 +382,7 @@ async function assertAssignedOsmIsCurrentAndEligible(
   }
 
   const [assignment, osm] = await Promise.all([
-    transaction.patientOsmAssignment.findFirst({
+    input.sourceServiceRequestId ? Promise.resolve({ id: input.sourceServiceRequestId }) : transaction.patientOsmAssignment.findFirst({
       where: {
         patientHospitalRelationshipId: input.patientHospitalRelationshipId,
         osmUserId: input.assignedOsmUserId,
@@ -394,15 +404,23 @@ async function assertAssignedOsmIsCurrentAndEligible(
   ]);
 
   if (!assignment || !osm) {
-    throw new ValidationError("เลือกได้เฉพาะ อสม. ที่รับผิดชอบผู้ป่วยรายนี้อยู่ในปัจจุบัน");
+    throw new ValidationError(input.sourceServiceRequestId
+      ? "เลือกได้เฉพาะ อสม. ที่ปฏิบัติงานอยู่กับโรงพยาบาลนี้"
+      : "เลือกได้เฉพาะ อสม. ที่รับผิดชอบผู้ป่วยรายนี้อยู่ในปัจจุบัน");
   }
 }
+
+/** ADR-0023 (SR-D1): set only by `confirmPatientServiceRequest`, never from request data. */
+export type AppointmentServiceRequestSource = {
+  serviceRequestId: string;
+};
 
 async function createInTransaction(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   input: AppointmentCreateRequest,
   now: Date,
+  source: AppointmentServiceRequestSource | null = null,
 ): Promise<AppointmentMutationResult> {
   const access = await resolveAppointmentAccessContext(
     actor,
@@ -419,7 +437,7 @@ async function createInTransaction(
   if (isOsmCreator && normalizedFields.assignedOsmUserId && normalizedFields.assignedOsmUserId !== actor.userId) {
     throw new ForbiddenError();
   }
-  const sourceServiceRequestId = input.sourceServiceRequestId?.toLowerCase() ?? null;
+  const sourceServiceRequestId = source?.serviceRequestId.toLowerCase() ?? null;
   const creationRequestHash = createAppointmentRequestHash(
     actor,
     access.patient.patientHospitalRelationshipId,
@@ -458,9 +476,14 @@ async function createInTransaction(
     assignedOsmUserId: fields.assignedOsmUserId,
     responsibleUserId: fields.responsibleUserId,
     locationType: fields.locationType,
+    sourceServiceRequestId,
   });
 
-  let sourceRequest: { id: string; status: PatientServiceRequestStatus } | null = null;
+  let sourceRequest: {
+    id: string;
+    status: PatientServiceRequestStatus;
+    offering: { code: PatientServiceCode };
+  } | null = null;
   if (sourceServiceRequestId) {
     if (!access.scopes.directHospital || !fields.assignedOsmUserId) throw new ForbiddenError();
     sourceRequest = await transaction.patientServiceRequest.findFirst({
@@ -469,10 +492,18 @@ async function createInTransaction(
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, offering: { select: { code: true } } },
     });
-    if (!sourceRequest || sourceRequest.status !== PatientServiceRequestStatus.APPROVED) {
-      throw new ConflictError("The approved Patient service request is no longer available");
+    // ADR-0023: a PENDING request is confirmed; a legacy APPROVED one can still be booked.
+    if (
+      !sourceRequest ||
+      (sourceRequest.status !== PatientServiceRequestStatus.PENDING &&
+        sourceRequest.status !== PatientServiceRequestStatus.APPROVED)
+    ) {
+      throw new ConflictError("The Patient service request is no longer awaiting confirmation");
+    }
+    if (fields.serviceCode !== sourceRequest.offering.code) {
+      throw new ValidationError("The appointment service must be the requested service");
     }
   }
 
@@ -482,6 +513,8 @@ async function createInTransaction(
       osmAssignmentIdAtCreation: access.target.assignedOsmAssignmentId,
       assignedOsmUserId: fields.assignedOsmUserId,
       sourceServiceRequestId,
+      // ADR-0023 (SR-D4): the requested service for a request, optional for a hospital booking.
+      serviceCode: fields.serviceCode,
       responsibleUserId: fields.responsibleUserId,
       createdByUserId: actor.userId,
       type: fields.type,
@@ -516,15 +549,17 @@ async function createInTransaction(
   );
 
   if (sourceRequest) {
+    const confirming = sourceRequest.status === PatientServiceRequestStatus.PENDING;
     const started = await transaction.patientServiceRequest.updateMany({
-      where: { id: sourceRequest.id, status: PatientServiceRequestStatus.APPROVED },
+      where: { id: sourceRequest.id, status: sourceRequest.status },
       data: {
         status: PatientServiceRequestStatus.STARTED,
+        ...(confirming ? { reviewedByUserId: actor.userId, reviewedAt: now } : {}),
         startedByUserId: actor.userId,
         startedAt: now,
       },
     });
-    if (started.count !== 1) throw new ConflictError("The approved Patient service request changed concurrently");
+    if (started.count !== 1) throw new ConflictError("The Patient service request changed concurrently");
     await recordAuditEvent({
       actorUserId: actor.userId,
       action: "PATIENT_SERVICE_REQUEST_STARTED",
@@ -533,7 +568,10 @@ async function createInTransaction(
       metadata: {
         hospitalId: access.target.hospitalId,
         appointmentLinked: true,
+        serviceCode: sourceRequest.offering.code,
+        fromStatus: sourceRequest.status,
         status: PatientServiceRequestStatus.STARTED,
+        oneOffVisit: fields.assignedOsmUserId !== access.target.patientCurrentOsmUserId,
       },
     }, transaction);
   }
@@ -575,10 +613,24 @@ async function createInTransaction(
       sourceUpdatedAt: appointment.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, now, { onlyOsmUserId: fields.assignedOsmUserId });
+    }, now, { onlyOsmUserId: fields.assignedOsmUserId, onlyOsmIsVisitOsm: sourceServiceRequestId !== null });
   }
 
   return toMutationResult(appointment, access.target.hospitalId);
+}
+
+/**
+ * ADR-0023 (SR-D1): books the appointment of a service request inside the caller's confirm transaction, with
+ * the same checks, nonce semantics, audit and notifications as any staff-booked appointment.
+ */
+export function createServiceRequestAppointmentInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: AppointmentCreateRequest,
+  now: Date,
+  source: AppointmentServiceRequestSource,
+): Promise<AppointmentMutationResult> {
+  return createInTransaction(transaction, actor, input, now, source);
 }
 
 export async function createAppointment(
@@ -674,6 +726,11 @@ async function rescheduleInTransaction(
   if (input.assignedOsmUserId === undefined) {
     fields = { ...fields, assignedOsmUserId: current.assignedOsmUserId };
   }
+  // ADR-0023 (SR-D4): the service is fixed at booking and keeps setting the type.
+  fields = { ...fields, serviceCode: current.serviceCode };
+  if (current.serviceCode && fields.type !== SERVICE_APPOINTMENT_TYPE[current.serviceCode]) {
+    throw new ValidationError("The appointment type must follow its service");
+  }
 
   assertAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
     target: { ...access.target, ...current, appointmentAssignedOsmUserId: current.assignedOsmUserId, operation: "EDIT" } });
@@ -702,6 +759,7 @@ async function rescheduleInTransaction(
     assignedOsmUserId: fields.assignedOsmUserId,
     responsibleUserId: fields.responsibleUserId,
     locationType: fields.locationType,
+    sourceServiceRequestId: current.sourceServiceRequestId,
   });
 
   const updatedAt = nextUpdatedAt(current.updatedAt, now);
@@ -775,7 +833,7 @@ async function rescheduleInTransaction(
       sourceUpdatedAt: result.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, now, { onlyOsmUserId: fields.assignedOsmUserId });
+    }, now, { onlyOsmUserId: fields.assignedOsmUserId, onlyOsmIsVisitOsm: current.sourceServiceRequestId !== null });
   }
 
   if (
@@ -1043,12 +1101,12 @@ export type PatientSelfAppointmentInteractionDependencies = AppointmentInteracti
 };
 
 function requireInteractionSource(
-  scopes: { patientSelf: boolean; exactOsmAssignment: boolean },
+  scopes: { patientSelf: boolean; exactOsmAssignment: boolean; visitOsm: boolean },
   source: AppointmentInteractionSource,
 ): void {
   if (
     (source === AppointmentInteractionSource.PATIENT_SELF && scopes.patientSelf) ||
-    (source === AppointmentInteractionSource.OSM_PROXY && scopes.exactOsmAssignment)
+    (source === AppointmentInteractionSource.OSM_PROXY && (scopes.exactOsmAssignment || scopes.visitOsm))
   ) {
     return;
   }
@@ -1079,6 +1137,8 @@ async function acknowledgeAppointment(
           parsed.data.patientHospitalRelationshipId,
           APPOINTMENT_ACKNOWLEDGE_CAPABILITY,
           transaction,
+          undefined,
+          { appointmentId: parsed.data.appointmentId, now: getNow(dependencies) },
         );
         requireInteractionSource(access.scopes, source);
 
@@ -1204,6 +1264,8 @@ export async function acceptAppointmentAssignment(
         parsed.data.patientHospitalRelationshipId,
         APPOINTMENT_ACCEPT_ASSIGNMENT_CAPABILITY,
         transaction,
+        undefined,
+        { appointmentId: parsed.data.appointmentId, now: getNow(dependencies) },
       );
       const appointment = await transaction.patientAppointment.findFirst({
         where: {
@@ -1219,11 +1281,9 @@ export async function acceptAppointmentAssignment(
         },
       });
       if (!appointment) throw new NotFoundError();
-      if (
-        appointment.assignedOsmUserId !== actor.userId ||
-        access.target.patientCurrentOsmUserId !== actor.userId ||
-        access.target.assignedOsmAssignmentId === null
-      ) {
+      const isCurrentAssignee = access.target.patientCurrentOsmUserId === actor.userId &&
+        access.target.assignedOsmAssignmentId !== null;
+      if (appointment.assignedOsmUserId !== actor.userId || (!isCurrentAssignee && !access.scopes.visitOsm)) {
         throw new ForbiddenError();
       }
 
@@ -1505,6 +1565,8 @@ export async function recordAppointmentCoordination(
           parsed.data.patientHospitalRelationshipId,
           APPOINTMENT_RECORD_COORDINATION_CAPABILITY,
           transaction,
+          undefined,
+          { appointmentId: parsed.data.appointmentId, now: getNow(dependencies) },
         );
         const appointment = await transaction.patientAppointment.findFirst({
           where: {
@@ -1815,7 +1877,8 @@ export async function submitAppointmentRescheduleRequest(
   const data = parsed.data;
   try {
     return await runSerializable(getDatabase(dependencies), async (tx) => {
-      const access = await resolveAppointmentAccessContext(actor, data.patientHospitalRelationshipId, APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY, tx);
+      const access = await resolveAppointmentAccessContext(actor, data.patientHospitalRelationshipId, APPOINTMENT_REQUEST_RESCHEDULE_CAPABILITY, tx,
+        undefined, { appointmentId: data.appointmentId, now: getNow(dependencies) });
       const source = access.scopes.patientSelf ? AppointmentInteractionSource.PATIENT_SELF : AppointmentInteractionSource.OSM_PROXY;
       const appointment = await tx.patientAppointment.findFirst({ where: { id: data.appointmentId, patientHospitalRelationshipId: data.patientHospitalRelationshipId }, select: { id: true, updatedAt: true, status: true, createdByUserId: true } });
       if (!appointment) throw new NotFoundError();
@@ -1840,7 +1903,7 @@ export async function submitAppointmentRescheduleRequest(
       } });
       await recordAuditEvent({ actorUserId: actor.userId, action: "appointment.reschedule_requested", resourceType: "PatientAppointmentRescheduleRequest", resourceId: request.id,
         metadata: { appointmentId: appointment.id, hospitalId: access.target.hospitalId, source } }, tx);
-      if (access.scopes.exactOsmAssignment && !access.scopes.patientSelf && appointment.createdByUserId !== actor.userId) {
+      if ((access.scopes.exactOsmAssignment || access.scopes.visitOsm) && !access.scopes.patientSelf && appointment.createdByUserId !== actor.userId) {
         await createOsmRescheduleRequestLineNotificationIntent(tx, {
           appointmentId: appointment.id,
           rescheduleRequestId: request.id,

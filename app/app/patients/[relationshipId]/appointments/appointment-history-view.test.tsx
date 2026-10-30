@@ -19,6 +19,7 @@ const history: AppointmentHistory = {
   items: [
     {
       appointmentId: "33333333-3333-4333-8333-333333333333",
+      serviceCode: null, source: "HOSPITAL", isOneOffVisit: false,
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
       type: "EDUCATION",
       status: "SCHEDULED",
@@ -33,6 +34,7 @@ const history: AppointmentHistory = {
     },
     {
       appointmentId: "44444444-4444-4444-8444-444444444444",
+      serviceCode: null, source: "HOSPITAL", isOneOffVisit: false,
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
       type: "EDUCATION",
       status: "SCHEDULED",
@@ -47,6 +49,7 @@ const history: AppointmentHistory = {
     },
     {
       appointmentId: "55555555-5555-4555-8555-555555555555",
+      serviceCode: null, source: "HOSPITAL", isOneOffVisit: false,
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
       type: "EDUCATION",
       status: "SCHEDULED",
@@ -61,6 +64,7 @@ const history: AppointmentHistory = {
     },
     {
       appointmentId: "66666666-6666-4666-8666-666666666666",
+      serviceCode: null, source: "HOSPITAL", isOneOffVisit: false,
       scheduledAt: new Date("2026-09-30T03:00:00.000Z"),
       type: "EDUCATION",
       status: "SCHEDULED",
@@ -131,4 +135,15 @@ describe("Work appointment responsibility labels", () => {
     expect(markup).toContain(`href="/app/patients/other-relationship/appointments/${history.items[0]?.appointmentId}"`);
     expect(markup).not.toContain(`/app/patients/${history.patient.patientHospitalRelationshipId}`);
   });
+});
+
+it("SR-C shows service and both sources on patient appointment history", () => {
+  const first = history.items[0];
+  if (!first) throw new Error("Missing fixture");
+  const markup = renderToStaticMarkup(<AppointmentHistoryView history={{ ...history, items: [
+    { ...first, serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST", isOneOffVisit: true },
+    { ...first, appointmentId: "hospital", serviceCode: null, source: "HOSPITAL", isOneOffVisit: false },
+  ] }} />);
+  for (const text of ["เสริมพลังใจ", "ขอรับบริการ", "โรงพยาบาลนัด"]) expect(markup).toContain(text);
+  expect(markup.match(/เยี่ยมครั้งนี้เท่านั้น/g)).toHaveLength(1);
 });

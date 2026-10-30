@@ -44,6 +44,7 @@ const startedAt = new Date("2026-01-03T00:00:00.000Z");
 
 function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    serviceCode: null, sourceServiceRequestId: null,
     id: appointmentId,
     type: AppointmentType.EDUCATION,
     scheduledAt: recordedAt,
@@ -1009,4 +1010,12 @@ describe("AF-4 Patient appointment hub", () => {
     expect(database.person.findFirst).not.toHaveBeenCalled();
     expect(database.patientAppointment.findMany).not.toHaveBeenCalled();
   });
+});
+
+it.each([null, "request"])("SR-C patient projections add only service/source (%s)", async (sourceServiceRequestId) => {
+  const database = createDatabase();
+  database.patientAppointment.findMany = vi.fn().mockResolvedValue([appointmentRecord({ serviceCode: "EMPOWERMENT", sourceServiceRequestId })]);
+  const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
+  expect(history.appointments[0]).toMatchObject({ serviceCode: "EMPOWERMENT", source: sourceServiceRequestId ? "PATIENT_REQUEST" : "HOSPITAL" });
+  expect(Object.keys(history.appointments[0] ?? {}).sort()).toEqual(["appointmentId", "type", "scheduledAt", "durationMinutes", "locationType", "locationDetail", "status", "updatedAt", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "acknowledgement", "cancellationRequests", "serviceCode", "source"].sort());
 });

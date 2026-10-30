@@ -3,7 +3,7 @@ import { Prisma, type AppointmentStatus, Role } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, FAMILY_APPOINTMENT_WINDOW_MS } from "@/modules/family/domain/appointment-grant-contract";
+import { FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, FAMILY_APPOINTMENT_READ_CONTRACT_V3, FAMILY_APPOINTMENT_WINDOW_MS } from "@/modules/family/domain/appointment-grant-contract";
 import { acceptAppointmentGrant, proposeAppointmentGrant, revokeAppointmentGrant } from "@/modules/family/services/appointment-grant-service";
 import { getAppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
 import { getDelegatedAppointment, listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
@@ -62,9 +62,14 @@ async function activeGrant(f: Fixture): Promise<string> {
   await acceptAppointmentGrant(f.caregiver, grantId, deps);
   return grantId;
 }
-/** A grant accepted under the v1 contract before AF-5 (new proposals are v2). */
+/** A grant accepted under the v1 contract before AF-5 (new proposals use the latest version). */
 async function activeV1Grant(f: Fixture): Promise<string> {
   return (await db.caregiverAppointmentGrant.create({ data: { ...grantData(f), status: "ACTIVE", acceptedByUserId: f.caregiver.userId, acceptedAt: now } })).id;
+}
+/** A grant accepted under the v2 contract before SR-C1. */
+async function activeV2Grant(f: Fixture): Promise<string> {
+  return (await db.caregiverAppointmentGrant.create({ data: { ...grantData(f), contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2,
+    status: "ACTIVE", acceptedByUserId: f.caregiver.userId, acceptedAt: now } })).id;
 }
 async function appointment(f: Fixture, at: Date = now, status: AppointmentStatus = "SCHEDULED", id: string = randomUUID()): Promise<string> {
   const row = await db.patientAppointment.create({ data: { id, patientHospitalRelationshipId: f.phrId, createdByUserId: f.patient.userId,
@@ -101,7 +106,7 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
   afterEach(clear);
   afterAll(async () => { await db.$disconnect(); });
 
-  it("requires separate acceptance, preserves the v2 fields/nulls and audits only lifecycle", async () => {
+  it("requires separate acceptance, preserves the v3 fields/nulls and audits only lifecycle", async () => {
     const f = await fixture();
     const id = await appointment(f);
     await expect(listDelegatedAppointments(f.caregiver, { grantId: randomUUID() }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -109,9 +114,16 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     await expect(listDelegatedAppointments(f.caregiver, { grantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await acceptAppointmentGrant(f.caregiver, grantId, deps);
     const page = await listDelegatedAppointments(f.caregiver, { grantId }, deps);
-    // AF-5: a new proposal is the v2 contract; its additions are present and null here.
-    expect(page.appointments).toEqual([{ appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
+    // AF-5/SR-C1: a new proposal is the v3 contract; its additions are present and null here.
+    expect(page.appointments).toEqual([{ serviceCode: null, source: "HOSPITAL", appointmentId: id, hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP", scheduledAt: now, durationMinutes: null, locationType: null, status: "SCHEDULED",
       extension: { locationDetail: "SECRET-LOCATION", responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, parentHospitalName: null } }]);
+    await db.patientAppointment.update({ where: { id }, data: { serviceCode: "FOLLOW_UP" } });
+    const withService = await getDelegatedAppointment(f.caregiver, grantId, id, deps);
+    expect(withService.serviceCode).toBe("FOLLOW_UP");
+    expect(withService.source).toBe("HOSPITAL");
+    expect(withService).not.toHaveProperty("sourceServiceRequestId");
+    expect(withService).not.toHaveProperty("isOneOffVisit");
+    await db.patientAppointment.update({ where: { id }, data: { serviceCode: null } });
     // E4 (ก-20): the detail adds the Hospital contact phone only; the Patient phone is never projected to a caregiver.
     expect(await getDelegatedAppointment(f.caregiver, grantId, id, deps)).toEqual({ ...page.appointments[0], contactPhones: { assignedOsmPhone: null, hospitalPhone: null, patientPhone: null } });
     const management = await getAppointmentGrantManagement(f.caregiver, {}, deps);
@@ -120,8 +132,50 @@ describe("Phase 17F.2 appointment grants PostgreSQL", () => {
     const audits = await db.auditEvent.findMany({ orderBy: { createdAt: "asc" }, select: { action: true, metadata: true, resourceId: true, actorUserId: true } });
     expect(audits.map((a) => a.action)).toEqual(["caregiver_appointment_grant.proposed", "caregiver_appointment_grant.accepted"]);
     expect(audits.map((a) => a.actorUserId)).toEqual([f.patient.userId, f.caregiver.userId]);
-    expect(audits.every((a) => a.resourceId === grantId && JSON.stringify(a.metadata) === JSON.stringify({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 }))).toBe(true);
+    expect(audits.every((a) => a.resourceId === grantId && JSON.stringify(a.metadata) === JSON.stringify({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V3 }))).toBe(true);
     expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: grantId } })).toMatchObject({ acceptedByUserId: f.caregiver.userId, acceptedAt: now, status: "ACTIVE" });
+  });
+
+  it("SR-C1: a v2 grant never sees service/source; after the Patient re-shares and the caregiver accepts v3 it does", async () => {
+    const f = await fixture();
+    const id = await appointment(f);
+    await db.patientAppointment.update({ where: { id }, data: { serviceCode: "FOLLOW_UP" } });
+    const v2GrantId = await activeV2Grant(f);
+    const v2Keys = ["appointmentId", "hospitalName", "type", "scheduledAt", "durationMinutes", "locationType", "status", "extension"].sort();
+    const v2Page = await listDelegatedAppointments(f.caregiver, { grantId: v2GrantId }, deps);
+    expect(v2Page.contractVersion).toBe(FAMILY_APPOINTMENT_READ_CONTRACT_V2);
+    expect(Object.keys(v2Page.appointments[0] ?? {}).sort()).toEqual(v2Keys);
+    const v2Detail = await getDelegatedAppointment(f.caregiver, v2GrantId, id, deps);
+    expect(v2Detail).not.toHaveProperty("serviceCode");
+    expect(v2Detail).not.toHaveProperty("source");
+
+    // Re-share: the v2 projection stays until the caregiver accepts v3; a second proposal conflicts.
+    const { grantId: v3GrantId } = await proposeAppointmentGrant(f.patient, proposal(f), deps);
+    await expect(proposeAppointmentGrant(f.patient, proposal(f), deps)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: v3GrantId }, select: { contractVersion: true, status: true } }))
+      .toEqual({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V3, status: "PENDING" });
+    expect(Object.keys((await listDelegatedAppointments(f.caregiver, { grantId: v2GrantId }, deps)).appointments[0] ?? {}).sort()).toEqual(v2Keys);
+    await expect(listDelegatedAppointments(f.caregiver, { grantId: v3GrantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    await acceptAppointmentGrant(f.caregiver, v3GrantId, deps);
+    expect(await db.caregiverAppointmentGrant.findUniqueOrThrow({ where: { id: v2GrantId }, select: { status: true, revokedByUserId: true } }))
+      .toEqual({ status: "REVOKED", revokedByUserId: f.caregiver.userId });
+    await expect(listDelegatedAppointments(f.caregiver, { grantId: v2GrantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const superseded = await db.auditEvent.findFirstOrThrow({ where: { resourceId: v2GrantId, action: "caregiver_appointment_grant.revoked" }, select: { metadata: true } });
+    expect(superseded.metadata).toEqual({ contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2, priorStatus: "ACTIVE", reason: "SUPERSEDED", supersededBy: v3GrantId });
+    const v3Page = await listDelegatedAppointments(f.caregiver, { grantId: v3GrantId }, deps);
+    expect(Object.keys(v3Page.appointments[0] ?? {}).sort()).toEqual([...v2Keys, "serviceCode", "source"].sort());
+    expect(v3Page.appointments[0]).toMatchObject({ serviceCode: "FOLLOW_UP", source: "HOSPITAL" });
+    expect(await getDelegatedAppointment(f.caregiver, v3GrantId, id, deps)).toMatchObject({ serviceCode: "FOLLOW_UP", source: "HOSPITAL" });
+    const management = await getAppointmentGrantManagement(f.patient, {}, deps);
+    expect(management.patient?.grants.map(({ grantId, status, contractVersion }) => ({ grantId, status, contractVersion })))
+      .toEqual(expect.arrayContaining([{ grantId: v2GrantId, status: "REVOKED", contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2 },
+        { grantId: v3GrantId, status: "ACTIVE", contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V3 }]));
+
+    // Revoke behaves as before: the caregiver loses list and detail immediately.
+    await revokeAppointmentGrant(f.patient, v3GrantId, deps);
+    await expect(listDelegatedAppointments(f.caregiver, { grantId: v3GrantId }, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(getDelegatedAppointment(f.caregiver, v3GrantId, id, deps)).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
   it("denies foreign parent/PHR, non-Patient, inactive Hospital, and client-selected contracts", async () => {

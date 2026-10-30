@@ -45,6 +45,7 @@ const hospitalActor: ActorContext = {
 
 function appointmentRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    serviceCode: null, sourceServiceRequestId: null,
     id: appointmentId,
     patientHospitalRelationshipId: relationshipId,
     responsibleUserId,
@@ -325,4 +326,18 @@ describe("Appointment query service", () => {
       ForbiddenError,
     );
   });
+});
+
+it.each([null, "request"])("SR-C projects service/source without adding source IDs or changing recorder fields (%s)", async (sourceServiceRequestId) => {
+  const record = appointmentRecord({ serviceCode: "EMPOWERMENT", sourceServiceRequestId, assignedOsmUserId: "visiting" });
+  const database = createDatabase({ detailRecord: record, appointmentRecords: [record] });
+  const history = await getAppointmentHistory(hospitalActor, relationshipId, { database });
+  const detail = await getAppointmentDetail(hospitalActor, relationshipId, appointmentId, { database });
+  const source = sourceServiceRequestId ? "PATIENT_REQUEST" : "HOSPITAL";
+  for (const projected of [history.items[0], detail]) {
+    expect(projected).toMatchObject({ serviceCode: "EMPOWERMENT", source, isOneOffVisit: Boolean(sourceServiceRequestId) });
+    expect(projected).not.toHaveProperty("sourceServiceRequestId");
+  }
+  expect(Object.keys(history.items[0] ?? {}).sort()).toEqual(["appointmentId", "scheduledAt", "type", "status", "durationMinutes", "locationType", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "currentAcknowledgement", "cancellationRequests", "coordinationEvents", "serviceCode", "source", "isOneOffVisit"].sort());
+  expect(detail.createdByDisplayName).toBe("ผู้สร้าง รายการ");
 });

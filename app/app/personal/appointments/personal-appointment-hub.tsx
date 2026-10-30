@@ -15,7 +15,7 @@ import type {
   PersonalAppointmentHubSubject,
 } from "@/modules/patient-self/transport/patient-self-care-page-context";
 
-import { FAMILY_APPOINTMENT_READ_CONTRACT_V2 } from "@/modules/family/domain/appointment-grant-contract";
+import { familyAppointmentContractIncludesDetail } from "@/modules/family/domain/appointment-grant-contract";
 import { AppointmentFields } from "../../family/grants/[grantId]/appointments/appointment-fields";
 import { familyHealthSummaryHref } from "../../family/members/family-health-summary-href";
 import { RefreshDelegatedRead } from "../../family/grants/[grantId]/appointments/refresh-delegated-read";
@@ -200,7 +200,7 @@ function FamilyAppointments({
     </div>
   );
 
-  if (context.tab === "history" && subject.contractVersion !== FAMILY_APPOINTMENT_READ_CONTRACT_V2) {
+  if (context.tab === "history" && !familyAppointmentContractIncludesDetail(subject.contractVersion)) {
     return (
       <div className="space-y-4">
         {intro}
@@ -263,6 +263,7 @@ export function PersonalAppointmentHub({ context }: { context: PersonalAppointme
     <div className="max-w-5xl">
       {selected?.kind === "FAMILY" ? <RefreshDelegatedRead /> : null}
       <PageHeader
+        actions={selected?.kind === "SELF" ? <Link className={buttonClassName({ variant: "primary" })} href="/app/personal/services" prefetch={false}>ขอรับบริการ</Link> : null}
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "นัดหมาย" }]}
         description="นัดหมายที่จะถึงและประวัติการนัดหมายของคุณและสมาชิกครอบครัวที่แชร์ให้คุณ"
         title="นัดหมาย"

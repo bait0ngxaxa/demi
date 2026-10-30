@@ -219,6 +219,7 @@ describe("Appointment Server Actions", () => {
       locationType: "CLINIC",
       locationDetail: "ห้องตรวจ 1",
       note: "หมายเหตุสำหรับต้นแบบ",
+      serviceCode: null,
     });
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/patients/${relationshipId}/appointments`);
     expect(mockedRevalidatePath).toHaveBeenCalledWith(

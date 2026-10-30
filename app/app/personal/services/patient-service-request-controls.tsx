@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,10 +9,14 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
-import type { PatientServiceCode, PatientServiceRequestStatus } from "@prisma/client";
+import type { PatientServiceRequestStatusView } from "@/modules/patient-service-requests/services/patient-service-request-service";
+import type { PatientServiceCode, PatientServiceRequestSlot, PatientServiceRequestStatus } from "@prisma/client";
+import { PATIENT_SERVICE_REQUEST_NOTE_MAX_LENGTH } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import {
+  formatPatientServicePreferredDate,
   formatPatientServiceRequestDate,
   patientServiceLabel,
+  patientServiceRequestSlotLabel,
   patientServiceRequestStatusLabel,
   patientServiceRequestStatusVariant,
 } from "@/modules/patient-service-requests/presentation/patient-service-request-presentation";
@@ -31,16 +36,24 @@ type PatientServiceOfferingOption = {
 type PatientOsmOption = {
   relationshipId: string;
   displayName: string;
+  assigned: boolean;
 };
+
+const SLOT_OPTIONS: readonly PatientServiceRequestSlot[] = ["MORNING", "AFTERNOON", "ANY"];
+
+const inputClassName =
+  "min-h-12 w-full rounded-control border border-border bg-surface px-4 py-2.5 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted";
 
 export function PatientServiceRequestForm({
   relationshipId,
   offerings,
   osmChoices,
+  preferredDateBounds,
 }: {
   relationshipId: string;
   offerings: readonly PatientServiceOfferingOption[];
   osmChoices: readonly PatientOsmOption[];
+  preferredDateBounds: { min: string; max: string };
 }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(
     createPatientServiceRequestAction,
@@ -71,39 +84,82 @@ export function PatientServiceRequestForm({
         </Select>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor={`preferred-date-${relationshipId}`}>
+            วันที่สะดวก
+          </label>
+          <input
+            className={inputClassName}
+            disabled={pending || unknownOutcome}
+            id={`preferred-date-${relationshipId}`}
+            max={preferredDateBounds.max}
+            min={preferredDateBounds.min}
+            name="preferredDate"
+            required
+            type="date"
+          />
+          <p className="text-sm leading-6 text-text-muted">เลือกได้ตั้งแต่พรุ่งนี้ถึง 60 วันข้างหน้า</p>
+        </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-semibold text-text" htmlFor={`preferred-slot-${relationshipId}`}>
+            ช่วงเวลาที่สะดวก
+          </label>
+          <Select defaultValue="" disabled={pending || unknownOutcome} id={`preferred-slot-${relationshipId}`} name="preferredSlot" required>
+            <option disabled value="">เลือกช่วงเวลา</option>
+            {SLOT_OPTIONS.map((slot) => (
+              <option key={slot} value={slot}>{patientServiceRequestSlotLabel(slot)}</option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-text" htmlFor={`preferred-osm-${relationshipId}`}>
-          อสม.ที่ต้องการ <span className="font-normal text-text-muted">(เป็นความประสงค์)</span>
+          อสม.ที่ต้องการ <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
         </label>
         <Select
-          defaultValue=""
+          defaultValue={osmChoices.find((osm) => osm.assigned)?.relationshipId ?? ""}
           disabled={pending || unknownOutcome}
           id={`preferred-osm-${relationshipId}`}
           name="preferredOsmRelationshipId"
         >
-          <option value="">ให้โรงพยาบาลจัดผู้ดูแลให้</option>
+          <option value="">ไม่ระบุ — ให้โรงพยาบาลจัดให้</option>
           {osmChoices.map((osm) => (
             <option key={osm.relationshipId} value={osm.relationshipId}>
-              {osm.displayName}
+              {osm.assigned ? `${osm.displayName} (อสม. ผู้ดูแลของคุณ)` : osm.displayName}
             </option>
           ))}
         </Select>
         <p className="text-sm leading-6 text-text-muted">
-          โรงพยาบาลจะพิจารณาผู้ดูแลจริงภายหลัง ตัวเลือกนี้ยังไม่ใช่การมอบหมาย อสม.
+          โรงพยาบาลเป็นผู้ยืนยัน อสม. ที่ไปเยี่ยม การเลือก อสม. ท่านอื่นเป็นการเยี่ยมครั้งนี้เท่านั้น ไม่เปลี่ยนผู้ดูแลของคุณ
         </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="block text-sm font-semibold text-text" htmlFor={`note-${relationshipId}`}>
+          หมายเหตุถึงโรงพยาบาล <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
+        </label>
+        <textarea
+          className={`${inputClassName} min-h-24 py-3`}
+          disabled={pending || unknownOutcome}
+          id={`note-${relationshipId}`}
+          maxLength={PATIENT_SERVICE_REQUEST_NOTE_MAX_LENGTH}
+          name="note"
+        />
       </div>
 
       {state.status === "SUCCESS" ? (
         <Alert variant="success">
           <p className="font-semibold">ส่งคำขอแล้ว</p>
-          <p className="mt-1">สถานะปัจจุบัน: รอโรงพยาบาลตรวจสอบ</p>
+          <p className="mt-1">สถานะปัจจุบัน: รอโรงพยาบาลยืนยัน โรงพยาบาลจะยืนยันวันเวลานัดให้</p>
         </Alert>
       ) : null}
       {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "review", label: "ตรวจสอบรายการคำขอล่าสุด" }} />
 
       <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-        {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอเพิ่มบริการ"}
+        {pending ? "กำลังส่งคำขอ..." : "ส่งคำขอรับบริการ"}
       </Button>
     </form>
   );
@@ -148,13 +204,7 @@ export function WithdrawPatientServiceRequestButton({
 export function PatientServiceRequestHistoryItem({
   request,
 }: {
-  request: {
-    requestId: string;
-    serviceCode: PatientServiceCode;
-    status: PatientServiceRequestStatus;
-    preferredOsmName: string | null;
-    createdAt: Date;
-  };
+  request: PatientServiceRequestStatusView;
 }): React.JSX.Element {
   return (
     <li className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0">
@@ -162,8 +212,17 @@ export function PatientServiceRequestHistoryItem({
         <div className="min-w-0">
           <p className="font-semibold text-text">{patientServiceLabel(request.serviceCode)}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">
-            ผู้ดูแลที่ต้องการ (ความประสงค์): {request.preferredOsmName ?? "ให้โรงพยาบาลจัดผู้ดูแลให้"}
+            อสม. ที่ต้องการ: {request.preferredOsmName ?? "ให้โรงพยาบาลจัดให้"}
           </p>
+          {request.preferredDate && request.preferredSlot ? (
+            <p className="mt-1 text-sm leading-6 text-text-muted">
+              วันที่สะดวก: {formatPatientServicePreferredDate(request.preferredDate)} · {patientServiceRequestSlotLabel(request.preferredSlot)}
+            </p>
+          ) : null}
+          {request.note ? <p className="mt-1 break-words text-sm leading-6 text-text-muted">หมายเหตุ: {request.note}</p> : null}
+          {request.rejectionReason ? (
+            <p className="mt-1 break-words text-sm leading-6 text-text">เหตุผลที่ไม่อนุมัติ: {request.rejectionReason}</p>
+          ) : null}
           <p className="mt-1 text-sm leading-6 text-text-muted">
             ส่งคำขอเมื่อ {formatPatientServiceRequestDate(request.createdAt)}
           </p>
@@ -172,6 +231,9 @@ export function PatientServiceRequestHistoryItem({
           <StatusBadge variant={patientServiceRequestStatusVariant(request.status)}>
             {patientServiceRequestStatusLabel(request.status)}
           </StatusBadge>
+          {request.status === "STARTED" && request.appointmentId ? (
+            <Link className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/personal/appointments/${encodeURIComponent(request.relationshipId)}/${encodeURIComponent(request.appointmentId)}`} prefetch={false}>ดูนัดหมาย</Link>
+          ) : null}
           <WithdrawPatientServiceRequestButton requestId={request.requestId} status={request.status} />
         </div>
       </div>

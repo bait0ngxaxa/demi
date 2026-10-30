@@ -1,3 +1,4 @@
+import { AppointmentServiceSource, OneOffVisitNote } from "../../../appointment-service-source";
 import Link from "next/link";
 
 import { PageHeader } from "@/components/ui/page-header";
@@ -6,7 +7,6 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  APPOINTMENT_TYPE_LABELS,
   appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
@@ -72,7 +72,7 @@ function AppointmentHistoryRow({
               {formatDate(item.scheduledAt)}
             </p>
             <p className="mt-1 text-sm leading-6 text-text-muted">
-              {APPOINTMENT_TYPE_LABELS[item.type]} · {locationSummary(item)}
+              <AppointmentServiceSource type={item.type} serviceCode={item.serviceCode} source={item.source} /> · {locationSummary(item)}
             </p>
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
               {appointmentResponsiblePresentation(
@@ -86,6 +86,7 @@ function AppointmentHistoryRow({
             <p className="mt-1 text-sm leading-6 text-text-muted">
               OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล OSM ณ วันที่สร้างนัด"}
             </p>
+            <OneOffVisitNote visible={item.isOneOffVisit} />
             {item.currentAcknowledgement ? (
               <p className="mt-1 break-words text-sm leading-6 text-text-muted">
                 รับทราบนัดหมายแล้วโดย {item.currentAcknowledgement.recordedByDisplayName ?? APPOINTMENT_INTERACTION_SOURCE_LABELS[item.currentAcknowledgement.source]}

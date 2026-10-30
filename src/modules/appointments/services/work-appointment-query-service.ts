@@ -1,5 +1,8 @@
 import "server-only";
 
+import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+import type { PatientServiceCode } from "@prisma/client";
+
 import {
   AppointmentCancellationRequestStatus,
   HospitalStatus,
@@ -33,6 +36,7 @@ import {
   type AppointmentStatusValue,
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
+import { VISIT_OSM_ACCESS_GRACE_MS } from "../policies/appointment-policy";
 import {
   WORK_APPOINTMENT_PAGE_SIZE,
   workAppointmentQuerySchema,
@@ -70,6 +74,9 @@ export type WorkAppointmentResponsibleOption = {
 };
 
 export type WorkAppointmentListItem = {
+  serviceCode: PatientServiceCode | null;
+  source: AppointmentSource;
+  isOneOffVisit: boolean;
   appointmentId: string;
   relationshipId: string;
   scheduledAt: Date;
@@ -397,6 +404,40 @@ function appointmentRelationshipReadWhere(
   };
 }
 
+/**
+ * ADR-0023 (SR-B): a one-off visiting อสม. sees the appointment they visit for, with the same window as
+ * `hasOneOffVisitOsmScope`: SCHEDULED and no later than 24 hours past its time. The caller has already
+ * resolved the actor as an ACTIVE อสม. of this ACTIVE Hospital (`scope.osmRead`).
+ */
+function visitOsmAppointmentWhere(
+  actorUserId: string,
+  scope: ResolvedHospitalScope,
+  now: Date,
+): Prisma.PatientAppointmentWhereInput {
+  return {
+    assignedOsmUserId: actorUserId,
+    sourceServiceRequestId: { not: null },
+    status: "SCHEDULED",
+    scheduledAt: { gte: new Date(now.getTime() - VISIT_OSM_ACCESS_GRACE_MS) },
+    patientHospitalRelationship: {
+      is: {
+        ...activePatientHospitalRelationshipWhere,
+        hospitalId: scope.hospitalId,
+        hospital: { is: { status: HospitalStatus.ACTIVE } },
+        patientProfile: {
+          is: {
+            person: {
+              is: {
+                user: { is: { roles: { some: { role: Role.PATIENT } } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 function bangkokDayStart(value: string): Date {
   return new Date(value + "T00:00:00.000+07:00");
 }
@@ -416,10 +457,21 @@ function buildAppointmentWhere(
   if (filters.dateTo) scheduledAt.lt = bangkokDayAfter(filters.dateTo);
   if (filters.unassignedOsm) scheduledAt.gt = now;
 
-  return {
+  const relationshipRead: Prisma.PatientAppointmentWhereInput = {
     patientHospitalRelationship: {
       is: appointmentRelationshipReadWhere(actorUserId, scope),
     },
+  };
+
+  return {
+    AND: [
+      scope.osmRead
+        ? { OR: [relationshipRead, visitOsmAppointmentWhere(actorUserId, scope, now)] }
+        : relationshipRead,
+      ...(filters.unassignedOsm
+        ? [{ assignedOsmUserId: null, locationType: "HOME_VISIT" as const, status: "SCHEDULED" as const }]
+        : []),
+    ],
     ...(Object.keys(scheduledAt).length === 0 ? {} : { scheduledAt }),
     ...(filters.status === undefined ? {} : { status: filters.status }),
     ...(filters.type === undefined ? {} : { type: filters.type }),
@@ -427,9 +479,6 @@ function buildAppointmentWhere(
     ...(filters.responsibleUserId === undefined
       ? {}
       : { responsibleUserId: filters.responsibleUserId }),
-    ...(filters.unassignedOsm
-      ? { AND: [{ assignedOsmUserId: null, locationType: "HOME_VISIT", status: "SCHEDULED" }] }
-      : {}),
   };
 }
 
@@ -472,19 +521,25 @@ async function findAppointmentsAwaitingOsmAcceptance(
     JOIN "PatientHospitalRelationship" AS relationship
       ON relationship."id" = appointment."patientHospitalRelationshipId"
     JOIN "Hospital" AS hospital ON hospital."id" = relationship."hospitalId"
-    JOIN "PatientOsmAssignment" AS assignment
-      ON assignment."patientHospitalRelationshipId" = relationship."id"
-      AND assignment."osmUserId" = appointment."assignedOsmUserId"
-      AND assignment."endedAt" IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM "PatientOsmAssignment" AS newer
-        WHERE newer."patientHospitalRelationshipId" = relationship."id"
-          AND newer."endedAt" IS NULL
-          AND (newer."createdAt" > assignment."createdAt"
-            OR (newer."createdAt" = assignment."createdAt" AND newer."id" > assignment."id"))
-      )
-    JOIN "User" AS osm ON osm."id" = assignment."osmUserId" AND osm."status" = 'ACTIVE'
+    JOIN "User" AS osm ON osm."id" = appointment."assignedOsmUserId" AND osm."status" = 'ACTIVE'
     WHERE hospital."status" = 'ACTIVE'
+      -- The patient's current อสม., or (ADR-0023) the อสม. of a one-off visit booked from a service request.
+      AND (
+        appointment."sourceServiceRequestId" IS NOT NULL
+        OR EXISTS (
+          SELECT 1 FROM "PatientOsmAssignment" AS assignment
+          WHERE assignment."patientHospitalRelationshipId" = relationship."id"
+            AND assignment."osmUserId" = appointment."assignedOsmUserId"
+            AND assignment."endedAt" IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM "PatientOsmAssignment" AS newer
+              WHERE newer."patientHospitalRelationshipId" = relationship."id"
+                AND newer."endedAt" IS NULL
+                AND (newer."createdAt" > assignment."createdAt"
+                  OR (newer."createdAt" = assignment."createdAt" AND newer."id" > assignment."id"))
+            )
+        )
+      )
       AND relationship."endedAt" IS NULL
       AND appointment."status" = 'SCHEDULED'
       AND appointment."locationType" = 'HOME_VISIT'
@@ -554,12 +609,14 @@ function workAppointmentSelect(hospitalId: string) {
   return {
     id: true,
     assignedOsmUserId: true,
+    sourceServiceRequestId: true,
     updatedAt: true,
     responsibleUserId: true,
     patientHospitalRelationshipId: true,
     scheduledAt: true,
     durationMinutes: true,
     type: true,
+    serviceCode: true,
     locationType: true,
     status: true,
     responsibleUser: {
@@ -617,9 +674,13 @@ type WorkAppointmentRecord = Prisma.PatientAppointmentGetPayload<{
   select: ReturnType<typeof workAppointmentSelect>;
 }>;
 
-function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAppointmentListItem {
+function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audience?: { hospitalRead: boolean; osmRead: boolean; actorUserId: string }): WorkAppointmentListItem {
   const currentOsmUserId = record.patientHospitalRelationship.osmAssignments[0]?.osmUserId ?? null;
-  const hasCurrentAssignment = Boolean(record.assignedOsmUserId && record.assignedOsmUserId === currentOsmUserId);
+  // ADR-0023: a one-off visit from a service request has its own อสม., not the patient's current one.
+  const hasCurrentAssignment = Boolean(
+    record.assignedOsmUserId &&
+    (record.assignedOsmUserId === currentOsmUserId || record.sourceServiceRequestId !== null),
+  );
   const hasCurrentAcceptance = hasCurrentAssignment && record.assigneeAcceptances.some(
     (acceptance) => acceptance.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
   );
@@ -636,6 +697,13 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date): WorkAp
     !hasCurrentReschedule,
   );
   return {
+    serviceCode: record.serviceCode,
+    source: appointmentSource(record.sourceServiceRequestId),
+    isOneOffVisit: Boolean(audience && (audience.hospitalRead || (audience.osmRead && record.assignedOsmUserId === audience.actorUserId))) && isOneOffVisitOsm({
+      appointmentOsmUserId: record.assignedOsmUserId,
+      assignedOsmUserId: currentOsmUserId,
+      sourceServiceRequestId: record.sourceServiceRequestId,
+    }),
     appointmentId: record.id,
     relationshipId: record.patientHospitalRelationshipId,
     scheduledAt: record.scheduledAt,
@@ -1079,7 +1147,7 @@ export async function listWorkAppointments(
       hospitals: scopes.map(toPublicHospitalScope),
       tab,
       filters,
-      items: records.map((record) => toWorkAppointmentItem(record, now)),
+      items: records.map((record) => toWorkAppointmentItem(record, now, { hospitalRead: resolvedScope.directRead || resolvedScope.networkRead, osmRead: resolvedScope.osmRead, actorUserId: actor.userId })),
       nextCursor,
       hasNextPage: nextCursor !== null,
       canCreate: publicScope.canCreate,

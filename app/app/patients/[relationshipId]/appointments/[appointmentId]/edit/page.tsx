@@ -84,6 +84,10 @@ export default async function RescheduleAppointmentPage({
         note: context.appointment.note,
         responsibleUserId: context.appointment.responsibleUserId,
         assignedOsmUserId: context.appointment.assignedOsmUserId,
+        visitOsm: context.appointment.fromServiceRequest && context.appointment.assignedOsmUserId
+          ? { userId: context.appointment.assignedOsmUserId, displayName: context.appointment.assignedOsmDisplayName ?? "อสม. ผู้ไปเยี่ยม" }
+          : null,
+        serviceCode: context.appointment.serviceCode,
         scheduledAt: request?.preferredDatetimes[0]?.toISOString() ?? context.appointment.scheduledAt.toISOString(),
         type: context.appointment.type,
         updatedAt: context.appointment.updatedAt.toISOString(),
@@ -93,7 +97,6 @@ export default async function RescheduleAppointmentPage({
       relationshipId={relationshipId}
       responsibleMembers={context.responsibleMembers}
       currentOsmAssignee={context.currentOsmAssignee}
-      sourceServiceRequestId={null}
     />
   );
 }

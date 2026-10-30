@@ -1,4 +1,7 @@
+import { PatientServiceCode } from "@prisma/client";
 import { z } from "zod";
+
+import { SERVICE_APPOINTMENT_TYPE } from "../domain/appointment-service-definitions";
 
 import {
   APPOINTMENT_LOCATION_VALUES,
@@ -43,14 +46,28 @@ const appointmentFieldsSchema = {
   note: z.string().trim().max(APPOINTMENT_NOTE_MAX_LENGTH).nullable().optional(),
 } as const;
 
+/**
+ * ADR-0023 (SR-D4): a hospital-booked appointment may name its service, which sets the type; `type` alone is
+ * still accepted. An appointment from a service request is booked only by confirming the request.
+ */
 export const appointmentCreateRequestSchema = z
   .object({
     patientHospitalRelationshipId: appointmentRelationshipIdSchema,
     submissionNonce: appointmentSubmissionNonceSchema,
-    sourceServiceRequestId: appointmentIdSchema.nullable().optional(),
     ...appointmentFieldsSchema,
+    type: appointmentTypeSchema.optional(),
+    serviceCode: z.nativeEnum(PatientServiceCode).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .transform((input, context) => {
+    const serviceType = input.serviceCode ? SERVICE_APPOINTMENT_TYPE[input.serviceCode] : undefined;
+    const type = serviceType ?? input.type;
+    if (!type || (serviceType && input.type && input.type !== serviceType)) {
+      context.addIssue({ code: "custom", path: ["type"], message: "The appointment type must follow its service" });
+      return z.NEVER;
+    }
+    return { ...input, type, serviceCode: input.serviceCode ?? null };
+  });
 
 export const appointmentRescheduleRequestSchema = z
   .object({
