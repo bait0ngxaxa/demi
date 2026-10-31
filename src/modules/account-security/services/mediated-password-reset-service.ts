@@ -30,6 +30,7 @@ import { THAI_NATIONAL_IDENTITY_NAMESPACE, thaiNationalIdSchema } from "@/module
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/line-account-service";
 import { assertChildOwnerInvitationContext } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
+import { assertParentOwnerInvitationContext } from "@/modules/hospital-onboarding/services/parent-owner-invitation-context";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   assertPasswordChangeRecoveryAvailable,
@@ -410,11 +411,39 @@ async function isOwnerScopedTarget(
   return await allTargetRelationshipsInHospital(transaction, target, input.hospitalId);
 }
 
+/** A held OWNER invitation still targets its own Hospital: a Child through its area, or an ADMIN-invited Parent. */
+function isHeldOwnerInvitationHospital(
+  membership: {
+    hospitalId: string;
+    invitedViaServiceAreaId: string | null;
+    invitedViaServiceArea: { childHospitalId: string } | null;
+    hospital: { status: HospitalStatus; serviceAreaEligibility: { kind: HospitalServiceAreaFacilityKind } | null; serviceAreaAssignments: { id: string }[] };
+  },
+  statuses: readonly HospitalStatus[],
+): boolean {
+  if (!statuses.includes(membership.hospital.status)) return false;
+  if (membership.invitedViaServiceAreaId === null) {
+    // ADR-0024: a Parent OWNER invitation issued by platform ADMIN; the Hospital was never the Child of any area.
+    return membership.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.PARENT &&
+      membership.hospital.serviceAreaAssignments.length === 0;
+  }
+  return membership.invitedViaServiceArea?.childHospitalId === membership.hospitalId &&
+    membership.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD;
+}
+
+const heldOwnerInvitationSelect = {
+  hospitalId: true,
+  invitedViaServiceAreaId: true,
+  invitedViaServiceArea: { select: { childHospitalId: true } },
+  hospital: { select: { status: true, serviceAreaEligibility: { select: { kind: true } }, serviceAreaAssignments: { select: { id: true }, take: 1 } } },
+} satisfies Prisma.HospitalMembershipSelect;
+
 /**
  * The only REC-1 exception for a non-ACTIVE Hospital: an exact OWNER hold recorded by its unresolved takeover lock.
- * FIX-1c: a lock spans Hospitals, so the hold is validated against its own Child, not the Hospital that first locked.
+ * FIX-1c: a lock spans Hospitals, so the hold is validated against its own Hospital, not the Hospital that first locked.
+ * ADR-0024: a held Parent OWNER invitation issued by platform ADMIN follows the same rule as a held Child invitation.
  */
-async function isHeldChildOwnerResetTarget(
+async function isHeldOwnerInvitationResetTarget(
   transaction: Prisma.TransactionClient,
   target: TargetSnapshot,
   input: MediatedPasswordResetAuthorizationContext,
@@ -435,18 +464,11 @@ async function isHeldChildOwnerResetTarget(
       membershipType: MembershipType.OWNER,
       status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
       invitedByUserId: { not: null },
-      invitedViaServiceAreaId: { not: null },
     },
-    select: {
-      invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
-      hospital: { select: { status: true, serviceAreaEligibility: { select: { kind: true } } } },
-    },
+    select: heldOwnerInvitationSelect,
   });
-  return Boolean(
-    membership?.invitedViaServiceArea && membership.invitedViaServiceArea.childHospitalId === input.hospitalId &&
-    membership.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
-    (membership.hospital.status === HospitalStatus.PENDING_VERIFICATION || membership.hospital.status === HospitalStatus.ACTIVE)
-  );
+  return membership !== null &&
+    isHeldOwnerInvitationHospital(membership, [HospitalStatus.PENDING_VERIFICATION, HospitalStatus.ACTIVE]);
 }
 
 async function authorizeIssuerAndTarget(
@@ -491,8 +513,8 @@ async function authorizeIssuerAndTarget(
     return { target, mode: "ADMIN" };
   }
   if (targetIsPlatformAdmin) throw new ForbiddenError();
-  if (await isHeldChildOwnerResetTarget(transaction, target, input)) {
-    if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held child OWNER account");
+  if (await isHeldOwnerInvitationResetTarget(transaction, target, input)) {
+    if (!issuerRoles.includes(Role.ADMIN)) throw new ForbiddenError("Only a platform ADMIN may reset this held OWNER account");
     return { target, mode: "ADMIN" };
   }
   if (!hospital || hospital.status !== HospitalStatus.ACTIVE) throw new NotFoundError();
@@ -1223,7 +1245,7 @@ async function restoreTakeoverRelationships(
   for (const membershipId of heldOwnerMembershipIds) {
     const held = await transaction.hospitalMembership.findUnique({
       where: { id: membershipId },
-      select: { id: true, hospitalId: true, status: true, membershipType: true, userId: true },
+      select: { id: true, hospitalId: true, status: true, membershipType: true, userId: true, invitedViaServiceAreaId: true },
     });
     if (!held || held.userId !== target.userId || held.membershipType !== MembershipType.OWNER) {
       heldOwnerMembershipsNotRestored.push({ membershipId, reason: "HELD_MEMBERSHIP_NOT_FOUND" });
@@ -1249,12 +1271,21 @@ async function restoreTakeoverRelationships(
     }
 
     try {
-      await assertChildOwnerInvitationContext(transaction, {
-        membershipId,
-        childHospitalId: held.hospitalId,
-        userId: target.userId,
-        expectedStatus: MembershipStatus.PROVISIONED,
-      });
+      if (held.invitedViaServiceAreaId === null) {
+        await assertParentOwnerInvitationContext(transaction, {
+          membershipId,
+          hospitalId: held.hospitalId,
+          userId: target.userId,
+          expectedStatus: MembershipStatus.PROVISIONED,
+        });
+      } else {
+        await assertChildOwnerInvitationContext(transaction, {
+          membershipId,
+          childHospitalId: held.hospitalId,
+          userId: target.userId,
+          expectedStatus: MembershipStatus.PROVISIONED,
+        });
+      }
     } catch (error: unknown) {
       if (!(error instanceof ConflictError)) throw error;
       heldOwnerMembershipsNotRestored.push({ membershipId, reason: "INVITATION_CONTEXT_NO_LONGER_VALID" });
@@ -1939,11 +1970,10 @@ export async function searchMediatedPasswordResetTargets(
                     status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.ENDED] },
                   },
                   select: {
+                    ...heldOwnerInvitationSelect,
                     id: true,
-                    hospitalId: true,
                     status: true,
-                    invitedViaServiceArea: { select: { childHospitalId: true, endedAt: true } },
-                    hospital: { select: { name: true, status: true, serviceAreaEligibility: { select: { kind: true } } } },
+                    hospital: { select: { ...heldOwnerInvitationSelect.hospital.select, name: true } },
                   },
                 })
               : Promise.resolve([]),
@@ -1952,9 +1982,7 @@ export async function searchMediatedPasswordResetTargets(
           result.push(...osmRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "osm" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
           result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? "ENDED" : "ACTIVE" })));
           result.push(...heldOwnerMemberships.flatMap((row) =>
-            row.invitedViaServiceArea?.childHospitalId === row.hospitalId &&
-            row.hospital.serviceAreaEligibility?.kind === HospitalServiceAreaFacilityKind.CHILD &&
-            row.hospital.status === HospitalStatus.PENDING_VERIFICATION
+            isHeldOwnerInvitationHospital(row, [HospitalStatus.PENDING_VERIFICATION])
               ? [{ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status }]
               : []
           ));

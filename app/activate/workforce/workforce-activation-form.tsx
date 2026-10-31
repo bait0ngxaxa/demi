@@ -307,9 +307,18 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
             ? "รีเซ็ตรหัสผ่านของ"
             : purpose === "CHILD_OWNER_ONBOARDING"
               ? "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการของ"
-              : "เปิดใช้งานบัญชีของ"}{" "}
+              : purpose === "PARENT_OWNER_ONBOARDING"
+                ? "เปิดใช้งานบัญชีผู้ดูแลโรงพยาบาลของ"
+                : "เปิดใช้งานบัญชีของ"}{" "}
           <span className="font-semibold">{preview.maskedName}</span>
         </p>
+        {purpose === "PARENT_OWNER_ONBOARDING" ? (
+          <p className="mt-1">
+            คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นผู้ดูแล{" "}
+            <span className="font-semibold">{preview.hospitalName ?? "โรงพยาบาล"}</span>{" "}
+            เมื่อเปิดใช้งาน โรงพยาบาลจะเริ่มใช้งานได้ทันที
+          </p>
+        ) : null}
         <p className="mt-1">
           ลิงก์นี้ใช้ได้ครั้งเดียว กรุณากรอกเลขบัตรประชาชนของคุณเองและตั้งรหัสผ่านด้วยตนเอง
           อย่าบอกให้ผู้อื่นทราบ

@@ -61,6 +61,15 @@ describe("hospital onboarding policy", () => {
     }
   });
 
+  it("allows only platform ADMIN to manage a Parent OWNER invitation (ADR-0024)", () => {
+    const capability = HOSPITAL_ONBOARDING_CAPABILITIES.ownerInvite;
+
+    expect(decideHospitalOnboardingPolicy({ actor: null, capability })).toEqual({ allowed: false, reason: "missing_actor" });
+    expect(decideHospitalOnboardingPolicy({ actor: actor([Role.HOSPITAL]), capability }))
+      .toEqual({ allowed: false, reason: "platform_admin_required" });
+    expect(decideHospitalOnboardingPolicy({ actor: actor([Role.ADMIN]), capability })).toEqual({ allowed: true, reason: "platform_admin" });
+  });
+
   it("does not grant platform review authority to a hospital owner", () => {
     expect(() =>
       assertHospitalOnboardingCapability(

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { HospitalStatus } from "@prisma/client";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -36,9 +38,14 @@ import {
   getHospitalNetworkForAdmin,
   type HospitalNetworkAdminView,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
+import {
+  getParentOwnerInvitationState,
+  type ParentOwnerInvitationState,
+} from "@/modules/hospital-onboarding/services/parent-owner-invitation-service";
 
 import { HospitalGovernanceControls } from "./hospital-governance-controls";
 import { HospitalNetworkSection } from "./hospital-network-section";
+import { ParentOwnerInvitationSection } from "./parent-owner-invitation-section";
 import { HospitalRetirementSection } from "./hospital-retirement-section";
 
 export const metadata: Metadata = {
@@ -216,10 +223,12 @@ export default async function HospitalGovernanceDetailPage({
   if (Array.isArray(hn)) notFound();
   let hospital: HospitalGovernanceProjection;
   let network: HospitalNetworkAdminView;
+  let ownerInvitation: ParentOwnerInvitationState;
 
   try {
     hospital = await getHospitalGovernanceDetail(actor, hospitalId);
     network = await getHospitalNetworkForAdmin(actor, hospitalId);
+    ownerInvitation = await getParentOwnerInvitationState(actor, { hospitalId: hospital.id });
   } catch (error: unknown) {
     if (error instanceof NotFoundError) {
       notFound();
@@ -243,6 +252,30 @@ export default async function HospitalGovernanceDetailPage({
 
       <div className="space-y-6 pt-8">
         <GovernanceMetadata hospital={hospital} />
+
+        {ownerInvitation.availability !== "UNAVAILABLE" || ownerInvitation.invitation ? (
+          <ParentOwnerInvitationSection
+            availability={ownerInvitation.availability}
+            hospital={{ id: hospital.id, name: hospital.name }}
+            invitation={ownerInvitation.invitation ? {
+              membershipId: ownerInvitation.invitation.membershipId,
+              inviteeName: ownerInvitation.invitation.inviteeName,
+              invitedAt: ownerInvitation.invitation.invitedAt.toISOString(),
+              delivery: ownerInvitation.invitation.delivery,
+              link: {
+                status: ownerInvitation.invitation.link.status,
+                expiresAt: ownerInvitation.invitation.link.expiresAt?.toISOString() ?? null,
+                mode: ownerInvitation.invitation.link.mode,
+              },
+            } : null}
+            lastDeclinedAt={ownerInvitation.lastDeclinedAt?.toISOString() ?? null}
+            pendingApplication={ownerInvitation.pendingApplication ? {
+              id: ownerInvitation.pendingApplication.id,
+              createdAt: ownerInvitation.pendingApplication.createdAt.toISOString(),
+            } : null}
+            submissionNonce={randomUUID()}
+          />
+        ) : null}
 
         <HospitalNetworkSection hospital={hospital} network={network} />
 

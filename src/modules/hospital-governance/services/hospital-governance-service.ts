@@ -6,9 +6,13 @@ import {
   HospitalOnboardingApplicationStatus,
   HospitalRetirementEventKind,
   HospitalStatus,
+  IdentityAssurance,
+  MembershipStatus,
+  MembershipType,
   Prisma,
   Role,
   UserStatus,
+  UserTakeoverProviderState,
   type PrismaClient,
 } from "@prisma/client";
 
@@ -441,7 +445,8 @@ async function findReplayedRegistration(
 
 /**
  * ADR-0017/0018: Platform ADMIN registers Parent Hospitals (role PARENT); Child facilities are created by their
- * Parent OWNER. It starts PENDING_VERIFICATION so the onboarding approval stays the only activation path.
+ * Parent OWNER. It starts PENDING_VERIFICATION; its first OWNER comes from the public application and ADMIN approval
+ * or from a platform ADMIN OWNER invitation (ADR-0024).
  * Idempotent per submission nonce (N1-D5).
  */
 export async function createHospital(
@@ -531,7 +536,12 @@ export async function createHospital(
   }
 }
 
-export type HospitalRetirementIneligibility = "NOT_FOUND" | "NOT_PENDING" | "ACTIVE_SERVICE_AREA" | "PENDING_APPLICATION";
+export type HospitalRetirementIneligibility =
+  | "NOT_FOUND"
+  | "NOT_PENDING"
+  | "ACTIVE_SERVICE_AREA"
+  | "PENDING_APPLICATION"
+  | "HELD_OWNER_INVITATION";
 
 export type HospitalRetirementIneligibleHospital = {
   hospitalId: string;
@@ -578,6 +588,15 @@ async function retireHospitalsInTransaction(
       // ADR-0018: a Hospital in an active network association (either side) is never retired here.
       managedServiceAreas: { where: { endedAt: null }, take: 1, select: { id: true } },
       serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { id: true } },
+      // ADR-0024: open OWNER invitations end with the retirement; one held for an ADMIN reset blocks it (FIX-1b).
+      memberships: {
+        where: { membershipType: MembershipType.OWNER, status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.INVITED] } },
+        select: {
+          id: true,
+          status: true,
+          user: { select: { identityAssurance: true, takeoverLock: { select: { providerState: true, heldOwnerMembershipIds: true } } } },
+        },
+      },
     },
   });
   const byId = new Map(current.map((hospital) => [hospital.id, hospital]));
@@ -609,7 +628,12 @@ async function retireHospitalsInTransaction(
           ? "ACTIVE_SERVICE_AREA"
           : hospital.onboardingApplications.length > 0
             ? "PENDING_APPLICATION"
-            : null;
+            : hospital.memberships.some(({ id, user }) =>
+              user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION &&
+              user.takeoverLock !== null && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED &&
+              user.takeoverLock.heldOwnerMembershipIds.includes(id))
+              ? "HELD_OWNER_INVITATION"
+              : null;
 
     if (reason) {
       ineligible.push({
@@ -626,6 +650,45 @@ async function retireHospitalsInTransaction(
   }
 
   const retiredAt = new Date();
+  const openInvitations = current.flatMap(({ id: hospitalId, memberships }) =>
+    memberships.map((membership) => ({ hospitalId, ...membership })));
+
+  if (openInvitations.length > 0) {
+    const invitationIds = openInvitations.map(({ id }) => id);
+    const claimed = await transaction.workforceActivation.findFirst({
+      where: { relationshipId: { in: invitationIds }, usedAt: null, revokedAt: null, claimedAt: { not: null } },
+      select: { id: true },
+    });
+
+    if (claimed) {
+      throw new ConflictError("An owner activation link is currently being used");
+    }
+
+    await transaction.workforceActivation.updateMany({
+      where: { relationshipId: { in: invitationIds }, usedAt: null, revokedAt: null, claimedAt: null },
+      data: { revokedAt: retiredAt },
+    });
+    const ended = await transaction.hospitalMembership.updateMany({
+      where: { id: { in: invitationIds }, status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.INVITED] } },
+      data: { status: MembershipStatus.ENDED },
+    });
+
+    if (ended.count !== invitationIds.length) {
+      throw new ConflictError("An owner invitation changed before this operation");
+    }
+
+    await recordAuditEvents(
+      openInvitations.map(({ hospitalId, id, status }) => ({
+        actorUserId,
+        action: "hospital.owner_invitation_ended",
+        resourceType: "Hospital",
+        resourceId: hospitalId,
+        metadata: { membershipId: id, fromStatus: status, reason: "hospital_retired" },
+      })),
+      transaction,
+    );
+  }
+
   const updated = await transaction.hospital.updateMany({
     where: {
       id: { in: hospitalIds },

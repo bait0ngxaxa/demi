@@ -49,6 +49,13 @@ export function networkRoleLabel(role: HospitalNetworkDirectoryEntry["role"]): s
   return role === "PARENT" ? "แม่ข่าย" : role === "CHILD" ? "ลูกข่าย" : "ยังไม่กำหนดประเภท";
 }
 
+/** ADR-0024: which first-OWNER path is open for a Parent (a public application or a platform ADMIN invitation). */
+export type ParentOnboardingPathLabels = Readonly<Record<string, "PENDING_APPLICATION" | "OPEN_INVITATION">>;
+
+export function onboardingPathLabel(path: ParentOnboardingPathLabels[string] | undefined): string | null {
+  return path === "PENDING_APPLICATION" ? "มีคำขอรออนุมัติ" : path === "OPEN_INVITATION" ? "มีคำเชิญเปิดอยู่" : null;
+}
+
 function HospitalLine({ hospital }: { hospital: HospitalNetworkDirectoryEntry }): React.JSX.Element {
   return (
     <li className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2">
@@ -69,6 +76,7 @@ function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): 
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาลแม่ข่าย</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         โรงพยาบาลที่เพิ่มเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน ผู้รับผิดชอบสมัครใช้งานผ่านหน้าขึ้นทะเบียนโรงพยาบาล และเมื่อได้รับอนุมัติจะเป็นเจ้าของโรงพยาบาลคนแรก
+        หรือผู้ดูแลระบบเชิญผู้ดูแลคนแรกได้จากหน้ารายละเอียดของโรงพยาบาล
         รพ.สต. และหน่วยบริการลูกข่ายให้เจ้าของโรงพยาบาลแม่ข่ายสร้างเองที่หน้าจัดการลูกข่าย
       </p>
       <NetworkMutationForm
@@ -155,11 +163,13 @@ function provenanceLabel(hospital: HospitalNetworkDirectoryEntry, nameById: Read
 export function HospitalNetworkDirectory({
   filter,
   hospitals: allHospitals,
+  onboardingPaths = {},
   submissionNonce,
   bulkSubmissionNonce,
 }: {
   filter: HospitalDirectoryFilter;
   hospitals: readonly HospitalNetworkDirectoryEntry[];
+  onboardingPaths?: ParentOnboardingPathLabels;
   submissionNonce: string;
   /** O1-A: a separate per-request nonce for the file import. */
   bulkSubmissionNonce: string;
@@ -177,7 +187,10 @@ export function HospitalNetworkDirectory({
                 id: hospital.id,
                 hospitalCode: hospital.hospitalCode,
                 name: hospital.name,
-                roleLabel: `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital, nameById)}`,
+                roleLabel: [
+                  `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital, nameById)}`,
+                  onboardingPathLabel(onboardingPaths[hospital.id]),
+                ].filter(Boolean).join(" · "),
               }))}
           />
         ) : (
@@ -230,7 +243,12 @@ export function HospitalNetworkDirectory({
                       </Link>
                       <span className="ml-2 text-sm font-normal text-text-muted">({parent.hospitalCode})</span>
                     </h3>
-                    <StatusBadge variant={hospitalStatusVariant(parent.status)}>{hospitalStatusLabel(parent.status)}</StatusBadge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {onboardingPathLabel(onboardingPaths[parent.id]) ? (
+                        <StatusBadge variant="info">{onboardingPathLabel(onboardingPaths[parent.id])}</StatusBadge>
+                      ) : null}
+                      <StatusBadge variant={hospitalStatusVariant(parent.status)}>{hospitalStatusLabel(parent.status)}</StatusBadge>
+                    </div>
                   </div>
                   {children.length === 0 ? (
                     <p className="mt-3 text-sm text-text-muted">ยังไม่มีลูกข่าย</p>

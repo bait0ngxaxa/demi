@@ -140,8 +140,10 @@ export type WorkforceBulkActionState =
     }
   | { status: "SUCCESS"; result: WorkforceBulkResultState };
 
+export type WorkforceActivationPreviewPurpose = "ACTIVATION" | "RESET" | "CHILD_OWNER_ONBOARDING" | "PARENT_OWNER_ONBOARDING";
+
 export type WorkforceActivationPreviewState =
-  | { status: "SUCCESS"; maskedName: string; purpose: "ACTIVATION" | "RESET" | "CHILD_OWNER_ONBOARDING" }
+  | { status: "SUCCESS"; maskedName: string; purpose: WorkforceActivationPreviewPurpose; hospitalName: string | null }
   | { status: "ERROR"; message: string };
 
 export type WorkforceMembershipMutationActionState =

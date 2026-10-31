@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   listOnboardingHospitals,
   onboardableHospitalWhere,
+  publicOnboardableHospitalWhere,
   type OnboardingHospitalDatabase,
 } from "./onboarding-hospital-service";
 
@@ -23,7 +24,7 @@ describe("public onboarding Hospital projection", () => {
       { id: "hospital-parent-id", hospitalCode: "PARENT-001", name: "โรงพยาบาลแม่ข่าย", networkRole: "PARENT" },
     ]);
     expect(findMany).toHaveBeenCalledWith({
-      where: onboardableHospitalWhere,
+      where: publicOnboardableHospitalWhere,
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: {
         id: true,
@@ -31,6 +32,13 @@ describe("public onboarding Hospital projection", () => {
         name: true,
         serviceAreaEligibility: { select: { kind: true } },
       },
+    });
+  });
+
+  it("hides a Parent while platform ADMIN has an open OWNER invitation for it (ADR-0024)", () => {
+    expect(publicOnboardableHospitalWhere).toEqual({
+      ...onboardableHospitalWhere,
+      memberships: { none: { membershipType: "OWNER", status: { in: ["PROVISIONED", "INVITED"] } } },
     });
   });
 });

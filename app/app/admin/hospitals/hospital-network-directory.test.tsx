@@ -46,6 +46,17 @@ describe("Hospital governance directory views", () => {
     expect(markup).not.toContain('name="networkRole"');
   });
 
+  it("shows which first-OWNER path is open for a Parent (ADR-0024)", () => {
+    const parents = [entry("applied", "PENDING_VERIFICATION", "PARENT"), entry("invited", "ACTIVE", "PARENT")];
+    const paths = { applied: "PENDING_APPLICATION", invited: "OPEN_INVITATION" } as const;
+    const network = renderToStaticMarkup(<HospitalNetworkDirectory bulkSubmissionNonce={bulkNonce} filter="network" hospitals={parents} onboardingPaths={paths} submissionNonce={nonce} />);
+    expect(network).toContain("มีคำขอรออนุมัติ");
+    expect(network).toContain("มีคำเชิญเปิดอยู่");
+    const pending = renderToStaticMarkup(<HospitalNetworkDirectory bulkSubmissionNonce={bulkNonce} filter="pending" hospitals={parents} onboardingPaths={paths} submissionNonce={nonce} />);
+    expect(pending).toContain("แม่ข่าย · มีคำขอรออนุมัติ");
+    expect(pending).not.toContain("มีคำเชิญเปิดอยู่");
+  });
+
   it("lists only PENDING Hospitals for bulk retirement", () => {
     const markup = renderToStaticMarkup(<HospitalNetworkDirectory bulkSubmissionNonce={bulkNonce} filter="pending" hospitals={hospitals} submissionNonce={nonce} />);
     expect(markup).toContain('type="checkbox" name="hospitalId" value="pending"');

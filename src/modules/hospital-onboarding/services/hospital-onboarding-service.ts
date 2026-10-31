@@ -38,7 +38,7 @@ import {
   type HospitalOnboardingSubmissionInput,
 } from "../schemas/hospital-onboarding-schemas";
 
-import { onboardableHospitalWhere } from "./onboarding-hospital-service";
+import { publicOnboardableHospitalWhere } from "./onboarding-hospital-service";
 
 export type HospitalOnboardingDatabase = PrismaClient;
 
@@ -267,7 +267,7 @@ export async function submitHospitalOnboarding(
 
   try {
     hospital = await database.hospital.findFirst({
-      where: { hospitalCode, ...onboardableHospitalWhere },
+      where: { hospitalCode, ...publicOnboardableHospitalWhere },
       select: { id: true, status: true },
     });
 
@@ -385,10 +385,11 @@ export async function submitHospitalOnboarding(
   }
 
   try {
-    // Serializable with the status re-read: a concurrent ADMIN retire (N1-D2/D3) and this submit cannot both commit.
+    // Serializable with the status re-read: a concurrent ADMIN retire (N1-D2/D3) or ADMIN OWNER invitation (ADR-0024)
+    // and this submit cannot both commit.
     const application = await database.$transaction(async (transaction) => {
       const current = await transaction.hospital.findFirst({
-        where: { id: hospital.id, ...onboardableHospitalWhere },
+        where: { id: hospital.id, ...publicOnboardableHospitalWhere },
         select: { status: true },
       });
 
@@ -571,9 +572,10 @@ export async function approveHospitalOnboarding(
         throw new ConflictError("Hospital is not in an approvable state");
       }
 
-      // ADR-0018: only an onboardable Parent; a Parent-created Child never takes the public path.
+      // ADR-0018: only an onboardable Parent; a Parent-created Child never takes the public path. ADR-0024: never while
+      // platform ADMIN has an open OWNER invitation for this Hospital.
       const onboardable = await transaction.hospital.findFirst({
-        where: { id: application.hospital.id, ...onboardableHospitalWhere },
+        where: { id: application.hospital.id, ...publicOnboardableHospitalWhere },
         select: { id: true },
       });
 

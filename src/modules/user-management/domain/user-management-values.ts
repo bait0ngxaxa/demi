@@ -71,7 +71,8 @@ export function deriveActivationMethod(input: {
   if (input.usedActivations.some((activation) => activation.source === "PATIENT"
     ? activation.purpose === PatientActivationPurpose.ACTIVATION
     : activation.mode === WorkforceActivationMode.REMOTE && (activation.purpose === WorkforceActivationPurpose.ACTIVATION ||
-      activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING))) {
+      activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING ||
+      activation.purpose === WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING))) {
     return "INVITE";
   }
   return "OTHER";
@@ -95,7 +96,11 @@ const usedAssisted: Prisma.UserWhereInput = {
 };
 const usedInvite: Prisma.UserWhereInput = { OR: [
   { workforceActivations: { some: { ...used, mode: WorkforceActivationMode.REMOTE,
-    purpose: { in: [WorkforceActivationPurpose.ACTIVATION, WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING] } } } },
+    purpose: { in: [
+      WorkforceActivationPurpose.ACTIVATION,
+      WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING,
+    ] } } } },
   { patientActivations: { some: { ...used, purpose: PatientActivationPurpose.ACTIVATION } } },
 ] };
 const notActivatedStatuses = [UserStatus.PROVISIONED, UserStatus.INVITED];

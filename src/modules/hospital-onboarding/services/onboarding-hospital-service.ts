@@ -1,6 +1,6 @@
 import "server-only";
 
-import { HospitalServiceAreaFacilityKind, HospitalStatus, type Prisma, type PrismaClient } from "@prisma/client";
+import { HospitalServiceAreaFacilityKind, HospitalStatus, MembershipStatus, MembershipType, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
@@ -46,13 +46,27 @@ export const onboardableHospitalWhere = {
   serviceAreaAssignments: { none: {} },
 } satisfies Prisma.HospitalWhereInput;
 
-/** Public onboarding list: onboardable Parents only; ACTIVE, SUSPENDED, RETIRED and Child facilities are never offered. */
+/**
+ * ADR-0024 (Q1): the public path (list, code lookup, submission, approval) also excludes a Hospital while platform ADMIN
+ * has an open OWNER invitation for it. ADMIN-side reads keep `onboardableHospitalWhere`.
+ */
+export const publicOnboardableHospitalWhere = {
+  ...onboardableHospitalWhere,
+  memberships: {
+    none: { membershipType: MembershipType.OWNER, status: { in: [MembershipStatus.PROVISIONED, MembershipStatus.INVITED] } },
+  },
+} satisfies Prisma.HospitalWhereInput;
+
+/**
+ * Public onboarding list: onboardable Parents only; ACTIVE, SUSPENDED, RETIRED and Child facilities are never offered,
+ * nor a Parent with an open ADMIN OWNER invitation.
+ */
 export async function listOnboardingHospitals(
   database: OnboardingHospitalDatabase = getPrisma(),
 ): Promise<OnboardingHospitalOption[]> {
   try {
     const hospitals = await database.hospital.findMany({
-      where: onboardableHospitalWhere,
+      where: publicOnboardableHospitalWhere,
       orderBy: [{ name: "asc" }, { id: "asc" }],
       select: onboardingHospitalSelect,
     });
@@ -75,7 +89,7 @@ export async function findOnboardingHospitalByCode(
 
   try {
     const hospital = await database.hospital.findFirst({
-      where: { hospitalCode: parsedCode.data, ...onboardableHospitalWhere },
+      where: { hospitalCode: parsedCode.data, ...publicOnboardableHospitalWhere },
       select: onboardingHospitalSelect,
     });
 
