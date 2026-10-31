@@ -49,6 +49,9 @@ describe("deriveActivationMethod", () => {
       usedActivations: [workforce(WorkforceActivationPurpose.ACTIVATION, WorkforceActivationMode.REMOTE)] })).toBe("INVITE");
     expect(deriveActivationMethod({ selfRegisteredAt: null, userStatus: UserStatus.ACTIVE,
       usedActivations: [patient(PatientActivationPurpose.ACTIVATION)] })).toBe("INVITE");
+    // ADR-0024: a Parent OWNER invitation link is an invite, as a Child OWNER one is.
+    expect(deriveActivationMethod({ selfRegisteredAt: null, userStatus: UserStatus.ACTIVE,
+      usedActivations: [workforce(WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING, WorkforceActivationMode.REMOTE)] })).toBe("INVITE");
     // A password reset is not a first activation.
     expect(deriveActivationMethod({ selfRegisteredAt: null, userStatus: UserStatus.ACTIVE,
       usedActivations: [workforce(WorkforceActivationPurpose.RESET, WorkforceActivationMode.ASSISTED)] })).toBe("OTHER");

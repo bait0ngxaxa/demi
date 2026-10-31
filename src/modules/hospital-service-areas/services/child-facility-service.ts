@@ -18,7 +18,6 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
-  lockCaregiverInvitationIdentityInTransaction,
   revokeCaregiverInvitationTakeoverSessionsAfterCommit,
   type CaregiverInvitationTakeoverTask,
 } from "@/modules/account-security/services/caregiver-invitation-takeover-lock";
@@ -28,13 +27,17 @@ import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } fro
 import { generateUniqueHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { createDefaultHospitalServiceOfferingsInTransaction } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
-import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import type { ActivationCredentialGenerator } from "@/modules/workforce/services/activation-token-service";
 import {
-  issueChildOwnerActivation,
-  resolveWorkforceGrantee,
-  revokeChildOwnerActivation,
+  writeHospitalOwnerInvitationInTransaction,
+  type HospitalOwnerInvitationIssue,
+  type HospitalOwnerInvitationView,
+  type HospitalOwnerInvitee,
+} from "@/modules/workforce/services/hospital-owner-invitation";
+import {
+  issueHospitalOwnerActivation,
+  revokeHospitalOwnerActivation,
 } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -48,6 +51,10 @@ import {
   childOwnerInviteeSchema,
   childOwnerLinkIssueSchema,
 } from "../schemas/hospital-service-area-schemas";
+import {
+  activatePendingParentOwner,
+  assertParentOwnerInvitationContext,
+} from "@/modules/hospital-onboarding/services/parent-owner-invitation-context";
 import { activatePendingChildOwner, assertChildOwnerInvitationContext } from "./child-owner-invitation-context";
 import { authorize, operation } from "./hospital-service-area-service";
 
@@ -58,20 +65,11 @@ export type ChildFacilityDependencies = {
   revokeProviderSessions?: (authSubject: string) => Promise<ProviderSessionRevocationOutcome>;
 };
 
-/**
- * What the Parent sees right after an invitation. The plaintext token exists only in ACTIVATION_LINK and is never
- * stored, so a replayed submission answers ALREADY_ISSUED and the Parent regenerates the link when needed.
- */
-export type ChildOwnerInvitationIssue =
-  | { status: "ACTIVATION_LINK"; activationToken: string; activationExpiresAt: Date; activationMode: "REMOTE" | "ASSISTED" }
-  | { status: "AWAITING_ACCEPTANCE" }
-  | { status: "ADMIN_RESET_REQUIRED" }
-  | { status: "ALREADY_ISSUED" };
+/** What the Parent sees right after an invitation (the shared OWNER invitation outcome). */
+export type ChildOwnerInvitationIssue = HospitalOwnerInvitationIssue;
 
 export type ChildFacility = { id: string; hospitalCode: string; name: string };
 export type ChildFacilityCreateResult = { child: ChildFacility; invitation: ChildOwnerInvitationIssue };
-
-type ChildOwnerInvitee = { nationalId: string; givenName: string; familyName: string; mode: "REMOTE" | "ASSISTED" };
 
 const OPEN_INVITATION_STATUSES = [MembershipStatus.PROVISIONED, MembershipStatus.INVITED];
 
@@ -90,9 +88,8 @@ function parse<T>(schema: { safeParse: (input: unknown) => { success: true; data
 }
 
 /**
- * Grants the Child's first (or replacement) OWNER invitation (O-D4/O-D6). A new or reusable PROVISIONED account gets a
- * PROVISIONED OWNER membership and a workforce activation credential; an ACTIVE account gets an INVITED membership and
- * no credential, so nothing is granted until that person accepts in their own session (ADR-0012).
+ * Grants the Child's first (or replacement) OWNER invitation (O-D4/O-D6) through the shared invitee write, bound to
+ * the active area and the inviting Parent OWNER that completion re-checks.
  */
 async function inviteChildOwnerInTransaction(
   transaction: Prisma.TransactionClient,
@@ -101,90 +98,29 @@ async function inviteChildOwnerInTransaction(
     parentHospitalId: string;
     childHospitalId: string;
     areaId: string;
-    invitee: ChildOwnerInvitee;
+    invitee: HospitalOwnerInvitee;
     now: Date;
     generateCredential?: ActivationCredentialGenerator;
   },
 ): Promise<{ issue: ChildOwnerInvitationIssue; takeoverTask: CaregiverInvitationTakeoverTask | null }> {
-  const { user } = await resolveWorkforceGrantee(transaction, { hospitalId: input.childHospitalId, ...input.invitee });
-  await assertWorkforceRelationshipsCompatible(transaction, user.id, "HOSPITAL");
-  const open = await transaction.hospitalMembership.findFirst({
-    where: { userId: user.id, hospitalId: input.childHospitalId, status: { not: MembershipStatus.ENDED } },
-    select: { id: true },
-  });
-  if (open) throw new ConflictError("The invitee already has a relationship with this facility");
-
-  const caregiverClaimed = user.identityAssurance === IdentityAssurance.CAREGIVER_INVITATION;
-  const accepting = user.status === UserStatus.ACTIVE && !caregiverClaimed;
-  if (!accepting) {
-    await transaction.userRole.upsert({
-      where: { userId_role: { userId: user.id, role: Role.HOSPITAL } },
-      update: {},
-      create: { userId: user.id, role: Role.HOSPITAL },
-    });
-  }
-  const membership = await transaction.hospitalMembership.create({
-    data: {
-      userId: user.id,
-      hospitalId: input.childHospitalId,
-      membershipType: MembershipType.OWNER,
-      status: accepting ? MembershipStatus.INVITED : MembershipStatus.PROVISIONED,
-      invitedByUserId: input.actorUserId,
-      invitedViaServiceAreaId: input.areaId,
-    },
-    select: { id: true, status: true },
-  });
-  await recordAuditEvent({
+  const written = await writeHospitalOwnerInvitationInTransaction(transaction, {
     actorUserId: input.actorUserId,
-    action: "hospital_membership.provisioned",
-    resourceType: "HospitalMembership",
-    resourceId: membership.id,
-    metadata: { role: Role.HOSPITAL, profession: null, status: membership.status },
-  }, transaction);
-
-  let takeoverTask: CaregiverInvitationTakeoverTask | null = null;
-  const issue: ChildOwnerInvitationIssue = caregiverClaimed
-    ? { status: "ADMIN_RESET_REQUIRED" }
-    : accepting
-      ? { status: "AWAITING_ACCEPTANCE" }
-      : {
-        status: "ACTIVATION_LINK",
-        ...(await issueChildOwnerActivation(transaction, {
-          userId: user.id,
-          createdByUserId: input.actorUserId,
-          childHospitalId: input.childHospitalId,
-          membershipId: membership.id,
-          mode: input.invitee.mode,
-          now: input.now,
-          source: "child_owner_invitation",
-          generateCredential: input.generateCredential,
-        })),
-      };
-
-  if (caregiverClaimed) {
-    takeoverTask = await lockCaregiverInvitationIdentityInTransaction(transaction, {
-      userId: user.id,
-      actorUserId: input.actorUserId,
-      hospitalId: input.childHospitalId,
-      now: input.now,
-      heldOwnerMembershipId: membership.id,
-    });
-    if (!takeoverTask) throw new InfrastructureError("The caregiver account could not be quarantined");
-  }
+    hospitalId: input.childHospitalId,
+    binding: { kind: "CHILD", serviceAreaId: input.areaId },
+    invitee: input.invitee,
+    now: input.now,
+    generateCredential: input.generateCredential,
+  });
 
   await recordAuditEvent({
     actorUserId: input.actorUserId,
     action: "hospital.child_owner_invited",
     resourceType: "Hospital",
     resourceId: input.childHospitalId,
-    metadata: {
-      parentHospitalId: input.parentHospitalId,
-      membershipId: membership.id,
-      delivery: caregiverClaimed ? "ADMIN_RESET_REQUIRED" : accepting ? "ACCOUNT_ACCEPTANCE" : input.invitee.mode,
-    },
+    metadata: { parentHospitalId: input.parentHospitalId, membershipId: written.membershipId, delivery: written.delivery },
   }, transaction);
 
-  return { issue, takeoverTask };
+  return { issue: written.issue, takeoverTask: written.takeoverTask };
 }
 
 async function revokeHeldInviteeSessions(
@@ -267,7 +203,8 @@ async function endOpenOwnerInvitation(
   input: { membership: { id: string; status: MembershipStatus }; childHospitalId: string; parentHospitalId: string; actorUserId: string; now: Date; reason: string },
 ): Promise<void> {
   if (input.membership.status === MembershipStatus.PROVISIONED) {
-    await revokeChildOwnerActivation(transaction, {
+    await revokeHospitalOwnerActivation(transaction, {
+      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
       membershipId: input.membership.id, actorUserId: input.actorUserId, now: input.now, source: input.reason,
     });
   }
@@ -431,10 +368,11 @@ export async function issueChildOwnerLink(
       where: { id: membership.id, status: MembershipStatus.PROVISIONED },
       data: { invitedByUserId: actor.userId },
     });
-    const issued = await issueChildOwnerActivation(tx, {
+    const issued = await issueHospitalOwnerActivation(tx, {
+      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
       userId: membership.userId,
       createdByUserId: actor.userId,
-      childHospitalId: area.child.id,
+      hospitalId: area.child.id,
       membershipId: membership.id,
       mode: data.mode,
       now,
@@ -477,7 +415,10 @@ export async function revokeChildOwnerLink(
       return;
     }
     if (!membership || membership.status !== MembershipStatus.PROVISIONED) throw new ConflictError("No activation link is open for this facility");
-    await revokeChildOwnerActivation(tx, { membershipId: membership.id, actorUserId: actor.userId, now, source: "parent_revocation" });
+    await revokeHospitalOwnerActivation(tx, {
+      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      membershipId: membership.id, actorUserId: actor.userId, now, source: "parent_revocation",
+    });
   });
 }
 
@@ -662,11 +603,30 @@ export type ChildOwnerInvitationForActor = {
   invitedAt: Date;
 };
 
-/** Pending OWNER invitations addressed to the actor's own ACTIVE account (O-D6). */
+/** An OWNER invitation addressed to the actor: from a Parent OWNER for its Child (ADR-0018) or from ADMIN (ADR-0024). */
+export type HospitalOwnerInvitationForActor =
+  | { kind: "CHILD"; membershipId: string; hospital: ChildFacility; parent: ChildFacility; invitedAt: Date }
+  | { kind: "PARENT"; membershipId: string; hospital: ChildFacility; invitedAt: Date };
+
+/** Pending Child OWNER invitations addressed to the actor's own ACTIVE account (O-D6). */
 export async function listChildOwnerInvitationsForActor(
   actor: ActorContext | null | undefined,
   dependencies: ChildFacilityDependencies = {},
 ): Promise<ChildOwnerInvitationForActor[]> {
+  const invitations = await listHospitalOwnerInvitationsForActor(actor, dependencies);
+  return invitations.flatMap((invitation) => invitation.kind === "CHILD"
+    ? [{ membershipId: invitation.membershipId, child: invitation.hospital, parent: invitation.parent, invitedAt: invitation.invitedAt }]
+    : []);
+}
+
+/**
+ * Pending Child and Parent OWNER invitations addressed to the actor's own ACTIVE account (O-D6, ADR-0024). A Child
+ * invitation is listed while its area is active; a Parent invitation has no area.
+ */
+export async function listHospitalOwnerInvitationsForActor(
+  actor: ActorContext | null | undefined,
+  dependencies: ChildFacilityDependencies = {},
+): Promise<HospitalOwnerInvitationForActor[]> {
   if (!actor) throw new ForbiddenError();
   const database = getDatabase(dependencies);
   const account = await database.user.findUnique({
@@ -683,7 +643,8 @@ export async function listChildOwnerInvitationsForActor(
       userId: actor.userId,
       membershipType: MembershipType.OWNER,
       status: MembershipStatus.INVITED,
-      invitedViaServiceArea: { is: { endedAt: null } },
+      invitedByUserId: { not: null },
+      OR: [{ invitedViaServiceArea: { is: { endedAt: null } } }, { invitedViaServiceAreaId: null }],
       user: { is: { personId: actor.personId, status: UserStatus.ACTIVE } },
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -691,38 +652,45 @@ export async function listChildOwnerInvitationsForActor(
     select: {
       id: true,
       createdAt: true,
+      invitedViaServiceAreaId: true,
       hospital: { select: { id: true, hospitalCode: true, name: true } },
       invitedViaServiceArea: { select: { parent: { select: { id: true, hospitalCode: true, name: true } } } },
     },
   });
-  return rows.flatMap((row) => row.invitedViaServiceArea
-    ? [{ membershipId: row.id, child: row.hospital, parent: row.invitedViaServiceArea.parent, invitedAt: row.createdAt }]
-    : []);
+  return rows.flatMap((row): HospitalOwnerInvitationForActor[] => {
+    if (row.invitedViaServiceAreaId === null) {
+      return [{ kind: "PARENT", membershipId: row.id, hospital: row.hospital, invitedAt: row.createdAt }];
+    }
+    return row.invitedViaServiceArea
+      ? [{ kind: "CHILD", membershipId: row.id, hospital: row.hospital, parent: row.invitedViaServiceArea.parent, invitedAt: row.createdAt }]
+      : [];
+  });
 }
 
 async function findOwnInvitation(
   transaction: Prisma.TransactionClient,
   actor: ActorContext,
   membershipId: string,
-): Promise<{ id: string; hospitalId: string }> {
+): Promise<{ id: string; hospitalId: string; invitedViaServiceAreaId: string | null }> {
   const membership = await transaction.hospitalMembership.findFirst({
     where: {
       id: membershipId,
       userId: actor.userId,
       membershipType: MembershipType.OWNER,
       status: MembershipStatus.INVITED,
-      invitedViaServiceAreaId: { not: null },
+      invitedByUserId: { not: null },
       user: { is: { personId: actor.personId, status: UserStatus.ACTIVE } },
     },
-    select: { id: true, hospitalId: true },
+    select: { id: true, hospitalId: true, invitedViaServiceAreaId: true },
   });
   if (!membership) throw new NotFoundError();
   return membership;
 }
 
 /**
- * The invitee accepts in their own authenticated session: the OWNER membership and, for a first OWNER, the Child
- * become ACTIVE in one transaction, after re-checking the same invitation context as token completion.
+ * The invitee accepts in their own authenticated session: the OWNER membership and, for a first OWNER, the Hospital
+ * become ACTIVE in one transaction, after re-checking the same invitation context as token completion. A Child
+ * invitation re-checks its area and Parent OWNER (ADR-0018); a Parent invitation its platform ADMIN (ADR-0024).
  */
 export async function acceptChildOwnerInvitation(
   actor: ActorContext | null | undefined,
@@ -748,6 +716,28 @@ export async function acceptChildOwnerInvitation(
       (identityState.takeoverLock !== null && identityState.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED)
     ) throw new ConflictError("This account requires identity verification before accepting");
     if (adminRole || inFlightRecovery || ambiguousReset) throw new ConflictError("This account requires reconciliation before accepting");
+    if (membership.invitedViaServiceAreaId === null) {
+      const parentContext = await assertParentOwnerInvitationContext(tx, {
+        membershipId: membership.id, hospitalId: membership.hospitalId, userId: actor.userId, expectedStatus: MembershipStatus.INVITED,
+      });
+      await tx.userRole.upsert({
+        where: { userId_role: { userId: actor.userId, role: Role.HOSPITAL } },
+        update: {},
+        create: { userId: actor.userId, role: Role.HOSPITAL },
+      });
+      await activatePendingParentOwner(tx, {
+        membershipId: membership.id, hospitalId: membership.hospitalId, userId: actor.userId,
+        fromStatus: MembershipStatus.INVITED, context: parentContext, actorUserId: actor.userId,
+      });
+      await recordAuditEvent({
+        actorUserId: actor.userId,
+        action: "hospital.parent_owner_invitation_accepted",
+        resourceType: "HospitalMembership",
+        resourceId: membership.id,
+        metadata: { hospitalId: membership.hospitalId, invitedByUserId: parentContext.invitedByUserId },
+      }, tx);
+      return;
+    }
     const context = await assertChildOwnerInvitationContext(tx, {
       membershipId: membership.id, childHospitalId: membership.hospitalId, userId: actor.userId, expectedStatus: MembershipStatus.INVITED,
     });
@@ -770,7 +760,10 @@ export async function acceptChildOwnerInvitation(
   });
 }
 
-/** The invitee declines: the membership ENDS with the decline recorded, and the Child stays pending for its Parent. */
+/**
+ * The invitee declines: the membership ENDS with the decline recorded, and the Hospital stays as it was for its
+ * inviter (the Parent OWNER for a Child, platform ADMIN for a Parent).
+ */
 export async function declineChildOwnerInvitation(
   actor: ActorContext | null | undefined,
   input: unknown,
@@ -789,20 +782,19 @@ export async function declineChildOwnerInvitation(
     if (declined.count !== 1) throw new ConflictError("The invitation changed concurrently");
     await recordAuditEvent({
       actorUserId: actor.userId,
-      action: "hospital.child_owner_invitation_declined",
+      action: membership.invitedViaServiceAreaId === null
+        ? "hospital.parent_owner_invitation_declined"
+        : "hospital.child_owner_invitation_declined",
       resourceType: "HospitalMembership",
       resourceId: membership.id,
-      metadata: { childHospitalId: membership.hospitalId },
+      metadata: membership.invitedViaServiceAreaId === null
+        ? { hospitalId: membership.hospitalId }
+        : { childHospitalId: membership.hospitalId },
     }, tx);
   });
 }
 
-export type ManagedChildOwnerInvitation = {
-  membershipId: string;
-  inviteeName: string;
-  delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE" | "ADMIN_RESET_REQUIRED";
-  link: { status: "OPEN" | "EXPIRED" | "IN_USE" | "NONE"; expiresAt: Date | null; mode: "REMOTE" | "ASSISTED" | null };
-};
+export type ManagedChildOwnerInvitation = HospitalOwnerInvitationView;
 
 export type ManagedChildFacility = {
   areaId: string;

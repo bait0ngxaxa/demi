@@ -47,6 +47,13 @@ import {
   type ChildOwnerInvitationContext,
 } from "@/modules/hospital-service-areas/services/child-owner-invitation-context";
 import {
+  activatePendingParentOwner,
+  activePlatformAdminWhere,
+  assertParentOwnerInvitationContext,
+  PARENT_OWNER_RELATIONSHIP_KIND,
+  type ParentOwnerInvitationContext,
+} from "@/modules/hospital-onboarding/services/parent-owner-invitation-context";
+import {
   createIdentityStore,
   hashIdentityReference,
   resolvePerson,
@@ -327,6 +334,7 @@ const DEFAULT_TRANSACTION_RETRIES = 2;
 const INITIAL_ACTIVATION_PURPOSES: readonly WorkforceActivationPurpose[] = [
   WorkforceActivationPurpose.ACTIVATION,
   WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+  WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING,
 ];
 const FIRST_CREDENTIAL_PURPOSES: readonly WorkforceActivationPurpose[] = [
   ...INITIAL_ACTIVATION_PURPOSES,
@@ -679,31 +687,42 @@ async function issueInitialActivation(
   };
 }
 
-export type ChildOwnerActivationIssue = {
+export type HospitalOwnerActivationIssue = {
   activationId: string;
   activationToken: string;
   activationExpiresAt: Date;
   activationMode: WorkforceActivationModeValue;
 };
 
+/** First or replacement OWNER invitation purposes: Child by its Parent OWNER (ADR-0018), Parent by ADMIN (ADR-0024). */
+export type HospitalOwnerOnboardingPurpose =
+  | typeof WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING
+  | typeof WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING;
+
+const OWNER_ONBOARDING_RELATIONSHIP_KIND = {
+  [WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING]: CHILD_OWNER_RELATIONSHIP_KIND,
+  [WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING]: PARENT_OWNER_RELATIONSHIP_KIND,
+} as const satisfies Record<HospitalOwnerOnboardingPurpose, string>;
+
 /**
- * ADR-0018 (O-D6): the workforce activation credential for a pending (PROVISIONED) Child OWNER membership. Same
+ * ADR-0018 (O-D6) / ADR-0024: the workforce activation credential for a pending (PROVISIONED) OWNER invitation. Same
  * hash-only token, national-ID check, failure limit and single-use claim as staff activation; only the purpose,
  * context kind and REMOTE TTL differ. An unclaimed credential already issued for this membership is revoked first.
  */
-export async function issueChildOwnerActivation(
+export async function issueHospitalOwnerActivation(
   transaction: Prisma.TransactionClient,
   input: {
+    purpose: HospitalOwnerOnboardingPurpose;
     userId: string;
     createdByUserId: string;
-    childHospitalId: string;
+    hospitalId: string;
     membershipId: string;
     mode: WorkforceActivationModeValue;
     now: Date;
-    source: "child_owner_invitation" | "explicit_regeneration";
+    source: "child_owner_invitation" | "parent_owner_invitation" | "explicit_regeneration";
     generateCredential?: ActivationCredentialGenerator;
   },
-): Promise<ChildOwnerActivationIssue> {
+): Promise<HospitalOwnerActivationIssue> {
   await assertWorkforceRelationshipsCompatible(transaction, input.userId, "HOSPITAL");
   await assertInitialCredentialStateInDatabase(transaction, input.userId);
   const current = await transaction.workforceActivation.findFirst({
@@ -712,7 +731,7 @@ export async function issueChildOwnerActivation(
   });
 
   if (current) {
-    if (current.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING || current.relationshipId !== input.membershipId) {
+    if (current.purpose !== input.purpose || current.relationshipId !== input.membershipId) {
       throw new ConflictError(CROSS_HOSPITAL_PENDING_MESSAGE);
     }
 
@@ -721,18 +740,18 @@ export async function issueChildOwnerActivation(
 
   const credential = (input.generateCredential ?? generateWorkforceActivationCredential)();
   const mode = toPrismaActivationMode(input.mode);
-  const expiresAt = getWorkforceActivationExpiry(input.now, input.mode, WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING);
+  const expiresAt = getWorkforceActivationExpiry(input.now, input.mode, input.purpose);
   const activation = await transaction.workforceActivation.create({
     data: {
       userId: input.userId,
       tokenHash: credential.tokenHash,
       mode,
-      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      purpose: input.purpose,
       expiresAt,
       createdByUserId: input.createdByUserId,
-      hospitalId: input.childHospitalId,
+      hospitalId: input.hospitalId,
       relationshipId: input.membershipId,
-      relationshipKind: CHILD_OWNER_RELATIONSHIP_KIND,
+      relationshipKind: OWNER_ONBOARDING_RELATIONSHIP_KIND[input.purpose],
     },
     select: { id: true },
   });
@@ -781,15 +800,15 @@ async function revokeUnclaimedActivation(
   );
 }
 
-/** Revokes the unclaimed Child OWNER credential of this membership, if any. A claimed credential is a conflict. */
-export async function revokeChildOwnerActivation(
+/** Revokes the unclaimed OWNER invitation credential of this membership, if any. A claimed credential is a conflict. */
+export async function revokeHospitalOwnerActivation(
   transaction: Prisma.TransactionClient,
-  input: { membershipId: string; actorUserId: string; now: Date; source: string },
+  input: { purpose: HospitalOwnerOnboardingPurpose; membershipId: string; actorUserId: string; now: Date; source: string },
 ): Promise<boolean> {
   const current = await transaction.workforceActivation.findFirst({
     where: {
       relationshipId: input.membershipId,
-      purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING,
+      purpose: input.purpose,
       usedAt: null,
       revokedAt: null,
     },
@@ -3425,9 +3444,10 @@ function isActivationTargetEligible(
       selfRegistrationRelationshipsSchema.safeParse(activation.selfRegistrationRelationships).success;
   }
   if (!activation.hospitalId || !activation.relationshipId) return false;
-  if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
-    return activation.relationshipKind === CHILD_OWNER_RELATIONSHIP_KIND &&
-      isChildOwnerScopeEligible(activation.user, { hospitalId: activation.hospitalId, relationshipId: activation.relationshipId }, allowMappedSubject);
+  if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING ||
+    activation.purpose === WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING) {
+    return activation.relationshipKind === OWNER_ONBOARDING_RELATIONSHIP_KIND[activation.purpose] &&
+      isOwnerInvitationScopeEligible(activation.user, { hospitalId: activation.hospitalId, relationshipId: activation.relationshipId }, allowMappedSubject);
   }
   if (activation.purpose !== WorkforceActivationPurpose.ACTIVATION ||
     (activation.relationshipKind !== "OSM" && activation.relationshipKind !== "HOSPITAL_MEMBER")) return false;
@@ -3435,11 +3455,11 @@ function isActivationTargetEligible(
 }
 
 /**
- * ADR-0018: a Child OWNER first credential completes exactly its pending OWNER membership. Any other open workforce
- * relationship needs an explicit trust decision, so it fails closed. The Child may still be PENDING_VERIFICATION
- * (first OWNER) or ACTIVE (replacement); the persisted invitation context is re-checked separately.
+ * ADR-0018 / ADR-0024: a Child or Parent OWNER first credential completes exactly its pending OWNER membership. Any
+ * other open workforce relationship needs an explicit trust decision, so it fails closed. The Hospital may still be
+ * PENDING_VERIFICATION (first OWNER) or ACTIVE (replacement); the persisted invitation context is re-checked separately.
  */
-function isChildOwnerScopeEligible(
+function isOwnerInvitationScopeEligible(
   user: WorkforceActivationClaimTarget["user"],
   context: { hospitalId: string; relationshipId: string },
   allowMappedSubject = false,
@@ -3490,20 +3510,35 @@ async function assertActivationContextAuthority(
     legacyOsmClaim ? [MembershipType.OWNER, MembershipType.MEMBER] : [MembershipType.OWNER]);
 }
 
+type OwnerInvitationActivationContext =
+  | { kind: "CHILD_OWNER"; context: ChildOwnerInvitationContext }
+  | { kind: "PARENT_OWNER"; context: ParentOwnerInvitationContext };
+
 /**
  * Persisted issuing context of a claimable activation. Staff/OSM: the issuer still provisions that Hospital.
  * Child OWNER (ADR-0018): the invitation context still holds and the issuer is still an OWNER of that Parent.
+ * Parent OWNER (ADR-0024): the invitation context still holds and the issuer is still an ACTIVE platform ADMIN.
  */
 async function assertActivationContext(
   transaction: Prisma.TransactionClient,
   activation: WorkforceActivationClaimTarget,
-): Promise<ChildOwnerInvitationContext | null> {
+): Promise<OwnerInvitationActivationContext | null> {
   if (activation.purpose === WorkforceActivationPurpose.SELF_REGISTRATION) return null;
-  if (activation.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
+  if (activation.purpose !== WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING &&
+    activation.purpose !== WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING) {
     await assertActivationContextAuthority(transaction, activation);
     return null;
   }
   if (!activation.hospitalId || !activation.relationshipId) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+  if (activation.purpose === WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING) {
+    const context = await assertParentOwnerInvitationContext(transaction, {
+      membershipId: activation.relationshipId, hospitalId: activation.hospitalId,
+      userId: activation.userId, expectedStatus: MembershipStatus.PROVISIONED,
+    });
+    const issuer = await transaction.user.findFirst({ where: activePlatformAdminWhere(activation.createdByUserId), select: { id: true } });
+    if (!issuer) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
+    return { kind: "PARENT_OWNER", context };
+  }
   const context = await assertChildOwnerInvitationContext(transaction, {
     membershipId: activation.relationshipId, childHospitalId: activation.hospitalId,
     userId: activation.userId, expectedStatus: MembershipStatus.PROVISIONED,
@@ -3512,17 +3547,22 @@ async function assertActivationContext(
     where: parentOwnerMembershipWhere(activation.createdByUserId, context.parentHospitalId), select: { id: true },
   });
   if (!issuer) throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
-  return context;
+  return { kind: "CHILD_OWNER", context };
 }
 
 /**
  * Read-only: resolves the masked identity cue for a valid, unconsumed token.
- * Every failure is the same generic conflict; the full name is never returned.
+ * Every failure is the same generic conflict; the full name is never returned. A Parent OWNER invitation (ADR-0024)
+ * also names the invited Hospital, because platform ADMIN, not that Hospital, issued the link.
  */
 export async function previewWorkforceActivation(
   token: string,
   dependencies: WorkforceServiceDependencies = {},
-): Promise<{ maskedName: string; purpose: Exclude<WorkforceActivationPurpose, "SELF_REGISTRATION"> }> {
+): Promise<{
+  maskedName: string;
+  purpose: Exclude<WorkforceActivationPurpose, "SELF_REGISTRATION">;
+  hospitalName: string | null;
+}> {
   const parsedToken = workforceActivationTokenSchema.safeParse(token);
 
   if (!parsedToken.success) {
@@ -3546,13 +3586,17 @@ export async function previewWorkforceActivation(
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
 
-    await getDatabase(dependencies).$transaction(async (transaction) => {
+    const hospitalName = await getDatabase(dependencies).$transaction(async (transaction) => {
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
       await assertActivationContext(transaction, activation);
+      if (activation.purpose !== WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING || !activation.hospitalId) return null;
+      const hospital = await transaction.hospital.findUnique({ where: { id: activation.hospitalId }, select: { name: true } });
+      return hospital?.name ?? null;
     });
     return {
       maskedName: maskPersonName(activation.user.person.givenName, activation.user.person.familyName),
       purpose: activation.purpose,
+      hospitalName,
     };
   } catch (error: unknown) {
     if (error instanceof ConflictError || error instanceof ForbiddenError) {
@@ -3730,7 +3774,7 @@ async function finalizeWorkforceActivationLocally(
       }
 
       await assertInitialCredentialStateInDatabase(transaction, activation.userId, activation.id);
-      const childOwnerContext = await assertActivationContext(transaction, activation);
+      const ownerInvitation = await assertActivationContext(transaction, activation);
 
       let selfRegistrationRelationships: SelfRegistrationRelationship[] = [];
       if (selfRegistration) {
@@ -3795,19 +3839,30 @@ async function finalizeWorkforceActivationLocally(
         ) {
           throw new ConflictError("Self-registration relationships changed before completion");
         }
-      } else if (childOwnerContext && activation.relationshipId) {
-        // ADR-0018 (O-D3): the only activation that may complete while its Hospital is still PENDING_VERIFICATION.
+      } else if (ownerInvitation && activation.relationshipId) {
+        // ADR-0018 (O-D3) / ADR-0024: the only activations that may complete while the Hospital is PENDING_VERIFICATION.
         if (!activation.hospitalId) {
-          throw new ConflictError("Child OWNER activation Hospital context is missing");
+          throw new ConflictError("OWNER invitation activation Hospital context is missing");
         }
-        await activatePendingChildOwner(transaction, {
-          membershipId: activation.relationshipId,
-          childHospitalId: activation.hospitalId,
-          userId: claim.userId,
-          fromStatus: MembershipStatus.PROVISIONED,
-          context: childOwnerContext,
-          actorUserId: null,
-        });
+        if (ownerInvitation.kind === "PARENT_OWNER") {
+          await activatePendingParentOwner(transaction, {
+            membershipId: activation.relationshipId,
+            hospitalId: activation.hospitalId,
+            userId: claim.userId,
+            fromStatus: MembershipStatus.PROVISIONED,
+            context: ownerInvitation.context,
+            actorUserId: null,
+          });
+        } else {
+          await activatePendingChildOwner(transaction, {
+            membershipId: activation.relationshipId,
+            childHospitalId: activation.hospitalId,
+            userId: claim.userId,
+            fromStatus: MembershipStatus.PROVISIONED,
+            context: ownerInvitation.context,
+            actorUserId: null,
+          });
+        }
       } else {
         if (!activation.hospitalId) {
           throw new ConflictError("Workforce activation Hospital context is missing");
@@ -4172,7 +4227,18 @@ export async function revokeIssuedWorkforceActivation(
 
         if (!activation.hospitalId) throw new ForbiddenError();
         let authorityHospitalId = activation.hospitalId;
-        if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
+        if (activation.purpose === WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING) {
+          // ADR-0024: a Parent OWNER invitation is platform ADMIN authority, never a Hospital OWNER's.
+          if (!activation.relationshipId || !actor.roles.includes(Role.ADMIN)) throw new ForbiddenError();
+          const admin = await transaction.user.findFirst({ where: activePlatformAdminWhere(actor.userId), select: { id: true } });
+          if (!admin) throw new ForbiddenError();
+          await assertParentOwnerInvitationContext(transaction, {
+            membershipId: activation.relationshipId,
+            hospitalId: activation.hospitalId,
+            userId: activation.userId,
+            expectedStatus: MembershipStatus.PROVISIONED,
+          });
+        } else if (activation.purpose === WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING) {
           if (!activation.relationshipId) throw new ForbiddenError();
           const context = await assertChildOwnerInvitationContext(transaction, {
             membershipId: activation.relationshipId,
@@ -4182,8 +4248,10 @@ export async function revokeIssuedWorkforceActivation(
           });
           authorityHospitalId = context.parentHospitalId;
         }
-        assertActorPolicy(actor, WORKFORCE_CAPABILITIES.activationRevoke, authorityHospitalId);
-        await assertOwnerInDatabase(transaction, actor.userId, authorityHospitalId);
+        if (activation.purpose !== WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING) {
+          assertActorPolicy(actor, WORKFORCE_CAPABILITIES.activationRevoke, authorityHospitalId);
+          await assertOwnerInDatabase(transaction, actor.userId, authorityHospitalId);
+        }
 
         if (activation.usedAt || activation.revokedAt) {
           return;

@@ -50,6 +50,7 @@ import {
 } from "../services/workforce-service";
 import type {
   WorkforceActivationActionState,
+  WorkforceActivationPreviewPurpose,
   WorkforceActivationPreviewState,
   WorkforceBulkActionState,
   WorkforceCompletionActionState,
@@ -793,7 +794,7 @@ export async function previewWorkforceActivationAction(
 ): Promise<WorkforceActivationPreviewState> {
   try {
     const preview = await previewWorkforceActivation(token);
-    return { status: "SUCCESS", maskedName: preview.maskedName, purpose: preview.purpose };
+    return { status: "SUCCESS", maskedName: preview.maskedName, purpose: preview.purpose, hospitalName: preview.hospitalName };
   } catch {
     return { status: "ERROR", message: ACTIVATION_UNAVAILABLE_MESSAGE };
   }
@@ -801,7 +802,7 @@ export async function previewWorkforceActivationAction(
 
 export async function completeWorkforceActivationAction(
   token: string,
-  purpose: "ACTIVATION" | "RESET" | "CHILD_OWNER_ONBOARDING",
+  purpose: WorkforceActivationPreviewPurpose,
   _previousState: WorkforceCompletionActionState,
   formData: FormData,
 ): Promise<WorkforceCompletionActionState> {

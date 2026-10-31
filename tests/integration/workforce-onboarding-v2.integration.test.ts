@@ -373,7 +373,8 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
       const preview = await previewWorkforceActivation(pending.token);
 
-      expect(preview).toEqual({ maskedName: "สม*** ใจ***", purpose: "ACTIVATION" });
+      // Only a platform ADMIN Parent OWNER invitation names its Hospital (ADR-0024).
+      expect(preview).toEqual({ maskedName: "สม*** ใจ***", purpose: "ACTIVATION", hospitalName: null });
       expect(JSON.stringify(preview)).not.toContain(pending.nationalId);
       expect(JSON.stringify(preview)).not.toContain("ใจดีมาก");
 

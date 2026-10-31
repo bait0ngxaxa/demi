@@ -65,12 +65,12 @@ export async function lockCaregiverInvitationIdentityInTransaction(
         hospitalId: input.hospitalId,
         membershipType: MembershipType.OWNER,
         status: MembershipStatus.PROVISIONED,
+        // A Child (ADR-0018) or a Parent (ADR-0024) OWNER invitation; both record their inviter.
         invitedByUserId: { not: null },
-        invitedViaServiceAreaId: { not: null },
       },
       select: { id: true },
     });
-    if (!heldOwner) throw new InfrastructureError("The held child owner invitation is inconsistent");
+    if (!heldOwner) throw new InfrastructureError("The held owner invitation is inconsistent");
   }
 
   if (user.takeoverLock && user.takeoverLock.providerState !== UserTakeoverProviderState.RESOLVED) {

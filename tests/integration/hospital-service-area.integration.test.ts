@@ -208,6 +208,8 @@ describe("Hospital operational service areas / PostgreSQL", () => {
       const staleActor = await actor(parentId);
       await db.hospitalMembership.updateMany({ where: { userId: staleActor.userId }, data: { status } });
       await expect(attachHospitalServiceArea(staleActor, input())).rejects.toMatchObject({ code: "FORBIDDEN" });
+      // ADR-0024: at most one open (INVITED/PROVISIONED) OWNER row per Hospital, so each stale row ends after its check.
+      await db.hospitalMembership.updateMany({ where: { userId: staleActor.userId }, data: { status: "ENDED" } });
     }
     await db.user.update({ where: { id: owner.userId }, data: { status: "SUSPENDED" } });
     await expect(attach()).rejects.toMatchObject({ code: "FORBIDDEN" });

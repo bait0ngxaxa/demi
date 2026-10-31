@@ -372,16 +372,18 @@ describe("workforce Server Actions", () => {
     });
   });
 
-  it("exposes only the masked name and purpose from a preview", async () => {
+  it("exposes only the masked name, purpose and invited Hospital name from a preview", async () => {
     mockedPreviewWorkforceActivation.mockResolvedValue({
       maskedName: "สม*** ใจ***",
       purpose: "RESET",
+      hospitalName: null,
     });
 
     await expect(previewWorkforceActivationAction("one-time-token")).resolves.toEqual({
       status: "SUCCESS",
       maskedName: "สม*** ใจ***",
       purpose: "RESET",
+      hospitalName: null,
     });
   });
 

@@ -7,7 +7,7 @@ import {
   submitHospitalOnboarding,
   type HospitalOnboardingDatabase,
 } from "./hospital-onboarding-service";
-import { onboardableHospitalWhere } from "./onboarding-hospital-service";
+import { publicOnboardableHospitalWhere } from "./onboarding-hospital-service";
 
 const personId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
@@ -96,7 +96,7 @@ describe("hospital onboarding application service", () => {
       select: { id: true },
     });
     expect(database.hospital.findFirst).toHaveBeenCalledWith({
-      where: { hospitalCode: validInput.hospitalCode, ...onboardableHospitalWhere },
+      where: { hospitalCode: validInput.hospitalCode, ...publicOnboardableHospitalWhere },
       select: { id: true, status: true },
     });
   });

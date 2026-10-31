@@ -11,6 +11,8 @@ export const HOSPITAL_ONBOARDING_CAPABILITIES = {
   review: "hospital:review",
   approve: "hospital:approve",
   reject: "hospital:reject",
+  /** ADR-0024: issue, regenerate, revoke or change a Parent OWNER invitation (platform ADMIN only). */
+  ownerInvite: "hospital:owner_invite",
 } as const;
 
 export type HospitalOnboardingCapability =

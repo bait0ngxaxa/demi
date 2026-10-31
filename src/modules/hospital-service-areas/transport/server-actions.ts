@@ -59,6 +59,7 @@ const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, strin
   NOT_PENDING: "ไม่ได้อยู่ในสถานะรอขึ้นทะเบียน",
   ACTIVE_SERVICE_AREA: "อยู่ในเครือข่ายแม่ข่าย–ลูกข่ายที่ใช้งานอยู่ ต้องนำออกจากเครือข่ายก่อน",
   PENDING_APPLICATION: "มีคำขอขึ้นทะเบียนรอพิจารณา ต้องปฏิเสธคำขอก่อน",
+  HELD_OWNER_INVITATION: "มีคำเชิญผู้ดูแลโรงพยาบาลที่รอผู้ดูแลระบบยืนยันตัวตน ต้องยกเลิกคำเชิญก่อน",
 };
 
 function toErrorState(error: unknown, copy: ErrorCopy): HospitalNetworkActionState {

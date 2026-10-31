@@ -43,6 +43,13 @@ describe("workforce activation credentials", () => {
     expect(getWorkforceActivationExpiry(now, "ASSISTED", "CHILD_OWNER_ONBOARDING").toISOString()).toBe("2026-10-21T00:15:00.000Z");
   });
 
+  it("gives a platform ADMIN Parent OWNER invitation the same 24 h / 15 min expiry (ADR-0024)", () => {
+    const now = new Date("2026-10-31T00:00:00.000Z");
+
+    expect(getWorkforceActivationExpiry(now, "REMOTE", "PARENT_OWNER_ONBOARDING").toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    expect(getWorkforceActivationExpiry(now, "ASSISTED", "PARENT_OWNER_ONBOARDING").toISOString()).toBe("2026-10-31T00:15:00.000Z");
+  });
+
   it("does not accept an empty token for digest lookup", () => {
     expect(() => hashWorkforceActivationToken(" ")).toThrow();
   });

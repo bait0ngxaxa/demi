@@ -239,6 +239,7 @@ enum WorkforceActivationPurpose {
   RESET
   CHILD_OWNER_ONBOARDING
   SELF_REGISTRATION
+  PARENT_OWNER_ONBOARDING
 }
 
 enum PatientActivationPurpose {
@@ -852,9 +853,12 @@ model HospitalMembership {
   updatedAt      DateTime         @updatedAt
 
   // ADR-0018: Child OWNER invitation binding; all null for other memberships (SQL CHECK).
+  // ADR-0024: a platform ADMIN Parent OWNER invitation has an inviter, no area and its submission nonce.
+  // At most one open (PROVISIONED/INVITED) OWNER invitation per Hospital is a partial SQL unique index.
   invitedByUserId         String?   @db.Uuid
   invitedViaServiceAreaId String?   @db.Uuid
   invitationDeclinedAt    DateTime? @db.Timestamptz(3)
+  invitationNonce         String?   @unique @db.Uuid
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   hospital Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
