@@ -36,6 +36,7 @@ import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, N
 import { assertHospitalOnboardingCapability, HOSPITAL_ONBOARDING_CAPABILITIES } from "../policies/hospital-onboarding-policy";
 import {
   parentOwnerHospitalIdListSchema,
+  parentOwnerInvitationCancelSchema,
   parentOwnerInvitationTargetSchema,
   parentOwnerInviteeSchema,
   parentOwnerLinkIssueSchema,
@@ -80,6 +81,19 @@ async function operation<T>(database: PrismaClient, work: (tx: Prisma.Transactio
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError("The owner invitation changed concurrently; reload before retrying");
     throw new InfrastructureError("Parent owner invitation could not be completed");
+  }
+}
+
+/**
+ * Plain reads for the ADMIN page and directory: each query sees committed data, and nothing here writes, so there is
+ * no serializable transaction whose serialization failure would break the page.
+ */
+async function read<T>(database: PrismaClient, work: (client: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  try {
+    return await work(database);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Parent owner invitation could not be loaded");
   }
 }
 
@@ -381,6 +395,48 @@ export async function revokeParentOwnerLink(
   });
 }
 
+/**
+ * ADR-0024: platform ADMIN withdraws the Hospital's current open ADMIN invitation in any state (open or expired link,
+ * awaiting acceptance, or held for an ADMIN reset): an unclaimed link is revoked and the membership ENDS, so a pending
+ * Parent returns to the public application list and may be invited again. A link being used is a conflict. Not blocked
+ * by the Hospital's status or applications, so an invitation can always be withdrawn.
+ */
+export async function cancelParentOwnerInvitation(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: ParentOwnerInvitationDependencies = {},
+): Promise<void> {
+  const admin = requireAdminActor(actor);
+  const data = parse(parentOwnerInvitationCancelSchema, input);
+  const now = getNow(dependencies);
+
+  await operation(getDatabase(dependencies), async (tx) => {
+    await assertPlatformAdminInDatabase(tx, admin.userId);
+    const membership = await tx.hospitalMembership.findFirst({
+      where: { id: data.membershipId, hospitalId: data.hospitalId, ...openOwnerInvitationWhere },
+      select: { id: true, invitedByUserId: true, invitedViaServiceAreaId: true },
+    });
+    if (!membership) throw new NotFoundError("The owner invitation was not found");
+    if (membership.invitedByUserId === null || membership.invitedViaServiceAreaId !== null) {
+      throw new ConflictError("Only a platform ADMIN Parent owner invitation can be cancelled here");
+    }
+    const invitation = await findOpenOwnerInvitation(tx, data.hospitalId);
+    if (invitation?.id !== membership.id) throw new ConflictError("The owner invitation changed concurrently");
+    const held = isHeldForAdminReset(invitation);
+    // A claimed link fails inside the revoke, so the transaction rolls back and nothing changes.
+    await endOpenOwnerInvitation(tx, {
+      invitation, actorUserId: admin.userId, now, reason: held ? "admin_cancelled_held_invitation" : "admin_cancelled_invitation",
+    });
+    await recordAuditEvent({
+      actorUserId: admin.userId,
+      action: "hospital.parent_owner_invitation_cancelled",
+      resourceType: "Hospital",
+      resourceId: data.hospitalId,
+      metadata: { membershipId: invitation.id, fromStatus: invitation.status, held },
+    }, tx);
+  });
+}
+
 export type ParentOwnerInvitationAvailability =
   /** Pending Parent: invite its first OWNER. */
   | "FIRST_OWNER"
@@ -409,7 +465,7 @@ export async function getParentOwnerInvitationState(
   const { hospitalId } = parse(parentOwnerInvitationTargetSchema, input);
   const now = getNow(dependencies);
 
-  return operation(getDatabase(dependencies), async (tx) => {
+  return read(getDatabase(dependencies), async (tx) => {
     await assertPlatformAdminInDatabase(tx, admin.userId);
     const hospital = await tx.hospital.findUnique({
       where: { id: hospitalId },
@@ -486,7 +542,7 @@ export async function listParentOnboardingPaths(
   const ids = parse(parentOwnerHospitalIdListSchema, [...hospitalIds]);
   if (ids.length === 0) return new Map();
 
-  return operation(getDatabase(dependencies), async (tx) => {
+  return read(getDatabase(dependencies), async (tx) => {
     await assertPlatformAdminInDatabase(tx, admin.userId);
     const [applications, invitations] = await Promise.all([
       tx.hospitalOnboardingApplication.findMany({

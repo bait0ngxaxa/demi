@@ -258,6 +258,7 @@ export default async function HospitalGovernanceDetailPage({
             availability={ownerInvitation.availability}
             hospital={{ id: hospital.id, name: hospital.name }}
             invitation={ownerInvitation.invitation ? {
+              membershipId: ownerInvitation.invitation.membershipId,
               inviteeName: ownerInvitation.invitation.inviteeName,
               invitedAt: ownerInvitation.invitation.invitedAt.toISOString(),
               delivery: ownerInvitation.invitation.delivery,

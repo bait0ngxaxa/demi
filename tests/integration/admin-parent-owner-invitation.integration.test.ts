@@ -12,6 +12,7 @@ import { hashIdentityReference } from "@/modules/identity/services/identity-serv
 import { approveHospitalOnboarding, rejectHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
 import { findOnboardingHospitalByCode, listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
 import {
+  cancelParentOwnerInvitation,
   changeParentOwnerInvitee,
   getParentOwnerInvitationState,
   inviteParentOwner,
@@ -445,5 +446,138 @@ describe("PO-1: ADMIN invites the first OWNER of a Parent Hospital", () => {
     expect(await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: parent.id } })).toMatchObject({ status: "ENDED" });
     await expect(complete(token(issued), String(input.nationalId))).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await db.auditEvent.count({ where: { resourceId: parent.id, action: "hospital.owner_invitation_ended" } })).toBe(1);
+  });
+});
+
+describe("PO-3: ADMIN cancels a Parent OWNER invitation", () => {
+  async function openInvitation(parentId: string, overrides: Record<string, unknown> = {}) {
+    const input = inviteInput(parentId, overrides);
+    const issued = await inviteParentOwner(admin, input);
+    const membership = await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: parentId, status: { not: "ENDED" } } });
+    return { input, issued, membership };
+  }
+
+  async function createChildInvitation(): Promise<{ childId: string; membershipId: string }> {
+    const parentNetwork = await hospital(HospitalStatus.ACTIVE);
+    const parentOwner = await owner(parentNetwork.id);
+    const created = await createChildFacility(parentOwner, {
+      parentHospitalId: parentNetwork.id, name: `รพ.สต.ทดสอบ ${randomUUID().slice(0, 6)}`, nationalId: nationalId(),
+      givenName: "สมหญิง", familyName: "ดูแลดี", mode: "REMOTE", submissionNonce: randomUUID(),
+    });
+    const membership = await db.hospitalMembership.findFirstOrThrow({ where: { hospitalId: created.child.id } });
+    return { childId: created.child.id, membershipId: membership.id };
+  }
+
+  it("ends an open-link invitation, revokes the token and reopens the public path; ADMIN may invite again", async () => {
+    const parent = await hospital();
+    const { input, issued, membership } = await openInvitation(parent.id);
+    await cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: membership.id });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: "ENDED" });
+    expect(await db.workforceActivation.count({ where: { relationshipId: membership.id, revokedAt: null } })).toBe(0);
+    await expect(complete(token(issued), String(input.nationalId))).rejects.toMatchObject({ code: "CONFLICT" });
+    const cancelled = await db.auditEvent.findFirstOrThrow({ where: { resourceId: parent.id, action: "hospital.parent_owner_invitation_cancelled" } });
+    expect(cancelled.metadata).toEqual({ membershipId: membership.id, fromStatus: "PROVISIONED", held: false });
+    expect(JSON.stringify(cancelled.metadata)).not.toContain(String(input.nationalId));
+
+    expect((await listOnboardingHospitals()).map(({ id }) => id)).toContain(parent.id);
+    await expect(findOnboardingHospitalByCode(parent.hospitalCode)).resolves.toMatchObject({ id: parent.id });
+    const submitted = await submitHospitalOnboarding(publicSubmission(parent.hospitalCode), { provisionIdentity: provisioner() });
+    expect(submitted.applicationId).toEqual(expect.any(String));
+    await rejectHospitalOnboarding({ applicationId: submitted.applicationId, reviewerUserId: admin.userId });
+    expect((await inviteParentOwner(admin, inviteInput(parent.id))).status).toBe("ACTIVATION_LINK");
+  });
+
+  it("ends an invitation whose link expired, and an ACTIVE-account (INVITED) invitation", async () => {
+    const expiredParent = await hospital();
+    const expired = await openInvitation(expiredParent.id);
+    await db.workforceActivation.updateMany({ where: { relationshipId: expired.membership.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    expect((await getParentOwnerInvitationState(admin, { hospitalId: expiredParent.id })).invitation?.link.status).toBe("EXPIRED");
+    await cancelParentOwnerInvitation(admin, { hospitalId: expiredParent.id, membershipId: expired.membership.id });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: expired.membership.id } })).toMatchObject({ status: "ENDED" });
+
+    const invitedParent = await hospital();
+    const acceptingId = nationalId();
+    const invitee = await user([Role.HOSPITAL], { nationalId: acceptingId });
+    const invited = await openInvitation(invitedParent.id, { nationalId: acceptingId });
+    expect(invited.membership.status).toBe("INVITED");
+    await cancelParentOwnerInvitation(admin, { hospitalId: invitedParent.id, membershipId: invited.membership.id });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: invited.membership.id } }))
+      .toMatchObject({ status: "ENDED", invitationDeclinedAt: null });
+    expect(await listHospitalOwnerInvitationsForActor(invitee)).toEqual([]);
+    await expect(acceptChildOwnerInvitation(invitee, { membershipId: invited.membership.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { resourceId: invitedParent.id, action: "hospital.parent_owner_invitation_cancelled" } })).metadata)
+      .toMatchObject({ fromStatus: "INVITED", held: false });
+  });
+
+  it("ends a held (caregiver-claimed) invitation with the same action", async () => {
+    const parent = await hospital();
+    const heldId = nationalId();
+    const invitee = await user([Role.CAREGIVER], { nationalId: heldId, identityAssurance: IdentityAssurance.CAREGIVER_INVITATION });
+    const { membership } = await openInvitation(parent.id, { nationalId: heldId });
+    await cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: membership.id });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: "ENDED" });
+    // The account stays quarantined until an ADMIN reset; only the invitation ended.
+    expect(await db.user.findUniqueOrThrow({ where: { id: invitee.userId } })).toMatchObject({ status: UserStatus.SUSPENDED });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { resourceId: parent.id, action: "hospital.parent_owner_invitation_cancelled" } })).metadata)
+      .toMatchObject({ fromStatus: "PROVISIONED", held: true });
+    expect((await listOnboardingHospitals()).map(({ id }) => id)).toContain(parent.id);
+  });
+
+  it("refuses while the link is being used and changes nothing", async () => {
+    const parent = await hospital();
+    const { membership } = await openInvitation(parent.id);
+    await db.workforceActivation.updateMany({ where: { relationshipId: membership.id }, data: { claimedAt: new Date(), operationState: "CLAIMED" } });
+    await expect(cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: membership.id })).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: "PROVISIONED" });
+    expect(await db.workforceActivation.count({ where: { relationshipId: membership.id, revokedAt: null } })).toBe(1);
+    expect(await db.auditEvent.count({ where: { resourceId: parent.id, action: "hospital.parent_owner_invitation_cancelled" } })).toBe(0);
+  });
+
+  it("is platform ADMIN only", async () => {
+    const parent = await hospital();
+    const { membership } = await openInvitation(parent.id);
+    const otherHospital = await hospital(HospitalStatus.ACTIVE);
+    const hospitalOwner = await owner(otherHospital.id);
+    const suspendedAdmin = await user([Role.ADMIN], { status: UserStatus.SUSPENDED });
+    for (const actor of [hospitalOwner, suspendedAdmin, null]) {
+      await expect(cancelParentOwnerInvitation(actor, { hospitalId: parent.id, membershipId: membership.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ status: "PROVISIONED" });
+  });
+
+  it("refuses a Child OWNER invitation and a stale or foreign membership", async () => {
+    const child = await createChildInvitation();
+    await expect(cancelParentOwnerInvitation(admin, { hospitalId: child.childId, membershipId: child.membershipId }))
+      .rejects.toMatchObject({ code: "CONFLICT" });
+    expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: child.membershipId } })).toMatchObject({ status: "PROVISIONED" });
+
+    const parent = await hospital();
+    const { membership } = await openInvitation(parent.id);
+    await cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: membership.id });
+    await expect(cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: membership.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const other = await hospital();
+    const second = await openInvitation(other.id);
+    await expect(cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: second.membership.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(cancelParentOwnerInvitation(admin, { hospitalId: parent.id, membershipId: "not-a-uuid" })).rejects.toMatchObject({ code: "VALIDATION" });
+  });
+
+  it("lets exactly one of a concurrent ADMIN invitation and public submission commit", async () => {
+    const parent = await hospital();
+    const results = await Promise.allSettled([
+      inviteParentOwner(admin, inviteInput(parent.id)),
+      submitHospitalOnboarding(publicSubmission(parent.hospitalCode), { provisionIdentity: provisioner(), deleteProviderIdentity: async () => undefined }),
+    ]);
+    expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+    const [invitations, applications] = await Promise.all([
+      db.hospitalMembership.count({ where: { hospitalId: parent.id, status: { in: ["PROVISIONED", "INVITED"] } } }),
+      db.hospitalOnboardingApplication.count({ where: { hospitalId: parent.id, status: "PENDING" } }),
+    ]);
+    expect(invitations + applications).toBe(1);
+  });
+
+  it("rejects a Child invitation row that carries a submission nonce (CHECK)", async () => {
+    const child = await createChildInvitation();
+    await expect(db.hospitalMembership.update({ where: { id: child.membershipId }, data: { invitationNonce: randomUUID() } }))
+      .rejects.toThrow(/HospitalMembership_owner_invitation_check/u);
   });
 });

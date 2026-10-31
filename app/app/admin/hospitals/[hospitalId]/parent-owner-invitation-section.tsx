@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
+  cancelParentOwnerInvitationAction,
   changeParentOwnerInviteeAction,
   inviteParentOwnerAction,
   issueParentOwnerLinkAction,
@@ -22,6 +23,7 @@ export type ParentOwnerInvitationSectionProps = {
   availability: "FIRST_OWNER" | "REPLACEMENT" | "PENDING_APPLICATION" | "UNAVAILABLE";
   pendingApplication: { id: string; createdAt: string } | null;
   invitation: {
+    membershipId: string;
     inviteeName: string;
     invitedAt: string;
     delivery: "ACTIVATION_LINK" | "ACCOUNT_ACCEPTANCE" | "ADMIN_RESET_REQUIRED";
@@ -76,6 +78,8 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
   const title = replacement ? "เชิญผู้ดูแลโรงพยาบาลแทน" : "เชิญผู้ดูแลโรงพยาบาลคนแรก";
   const manageable = availability === "FIRST_OWNER" || availability === "REPLACEMENT";
   const status = invitation ? invitationStatus(invitation) : null;
+  // A pending Parent rejoins the public application list once its invitation ends; a replacement does not.
+  const returnsToPublicList = availability === "FIRST_OWNER";
 
   return (
     <section aria-labelledby="parent-owner-invitation-heading">
@@ -118,6 +122,27 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                 เปิดเครื่องมือคืนบัญชี
               </Link>
             ) : null}
+            {/* ADR-0024: an open invitation can always be withdrawn, whatever its state or the Hospital's. */}
+            <div className="mt-2">
+              <NetworkMutationForm
+                action={cancelParentOwnerInvitationAction}
+                confirmation={{
+                  title: `ยกเลิกคำเชิญของ ${invitation.inviteeName} หรือไม่`,
+                  description: [
+                    "คำเชิญและลิงก์จะใช้ไม่ได้ทันที",
+                    returnsToPublicList
+                      ? "โรงพยาบาลจะกลับไปอยู่ในรายชื่อขอขึ้นทะเบียนสาธารณะ และเชิญผู้ดูแลใหม่ได้ภายหลัง"
+                      : "เชิญผู้ดูแลคนใหม่ได้ภายหลัง",
+                    invitation.delivery === "ADMIN_RESET_REQUIRED" ? "บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะคืนบัญชี" : null,
+                  ].filter(Boolean).join(" "),
+                  confirmLabel: "ยกเลิกคำเชิญ",
+                  destructive: true,
+                }}
+                hidden={{ ...target, membershipId: invitation.membershipId }}
+                submitLabel="ยกเลิกคำเชิญ"
+                submitVariant="ghost"
+              />
+            </div>
           </div>
         ) : props.lastDeclinedAt && manageable ? (
           <p className="mt-4 text-sm leading-6 text-warning">ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ {formatDateTime(props.lastDeclinedAt)} · เชิญผู้ดูแลคนใหม่ได้ด้านล่าง</p>
@@ -171,20 +196,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
               </div>
             ) : null}
 
-            {invitation?.delivery === "ADMIN_RESET_REQUIRED" ? (
-              <NetworkMutationForm
-                action={revokeParentOwnerLinkAction}
-                confirmation={{
-                  title: "ยกเลิกคำเชิญหรือไม่",
-                  description: "คำเชิญที่รอคืนบัญชีจะสิ้นสุด บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะคืนบัญชี",
-                  confirmLabel: "ยกเลิกคำเชิญ",
-                  destructive: true,
-                }}
-                hidden={target}
-                submitLabel="ยกเลิกคำเชิญ"
-                submitVariant="ghost"
-              />
-            ) : null}
+
 
             {invitation ? (
               <details>

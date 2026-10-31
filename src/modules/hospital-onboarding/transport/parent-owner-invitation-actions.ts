@@ -15,6 +15,7 @@ import type { HospitalOwnerInvitationIssue } from "@/modules/workforce/services/
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
+  cancelParentOwnerInvitation,
   changeParentOwnerInvitee,
   inviteParentOwner,
   issueParentOwnerLink,
@@ -140,6 +141,22 @@ export async function issueParentOwnerLinkAction(
     "ออกลิงก์เปิดใช้งานใหม่แล้ว ลิงก์เดิมใช้ไม่ได้อีก",
     { CONFLICT: "ออกลิงก์ไม่ได้ ผู้ถูกเชิญอาจกำลังเปิดใช้งาน ใช้บัญชีเดิมตอบรับ หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่" },
   );
+}
+
+export async function cancelParentOwnerInvitationAction(
+  _previous: HospitalNetworkActionState,
+  formData: FormData,
+): Promise<HospitalNetworkActionState> {
+  try {
+    await cancelParentOwnerInvitation(await getProtectedApplicationActor(), {
+      hospitalId: getString(formData, "hospitalId"),
+      membershipId: getString(formData, "membershipId"),
+    });
+    revalidateAdminHospitals();
+    return { status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว โรงพยาบาลกลับไปอยู่ในรายชื่อขอขึ้นทะเบียน", completedAt: Date.now() };
+  } catch (error: unknown) {
+    return toErrorState(error, { CONFLICT: "ยกเลิกไม่ได้ ผู้ถูกเชิญอาจกำลังเปิดใช้งานอยู่ หรือคำเชิญเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่" });
+  }
 }
 
 export async function revokeParentOwnerLinkAction(

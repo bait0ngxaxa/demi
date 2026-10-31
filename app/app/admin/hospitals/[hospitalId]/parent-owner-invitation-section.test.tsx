@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/modules/hospital-onboarding/transport/parent-owner-invitation-actions", () => ({
+  cancelParentOwnerInvitationAction: vi.fn(),
   changeParentOwnerInviteeAction: vi.fn(),
   inviteParentOwnerAction: vi.fn(),
   issueParentOwnerLinkAction: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock("@/modules/hospital-onboarding/transport/parent-owner-invitation-actions
 import { ParentOwnerInvitationSection, type ParentOwnerInvitationSectionProps } from "./parent-owner-invitation-section";
 
 const invitation: NonNullable<ParentOwnerInvitationSectionProps["invitation"]> = {
+  membershipId: "44444444-4444-4444-8444-444444444444",
   inviteeName: "สมศักดิ์ ผู้ดูแล",
   invitedAt: "2026-10-31T03:00:00.000Z",
   delivery: "ACTIVATION_LINK",
@@ -41,6 +43,26 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
     expect(markup).toContain(`name="submissionNonce" value="${base.submissionNonce}"`);
     expect(markup).toContain(`name="hospitalId" value="${base.hospital.id}"`);
     expect(markup).not.toContain("ออกลิงก์ใหม่");
+    expect(markup).not.toContain("ยกเลิกคำเชิญ");
+  });
+
+  it.each([
+    ["รอเปิดใช้งาน", invitation],
+    ["หมดอายุ", { ...invitation, link: { status: "EXPIRED" as const, expiresAt: "2026-10-30T03:00:00.000Z", mode: "REMOTE" as const } }],
+    ["รอตอบรับ", { ...invitation, delivery: "ACCOUNT_ACCEPTANCE" as const, link: { status: "NONE" as const, expiresAt: null, mode: null } }],
+    ["ต้องคืนบัญชีโดยผู้ดูแลระบบ", { ...invitation, delivery: "ADMIN_RESET_REQUIRED" as const, link: { status: "NONE" as const, expiresAt: null, mode: null } }],
+  ])("offers ยกเลิกคำเชิญ for the exact open invitation in state %s", (label, current) => {
+    const markup = render({ invitation: current });
+    expect(markup).toContain(label);
+    expect(markup).toContain("ยกเลิกคำเชิญ");
+    expect(markup).toContain(`name="membershipId" value="${invitation.membershipId}"`);
+  });
+
+  it("still offers ยกเลิกคำเชิญ when the Hospital no longer takes invitations (e.g. a SUSPENDED Parent)", () => {
+    const markup = render({ availability: "UNAVAILABLE", invitation });
+    expect(markup).toContain("ยกเลิกคำเชิญ");
+    expect(markup).not.toContain("ออกลิงก์ใหม่");
+    expect(markup).not.toContain("เปลี่ยนผู้ถูกเชิญ");
   });
 
   it("titles a replacement OWNER invitation for an ACTIVE Parent without an OWNER", () => {

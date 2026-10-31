@@ -18,3 +18,4 @@ export const parentOwnerInviteeSchema = parentOwnerInvitationTargetSchema.extend
 });
 
 export type ParentOwnerInviteeInput = z.infer<typeof parentOwnerInviteeSchema>;
+export const parentOwnerInvitationCancelSchema = parentOwnerInvitationTargetSchema.extend({ membershipId: hospitalIdSchema });
