@@ -27,7 +27,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
-import { listChildOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
+import { listHospitalOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -176,7 +176,7 @@ export default async function ApplicationPage(
   const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
   const projection = projectApplicationWorkspace(actor, hospitalWorkspaces, navigation);
   // ADR-0018: a pending Child OWNER invitation is answered here, so it keeps even a Patient-only account on this page.
-  const invitations = await loadHomeSection(() => listChildOwnerInvitationsForActor(actor));
+  const invitations = await loadHomeSection(() => listHospitalOwnerInvitationsForActor(actor));
   const hasInvitations = invitations.status === "LOADED" && invitations.value.length > 0;
 
   if (

@@ -333,6 +333,22 @@ describe("Patient activation form", () => {
     expect(window.location.pathname).toBe("/activate/workforce");
   });
 
+  it("names the invited Hospital and platform ADMIN on a Parent OWNER invitation link (ADR-0024)", async () => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({
+      status: "SUCCESS", maskedName: "ส*** ใจ***", purpose: "PARENT_OWNER_ONBOARDING", hospitalName: "โรงพยาบาลชุมชนใหม่",
+    });
+
+    await act(async () => {
+      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("เปิดใช้งานบัญชีผู้ดูแลโรงพยาบาลของ ส*** ใจ***");
+    expect(container.textContent).toContain("คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นผู้ดูแล โรงพยาบาลชุมชนใหม่");
+    expect(container.querySelector("#nationalId")).not.toBeNull();
+  });
+
   it.each(["CONFLICT", "FORBIDDEN", "UNAVAILABLE", "INVALID_INPUT"])("never offers LINE onboarding for a workforce %s completion", async (code) => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
     mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส***", purpose: "ACTIVATION" });

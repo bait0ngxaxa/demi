@@ -8,7 +8,7 @@ import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transpo
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
-import { listChildOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
+import { listHospitalOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 const { mockedRedirect } = vi.hoisted(() => ({ mockedRedirect: vi.fn() }));
@@ -30,7 +30,7 @@ vi.mock("@/modules/hospital-content/services/hospital-content-work-query-service
 }));
 
 vi.mock("@/modules/hospital-service-areas/services/child-facility-service", () => ({
-  listChildOwnerInvitationsForActor: vi.fn().mockResolvedValue([]),
+  listHospitalOwnerInvitationsForActor: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/modules/hospital-service-areas/transport/server-actions", () => ({
@@ -68,9 +68,10 @@ describe("application home workspace routing", () => {
   });
 
   it("keeps a Patient-only account with a pending Child OWNER invitation on this page to answer it (ADR-0018)", async () => {
-    vi.mocked(listChildOwnerInvitationsForActor).mockResolvedValueOnce([{
+    vi.mocked(listHospitalOwnerInvitationsForActor).mockResolvedValueOnce([{
+      kind: "CHILD",
       membershipId: "44444444-4444-4444-8444-444444444444",
-      child: { id: "55555555-5555-4555-8555-555555555555", hospitalCode: "H-ABCDEF", name: "รพ.สต.บ้านใหม่" },
+      hospital: { id: "55555555-5555-4555-8555-555555555555", hospitalCode: "H-ABCDEF", name: "รพ.สต.บ้านใหม่" },
       parent: { id: "66666666-6666-4666-8666-666666666666", hospitalCode: "PARENT", name: "โรงพยาบาลแม่ข่าย" },
       invitedAt: new Date("2026-10-21T00:00:00.000Z"),
     }]);
@@ -82,6 +83,23 @@ describe("application home workspace routing", () => {
     expect(markup).toContain("จาก โรงพยาบาลแม่ข่าย (แม่ข่าย)");
     expect(markup).toContain("ตอบรับ");
     expect(markup).toContain("ปฏิเสธ");
+  });
+
+  it("names the Parent Hospital and platform ADMIN on an ADMIN Parent OWNER invitation (ADR-0024)", async () => {
+    vi.mocked(listHospitalOwnerInvitationsForActor).mockResolvedValueOnce([{
+      kind: "PARENT",
+      membershipId: "77777777-7777-4777-8777-777777777777",
+      hospital: { id: "88888888-8888-4888-8888-888888888888", hospitalCode: "H-PARENT", name: "โรงพยาบาลชุมชนใหม่" },
+      invitedAt: new Date("2026-10-31T00:00:00.000Z"),
+    }]);
+
+    const markup = renderToStaticMarkup(await ApplicationPage());
+
+    expect(mockedRedirect).not.toHaveBeenCalled();
+    expect(markup).toContain("คำเชิญเป็นผู้ดูแล โรงพยาบาลชุมชนใหม่");
+    expect(markup).toContain("จาก ผู้ดูแลระบบ DEMI · รหัสโรงพยาบาล H-PARENT");
+    expect(markup).toContain("ผู้ดูแลของโรงพยาบาลนี้");
+    expect(markup).not.toContain("(แม่ข่าย)");
   });
 
   it("keeps a multi-role Patient and OSM on the Work home by default", async () => {

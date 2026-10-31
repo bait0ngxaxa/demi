@@ -1392,7 +1392,7 @@ They require confirmed business requirements:
 - Can OSM transfer or reassign a patient?
 - Can patients change their hospital affiliation?
 - What evidence is required to verify a hospital signup?
-- ~~Which external source/provider is authoritative for the Hospital Master, and who owns production imports/updates?~~ Closed by ADR-0017 (ADMIN registration). Open instead: should ADMIN-issued per-Hospital OWNER invitations replace the public "choose a Hospital and apply" list (WB-PD-12)?
+- ~~Which external source/provider is authoritative for the Hospital Master, and who owns production imports/updates?~~ Closed by ADR-0017 (ADMIN registration). The follow-up WB-PD-12 is closed: Children get their first OWNER from the Parent OWNER ([ADR-0018](../adr/0018-parent-led-child-onboarding.md)); a Parent gets it from the public application or from a platform ADMIN invitation ([ADR-0024](../adr/0024-admin-parent-owner-invitation.md)).
 - What is the self-service reapplication rule after a rejected hospital application?
 - How are competing hospital claims and existing non-active/provider-conflicting applicant accounts reconciled?
 - Will hospital verification ever be automated, and by which approved mechanism?

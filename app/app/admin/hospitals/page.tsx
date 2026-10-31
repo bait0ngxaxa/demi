@@ -10,10 +10,16 @@ import {
   assertHospitalGovernanceCapability,
   HOSPITAL_GOVERNANCE_CAPABILITIES,
 } from "@/modules/hospital-governance/policies/hospital-governance-policy";
+import { listParentOnboardingPaths } from "@/modules/hospital-onboarding/services/parent-owner-invitation-service";
 import { listHospitalNetworkDirectoryForAdmin } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { HOSPITAL_DIRECTORY_FILTERS, HospitalNetworkDirectory, type HospitalDirectoryFilter } from "./hospital-network-directory";
+import {
+  HOSPITAL_DIRECTORY_FILTERS,
+  HospitalNetworkDirectory,
+  type HospitalDirectoryFilter,
+  type ParentOnboardingPathLabels,
+} from "./hospital-network-directory";
 
 export const metadata: Metadata = {
   title: "การกำกับดูแลโรงพยาบาล",
@@ -47,6 +53,15 @@ export default async function HospitalGovernanceDirectoryPage({
   const actor = await requirePlatformAdmin();
   const network = await listHospitalNetworkDirectoryForAdmin(actor);
   const { status } = await searchParams;
+  // ADR-0024: only a pending or ACTIVE Parent can have an open first-OWNER path; the read is bounded per call.
+  const parentIds = network
+    .filter(({ role, status: hospitalStatus }) => role === "PARENT" && (hospitalStatus === "PENDING_VERIFICATION" || hospitalStatus === "ACTIVE"))
+    .map(({ id }) => id);
+  const onboardingPaths: Record<string, ParentOnboardingPathLabels[string]> = {};
+  for (let start = 0; start < parentIds.length; start += 200) {
+    const paths = await listParentOnboardingPaths(actor, parentIds.slice(start, start + 200));
+    for (const [hospitalId, path] of paths) onboardingPaths[hospitalId] = path;
+  }
 
   return (
     <div>
@@ -59,6 +74,7 @@ export default async function HospitalGovernanceDirectoryPage({
         bulkSubmissionNonce={randomUUID()}
         filter={parseFilter(status)}
         hospitals={network}
+        onboardingPaths={onboardingPaths}
         submissionNonce={randomUUID()}
       />
     </div>

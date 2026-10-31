@@ -443,9 +443,9 @@ export async function acceptChildOwnerInvitationAction(
 ): Promise<HospitalNetworkActionState> {
   return run(
     (actor) => acceptChildOwnerInvitation(actor, { membershipId: getString(formData, "membershipId") }),
-    "ตอบรับแล้ว คุณเป็นผู้ดูแลหน่วยบริการนี้แล้ว",
+    "ตอบรับแล้ว คุณเป็นผู้ดูแลของโรงพยาบาลหรือหน่วยบริการนี้แล้ว",
     {
-      CONFLICT: "คำเชิญนี้ใช้ไม่ได้แล้ว หน่วยบริการอาจถูกยกเลิก ย้ายออกจากเครือข่าย หรือมีผู้ดูแลแล้ว",
+      CONFLICT: "คำเชิญนี้ใช้ไม่ได้แล้ว โรงพยาบาลหรือหน่วยบริการอาจถูกยกเลิก ย้ายออกจากเครือข่าย หรือมีผู้ดูแลแล้ว",
       NOT_FOUND: "ไม่พบคำเชิญนี้แล้ว",
     },
     ["/app"],
@@ -458,7 +458,7 @@ export async function declineChildOwnerInvitationAction(
 ): Promise<HospitalNetworkActionState> {
   return run(
     (actor) => declineChildOwnerInvitation(actor, { membershipId: getString(formData, "membershipId") }),
-    "ปฏิเสธคำเชิญแล้ว แม่ข่ายจะเห็นว่าคุณปฏิเสธ",
+    "ปฏิเสธคำเชิญแล้ว ผู้ส่งคำเชิญจะเห็นว่าคุณปฏิเสธ",
     { NOT_FOUND: "ไม่พบคำเชิญนี้แล้ว" },
     ["/app"],
   );

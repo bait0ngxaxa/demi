@@ -445,7 +445,8 @@ async function findReplayedRegistration(
 
 /**
  * ADR-0017/0018: Platform ADMIN registers Parent Hospitals (role PARENT); Child facilities are created by their
- * Parent OWNER. It starts PENDING_VERIFICATION so the onboarding approval stays the only activation path.
+ * Parent OWNER. It starts PENDING_VERIFICATION; its first OWNER comes from the public application and ADMIN approval
+ * or from a platform ADMIN OWNER invitation (ADR-0024).
  * Idempotent per submission nonce (N1-D5).
  */
 export async function createHospital(

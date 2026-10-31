@@ -5,6 +5,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, type ButtonVariant } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Input } from "@/components/ui/input";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
@@ -16,6 +17,22 @@ import {
 } from "@/modules/hospital-service-areas/transport/action-state";
 
 type InvitationAction = (previous: ChildOwnerInvitationActionState, formData: FormData) => Promise<ChildOwnerInvitationActionState>;
+
+/** Who invites: a Parent OWNER for its Child (ADR-0018) or platform ADMIN for a Parent Hospital (ADR-0024). */
+export type OwnerInvitationAudience = "PARENT_OWNER" | "PLATFORM_ADMIN";
+
+const resultCopy: Record<OwnerInvitationAudience, { heldForReset: string; awaitingAcceptance: string; alreadyIssued: string }> = {
+  PARENT_OWNER: {
+    heldForReset: "รอ platform ADMIN ยืนยันตัวตน บัญชีนี้จะตอบรับคำเชิญหรือเข้าสู่ระบบไม่ได้จนกว่าจะรีเซ็ตรหัสผ่านผ่านการตรวจสอบตัวตน",
+    awaitingAcceptance: "ผู้ดูแลมีบัญชี DEMI อยู่แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนหน่วยบริการจะเปิดใช้งาน",
+    alreadyIssued: "ลิงก์เดิมแสดงได้ครั้งเดียว หากยังไม่ได้ส่งมอบ ให้ออกลิงก์ใหม่จากรายการลูกข่าย",
+  },
+  PLATFORM_ADMIN: {
+    heldForReset: "บัญชีนี้ต้องคืนบัญชีโดยผู้ดูแลระบบก่อน ยืนยันตัวตนและรีเซ็ตรหัสผ่านด้วยเครื่องมือคืนบัญชี แล้วผู้ถูกเชิญจึงตอบรับคำเชิญได้ด้วยตนเอง",
+    awaitingAcceptance: "ผู้ดูแลมีบัญชี DEMI อยู่แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนโรงพยาบาลจะเปิดใช้งาน",
+    alreadyIssued: "ลิงก์เดิมแสดงได้ครั้งเดียว หากยังไม่ได้ส่งมอบ ให้ออกลิงก์ใหม่จากหน้านี้",
+  },
+};
 
 /** National ID, names and delivery mode of a Child OWNER invitee (ADR-0018 O-D6). */
 export function ChildOwnerInviteeFields({ idPrefix }: { idPrefix: string }): React.JSX.Element {
@@ -68,13 +85,20 @@ export function ChildOwnerDeliveryModeField({ idPrefix }: { idPrefix: string }):
   );
 }
 
-export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }> }): React.JSX.Element {
+export function InvitationResult({
+  audience = "PARENT_OWNER",
+  state,
+}: {
+  audience?: OwnerInvitationAudience;
+  state: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }>;
+}): React.JSX.Element {
   const invitation = state.invitation;
+  const copy = resultCopy[audience];
   if (invitation.kind === "ADMIN_RESET_REQUIRED") {
     return (
       <Alert className="mt-4" variant="warning">
         <p className="font-semibold">{state.message}</p>
-        <p className="mt-1">รอ platform ADMIN ยืนยันตัวตน บัญชีนี้จะตอบรับคำเชิญหรือเข้าสู่ระบบไม่ได้จนกว่าจะรีเซ็ตรหัสผ่านผ่านการตรวจสอบตัวตน</p>
+        <p className="mt-1">{copy.heldForReset}</p>
       </Alert>
     );
   }
@@ -82,7 +106,7 @@ export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitatio
     return (
       <Alert className="mt-4" variant="success">
         <p className="font-semibold">{state.message}</p>
-        <p className="mt-1">ผู้ดูแลมีบัญชี DEMI อยู่แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนหน่วยบริการจะเปิดใช้งาน</p>
+        <p className="mt-1">{copy.awaitingAcceptance}</p>
       </Alert>
     );
   }
@@ -90,7 +114,7 @@ export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitatio
     return (
       <Alert className="mt-4" variant="info">
         <p className="font-semibold">คำขอนี้ถูกบันทึกไปแล้ว</p>
-        <p className="mt-1">ลิงก์เดิมแสดงได้ครั้งเดียว หากยังไม่ได้ส่งมอบ ให้ออกลิงก์ใหม่จากรายการลูกข่าย</p>
+        <p className="mt-1">{copy.alreadyIssued}</p>
       </Alert>
     );
   }
@@ -122,8 +146,10 @@ export function InvitationResult({ state }: { state: Extract<ChildOwnerInvitatio
  */
 export function ChildOwnerInvitationForm({
   action,
+  audience = "PARENT_OWNER",
   children,
   className,
+  confirmation,
   hidden,
   idempotent = false,
   onSuccess,
@@ -131,8 +157,11 @@ export function ChildOwnerInvitationForm({
   submitVariant = "secondary",
 }: {
   action: InvitationAction;
+  audience?: OwnerInvitationAudience;
   children?: ReactNode;
   className?: string;
+  /** Asks in a dialog before submitting (never `window.confirm`). */
+  confirmation?: { title: string; description: string; confirmLabel: string; destructive?: boolean };
   hidden: Record<string, string>;
   /** The submission carries a nonce the server deduplicates, so an unconfirmed request may be resent. */
   idempotent?: boolean;
@@ -142,7 +171,7 @@ export function ChildOwnerInvitationForm({
   submitVariant?: ButtonVariant;
 }): React.JSX.Element {
   const router = useRouter();
-  const form = useRef<HTMLFormElement>(null);
+  const container = useRef<HTMLDivElement>(null);
   const [state, dispatch, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(action, initialChildOwnerInvitationActionState);
   const handled = useRef<ChildOwnerInvitationActionState | null>(null);
 
@@ -151,29 +180,50 @@ export function ChildOwnerInvitationForm({
     handled.current = state;
     if (state.status === "SUCCESS") {
       notify.success("บันทึกคำเชิญผู้ดูแลแล้ว");
-      form.current?.reset();
+      container.current?.querySelector("form")?.reset();
       onSuccess?.(state);
       router.refresh();
     }
   }, [onSuccess, router, state]);
 
+  const fields = (
+    <>
+      {Object.entries(hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
+      {children}
+      <Button
+        className={children ? "mt-4" : undefined}
+        disabled={pending || unknownOutcome}
+        loading={pending}
+        size="compact"
+        type="submit"
+        variant={submitVariant}
+      >
+        {pending ? "กำลังบันทึก..." : submitLabel}
+      </Button>
+    </>
+  );
+
   return (
-    <div className={className}>
-      <form action={dispatch} ref={form}>
-        {Object.entries(hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
-        {children}
-        <Button
-          className={children ? "mt-4" : undefined}
-          disabled={pending || unknownOutcome}
-          loading={pending}
-          size="compact"
-          type="submit"
-          variant={submitVariant}
+    <div className={className} ref={container}>
+      {confirmation ? (
+        <ConfirmableActionForm
+          action={dispatch}
+          confirmation={{
+            title: confirmation.title,
+            description: confirmation.description,
+            confirmLabel: confirmation.confirmLabel,
+            confirmVariant: confirmation.destructive ? "destructive" : "default",
+          }}
+          outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : unknownOutcome ? "unknown" : "idle"}
+          pending={pending}
+          resultKey={state}
         >
-          {pending ? "กำลังบันทึก..." : submitLabel}
-        </Button>
-      </form>
-      {state.status === "SUCCESS" && !onSuccess ? <InvitationResult state={state} /> : null}
+          {fields}
+        </ConfirmableActionForm>
+      ) : (
+        <form action={dispatch}>{fields}</form>
+      )}
+      {state.status === "SUCCESS" && !onSuccess ? <InvitationResult audience={audience} state={state} /> : null}
       {state.status === "ERROR" ? (
         <Alert className="mt-3" role="alert" variant={state.code === "CONFLICT" || state.code === "NOT_FOUND" ? "warning" : "danger"}>
           {state.message}
