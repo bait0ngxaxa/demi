@@ -2,6 +2,7 @@ import "server-only";
 
 import { type PrismaClient } from "@prisma/client";
 
+import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -21,14 +22,25 @@ export type ParentChildHospitalReportingAuditReason =
   | "SCOPE_UNAVAILABLE"
   | "UNAVAILABLE";
 
-export async function recordParentChildHospitalReportingAudit(input: {
+type ParentChildHospitalReportingAuditInput = {
   actor?: ActorContext | null;
   parentHospitalId?: string;
   hospitalId?: string;
   operation?: ParentChildHospitalReportingAuditOperation;
   outcome: ParentChildHospitalReportingAuditOutcome;
   reason?: ParentChildHospitalReportingAuditReason;
-}, database?: PrismaClient): Promise<void> {
+  /** ADR-0025: the Child was exported inside a network workbook identified by `exportReference`. */
+  network?: { scope: "NETWORK_EXPORT"; exportReference: string };
+};
+
+export async function recordParentChildHospitalReportingAudit(
+  input: ParentChildHospitalReportingAuditInput,
+  database?: PrismaClient,
+): Promise<void> {
+  await recordAuditEvent(parentChildHospitalReportingAuditEvent(input), database);
+}
+
+export function parentChildHospitalReportingAuditEvent(input: ParentChildHospitalReportingAuditInput): AuditEventInput {
   const actorUserId = input.actor?.userId
     ? hospitalReportHospitalIdSchema.safeParse(input.actor.userId)
     : null;
@@ -41,7 +53,7 @@ export async function recordParentChildHospitalReportingAudit(input: {
 
   const isExport = input.operation === "export";
 
-  await recordAuditEvent({
+  return {
     actorUserId: actorUserId?.success ? actorUserId.data : null,
     action: `parent_child_reporting.${isExport ? "export" : "access"}.${input.outcome}`,
     resourceType: hospitalId?.success ? "Hospital" : "ParentChildHospitalReporting",
@@ -51,8 +63,9 @@ export async function recordParentChildHospitalReportingAudit(input: {
       outcome: input.outcome,
       ...(parentHospitalId?.success ? { parentHospitalId: parentHospitalId.data } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.network ? { scope: input.network.scope, exportReference: input.network.exportReference } : {}),
     },
-  }, database);
+  };
 }
 
 export function parentChildHospitalReportingAuditReasonForError(

@@ -34,6 +34,7 @@ import {
   ForbiddenError,
   InfrastructureError,
   NotFoundError,
+  ValidationError,
 } from "@/shared/errors/application-error";
 
 import {
@@ -56,15 +57,22 @@ import type {
   HospitalReportingPageProjection,
   HospitalReportingServiceProcessSummary,
   HospitalReportingSummary,
+  NetworkReportingDataset,
+  NetworkReportingHospital,
+  NetworkReportingSection,
   ParentChildHospitalReportingProjection,
 } from "../projections/hospital-report-projection";
 import {
   hospitalReportExportRequestSchema,
   hospitalReportPageRequestSchema,
+  networkReportExportPreviewRequestSchema,
+  networkReportExportRequestSchema,
   parentChildHospitalReportRequestSchema,
   type HospitalReportCohort,
   type HospitalReportFilters,
+  type NetworkReportExportRequest,
 } from "../schemas/hospital-report-schemas";
+import { resolveNetworkReportExportContext } from "./network-report-access-service";
 import { resolveParentChildHospitalReportAccessContext } from "./parent-child-hospital-report-access-service";
 import {
   parentChildHospitalReportingAuditReasonForError,
@@ -82,13 +90,43 @@ export const HOSPITAL_REPORT_EXPORT_MAX_FOLLOWUPS = 10_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_GOAL_PLANS = 5_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_ACTIVITY_PROGRESS = 50_000;
 export const HOSPITAL_REPORT_EXPORT_MAX_GOAL_ITEMS = 20_000;
+/** ADR-0025: one network workbook holds at most this many Programs in total; the other limits scale ×5. */
+export const NETWORK_REPORT_EXPORT_MAX_PROGRAMS = 5_000;
+const NETWORK_REPORT_EXPORT_LIMIT_SCALE = 5;
 export const HOSPITAL_REPORTING_CURSOR_SECRET_ENV = "DEMI_HOSPITAL_REPORTING_CURSOR_SECRET";
+
+type ExportLimits = {
+  programs: number;
+  followups: number;
+  goalPlans: number;
+  activityProgress: number;
+  goalItems: number;
+};
+
+const HOSPITAL_REPORT_EXPORT_LIMITS: ExportLimits = {
+  programs: HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS,
+  followups: HOSPITAL_REPORT_EXPORT_MAX_FOLLOWUPS,
+  goalPlans: HOSPITAL_REPORT_EXPORT_MAX_GOAL_PLANS,
+  activityProgress: HOSPITAL_REPORT_EXPORT_MAX_ACTIVITY_PROGRESS,
+  goalItems: HOSPITAL_REPORT_EXPORT_MAX_GOAL_ITEMS,
+};
+
+const NETWORK_REPORT_EXPORT_LIMITS: ExportLimits = {
+  programs: NETWORK_REPORT_EXPORT_MAX_PROGRAMS,
+  followups: HOSPITAL_REPORT_EXPORT_MAX_FOLLOWUPS * NETWORK_REPORT_EXPORT_LIMIT_SCALE,
+  goalPlans: HOSPITAL_REPORT_EXPORT_MAX_GOAL_PLANS * NETWORK_REPORT_EXPORT_LIMIT_SCALE,
+  activityProgress: HOSPITAL_REPORT_EXPORT_MAX_ACTIVITY_PROGRESS * NETWORK_REPORT_EXPORT_LIMIT_SCALE,
+  goalItems: HOSPITAL_REPORT_EXPORT_MAX_GOAL_ITEMS * NETWORK_REPORT_EXPORT_LIMIT_SCALE,
+};
 
 const REPORT_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
   maxWait: 5_000,
   timeout: 25_000,
 } as const;
+
+// A network workbook reads up to five times the single-Hospital bound in one snapshot.
+const NETWORK_REPORT_TRANSACTION_OPTIONS = { ...REPORT_TRANSACTION_OPTIONS, timeout: 120_000 } as const;
 // Progress buckets changed meaning; older continuations must restart under the new partition.
 const REPORT_CURSOR_VERSION = 5;
 const REPORT_CURSOR_TTL_MS = 15 * 60 * 1000;
@@ -143,17 +181,20 @@ const cursorPayloadSchema = z
   })
   .strict();
 
-/** Phase F: the ACTIVE cohort (default) excludes relationships whose care ended; INCLUDE_ENDED keeps their history. */
+/**
+ * Phase F: the ACTIVE cohort (default) excludes relationships whose care ended; INCLUDE_ENDED keeps their history.
+ * A list of Hospitals (ADR-0025 network export bounds) applies the same predicate to each of them.
+ */
 const reportRelationshipWhere = (
-  hospitalId: string,
+  hospitalId: string | readonly string[],
   cohort: HospitalReportCohort,
 ): Prisma.PatientHospitalRelationshipWhereInput => ({
-  hospitalId,
+  hospitalId: typeof hospitalId === "string" ? hospitalId : { in: [...hospitalId] },
   ...(cohort === "ACTIVE" ? activePatientHospitalRelationshipWhere : {}),
 });
 
 const reportHospitalProgramWhere = (
-  hospitalId: string,
+  hospitalId: string | readonly string[],
   cohort: HospitalReportCohort = "ACTIVE",
 ): Prisma.PatientProgramWhereInput => ({
   patientHospitalRelationship: { is: reportRelationshipWhere(hospitalId, cohort) },
@@ -958,10 +999,11 @@ function projectParentChildHospitalReportingContent(
 async function runConsistentRead<T>(
   database: HospitalReportQueryDatabase | undefined,
   operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+  options: typeof REPORT_TRANSACTION_OPTIONS | typeof NETWORK_REPORT_TRANSACTION_OPTIONS = REPORT_TRANSACTION_OPTIONS,
 ): Promise<T> {
   const client = database ?? getPrisma();
   if ("$transaction" in client && typeof client.$transaction === "function") {
-    return client.$transaction(operation, REPORT_TRANSACTION_OPTIONS);
+    return client.$transaction(operation, options);
   }
   return operation(client);
 }
@@ -1321,37 +1363,35 @@ export async function getParentChildHospitalReportingSummaryForExport(
   }
 }
 
-function assertExportBounds(input: {
-  programs: number;
-  followups: number;
-  goalPlans: number;
-  activityProgress: number;
-  goalItems: number;
-}): void {
-  if (input.programs > HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS) {
-    throw new HospitalReportExportLimitError(
-      `ส่งออกได้ไม่เกิน ${HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS.toLocaleString("th-TH")} โปรแกรมต่อไฟล์`,
-    );
+function programLimitError(limits: ExportLimits): HospitalReportExportLimitError {
+  return new HospitalReportExportLimitError(
+    `ส่งออกได้ไม่เกิน ${limits.programs.toLocaleString("th-TH")} โปรแกรมต่อไฟล์`,
+  );
+}
+
+function assertExportBounds(input: ExportLimits, limits: ExportLimits = HOSPITAL_REPORT_EXPORT_LIMITS): void {
+  if (input.programs > limits.programs) {
+    throw programLimitError(limits);
   }
-  if (input.followups > HOSPITAL_REPORT_EXPORT_MAX_FOLLOWUPS) {
+  if (input.followups > limits.followups) {
     throw new HospitalReportExportLimitError("จำนวนบันทึกติดตามเกินขีดจำกัดการส่งออกที่รองรับ");
   }
-  if (input.goalPlans > HOSPITAL_REPORT_EXPORT_MAX_GOAL_PLANS) {
+  if (input.goalPlans > limits.goalPlans) {
     throw new HospitalReportExportLimitError("จำนวนแผนสุขภาพเกินขีดจำกัดการส่งออกที่รองรับ");
   }
-  if (input.activityProgress > HOSPITAL_REPORT_EXPORT_MAX_ACTIVITY_PROGRESS) {
+  if (input.activityProgress > limits.activityProgress) {
     throw new HospitalReportExportLimitError("จำนวนรายการความคืบหน้ากิจกรรมเกินขีดจำกัดการส่งออกที่รองรับ");
   }
-  if (input.goalItems > HOSPITAL_REPORT_EXPORT_MAX_GOAL_ITEMS) {
+  if (input.goalItems > limits.goalItems) {
     throw new HospitalReportExportLimitError("จำนวนเป้าหมายกิจกรรมเกินขีดจำกัดการส่งออกที่รองรับ");
   }
 }
 
 async function countExportSourceRows(
   database: HospitalReportQueryDatabase,
-  hospitalId: string,
+  hospitalId: string | readonly string[],
   cohort: HospitalReportCohort = "ACTIVE",
-): Promise<{ programs: number; followups: number; goalPlans: number; activityProgress: number; goalItems: number }> {
+): Promise<ExportLimits> {
   const programWhere = reportHospitalProgramWhere(hospitalId, cohort);
   const followupWhere: Prisma.PatientFollowupWhereInput = {
     patientProgram: { is: programWhere },
@@ -1369,6 +1409,42 @@ async function countExportSourceRows(
     database.patientGoalItem.count({ where: { goalPlan: { is: goalPlanWhere } } }),
   ]);
   return { programs, followups, goalPlans, activityProgress, goalItems };
+}
+
+/** One Hospital's export Program records in the workbook's row order; callers have already authorized it. */
+async function loadExportProgramRecords(
+  database: HospitalReportQueryDatabase,
+  hospitalId: string,
+  cohort: HospitalReportCohort,
+  limits: ExportLimits,
+): Promise<HospitalReportExportProgramRecord[]> {
+  const records = await database.patientProgram.findMany({
+    where: reportHospitalProgramWhere(hospitalId, cohort),
+    orderBy: [{ startedAt: "desc" }, { id: "desc" }],
+    take: limits.programs + 1,
+    select: hospitalReportExportProgramSelect,
+  });
+  if (records.length > limits.programs) throw programLimitError(limits);
+  return records;
+}
+
+/** Batched (not per Program) weekly exercise and round report reads, then the shared row projection. */
+async function toExportProgramRows(
+  database: HospitalReportQueryDatabase,
+  records: readonly HospitalReportExportProgramRecord[],
+): Promise<HospitalReportProgramRow[]> {
+  const [weeklyExercise, roundReports] = await Promise.all([
+    loadWeeklyExerciseFacts(database, records),
+    loadRoundReports(database, records.map((record) => record.id)),
+  ]);
+  return records.map((record) =>
+    toHospitalReportProgramRow(
+      record,
+      { goalPlans: record.goalPlans.length, followups: record.followups.length },
+      weeklyExercise.get(record.id)!,
+      roundReports.get(record.id) ?? [],
+    ),
+  );
 }
 
 async function loadHospitalReportingDataset(
@@ -1390,33 +1466,10 @@ async function loadHospitalReportingDataset(
   assertExportBounds(bounds);
 
   const [programRecords, counts] = await Promise.all([
-    database.patientProgram.findMany({
-      where: reportHospitalProgramWhere(access.hospital.id, cohort),
-      orderBy: [{ startedAt: "desc" }, { id: "desc" }],
-      take: HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS + 1,
-      select: hospitalReportExportProgramSelect,
-    }),
+    loadExportProgramRecords(database, access.hospital.id, cohort, HOSPITAL_REPORT_EXPORT_LIMITS),
     loadSummary(database, access.hospital.id, cohort),
   ]);
-
-  if (programRecords.length > HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS) {
-    throw new HospitalReportExportLimitError(
-      `ส่งออกได้ไม่เกิน ${HOSPITAL_REPORT_EXPORT_MAX_PROGRAMS.toLocaleString("th-TH")} โปรแกรมต่อไฟล์`,
-    );
-  }
-
-  const childCounts = new Map(
-    programRecords.map((record) => [record.id, { goalPlans: record.goalPlans.length, followups: record.followups.length }]),
-  );
-  const [weeklyExercise, roundReports] = await Promise.all([loadWeeklyExerciseFacts(database, programRecords), loadRoundReports(database, programRecords.map((record) => record.id))]);
-  const programs = programRecords.map((record) =>
-    toHospitalReportProgramRow(
-      record,
-      childCounts.get(record.id) ?? { goalPlans: 0, followups: 0 },
-      weeklyExercise.get(record.id)!,
-      roundReports.get(record.id) ?? [],
-    ),
-  );
+  const programs = await toExportProgramRows(database, programRecords);
 
   return {
     hospital: {
@@ -1531,8 +1584,152 @@ export async function getHospitalReportExportPreview(
   }
 }
 
+function sumReportingSummaries(summaries: readonly HospitalReportingSummary[]): HospitalReportingSummary {
+  const total = (value: (summary: HospitalReportingSummary) => number): number =>
+    summaries.reduce((sum, summary) => sum + value(summary), 0);
+  return {
+    patientHospitalRelationships: {
+      grain: "PATIENT_HOSPITAL_RELATIONSHIP",
+      value: total((summary) => summary.patientHospitalRelationships.value),
+    },
+    relationshipsWithoutProgram: {
+      grain: "PATIENT_HOSPITAL_RELATIONSHIP",
+      value: total((summary) => summary.relationshipsWithoutProgram.value),
+    },
+    programs: {
+      grain: "PATIENT_PROGRAM",
+      total: total((summary) => summary.programs.total),
+      active: total((summary) => summary.programs.active),
+      completed: total((summary) => summary.programs.completed),
+    },
+  };
+}
+
+async function loadNetworkReportingDataset(
+  actor: ActorContext | null | undefined,
+  request: NetworkReportExportRequest,
+  transaction: Prisma.TransactionClient,
+): Promise<NetworkReportingDataset> {
+  // Re-resolved in this snapshot immediately before any row is read: an association that ended refuses the export.
+  const access = await resolveNetworkReportExportContext(actor, request, transaction);
+  const targetIds = access.targets.map(({ id }) => id);
+  assertExportBounds(await countExportSourceRows(transaction, targetIds, access.cohort), NETWORK_REPORT_EXPORT_LIMITS);
+
+  // One batch per Hospital (same projection, cohort and order as its single export), then shared batched facts.
+  const loaded: Array<{ hospital: NetworkReportingHospital; counts: HospitalReportingSummary; records: HospitalReportExportProgramRecord[] }> = [];
+  for (const hospital of access.targets) {
+    const [records, counts] = await Promise.all([
+      loadExportProgramRecords(transaction, hospital.id, access.cohort, NETWORK_REPORT_EXPORT_LIMITS),
+      loadSummary(transaction, hospital.id, access.cohort),
+    ]);
+    loaded.push({ hospital, counts, records });
+  }
+  const allRecords = loaded.flatMap(({ records }) => records);
+  if (allRecords.length > NETWORK_REPORT_EXPORT_LIMITS.programs) throw programLimitError(NETWORK_REPORT_EXPORT_LIMITS);
+
+  const rows = await toExportProgramRows(transaction, allRecords);
+  let offset = 0;
+  const hospitals = loaded.map(({ hospital, counts, records }): NetworkReportingSection => {
+    const programs = rows.slice(offset, offset + records.length);
+    offset += records.length;
+    return { hospital, counts, programs };
+  });
+
+  return {
+    parent: access.parent,
+    cohort: access.cohort,
+    counts: sumReportingSummaries(hospitals.map(({ counts }) => counts)),
+    hospitals,
+  };
+}
+
+/**
+ * ADR-0025: the Parent and the selected network Hospitals as one dataset, read in one RepeatableRead snapshot.
+ * The caller builds the workbook, re-checks authority and audits.
+ */
+export async function getNetworkReportingDatasetForExport(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<NetworkReportingDataset> {
+  const parsed = networkReportExportRequestSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง");
+
+  try {
+    return await runConsistentRead(
+      dependencies.database ?? getPrisma(),
+      (transaction) => loadNetworkReportingDataset(actor, parsed.data, transaction),
+      NETWORK_REPORT_TRANSACTION_OPTIONS,
+    );
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError && error.code !== "INFRASTRUCTURE") throw error;
+    throw new InfrastructureError("Network report source data could not be collected");
+  }
+}
+
+export type NetworkReportExportPreviewHospital = NetworkReportingHospital & {
+  relationships: number;
+  relationshipsWithoutProgram: number;
+  programs: number;
+};
+
+export type NetworkReportExportPreview = {
+  parent: { id: string; hospitalCode: string; name: string };
+  cohort: HospitalReportCohort;
+  accessBasis: "OWNER" | "MEMBER";
+  maxPrograms: number;
+  /** Every eligible target: the Parent first, then Children by name. */
+  hospitals: NetworkReportExportPreviewHospital[];
+  totals: { relationships: number; relationshipsWithoutProgram: number; programs: number };
+};
+
+/** ADR-0025: per-Hospital counts the network workbook would hold, under the same access as the export. */
+export async function getNetworkReportExportPreview(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: HospitalReportQueryDependencies = {},
+): Promise<NetworkReportExportPreview> {
+  const parsed = networkReportExportPreviewRequestSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("ข้อมูลคำขอส่งออกรายงานไม่ถูกต้อง");
+
+  try {
+    return await runConsistentRead(dependencies.database ?? getPrisma(), async (transaction) => {
+      const access = await resolveNetworkReportExportContext(actor, { ...parsed.data, hospitalIds: "ALL" }, transaction);
+      const hospitals: NetworkReportExportPreviewHospital[] = [];
+      for (const hospital of access.targets) {
+        const summary = await loadSummary(transaction, hospital.id, access.cohort);
+        hospitals.push({
+          ...hospital,
+          relationships: summary.patientHospitalRelationships.value,
+          relationshipsWithoutProgram: summary.relationshipsWithoutProgram.value,
+          programs: summary.programs.total,
+        });
+      }
+      const total = (key: "relationships" | "relationshipsWithoutProgram" | "programs"): number =>
+        hospitals.reduce((sum, hospital) => sum + hospital[key], 0);
+      return {
+        parent: access.parent,
+        cohort: access.cohort,
+        accessBasis: access.accessBasis,
+        maxPrograms: NETWORK_REPORT_EXPORT_MAX_PROGRAMS,
+        hospitals,
+        totals: {
+          relationships: total("relationships"),
+          relationshipsWithoutProgram: total("relationshipsWithoutProgram"),
+          programs: total("programs"),
+        },
+      };
+    });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError && error.code !== "INFRASTRUCTURE") throw error;
+    throw new InfrastructureError("Network report export preview could not be loaded");
+  }
+}
+
 export const hospitalReportQueryInternals = {
   assertExportBounds,
+  NETWORK_REPORT_EXPORT_LIMITS,
+  sumReportingSummaries,
   countExportSourceRows,
   countProgramRelatedRows,
   reportCursorWhere,
