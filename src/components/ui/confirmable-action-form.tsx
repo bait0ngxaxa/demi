@@ -23,6 +23,7 @@ type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "child
   children: ReactNode;
   confirmation: ConfirmationDetails;
   outcome: ConfirmableActionOutcome;
+  /** New identity for a confirmed result; stays unchanged when the prior result is unknown. */
   resultKey: unknown;
   pending: boolean;
   requiresConfirmation?: boolean;
@@ -47,6 +48,7 @@ export function ConfirmableActionForm({
   const waitingForResultRef = useRef(false);
   const sawPendingRef = useRef(false);
   const resultAtSubmitRef = useRef<unknown>(null);
+  const unknownResultKeyRef = useRef<{ key: unknown } | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [awaitingResult, setAwaitingResult] = useState(false);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
@@ -55,6 +57,18 @@ export function ConfirmableActionForm({
   useEffect(() => {
     if (!awaitingResult) {
       waitingForResultRef.current = false;
+      const unknownResult = unknownResultKeyRef.current;
+      if (
+        unknownOutcome &&
+        unknownResult &&
+        !pending &&
+        (outcome === "success" || outcome === "error") &&
+        !Object.is(resultKey, unknownResult.key)
+      ) {
+        unknownResultKeyRef.current = null;
+        setUnknownOutcome(false);
+        setDialogOpen(false);
+      }
       return;
     }
 
@@ -75,13 +89,15 @@ export function ConfirmableActionForm({
       outcome === "idle" ||
       outcome === "unknown"
     ) {
+      unknownResultKeyRef.current = { key: resultKey };
       setUnknownOutcome(true);
       return;
     }
 
+    unknownResultKeyRef.current = null;
     setUnknownOutcome(false);
     setDialogOpen(false);
-  }, [awaitingResult, outcome, pending, resultKey]);
+  }, [awaitingResult, outcome, pending, resultKey, unknownOutcome]);
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     if (bypassConfirmationRef.current) {

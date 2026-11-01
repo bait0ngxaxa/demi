@@ -66,21 +66,28 @@ function Harness({ runAction, withRequiredField = false }: { runAction: ActionRu
 }
 
 function GuardedHarness({ runAction }: { runAction: ActionRunner }): React.JSX.Element {
-  const [state, action, pending, unknownOutcome] = useMutationActionState<ActionState, FormData>(
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<ActionState, FormData>(
     async (_previous, formData) => runAction(formData),
     initialState,
   );
 
   return (
-    <ConfirmableActionForm
-      action={action}
-      confirmation={{ title: "ยืนยันการเปลี่ยนแปลง", confirmLabel: "ยืนยันรายการ" }}
-      outcome={unknownOutcome ? "unknown" : outcomeFor(state)}
-      pending={pending}
-      resultKey={state}
-    >
-      <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
-    </ConfirmableActionForm>
+    <>
+      <ConfirmableActionForm
+        action={action}
+        confirmation={{ title: "ยืนยันการเปลี่ยนแปลง", confirmLabel: "ยืนยันรายการ" }}
+        outcome={unknownOutcome ? "unknown" : outcomeFor(state)}
+        pending={pending}
+        resultKey={state}
+      >
+        <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
+      </ConfirmableActionForm>
+      {unknownOutcome ? (
+        <Button data-testid="resend-unconfirmed" disabled={pending} onClick={resendUnconfirmed} type="button">
+          ส่งคำขอเดิมอีกครั้ง
+        </Button>
+      ) : null}
+    </>
   );
 }
 
@@ -385,5 +392,43 @@ describe("ConfirmableActionForm", () => {
     expect(getConfirmationButton().disabled).toBe(true);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
+  });
+
+  it("keeps the unknown state locked until a recovered request returns a new confirmed result", async () => {
+    const runAction = vi.fn<ActionRunner>()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ status: "ERROR", code: "CONFLICT", message: "สถานะเปลี่ยนแล้ว" });
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(createElement(GuardedHarness, { runAction }));
+    });
+
+    const submitButton = getButton("[data-testid='submit-action']");
+    submit(submitButton);
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledOnce();
+    expect(getConfirmationButton().disabled).toBe(true);
+    expect(submitButton.matches(":disabled")).toBe(true);
+
+    const closeButton = Array.from(container.querySelectorAll<HTMLButtonElement>("dialog button"))
+      .find((button) => button.textContent?.includes("ปิดหน้าต่าง"));
+    if (!closeButton) throw new Error("Missing unknown-outcome close action");
+    clickButton(closeButton);
+    expect(container.querySelector("dialog")).toBeNull();
+
+    clickButton(getButton("[data-testid='resend-unconfirmed']"));
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledTimes(2);
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(submitButton.matches(":disabled")).toBe(false);
+
+    submit(submitButton);
+    expect(getConfirmationButton().disabled).toBe(false);
+    expect(runAction).toHaveBeenCalledTimes(2);
   });
 });

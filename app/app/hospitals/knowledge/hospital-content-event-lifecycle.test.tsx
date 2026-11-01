@@ -391,29 +391,68 @@ describe("Hospital Knowledge edit form event lifecycle regression", () => {
     expect(mocks.push).toHaveBeenCalledExactlyOnceWith(`/app/hospitals/knowledge?hospitalId=${hospital.id}`);
   });
 
-  it("does not run a lifecycle mutation until confirmed and keeps an uncertain result open without retry", async () => {
+  it.each([
+    {
+      label: "unknown outcome",
+      firstOutcome: { status: "UNCONFIRMED" },
+      expectedMessage: "ยังยืนยันผลไม่ได้",
+    },
+    {
+      label: "confirmed conflict",
+      firstOutcome: { status: "ERROR", code: "CONFLICT", message: "รายการเปลี่ยนแปลงแล้ว" },
+      expectedMessage: "รายการเปลี่ยนแปลงแล้ว",
+    },
+  ])("requires close, reconciliation, and a fresh confirmation after $label", async ({ firstOutcome, expectedMessage }) => {
     await mount(createElement(HospitalContentDetailWorkspace, { content: content() }));
     act(() => button("เก็บถาวร").click());
     expect(mocks.archive).not.toHaveBeenCalled();
-    let dialog = container?.querySelector("dialog");
-    if (!dialog) throw new Error("Missing archive confirmation");
-    button("ยกเลิก", dialog).click();
+    const initialDialog = container?.querySelector("dialog");
+    if (!initialDialog) throw new Error("Missing archive confirmation");
+    button("ยกเลิก", initialDialog).click();
     expect(mocks.archive).not.toHaveBeenCalled();
 
-    mocks.archive.mockResolvedValue({ status: "UNCONFIRMED" });
+    mocks.archive.mockResolvedValue(firstOutcome);
     act(() => button("เก็บถาวร").click());
-    dialog = container?.querySelector("dialog");
-    if (!dialog) throw new Error("Missing archive confirmation");
+    const failedDialog = container?.querySelector("dialog");
+    if (!failedDialog) throw new Error("Missing archive confirmation");
     await act(async () => {
-      button("เก็บถาวร", dialog).click();
+      button("เก็บถาวร", failedDialog).click();
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
 
     expect(mocks.archive).toHaveBeenCalledOnce();
     expect(container?.querySelector("dialog")).not.toBeNull();
-    expect(container?.textContent).toContain("ยังยืนยันผลไม่ได้");
-    const confirmButton = button("เก็บถาวร", container?.querySelector("dialog") as HTMLDialogElement);
+    expect(container?.textContent).toContain(expectedMessage);
+    const lockedDialog = container?.querySelector("dialog");
+    if (!lockedDialog) throw new Error("Missing locked archive confirmation");
+    const confirmButton = button("เก็บถาวร", lockedDialog);
     expect(confirmButton.disabled).toBe(true);
+
+    act(() => button("ยกเลิก", lockedDialog).click());
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(mocks.archive).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      button("โหลดข้อมูลปัจจุบัน").click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    act(() => button("ใช้ข้อมูลปัจจุบันเริ่มแก้ไข").click());
+    expect(mocks.archive).toHaveBeenCalledOnce();
+
+    mocks.archive.mockResolvedValueOnce({
+      status: "SUCCESS",
+      result: { outcome: "ARCHIVED", content: content({ status: HospitalContentStatus.ARCHIVED }) },
+    });
+    act(() => button("เก็บถาวร").click());
+    const retryDialog = container?.querySelector("dialog");
+    if (!retryDialog) throw new Error("Missing new archive confirmation after reconciliation");
+    await act(async () => {
+      button("เก็บถาวร", retryDialog).click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.archive).toHaveBeenCalledTimes(2);
+    expect(container?.querySelector("dialog")).toBeNull();
   });
 
   it("blocks navigation while a confirmed lifecycle mutation is pending", async () => {
