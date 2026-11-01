@@ -171,7 +171,7 @@ describe("import result UI", () => {
     const markup = render(mixed, false);
 
     expect(markup).not.toContain("/app/patients/assign-osm");
-    expect(markup).toContain("เจ้าของโรงพยาบาลเป็นผู้กำหนด อสม. หลังนำเข้า");
+    expect(markup).toContain("เจ้าหน้าที่โรงพยาบาลเป็นผู้กำหนด อสม. หลังนำเข้า");
     expect(markup).toContain("ดาวน์โหลดแถวที่ต้องแก้ไข");
   });
 

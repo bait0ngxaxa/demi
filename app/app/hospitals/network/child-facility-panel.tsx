@@ -216,7 +216,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
               className="mt-3"
               confirmation={{
                 title: `นำ ${child.name} ออกจากเครือข่ายหรือไม่`,
-                description: "สิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้จะสิ้นสุดทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
+                description: "เจ้าของและเจ้าหน้าที่ของแม่ข่ายจะหมดสิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้ทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
                 confirmLabel: "นำออกจากเครือข่าย",
                 destructive: true,
               }}

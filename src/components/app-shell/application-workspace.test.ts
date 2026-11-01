@@ -97,6 +97,11 @@ describe("application workspace projection", () => {
     expect(hrefs(owner, false)).not.toContain("/app/hospitals/reporting?scope=network");
     expect(hrefs(member, true)).toContain("/app/hospitals/reporting?scope=network");
     expect(hrefs(member, false)).not.toContain("/app/hospitals/reporting?scope=network");
+    // Network management stays with the Parent OWNER.
+    const parentHrefs = (projectionActor: ActorContext) =>
+      projectApplicationWorkspace(projectionActor, [workspace({ hasActiveDirectChildren: true, networkRole: "PARENT" })]).hospitals[0]?.actions.map(({ href }) => href);
+    expect(parentHrefs(owner)).toContain(`/app/hospitals/network?hospitalId=${hospitalId}`);
+    expect(parentHrefs(member)).not.toContain(`/app/hospitals/network?hospitalId=${hospitalId}`);
     for (const role of [Role.ADMIN, Role.OSM, Role.PATIENT]) {
       expect(hrefs(actor({ roles: [role] }), true)).not.toContain("/app/hospitals/reporting?scope=network");
     }

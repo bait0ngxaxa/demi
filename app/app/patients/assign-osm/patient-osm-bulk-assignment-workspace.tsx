@@ -367,7 +367,7 @@ export function PatientOsmBulkAssignmentWorkspace({
   return (
     <div className="max-w-5xl">
       <PageHeader
-        actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
+        actions={<StatusBadge variant="info">เจ้าหน้าที่โรงพยาบาล</StatusBadge>}
         breadcrumbs={[
           { label: "รายชื่อผู้ป่วย", href: `/app/patients?hospitalId=${encodeURIComponent(selectedScope.hospitalId)}` },
           { label: "กำหนด อสม. หลายคน" },

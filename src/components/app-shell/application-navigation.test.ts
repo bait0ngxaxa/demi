@@ -258,6 +258,36 @@ describe("UI-4 task-based navigation per actor", () => {
     expect(hrefs).not.toContain("/app/patients/access-requests");
   });
 
+  it("gives an active Hospital MEMBER the operational entries of ADR-0026 and no OWNER-only entry", () => {
+    const memberHrefs = allHrefs(project(actor({
+      roles: [Role.HOSPITAL],
+      hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)],
+    })));
+
+    expect(memberHrefs).toEqual(expect.arrayContaining([
+      "/app/hospitals/reporting",
+      "/app/patients/service-requests",
+      "/app/patients/assign-osm",
+      "/app/patients",
+    ]));
+    for (const ownerOnly of [
+      "/app/users",
+      "/app/hospitals/settings",
+      "/app/hospitals/knowledge",
+      "/app/hospitals/network",
+      "/app/patients/provision",
+      "/app/patients/service-catalog",
+      "/app/hospitals/reporting/export",
+    ]) {
+      expect(memberHrefs).not.toContain(ownerOnly);
+    }
+  });
+
+  it("gives a Parent MEMBER no network management entry", () => {
+    const parentMember = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(parentId, MembershipType.MEMBER)] });
+    expect(allHrefs(project(parentMember, [workspace(parentId, null, { hasActiveDirectChildren: true })]))).not.toContain("/app/hospitals/network");
+  });
+
   it("gives an active Hospital MEMBER the direct care tasks without OWNER administration", () => {
     const member = actor({
       roles: [Role.HOSPITAL],

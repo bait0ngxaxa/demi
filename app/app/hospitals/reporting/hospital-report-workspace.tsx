@@ -606,7 +606,7 @@ export function HospitalReportWorkspace({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge variant={hierarchyStatusVariant(hierarchy.hospital.status)}>{hierarchyStatusLabel(hierarchy.hospital.status)}</StatusBadge>
-            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงานเฉพาะโรงพยาบาลที่เลือก" : "เจ้าของโรงพยาบาลนี้เข้าถึงได้โดยตรง"}</p>
+            <p className="text-sm text-text-muted">{isGlobalAdmin ? "รายงานเฉพาะโรงพยาบาลที่เลือก" : "เจ้าหน้าที่โรงพยาบาลนี้เข้าถึงได้โดยตรง"}</p>
           </div>
         </div>
 

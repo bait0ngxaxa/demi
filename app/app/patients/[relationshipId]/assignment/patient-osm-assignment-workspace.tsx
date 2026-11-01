@@ -200,7 +200,7 @@ export function PatientOsmAssignmentWorkspace({
   return (
     <div className="max-w-4xl">
       <PageHeader
-        actions={<StatusBadge variant="info">เจ้าของโรงพยาบาล</StatusBadge>}
+        actions={<StatusBadge variant="info">เจ้าหน้าที่โรงพยาบาล</StatusBadge>}
         breadcrumbs={[
           {
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
