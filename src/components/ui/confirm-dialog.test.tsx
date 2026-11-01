@@ -10,9 +10,11 @@ import { ConfirmDialog } from "./confirm-dialog";
 type HarnessProps = {
   onConfirm: () => void;
   pending?: boolean;
+  recoveryKey?: string | number | null;
+  onCancel?: () => void;
 };
 
-function Harness({ onConfirm, pending = false }: HarnessProps): React.JSX.Element {
+function Harness({ onConfirm, pending = false, recoveryKey, onCancel }: HarnessProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -21,10 +23,14 @@ function Harness({ onConfirm, pending = false }: HarnessProps): React.JSX.Elemen
         confirmLabel="ระงับรายการ"
         confirmVariant="destructive"
         description="ยืนยันการระงับรายการนี้"
-        onCancel={() => setOpen(false)}
+        onCancel={() => {
+          onCancel?.();
+          setOpen(false);
+        }}
         onConfirm={onConfirm}
         open={open}
         pending={pending}
+        recoveryKey={recoveryKey}
         title="ยืนยันการระงับ"
       />
     </>
@@ -44,12 +50,12 @@ function findButton(label: string): HTMLButtonElement {
   return button;
 }
 
-function mount(onConfirm: () => void, pending = false): void {
+function mount(onConfirm: () => void, pending = false, onCancel?: () => void): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(createElement(Harness, { onConfirm, pending }));
+    root?.render(createElement(Harness, { onConfirm, pending, onCancel }));
   });
 }
 
@@ -133,6 +139,7 @@ describe("ConfirmDialog", () => {
     mount(onConfirm);
     openDialog();
     const confirmButton = findButton("ระงับรายการ");
+    expect(confirmButton.className).toContain("bg-danger");
 
     act(() => {
       confirmButton.click();
@@ -167,7 +174,7 @@ describe("ConfirmDialog", () => {
     act(() => trigger.focus());
     const dialog = openDialog();
 
-    expect(document.activeElement).toBe(dialog.querySelector("h2"));
+    expect(document.activeElement).toBe(findButton("ยกเลิก"));
     expect(dialog.className).toContain("w-[min(32rem,calc(100vw-2rem))]");
     expect(dialog.querySelector("footer > div")?.className).toContain("flex-col");
     expect(findButton("ยกเลิก").className).toContain("w-full sm:w-auto");
@@ -177,5 +184,44 @@ describe("ConfirmDialog", () => {
 
     expect(container?.querySelector("dialog")).toBeNull();
     expect(document.activeElement).toBe(trigger);
+  });
+
+  it("does not unlock when pending returns to false, but allows retry after a confirmed failure key changes", () => {
+    const onConfirm = vi.fn();
+    mount(onConfirm);
+    openDialog();
+    const confirmButton = findButton("ระงับรายการ");
+
+    act(() => confirmButton.click());
+    expect(onConfirm).toHaveBeenCalledOnce();
+    expect(confirmButton.disabled).toBe(true);
+
+    act(() => root?.render(createElement(Harness, { onConfirm, pending: true })));
+    act(() => root?.render(createElement(Harness, { onConfirm, pending: false })));
+    act(() => findButton("ระงับรายการ").click());
+    expect(onConfirm).toHaveBeenCalledOnce();
+
+    act(() => {
+      root?.render(createElement(Harness, { onConfirm, recoveryKey: "confirmed-failure-1" }));
+    });
+    const retryButton = findButton("ระงับรายการ");
+    expect(retryButton.disabled).toBe(false);
+    act(() => retryButton.click());
+
+    expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not call the close callback twice when cleanup closes the native dialog", () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    mount(onConfirm, false, onCancel);
+    openDialog();
+    const closeButton = container?.querySelector<HTMLButtonElement>("dialog header button");
+    if (!closeButton) throw new Error("Missing dialog close button");
+
+    act(() => closeButton.click());
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(container?.querySelector("dialog")).toBeNull();
   });
 });

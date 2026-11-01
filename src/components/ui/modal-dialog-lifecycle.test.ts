@@ -23,18 +23,23 @@ function fakeDialog(open = false): FakeDialog {
 
 describe("setupModalDialogLifecycle", () => {
   it("opens the dialog modally, locks page scroll and restores both on cleanup", () => {
-    const document = { body: { style: { overflow: "auto" } } };
+    const document = {
+      body: { style: { overflow: "auto" } },
+      documentElement: { style: { overflow: "scroll" } },
+    };
     const dialog = fakeDialog();
 
     const cleanup = setupModalDialogLifecycle({ document, dialog });
 
     expect(dialog.showModal).toHaveBeenCalledTimes(1);
     expect(document.body.style.overflow).toBe("hidden");
+    expect(document.documentElement.style.overflow).toBe("hidden");
 
     cleanup();
 
     expect(dialog.close).toHaveBeenCalledTimes(1);
     expect(document.body.style.overflow).toBe("auto");
+    expect(document.documentElement.style.overflow).toBe("scroll");
   });
 
   it("does not reopen an already open dialog or close one that is already closed", () => {
@@ -50,7 +55,10 @@ describe("setupModalDialogLifecycle", () => {
   });
 
   it("keeps page scrolling locked until every modal lifecycle has cleaned up", () => {
-    const document = { body: { style: { overflow: "auto" } } };
+    const document = {
+      body: { style: { overflow: "auto" } },
+      documentElement: { style: { overflow: "scroll" } },
+    };
     const firstDialog = fakeDialog();
     const secondDialog = fakeDialog();
 
@@ -60,9 +68,11 @@ describe("setupModalDialogLifecycle", () => {
     cleanupFirst();
     cleanupFirst();
     expect(document.body.style.overflow).toBe("hidden");
+    expect(document.documentElement.style.overflow).toBe("hidden");
 
     cleanupSecond();
     expect(document.body.style.overflow).toBe("auto");
+    expect(document.documentElement.style.overflow).toBe("scroll");
   });
 });
 

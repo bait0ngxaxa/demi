@@ -4,6 +4,11 @@ type ModalDialogDocument = {
       overflow: string;
     };
   };
+  documentElement?: {
+    style: {
+      overflow: string;
+    };
+  };
 };
 
 type ModalDialogElement = Pick<HTMLDialogElement, "showModal" | "close" | "open">;
@@ -15,7 +20,8 @@ type ModalDialogLifecycleOptions = {
 
 type DocumentScrollLock = {
   activeDialogs: number;
-  previousOverflow: string;
+  previousBodyOverflow: string;
+  previousRootOverflow: string | null;
 };
 
 const documentScrollLocks = new WeakMap<ModalDialogDocument, DocumentScrollLock>();
@@ -23,9 +29,16 @@ const documentScrollLocks = new WeakMap<ModalDialogDocument, DocumentScrollLock>
 function acquireDocumentScrollLock(document: ModalDialogDocument): () => void {
   let lock = documentScrollLocks.get(document);
   if (!lock) {
-    lock = { activeDialogs: 0, previousOverflow: document.body.style.overflow };
+    lock = {
+      activeDialogs: 0,
+      previousBodyOverflow: document.body.style.overflow,
+      previousRootOverflow: document.documentElement?.style.overflow ?? null,
+    };
     documentScrollLocks.set(document, lock);
     document.body.style.overflow = "hidden";
+    if (document.documentElement) {
+      document.documentElement.style.overflow = "hidden";
+    }
   }
   lock.activeDialogs += 1;
 
@@ -38,7 +51,10 @@ function acquireDocumentScrollLock(document: ModalDialogDocument): () => void {
 
     lock.activeDialogs -= 1;
     if (lock.activeDialogs === 0) {
-      document.body.style.overflow = lock.previousOverflow;
+      document.body.style.overflow = lock.previousBodyOverflow;
+      if (document.documentElement && lock.previousRootOverflow !== null) {
+        document.documentElement.style.overflow = lock.previousRootOverflow;
+      }
       documentScrollLocks.delete(document);
     }
   };

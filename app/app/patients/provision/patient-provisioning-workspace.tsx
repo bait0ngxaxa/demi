@@ -1238,20 +1238,17 @@ export function PatientProvisioningWorkspace({
     setReviewDialogOpen(false);
   }
 
-  function restoreFocusAfterReviewDialog(): void {
+  function getReviewDialogReturnFocusTarget(): HTMLElement | null {
     const target = dialogReturnFocus.current;
     dialogReturnFocus.current = "PREVIEW_SUBMIT";
 
-    const element =
-      target === "PREVIEW_SUBMIT"
-        ? previewSubmitRef.current
-        : document.getElementById(
-            target === "FILE_INPUT"
-              ? PATIENT_IMPORT_FILE_INPUT_ID
-              : PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID,
-          );
-
-    element?.focus({ preventScroll: false });
+    return target === "PREVIEW_SUBMIT"
+      ? previewSubmitRef.current
+      : document.getElementById(
+          target === "FILE_INPUT"
+            ? PATIENT_IMPORT_FILE_INPUT_ID
+            : PATIENT_IMPORT_EFFECTIVE_DATE_INPUT_ID,
+        );
   }
 
   function changeHospital(hospitalId: string): void {
@@ -1524,8 +1521,9 @@ export function PatientProvisioningWorkspace({
               />
             )
           }
-          onClosed={restoreFocusAfterReviewDialog}
+          focusOnStepChange
           onRequestClose={() => closeReviewDialog()}
+          returnFocusTarget={getReviewDialogReturnFocusTarget}
           stepKey={importSummary ? "result" : importState.status === "ERROR" ? "review-error" : "review"}
           title={importSummary ? "ผลการนำเข้าผู้ป่วย" : "ตรวจสอบก่อนนำเข้า"}
         >

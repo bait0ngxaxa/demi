@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "./button";
 import { ModalDialog } from "./modal-dialog";
@@ -16,6 +16,9 @@ export type ConfirmDialogProps = {
   confirmVariant?: "default" | "destructive";
   pending?: boolean;
   confirmDisabled?: boolean;
+  /** Change only after a confirmed, explicitly recoverable failure. Pending changes alone do not unlock retry. */
+  recoveryKey?: string | number | null;
+  returnFocusTarget?: () => HTMLElement | null;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -31,16 +34,27 @@ export function ConfirmDialog({
   confirmVariant = "default",
   pending = false,
   confirmDisabled = false,
+  recoveryKey,
+  returnFocusTarget,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): React.JSX.Element | null {
   const confirmLockRef = useRef(false);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const recoveryKeyRef = useRef(recoveryKey);
+  const [confirmationLocked, setConfirmationLocked] = useState(false);
 
-  useEffect(() => {
-    if (!open) {
-      confirmLockRef.current = false;
+  useLayoutEffect(() => {
+    let shouldUnlock = !open;
+    if (!Object.is(recoveryKeyRef.current, recoveryKey)) {
+      recoveryKeyRef.current = recoveryKey;
+      shouldUnlock = true;
     }
-  }, [open]);
+    if (shouldUnlock) {
+      confirmLockRef.current = false;
+      setConfirmationLocked(false);
+    }
+  }, [open, recoveryKey]);
 
   if (!open) {
     return null;
@@ -52,6 +66,7 @@ export function ConfirmDialog({
     }
 
     confirmLockRef.current = true;
+    setConfirmationLocked(true);
     onConfirm();
   }
 
@@ -62,12 +77,12 @@ export function ConfirmDialog({
       dismissible={!pending}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-          <Button className="w-full sm:w-auto" disabled={pending} onClick={onCancel} variant="secondary">
+          <Button ref={cancelButtonRef} className="w-full sm:w-auto" disabled={pending} onClick={onCancel} variant="secondary">
             {cancelLabel}
           </Button>
           <Button
             className="w-full sm:w-auto"
-            disabled={confirmDisabled}
+            disabled={confirmDisabled || confirmationLocked}
             loading={pending}
             onClick={handleConfirm}
             variant={confirmVariant === "destructive" ? "danger" : "primary"}
@@ -76,7 +91,9 @@ export function ConfirmDialog({
           </Button>
         </div>
       }
+      initialFocusRef={cancelButtonRef}
       onRequestClose={onCancel}
+      returnFocusTarget={returnFocusTarget}
       size="compact"
       title={title}
     >

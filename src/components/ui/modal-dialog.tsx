@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 
 import { Button } from "./button";
 import { classNames } from "./class-names";
@@ -15,11 +15,17 @@ export type ModalDialogProps = {
   onRequestClose: () => void;
   /** False while a mutation runs: Escape and the close button are blocked so the outcome stays visible. */
   dismissible?: boolean;
-  /** Changing this value moves focus to the title and scrolls the body to the top (a new step in the flow). */
+  /** A preferred focus target for dialogs whose first task action should receive focus. */
+  initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Changing this value scrolls content to the top; focus moves only when `focusOnStepChange` is true. */
   stepKey?: string;
-  /** Called after the dialog has closed and unmounted; use it to move focus back into the page. */
+  /** Focuses the owner-selected logical return target after close, if supplied. */
+  returnFocusTarget?: () => HTMLElement | null;
+  /** Optional post-close owner hook. When supplied, the owner is responsible for focus restoration. */
   onClosed?: () => void;
-  size?: "default" | "compact";
+  /** Whether a step change should intentionally return focus to the heading. */
+  focusOnStepChange?: boolean;
+  size?: "default" | "compact" | "fullscreen";
   className?: string;
 };
 
@@ -34,8 +40,11 @@ export function ModalDialog({
   footer,
   onRequestClose,
   dismissible = true,
+  initialFocusRef,
   stepKey,
+  returnFocusTarget,
   onClosed,
+  focusOnStepChange = false,
   size = "default",
   className,
 }: ModalDialogProps): React.JSX.Element {
@@ -46,45 +55,94 @@ export function ModalDialog({
   const dismissibleRef = useRef(dismissible);
   const onRequestCloseRef = useRef(onRequestClose);
   const onClosedRef = useRef(onClosed);
+  const returnFocusTargetRef = useRef(returnFocusTarget);
+  const cleaningUpRef = useRef(false);
+  const pendingCloseCallbackRef = useRef<{ cancelled: boolean } | null>(null);
+  const previousStepKeyRef = useRef(stepKey);
   const titleId = useId();
   const descriptionId = useId();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     dismissibleRef.current = dismissible;
     onRequestCloseRef.current = onRequestClose;
     onClosedRef.current = onClosed;
-  }, [dismissible, onRequestClose, onClosed]);
+    returnFocusTargetRef.current = returnFocusTarget;
+  }, [dismissible, onRequestClose, onClosed, returnFocusTarget]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) {
       return;
     }
 
-    const activeElement = document.activeElement;
+    if (pendingCloseCallbackRef.current) {
+      pendingCloseCallbackRef.current.cancelled = true;
+      pendingCloseCallbackRef.current = null;
+    }
+    cleaningUpRef.current = false;
+    const activeElement = dialog.ownerDocument.activeElement;
     previousFocusRef.current =
-      activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
-    const cleanup = setupModalDialogLifecycle({ document, dialog });
-    const closedCallbackRef = onClosedRef;
+      activeElement instanceof HTMLElement && activeElement !== dialog.ownerDocument.body && !dialog.contains(activeElement)
+        ? activeElement
+        : null;
+    const cleanup = setupModalDialogLifecycle({ document: dialog.ownerDocument, dialog });
 
     return () => {
+      cleaningUpRef.current = true;
       cleanup();
-      const previousFocus = previousFocusRef.current;
-      if (previousFocus?.isConnected && !previousFocus.matches(":disabled")) {
-        previousFocus.focus({ preventScroll: true });
+
+      const closedCallback = onClosedRef.current;
+      if (!closedCallback) {
+        const returnTarget = returnFocusTargetRef.current?.() ?? previousFocusRef.current;
+        if (!focusTarget(returnTarget, dialog) && returnTarget !== previousFocusRef.current) {
+          focusTarget(previousFocusRef.current, dialog);
+        }
       }
-      closedCallbackRef.current?.();
+
+      if (closedCallback) {
+        const callbackToken = { cancelled: false };
+        pendingCloseCallbackRef.current = callbackToken;
+        queueMicrotask(() => {
+          if (!callbackToken.cancelled) {
+            closedCallback();
+          }
+          if (pendingCloseCallbackRef.current === callbackToken) {
+            pendingCloseCallbackRef.current = null;
+          }
+        });
+      }
     };
   }, []);
 
-  useEffect(() => {
-    bodyRef.current?.scrollTo({ top: 0 });
-    titleRef.current?.focus({ preventScroll: true });
-  }, [stepKey]);
+  useLayoutEffect(() => {
+    if (
+      initialFocusRef?.current &&
+      dialogRef.current?.contains(initialFocusRef.current) &&
+      !initialFocusRef.current.matches(":disabled")
+    ) {
+      initialFocusRef.current.focus({ preventScroll: true });
+    } else {
+      titleRef.current?.focus({ preventScroll: true });
+    }
+  }, [initialFocusRef]);
+
+  useLayoutEffect(() => {
+    if (Object.is(previousStepKeyRef.current, stepKey)) {
+      return;
+    }
+
+    previousStepKeyRef.current = stepKey;
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+    }
+    if (focusOnStepChange) {
+      titleRef.current?.focus({ preventScroll: true });
+    }
+  }, [focusOnStepChange, stepKey]);
 
   function handleNativeClose(): void {
     const dialog = dialogRef.current;
-    if (!dialog || dialog.open) {
+    if (!dialog || dialog.open || cleaningUpRef.current) {
       return;
     }
 
@@ -104,7 +162,9 @@ export function ModalDialog({
         "m-auto max-h-[calc(100svh-2rem)] max-w-none flex-col overflow-hidden open:flex rounded-dialog border border-border bg-surface p-0 text-text shadow-floating backdrop:bg-brand-deep/45",
         size === "compact"
           ? "w-[min(32rem,calc(100vw-2rem))]"
-          : "w-[min(64rem,calc(100vw-2rem))]",
+          : size === "fullscreen"
+            ? "w-[min(64rem,calc(100vw-2rem))] max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:border-0 max-sm:pt-[env(safe-area-inset-top,0px)] max-sm:pb-[env(safe-area-inset-bottom,0px)] max-sm:pl-[env(safe-area-inset-left,0px)] max-sm:pr-[env(safe-area-inset-right,0px)]"
+            : "w-[min(64rem,calc(100vw-2rem))]",
         className,
       )}
       onCancel={(event) => {
@@ -119,7 +179,7 @@ export function ModalDialog({
       <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
         <div className="min-w-0">
           <h2
-            className="text-lg font-semibold tracking-[-0.02em] text-ink focus:outline-none"
+            className="text-lg font-semibold tracking-[-0.02em] text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             id={titleId}
             ref={titleRef}
             tabIndex={-1}
@@ -157,4 +217,13 @@ export function ModalDialog({
       ) : null}
     </dialog>
   );
+}
+
+function focusTarget(target: HTMLElement | null, dialog: HTMLDialogElement): boolean {
+  if (!target?.isConnected || dialog.contains(target) || target.matches(":disabled")) {
+    return false;
+  }
+
+  target.focus({ preventScroll: true });
+  return dialog.ownerDocument.activeElement === target;
 }
