@@ -12,6 +12,7 @@ type HarnessProps = {
   stepKey?: string;
   focusOnStepChange?: boolean;
   initialFocus?: boolean;
+  preferredFocusDisabled?: boolean;
   dismissible?: boolean;
   returnFocusTarget?: () => HTMLElement | null;
   onRequestClose?: () => void;
@@ -24,6 +25,7 @@ function Harness({
   stepKey = "initial",
   focusOnStepChange = false,
   initialFocus = false,
+  preferredFocusDisabled = false,
   dismissible = true,
   returnFocusTarget,
   onRequestClose = () => undefined,
@@ -52,7 +54,7 @@ function Harness({
             ข้อมูล
             <input aria-label="ข้อมูล" />
           </label>
-          <button ref={preferredFocusRef} type="button">ดำเนินการต่อ</button>
+          <button disabled={preferredFocusDisabled} ref={preferredFocusRef} type="button">ดำเนินการต่อ</button>
         </ModalDialog>
       ) : null}
     </>
@@ -194,6 +196,13 @@ describe("ModalDialog", () => {
     render({ open: false, triggerVisible: false, returnFocusTarget: () => fallback });
 
     expect(document.activeElement).toBe(fallback);
+  });
+
+  it("falls back to the heading when a preferred initial target is disabled", () => {
+    mount({ open: true, initialFocus: true, preferredFocusDisabled: true });
+
+    const dialog = requiredElement<HTMLDialogElement>("dialog");
+    expect(document.activeElement).toBe(dialog.querySelector("h2"));
   });
 
   it("does not steal focus on an ordinary step key change unless the owner requests it", () => {

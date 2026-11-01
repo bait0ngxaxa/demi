@@ -70,6 +70,22 @@ Escape และปุ่มปิด/ยกเลิกต้องปฏิบ
 - `ConfirmDialog.recoveryKey` เปลี่ยนเฉพาะเมื่อผลล้มเหลวยืนยันแล้วและ owner อนุญาตให้ retry; การเปลี่ยน pending อย่างเดียวไม่ปลด lock
 - `size="compact"` เหมาะกับ confirmation; `size="fullscreen"` ใช้กล่องเต็มจอเฉพาะ viewport มือถือ และกลับเป็นกล่อง centered บนจอใหญ่
 
+## UX-D1.4 Regression และ manual browser QA
+
+test ของ dialog ใช้ jsdom พร้อม shim เฉพาะ `showModal()`/`close()` เพื่อจำลองการเปิด ปิด และ native close event ส่วน focus assertion ตรวจผลของ DOM focus API ที่ jsdom รองรับ การทดสอบเหล่านี้ไม่ยืนยัน browser focus containment, inertness ของ background, การคง scroll position จริง, layout ที่ viewport ต่างกัน, safe-area rendering, หรือ virtual keyboard บนมือถือ
+
+ก่อนใช้ foundation ใน feature เพิ่มเติม ให้ทำ checklist ต่อไปนี้ใน desktop browser และอุปกรณ์/engine มือถือที่รองรับจริง:
+
+1. เปิด confirmation ด้วย keyboard แล้วตรวจชื่อ/คำอธิบายและ initial focus; ใช้ Tab/Shift+Tab ไปทุก action และยืนยันว่า focus ไม่ออกจาก modal; Escape และปุ่มยกเลิก/ปิดทำงานตามสถานะ
+2. ยืนยันว่า destructive confirmation เริ่มที่ปุ่มยกเลิก; ระหว่าง mutation ปุ่มและ Escape ปิดไม่ได้; error ที่กู้คืนได้ unlock เฉพาะเมื่อเจ้าของเปลี่ยน `recoveryKey`; unknown outcome ไม่มีการส่งซ้ำเองและยังเห็น recovery guidance
+3. เปิด dialog จากหน้าที่เลื่อนอยู่ เลื่อนเฉพาะ content region ตรวจ header/footer จากนั้นปิดและยืนยันว่าตำแหน่งหน้าและ focus กลับสู่ trigger; ลองกรณี trigger ถูกเอาออกและใช้ logical return target
+4. ตรวจ viewport กว้าง 320px, มือถือทั่วไป, landscape และ desktop; ยืนยันว่าไม่มี horizontal overflow, confirm ยังเป็นกล่องกะทัดรัด, fullscreen form เคารพ safe area และ navigation ด้านล่างอยู่หลัง modal
+5. ใน fullscreen form ให้เปิด keyboard ซอฟต์แวร์จาก field บน iOS Safari และ Android Chrome; ตรวจว่า field ที่กำลังแก้และ footer/action ยังเข้าถึงได้ และปิด keyboard แล้ว content scroll ได้ตามปกติ
+6. ใช้ข้อความไทยยาวใน title, description, details, validation และ action labels; ตรวจการตัดบรรทัดและ touch target ≥44px โดยไม่มีข้อความหรือปุ่มถูกตัด
+7. ใช้ screen reader ตรวจชื่อ dialog, description แบบสั้น, ลำดับ heading, ปุ่มที่มีชื่อชัด และการประกาศ validation/error/unknown outcome
+
+เอกสารอ้างอิง: [WAI-ARIA APG: Modal Dialog Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) และ [MDN: `<dialog>`](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/dialog)
+
 ## ขอบเขตสำหรับ phase ถัดไป
 
-UX-D1 ปรับ primitives และบันทึกวิธีประกอบ ไม่ได้แปลง inline actions, `<details>` หรือ conditional panels ทั้งระบบ UX-D2/UX-D3 จะย้ายเฉพาะ workflow ที่ผ่านการทบทวนและมีขอบเขตเหมาะสม โดยคง authorization กับ mutation contract ของ feature และให้ workflow คลินิก/onboarding แบบยาวอยู่บนหน้าโดยเฉพาะ
+UX-D1 ปรับ primitives และบันทึกวิธีประกอบ ไม่ได้แปลง inline actions, `<details>` หรือ conditional panels ทั้งระบบ UX-D2/UX-D3 จะย้ายเฉพาะ workflow ที่ผ่านการทบทวนและมีขอบเขตเหมาะสม โดยคง authorization กับ mutation contract ของ feature และให้ workflow คลินิก/onboarding แบบยาวอยู่บนหน้าโดยเฉพาะ การทดสอบ browser ใน checklist ข้างต้นยังเป็นงาน manual ของแต่ละ environment ก่อนสรุปความพร้อมของ surface ที่ย้าย

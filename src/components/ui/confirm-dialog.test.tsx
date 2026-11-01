@@ -211,6 +211,20 @@ describe("ConfirmDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(2);
   });
 
+  it("starts a new confirmation attempt after the owner closes and reopens the dialog", () => {
+    const onConfirm = vi.fn();
+    mount(onConfirm);
+    openDialog();
+    act(() => findButton("ระงับรายการ").click());
+    expect(onConfirm).toHaveBeenCalledOnce();
+
+    act(() => findButton("ยกเลิก").click());
+    openDialog();
+    act(() => findButton("ระงับรายการ").click());
+
+    expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+
   it("does not call the close callback twice when cleanup closes the native dialog", () => {
     const onCancel = vi.fn();
     const onConfirm = vi.fn();
