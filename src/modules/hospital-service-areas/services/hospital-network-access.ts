@@ -24,13 +24,26 @@ export type HospitalNetworkDatabase = PrismaClient | Prisma.TransactionClient;
 /**
  * OWNER: Parent OWNER only (area management, Parent summary reports).
  * PATIENT_READ: Parent OWNER, or Parent MEMBER holding the OWNER-issued network Patient read grant.
+ * REPORT_EXPORT: Parent OWNER or MEMBER, no grant (ADR-0025 network report export).
  */
-export type HospitalNetworkAuthority = "OWNER" | "PATIENT_READ";
+export type HospitalNetworkAuthority = "OWNER" | "PATIENT_READ" | "REPORT_EXPORT";
 
 export type HospitalNetworkFacility = { id: string; hospitalCode: string; name: string };
 export type HospitalNetworkScope = { parent: HospitalNetworkFacility; children: HospitalNetworkFacility[] };
+export type HospitalNetworkReportExportScope = HospitalNetworkScope & {
+  membershipType: typeof MembershipType.OWNER | typeof MembershipType.MEMBER;
+};
 
 const facilitySelect = { id: true, hospitalCode: true, name: true } satisfies Prisma.HospitalSelect;
+
+const networkMembershipTypes = {
+  OWNER: [{ membershipType: MembershipType.OWNER }],
+  PATIENT_READ: [
+    { membershipType: MembershipType.OWNER },
+    { membershipType: MembershipType.MEMBER, networkPatientReadGrantedAt: { not: null } },
+  ],
+  REPORT_EXPORT: [{ membershipType: MembershipType.OWNER }, { membershipType: MembershipType.MEMBER }],
+} satisfies Record<HospitalNetworkAuthority, Prisma.HospitalMembershipWhereInput[]>;
 
 function networkMembershipWhere(
   actorUserId: string,
@@ -40,12 +53,7 @@ function networkMembershipWhere(
     userId: actorUserId,
     status: MembershipStatus.ACTIVE,
     user: { is: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } },
-    OR: authority === "OWNER"
-      ? [{ membershipType: MembershipType.OWNER }]
-      : [
-          { membershipType: MembershipType.OWNER },
-          { membershipType: MembershipType.MEMBER, networkPatientReadGrantedAt: { not: null } },
-        ],
+    OR: networkMembershipTypes[authority],
   };
 }
 
@@ -64,6 +72,15 @@ const activeChildWhere = {
   status: HospitalStatus.ACTIVE,
   serviceAreaEligibility: { is: { kind: HospitalServiceAreaFacilityKind.CHILD } },
 } satisfies Prisma.HospitalWhereInput;
+
+const activeChildAreasSelect = {
+  where: { endedAt: null, child: { is: activeChildWhere } },
+  select: { child: { select: facilitySelect } },
+} satisfies Prisma.Hospital$managedServiceAreasArgs;
+
+function sortFacilities(facilities: HospitalNetworkFacility[]): HospitalNetworkFacility[] {
+  return facilities.sort((left, right) => left.name.localeCompare(right.name, "th") || left.id.localeCompare(right.id));
+}
 
 /** Child Hospitals whose Patients the actor may read (read-only) through an active network association. */
 export function buildNetworkReadableChildHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
@@ -123,20 +140,38 @@ export async function listNetworkScopes(
   const parents = await database.hospital.findMany({
     where: buildNetworkParentHospitalWhere(actorUserId, authority),
     orderBy: [{ name: "asc" }, { id: "asc" }],
-    select: {
-      ...facilitySelect,
-      managedServiceAreas: {
-        where: { endedAt: null, child: { is: activeChildWhere } },
-        select: { child: { select: facilitySelect } },
-      },
-    },
+    select: { ...facilitySelect, managedServiceAreas: activeChildAreasSelect },
   });
   return parents.map(({ managedServiceAreas, ...parent }) => ({
     parent,
-    children: managedServiceAreas
-      .map(({ child }) => child)
-      .sort((left, right) => left.name.localeCompare(right.name, "th") || left.id.localeCompare(right.id)),
+    children: sortFacilities(managedServiceAreas.map(({ child }) => child)),
   }));
+}
+
+/**
+ * ADR-0025: the exact Parent whose network the actor may export (ACTIVE OWNER or MEMBER, no grant), with its
+ * active Children in name order, or null.
+ */
+export async function findNetworkReportExportScope(
+  database: HospitalNetworkDatabase,
+  actorUserId: string,
+  parentHospitalId: string,
+): Promise<HospitalNetworkReportExportScope | null> {
+  const parent = await database.hospital.findFirst({
+    where: { id: parentHospitalId, ...buildNetworkParentHospitalWhere(actorUserId, "REPORT_EXPORT") },
+    select: {
+      ...facilitySelect,
+      memberships: { where: networkMembershipWhere(actorUserId, "REPORT_EXPORT"), select: { membershipType: true }, take: 1 },
+      managedServiceAreas: activeChildAreasSelect,
+    },
+  });
+  const membershipType = parent?.memberships[0]?.membershipType;
+  if (!parent || (membershipType !== MembershipType.OWNER && membershipType !== MembershipType.MEMBER)) return null;
+  return {
+    parent: { id: parent.id, hospitalCode: parent.hospitalCode, name: parent.name },
+    membershipType,
+    children: sortFacilities(parent.managedServiceAreas.map(({ child }) => child)),
+  };
 }
 
 /**

@@ -25,6 +25,10 @@ import type {
   HospitalReportGoalPlan,
   HospitalReportProgramRow,
   HospitalReportingDataset,
+  HospitalReportingSummary,
+  NetworkReportingDataset,
+  NetworkReportingHospital,
+  NetworkReportingSection,
 } from "../projections/hospital-report-projection";
 import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
 import { hospitalReportExportRequestSchema } from "../schemas/hospital-report-schemas";
@@ -43,6 +47,8 @@ import {
 const WORKBOOK_TEMPLATE_PATH = join(process.cwd(), "docs", "Dashboard App Demi.xlsx");
 const DASHBOARD_SHEET_NAME = "Dashboard ภาพรวม";
 const SERVICE_SHEET_NAME = "รายงานการจัดบริการ";
+const NETWORK_SUMMARY_SHEET_NAME = "สรุปรายหน่วยบริการ";
+const SERVICE_UNIT_HEADER = "หน่วยบริการ";
 const DATA_START_ROW = 9;
 // Dashboard rounds 1–6 (R24A-D11): round 1 = Service 1, round 2 = Goal Plan, rounds 3–6 = Follow-ups.
 const DASHBOARD_FOLLOWUPS_PER_ROW = 4;
@@ -329,8 +335,11 @@ function clearReportBody(sheet: ExcelJS.Worksheet, endRow: number): void {
   }
 }
 
-function setHeaderFacts(sheet: ExcelJS.Worksheet, dataset: HospitalReportingDataset): void {
-  const hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)}`;
+function setHeaderFacts(
+  sheet: ExcelJS.Worksheet,
+  dataset: Pick<HospitalReportingDataset, "hospital" | "counts">,
+  hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)}`,
+): void {
   const classificationUnavailable = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
   if (sheet.name === SERVICE_SHEET_NAME) {
     sheet.getCell("A2").value = hospitalLabel;
@@ -622,17 +631,23 @@ function roundReportCell(round: RoundReport | undefined): string {
   return round ? `ทำแล้ว ${round.doneItems}/${round.plannedItems} รายการในแผน; ข้าม ${round.skippedItems}; ยังไม่ได้ทำเมื่อจบบริการ ${round.notDoneAtCloseItems}; ผู้ป่วยบันทึกเอง ${round.patientRecordedItems}` : "ยังไม่เปิดครั้งบริการ";
 }
 
+const ROUND_REPORT_HEADER_ROW = 8;
+const ROUND_REPORT_HEADERS = ["ครั้งเพิ่มเติม (จำนวน)", ...Array.from({ length: 6 }, (_, index) => `ครั้งที่ ${index + 1} · รายการในแผน`), "รายละเอียดครั้งเพิ่มเติม", "การติดตามครั้งเพิ่มเติม"];
+
+function roundReportStartColumn(sheet: ExcelJS.Worksheet): number {
+  return sheet.name === DASHBOARD_SHEET_NAME ? 44 : 66;
+}
+
 /** Append after the native columns; their positions and clinical meanings stay fixed. */
 function writeRoundReportColumns(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
-  const start = sheet.name === DASHBOARD_SHEET_NAME ? 44 : 66;
-  const headers = ["ครั้งเพิ่มเติม (จำนวน)", ...Array.from({ length: 6 }, (_, index) => `ครั้งที่ ${index + 1} · รายการในแผน`), "รายละเอียดครั้งเพิ่มเติม", "การติดตามครั้งเพิ่มเติม"];
-  headers.forEach((header, index) => {
-    const cell = sheet.getCell(8, start + index);
+  const start = roundReportStartColumn(sheet);
+  ROUND_REPORT_HEADERS.forEach((header, index) => {
+    const cell = sheet.getCell(ROUND_REPORT_HEADER_ROW, start + index);
     cell.value = header;
-    cell.style = { ...sheet.getCell(8, start - 1).style, alignment: { vertical: "top", wrapText: true } };
+    cell.style = { ...sheet.getCell(ROUND_REPORT_HEADER_ROW, start - 1).style, alignment: { vertical: "top", wrapText: true } };
     sheet.getColumn(start + index).width = index === 0 ? 22 : 42;
   });
-  sheet.getRow(8).height = Math.max(sheet.getRow(8).height ?? 0, 60);
+  sheet.getRow(ROUND_REPORT_HEADER_ROW).height = Math.max(sheet.getRow(ROUND_REPORT_HEADER_ROW).height ?? 0, 60);
   let rowNumber = DATA_START_ROW;
   for (const program of programs) {
     const row = sheet.getRow(rowNumber);
@@ -645,10 +660,14 @@ function writeRoundReportColumns(sheet: ExcelJS.Worksheet, programs: readonly Ho
   }
 }
 
-export async function generateHospitalReportWorkbook(
-  dataset: HospitalReportingDataset,
-  generatedAt: Date = new Date(),
-): Promise<Buffer> {
+type TemplateWorkbook = {
+  workbook: ExcelJS.Workbook;
+  dashboardSheet: ExcelJS.Worksheet;
+  serviceSheet: ExcelJS.Worksheet;
+};
+
+/** The customer template, which must still hold exactly its two worksheets. */
+async function loadTemplateWorkbook(generatedAt: Date): Promise<TemplateWorkbook> {
   const template = await readFile(WORKBOOK_TEMPLATE_PATH);
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(excelArrayBuffer(template));
@@ -669,6 +688,14 @@ export async function generateHospitalReportWorkbook(
   workbook.lastModifiedBy = "DEMI";
   workbook.created = generatedAt;
   workbook.modified = generatedAt;
+  return { workbook, dashboardSheet, serviceSheet };
+}
+
+function writeTemplateSheets(
+  { dashboardSheet, serviceSheet }: TemplateWorkbook,
+  dataset: HospitalReportingDataset,
+  hospitalLabel?: string,
+): void {
   const dashboardTemplateEndRow = templateDataEndRow(dashboardSheet);
   const serviceTemplateEndRow = templateDataEndRow(serviceSheet);
   const serviceRowCount = programContinuationGroups(dataset.programs, SERVICE_FOLLOWUPS_PER_ROW).length;
@@ -679,14 +706,116 @@ export async function generateHospitalReportWorkbook(
   );
   clearReportBody(dashboardSheet, dashboardTemplateEndRow);
   clearReportBody(serviceSheet, serviceTemplateEndRow + serviceOverflowRowCount);
-  setHeaderFacts(dashboardSheet, dataset);
-  setHeaderFacts(serviceSheet, dataset);
+  setHeaderFacts(dashboardSheet, dataset, hospitalLabel);
+  setHeaderFacts(serviceSheet, dataset, hospitalLabel);
   writeDashboardRows(dashboardSheet, dataset.programs);
   writeServiceRows(serviceSheet, dataset.programs);
   writeRoundReportColumns(dashboardSheet, dataset.programs);
   writeRoundReportColumns(serviceSheet, dataset.programs);
+}
 
-  return Buffer.from(await workbook.xlsx.writeBuffer());
+export async function generateHospitalReportWorkbook(
+  dataset: HospitalReportingDataset,
+  generatedAt: Date = new Date(),
+): Promise<Buffer> {
+  const template = await loadTemplateWorkbook(generatedAt);
+  writeTemplateSheets(template, dataset);
+
+  return Buffer.from(await template.workbook.xlsx.writeBuffer());
+}
+
+/** ADR-0025: appended after the round report columns, so no template column moves. */
+function serviceUnitColumn(sheet: ExcelJS.Worksheet): number {
+  return roundReportStartColumn(sheet) + ROUND_REPORT_HEADERS.length;
+}
+
+function serviceUnitLabel(hospital: NetworkReportingHospital): string {
+  return assertCellText(`${hospital.name} (${hospital.hospitalCode})`);
+}
+
+/** Every row of a Program, continuation rows included, names its Hospital so the sheet filters correctly. */
+function writeServiceUnitColumn(sheet: ExcelJS.Worksheet, sections: readonly NetworkReportingSection[]): void {
+  const column = serviceUnitColumn(sheet);
+  const header = sheet.getCell(ROUND_REPORT_HEADER_ROW, column);
+  header.value = SERVICE_UNIT_HEADER;
+  header.style = { ...sheet.getCell(ROUND_REPORT_HEADER_ROW, roundReportStartColumn(sheet) - 1).style, alignment: { vertical: "top", wrapText: true } };
+  sheet.getColumn(column).width = 36;
+  const followupsPerRow = sheet.name === DASHBOARD_SHEET_NAME ? DASHBOARD_FOLLOWUPS_PER_ROW : SERVICE_FOLLOWUPS_PER_ROW;
+  let rowNumber = DATA_START_ROW;
+  for (const section of sections) {
+    const label = serviceUnitLabel(section.hospital);
+    for (const program of section.programs) {
+      for (let continuation = 0; continuation < rowsPerProgram(program, followupsPerRow); continuation += 1) {
+        const cell = sheet.getRow(rowNumber).getCell(column);
+        cell.value = label;
+        cell.alignment = { vertical: "top", wrapText: true };
+        rowNumber += 1;
+      }
+    }
+  }
+}
+
+const NETWORK_SUMMARY_HEADERS = [
+  SERVICE_UNIT_HEADER,
+  "รหัส",
+  "ประเภท",
+  "จำนวนเคส",
+  "Program ทั้งหมด",
+  "ACTIVE",
+  "COMPLETED",
+  "ความสัมพันธ์ที่ยังไม่มี Program",
+] as const;
+
+function summaryRowValues(counts: HospitalReportingSummary): number[] {
+  return [
+    counts.patientHospitalRelationships.value,
+    counts.programs.total,
+    counts.programs.active,
+    counts.programs.completed,
+    counts.relationshipsWithoutProgram.value,
+  ];
+}
+
+/** One row per Hospital plus a total; counts only, no Patient data. */
+function writeNetworkSummarySheet(workbook: ExcelJS.Workbook, dataset: NetworkReportingDataset): void {
+  const sheet = workbook.addWorksheet(NETWORK_SUMMARY_SHEET_NAME);
+  sheet.columns = NETWORK_SUMMARY_HEADERS.map((_, index) => ({ width: index === 0 ? 44 : index === 7 ? 30 : 16 }));
+  sheet.addRow([...NETWORK_SUMMARY_HEADERS]).font = { bold: true };
+  for (const section of dataset.hospitals) {
+    sheet.addRow([
+      assertCellText(section.hospital.name),
+      section.hospital.hospitalCode,
+      section.hospital.kind === "PARENT" ? "แม่ข่าย" : "ลูกข่าย",
+      ...summaryRowValues(section.counts),
+    ]);
+  }
+  sheet.addRow(["รวม", "", "", ...summaryRowValues(dataset.counts)]).font = { bold: true };
+}
+
+/**
+ * ADR-0025: the customer template filled with every selected network Hospital, grouped by Hospital in dataset
+ * order with continuous Program numbering, plus the "หน่วยบริการ" column and a per-Hospital summary sheet.
+ */
+export async function generateNetworkReportWorkbook(
+  dataset: NetworkReportingDataset,
+  generatedAt: Date = new Date(),
+): Promise<Buffer> {
+  const template = await loadTemplateWorkbook(generatedAt);
+  writeTemplateSheets(
+    template,
+    {
+      hospital: dataset.parent,
+      cohort: dataset.cohort,
+      counts: dataset.counts,
+      programs: dataset.hospitals.flatMap(({ programs }) => programs),
+    },
+    `โรงพยาบาล: ${assertCellText(dataset.parent.name)} และเครือข่าย (${dataset.hospitals.length.toLocaleString("th-TH")} แห่ง)`,
+  );
+  writeServiceUnitColumn(template.dashboardSheet, dataset.hospitals);
+  writeServiceUnitColumn(template.serviceSheet, dataset.hospitals);
+  writeNetworkSummarySheet(template.workbook, dataset);
+
+  return Buffer.from(await template.workbook.xlsx.writeBuffer());
 }
 
 export async function exportHospitalReportingWorkbook(
@@ -774,6 +903,7 @@ export const hospitalReportWorkbookInternals = {
   factCell,
   programContinuationGroups,
   rowsPerProgram,
+  serviceUnitColumn,
   setHeaderFacts,
   writeDashboardRows,
   writeServiceRows,

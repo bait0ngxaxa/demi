@@ -64,5 +64,59 @@ export const hospitalReportExportRequestSchema = z
   .object({ hospitalId: hospitalReportHospitalIdSchema, cohort: hospitalReportCohortSchema.optional() })
   .strict();
 
+/** ADR-0025: the most Hospitals one network export request may name; "ALL" expands on the server. */
+export const NETWORK_REPORT_EXPORT_MAX_HOSPITALS = 200;
+
+export const networkReportHospitalSelectionSchema = z.union([
+  z.literal("ALL"),
+  z.array(hospitalReportHospitalIdSchema)
+    .min(1)
+    .max(NETWORK_REPORT_EXPORT_MAX_HOSPITALS)
+    .transform((hospitalIds) => [...new Set(hospitalIds)]),
+]);
+
+export const networkReportExportRequestSchema = z
+  .object({
+    parentHospitalId: hospitalReportHospitalIdSchema,
+    hospitalIds: networkReportHospitalSelectionSchema,
+    cohort: hospitalReportCohortSchema.optional(),
+  })
+  .strict();
+
+export const networkReportExportPreviewRequestSchema = z
+  .object({ parentHospitalId: hospitalReportHospitalIdSchema, cohort: hospitalReportCohortSchema.optional() })
+  .strict();
+
+const NETWORK_REPORT_EXPORT_QUERY_KEYS = new Set(["parentHospitalId", "hospitalId", "scope", "cohort"]);
+
+/**
+ * Strict query for `GET /api/v1/hospital/reporting/network/export`: one parentHospitalId, then either
+ * `scope=ALL` or one or more `hospitalId`, never both; at most one cohort; no other keys.
+ */
+export function parseNetworkReportExportQuery(searchParams: URLSearchParams): NetworkReportExportRequest | null {
+  const scopes = searchParams.getAll("scope");
+  const hospitalIds = searchParams.getAll("hospitalId");
+  const cohorts = searchParams.getAll("cohort");
+  if (
+    [...searchParams.keys()].some((key) => !NETWORK_REPORT_EXPORT_QUERY_KEYS.has(key)) ||
+    searchParams.getAll("parentHospitalId").length !== 1 ||
+    cohorts.length > 1 ||
+    scopes.length > 1 ||
+    (scopes.length === 1) === (hospitalIds.length > 0)
+  ) {
+    return null;
+  }
+  if (scopes.length === 1 && scopes[0] !== "ALL") return null;
+
+  const parsed = networkReportExportRequestSchema.safeParse({
+    parentHospitalId: searchParams.get("parentHospitalId"),
+    hospitalIds: scopes.length === 1 ? "ALL" : hospitalIds,
+    ...(cohorts.length === 1 ? { cohort: cohorts[0] } : {}),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
 export type HospitalReportPageRequest = z.infer<typeof hospitalReportPageRequestSchema>;
+export type NetworkReportExportRequest = z.infer<typeof networkReportExportRequestSchema>;
+export type NetworkReportExportPreviewRequest = z.infer<typeof networkReportExportPreviewRequestSchema>;
 export type HospitalReportExportRequest = z.infer<typeof hospitalReportExportRequestSchema>;

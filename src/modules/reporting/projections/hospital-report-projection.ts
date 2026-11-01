@@ -231,6 +231,29 @@ export type HospitalReportingDataset = Omit<HospitalReportingPageProjection, "pa
   programs: readonly HospitalReportProgramRow[];
 };
 
+export type NetworkReportingHospital = {
+  id: string;
+  hospitalCode: string;
+  name: string;
+  kind: "PARENT" | "CHILD";
+};
+
+/** ADR-0025: one Hospital of a network export, with the same summary and rows its single-Hospital export holds. */
+export type NetworkReportingSection = {
+  hospital: NetworkReportingHospital;
+  counts: HospitalReportingSummary;
+  programs: readonly HospitalReportProgramRow[];
+};
+
+export type NetworkReportingDataset = {
+  parent: { id: string; hospitalCode: string; name: string };
+  cohort: HospitalReportingDataset["cohort"];
+  /** Sums of the section counts. */
+  counts: HospitalReportingSummary;
+  /** The Parent first (when selected), then Children by name. */
+  hospitals: readonly NetworkReportingSection[];
+};
+
 export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
   hospitalIdentity: { coverage: "SOURCE_BACKED", source: "Hospital.id/name/hospitalCode" },
   patientIdentity: {
