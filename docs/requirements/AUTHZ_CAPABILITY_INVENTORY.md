@@ -1,6 +1,10 @@
 # Authorization capability inventory: every OWNER gate
 
-- Status: MP-0 classification, Product Owner decision of 2026-11-01 (MEMBER operational parity).
+- Status: MP-0 classification, Product Owner decision of 2026-11-01 (MEMBER operational parity, ADR-0026). MP-1 put
+  every target in place through `src/modules/identity/services/hospital-authority.ts`: `hospitalOperatorMembershipWhere`
+  / `isActiveHospitalOperator` (OWNER + MEMBER) and `hospitalAdministratorMembershipWhere` /
+  `isActiveHospitalAdministrator` (OWNER). A switched gate may no longer match the patterns; its row stays as the
+  record of the capability.
 - Scope: every non-test `.ts`/`.tsx` file under `src/` and `app/` that matches `MembershipType.OWNER`, `assertOwnerInDatabase`
   or `"OWNER"`. A match belongs to the **top-level declaration** that contains it (function, `const`, type); a match outside
   any declaration (an `import`) is `<module>`.
@@ -27,7 +31,7 @@ Decisions recorded with the Product Owner on 2026-11-01 for rows the decision ta
 
 ## Gates
 
-| File | Function | Capability | Current rule (MP-0) | Class | Target |
+| File | Function | Capability | Rule before MP-1 | Class | Target |
 | --- | --- | --- | --- | --- | --- |
 | `app/app/patients/[relationshipId]/profile/page.tsx` | `HospitalPatientProfilePage` | shows the E3 Patient name-correction form | ACTIVE OWNER membership of the Patient's Hospital | OPERATIONAL | OWNER + MEMBER |
 | `app/app/workforce/[kind]/[relationshipId]/page.tsx` | `WorkforceDetailView` | shows the workforce contact-phone control | `viewerScope === "OWNER"` | USER_MANAGEMENT | OWNER |
@@ -65,6 +69,8 @@ Decisions recorded with the Product Owner on 2026-11-01 for rows the decision ta
 | `src/modules/hospital-settings/services/hospital-self-registration-settings-service.ts` | `listOwnedHospitalSelfRegistrationSettings` | self-registration switch | persisted ACTIVE OWNER | HOSPITAL_MANAGEMENT | OWNER |
 | `src/modules/hospital-settings/services/hospital-self-registration-settings-service.ts` | `setHospitalSelfRegistrationEnabled` | self-registration switch | persisted ACTIVE OWNER | HOSPITAL_MANAGEMENT | OWNER |
 | `src/modules/identity/services/workforce-relationship-compatibility.ts` | `assertWorkforceRelationshipsCompatible` | conflict disclosure while provisioning | persisted ACTIVE OWNER of the disclosing Hospital | USER_MANAGEMENT | OWNER |
+| `src/modules/identity/services/hospital-authority.ts` | `HOSPITAL_ADMINISTRATOR_MEMBERSHIP_TYPES` | administrator predicate and context check (ADR-0026) | — (added in MP-1) | HOSPITAL_MANAGEMENT, USER_MANAGEMENT | OWNER |
+| `src/modules/identity/services/hospital-authority.ts` | `HOSPITAL_OPERATOR_MEMBERSHIP_TYPES` | operator predicate and context check (ADR-0026) | — (added in MP-1) | OPERATIONAL | OWNER + MEMBER |
 | `src/modules/patient-activation/policies/patient-activation-policy.ts` | `hasActiveDirectHospitalScope` | Patient account invitations/slips | ACTIVE OWNER | USER_MANAGEMENT | OWNER |
 | `src/modules/patient-activation/services/patient-activation-query-service.ts` | `listPatientActivationScopes` | Patient activation list | persisted ACTIVE OWNER | USER_MANAGEMENT | OWNER |
 | `src/modules/patient-activation/services/patient-activation-service.ts` | `assertPatientActivationActorInDatabase` | Patient activation issue/regenerate | persisted ACTIVE OWNER | USER_MANAGEMENT | OWNER |
@@ -86,6 +92,7 @@ Decisions recorded with the Product Owner on 2026-11-01 for rows the decision ta
 | `src/modules/patient-evidence/policies/patient-evidence-policy.ts` | `hasActiveDirectHospitalScope` | evidence care work | ACTIVE OWNER or MEMBER | OPERATIONAL | OWNER + MEMBER (unchanged) |
 | `src/modules/patient-hospital-profile/services/patient-name-correction-service.ts` | `loadActor` | E3 Patient name correction (`correctPatientName`) | persisted ACTIVE OWNER | OPERATIONAL | OWNER + MEMBER |
 | `src/modules/patient-hospital-profile/services/patient-name-correction-service.ts` | `loadActor` | UM-1 staff/OSM name correction (`correctWorkforcePersonName`) | persisted ACTIVE OWNER | USER_MANAGEMENT | OWNER |
+| `src/modules/patient-hospital-profile/policies/patient-name-correction-policy.ts` | `decidePatientNameCorrectionPolicy` | E3 / UM-1 audit basis from the persisted `hospitalAccessBasis` | OWNER only (`isActiveOwnerOfPatientHospital`) | OPERATIONAL (Patient), USER_MANAGEMENT (staff/OSM) | OWNER + MEMBER (Patient), OWNER (staff/OSM, enforced by `loadActor`) |
 | `src/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service.ts` | `isActiveOwnerOfHospital` | end care relationship (ก-18) | persisted ACTIVE OWNER | USER_MANAGEMENT | OWNER |
 | `src/modules/patient-program/policies/patient-program-policy.ts` | `hasActiveDirectHospitalScope` | Program care work | ACTIVE OWNER or MEMBER | OPERATIONAL | OWNER + MEMBER (unchanged) |
 | `src/modules/patient-provisioning/policies/patient-provisioning-policy.ts` | `isActiveDirectHospitalScope` | Patient Excel import | ACTIVE OWNER | USER_MANAGEMENT | OWNER |
@@ -161,6 +168,8 @@ Decisions recorded with the Product Owner on 2026-11-01 for rows the decision ta
 | `src/modules/hospital-service-areas/services/child-owner-invitation-context.ts` | `activatePendingChildOwner` | TARGET_ROLE | activates the invited Child OWNER |
 | `src/modules/hospital-service-areas/services/child-owner-invitation-context.ts` | `assertChildOwnerInvitationContext` | TARGET_ROLE | invited Child OWNER membership; the issuer check is `parentOwnerMembershipWhere` |
 | `src/modules/hospital-service-areas/services/hospital-network-access.ts` | `HospitalNetworkAuthority` | TYPE | authority names |
+| `src/modules/identity/services/hospital-authority.ts` | `HospitalAccessBasis` | TYPE | audit `accessBasis` |
+| `src/modules/identity/services/hospital-authority.ts` | `accessBasisForMembershipType` | TYPE | maps a persisted membership type to the audit basis |
 | `src/modules/hospital-service-areas/services/hospital-network-access.ts` | `HospitalNetworkReportExportScope` | TYPE | membership type of the resolved scope |
 | `src/modules/reporting/services/hospital-report-access-service.ts` | `HospitalReportingAccessContext` | TYPE | audit `accessBasis` |
 | `src/modules/reporting/services/hospital-report-query-service.ts` | `NetworkReportExportPreview` | TYPE | `accessBasis` |

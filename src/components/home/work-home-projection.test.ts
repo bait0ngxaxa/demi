@@ -134,13 +134,15 @@ const cases: Case[] = [
     tiles: [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
+      // ADR-0026: a MEMBER opens the full Hospital report like the OWNER.
+      withHospital("/app/hospitals/reporting", hospitalA),
       withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
-      "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
       withHospital("/app/hospitals/contacts", hospitalA),
     ],
-    shared: [],
+    // ADR-0026: a MEMBER confirms or rejects service requests across its Hospitals.
+    shared: ["/app/patients/service-requests"],
   },
   {
     name: "Hospital OWNER",
@@ -203,13 +205,15 @@ const cases: Case[] = [
     tiles: [
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
+      // ADR-0026: a MEMBER opens the full Hospital report like the OWNER.
+      withHospital("/app/hospitals/reporting", hospitalA),
       withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
-      "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
       withHospital("/app/hospitals/contacts", hospitalA),
     ],
-    shared: [],
+    // ADR-0026: a MEMBER confirms or rejects service requests across its Hospitals.
+    shared: ["/app/patients/service-requests"],
   },
 ];
 
@@ -224,25 +228,26 @@ describe("work home projection per actor", () => {
       withHospital("/app/hospitals/knowledge", hospitalA),
     ]));
   });
-  it("keeps MEMBER care, information and export links in the selected Hospital grid", () => {
+  it("keeps MEMBER care, information and report links in the selected Hospital grid", () => {
     const subject = actor({
       roles: [Role.HOSPITAL],
       hospitalMemberships: [membership(hospitalA, MembershipType.MEMBER)],
     });
     const { home, projection } = project(subject, [workspace(hospitalA)]);
-    const exportAction = projection.hospitals[0]?.actions.find(({ href }) => href === "/app/hospitals/reporting/export");
+    const reportAction = projection.hospitals[0]?.actions.find(({ href }) => href === withHospital("/app/hospitals/reporting", hospitalA));
 
     expect(home.tiles.map(({ href }) => href)).toEqual([
       appointmentsAt(hospitalA),
       withHospital("/app/patients", hospitalA),
+      // ADR-0026: a MEMBER opens the full Hospital report like the OWNER.
+      withHospital("/app/hospitals/reporting", hospitalA),
       withHospital("/app/services", hospitalA),
       withHospital("/app/appointments/new", hospitalA),
-      "/app/hospitals/reporting/export",
       withHospital("/app/hospitals/content", hospitalA),
       withHospital("/app/hospitals/contacts", hospitalA),
     ]);
-    expect(home.sharedActions).toEqual([]);
-    expect(exportAction?.category).toBe("patient");
+    expect(home.sharedActions.map(({ href }) => href)).toEqual(["/app/patients/service-requests"]);
+    expect(reportAction?.category).toBe("information");
   });
 
   it.each(cases)("$name", ({ subject, workspaces, requested, scope, selected, hero, tiles, shared }) => {

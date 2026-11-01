@@ -39,20 +39,39 @@ describe("patient:assign-osm policy", () => {
         capability: PATIENT_ASSIGN_OSM_CAPABILITY,
         targetHospitalId: hospitalA,
       }),
-    ).toEqual({ allowed: true, reason: "active_hospital_owner" });
+    ).toEqual({ allowed: true, reason: "active_hospital_operator" });
   });
 
-  it.each([
-    ["MEMBER", MembershipType.MEMBER],
-    ["inactive membership", MembershipType.OWNER],
-  ] as const)("denies Hospital %s", (_label, membershipType) => {
+  it("allows an active Hospital MEMBER in the same Hospital (ADR-0026)", () => {
+    const actor = ownerActor({
+      hospitalMemberships: [
+        {
+          hospitalId: hospitalA,
+          membershipType: MembershipType.MEMBER,
+          profession: Profession.NURSE,
+          status: MembershipStatus.ACTIVE,
+          hospitalStatus: HospitalStatus.ACTIVE,
+        },
+      ],
+    });
+
+    expect(
+      decidePatientOsmAssignmentPolicy({
+        actor,
+        capability: PATIENT_ASSIGN_OSM_CAPABILITY,
+        targetHospitalId: hospitalA,
+      }),
+    ).toEqual({ allowed: true, reason: "active_hospital_operator" });
+  });
+
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("denies a suspended Hospital %s", (membershipType) => {
     const actor = ownerActor({
       hospitalMemberships: [
         {
           hospitalId: hospitalA,
           membershipType,
           profession: Profession.NURSE,
-          status: _label === "inactive membership" ? MembershipStatus.SUSPENDED : MembershipStatus.ACTIVE,
+          status: MembershipStatus.SUSPENDED,
           hospitalStatus: HospitalStatus.ACTIVE,
         },
       ],
@@ -74,7 +93,7 @@ describe("patient:assign-osm policy", () => {
         capability: PATIENT_ASSIGN_OSM_CAPABILITY,
         targetHospitalId,
       }),
-    ).toEqual({ allowed: false, reason: "active_owner_membership_required" });
+    ).toEqual({ allowed: false, reason: "active_hospital_operator_required" });
   });
 
   it.each([
@@ -108,7 +127,7 @@ describe("patient:assign-osm policy", () => {
         capability: PATIENT_ASSIGN_OSM_CAPABILITY,
         targetHospitalId: hospitalA,
       }),
-    ).toEqual({ allowed: false, reason: "active_hospital_required" });
+    ).toEqual({ allowed: false, reason: "active_hospital_operator_required" });
   });
 
   it("uses the same fail-closed assertion boundary", () => {

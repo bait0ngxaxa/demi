@@ -3,7 +3,6 @@ import "server-only";
 import {
   HospitalStatus,
   MembershipStatus,
-  MembershipType,
   Prisma,
   Role,
   UserStatus,
@@ -14,6 +13,12 @@ import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  accessBasisForMembershipType,
+  hospitalAdministratorMembershipWhere,
+  hospitalOperatorMembershipWhere,
+  type HospitalAccessBasis,
+} from "@/modules/identity/services/hospital-authority";
 import {
   activePatientHospitalRelationshipWhere,
   isPatientHospitalRelationshipEnded,
@@ -54,17 +59,35 @@ export type PatientNameCorrectionTarget = {
   version: number;
 };
 
-async function loadActor(database: Prisma.TransactionClient | PrismaClient, actor: ActorContext) {
+/**
+ * The persisted actor with the Hospitals it may correct names in: `OPERATOR` (ACTIVE OWNER or MEMBER) for a
+ * Patient (ADR-0026), `ADMINISTRATOR` (ACTIVE OWNER) for staff/OSM (UM-1).
+ */
+async function loadActor(
+  database: Prisma.TransactionClient | PrismaClient,
+  actor: ActorContext,
+  authority: "OPERATOR" | "ADMINISTRATOR",
+) {
   return database.user.findFirst({
     where: { id: actor.userId, personId: actor.personId, status: UserStatus.ACTIVE },
     select: {
       roles: { select: { role: true } },
       memberships: {
-        where: { membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE, hospital: { is: { status: HospitalStatus.ACTIVE } } },
-        select: { hospitalId: true },
+        where: authority === "OPERATOR"
+          ? hospitalOperatorMembershipWhere(actor.userId)
+          : hospitalAdministratorMembershipWhere(actor.userId),
+        select: { hospitalId: true, membershipType: true },
       },
     },
   });
+}
+
+function hospitalAccessBasis(
+  persisted: NonNullable<Awaited<ReturnType<typeof loadActor>>>,
+  hospitalId: string,
+): HospitalAccessBasis | null {
+  const membership = persisted.memberships.find((candidate) => candidate.hospitalId === hospitalId);
+  return membership ? accessBasisForMembershipType(membership.membershipType) : null;
 }
 
 function isActivePlatformAdmin(
@@ -108,7 +131,7 @@ export async function correctPatientName(
 
   try {
     return await runSerializableTransaction(database, async (transaction) => {
-      const persistedActor = await loadActor(transaction, actor);
+      const persistedActor = await loadActor(transaction, actor, "OPERATOR");
       if (!persistedActor) throw new ForbiddenError();
 
       const relationship = await transaction.patientHospitalRelationship.findUnique({
@@ -130,13 +153,14 @@ export async function correctPatientName(
       const person = relationship.patientProfile.person;
       const decision = decidePatientNameCorrectionPolicy({
         isActivePlatformAdmin: isActivePlatformAdmin(actor, persistedActor),
-        isActiveOwnerOfPatientHospital:
+        hospitalAccessBasis:
           actor.roles.includes(Role.HOSPITAL) &&
           persistedActor.roles.some(({ role }) => role === Role.HOSPITAL) &&
           relationship.hospital.status === HospitalStatus.ACTIVE &&
-          // Phase F: an OWNER does no work through an ended relationship; the ADMIN path remains.
-          !isPatientHospitalRelationshipEnded(relationship) &&
-          persistedActor.memberships.some(({ hospitalId }) => hospitalId === relationship.hospitalId),
+          // Phase F: Hospital staff do no work through an ended relationship; the ADMIN path remains.
+          !isPatientHospitalRelationshipEnded(relationship)
+            ? hospitalAccessBasis(persistedActor, relationship.hospitalId)
+            : null,
         patientHospitalId: relationship.hospitalId,
         personHospitalIds: await personHospitalIds(transaction, relationship.patientProfile.id, person.user?.id ?? null),
       });
@@ -179,7 +203,7 @@ export async function correctWorkforcePersonName(
 
   try {
     return await runSerializableTransaction(database, async (transaction) => {
-      const persistedActor = await loadActor(transaction, actor);
+      const persistedActor = await loadActor(transaction, actor, "ADMINISTRATOR");
       if (!persistedActor) throw new ForbiddenError();
 
       const relationshipSelect = {
@@ -201,12 +225,13 @@ export async function correctWorkforcePersonName(
       const person = relationship.user.person;
       const decision = decidePatientNameCorrectionPolicy({
         isActivePlatformAdmin: false,
-        isActiveOwnerOfPatientHospital:
+        hospitalAccessBasis:
           actor.roles.includes(Role.HOSPITAL) &&
           persistedActor.roles.some(({ role }) => role === Role.HOSPITAL) &&
           relationship.hospital.status === HospitalStatus.ACTIVE &&
-          relationship.status !== MembershipStatus.ENDED &&
-          persistedActor.memberships.some(({ hospitalId }) => hospitalId === relationship.hospitalId),
+          relationship.status !== MembershipStatus.ENDED
+            ? hospitalAccessBasis(persistedActor, relationship.hospitalId)
+            : null,
         patientHospitalId: relationship.hospitalId,
         personHospitalIds: await personHospitalIds(transaction, person.patientProfile?.id ?? null, relationship.user.id),
       });
@@ -290,7 +315,7 @@ export async function findPatientsForNameCorrection(
   if (!parsed.success) throw new ValidationError("Patient lookup data is invalid");
 
   try {
-    if (!isActivePlatformAdmin(actor, await loadActor(database, actor))) throw new ForbiddenError();
+    if (!isActivePlatformAdmin(actor, await loadActor(database, actor, "ADMINISTRATOR"))) throw new ForbiddenError();
     const rows = await database.patientHospitalRelationship.findMany({
       where: { hospitalId: parsed.data.hospitalId, hospitalNumber: parsed.data.hospitalNumber },
       orderBy: { id: "asc" },

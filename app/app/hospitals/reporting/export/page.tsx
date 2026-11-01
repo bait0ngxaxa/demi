@@ -5,7 +5,7 @@ import { connection } from "next/server";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { listHospitalReportMemberExportHospitals } from "@/modules/reporting/services/hospital-report-access-service";
+import { listHospitalReportingHospitals } from "@/modules/reporting/services/hospital-report-access-service";
 import {
   getHospitalReportExportPreview,
   getNetworkReportExportPreview,
@@ -24,9 +24,9 @@ export const metadata: Metadata = { title: "ส่งออกรายงาน
 type NetworkPreviews = Record<"ACTIVE" | "INCLUDE_ENDED", NetworkReportExportPreview>;
 
 /**
- * Export-only entry. ACTIVE MEMBER staff export their Hospital (Product Owner decision 2026-10-21, no OWNER grant);
- * an ACTIVE OWNER or MEMBER of a network Parent exports the Parent and all or selected network Hospitals
- * (ADR-0025) instead of the Parent's single-Hospital file.
+ * Export entry. Every ACTIVE OWNER or MEMBER exports their Hospital (ADR-0026); an ACTIVE OWNER or MEMBER of a
+ * network Parent exports the Parent and all or selected network Hospitals (ADR-0025) instead of the Parent's
+ * single-Hospital file.
  */
 export default async function HospitalReportExportPage({
   searchParams,
@@ -36,14 +36,14 @@ export default async function HospitalReportExportPage({
   await connection();
   if (Object.keys(await searchParams).length > 0) notFound();
 
-  let hospitals: Awaited<ReturnType<typeof listHospitalReportMemberExportHospitals>>;
+  let hospitals: Awaited<ReturnType<typeof listHospitalReportingHospitals>>;
   let previews: HospitalReportExportPreview[];
   let networks: NetworkPreviews[];
   try {
     const actor = await getProtectedApplicationActor();
     const parents = await listNetworkReportExportParents(actor);
     const parentIds = new Set(parents.map(({ parent }) => parent.id));
-    hospitals = (await listHospitalReportMemberExportHospitals(actor)).filter(({ id }) => !parentIds.has(id));
+    hospitals = (await listHospitalReportingHospitals(actor)).filter(({ id }) => !parentIds.has(id));
     previews = await Promise.all(hospitals.map((hospital) => getHospitalReportExportPreview(actor, { hospitalId: hospital.id })));
     networks = await Promise.all(parents.map(async ({ parent }) => {
       const [active, includeEnded] = await Promise.all([

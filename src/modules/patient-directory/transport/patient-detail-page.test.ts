@@ -612,7 +612,7 @@ describe("Patient detail page", () => {
     expect(elements(page).some((element) => element.type === PatientAccountRecoveryPanel)).toBe(true);
   });
 
-  it("hides the Manage tab and loads no management controls for a MEMBER", async () => {
+  it("gives a MEMBER the Manage tab with OSM assignment but no OWNER-only account recovery (ADR-0026)", async () => {
     mockedGetProtectedApplicationActor.mockResolvedValue({
       ...actor,
       hospitalMemberships: actor.hospitalMemberships.map((membership) => ({
@@ -622,10 +622,9 @@ describe("Patient detail page", () => {
     });
     const page = await renderPage("manage");
 
-    expectActiveTab(page, "ภาพรวม");
-    expect(containsString(page, "/assignment")).toBe(false);
+    expectActiveTab(page, "จัดการ");
+    expect(containsString(page, "/assignment")).toBe(true);
     expect(elements(page).some((element) => element.type === PatientAccountRecoveryPanel)).toBe(false);
-    expect(elements(page).some((element) => element.props.href?.includes("tab=manage"))).toBe(false);
   });
 
   it("exposes relationship-scoped Evidence in the single ordered history list", async () => {
@@ -637,7 +636,7 @@ describe("Patient detail page", () => {
     expect(elements(page).filter((element) => element.type === "ol")).toHaveLength(1);
   });
 
-  it("shows assignment management only for a Hospital OWNER", async () => {
+  it("shows assignment management to an ACTIVE OWNER or MEMBER, never to a SUSPENDED MEMBER", async () => {
     const ownerPage = await renderPage("manage");
     expect(containsString(ownerPage, "/assignment")).toBe(true);
 
@@ -647,11 +646,12 @@ describe("Patient detail page", () => {
         {
           ...actor.hospitalMemberships[0],
           membershipType: MembershipType.MEMBER,
+          status: MembershipStatus.SUSPENDED,
         },
       ],
     });
-    const memberPage = await renderPage("manage");
-    expect(containsString(memberPage, "/assignment")).toBe(false);
+    const suspendedPage = await renderPage("manage");
+    expect(containsString(suspendedPage, "/assignment")).toBe(false);
   });
 
   it("starts Baseline and Program context loads while classification is still pending", async () => {

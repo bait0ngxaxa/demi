@@ -4,13 +4,13 @@ import {
   AppointmentLineNotificationEventKind,
   HospitalStatus,
   MembershipStatus,
-  MembershipType,
   Prisma,
   Role,
   UserStatus,
 } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hospitalOperatorMembershipWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
@@ -45,7 +45,8 @@ export type PatientOsmAssignmentMutationResult = {
   previousOsmUserId: string | null;
 };
 
-async function assertOwnerInDatabase(
+/** ADR-0026: persisted ACTIVE OWNER or MEMBER of the ACTIVE Hospital (User ACTIVE with the HOSPITAL role). */
+async function assertOperatorInDatabase(
   transaction: Prisma.TransactionClient,
   actorUserId: string,
   targetHospitalId: string,
@@ -65,18 +66,12 @@ async function assertOwnerInDatabase(
     throw new ForbiddenError();
   }
 
-  const ownerMembership = await transaction.hospitalMembership.findFirst({
-    where: {
-      userId: actorUserId,
-      hospitalId: targetHospitalId,
-      membershipType: MembershipType.OWNER,
-      status: MembershipStatus.ACTIVE,
-      hospital: { status: HospitalStatus.ACTIVE },
-    },
+  const operatorMembership = await transaction.hospitalMembership.findFirst({
+    where: hospitalOperatorMembershipWhere(actorUserId, targetHospitalId),
     select: { id: true },
   });
 
-  if (!ownerMembership) {
+  if (!operatorMembership) {
     throw new ForbiddenError();
   }
 }
@@ -269,7 +264,7 @@ export async function assignOsmToPatientInTransaction(
     capability: PATIENT_ASSIGN_OSM_CAPABILITY,
     targetHospitalId: relationship.hospitalId,
   });
-  await assertOwnerInDatabase(transaction, actor.userId, relationship.hospitalId);
+  await assertOperatorInDatabase(transaction, actor.userId, relationship.hospitalId);
   await assertTargetOsmInDatabase(
     transaction,
     actor.userId,
@@ -363,7 +358,7 @@ export async function unassignOsmFromPatientInTransaction(
     capability: PATIENT_ASSIGN_OSM_CAPABILITY,
     targetHospitalId: relationship.hospitalId,
   });
-  await assertOwnerInDatabase(transaction, actor.userId, relationship.hospitalId);
+  await assertOperatorInDatabase(transaction, actor.userId, relationship.hospitalId);
 
   const activeAssignment = await resolveActiveAssignment(
     transaction,
@@ -425,7 +420,7 @@ export async function unassignOsmFromPatientInTransaction(
 }
 
 export const patientOsmAssignmentTransactionInternals = {
-  assertOwnerInDatabase,
+  assertOperatorInDatabase,
   assertTargetOsmInDatabase,
   resolveActiveAssignment,
   resolvePatientHospitalRelationship,

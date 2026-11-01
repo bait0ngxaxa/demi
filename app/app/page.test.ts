@@ -175,17 +175,17 @@ describe("application home workspace routing", () => {
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
   });
 
-  // ADR-0019: import, activation, workforce and request review are OWNER-only; every MEMBER may
-  // still export reports (Product Owner decision 2026-10-21).
-  it("shows a MEMBER patient care and report export, without OWNER administration or request review", async () => {
+  // ADR-0026: a MEMBER has the OWNER's operational work (reports, request review); import, activation,
+  // workforce, catalog and other administration stay OWNER-only.
+  it("shows a MEMBER patient care, reports and request review, without OWNER administration", async () => {
     const html = await renderHome(staff(MembershipType.MEMBER));
     expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
     expect(section(html, "work-home-menu-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
-    for (const ownerOnly of ["/app/patients/provision", "/app/patients/activation", "/app/workforce", "/app/patients/service-requests", "/app/patients/access-requests", "/app/patients/service-catalog", `/app/hospitals/reporting?hospitalId=${hospitalId}`]) {
+    for (const ownerOnly of ["/app/patients/provision", "/app/patients/activation", "/app/workforce", "/app/users", "/app/patients/access-requests", "/app/patients/service-catalog", "/app/hospitals/settings", "/app/hospitals/knowledge"]) {
       expect(html).not.toContain(ownerOnly);
     }
-    expect(section(html, "work-home-menu-heading")).toContain('href="/app/hospitals/reporting/export"');
-    expect(section(html, "work-home-shared-heading")).toBe("");
+    expect(section(html, "work-home-menu-heading")).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}"`);
+    expect(section(html, "work-home-shared-heading")).toContain('href="/app/patients/service-requests"');
     expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
     expect(html).not.toContain("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง");
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");

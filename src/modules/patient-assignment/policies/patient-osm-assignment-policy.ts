@@ -1,8 +1,9 @@
 import "server-only";
 
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import { Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 export const PATIENT_ASSIGN_OSM_CAPABILITY = "patient:assign-osm" as const;
@@ -12,7 +13,7 @@ export type PatientAssignOsmCapability = typeof PATIENT_ASSIGN_OSM_CAPABILITY;
 export type PatientOsmAssignmentPolicyDecision =
   | {
       allowed: true;
-      reason: "active_hospital_owner";
+      reason: "active_hospital_operator";
     }
   | {
       allowed: false;
@@ -21,8 +22,7 @@ export type PatientOsmAssignmentPolicyDecision =
         | "invalid_capability"
         | "invalid_target_hospital"
         | "hospital_role_required"
-        | "active_owner_membership_required"
-        | "active_hospital_required";
+        | "active_hospital_operator_required";
     };
 
 export function decidePatientOsmAssignmentPolicy(input: {
@@ -46,22 +46,12 @@ export function decidePatientOsmAssignmentPolicy(input: {
     return { allowed: false, reason: "hospital_role_required" };
   }
 
-  const membership = input.actor.hospitalMemberships.find(
-    (candidate) =>
-      candidate.hospitalId === input.targetHospitalId &&
-      candidate.membershipType === MembershipType.OWNER &&
-      candidate.status === MembershipStatus.ACTIVE,
-  );
-
-  if (!membership) {
-    return { allowed: false, reason: "active_owner_membership_required" };
+  // ADR-0026: an ACTIVE OWNER or MEMBER of the ACTIVE Hospital assigns and unassigns OSMs.
+  if (!isActiveHospitalOperator(input.actor, input.targetHospitalId)) {
+    return { allowed: false, reason: "active_hospital_operator_required" };
   }
 
-  if (membership.hospitalStatus !== HospitalStatus.ACTIVE) {
-    return { allowed: false, reason: "active_hospital_required" };
-  }
-
-  return { allowed: true, reason: "active_hospital_owner" };
+  return { allowed: true, reason: "active_hospital_operator" };
 }
 
 export function assertPatientOsmAssignmentPolicy(input: {

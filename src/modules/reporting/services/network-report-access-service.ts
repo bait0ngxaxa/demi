@@ -115,7 +115,7 @@ export async function listNetworkReportExportParents(
   if (!actor.roles.includes(Role.HOSPITAL)) return [];
 
   try {
-    return await listNetworkScopes(database, actor.userId, "REPORT_EXPORT");
+    return await listNetworkScopes(database, actor.userId, "REPORT");
   } catch {
     throw new InfrastructureError("Network report export access could not be loaded");
   }

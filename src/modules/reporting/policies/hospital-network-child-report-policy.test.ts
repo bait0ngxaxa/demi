@@ -54,7 +54,7 @@ describe("Hospital Network Child reporting policy", () => {
   it("allows the exact active direct Child target through the distinct Parent reporting capability", () => {
     expect(decide()).toEqual({
       allowed: true,
-      reason: "active_parent_owner_direct_child_report",
+      reason: "active_parent_operator_direct_child_report",
     });
   });
 
@@ -74,20 +74,21 @@ describe("Hospital Network Child reporting policy", () => {
     });
   });
 
-  it("requires direct ACTIVE OWNER membership at this exact Parent, without requiring Child ownership", () => {
+  it("requires direct ACTIVE OWNER or MEMBER membership at this exact Parent, without requiring Child membership", () => {
     expect(decide({ actor: { ...actor, hospitalMemberships: [] } })).toMatchObject({
       allowed: false,
-      reason: "active_parent_owner_required",
+      reason: "active_parent_operator_required",
     });
+    // ADR-0026: a Parent MEMBER reads and exports the Child summary like the OWNER.
     expect(decide({ actor: {
       ...actor,
       hospitalMemberships: [{
         ...parentOwnerMembership,
         membershipType: MembershipType.MEMBER,
       }],
-    } })).toMatchObject({
-      allowed: false,
-      reason: "active_parent_owner_required",
+    } })).toEqual({
+      allowed: true,
+      reason: "active_parent_operator_direct_child_report",
     });
     for (const membership of [
       { ...parentOwnerMembership, status: MembershipStatus.SUSPENDED },
@@ -96,7 +97,7 @@ describe("Hospital Network Child reporting policy", () => {
     ]) {
       expect(decide({ actor: { ...actor, hospitalMemberships: [membership] } })).toMatchObject({
         allowed: false,
-        reason: "active_parent_owner_required",
+        reason: "active_parent_operator_required",
       });
     }
     expect(decide()).toMatchObject({ allowed: true });

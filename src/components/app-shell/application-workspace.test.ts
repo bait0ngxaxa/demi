@@ -83,7 +83,7 @@ describe("application workspace projection", () => {
     ]);
   });
 
-  it("offers the network report only to the direct OWNER of a Parent with active Children (ADR-0013)", () => {
+  it("offers the network report to the direct OWNER or MEMBER of a Parent with active Children (ADR-0013, ADR-0026)", () => {
     const owner = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] });
     const member = actor({ roles: [Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.MEMBER)] });
     const hrefs = (projectionActor: ActorContext, hasActiveDirectChildren: boolean) =>
@@ -95,7 +95,8 @@ describe("application workspace projection", () => {
       .hospitals[0]?.actions.find(({ href }) => href === "/app/hospitals/reporting?scope=network");
     expect(networkAction?.label).toBe("รายงานลูกข่าย");
     expect(hrefs(owner, false)).not.toContain("/app/hospitals/reporting?scope=network");
-    expect(hrefs(member, true)).not.toContain("/app/hospitals/reporting?scope=network");
+    expect(hrefs(member, true)).toContain("/app/hospitals/reporting?scope=network");
+    expect(hrefs(member, false)).not.toContain("/app/hospitals/reporting?scope=network");
     for (const role of [Role.ADMIN, Role.OSM, Role.PATIENT]) {
       expect(hrefs(actor({ roles: [role] }), true)).not.toContain("/app/hospitals/reporting?scope=network");
     }
@@ -122,7 +123,7 @@ describe("application workspace projection", () => {
     ]);
   });
 
-  it("gives an ordinary Hospital member only patient care", () => {
+  it("gives an ordinary Hospital member care, reports and request review without administration (ADR-0026)", () => {
     const projection = projectApplicationWorkspace(
       actor({
         roles: [Role.HOSPITAL],
@@ -146,8 +147,9 @@ describe("application workspace projection", () => {
     expect(hrefs).toContain(`/app/hospitals/contacts?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/patients/provision?hospitalId=${hospitalId}`);
     expect(hrefs).not.toContain(`/app/hospitals/settings?hospitalId=${hospitalId}`);
-    expect(projection.hospitals[0]?.actions.find(({ href }) => href === "/app/hospitals/reporting/export")?.category).toBe("patient");
-    expect(projection.requestActions.map(({ href }) => href)).toEqual([]);
+    expect(projection.hospitals[0]?.actions.find(({ href }) => href === `/app/hospitals/reporting?hospitalId=${hospitalId}`)?.category).toBe("information");
+    expect(projection.hospitals[0]?.actions.some(({ category }) => category === "administration")).toBe(false);
+    expect(projection.requestActions.map(({ href }) => href)).toEqual(["/app/patients/service-requests"]);
     expect(projection.supportingActions).toHaveLength(0);
   });
 
@@ -263,7 +265,7 @@ describe("application workspace projection", () => {
       hospitalMemberships: [directMembership(MembershipType.OWNER), { ...directMembership(MembershipType.MEMBER), hospitalId: secondId }],
       osmHospitalRelationships: [{ hospitalId: secondId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }],
     }), [workspace(), workspace({ hospitalId: secondId })]);
-    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(4);
+    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(3);
     expect(
       projection.hospitals[1]?.actions
         .filter(({ category }) => category === "administration")
@@ -278,7 +280,7 @@ describe("application workspace projection", () => {
   it("preserves domain-specific ADMIN + HOSPITAL policies", () => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.ADMIN, Role.HOSPITAL], hospitalMemberships: [directMembership(MembershipType.OWNER)] }), [workspace()]);
     expect(projection.governanceActions).toHaveLength(3);
-    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(4);
+    expect(projection.hospitals[0]?.actions.filter(({ category }) => category === "administration")).toHaveLength(3);
     // Request and catalog policies explicitly exclude actors holding ADMIN, even with direct membership.
     expect(projection.requestActions).toEqual([]);
     expect(projection.supportingActions).toEqual([]);

@@ -3,7 +3,6 @@ import "server-only";
 import {
   HospitalStatus,
   MembershipStatus,
-  MembershipType,
   PatientServiceCode,
   PatientServiceRequestSlot,
   PatientServiceRequestStatus,
@@ -16,6 +15,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hospitalOperatorMembershipWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { SERVICE_APPOINTMENT_TYPE } from "@/modules/appointments/domain/appointment-service-definitions";
@@ -222,14 +222,9 @@ async function assertPersistedHospitalReviewer(
     throw new ForbiddenError();
   }
 
+  // ADR-0026: an ACTIVE OWNER or MEMBER of the request's ACTIVE Hospital reviews it.
   const membership = await transaction.hospitalMembership.findFirst({
-    where: {
-      userId: actorUserId,
-      hospitalId,
-      membershipType: MembershipType.OWNER,
-      status: MembershipStatus.ACTIVE,
-      hospital: { status: HospitalStatus.ACTIVE },
-    },
+    where: hospitalOperatorMembershipWhere(actorUserId, hospitalId),
     select: { id: true },
   });
 
@@ -797,12 +792,7 @@ export async function listHospitalPatientServiceRequests(
     }
 
     const memberships = await database.hospitalMembership.findMany({
-      where: {
-        userId: actor.userId,
-        membershipType: MembershipType.OWNER,
-        status: MembershipStatus.ACTIVE,
-        hospital: { status: HospitalStatus.ACTIVE },
-      },
+      where: hospitalOperatorMembershipWhere(actor.userId),
       select: { hospitalId: true },
     });
     const hospitalIds = memberships.map(({ hospitalId }) => hospitalId);

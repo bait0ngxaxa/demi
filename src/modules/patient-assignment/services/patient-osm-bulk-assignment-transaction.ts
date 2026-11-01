@@ -88,7 +88,7 @@ export async function assignOsmToPatientsInTransaction(
     capability: PATIENT_ASSIGN_OSM_CAPABILITY,
     targetHospitalId: input.hospitalId,
   });
-  await patientOsmAssignmentTransactionInternals.assertOwnerInDatabase(
+  await patientOsmAssignmentTransactionInternals.assertOperatorInDatabase(
     transaction,
     actor.userId,
     input.hospitalId,

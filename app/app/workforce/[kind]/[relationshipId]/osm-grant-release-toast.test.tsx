@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, createElement, StrictMode } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   osmSuspend: vi.fn(),
   osmRestore: vi.fn(),
-  grant: vi.fn(),
   release: vi.fn(),
   refresh: vi.fn(),
   success: vi.fn(),
@@ -26,8 +25,6 @@ vi.mock("@/components/ui/notify", () => ({
 vi.mock("@/modules/workforce/transport/server-actions", () => ({
   suspendOsmRelationshipAction: mocks.osmSuspend,
   restoreOsmRelationshipAction: mocks.osmRestore,
-  setHospitalMembershipReportExportGrantAction: mocks.grant,
-  setHospitalMembershipNetworkPatientReadGrantAction: mocks.grant,
 }));
 vi.mock("@/modules/workforce/transport/workforce-release-action", () => ({
   releaseWorkforceAction: mocks.release,
@@ -36,7 +33,6 @@ vi.mock("@/modules/workforce/transport/workforce-release-action", () => ({
 import type {
   WorkforceOsmRelationshipMutationActionState,
   WorkforceReleaseActionState,
-  WorkforceReportExportGrantActionState,
 } from "@/modules/workforce/transport/action-state";
 import {
   deferred,
@@ -48,7 +44,6 @@ import {
   toastCalls,
 } from "./controls-test-support";
 import { OsmRelationshipControls } from "./osm-relationship-controls";
-import { ReportExportGrantControl } from "./report-export-grant-control";
 import { WorkforceReleaseControl } from "./workforce-release-control";
 
 const RELATIONSHIP_ID = "relationship-private-1";
@@ -270,217 +265,6 @@ describe("OSM relationship controls Toasts", () => {
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("เรียบร้อยแล้ว");
-  });
-});
-
-describe("Report export grant control Toasts", () => {
-  type Props = Parameters<typeof ReportExportGrantControl>[0];
-
-  function render(granted: boolean, relationshipId = RELATIONSHIP_ID): void {
-    act(() =>
-      root.render(
-        createElement(ReportExportGrantControl, {
-          expectedUpdatedAt: V1,
-          grant: { granted, canGrant: true, canRevoke: true },
-          relationshipId,
-          targetHospitalId: HOSPITAL_ID,
-        } satisfies Props),
-      ),
-    );
-  }
-
-  function grantState(granted: boolean): WorkforceReportExportGrantActionState {
-    return { status: "SUCCESS", granted };
-  }
-
-  function grantRefusal(code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE"): WorkforceReportExportGrantActionState {
-    return { status: "ERROR", code, message: `ผลลัพธ์ ${code} จากระบบ` };
-  }
-
-  it("announces a confirmed grant once, refreshes once, and keeps the badge authoritative", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(true));
-    render(false);
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ให้สิทธิ์ส่งออกรายงานแล้ว");
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ยังไม่ได้รับสิทธิ์");
-    expect(mocks.grant.mock.calls[0]?.[1]?.get("granted")).toBe("true");
-
-    render(true);
-    expect(container.textContent).toContain("ส่งออกได้");
-  });
-
-  it("announces a confirmed revocation", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(false));
-    render(true);
-
-    await act(async () => submitForm(container, "ยกเลิกสิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ยกเลิกสิทธิ์ส่งออกรายงานแล้ว");
-    expect(mocks.grant.mock.calls[0]?.[1]?.get("granted")).toBe("false");
-  });
-
-  it("does not show success when the returned grant state is the opposite of what was requested", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(false));
-    render(false);
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    noToast();
-    expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-  });
-
-  it.each([
-    ["CONFLICT", "warning", "สถานะสิทธิ์ส่งออกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด"],
-    ["FORBIDDEN", "error", "ไม่มีสิทธิ์จัดการสิทธิ์ส่งออกรายงาน"],
-  ] as const)("maps a confirmed %s to a %s Toast and keeps the server text inline", async (code, level, message) => {
-    mocks.grant.mockResolvedValueOnce(grantRefusal(code));
-    render(false);
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    expect(mocks[level]).toHaveBeenCalledExactlyOnceWith(message);
-    expect(container.textContent).toContain(`ผลลัพธ์ ${code} จากระบบ`);
-    expect(mocks.refresh).not.toHaveBeenCalled();
-  });
-
-  it("keeps validation inline with no Toast", async () => {
-    mocks.grant.mockResolvedValueOnce(grantRefusal("INVALID_INPUT"));
-    render(false);
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    noToast();
-    expect(container.textContent).toContain("ผลลัพธ์ INVALID_INPUT จากระบบ");
-  });
-
-  it("Grant SUCCESS then Revoke UNAVAILABLE: later unknown outcome wins with no second refresh", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(true));
-    render(false);
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-    render(true);
-
-    mocks.grant.mockResolvedValueOnce(grantRefusal("UNAVAILABLE"));
-    await act(async () => submitForm(container, "ยกเลิกสิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    expect(mocks.success).toHaveBeenCalledOnce();
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-    expect(container.textContent).not.toContain("ให้สิทธิ์ส่งออกรายงานแล้ว");
-    expect(findButton(container, "ยกเลิกสิทธิ์ส่งออกรายงาน").disabled).toBe(true);
-  });
-
-  it("treats a thrown request as unknown and never retries", async () => {
-    mocks.grant.mockRejectedValueOnce(new TypeError("private server failure"));
-    render(false);
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    noToast();
-    expect(container.textContent).not.toContain("private server failure");
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    expect(mocks.grant).toHaveBeenCalledOnce();
-  });
-
-  it("holds the form until the refreshed badge reflects the result", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(true));
-    render(false);
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-    expect(findButton(container, "ให้สิทธิ์ส่งออกรายงาน").disabled).toBe(true);
-
-    render(true);
-
-    expect(findButton(container, "ยกเลิกสิทธิ์ส่งออกรายงาน").disabled).toBe(false);
-  });
-
-  it("drops a rapid duplicate submission and does not replay after a rerender", async () => {
-    const pending = deferred<WorkforceReportExportGrantActionState>();
-    mocks.grant.mockReturnValueOnce(pending.promise);
-    render(false);
-
-    await act(async () => {
-      submitForm(container, "ให้สิทธิ์ส่งออกรายงาน");
-      submitForm(container, "ให้สิทธิ์ส่งออกรายงาน");
-      await Promise.resolve();
-    });
-    await act(async () => {
-      pending.resolve(grantState(true));
-      await pending.promise;
-    });
-    await settle();
-    render(false);
-    render(false);
-
-    expect(mocks.grant).toHaveBeenCalledOnce();
-    expect(mocks.success).toHaveBeenCalledOnce();
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("gives another relationship nothing from a pending request", async () => {
-    const pending = deferred<WorkforceReportExportGrantActionState>();
-    mocks.grant.mockReturnValueOnce(pending.promise);
-    render(false);
-    await act(async () => {
-      submitForm(container, "ให้สิทธิ์ส่งออกรายงาน");
-      await Promise.resolve();
-    });
-
-    render(false, OTHER_RELATIONSHIP_ID);
-    await act(async () => {
-      pending.resolve(grantState(true));
-      await pending.promise;
-    });
-    await settle();
-
-    noToast();
-    expect(mocks.refresh).not.toHaveBeenCalled();
-  });
-
-  it("emits one Toast and one refresh under React Strict Mode", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(true));
-    act(() =>
-      root.render(
-        createElement(
-          StrictMode,
-          null,
-          createElement(ReportExportGrantControl, {
-            expectedUpdatedAt: V1,
-            grant: { granted: false, canGrant: true, canRevoke: true },
-            relationshipId: RELATIONSHIP_ID,
-            targetHospitalId: HOSPITAL_ID,
-          }),
-        ),
-      ),
-    );
-
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-    await settle();
-
-    expect(mocks.grant).toHaveBeenCalledOnce();
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ให้สิทธิ์ส่งออกรายงานแล้ว");
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps Toasts free of identifiers", async () => {
-    mocks.grant.mockResolvedValueOnce(grantState(true));
-    render(false);
-    await act(async () => submitForm(container, "ให้สิทธิ์ส่งออกรายงาน"));
-
-    const serialized = JSON.stringify(toastCalls(mocks));
-    expect(serialized).not.toContain(RELATIONSHIP_ID);
-    expect(serialized).not.toContain(HOSPITAL_ID);
   });
 });
 

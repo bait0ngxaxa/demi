@@ -129,11 +129,13 @@ const ownerSections = (areas: boolean) => [
   ["administration", "บริหารโรงพยาบาล", [...ownerAdministration, ...(areas ? ["/app/hospitals/network"] : [])]],
   workAccount,
 ] as const;
+// ADR-0026: a MEMBER has the OWNER's operational entries (OSM assignment, request review, reports) and no
+// Hospital or user management (no import, no administration section).
 const memberSections = () => [
   ["home", null, ["/app"]],
-  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/services", "/app/appointments/new"]],
-  // Product Owner decision 2026-10-21: every ACTIVE MEMBER has the export-only entry.
-  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting/export", "/app/hospitals/content", "/app/hospitals/contacts"]],
+  ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/services", "/app/appointments/new"]],
+  ["review-queue", "คำขอรอตรวจ", ["/app/patients/service-requests"]],
+  ["reports-info", "รายงานและข้อมูล", ["/app/hospitals/reporting", "/app/hospitals/content", "/app/hospitals/contacts"]],
   workAccount,
 ] as const;
 
@@ -502,11 +504,11 @@ describe("application navigation visibility (unchanged policies)", () => {
     },
   );
 
-  it.each(runtimeEnvironments)("shows Hospital reporting to a direct active Hospital Owner on %s", (_name, environment) => {
+  it.each(runtimeEnvironments)("shows Hospital reporting to a direct active Hospital OWNER or MEMBER on %s", (_name, environment) => {
     simulateRuntimeEnvironment(environment);
     try {
       expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }))).toContain("รายงานโรงพยาบาล");
-      expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }))).not.toContain("รายงานโรงพยาบาล");
+      expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.MEMBER)] }))).toContain("รายงานโรงพยาบาล");
       expect(navigationLabels(actor({ roles: [Role.ADMIN] }))).not.toContain("รายงานโรงพยาบาล");
       expect(navigationLabels(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER, { status: MembershipStatus.SUSPENDED })] }))).not.toContain("รายงานโรงพยาบาล");
     } finally {

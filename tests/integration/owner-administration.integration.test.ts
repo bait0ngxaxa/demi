@@ -130,11 +130,10 @@ describe("persisted Owner administration", () => {
     await expect(regenerateWorkforceActivation(staleOwner, { userId: osm.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(listWorkforce(staleOwner, { targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(listWorkforceHospitals(staleOwner)).resolves.toEqual([]);
-    await expect(listHospitalPatientServiceRequests(staleOwner)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    // A MEMBER exports as MEMBER (2026-10-21); the stale OWNER claim never unlocks OWNER-only report scopes.
+    // ADR-0026: operational work is open to the MEMBER as MEMBER; the stale OWNER claim adds nothing.
+    await expect(listHospitalPatientServiceRequests(staleOwner)).resolves.toMatchObject({ group: "PENDING" });
     await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export)).resolves.toMatchObject({ accessBasis: "MEMBER" });
-    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.export, undefined, "INCLUDE_ENDED")).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.dashboardRead)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(resolveHospitalReportingAccessContext(staleOwner, hospital.id, HOSPITAL_REPORT_CAPABILITIES.dashboardRead)).resolves.toMatchObject({ accessBasis: "MEMBER" });
   });
 
   it("revalidates user, membership and Hospital suspension against the database", async () => {
@@ -153,18 +152,16 @@ describe("persisted Owner administration", () => {
     }
   });
 
-  it("rejects stale-owner service request reviews and preserves valid Owner reviews", async () => {
+  it("lets an OWNER or MEMBER review service requests and refuses an OSM (ADR-0026)", async () => {
     const relationship = await db.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalId: hospital.id }, select: { id: true, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } } });
     const requester = relationship.patientProfile.person.user;
     if (!requester) throw new Error("Missing synthetic patient account");
     const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: hospital.id, code: "SCREENING", enabled: true, createdByUserId: owner.userId, updatedByUserId: owner.userId } });
     const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, offeringId: offering.id, requestedByUserId: requester.id } });
-    const staleOwner = { ...member, hospitalMemberships: owner.hospitalMemberships };
-    for (const subject of [member, osm, staleOwner]) {
-      await expect(rejectPatientServiceRequest(subject, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    }
+    await expect(rejectPatientServiceRequest(osm, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "PENDING" });
-    await expect(rejectPatientServiceRequest(owner, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).resolves.toBe("REJECTED");
+    await expect(rejectPatientServiceRequest(member, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).resolves.toBe("REJECTED");
+    expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "REJECTED", reviewedByUserId: member.userId });
   });
 
   it("disables legacy manual patient creation even for OWNER", async () => {

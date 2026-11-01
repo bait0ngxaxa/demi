@@ -9,10 +9,7 @@ import {
   listNetworkScopes,
   type HospitalNetworkDatabase,
 } from "@/modules/hospital-service-areas/services/hospital-network-access";
-import {
-  assertHospitalOwnerPolicy,
-  HOSPITAL_OWNER_CAPABILITIES,
-} from "@/modules/workforce/policies/hospital-owner-policy";
+import { isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 import {
   ApplicationError,
   ForbiddenError,
@@ -63,14 +60,11 @@ async function resolveInDatabase(
   database: ParentChildHospitalReportAccessDatabase,
   capability: HospitalNetworkChildReportCapability,
 ): Promise<ParentChildHospitalReportAccessContext> {
-  // Context check first (no read for a non-OWNER), then persisted proof through the network association.
-  assertHospitalOwnerPolicy({
-    actor,
-    capability: HOSPITAL_OWNER_CAPABILITIES.readGovernance,
-    targetHospitalId: parentHospitalId,
-  });
+  // Context check first (no read for anyone who does not operate the Parent), then persisted proof through the
+  // network association. ADR-0026: an ACTIVE Parent OWNER or MEMBER.
+  if (!isActiveHospitalOperator(actor, parentHospitalId)) throw new ForbiddenError();
   // ADR-0016: the active operational network (not canonical Master placement) scopes Parent reports.
-  const network = await findNetworkChild(database, actor.userId, parentHospitalId, childHospitalId, "OWNER");
+  const network = await findNetworkChild(database, actor.userId, parentHospitalId, childHospitalId, "REPORT");
   if (!network) throw new NotFoundError();
 
   const decision = decideHospitalNetworkChildReportPolicy({
@@ -142,7 +136,7 @@ export async function resolveParentChildHospitalReportAccessContext(
   }
 }
 
-/** List only name/ID targets of the active networks of Parents the actor directly owns. Each report read still uses the exact-target resolver above. */
+/** List only name/ID targets of the active networks of Parents the actor operates (OWNER or MEMBER). Each report read still uses the exact-target resolver above. */
 export async function listParentChildHospitalReportTargetGroups(
   actor: ActorContext | null | undefined,
   parentHospitalIds: readonly string[],
@@ -158,7 +152,7 @@ export async function listParentChildHospitalReportTargetGroups(
 
   try {
     const requested = new Set(parentIds);
-    const scopes = await listNetworkScopes(database, actor.userId, "OWNER");
+    const scopes = await listNetworkScopes(database, actor.userId, "REPORT");
     return scopes
       .filter(({ parent }) => requested.has(parent.id))
       .map(({ parent, children }) => ({

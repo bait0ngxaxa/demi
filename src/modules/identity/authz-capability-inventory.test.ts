@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 /**
  * MP-0: every OWNER gate must be classified in docs/requirements/AUTHZ_CAPABILITY_INVENTORY.md.
@@ -61,17 +61,24 @@ function inventoryKeys(): Set<string> {
   }));
 }
 
+// Parsing every matching file takes seconds under a loaded full-suite run; scan once for both assertions.
+const SCAN_TIMEOUT_MS = 60_000;
+
 describe("authorization capability inventory", () => {
+  let gates: Set<string>;
+
+  beforeAll(() => {
+    gates = ownerGateKeys();
+  }, SCAN_TIMEOUT_MS);
+
   it("classifies every OWNER gate in src/ and app/", () => {
     const classified = inventoryKeys();
-    const missing = [...ownerGateKeys()].filter((key) => !classified.has(key)).sort();
+    const missing = [...gates].filter((key) => !classified.has(key)).sort();
 
     expect(missing).toEqual([]);
   });
 
   it("finds the gates it is meant to guard", () => {
-    const gates = ownerGateKeys();
-
     expect(gates).toContain("src/modules/workforce/services/workforce-service.ts :: assertOwnerInDatabase");
     expect(gates).toContain("src/modules/hospital-contact/policies/hospital-contact-policy.ts :: decideHospitalContactPolicy");
   });

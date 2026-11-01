@@ -262,7 +262,7 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     }
   });
 
-  it("keeps ended relationships out of MEMBER exports while keeping ACTIVE exports consistent", async () => {
+  it("keeps ended relationships out of the ACTIVE export and lets a MEMBER opt in to INCLUDE_ENDED (ADR-0026)", async () => {
     const f = await fixture();
     const program = await openPatientProgram(f.owner, { patientHospitalRelationshipId: f.relationshipId }, dependencies);
     await db.patientProgram.update({ where: { id: program.patientProgramId }, data: { status: "COMPLETED", completedAt: now } });
@@ -270,15 +270,18 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     await expect(getHospitalReportingPage(f.otherOwner, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }, { database: db }))
       .rejects.toBeInstanceOf(NotFoundError);
 
-    // Product Owner decision 2026-10-21: an ACTIVE MEMBER exports without an OWNER grant.
+    // An ACTIVE MEMBER exports without an OWNER grant.
     const exported = await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId });
     expect(exported.buffer.byteLength).toBeGreaterThan(0);
     expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).metadata)
       .toMatchObject({ accessBasis: "MEMBER", cohort: "ACTIVE", programCount: 0 });
 
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" }))
-      .rejects.toBeInstanceOf(ForbiddenError);
-    expect(await db.auditEvent.count({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).toBe(1);
+    await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" });
+    const audits = await db.auditEvent.findMany({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId }, orderBy: { createdAt: "asc" } });
+    expect(audits.map(({ metadata }) => metadata)).toEqual([
+      expect.objectContaining({ accessBasis: "MEMBER", cohort: "ACTIVE", programCount: 0 }),
+      expect.objectContaining({ accessBasis: "MEMBER", cohort: "INCLUDE_ENDED", programCount: 1 }),
+    ]);
   });
 
   it("ends the OSM assignment, cancels only future appointments, closes open requests and revokes this Hospital's pending activation", async () => {

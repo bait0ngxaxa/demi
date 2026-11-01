@@ -893,12 +893,12 @@ describe("Patient directory query boundary", () => {
     expect(count).toHaveBeenCalledWith({ where: queryWhere });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        memberships: { some: expect.objectContaining({ membershipType: { in: [MembershipType.OWNER] } }) },
+        memberships: { some: expect.objectContaining({ membershipType: { in: [MembershipType.OWNER, MembershipType.MEMBER] } }) },
       }),
     }));
   });
 
-  it("requires OSM profile-read and direct patient-read scope for the same Hospital", async () => {
+  it("requires OSM assignment and direct patient-read scope for the same Hospital (ADR-0026: OWNER or MEMBER)", async () => {
     const findFirst = vi.fn();
     const database = { hospital: { findFirst } } as unknown as PatientDirectoryDatabase;
     const unrelatedActor = { ...directoryActor, roles: [Role.PATIENT], hospitalMemberships: [] } as ActorContext;
@@ -908,7 +908,11 @@ describe("Patient directory query boundary", () => {
       osmUserId: "66666666-6666-4666-8666-666666666666",
       page: 1,
     }, { database })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(findPatientsAssignedToOsmInHospital(directoryActor, {
+    const suspendedMember: ActorContext = {
+      ...directoryActor,
+      hospitalMemberships: directoryActor.hospitalMemberships.map((membership) => ({ ...membership, status: MembershipStatus.SUSPENDED })),
+    };
+    await expect(findPatientsAssignedToOsmInHospital(suspendedMember, {
       hospitalId,
       osmUserId: "66666666-6666-4666-8666-666666666666",
       page: 1,

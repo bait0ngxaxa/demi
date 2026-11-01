@@ -12,6 +12,13 @@ import {
 } from "@prisma/client";
 
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import {
+  accessBasisForMembershipType,
+  HOSPITAL_ADMINISTRATOR_MEMBERSHIP_TYPES,
+  HOSPITAL_OPERATOR_MEMBERSHIP_TYPES,
+  hospitalOperatorMembershipWhere,
+  type HospitalAccessBasis,
+} from "@/modules/identity/services/hospital-authority";
 import { ForbiddenError } from "@/shared/errors/application-error";
 
 /**
@@ -22,11 +29,11 @@ import { ForbiddenError } from "@/shared/errors/application-error";
 export type HospitalNetworkDatabase = PrismaClient | Prisma.TransactionClient;
 
 /**
- * OWNER: Parent OWNER only (area management, Parent summary reports).
- * PATIENT_READ: Parent OWNER, or Parent MEMBER holding the OWNER-issued network Patient read grant.
- * REPORT_EXPORT: Parent OWNER or MEMBER, no grant (ADR-0025 network report export).
+ * OWNER: Parent OWNER only (network management: areas, Children, Child OWNER invitations).
+ * PATIENT_READ: Parent OWNER or MEMBER (ADR-0026; `networkPatientReadGrantedAt` no longer matters).
+ * REPORT: Parent OWNER or MEMBER (Parent→Child summary read/export RPT-32, ADR-0025 network export).
  */
-export type HospitalNetworkAuthority = "OWNER" | "PATIENT_READ" | "REPORT_EXPORT";
+export type HospitalNetworkAuthority = "OWNER" | "PATIENT_READ" | "REPORT";
 
 export type HospitalNetworkFacility = { id: string; hospitalCode: string; name: string };
 export type HospitalNetworkScope = { parent: HospitalNetworkFacility; children: HospitalNetworkFacility[] };
@@ -37,13 +44,10 @@ export type HospitalNetworkReportExportScope = HospitalNetworkScope & {
 const facilitySelect = { id: true, hospitalCode: true, name: true } satisfies Prisma.HospitalSelect;
 
 const networkMembershipTypes = {
-  OWNER: [{ membershipType: MembershipType.OWNER }],
-  PATIENT_READ: [
-    { membershipType: MembershipType.OWNER },
-    { membershipType: MembershipType.MEMBER, networkPatientReadGrantedAt: { not: null } },
-  ],
-  REPORT_EXPORT: [{ membershipType: MembershipType.OWNER }, { membershipType: MembershipType.MEMBER }],
-} satisfies Record<HospitalNetworkAuthority, Prisma.HospitalMembershipWhereInput[]>;
+  OWNER: HOSPITAL_ADMINISTRATOR_MEMBERSHIP_TYPES,
+  PATIENT_READ: HOSPITAL_OPERATOR_MEMBERSHIP_TYPES,
+  REPORT: HOSPITAL_OPERATOR_MEMBERSHIP_TYPES,
+} satisfies Record<HospitalNetworkAuthority, readonly MembershipType[]>;
 
 function networkMembershipWhere(
   actorUserId: string,
@@ -53,7 +57,7 @@ function networkMembershipWhere(
     userId: actorUserId,
     status: MembershipStatus.ACTIVE,
     user: { is: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } },
-    OR: networkMembershipTypes[authority],
+    membershipType: { in: [...networkMembershipTypes[authority]] },
   };
 }
 
@@ -158,10 +162,10 @@ export async function findNetworkReportExportScope(
   parentHospitalId: string,
 ): Promise<HospitalNetworkReportExportScope | null> {
   const parent = await database.hospital.findFirst({
-    where: { id: parentHospitalId, ...buildNetworkParentHospitalWhere(actorUserId, "REPORT_EXPORT") },
+    where: { id: parentHospitalId, ...buildNetworkParentHospitalWhere(actorUserId, "REPORT") },
     select: {
       ...facilitySelect,
-      memberships: { where: networkMembershipWhere(actorUserId, "REPORT_EXPORT"), select: { membershipType: true }, take: 1 },
+      memberships: { where: networkMembershipWhere(actorUserId, "REPORT"), select: { membershipType: true }, take: 1 },
       managedServiceAreas: activeChildAreasSelect,
     },
   });
@@ -204,7 +208,10 @@ export async function assertDirectOrNetworkPatientRead(
   return "NETWORK";
 }
 
-/** Every network Patient read is audited with the granting Parent; failure aborts the read. */
+/**
+ * Every network Patient read is audited with the Parent and the reader's basis there (ADR-0026: OWNER or MEMBER).
+ * The basis is re-read from persisted state; a reader who no longer operates the Parent is refused and nothing is read.
+ */
 export async function recordNetworkPatientRead(
   database: HospitalNetworkDatabase,
   input: {
@@ -216,11 +223,22 @@ export async function recordNetworkPatientRead(
     scope: string;
   },
 ): Promise<void> {
+  const membership = await database.hospitalMembership.findFirst({
+    where: hospitalOperatorMembershipWhere(input.actorUserId, input.parentHospitalId),
+    select: { membershipType: true },
+  });
+  const accessBasis: HospitalAccessBasis | null = membership ? accessBasisForMembershipType(membership.membershipType) : null;
+  if (!accessBasis) throw new ForbiddenError();
   await recordAuditEvent({
     actorUserId: input.actorUserId,
     action: "patient.network_read",
     resourceType: input.resourceType,
     resourceId: input.resourceId,
-    metadata: { parentHospitalId: input.parentHospitalId, childHospitalId: input.childHospitalId, scope: input.scope },
+    metadata: {
+      parentHospitalId: input.parentHospitalId,
+      childHospitalId: input.childHospitalId,
+      scope: input.scope,
+      accessBasis,
+    },
   }, database);
 }

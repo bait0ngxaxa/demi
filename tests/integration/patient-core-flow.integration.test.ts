@@ -539,7 +539,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const own = await listOwnPatientServiceRequests(patientActorA);
     expect(own).toHaveLength(1);
     expect(own[0]?.requests.map(({ requestId }) => requestId)).toEqual([requestA.requestId]);
-    await expect(listHospitalPatientServiceRequests(memberA.actor)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // ADR-0026: a MEMBER lists its own Hospital's requests like the OWNER.
+    expect((await listHospitalPatientServiceRequests(memberA.actor)).requests).toHaveLength(2);
     const hospitalList = await listHospitalPatientServiceRequests(ownerA.actor);
     expect(hospitalList.requests).toHaveLength(2);
     await expect(listHospitalPatientServiceRequests(ownerB.actor)).resolves.toMatchObject({ requests: [], nextCursor: null });
@@ -631,8 +632,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id, preferredOsmRelationshipId: osm.relationshipId }));
 
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).rejects.toMatchObject({ code: "CONFLICT" });
-    // ADR-0019: a MEMBER does not review service requests.
-    await expect(confirmPatientServiceRequest(member.actor, confirmInput(request.requestId, osm.userId))).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // ADR-0026: an OSM never reviews; a MEMBER confirms like the OWNER (below).
+    await expect(confirmPatientServiceRequest(osm.actor, confirmInput(request.requestId, osm.userId))).rejects.toMatchObject({ code: "FORBIDDEN" });
     // Booking from a request is only possible through the confirmation.
     await expect(createAppointment(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
@@ -643,18 +644,22 @@ describe("Patient service requests PostgreSQL workflow", () => {
       type: "ASSESSMENT",
       locationType: "HOME_VISIT",
     })).rejects.toMatchObject({ code: "VALIDATION" });
-    const confirmed = await confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, osm.userId));
+    const memberConfirmation = confirmInput(request.requestId, osm.userId);
+    const confirmed = await confirmPatientServiceRequest(member.actor, memberConfirmation);
+    // The appointment nonce makes a retry return the same appointment.
+    await expect(confirmPatientServiceRequest(member.actor, memberConfirmation)).resolves.toMatchObject({ appointmentId: confirmed.appointmentId });
+    expect(await prisma.patientAppointment.count({ where: { sourceServiceRequestId: request.requestId } })).toBe(1);
     expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId }, select: { sourceServiceRequestId: true, serviceCode: true, type: true } }))
       .toEqual({ sourceServiceRequestId: request.requestId, serviceCode: PatientServiceCode.SCREENING, type: "ASSESSMENT" });
     expect(await prisma.patientServiceRequest.findUniqueOrThrow({ where: { id: request.requestId }, select: { status: true, reviewedByUserId: true, startedByUserId: true } }))
-      .toEqual({ status: PatientServiceRequestStatus.STARTED, reviewedByUserId: owner.userId, startedByUserId: owner.userId });
+      .toEqual({ status: PatientServiceRequestStatus.STARTED, reviewedByUserId: member.userId, startedByUserId: member.userId });
     await expect(withdrawOwnPatientServiceRequest(patientActor, { requestId: request.requestId })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
     expect(await prisma.patientProgram.count()).toBe(0);
     expect(await prisma.patientOsmAssignment.count({ where: { patientHospitalRelationshipId: patient.relationshipId } })).toBe(0);
     expect(await prisma.screeningAssessment.count()).toBe(0);
     expect(await prisma.patientFollowup.count()).toBe(0);
-    expect(await prisma.auditEvent.count({ where: { resourceId: request.requestId, action: "PATIENT_SERVICE_REQUEST_STARTED" } })).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { resourceId: request.requestId, action: "PATIENT_SERVICE_REQUEST_STARTED", actorUserId: member.userId } })).toBe(1);
   });
 
   it("allows Patient withdrawal from PENDING and legacy APPROVED", async () => {

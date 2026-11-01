@@ -266,9 +266,10 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
       where: { userId: member.userId, hospitalId: hospital.id },
       data: { status: MembershipStatus.ACTIVE },
     });
-    await expect(getPatientOsmAssignmentManagementView(member.actor, patient.relationshipId)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+    // ADR-0026: a MEMBER manages the assignment like the OWNER.
+    await expect(getPatientOsmAssignmentManagementView(member.actor, patient.relationshipId)).resolves.toMatchObject({
+      patient: expect.anything(),
+    });
     await expect(
       unassignOsmFromPatient(owner.actor, {
         patientHospitalRelationshipId: patient.relationshipId,
@@ -298,12 +299,15 @@ describe("Phase 6B.2 Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(JSON.stringify(auditEvents)).not.toContain("HN-LIFECYCLE");
     expect(JSON.stringify(auditEvents)).not.toContain("สมชาย");
 
+    // ADR-0026: a MEMBER assigns like the OWNER, recorded as the assigner.
     await expect(
       assignOsmToPatient(member.actor, {
         patientHospitalRelationshipId: patient.relationshipId,
         osmUserId: osmA.userId,
       }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).resolves.toMatchObject({ operation: "ASSIGNED" });
+    expect(await prisma.patientOsmAssignment.findFirstOrThrow({ where: { patientHospitalRelationshipId: patient.relationshipId, endedAt: null } }))
+      .toMatchObject({ osmUserId: osmA.userId, assignedByUserId: member.userId });
   });
 
   it("keeps the OSM workforce roster independent of Patient account status and bounded by care scope", async () => {
