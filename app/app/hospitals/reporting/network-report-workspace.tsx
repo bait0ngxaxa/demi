@@ -12,6 +12,7 @@ export async function NetworkReportWorkspace(): Promise<React.JSX.Element> {
     <nav aria-label="ขอบเขตรายงาน" className="mt-5 flex flex-wrap gap-2">
       <Link className={buttonClassName({ variant: "secondary" })} href="/app/hospitals/reporting">โรงพยาบาลของฉัน</Link>
       <Link aria-current="page" className={buttonClassName({ variant: "primary" })} href="/app/hospitals/reporting?scope=network">ลูกข่าย ({count})</Link>
+      <Link className={buttonClassName({ variant: "secondary" })} href="/app/hospitals/reporting/export" prefetch={false}>ส่งออกรายงานเครือข่าย</Link>
     </nav>
     <p className="mt-4 text-sm text-text-muted">สรุป 9 ค่าของแต่ละลูกข่าย เฉพาะผู้ที่ยังอยู่ในการดูแล เลือกชื่อโรงพยาบาลเพื่อเปิดรายงานและส่งออก Excel</p>
     {groups.map((group) => <section className="mt-6 min-w-0" key={group.parent.id} aria-labelledby={`network-${group.parent.id}`}>

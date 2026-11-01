@@ -32,6 +32,7 @@ import type { HospitalHierarchyContext } from "@/modules/hospital-hierarchy/serv
 
 import { ExportPreview, PROGRAM_ENTRY_HREF } from "./export-preview";
 import { HospitalReportTargetSelector } from "./hospital-report-target-selector";
+import { downloadReportFile } from "./report-download";
 import {
   SERVICE_PROCESS_CHART_DESCRIPTION,
   roundProgressCategories,
@@ -480,47 +481,15 @@ export function ExportButton({
     setLoading(true);
     setMessage(null);
     setFailed(false);
-    try {
-      const cohortQuery = cohort === "INCLUDE_ENDED" ? "&cohort=INCLUDE_ENDED" : "";
-      const parentQuery = parentHospitalId ? `&parentHospitalId=${encodeURIComponent(parentHospitalId)}` : "";
-      const response = await fetch(`${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}${cohortQuery}${parentQuery}`, {
-        method: "GET",
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      if (!response.ok) {
-        let errorMessage = "ส่งออกรายงานไม่สำเร็จ กรุณาลองอีกครั้ง";
-        try {
-          const payload: unknown = await response.json();
-          if (typeof payload === "object" && payload !== null && "error" in payload && typeof payload.error === "string") {
-            errorMessage = payload.error;
-          }
-        } catch {
-          // Use the safe local message when the response body is not JSON.
-        }
-        setMessage(errorMessage);
-        setFailed(true);
-        return;
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const disposition = response.headers.get("Content-Disposition");
-      const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? "demi-hospital-report.xlsx";
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
-      setMessage("สร้างไฟล์ Excel สำเร็จแล้ว");
-    } catch {
-      setMessage("เชื่อมต่อเพื่อส่งออกรายงานไม่ได้ กรุณาตรวจสอบเครือข่ายแล้วลองอีกครั้ง");
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
+    const cohortQuery = cohort === "INCLUDE_ENDED" ? "&cohort=INCLUDE_ENDED" : "";
+    const parentQuery = parentHospitalId ? `&parentHospitalId=${encodeURIComponent(parentHospitalId)}` : "";
+    const result = await downloadReportFile(
+      `${endpoint}?hospitalId=${encodeURIComponent(hospitalId)}${cohortQuery}${parentQuery}`,
+      "demi-hospital-report.xlsx",
+    );
+    setMessage(result.message);
+    setFailed(!result.ok);
+    setLoading(false);
   }
 
   return (
@@ -594,7 +563,17 @@ export function HospitalReportWorkspace({
       )}
 
       <PageHeader
-        actions={<ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />}
+        actions={
+          <div className="flex min-w-0 flex-col items-start gap-3 sm:items-end">
+            <ExportButton cohort={page.cohort} endpoint={isGlobalAdmin ? "/api/v1/admin/reporting/export" : "/api/v1/hospital/reporting/export"} hospitalId={selectedHospitalId} />
+            {/* ADR-0025: a Parent's network workbook is chosen on the export page. */}
+            {!isGlobalAdmin && parentGroups.some((group) => group.parent.id === selectedHospitalId) ? (
+              <Link className={buttonClassName({ variant: "secondary" })} href="/app/hospitals/reporting/export" prefetch={false}>
+                ส่งออกรายงานเครือข่าย
+              </Link>
+            ) : null}
+          </div>
+        }
         breadcrumbs={isGlobalAdmin
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
           : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}

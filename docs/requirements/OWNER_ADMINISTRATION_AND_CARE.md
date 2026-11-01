@@ -10,6 +10,7 @@ CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้แ
 | บุคลากร/OSM, issuance/regeneration, มอบหมายผู้ดูแล | ตามนโยบายเดิม | ปฏิเสธ | ปฏิเสธ | ปฏิเสธ | recovery เดิมแยกต่างหาก |
 | ออกคำเชิญผู้ป่วย / ตรวจคำขอบริการ | exact scope | ปฏิเสธ | ปฏิเสธ | self-service เดิม | boundary เดิม |
 | รายงานบริหารและ export | exact scope | ปฏิเสธแม้มี grant เก่า | ปฏิเสธ | ปฏิเสธ | reporting เดิม |
+| network report export ของแม่ข่าย ([ADR-0025](../adr/0025-network-report-export.md)) | แม่ข่าย ACTIVE + ลูกข่ายทั้งหมด/ที่เลือก, ทั้ง cohort | เหมือน OWNER (ไม่ต้องมี grant) | ปฏิเสธ | ปฏิเสธ | ไม่เพิ่มสิทธิ์ |
 | ตั้งค่า catalog เนื้อหา พื้นที่และเครือข่าย | นโยบายที่มีอยู่ | ปฏิเสธ | ปฏิเสธ | ปฏิเสธ | governance เดิม |
 | งานดูแลผู้ป่วย | resource policy | resource policy | assignment policy | self-service เดิม | ไม่เพิ่ม clinical scope |
 | บัญชีส่วนตัวและรับคำเชิญเดิม | ของตนเอง | ของตนเอง | ของตนเอง | ของตนเอง | ของตนเอง |
