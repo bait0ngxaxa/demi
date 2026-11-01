@@ -39,7 +39,36 @@ Escape และปุ่มปิด/ยกเลิกต้องปฏิบ
 
 ประกอบเนื้อหา form เดิมไว้ภายใน `ModalDialog`; ให้ feature เจ้าของ form ดูแล field state และ business state ใช้ native form เพียงชุดเดียวและรักษา validation/submitter เดิม สำหรับ review-before-commit ให้คง draft แล้วส่งผ่าน action เดิมของ feature เมื่อผู้ใช้ยืนยันเท่านั้น แสดง pending, validation/error ที่ยืนยันแล้ว, success, unknown และ conflict ด้วย mutation state กับ alert primitive ที่มี ปิดเมื่อยืนยัน success แล้วเท่านั้น ห้ามสร้าง mutation state machine แข่งขันกัน, nested form, schema-driven builder หรือ backend action ใหม่เพื่องานแสดงผล
 
-สำหรับการลองยืนยันใหม่ใน confirmation ทั่วไป ต้องรอให้เจ้าของ workflow ระบุว่าความล้มเหลวยืนยันแล้วและกู้คืนได้ การเปลี่ยน pending เพียงอย่างเดียวไม่ใช่สัญญาณให้ลองใหม่ เพราะอาจเป็น unknown outcome component กลางอาจรับ recovery key โดยเจ้าของจะเปลี่ยนค่าเมื่ออนุญาตให้กู้คืนอย่างปลอดภัยแล้วเท่านั้น
+สำหรับการลองยืนยันใหม่ใน confirmation ทั่วไป ต้องรอให้เจ้าของ workflow ระบุว่าความล้มเหลวยืนยันแล้วและกู้คืนได้ การเปลี่ยน pending เพียงอย่างเดียวไม่ใช่สัญญาณให้ลองใหม่ เพราะอาจเป็น unknown outcome `ConfirmDialog` รับ `recoveryKey` ซึ่งเจ้าของเปลี่ยนค่าได้เมื่ออนุญาตให้กู้คืนอย่างปลอดภัยแล้วเท่านั้น
+
+## วิธีประกอบใน feature — UX-D1.3
+
+ยังไม่เพิ่ม `FormDialog` หรือ `ReviewDialog`: ทั้งสองแบบประกอบได้จาก `ModalDialog` และปุ่ม/ฟอร์มเดิม โดยไม่ต้องเพิ่ม wrapper ที่เพียงส่ง props ต่อ การตัดสินใจเรื่อง draft, validation และ mutation ยังคงอยู่ใน feature เจ้าของ
+
+### งานแก้ไขสั้น
+
+1. ให้ feature เก็บสถานะเปิด/ปิด, draft, pending และผลลัพธ์ของ action เดิม
+2. render `ModalDialog` เฉพาะเมื่อเปิด ตั้ง title และ description ให้สั้น และใช้ `size="fullscreen"` เฉพาะงานแก้ไขที่มีเนื้อหามากบนมือถือ งานสั้นคงขนาดปกติ
+3. วาง form เดิมไว้ใน content เพียงฟอร์มเดียว หาก footer อยู่นอก `<form>` ให้ปุ่มบันทึกอ้าง `id` ของ form ด้วย native `form` attribute และคง `type="submit"` เพื่อรักษา validation กับ submitter semantics
+4. ปุ่มยกเลิกเรียก handler ของ feature ซึ่งตรวจ draft ที่เปลี่ยนแล้วก่อนปิด ปุ่มบันทึกแสดง pending และ disable ระหว่าง mutation; เมื่อ success ที่ยืนยันแล้วจึงปิดและแสดง feedback เดิม
+5. เก็บ error ไว้กับ draft แสดงข้าง field หรือใน `Alert` ที่อ่านได้ด้วย screen reader และให้ feature focus field/error summary เมื่อจำเป็น
+
+### ตรวจทานก่อนบันทึก
+
+ใช้ `ModalDialog` หนึ่งชั้น แสดงรายการหรือ summary แบบมีโครงสร้างใน content และมี Cancel/Confirm ใน footer ปุ่ม confirm เรียก action เดิมของ feature ห้ามซ้อน `ConfirmDialog` ใน `ModalDialog`; `ConfirmDialog` เองเป็น modal อยู่แล้ว ผูก `pending` กับสถานะ mutation จริงเพื่อป้องกันการปิดระหว่างทำงาน และปิดเมื่อ success ที่ยืนยันแล้วเท่านั้น
+
+เมื่อเกิด conflict ให้คงปุ่มยืนยันที่ disable และแสดงวิธี reconcile ของ feature หากผลไม่แน่นอน ให้คงสถานะ unknown, ใช้ nonce/recovery path เดิม, ปิดการส่งซ้ำ และบอกผู้ใช้ว่าทำอะไรต่อได้อย่างปลอดภัย ห้ามสร้าง nonce ใหม่เพื่อ retry โดยอัตโนมัติ
+
+`ConfirmableActionForm` ยังคงเป็นทางเลือกสำหรับ workflow ที่ต้องให้ผู้ใช้ตรวจข้อมูลใน native form แล้วกดยืนยันก่อน `requestSubmit(submitter)`; ใช้ action state, pending, `outcome` และ `resultKey` เดิม ไม่ห่อ form อีกชั้น เมื่อผลยืนยันแล้ว component ปิด confirmation และให้ feature แสดง success/error ต่อไป ส่วน unknown outcome ยังคงถูกล็อกตามสัญญาเดิม
+
+### API ที่ feature ใช้ได้
+
+- `ModalDialog.initialFocusRef` เลือก field หรือ action แรก; หากไม่มี target ที่ใช้ได้ จะ focus heading
+- `stepKey` เลื่อน content กลับด้านบนเมื่อเปลี่ยน step; ส่ง `focusOnStepChange` เพิ่มเมื่อ step ใหม่นั้นควรย้าย focus ไป heading
+- `returnFocusTarget` ระบุ logical target เมื่อ trigger ถูกลบหรือ flow ตั้งใจส่งต่อไปขั้นถัดไป; หากไม่ส่งและไม่มี `onClosed` จะคืน focus ไป trigger เดิม
+- `onClosed` ยังคงรองรับ legacy owner callback และเมื่อใช้ callback นี้ owner เป็นผู้คืน focus เอง เพื่อไม่ให้เกิดกลไกคืน focus ซ้อนกัน
+- `ConfirmDialog.recoveryKey` เปลี่ยนเฉพาะเมื่อผลล้มเหลวยืนยันแล้วและ owner อนุญาตให้ retry; การเปลี่ยน pending อย่างเดียวไม่ปลด lock
+- `size="compact"` เหมาะกับ confirmation; `size="fullscreen"` ใช้กล่องเต็มจอเฉพาะ viewport มือถือ และกลับเป็นกล่อง centered บนจอใหญ่
 
 ## ขอบเขตสำหรับ phase ถัดไป
 
