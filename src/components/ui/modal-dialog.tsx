@@ -93,9 +93,11 @@ export function ModalDialog({
 
       const closedCallback = onClosedRef.current;
       if (!closedCallback) {
-        const returnTarget = returnFocusTargetRef.current?.() ?? previousFocusRef.current;
-        if (!focusTarget(returnTarget, dialog) && returnTarget !== previousFocusRef.current) {
-          focusTarget(previousFocusRef.current, dialog);
+        const logicalReturnTarget = returnFocusTargetRef.current?.() ?? null;
+        const returnTarget = logicalReturnTarget ?? previousFocusRef.current;
+        const preserveScroll = logicalReturnTarget === null || logicalReturnTarget === previousFocusRef.current;
+        if (!focusTarget(returnTarget, dialog, preserveScroll) && returnTarget !== previousFocusRef.current) {
+          focusTarget(previousFocusRef.current, dialog, true);
         }
       }
 
@@ -219,11 +221,11 @@ export function ModalDialog({
   );
 }
 
-function focusTarget(target: HTMLElement | null, dialog: HTMLDialogElement): boolean {
+function focusTarget(target: HTMLElement | null, dialog: HTMLDialogElement, preventScroll: boolean): boolean {
   if (!target?.isConnected || dialog.contains(target) || target.matches(":disabled")) {
     return false;
   }
 
-  target.focus({ preventScroll: true });
+  target.focus({ preventScroll });
   return dialog.ownerDocument.activeElement === target;
 }

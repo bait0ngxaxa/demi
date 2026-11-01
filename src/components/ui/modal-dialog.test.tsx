@@ -155,6 +155,7 @@ describe("ModalDialog", () => {
     document.documentElement.style.overflow = "scroll";
     mount({ open: false });
     const trigger = requiredElement<HTMLButtonElement>("button");
+    const triggerFocus = vi.spyOn(trigger, "focus");
     act(() => trigger.focus());
 
     render({ open: true });
@@ -176,12 +177,14 @@ describe("ModalDialog", () => {
     expect(document.body.style.overflow).toBe("auto");
     expect(document.documentElement.style.overflow).toBe("scroll");
     expect(document.activeElement).toBe(trigger);
+    expect(triggerFocus).toHaveBeenLastCalledWith({ preventScroll: true });
   });
 
   it("uses the preferred initial focus and a logical fallback when the trigger is removed", () => {
     mount({ open: false });
     const trigger = requiredElement<HTMLButtonElement>("button");
     const fallback = requiredElement<HTMLButtonElement>("#logical-return-target");
+    const fallbackFocus = vi.spyOn(fallback, "focus");
     act(() => trigger.focus());
     render({
       open: true,
@@ -196,6 +199,7 @@ describe("ModalDialog", () => {
     render({ open: false, triggerVisible: false, returnFocusTarget: () => fallback });
 
     expect(document.activeElement).toBe(fallback);
+    expect(fallbackFocus).toHaveBeenLastCalledWith({ preventScroll: false });
   });
 
   it("falls back to the heading when a preferred initial target is disabled", () => {
