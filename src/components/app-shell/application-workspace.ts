@@ -1,6 +1,7 @@
 import { HospitalStatus, MembershipStatus, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { isActiveHospitalAdministrator } from "@/modules/identity/services/hospital-authority";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
 import { hasDirectHospitalPatientReadScope } from "@/modules/patient-directory/policies/patient-directory-policy";
 import {
@@ -255,6 +256,7 @@ function projectHospitalActions(
       prefetch: false,
     });
   }
+  // ADR-0026: reports are operational, so every ACTIVE OWNER or MEMBER opens them.
   if (decideHospitalReportPolicy({
     actor,
     capability: HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
@@ -264,46 +266,29 @@ function projectHospitalActions(
       href: withHospitalContext("/app/hospitals/reporting", hospitalId),
       label: "รายงานโรงพยาบาล",
       description: "เปิดรายงานโรงพยาบาลนี้ เลือกรายงานลูกข่ายที่มีสิทธิ์ได้ในหน้ารายงาน โดยไม่เพิ่มสิทธิ์ดูแลผู้ป่วยลูกข่าย",
-      category: "administration",
+      category: "information",
       prefetch: false,
     });
-    // ADR-0016: a network Parent OWNER manages its Children; the page re-resolves persisted authority.
-    if (workspace.networkRole === "PARENT") {
-      actions.push({
-        href: withHospitalContext("/app/hospitals/network", hospitalId),
-        label: "จัดการลูกข่าย",
-        description: "เพิ่มหรือนำ รพ.สต. และหน่วยบริการลูกข่ายออกจากเครือข่าย และเปิดดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว",
-        category: "administration",
-        prefetch: false,
-      });
-    }
     // Only a Parent with active network Children has responsibility areas to show.
     if (workspace.hasActiveDirectChildren) {
       actions.push({
         href: "/app/hospitals/reporting?scope=network",
         label: "รายงานลูกข่าย",
         description: "ดูและดาวน์โหลดตัวเลขสรุปของโรงพยาบาลลูกข่ายในเครือข่าย",
-        category: "administration",
+        category: "information",
         prefetch: false,
       });
     }
-  } else if (decideHospitalReportPolicy({
-    actor,
-    capability: HOSPITAL_REPORT_CAPABILITIES.export,
-    target: { hospitalId, hospitalStatus: workspace.hospitalStatus },
-  }).allowed) {
-    // The export page resolves every authorized Hospital itself and rejects query parameters; keep its existing URL.
-    const exportItem = navigationItemsForSections(navigation, ["reports-info"])
-      .find(({ href }) => href === "/app/hospitals/reporting/export");
-    if (exportItem) {
-      actions.push({
-        href: exportItem.href,
-        label: exportItem.label,
-        description: "ดาวน์โหลดไฟล์รายงานโรงพยาบาล (Excel) ของผู้ป่วยที่ยังอยู่ในการดูแล",
-        category: "patient",
-        ...(exportItem.prefetch === undefined ? {} : { prefetch: exportItem.prefetch }),
-      });
-    }
+  }
+  // ADR-0015/0016: network management stays with the Parent OWNER; the page re-resolves persisted authority.
+  if (workspace.networkRole === "PARENT" && isActiveHospitalAdministrator(actor, hospitalId)) {
+    actions.push({
+      href: withHospitalContext("/app/hospitals/network", hospitalId),
+      label: "จัดการลูกข่าย",
+      description: "เพิ่มหรือนำ รพ.สต. และหน่วยบริการลูกข่ายออกจากเครือข่าย และเปิดดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว",
+      category: "administration",
+      prefetch: false,
+    });
   }
 
   return actions;

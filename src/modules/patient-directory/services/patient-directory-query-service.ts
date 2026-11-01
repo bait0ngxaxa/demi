@@ -3,7 +3,6 @@ import "server-only";
 import {
   HospitalStatus,
   MembershipStatus,
-  MembershipType,
   PatientProgramStatus,
   Prisma,
   Role,
@@ -14,6 +13,7 @@ import type { PatientClassificationType } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
 import { patientHospitalAddressSelect } from "@/modules/patient-hospital-profile/domain/patient-hospital-address";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
@@ -51,9 +51,9 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 import {
-  decideWorkforcePolicy,
-  WORKFORCE_CAPABILITIES,
-} from "@/modules/workforce/policies/workforce-policy";
+  decidePatientOsmAssignmentPolicy,
+  PATIENT_ASSIGN_OSM_CAPABILITY,
+} from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 
 export type PatientDirectoryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -377,24 +377,9 @@ function assertHospitalActor(actor: ActorContext | null | undefined): asserts ac
   }
 }
 
-export function buildAuthorizedHospitalWhere(
-  actorUserId: string,
-  membershipTypes: readonly MembershipType[] = [MembershipType.OWNER, MembershipType.MEMBER],
-): Prisma.HospitalWhereInput {
-  return {
-    status: HospitalStatus.ACTIVE,
-    memberships: {
-      some: {
-        userId: actorUserId,
-        membershipType: { in: [...membershipTypes] },
-        status: MembershipStatus.ACTIVE,
-        user: {
-          status: UserStatus.ACTIVE,
-          roles: { some: { role: Role.HOSPITAL } },
-        },
-      },
-    },
-  };
+/** Hospitals whose Patients the actor reads directly: ACTIVE OWNER or MEMBER (ADR-0026). */
+export function buildAuthorizedHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+  return hospitalOperatedByWhere(actorUserId);
 }
 
 export function buildNameWhere(value: string): Prisma.PersonWhereInput {
@@ -459,7 +444,7 @@ function buildOsmDetailAssignedPatientRelationshipWhere(
   return {
     ...activePatientHospitalRelationshipWhere,
     hospitalId: input.hospitalId,
-    hospital: buildAuthorizedHospitalWhere(actorUserId, [MembershipType.OWNER]),
+    hospital: buildAuthorizedHospitalWhere(actorUserId),
     // Patient account lifecycle is separate from the care relationship; assignment roster eligibility is
     // determined by the active Patient-Hospital relationship and current, valid OSM assignment below.
     patientProfile: {
@@ -941,13 +926,14 @@ export async function findPatientsAssignedToOsmInHospital(
   dependencies: PatientDirectoryQueryDependencies = {},
 ): Promise<WorkforceOsmPatientPage> {
   const parsed = parseWorkforceOsmPatientListQuery(input);
-  const workforceDecision = decideWorkforcePolicy({
+  // ADR-0026: the read side of OSM ↔ Patient assignment, so every ACTIVE OWNER or MEMBER who assigns may see it.
+  const assignmentDecision = decidePatientOsmAssignmentPolicy({
     actor,
-    capability: WORKFORCE_CAPABILITIES.osmRead,
+    capability: PATIENT_ASSIGN_OSM_CAPABILITY,
     targetHospitalId: parsed.hospitalId,
   });
 
-  if (!workforceDecision.allowed) {
+  if (!assignmentDecision.allowed) {
     throw new ForbiddenError();
   }
 
@@ -965,7 +951,7 @@ export async function findPatientsAssignedToOsmInHospital(
     const database = getDatabase(dependencies.database);
     const hospital = await resolveAuthorizedHospital(
       database,
-      buildAuthorizedHospitalWhere(actor.userId, [MembershipType.OWNER]),
+      buildAuthorizedHospitalWhere(actor.userId),
       parsed.hospitalId,
       "DIRECT",
     );

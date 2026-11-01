@@ -635,13 +635,12 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     expect(JSON.stringify(exportAudit?.metadata)).not.toContain("โรงพยาบาลทดสอบ");
     expect(JSON.stringify(exportAudit?.metadata)).not.toContain("SYNTHETIC_PRIVATE_NOTE");
 
-    await expect(getHospitalReportingPage(memberA.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
-    // Product Owner decision 2026-10-21: a MEMBER of this Hospital exports the ACTIVE cohort without a grant,
-    // while the INCLUDE_ENDED cohort stays OWNER-only with 403 semantics.
+    // ADR-0026: a MEMBER of this Hospital reads the dashboard and rows and exports either cohort without a grant.
+    await expect(getHospitalReportingPage(memberA.actor, { hospitalId: hospitalA.id })).resolves.toMatchObject({ hospital: { id: hospitalA.id } });
     await expect(getHospitalReportingDatasetForExport(memberA.actor, { hospitalId: hospitalA.id }))
       .resolves.toMatchObject({ cohort: "ACTIVE", hospital: { id: hospitalA.id } });
     await expect(getHospitalReportingDatasetForExport(memberA.actor, { hospitalId: hospitalA.id, cohort: "INCLUDE_ENDED" }))
-      .rejects.toBeInstanceOf(ForbiddenError);
+      .resolves.toMatchObject({ cohort: "INCLUDE_ENDED", hospital: { id: hospitalA.id } });
     await expect(getHospitalReportingPage(ownerB.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingPage(osm.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
     await expect(getHospitalReportingPage(admin.actor, { hospitalId: hospitalA.id })).rejects.toBeInstanceOf(NotFoundError);
@@ -916,7 +915,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     expect(exportAudits).toEqual([{ action: "global_reporting.export.denied" }]);
   });
 
-  it("authorizes one active network Child report target only through a current Parent OWNER", async () => {
+  it("authorizes one active network Child report target only through a current Parent OWNER or MEMBER", async () => {
     const fixture = newFixture();
     currentFixture = fixture;
     const parentA = await createHospital(fixture, { name: "โรงพยาบาลแม่ข่าย A สังเคราะห์" });
@@ -978,8 +977,9 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       select: { id: true },
     })).toBeNull();
 
+    // ADR-0026: a Parent MEMBER resolves the same Child target.
     await expect(resolveParentChildHospitalReportAccessContext(member.actor, parentA.id, child.id))
-      .rejects.toBeInstanceOf(ForbiddenError);
+      .resolves.toMatchObject({ parentHospitalId: parentA.id, hospital: { id: child.id } });
     await expect(resolveParentChildHospitalReportAccessContext(multiRoleChildOwner, parentA.id, child.id))
       .rejects.toBeInstanceOf(ForbiddenError);
     await expect(resolveParentChildHospitalReportAccessContext(admin.actor, parentA.id, child.id))

@@ -830,8 +830,6 @@ export async function exportHospitalReportingWorkbook(
     actor,
     dataset.hospital.id,
     "hospital:report:export",
-    undefined,
-    dataset.cohort,
   );
   await recordAuditEvent({
     actorUserId: access.actor.userId,

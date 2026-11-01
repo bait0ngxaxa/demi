@@ -2,6 +2,20 @@
 
 > **Confirmed amendment — 2026-10-27:** [Hospital/OSM compatibility](HOSPITAL_OSM_COMPATIBILITY.md) disallows new simultaneous non-ended OWNER/MEMBER + OSM relationships globally, regardless of profession. Existing mixed records require explicit reconciliation; this does not silently remove existing authority. HOSPITAL + PATIENT and other compatible multi-role behavior remain supported. Older text about holding HOSPITAL + OSM is historical where inconsistent.
 
+> **Current decision — 2026-11-01 ([ADR-0026](../adr/0026-member-operational-parity.md)):** ACTIVE OWNER และ ACTIVE MEMBER ของโรงพยาบาลที่ ACTIVE มีสิทธิ์เท่ากัน ยกเว้น **การจัดการโรงพยาบาล** และ **การจัดการผู้ใช้** ซึ่งยังเป็นของ OWNER เท่านั้น การจำแนกทุก gate อยู่ใน [capability inventory](AUTHZ_CAPABILITY_INVENTORY.md) แถวในตารางด้านล่างที่ระบุว่า MEMBER "ปฏิเสธ" สำหรับรายงาน/export, การตรวจคำขอบริการ (ยืนยันนัด/ไม่อนุมัติ), การมอบหมาย อสม. และ network Patient read ถูกแทนที่แล้ว (ดูตาราง ADR-0026 ด้านล่าง)
+
+| ความสามารถ (ADR-0026) | OWNER | MEMBER |
+| --- | --- | --- |
+| ตั้งค่าโรงพยาบาล ข้อมูลติดต่อ สวิตช์ลงทะเบียนเอง catalog บริการ ข่าวสาร/เนื้อหา | ได้ | ปฏิเสธ |
+| เครือข่าย: สร้าง/เพิ่ม/นำออก/เปลี่ยนชื่อ/ยกเลิกลูกข่าย เชิญ OWNER ลูกข่าย | ได้ | ปฏิเสธ |
+| บุคลากร/อสม., ลิงก์เปิดใช้งาน/สลิป, รีเซ็ต/กู้บัญชี, แจ้งบัญชีถูกใช้ผิด (UM-1), แก้ชื่อบุคลากร/อสม. | ได้ | ปฏิเสธ |
+| นำเข้าผู้ป่วย Excel, คำเชิญ/ลิงก์บัญชีผู้ป่วย, กู้บัญชีผู้ป่วย, สิ้นสุดการดูแลผู้ป่วย (ก-18) | ได้ | ปฏิเสธ |
+| รายงาน: dashboard, รายแถว, `INCLUDE_ENDED`, export, สรุปลูกข่าย RPT-32, network export | ได้ | ได้ (audit `accessBasis: MEMBER`) |
+| คำขอบริการ: ยืนยันนัด / ไม่อนุมัติ | ได้ | ได้ |
+| มอบหมาย อสม. (รายคนและหลายคน) และรายชื่อผู้ป่วยของ อสม. | ได้ | ได้ |
+| ดูผู้ป่วยลูกข่ายแบบอ่านอย่างเดียว (ADR-0016) | OWNER แม่ข่าย | MEMBER แม่ข่าย ไม่ต้องมี grant |
+| แก้ชื่อผู้ป่วย (E3), "รวมผู้ที่สิ้นสุดการดูแล" ในหน้าจัดบริการ | ได้ | ได้ |
+
 CONFIRMED_OWNER_REQUIREMENT — 2026-10-21. ข้อกำหนดนี้และ [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) มีผลเหนือข้อความเก่าที่ให้ MEMBER/OSM ทำงานบริหาร รวมถึง ADR-0008 D1 วันที่ 2026-10-14 และ E1 delegated report export
 
 | ความสามารถ | OWNER โดยตรง | MEMBER | OSM | PATIENT | Platform ADMIN |

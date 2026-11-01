@@ -52,7 +52,7 @@ The appointment's อสม. is checked when it is booked or changed: the patien
 
 - `confirmPatientServiceRequest` books the appointment through the staff booking path in one serializable transaction: type from the service, `serviceCode`, HOME_VISIT, the chosen อสม., `sourceServiceRequestId`; the request (PENDING, or legacy APPROVED) moves to STARTED with the reviewer and starter. It never assigns the อสม. The appointment nonce makes a retry return the same appointment. A request is booked only this way; `createAppointment` no longer accepts `sourceServiceRequestId`.
 - `rejectPatientServiceRequest` needs a reason (trimmed, at most 500 characters), stored in `rejectionReason` and shown to the patient. Only a PENDING request is rejected.
-- Both stay with an ACTIVE direct OWNER of the request's Hospital ([ADR-0019](0019-owner-administration-and-import-only-roster.md)).
+- Both stay with an ACTIVE direct OWNER of the request's Hospital ([ADR-0019](0019-owner-administration-and-import-only-roster.md)). *Superseded 2026-11-01 by [ADR-0026](0026-member-operational-parity.md): an ACTIVE OWNER or MEMBER confirms and rejects; every other rule here is unchanged.*
 - A patient request needs a preferred date and slot, checked on the server clock; a second open request (PENDING or APPROVED) for the same service is refused with a message. The patient may still withdraw a PENDING or legacy APPROVED request.
 - A hospital booking may name a service (`serviceCode`), which sets the type; `type` alone is still accepted. Editing keeps the service and its type.
 

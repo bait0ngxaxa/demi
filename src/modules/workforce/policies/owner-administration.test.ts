@@ -2,6 +2,7 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/
 import { describe, expect, it } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { decidePatientOsmAssignmentPolicy, PATIENT_ASSIGN_OSM_CAPABILITY } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
 import { decidePatientProvisioningPolicy, PATIENT_PROVISIONING_CAPABILITY } from "@/modules/patient-provisioning/policies/patient-provisioning-policy";
 import { decidePatientActivationIssuePolicy, PATIENT_ACTIVATION_ISSUE_CAPABILITY } from "@/modules/patient-activation/policies/patient-activation-policy";
 import { decidePatientServiceRequestPolicy, PATIENT_SERVICE_REQUEST_CAPABILITIES } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
@@ -19,19 +20,28 @@ function actor(membershipType: MembershipType = MembershipType.OWNER): ActorCont
   };
 }
 
-const operations: { name: string; allows: (subject: ActorContext, targetHospitalId: string) => boolean }[] = [
+type Operation = { name: string; allows: (subject: ActorContext, targetHospitalId: string) => boolean };
+
+/** ADR-0026: Hospital management and user management stay with the OWNER. */
+const ownerOnlyOperations: Operation[] = [
   ...Object.values(WORKFORCE_CAPABILITIES).map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideWorkforcePolicy({ actor: subject, targetHospitalId, capability }).allowed })),
   { name: "patient import", allows: (subject, targetHospitalId) => decidePatientProvisioningPolicy({ actor: subject, targetHospitalId, capability: PATIENT_PROVISIONING_CAPABILITY }).allowed },
   { name: "patient activation", allows: (subject, targetHospitalId) => decidePatientActivationIssuePolicy({ actor: subject, targetHospitalId, capability: PATIENT_ACTIVATION_ISSUE_CAPABILITY }).allowed },
-  ...[PATIENT_SERVICE_REQUEST_CAPABILITIES.review, PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability }).allowed })),
-  // Report export is not OWNER-only (Product Owner decision 2026-10-21); it is covered separately below.
-  ...[HOSPITAL_REPORT_CAPABILITIES.dashboardRead, HOSPITAL_REPORT_CAPABILITIES.rowRead].map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideHospitalReportPolicy({ actor: subject, capability, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed })),
+  { name: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog, allows: (subject, targetHospitalId) => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog }).allowed },
 ];
 
-const allowsExport = (subject: ActorContext, targetHospitalId: string): boolean =>
-  decideHospitalReportPolicy({ actor: subject, capability: HOSPITAL_REPORT_CAPABILITIES.export, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed;
+/** ADR-0026: operational capabilities every ACTIVE OWNER or MEMBER holds. */
+const operatorOperations: Operation[] = [
+  { name: PATIENT_SERVICE_REQUEST_CAPABILITIES.review, allows: (subject, targetHospitalId) => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.review }).allowed },
+  { name: PATIENT_ASSIGN_OSM_CAPABILITY, allows: (subject, targetHospitalId) => decidePatientOsmAssignmentPolicy({ actor: subject, targetHospitalId, capability: PATIENT_ASSIGN_OSM_CAPABILITY }).allowed },
+  ...Object.values(HOSPITAL_REPORT_CAPABILITIES).map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideHospitalReportPolicy({ actor: subject, capability, target: { hospitalId: targetHospitalId, hospitalStatus: HospitalStatus.ACTIVE } }).allowed })),
+];
 
-describe.each(operations)("Owner administration: $name", ({ allows }) => {
+function withMembership(subject: ActorContext, overrides: Partial<ActorContext["hospitalMemberships"][number]>): ActorContext {
+  return { ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, ...overrides })) };
+}
+
+describe.each(ownerOnlyOperations)("Owner administration: $name", ({ allows }) => {
   it("retains direct OWNER authority for a multi-role identity", () => {
     expect(allows(actor(), hospitalId)).toBe(true);
   });
@@ -51,39 +61,35 @@ describe.each(operations)("Owner administration: $name", ({ allows }) => {
   });
 
   it.each([MembershipStatus.SUSPENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.ENDED])("denies %s membership", (status) => {
-    const subject = actor();
-    expect(allows({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, status })) }, hospitalId)).toBe(false);
+    expect(allows(withMembership(actor(), { status }), hospitalId)).toBe(false);
   });
 
   it("denies a suspended Hospital", () => {
-    const subject = actor();
-    expect(allows({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, hospitalStatus: HospitalStatus.SUSPENDED })) }, hospitalId)).toBe(false);
+    expect(allows(withMembership(actor(), { hospitalStatus: HospitalStatus.SUSPENDED }), hospitalId)).toBe(false);
   });
 });
 
-describe("Report export: OWNER and every ACTIVE MEMBER of the exact Hospital", () => {
-  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows an ACTIVE %s of the exact Hospital", (membershipType) => {
-    expect(allowsExport(actor(membershipType), hospitalId)).toBe(true);
-    expect(allowsExport({ ...actor(membershipType), hospitalMemberships: actor(membershipType).hospitalMemberships.map((membership) => ({ ...membership, reportExportGranted: false })) }, hospitalId)).toBe(true);
+describe.each(operatorOperations)("MEMBER operational parity: $name", ({ allows }) => {
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows an ACTIVE %s of the exact Hospital, with or without a historical grant", (membershipType) => {
+    expect(allows(actor(membershipType), hospitalId)).toBe(true);
+    expect(allows(withMembership(actor(membershipType), { reportExportGranted: false }), hospitalId)).toBe(true);
   });
 
-  it("does not inherit export from a membership at another Hospital", () => {
+  it("does not inherit authority from a membership at another Hospital", () => {
     for (const membershipType of [MembershipType.OWNER, MembershipType.MEMBER]) {
-      expect(allowsExport(actor(membershipType), otherHospitalId)).toBe(false);
+      expect(allows(actor(membershipType), otherHospitalId)).toBe(false);
     }
   });
 
   it.each([Role.OSM, Role.PATIENT, Role.ADMIN])("denies %s-only identities", (role) => {
-    expect(allowsExport({ ...actor(MembershipType.MEMBER), roles: [role] }, hospitalId)).toBe(false);
+    expect(allows({ ...actor(MembershipType.MEMBER), roles: [role] }, hospitalId)).toBe(false);
   });
 
   it.each([MembershipStatus.SUSPENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED, MembershipStatus.ENDED])("denies a %s MEMBER", (status) => {
-    const subject = actor(MembershipType.MEMBER);
-    expect(allowsExport({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, status })) }, hospitalId)).toBe(false);
+    expect(allows(withMembership(actor(MembershipType.MEMBER), { status }), hospitalId)).toBe(false);
   });
 
   it("denies a MEMBER of a suspended Hospital", () => {
-    const subject = actor(MembershipType.MEMBER);
-    expect(allowsExport({ ...subject, hospitalMemberships: subject.hospitalMemberships.map((membership) => ({ ...membership, hospitalStatus: HospitalStatus.SUSPENDED })) }, hospitalId)).toBe(false);
+    expect(allows(withMembership(actor(MembershipType.MEMBER), { hospitalStatus: HospitalStatus.SUSPENDED }), hospitalId)).toBe(false);
   });
 });

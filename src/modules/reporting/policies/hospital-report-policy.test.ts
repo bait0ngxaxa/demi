@@ -61,12 +61,15 @@ describe("Hospital reporting policy", () => {
     },
   );
 
-  it("denies an active Hospital MEMBER", () => {
-    expect(decide(hospitalOwnerActor({ membershipType: MembershipType.MEMBER }))).toMatchObject({
-      allowed: false,
-      reason: "active_direct_owner_required",
-    });
-  });
+  it.each(Object.values(HOSPITAL_REPORT_CAPABILITIES))(
+    "allows an active direct Hospital MEMBER for %s (ADR-0026)",
+    (capability) => {
+      expect(decide(hospitalOwnerActor({ membershipType: MembershipType.MEMBER }), capability)).toEqual({
+        allowed: true,
+        reason: "active_direct_hospital_member",
+      });
+    },
+  );
 
   it.each([Role.OSM, Role.PATIENT, Role.ADMIN, Role.CAREGIVER])("denies %s-only access", (role) => {
     expect(decide(hospitalOwnerActor({ roles: [role], membershipType: MembershipType.MEMBER }))).toMatchObject({
@@ -78,14 +81,14 @@ describe("Hospital reporting policy", () => {
   it("requires the exact directly owned Hospital and does not inherit Parent or Child scope", () => {
     expect(decide(hospitalOwnerActor({ hospitalId: hospitalAId }), HOSPITAL_REPORT_CAPABILITIES.rowRead, hospitalBId)).toMatchObject({
       allowed: false,
-      reason: "active_direct_owner_required",
+      reason: "active_direct_membership_required",
     });
   });
 
   it("denies suspended membership and suspended target Hospital", () => {
     expect(decide(hospitalOwnerActor({ membershipStatus: MembershipStatus.SUSPENDED }))).toMatchObject({
       allowed: false,
-      reason: "active_direct_owner_required",
+      reason: "active_direct_membership_required",
     });
     expect(decide(hospitalOwnerActor(), HOSPITAL_REPORT_CAPABILITIES.export, hospitalAId, HospitalStatus.SUSPENDED)).toMatchObject({
       allowed: false,
@@ -108,8 +111,8 @@ describe("Hospital reporting policy", () => {
   });
 });
 
-describe("MEMBER report export (no OWNER grant required)", () => {
-  function grantedMember(overrides: { status?: MembershipStatus; granted?: boolean; hospitalStatus?: HospitalStatus } = {}): ActorContext {
+describe("MEMBER reporting parity (ADR-0026, no OWNER grant)", () => {
+  function member(overrides: { status?: MembershipStatus; granted?: boolean; hospitalStatus?: HospitalStatus } = {}): ActorContext {
     const actor = hospitalOwnerActor({
       membershipType: MembershipType.MEMBER,
       membershipStatus: overrides.status ?? MembershipStatus.ACTIVE,
@@ -124,34 +127,22 @@ describe("MEMBER report export (no OWNER grant required)", () => {
     };
   }
 
-  it("allows export only, with or without a historical grant", () => {
-    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
-      allowed: true,
-      reason: "active_hospital_member_export",
-    });
-    expect(decide(grantedMember({ granted: false }), HOSPITAL_REPORT_CAPABILITIES.export)).toEqual({
-      allowed: true,
-      reason: "active_hospital_member_export",
-    });
-    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.dashboardRead).allowed).toBe(false);
-    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.rowRead).allowed).toBe(false);
+  it("allows the dashboard, rows and export with or without a historical grant", () => {
+    for (const capability of Object.values(HOSPITAL_REPORT_CAPABILITIES)) {
+      expect(decide(member(), capability)).toEqual({ allowed: true, reason: "active_direct_hospital_member" });
+      expect(decide(member({ granted: false }), capability)).toEqual({ allowed: true, reason: "active_direct_hospital_member" });
+    }
   });
 
   it.each([MembershipStatus.SUSPENDED, MembershipStatus.ENDED, MembershipStatus.PROVISIONED])(
     "denies a %s membership",
     (status) => {
-      expect(decide(grantedMember({ status }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+      expect(decide(member({ status }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
     },
   );
 
-  it("denies the INCLUDE_ENDED cohort, another Hospital, or an inactive Hospital", () => {
-    expect(decideHospitalReportPolicy({
-      actor: grantedMember({ granted: false }),
-      capability: HOSPITAL_REPORT_CAPABILITIES.export,
-      cohort: "INCLUDE_ENDED",
-      target: { hospitalId: hospitalAId, hospitalStatus: HospitalStatus.ACTIVE },
-    })).toEqual({ allowed: false, reason: "active_direct_owner_required" });
-    expect(decide(grantedMember(), HOSPITAL_REPORT_CAPABILITIES.export, hospitalBId).allowed).toBe(false);
-    expect(decide(grantedMember({ hospitalStatus: HospitalStatus.SUSPENDED }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
+  it("denies another Hospital or an inactive Hospital", () => {
+    expect(decide(member(), HOSPITAL_REPORT_CAPABILITIES.export, hospitalBId).allowed).toBe(false);
+    expect(decide(member({ hospitalStatus: HospitalStatus.SUSPENDED }), HOSPITAL_REPORT_CAPABILITIES.export).allowed).toBe(false);
   });
 });

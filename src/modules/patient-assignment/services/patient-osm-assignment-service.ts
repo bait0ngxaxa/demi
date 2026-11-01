@@ -179,7 +179,7 @@ export async function unassignOsmFromPatient(
 }
 
 export const patientOsmAssignmentInternals = {
-  assertOwnerInDatabase: patientOsmAssignmentTransactionInternals.assertOwnerInDatabase,
+  assertOperatorInDatabase: patientOsmAssignmentTransactionInternals.assertOperatorInDatabase,
   assertTargetOsmInDatabase:
     patientOsmAssignmentTransactionInternals.assertTargetOsmInDatabase,
   isRetryableTransactionError: isRetryableSerializableTransactionError,

@@ -24,6 +24,7 @@ const ownerUserId = "33333333-3333-4333-8333-333333333333";
 function actorWith(
   membershipType: MembershipType,
   targetHospitalId = hospitalId,
+  status: MembershipStatus = MembershipStatus.ACTIVE,
 ): ActorContext {
   return {
     userId: ownerUserId,
@@ -34,7 +35,7 @@ function actorWith(
         hospitalId: targetHospitalId,
         membershipType,
         profession: null,
-        status: MembershipStatus.ACTIVE,
+        status,
         hospitalStatus: HospitalStatus.ACTIVE,
       },
     ],
@@ -85,10 +86,15 @@ describe("listPatientOsmAssignmentScopes", () => {
     expect(scopes).toEqual([{ hospitalId, hospitalName: "โรงพยาบาล ก" }]);
   });
 
-  it("lists nothing for a MEMBER even if the database query is permissive", async () => {
+  it("lists the Hospital for an ACTIVE MEMBER (ADR-0026) and nothing for a SUSPENDED one", async () => {
     const { database } = createDatabase();
 
-    expect(await listPatientOsmAssignmentScopes(actorWith(MembershipType.MEMBER), { database })).toEqual([]);
+    expect(await listPatientOsmAssignmentScopes(actorWith(MembershipType.MEMBER), { database })).toEqual([
+      { hospitalId, hospitalName: "โรงพยาบาล ก" },
+    ]);
+    expect(
+      await listPatientOsmAssignmentScopes(actorWith(MembershipType.MEMBER, hospitalId, MembershipStatus.SUSPENDED), { database }),
+    ).toEqual([]);
   });
 
   it("fails closed without an actor", async () => {
@@ -123,11 +129,11 @@ describe("getPatientOsmBulkAssignmentView", () => {
     expect(user.findMany).not.toHaveBeenCalled();
   });
 
-  it("denies a MEMBER before querying", async () => {
+  it("denies a SUSPENDED MEMBER before querying", async () => {
     const { database, patientHospitalRelationship } = createDatabase();
 
     await expect(
-      getPatientOsmBulkAssignmentView(actorWith(MembershipType.MEMBER), { hospitalId }, { database }),
+      getPatientOsmBulkAssignmentView(actorWith(MembershipType.MEMBER, hospitalId, MembershipStatus.SUSPENDED), { hospitalId }, { database }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(patientHospitalRelationship.findMany).not.toHaveBeenCalled();
   });
@@ -266,12 +272,12 @@ describe("listPatientOsmBulkCandidates", () => {
     expect(user.findMany).not.toHaveBeenCalled();
   });
 
-  it("re-authorizes on a later page: a MEMBER with a cursor is denied before any query", async () => {
+  it("re-authorizes on a later page: a SUSPENDED MEMBER with a cursor is denied before any query", async () => {
     const { database, user } = createDatabase();
 
     await expect(
       listPatientOsmBulkCandidates(
-        actorWith(MembershipType.MEMBER),
+        actorWith(MembershipType.MEMBER, hospitalId, MembershipStatus.SUSPENDED),
         { hospitalId, cursor: "88888888-8888-4888-8888-888888888888" },
         { database },
       ),

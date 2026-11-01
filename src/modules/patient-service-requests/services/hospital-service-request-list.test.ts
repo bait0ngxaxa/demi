@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hospitalOperatorMembershipWhere } from "@/modules/identity/services/hospital-authority";
 import type { HospitalServiceRequestListInput } from "../schemas/patient-service-request-schemas";
 import { hospitalServiceRequestListSchema } from "../schemas/patient-service-request-schemas";
 
@@ -47,9 +48,16 @@ describe("bounded Hospital request list", () => {
       where: { hospitalId: { in: [hospitalA, hospitalB] }, relationship: { is: { endedAt: null } }, status: "PENDING" },
       orderBy: [{ preferredDate: { sort: "asc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }], take: 21,
     }));
+    // ADR-0026: the inbox covers every Hospital the actor operates (ACTIVE OWNER or MEMBER).
     expect(mocks.memberships).toHaveBeenCalledWith({
-      where: { userId: actor.userId, membershipType: "OWNER", status: "ACTIVE", hospital: { status: "ACTIVE" } },
+      where: hospitalOperatorMembershipWhere(actor.userId),
       select: { hospitalId: true },
+    });
+    expect(hospitalOperatorMembershipWhere(actor.userId)).toMatchObject({
+      userId: actor.userId,
+      membershipType: { in: ["OWNER", "MEMBER"] },
+      status: "ACTIVE",
+      hospital: { is: { status: "ACTIVE" } },
     });
     expect(page).not.toHaveProperty("total");
   });

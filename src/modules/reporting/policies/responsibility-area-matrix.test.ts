@@ -147,18 +147,20 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
   });
 
   describe("active Parent MEMBER", () => {
-    it("denies Child work selection, Child summary and Child export with only a Parent membership", () => {
-      expect(networkAllowed(parentMember, NETWORK.read)).toBe(false);
-      expect(networkAllowed(parentMember, NETWORK.export)).toBe(false);
+    // ADR-0026: a Parent MEMBER reads and exports the Child summary (RPT-32) like the OWNER; direct Child rows,
+    // Patients and workforce stay with the Child's own staff (network Patient read is the separate ADR-0016 path).
+    it("allows the Child summary and its export, never Child rows, Patients or workforce", () => {
+      expect(networkAllowed(parentMember, NETWORK.read)).toBe(true);
+      expect(networkAllowed(parentMember, NETWORK.export)).toBe(true);
       expect(patientRead(parentMember, childId)).toBe(false);
+      expect(hospitalReport(parentMember, HOSPITAL_REPORT_CAPABILITIES.rowRead, childId)).toBe(false);
       expect(workforce(parentMember, WORKFORCE_CAPABILITIES.osmRead, childId)).toBe(false);
     });
 
-    // Product Owner decision 2026-10-21: a MEMBER exports its own Hospital only; grants add nothing.
-    it("exports only its own Parent Hospital, never a Child or the network", () => {
+    it("reads and exports its own Parent Hospital report, never a Child directly", () => {
+      expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, parentId)).toBe(true);
       expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, parentId)).toBe(true);
       expect(hospitalReport(parentMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(false);
-      expect(networkAllowed(parentMemberWithGrant, NETWORK.export)).toBe(false);
     });
   });
 
@@ -192,10 +194,10 @@ describe("ADR-0013 §8 responsibility-area authorization matrix", () => {
       expect(workforce(childMember, WORKFORCE_CAPABILITIES.create, childId)).toBe(false);
     });
 
-    it("exports its own Child Hospital with or without a historical grant", () => {
+    it("reads and exports its own Child Hospital report with or without a historical grant", () => {
       expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
       expect(hospitalReport(childMemberWithGrant, HOSPITAL_REPORT_CAPABILITIES.export, childId)).toBe(true);
-      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, childId)).toBe(false);
+      expect(hospitalReport(childMember, HOSPITAL_REPORT_CAPABILITIES.dashboardRead, childId)).toBe(true);
     });
 
     it("denies using the membership or grant to read/export another Hospital", () => {

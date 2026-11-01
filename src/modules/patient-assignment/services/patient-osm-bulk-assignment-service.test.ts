@@ -287,12 +287,27 @@ describe("assignOsmToPatients", () => {
     expect(vi.mocked(database.$transaction).mock.calls[0]?.[1]).toMatchObject({ timeout: 60_000 });
   });
 
-  it("denies a MEMBER before touching any patient", async () => {
+  it("assigns for an ACTIVE MEMBER like the OWNER (ADR-0026)", async () => {
+    const ids = relationshipIds(2);
+    const { database, state } = createFakeDatabase({ relationships: freeRelationships(ids) });
+
+    const result = await assignOsmToPatients(actorWith(MembershipType.MEMBER), request(ids), { database, now: () => now });
+
+    expect(result.assignedCount).toBe(2);
+    expect(activeCount(state)).toBe(2);
+  });
+
+  it("denies a SUSPENDED MEMBER before touching any patient", async () => {
     const ids = relationshipIds(2);
     const { database, state, transaction } = createFakeDatabase({ relationships: freeRelationships(ids) });
+    const suspended = actorWith(MembershipType.MEMBER);
 
     await expect(
-      assignOsmToPatients(actorWith(MembershipType.MEMBER), request(ids), { database, now: () => now }),
+      assignOsmToPatients(
+        { ...suspended, hospitalMemberships: suspended.hospitalMemberships.map((membership) => ({ ...membership, status: MembershipStatus.SUSPENDED })) },
+        request(ids),
+        { database, now: () => now },
+      ),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(activeCount(state)).toBe(0);
     expect(transaction.patientHospitalRelationship.findMany).not.toHaveBeenCalled();

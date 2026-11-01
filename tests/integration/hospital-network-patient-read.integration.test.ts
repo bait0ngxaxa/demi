@@ -23,10 +23,7 @@ import { getPatientProgramPageContext } from "@/modules/patient-program/services
 import { completePatientProgram, openPatientProgram } from "@/modules/patient-program/services/patient-program-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { clearProgramRoundCompletions } from "./support/program-rounds";
-import {
-  promoteHospitalOwner,
-  setHospitalMembershipNetworkPatientReadGrant,
-} from "@/modules/workforce/services/workforce-service";
+import { promoteHospitalOwner } from "@/modules/workforce/services/workforce-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 const db = getPrisma();
@@ -323,49 +320,51 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
     expect(await db.patientHospitalRelationship.count({ where: { hospitalId: n.childId } })).toBe(1);
   });
 
-  it("requires an OWNER grant for a MEMBER, and ending or transferring removes access immediately", async () => {
+  it("lets a Parent MEMBER read without any grant (ADR-0026), audited by basis, and ending or transferring removes access immediately", async () => {
     const n = await network();
-    await expect(findPatientDirectory(n.parentMember, directoryInput(n.childId))).rejects.toBeInstanceOf(ForbiddenError);
-    expect((await listPatientDirectoryScopes(n.parentMember)).map(({ access }) => access)).toEqual(["DIRECT"]);
-
-    await setHospitalMembershipNetworkPatientReadGrant(n.parentOwner, {
-      relationshipId: n.parentMember.membershipId,
-      targetHospitalId: n.parentId,
-      expectedUpdatedAt: await membershipVersion(n.parentMember.membershipId),
-      granted: true,
-    });
+    // The historical grant column stays (SQL CHECK kept) but authorizes nothing either way.
+    expect((await db.hospitalMembership.findUniqueOrThrow({ where: { id: n.parentMember.membershipId } })).networkPatientReadGrantedAt).toBeNull();
+    expect((await listPatientDirectoryScopes(n.parentMember))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hospitalId: n.parentId, access: "DIRECT" }),
+      expect.objectContaining({ hospitalId: n.childId, access: "NETWORK" }),
+    ]));
     await expect(findPatientDirectory(n.parentMember, directoryInput(n.childId))).resolves.toMatchObject({ items: [expect.anything()] });
-    await expect(setHospitalMembershipNetworkPatientReadGrant(n.parentMember, {
-      relationshipId: n.parentMember.membershipId,
-      targetHospitalId: n.parentId,
-      expectedUpdatedAt: await membershipVersion(n.parentMember.membershipId),
-      granted: false,
-    })).rejects.toBeInstanceOf(ForbiddenError);
+    expect(await getPatientDirectoryDetail(n.parentMember, n.relationshipId)).toMatchObject({ access: "NETWORK" });
+    await expect(findPatientDirectory(n.parentOwner, directoryInput(n.childId))).resolves.toMatchObject({ items: [expect.anything()] });
 
-    await setHospitalMembershipNetworkPatientReadGrant(n.parentOwner, {
-      relationshipId: n.parentMember.membershipId,
-      targetHospitalId: n.parentId,
-      expectedUpdatedAt: await membershipVersion(n.parentMember.membershipId),
-      granted: false,
-    });
+    const basisOf = async (actorUserId: string): Promise<unknown[]> =>
+      (await db.auditEvent.findMany({ where: { actorUserId, action: "patient.network_read" } }))
+        .map(({ metadata }) => (metadata as { accessBasis?: unknown }).accessBasis);
+    const memberBasis = await basisOf(n.parentMember.userId);
+    expect(memberBasis.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(memberBasis)).toEqual(new Set(["MEMBER"]));
+    expect(new Set(await basisOf(n.parentOwner.userId))).toEqual(new Set(["OWNER"]));
+
+    // Network reads never open writes for a Parent MEMBER either.
+    await expect(updateStaffPatientHospitalProfile(n.parentMember, n.relationshipId, { expectedVersion: 0, phoneNumber: "0812345678" }, db))
+      .rejects.toSatisfy((error) => error instanceof ForbiddenError || error instanceof NotFoundError);
+    await expect(assignOsmToPatient(n.parentMember, { patientHospitalRelationshipId: n.relationshipId, osmUserId: n.childOwner.userId }))
+      .rejects.toSatisfy((error) => error instanceof ForbiddenError || error instanceof NotFoundError);
+
+    // Child staff still see nothing of the Parent or a sibling.
+    const childMember = await staff(n.childId, MembershipType.MEMBER);
+    expect((await listPatientDirectoryScopes(childMember)).map(({ hospitalId }) => hospitalId)).toEqual([n.childId]);
+    await expect(findPatientDirectory(childMember, directoryInput(n.parentId))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(findPatientDirectory(childMember, directoryInput(n.otherChildId))).rejects.toBeInstanceOf(ForbiddenError);
+
+    // A SUSPENDED Parent MEMBER loses network access at once, even with a stale ACTIVE session.
+    await db.hospitalMembership.update({ where: { id: n.parentMember.membershipId }, data: { status: MembershipStatus.SUSPENDED } });
+    await expect(findPatientDirectory(n.parentMember, directoryInput(n.childId))).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getPatientDirectoryDetail(n.parentMember, n.relationshipId)).rejects.toBeInstanceOf(NotFoundError);
-    expect(await db.auditEvent.count({
-      where: { actorUserId: n.parentOwner.userId, action: { in: ["hospital_membership.network_patient_read_granted", "hospital_membership.network_patient_read_revoked"] } },
-    })).toBe(2);
+    await db.hospitalMembership.update({ where: { id: n.parentMember.membershipId }, data: { status: MembershipStatus.ACTIVE } });
 
-    // Promotion to OWNER clears the MEMBER-only grant (SQL CHECK) and reading continues by role.
-    await setHospitalMembershipNetworkPatientReadGrant(n.parentOwner, {
-      relationshipId: n.parentMember.membershipId,
-      targetHospitalId: n.parentId,
-      expectedUpdatedAt: await membershipVersion(n.parentMember.membershipId),
-      granted: true,
-    });
+    // Promotion to OWNER keeps reading by role.
     await promoteHospitalOwner(n.parentOwner, {
       relationshipId: n.parentMember.membershipId,
       targetHospitalId: n.parentId,
       expectedUpdatedAt: await membershipVersion(n.parentMember.membershipId),
     });
-    expect((await db.hospitalMembership.findUniqueOrThrow({ where: { id: n.parentMember.membershipId } })).networkPatientReadGrantedAt).toBeNull();
+    await expect(findPatientDirectory(n.parentMember, directoryInput(n.childId))).resolves.toMatchObject({ hospital: { access: "NETWORK" } });
 
     await endHospitalServiceArea(n.parentOwner, { parentHospitalId: n.parentId, areaId: n.areaId, confirm: true, endReason: "สิ้นสุดการดูแล" });
     await expect(findPatientDirectory(n.parentOwner, directoryInput(n.childId))).rejects.toBeInstanceOf(ForbiddenError);

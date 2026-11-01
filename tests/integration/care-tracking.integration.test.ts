@@ -314,7 +314,7 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     expect(all.summary.stages).toMatchObject({ NOT_STARTED: 1, READY_FOR_PROGRAM: 1, IN_ROUND: 1, IN_EXTRA_ROUND: 1, AWAITING_AFTER: 1, AWAITING_PROGRAM_END: 1, PROGRAM_COMPLETED: 1, CARE_ENDED: 1 });
   });
 
-  it("hides ended stages by default and shows ended care to the OWNER only", async () => {
+  it("hides ended stages by default and shows ended care to an OWNER or MEMBER on request (ADR-0026)", async () => {
     const f = await careFixture();
     const p = f.patients;
     const ownerAll = await getCareTrackingPage(f.owner, { hospitalId: f.hospitalId, includeEnded: true });
@@ -327,8 +327,9 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
 
     const memberAll = await getCareTrackingPage(f.member, { hospitalId: f.hospitalId, includeEnded: true });
     expect(ids(memberAll)).toContain(p.completed.relationshipId);
-    expect(ids(memberAll)).not.toContain(p.ended.relationshipId);
-    expect(memberAll.summary.stages.CARE_ENDED).toBe(0);
+    expect(itemOf(memberAll, p.ended.relationshipId)).toMatchObject({ stage: "CARE_ENDED", nextStep: { type: "NONE", reason: "READ_ONLY" } });
+    expect(memberAll.summary.stages.CARE_ENDED).toBe(ownerAll.summary.stages.CARE_ENDED);
+    expect(ids(await getCareTrackingPage(f.member, { hospitalId: f.hospitalId }))).not.toContain(p.ended.relationshipId);
   });
 
   it("scopes an OSM to their assigned patients and refuses other actors", async () => {
@@ -360,10 +361,12 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     expect((await getCareTrackingPage(f.childOwner, { hospitalId: f.childHospitalId })).items[0]?.assignedOsmDisplayName).toBe("อสม. ประจำหมู่บ้าน");
     expect(page.items[0]?.currentRound?.steps.every((step) => step.evidence === null || step.evidence.byDisplayName === null)).toBe(true);
     const audits = await db.auditEvent.findMany({ where: { actorUserId: f.owner.userId, action: "patient.network_read" }, select: { resourceType: true, resourceId: true, metadata: true } });
-    expect(audits).toEqual([{ resourceType: "Hospital", resourceId: f.childHospitalId, metadata: { parentHospitalId: f.hospitalId, childHospitalId: f.childHospitalId, scope: "care-tracking" } }]);
+    expect(audits).toEqual([{ resourceType: "Hospital", resourceId: f.childHospitalId, metadata: { parentHospitalId: f.hospitalId, childHospitalId: f.childHospitalId, scope: "care-tracking", accessBasis: "OWNER" } }]);
 
     await expect(getCareTrackingPage(f.owner, { hospitalId: f.hospitalId, childHospitalId: f.otherHospitalId })).rejects.toBeInstanceOf(ForbiddenError);
-    await expect(getCareTrackingPage(f.member, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId })).rejects.toBeInstanceOf(ForbiddenError);
+    // ADR-0026: a Parent MEMBER reads the network Child too, audited with its own basis.
+    await expect(getCareTrackingPage(f.member, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId })).resolves.toMatchObject({ hospital: { access: "NETWORK" } });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { actorUserId: f.member.userId, action: "patient.network_read" } })).metadata).toMatchObject({ accessBasis: "MEMBER" });
     await expect(getCareTrackingPage(f.childOwner, { hospitalId: f.childHospitalId, childHospitalId: f.hospitalId })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getCareTrackingPage(f.assignedOsm, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId })).rejects.toBeInstanceOf(ForbiddenError);
 
@@ -501,8 +504,8 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
       { access: "DIRECT", hospitalId: f.hospitalId, hospitalName: "โรงพยาบาลติดตามการดูแล" },
       { access: "NETWORK", hospitalId: f.hospitalId, parentHospitalName: "โรงพยาบาลติดตามการดูแล", childHospitalId: f.childHospitalId, hospitalName: "รพ.สต.ติดตามการดูแล" },
     ]);
-    // A MEMBER without the OWNER-issued network Patient read grant reads no Child.
-    expect(await listCareTrackingScopes(f.member)).toEqual([{ access: "DIRECT", hospitalId: f.hospitalId, hospitalName: "โรงพยาบาลติดตามการดูแล" }]);
+    // ADR-0026: a Parent MEMBER reads network Children without any grant.
+    expect(await listCareTrackingScopes(f.member)).toEqual(await listCareTrackingScopes(f.owner));
     // The Child's own OWNER reads it directly, never as a network scope.
     expect(await listCareTrackingScopes(f.childOwner)).toEqual([{ access: "DIRECT", hospitalId: f.childHospitalId, hospitalName: "รพ.สต.ติดตามการดูแล" }]);
     expect(await hospitalIds(f.assignedOsm)).toEqual([f.hospitalId]);

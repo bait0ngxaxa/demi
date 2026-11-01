@@ -352,15 +352,17 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(await prisma.auditEvent.count({ where: { action: "patient.osm_assigned" } })).toBe(size);
   }, 120_000);
 
-  it("denies a MEMBER and writes nothing", async () => {
+  it("lets a MEMBER bulk-assign (ADR-0026) and denies a SUSPENDED MEMBER without writing", async () => {
     const hospital = await createHospital("BULK-ASSIGN-MEMBER");
     const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
     const member = await createHospitalActor(hospital.id, MembershipType.MEMBER);
+    const suspended = await createHospitalActor(hospital.id, MembershipType.MEMBER);
+    await prisma.hospitalMembership.updateMany({ where: { userId: suspended.userId }, data: { status: MembershipStatus.SUSPENDED } });
     const osmUserId = await createOsm(hospital.id);
     const ids = await createPatients(owner.actor, hospital.id, 2, "member");
 
     await expect(
-      assignOsmToPatients(member.actor, {
+      assignOsmToPatients(suspended.actor, {
         hospitalId: hospital.id,
         osmUserId,
         patientHospitalRelationshipIds: ids,
@@ -368,6 +370,15 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(await prisma.patientOsmAssignment.count()).toBe(0);
+    await expect(
+      assignOsmToPatients(member.actor, {
+        hospitalId: hospital.id,
+        osmUserId,
+        patientHospitalRelationshipIds: ids,
+        submissionNonce: newNonce(),
+      }),
+    ).resolves.toMatchObject({ assignedCount: 2 });
+    expect(await prisma.patientOsmAssignment.count({ where: { assignedByUserId: member.userId, endedAt: null } })).toBe(2);
   });
 
   it("denies a patient or an OSM of another hospital, and self-assignment", async () => {
@@ -545,7 +556,11 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
       listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: "not-a-uuid" }),
     ).rejects.toMatchObject({ code: "VALIDATION" });
 
-    // Authorization is re-checked on every page.
+    // Authorization is re-checked on every page: a MEMBER pages like the OWNER until its membership is suspended.
+    await expect(
+      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, cursor }),
+    ).resolves.toBeDefined();
+    await prisma.hospitalMembership.updateMany({ where: { userId: member.userId }, data: { status: MembershipStatus.SUSPENDED } });
     await expect(
       listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, cursor }),
     ).rejects.toBeInstanceOf(ForbiddenError);
@@ -583,12 +598,13 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     await expect(
       getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: otherHospital.id }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+    // ADR-0026: a MEMBER sees the same view and scopes as the OWNER.
     await expect(
       getPatientOsmBulkAssignmentView(member.actor, { hospitalId: hospital.id }),
-    ).rejects.toBeInstanceOf(ForbiddenError);
+    ).resolves.toMatchObject({ hospital: { hospitalId: hospital.id } });
     expect(await listPatientOsmAssignmentScopes(owner.actor)).toEqual([
       { hospitalId: hospital.id, hospitalName: "โรงพยาบาล BULK-ASSIGN-VIEW-A" },
     ]);
-    expect(await listPatientOsmAssignmentScopes(member.actor)).toEqual([]);
+    expect(await listPatientOsmAssignmentScopes(member.actor)).toEqual(await listPatientOsmAssignmentScopes(owner.actor));
   });
 });

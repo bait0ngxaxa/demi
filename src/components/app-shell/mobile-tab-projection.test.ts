@@ -203,7 +203,7 @@ describe("server-projected mobile navigation", () => {
     expect(hrefs(adminNavigation)).not.toContain("/app/patients");
   });
 
-  it("gives a Hospital MEMBER the care task tab before the export-only destination", () => {
+  it("gives a Hospital MEMBER the care task tab and keeps reports on More", () => {
     const memberNavigation = projectApplicationNavigation(actor([Role.HOSPITAL], {
       membershipType: MembershipType.MEMBER,
     }));
@@ -229,7 +229,11 @@ describe("server-projected mobile navigation", () => {
     expect(resolveActiveMobileTabId("/app/services", "hospitalId=h&stage=IN_ROUND&page=2", memberTabs)).toBe("service");
     // CT-2: the directory is the patients tab again; its former service task URL redirects to /app/services.
     expect(resolveActiveMobileTabId("/app/patients", "", memberTabs)).toBe("patients");
-    expect(memberMoreHrefs).toContain("/app/hospitals/reporting/export");
+    // ADR-0026: a MEMBER opens the full Hospital report and the request inbox like the OWNER.
+    expect(memberMoreHrefs).toContain("/app/hospitals/reporting");
+    expect(memberMoreHrefs).toContain("/app/patients/service-requests");
+    expect(memberMoreHrefs).not.toContain("/app/patients/provision");
+    expect(memberMoreHrefs).not.toContain("/app/users");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=screening");
     expect(memberMoreHrefs).not.toContain("/app/patients?task=followup");
   });

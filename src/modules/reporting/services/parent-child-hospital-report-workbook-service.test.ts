@@ -172,7 +172,27 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
   it.each([
     ["Parent MEMBER", actorWith(MembershipType.MEMBER)],
     ["Parent MEMBER holding a ก-15 export grant", actorWith(MembershipType.MEMBER, parentHospitalId, true)],
+  ])("exports for a %s like the OWNER (ADR-0026) and audits it", async (_label, subject) => {
+    const { database, auditCreate } = createDatabase();
+
+    const result = await exportParentChildHospitalReportWorkbook(subject, {
+      parentHospitalId,
+      hospitalId: childHospitalId,
+    }, { database });
+
+    expect((await workbookCells(result.buffer)).sheetNames).toEqual(["สรุปรายลูกข่าย"]);
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        actorUserId: subject.userId,
+        action: "parent_child_reporting.export.prepared",
+        resourceId: childHospitalId,
+      }),
+    }));
+  });
+
+  it.each([
     ["Child OWNER exporting upward", actorWith(MembershipType.OWNER, childHospitalId)],
+    ["Child MEMBER exporting upward", actorWith(MembershipType.MEMBER, childHospitalId)],
   ])("denies and audits a %s without building a file", async (_label, subject) => {
     const { database, findMembership, auditCreate } = createDatabase();
 

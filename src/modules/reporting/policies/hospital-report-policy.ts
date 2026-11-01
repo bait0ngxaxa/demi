@@ -1,8 +1,8 @@
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import { HospitalStatus, MembershipType, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { findActiveHospitalOperatorMembership } from "@/modules/identity/services/hospital-authority";
 import { ForbiddenError } from "@/shared/errors/application-error";
-import type { HospitalReportCohort } from "../schemas/hospital-report-schemas";
 
 export const HOSPITAL_REPORT_CAPABILITIES = {
   dashboardRead: "hospital:report:dashboard:read",
@@ -19,7 +19,7 @@ export type HospitalReportPolicyTarget = {
 };
 
 export type HospitalReportPolicyDecision =
-  | { allowed: true; reason: "active_direct_hospital_owner" | "active_hospital_member_export" }
+  | { allowed: true; reason: "active_direct_hospital_owner" | "active_direct_hospital_member" }
   | {
       allowed: false;
       reason:
@@ -27,7 +27,7 @@ export type HospitalReportPolicyDecision =
         | "invalid_capability"
         | "invalid_target_hospital"
         | "hospital_role_required"
-        | "active_direct_owner_required"
+        | "active_direct_membership_required"
         | "inactive_target_hospital";
     };
 
@@ -39,7 +39,6 @@ export function decideHospitalReportPolicy(input: {
   actor: ActorContext | null | undefined;
   capability: unknown;
   target: HospitalReportPolicyTarget;
-  cohort?: HospitalReportCohort;
 }): HospitalReportPolicyDecision {
   if (!input.actor) {
     return { allowed: false, reason: "missing_actor" };
@@ -60,39 +59,19 @@ export function decideHospitalReportPolicy(input: {
     return { allowed: false, reason: "hospital_role_required" };
   }
 
-  const requestedHospitalId = input.target.hospitalId.toLowerCase();
-  const activeMemberships = input.actor.hospitalMemberships.filter(
-    (candidate) =>
-      candidate.hospitalId.toLowerCase() === requestedHospitalId &&
-      candidate.status === MembershipStatus.ACTIVE,
-  );
-  const ownerMembership = activeMemberships.find(
-    (candidate) => candidate.membershipType === MembershipType.OWNER,
-  );
-  // Product Owner decision 2026-10-21 (amends ADR-0019): every ACTIVE MEMBER may export the
-  // ACTIVE cohort without a grant; the dashboard, row reads and INCLUDE_ENDED stay OWNER-only.
-  const exportMembership = input.capability === HOSPITAL_REPORT_CAPABILITIES.export
-    ? activeMemberships.find((candidate) => candidate.membershipType === MembershipType.MEMBER)
-    : undefined;
-  if (input.cohort === "INCLUDE_ENDED" && !ownerMembership) {
-    return { allowed: false, reason: "active_direct_owner_required" };
-  }
-  const membership = ownerMembership ?? exportMembership;
-
+  // ADR-0026: every ACTIVE OWNER or MEMBER reads the dashboard and rows and exports either cohort.
+  const membership = findActiveHospitalOperatorMembership(input.actor, input.target.hospitalId);
   if (!membership) {
-    return { allowed: false, reason: "active_direct_owner_required" };
+    return { allowed: false, reason: "active_direct_membership_required" };
   }
 
-  if (
-    input.target.hospitalStatus !== HospitalStatus.ACTIVE ||
-    membership.hospitalStatus !== HospitalStatus.ACTIVE
-  ) {
+  if (input.target.hospitalStatus !== HospitalStatus.ACTIVE) {
     return { allowed: false, reason: "inactive_target_hospital" };
   }
 
   return {
     allowed: true,
-    reason: ownerMembership ? "active_direct_hospital_owner" : "active_hospital_member_export",
+    reason: membership.membershipType === MembershipType.OWNER ? "active_direct_hospital_owner" : "active_direct_hospital_member",
   };
 }
 

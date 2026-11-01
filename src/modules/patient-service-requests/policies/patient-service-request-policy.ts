@@ -1,11 +1,10 @@
-import {
-  HospitalStatus,
-  MembershipStatus,
-  MembershipType,
-  Role,
-} from "@prisma/client";
+import { Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import {
+  isActiveHospitalAdministrator,
+  isActiveHospitalOperator,
+} from "@/modules/identity/services/hospital-authority";
 
 export const PATIENT_SERVICE_REQUEST_CAPABILITIES = {
   manageCatalog: "patient-service-catalog:manage",
@@ -40,20 +39,6 @@ const capabilities = new Set<PatientServiceRequestCapability>(
   Object.values(PATIENT_SERVICE_REQUEST_CAPABILITIES),
 );
 
-function isActiveHospitalMembership(
-  actor: ActorContext,
-  hospitalId: string,
-  membershipTypes: readonly MembershipType[],
-): boolean {
-  return actor.hospitalMemberships.some(
-    (membership) =>
-      membership.hospitalId === hospitalId &&
-      membershipTypes.includes(membership.membershipType) &&
-      membership.status === MembershipStatus.ACTIVE &&
-      membership.hospitalStatus === HospitalStatus.ACTIVE,
-  );
-}
-
 export function decidePatientServiceRequestPolicy(
   input: PatientServiceRequestPolicyInput,
 ): PatientServiceRequestPolicyDecision {
@@ -87,18 +72,18 @@ export function decidePatientServiceRequestPolicy(
     input.capability === PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog &&
     hasHospitalRole &&
     !hasPlatformAdminRole &&
-    isActiveHospitalMembership(input.actor, targetHospitalId, [MembershipType.OWNER])
+    isActiveHospitalAdministrator(input.actor, targetHospitalId)
   ) {
     return { allowed: true, reason: "hospital_owner" };
   }
+
+  // ADR-0026: an ACTIVE OWNER or MEMBER confirms ("ยืนยันนัด") and rejects requests of the Hospital.
 
   if (
     input.capability === PATIENT_SERVICE_REQUEST_CAPABILITIES.review &&
     hasHospitalRole &&
     !hasPlatformAdminRole &&
-    isActiveHospitalMembership(input.actor, targetHospitalId, [
-      MembershipType.OWNER,
-    ])
+    isActiveHospitalOperator(input.actor, targetHospitalId)
   ) {
     return { allowed: true, reason: "hospital_reviewer" };
   }
@@ -116,4 +101,3 @@ export function decidePatientServiceRequestPolicy(
   };
 }
 
-export const patientServiceRequestPolicyInternals = { isActiveHospitalMembership };

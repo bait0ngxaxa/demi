@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   HospitalStatus,
-  MembershipType,
   PatientProgramStatus,
   Prisma,
   Role,
@@ -228,8 +227,8 @@ function buildSearchWhere(search: string | undefined): Prisma.PatientHospitalRel
 
 /**
  * Scope from the existing read builders only: direct OWNER/MEMBER, an assigned OSM, or one network Child read
- * through an exact Parent (ADR-0016, audited). Ended care relationships are added only when the database proves
- * the actor is the Hospital's OWNER (Phase F ก-18, like the report cohort INCLUDE_ENDED).
+ * through an exact Parent (ADR-0016, audited). Ended care relationships are added on request for a direct OWNER or
+ * MEMBER (ADR-0026, like the report cohort INCLUDE_ENDED); network and OSM reads never include them.
  */
 async function resolveScope(
   database: CareTrackingDatabase,
@@ -285,9 +284,8 @@ async function resolveScope(
         ...patientRoleWhere,
         hospitalId: hospital.id,
         hospital: hospitalWhere,
-        ...(input.includeEnded
-          ? { OR: [activePatientHospitalRelationshipWhere, { hospital: buildAuthorizedHospitalWhere(actor.userId, [MembershipType.OWNER]) }] }
-          : activePatientHospitalRelationshipWhere),
+        // ADR-0026: every direct reader (OWNER or MEMBER) may include ended care relationships.
+        ...(input.includeEnded ? {} : activePatientHospitalRelationshipWhere),
       },
     };
   }

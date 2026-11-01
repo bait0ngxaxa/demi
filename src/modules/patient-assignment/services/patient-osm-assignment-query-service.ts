@@ -5,7 +5,6 @@ import { loadAssignedOsmPhone } from "./assigned-osm-phone";
 import {
   HospitalStatus,
   MembershipStatus,
-  MembershipType,
   Prisma,
   Role,
   UserStatus,
@@ -14,6 +13,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   assertPatientOsmAssignmentPolicy,
@@ -147,31 +147,19 @@ function getDatabase(
   return dependencies.database ?? getPrisma();
 }
 
-function buildOwnerHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
-  return {
-    status: HospitalStatus.ACTIVE,
-    memberships: {
-      some: {
-        userId: actorUserId,
-        membershipType: MembershipType.OWNER,
-        status: MembershipStatus.ACTIVE,
-        user: {
-          status: UserStatus.ACTIVE,
-          roles: { some: { role: Role.HOSPITAL } },
-        },
-      },
-    },
-  };
+/** ADR-0026: Hospitals the actor operates (ACTIVE OWNER or MEMBER). */
+function buildOperatorHospitalWhere(actorUserId: string): Prisma.HospitalWhereInput {
+  return hospitalOperatedByWhere(actorUserId);
 }
 
-function buildPatientRelationshipForOwner(
+function buildPatientRelationshipForOperator(
   actorUserId: string,
   relationshipId: string,
 ): Prisma.PatientHospitalRelationshipWhereInput {
   return {
     id: relationshipId,
     ...activePatientHospitalRelationshipWhere,
-    hospital: buildOwnerHospitalWhere(actorUserId),
+    hospital: buildOperatorHospitalWhere(actorUserId),
     patientProfile: {
       person: {
         user: { roles: { some: { role: Role.PATIENT } } },
@@ -238,7 +226,7 @@ export async function getPatientOsmAssignmentManagementView(
 
   try {
     const record = await getDatabase(dependencies).patientHospitalRelationship.findFirst({
-      where: buildPatientRelationshipForOwner(actor.userId, parsedRelationshipId.data),
+      where: buildPatientRelationshipForOperator(actor.userId, parsedRelationshipId.data),
       select: assignmentManagementSelect,
     });
 
@@ -338,7 +326,7 @@ export async function listPatientOsmCandidates(
   try {
     const database = getDatabase(dependencies);
     const relationship = await database.patientHospitalRelationship.findFirst({
-      where: buildPatientRelationshipForOwner(
+      where: buildPatientRelationshipForOperator(
         actor.userId,
         parsed.data.patientHospitalRelationshipId,
       ),
@@ -380,7 +368,7 @@ export async function listPatientOsmAssignmentScopes(
 
   try {
     const hospitals = await getDatabase(dependencies).hospital.findMany({
-      where: buildOwnerHospitalWhere(actor.userId),
+      where: buildOperatorHospitalWhere(actor.userId),
       select: { id: true, name: true },
       orderBy: [{ name: "asc" }, { id: "asc" }],
     });
@@ -429,7 +417,7 @@ export async function getPatientOsmBulkAssignmentView(
   try {
     const database = getDatabase(dependencies);
     const hospital = await database.hospital.findFirst({
-      where: { id: parsed.data.hospitalId, ...buildOwnerHospitalWhere(actor.userId) },
+      where: { id: parsed.data.hospitalId, ...buildOperatorHospitalWhere(actor.userId) },
       select: { id: true, name: true },
     });
 
@@ -505,7 +493,7 @@ export async function listPatientOsmBulkCandidates(
   try {
     const database = getDatabase(dependencies);
     const hospital = await database.hospital.findFirst({
-      where: { id: parsed.data.hospitalId, ...buildOwnerHospitalWhere(actor.userId) },
+      where: { id: parsed.data.hospitalId, ...buildOperatorHospitalWhere(actor.userId) },
       select: { id: true },
     });
 
@@ -531,8 +519,8 @@ export async function listPatientOsmBulkCandidates(
 export const patientOsmAssignmentQueryInternals = {
   assignmentManagementSelect,
   buildNameWhere,
-  buildOwnerHospitalWhere,
-  buildPatientRelationshipForOwner,
+  buildOperatorHospitalWhere,
+  buildPatientRelationshipForOperator,
   toAssignmentManagementView,
   toDisplayName,
   candidateSearchMaxLength: PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,

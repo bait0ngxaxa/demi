@@ -145,7 +145,7 @@ describe("Patient Directory page Hospital context", () => {
     );
   });
 
-  it("offers bulk OSM assignment only to an active OWNER of the selected Hospital", async () => {
+  it("offers bulk OSM assignment to an active OWNER or MEMBER of the selected Hospital only", async () => {
     const actorFor = (membershipType: MembershipType) => ({
       userId: "actor",
       personId: "person",
@@ -176,7 +176,8 @@ describe("Patient Directory page Hospital context", () => {
 
     expect(owner.props.canAssignOsm).toBe(true);
     expect(ownerElsewhere.props.canAssignOsm).toBe(false);
-    expect(member.props.canAssignOsm).toBe(false);
+    // ADR-0026: an ACTIVE MEMBER assigns OSMs like the OWNER.
+    expect(member.props.canAssignOsm).toBe(true);
   });
 
   it("redirects an invalid explicit Hospital context without querying another Hospital", async () => {

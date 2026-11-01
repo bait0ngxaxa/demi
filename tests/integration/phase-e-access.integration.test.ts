@@ -154,17 +154,18 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   afterEach(async () => { vi.unstubAllEnvs(); await cleanup(); });
   afterAll(async () => { await db.$disconnect(); });
 
-  it("E1 superseded (2026-10-21): every ACTIVE MEMBER exports without a grant; grant management stays retired", async () => {
+  it("E1 superseded (2026-10-21, ADR-0026): every ACTIVE MEMBER exports either cohort without a grant; grant management stays retired", async () => {
     const f = await fixture();
     const membership = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.member.userId, hospitalId: f.hospitalId } });
     expect(membership.reportExportGrantedAt).toBeNull();
     expect((await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId })).buffer.byteLength).toBeGreaterThan(0);
     await db.hospitalMembership.update({ where: { id: membership.id }, data: { reportExportGrantedAt: now, reportExportGrantedByUserId: f.owner.userId } });
     await expect(getHospitalReportingDatasetForExport(f.member, { hospitalId: f.hospitalId }, { database: db })).resolves.toMatchObject({ cohort: "ACTIVE" });
-    await expect(exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" })).rejects.toBeInstanceOf(ForbiddenError);
+    // ADR-0026: the INCLUDE_ENDED cohort is open to the MEMBER too.
+    expect((await exportHospitalReportingWorkbook(f.member, { hospitalId: f.hospitalId, cohort: "INCLUDE_ENDED" })).buffer.byteLength).toBeGreaterThan(0);
     await expect(setHospitalMembershipReportExportGrant(f.owner, { relationshipId: membership.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: membership.updatedAt.toISOString(), granted: true })).rejects.toBeInstanceOf(ForbiddenError);
     expect(await db.hospitalMembership.findUniqueOrThrow({ where: { id: membership.id } })).toMatchObject({ reportExportGrantedAt: now });
-    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId } })).metadata)
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "hospital_reporting.export.prepared", actorUserId: f.member.userId }, orderBy: { createdAt: "asc" } })).metadata)
       .toMatchObject({ accessBasis: "MEMBER", cohort: "ACTIVE" });
     expect((await exportHospitalReportingWorkbook(f.owner, { hospitalId: f.hospitalId })).buffer.byteLength).toBeGreaterThan(0);
   });
@@ -204,7 +205,8 @@ describe("Phase E access decisions (PostgreSQL)", () => {
   it("E3: OWNER corrects a single-hospital Patient name, is refused for a multi-hospital Person, ADMIN may, and stale versions conflict", async () => {
     const f = await fixture();
     const name = { givenName: "ชื่อใหม่", familyName: "นามสกุลใหม่" };
-    await expect(correctPatientName(f.member, f.relationshipId, { expectedVersion: 2, ...name }, db)).rejects.toBeInstanceOf(ForbiddenError);
+    // ADR-0026: a MEMBER passes authorization (covered in member-parity); a stale version still conflicts.
+    await expect(correctPatientName(f.member, f.relationshipId, { expectedVersion: 2, ...name }, db)).rejects.toBeInstanceOf(ConflictError);
     const person = await db.person.findUniqueOrThrow({ where: { id: f.patient.personId } });
     await expect(correctPatientName(f.owner, f.relationshipId, { expectedVersion: person.version, ...name }, db)).resolves.toEqual({ version: person.version + 1 });
     await expect(correctPatientName(f.owner, f.relationshipId, { expectedVersion: person.version, givenName: "อีกชื่อ", familyName: "อีกสกุล" }, db)).rejects.toBeInstanceOf(ConflictError);

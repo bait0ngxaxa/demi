@@ -1048,7 +1048,6 @@ async function resolveAuthorizedHospitalReportScope(
       ? HOSPITAL_REPORT_CAPABILITIES.export
       : HOSPITAL_REPORT_CAPABILITIES.dashboardRead,
     database,
-    cohort,
   );
   return { actor: access.actor, hospital: access.hospital, operation };
 }

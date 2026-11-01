@@ -3,8 +3,6 @@ import "server-only";
 import {
   HospitalServiceAreaFacilityKind,
   HospitalStatus,
-  MembershipStatus,
-  MembershipType,
   Prisma,
   Role,
   UserStatus,
@@ -19,9 +17,9 @@ import {
   HOSPITAL_GOVERNANCE_CAPABILITIES,
 } from "@/modules/hospital-governance/policies/hospital-governance-policy";
 import {
-  assertHospitalOwnerPolicy,
-  HOSPITAL_OWNER_CAPABILITIES,
-} from "@/modules/workforce/policies/hospital-owner-policy";
+  hospitalOperatorMembershipWhere,
+  isActiveHospitalOperator,
+} from "@/modules/identity/services/hospital-authority";
 import {
   ApplicationError,
   ForbiddenError,
@@ -149,21 +147,15 @@ async function revalidatePlatformAdmin(actor: ActorContext, database: HospitalHi
   if (!activeAdmin) throw new ForbiddenError();
 }
 
-async function findOwnerContext(
+/** ADR-0026: the report dashboard's network summary; an ACTIVE OWNER or MEMBER of the Hospital reads it. */
+async function findOperatorContext(
   actor: ActorContext,
   hospitalId: string,
   database: HospitalHierarchyDatabase,
 ): Promise<HospitalContextRecord> {
-  assertHospitalOwnerPolicy({ actor, capability: HOSPITAL_OWNER_CAPABILITIES.readGovernance, targetHospitalId: hospitalId });
+  if (!isActiveHospitalOperator(actor, hospitalId)) throw new ForbiddenError();
   const membership = await database.hospitalMembership.findFirst({
-    where: {
-      userId: actor.userId,
-      hospitalId,
-      membershipType: MembershipType.OWNER,
-      status: MembershipStatus.ACTIVE,
-      user: { is: { status: UserStatus.ACTIVE, roles: { some: { role: Role.HOSPITAL } } } },
-      hospital: { is: { status: HospitalStatus.ACTIVE } },
-    },
+    where: hospitalOperatorMembershipWhere(actor.userId, hospitalId),
     select: { hospital: { select: contextSelect } },
   });
   if (!membership) throw new NotFoundError();
@@ -223,7 +215,7 @@ export async function getHospitalHierarchyContext(
 
   try {
     if (actor.roles.includes(Role.ADMIN)) return projectContext(await findAdminContext(actor, parsedId.data, database));
-    if (actor.roles.includes(Role.HOSPITAL)) return projectContext(await findOwnerContext(actor, parsedId.data, database));
+    if (actor.roles.includes(Role.HOSPITAL)) return projectContext(await findOperatorContext(actor, parsedId.data, database));
     throw new ForbiddenError();
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;

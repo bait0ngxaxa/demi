@@ -3,7 +3,6 @@ import type { WorkforceDetail } from "@/modules/workforce/services/workforce-ser
 
 import { WorkforcePasswordResetControl } from "../../workforce-password-reset-control";
 import { OsmRelationshipControls } from "./osm-relationship-controls";
-import { ReportExportGrantControl } from "./report-export-grant-control";
 import { StaffMembershipControls } from "./staff-membership-controls";
 import { WorkforceActivationControl } from "./workforce-activation-control";
 import { WorkforceReleaseControl } from "./workforce-release-control";
@@ -89,16 +88,6 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
           targetHospitalId={detail.hospital.id}
         />
       )}
-
-      {detail.viewerScope === "OWNER" && detail.networkPatientReadGrant && detail.relationshipStatus !== "ENDED" ? (
-        <ReportExportGrantControl
-          expectedUpdatedAt={detail.relationshipUpdatedAt.toISOString()}
-          grant={detail.networkPatientReadGrant}
-          kind="NETWORK_PATIENT_READ"
-          relationshipId={detail.relationshipId}
-          targetHospitalId={detail.hospital.id}
-        />
-      ) : null}
 
       {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
         <WorkforcePasswordResetControl

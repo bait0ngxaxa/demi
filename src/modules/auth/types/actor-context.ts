@@ -14,8 +14,6 @@ export type ActorHospitalMembership = {
   hospitalStatus: HospitalStatus;
   /** E1: OWNER-granted report export; absent means not granted. */
   reportExportGranted?: boolean;
-  /** ADR-0016: OWNER-granted read-only network Patient access; context hint only, re-checked in SQL. */
-  networkPatientReadGranted?: boolean;
 };
 
 export type ActorOsmHospitalRelationship = {

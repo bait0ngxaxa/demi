@@ -1,10 +1,11 @@
-import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
+import { HospitalStatus, Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 import { hospitalReportHospitalIdSchema } from "@/modules/reporting/schemas/hospital-report-schemas";
 
 // ADR-0013 (RPT-32): export is a distinct capability for the same nine-value summary; it is never derived from
-// `reportExportGrantedAt` (ก-15), so a Parent MEMBER with an export grant still fails the OWNER check below.
+// `reportExportGrantedAt` (ก-15). ADR-0026: an ACTIVE OWNER or MEMBER of the Parent holds both.
 export const HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES = {
   read: "hospital-network:child-report:read",
   export: "hospital-network:child-report:export",
@@ -29,14 +30,14 @@ export type HospitalNetworkChildReportHierarchy = {
 };
 
 export type HospitalNetworkChildReportPolicyDecision =
-  | { allowed: true; reason: "active_parent_owner_direct_child_report" }
+  | { allowed: true; reason: "active_parent_operator_direct_child_report" }
   | {
       allowed: false;
       reason:
         | "missing_actor"
         | "invalid_capability"
         | "hospital_role_required"
-        | "active_parent_owner_required"
+        | "active_parent_operator_required"
         | "invalid_hospital_scope"
         | "inactive_parent_hospital"
         | "inactive_child_hospital";
@@ -78,14 +79,9 @@ export function decideHospitalNetworkChildReportPolicy(input: {
     return { allowed: false, reason: "invalid_hospital_scope" };
   }
 
-  const activeParentOwner = input.actor.hospitalMemberships.some(
-    (membership) =>
-      membership.hospitalId.toLowerCase() === parentId.data &&
-      membership.membershipType === MembershipType.OWNER &&
-      membership.status === MembershipStatus.ACTIVE &&
-      membership.hospitalStatus === HospitalStatus.ACTIVE,
-  );
-  if (!activeParentOwner) return { allowed: false, reason: "active_parent_owner_required" };
+  if (!isActiveHospitalOperator(input.actor, parentId.data)) {
+    return { allowed: false, reason: "active_parent_operator_required" };
+  }
 
   if (parent.status !== HospitalStatus.ACTIVE) {
     return { allowed: false, reason: "inactive_parent_hospital" };
@@ -95,5 +91,5 @@ export function decideHospitalNetworkChildReportPolicy(input: {
     return { allowed: false, reason: "inactive_child_hospital" };
   }
 
-  return { allowed: true, reason: "active_parent_owner_direct_child_report" };
+  return { allowed: true, reason: "active_parent_operator_direct_child_report" };
 }

@@ -60,7 +60,7 @@ export function ParentChildHospitalReportWorkspace({
               โรงพยาบาลแม่ข่าย: {report.parent.name}
             </p>
           </div>
-          <StatusBadge variant="info">รายงานโรงพยาบาลลูกข่ายผ่านสิทธิ์เจ้าของโรงพยาบาลแม่ข่าย</StatusBadge>
+          <StatusBadge variant="info">รายงานโรงพยาบาลลูกข่ายผ่านสิทธิ์เจ้าหน้าที่โรงพยาบาลแม่ข่าย</StatusBadge>
         </div>
 
         <Alert className="mt-5" variant="info">
