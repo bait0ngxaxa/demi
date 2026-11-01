@@ -59,16 +59,29 @@ Escape และปุ่มปิด/ยกเลิกต้องปฏิบ
 
 เมื่อเกิด conflict ให้คงปุ่มยืนยันที่ disable และแสดงวิธี reconcile ของ feature หากผลไม่แน่นอน ให้คงสถานะ unknown, ใช้ nonce/recovery path เดิม, ปิดการส่งซ้ำ และบอกผู้ใช้ว่าทำอะไรต่อได้อย่างปลอดภัย ห้ามสร้าง nonce ใหม่เพื่อ retry โดยอัตโนมัติ
 
-`ConfirmableActionForm` ยังคงเป็นทางเลือกสำหรับ workflow ที่ต้องให้ผู้ใช้ตรวจข้อมูลใน native form แล้วกดยืนยันก่อน `requestSubmit(submitter)`; ใช้ action state, pending, `outcome` และ `resultKey` เดิม ไม่ห่อ form อีกชั้น เมื่อผลยืนยันแล้ว component ปิด confirmation และให้ feature แสดง success/error ต่อไป ส่วน unknown outcome ยังคงถูกล็อกตามสัญญาเดิม
+`ConfirmableActionForm` ยังคงเป็นทางเลือกสำหรับ workflow ที่ต้องให้ผู้ใช้ตรวจข้อมูลใน native form แล้วกดยืนยันก่อน `requestSubmit(submitter)`; ใช้ action state, pending, `outcome` และ `resultKey` เดิม ไม่ห่อ form อีกชั้น เมื่อผลยืนยันแล้ว component ปิด confirmation และให้ feature แสดง success/error ต่อไป ส่วน unknown outcome ยังคงถูกล็อกจน recovery ที่เจ้าของเริ่มเองคืนผล success/error พร้อม `resultKey` ใหม่
 
 ### API ที่ feature ใช้ได้
 
 - `ModalDialog.initialFocusRef` เลือก field หรือ action แรก; หากไม่มี target ที่ใช้ได้ จะ focus heading
 - `stepKey` เลื่อน content กลับด้านบนเมื่อเปลี่ยน step; ส่ง `focusOnStepChange` เพิ่มเมื่อ step ใหม่นั้นควรย้าย focus ไป heading
-- `returnFocusTarget` ระบุ logical target เมื่อ trigger ถูกลบหรือ flow ตั้งใจส่งต่อไปขั้นถัดไป; หากไม่ส่งและไม่มี `onClosed` จะคืน focus ไป trigger เดิม
+- `returnFocusTarget` ระบุ logical target เมื่อ trigger ถูกลบหรือ flow ตั้งใจส่งต่อไปขั้นถัดไป; logical target ที่ระบุชัดจะใช้ browser scroll เพื่อให้มองเห็น ส่วน trigger เดิมใช้ `preventScroll` เพื่อรักษาตำแหน่งหน้าก่อนเปิด หากไม่ส่งและไม่มี `onClosed` จะคืน focus ไป trigger เดิม
 - `onClosed` ยังคงรองรับ legacy owner callback และเมื่อใช้ callback นี้ owner เป็นผู้คืน focus เอง เพื่อไม่ให้เกิดกลไกคืน focus ซ้อนกัน
 - `ConfirmDialog.recoveryKey` เปลี่ยนเฉพาะเมื่อผลล้มเหลวยืนยันแล้วและ owner อนุญาตให้ retry; การเปลี่ยน pending อย่างเดียวไม่ปลด lock
 - `size="compact"` เหมาะกับ confirmation; `size="fullscreen"` ใช้กล่องเต็มจอเฉพาะ viewport มือถือ และกลับเป็นกล่อง centered บนจอใหญ่
+
+## Compatibility audit — ConfirmDialog consumers
+
+ตรวจทุก production usage ของ `ConfirmDialog` และ `ConfirmableActionForm` หลัง UX-D1.4 แล้ว ปัจจุบันไม่พบ workflow ที่ควรส่ง `recoveryKey` เพื่อ retry ภายใน confirmation เดิม; consumers ที่ต้องเริ่ม action ใหม่ปิด confirmation ก่อน แล้วเปิด confirmation ใหม่เมื่อมีข้อมูลล่าสุด ส่วน idempotent resend ต้องเริ่มจาก recovery action ที่ผู้ใช้สั่งเอง
+
+| Consumer | เส้นทางหลังยืนยัน | วิธี retry / การป้องกัน unknown |
+| --- | --- | --- |
+| `LineWorkflowAppointmentInteractions`, `NetworkExportPanel`, `HospitalContentImageManager`, `HospitalContentCreateForm` (publish), `WorkforceImportWorkspace`, `WorkforceActivationControl`, `FollowupForm` | ปิด confirmation ก่อน dispatch mutation, download หรือ `requestSubmit()`; error/result แสดงใน feature | การยืนยันรอบใหม่เปิด dialog ใหม่; ใช้ nonce, pending, unknown outcome หรือการ reload ของ feature เดิม |
+| `ActivationPresentation`, `MobileNavigationGuard`, `PatientActivationActionsWorkspace`, `HospitalContactWorkspace`, `HospitalContentCreateForm` (navigation/discard) | ปิด intent ก่อน navigate หรือทิ้ง draft ตามการตัดสินใจที่ยืนยัน | เปิด intent ใหม่จาก state ปัจจุบัน; ไม่มี mutation retry จาก dialog เดิม |
+| `HospitalContentDetailWorkspace` | success และ confirmed non-conflict error ปิด dialog; conflict/unknown คง dialog พร้อมปิดปุ่มยืนยันและเปิด `reconciliationRequired` | ผู้ใช้ปิด dialog เพื่อเข้าถึงการโหลด/ทบทวนข้อมูลล่าสุด จากนั้นเลือกใช้หรือ rebase ข้อมูลปัจจุบัน; การ action ต่อเริ่มจากปุ่มที่อิงสถานะล่าสุดและ confirmation ใหม่ Unknown outcome ไม่ปลด lock และไม่มีการส่งซ้ำอัตโนมัติ |
+| `ConfirmableActionForm` ซึ่งใช้ใน workforce, hospital network, patient, appointment และ program controls | confirmed result ปิด dialog; unknown คง dialog, ปิด submitter และปิดปุ่มยืนยัน | เมื่อ owner สั่ง recovery อย่างชัดเจนและ action คืน `success`/`error` พร้อม `resultKey` ใหม่ wrapper จึงปิด unknown state และ dialog; pending, unknown ซ้ำ หรือ key เดิมไม่ปลด lock |
+
+ดังนั้น `ConfirmDialog.recoveryKey` ยังคงเป็น API สำหรับ workflow ในอนาคตที่จำเป็นต้องคง dialog เดิมไว้หลัง confirmed failure โดยเฉพาะ; ไม่เพิ่ม prop ให้ consumer ที่ปิด/reopen ได้อยู่แล้ว และไม่ส่งสัญญาณจาก pending หรือ unknown outcome ส่วน `ConfirmableActionForm` ใช้คู่ `outcome`/`resultKey` ที่มีอยู่แล้ว โดยยอมรับเฉพาะผลที่ยืนยันจาก recovery attempt ใหม่
 
 ## UX-D1.4 Regression และ manual browser QA
 
@@ -78,7 +91,7 @@ test ของ dialog ใช้ jsdom พร้อม shim เฉพาะ `show
 
 1. เปิด confirmation ด้วย keyboard แล้วตรวจชื่อ/คำอธิบายและ initial focus; ใช้ Tab/Shift+Tab ไปทุก action และยืนยันว่า focus ไม่ออกจาก modal; Escape และปุ่มยกเลิก/ปิดทำงานตามสถานะ
 2. ยืนยันว่า destructive confirmation เริ่มที่ปุ่มยกเลิก; ระหว่าง mutation ปุ่มและ Escape ปิดไม่ได้; error ที่กู้คืนได้ unlock เฉพาะเมื่อเจ้าของเปลี่ยน `recoveryKey`; unknown outcome ไม่มีการส่งซ้ำเองและยังเห็น recovery guidance
-3. เปิด dialog จากหน้าที่เลื่อนอยู่ เลื่อนเฉพาะ content region ตรวจ header/footer จากนั้นปิดและยืนยันว่าตำแหน่งหน้าและ focus กลับสู่ trigger; ลองกรณี trigger ถูกเอาออกและใช้ logical return target
+3. เปิด dialog จากหน้าที่เลื่อนอยู่ เลื่อนเฉพาะ content region ตรวจ header/footer จากนั้นปิดและยืนยันว่า trigger คืน focus โดยไม่เปลี่ยนตำแหน่งหน้า; ทดสอบ logical return target ที่อยู่นอก viewport ว่า browser เลื่อนให้มองเห็น และลองกรณี trigger ถูกเอาออก
 4. ตรวจ viewport กว้าง 320px, มือถือทั่วไป, landscape และ desktop; ยืนยันว่าไม่มี horizontal overflow, confirm ยังเป็นกล่องกะทัดรัด, fullscreen form เคารพ safe area และ navigation ด้านล่างอยู่หลัง modal
 5. ใน fullscreen form ให้เปิด keyboard ซอฟต์แวร์จาก field บน iOS Safari และ Android Chrome; ตรวจว่า field ที่กำลังแก้และ footer/action ยังเข้าถึงได้ และปิด keyboard แล้ว content scroll ได้ตามปกติ
 6. ใช้ข้อความไทยยาวใน title, description, details, validation และ action labels; ตรวจการตัดบรรทัดและ touch target ≥44px โดยไม่มีข้อความหรือปุ่มถูกตัด
