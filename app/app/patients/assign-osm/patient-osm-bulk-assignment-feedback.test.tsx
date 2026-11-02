@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   bulk: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -56,8 +56,28 @@ const view = { hospital: scope, patients, totalWithoutOsm: 2 };
 let container: HTMLDivElement;
 let root: Root;
 
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.setAttribute("open", ""); },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", {
+    configurable: true,
+    value(this: HTMLDialogElement): void { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); },
+  });
+});
+
+afterAll(() => {
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose);
+  else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
 });
 
 beforeEach(() => {
@@ -84,13 +104,13 @@ function buttonByText(text: string): HTMLButtonElement {
   return found;
 }
 
-async function render(selectedScope = scope): Promise<void> {
+async function render(selectedScope = scope, currentView: typeof view = view): Promise<void> {
   await act(async () => {
     root.render(
       createElement(PatientOsmBulkAssignmentWorkspace, {
         scopes: [scope, otherScope],
         selectedScope,
-        view: view as never,
+        view: currentView as never,
         search: "",
         errorMessage: null,
       }),
@@ -111,6 +131,10 @@ async function reachConfirmation(): Promise<void> {
   await act(async () => {
     buttonByText("ตรวจสอบก่อนมอบหมาย").click();
   });
+}
+
+function dialog(): HTMLDialogElement | null {
+  return container.querySelector("dialog");
 }
 
 function confirmForm(): HTMLFormElement {
@@ -290,5 +314,137 @@ describe("bulk OSM assignment feedback", () => {
 
     expect(allToasts()).toBe("[[],[],[]]");
     expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("keeps the review closed until at least one patient and one OSM are selected", async () => {
+    await render();
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(true);
+
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('input[name="osm-candidate"]')!.click();
+    });
+    expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(true);
+
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."] input[type=checkbox]')!.click();
+    });
+    expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(false);
+    await act(async () => buttonByText("ล้างการเลือก").click());
+    expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(true);
+    expect(dialog()).toBeNull();
+  });
+
+  it("opens a review of the exact hospital, OSM and patients without a request, and cancels without one", async () => {
+    await reachConfirmation();
+
+    expect(dialog()?.hasAttribute("open")).toBe(true);
+    expect(mocks.bulk).not.toHaveBeenCalled();
+    expect(dialog()?.textContent).toContain("โรงพยาบาลทดสอบ");
+    expect(dialog()?.textContent).toContain("สมใจ อสม.");
+    expect(dialog()?.textContent).toContain("2 คน");
+    expect(dialog()?.textContent).toContain("ระบบจะไม่บันทึกรายการใดเลย");
+    expect(dialog()?.textContent).toContain("ผู้ป่วย 1");
+    const form = confirmForm();
+    expect(form.closest("dialog")).toBe(dialog());
+    expect([...form.querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value))
+      .toEqual(["relationship-1", "relationship-2"]);
+    expect(form.querySelector<HTMLInputElement>('input[name="hospitalId"]')?.value).toBe(hospitalId);
+    expect(form.querySelector<HTMLInputElement>('input[name="osmUserId"]')?.value).toBe("osm-1");
+    expect(document.activeElement).toBe(buttonByText("กลับไปแก้ไข"));
+
+    await act(async () => buttonByText("กลับไปแก้ไข").click());
+    expect(dialog()).toBeNull();
+    expect(mocks.bulk).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(buttonByText("ตรวจสอบก่อนมอบหมาย"));
+    const checked = [...container.querySelectorAll<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."] input[type=checkbox]')]
+      .map((checkbox) => checkbox.checked);
+    expect(checked).toEqual([true, true]);
+  });
+
+  it("sends the snapshot payload with one nonce per review, and a new review gets a new nonce", async () => {
+    mocks.bulk.mockResolvedValue({ status: "ERROR", code: "INVALID_INPUT", message: "เลือกผู้ป่วยไม่ถูกต้อง" });
+    await reachConfirmation();
+    await confirmAssignment();
+    expect(dialog()?.hasAttribute("open")).toBe(true);
+    expect(container.textContent).toContain("เลือกผู้ป่วยไม่ถูกต้อง");
+
+    await confirmAssignment();
+    const [first, second] = mocks.bulk.mock.calls.map((call) => call[1] as FormData);
+    expect(second.get("submissionNonce")).toBe(first.get("submissionNonce"));
+
+    await act(async () => buttonByText("กลับไปแก้ไข").click());
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+    await confirmAssignment();
+    const third = mocks.bulk.mock.calls[2][1] as FormData;
+    expect(third.get("submissionNonce")).not.toBe(first.get("submissionNonce"));
+    expect(third.getAll("patientHospitalRelationshipId")).toEqual(["relationship-1", "relationship-2"]);
+  });
+
+  it("requires a new review when the authoritative patient list changes under it", async () => {
+    await reachConfirmation();
+
+    await render(scope, { ...view, patients: [patients[0]], totalWithoutOsm: 1 });
+
+    expect(dialog()?.textContent).toContain("กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย");
+    expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(true);
+    // The snapshot is unchanged; nothing from the new list is mixed into it.
+    expect([...confirmForm().querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value))
+      .toEqual(["relationship-1", "relationship-2"]);
+    await confirmAssignment();
+    expect(mocks.bulk).not.toHaveBeenCalled();
+
+    await act(async () => buttonByText("กลับไปแก้ไข").click());
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+    expect([...confirmForm().querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value))
+      .toEqual(["relationship-1"]);
+    expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(false);
+  });
+
+  it("keeps an unknown outcome review open and non-dismissible", async () => {
+    mocks.bulk.mockResolvedValueOnce({ status: "ERROR", code: "UNAVAILABLE", message: "ลองใหม่" });
+    await reachConfirmation();
+    await confirmAssignment();
+
+    await act(async () => {
+      dialog()?.dispatchEvent(new Event("cancel", { cancelable: true }));
+    });
+    expect(dialog()?.hasAttribute("open")).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('button[aria-label="ปิดหน้าต่าง"]')?.disabled).toBe(true);
+    await confirmAssignment();
+    expect(mocks.bulk).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the review after a confirmed success and moves focus to the result", async () => {
+    mocks.bulk.mockResolvedValue(bulkResult("ASSIGNED"));
+    await reachConfirmation();
+    await confirmAssignment();
+
+    expect(dialog()).toBeNull();
+    expect(document.activeElement?.textContent).toContain("กำหนด อสม. เรียบร้อยแล้ว");
+  });
+
+  it("shows a bounded patient summary for large selections", async () => {
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      ...patients[0],
+      patientProfileId: `profile-many-${index}`,
+      patientHospitalRelationshipId: `relationship-many-${index}`,
+      displayName: `ผู้ป่วยกลุ่ม ${index}`,
+    }));
+    await render(scope, { ...view, patients: many, totalWithoutOsm: many.length });
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."]')!
+        .closest("div")!.querySelector<HTMLInputElement>("label input[type=checkbox]")!.click();
+    });
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('input[name="osm-candidate"]')!.click();
+    });
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+
+    expect(dialog()?.querySelectorAll('section[aria-label="ผู้ป่วยที่จะได้รับการมอบหมาย"] li')).toHaveLength(8);
+    expect(dialog()?.textContent).toContain("และอีก 4 คน");
+    expect(confirmForm().querySelectorAll('input[name="patientHospitalRelationshipId"]')).toHaveLength(12);
   });
 });

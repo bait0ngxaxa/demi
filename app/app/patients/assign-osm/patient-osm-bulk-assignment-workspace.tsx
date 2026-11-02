@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
@@ -48,6 +49,21 @@ const OSM_SEARCH_DEBOUNCE_MS = 300;
 
 /** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
 class UnconfirmedBulkAssignment extends Error {}
+
+/** How many selected patients the review lists by name before summarizing the rest as a count. */
+const REVIEW_PATIENT_PREVIEW_LIMIT = 8;
+
+/**
+ * The exact assignment intent captured when the review opens. The submitted payload comes only
+ * from this snapshot, so a background list update can never change what is being confirmed.
+ */
+type AssignmentReview = {
+  hospitalId: string;
+  hospitalName: string;
+  osm: PatientOsmCandidate;
+  patients: readonly { relationshipId: string; displayName: string; hospitalNumber: string | null }[];
+  submissionNonce: string;
+};
 
 type OsmSearchPickerProps = {
   hospitalId: string;
@@ -305,7 +321,8 @@ export function PatientOsmBulkAssignmentWorkspace({
     initialPatientOsmBulkAssignmentActionState,
   );
   function action(formData: FormData): void {
-    if (inFlight.current) {
+    // An unconfirmed request is recovered only by resend; a stale review must be reviewed again.
+    if (inFlight.current || unknownOutcome || reviewStale) {
       return;
     }
     inFlight.current = true;
@@ -320,8 +337,12 @@ export function PatientOsmBulkAssignmentWorkspace({
   }
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedOsm, setSelectedOsm] = useState<PatientOsmCandidate | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [submissionNonce, setSubmissionNonce] = useState("");
+  const [review, setReview] = useState<AssignmentReview | null>(null);
+  const reviewTrigger = useRef<HTMLButtonElement>(null);
+  const returnToEdit = useRef<HTMLButtonElement>(null);
+  const osmHeading = useRef<HTMLHeadingElement>(null);
+  const resultFeedback = useRef<HTMLDivElement>(null);
+  const confirming = review !== null;
   const patients = view?.patients ?? [];
   const allSelected = patients.length > 0 && selectedIds.size === patients.length;
   const succeeded = state.status === "SUCCESS";
@@ -350,19 +371,38 @@ export function PatientOsmBulkAssignmentWorkspace({
   }
 
   function startConfirmation(): void {
+    if (!selectedOsm || selectedPatients.length === 0 || pending || unknownOutcome) {
+      return;
+    }
     // One nonce per confirmation: a repeated submit of the same confirmation is replayed, not re-applied.
-    setSubmissionNonce(crypto.randomUUID());
-    setConfirming(true);
+    setReview({
+      hospitalId: selectedScope.hospitalId,
+      hospitalName: selectedScope.hospitalName,
+      osm: selectedOsm,
+      patients: selectedPatients.map((patient) => ({
+        relationshipId: patient.patientHospitalRelationshipId,
+        displayName: patient.displayName,
+        hospitalNumber: patient.hospitalNumber,
+      })),
+      submissionNonce: crypto.randomUUID(),
+    });
   }
 
   function editSelection(): void {
     // Going back would drop the unconfirmed request's recovery and its nonce.
     if (!pending && !unknownOutcome) {
-      setConfirming(false);
+      setReview(null);
     }
   }
 
   const canConfirm = selectedPatients.length > 0 && selectedOsm !== null;
+  const visiblePatientIds = new Set(patients.map((patient) => patient.patientHospitalRelationshipId));
+  // The authoritative list changed under the review: confirming would mix old and new context.
+  const reviewStale = review !== null && (
+    review.hospitalId !== selectedScope.hospitalId ||
+    review.patients.some((patient) => !visiblePatientIds.has(patient.relationshipId))
+  );
+  const reviewOpen = review !== null && !succeeded;
 
   return (
     <div className="max-w-5xl">
@@ -400,6 +440,7 @@ export function PatientOsmBulkAssignmentWorkspace({
           )}
         </Panel>
 
+        <div className="focus-visible:outline-none" ref={resultFeedback} tabIndex={-1}>
         {succeeded ? (
           <Alert variant="success">
             <p className="font-semibold">
@@ -416,6 +457,7 @@ export function PatientOsmBulkAssignmentWorkspace({
             </Link>
           </Alert>
         ) : null}
+        </div>
 
         {errorMessage ? <Alert variant="danger">{errorMessage}</Alert> : null}
 
@@ -494,7 +536,7 @@ export function PatientOsmBulkAssignmentWorkspace({
             </Panel>
 
             <Panel>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">เลือก อสม.</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none" ref={osmHeading} tabIndex={-1}>เลือก อสม.</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 แสดงเฉพาะบัญชี อสม. ที่เปิดใช้งานและมีความสัมพันธ์กับโรงพยาบาลนี้
               </p>
@@ -505,58 +547,119 @@ export function PatientOsmBulkAssignmentWorkspace({
                 selected={selectedOsm}
               />
 
-              {!confirming ? (
-                <Button
-                  className="mt-5"
-                  disabled={!canConfirm}
-                  onClick={startConfirmation}
-                  type="button"
-                >
-                  {selectedPatients.length > 0
-                    ? `ตรวจสอบก่อนมอบหมาย (${selectedPatients.length} คน)`
-                    : "ตรวจสอบก่อนมอบหมาย"}
-                </Button>
-              ) : null}
+              <Button
+                className="mt-5"
+                disabled={!canConfirm || pending || unknownOutcome}
+                onClick={startConfirmation}
+                ref={reviewTrigger}
+                type="button"
+              >
+                {selectedPatients.length > 0
+                  ? `ตรวจสอบก่อนมอบหมาย (${selectedPatients.length} คน)`
+                  : "ตรวจสอบก่อนมอบหมาย"}
+              </Button>
             </Panel>
 
-            {confirming && selectedOsm ? (
-              <Panel>
-                <h2 className="text-xl font-semibold tracking-[-0.02em]">ยืนยันการมอบหมาย</h2>
-                <p className="mt-2 text-sm leading-6 text-text">
-                  กำหนด <span className="font-semibold">{selectedOsm.displayName}</span> เป็น อสม.
-                  ผู้รับผิดชอบของผู้ป่วย{" "}
-                  <span className="font-semibold">{selectedPatients.length} คน</span>
-                </p>
-                <p className="mt-1 text-sm leading-6 text-text-muted">
-                  หากรายการใดไม่ผ่านการตรวจสอบ ระบบจะไม่บันทึกรายการใดเลย
-                </p>
-                <form action={action} className="mt-5 flex flex-wrap items-center gap-3">
-                  <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
-                  <input name="osmUserId" type="hidden" value={selectedOsm.userId} />
-                  <input name="submissionNonce" type="hidden" value={submissionNonce} />
-                  {selectedPatients.map((patient) => (
-                    <input
-                      key={patient.patientHospitalRelationshipId}
-                      name="patientHospitalRelationshipId"
-                      type="hidden"
-                      value={patient.patientHospitalRelationshipId}
-                    />
-                  ))}
-                  <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
-                    {pending ? "กำลังบันทึก..." : "ยืนยันมอบหมาย"}
-                  </Button>
-                  <Button disabled={pending || unknownOutcome} onClick={editSelection} type="button" variant="secondary">
-                    กลับไปแก้ไข
-                  </Button>
-                </form>
-                {state.status === "ERROR" ? (
-                  <Alert className="mt-4" variant="danger">
-                    <p className="font-semibold">ดำเนินการไม่สำเร็จ</p>
-                    <p className="mt-1">{state.message}</p>
+            {reviewOpen && review ? (
+              <ModalDialog
+                description="ตรวจสอบโรงพยาบาล อสม. และผู้ป่วยที่เลือกก่อนยืนยัน"
+                dismissible={!pending && !unknownOutcome}
+                footer={
+                  <form action={action} className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <input name="hospitalId" type="hidden" value={review.hospitalId} />
+                    <input name="osmUserId" type="hidden" value={review.osm.userId} />
+                    <input name="submissionNonce" type="hidden" value={review.submissionNonce} />
+                    {review.patients.map((patient) => (
+                      <input
+                        key={patient.relationshipId}
+                        name="patientHospitalRelationshipId"
+                        type="hidden"
+                        value={patient.relationshipId}
+                      />
+                    ))}
+                    <Button
+                      className="w-full sm:w-auto"
+                      disabled={pending || unknownOutcome}
+                      onClick={editSelection}
+                      ref={returnToEdit}
+                      type="button"
+                      variant="secondary"
+                    >
+                      กลับไปแก้ไข
+                    </Button>
+                    <Button
+                      className="w-full sm:w-auto"
+                      disabled={unknownOutcome || reviewStale}
+                      loading={pending}
+                      type="submit"
+                    >
+                      {pending ? "กำลังบันทึก..." : "ยืนยันมอบหมาย"}
+                    </Button>
+                  </form>
+                }
+                initialFocusRef={returnToEdit}
+                onRequestClose={editSelection}
+                returnFocusTarget={() => {
+                  if (!reviewTrigger.current?.isConnected) {
+                    return resultFeedback.current?.isConnected ? resultFeedback.current : osmHeading.current;
+                  }
+                  return reviewTrigger.current.disabled ? osmHeading.current : reviewTrigger.current;
+                }}
+                title="ยืนยันการมอบหมาย อสม."
+              >
+                <div className="space-y-5">
+                  <dl className="grid gap-4 rounded-panel bg-surface-muted px-4 py-4 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-sm text-text-muted">โรงพยาบาล</dt>
+                      <dd className="mt-1 break-words font-semibold text-text">{review.hospitalName}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm text-text-muted">อสม. ผู้รับผิดชอบ</dt>
+                      <dd className="mt-1 break-words font-semibold text-text">{review.osm.displayName}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm text-text-muted">จำนวนผู้ป่วย</dt>
+                      <dd className="mt-1 font-semibold text-text">{review.patients.length} คน</dd>
+                    </div>
+                  </dl>
+                  <p className="text-sm leading-6 text-text">
+                    กำหนด <span className="font-semibold">{review.osm.displayName}</span> เป็น อสม.
+                    ผู้รับผิดชอบของผู้ป่วย{" "}
+                    <span className="font-semibold">{review.patients.length} คน</span>
+                  </p>
+                  <Alert variant="info">
+                    การมอบหมายครั้งนี้ทำพร้อมกันทั้งหมด หากรายการใดไม่ผ่านการตรวจสอบ ระบบจะไม่บันทึกรายการใดเลย
                   </Alert>
-                ) : null}
-                <UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "resend", onResend: resend, resending: pending }} />
-              </Panel>
+                  <section aria-label="ผู้ป่วยที่จะได้รับการมอบหมาย" className="space-y-2">
+                    <h3 className="text-sm font-semibold text-text">ผู้ป่วยที่เลือก</h3>
+                    <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border">
+                      {review.patients.slice(0, REVIEW_PATIENT_PREVIEW_LIMIT).map((patient) => (
+                        <li className="flex items-center gap-3 px-4 py-2.5 text-sm" key={patient.relationshipId}>
+                          <span className="min-w-0 flex-1 break-words font-semibold text-text">{patient.displayName}</span>
+                          <span className="shrink-0 text-text-muted">HN {patient.hospitalNumber ?? "ไม่ระบุ"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {review.patients.length > REVIEW_PATIENT_PREVIEW_LIMIT ? (
+                      <p className="text-sm text-text-muted">
+                        และอีก {review.patients.length - REVIEW_PATIENT_PREVIEW_LIMIT} คนที่เลือกไว้ในรายการบนหน้า
+                      </p>
+                    ) : null}
+                  </section>
+                  {reviewStale && !unknownOutcome ? (
+                    <Alert role="alert" variant="warning">
+                      รายชื่อผู้ป่วยหรือโรงพยาบาลเปลี่ยนไปหลังเปิดหน้าตรวจสอบ กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย
+                    </Alert>
+                  ) : null}
+                  {state.status === "ERROR" ? (
+                    <Alert variant="danger">
+                      <p className="font-semibold">ดำเนินการไม่สำเร็จ</p>
+                      <p className="mt-1">{state.message}</p>
+                    </Alert>
+                  ) : null}
+                  <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resend, resending: pending }} />
+                </div>
+              </ModalDialog>
             ) : null}
           </>
         ) : null}
