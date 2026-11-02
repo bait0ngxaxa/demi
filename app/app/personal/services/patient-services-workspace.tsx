@@ -60,7 +60,7 @@ export function PatientServicesWorkspace({
                 {relationship.requests.length > 0 ? (
                   <ul className="mt-4 divide-y divide-border">
                     {[...relationship.requests].sort((left, right) => Number(right.status === "PENDING" || right.status === "APPROVED") - Number(left.status === "PENDING" || left.status === "APPROVED")).map((request) => (
-                      <PatientServiceRequestHistoryItem key={request.requestId} request={request} />
+                      <PatientServiceRequestHistoryItem hospitalName={relationship.hospitalName} key={request.requestId} request={request} />
                     ))}
                   </ul>
                 ) : (

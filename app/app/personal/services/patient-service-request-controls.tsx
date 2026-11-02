@@ -5,12 +5,13 @@ import { useEffect, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientServiceRequestStatusView } from "@/modules/patient-service-requests/services/patient-service-request-service";
-import type { PatientServiceCode, PatientServiceRequestSlot, PatientServiceRequestStatus } from "@prisma/client";
+import type { PatientServiceCode, PatientServiceRequestSlot } from "@prisma/client";
 import { PATIENT_SERVICE_REQUEST_NOTE_MAX_LENGTH } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import {
   formatPatientServicePreferredDate,
@@ -166,17 +167,26 @@ export function PatientServiceRequestForm({
 }
 
 export function WithdrawPatientServiceRequestButton({
-  requestId,
-  status,
+  request,
+  hospitalName,
+  returnFocusTarget,
 }: {
-  requestId: string;
-  status: PatientServiceRequestStatus;
+  request: PatientServiceRequestStatusView;
+  hospitalName: string;
+  returnFocusTarget: () => HTMLElement | null;
 }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(
     withdrawOwnPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
   );
-  const canWithdraw = status === "PENDING" || status === "APPROVED";
+  const resultRef = useRef<HTMLParagraphElement>(null);
+  const canWithdraw = request.status === "PENDING" || request.status === "APPROVED";
+  const outcome: ConfirmableActionOutcome = unknownOutcome
+    ? "unknown"
+    : state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle";
+  const preferredVisit = request.preferredDate && request.preferredSlot
+    ? `${formatPatientServicePreferredDate(request.preferredDate)} · ${patientServiceRequestSlotLabel(request.preferredSlot)}`
+    : "ไม่ระบุ";
 
   if (!canWithdraw) {
     return <></>;
@@ -184,14 +194,42 @@ export function WithdrawPatientServiceRequestButton({
 
   return (
     <div className="mt-3">
-      <form action={action}>
-        <input name="requestId" type="hidden" value={requestId} />
-        <Button disabled={pending || unknownOutcome} loading={pending} size="compact" variant="secondary" type="submit">
-          {pending ? "กำลังถอนคำขอ..." : "ถอนคำขอ"}
-        </Button>
-      </form>
+      <ConfirmableActionForm
+        action={action}
+        confirmation={{
+          title: "ถอนคำขอบริการนี้หรือไม่",
+          description: `ตรวจสอบคำขอรับบริการประเภท${patientServiceLabel(request.serviceCode)} จาก ${hospitalName} ก่อนยืนยัน`,
+          details: (
+            <>
+              <dl className="grid gap-2 rounded-panel border border-border bg-surface-muted p-4">
+                <div><dt className="text-sm">บริการ</dt><dd className="font-semibold text-text">{patientServiceLabel(request.serviceCode)}</dd></div>
+                <div><dt className="text-sm">โรงพยาบาล</dt><dd className="font-semibold text-text">{hospitalName}</dd></div>
+                <div><dt className="text-sm">วันที่และช่วงเวลาที่สะดวก</dt><dd className="font-semibold text-text">{preferredVisit}</dd></div>
+              </dl>
+              <Alert variant="warning">
+                <p>เมื่อยืนยัน คำขอนี้จะเปลี่ยนเป็นถอนแล้ว และโรงพยาบาลจะไม่ดำเนินการคำขอนี้ต่อ</p>
+                <p className="mt-1">การถอนคำขอไม่ใช่การยกเลิกนัดหมายที่สร้างแล้ว</p>
+              </Alert>
+            </>
+          ),
+          confirmLabel: "ยืนยันถอนคำขอ",
+          pendingLabel: "กำลังถอนคำขอ...",
+          confirmVariant: "destructive",
+        }}
+        outcome={outcome}
+        pending={pending}
+        resultKey={state}
+        returnFocusTarget={() => state.status === "IDLE" && !unknownOutcome ? null : resultRef.current ?? returnFocusTarget()}
+      >
+        <input name="requestId" type="hidden" value={request.requestId} />
+        {state.status !== "SUCCESS" ? (
+          <Button disabled={pending || unknownOutcome} loading={pending} size="compact" variant="secondary" type="submit">
+            ถอนคำขอ
+          </Button>
+        ) : null}
+      </ConfirmableActionForm>
       {state.status === "SUCCESS" ? (
-        <p className="mt-2 text-sm text-success" role="status">ถอนคำขอแล้ว</p>
+        <p className="mt-2 text-sm text-success focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" ref={resultRef} role="status" tabIndex={-1}>ถอนคำขอแล้ว</p>
       ) : null}
       {state.status === "ERROR" ? (
         <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p>
@@ -203,11 +241,15 @@ export function WithdrawPatientServiceRequestButton({
 
 export function PatientServiceRequestHistoryItem({
   request,
+  hospitalName,
 }: {
   request: PatientServiceRequestStatusView;
+  hospitalName: string;
 }): React.JSX.Element {
+  const itemRef = useRef<HTMLLIElement>(null);
+
   return (
-    <li className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0">
+    <li className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" ref={itemRef} tabIndex={-1}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-text">{patientServiceLabel(request.serviceCode)}</p>
@@ -234,7 +276,7 @@ export function PatientServiceRequestHistoryItem({
           {request.status === "STARTED" && request.appointmentId ? (
             <Link className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/personal/appointments/${encodeURIComponent(request.relationshipId)}/${encodeURIComponent(request.appointmentId)}`} prefetch={false}>ดูนัดหมาย</Link>
           ) : null}
-          <WithdrawPatientServiceRequestButton requestId={request.requestId} status={request.status} />
+          <WithdrawPatientServiceRequestButton hospitalName={hospitalName} request={request} returnFocusTarget={() => itemRef.current} />
         </div>
       </div>
     </li>

@@ -96,3 +96,26 @@
 | Browser/device accessibility | **ยังไม่ตรวจ**; jsdom tests ตรวจ open/cancel, modal focus return และ lock เท่านั้น |
 
 ไฟล์ D4.1: `hospital-service-request-controls.tsx`, `hospital-service-requests-workspace.tsx`, tests ของ workspace และ dialog. ไม่แก้ schema, Server Action signature, service/domain, permission หรือ appointment transaction
+
+## UX-D4.2 — ผลการย้าย Patient Service Requests และ Service Availability
+
+สถานะ: **ดำเนินการแล้ว** ที่ commit UX-D4.2; สร้างคำขอของผู้ป่วยยังอยู่บนหน้าเดิม
+
+- P-1 คงฟอร์มสร้างคำขอและค่า relationship/offering/date/slot/preferred OSM/note ตามเดิม; preferred OSM ยังคงเป็นความประสงค์ ไม่ใช่การ assign. ค่า min/max ที่ server คำนวณตามปฏิทินกรุงเทพฯ ไม่เปลี่ยน
+- P-2 ครอบการถอนคำขอด้วย `ConfirmableActionForm`; dialog แสดงบริการ โรงพยาบาล วันที่/ช่วงเวลาที่เลือก และแจ้งว่าการถอนเปลี่ยนสถานะคำขอแต่ไม่ยกเลิกนัดหมาย. มี action เฉพาะ PENDING/APPROVED ตาม prop เดิม; `requestId` และ Server Action เดิม
+- เมื่อผลถอนยังไม่ทราบ ยืนยันซ้ำไม่ได้; ปิดหน้าต่างได้โดยไม่ retry และจึงเข้าถึง `โหลดข้อมูลล่าสุด` บนหน้าได้. เมื่อยืนยันสำเร็จ feedback เป็น status และซ่อนปุ่มซ้ำ; คืน focus ไปผลลัพธ์หรือแถวคำขอที่ยังอยู่
+- C-1 ปิดรับคำขอของ offering ที่เปิดอยู่ผ่าน confirmation ที่ระบุว่าหยุดเฉพาะคำขอใหม่; อธิบายชัดว่าไม่ถอนคำขอเดิม ไม่ยกเลิกนัดหมาย และไม่ปิดบริการต้นทาง. เปิดรับคำขอยังคงส่งตรง
+- ทั้งสองสถานะ catalog ส่ง `hospitalId`, service `code` และค่า `enabled` เดิมอย่างชัดเจน; ไม่มีการเปลี่ยน scope/authorization ฝั่ง server หรือเขียนประวัติย้อนหลัง
+
+### หลักฐาน D4.2
+
+| ตรวจ | ผลจริง |
+| --- | --- |
+| `npm run test -- app/app/personal/services/patient-service-interactions.test.tsx app/app/appointments/service-source-surfaces.test.tsx app/app/patients/hospital-operations-navigation.test.tsx src/modules/patient-service-requests` | **ผ่าน 10 files / 94 tests** |
+| `npx eslint` บน controls, workspace และ interaction test ที่แก้ | **ผ่าน**, exit 0 |
+| `npx tsc --noEmit --project .next/ux-d4-tsconfig.json --pretty false` (include เฉพาะไฟล์ D4.2 และ dependencies; temporary config ถูกลบแล้ว) | **ผ่าน**, exit 0 |
+| Withdrawal/offering payload, status eligibility, unknown/cancel/success/focus | **ผ่าน component tests**; no PostgreSQL integration execution |
+| Authorization และ domain contract | **ตรวจผ่านจาก code inspection**: Server Action, schemas, service/policy และ database transaction ไม่ได้แก้; tests ตรวจ scope ที่ส่งจากแต่ละ offering |
+| Browser/device/mobile verification | **ยังไม่ตรวจ**; mobile dimensions และ software keyboard ไม่ได้ทดสอบใน jsdom |
+
+ไฟล์ D4.2: patient request controls/workspace, hospital service catalog controls และ component interaction tests. ไม่มีการเปลี่ยน request creation flow หรือ service/action contract
