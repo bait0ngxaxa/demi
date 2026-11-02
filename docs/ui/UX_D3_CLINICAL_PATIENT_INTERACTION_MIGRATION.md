@@ -102,4 +102,5 @@
 
 ## ความคืบหน้าตาม slice
 
-- UX-D3.0 inventory: เอกสารนี้
+- UX-D3.0 inventory: commit `21fbba6b`.
+- UX-D3.1 Patient Baseline: แทนกล่องยืนยัน inline ด้วย Review Dialog ภายใน form เดิม (ไม่มี form ซ้อน); เปิดหลัง native validation ผ่าน ไม่ dispatch; สรุปค่าตาม section ด้วย label ชุดเดียวกับฟอร์มและแสดง “ไม่ได้บันทึก” สำหรับช่องว่าง; confirmed error ปิด dialog คง draft และย้าย focus ไปที่ข้อความผิดพลาด; unknown ล็อก dialog และมีเฉพาะ resend ของ `FormData` เดิม; single-flight lock ปลดเมื่อ pending จบ (mutation check ยืนยันว่า test จับ submit ซ้ำที่ `useActionState` เข้าคิวไว้). Focused: `src/modules/patient-baseline` ผ่าน 8 files / 53 tests; targeted ESLint และ `npm run typecheck` ผ่าน.
