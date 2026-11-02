@@ -33,6 +33,7 @@ vi.mock("react", async (importOriginal) => ({
     harness.dependencies[index] = dependencies;
   },
   useTransition: () => [false, (callback: () => Promise<unknown>) => { harness.transitions.push(callback()); }],
+  useCallback: (callback: unknown) => callback,
 }));
 vi.mock("@/modules/weight-goals/transport/server-actions", () => ({
   createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn(),
@@ -40,7 +41,7 @@ vi.mock("@/modules/weight-goals/transport/server-actions", () => ({
 
 import { Button } from "@/components/ui/button";
 import { readPersonalWeightGoalAction } from "@/modules/weight-goals/transport/server-actions";
-import { PersonalWeightGoalEditor, PersonalWeightGoalRemoveConfirmation, type Coordination } from "./personal-weight-goal-controls";
+import { PersonalWeightGoalEditor, type Coordination } from "./personal-weight-goal-controls";
 import { PersonalWeightGoalWorkspace } from "./personal-weight-goal-workspace";
 import { createWellnessPrivateAuthority } from "./wellness-private-authority";
 
@@ -160,21 +161,5 @@ describe("Weight Goal review and focus lifecycle", () => {
     expect(button(tree, "แก้ไข")).toBeDefined();
     expect(button(tree, "ตั้งเป้าหมายน้ำหนัก")).toBeUndefined();
   });
-
-  it("restores focus on cancel only after the remove opener mounts again", () => {
-    let tree = renderWorkspace(goal);
-    click(tree, "ลบเป้าหมาย");
-    tree = renderWorkspace(goal);
-    expect(button(tree, "ลบเป้าหมาย")).toBeUndefined();
-    harness.focus.mockClear();
-    const onCancel = elements(tree).find((element) => element.type === PersonalWeightGoalRemoveConfirmation)?.props.onCancel;
-    if (!onCancel) throw new Error("Expected remove confirmation");
-    onCancel();
-    expect(harness.focus).not.toHaveBeenCalled();
-    tree = renderWorkspace(goal);
-    expect(button(tree, "ลบเป้าหมาย")).toBeDefined();
-    expect(harness.focus).toHaveBeenCalledOnce();
-    renderWorkspace(goal);
-    expect(harness.focus).toHaveBeenCalledOnce();
-  });
+  // Focus restoration for the edit and remove dialogs is covered in personal-weight-goal-dialogs.test.tsx.
 });

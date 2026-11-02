@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { Panel } from "@/components/ui/panel";
+import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import type { PersonalWeightGoalDto } from "@/modules/weight-goals/domain/personal-weight-goal";
 import type { PersonalWeightGoalActionState } from "@/modules/weight-goals/transport/action-state";
 import { readPersonalWeightGoalAction } from "@/modules/weight-goals/transport/server-actions";
-import { PersonalWeightGoalEditor, PersonalWeightGoalRemoveConfirmation, type Coordination } from "./personal-weight-goal-controls";
+import { PersonalWeightGoalEditor, PersonalWeightGoalRemoveConfirmation, type Coordination, type WeightGoalDraft } from "./personal-weight-goal-controls";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 export function PersonalWeightGoalReadback({ goal }: { goal: PersonalWeightGoalDto }): React.JSX.Element {
@@ -42,8 +44,10 @@ export function PersonalWeightGoalWorkspace({
   const requestGeneration = useRef(0);
   const active = useRef(true);
   const editorHeading = useRef<HTMLHeadingElement>(null);
+  const sectionHeading = useRef<HTMLHeadingElement>(null);
+  const editOpener = useRef<HTMLButtonElement>(null);
   const removeOpener = useRef<HTMLButtonElement>(null);
-  const restoreRemoveFocus = useRef(false);
+  const editDraft = useRetainedDraft<WeightGoalDraft>();
 
   useEffect(() => {
     active.current = true;
@@ -52,15 +56,10 @@ export function PersonalWeightGoalWorkspace({
       requestGeneration.current += 1;
     };
   }, []);
+  // Editing and removal are dialogs that manage their own focus; only inline creation moves focus here.
   useEffect(() => {
-    if (creating || editing) editorHeading.current?.focus();
-  }, [creating, editing]);
-  useEffect(() => {
-    if (!confirmingRemove && restoreRemoveFocus.current && active.current && authority.isActive()) {
-      restoreRemoveFocus.current = false;
-      removeOpener.current?.focus();
-    }
-  }, [confirmingRemove, authority]);
+    if (creating) editorHeading.current?.focus();
+  }, [creating]);
 
   function clearPrivateState(): void {
     active.current = false;
@@ -71,8 +70,8 @@ export function PersonalWeightGoalWorkspace({
     setEditing(false);
     setConfirmingRemove(false);
     setRequiresCurrentGoalReview(false);
-    restoreRemoveFocus.current = false;
     setFeedback({ status: "IDLE" });
+    editDraft.clear();
   }
 
   function onResult(state: PersonalWeightGoalActionState): void {
@@ -94,6 +93,7 @@ export function PersonalWeightGoalWorkspace({
       }
       return;
     }
+    editDraft.clear();
     if (result.outcome === "DELETED") {
       setGoal(null);
       setCreating(false);
@@ -154,17 +154,44 @@ export function PersonalWeightGoalWorkspace({
       if (active.current && authority.isActive()) setSaving(value);
       onLockChange?.(value);
   };
-  const coordination: Coordination = { authority, isActive, blocked: saving || pending, onResult, onPending };
+  const onSubmitting = (): void => {
+    if (active.current && authority.isActive()) setSaving(true);
+  };
+  const coordination: Coordination = { authority, isActive, blocked: saving || pending, onResult, onPending, onSubmitting };
   const reviewCoordination: Coordination = {
     authority,
     isActive,
     blocked: saving || pending || lockedForReview,
     onResult,
     onPending,
+    onSubmitting,
   };
+  // A running request or an outcome that needs the current goal reviewed keeps the dialog open.
+  const goalDialogDismissible = !saving && !pending && !lockedForReview;
+
+  function closeEdit(): void {
+    if (!goalDialogDismissible) return;
+    if (goal) editDraft.retain(`${goal.id}:${goal.updatedAt}`);
+    setEditing(false);
+    setFeedback({ status: "IDLE" });
+  }
+
+  function closeRemove(): void {
+    if (!goalDialogDismissible) return;
+    setConfirmingRemove(false);
+  }
+
+  function goalReturnFocus(opener: HTMLButtonElement | null): HTMLElement | null {
+    return opener?.isConnected && !opener.disabled ? opener : sectionHeading.current;
+  }
+
+  const reviewReload = lockedForReview ? <Alert variant="warning">
+    <p>โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนดำเนินการต่อ</p>
+    <Button className="mt-3" size="compact" variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
+  </Alert> : null;
 
   return <div className="space-y-5">
-    <h2 className="text-2xl font-semibold">เป้าหมายน้ำหนัก</h2>
+    <h2 ref={sectionHeading} tabIndex={-1} className="text-2xl font-semibold focus-visible:outline-none">เป้าหมายน้ำหนัก</h2>
     {!editorOpen && feedback.message ? <div role="status" aria-live="polite"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
 
     {requiresCurrentGoalReview ? <div className="space-y-3">
@@ -173,22 +200,38 @@ export function PersonalWeightGoalWorkspace({
     </div> : goal ? <Panel>
       <div className="space-y-4">
         <PersonalWeightGoalReadback goal={goal} />
-        {editing ? <>
-          <h3 ref={editorHeading} tabIndex={-1} className="text-lg font-semibold">แก้ไขเป้าหมายน้ำหนัก</h3>
-          <PersonalWeightGoalEditor key={`${goal.id}:${goal.updatedAt}`} goal={goal} nonce={nonce} coordination={reviewCoordination} />
-          <Button type="button" variant="ghost" disabled={saving || pending || lockedForReview} onClick={() => { setEditing(false); setFeedback({ status: "IDLE" }); }}>ยกเลิกการแก้ไข</Button>
-        </> : confirmingRemove ? <>
-          <h3 className="text-lg font-semibold">ยืนยันการลบเป้าหมาย</h3>
-          <PersonalWeightGoalRemoveConfirmation
-            goal={goal}
-            coordination={reviewCoordination}
-            onCancel={() => { restoreRemoveFocus.current = true; setConfirmingRemove(false); }}
-          />
-        </> : <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setEditing(true); }}>แก้ไข</Button>
-          <Button ref={removeOpener} variant="danger" disabled={saving || pending} onClick={() => setConfirmingRemove(true)}>ลบเป้าหมาย</Button>
-        </div>}
+        <div className="flex flex-wrap gap-2">
+          <Button ref={editOpener} variant="secondary" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setEditing(true); }}>แก้ไข</Button>
+          <Button ref={removeOpener} variant="danger" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setConfirmingRemove(true); }}>ลบเป้าหมาย</Button>
+        </div>
       </div>
+      {editing ? <ModalDialog
+        description="แก้ไขเป้าหมายส่วนตัวที่คุณตั้งไว้ วันที่เป้าหมายเดิมจะคงอยู่จนกว่าคุณจะเลือกเปลี่ยน"
+        dismissible={goalDialogDismissible}
+        onRequestClose={closeEdit}
+        returnFocusTarget={() => goalReturnFocus(editOpener.current)}
+        size="fullscreen"
+        title="แก้ไขเป้าหมายน้ำหนัก"
+      >
+        <div className="space-y-4">
+          {reviewReload}
+          <PersonalWeightGoalEditor key={`${goal.id}:${goal.updatedAt}`} goal={goal} nonce={nonce} coordination={reviewCoordination} initialDraft={editDraft.retained(`${goal.id}:${goal.updatedAt}`)} draftRef={editDraft.draftRef} />
+          <Button type="button" variant="ghost" disabled={!goalDialogDismissible} onClick={closeEdit}>ยกเลิกการแก้ไข</Button>
+        </div>
+      </ModalDialog> : null}
+      {confirmingRemove ? <ModalDialog
+        dismissible={goalDialogDismissible}
+        onRequestClose={closeRemove}
+        returnFocusTarget={() => goalReturnFocus(removeOpener.current)}
+        size="compact"
+        title="ยืนยันการลบเป้าหมาย"
+      >
+        <div className="space-y-4">
+          <PersonalWeightGoalReadback goal={goal} />
+          {reviewReload}
+          <PersonalWeightGoalRemoveConfirmation goal={goal} coordination={reviewCoordination} onCancel={closeRemove} />
+        </div>
+      </ModalDialog> : null}
     </Panel> : creating ? <Panel>
       <div className="space-y-4">
         <h3 ref={editorHeading} tabIndex={-1} className="text-lg font-semibold">ตั้งเป้าหมายน้ำหนัก</h3>
@@ -201,6 +244,6 @@ export function PersonalWeightGoalWorkspace({
       <Button disabled={saving || pending} onClick={startCreate}>ตั้งเป้าหมายน้ำหนัก</Button>
     </div>}
 
-    {lockedForReview ? <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button> : null}
+    {lockedForReview && !editorOpen ? <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button> : null}
   </div>;
 }

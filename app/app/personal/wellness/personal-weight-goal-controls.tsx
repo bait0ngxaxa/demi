@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,19 +14,29 @@ import {
 } from "@/modules/weight-goals/transport/server-actions";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
+/** Unsaved values of an open goal edit dialog, kept in memory by the workspace. */
+export type WeightGoalDraft = { targetWeightKg: string; targetDate: string; weeks: number };
+
 export type Coordination = {
   authority: WellnessPrivateAuthority;
   isActive: () => boolean;
   blocked: boolean;
   onResult: (state: PersonalWeightGoalActionState) => void;
   onPending: (pending: boolean) => void;
+  /**
+   * Called from the native submit event (an urgent update) once a request will be dispatched.
+   * `onPending(true)` runs inside the action transition, so its state would only commit when the request settles.
+   */
+  onSubmitting?: () => void;
 };
 
 function useWeightGoalAction(
   action: (previous: PersonalWeightGoalActionState, formData: FormData) => Promise<PersonalWeightGoalActionState>,
   coordination: Coordination,
-): [PersonalWeightGoalActionState, (formData: FormData) => void, boolean] {
+): [PersonalWeightGoalActionState, (formData: FormData) => void, boolean, (event: FormEvent<HTMLFormElement>) => void] {
   const requestGeneration = useRef(0);
+  // useActionState queues a second submit behind the first; the native submit is refused until the first settles.
+  const inFlight = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -35,7 +45,7 @@ function useWeightGoalAction(
       requestGeneration.current += 1;
     };
   }, []);
-  return useActionState(async (previous: PersonalWeightGoalActionState, formData: FormData) => {
+  const [state, dispatch, pending] = useActionState(async (previous: PersonalWeightGoalActionState, formData: FormData) => {
     const capturedRequest = ++requestGeneration.current;
     const capturedGeneration = coordination.authority.captureGeneration();
     const isCurrent = (): boolean => mounted.current && capturedRequest === requestGeneration.current && coordination.isActive() && coordination.authority.isCurrent(capturedGeneration);
@@ -52,21 +62,34 @@ function useWeightGoalAction(
     coordination.onResult(state);
     return isCurrent() ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
+  useEffect(() => { if (!pending) inFlight.current = false; }, [pending]);
+  function guardSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (inFlight.current) { event.preventDefault(); return; }
+    inFlight.current = true;
+    coordination.onSubmitting?.();
+  }
+  return [state, dispatch, pending, guardSubmit];
 }
 
 export function PersonalWeightGoalEditor({
   goal,
   nonce,
   coordination,
+  initialDraft,
+  draftRef,
 }: {
   goal?: PersonalWeightGoalDto;
   nonce: string;
   coordination: Coordination;
+  /** Edit dialog only: values to resume from for the same goal version. */
+  initialDraft?: WeightGoalDraft;
+  draftRef?: RefObject<WeightGoalDraft | null>;
 }): React.JSX.Element {
-  const [state, action, pending] = useWeightGoalAction(goal ? updatePersonalWeightGoalAction : createPersonalWeightGoalAction, coordination);
-  const [targetWeightKg, setTargetWeightKg] = useState(goal?.targetWeightKg ?? "");
-  const [targetDate, setTargetDate] = useState(goal?.targetDate ?? "");
-  const [weeks, setWeeks] = useState(4);
+  const [state, action, pending, guardSubmit] = useWeightGoalAction(goal ? updatePersonalWeightGoalAction : createPersonalWeightGoalAction, coordination);
+  // Opening an edit shows the saved date; only "ใช้ระยะเวลานี้" or a manual change replaces it.
+  const [targetWeightKg, setTargetWeightKg] = useState(initialDraft?.targetWeightKg ?? goal?.targetWeightKg ?? "");
+  const [targetDate, setTargetDate] = useState(initialDraft?.targetDate ?? goal?.targetDate ?? "");
+  const [weeks, setWeeks] = useState(initialDraft?.weeks ?? 4);
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   const uncertain = state.status === "UNCONFIRMED";
@@ -76,8 +99,11 @@ export function PersonalWeightGoalEditor({
   useEffect(() => {
     if (state.status !== "IDLE") feedback.current?.focus();
   }, [state]);
+  useEffect(() => {
+    if (draftRef) draftRef.current = { targetWeightKg, targetDate, weeks };
+  }, [draftRef, targetWeightKg, targetDate, weeks]);
 
-  return <form action={action} className="space-y-4">
+  return <form action={action} onSubmit={guardSubmit} className="space-y-4">
     {goal ? <><input type="hidden" name="goalId" value={goal.id} /><input type="hidden" name="expectedUpdatedAt" value={goal.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
       <fieldset disabled={fieldsDisabled} className="space-y-4">
       <div className="space-y-2">
@@ -143,17 +169,19 @@ export function PersonalWeightGoalRemoveConfirmation({
   coordination: Coordination;
   onCancel: () => void;
 }): React.JSX.Element {
-  const [state, action, pending] = useWeightGoalAction(removePersonalWeightGoalAction, coordination);
-  const confirm = useRef<HTMLButtonElement>(null);
-  useEffect(() => { confirm.current?.focus(); }, []);
+  const [state, action, pending, guardSubmit] = useWeightGoalAction(removePersonalWeightGoalAction, coordination);
+  const cancel = useRef<HTMLButtonElement>(null);
+  // The least destructive action receives focus when the confirmation opens.
+  useEffect(() => { cancel.current?.focus(); }, []);
   const blocked = coordination.blocked || pending || state.status !== "IDLE";
   return <div className="space-y-3 border-t border-border pt-4">
     <p>ลบเป้าหมายน้ำหนักปัจจุบันออกจากข้อมูลที่บันทึกไว้?</p>
-    <form action={action} className="flex flex-wrap gap-2" aria-label="ยืนยันการลบเป้าหมายน้ำหนัก">
+    <p className="text-sm text-text-muted">การลบเป้าหมายไม่ลบบันทึกน้ำหนักที่คุณวัดเองใน “ตัวฉันในตอนนี้”</p>
+    <form action={action} onSubmit={guardSubmit} className="flex flex-col gap-3 sm:flex-row sm:justify-end" aria-label="ยืนยันการลบเป้าหมายน้ำหนัก">
       <input type="hidden" name="goalId" value={goal.id} />
       <input type="hidden" name="expectedUpdatedAt" value={goal.updatedAt} />
-      <Button type="submit" ref={confirm} variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบเป้าหมาย"}</Button>
-      <Button type="button" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button>
+      <Button type="button" ref={cancel} className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button>
+      <Button type="submit" className="w-full sm:w-auto" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบเป้าหมาย"}</Button>
     </form>
     {state.message ? <div role="status" aria-live="polite"><Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert></div> : null}
   </div>;
