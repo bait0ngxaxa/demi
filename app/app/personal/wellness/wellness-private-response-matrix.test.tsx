@@ -67,6 +67,7 @@ vi.mock("react", async (importOriginal) => {
       return harness.refs.get(key);
     },
     useEffect: () => { nextKey(); },
+    useCallback: (callback: unknown) => { nextKey(); return callback; },
     useId: () => nextKey(),
     useTransition: () => [false, (work: () => Promise<void>) => { harness.transitions.push(work()); }],
     useActionState: (handler: HookAction, initial: unknown) => {

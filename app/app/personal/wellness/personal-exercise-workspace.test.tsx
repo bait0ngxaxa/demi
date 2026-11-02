@@ -62,12 +62,11 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     expect(edit).toContain("บันทึกการแก้ไข"); expect(edit).toContain('name="expectedUpdatedAt"'); expect(edit).not.toContain('name="submissionNonce"');
     const readback = renderToStaticMarkup(<ExerciseReadback item={row} />); expect(readback).toContain("&lt;script&gt;"); expect(readback).not.toContain("<script>"); expect(readback).toContain("**literal**"); expect(readback).toContain(row.occurredOn);
   });
-  it("delete requires confirmation with cancel; pending prevents duplicate operations", () => {
-    expect(renderToStaticMarkup(<ExerciseDeleteForm item={row} coordination={coordination} />)).not.toContain("ยืนยันลบ");
-    simulation.confirming = true;
-    const confirm = renderToStaticMarkup(<ExerciseDeleteForm item={row} coordination={coordination} />); expect(confirm).toContain("ยืนยันลบ"); expect(confirm).toContain("ยกเลิก");
+  it("delete confirmation (rendered inside the workspace dialog) has cancel; pending prevents duplicate operations", () => {
+    const confirm = renderToStaticMarkup(<ExerciseDeleteForm item={row} coordination={coordination} onCancel={vi.fn()} />); expect(confirm).toContain("ยืนยันลบ"); expect(confirm).toContain("ยกเลิก");
+    expect(confirm).toContain('name="entryId"'); expect(confirm).toContain('name="expectedUpdatedAt"');
     simulation.pending = true;
-    for (const element of [<ExerciseEditor key="editor" today={row.occurredOn} nonce={row.id} coordination={coordination} />, <ExerciseDeleteForm key="delete" item={row} coordination={coordination} />]) {
+    for (const element of [<ExerciseEditor key="editor" today={row.occurredOn} nonce={row.id} coordination={coordination} />, <ExerciseDeleteForm key="delete" item={row} coordination={coordination} onCancel={vi.fn()} />]) {
       const html = renderToStaticMarkup(element); expect(html).toContain("disabled"); expect(html).toContain('aria-busy="true"'); expect(html).toContain("กำลัง");
     }
   });

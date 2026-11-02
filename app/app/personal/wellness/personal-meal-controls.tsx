@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
@@ -9,9 +9,20 @@ import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { createPersonalMealAction, updatePersonalMealAction, deletePersonalMealAction } from "@/modules/meals/transport/server-actions";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
-type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: MealActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
-function useMealAction(action: (previous: MealActionState, form: FormData) => Promise<MealActionState>, coordination: Coordination, create = false): [MealActionState, (form: FormData) => void, boolean, boolean] {
+/** Unsaved values of an open meal edit dialog, kept in memory by the workspace. */
+export type MealDraft = { category: string; occurredOn: string; description: string };
+type Coordination = {
+  authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: MealActionState) => void; onPending: (pending: boolean) => void; blocked: boolean;
+  /**
+   * Called from the native submit event (an urgent update) once a request will be dispatched.
+   * `onPending(true)` runs inside the action transition, so its state would only commit when the request settles.
+   */
+  onSubmitting?: () => void;
+};
+function useMealAction(action: (previous: MealActionState, form: FormData) => Promise<MealActionState>, coordination: Coordination, create = false): [MealActionState, (form: FormData) => void, boolean, boolean, (event: FormEvent<HTMLFormElement>) => void] {
   const payload = useRef<FormData | null>(null);
+  // useActionState queues a second submit behind the first; the native submit is refused until the first settles.
+  const inFlight = useRef(false);
   const [recovery, setRecovery] = useState<"EDITABLE" | "RETRY_ORIGINAL">("EDITABLE");
   const recovering = recovery === "RETRY_ORIGINAL";
   const [state, dispatch, pending] = useActionState(async (previous: MealActionState, form: FormData) => {
@@ -35,27 +46,42 @@ function useMealAction(action: (previous: MealActionState, form: FormData) => Pr
     coordination.onResult(state);
     return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
-  return [state, dispatch, pending, recovering];
+  useEffect(() => { if (!pending) inFlight.current = false; }, [pending]);
+  function guardSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (inFlight.current) { event.preventDefault(); return; }
+    inFlight.current = true;
+    coordination.onSubmitting?.();
+  }
+  return [state, dispatch, pending, recovering, guardSubmit];
 }
-export function MealEditor({ item, today, maxDate, nonce, coordination }: { item?: PersonalMealDto; today: string; maxDate?: string; nonce: string; coordination: Coordination }): React.JSX.Element {
-  const [state, action, pending, recovering] = useMealAction(item ? updatePersonalMealAction : createPersonalMealAction, coordination, !item);
-  const [category, setCategory] = useState(item?.category ?? "");
-  const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
-  const [description, setDescription] = useState(item?.description ?? "");
+export function MealEditor({ item, today, maxDate, nonce, coordination, initialDraft, draftRef, onCancel }: {
+  item?: PersonalMealDto; today: string; maxDate?: string; nonce: string; coordination: Coordination;
+  /** Edit dialog only: values to resume from for the same entry version. */
+  initialDraft?: MealDraft;
+  draftRef?: RefObject<MealDraft | null>;
+  onCancel?: () => void;
+}): React.JSX.Element {
+  const [state, action, pending, recovering, guardSubmit] = useMealAction(item ? updatePersonalMealAction : createPersonalMealAction, coordination, !item);
+  const [category, setCategory] = useState(initialDraft?.category ?? item?.category ?? "");
+  const [occurredOn, setOccurredOn] = useState(initialDraft?.occurredOn ?? item?.occurredOn ?? today);
+  const [description, setDescription] = useState(initialDraft?.description ?? item?.description ?? "");
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   const detailsHeading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { if (category) detailsHeading.current?.focus(); }, [category]);
+  // Focus moves to the details only after the user picks a category, not when an edit opens prefilled.
+  const categoryChosen = useRef(false);
+  useEffect(() => { if (category && categoryChosen.current) detailsHeading.current?.focus(); }, [category]);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
+  useEffect(() => { if (draftRef) draftRef.current = { category, occurredOn, description }; }, [draftRef, category, occurredOn, description]);
   // Retryable create conflicts/ambiguity keep the SAME nonce. Consumed creates require explicit new intent.
   const blocked = coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || Boolean(item && (state.status === "CONFLICT" || state.status === "UNCONFIRMED"));
-  return <form action={action} className="space-y-4">
+  return <form action={action} onSubmit={guardSubmit} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked || recovering} className="space-y-4">
       <fieldset className="space-y-2" aria-invalid={Boolean(state.fieldErrors?.category)} aria-describedby={`${prefix}-category-help`}>
         <legend className="mb-2 text-sm font-medium">หมวดมื้ออาหาร</legend>
         <div className="grid gap-3 sm:grid-cols-2">{MEAL_CATEGORIES.map((value) => <label key={value} className={`flex min-h-16 cursor-pointer items-center gap-3 rounded-control border p-3 focus-within:ring-4 focus-within:ring-focus-ring ${category === value ? "border-brand bg-brand-soft text-brand-strong" : "border-border bg-surface hover:bg-surface-muted"}`}>
-          <input type="radio" name="category" value={value} required checked={category === value} onChange={() => setCategory(value)} aria-controls={`${prefix}-details`} className="accent-brand" />
+          <input type="radio" name="category" value={value} required checked={category === value} onChange={() => { categoryChosen.current = true; setCategory(value); }} aria-controls={`${prefix}-details`} className="accent-brand" />
           <span className="min-w-0 flex-1 text-base font-medium">{MEAL_CATEGORY_LABELS[value]}</span><span className="text-sm font-medium text-brand-strong">{item ? "เลือกมื้ออาหาร" : "เพิ่มบันทึก"}</span>
         </label>)}</div>
         <p id={`${prefix}-category-help`} className="text-sm text-text-muted">{state.fieldErrors?.category ?? "เลือกตามมื้อที่คุณต้องการบันทึก"}</p>
@@ -72,24 +98,26 @@ export function MealEditor({ item, today, maxDate, nonce, coordination }: { item
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
     {recovering ? <p data-navigation-guard="unknown-outcome" className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
-    <Button type="submit" className="w-full sm:w-auto" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <Button type="submit" className="w-full sm:w-auto" hidden={!category} loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกมื้ออาหาร"}</Button>
+      {onCancel ? <Button className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
+    </div>
   </form>;
 }
-export function MealDeleteForm({ item, coordination }: { item: PersonalMealDto; coordination: Coordination }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false);
-  const [state, action, pending] = useMealAction(deletePersonalMealAction, coordination);
-  const opener = useRef<HTMLButtonElement>(null);
-  const confirm = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (confirming) confirm.current?.focus(); }, [confirming]);
+/** The confirmation step of deleting one entry; rendered inside the workspace's destructive dialog. */
+export function MealDeleteForm({ item, coordination, onCancel }: { item: PersonalMealDto; coordination: Coordination; onCancel: () => void }): React.JSX.Element {
+  const [state, action, pending, , guardSubmit] = useMealAction(deletePersonalMealAction, coordination);
+  const cancel = useRef<HTMLButtonElement>(null);
+  // The least destructive action receives focus when the dialog opens.
+  useEffect(() => { cancel.current?.focus(); }, []);
   const blocked = coordination.blocked || pending || state.status !== "IDLE";
   return <div className="space-y-3 border-t border-border pt-4">
-    <Button ref={opener} variant="danger" disabled={blocked} onClick={() => setConfirming(true)}>ลบบันทึกนี้</Button>
-    {confirming ? <form action={action} className="space-y-3" aria-label="ยืนยันลบบันทึก">
+    <form action={action} onSubmit={guardSubmit} className="space-y-3" aria-label="ยืนยันลบบันทึก">
       <p>ลบบันทึกมื้ออาหารนี้ออกจากรายการปัจจุบันใน DEMI?</p>
       <input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} />
-      <div className="flex flex-wrap gap-2"><Button ref={confirm} type="submit" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button>
-        <Button variant="secondary" disabled={pending} onClick={() => { setConfirming(false); opener.current?.focus(); }}>ยกเลิก</Button></div>
-    </form> : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end"><Button ref={cancel} className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button>
+        <Button type="submit" className="w-full sm:w-auto" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button></div>
+    </form>
     {state.message ? <div role="status">{state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert>}</div> : null}
   </div>;
 }

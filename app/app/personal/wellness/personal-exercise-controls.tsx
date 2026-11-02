@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input, inputClassName } from "@/components/ui/input";
@@ -9,10 +9,21 @@ import type { ExerciseActionState } from "@/modules/exercises/transport/action-s
 import { createPersonalExerciseAction, updatePersonalExerciseAction, deletePersonalExerciseAction } from "@/modules/exercises/transport/server-actions";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
-type Coordination = { authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean };
+/** Unsaved values of an open exercise edit dialog, kept in memory by the workspace. */
+export type ExerciseDraft = { activityName: string; durationMinutes: string; occurredOn: string; note: string };
+type Coordination = {
+  authority: WellnessPrivateAuthority; isActive: () => boolean; onResult: (state: ExerciseActionState) => void; onPending: (pending: boolean) => void; blocked: boolean;
+  /**
+   * Called from the native submit event (an urgent update) once a request will be dispatched.
+   * `onPending(true)` runs inside the action transition, so its state would only commit when the request settles.
+   */
+  onSubmitting?: () => void;
+};
 const activityOptions = ["เดิน", "วิ่ง", "ปั่นจักรยาน", "แบดมินตัน", "ฟุตบอล"];
-function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination, create = false): [ExerciseActionState, (form: FormData) => void, boolean, boolean] {
+function useExerciseAction(action: (previous: ExerciseActionState, form: FormData) => Promise<ExerciseActionState>, coordination: Coordination, create = false): [ExerciseActionState, (form: FormData) => void, boolean, boolean, (event: FormEvent<HTMLFormElement>) => void] {
   const payload = useRef<FormData | null>(null);
+  // useActionState queues a second submit behind the first; the native submit is refused until the first settles.
+  const inFlight = useRef(false);
   const [recovery, setRecovery] = useState<"EDITABLE" | "RETRY_ORIGINAL">("EDITABLE");
   const recovering = recovery === "RETRY_ORIGINAL";
   const [state, dispatch, pending] = useActionState(async (previous: ExerciseActionState, form: FormData) => {
@@ -36,20 +47,33 @@ function useExerciseAction(action: (previous: ExerciseActionState, form: FormDat
     coordination.onResult(state);
     return coordination.isActive() && coordination.authority.isCurrent(authorityGeneration) ? state : { status: "IDLE" } as const;
   }, { status: "IDLE" });
-  return [state, dispatch, pending, recovering];
+  useEffect(() => { if (!pending) inFlight.current = false; }, [pending]);
+  function guardSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (inFlight.current) { event.preventDefault(); return; }
+    inFlight.current = true;
+    coordination.onSubmitting?.();
+  }
+  return [state, dispatch, pending, recovering, guardSubmit];
 }
-export function ExerciseEditor({ item, today, maxDate, nonce, coordination }: { item?: PersonalExerciseDto; today: string; maxDate?: string; nonce: string; coordination: Coordination }): React.JSX.Element {
-  const [state, action, pending, recovering] = useExerciseAction(item ? updatePersonalExerciseAction : createPersonalExerciseAction, coordination, !item);
-  const [activityName, setActivityName] = useState(item?.activityName ?? "");
-  const [durationMinutes, setDurationMinutes] = useState(item?.durationMinutes?.toString() ?? "");
-  const [occurredOn, setOccurredOn] = useState(item?.occurredOn ?? today);
-  const [note, setNote] = useState(item?.note ?? "");
+export function ExerciseEditor({ item, today, maxDate, nonce, coordination, initialDraft, draftRef, onCancel }: {
+  item?: PersonalExerciseDto; today: string; maxDate?: string; nonce: string; coordination: Coordination;
+  /** Edit dialog only: values to resume from for the same entry version. */
+  initialDraft?: ExerciseDraft;
+  draftRef?: RefObject<ExerciseDraft | null>;
+  onCancel?: () => void;
+}): React.JSX.Element {
+  const [state, action, pending, recovering, guardSubmit] = useExerciseAction(item ? updatePersonalExerciseAction : createPersonalExerciseAction, coordination, !item);
+  const [activityName, setActivityName] = useState(initialDraft?.activityName ?? item?.activityName ?? "");
+  const [durationMinutes, setDurationMinutes] = useState(initialDraft?.durationMinutes ?? item?.durationMinutes?.toString() ?? "");
+  const [occurredOn, setOccurredOn] = useState(initialDraft?.occurredOn ?? item?.occurredOn ?? today);
+  const [note, setNote] = useState(initialDraft?.note ?? item?.note ?? "");
   const [search, setSearch] = useState("");
   const [editorOpen, setEditorOpen] = useState(Boolean(item));
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   const returnToSearch = useRef(false);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
+  useEffect(() => { if (draftRef) draftRef.current = { activityName, durationMinutes, occurredOn, note }; }, [draftRef, activityName, durationMinutes, occurredOn, note]);
   useEffect(() => {
     if (editorOpen) document.getElementById(`${prefix}-activity`)?.focus();
     else if (returnToSearch.current) { document.getElementById(`${prefix}-search`)?.focus(); returnToSearch.current = false; }
@@ -69,7 +93,7 @@ export function ExerciseEditor({ item, today, maxDate, nonce, coordination }: { 
         {search.trim() && !activityOptions.some((name) => name.includes(search.trim())) ? <p role="status" className="text-sm text-text-muted">ไม่พบกิจกรรม สามารถกรอกชื่อกิจกรรมของคุณได้</p> : null}
       </div>
     </fieldset>
-    <form action={action} hidden={!editorOpen} onSubmit={(event) => { if (!editorOpen) event.preventDefault(); }} className="space-y-4">
+    <form action={action} hidden={!editorOpen} onSubmit={(event) => { if (!editorOpen) { event.preventDefault(); return; } guardSubmit(event); }} className="space-y-4">
     {item ? <><input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} /></> : <input type="hidden" name="submissionNonce" value={nonce} />}
     <fieldset disabled={blocked || recovering} className="space-y-4">
       <div id={`${prefix}-entry`} className="space-y-4">
@@ -90,25 +114,27 @@ export function ExerciseEditor({ item, today, maxDate, nonce, coordination }: { 
     </fieldset>
     <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
     {recovering ? <p data-navigation-guard="unknown-outcome" className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
-    <Button type="submit" hidden={!editorOpen} className="w-full sm:w-auto" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
+    <div className="flex flex-col gap-3 sm:flex-row">
+      <Button type="submit" hidden={!editorOpen} className="w-full sm:w-auto" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
+      {onCancel ? <Button className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
+    </div>
     </form>
   </div>;
 }
-export function ExerciseDeleteForm({ item, coordination }: { item: PersonalExerciseDto; coordination: Coordination }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false);
-  const [state, action, pending] = useExerciseAction(deletePersonalExerciseAction, coordination);
-  const opener = useRef<HTMLButtonElement>(null);
-  const confirm = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (confirming) confirm.current?.focus(); }, [confirming]);
+/** The confirmation step of deleting one entry; rendered inside the workspace's destructive dialog. */
+export function ExerciseDeleteForm({ item, coordination, onCancel }: { item: PersonalExerciseDto; coordination: Coordination; onCancel: () => void }): React.JSX.Element {
+  const [state, action, pending, , guardSubmit] = useExerciseAction(deletePersonalExerciseAction, coordination);
+  const cancel = useRef<HTMLButtonElement>(null);
+  // The least destructive action receives focus when the dialog opens.
+  useEffect(() => { cancel.current?.focus(); }, []);
   const blocked = coordination.blocked || pending || state.status !== "IDLE";
   return <div className="space-y-3 border-t border-border pt-4">
-    <Button ref={opener} variant="danger" disabled={blocked} onClick={() => setConfirming(true)}>ลบบันทึกนี้</Button>
-    {confirming ? <form action={action} className="space-y-3" aria-label="ยืนยันลบบันทึก">
+    <form action={action} onSubmit={guardSubmit} className="space-y-3" aria-label="ยืนยันลบบันทึก">
       <p>ลบบันทึกการออกกำลังกายนี้ออกจากรายการปัจจุบันใน DEMI?</p>
       <input type="hidden" name="entryId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={item.updatedAt} />
-      <div className="flex flex-wrap gap-2"><Button ref={confirm} type="submit" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button>
-        <Button variant="secondary" disabled={pending} onClick={() => { setConfirming(false); opener.current?.focus(); }}>ยกเลิก</Button></div>
-    </form> : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end"><Button ref={cancel} className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button>
+        <Button type="submit" className="w-full sm:w-auto" variant="danger" loading={pending} disabled={blocked}>{pending ? "กำลังลบ..." : "ยืนยันลบ"}</Button></div>
+    </form>
     {state.message ? <div role="status">{state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert>}</div> : null}
   </div>;
 }

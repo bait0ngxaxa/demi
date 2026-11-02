@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({ meal: vi.fn(), exercise: vi.fn(), meals: vi.fn(), exercises: vi.fn() }));
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: mock.meal, updatePersonalMealAction: mock.meal, deletePersonalMealAction: mock.meal, listPersonalMealsAction: mock.meals }));
 vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: mock.exercise, updatePersonalExerciseAction: mock.exercise, deletePersonalExerciseAction: mock.exercise, listPersonalExercisesAction: mock.exercises }));
@@ -19,6 +19,18 @@ function button(label: string): HTMLButtonElement {
   if (!found) throw new Error(`Missing ${label}`);
   return found;
 }
+let originalShowModal: PropertyDescriptor | undefined;
+let originalClose: PropertyDescriptor | undefined;
+beforeAll(() => {
+  originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
+  originalClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+  Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value(this: HTMLDialogElement): void { this.setAttribute("open", ""); } });
+  Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value(this: HTMLDialogElement): void { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); } });
+});
+afterAll(() => {
+  if (originalShowModal) Object.defineProperty(HTMLDialogElement.prototype, "showModal", originalShowModal); else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
+  if (originalClose) Object.defineProperty(HTMLDialogElement.prototype, "close", originalClose); else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
+});
 beforeEach(() => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
@@ -36,16 +48,17 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     ["delete", "UNCONFIRMED"], ["delete", "CONFLICT"],
   ] as const)("prevents new intent and other record selection after %s %s until a successful review read", async (operation, status) => {
     const { lock } = await mount(true);
-    await act(() => button("แก้ไข / ลบ").click());
+    await act(() => button(operation === "delete" ? "ลบ" : "แก้ไข").click());
     mock[kind].mockResolvedValue({ status, message: "ต้องทบทวนรายการเดิม" });
-    if (operation === "delete") {
-      await act(() => button("ลบบันทึกนี้").click());
-      await act(() => button("ยืนยันลบ").click());
-    } else await act(() => button("บันทึกการแก้ไข").click());
+    if (operation === "delete") await act(() => button("ยืนยันลบ").click());
+    else await act(() => button("บันทึกการแก้ไข").click());
+    // The review requirement keeps its dialog open; it cannot be dismissed into a new intent.
+    await act(() => { host.querySelector("dialog")?.dispatchEvent(new Event("cancel", { cancelable: true })); });
+    expect(host.querySelector("dialog")?.hasAttribute("open")).toBe(true);
     const originalVersion = host.querySelector<HTMLInputElement>('[name="expectedUpdatedAt"]')?.value;
     expect(button("เริ่มบันทึกใหม่").disabled).toBe(true);
-    const recordButtons = [...host.querySelectorAll<HTMLButtonElement>("button")].filter((item) => item.textContent === "แก้ไข / ลบ");
-    expect(recordButtons).toHaveLength(2);
+    const recordButtons = [...host.querySelectorAll<HTMLButtonElement>("button")].filter((item) => item.textContent === "แก้ไข" || item.textContent === "ลบ");
+    expect(recordButtons).toHaveLength(4);
     expect(recordButtons.every((item) => item.disabled)).toBe(true);
     await act(() => { button("เริ่มบันทึกใหม่").click(); recordButtons[1].click(); });
     expect(host.querySelector<HTMLInputElement>('[name="entryId"]')?.value).toBe(persisted.id);
@@ -60,11 +73,12 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     await act(() => button("โหลดรายการล่าสุด").click());
     expect(lock.mock.lastCall).toEqual([false]);
     expect(button("เริ่มบันทึกใหม่").disabled).toBe(false);
-    expect(button("แก้ไข / ลบ").disabled).toBe(false);
+    expect(button("แก้ไข").disabled).toBe(false);
+    expect(host.querySelector("dialog")).toBeNull();
   });
   it("requires refreshed versions after an edit conflict, rather than retrying stale edits", async () => {
     const { lock } = await mount(true);
-    await act(() => button("แก้ไข / ลบ").click());
+    await act(() => button("แก้ไข").click());
     mock[kind].mockResolvedValue({ status: "CONFLICT", message: "รายการเปลี่ยนแล้ว" });
     await act(() => button("บันทึกการแก้ไข").click());
     expect(button("บันทึกการแก้ไข").disabled).toBe(true);
@@ -73,7 +87,7 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValue({ status: "SUCCESS", page: { items: [current], nextCursor: null } });
     await act(() => button("โหลดรายการล่าสุด").click());
     expect(lock.mock.lastCall).toEqual([false]);
-    await act(() => button("แก้ไข / ลบ").click());
+    await act(() => button("แก้ไข").click());
     expect(host.querySelector<HTMLInputElement>('[name="expectedUpdatedAt"]')?.value).toBe(current.updatedAt);
     expect(button("บันทึกการแก้ไข").disabled).toBe(false);
   });
