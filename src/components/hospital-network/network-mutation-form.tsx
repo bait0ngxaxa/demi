@@ -7,7 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { useDialogFormDraft } from "@/components/ui/use-dialog-form-draft";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
@@ -63,29 +63,28 @@ export function NetworkMutationForm({
   const [state, dispatch, pending, unknownOutcome] = useMutationActionState(action, initialHospitalNetworkActionState);
   const handled = useRef<HospitalNetworkActionState | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskDialogBaseline, setTaskDialogBaseline] = useState(state);
   const [dialogHidden, setDialogHidden] = useState<Record<string, string> | null>(null);
   const formId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const taskFlightRef = useRef(false);
   const taskResultAtSubmitRef = useRef<HospitalNetworkActionState>(state);
-  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(taskDialogOpen);
+  const taskDialogSucceeded = taskDialogOpen && state.status === "SUCCESS" && state !== taskDialogBaseline;
+  const visibleTaskDialogOpen = taskDialogOpen && !taskDialogSucceeded;
+  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleTaskDialogOpen);
 
   useEffect(() => {
     if (state === handled.current) return;
     handled.current = state;
     if (state.status === "SUCCESS") {
-      if (taskDialog) {
-        clearDraft();
-        setDialogHidden(null);
-        setTaskDialogOpen(false);
-      }
+      if (taskDialog && taskDialogSucceeded) clearDraft();
       onSuccess?.();
       notify.success(state.message);
       router.refresh();
     } else if (state.status === "ERROR" && state.code === "FORBIDDEN") {
       notify.error(state.message);
     }
-  }, [clearDraft, onSuccess, router, state, taskDialog]);
+  }, [clearDraft, onSuccess, router, state, taskDialog, taskDialogSucceeded]);
 
   useEffect(() => {
     if (!pending && !unknownOutcome && taskFlightRef.current && !Object.is(state, taskResultAtSubmitRef.current)) {
@@ -93,12 +92,16 @@ export function NetworkMutationForm({
     }
   }, [pending, state, unknownOutcome]);
 
-  const handleTaskSubmit = submitPreservingInput((formData) => {
-    if (pending || unknownOutcome || taskFlightRef.current) return;
+  function handleTaskSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    if (pending || unknownOutcome || taskFlightRef.current) {
+      event.preventDefault();
+      return;
+    }
     taskFlightRef.current = true;
     taskResultAtSubmitRef.current = state;
-    dispatch(formData);
-  });
+    setTaskDialogBaseline(state);
+    dispatchFormDataPreservingInput(event, dispatch);
+  }
 
   const fields = (
     <>
@@ -130,7 +133,8 @@ export function NetworkMutationForm({
         <Button
           disabled={pending || unknownOutcome}
           onClick={() => {
-            if (dialogHidden === null) setDialogHidden({ ...hidden });
+            if (dialogHidden === null || taskDialogSucceeded) setDialogHidden({ ...hidden });
+            setTaskDialogBaseline(state);
             setTaskDialogOpen(true);
           }}
           size="compact"
@@ -139,7 +143,7 @@ export function NetworkMutationForm({
         >
           {taskDialog.triggerLabel}
         </Button>
-        {taskDialogOpen ? (
+        {taskDialogOpen && !taskDialogSucceeded ? (
           <ModalDialog
             description={taskDialog.description}
             dismissible={!pending}

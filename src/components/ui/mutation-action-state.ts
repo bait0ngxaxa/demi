@@ -82,15 +82,23 @@ export function withConnectionFailure<State, Payload>(
  */
 export function submitPreservingInput(dispatch: (formData: FormData) => void) {
   return (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    const formData = new FormData(
-      event.currentTarget,
-      (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) &&
-        submitter.form === event.currentTarget
-        ? submitter
-        : undefined,
-    );
-    startTransition(() => dispatch(formData));
+    dispatchFormDataPreservingInput(event, dispatch);
   };
+}
+
+/** Dispatches a native form submission without resetting its uncontrolled fields. */
+export function dispatchFormDataPreservingInput(
+  event: FormEvent<HTMLFormElement>,
+  dispatch: (formData: FormData) => void,
+): void {
+  event.preventDefault();
+  const submitter = (event.nativeEvent as SubmitEvent).submitter;
+  const formData = new FormData(
+    event.currentTarget,
+    (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) &&
+      submitter.form === event.currentTarget
+      ? submitter
+      : undefined,
+  );
+  startTransition(() => dispatch(formData));
 }

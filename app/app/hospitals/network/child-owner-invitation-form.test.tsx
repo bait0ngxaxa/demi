@@ -140,7 +140,7 @@ describe("ChildOwnerInvitationForm task dialog", () => {
     render(action);
 
     act(() => button("ระบุข้อมูลผู้ดูแล").click());
-    let dialog = container.querySelector("dialog");
+    const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing owner invitation dialog");
     expect(document.activeElement).toBe(dialog.querySelector("input[name='nationalId']"));
     expect(dialog.querySelectorAll("form")).toHaveLength(1);

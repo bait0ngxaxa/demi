@@ -8,7 +8,7 @@ import { Button, type ButtonVariant } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Input } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { useDialogFormDraft } from "@/components/ui/use-dialog-form-draft";
@@ -191,28 +191,27 @@ export function ChildOwnerInvitationForm({
   const [state, dispatch, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(action, initialChildOwnerInvitationActionState);
   const handled = useRef<ChildOwnerInvitationActionState | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskDialogBaseline, setTaskDialogBaseline] = useState(state);
   const [dialogHidden, setDialogHidden] = useState<Record<string, string> | null>(null);
   const formId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const taskFlightRef = useRef(false);
   const taskResultAtSubmitRef = useRef<ChildOwnerInvitationActionState>(state);
-  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(taskDialogOpen);
+  const taskDialogSucceeded = taskDialogOpen && state.status === "SUCCESS" && state !== taskDialogBaseline;
+  const visibleTaskDialogOpen = taskDialogOpen && !taskDialogSucceeded;
+  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleTaskDialogOpen);
 
   useEffect(() => {
     if (state === handled.current) return;
     handled.current = state;
     if (state.status === "SUCCESS") {
-      if (taskDialog) {
-        clearDraft();
-        setDialogHidden(null);
-        setTaskDialogOpen(false);
-      }
+      if (taskDialog && taskDialogSucceeded) clearDraft();
       notify.success("บันทึกคำเชิญผู้ดูแลแล้ว");
       container.current?.querySelector("form")?.reset();
       onSuccess?.(state);
       router.refresh();
     }
-  }, [clearDraft, onSuccess, router, state, taskDialog]);
+  }, [clearDraft, onSuccess, router, state, taskDialog, taskDialogSucceeded]);
 
   useEffect(() => {
     if (!pending && !unknownOutcome && taskFlightRef.current && !Object.is(state, taskResultAtSubmitRef.current)) {
@@ -220,12 +219,16 @@ export function ChildOwnerInvitationForm({
     }
   }, [pending, state, unknownOutcome]);
 
-  const handleTaskSubmit = submitPreservingInput((formData) => {
-    if (pending || unknownOutcome || taskFlightRef.current) return;
+  function handleTaskSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    if (pending || unknownOutcome || taskFlightRef.current) {
+      event.preventDefault();
+      return;
+    }
     taskFlightRef.current = true;
     taskResultAtSubmitRef.current = state;
-    dispatch(formData);
-  });
+    setTaskDialogBaseline(state);
+    dispatchFormDataPreservingInput(event, dispatch);
+  }
 
   const formContents = (
     <>
@@ -260,7 +263,8 @@ export function ChildOwnerInvitationForm({
         <Button
           disabled={pending || unknownOutcome}
           onClick={() => {
-            if (dialogHidden === null) setDialogHidden({ ...hidden });
+            if (dialogHidden === null || taskDialogSucceeded) setDialogHidden({ ...hidden });
+            setTaskDialogBaseline(state);
             setTaskDialogOpen(true);
           }}
           size="compact"
@@ -269,7 +273,7 @@ export function ChildOwnerInvitationForm({
         >
           {taskDialog.triggerLabel}
         </Button>
-        {taskDialogOpen ? (
+        {taskDialogOpen && !taskDialogSucceeded ? (
           <ModalDialog
             description={taskDialog.description}
             dismissible={!pending}
