@@ -208,3 +208,80 @@
 | PostgreSQL end-to-end / browser cross-role journey | **ไม่ได้รัน/ยังไม่ verified**; ไม่มี disposable database ที่ตรวจยืนยันในงานนี้ และไม่ได้ใช้ browser |
 
 ไฟล์ D4.5: policy reviewer test, comment อธิบาย ADR ปัจจุบันใน service request service และ matrix นี้. ไม่แก้ persisted authorization, Server Action, transaction หรือ workflow semantics
+
+## UX-D4.6 — Final Regression & Accessibility Audit
+
+### การเปลี่ยนแปลงและ interaction ที่คงไว้
+
+- ย้าย Hospital appointment confirmation และ rejection ออกจากฟอร์มใน request card ไปเป็น focused dialog; workspace ยังคุม pending/unknown ร่วมกันทุก request และ success appointment link ยังอยู่ในพื้นที่ผลลัพธ์ที่รอดเมื่อ card เปลี่ยนกลุ่ม
+- เพิ่ม confirmation ถอนคำขอของ Patient และปิดรับ request ใหม่ของ Hospital offering; เปิด offering และสร้างคำขอ Patient ยังทำตรงบนหน้าเดิม
+- harden dialog รอบแผน/skip/complete; unskip และ mark/unmark custom plan item คง inline. Round detail, care tracking และ Patient SELF round recording ยังเป็นหน้าเดิม
+- Follow-up form ยาวยังอยู่บน dedicated page; final review รวมเข้ากับ missing-vitals acknowledgment ใน dialog เดียว
+- ไม่มี Server Action signature, schema, migration, service authorization, transaction contract, appointment state, Round eligibility/completion, Follow-up immutability หรือ clinical calculation เปลี่ยน
+
+### Mutation lifecycle matrix
+
+สถานะด้านล่างอธิบายเฉพาะ coverage ที่มีจริงใน tests/code; ไม่ได้หมายความว่าทุกข้อทดสอบกับทุก role และทุก operation
+
+| Scenario | Evidence / status |
+| --- | --- |
+| 1. เปิด dialog โดยไม่ mutation | **T:** request decision, withdrawal/catalog, round add/skip/complete และ Follow-up review tests ยืนยัน action ไม่ถูกเรียกเมื่อเปิด |
+| 2. Cancel โดยไม่ mutation | **T:** tests ของแต่ละ dialog ที่ย้าย/หุ้มยืนยันไม่มี dispatch; Follow-up draft ยังคงอยู่ |
+| 3. แก้ draft แล้ว cancel | **T:** Hospital decision, round plan และ Follow-up tests ตรวจค่าที่ยังอยู่เมื่อกลับมาทำต่อ |
+| 4. Native validation | **T:** Follow-up ใช้ browser constraint validation ก่อนเปิด review และก่อน dispatch; request forms คง schema/HTML validation เดิม. **B:** ไม่ได้ตรวจ native popover/keyboard ใน browser |
+| 5. Success และ payload | **T:** focused component/action tests ตรวจ payload ที่เกี่ยวข้อง, request→appointment result link, status/readback และ Follow-up `FormData`; **C:** server action/service เดิมยังรับ fields เดิม |
+| 6. Confirmed validation error | **T:** Follow-up เก็บ draft และคืน focus ไป feedback; form/schema และ action tests ตรวจ request/round validation mapping. ไม่ได้จำลอง error เดียวกันผ่านทุกหน้าต่าง |
+| 7–8. Conflict / Forbidden | **T:** request, appointment, round, Follow-up policy/action suites ตรวจ mapping/readback; dialog tests ของ Follow-up ตรวจปิด review, คง draft และ refresh เมื่อเหมาะสม |
+| 9–10. Unknown outcome / explicit recovery | **T:** request workspace shared lock/reload, Patient/catalog reload, Round skip/unskip/remove/complete exact resend และ Follow-up resend original payload ครอบคลุม. **C:** `useMutationActionState` คง submission identity; ไม่มี auto retry |
+| 11. Rapid duplicate submit | **T:** dialog และ control tests ตรวจ single-flight/double-submit ใน Hospital, Patient, Round และ Follow-up |
+| 12. Stale resource context | **T:** Round editor ปฏิเสธ choice ที่ไม่พร้อมแล้ว; server status/version/scope guards มี action/service tests. การเปลี่ยนข้อมูลจริงระหว่างเปิด dialog ไม่ได้ทดสอบ E2E |
+| 13. Resource หายหลัง success | **T:** Hospital feedback คงอยู่นอก card; Round removal/completion focus fallback และ Follow-up redirect ตรวจใน component tests |
+| 14. ผู้ใช้เปลี่ยน Hospital | **T/C:** payload catalog/request ผูกกับ ID ที่ row สร้างและ server scope ซ้ำ. **Not verified:** เปลี่ยน active Hospital ระหว่าง pending ผ่าน browser/session จริง |
+| 15. Navigation ระหว่าง pending | **T:** Follow-up ป้องกัน cancel link ระหว่าง pending/unknown; **C:** controls ที่ pending lock คง action เดิม. **Not verified:** browser Back/URL navigation สำหรับทุก workflow |
+| 16. Unmount ระหว่าง pending | **Not verified:** ไม่มี test ที่จำลองการ unmount/navigate ขณะ request ทุกชนิดยังทำงาน |
+| 17. Trigger หาย | **T/C:** Hospital card move และ Round control ที่ถูกเอาออกใช้ผลลัพธ์/heading ที่ยังอยู่เป็น focus target; coverage เป็น component test ไม่ใช่ browser |
+| 18. Logical focus restoration | **T:** cancel/success/error fallback มี jsdom assertions ใน workflow ที่แก้. **Not verified:** focus จริงกับ browser, screen reader และ OS dialog stack |
+
+### Dialog, accessibility และ responsive verification
+
+| Check | ผล |
+| --- | --- |
+| หนึ่ง dialog ต่อ decision / no nested form | **T:** Follow-up test ตรวจว่ามี dialog เดียวและไม่มี form ภายใน review; request/Round tests exercise decision surface. **C:** component trees ไม่มี dialog ซ้อนใน dialog หรือ form ซ้อนใน form; ไม่มี dialog library เพิ่ม |
+| Accessible title, native `<dialog>`, focus containment และ dismiss policy | **ตรวจจาก shared `ModalDialog`/`ConfirmDialog` code;** jsdom ตรวจ lifecycle/focus target บาง workflow. **Browser/screen-reader ยังไม่ verified** |
+| Keyboard Escape, cancellation, recovery | **T:** Round unknown skip ปิดไม่ได้อย่างไม่ปลอดภัย; Follow-up unknown ปิด review ได้แต่มี resend ที่ยังเข้าถึงได้บนหน้า. **B:** Escape/focus trap ยังไม่ทดสอบ browser |
+| Viewport 320px, 390px, landscape, tablet, desktop | **ไม่ verified ใน browser** |
+| Dialog scroll/footer, safe area, bottom navigation, software keyboard, Thai wrapping, date/select usability | **ไม่ verified ใน browser/device**; automated tests ไม่แทนการตรวจ layout หรือ assistive technology จริง |
+
+### Domain invariants และ boundaries
+
+| Invariant | Evidence |
+| --- | --- |
+| ยืนยัน request สร้าง appointment จริงใน transaction; request ไป STARTED; ไม่ใช่เปลี่ยนเป็น APPROVED อย่างเดียว | **T+C:** server action/payload tests และ serializable request/appointment service code; ไม่มี request-to-appointment PostgreSQL integration run |
+| Reject ต้องมี reason ตาม schema, Patient อ่าน reason ได้, และ reject ได้เฉพาะ PENDING | **T+C:** dialog/action/schema tests และ service guard/read projection |
+| One-off OSM เป็นผู้รับผิดชอบเฉพาะ appointment ไม่แก้ patient OSM assignment | **T+C:** request service และ appointment scope tests/code; ไม่มี assignment mutation ใหม่ |
+| Patient withdrawal ไม่ยกเลิก appointment; disable offering หยุดรับ request ใหม่โดยไม่แก้ request/appointment เก่า | **T+C:** copy/payload/UI tests และ action scope; ไม่มี historical row rewrite |
+| Round completion ยังต้องมีแผนและ DONE อย่างน้อยหนึ่งรายการ; TODO รับ system reason; ไม่มี mandatory-vitals rule ใหม่ | **T+C:** round service tests, ADR-0022 และ completion review |
+| Unknown outcome ใช้ original request identity และ explicit recovery; ไม่มี nonce ใหม่/automatic retry | **T:** resend payload equality ใน Round/Follow-up และ shared mutation state tests |
+| Follow-up เป็น immutable; missing values แยกจาก 0; ไม่คำนวณ clinical value; missing vitals ไม่ auto-skip | **T+C:** exact FormData/review tests และ unchanged schema/service; review แสดงค่าตาม draft |
+| Authorization, Hospital network scope, Patient SELF, OSM assignment และ ADMIN policy ไม่เปลี่ยน | **T+C:** D4.5 role/access matrix, policy/query/action tests และ server code inspection; ไม่มี auth/transaction/service source rewrite |
+
+### Final verification
+
+| Command/check | ผลจริง |
+| --- | --- |
+| `npm run typecheck` | **ไม่ผ่านเพราะ Node heap out-of-memory** ที่เพดาน 2 GB หลังประมาณ 50 วินาที; host ขณะตรวจเหลือ RAM ว่างประมาณ 2.39 GiB จึงไม่เพิ่ม heap. ไม่ได้รายงาน source diagnostic ก่อน OOM. Scoped typechecks ของ D4.1–D4.4 ผ่านตามหลักฐานแต่ละ slice |
+| `npm run lint` | **ผ่าน**, exit 0 |
+| `npm test` | **ผ่าน 577 files / 6,441 tests**, exit 0. มี jsdom `location.replace` “Not implemented” output ใน LINE account test แต่ suite จบผ่าน |
+| PostgreSQL integration suites | **ไม่ได้รัน**; ไม่มี disposable test database ที่ยืนยันได้ จึงไม่เชื่อม test ไปยัง database ที่ไม่ทราบความปลอดภัย |
+| Browser/device tests | **ไม่ได้รัน**; browser inventory มีเพียง tab งานอื่นและไม่มี verified DEMI test session/data. ไม่เปิด app ที่อาจอ่านเวชระเบียนจริง |
+| Production build | **ไม่ได้รัน**; ไม่มี Next/runtime/configuration change ที่ทำให้ build เป็น check เพิ่มความมั่นใจจำเป็น |
+
+### Outstanding findings and readiness
+
+- **P0:** ไม่พบจาก diff/audit นี้.
+- **P1:** ไม่พบจาก diff/audit นี้.
+- **P2:** full `npm run typecheck` ยังยืนยันไม่ได้เพราะ runner memory cap; ควรผ่าน CI/runner ที่มี memory มากพอ. Browser/device accessibility และ real PostgreSQL confirmation flow ยัง pending.
+- ไม่พบหลักฐานการเปลี่ยน business contract หรือสิทธิ์จาก interaction migration. ไม่มี E2E claim จากชุด unit/component tests.
+- คำแนะนำ: **implementation และ full test/lint พร้อม review; ยังไม่ควรประกาศ UX-D4 fully verified/ready-to-close จน full typecheck ผ่านบน runner ที่รองรับและมี browser/device verification ใน isolated test environment.**
+
+ไฟล์ D4.6: migration audit นี้. ไม่มีการแก้ production code ใน final regression slice
