@@ -9,12 +9,13 @@ import { ConfirmDialog } from "./confirm-dialog";
 
 type HarnessProps = {
   onConfirm: () => void;
+  onBeforeConfirm?: () => boolean;
   pending?: boolean;
   recoveryKey?: string | number | null;
   onCancel?: () => void;
 };
 
-function Harness({ onConfirm, pending = false, recoveryKey, onCancel }: HarnessProps): React.JSX.Element {
+function Harness({ onConfirm, onBeforeConfirm, pending = false, recoveryKey, onCancel }: HarnessProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -27,6 +28,7 @@ function Harness({ onConfirm, pending = false, recoveryKey, onCancel }: HarnessP
           onCancel?.();
           setOpen(false);
         }}
+        onBeforeConfirm={onBeforeConfirm}
         onConfirm={onConfirm}
         open={open}
         pending={pending}
@@ -50,12 +52,12 @@ function findButton(label: string): HTMLButtonElement {
   return button;
 }
 
-function mount(onConfirm: () => void, pending = false, onCancel?: () => void): void {
+function mount(onConfirm: () => void, pending = false, onCancel?: () => void, onBeforeConfirm?: () => boolean): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(createElement(Harness, { onConfirm, pending, onCancel }));
+    root?.render(createElement(Harness, { onConfirm, pending, onCancel, onBeforeConfirm }));
   });
 }
 
@@ -146,6 +148,25 @@ describe("ConfirmDialog", () => {
       confirmButton.click();
     });
 
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it("does not lock confirmation when the pre-confirmation guard rejects", () => {
+    const onConfirm = vi.fn();
+    const onBeforeConfirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    mount(onConfirm, false, undefined, onBeforeConfirm);
+    openDialog();
+    const confirmButton = findButton("ระงับรายการ");
+
+    act(() => confirmButton.click());
+
+    expect(onBeforeConfirm).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(confirmButton.disabled).toBe(false);
+
+    act(() => confirmButton.click());
+
+    expect(onBeforeConfirm).toHaveBeenCalledTimes(2);
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 

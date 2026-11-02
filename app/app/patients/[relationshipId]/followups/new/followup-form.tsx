@@ -296,6 +296,8 @@ export function FollowupForm({
   const reviewConfirmedRef = useRef(false);
   const formRef = useRef<HTMLFormElement>(null);
   const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const reviewValidationTargetRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
+  const reportReviewValidationRef = useRef(false);
   const actionStateRef = useRef<FollowupActionState>(initialFollowupActionState);
   const [submissionLocked, setSubmissionLocked] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -315,6 +317,10 @@ export function FollowupForm({
   const busy = pending || unknownOutcome || submissionLocked;
 
   function followupReturnFocusTarget(): HTMLElement | null {
+    if (reviewValidationTargetRef.current?.isConnected) {
+      return reviewValidationTargetRef.current;
+    }
+
     if (typeof document === "undefined") {
       return saveButtonRef.current;
     }
@@ -331,6 +337,16 @@ export function FollowupForm({
       ? document.getElementById("followup-form-page")
       : saveButtonRef.current;
   }
+
+  useEffect(() => {
+    if (reviewOpen || !reportReviewValidationRef.current) {
+      return;
+    }
+
+    reportReviewValidationRef.current = false;
+    formRef.current?.reportValidity();
+  }, [reviewOpen]);
+
   const [appointmentId, setAppointmentId] = useState(selectedAppointmentId ?? "");
   const [goalPlanId, setGoalPlanId] = useState(selectedGoalPlanId ?? "");
   const [weight, setWeight] = useState("");
@@ -432,6 +448,7 @@ export function FollowupForm({
     }
 
     event.preventDefault();
+    reviewValidationTargetRef.current = null;
     if (busy || state.status === "SUCCESS" || submissionLockRef.current) {
       return;
     }
@@ -442,6 +459,23 @@ export function FollowupForm({
     setMissingVitalsPrompt(missing);
     setMissingVitalsAcknowledged(false);
     setReviewOpen(true);
+  }
+
+  function validateFinalReview(): boolean {
+    const form = formRef.current;
+    if (!form) {
+      return false;
+    }
+    if (form.checkValidity()) {
+      return true;
+    }
+
+    reviewValidationTargetRef.current = form.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "input:invalid, select:invalid, textarea:invalid",
+    );
+    reportReviewValidationRef.current = true;
+    setReviewOpen(false);
+    return false;
   }
 
   function confirmFinalReview(): void {
@@ -1162,6 +1196,7 @@ export function FollowupForm({
           </div>
         }
         onCancel={() => setReviewOpen(false)}
+        onBeforeConfirm={validateFinalReview}
         onConfirm={confirmFinalReview}
         open={reviewOpen}
         pending={pending || (submissionLocked && !unknownOutcome)}

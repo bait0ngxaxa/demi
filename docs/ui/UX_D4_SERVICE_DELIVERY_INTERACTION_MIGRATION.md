@@ -285,3 +285,11 @@
 - คำแนะนำ: **implementation และ full test/lint พร้อม review; ยังไม่ควรประกาศ UX-D4 fully verified/ready-to-close จน full typecheck ผ่านบน runner ที่รองรับและมี browser/device verification ใน isolated test environment.**
 
 ไฟล์ D4.6: migration audit นี้. ไม่มีการแก้ production code ใน final regression slice
+
+### Post-D4.6 remediation — 2026-11-02
+
+- **P2 Follow-up Review validation lock: แก้แล้ว.** `ConfirmDialog` รองรับ `onBeforeConfirm` ซึ่งทำงานก่อนล็อกปุ่มยืนยัน. Follow-up ตรวจ native validity ซ้ำก่อนตั้ง submission lock; เมื่อไม่ผ่านจะปิด Review, คืน focus ไปยัง control ที่ผิด และเรียก native validation หลัง dialog ปิด. กรณีนี้ไม่เรียก `requestSubmit`, Server Action หรือสร้าง nonce ใหม่. เมื่อแก้ข้อมูลแล้วผู้ใช้เปิด Review และยืนยันต่อได้ด้วย nonce เดิม.
+- Regression coverage: Follow-up ทดสอบ valid-at-open → invalid-at-confirm, dialog ปิด, focus/validation message, ไม่มี `requestSubmit` หรือ mutation และ retry สำเร็จด้วย nonce เดิม; ConfirmDialog ทดสอบ guard ที่ปฏิเสธก่อนล็อกแล้วอนุญาต retry.
+- Verification หลัง remediation: `npm run test -- 'app/app/patients/[relationshipId]/followups/new/followup-form.test.tsx' 'src/components/ui/confirm-dialog.test.tsx'` ผ่าน 2 files / 18 tests; ESLint เฉพาะ 4 ไฟล์ที่เปลี่ยนผ่าน; `npm run typecheck` ผ่านบน worktree ที่ต่อจาก HEAD `bfd4b477` พร้อม heap limit 4 GB; Impeccable detector คืน `[]`; `git diff --check` ผ่าน.
+- PostgreSQL integration และ browser/device verification ยังไม่ได้รัน; ไม่มี disposable database หรือ verified DEMI browser session. ผลจาก component tests ไม่ใช่ E2E evidence. Full `npm test` ไม่ได้รันซ้ำหลัง remediation.
+- สถานะหลัง remediation: ไม่มี P0/P1 หรือ P2 code finding ค้างจาก UX-D4. **พร้อม review เพื่อปิด phase โดยบันทึกข้อจำกัดการยืนยัน PostgreSQL และ browser/device ตามข้างต้น; ห้ามอ้างว่า journey ผ่าน E2E หรือ browser accessibility.**

@@ -214,6 +214,43 @@ describe("follow-up recording review", () => {
     expect(container.querySelector("dialog")?.textContent).toContain("น้ำหนัก (kg)72.4");
   });
 
+  it("closes review and restores native validation when a field becomes invalid before confirmation", async () => {
+    mountProgram();
+    fillProgramRequiredFields();
+    setValue("#followup-weight", "72.4");
+    setValue("#followup-waist", "80");
+    setValue("#followup-systolic", "120");
+    setValue("#followup-diastolic", "80");
+    setValue("#followup-blood-sugar", "90");
+    openReview();
+
+    const form = container.querySelector<HTMLFormElement>("form");
+    if (!form) throw new Error("Follow-up form not found");
+    const requestSubmit = vi.spyOn(form, "requestSubmit");
+    const weight = container.querySelector<HTMLInputElement>("#followup-weight");
+    if (!weight) throw new Error("Follow-up weight field not found");
+    expect(weight.validity.valid).toBe(true);
+
+    weight.setCustomValidity("กรุณาตรวจสอบค่าน้ำหนัก");
+    expect(weight.validity.valid).toBe(false);
+    click("บันทึกต่อ", container.querySelector("dialog") ?? container);
+
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(weight);
+    expect(weight.validationMessage).toBe("กรุณาตรวจสอบค่าน้ำหนัก");
+    expect(requestSubmit).not.toHaveBeenCalled();
+    expect(actions.createFollowupForProgramAction).not.toHaveBeenCalled();
+
+    weight.setCustomValidity("");
+    actions.createFollowupForProgramAction.mockResolvedValueOnce(success);
+    openReview();
+    click("บันทึกต่อ", container.querySelector("dialog") ?? container);
+    await settle();
+
+    expect(actions.createFollowupForProgramAction).toHaveBeenCalledOnce();
+    expect(formDataFor(actions.createFollowupForProgramAction).get("submissionNonce")).toBe("followup-nonce");
+  });
+
   it("requires explicit missing-vitals acknowledgment and submits the original FormData once", async () => {
     let resolveAction: ((state: typeof success) => void) | undefined;
     actions.createFollowupForProgramAction.mockReturnValueOnce(new Promise((resolve) => { resolveAction = resolve; }));

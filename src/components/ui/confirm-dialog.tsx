@@ -18,6 +18,8 @@ export type ConfirmDialogProps = {
   confirmDisabled?: boolean;
   /** Change only after a confirmed, explicitly recoverable failure. Pending changes alone do not unlock retry. */
   recoveryKey?: string | number | null;
+  /** Return false to abort before the dialog locks confirmation. */
+  onBeforeConfirm?: () => boolean;
   returnFocusTarget?: () => HTMLElement | null;
   onConfirm: () => void;
   onCancel: () => void;
@@ -35,6 +37,7 @@ export function ConfirmDialog({
   pending = false,
   confirmDisabled = false,
   recoveryKey,
+  onBeforeConfirm,
   returnFocusTarget,
   onConfirm,
   onCancel,
@@ -62,6 +65,10 @@ export function ConfirmDialog({
 
   function handleConfirm(): void {
     if (pending || confirmDisabled || confirmLockRef.current) {
+      return;
+    }
+
+    if (onBeforeConfirm && !onBeforeConfirm()) {
       return;
     }
 
