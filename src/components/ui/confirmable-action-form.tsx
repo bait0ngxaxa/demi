@@ -15,6 +15,8 @@ type ConfirmationDetails = {
   description?: ReactNode;
   details?: ReactNode;
   confirmLabel?: string;
+  /** Confirm button text while the request runs; defaults to `confirmLabel`. */
+  pendingLabel?: string;
   confirmVariant?: "default" | "destructive";
 };
 
@@ -28,6 +30,11 @@ type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "child
   pending: boolean;
   requiresConfirmation?: boolean;
   returnFocusTarget?: () => HTMLElement | null;
+  /**
+   * Called synchronously once the confirmed submission reached the action, outside its transition,
+   * so an owner can lock sibling mutations immediately rather than when the request settles.
+   */
+  onSubmitted?: () => void;
 };
 
 const submissionDispatchErrorMessage = "ไม่สามารถส่งแบบฟอร์มได้ กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง";
@@ -42,6 +49,7 @@ export function ConfirmableActionForm({
   pending,
   requiresConfirmation = true,
   returnFocusTarget,
+  onSubmitted,
   ...formProps
 }: ConfirmableActionFormProps): React.JSX.Element {
   const formRef = useRef<HTMLFormElement>(null);
@@ -164,7 +172,10 @@ export function ConfirmableActionForm({
       setAwaitingResult(false);
       setDialogOpen(false);
       setSubmissionDispatchError(true);
+      return;
     }
+
+    onSubmitted?.();
   }
 
   function cancelSubmission(): void {
@@ -195,6 +206,7 @@ export function ConfirmableActionForm({
         cancelLabel={unknownOutcome ? "ปิดหน้าต่าง" : undefined}
         confirmDisabled={unknownOutcome}
         confirmLabel={confirmation.confirmLabel}
+        pendingLabel={confirmation.pendingLabel}
         confirmVariant={confirmation.confirmVariant}
         description={confirmation.description}
         details={

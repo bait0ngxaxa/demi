@@ -49,19 +49,20 @@ describe("Personal medication UI states", () => {
   });
   it("allows selected ACTIVE edit and explicit stop, but STOPPED detail has no mutation controls", () => {
     const active = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} />);
-    expect(active).toContain("บันทึกการแก้ไข"); expect(active).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(active).toContain('name="expectedUpdatedAt"');
+    // Text and schedule editing open focused dialogs; the detail itself stays read-only.
+    expect(active).toContain("แก้ไขชื่อยาและข้อความประกอบ"); expect(active).toContain("แก้ไขเวลา"); expect(active).not.toContain("บันทึกการแก้ไข");
+    expect(active).toContain("ข้อความเอง"); expect(active).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(active).toContain('name="expectedUpdatedAt"');
     const stopped = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, status: "STOPPED", stoppedAt: item.updatedAt }} />);
     expect(stopped).toContain("แก้ไขไม่ได้"); expect(stopped).not.toContain("<form"); expect(stopped).not.toContain("ยืนยันหยุดติดตาม");
   });
-  it("requires stop confirmation and explains tracking only, with cancel control", () => {
-    simulation.confirming = true;
+  it("starts stop tracking from a trigger only; the confirmation is a dialog (see personal-medication-dialogs.test.tsx)", () => {
     const html = renderToStaticMarkup(<MedicationStopForm item={item} />);
-    expect(html).toContain("ยืนยันหยุดติดตาม"); expect(html).toContain("ไม่เปลี่ยนการใช้ยาของคุณ"); expect(html).toContain("ยกเลิก");
+    expect(html).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(html).not.toContain("<dialog");
     expect(html).not.toContain("หยุดรับประทานยา");
   });
-  it("disables duplicate pending create/edit/stop and displays pending labels", () => {
-    simulation.pending = true; simulation.confirming = true;
-    for (const element of [<MedicationEditor key="create" />, <MedicationEditor key="update" item={item} />, <MedicationStopForm key="stop" item={item} />]) {
+  it("disables duplicate pending create/edit and displays pending labels", () => {
+    simulation.pending = true;
+    for (const element of [<MedicationEditor key="create" />, <MedicationEditor key="update" item={item} />]) {
       const html = renderToStaticMarkup(element); expect(html).toContain("disabled"); expect(html).toContain('aria-busy="true"'); expect(html).toContain("กำลัง");
     }
   });

@@ -1,28 +1,122 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert";
-import { buttonClassName } from "@/components/ui/button";
+import { Button, buttonClassName } from "@/components/ui/button";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { PersonalMedicationDetailDto, PersonalMedicationPage } from "@/modules/medications/domain/personal-medication-definitions";
 import type { PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
 import type { OwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
-import { MedicationEditor, MedicationStopForm, MedicationScheduleEditor, MedicationFeedback } from "./personal-medication-controls";
+import {
+  MedicationEditor,
+  MedicationStopForm,
+  MedicationScheduleEditor,
+  MedicationFeedback,
+  type MedicationScheduleDraft,
+  type MedicationTextDraft,
+  type MutationCoordination,
+} from "./personal-medication-controls";
 
+type MedicationDialog = "TEXT" | "SCHEDULE" | null;
+
+/** Return focus to the dialog trigger, or to the detail heading once the trigger is gone or locked. */
+function focusReturnTarget(trigger: HTMLButtonElement | null): HTMLElement | null {
+  return trigger?.isConnected && !trigger.disabled ? trigger : document.getElementById("medication-detail-heading");
+}
+
+function needsAttention(state: PersonalMedicationActionState): boolean {
+  return state.status === "CONFLICT" || Boolean(state.refreshRequired) || Boolean(state.loginHref);
+}
+
+/**
+ * Owns mutation authority for the selected ACTIVE medication: one `blocked` flag locks text edit,
+ * schedule edit and stop together, and an open dialog cannot be dismissed while its request runs.
+ * Fresh detail after a confirmed change remounts this component (key includes `updatedAt`).
+ */
 function SelectedMedicationForms({ item, onFeedback }: { item: PersonalMedicationDetailDto; onFeedback: (state: PersonalMedicationActionState) => void }): React.JSX.Element {
   const [blocked, setBlocked] = useState(false);
-  const onSubmit = useCallback(() => setBlocked(true), []);
+  const [submitting, setSubmitting] = useState(false);
+  const [dialog, setDialog] = useState<MedicationDialog>(null);
+  // A result that still needs the user's attention stays on the page after its dialog closes.
+  const [notice, setNotice] = useState<PersonalMedicationActionState | null>(null);
+  const textDraft = useRetainedDraft<MedicationTextDraft>();
+  const scheduleDraft = useRetainedDraft<MedicationScheduleDraft>();
+  const textTrigger = useRef<HTMLButtonElement>(null);
+  const scheduleTrigger = useRef<HTMLButtonElement>(null);
+  const draftKey = `${item.id}:${item.updatedAt}`;
+  const onSubmit = useCallback(() => { setBlocked(true); setSubmitting(true); }, []);
   const onResult = useCallback((state: PersonalMedicationActionState) => {
+    setSubmitting(false);
     setBlocked(state.status === "SUCCESS" || state.status === "CONFLICT" || Boolean(state.refreshRequired));
     if (state.status === "SUCCESS") onFeedback(state);
   }, [onFeedback]);
-  const coordination = { blocked, onSubmit, onResult };
-  return <><MedicationEditor item={item} coordination={coordination} />
-    <MedicationScheduleEditor item={item} coordination={coordination} />
-    <MedicationStopForm item={item} coordination={coordination} /></>;
+  const coordination: MutationCoordination = { blocked, onSubmit, onResult };
+  const { clear: clearTextDraft } = textDraft;
+  const { clear: clearScheduleDraft } = scheduleDraft;
+  const onDialogResult = useCallback((state: PersonalMedicationActionState) => {
+    onResult(state);
+    if (state.status === "SUCCESS") {
+      clearTextDraft();
+      clearScheduleDraft();
+      setNotice(null);
+      setDialog(null);
+    } else {
+      setNotice(needsAttention(state) ? state : null);
+    }
+  }, [clearScheduleDraft, clearTextDraft, onResult]);
+  const dialogCoordination: MutationCoordination = { blocked, onSubmit, onResult: onDialogResult };
+
+  function openDialog(next: Exclude<MedicationDialog, null>): void {
+    if (blocked || submitting) return;
+    setNotice(null);
+    setDialog(next);
+  }
+
+  function closeDialog(): void {
+    if (submitting) return;
+    if (dialog === "TEXT") textDraft.retain(draftKey);
+    if (dialog === "SCHEDULE") scheduleDraft.retain(draftKey);
+    setDialog(null);
+  }
+
+  return <>
+    <div className="space-y-3">
+      <p className="whitespace-pre-wrap break-words">{item.instructionText ?? "ไม่ได้บันทึกข้อความประกอบ"}</p>
+      <Button ref={textTrigger} variant="secondary" disabled={blocked} onClick={() => openDialog("TEXT")}>แก้ไขชื่อยาและข้อความประกอบ</Button>
+    </div>
+    <section aria-labelledby="medication-schedule-heading" className="space-y-3 border-t border-border pt-4">
+      <h3 id="medication-schedule-heading" className="text-xl font-semibold">เวลาที่ต้องการติดตามใน DEMI</h3>
+      <p className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p>
+      {item.schedules.length ? <ul className="space-y-2" aria-label="เวลาที่บันทึกไว้">{item.schedules.map(({ localTime }) => <li key={localTime} className="tabular-nums">{localTime}</li>)}</ul> : <p className="text-text-muted">ยังไม่ได้บันทึกเวลา</p>}
+      <Button ref={scheduleTrigger} variant="secondary" disabled={blocked} onClick={() => openDialog("SCHEDULE")}>แก้ไขเวลา</Button>
+    </section>
+    {notice && dialog === null ? <div role="status"><MedicationFeedback state={notice} /></div> : null}
+    <MedicationStopForm item={item} coordination={coordination} />
+    {dialog === "TEXT" ? <ModalDialog
+      description={<span className="break-words">{item.medicationName}</span>}
+      dismissible={!submitting}
+      onRequestClose={closeDialog}
+      returnFocusTarget={() => focusReturnTarget(textTrigger.current)}
+      title="แก้ไขชื่อยาและข้อความประกอบ"
+    >
+      <MedicationEditor item={item} coordination={dialogCoordination} initialDraft={textDraft.retained(draftKey)} draftRef={textDraft.draftRef} onCancel={closeDialog} />
+    </ModalDialog> : null}
+    {dialog === "SCHEDULE" ? <ModalDialog
+      description={<span className="break-words">{item.medicationName}</span>}
+      dismissible={!submitting}
+      onRequestClose={closeDialog}
+      returnFocusTarget={() => focusReturnTarget(scheduleTrigger.current)}
+      size="fullscreen"
+      title="แก้ไขเวลาที่ต้องการติดตามใน DEMI"
+    >
+      <MedicationScheduleEditor item={item} coordination={dialogCoordination} initialDraft={scheduleDraft.retained(draftKey)} draftRef={scheduleDraft.draftRef} onCancel={closeDialog} />
+    </ModalDialog> : null}
+  </>;
 }
 
 function MedicationList({ page, status }: { page: PersonalMedicationPage; status: "ACTIVE" | "STOPPED" }): React.JSX.Element {

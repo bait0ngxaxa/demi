@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import type { PersonalMedicationDto, PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
@@ -11,10 +12,24 @@ import { personalMedicationScheduleSchema } from "@/modules/medications/schemas/
 import { INITIAL_PERSONAL_MEDICATION_ACTION_STATE, type PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
 import { createPersonalMedicationAction, updatePersonalMedicationAction, stopPersonalMedicationAction, replacePersonalMedicationSchedulesAction } from "@/modules/medications/transport/server-actions";
 
-type MutationCoordination = {
+export type MutationCoordination = {
   blocked: boolean;
   onSubmit: () => void;
   onResult: (state: PersonalMedicationActionState) => void;
+};
+
+/** Unsaved text of an open medication edit dialog, kept in memory by the dialog owner. */
+export type MedicationTextDraft = { medicationName: string; instructionText: string };
+/** Unsaved daily times of an open schedule dialog, kept in memory by the dialog owner. */
+export type MedicationScheduleDraft = { times: string[] };
+
+type DialogDraftProps<Draft> = {
+  /** Values to resume from instead of the saved values (same medication and version only). */
+  initialDraft?: Draft;
+  /** Receives the current values so the dialog owner can keep them when the dialog closes. */
+  draftRef?: RefObject<Draft | null>;
+  /** Closes the surrounding dialog; the saved values are not changed. */
+  onCancel?: () => void;
 };
 
 function useMedicationAction(
@@ -40,16 +55,17 @@ export function MedicationFeedback({ state }: { state: PersonalMedicationActionS
   </Alert>;
 }
 
-export function MedicationEditor({ item, coordination }: { item?: PersonalMedicationDto; coordination?: MutationCoordination }): React.JSX.Element {
+export function MedicationEditor({ item, coordination, initialDraft, draftRef, onCancel }: { item?: PersonalMedicationDto; coordination?: MutationCoordination } & DialogDraftProps<MedicationTextDraft>): React.JSX.Element {
   const [state, action, pending] = useMedicationAction(item ? updatePersonalMedicationAction : createPersonalMedicationAction, coordination);
-  const [name, setName] = useState(item?.medicationName ?? "");
-  const [instruction, setInstruction] = useState(item?.instructionText ?? "");
+  const [name, setName] = useState(initialDraft?.medicationName ?? item?.medicationName ?? "");
+  const [instruction, setInstruction] = useState(initialDraft?.instructionText ?? item?.instructionText ?? "");
   const [times, setTimes] = useState<string[]>([]);
   const [timesError, setTimesError] = useState("");
   const [expectedUpdatedAt] = useState(item?.updatedAt ?? "");
   const prefix = useId();
   const feedback = useRef<HTMLDivElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
+  useEffect(() => { if (draftRef) draftRef.current = { medicationName: name, instructionText: instruction }; }, [draftRef, name, instruction]);
   const blocked = coordination?.blocked || pending || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired;
   const addPreset = (time: string): void => {
     setTimes((current) => current.includes(time) || current.length >= MEDICATION_SCHEDULE_MAX_TIMES
@@ -104,37 +120,57 @@ export function MedicationEditor({ item, coordination }: { item?: PersonalMedica
       </section> : null}
     </fieldset>
     <div ref={feedback} tabIndex={-1}><MedicationFeedback state={state} /></div>
-    <Button type="submit" loading={pending} disabled={Boolean(blocked)}>{pending ? "กำลังบันทึก..." : item ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}</Button>
-    {state.status === "SUCCESS" ? <a className="ml-3 text-brand-strong underline" href="/app/personal/medications">กลับไปดูรายการล่าสุด</a> : null}
+    <div className="flex flex-wrap items-center gap-3">
+      <Button type="submit" loading={pending} disabled={Boolean(blocked)}>{pending ? "กำลังบันทึก..." : item ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}</Button>
+      {onCancel ? <Button variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
+      {state.status === "SUCCESS" ? <a className="text-brand-strong underline" href="/app/personal/medications">กลับไปดูรายการล่าสุด</a> : null}
+    </div>
   </form>;
+}
+
+function confirmableOutcome(state: PersonalMedicationActionState): ConfirmableActionOutcome {
+  if (state.status === "SUCCESS") return "success";
+  // A thrown request cannot be replayed safely; the reload-based recovery keeps the dialog in its unknown state.
+  if (state.refreshRequired) return "unknown";
+  return state.status === "IDLE" ? "idle" : "error";
 }
 
 export function MedicationStopForm({ item, coordination }: { item: PersonalMedicationDto; coordination?: MutationCoordination }): React.JSX.Element {
-  const [confirming, setConfirming] = useState(false);
   const [expectedUpdatedAt] = useState(item.updatedAt);
   const [state, action, pending] = useMedicationAction(stopPersonalMedicationAction, coordination);
-  const confirmButton = useRef<HTMLButtonElement>(null);
-  const opener = useRef<HTMLButtonElement>(null);
   const feedback = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (confirming) confirmButton.current?.focus(); }, [confirming]);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
-  if (!confirming) return <Button ref={opener} disabled={coordination?.blocked} variant="secondary" onClick={() => setConfirming(true)}>หยุดติดตามรายการนี้ใน DEMI</Button>;
-  return <form action={action} onSubmit={coordination?.onSubmit} className="space-y-4 border-t border-border pt-4" aria-label="ยืนยันหยุดติดตาม" onKeyDown={(event) => {
-    if (event.key === "Escape" && !pending) { setConfirming(false); requestAnimationFrame(() => opener.current?.focus()); }
-  }}>
-    <input type="hidden" name="medicationId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
-    <p className="font-semibold">หยุดติดตามรายการนี้ใน DEMI</p>
-    <p className="text-text-muted">การดำเนินการนี้สิ้นสุดการติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยาของคุณ รายการจะอยู่ในประวัติและแก้ไขต่อไม่ได้</p>
+  const blocked = Boolean(coordination?.blocked || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired);
+  return <div className="space-y-3 border-t border-border pt-4">
+    <ConfirmableActionForm
+      action={action}
+      aria-label="หยุดติดตามรายการนี้"
+      confirmation={{
+        title: "หยุดติดตามรายการนี้ใน DEMI",
+        description: <span className="break-words font-semibold text-text">{item.medicationName}</span>,
+        details: <p>การดำเนินการนี้สิ้นสุดการติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยาของคุณ รายการจะอยู่ในประวัติและแก้ไขต่อไม่ได้</p>,
+        confirmLabel: "ยืนยันหยุดติดตาม",
+        pendingLabel: "กำลังหยุดติดตาม...",
+        confirmVariant: "destructive",
+      }}
+      // Lock text and schedule edits as soon as the stop request is dispatched.
+      onSubmitted={coordination?.onSubmit}
+      outcome={confirmableOutcome(state)}
+      pending={pending}
+      resultKey={state}
+      returnFocusTarget={() => (state.status === "IDLE" ? null : feedback.current)}
+    >
+      <input type="hidden" name="medicationId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
+      <Button type="submit" variant="secondary" disabled={blocked}>หยุดติดตามรายการนี้ใน DEMI</Button>
+    </ConfirmableActionForm>
     <div ref={feedback} tabIndex={-1}><MedicationFeedback state={state} /></div>
-    <div className="flex flex-wrap gap-3"><Button ref={confirmButton} type="submit" variant="danger" loading={pending} disabled={coordination?.blocked || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired}>{pending ? "กำลังหยุดติดตาม..." : "ยืนยันหยุดติดตาม"}</Button>
-      <Button variant="secondary" disabled={pending} onClick={() => { setConfirming(false); requestAnimationFrame(() => opener.current?.focus()); }}>ยกเลิก</Button></div>
     {state.status === "SUCCESS" ? <a className="text-brand-strong underline" href="/app/personal/medications">ดูประวัติหยุดติดตาม</a> : null}
-  </form>;
+  </div>;
 }
 
-export function MedicationScheduleEditor({ item, coordination }: { item: PersonalMedicationDetailDto; coordination?: MutationCoordination }): React.JSX.Element {
+export function MedicationScheduleEditor({ item, coordination, initialDraft, draftRef, onCancel }: { item: PersonalMedicationDetailDto; coordination?: MutationCoordination } & DialogDraftProps<MedicationScheduleDraft>): React.JSX.Element {
   const [state, action, pending] = useMedicationAction(replacePersonalMedicationSchedulesAction, coordination);
-  const [times, setTimes] = useState(item.schedules.map(({ localTime }) => localTime));
+  const [times, setTimes] = useState(initialDraft?.times ?? item.schedules.map(({ localTime }) => localTime));
   const [validation, setValidation] = useState("");
   const [expectedUpdatedAt] = useState(item.updatedAt);
   const prefix = useId();
@@ -142,10 +178,11 @@ export function MedicationScheduleEditor({ item, coordination }: { item: Persona
   const addButton = useRef<HTMLButtonElement>(null);
   const feedback = useRef<HTMLDivElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
+  useEffect(() => { if (draftRef) draftRef.current = { times }; }, [draftRef, times]);
   const blocked = Boolean(coordination?.blocked || pending || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired);
   const error = validation || state.fieldErrors?.times;
-  return <section aria-labelledby={`${prefix}-heading`} className="space-y-4 border-t border-border pt-4">
-    <h3 id={`${prefix}-heading`} className="text-xl font-semibold">เวลาที่ต้องการติดตามใน DEMI</h3>
+  // Rendered inside the schedule dialog, whose title names this task.
+  return <div className="space-y-4">
     <p id={`${prefix}-help`} className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p>
     <p className="text-sm text-text-muted">ระบบจะส่งเตือนทาง LINE เมื่อคุณเปิดการแจ้งเตือนยา เชื่อม LINE และบัญชียังมีสิทธิ์รับข้อความ</p>
     <form action={action} className="space-y-4" onSubmit={(event) => {
@@ -164,7 +201,7 @@ export function MedicationScheduleEditor({ item, coordination }: { item: Persona
       <input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
       <input type="hidden" name="times" value={JSON.stringify(times)} />
       <fieldset disabled={blocked} className="space-y-4" aria-describedby={`${prefix}-help ${prefix}-error`}>
-        <div ref={rows} className="max-h-96 space-y-4 overflow-y-auto">
+        <div ref={rows} className="space-y-4">
           {times.length === 0 ? <p className="text-text-muted">ยังไม่ได้บันทึกเวลา</p> : times.map((time, index) => <div key={index} className="space-y-2">
             <label className="block text-sm font-medium" htmlFor={`${prefix}-${index}`}>เวลา {index + 1}</label>
             <div className="flex min-w-0 flex-wrap gap-3">
@@ -187,8 +224,9 @@ export function MedicationScheduleEditor({ item, coordination }: { item: Persona
       </div>
       <div className="flex flex-wrap gap-3">
         <Button type="submit" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึกเวลา..." : "บันทึกเวลา"}</Button>
-        <Button variant="secondary" disabled={blocked} onClick={() => { setTimes(item.schedules.map(({ localTime }) => localTime)); setValidation(""); }}>ยกเลิก</Button>
+        <Button variant="secondary" disabled={blocked} onClick={() => { setTimes(item.schedules.map(({ localTime }) => localTime)); setValidation(""); }}>{onCancel ? "คืนค่าที่บันทึกไว้" : "ยกเลิก"}</Button>
+        {onCancel ? <Button variant="ghost" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
       </div>
     </form>
-  </section>;
+  </div>;
 }

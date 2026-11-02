@@ -29,7 +29,7 @@ function outcomeFor(state: ActionState): ConfirmableActionOutcome {
   return "idle";
 }
 
-function Harness({ runAction, withRequiredField = false }: { runAction: ActionRunner; withRequiredField?: boolean }): React.JSX.Element {
+function Harness({ runAction, withRequiredField = false, onSubmitted }: { runAction: ActionRunner; withRequiredField?: boolean; onSubmitted?: () => void }): React.JSX.Element {
   const [state, action, pending] = useActionState<ActionState, FormData>(
     async (_previous, formData) => runAction(formData),
     initialState,
@@ -42,7 +42,9 @@ function Harness({ runAction, withRequiredField = false }: { runAction: ActionRu
         title: "ยืนยันการเปลี่ยนแปลง",
         description: "ตรวจสอบข้อมูลก่อนดำเนินการ",
         confirmLabel: "ยืนยันรายการ",
+        pendingLabel: "กำลังยืนยันรายการ",
       }}
+      onSubmitted={onSubmitted}
       outcome={outcomeFor(state)}
       pending={pending}
       resultKey={state}
@@ -99,12 +101,12 @@ let originalClose: PropertyDescriptor | undefined;
 let originalRequestSubmit: PropertyDescriptor | undefined;
 let originalScrollTo: PropertyDescriptor | undefined;
 
-function mount(runAction: ActionRunner, withRequiredField = false): void {
+function mount(runAction: ActionRunner, withRequiredField = false, onSubmitted?: () => void): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => {
-    root?.render(createElement(Harness, { runAction, withRequiredField }));
+    root?.render(createElement(Harness, { runAction, withRequiredField, onSubmitted }));
   });
 }
 
@@ -430,5 +432,39 @@ describe("ConfirmableActionForm", () => {
     submit(submitButton);
     expect(getConfirmationButton().disabled).toBe(false);
     expect(runAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a dispatched confirmation synchronously, never on open, cancel or a rejected submit", async () => {
+    let resolveAction: ((state: ActionState) => void) | null = null;
+    const runAction = vi.fn<ActionRunner>(() => new Promise((resolve) => {
+      resolveAction = resolve;
+    }));
+    const onSubmitted = vi.fn();
+    mount(runAction, true, onSubmitted);
+    const submitButton = getButton("[data-testid='submit-action']");
+
+    submit(submitButton);
+    clickButton(Array.from(container?.querySelectorAll<HTMLButtonElement>("dialog button") ?? [])
+      .find((button) => button.textContent?.includes("ยกเลิก")) ?? submitButton);
+    expect(onSubmitted).not.toHaveBeenCalled();
+
+    submit(submitButton);
+    const requiredField = container?.querySelector<HTMLInputElement>("[data-testid='required-field']");
+    if (!requiredField) throw new Error("Missing required field");
+    requiredField.value = "";
+    withNativeRequestSubmit(() => act(() => getConfirmationButton().click()));
+    expect(onSubmitted).not.toHaveBeenCalled();
+
+    requiredField.value = "พร้อมส่ง";
+    submit(submitButton);
+    act(() => getConfirmationButton().click());
+    expect(onSubmitted).toHaveBeenCalledOnce();
+    await settleAction();
+    expect(container?.querySelector("dialog")?.textContent).toContain("กำลังยืนยันรายการ");
+
+    await act(async () => {
+      resolveAction?.({ status: "SUCCESS", message: "บันทึกแล้ว" });
+    });
+    expect(onSubmitted).toHaveBeenCalledOnce();
   });
 });

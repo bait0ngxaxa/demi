@@ -84,6 +84,7 @@ describe("daily schedule editor interactions", () => {
     expect(renderToStaticMarkup(editor())).toContain("กำลังบันทึกเวลา");
     const coordination = { blocked: true, onSubmit: vi.fn(), onResult: vi.fn() };
     hooks.cursor = 0; expect(renderToStaticMarkup(MedicationEditor({ item, coordination }))).toContain("disabled");
+    // Stop shares the coordinator; its dialog flow is covered in personal-medication-dialogs.test.tsx.
     hooks.slots = []; hooks.cursor = 0; expect(renderToStaticMarkup(MedicationStopForm({ item, coordination }))).toContain("disabled");
   });
   it("STOPPED shows only retained ascending clock content and Thai history wording", () => {
@@ -99,34 +100,6 @@ describe("daily schedule editor interactions", () => {
     hooks.cursor = 0; const after = PersonalMedicationWorkspace({ active: empty, stopped: empty, selected: { ...item, updatedAt: "2026-10-03T00:00:00.001Z" } });
     expect(elements(before).some((element) => element.key === `${item.id}:${item.updatedAt}`)).toBe(true);
     expect(elements(after).some((element) => element.key === `${item.id}:2026-10-03T00:00:00.001Z`)).toBe(true);
-  });
-  it("one local coordinator locks every sibling and requires reload after conflict/unknown outcome", () => {
-    const empty = { items: [], nextCursor: null };
-    const workspace = PersonalMedicationWorkspace({ active: empty, stopped: empty, selected: item });
-    const selectedForms = elements(workspace).find((element) => element.key === `${item.id}:${item.updatedAt}`);
-    if (!selectedForms || typeof selectedForms.type !== "function") throw new Error("Missing selected forms");
-    type SelectedProps = { item: PersonalMedicationDetailDto; onFeedback: (state: PersonalMedicationActionState) => void };
-    const component = selectedForms.type as (props: SelectedProps) => React.JSX.Element;
-    const props = selectedForms.props as unknown as SelectedProps;
-    type Coordination = NonNullable<Parameters<typeof MedicationScheduleEditor>[0]["coordination"]>;
-    function coordination(): Coordination {
-      hooks.cursor = 1; // The outer workspace owns the first local state.
-      const forms = elements(component(props));
-      const editor = forms.find((element) => element.type === MedicationScheduleEditor);
-      if (!editor || !isValidElement<{ coordination: Coordination }>(editor)) throw new Error("Missing coordinator");
-      const result = editor.props.coordination;
-      for (const sibling of forms.filter((element) => element.type === MedicationEditor || element.type === MedicationStopForm)) {
-        expect((sibling.props as unknown as { coordination: Coordination }).coordination).toBe(result);
-      }
-      return result;
-    }
-    expect(coordination().blocked).toBe(false);
-    coordination().onSubmit(); expect(coordination().blocked).toBe(true);
-    coordination().onResult({ status: "ERROR", message: "ตรวจสอบเวลา" }); expect(coordination().blocked).toBe(false);
-    for (const state of [{ status: "CONFLICT" as const }, { status: "ERROR" as const, refreshRequired: true }, { status: "SUCCESS" as const, item, message: "บันทึกเวลาแล้ว" }]) {
-      coordination().onResult(state); expect(coordination().blocked).toBe(true);
-    }
-    expect(hooks.slots[0]).toMatchObject({ status: "SUCCESS", message: "บันทึกเวลาแล้ว" });
   });
   it("reports committed success before returning the action result, independent of form remount", async () => {
     const onResult = vi.fn(); editor({ blocked: false, onSubmit: vi.fn(), onResult });
