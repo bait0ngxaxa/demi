@@ -1,11 +1,16 @@
 "use client";
 
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { dispatchFormDataPreservingInput } from "@/components/ui/mutation-action-state";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useDialogFormDraft } from "@/components/ui/use-dialog-form-draft";
 import type { WorkforceDetail } from "@/modules/workforce/services/workforce-service";
 import {
   initialWorkforceMembershipMutationActionState,
@@ -133,6 +138,9 @@ export function StaffMembershipControls({
   const pending = updateProfession.pending || suspend.pending || restore.pending;
   const locked = pending || session.locked;
   const latest = session.latest;
+  const latestProfession = latest?.kind === "profession" && latest.scope === relationshipId ? latest : null;
+  const [professionSubmissionBaselineId, setProfessionSubmissionBaselineId] = useState(0);
+  const currentProfessionSubmission = latestProfession && latestProfession.id > professionSubmissionBaselineId ? latestProfession : null;
   const latestSuspend = latest?.kind === "suspend" && latest.scope === relationshipId ? latest : null;
   const suspendOutcome =
     !latestSuspend || latestSuspend.status === "PENDING"
@@ -142,6 +150,46 @@ export function StaffMembershipControls({
         : latestSuspend.status === "SUCCESS"
           ? "success"
           : "error";
+  const [professionDialogOpen, setProfessionDialogOpen] = useState(false);
+  const [professionSnapshot, setProfessionSnapshot] = useState<string | null>(null);
+  const professionFormId = useId();
+  const professionRef = useRef<HTMLSelectElement>(null);
+  const professionTriggerRef = useRef<HTMLButtonElement>(null);
+  const professionCancelRef = useRef<HTMLButtonElement>(null);
+  const professionSubmissionFlightRef = useRef(false);
+  const professionDialogSucceeded = professionDialogOpen && currentProfessionSubmission?.status === "SUCCESS";
+  const visibleProfessionDialogOpen = professionDialogOpen && !professionDialogSucceeded;
+  const { formRef: professionFormRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleProfessionDialogOpen);
+
+  function handleProfessionSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (locked || professionSubmissionFlightRef.current) {
+      event.preventDefault();
+      return;
+    }
+    setProfessionSubmissionBaselineId(session.latest?.id ?? 0);
+    professionSubmissionFlightRef.current = true;
+    dispatchFormDataPreservingInput(event, updateProfession.action);
+  }
+
+  useEffect(() => {
+    if (
+      !professionSubmissionFlightRef.current ||
+      !currentProfessionSubmission ||
+      currentProfessionSubmission.status === "PENDING"
+    ) {
+      return;
+    }
+
+    professionSubmissionFlightRef.current = false;
+    if (currentProfessionSubmission.status === "SUCCESS") clearDraft();
+  }, [clearDraft, currentProfessionSubmission]);
+
+  const closeProfessionDialog = (): void => {
+    if (!pending) {
+      if (!preserveDraft()) setProfessionSnapshot(null);
+      setProfessionDialogOpen(false);
+    }
+  };
 
   const ownerControls = (
     <HospitalOwnerGovernanceControls
@@ -197,38 +245,85 @@ export function StaffMembershipControls({
     <div className="space-y-6">
       {ownerControls}
       <Panel>
-        <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการความสัมพันธ์บุคลากร</h2>
+        <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="staff-membership-controls-heading" tabIndex={-1}>การจัดการความสัมพันธ์บุคลากร</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
           การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
         </p>
 
         <UnknownOutcomeAlert
-          active={session.unconfirmed && latest?.kind !== "suspend"}
+          active={session.unconfirmed && latest?.kind !== "suspend" && !(professionDialogOpen && latest?.kind === "profession")}
           className="mt-4"
           recovery={{ kind: "reload" }}
         />
         {actions.updateProfession ? (
-          <form action={updateProfession.action} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-            <input name="relationshipId" type="hidden" value={relationshipId} />
-            <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
-            <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
-            <label className="block max-w-sm flex-1 space-y-2 text-sm font-semibold" htmlFor="profession">
-              <span>วิชาชีพ</span>
-              <Select defaultValue={profession ?? ""} id="profession" name="profession" required>
-                <option disabled value="">
-                  เลือกวิชาชีพ
-                </option>
-                {Object.entries(professionLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </label>
-            <Button disabled={locked} loading={updateProfession.pending} size="compact" type="submit">
-              {updateProfession.pending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
-            </Button>
-          </form>
+          <div className="mt-5 border-t border-border pt-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-text-muted">วิชาชีพ</p>
+                <p className="mt-1 text-base text-text">{profession ? professionLabels[profession] : "ยังไม่ได้ระบุวิชาชีพ"}</p>
+              </div>
+              <Button
+                disabled={locked}
+                onClick={() => {
+                  setProfessionSubmissionBaselineId(session.latest?.id ?? 0);
+                  if (professionSnapshot === null || currentProfessionSubmission?.status === "SUCCESS") setProfessionSnapshot(expectedUpdatedAt);
+                  setProfessionDialogOpen(true);
+                }}
+                ref={professionTriggerRef}
+                size="compact"
+                type="button"
+                variant="secondary"
+              >
+                แก้ไขวิชาชีพ
+              </Button>
+            </div>
+            {visibleProfessionDialogOpen ? (
+              <ModalDialog
+                description="เปลี่ยนเฉพาะวิชาชีพของความสัมพันธ์บุคลากรกับโรงพยาบาลนี้"
+                dismissible={!updateProfession.pending}
+                footer={
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <Button ref={professionCancelRef} className="w-full sm:w-auto" disabled={updateProfession.pending} onClick={closeProfessionDialog} variant="secondary">
+                      ยกเลิก
+                    </Button>
+                    <Button className="w-full sm:w-auto" disabled={locked} form={professionFormId} loading={updateProfession.pending} size="compact" type="submit">
+                      {updateProfession.pending ? "กำลังบันทึก..." : "บันทึกวิชาชีพ"}
+                    </Button>
+                  </div>
+                }
+                initialFocusRef={professionRef}
+                onRequestClose={closeProfessionDialog}
+                returnFocusTarget={() => professionTriggerRef.current ?? document.getElementById("staff-membership-controls-heading") ?? document.querySelector<HTMLElement>("main h1")}
+                size="compact"
+                title="แก้ไขวิชาชีพ"
+              >
+                <form action={updateProfession.action} id={professionFormId} onSubmit={handleProfessionSubmit} ref={professionFormRef}>
+                  <input name="relationshipId" type="hidden" value={relationshipId} />
+                  <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
+                  <input name="expectedUpdatedAt" type="hidden" value={professionSnapshot ?? expectedUpdatedAt} />
+                  <label className="block space-y-2 text-sm font-semibold" htmlFor="profession">
+                    <span>วิชาชีพ</span>
+                    <Select defaultValue={profession ?? ""} disabled={locked} id="profession" name="profession" ref={professionRef} required>
+                      <option disabled value="">
+                        เลือกวิชาชีพ
+                      </option>
+                      {Object.entries(professionLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                </form>
+                {currentProfessionSubmission && currentProfessionSubmission.status !== "PENDING" && currentProfessionSubmission.status !== "SUCCESS" && currentProfessionSubmission.status !== "UNCONFIRMED" && currentProfessionSubmission.message ? (
+                  <Alert className="mt-3" role="alert" variant={currentProfessionSubmission.status === "CONFLICT" ? "warning" : "danger"}>
+                    {currentProfessionSubmission.message}
+                  </Alert>
+                ) : null}
+                <UnknownOutcomeAlert active={currentProfessionSubmission?.status === "UNCONFIRMED"} className="mt-3" recovery={{ kind: "reload" }} />
+              </ModalDialog>
+            ) : null}
+          </div>
         ) : null}
 
         {actions.suspend ? (

@@ -1,8 +1,13 @@
 "use client";
 
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { submitPreservingInput } from "@/components/ui/mutation-action-state";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { dispatchFormDataPreservingInput } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useDialogFormDraft } from "@/components/ui/use-dialog-form-draft";
 import {
   initialWorkforceReleaseActionState,
   type WorkforceReleaseActionState,
@@ -38,8 +43,15 @@ function classifyRelease(state: WorkforceReleaseActionState): MutationVerdict {
   }
 }
 
-export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, updatedAt }: {
-  relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string;
+type ReleasePayload = { relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
+
+export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, updatedAt, resourceName, hospitalName }: {
+  relationshipId: string;
+  hospitalId: string;
+  kind: "osm" | "staff";
+  updatedAt: string;
+  resourceName: string;
+  hospitalName: string;
 }): React.JSX.Element {
   // The Server Action revalidates the roster itself, and a release is terminal, so it is never refreshed or repeated.
   const session = useScopedMutationSession<WorkforceReleaseActionState>({ scope: relationshipId, lockOnSuccess: true });
@@ -53,26 +65,108 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
   });
   const latest = session.latest?.scope === relationshipId ? session.latest : null;
   const released = latest?.status === "SUCCESS";
-  const inlineMessage =
-    latest?.status === "SUCCESS"
-      ? latest.state?.message ?? null
-      : latest?.status === "CONFLICT" || latest?.status === "FORBIDDEN" || latest?.status === "REJECTED"
-        ? latest.message
-        : null;
+  const failure = latest && (latest.status === "CONFLICT" || latest.status === "FORBIDDEN" || latest.status === "REJECTED")
+    ? latest.message
+    : null;
   const locked = pending || session.locked;
-  return <details className="rounded-panel border border-border bg-surface p-5">
-    <summary className="min-h-11 cursor-pointer content-center font-semibold text-danger">นำออกจากระบบ</summary>
-    <p className="mt-3 text-sm leading-6 text-text">สิทธิ์ในโรงพยาบาลนี้จะสิ้นสุดทันที {kind === "osm" ? "การมอบหมายผู้ป่วยที่ค้างอยู่จะสิ้นสุด " : null}และลิงก์เปิดใช้งาน / ตั้งรหัสผ่านใหม่ที่ค้างอยู่จะถูกเพิกถอน ประวัติทั้งหมดจะเก็บไว้ การนำออกนี้ย้อนกลับไม่ได้ หากต้องการให้ทำงานอีกครั้งต้องเพิ่มใหม่ตามขั้นตอนปกติ</p>
-    <form action={action} className="mt-4 space-y-4" onSubmit={submitPreservingInput(action)}>
-      <input name="relationshipId" type="hidden" value={relationshipId} />
-      <input name="targetHospitalId" type="hidden" value={hospitalId} />
-      <input name="kind" type="hidden" value={kind} />
-      <input name="expectedUpdatedAt" type="hidden" value={updatedAt} />
-      <label htmlFor="release-confirmation" className="block text-sm font-semibold text-text">พิมพ์ “นำออกจากระบบ” เพื่อยืนยัน</label>
-      <input id="release-confirmation" name="confirmation" required disabled={locked} className="min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" />
-      {inlineMessage ? <p role={released ? "status" : "alert"} className="text-sm text-text">{inlineMessage}</p> : null}
-      <UnknownOutcomeAlert active={session.unconfirmed} recovery={{ kind: "reload" }} />
-      <Button disabled={locked} loading={pending} type="submit" variant="danger">{pending ? "กำลังนำออก…" : "ยืนยันนำออกจากระบบถาวร"}</Button>
-    </form>
-  </details>;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogPayload, setDialogPayload] = useState<ReleasePayload | null>(null);
+  const formId = useId();
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const [submissionBaselineId, setSubmissionBaselineId] = useState(0);
+  const currentSubmission = latest && latest.id > submissionBaselineId ? latest : null;
+  const confirmedCurrentRelease = currentSubmission?.status === "SUCCESS";
+  const visibleDialogOpen = dialogOpen && !confirmedCurrentRelease;
+  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleDialogOpen);
+
+  useEffect(() => {
+    if (confirmedCurrentRelease) clearDraft();
+  }, [clearDraft, confirmedCurrentRelease]);
+
+  function openDialog(): void {
+    setSubmissionBaselineId(session.latest?.id ?? 0);
+    if (dialogPayload === null) setDialogPayload({ relationshipId, hospitalId, kind, updatedAt });
+    setDialogOpen(true);
+  }
+
+  function closeDialog(): void {
+    if (!pending) {
+      if (!preserveDraft()) setDialogPayload(null);
+      setDialogOpen(false);
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (locked) {
+      event.preventDefault();
+      return;
+    }
+    setSubmissionBaselineId(session.latest?.id ?? 0);
+    dispatchFormDataPreservingInput(event, action);
+  }
+
+  return (
+    <div className="rounded-panel border border-border bg-surface p-5">
+      {released ? (
+        <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
+          {latest.state?.message ?? "นำความสัมพันธ์ออกจากระบบแล้ว"}
+        </p>
+      ) : (
+        <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
+          นำออกจากระบบ
+        </Button>
+      )}
+      {visibleDialogOpen ? (
+        <ModalDialog
+          description={
+            <>
+              การนำ {resourceName} ออกจาก {hospitalName} จะสิ้นสุดสิทธิ์ในโรงพยาบาลนี้ทันที
+              {kind === "osm" ? " การมอบหมายผู้ป่วยที่ค้างอยู่จะสิ้นสุดด้วย" : ""}
+              {" "}ลิงก์เปิดใช้งานและตั้งรหัสผ่านใหม่ที่ค้างอยู่จะถูกเพิกถอน ประวัติจะยังเก็บไว้ และการนำออกนี้ย้อนกลับไม่ได้ หากต้องการให้ทำงานอีกครั้งต้องเพิ่มใหม่ตามขั้นตอนปกติ
+            </>
+          }
+          dismissible={!pending}
+          footer={
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <Button ref={cancelButtonRef} className="w-full sm:w-auto" disabled={pending} onClick={closeDialog} variant="secondary">
+                ยกเลิก
+              </Button>
+              <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
+                {pending ? "กำลังนำออก…" : "ยืนยันนำออกจากระบบถาวร"}
+              </Button>
+            </div>
+          }
+          initialFocusRef={cancelButtonRef}
+          onRequestClose={closeDialog}
+          returnFocusTarget={() => released ? statusRef.current : triggerRef.current ?? document.querySelector<HTMLElement>("main h1")}
+          size="default"
+          title={`นำความสัมพันธ์ของ ${resourceName} ออกจากระบบ`}
+        >
+          <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
+            <input name="relationshipId" type="hidden" value={dialogPayload?.relationshipId ?? relationshipId} />
+            <input name="targetHospitalId" type="hidden" value={dialogPayload?.hospitalId ?? hospitalId} />
+            <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />
+            <input name="expectedUpdatedAt" type="hidden" value={dialogPayload?.updatedAt ?? updatedAt} />
+            <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="release-confirmation">
+              <span>พิมพ์ “นำออกจากระบบ” เพื่อยืนยัน</span>
+              <input
+                autoComplete="off"
+                className="min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                disabled={locked}
+                id="release-confirmation"
+                name="confirmation"
+                required
+              />
+            </label>
+          </form>
+          {failure ? <Alert className="mt-3" role="alert" variant={latest?.status === "CONFLICT" ? "warning" : "danger"}>{failure}</Alert> : null}
+          <UnknownOutcomeAlert active={session.unconfirmed} className="mt-3" recovery={{ kind: "reload" }} />
+        </ModalDialog>
+      ) : null}
+      {!visibleDialogOpen && failure ? <Alert className="mt-3" role="alert" variant={latest?.status === "CONFLICT" ? "warning" : "danger"}>{failure}</Alert> : null}
+      <UnknownOutcomeAlert active={session.unconfirmed && !visibleDialogOpen} className="mt-3" recovery={{ kind: "reload" }} />
+    </div>
+  );
 }

@@ -97,7 +97,16 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
         />
       ) : null}
 
-      {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? <WorkforceReleaseControl relationshipId={detail.relationshipId} hospitalId={detail.hospital.id} kind={detail.kind} updatedAt={detail.relationshipUpdatedAt.toISOString()} /> : null}
+      {detail.viewerScope === "OWNER" && detail.relationshipStatus !== "ENDED" ? (
+        <WorkforceReleaseControl
+          hospitalId={detail.hospital.id}
+          hospitalName={detail.hospital.name}
+          kind={detail.kind}
+          relationshipId={detail.relationshipId}
+          resourceName={detail.displayName}
+          updatedAt={detail.relationshipUpdatedAt.toISOString()}
+        />
+      ) : null}
     </>
   );
 }

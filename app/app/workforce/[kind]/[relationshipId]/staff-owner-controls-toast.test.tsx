@@ -2,6 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -105,6 +106,16 @@ function render(overrides: Partial<Props> = {}): void {
   act(() => root.render(createElement(StaffMembershipControls, currentProps)));
 }
 
+function submitProfession(): void {
+  let dialog = container.querySelector("dialog");
+  if (!dialog) {
+    flushSync(() => findButton(container, "แก้ไขวิชาชีพ").click());
+    dialog = container.querySelector("dialog");
+  }
+  if (!dialog) throw new Error("Missing profession edit dialog");
+  act(() => submitForm(dialog, "บันทึกวิชาชีพ"));
+}
+
 function membership(
   overrides: Partial<Extract<WorkforceMembershipMutationActionState, { status: "SUCCESS" }>["result"]> = {},
 ): WorkforceMembershipMutationActionState {
@@ -147,8 +158,8 @@ function noToast(): void {
 const triggers = {
   profession: {
     action: mocks.profession,
-    label: "บันทึกวิชาชีพ",
-    run: (): void => act(() => submitForm(container, "บันทึกวิชาชีพ")),
+    label: "แก้ไขวิชาชีพ",
+    run: (): void => act(() => submitProfession()),
     success: () => membership(),
     toast: "บันทึกวิชาชีพแล้ว",
   },
@@ -177,6 +188,26 @@ type TriggerName = keyof typeof triggers;
 const names = Object.keys(triggers) as TriggerName[];
 
 describe("Staff membership controls Toasts", () => {
+  it("shows the current profession, opens a prefilled edit dialog, and cancels without mutation", () => {
+    render();
+    expect(container.textContent).toContain("พยาบาล");
+    expect(container.querySelector("select[name='profession']")).toBeNull();
+    const trigger = findButton(container, "แก้ไขวิชาชีพ");
+
+    act(() => trigger.click());
+    const dialog = container.querySelector("dialog");
+    const select = dialog?.querySelector<HTMLSelectElement>("select[name='profession']");
+    if (!dialog || !select) throw new Error("Missing profession edit dialog");
+    expect(select.value).toBe("NURSE");
+    expect(document.activeElement).toBe(select);
+    expect(dialog.querySelectorAll("form")).toHaveLength(1);
+
+    act(() => findButton(dialog, "ยกเลิก").click());
+
+    expect(mocks.profession).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it.each(names)("%s: emits one success Toast only after confirmed success and refreshes once", async (name) => {
     const trigger = triggers[name];
     const pending = deferred<WorkforceMembershipMutationActionState>();
@@ -209,7 +240,7 @@ describe("Staff membership controls Toasts", () => {
   it("keeps Toasts free of identifiers and versions", async () => {
     mocks.profession.mockResolvedValueOnce(membership());
     render();
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
 
     const serialized = JSON.stringify(toastCalls(spies()));
     expect(serialized).not.toContain(RELATIONSHIP_ID);
@@ -281,7 +312,7 @@ describe("Staff membership controls Toasts", () => {
     for (const other of names) {
       expect(findButton(container, triggers[other].label).disabled).toBe(true);
     }
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    if (name === "profession") submitProfession();
     expect(trigger.action).toHaveBeenCalledOnce();
   });
 
@@ -304,7 +335,7 @@ describe("Staff membership controls Toasts", () => {
     mocks.profession.mockResolvedValueOnce(membership({ profession: "DOCTOR" }));
     render();
 
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
     await settle();
 
     noToast();
@@ -329,8 +360,8 @@ describe("Staff membership controls Toasts", () => {
     render();
 
     await act(async () => {
-      submitForm(container, "บันทึกวิชาชีพ");
-      submitForm(container, "บันทึกวิชาชีพ");
+      submitProfession();
+      submitProfession();
       await Promise.resolve();
     });
     await act(async () => {
@@ -350,7 +381,7 @@ describe("Staff membership controls Toasts", () => {
     render();
 
     await act(async () => {
-      submitForm(container, "บันทึกวิชาชีพ");
+      submitProfession();
       await Promise.resolve();
     });
     await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์"));
@@ -366,7 +397,7 @@ describe("Staff membership controls Toasts", () => {
   it("holds the controls until the refreshed version arrives, then accepts the next mutation", async () => {
     mocks.profession.mockResolvedValueOnce(membership());
     render();
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
     await settle();
     expect(findButton(container, "คืนสถานะความสัมพันธ์").disabled).toBe(true);
 
@@ -379,7 +410,7 @@ describe("Staff membership controls Toasts", () => {
   it("does not replay the Toast or refresh on rerender", async () => {
     mocks.profession.mockResolvedValueOnce(membership());
     render();
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
     await settle();
 
     render({ expectedUpdatedAt: V2 });
@@ -413,7 +444,7 @@ describe("Staff membership controls Toasts", () => {
   it("Profession SUCCESS then Suspend CONFLICT: the old success neither refreshes nor displays again", async () => {
     mocks.profession.mockResolvedValueOnce(membership());
     render();
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
     await settle();
     render({ expectedUpdatedAt: V2 });
 
@@ -430,7 +461,7 @@ describe("Staff membership controls Toasts", () => {
   it("earlier error does not appear after a later success", async () => {
     mocks.profession.mockResolvedValueOnce(refusal("CONFLICT"));
     render();
-    await act(async () => submitForm(container, "บันทึกวิชาชีพ"));
+    await act(async () => submitProfession());
     await settle();
     expect(container.textContent).toContain("ผลลัพธ์ CONFLICT จากระบบ");
 
@@ -448,7 +479,7 @@ describe("Staff membership controls Toasts", () => {
     mocks.profession.mockReturnValueOnce(pending.promise);
     render();
     await act(async () => {
-      submitForm(container, "บันทึกวิชาชีพ");
+      submitProfession();
       await Promise.resolve();
     });
 
@@ -469,7 +500,7 @@ describe("Staff membership controls Toasts", () => {
     mocks.profession.mockReturnValueOnce(pending.promise);
     render();
     await act(async () => {
-      submitForm(container, "บันทึกวิชาชีพ");
+      submitProfession();
       await Promise.resolve();
     });
 
@@ -486,7 +517,10 @@ describe("Staff membership controls Toasts", () => {
 
   it("keeps form fields other than the submitted ones unchanged and never disables the account", () => {
     render();
-    expect(formOf(container, "บันทึกวิชาชีพ").querySelector('input[name="targetHospitalId"]')).toBeTruthy();
+    act(() => findButton(container, "แก้ไขวิชาชีพ").click());
+    const dialog = container.querySelector("dialog");
+    if (!dialog) throw new Error("Missing profession edit dialog");
+    expect(formOf(dialog, "บันทึกวิชาชีพ").querySelector('input[name="targetHospitalId"]')).toBeTruthy();
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { flushSync } from "react-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -277,6 +278,8 @@ describe("Workforce release control Toasts", () => {
           hospitalId: HOSPITAL_ID,
           kind: "osm",
           updatedAt: V1,
+          resourceName: "อสม. สมพร",
+          hospitalName: "โรงพยาบาลชุมชน",
         }),
       ),
     );
@@ -293,23 +296,59 @@ describe("Workforce release control Toasts", () => {
   }
 
   function confirmationInput(): HTMLInputElement {
-    const input = container.querySelector<HTMLInputElement>("#release-confirmation");
+    const dialog = openReleaseDialog();
+    const input = dialog?.querySelector<HTMLInputElement>("#release-confirmation");
     if (!input) throw new Error("Missing confirmation input");
     return input;
   }
 
+  function openReleaseDialog(): HTMLDialogElement | null {
+    let dialog = container.querySelector("dialog");
+    if (dialog) return dialog;
+    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === "นำออกจากระบบ");
+    if (!trigger || trigger.disabled) return null;
+    flushSync(() => trigger.click());
+    dialog = container.querySelector("dialog");
+    return dialog;
+  }
+
   async function submitRelease(): Promise<void> {
-    await act(async () => submitForm(container, "ยืนยันนำออกจากระบบถาวร"));
+    const dialog = openReleaseDialog();
+    if (!dialog) return;
+    await act(async () => submitForm(dialog, "ยืนยันนำออกจากระบบถาวร"));
     await settle();
   }
 
-  it("announces a confirmed release once, keeps the inline result, locks the form, and issues no client refresh", async () => {
+  it("opens a focused destructive dialog and cancel returns focus without mutation", () => {
+    render();
+    const trigger = findButton(container, "นำออกจากระบบ");
+    act(() => trigger.click());
+    const dialog = container.querySelector("dialog");
+    if (!dialog) throw new Error("Missing workforce release dialog");
+
+    expect(dialog.textContent).toContain("อสม. สมพร");
+    expect(dialog.textContent).toContain("โรงพยาบาลชุมชน");
+    expect(dialog.textContent).toContain("ย้อนกลับไม่ได้");
+    expect(dialog.querySelectorAll("form")).toHaveLength(1);
+    expect(document.activeElement).toBe(findButton(dialog, "ยกเลิก"));
+    expect(mocks.release).not.toHaveBeenCalled();
+
+    act(() => findButton(dialog, "ยกเลิก").click());
+
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(mocks.release).not.toHaveBeenCalled();
+  });
+
+  it("announces a confirmed release once, closes into a terminal status, and issues no client refresh", async () => {
     const pending = deferred<WorkforceReleaseActionState>();
     mocks.release.mockReturnValueOnce(pending.promise);
     render();
+    const dialog = openReleaseDialog();
+    if (!dialog) throw new Error("Missing workforce release dialog");
 
     await act(async () => {
-      submitForm(container, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
       await Promise.resolve();
     });
     expect(mocks.success).not.toHaveBeenCalled();
@@ -321,8 +360,8 @@ describe("Workforce release control Toasts", () => {
 
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("นำความสัมพันธ์ออกจากระบบแล้ว");
     expect(container.textContent).toContain("นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่");
-    expect(confirmationInput().disabled).toBe(true);
-    expect(findButton(container, "ยืนยันนำออกจากระบบถาวร").disabled).toBe(true);
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "นำออกจากระบบ")).toBe(false);
     expect(mocks.refresh).not.toHaveBeenCalled();
     const formData = mocks.release.mock.calls[0]?.[1];
     expect(formData?.get("expectedUpdatedAt")).toBe(V1);
@@ -427,8 +466,10 @@ describe("Workforce release control Toasts", () => {
     render();
 
     await act(async () => {
-      submitForm(container, "ยืนยันนำออกจากระบบถาวร");
-      submitForm(container, "ยืนยันนำออกจากระบบถาวร");
+      const dialog = openReleaseDialog();
+      if (!dialog) throw new Error("Missing workforce release dialog");
+      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
       await Promise.resolve();
     });
     await act(async () => {
@@ -445,8 +486,10 @@ describe("Workforce release control Toasts", () => {
     const pending = deferred<WorkforceReleaseActionState>();
     mocks.release.mockReturnValueOnce(pending.promise);
     render();
+    const dialog = openReleaseDialog();
+    if (!dialog) throw new Error("Missing workforce release dialog");
     await act(async () => {
-      submitForm(container, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
       await Promise.resolve();
     });
 
@@ -465,8 +508,10 @@ describe("Workforce release control Toasts", () => {
     const pending = deferred<WorkforceReleaseActionState>();
     mocks.release.mockReturnValueOnce(pending.promise);
     render();
+    const dialog = openReleaseDialog();
+    if (!dialog) throw new Error("Missing workforce release dialog");
     await act(async () => {
-      submitForm(container, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
       await Promise.resolve();
     });
 
@@ -484,7 +529,9 @@ describe("Workforce release control Toasts", () => {
     mocks.release.mockResolvedValueOnce(released);
     render();
     await act(async () => {
-      confirmationInput().value = "นำออกจากระบบ";
+      const input = confirmationInput();
+      input.value = "นำออกจากระบบ";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await submitRelease();
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 type EditableField = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 
@@ -68,7 +68,7 @@ export function useDialogFormDraft(open: boolean): {
     }
   }, [open, restoreRevision]);
 
-  function preserveDraft(): boolean {
+  const preserveDraft = useCallback((): boolean => {
     const form = formRef.current;
     if (!form) {
       return false;
@@ -78,13 +78,13 @@ export function useDialogFormDraft(open: boolean): {
     const hasDraft = draftRef.current !== null || !sameDraft(current, baselineRef.current);
     draftRef.current = hasDraft ? current : null;
     return hasDraft;
-  }
+  }, []);
 
-  function clearDraft(): void {
+  const clearDraft = useCallback((): void => {
     draftRef.current = null;
     baselineRef.current = null;
     restoredSecondPassRef.current = false;
-  }
+  }, []);
 
   return { formRef, preserveDraft, clearDraft };
 }

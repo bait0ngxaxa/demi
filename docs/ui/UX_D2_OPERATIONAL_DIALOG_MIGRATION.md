@@ -15,6 +15,14 @@
 - Baseline `npm run lint`: ผ่าน
 - ยังไม่ได้ทำ browser QA; jsdom ไม่ยืนยัน native focus containment, layout, safe area หรือ virtual keyboard
 
+## ความคืบหน้าตาม slice
+
+- UX-D2.0 inventory: เสร็จใน commit `da2bcf9c`.
+- UX-D2.1 เครือข่ายโรงพยาบาลและคำเชิญผู้ดูแล: เสร็จใน commit `ef31844d`; ตรวจ lint พบกฎ React เพิ่มเติม จึงแก้การปิด dialog และ submit handler ใน corrective commit `e18a3b3` โดยคง native form validation, submitter และการเก็บ draft ไว้.
+- UX-D2.2 บุคลากรและบัญชีผู้ใช้: เปลี่ยนแก้วิชาชีพและเบอร์ติดต่อเป็น Edit Dialog; เปลี่ยนนำความสัมพันธ์ออก, ลบรายการ และ takeover เป็น destructive/security dialog; คงการระงับและคืนสถานะไว้กับ confirmation หรือ submit เดิมตาม semantics.
+- ผลทดสอบหลัง corrective change: focused tests เครือข่าย/คำเชิญและ workforce/user ผ่าน 8 files / 99 tests; targeted ESLint สำหรับไฟล์ที่เปลี่ยนผ่าน; `npm run typecheck` ผ่าน.
+- ยังไม่ได้ตรวจ browser layout, native focus containment, safe area และ virtual keyboard; จะบันทึกผล closeout หลังตรวจความพร้อมของ browser environment.
+
 ## Inventory
 
 ระดับความเสี่ยงในตารางประเมินผลกระทบของ interaction และความผิดพลาดที่ผู้ใช้เห็น ไม่ได้เปลี่ยนการประเมินสิทธิ์ฝั่ง server

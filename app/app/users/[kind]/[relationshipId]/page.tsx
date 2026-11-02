@@ -66,10 +66,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function ActionSection({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+function ActionSection({ title, children, id }: { title: string; children: React.ReactNode; id?: string }): React.JSX.Element {
   return (
     <section className="space-y-3">
-      <h3 className="text-lg font-semibold text-text">{title}</h3>
+      <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id={id} tabIndex={id ? -1 : undefined}>{title}</h3>
       {children}
     </section>
   );
@@ -211,11 +211,13 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
             </Panel>
           </ActionSection>
 
-          <ActionSection title="บัญชีนี้ไม่ใช่เจ้าของจริง">
+          <ActionSection id="user-takeover-heading" title="บัญชีนี้ไม่ใช่เจ้าของจริง">
             {detail.takeoverBlock === null || lockRetry ? (
               <UserTakeoverControl
                 hospitalId={detail.hospital.id}
+                hospitalName={detail.hospital.name}
                 kind={detail.kind}
+                resourceName={detail.displayName}
                 relationshipId={detail.relationshipId}
                 retry={lockRetry}
                 updatedAt={detail.relationshipUpdatedAt}
@@ -225,12 +227,13 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
             )}
           </ActionSection>
 
-          <ActionSection title="ลบรายการ">
+          <ActionSection id="user-delete-heading" title="ลบรายการ">
             {detail.deletionBlockers.length === 0 ? (
               <UserRecordDeleteControl
                 directoryHref={directoryHref}
                 hospitalId={detail.hospital.id}
                 kind={detail.kind}
+                resourceName={detail.displayName}
                 relationshipId={detail.relationshipId}
                 updatedAt={detail.relationshipUpdatedAt}
               />

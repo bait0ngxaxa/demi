@@ -55,14 +55,15 @@ export function findButton(container: ParentNode, label: string): HTMLButtonElem
 }
 
 export function formOf(container: ParentNode, buttonLabel: string): HTMLFormElement {
-  const form = findButton(container, buttonLabel).closest("form");
+  const button = findButton(container, buttonLabel);
+  const form = button.form ?? button.closest("form");
   if (!form) throw new Error(`Missing form for button: ${buttonLabel}`);
   return form;
 }
 
 export function submitForm(container: ParentNode, buttonLabel: string): void {
   const button = findButton(container, buttonLabel);
-  const form = button.closest("form");
+  const form = button.form ?? button.closest("form");
   if (!form) throw new Error(`Missing form for button: ${buttonLabel}`);
   form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true, submitter: button }));
 }
