@@ -651,7 +651,7 @@ export function ProgramRoundDetailView({
                 ขั้นตอนที่ {step ? stepIndex + 1 : stepCount}/{stepCount}
               </p>
               <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">
+                <h2 className="text-xl font-semibold tracking-[-0.02em] text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="program-round-current-step-heading" tabIndex={-1}>
                   {step ? step.label : `สรุปและจบบริการครั้งที่ ${detail.roundNumber}`}
                 </h2>
                 {step ? <StatusBadge variant={stepBadgeVariant(step)}>{roundStepStatusLabel(step)}</StatusBadge> : null}

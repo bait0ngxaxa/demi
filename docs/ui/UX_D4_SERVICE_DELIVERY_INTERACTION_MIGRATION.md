@@ -119,3 +119,27 @@
 | Browser/device/mobile verification | **ยังไม่ตรวจ**; mobile dimensions และ software keyboard ไม่ได้ทดสอบใน jsdom |
 
 ไฟล์ D4.2: patient request controls/workspace, hospital service catalog controls และ component interaction tests. ไม่มีการเปลี่ยน request creation flow หรือ service/action contract
+
+## UX-D4.3 — ผลการตรวจและ harden Program Round Operations
+
+สถานะ: **ดำเนินการแล้ว** ที่ commit UX-D4.3; คงรูปแบบหน้า/inline เดิมและปรับ lifecycle ของ controls ที่มีอยู่
+
+- R-1 คง `RoundPlanEditor` ใน `ModalDialog` เดิม; เพิ่ม synchronous single-flight lock, ปิดการส่ง/ปิดหน้าต่างระหว่าง pending หรือ unknown, กันตัวเลือกที่เปลี่ยนเป็น unavailable ระหว่างเปิด dialog และคงตัวเลือก/ชื่อ CUSTOM เมื่อยกเลิกแล้วเปิดใหม่. Success จึง reset draft และปิด dialog; ถ้าปุ่มเปิดซ้ำหาย focus กลับปุ่มเพิ่มรายการที่คงอยู่
+- R-3 คง `ConfirmableActionForm` เดิมสำหรับตัดเฉพาะรายการ TODO; เมื่อแถวหาย focus กลับ heading ของ step ปัจจุบัน. ระหว่าง audit พบ recovery button อยู่ใน disabled fieldset ทำให้ resend หลัง unknown ใช้ไม่ได้ จึงเพิ่มช่อง `recovery` ใน `ConfirmableActionForm` ให้ recovery อยู่พ้น fieldset และทำงานได้หลังผู้ใช้ปิดหน้าต่างผลไม่ชัดเจน; ไม่มี dialog/form ซ้อนและใช้ original FormData จาก `useMutationActionState`
+- R-5 คง Skip dialog; lock ปิดด้วย Escape/ปุ่มปิด/ยกเลิกทั้ง pending และ unknown. เหตุผล/หมายเหตุ/`planItemId`/round target อยู่ใน dialog ระหว่าง recovery, ordinary submit ถูกปิด, และผู้ใช้ส่ง original payload ซ้ำได้จาก recovery ที่ยัง reachable. Cancel ตอนยังไม่ส่งไม่ mutation และคืน focus ไป heading ปัจจุบัน
+- R-6 `UnskipStepControl` ยังคง inline โดยไม่เพิ่ม confirmation สำหรับการย้อนสถานะที่ reversible; เพิ่ม synchronous single-flight lock และคง resend FormData เดิมเมื่อ unknown. `planItemId` และ target ไม่เปลี่ยน
+- R-7 คง `ConfirmableActionForm` หนึ่ง dialog; review แสดงจำนวนและชื่อรายการ DONE/SKIPPED/TODO พร้อมบอกว่า TODO ที่เหลือรับ system reason, ต้องมีอย่างน้อยหนึ่ง DONE, และไม่ต้องจัดการทุกรายการก่อนจบ. ยังคงกฎแผนไม่ว่าง, completion immutable/read-only และไม่มีข้อบังคับ vital เพิ่มเติม
+- ไม่แก้ Server Action, submission nonce/version, policy, service, persistence หรือ transition ของรอบ; confirmation/recovery ใช้ action state และ exact request identity เดิม
+
+### หลักฐาน D4.3
+
+| ตรวจ | ผลจริง |
+| --- | --- |
+| `npm run test -- app/app/patients/[relationshipId]/programs/[programId]/rounds/[roundNumber] src/modules/patient-program-rounds src/components/ui/confirmable-action-form.test.tsx` | **ผ่าน 9 files / 145 tests** |
+| Regression test ใหม่/ขยายใน `round-plan-editor.test.tsx` | **ผ่าน 14 tests**; ครอบคลุม draft, stale choice, payload/nonce, no mutation on open/cancel, TODO remove focus, skip OTHER + exact-payload recovery/dismissal lock, unskip single-flight, flexible completion summary, completion double-submit และ resend nonce เดิม |
+| `npx eslint` บน ConfirmableActionForm และไฟล์ round ที่เปลี่ยน | **ผ่าน**, exit 0 |
+| `npx tsc --noEmit --incremental false --project .next/ux-d4-tsconfig.json --pretty false` (ไฟล์ D4.3 และ dependency ที่เกี่ยวข้อง) | **ผ่าน**, exit 0; temporary config ถูกลบหลังตรวจ |
+| Authorization, round eligibility/completion และ persistence | **ตรวจผ่านโดย code inspection และ service/action tests**; Server Action/service/policy ไม่เปลี่ยน; ไม่ได้รัน PostgreSQL integration |
+| Browser/device/accessibility | **ยังไม่ตรวจใน browser**; jsdom ตรวจ cancellation, recovery lock, exact payload และ focus target เท่านั้น |
+
+ไฟล์ D4.3: controls ของ round plan/step, `program-round-detail-view.tsx`, shared `ConfirmableActionForm` recovery slot และ regression tests. ไม่เพิ่ม dialog หรือ form ซ้อน และไม่เปลี่ยนกฎ domain

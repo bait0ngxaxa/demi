@@ -23,6 +23,8 @@ type ConfirmationDetails = {
 type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "children" | "onSubmit"> & {
   action: ConfirmableAction;
   children: ReactNode;
+  /** Recovery actions remain interactive when the submitted form controls are locked. */
+  recovery?: ReactNode;
   confirmation: ConfirmationDetails;
   outcome: ConfirmableActionOutcome;
   /** New identity for a confirmed result; stays unchanged when the prior result is unknown. */
@@ -42,6 +44,7 @@ const submissionDispatchErrorMessage = "ไม่สามารถส่งแ�
 export function ConfirmableActionForm({
   action,
   children,
+  recovery,
   className,
   confirmation,
   outcome,
@@ -192,7 +195,8 @@ export function ConfirmableActionForm({
       <fieldset className="m-0 min-w-0 border-0 p-0" disabled={dialogPending || unknownOutcome}>
         {children}
       </fieldset>
-      {unknownOutcome ? (
+      {recovery}
+      {!recovery && unknownOutcome ? (
         <Alert className="mt-4" role="alert" variant="warning">
           {unknownOutcomeMessage}
         </Alert>

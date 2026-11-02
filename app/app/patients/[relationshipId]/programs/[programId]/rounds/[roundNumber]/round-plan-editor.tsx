@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,8 @@ function MutationForm({
   confirmation,
   onStatus,
   nextHref,
+  submitDisabled = false,
+  returnFocusTarget,
 }: {
   mutation: Mutation;
   target: Target;
@@ -58,12 +60,23 @@ function MutationForm({
   confirmation?: string;
   onStatus?: (status: MutationStatus) => void;
   nextHref?: string;
+  submitDisabled?: boolean;
+  returnFocusTarget?: () => HTMLElement | null;
 }): React.JSX.Element {
   const router = useRouter();
+  const submissionLockRef = useRef(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     PatientProgramRoundActionState,
     FormData
-  >(mutation, initialPatientProgramRoundActionState);
+  >(async (previous, data) => {
+    const result = await mutation(previous, data);
+    submissionLockRef.current = false;
+    setSubmissionLocked(false);
+    return result;
+  }, initialPatientProgramRoundActionState);
+
+  const busy = pending || unknownOutcome || submissionLocked;
 
   useEffect(() => {
     if (state.status === "SUCCESS" || (state.status === "ERROR" && state.code === "CONFLICT")) {
@@ -73,29 +86,42 @@ function MutationForm({
   }, [nextHref, router, state]);
 
   useEffect(() => {
-    onStatus?.(pending || unknownOutcome ? "busy" : state.status === "SUCCESS" ? "success" : "idle");
-  }, [onStatus, pending, unknownOutcome, state]);
+    onStatus?.(busy ? "busy" : state.status === "SUCCESS" ? "success" : "idle");
+  }, [busy, onStatus, state]);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (submissionLockRef.current || pending || unknownOutcome || submissionLocked) {
+      event.preventDefault();
+      return;
+    }
+    submissionLockRef.current = true;
+    setSubmissionLocked(true);
+    onStatus?.("busy");
+    submitPreservingInput(action)(event);
+  }
 
   const contents = (
     <>
       <Inputs target={target} submissionNonce={submissionNonce} />
-      <fieldset className="space-y-3" disabled={pending || unknownOutcome}>
+      <fieldset aria-busy={busy} className="space-y-3" disabled={busy}>
         {children}
-        <Button type="submit" variant="secondary" disabled={pending || unknownOutcome} loading={pending}>
+        <Button type="submit" variant="secondary" disabled={busy || submitDisabled} loading={pending}>
           {label}
         </Button>
       </fieldset>
       {state.status === "ERROR" ? <Alert variant="warning">{state.message}</Alert> : null}
-      <UnknownOutcomeAlert
-        active={unknownOutcome}
-        recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }}
-      />
+      {confirmation ? null : (
+        <UnknownOutcomeAlert
+          active={unknownOutcome}
+          recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }}
+        />
+      )}
     </>
   );
 
   if (!confirmation) {
     return (
-      <form action={action} onSubmit={submitPreservingInput(action)} className="space-y-3">
+      <form action={action} onSubmit={handleSubmit} className="space-y-3">
         {contents}
       </form>
     );
@@ -105,6 +131,12 @@ function MutationForm({
     <ConfirmableActionForm
       action={action}
       className="space-y-3"
+      recovery={
+        <UnknownOutcomeAlert
+          active={unknownOutcome}
+          recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }}
+        />
+      }
       confirmation={{
         title: confirmation,
         description: "เพิ่มกลับได้ภายหลัง โดยจะอยู่ท้ายแผน",
@@ -121,6 +153,7 @@ function MutationForm({
       }
       pending={pending}
       resultKey={state}
+      returnFocusTarget={returnFocusTarget}
     >
       {contents}
     </ConfirmableActionForm>
@@ -138,19 +171,43 @@ export function RoundPlanEditor({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState("");
+  const [customTitle, setCustomTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogTriggerRef = useRef<HTMLButtonElement | null>(null);
   const onStatus = useCallback((status: MutationStatus) => {
+    busyRef.current = status === "busy";
     setBusy(status === "busy");
 
     if (status === "success") {
       setOpen(false);
+      setSelected("");
+      setCustomTitle("");
     }
   }, []);
   const recommended = choices.filter((item) => item.recommended);
+  const selectedChoice = choices.find((item) => item.code === selected);
+  const selectedUnavailable = Boolean(selected && (!selectedChoice || selectedChoice.unavailableReason !== null));
+
+  function openDialog(event: MouseEvent<HTMLButtonElement>): void {
+    dialogTriggerRef.current = event.currentTarget;
+    setOpen(true);
+  }
+
+  function closeDialog(): void {
+    if (!busyRef.current) {
+      setOpen(false);
+    }
+  }
+
+  function returnFocusTarget(): HTMLElement | null {
+    return dialogTriggerRef.current?.isConnected ? dialogTriggerRef.current : addButtonRef.current;
+  }
 
   return (
     <div className="space-y-3">
-      <Button type="button" onClick={() => setOpen(true)}>
+      <Button onClick={openDialog} ref={addButtonRef} type="button">
         เพิ่มรายการ
       </Button>
       {recommended.length ? (
@@ -163,9 +220,9 @@ export function RoundPlanEditor({
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => {
+                  onClick={(event) => {
                     setSelected(item.code);
-                    setOpen(true);
+                    openDialog(event);
                   }}
                 >
                   เพิ่มกลับ
@@ -176,14 +233,14 @@ export function RoundPlanEditor({
         </div>
       ) : null}
       {open ? (
-        <ModalDialog title="เพิ่มรายการในแผนครั้งนี้" dismissible={!busy} onRequestClose={() => setOpen(false)}>
+        <ModalDialog title="เพิ่มรายการในแผนครั้งนี้" dismissible={!busy} onRequestClose={closeDialog} returnFocusTarget={returnFocusTarget}>
           <MutationForm
             onStatus={onStatus}
-            key={selected}
             mutation={addRoundPlanItemAction}
             target={target}
             submissionNonce={submissionNonce}
             label="เพิ่มในแผน"
+            submitDisabled={!selectedChoice || selectedUnavailable}
           >
             <label className="block space-y-2 text-sm font-semibold">
               <span>รายการ</span>
@@ -206,9 +263,13 @@ export function RoundPlanEditor({
             {selected === "CUSTOM" ? (
               <label className="block space-y-2 text-sm font-semibold">
                 <span>ชื่อรายการ (ไม่เกิน 120 ตัวอักษร)</span>
-                <input className={inputClassName} name="customTitle" required maxLength={120} />
+                <input className={inputClassName} name="customTitle" onChange={(event) => setCustomTitle(event.currentTarget.value)} required maxLength={120} value={customTitle} />
               </label>
             ) : null}
+            <Button disabled={busy} onClick={closeDialog} type="button" variant="secondary">
+              ยกเลิก
+            </Button>
+            {selectedUnavailable ? <Alert role="alert" variant="warning">รายการที่เลือกไม่พร้อมเพิ่มแล้ว กรุณาเลือกใหม่จากรายการที่ใช้ได้</Alert> : null}
           </MutationForm>
         </ModalDialog>
       ) : null}
@@ -251,6 +312,9 @@ export function PlanItemControl({
     return null;
   }
 
+  const returnFocusTarget = () =>
+    typeof document === "undefined" ? null : document.getElementById("program-round-current-step-heading");
+
   return (
     <div className="mt-4 space-y-4">
       {step.code === "CUSTOM" ? (
@@ -274,6 +338,7 @@ export function PlanItemControl({
           submissionNonce={submissionNonce}
           label="ตัดออก"
           confirmation={`ตัด “${step.label}” ออกจากแผนหรือไม่`}
+          returnFocusTarget={returnFocusTarget}
         >
           <input type="hidden" name="planItemId" value={step.planItemId} />
         </MutationForm>

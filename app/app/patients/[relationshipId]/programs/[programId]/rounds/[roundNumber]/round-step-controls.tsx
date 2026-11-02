@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
 import { inputClassName } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { ROUND_SKIP_REASON_LABELS, type RoundStepState } from "@/modules/patient-program-rounds/domain/round-steps";
 import {
@@ -139,11 +139,37 @@ export function SkipStepControl({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const submissionLockRef = useRef(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
-    skipPatientProgramRoundStepAction,
+    async (previous, formData) => {
+      const result = await skipPatientProgramRoundStepAction(previous, formData);
+      submissionLockRef.current = false;
+      setSubmissionLocked(false);
+      return result;
+    },
     initialPatientProgramRoundActionState,
   );
   useAfterWrite(state, nextHref);
+  const busy = pending || unknownOutcome || submissionLocked;
+  const returnFocusTarget = () =>
+    typeof document === "undefined" ? null : document.getElementById("program-round-current-step-heading");
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (submissionLockRef.current || pending || unknownOutcome || submissionLocked) {
+      event.preventDefault();
+      return;
+    }
+    submissionLockRef.current = true;
+    setSubmissionLocked(true);
+    dispatchFormDataPreservingInput(event, action);
+  }
+
+  function closeDialog(): void {
+    if (!submissionLockRef.current && !pending && !unknownOutcome) {
+      setOpen(false);
+    }
+  }
 
   return (
     <>
@@ -153,15 +179,16 @@ export function SkipStepControl({
       {open ? (
         <ModalDialog
           description="ระบุเหตุผลที่ไม่ได้ทำรายการนี้ในครั้งนี้ รายการที่ข้ามจะแสดงในประวัติและสรุปของครั้งนี้ และบันทึกผลแทนได้จนกว่าจะจบบริการครั้งนี้"
-          dismissible={!pending}
-          onRequestClose={() => setOpen(false)}
+          dismissible={!busy}
+          onRequestClose={closeDialog}
+          returnFocusTarget={returnFocusTarget}
           size="compact"
           title={`ข้าม “${stepLabel}”`}
         >
-          <form action={action} className="space-y-5" onSubmit={submitPreservingInput(action)}>
+          <form action={action} aria-busy={busy} className="space-y-5" onSubmit={handleSubmit}>
             <RoundTargetInputs target={target} />
             <input name="planItemId" type="hidden" value={planItemId} />
-            <fieldset className="space-y-2" disabled={pending || unknownOutcome}>
+            <fieldset className="space-y-2" disabled={busy}>
               <legend className="text-sm font-semibold text-text">เหตุผล</legend>
               {SKIP_REASONS.map(([code, label]) => (
                 <label className="flex min-h-11 items-center gap-3 rounded-control border border-border px-3 text-sm text-text" key={code}>
@@ -181,7 +208,7 @@ export function SkipStepControl({
               <span>รายละเอียด{reason === "OTHER" ? " (ต้องระบุ)" : " (ไม่บังคับ)"}</span>
               <textarea
                 className={`${inputClassName} min-h-24 py-3`}
-                disabled={pending || unknownOutcome}
+                disabled={busy}
                 id={`skip-note-${planItemId}`}
                 maxLength={500}
                 name="note"
@@ -193,10 +220,10 @@ export function SkipStepControl({
             <ActionError state={state} />
             <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
             <div className="flex flex-wrap justify-end gap-3">
-              <Button disabled={pending} onClick={() => setOpen(false)} type="button" variant="secondary">
+              <Button disabled={busy} onClick={closeDialog} type="button" variant="secondary">
                 ยกเลิก
               </Button>
-              <Button disabled={pending || unknownOutcome || !reason} loading={pending} type="submit">
+              <Button disabled={busy || !reason} loading={pending} type="submit">
                 {pending ? "กำลังบันทึก…" : "บันทึกการข้าม"}
               </Button>
             </div>
@@ -209,18 +236,36 @@ export function SkipStepControl({
 
 /** SR-D3: recording the step replaces a skip; this removes the skip without recording. */
 export function UnskipStepControl({ planItemId, target }: { planItemId: string; target: RoundTarget }): React.JSX.Element {
+  const submissionLockRef = useRef(false);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientProgramRoundActionState, FormData>(
-    unskipPatientProgramRoundStepAction,
+    async (previous, formData) => {
+      const result = await unskipPatientProgramRoundStepAction(previous, formData);
+      submissionLockRef.current = false;
+      setSubmissionLocked(false);
+      return result;
+    },
     initialPatientProgramRoundActionState,
   );
   useAfterWrite(state, null);
+  const busy = pending || unknownOutcome || submissionLocked;
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (submissionLockRef.current || pending || unknownOutcome || submissionLocked) {
+      event.preventDefault();
+      return;
+    }
+    submissionLockRef.current = true;
+    setSubmissionLocked(true);
+    dispatchFormDataPreservingInput(event, action);
+  }
 
   return (
-    <form action={action} className="space-y-2">
+    <form action={action} aria-busy={busy} className="space-y-2" onSubmit={handleSubmit}>
       <RoundTargetInputs target={target} />
       <input name="planItemId" type="hidden" value={planItemId} />
-      <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
-        {pending ? "กำลังยกเลิก…" : "ยกเลิกการข้าม"}
+      <Button disabled={busy} loading={pending} size="compact" type="submit" variant="secondary">
+        {busy ? "กำลังยกเลิก…" : "ยกเลิกการข้าม"}
       </Button>
       <ActionError state={state} />
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
@@ -254,10 +299,13 @@ export function CompleteRoundControl({
     <ConfirmableActionForm
       action={action}
       className="space-y-3"
+      recovery={
+        <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
+      }
       confirmation={{
         title: `จบบริการครั้งที่ ${target.roundNumber} หรือไม่`,
         description: "เมื่อจบแล้ว ข้อมูลของครั้งนี้จะเป็นแบบอ่านอย่างเดียว แก้ไข เพิ่ม หรือยกเลิกการข้ามไม่ได้อีก",
-        details: <div className="space-y-3">{(["DONE", "SKIPPED", "TODO"] as const).map((status) => <div key={status}><h3 className="font-semibold">{status === "DONE" ? "ทำแล้ว" : status === "SKIPPED" ? "ข้ามแล้ว" : "ยังไม่ได้ทำเมื่อจบบริการ"} ({steps.filter((step) => step.status === status).length})</h3><ul className="list-disc pl-5">{steps.filter((step) => step.status === status).map((step) => <li key={step.planItemId ?? step.code}>{step.label}</li>)}</ul></div>)}<p>รายการที่ยังไม่ได้ทำจะถูกบันทึกเป็น “ยังไม่ได้ทำเมื่อจบบริการ”</p></div>,
+        details: <div className="space-y-3">{(["DONE", "SKIPPED", "TODO"] as const).map((status) => <div key={status}><h3 className="font-semibold">{status === "DONE" ? "ทำแล้ว" : status === "SKIPPED" ? "ข้ามแล้ว" : "ยังไม่ได้ทำเมื่อจบบริการ"} ({steps.filter((step) => step.status === status).length})</h3><ul className="list-disc pl-5">{steps.filter((step) => step.status === status).map((step) => <li key={step.planItemId ?? step.code}>{step.label}</li>)}</ul></div>)}<p>รายการในแผนที่ยังไม่ได้ทำจะถูกบันทึกเป็น “ยังไม่ได้ทำเมื่อจบบริการ” ต้องมีอย่างน้อยหนึ่งรายการที่ทำแล้วจึงจะจบได้ และไม่จำเป็นต้องจัดการทุกรายการก่อนจบ</p></div>,
         confirmLabel: `จบบริการครั้งที่ ${target.roundNumber}`,
       }}
       outcome={unknownOutcome ? "unknown" : toOutcome(state)}
@@ -266,7 +314,6 @@ export function CompleteRoundControl({
     >
       <RoundTargetInputs target={target} />
       <input name="submissionNonce" type="hidden" value={submissionNonce} />
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       <Button disabled={pending || unknownOutcome} loading={pending} type="submit">
         {pending ? "กำลังบันทึก…" : `จบบริการครั้งที่ ${target.roundNumber}`}
       </Button>
