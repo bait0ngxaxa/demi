@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { Alert } from "@/components/ui/alert";
@@ -73,6 +73,9 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
   const { hospital, availability, invitation, pendingApplication } = props;
   const [result, setResult] = useState<Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }> | null>(null);
   const keepResult = useCallback((next: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }>) => setResult(next), []);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const inviteeNationalIdRef = useRef<HTMLInputElement>(null);
+  const returnFocusTarget = useCallback(() => headingRef.current, []);
   const target = { hospitalId: hospital.id };
   const replacement = availability === "REPLACEMENT";
   const title = replacement ? "เชิญผู้ดูแลโรงพยาบาลแทน" : "เชิญผู้ดูแลโรงพยาบาลคนแรก";
@@ -86,7 +89,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
       <Panel className="min-w-0">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h2 className="text-xl font-semibold tracking-[-0.02em]" id="parent-owner-invitation-heading">{title}</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="parent-owner-invitation-heading" ref={headingRef} tabIndex={-1}>{title}</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               {replacement
                 ? "โรงพยาบาลนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากร อสม. และเครือข่ายของโรงพยาบาลเอง"
@@ -139,6 +142,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                   destructive: true,
                 }}
                 hidden={{ ...target, membershipId: invitation.membershipId }}
+                returnFocusTarget={returnFocusTarget}
                 submitLabel="ยกเลิกคำเชิญ"
                 submitVariant="ghost"
               />
@@ -189,6 +193,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                       destructive: true,
                     }}
                     hidden={target}
+                    returnFocusTarget={returnFocusTarget}
                     submitLabel="ยกเลิกลิงก์"
                     submitVariant="ghost"
                   />
@@ -199,26 +204,24 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
 
 
             {invitation ? (
-              <details>
-                <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-brand-strong">เปลี่ยนผู้ถูกเชิญ</summary>
-                <ChildOwnerInvitationForm
-                  action={changeParentOwnerInviteeAction}
-                  audience="PLATFORM_ADMIN"
-                  className="mt-3"
-                  confirmation={{
-                    title: "เปลี่ยนผู้ถูกเชิญหรือไม่",
-                    description: `คำเชิญและลิงก์ของ ${invitation.inviteeName} จะใช้ไม่ได้ทันที`,
-                    confirmLabel: "เปลี่ยนผู้ถูกเชิญ",
-                    destructive: true,
-                  }}
-                  hidden={{ ...target, submissionNonce: props.submissionNonce }}
-                  idempotent
-                  onSuccess={keepResult}
-                  submitLabel="เปลี่ยนผู้ถูกเชิญ"
-                >
-                  <ChildOwnerInviteeFields idPrefix={`parent-owner-change-${hospital.id}`} />
-                </ChildOwnerInvitationForm>
-              </details>
+              <ChildOwnerInvitationForm
+                action={changeParentOwnerInviteeAction}
+                audience="PLATFORM_ADMIN"
+                hidden={{ ...target, submissionNonce: props.submissionNonce }}
+                idempotent
+                onSuccess={keepResult}
+                taskDialog={{
+                  title: `เปลี่ยนผู้ดูแล ${hospital.name}`,
+                  triggerLabel: "เปลี่ยนผู้ถูกเชิญ",
+                  description: `คำเชิญและลิงก์ของ ${invitation.inviteeName} จะใช้ไม่ได้ทันที`,
+                  destructive: true,
+                  initialFocusRef: inviteeNationalIdRef,
+                  returnFocusTarget,
+                }}
+                submitLabel="เปลี่ยนผู้ถูกเชิญ"
+              >
+                <ChildOwnerInviteeFields idPrefix={`parent-owner-change-${hospital.id}`} nationalIdRef={inviteeNationalIdRef} />
+              </ChildOwnerInvitationForm>
             ) : (
               <ChildOwnerInvitationForm
                 action={inviteParentOwnerAction}
@@ -226,10 +229,19 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                 hidden={{ ...target, submissionNonce: props.submissionNonce }}
                 idempotent
                 onSuccess={keepResult}
+                taskDialog={{
+                  title,
+                  triggerLabel: replacement ? "เชิญผู้ดูแลคนใหม่" : "ระบุข้อมูลผู้ดูแล",
+                  description: replacement
+                    ? "โรงพยาบาลนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากร อสม. และเครือข่ายของโรงพยาบาลเอง"
+                    : "กรอกข้อมูลผู้ดูแลคนแรกและเลือกวิธีส่งมอบคำเชิญ",
+                  initialFocusRef: inviteeNationalIdRef,
+                  returnFocusTarget,
+                }}
                 submitLabel="ส่งคำเชิญ"
                 submitVariant="primary"
               >
-                <ChildOwnerInviteeFields idPrefix={`parent-owner-${hospital.id}`} />
+                <ChildOwnerInviteeFields idPrefix={`parent-owner-${hospital.id}`} nationalIdRef={inviteeNationalIdRef} />
               </ChildOwnerInvitationForm>
             )}
           </div>

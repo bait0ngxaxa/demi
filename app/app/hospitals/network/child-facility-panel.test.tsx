@@ -37,6 +37,8 @@ describe("Parent Child facility panel (ADR-0018 O-D5)", () => {
     for (const label of ["ออกลิงก์ใหม่", "เปิดใช้งานต่อหน้า", "ยกเลิกลิงก์", "เปลี่ยนผู้ถูกเชิญ", "เปลี่ยนชื่อ", "ยกเลิกหน่วยบริการ"]) {
       expect(markup).toContain(label);
     }
+    expect(markup).not.toContain("<details");
+    expect(markup).not.toContain('name="nationalId"');
     expect(markup).not.toContain('href="/app/patients');
     expect(markup).not.toContain('href="/app/hospitals/reporting');
     expect(markup).not.toContain("นำออกจากเครือข่าย");

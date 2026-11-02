@@ -1,15 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Input } from "@/components/ui/input";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useDialogFormDraft } from "@/components/ui/use-dialog-form-draft";
 import { ActivationPresentation } from "@/components/workforce/activation-presentation";
 import {
   initialChildOwnerInvitationActionState,
@@ -35,7 +37,7 @@ const resultCopy: Record<OwnerInvitationAudience, { heldForReset: string; awaiti
 };
 
 /** National ID, names and delivery mode of a Child OWNER invitee (ADR-0018 O-D6). */
-export function ChildOwnerInviteeFields({ idPrefix }: { idPrefix: string }): React.JSX.Element {
+export function ChildOwnerInviteeFields({ idPrefix, nationalIdRef }: { idPrefix: string; nationalIdRef?: RefObject<HTMLInputElement | null> }): React.JSX.Element {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="min-w-0 sm:col-span-2">
@@ -49,6 +51,7 @@ export function ChildOwnerInviteeFields({ idPrefix }: { idPrefix: string }): Rea
           name="nationalId"
           pattern="[0-9]{13}"
           required
+          ref={nationalIdRef}
         />
       </div>
       <div className="min-w-0">
@@ -150,9 +153,11 @@ export function ChildOwnerInvitationForm({
   children,
   className,
   confirmation,
+  taskDialog,
   hidden,
   idempotent = false,
   onSuccess,
+  returnFocusTarget,
   submitLabel,
   submitVariant = "secondary",
 }: {
@@ -162,11 +167,22 @@ export function ChildOwnerInvitationForm({
   className?: string;
   /** Asks in a dialog before submitting (never `window.confirm`). */
   confirmation?: { title: string; description: string; confirmLabel: string; destructive?: boolean };
+  /** One focused task surface that contains the invitee fields and final submit action. */
+  taskDialog?: {
+    title: string;
+    triggerLabel: string;
+    description?: ReactNode;
+    destructive?: boolean;
+    initialFocusRef?: RefObject<HTMLElement | null>;
+    returnFocusTarget?: () => HTMLElement | null;
+    size?: "default" | "compact" | "fullscreen";
+  };
   hidden: Record<string, string>;
   /** The submission carries a nonce the server deduplicates, so an unconfirmed request may be resent. */
   idempotent?: boolean;
   /** Lifts the one-time result to a parent that stays mounted when this form disappears after the refresh. */
   onSuccess?: (state: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }>) => void;
+  returnFocusTarget?: () => HTMLElement | null;
   submitLabel: string;
   submitVariant?: ButtonVariant;
 }): React.JSX.Element {
@@ -174,34 +190,147 @@ export function ChildOwnerInvitationForm({
   const container = useRef<HTMLDivElement>(null);
   const [state, dispatch, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(action, initialChildOwnerInvitationActionState);
   const handled = useRef<ChildOwnerInvitationActionState | null>(null);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [dialogHidden, setDialogHidden] = useState<Record<string, string> | null>(null);
+  const formId = useId();
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const taskFlightRef = useRef(false);
+  const taskResultAtSubmitRef = useRef<ChildOwnerInvitationActionState>(state);
+  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(taskDialogOpen);
 
   useEffect(() => {
     if (state === handled.current) return;
     handled.current = state;
     if (state.status === "SUCCESS") {
+      if (taskDialog) {
+        clearDraft();
+        setDialogHidden(null);
+        setTaskDialogOpen(false);
+      }
       notify.success("บันทึกคำเชิญผู้ดูแลแล้ว");
       container.current?.querySelector("form")?.reset();
       onSuccess?.(state);
       router.refresh();
     }
-  }, [onSuccess, router, state]);
+  }, [clearDraft, onSuccess, router, state, taskDialog]);
 
-  const fields = (
+  useEffect(() => {
+    if (!pending && !unknownOutcome && taskFlightRef.current && !Object.is(state, taskResultAtSubmitRef.current)) {
+      taskFlightRef.current = false;
+    }
+  }, [pending, state, unknownOutcome]);
+
+  const handleTaskSubmit = submitPreservingInput((formData) => {
+    if (pending || unknownOutcome || taskFlightRef.current) return;
+    taskFlightRef.current = true;
+    taskResultAtSubmitRef.current = state;
+    dispatch(formData);
+  });
+
+  const formContents = (
     <>
       {Object.entries(hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
       {children}
-      <Button
-        className={children ? "mt-4" : undefined}
-        disabled={pending || unknownOutcome}
-        loading={pending}
-        size="compact"
-        type="submit"
-        variant={submitVariant}
-      >
-        {pending ? "กำลังบันทึก..." : submitLabel}
-      </Button>
     </>
   );
+  const submitButton = (
+    <Button
+      className={children ? "mt-4" : undefined}
+      disabled={pending || unknownOutcome}
+      loading={pending}
+      size="compact"
+      type="submit"
+      variant={submitVariant}
+    >
+      {pending ? "กำลังบันทึก..." : submitLabel}
+    </Button>
+  );
+  const fields = <>{formContents}{submitButton}</>;
+
+  if (taskDialog) {
+    const closeTaskDialog = (): void => {
+      if (!pending) {
+        if (!preserveDraft()) setDialogHidden(null);
+        setTaskDialogOpen(false);
+      }
+    };
+
+    return (
+      <div className={className} ref={container}>
+        <Button
+          disabled={pending || unknownOutcome}
+          onClick={() => {
+            if (dialogHidden === null) setDialogHidden({ ...hidden });
+            setTaskDialogOpen(true);
+          }}
+          size="compact"
+          type="button"
+          variant={submitVariant}
+        >
+          {taskDialog.triggerLabel}
+        </Button>
+        {taskDialogOpen ? (
+          <ModalDialog
+            description={taskDialog.description}
+            dismissible={!pending}
+            footer={
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button ref={cancelButtonRef} className="w-full sm:w-auto" disabled={pending} onClick={closeTaskDialog} variant="secondary">
+                  ยกเลิก
+                </Button>
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={pending || unknownOutcome}
+                  form={formId}
+                  loading={pending}
+                  size="compact"
+                  type="submit"
+                  variant={taskDialog.destructive ? "danger" : submitVariant === "primary" ? "primary" : "secondary"}
+                >
+                  {pending ? "กำลังบันทึก..." : submitLabel}
+                </Button>
+              </div>
+            }
+            initialFocusRef={taskDialog.destructive ? cancelButtonRef : taskDialog.initialFocusRef}
+            onRequestClose={closeTaskDialog}
+            returnFocusTarget={taskDialog.returnFocusTarget}
+            size={taskDialog.size ?? "fullscreen"}
+            title={taskDialog.title}
+          >
+            <form action={dispatch} id={formId} onSubmit={handleTaskSubmit} ref={formRef}>
+              {Object.entries(dialogHidden ?? hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
+              <fieldset className="m-0 min-w-0 border-0 p-0" disabled={pending || unknownOutcome}>
+                {children}
+              </fieldset>
+            </form>
+            {state.status === "ERROR" ? (
+              <Alert className="mt-3" role="alert" variant={state.code === "CONFLICT" || state.code === "NOT_FOUND" ? "warning" : "danger"}>
+                {state.message}
+              </Alert>
+            ) : null}
+            <UnknownOutcomeAlert
+              active={unknownOutcome}
+              className="mt-3"
+              recovery={idempotent ? { kind: "resend", onResend: resendUnconfirmed, resending: pending } : { kind: "reload" }}
+            />
+          </ModalDialog>
+        ) : null}
+        {!taskDialogOpen && state.status === "ERROR" ? (
+          <Alert className="mt-3" role="alert" variant={state.code === "CONFLICT" || state.code === "NOT_FOUND" ? "warning" : "danger"}>
+            {state.message}
+          </Alert>
+        ) : null}
+        {!taskDialogOpen ? (
+          <UnknownOutcomeAlert
+            active={unknownOutcome}
+            className="mt-3"
+            recovery={idempotent ? { kind: "resend", onResend: resendUnconfirmed, resending: pending } : { kind: "reload" }}
+          />
+        ) : null}
+        {state.status === "SUCCESS" && !onSuccess ? <InvitationResult audience={audience} state={state} /> : null}
+      </div>
+    );
+  }
 
   return (
     <div className={className} ref={container}>
@@ -217,6 +346,7 @@ export function ChildOwnerInvitationForm({
           outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : unknownOutcome ? "unknown" : "idle"}
           pending={pending}
           resultKey={state}
+          returnFocusTarget={returnFocusTarget}
         >
           {fields}
         </ConfirmableActionForm>

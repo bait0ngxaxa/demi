@@ -27,6 +27,7 @@ type ConfirmableActionFormProps = Omit<ComponentProps<"form">, "action" | "child
   resultKey: unknown;
   pending: boolean;
   requiresConfirmation?: boolean;
+  returnFocusTarget?: () => HTMLElement | null;
 };
 
 const submissionDispatchErrorMessage = "ไม่สามารถส่งแบบฟอร์มได้ กรุณาตรวจสอบข้อมูลแล้วลองอีกครั้ง";
@@ -40,6 +41,7 @@ export function ConfirmableActionForm({
   resultKey,
   pending,
   requiresConfirmation = true,
+  returnFocusTarget,
   ...formProps
 }: ConfirmableActionFormProps): React.JSX.Element {
   const formRef = useRef<HTMLFormElement>(null);
@@ -206,6 +208,7 @@ export function ConfirmableActionForm({
         onConfirm={confirmSubmission}
         open={dialogOpen}
         pending={dialogPending}
+        returnFocusTarget={returnFocusTarget}
         title={confirmation.title}
       />
     </form>

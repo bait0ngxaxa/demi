@@ -34,14 +34,12 @@ function render(props: Partial<ParentOwnerInvitationSectionProps> = {}): string 
 }
 
 describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
-  it("invites the first OWNER of a pending Parent with the shared invitee form and its nonce", () => {
+  it("opens a task dialog to invite the first OWNER of a pending Parent", () => {
     const markup = render();
     expect(markup).toContain("เชิญผู้ดูแลโรงพยาบาลคนแรก");
-    for (const label of ["เลขบัตรประชาชนผู้ดูแล", "ชื่อ", "นามสกุล", "ส่งลิงก์หรือคิวอาร์โค้ด (ใช้ได้ 24 ชั่วโมง)", "เปิดใช้งานต่อหน้าบนเครื่องนี้ (ใช้ได้ 15 นาที)", "ส่งคำเชิญ"]) {
-      expect(markup).toContain(label);
-    }
-    expect(markup).toContain(`name="submissionNonce" value="${base.submissionNonce}"`);
-    expect(markup).toContain(`name="hospitalId" value="${base.hospital.id}"`);
+    expect(markup).toContain("ระบุข้อมูลผู้ดูแล");
+    expect(markup).not.toContain("เลขบัตรประชาชนผู้ดูแล");
+    expect(markup).not.toContain('name="submissionNonce"');
     expect(markup).not.toContain("ออกลิงก์ใหม่");
     expect(markup).not.toContain("ยกเลิกคำเชิญ");
   });
@@ -118,7 +116,7 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
   it("reports a decline and offers a new invitation", () => {
     const markup = render({ lastDeclinedAt: "2026-10-31T05:00:00.000Z" });
     expect(markup).toContain("ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ");
-    expect(markup).toContain("ส่งคำเชิญ");
+    expect(markup).toContain("ระบุข้อมูลผู้ดูแล");
   });
 
   it("keeps a 380 px layout: one column below sm, wrapping actions and breakable names", () => {
@@ -126,9 +124,9 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
     expect(markup).toContain("flex min-w-0 flex-col gap-3 sm:flex-row");
     expect(markup).toContain("flex flex-wrap gap-2");
     expect(markup).toContain("break-words");
-    // Invitee fields stack in one column and only split into two from sm upward.
-    expect(markup).toContain("grid gap-4 sm:grid-cols-2");
-    expect(markup).toContain("min-h-11");
+    // The bounded invitee form stays closed until requested; field layout is asserted in its dialog test.
+    expect(markup).not.toContain("grid gap-4 sm:grid-cols-2");
+    expect(markup).not.toContain("name=\"nationalId\"");
     expect(markup).not.toMatch(/\bw-\[(?:[4-9]\d\d|\d{4,})px\]/u);
   });
 });

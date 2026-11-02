@@ -79,7 +79,7 @@ export default async function HospitalNetworkPage({
           ) : null}
 
           <section aria-labelledby="network-children-heading" className="mt-8 min-w-0">
-            <h2 className="text-xl font-semibold text-text" id="network-children-heading">
+            <h2 className="text-xl font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="network-children-heading" tabIndex={-1}>
               ลูกข่ายของ {selected.parent.name} ({selected.children.length.toLocaleString("th-TH")})
             </h2>
             {selected.children.length === 0 ? (

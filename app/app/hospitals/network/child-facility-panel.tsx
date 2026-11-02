@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { buttonClassName } from "@/components/ui/button";
@@ -80,6 +80,13 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
   const { parentHospitalId, areaId, child, state, invitation } = props;
   const [result, setResult] = useState<Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }> | null>(null);
   const keepResult = useCallback((next: Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }>) => setResult(next), []);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const inviteeNationalIdRef = useRef<HTMLInputElement>(null);
+  const returnFocusTarget = useCallback(
+    () => headingRef.current?.isConnected ? headingRef.current : document.getElementById("network-children-heading"),
+    [],
+  );
   const target = { parentHospitalId, childHospitalId: child.id };
   const ownerManageable = state === "PENDING_ACTIVATION" || state === "NO_OWNER";
   const linkInvitation = invitation?.delivery === "ACTIVATION_LINK";
@@ -90,7 +97,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
     <Panel aria-labelledby={headingId} className="min-w-0">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h3 className="break-words text-lg font-semibold text-text" id={headingId}>{child.name}</h3>
+          <h3 className="break-words text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id={headingId} ref={headingRef} tabIndex={-1}>{child.name}</h3>
           <p className="mt-1 text-sm text-text-muted">
             รหัส {child.hospitalCode} · อยู่ในเครือข่ายตั้งแต่ {formatDateTime(props.attachedAt)}
             {props.registeredByThisParent ? " · สร้างโดยแม่ข่ายนี้" : null}
@@ -127,107 +134,154 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
       <div className="mt-4 space-y-3 border-t border-border pt-4">
         {ownerManageable && linkInvitation ? (
           <div className="flex flex-wrap gap-2">
-            <ChildOwnerInvitationForm action={issueChildOwnerLinkAction} hidden={{ ...target, mode: "REMOTE" }} onSuccess={keepResult} submitLabel="ออกลิงก์ใหม่" />
-            <ChildOwnerInvitationForm action={issueChildOwnerLinkAction} hidden={{ ...target, mode: "ASSISTED" }} onSuccess={keepResult} submitLabel="เปิดใช้งานต่อหน้า" submitVariant="ghost" />
+            <ChildOwnerInvitationForm
+              action={issueChildOwnerLinkAction}
+              confirmation={{
+                title: `ออกลิงก์ใหม่สำหรับ ${child.name} หรือไม่`,
+                description: "ลิงก์เดิมจะใช้ไม่ได้ทันที ส่งลิงก์หรือคิวอาร์โค้ดใหม่ให้ผู้ถูกเชิญ (ใช้ได้ 24 ชั่วโมง)",
+                confirmLabel: "ออกลิงก์ใหม่",
+              }}
+              hidden={{ ...target, mode: "REMOTE" }}
+              onSuccess={keepResult}
+              returnFocusTarget={returnFocusTarget}
+              submitLabel="ออกลิงก์ใหม่"
+            />
+            <ChildOwnerInvitationForm
+              action={issueChildOwnerLinkAction}
+              confirmation={{
+                title: `เปิดใช้งาน ${child.name} ต่อหน้าหรือไม่`,
+                description: "ลิงก์เดิมจะใช้ไม่ได้ทันที ลิงก์ใหม่ใช้บนเครื่องนี้ได้ 15 นาที",
+                confirmLabel: "เปิดใช้งานต่อหน้า",
+              }}
+              hidden={{ ...target, mode: "ASSISTED" }}
+              onSuccess={keepResult}
+              returnFocusTarget={returnFocusTarget}
+              submitLabel="เปิดใช้งานต่อหน้า"
+              submitVariant="ghost"
+            />
             {invitation?.link.status === "OPEN" ? (
-              <NetworkMutationForm action={revokeChildOwnerLinkAction} hidden={target} submitLabel="ยกเลิกลิงก์" submitVariant="ghost" />
+              <NetworkMutationForm
+                action={revokeChildOwnerLinkAction}
+                confirmation={{
+                  title: `ยกเลิกลิงก์ของ ${child.name} หรือไม่`,
+                  description: "ลิงก์นี้จะใช้ไม่ได้ทันที แต่คำเชิญยังเปิดอยู่และออกลิงก์ใหม่ได้ภายหลัง",
+                  confirmLabel: "ยกเลิกลิงก์",
+                  destructive: true,
+                }}
+                hidden={target}
+                returnFocusTarget={returnFocusTarget}
+                submitLabel="ยกเลิกลิงก์"
+                submitVariant="ghost"
+              />
             ) : null}
           </div>
         ) : null}
 
         {ownerManageable && invitation?.delivery === "ADMIN_RESET_REQUIRED" ? (
-          <NetworkMutationForm action={revokeChildOwnerLinkAction} hidden={target} submitLabel="ยกเลิกคำเชิญ" submitVariant="ghost" />
+          <NetworkMutationForm
+            action={revokeChildOwnerLinkAction}
+            confirmation={{
+              title: `ยกเลิกคำเชิญของ ${child.name} หรือไม่`,
+              description: "คำเชิญและลิงก์ที่เกี่ยวข้องจะใช้ไม่ได้ทันที",
+              confirmLabel: "ยกเลิกคำเชิญ",
+              destructive: true,
+            }}
+            hidden={target}
+            returnFocusTarget={returnFocusTarget}
+            submitLabel="ยกเลิกคำเชิญ"
+            submitVariant="ghost"
+          />
         ) : null}
 
         {ownerManageable && (state === "PENDING_ACTIVATION" || invitation) ? (
-          <details>
-            <summary className="cursor-pointer text-sm font-semibold text-brand-strong">
-              {invitation ? "เปลี่ยนผู้ถูกเชิญ" : "เชิญผู้ดูแล"}
-            </summary>
-            <ChildOwnerInvitationForm
-              action={changeChildOwnerInviteeAction}
-              className="mt-3"
-              hidden={target}
-              onSuccess={keepResult}
-              submitLabel={invitation ? "เปลี่ยนผู้ถูกเชิญ" : "ส่งคำเชิญ"}
-            >
-              {invitation ? <p className="mb-3 text-sm text-text-muted">คำเชิญและลิงก์เดิมจะใช้ไม่ได้ทันที</p> : null}
-              <ChildOwnerInviteeFields idPrefix={`invitee-${child.id}`} />
-            </ChildOwnerInvitationForm>
-          </details>
+          <ChildOwnerInvitationForm
+            action={changeChildOwnerInviteeAction}
+            hidden={target}
+            onSuccess={keepResult}
+            taskDialog={{
+              title: invitation ? `เปลี่ยนผู้ถูกเชิญของ ${child.name}` : `เชิญผู้ดูแล ${child.name}`,
+              triggerLabel: invitation ? "เปลี่ยนผู้ถูกเชิญ" : "เชิญผู้ดูแล",
+              description: invitation ? "คำเชิญและลิงก์เดิมจะใช้ไม่ได้ทันที" : "กรอกข้อมูลผู้ดูแลและเลือกวิธีส่งมอบคำเชิญ",
+              destructive: Boolean(invitation),
+              initialFocusRef: inviteeNationalIdRef,
+              returnFocusTarget,
+            }}
+            submitLabel={invitation ? "เปลี่ยนผู้ถูกเชิญ" : "ส่งคำเชิญ"}
+          >
+            <ChildOwnerInviteeFields idPrefix={`invitee-${child.id}`} nationalIdRef={inviteeNationalIdRef} />
+          </ChildOwnerInvitationForm>
         ) : null}
 
         {state === "NO_OWNER" && !invitation ? (
-          <details>
-            <summary className="cursor-pointer text-sm font-semibold text-brand-strong">เชิญผู้ดูแลคนใหม่</summary>
-            <ChildOwnerInvitationForm
-              action={inviteReplacementChildOwnerAction}
-              className="mt-3"
-              hidden={target}
-              onSuccess={keepResult}
-              submitLabel="ส่งคำเชิญ"
-            >
-              <p className="mb-3 text-sm text-text-muted">หน่วยบริการนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากรของหน่วยบริการเอง</p>
-              <ChildOwnerInviteeFields idPrefix={`replacement-${child.id}`} />
-            </ChildOwnerInvitationForm>
-          </details>
+          <ChildOwnerInvitationForm
+            action={inviteReplacementChildOwnerAction}
+            hidden={target}
+            onSuccess={keepResult}
+            taskDialog={{
+              title: `เชิญผู้ดูแลคนใหม่ของ ${child.name}`,
+              triggerLabel: "เชิญผู้ดูแลคนใหม่",
+              description: "หน่วยบริการนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากรของหน่วยบริการเอง",
+              initialFocusRef: inviteeNationalIdRef,
+              returnFocusTarget,
+            }}
+            submitLabel="ส่งคำเชิญ"
+          >
+            <ChildOwnerInviteeFields idPrefix={`replacement-${child.id}`} nationalIdRef={inviteeNationalIdRef} />
+          </ChildOwnerInvitationForm>
         ) : null}
 
-        <details>
-          <summary className="cursor-pointer text-sm font-semibold text-brand-strong">เปลี่ยนชื่อ</summary>
-          <NetworkMutationForm
-            action={renameChildFacilityAction}
-            className="mt-3"
-            hidden={{ ...target, expectedUpdatedAt: child.updatedAt }}
-            submitLabel="บันทึกชื่อ"
-          >
-            <label className="text-sm font-semibold text-text" htmlFor={`rename-${child.id}`}>ชื่อหน่วยบริการ</label>
-            <Input className="mt-2" defaultValue={child.name} id={`rename-${child.id}`} maxLength={200} name="name" required />
-          </NetworkMutationForm>
-        </details>
+        <NetworkMutationForm
+          action={renameChildFacilityAction}
+          hidden={{ ...target, expectedUpdatedAt: child.updatedAt }}
+          taskDialog={{
+            title: `เปลี่ยนชื่อ ${child.name}`,
+            triggerLabel: "เปลี่ยนชื่อ",
+            description: "บันทึกชื่อใหม่ของหน่วยบริการนี้",
+            initialFocusRef: renameInputRef,
+            returnFocusTarget,
+          }}
+          submitLabel="บันทึกชื่อ"
+        >
+          <label className="text-sm font-semibold text-text" htmlFor={`rename-${child.id}`}>ชื่อหน่วยบริการ</label>
+          <Input className="mt-2" defaultValue={child.name} id={`rename-${child.id}`} maxLength={200} name="name" required ref={renameInputRef} />
+        </NetworkMutationForm>
 
         {state === "PENDING_ACTIVATION" && props.registeredByThisParent ? (
-          <details>
-            <summary className="cursor-pointer text-sm font-semibold text-danger">ยกเลิกหน่วยบริการ</summary>
-            <NetworkMutationForm
-              action={cancelPendingChildFacilityAction}
-              className="mt-3"
-              confirmation={{
-                title: `ยกเลิก ${child.name} หรือไม่`,
-                description: "คำเชิญและลิงก์ทั้งหมดจะใช้ไม่ได้ หน่วยบริการจะออกจากเครือข่ายและถูกถอนออกจากรายชื่อ ข้อมูลไม่ถูกลบ ผู้ดูแลระบบคืนได้ภายหลัง",
-                confirmLabel: "ยกเลิกหน่วยบริการ",
-                destructive: true,
-              }}
-              hidden={{ ...target, confirm: "true" }}
-              submitLabel="ยกเลิกหน่วยบริการ"
-              submitVariant="danger"
-            >
-              <label className="text-sm font-semibold text-text" htmlFor={`cancel-reason-${child.id}`}>เหตุผล</label>
-              <textarea className={`${inputClassName} mt-2 min-h-24 py-3`} id={`cancel-reason-${child.id}`} maxLength={500} name="reason" required />
-            </NetworkMutationForm>
-          </details>
+          <NetworkMutationForm
+            action={cancelPendingChildFacilityAction}
+            taskDialog={{
+              title: `ยกเลิกหน่วยบริการ ${child.name}`,
+              triggerLabel: "ยกเลิกหน่วยบริการ",
+              description: "คำเชิญและลิงก์ทั้งหมดจะใช้ไม่ได้ หน่วยบริการจะออกจากเครือข่ายและถูกถอนออกจากรายชื่อ ข้อมูลไม่ถูกลบ ผู้ดูแลระบบคืนได้ภายหลัง",
+              destructive: true,
+              returnFocusTarget,
+            }}
+            hidden={{ ...target, confirm: "true" }}
+            submitLabel="ยืนยันยกเลิกหน่วยบริการ"
+            submitVariant="danger"
+          >
+            <label className="text-sm font-semibold text-text" htmlFor={`cancel-reason-${child.id}`}>เหตุผล</label>
+            <textarea className={`${inputClassName} mt-2 min-h-24 py-3`} id={`cancel-reason-${child.id}`} maxLength={500} name="reason" required />
+          </NetworkMutationForm>
         ) : null}
 
         {state !== "PENDING_ACTIVATION" ? (
-          <details>
-            <summary className="cursor-pointer text-sm font-semibold text-danger">นำออกจากเครือข่าย</summary>
-            <NetworkMutationForm
-              action={endServiceAreaAction}
-              className="mt-3"
-              confirmation={{
-                title: `นำ ${child.name} ออกจากเครือข่ายหรือไม่`,
-                description: "เจ้าของและเจ้าหน้าที่ของแม่ข่ายจะหมดสิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้ทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
-                confirmLabel: "นำออกจากเครือข่าย",
-                destructive: true,
-              }}
-              hidden={{ parentHospitalId, areaId, confirm: "true" }}
-              submitLabel="นำออกจากเครือข่าย"
-              submitVariant="danger"
-            >
-              <label className="text-sm font-semibold text-text" htmlFor={`end-reason-${areaId}`}>เหตุผล</label>
-              <textarea className={`${inputClassName} mt-2 min-h-24 py-3`} id={`end-reason-${areaId}`} maxLength={500} name="endReason" required />
-            </NetworkMutationForm>
-          </details>
+          <NetworkMutationForm
+            action={endServiceAreaAction}
+            taskDialog={{
+              title: `นำ ${child.name} ออกจากเครือข่าย`,
+              triggerLabel: "นำออกจากเครือข่าย",
+              description: "เจ้าของและเจ้าหน้าที่ของแม่ข่ายจะหมดสิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้ทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
+              destructive: true,
+              returnFocusTarget,
+            }}
+            hidden={{ parentHospitalId, areaId, confirm: "true" }}
+            submitLabel="ยืนยันนำออกจากเครือข่าย"
+            submitVariant="danger"
+          >
+            <label className="text-sm font-semibold text-text" htmlFor={`end-reason-${areaId}`}>เหตุผล</label>
+            <textarea className={`${inputClassName} mt-2 min-h-24 py-3`} id={`end-reason-${areaId}`} maxLength={500} name="endReason" required />
+          </NetworkMutationForm>
         ) : null}
       </div>
     </Panel>
