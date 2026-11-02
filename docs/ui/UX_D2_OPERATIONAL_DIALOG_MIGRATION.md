@@ -113,5 +113,6 @@
 
 ### Findings และ readiness
 
-- ไม่พบ P0/P1/P2 ใหม่ระหว่าง UX-D2 review.
+- การทบทวนหลัง closeout พบ P2 สองรายการและแก้แล้ว: task-dialog draft/hidden payload ถูกผูกกับ context key และล้างเมื่อ context เปลี่ยน; takeover provider-session retry แสดงปุ่มและคำเตือนบนหน้า โดยผู้ใช้ต้องกดก่อน dialog เปิด.
+- Focused regression follow-up ผ่าน 3 files / 12 tests; `npm run typecheck`, targeted ESLint และ Impeccable detector ผ่าน (`[]`). การ resend หลัง unknown invitation outcome ยังใช้ payload เดิมผ่าน recovery ที่ผู้ใช้กดเอง.
 - พร้อมเริ่ม UX-D3 จากมุม code และ automated checks; ต้องทำ browser/device QA สำหรับรายการที่ยัง unverified ก่อนสรุป UX-D2 ว่าผ่าน visual/mobile accessibility validation.

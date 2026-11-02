@@ -74,7 +74,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
     ? latest.message
     : null;
   const locked = pending || session.locked || providerConfirmed;
-  const [dialogOpen, setDialogOpen] = useState(retry);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPayload, setDialogPayload] = useState<TakeoverPayload | null>(null);
   const formId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);

@@ -193,8 +193,12 @@ describe("UserTakeoverControl security dialog", () => {
         message: "ล็อกบัญชีแล้ว ผู้ที่ใช้บัญชีนี้ถูกตัดออกจากระบบ",
       });
     renderTakeover(true);
+    expect(container.querySelector("dialog")).toBeNull();
+    const retryTrigger = findButton(container, "ยืนยันการตัดการเข้าสู่ระบบอีกครั้ง");
+    expect(mocks.takeover).not.toHaveBeenCalled();
+    act(() => retryTrigger.click());
     const dialog = container.querySelector("dialog");
-    if (!dialog) throw new Error("Retry mode should open its security dialog");
+    if (!dialog) throw new Error("Retry mode should open its security dialog after user action");
     expect(dialog.textContent).toContain("บัญชีที่ถูกล็อกอยู่เท่านั้น");
     expect(dialog.textContent).toContain("จะไม่เริ่มการล็อกบัญชีหรือระงับความสัมพันธ์ซ้ำ");
     expect(mocks.takeover).not.toHaveBeenCalled();
