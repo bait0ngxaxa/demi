@@ -19,11 +19,15 @@ type Action = (_previous: HospitalNetworkActionState, formData: FormData) => Pro
 
 function Harness({ action }: { action: Action }): React.JSX.Element {
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState("version-before-open");
+  const [facilityName, setFacilityName] = useState("รพ.สต.บ้านใหม่");
   const nameRef = useRef<HTMLInputElement>(null);
   return (
     <>
       <h2 id="logical-return-target" tabIndex={-1}>รายการลูกข่าย</h2>
-      <button onClick={() => setExpectedUpdatedAt("version-after-open")} type="button">เปลี่ยนข้อมูลจากแหล่งอื่น</button>
+      <button onClick={() => {
+        setExpectedUpdatedAt("version-after-open");
+        setFacilityName("รพ.สต.บ้านใหม่ล่าสุด");
+      }} type="button">เปลี่ยนข้อมูลจากแหล่งอื่น</button>
       <NetworkMutationForm
         action={action}
         hidden={{ parentHospitalId: "parent-1", childHospitalId: "child-1", expectedUpdatedAt }}
@@ -36,7 +40,7 @@ function Harness({ action }: { action: Action }): React.JSX.Element {
         submitLabel="บันทึกชื่อ"
       >
         <label htmlFor="facility-name">ชื่อหน่วยบริการ</label>
-        <input defaultValue="รพ.สต.บ้านใหม่" id="facility-name" maxLength={200} name="name" ref={nameRef} required />
+        <input defaultValue={facilityName} id="facility-name" maxLength={200} name="name" ref={nameRef} required />
       </NetworkMutationForm>
     </>
   );
@@ -104,7 +108,7 @@ function button(label: string, scope: ParentNode = container): HTMLButtonElement
 }
 
 describe("NetworkMutationForm task dialog", () => {
-  it("does not mutate on open or cancel, preserves a changed draft, and submits the opening version once", async () => {
+  it("does not mutate on open or cancel, invalidates a draft when its version changes, and submits the latest version", async () => {
     const action = vi.fn<Action>(async () => ({ status: "SUCCESS", message: "บันทึกชื่อหน่วยบริการแล้ว", completedAt: 1 }));
     render(action);
 
@@ -123,19 +127,26 @@ describe("NetworkMutationForm task dialog", () => {
     expect(action).not.toHaveBeenCalled();
     expect(container.querySelector("dialog")).toBeNull();
 
+    act(() => button("เปลี่ยนชื่อ").click());
+    const sameContextDialog = container.querySelector("dialog");
+    const sameContextInput = sameContextDialog?.querySelector<HTMLInputElement>("input[name='name']");
+    if (!sameContextDialog || !sameContextInput) throw new Error("Missing same-context reopened edit dialog");
+    expect(sameContextInput.value).toBe("รพ.สต.บ้านใหม่ที่แก้ไข");
+    await act(async () => button("ยกเลิก", sameContextDialog).click());
+
     act(() => button("เปลี่ยนข้อมูลจากแหล่งอื่น").click());
     act(() => button("เปลี่ยนชื่อ").click());
     const reopened = container.querySelector("dialog");
-    const preservedInput = reopened?.querySelector<HTMLInputElement>("input[name='name']");
-    if (!reopened || !preservedInput) throw new Error("Missing reopened edit dialog");
-    expect(preservedInput.value).toBe("รพ.สต.บ้านใหม่ที่แก้ไข");
+    const latestInput = reopened?.querySelector<HTMLInputElement>("input[name='name']");
+    if (!reopened || !latestInput) throw new Error("Missing reopened edit dialog");
+    expect(latestInput.value).toBe("รพ.สต.บ้านใหม่ล่าสุด");
 
     await act(async () => button("บันทึกชื่อ", reopened).click());
     expect(action).toHaveBeenCalledOnce();
     expect(action.mock.calls[0]?.[1].get("parentHospitalId")).toBe("parent-1");
     expect(action.mock.calls[0]?.[1].get("childHospitalId")).toBe("child-1");
-    expect(action.mock.calls[0]?.[1].get("expectedUpdatedAt")).toBe("version-before-open");
-    expect(action.mock.calls[0]?.[1].get("name")).toBe("รพ.สต.บ้านใหม่ที่แก้ไข");
+    expect(action.mock.calls[0]?.[1].get("expectedUpdatedAt")).toBe("version-after-open");
+    expect(action.mock.calls[0]?.[1].get("name")).toBe("รพ.สต.บ้านใหม่ล่าสุด");
     expect(container.querySelector("dialog")).toBeNull();
     expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(document.activeElement).toBe(container.querySelector("#logical-return-target"));

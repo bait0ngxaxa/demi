@@ -44,6 +44,8 @@ export function NetworkMutationForm({
   taskDialog?: {
     title: string;
     triggerLabel: string;
+    /** Changes when the user-facing task context changes outside the hidden mutation payload. */
+    contextKey?: string;
     description?: ReactNode;
     destructive?: boolean;
     initialFocusRef?: RefObject<HTMLElement | null>;
@@ -64,14 +66,19 @@ export function NetworkMutationForm({
   const handled = useRef<HospitalNetworkActionState | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskDialogBaseline, setTaskDialogBaseline] = useState(state);
-  const [dialogHidden, setDialogHidden] = useState<Record<string, string> | null>(null);
+  const taskDialogContextKey = JSON.stringify({
+    hidden: Object.entries(hidden).sort(([left], [right]) => left.localeCompare(right)),
+    task: taskDialog?.contextKey ?? null,
+  });
+  const [dialogHidden, setDialogHidden] = useState<{ contextKey: string; values: Record<string, string> } | null>(null);
   const formId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const taskFlightRef = useRef(false);
   const taskResultAtSubmitRef = useRef<HospitalNetworkActionState>(state);
   const taskDialogSucceeded = taskDialogOpen && state.status === "SUCCESS" && state !== taskDialogBaseline;
   const visibleTaskDialogOpen = taskDialogOpen && !taskDialogSucceeded;
-  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleTaskDialogOpen);
+  const taskDialogContextChanged = Boolean(taskDialogOpen && dialogHidden && dialogHidden.contextKey !== taskDialogContextKey);
+  const { formRef, preserveDraft, clearDraft } = useDialogFormDraft(visibleTaskDialogOpen, taskDialogContextKey);
 
   useEffect(() => {
     if (state === handled.current) return;
@@ -93,7 +100,7 @@ export function NetworkMutationForm({
   }, [pending, state, unknownOutcome]);
 
   function handleTaskSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    if (pending || unknownOutcome || taskFlightRef.current) {
+    if (pending || unknownOutcome || taskFlightRef.current || taskDialogContextChanged) {
       event.preventDefault();
       return;
     }
@@ -123,7 +130,8 @@ export function NetworkMutationForm({
   if (taskDialog) {
     const closeTaskDialog = (): void => {
       if (!pending) {
-        if (!preserveDraft()) setDialogHidden(null);
+        if (taskDialogContextChanged || !preserveDraft()) clearDraft();
+        setDialogHidden(null);
         setTaskDialogOpen(false);
       }
     };
@@ -133,7 +141,7 @@ export function NetworkMutationForm({
         <Button
           disabled={pending || unknownOutcome}
           onClick={() => {
-            if (dialogHidden === null || taskDialogSucceeded) setDialogHidden({ ...hidden });
+            setDialogHidden({ contextKey: taskDialogContextKey, values: { ...hidden } });
             setTaskDialogBaseline(state);
             setTaskDialogOpen(true);
           }}
@@ -154,7 +162,7 @@ export function NetworkMutationForm({
                 </Button>
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={pending || unknownOutcome || submitDisabled}
+                  disabled={pending || unknownOutcome || submitDisabled || taskDialogContextChanged}
                   form={formId}
                   loading={pending}
                   size="compact"
@@ -172,11 +180,16 @@ export function NetworkMutationForm({
             title={taskDialog.title}
           >
             <form action={dispatch} id={formId} onSubmit={handleTaskSubmit} ref={formRef}>
-              {Object.entries(dialogHidden ?? hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
-              <fieldset className="m-0 min-w-0 border-0 p-0" disabled={pending || unknownOutcome || submitDisabled}>
+              {Object.entries(dialogHidden?.values ?? hidden).map(([name, value]) => <input key={name} name={name} type="hidden" value={value} />)}
+              <fieldset className="m-0 min-w-0 border-0 p-0" disabled={pending || unknownOutcome || submitDisabled || taskDialogContextChanged}>
                 {children}
               </fieldset>
             </form>
+            {taskDialogContextChanged ? (
+              <Alert className="mt-3" role="alert" variant="warning">
+                ข้อมูลของรายการนี้เปลี่ยนแล้ว ปิดหน้าต่างนี้แล้วเปิดอีกครั้งเพื่อตรวจสอบข้อมูลล่าสุดก่อนบันทึก
+              </Alert>
+            ) : null}
             {state.status === "ERROR" ? (
               <Alert className="mt-3" role="alert" variant={state.code === "CONFLICT" || state.code === "NOT_FOUND" ? "warning" : "danger"}>
                 {state.message}

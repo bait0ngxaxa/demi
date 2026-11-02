@@ -12,8 +12,8 @@ type FieldDraft = {
 
 const editableFieldSelector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]), select, textarea';
 
-/** Keeps a task dialog's editable values when the user closes and reopens it. */
-export function useDialogFormDraft(open: boolean): {
+/** Keeps editable values for the same task context and drops them when that context changes. */
+export function useDialogFormDraft(open: boolean, contextKey?: string): {
   formRef: React.RefObject<HTMLFormElement | null>;
   preserveDraft: () => boolean;
   clearDraft: () => void;
@@ -21,10 +21,18 @@ export function useDialogFormDraft(open: boolean): {
   const formRef = useRef<HTMLFormElement>(null);
   const draftRef = useRef<FieldDraft[] | null>(null);
   const baselineRef = useRef<FieldDraft[] | null>(null);
+  const contextKeyRef = useRef(contextKey);
   const restoredSecondPassRef = useRef(false);
   const [restoreRevision, setRestoreRevision] = useState(0);
 
   useLayoutEffect(() => {
+    if (!Object.is(contextKeyRef.current, contextKey)) {
+      contextKeyRef.current = contextKey;
+      draftRef.current = null;
+      baselineRef.current = null;
+      restoredSecondPassRef.current = false;
+    }
+
     if (!open) {
       restoredSecondPassRef.current = false;
       return;
@@ -66,7 +74,7 @@ export function useDialogFormDraft(open: boolean): {
       restoredSecondPassRef.current = false;
       baselineRef.current = readFieldDraft(form);
     }
-  }, [open, restoreRevision]);
+  }, [contextKey, open, restoreRevision]);
 
   const preserveDraft = useCallback((): boolean => {
     const form = formRef.current;

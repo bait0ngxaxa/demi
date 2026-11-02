@@ -21,10 +21,12 @@ type Success = Extract<ChildOwnerInvitationActionState, { status: "SUCCESS" }>;
 
 function Harness({ action }: { action: Action }): React.JSX.Element {
   const nationalIdRef = useRef<HTMLInputElement>(null);
+  const [invitationContext, setInvitationContext] = useState("invitation-v1");
   const [result, setResult] = useState<Success | null>(null);
   return (
     <>
       <h2 id="owner-invitation-target" tabIndex={-1}>ข้อมูลผู้ดูแลโรงพยาบาล</h2>
+      <button onClick={() => setInvitationContext("invitation-v2")} type="button">เปลี่ยนบริบทคำเชิญ</button>
       <ChildOwnerInvitationForm
         action={action}
         hidden={{ hospitalId: "hospital-1", submissionNonce: "nonce-from-page" }}
@@ -33,6 +35,7 @@ function Harness({ action }: { action: Action }): React.JSX.Element {
         taskDialog={{
           title: "เชิญผู้ดูแลโรงพยาบาล",
           triggerLabel: "ระบุข้อมูลผู้ดูแล",
+          contextKey: invitationContext,
           initialFocusRef: nationalIdRef,
           returnFocusTarget: () => document.getElementById("owner-invitation-target"),
         }}
@@ -191,5 +194,33 @@ describe("ChildOwnerInvitationForm task dialog", () => {
     expect(action.mock.calls[0]?.[1].get("submissionNonce")).toBe(action.mock.calls[1]?.[1].get("submissionNonce"));
     expect(action.mock.calls[0]?.[1].get("nationalId")).toBe(action.mock.calls[1]?.[1].get("nationalId"));
     expect(dialog.textContent).toContain("ข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่");
+  });
+
+  it("discards an invitation draft when the invitation context changes while closed", async () => {
+    const action = vi.fn<Action>(async () => ({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "คำเชิญเปลี่ยนไปแล้ว",
+    }));
+    render(action);
+
+    act(() => button("ระบุข้อมูลผู้ดูแล").click());
+    const dialog = container.querySelector("dialog");
+    if (!dialog) throw new Error("Missing owner invitation dialog");
+    fillInvitee(dialog);
+    await act(async () => button("ยกเลิก", dialog).click());
+
+    act(() => button("เปลี่ยนบริบทคำเชิญ").click());
+    act(() => button("ระบุข้อมูลผู้ดูแล").click());
+    const reopenedDialog = container.querySelector("dialog");
+    const nationalId = reopenedDialog?.querySelector<HTMLInputElement>("input[name='nationalId']");
+    const givenName = reopenedDialog?.querySelector<HTMLInputElement>("input[name='givenName']");
+    const remote = reopenedDialog?.querySelector<HTMLInputElement>("input[name='mode'][value='REMOTE']");
+    if (!reopenedDialog || !nationalId || !givenName || !remote) throw new Error("Missing reopened invitation fields");
+
+    expect(nationalId.value).toBe("");
+    expect(givenName.value).toBe("");
+    expect(remote.checked).toBe(true);
+    expect(action).not.toHaveBeenCalled();
   });
 });

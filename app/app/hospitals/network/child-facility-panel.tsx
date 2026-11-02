@@ -201,6 +201,15 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             taskDialog={{
               title: invitation ? `เปลี่ยนผู้ถูกเชิญของ ${child.name}` : `เชิญผู้ดูแล ${child.name}`,
               triggerLabel: invitation ? "เปลี่ยนผู้ถูกเชิญ" : "เชิญผู้ดูแล",
+              contextKey: JSON.stringify([
+                child.updatedAt,
+                state,
+                invitation?.inviteeName ?? null,
+                invitation?.delivery ?? null,
+                invitation?.link.status ?? null,
+                invitation?.link.expiresAt ?? null,
+                invitation?.link.mode ?? null,
+              ]),
               description: invitation ? "คำเชิญและลิงก์เดิมจะใช้ไม่ได้ทันที" : "กรอกข้อมูลผู้ดูแลและเลือกวิธีส่งมอบคำเชิญ",
               destructive: Boolean(invitation),
               initialFocusRef: inviteeNationalIdRef,
@@ -220,6 +229,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             taskDialog={{
               title: `เชิญผู้ดูแลคนใหม่ของ ${child.name}`,
               triggerLabel: "เชิญผู้ดูแลคนใหม่",
+              contextKey: JSON.stringify([child.updatedAt, state, props.lastDeclinedAt]),
               description: "หน่วยบริการนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากรของหน่วยบริการเอง",
               initialFocusRef: inviteeNationalIdRef,
               returnFocusTarget,
