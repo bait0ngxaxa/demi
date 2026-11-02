@@ -185,6 +185,22 @@ describe("personal medication focused dialogs", () => {
   });
 
   it.each([
+    ["บันทึกการแก้ไข", "แก้ไขชื่อยาและข้อความประกอบ", mocks.update],
+    ["บันทึกเวลา", "แก้ไขเวลา", mocks.schedules],
+  ] as const)("sends one request when %s is pressed twice in a row", async (save, opener, action) => {
+    const request = deferred();
+    action.mockReturnValue(request.promise);
+    await click(button(opener));
+    await act(async () => {
+      const saveButton = button(save, dialog() ?? container);
+      saveButton.click();
+      saveButton.click();
+    });
+    await act(async () => request.resolve({ status: "ERROR", message: "ตรวจสอบข้อมูล" }));
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
     ["conflict", { status: "CONFLICT", message: "รายการนี้มีการเปลี่ยนแปลง" }],
     ["unknown outcome", undefined],
   ])("keeps reload guidance after a %s and locks every medication action", async (_label, result) => {

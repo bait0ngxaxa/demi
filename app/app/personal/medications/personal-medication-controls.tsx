@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
@@ -47,6 +47,17 @@ function useMedicationAction(
   }, INITIAL_PERSONAL_MEDICATION_ACTION_STATE);
 }
 
+/** useActionState queues a second submit behind the first; the native submit is refused until the first settles. */
+function useSubmitLock(pending: boolean): (event: FormEvent<HTMLFormElement>) => boolean {
+  const locked = useRef(false);
+  useEffect(() => { if (!pending) locked.current = false; }, [pending]);
+  return (event) => {
+    if (locked.current) { event.preventDefault(); return false; }
+    locked.current = true;
+    return true;
+  };
+}
+
 export function MedicationFeedback({ state }: { state: PersonalMedicationActionState }): React.JSX.Element | null {
   if (!state.message) return null;
   if (state.loginHref) return <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} />;
@@ -57,6 +68,7 @@ export function MedicationFeedback({ state }: { state: PersonalMedicationActionS
 
 export function MedicationEditor({ item, coordination, initialDraft, draftRef, onCancel }: { item?: PersonalMedicationDto; coordination?: MutationCoordination } & DialogDraftProps<MedicationTextDraft>): React.JSX.Element {
   const [state, action, pending] = useMedicationAction(item ? updatePersonalMedicationAction : createPersonalMedicationAction, coordination);
+  const claimSubmit = useSubmitLock(pending);
   const [name, setName] = useState(initialDraft?.medicationName ?? item?.medicationName ?? "");
   const [instruction, setInstruction] = useState(initialDraft?.instructionText ?? item?.instructionText ?? "");
   const [times, setTimes] = useState<string[]>([]);
@@ -79,6 +91,7 @@ export function MedicationEditor({ item, coordination, initialDraft, draftRef, o
       setTimesError("เวลาแต่ละรายการต้องไม่ซ้ำกัน");
       return;
     }
+    if (!claimSubmit(event)) return;
     setTimesError("");
     coordination?.onSubmit();
   }} className="space-y-4">
@@ -139,6 +152,7 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
   const [expectedUpdatedAt] = useState(item.updatedAt);
   const [state, action, pending] = useMedicationAction(stopPersonalMedicationAction, coordination);
   const feedback = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
   const blocked = Boolean(coordination?.blocked || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired);
   return <div className="space-y-3 border-t border-border pt-4">
@@ -158,10 +172,11 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
       outcome={confirmableOutcome(state)}
       pending={pending}
       resultKey={state}
-      returnFocusTarget={() => (state.status === "IDLE" ? null : feedback.current)}
+      // Explicit target: some browsers do not focus a button on click, so the previous focus may be the page.
+      returnFocusTarget={() => (state.status === "IDLE" ? trigger.current : feedback.current)}
     >
       <input type="hidden" name="medicationId" value={item.id} /><input type="hidden" name="expectedUpdatedAt" value={expectedUpdatedAt} />
-      <Button type="submit" variant="secondary" disabled={blocked}>หยุดติดตามรายการนี้ใน DEMI</Button>
+      <Button ref={trigger} type="submit" variant="secondary" disabled={blocked}>หยุดติดตามรายการนี้ใน DEMI</Button>
     </ConfirmableActionForm>
     <div ref={feedback} tabIndex={-1}><MedicationFeedback state={state} /></div>
     {state.status === "SUCCESS" ? <a className="text-brand-strong underline" href="/app/personal/medications">ดูประวัติหยุดติดตาม</a> : null}
@@ -170,6 +185,7 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
 
 export function MedicationScheduleEditor({ item, coordination, initialDraft, draftRef, onCancel }: { item: PersonalMedicationDetailDto; coordination?: MutationCoordination } & DialogDraftProps<MedicationScheduleDraft>): React.JSX.Element {
   const [state, action, pending] = useMedicationAction(replacePersonalMedicationSchedulesAction, coordination);
+  const claimSubmit = useSubmitLock(pending);
   const [times, setTimes] = useState(initialDraft?.times ?? item.schedules.map(({ localTime }) => localTime));
   const [validation, setValidation] = useState("");
   const [expectedUpdatedAt] = useState(item.updatedAt);
@@ -194,6 +210,7 @@ export function MedicationScheduleEditor({ item, coordination, initialDraft, dra
         requestAnimationFrame(() => feedback.current?.focus());
         return;
       }
+      if (!claimSubmit(event)) return;
       setValidation("");
       coordination?.onSubmit();
     }}>

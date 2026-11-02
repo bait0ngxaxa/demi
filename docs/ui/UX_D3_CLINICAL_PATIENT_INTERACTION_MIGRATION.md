@@ -108,3 +108,73 @@
 - UX-D3.3 ยาของฉัน: รายละเอียดรายการ ACTIVE เป็นแบบอ่านอย่างเดียว (ข้อความประกอบ, เวลาที่บันทึก); แก้ชื่อ/ข้อความประกอบเป็น Edit Dialog, เวลาติดตามเป็น Task Dialog (`fullscreen` บนมือถือ), หยุดติดตามเป็น `ConfirmableActionForm` แบบ destructive ที่คงข้อความเดิมและ focus แรกที่ยกเลิก; การเพิ่มรายการยาคงอยู่บนหน้า. `SelectedMedicationForms` ยังเป็นเจ้าของ `blocked` และเพิ่ม `submitting` (ปิด dialog ไม่ได้ระหว่าง pending) และ notice ที่คง CONFLICT/`refreshRequired`/`loginHref` ไว้บนหน้าหลังปิด dialog. เพิ่ม `useRetainedDraft` (draft ใน memory ผูก `medicationId:updatedAt`; ล้างเมื่อสำเร็จหรือ version เปลี่ยน). เพิ่ม `onSubmitted` และ `pendingLabel` ให้ `ConfirmableActionForm`: พบว่าการเรียก `coordination.onSubmit()` ภายใน action ทำให้ `setBlocked` ถูกเลื่อนไปจนกว่า transition จะจบ จึงเรียกแบบ synchronous หลัง dispatch แทน. ย้าย tests ที่ผูกกับ hook slot/inline confirmation ไปเป็น jsdom (`personal-medication-dialogs.test.tsx`). JSON `times`, schema, duplicate/max และ Asia/Bangkok semantics ไม่เปลี่ยน. Focused: `src/components/ui` + `app/app/personal/medications` + `src/modules/medications` ผ่าน 27 files / 363 tests; targeted ESLint และ typecheck ผ่าน.
 - UX-D3.4 บันทึกอาหารและกิจกรรม: quick entry (หมวดอาหาร, ค้นหา/กรอกกิจกรรม) คงอยู่บนหน้า; แต่ละรายการในประวัติมีปุ่ม “แก้ไข” (Edit Dialog, `fullscreen` บนมือถือ, ระบุหมวด/กิจกรรมและวันที่บันทึก) และ “ลบ” (Destructive Dialog แสดง readback ของรายการ, focus แรกที่ยกเลิก) แยกกัน จึงไม่มี dialog ซ้อน. `selected` ยังเป็นตัวแยกผลของ entry ออกจาก create ตาม state machine เดิม; `REVIEW_REQUIRED` ทำให้ dialog ปิดไม่ได้และมี “โหลดรายการล่าสุด” ภายใน dialog; การลบเอาแถวออกหลัง server ยืนยันแล้วเท่านั้นและ read วันเดิมใหม่เพื่อ aggregate. Nonce ของ create ถูกสร้างใหม่เฉพาะหลัง create ที่ยืนยันแล้ว (หรือ “เริ่มบันทึกใหม่”) เพื่อไม่ทำลาย create draft/intent ระหว่างแก้หรือลบรายการอื่น. พบช่องโหว่เดิมสองข้อและแก้ใน interaction layer: (1) `onPending(true)` ถูกเรียกก่อน `await` ใน action transition ทำให้ `saving` ไม่ commit จนกว่า request จะจบ จึงเพิ่ม `onSubmitting` จาก native submit (urgent) เพื่อกันปิด dialog และล็อกปุ่มระหว่าง pending; (2) submit ซ้ำเร็ว ๆ ถูก `useActionState` เข้าคิวเป็น request ที่สอง จึงเพิ่ม single-flight guard ใน `useMealAction`/`useExerciseAction` (mutation check ยืนยันว่า test จับได้). `clearPrivateState` ล้าง retained draft และปิด dialog; pagehide ล้าง dialog ผ่าน shared authority เดิม. Focused: `app/app/personal/wellness` + `src/modules/meals` + `src/modules/exercises` + `src/components/ui` ผ่าน 31 files / 313 tests; targeted ESLint และ typecheck ผ่าน.
 - UX-D3.5 เป้าหมายน้ำหนัก: readback ของเป้าหมายปัจจุบันคงอยู่บนหน้า; “แก้ไข” เปิด Edit Dialog (`fullscreen` บนมือถือ) ที่เริ่มจากวันที่เป้าหมายที่บันทึกไว้ และเปลี่ยนวันที่เฉพาะเมื่อกด “ใช้ระยะเวลานี้” หรือแก้วันที่เอง; “ลบเป้าหมาย” เปิด Destructive Dialog ที่แสดงน้ำหนัก/วันที่เป้าหมาย, ระบุว่าไม่ลบบันทึกน้ำหนักที่วัดเองใน “ตัวฉันในตอนนี้” (ตรวจแล้วว่า `removePersonalWeightGoal` ลบเฉพาะ `personalWeightGoal`) และให้ focus แรกที่ยกเลิก (เดิม focus ที่ปุ่มลบ). การตั้งเป้าหมายใหม่, nonce/`nonceClaimed`, `CREATE_CONSUMED` และ `requiresCurrentGoalReview` คงเดิม. `lockedForReview` ทำให้ dialog ปิดไม่ได้และมี “โหลดข้อมูลล่าสุด” ภายใน dialog. ใช้การแก้ urgent pending + single-flight แบบเดียวกับ D3.4 ใน `useWeightGoalAction`; ตัด logic คืน focus เองของ remove (`restoreRemoveFocus`) เพราะ `ModalDialog` คืน focus ให้ปุ่มเปิด หรือหัวข้อ “เป้าหมายน้ำหนัก” เมื่อเป้าหมายถูกลบ. ปุ่มเปิดไม่ถูก disable ระหว่าง dialog เปิด (พื้นหลัง inert อยู่แล้ว) เพื่อให้คืน focus ได้. Focused: `app/app/personal/wellness` + `src/modules/weight-goals` ผ่าน 22 files / 199 tests; targeted ESLint และ typecheck ผ่าน.
+- UX-D3.6 regression และ closeout: ดูหัวข้อถัดไป
+
+## UX-D3.6 Regression และ closeout
+
+### สรุป surface
+
+- **ย้ายแล้ว:** Patient Baseline review (Review Dialog ใน form เดิม); bulk OSM assignment review (Review Dialog ที่ส่ง snapshot); ยา: แก้ชื่อ/ข้อความประกอบ (Edit Dialog), เวลาติดตาม (Task Dialog), หยุดติดตาม (`ConfirmableActionForm` destructive); อาหาร/กิจกรรม: แก้ไขรายการ (Edit Dialog), ลบรายการ (Destructive Dialog); เป้าหมายน้ำหนัก: แก้ไข (Edit Dialog), ลบ (Destructive Dialog)
+- **คงไว้บนหน้า:** ฟอร์ม Patient Baseline ทั้งหมด; การเลือกโรงพยาบาล/ค้นหา/เลือกผู้ป่วยและ อสม.; การเพิ่มรายการยา (รวม preset และเวลาเตือน); quick entry ของอาหารและกิจกรรม รวม date navigation และสรุปรายวัน; การตั้งเป้าหมายน้ำหนักใหม่; รายละเอียดยาที่หยุดติดตามแล้ว
+- **ไม่มีการเบี่ยงจากแผนที่ทำให้ invariant อ่อนลง** การเปลี่ยนจากแผน: (1) ปุ่ม “แก้ไข / ลบ” ในประวัติอาหาร/กิจกรรมแยกเป็นสองปุ่มตามที่ Product Owner ยืนยัน; (2) แก้ช่องโหว่ interaction เดิมที่พบระหว่าง migration (ดู Findings)
+
+### Cross-feature audit
+
+- Nested form/dialog: `app/app/ux-d3-dialog-structure.test.tsx` เปิด dialog ของทั้ง 11 surface และยืนยันว่ามี `<dialog>` เดียว, ไม่มี `dialog dialog`, ไม่มี `form form`, ชื่อ dialog มาจาก `aria-labelledby`, initial focus อยู่ใน dialog, การเปิดไม่ dispatch mutation และปิดตอน idle แล้ว focus กลับมาอยู่ในหน้า (ไม่ตกไปที่ `body`). Baseline dialog อยู่ภายใน form เดิมโดยไม่มี form ภายใน dialog; dialog อื่นมี form ของตัวเองเพียงชุดเดียว
+- FormData/hidden fields: ทดสอบ payload จริงของทุก write (baseline 17 field ไม่มี field ใหม่/ซ้ำ; bulk `hospitalId`/`osmUserId`/relationship IDs/nonce จาก snapshot; ยา `medicationId`/`expectedUpdatedAt`/`times` JSON; journal `entryId`/`expectedUpdatedAt`; goal `goalId`/`expectedUpdatedAt`/`targetDate`)
+- Nonce: ไม่มี nonce ใหม่เมื่อเปิด/ปิด dialog; bulk สร้าง nonce ต่อการเปิด review และ resend ใช้ `FormData` object เดิม; journal create nonce สร้างใหม่เฉพาะหลัง create ที่ยืนยันแล้วหรือ “เริ่มบันทึกใหม่”; weight goal nonce lifecycle เดิม
+- Dismissal: dialog ปิดไม่ได้ระหว่าง pending และระหว่าง outcome ที่ต้องทบทวน (baseline/bulk unknown, journal `REVIEW_REQUIRED`, goal `lockedForReview`); medication CONFLICT/`refreshRequired`/`loginHref` ปิด dialog ได้แต่ข้อความและการล็อกยังอยู่บนหน้า
+- Stale context: bulk snapshot stale ปิดการยืนยัน; draft ที่เก็บไว้ผูกกับ resource ID + version จึงไม่ข้ามรายการหรือ version
+- Cross-resource leakage: ผลของ journal entry ผูกกับ `selected` ตาม state machine เดิม; การแยกปุ่มแก้ไข/ลบไม่เปลี่ยนการจัดประเภทผล create/entry
+- Wellness dialog render อยู่ภายใน `<fieldset disabled={pending}>` ของหน้าสุขภาพ: fieldset จะ disable control ใน dialog ด้วยระหว่างอ่านข้อมูลวันใหม่ แต่ไม่เกิดขณะ dialog เปิดเพราะ date form อยู่หลัง modal และ date change ถูกล็อกระหว่างงานเขียน
+
+### Mutation matrix (subset ที่ใช้ได้)
+
+| Feature | ครอบคลุม | ไม่ครอบคลุม / เหตุผล |
+| --- | --- | --- |
+| Patient Baseline | 1–4, 6–14, 17 (navigation หลังสำเร็จ), 18 | 5: หน้าเดียวต่อ relationship เดียว; 15/16: ระหว่าง pending ปิดไม่ได้ และ unknown มี beforeunload guard ของ `UnknownOutcomeAlert` แต่ browser navigation ยังไม่ได้ตรวจใน browser จริง |
+| Bulk OSM | 1–5, 7–14, 15 (เปลี่ยนโรงพยาบาลระหว่าง pending — test เดิม), 16 (unmount — test เดิม), 17, 18 | 6: dialog มีเฉพาะ hidden fields |
+| ยา: แก้ข้อความ/เวลา | 1–5, 7–11 (CONFLICT), 13 (thrown → `refreshRequired`), 18 + session expired | 6: `required` ของชื่อยาเป็น native และไม่ได้ทดสอบแยกใน jsdom; 12: DENIED ของ SELF เป็น ERROR message เดียวกับ forbidden ใน test SSR เดิม; 14: recovery เป็น reload ไม่มี resend; 16/17: success remount ด้วย key `id:updatedAt` |
+| ยา: หยุดติดตาม | 1, 2, 7, 8, 9, 13, 18 | 3–6: ไม่มี field ให้แก้; 14: reload-based |
+| อาหาร/กิจกรรม: แก้/ลบ | 1–5, 7–9, 11 และ 13 (`REVIEW_REQUIRED` — test เดิมปรับใหม่), 12 (DENIED), 16 (late response หลัง invalidation), 17 (ลบแล้วแถวหาย → focus หัวข้อประวัติ), 18 + pagehide | 6/10: validation ของ field เดิมครอบคลุมโดย test SSR เดิม; 14: entry update/delete ใช้ reload review ไม่มี retry |
+| เป้าหมายน้ำหนัก: แก้/ลบ | 1–4, 7–11, 12 (DENIED), 13 (UNCONFIRMED), 16 (late response), 17 (ลบแล้ว → focus หัวข้อ), 18 + CREATE_CONSUMED และ current-goal reconciliation | 5: มีเป้าหมายได้ครั้งละหนึ่ง; 14: reload-based |
+
+### Clinical review
+
+- Baseline ยัง write-once (unique constraint และ server action เดิม); ไม่มี field ใหม่; ช่องว่างแสดง “ไม่ได้บันทึก” และส่งเป็นค่าว่างตามเดิม ไม่แปลงเป็นศูนย์; review แสดงค่าที่กรอกตามตัวอักษร ไม่คำนวณ BMI หรือแปลผล
+- Bulk assignment ยัง atomic; ไม่มี partial-success handling ใหม่
+- ข้อความหยุดติดตามคงเดิม: สิ้นสุดการติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยา (test ยืนยันว่าไม่มีคำว่า “หยุดยา/หยุดรับประทาน”)
+- Aggregate รายวันมาจาก read ของ server หลัง write ที่ยืนยันแล้วเท่านั้น; ไม่มี optimistic deletion
+- การลบเป้าหมายแตะเฉพาะ `personalWeightGoal`; ไม่มีการเปลี่ยน Patient SELF scope, caregiver หรือ staff access
+
+### Accessibility และ focus
+
+- ทุก dialog ใช้ native `ModalDialog` (`showModal`) พร้อม title; confirmation/destructive dialog ให้ focus แรกที่ “ยกเลิก”/“กลับไปแก้ไข”; edit dialog ให้ focus ที่ title (หรือ field แรกของกิจกรรมตามพฤติกรรมเดิม)
+- Focus กลับไปที่ trigger ที่ระบุชัดเจน ไม่พึ่ง previous focus เพียงอย่างเดียว (บาง browser ไม่ focus ปุ่มเมื่อคลิก — พบจาก structure test ที่ปุ่มหยุดติดตามและแก้แล้ว); เมื่อ trigger หายหรือถูกล็อกใช้หัวข้อที่ focus ได้ (`medication-detail-heading`, หัวข้อประวัติ, หัวข้อ “เป้าหมายน้ำหนัก”, ข้อความผลการมอบหมาย, ข้อความผิดพลาดของ baseline)
+- ไม่มี focus callback ซ้อน: journal ย้าย focus ไปหัวข้อ editor หลัง mutation เฉพาะ create ที่ยืนยันแล้ว; remove goal ใช้การคืน focus ของ `ModalDialog` แทน effect เดิม
+- Error ประกาศผ่าน `Alert` (`role="alert"`/`status`) และ `aria-invalid`/`aria-describedby` เดิมของ field
+
+### Responsive
+
+- dialog ที่มี field หลายช่องหรือรายการยาวใช้ `size="fullscreen"` (เต็มจอบนมือถือ, กล่อง 64rem บนจอใหญ่, safe-area padding และ body เลื่อนแยกจาก footer); confirmation ใช้ `compact`
+- ยังไม่ได้ตรวจใน browser จริง: 320px, 390px portrait, mobile landscape, tablet, desktop, safe area, bottom navigation และ software keyboard
+
+### Verification
+
+- Focused รอบสุดท้าย (`src/components/ui`, `src/modules/patient-baseline`, `src/modules/patient-assignment`, `app/app/patients`, `app/app/personal/medications`, `app/app/personal/wellness`, `src/modules/medications`, `src/modules/meals`, `src/modules/exercises`, `src/modules/weight-goals`, `app/app/ux-d3-dialog-structure.test.tsx`): ผ่าน 109 files / 1,202 tests
+- `npm run typecheck`: ผ่าน; `npm run lint`: ผ่าน
+- `npm test` รอบแรก (HEAD `c6d44e25`): ผ่าน 573 files / 6,395 tests, exit 0; รอบสุดท้ายหลังแก้ D3.6: ผ่าน 574 files / 6,408 tests, exit 0. stderr มี JSDOM `navigation (except hash changes)` จาก test เดิมที่เรียก `Location.replace` ซึ่งไม่ทำให้ test fail
+- ไม่ได้รัน `npm run test:integration`: UX-D3 ไม่แก้ service, schema หรือ database contract และไม่ได้ยืนยัน disposable integration database ในรอบนี้
+- Impeccable: PostToolUse hook สแกนไฟล์ที่เขียนผ่าน Write tool (`baseline-form.tsx`, `personal-meal-workspace.tsx` และ test files) ไม่พบปัญหา; ไม่พบ CLI `impeccable detect` บนเครื่องนี้ จึงไม่ได้สแกนไฟล์ที่แก้ผ่าน script
+- Browser QA: ไม่ได้ทำ ต้องใช้บัญชีที่ sign in แล้วและข้อมูลทดสอบ จึงยังไม่ยืนยัน native focus containment, Tab/Escape ใน browser, layout และ virtual keyboard
+
+### Findings
+
+- **P0:** ไม่พบ
+- **P1 (แก้แล้วใน slice):** journal และ weight goal เรียก `onPending(true)` ก่อน `await` ภายใน action transition ทำให้ `saving` ไม่ commit จนกว่า request จะจบ จึงปิด dialog ได้ระหว่าง pending — แก้ด้วย `onSubmitting` จาก native submit; `useActionState` เข้าคิว submit ซ้ำเร็ว ๆ เป็น request ที่สองใน journal, weight goal, medication editors และ baseline — แก้ด้วย single-flight lock ที่ปลดเมื่อ pending จบ (mutation check ยืนยันว่า test จับได้ทุกจุด)
+- **P2 (แก้แล้ว):** bulk `action()` รับ `requestSubmit()` ตรงขณะ unknown; หยุดติดตามยาคืน focus ไป `body` เมื่อ browser ไม่ focus ปุ่มตอนคลิก; การหยุดติดตามล็อก editor อื่นช้าเพราะ `coordination.onSubmit()` อยู่ใน transition — แก้ด้วย `onSubmitted` ของ `ConfirmableActionForm`
+- **P2 (คงเหลือ):** ยังไม่ได้ทำ browser/device QA; ไม่ได้รัน impeccable detector แบบเต็ม; baseline resend ที่ได้ `CONFLICT` “มีอยู่แล้ว” หมายความว่าคำขอแรกบันทึกแล้ว แต่ UI ยังแสดงเป็นข้อผิดพลาดตามพฤติกรรมเดิม (เปลี่ยนการตีความเป็นเรื่อง domain นอกขอบเขต UX-D3)
+
+### Readiness
+
+พร้อมให้ review UX-D3 จากมุม code และ automated checks; ต้องทำ browser/device QA สำหรับรายการที่ยัง unverified ก่อนสรุปว่าผ่าน visual/mobile accessibility validation
