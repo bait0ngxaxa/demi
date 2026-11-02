@@ -623,7 +623,7 @@ async function findReviewableRequest(
     throw new NotFoundError();
   }
 
-  // ADR-0019: only a direct OWNER of the request's Hospital reviews it.
+  // ADR-0026: an ACTIVE direct OWNER or MEMBER of the request's Hospital can review it.
   assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.review, request.hospitalId);
   await assertPersistedHospitalReviewer(transaction, actor.userId, request.hospitalId);
 

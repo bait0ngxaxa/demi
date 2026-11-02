@@ -168,3 +168,43 @@
 | Browser/device/accessibility และ PostgreSQL integration | **ยังไม่ตรวจ**; jsdom ครอบคลุมโครงสร้าง dialog, no nested form/dialog, cancel/recovery, exact payload และ focus target แต่ไม่ยืนยัน keyboard/screen-reader/mobile behavior ใน browser |
 
 ไฟล์ D4.4: `followup-form.tsx` และ `followup-form.test.tsx`. ไม่เปลี่ยน action signature, FormData fields, persistence หรือ clinical semantics
+
+## UX-D4.5 — Cross-role Service Journey Audit
+
+ตรวจ workflow ด้วย test ที่มีและ code inspection; **ยังไม่ได้ทดสอบเป็น E2E เดียวต่อเนื่องใน browser หรือ PostgreSQL**. ในตาราง `T` คือมี automated test ครอบคลุมส่วนที่ระบุ, `C` คือยืนยันจาก code inspection, `B` คือ browser, และ `NV` คือยังไม่ verified. ไม่มีรายการใดผ่าน browser ใน phase นี้
+
+### Primary journey matrix
+
+| Transition | Actor และ resource scope | Evidence / verification state |
+| --- | --- | --- |
+| Patient สร้างคำขอ → Hospital inbox | `PATIENT` SELF ผ่าน relationship ของตน; `HOSPITAL` OWNER/MEMBER เห็น requests เฉพาะ direct active Hospital ที่ operate | **T:** Patient interactions, request Server Action และ bounded Hospital list tests. **C:** create ตรวจ relationship ที่ผูกกับ persisted Patient, active care/Hospital และ offering ใน Hospital เดียว; inbox resolve operator Hospital จาก persisted membership. **B/NV:** ไม่ตรวจ browser หรือข้อมูลจริงปลายทางร่วมกัน |
+| Hospital อ่านแล้ว confirm/reject คำขอ | OWNER/MEMBER ของ Hospital เดียวกับ request; resource `requestId` จากรายการที่ได้ server-side scope | **T:** workspace/dialog/list/action/policy tests; D4.5 เพิ่ม policy assertion ให้ OWNER และ MEMBER ผ่าน reviewer decision. **C:** confirm/reject โหลด request และ re-check persisted active operator ภายใน transaction; reject ได้เฉพาะ PENDING และเก็บเหตุผลที่ Patient อ่านได้. **B/NV:** ไม่มี browser/DB transaction journey test |
+| Confirm request → appointment ถูกสร้าง | Hospital OWNER/MEMBER; resource คือ request relationship เดิมและ appointment ใหม่ | **T:** action payload/revalidation tests และ appointment create idempotency/transaction tests แยกกัน. **C:** `confirmPatientServiceRequest` เรียก appointment creation ภายใน serializable transaction พร้อม `serviceRequestId`; สถานะใหม่เป็น STARTED ผ่าน contract เดิม ไม่ใช่เพียง APPROVED. **NV:** ไม่มี PostgreSQL test ที่ยืนยันการเชื่อม request→appointment ใน transaction เดียว |
+| One-off OSM รับนัดหรือขอเปลี่ยนเวลา | OSM ที่ assigned บน appointment; อำนาจเป็น appointment-level จาก appointment ที่เกิดจาก service request | **T:** appointment policy tests จำกัด one-off scope เฉพาะ appointment และตรวจ assigned OSM, สถานะ, Hospital และเวลาสิ้นสุด; action tests ครอบ accept/reschedule payload และ version/nonce. **C:** ไม่เขียน `PatientOsmAssignment`; OSM ที่มาเยี่ยมไม่ได้รับสิทธิอ่านหรือจัดการ patient record จากนัดนี้. **B/NV:** ไม่ได้เดิน UI เต็มเส้นทาง |
+| Hospital ใช้ care tracking → เปิด Patient/Program/Round | direct active Hospital scope; network Child แสดง read-only; destination ยังคง relationship/program/round deep link เดิม | **T:** care-tracking workspace และ Hospital navigation tests ตรวจ scope/query parameters, direct vs network read-only และ patient/round links. **C:** route/query services resolve active persisted Hospital scope. **B/NV:** ไม่ตรวจ browser URL navigation |
+| OSM/Hospital staff บันทึก Round | OWNER/MEMBER ของ Hospital ที่เกี่ยวข้อง หรือ exact active assigned OSM; Patient ใช้แยก SELF route | **T:** program policy, round query/write/action suites ตรวจ direct Hospital, assigned OSM, wrong relationship/Program, inactive target, read-only completed round และ Patient SELF view. **C:** read/write access แยกตาม persisted relationship/assignment; round action ไม่รับ authority จาก client. **B/NV:** ไม่ตรวจอุปกรณ์จริง |
+| Follow-up บันทึกผล → แสดงผลตาม scope | Hospital OWNER/MEMBER โดยตรง หรือ exact assigned OSM; immutable Follow-up ผูกกับ relationship/Program ที่ตรวจสิทธิ | **T:** follow-up policy, query, action, service suites และ D4.4 form tests ตรวจ role, exact scope, same-Program options, immutable create, native validation/review และ success navigation. **C:** actor/membership/assignment ตรวจจากข้อมูล persisted; Patient SELF ไม่ใช้ staff create action. **B/NV:** ไม่มี browser หรือ DB E2E |
+| Patient ดู request, appointment, Round และประวัติของตน | `PATIENT` SELF ผ่าน person/relationship/Program ที่เป็นของตน; review/cancel ตาม capability ของแต่ละ resource | **T:** Patient request, appointment hub, own care-history query และ SELF round UI/service tests ตรวจ own scope, appointment/follow-up history, privacy ของผู้บันทึก และการไม่มี write controls ใน history. **C:** query กรองโดย persisted person/relationship และ allowlist DTO; SELF follow-up history มาจาก Patient SELF service ไม่ใช่ staff follow-up endpoint. **B/NV:** ไม่ตรวจ browser sign-in/session |
+
+### Role/access matrix
+
+| Actor case | Evidence และผลที่ตรวจได้ |
+| --- | --- |
+| Hospital OWNER | **T+C:** request policy/list, appointment/program/follow-up policies และ catalog policy อนุญาตเฉพาะ capability/active direct scope ที่กำหนด |
+| Hospital MEMBER | **T+C:** service-request list ใช้ active OWNER/MEMBER predicate; request reviewer policy regression ของ D4.5 ครอบทั้ง OWNER และ MEMBER; appointment/Program policy ทดสอบ MEMBER. Catalog ยังคง OWNER-only ตาม ADR-0026 |
+| OSM | **T+C:** appointment, Program และ follow-up policies ใช้ exact active assignment; one-off appointment ให้อำนาจกับ appointment เท่านั้น. ไม่มีการขยาย patient assignment |
+| PATIENT | **T+C:** own request/appointment/service history และ SELF round recording ใช้ person/relationship ของตน. ไม่ได้สิทธิ staff follow-up creation |
+| Mixed-role actors | **T+C:** appointment/Program/follow-up policies ทดสอบการอนุญาตผ่าน secondary direct Hospital หรือ exact OSM scope ที่มีจริง. Service-request policy คงการปฏิเสธ ADMIN แม้มี HOSPITAL role; catalog management ยัง OWNER-only |
+| Platform ADMIN | **T+C:** service-request reviewer และ catalog policy tests ปฏิเสธ ADMIN-only และ ADMIN+HOSPITAL; modules อื่นยังประเมินเฉพาะ authority ที่ module นั้นอนุญาตตาม tests เดิม ไม่มีการอนุมานสิทธิจากชื่อ role เพียงอย่างเดียว |
+| Ended/inactive relationship, suspended Hospital/User, wrong Hospital/foreign Patient or Program | **T+C:** service-request list, appointment/Program/follow-up policy/query และ Patient SELF query suites ทดสอบหรือบังคับ active status และ exact persisted scope; จุดอ่าน history ที่ยังให้ Patient ดูข้อมูลเก่าตาม policy คงไว้ แต่ไม่คืนสิทธิ write ให้ relationship ที่ inactive |
+
+### หลักฐาน D4.5
+
+| ตรวจ | ผลจริง |
+| --- | --- |
+| Cross-journey automated suites | **ผ่าน 61 files / 717 tests** ด้วย `npm run test -- src/modules/patient-service-requests app/app/patients/service-requests app/app/personal/services/patient-service-interactions.test.tsx app/app/patients/hospital-operations-navigation.test.tsx src/modules/appointments app/app/patients/[relationshipId]/appointments app/app/personal/appointments src/modules/patient-program src/modules/patient-program-rounds src/modules/patient-self/services/patient-self-care-query-service.test.ts app/app/personal/patient-self-program-rounds-view.test.tsx app/app/services/care-tracking-workspace-view.test.tsx src/modules/followups app/app/patients/[relationshipId]/followups` |
+| Reviewer policy OWNER/MEMBER regression | **ผ่าน**; มี test MEMBER เพิ่มใน D4.5. แก้เฉพาะ comment เก่าที่อ้าง ADR-0019 ให้ตรง ADR-0026; ไม่เปลี่ยน policy/runtime behavior |
+| `npx eslint` บน policy test และ patient service request service | **ผ่าน**, exit 0 |
+| PostgreSQL end-to-end / browser cross-role journey | **ไม่ได้รัน/ยังไม่ verified**; ไม่มี disposable database ที่ตรวจยืนยันในงานนี้ และไม่ได้ใช้ browser |
+
+ไฟล์ D4.5: policy reviewer test, comment อธิบาย ADR ปัจจุบันใน service request service และ matrix นี้. ไม่แก้ persisted authorization, Server Action, transaction หรือ workflow semantics
