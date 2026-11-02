@@ -22,6 +22,9 @@
 - UX-D2.2 บุคลากรและบัญชีผู้ใช้: เปลี่ยนแก้วิชาชีพและเบอร์ติดต่อเป็น Edit Dialog; เปลี่ยนนำความสัมพันธ์ออก, ลบรายการ และ takeover เป็น destructive/security dialog; คงการระงับและคืนสถานะไว้กับ confirmation หรือ submit เดิมตาม semantics. Commit `56195201`.
 - UX-D2.3 ครอบครัวและ caregiver: เปลี่ยน label เป็น Edit Dialog; ยืนยันการยกเลิกคำเชิญ, ยุติ/ถอนความสัมพันธ์, สร้าง QR/link ใหม่ และ revoke appointment/resource grants ด้วย `ConfirmableActionForm`; คงการสร้าง invitation แบบยาว, consent acceptance, grant proposal และ upgrade ไว้ inline. ลิงก์ใช้ครั้งเดียวหลัง reissue แสดงนอก dialog.
 - D2.3 focused regression ล่าสุด: ผ่าน 5 files / 30 tests ครอบคลุม family recovery, relationship label/draft/version, revocation/withdrawal, QR handoff และ appointment/resource grant; targeted ESLint และ `npm run typecheck` ผ่าน.
+- UX-D2.4 นัดหมาย: ย้ายขอเลื่อนและปฏิเสธพร้อมเหตุผลเป็น task dialog; แสดงโรงพยาบาล/เวลานัดปัจจุบันและรายละเอียดคำขอที่กำลังพิจารณา; ใช้ fullscreen เฉพาะมือถือ; ยืนยันผลแล้วอ่านสถานะจาก history ที่ revalidate.
+- D2.4 focused regression: ผ่าน 2 files / 22 tests ครอบคลุม open/cancel/draft, initial/return focus, payload และ hidden fields, validation/conflict/forbidden feedback, double submit, unknown outcome และ resend `FormData` object เดิมทั้ง request/rejection; targeted ESLint และ `npm run typecheck` ผ่าน.
+- Dialog ที่ยัง unknown ปิดไม่ได้ทั้ง Escape/ปุ่มปิด/ยกเลิกจนกว่าจะตรวจสอบด้วยคำขอเดิมสำเร็จหรือได้ผลที่ยืนยันแล้ว; recovery มี single-flight guard และไม่ปิดเมื่อ dispatch หรือเมื่อเกิด network exception.
 - ยังไม่ได้ตรวจ browser layout, native focus containment, safe area และ virtual keyboard; จะบันทึกผล closeout หลังตรวจความพร้อมของ browser environment.
 
 ## Inventory
@@ -66,8 +69,8 @@
 
 | งาน / component | ปัจจุบัน → เป้าหมาย | Mutation, confirmation และ unknown outcome | คืน focus / ความเสี่ยง / หลักฐานทดสอบ |
 | --- | --- | --- | --- |
-| ขอเลื่อนนัด — `RescheduleRequestSection` + `RescheduleRequestForm` | `<details>` → Task Dialog เต็มจอบนมือถือ | คง eligibility, appointment/relationship IDs, `preferredDatetimes`, reason, `expectedUpdatedAt`, server-rendered `submissionNonce`; unknown resend ต้องส่ง FormData เดิม ไม่สร้าง nonce ใหม่ | ปุ่มของ appointment เดิม; กลาง/สูง. ทดสอบ native required datetime, validation, conflict, unknown resend payload เดิม |
-| ปฏิเสธคำขอพร้อมเหตุผล — same | `<details>` → Destructive/Task Dialog พร้อม request context | คง `requestId`, required `rejectionReason`, action/status checks และ unknown resend เดิม; ไม่กระทบ approval navigation | ปุ่มของ request ID เดิม; สูง. ทดสอบ context, required reason, requestId, pending/unknown |
+| ขอเลื่อนนัด — `RescheduleRequestSection` + `RescheduleRequestForm` | `<details>` → Task Dialog; fullscreen บนมือถือและกล่องมี content scroll บนจอใหญ่ | คง eligibility, appointment/relationship IDs, `preferredDatetimes`, reason, `expectedUpdatedAt`, server-rendered `submissionNonce`; error/conflict ยังคงใน dialog; unknown ล็อกการปิดและส่ง FormData เดิมได้จาก recovery เท่านั้น | ปุ่มของ appointment เดิม; กลาง/สูง. Initial focus ที่ datetime แรก; close คืน focus ไป trigger, success ไป status หรือ heading หาก trigger หาย. ทดสอบ draft, payload, duplicate, validation/conflict/forbidden, unknown resend เดิม |
+| ปฏิเสธคำขอพร้อมเหตุผล — same | `<details>` → Destructive Task Dialog เดียว มีเหตุผลและ request context | คง `requestId`, required `rejectionReason`, action/status checks และ unknown resend เดิม; แจ้งว่าคำขอที่ปฏิเสธไม่กลับเป็น pending และไม่เปลี่ยนวันนัด; ไม่กระทบ approval navigation | ปุ่มของ request ID เดิม; สูง. Initial focus ที่ยกเลิก; focus กลับปุ่มหรือ heading เมื่อ trigger ถูกถอด. ทดสอบบริบท, reason, ID, unknown resend เดิม |
 | อนุมัติคำขอ — same | link ไปหน้าแก้นัด → คง navigation | หน้าแก้นัดและ workflow approval ไม่ย้ายเข้า modal | คง link/target เดิม. สูง. ตรวจ URL และ request linkage |
 
 ## Invariants ที่ใช้กับทุก slice

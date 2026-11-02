@@ -347,7 +347,12 @@ export default async function AppointmentDetailPage({
 
   return (
     <AppointmentDetailView
-      rescheduleRequests={<RescheduleRequestSection history={rescheduleHistory} relationshipId={relationshipId} appointmentId={appointmentId} />}
+      rescheduleRequests={<RescheduleRequestSection
+        history={rescheduleHistory}
+        relationshipId={relationshipId}
+        appointmentId={appointmentId}
+        appointmentSummary={`${detail.patient.hospital.name} · ${formatDate(detail.scheduledAt)}`}
+      />}
       activeProgram={programContext.active}
       canRecordProgram={canRecordProgram}
       detail={detail}

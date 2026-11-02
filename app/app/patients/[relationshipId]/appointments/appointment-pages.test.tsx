@@ -129,7 +129,8 @@ describe("Work appointment journey", () => {
     expect(markup).toContain("รอพิจารณา");
     expect(markup).toContain("ติดธุระ");
     expect(markup).toContain(`/edit?requestId=${requestId}`);
-    expect(markup).toContain("เหตุผลที่ปฏิเสธ");
+    expect(markup).toContain("ปฏิเสธคำขอพร้อมเหตุผล");
+    expect(markup).not.toContain("<details>");
   });
 
   it("lets the OSM manage their home visit without hospital-only status or review actions", async () => {

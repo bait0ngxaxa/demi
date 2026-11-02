@@ -31,7 +31,12 @@ export default async function PatientSelfAppointmentDetailPage({
 
   return (
     <PatientSelfAppointmentDetailView
-      rescheduleRequests={<RescheduleRequestSection history={rescheduleHistory} relationshipId={relationshipId} appointmentId={appointmentId} />}
+      rescheduleRequests={<RescheduleRequestSection
+        history={rescheduleHistory}
+        relationshipId={relationshipId}
+        appointmentId={appointmentId}
+        appointmentSummary={`${detail.relationship.hospitalName} · ${new Intl.DateTimeFormat("th-TH", { dateStyle: "full", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(detail.scheduledAt)}`}
+      />}
       cancellationRequestNonce={randomUUID()}
       detail={detail}
     />
