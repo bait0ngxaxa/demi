@@ -143,3 +143,28 @@
 | Browser/device/accessibility | **ยังไม่ตรวจใน browser**; jsdom ตรวจ cancellation, recovery lock, exact payload และ focus target เท่านั้น |
 
 ไฟล์ D4.3: controls ของ round plan/step, `program-round-detail-view.tsx`, shared `ConfirmableActionForm` recovery slot และ regression tests. ไม่เพิ่ม dialog หรือ form ซ้อน และไม่เปลี่ยนกฎ domain
+
+## UX-D4.4 — ผลการเพิ่ม Follow-up Recording Review
+
+สถานะ: **ดำเนินการแล้ว** ที่ commit UX-D4.4; ฟอร์มคลินิกยังอยู่บนหน้าเฉพาะ
+
+- F-1 คง Follow-up form เต็มไว้บนหน้าเดิม; ใช้ `ConfirmDialog` เพียงหนึ่งรายการเป็น final review และยุบการยืนยัน missing vitals ที่มีอยู่เดิมเข้ามาใน review เดียว
+- การส่งครั้งแรกผ่าน native browser validation แล้วเปิด review โดยไม่เรียก Server Action. ฟอร์มไม่ผูก Server Action กับ `action` โดยตรง; หลังผู้ใช้กดยืนยัน review แล้ว `requestSubmit()` ตรวจ native validation อีกครั้ง และ `dispatchFormDataPreservingInput` ส่ง `FormData` จากฟอร์มเดิมผ่าน `useMutationActionState`. จึงไม่มีทางส่งแบบ progressive form ก่อน hydration ที่ข้าม review และไม่มี hidden review field เพิ่มใน payload
+- Review แสดง Patient/Hospital, โปรแกรมสุขภาพและรอบปัจจุบัน, วันที่บริการแบบปฏิทินกรุงเทพฯ, นัดหมาย, goal plan, ค่าที่กรอกจริง, ช่องที่ว่าง, คำตอบและความคืบหน้าของเป้าหมาย, plan-adjustment intent, อุปสรรค และ free-text notes. ค่า `0` ยังคงแสดงเป็นค่าที่บันทึก; ค่าว่างระบุว่าไม่ได้กรอก ไม่แปลงเป็นศูนย์
+- สำหรับ Program follow-up เท่านั้น หาก vital fields เดิมที่ใช้กับกฎ missing-vitals ขาดอย่างน้อยหนึ่งค่า ผู้ใช้ต้องติ๊กยืนยันผลก่อนส่ง. Review แจ้งว่าขั้นตอน vital ของรอบอาจต้องมี skip reason ที่ผู้ใช้ระบุเอง; ระบบไม่ข้ามขั้นตอนหรือสร้างเหตุผลให้อัตโนมัติ. ส่วนสูงยังแสดงใน review แต่คงอยู่นอกชุด missing-vitals เดิมตาม business contract
+- การยืนยัน dispatch เพียงครั้งเดียวด้วย `submissionNonce` และ fields เดิมทั้งหมด. การเปิด/cancel review ไม่ mutation; draft อยู่ครบ. Validation error คืน focus ไป feedback บนหน้าโดยไม่ล้าง draft; conflict/forbidden คงการ refresh เดิม
+- หากผลไม่ชัดเจน review ยังคงแสดง `UnknownOutcomeAlert` และ resend เฉพาะ original `FormData`/nonce; ไม่มี ordinary submit หรือสร้าง identity ใหม่. ผู้ใช้ปิด review เพื่อใช้ recovery ที่แสดงบนหน้าได้; ลิงก์ออกจากฟอร์มถูกล็อกระหว่าง pending/unknown. ไม่มี automatic retry
+- เมื่อ success เท่านั้นที่ปิด review และใช้ navigation เดิม: ปรับแผนไปหน้า goal-plan creation พร้อม `sourceFollowupId`/`returnTo`; เส้นทางอื่นไปหน้า follow-up detail ตามเดิม
+
+### หลักฐาน D4.4
+
+| ตรวจ | ผลจริง |
+| --- | --- |
+| `npm run test -- app/app/patients/[relationshipId]/followups/new/followup-form.test.tsx` | **ผ่าน 1 file / 9 tests**; native validation, no dispatch on open/cancel, exact reviewed values, zero vs missing, explicit acknowledgment, single dispatch, exact `FormData`/nonce, unknown exact-payload resend, conflict/forbidden, success routing และ focus |
+| `npm run test -- "app/app/patients/[relationshipId]/followups" src/modules/followups` | **ผ่าน 8 files / 89 tests**, รวม UI, transport, policy, service, query, schema และ domain regression |
+| `npx eslint` บน Follow-up form และ regression test | **ผ่าน**, exit 0 |
+| `npx tsc --noEmit --incremental false --project .next/ux-d4-tsconfig.json --pretty false` (Follow-up form, test และสอง page entry points; config ชั่วคราวถูกลบหลังตรวจ) | **ผ่าน**, exit 0 |
+| Follow-up authorization, immutable recording และ navigation contract | **ตรวจผ่านจาก code inspection**: ไม่แก้ Server Actions, schema, service, nonce creation, persisted authorization หรือ post-success workflow |
+| Browser/device/accessibility และ PostgreSQL integration | **ยังไม่ตรวจ**; jsdom ครอบคลุมโครงสร้าง dialog, no nested form/dialog, cancel/recovery, exact payload และ focus target แต่ไม่ยืนยัน keyboard/screen-reader/mobile behavior ใน browser |
+
+ไฟล์ D4.4: `followup-form.tsx` และ `followup-form.test.tsx`. ไม่เปลี่ยน action signature, FormData fields, persistence หรือ clinical semantics

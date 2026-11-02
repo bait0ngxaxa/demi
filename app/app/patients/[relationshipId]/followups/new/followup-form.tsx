@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   APPOINTMENT_TYPE_LABELS,
@@ -154,17 +154,46 @@ function getInitialProgress(goalPlan: GoalPlanOption | null): Record<string, Pro
   );
 }
 
-function ActionFeedback({ state }: { state: FollowupActionState }): React.JSX.Element | null {
-  if (state.status !== "ERROR") {
-    return null;
+function ActionFeedback({ state }: { state: FollowupActionState }): React.JSX.Element {
+  return (
+    <div
+      aria-label="ผลการบันทึกการติดตามผล"
+      className={state.status === "ERROR" ? "mt-5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" : ""}
+      id="followup-action-feedback"
+      tabIndex={-1}
+    >
+      {state.status === "ERROR" ? (
+        <Alert variant={state.code === "CONFLICT" ? "warning" : "danger"}>
+          <p className="font-semibold">บันทึกการติดตามผลไม่สำเร็จ</p>
+          <p className="mt-1">{state.message}</p>
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+function ReviewField({ label, value }: { label: string; value: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="min-w-0">
+      <dt className="text-text-muted">{label}</dt>
+      <dd className="mt-1 break-words whitespace-pre-wrap font-semibold text-text">{value}</dd>
+    </div>
+  );
+}
+
+function reviewValue(value: string): string {
+  return value === "" ? "ไม่ได้กรอก" : value;
+}
+
+function formatServiceDate(value: string): string {
+  if (!value) {
+    return "ไม่ได้ระบุ";
   }
 
-  return (
-    <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">บันทึกการติดตามผลไม่สำเร็จ</p>
-      <p className="mt-1">{state.message}</p>
-    </Alert>
-  );
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(`${value}T00:00:00+07:00`));
 }
 
 function ProgressEditor({
@@ -263,10 +292,45 @@ export function FollowupForm({
   const returnTo = scope.kind === "program" ? (scope.returnTo ?? null) : null;
   const createAction =
     scope.kind === "program" ? createFollowupForProgramAction : createFollowupAction;
+  const submissionLockRef = useRef(false);
+  const reviewConfirmedRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
+  const actionStateRef = useRef<FollowupActionState>(initialFollowupActionState);
+  const [submissionLocked, setSubmissionLocked] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [missingVitalsPrompt, setMissingVitalsPrompt] = useState<string[]>([]);
+  const [missingVitalsAcknowledged, setMissingVitalsAcknowledged] = useState(false);
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<FollowupActionState, FormData>(
-    createAction,
+    async (previous, formData) => {
+      const result = await createAction(previous, formData);
+      actionStateRef.current = result;
+      submissionLockRef.current = false;
+      setSubmissionLocked(false);
+      setReviewOpen(false);
+      return result;
+    },
     initialFollowupActionState,
   );
+  const busy = pending || unknownOutcome || submissionLocked;
+
+  function followupReturnFocusTarget(): HTMLElement | null {
+    if (typeof document === "undefined") {
+      return saveButtonRef.current;
+    }
+
+    if (unknownOutcome) {
+      return document.querySelector<HTMLButtonElement>('[data-navigation-guard="unknown-outcome"] button') ?? null;
+    }
+
+    if (actionStateRef.current.status === "ERROR") {
+      return document.getElementById("followup-action-feedback");
+    }
+
+    return actionStateRef.current.status === "SUCCESS"
+      ? document.getElementById("followup-form-page")
+      : saveButtonRef.current;
+  }
   const [appointmentId, setAppointmentId] = useState(selectedAppointmentId ?? "");
   const [goalPlanId, setGoalPlanId] = useState(selectedGoalPlanId ?? "");
   const [weight, setWeight] = useState("");
@@ -287,13 +351,11 @@ export function FollowupForm({
   const [expertAdvice, setExpertAdvice] = useState("");
   const [hasObstacle, setHasObstacle] = useState<YesNoDraft>("");
   const [obstacleNote, setObstacleNote] = useState("");
-  const formRef = useRef<HTMLFormElement>(null);
-  const missingVitalsConfirmedRef = useRef(false);
-  const [missingVitalsPrompt, setMissingVitalsPrompt] = useState<string[] | null>(null);
   const selectedGoalPlan = useMemo(
     () => goalPlans.find((plan) => plan.goalPlanId === goalPlanId) ?? null,
     [goalPlanId, goalPlans],
   );
+  const selectedAppointment = appointments.find((appointment) => appointment.appointmentId === appointmentId) ?? null;
   const [progress, setProgress] = useState<Record<string, ProgressDraft>>(() =>
     getInitialProgress(
       goalPlans.find((plan) => plan.goalPlanId === selectedGoalPlanId) ?? null,
@@ -351,25 +413,77 @@ export function FollowupForm({
     [VITALS_MEASUREMENT_LABELS.diastolicBloodPressure, diastolicBloodPressure],
   ];
   const measurementCount = measurements.filter(([, value]) => value !== "").length;
+  const reviewMeasurements: readonly (readonly [string, string])[] = [
+    ["น้ำหนัก (kg)", weight],
+    ["รอบเอว (cm)", waistCircumference],
+    ["ความดันตัวบน (mmHg)", systolicBloodPressure],
+    ["ความดันตัวล่าง (mmHg)", diastolicBloodPressure],
+    ["น้ำตาลในเลือด / DTX (DTX / mg%)", bloodSugar],
+    ...(programId ? [["ส่วนสูง (cm)", heightCm] as const] : []),
+  ];
+  const missingReviewMeasurements = reviewMeasurements.filter(([, value]) => value === "").map(([label]) => label);
 
-  // A Program Follow-up is immutable: confirm before saving without every round vital, because the
-  // round's vitals step will then need a skip reason.
-  function confirmMissingVitals(event: FormEvent<HTMLFormElement>): void {
-    if (!programId || missingVitalsConfirmedRef.current) {
-      missingVitalsConfirmedRef.current = false;
+  // The browser runs native validation before this handler. Opening review never submits the form.
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (reviewConfirmedRef.current) {
+      reviewConfirmedRef.current = false;
+      dispatchFormDataPreservingInput(event, action);
       return;
     }
 
-    const missing = measurements.filter(([, value]) => value === "").map(([label]) => label);
+    event.preventDefault();
+    if (busy || state.status === "SUCCESS" || submissionLockRef.current) {
+      return;
+    }
 
-    if (missing.length > 0) {
-      event.preventDefault();
-      setMissingVitalsPrompt(missing);
+    const missing = programId
+      ? measurements.filter(([, value]) => value === "").map(([label]) => label)
+      : [];
+    setMissingVitalsPrompt(missing);
+    setMissingVitalsAcknowledged(false);
+    setReviewOpen(true);
+  }
+
+  function confirmFinalReview(): void {
+    const requiresMissingVitalsAcknowledgment = programId !== null && missingVitalsPrompt.length > 0;
+    if (
+      busy ||
+      state.status === "SUCCESS" ||
+      submissionLockRef.current ||
+      (requiresMissingVitalsAcknowledgment && !missingVitalsAcknowledged)
+    ) {
+      return;
+    }
+
+    const form = formRef.current;
+    if (!form) {
+      return;
+    }
+
+    submissionLockRef.current = true;
+    setSubmissionLocked(true);
+    reviewConfirmedRef.current = true;
+
+    try {
+      form.requestSubmit();
+    } catch {
+      if (reviewConfirmedRef.current) {
+        reviewConfirmedRef.current = false;
+        submissionLockRef.current = false;
+        setSubmissionLocked(false);
+      }
+      return;
+    }
+
+    if (reviewConfirmedRef.current) {
+      reviewConfirmedRef.current = false;
+      submissionLockRef.current = false;
+      setSubmissionLocked(false);
     }
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-5xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="followup-form-page" tabIndex={-1}>
       {programRoundNumber ? <p className="text-sm font-semibold text-text">บันทึกสำหรับครั้งที่ {programRoundNumber}</p> : null}
       <PageHeader
         actions={
@@ -402,7 +516,7 @@ export function FollowupForm({
         title="บันทึกการติดตามผล"
       />
 
-      <form action={action} className="space-y-6 pt-8" onSubmit={confirmMissingVitals} ref={formRef}>
+      <form className="space-y-6 pt-8" onSubmit={handleFormSubmit} ref={formRef}>
         {scope.kind === "program" ? (
           <input name="patientProgramId" type="hidden" value={scope.patientProgramId} />
         ) : (
@@ -467,7 +581,7 @@ export function FollowupForm({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             วันที่พบหรือติดตามผู้ป่วยจริง ใช้เป็นวันที่ติดตามในรายงาน เลือกย้อนหลังได้แต่เลือกวันในอนาคตไม่ได้
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-service-date">
               <span>วันที่ให้บริการ</span>
               <input
@@ -489,7 +603,7 @@ export function FollowupForm({
             เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนเป้าหมายย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน
             ระบบจะไม่แนบรายการล่าสุดให้โดยอัตโนมัติ
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-appointment">
               <span>นัดหมายที่อ้างอิง</span>
               <Select
@@ -544,7 +658,7 @@ export function FollowupForm({
           <p className="mt-2 text-sm leading-6 text-text-muted">
             กรอกเท่าที่มี ระบบจะเก็บค่าที่บันทึกไว้และไม่คำนวณผลทางการแพทย์อัตโนมัติ
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
             <label className={labelClassName} htmlFor="followup-weight">
               <span>น้ำหนัก (kg)</span>
               <input
@@ -636,7 +750,7 @@ export function FollowupForm({
           <Panel>
             <h2 className="text-xl font-semibold tracking-[-0.02em]">ทบทวนแผนสุขภาพ</h2>
             <div className="mt-6 grid gap-6">
-              <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+              <fieldset className="space-y-3" disabled={busy || state.status === "SUCCESS"}>
                 <legend className="text-sm font-semibold text-text">ทำตามแผนได้หรือไม่</legend>
                 {FOLLOWED_PLAN_CHOICES.map(([value, label]) => (
                   <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
@@ -657,7 +771,7 @@ export function FollowupForm({
                 <span>เกิดอะไรขึ้นบ้าง?</span>
                 <textarea
                   className={`${inputClassName} min-h-28 py-3`}
-                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                  disabled={busy || state.status === "SUCCESS"}
                   id="followup-reflection"
                   maxLength={2_000}
                   onChange={(event) => setReflectionNote(event.target.value)}
@@ -669,7 +783,7 @@ export function FollowupForm({
                 <span>คำแนะนำจากผู้เชี่ยวชาญ (ไม่บังคับ)</span>
                 <textarea
                   className={`${inputClassName} min-h-28 py-3`}
-                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                  disabled={busy || state.status === "SUCCESS"}
                   id="followup-expert-advice"
                   maxLength={1_000}
                   onChange={(event) => setExpertAdvice(event.target.value)}
@@ -699,7 +813,7 @@ export function FollowupForm({
               {selectedGoalPlan.items.map((activity) => (
                 <ProgressEditor
                   activity={activity}
-                  disabled={pending || unknownOutcome || state.status === "SUCCESS"}
+                  disabled={busy || state.status === "SUCCESS"}
                   draft={progress[activity.activityCode] ?? { status: "", achievedDays: "", note: "" }}
                   key={activity.activityCode}
                   onChange={(draft) =>
@@ -717,7 +831,7 @@ export function FollowupForm({
             ต้องเลือกทั้งสองข้อ ข้อมูลนี้ใช้ในรายงานการจัดบริการ
           </p>
           <div className="mt-6 grid gap-6 sm:grid-cols-2">
-            <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+            <fieldset className="space-y-3" disabled={busy || state.status === "SUCCESS"}>
               <legend className="text-sm font-semibold text-text">ปรับแผนใหม่ในรอบนี้หรือไม่</legend>
               {PLAN_ADJUSTED_CHOICES.map(([value, label]) => (
                 <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
@@ -741,7 +855,7 @@ export function FollowupForm({
                 </p>
               ) : null}
             </fieldset>
-            <fieldset className="space-y-3" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+            <fieldset className="space-y-3" disabled={busy || state.status === "SUCCESS"}>
               <legend className="text-sm font-semibold text-text">มีอุปสรรคในรอบนี้หรือไม่</legend>
               {OBSTACLE_CHOICES.map(([value, label]) => (
                 <label className="flex min-h-11 items-center gap-3 text-base text-text" key={value}>
@@ -783,7 +897,7 @@ export function FollowupForm({
               ? "คะแนนความมั่นใจของโปรแกรมบันทึกที่ขั้นตอน “ไม้บรรทัดวัดใจ” ของแต่ละครั้ง ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"
               : "บันทึกข้อมูลตามที่เหมาะสม ระบบจะไม่ใช้ข้อมูลส่วนนี้คำนวณคะแนนหรือแนะนำการรักษา"}
           </p>
-          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={pending || unknownOutcome || state.status === "SUCCESS"}>
+          <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
             {programId ? null : (
             <>
             <label className={labelClassName} htmlFor="followup-confidence-score">
@@ -845,9 +959,9 @@ export function FollowupForm({
         </Panel>
 
         <Panel>
-          <h2 className="text-xl font-semibold tracking-[-0.02em]">ตรวจสอบก่อนบันทึก</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.02em]">ก่อนบันทึก</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            การบันทึกจะสร้างรายการติดตามผลใหม่ และเก็บข้อมูลรอบนี้เป็นประวัติที่แก้ไขหรือลบไม่ได้
+            ตรวจทานค่าที่เลือกและกรอกในหน้าต่างถัดไป การบันทึกจะสร้างรายการติดตามผลใหม่ที่แก้ไขหรือลบไม่ได้
           </p>
           <dl className="mt-5 grid gap-4 border-y border-border py-5 text-sm sm:grid-cols-3">
             <div>
@@ -873,16 +987,28 @@ export function FollowupForm({
             <Alert className="mt-5" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
           ) : null}
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button disabled={pending || unknownOutcome || state.status === "SUCCESS"} loading={pending} type="submit">
-              {pending ? "กำลังบันทึก…" : "บันทึกการติดตามผล"}
+            <Button
+              disabled={busy || state.status === "SUCCESS"}
+              loading={pending || (submissionLocked && !unknownOutcome)}
+              ref={saveButtonRef}
+              type="submit"
+            >
+              {pending || (submissionLocked && !unknownOutcome) ? "กำลังบันทึก…" : "บันทึกการติดตามผล"}
             </Button>
             <Link
-              className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+              aria-disabled={busy || state.status === "SUCCESS"}
+              className={`inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${busy || state.status === "SUCCESS" ? "pointer-events-none cursor-not-allowed text-text-subtle" : ""}`}
               href={
                 scope.kind === "program"
                   ? `/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(scope.patientProgramId)}`
                   : `/app/patients/${encodeURIComponent(relationshipId)}/followups`
               }
+              onClick={(event) => {
+                if (busy || state.status === "SUCCESS") {
+                  event.preventDefault();
+                }
+              }}
+              tabIndex={busy || state.status === "SUCCESS" ? -1 : undefined}
             >
               ยกเลิก
             </Link>
@@ -890,21 +1016,158 @@ export function FollowupForm({
         </Panel>
       </form>
       <ConfirmDialog
+        cancelLabel={unknownOutcome ? "ปิดหน้าต่าง" : undefined}
+        confirmDisabled={busy || (programId !== null && missingVitalsPrompt.length > 0 && !missingVitalsAcknowledged)}
         confirmLabel="บันทึกต่อ"
-        description={`ยังไม่ได้กรอก: ${missingVitalsPrompt?.join(", ") ?? ""}`}
-        details={
-          <p>
-            การติดตามผลแก้ไขภายหลังไม่ได้ หากบันทึกต่อ ขั้นตอน “ข้อมูลทั่วไปและสัญญาณชีพ” ของครั้งนี้จะต้องระบุเหตุผลที่ข้าม
-          </p>
+        description={
+          <>
+            ผู้ป่วย {patient.displayName} · โรงพยาบาล {patient.hospital.name}
+            {programId
+              ? ` · โปรแกรมสุขภาพ · ครั้งบริการที่ ${programRoundNumber ?? "ไม่ได้ระบุ"}`
+              : " · การติดตามผลนอก Program"}
+          </>
         }
-        onCancel={() => setMissingVitalsPrompt(null)}
-        onConfirm={() => {
-          setMissingVitalsPrompt(null);
-          missingVitalsConfirmedRef.current = true;
-          formRef.current?.requestSubmit();
-        }}
-        open={missingVitalsPrompt !== null}
-        title="บันทึกโดยไม่มีค่าสุขภาพครบ?"
+        details={
+          <div className="space-y-5">
+            {unknownOutcome ? (
+              <UnknownOutcomeAlert
+                active={unknownOutcome}
+                recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }}
+              />
+            ) : null}
+            <section>
+              <h3 className="font-semibold text-text">บริบทการติดตาม</h3>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                <ReviewField label="วันที่ให้บริการ" value={formatServiceDate(serviceDate)} />
+                <ReviewField
+                  label="นัดหมายที่เลือก"
+                  value={selectedAppointment
+                    ? `${APPOINTMENT_TYPE_LABELS[selectedAppointment.type]} · ${formatDate(selectedAppointment.scheduledAt)}`
+                    : appointmentId ? "ไม่พบรายละเอียดนัดหมายที่เลือก" : "ไม่ได้เชื่อมโยงนัดหมาย"}
+                />
+                <ReviewField
+                  label="แผนเป้าหมายที่เลือก"
+                  value={selectedGoalPlan
+                    ? `รอบที่ ${selectedGoalPlan.roundNumber} · ${selectedGoalPlan.primaryGoalLabel} · ${formatDate(selectedGoalPlan.createdAt)}`
+                    : goalPlanId ? "ไม่พบรายละเอียดแผนเป้าหมายที่เลือก" : "ไม่ได้เชื่อมโยงแผนเป้าหมาย"}
+                />
+              </dl>
+            </section>
+
+            <section>
+              <h3 className="font-semibold text-text">ค่าที่จะบันทึก</h3>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                {reviewMeasurements.map(([label, value]) => (
+                  <ReviewField key={label} label={label} value={reviewValue(value)} />
+                ))}
+              </dl>
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                ค่าที่ยังไม่ได้กรอก: {missingReviewMeasurements.length ? missingReviewMeasurements.join(" · ") : "ไม่มี"}
+              </p>
+            </section>
+
+            {programId ? (
+              <section>
+                <h3 className="font-semibold text-text">คำตอบและความคืบหน้า</h3>
+                <dl className="mt-3 grid gap-3 text-sm">
+                  <ReviewField
+                    label="ทำตามแผนสุขภาพ"
+                    value={followedPlan === "true" ? "ทำตามแผนได้" : followedPlan === "false" ? "ทำตามแผนไม่ได้" : "ยังไม่ได้เลือก"}
+                  />
+                  <ReviewField label="เกิดอะไรขึ้นบ้าง?" value={reviewValue(reflectionNote)} />
+                  <ReviewField label="คำแนะนำจากผู้เชี่ยวชาญ" value={reviewValue(expertAdvice)} />
+                  <ReviewField
+                    label="ความคืบหน้าตามแผนเป้าหมาย"
+                    value={selectedGoalPlan && selectedGoalPlan.items.length > 0 ? (
+                      <ul className="list-disc space-y-2 pl-5 font-normal">
+                        {selectedGoalPlan.items.map((activity) => {
+                          const draft = progress[activity.activityCode] ?? { status: "", achievedDays: "", note: "" };
+                          const achievedDays = draft.status === "NOT_APPLICABLE" || draft.achievedDays === ""
+                            ? null
+                            : Number(draft.achievedDays);
+                          const statusLabel = draft.status ? FOLLOWUP_PROGRESS_STATUS_LABELS[draft.status] : "ไม่ได้บันทึกสถานะ";
+                          const daysLabel = !draft.status
+                            ? "ไม่ได้บันทึก"
+                            : draft.status === "NOT_APPLICABLE"
+                              ? "ไม่ต้องระบุจำนวนวัน"
+                              : achievedDays === null ? "ไม่ได้กรอกจำนวนวัน" : `${achievedDays} วัน`;
+
+                          return (
+                            <li className="break-words" key={activity.activityCode}>
+                              <span className="font-semibold">{activity.activityLabel}:</span> {statusLabel} · {daysLabel}
+                              <span className="block whitespace-pre-wrap">
+                                หมายเหตุ{draft.status ? "" : " (ไม่ได้บันทึก เพราะยังไม่ได้เลือกสถานะ)"}: {reviewValue(draft.note)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : "ไม่มีแผนเป้าหมายที่เลือก"}
+                  />
+                </dl>
+              </section>
+            ) : (
+              <section>
+                <h3 className="font-semibold text-text">ความมั่นใจและสิ่งที่ต้องการสะท้อน</h3>
+                <dl className="mt-3 grid gap-3 text-sm">
+                  <ReviewField label="คะแนนความมั่นใจ (0–10)" value={reviewValue(confidenceScore)} />
+                  <ReviewField label="สิ่งที่ต้องการสะท้อน" value={reviewValue(reflectionNote)} />
+                  <ReviewField label="แผนต่อเนื่อง" value={reviewValue(confidencePlan)} />
+                </dl>
+              </section>
+            )}
+
+            <section>
+              <h3 className="font-semibold text-text">แผนและอุปสรรค</h3>
+              <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                <ReviewField
+                  label="ความตั้งใจปรับแผน"
+                  value={planAdjusted === "true" ? "ปรับแผน" : planAdjusted === "false" ? "ไม่ปรับแผน" : "ยังไม่ได้เลือก"}
+                />
+                <ReviewField
+                  label="อุปสรรคในรอบนี้"
+                  value={hasObstacle === "true" ? "มีอุปสรรค" : hasObstacle === "false" ? "ไม่มีอุปสรรค" : "ยังไม่ได้เลือก"}
+                />
+                <ReviewField
+                  label="รายละเอียดอุปสรรค"
+                  value={hasObstacle === "true" ? reviewValue(obstacleNote) : hasObstacle === "false" ? "ไม่เกี่ยวข้อง" : "ไม่ได้เลือก"}
+                />
+                <ReviewField label="หมายเหตุทั่วไป" value={reviewValue(generalNote)} />
+              </dl>
+            </section>
+
+            {programId !== null && missingVitalsPrompt.length > 0 ? (
+              <Alert role="alert" variant="warning">
+                <p className="font-semibold">ค่าสุขภาพของรอบนี้ยังขาด</p>
+                <p className="mt-1">{missingVitalsPrompt.join(" · ")}</p>
+                <p className="mt-2">
+                  หากบันทึกต่อ ขั้นตอน “ข้อมูลทั่วไปและสัญญาณชีพ” ของรอบนี้อาจต้องระบุเหตุผลที่ข้ามด้วยตนเอง ระบบจะไม่ข้ามขั้นตอนหรือเลือกเหตุผลให้อัตโนมัติ
+                </p>
+                <label className="mt-3 flex min-h-11 items-start gap-3 font-semibold text-text">
+                  <input
+                    checked={missingVitalsAcknowledged}
+                    className="mt-1 size-5 shrink-0"
+                    disabled={busy}
+                    onChange={(event) => setMissingVitalsAcknowledged(event.currentTarget.checked)}
+                    type="checkbox"
+                  />
+                  <span>รับทราบผลของการบันทึกโดยยังขาดค่าสุขภาพ</span>
+                </label>
+              </Alert>
+            ) : null}
+
+            <p className="text-sm leading-6 text-text-muted">
+              การบันทึกจะสร้างรายการติดตามผลใหม่ ข้อมูลที่บันทึกแล้วแก้ไขหรือลบไม่ได้
+            </p>
+          </div>
+        }
+        onCancel={() => setReviewOpen(false)}
+        onConfirm={confirmFinalReview}
+        open={reviewOpen}
+        pending={pending || (submissionLocked && !unknownOutcome)}
+        pendingLabel="กำลังบันทึก…"
+        returnFocusTarget={followupReturnFocusTarget}
+        title="ตรวจทานก่อนบันทึก"
       />
     </div>
   );
