@@ -69,3 +69,30 @@
 - **E — เลื่อนไปงานอื่น:** appointment accept/reschedule ไม่เปลี่ยน UI ใน slices D4.1–D4.4; D4.5 ตรวจ contract โดยไม่ย้าย workflow
 
 งาน UX-D4.1–D4.6 จะเพิ่มผลตรวจ สถานะการย้าย รายการ role/access และหลักฐานที่เกิดจริงต่อท้ายเอกสารนี้ ห้ามอ่านช่อง browser/integration ที่ยังไม่ตรวจว่าเป็น PASS
+
+## UX-D4.1 — ผลการย้าย Hospital Service Request Decisions
+
+สถานะ: **ดำเนินการแล้ว** ที่ commit UX-D4.1; เปลี่ยนเฉพาะ interaction ฝั่ง client และ regression tests
+
+- H-1 ย้ายฟอร์มนัดออกจากการ์ดเป็น `ModalDialog` เดียว แสดง Patient, Hospital, บริการ, ความประสงค์, ผู้ดูแลปัจจุบัน และค่าการนัดหมายที่จะบันทึกจริง; วันเวลา, อสม., ระยะเวลา, สถานที่ และหมายเหตุแก้ไขได้ใน dialog
+- H-2 ย้ายการไม่อนุมัติเป็น dialog แสดงผลที่เกิดกับคำขอและกำกับชัดว่าเหตุผลที่กรอกจะเห็นโดยผู้ป่วย; required/max length เดิมยังอยู่
+- `confirmPatientServiceRequestAction` และ `rejectPatientServiceRequestAction` ยังเป็น Server Action เดิม; eligibility, transaction, permission, request transitions และ revalidation ไม่เปลี่ยน
+- ใช้ nonce ยืนยันนัดที่ server สร้างและคงค่าไว้ตลอดการปิด/เปิด dialog; payload ยังเป็น requestId, submissionNonce, osmUserId, scheduledAt, durationMinutes, locationDetail และ note. `datetime-local` ยังคงแปลงเป็น `+07:00` โดยไม่ตีความเป็น UTC
+- Workspace ยังคุม action state, pending/unknown และ synchronous single-flight lock ร่วมกันทุกการ์ด. ผล unknown ล็อกการยืนยันปกติและไม่ให้ปิด dialog; คำแนะนำให้โหลดข้อมูลล่าสุดอยู่ใน dialog และ workspace. ไม่ retry อัตโนมัติ
+- Draft ของฟอร์มนัดและเหตุผลไม่หายเมื่อยกเลิกแล้วเปิด dialog เดิมใหม่. Cancel คืน focus ไปปุ่มเดิม; success/conflict คืน focus ไป feedback ที่อยู่นอกการ์ดซึ่งอาจย้ายกลุ่ม
+- คงการจัดกลุ่ม, การเรียง, pagination, summary และลิงก์นัดหมายที่ยืนยันแล้วไว้ตามเดิม
+
+### หลักฐาน D4.1
+
+| ตรวจ | ผลจริง |
+| --- | --- |
+| `npm run test -- app/app/patients/service-requests src/modules/patient-service-requests src/modules/appointments` | **ผ่าน 24 files / 272 tests** |
+| Dialog/workspace/server-action tests เฉพาะที่เพิ่มและเกี่ยวข้อง | **ผ่าน 3 files / 37 tests**; ครอบคลุม open/cancel, draft, exact FormData/Bangkok time, one-off OSM copy, rejection reason, double-submit lock, unknown outcome และ focus |
+| `npm run lint` | **ผ่าน**, exit 0 |
+| `npx eslint` เฉพาะ dialog regression test หลังแก้ test เพิ่ม | **ผ่าน**, exit 0 |
+| `npx tsc --noEmit --project .next/ux-d4-tsconfig.json --pretty false` (include เฉพาะไฟล์ D4.1 และ dependencies) | **ผ่าน**, exit 0; config/ไฟล์ชั่วคราวใน `.next` ถูกลบหลังตรวจ |
+| `npm run typecheck` | **ยังไม่ผ่านการตรวจเต็ม**: หลังสร้าง route types ใหม่ด้วย `npx next typegen` และเอา generated route file ที่เสียออกจาก `.next/dev/types`, `tsc` ใช้ heap 2 GB จน Node จบด้วย out-of-memory; เครื่องมี RAM ว่างราว 2.5 GB ขณะตรวจ จึงไม่เพิ่มเพดาน heap. ไม่พบ source diagnostic ก่อน OOM |
+| Authorization, transaction และ state transition | **ตรวจผ่านโดยอ่านโค้ดและ tests ที่มี**: server actions/service/schema เดิมไม่ได้แก้; ไม่มี PostgreSQL integration test ใน slice นี้ |
+| Browser/device accessibility | **ยังไม่ตรวจ**; jsdom tests ตรวจ open/cancel, modal focus return และ lock เท่านั้น |
+
+ไฟล์ D4.1: `hospital-service-request-controls.tsx`, `hospital-service-requests-workspace.tsx`, tests ของ workspace และ dialog. ไม่แก้ schema, Server Action signature, service/domain, permission หรือ appointment transaction

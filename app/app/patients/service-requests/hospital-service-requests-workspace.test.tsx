@@ -50,7 +50,19 @@ function render(requests: readonly HospitalPatientServiceRequestView[], extra: P
 
 function controls(overrides: Partial<HospitalPatientServiceRequestView> = {}): string {
   return renderToStaticMarkup(
-    <HospitalPatientServiceRequestReviewControls confirmAction={hooks.action} pending={false} rejectAction={hooks.action} request={{ ...request, ...overrides }} submissionNonce={nonce} />,
+    <HospitalPatientServiceRequestReviewControls
+      blocked={false}
+      confirmAction={hooks.action}
+      onConfirmSubmit={() => undefined}
+      onRejectSubmit={() => undefined}
+      onReviewOpen={() => undefined}
+      pending={false}
+      rejectAction={hooks.action}
+      request={{ ...request, ...overrides }}
+      resolvedMutation={null}
+      returnFocusToFeedback={() => null}
+      submissionNonce={nonce}
+    />,
   );
 }
 
@@ -90,29 +102,22 @@ describe("Hospital request review workspace", () => {
     const buttons = [...markup.matchAll(/<button\b[^>]*>([^<]*)<\/button>/g)].map(([, label]) => label);
     expect(buttons).toEqual(actions);
     if (actions.length > 0) {
-      expect(markup).toContain(`value="${request.requestId}"`);
-      expect(markup).toContain(`name="submissionNonce" value="${nonce}"`);
-      expect(markup).toContain(`aria-describedby="review-help-${request.requestId}"`);
+      expect(markup).not.toContain("<form");
+      expect(markup).not.toContain("name=\"scheduledAt\"");
     } else {
       expect(markup).toBe("");
     }
     expect(markup).not.toContain("confirmReassignment");
   });
 
-  it("prefills the preferred date and slot, preselects the preferred อสม. and requires a rejection reason", () => {
-    const markup = controls();
-    expect(markup).toContain('value="2026-11-02T13:00"');
-    expect(markup).toContain('value="2026-11-02T13:00:00+07:00"');
-    expect(markup).toContain('<option value="77777777-7777-4777-8777-777777777777" selected="">สมชาย อสม.</option>');
-    expect(markup).toContain("สมศรี อสม. (ผู้ดูแลปัจจุบัน)");
-    expect(markup).toContain("เยี่ยมครั้งเดียว");
-    expect(markup).toMatch(/<textarea[^>]*name="reason"[^>]*required=""/);
-  });
-
-  it("preselects the assigned อสม. when the patient left the choice to the hospital", () => {
-    const markup = controls({ preferredOsmUserId: null, preferredOsmName: null });
-    expect(markup).toContain('<option value="99999999-9999-4999-8999-999999999999" selected="">สมศรี อสม. (ผู้ดูแลปัจจุบัน)</option>');
-    expect(markup).not.toContain("เยี่ยมครั้งเดียว");
+  it("keeps the inline request summary compact while retaining clear action labels", () => {
+    const markup = render([request]);
+    expect(markup).toContain("สะดวกหลังบ่ายสอง");
+    expect(markup).toContain("ยืนยันนัด");
+    expect(markup).toContain("ไม่อนุมัติคำขอ");
+    expect(markup).not.toContain("confirm-at-");
+    expect(markup).not.toContain("confirm-duration-");
+    expect(markup).not.toContain("reject-reason-");
   });
 
   it("keeps the same Patient distinct across Hospitals and links a started request to its exact appointment", () => {
@@ -156,9 +161,8 @@ describe("Hospital request review workspace", () => {
   it("disables every review control during a mutation", () => {
     hooks.pending = true;
     const markup = render([request, { ...request, requestId: "other" }]);
-    // Per card: date, อสม., duration, location, note, confirm button, reason, reject button.
-    expect(markup.match(/disabled=""/g)).toHaveLength(16);
-    expect(markup).toContain('aria-busy="true"');
+    // Two decision triggers per PENDING card; editing stays inside the modal.
+    expect(markup.match(/disabled=""/g)).toHaveLength(4);
     expect(markup).toContain("กำลังบันทึกผลการดำเนินการ");
   });
 

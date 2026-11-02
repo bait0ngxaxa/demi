@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { HospitalPatientServiceRequestPage } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import {
@@ -30,7 +30,7 @@ import {
   rejectPatientServiceRequestAction,
 } from "@/modules/patient-service-requests/transport/server-actions";
 
-import { HospitalPatientServiceRequestReviewControls } from "./hospital-service-request-controls";
+import { HospitalPatientServiceRequestReviewControls, type HospitalServiceRequestResolvedMutation } from "./hospital-service-request-controls";
 
 function ReviewFeedback({ state }: { state: PatientServiceMutationActionState }): React.JSX.Element | null {
   if (state.status === "SUCCESS") return <Alert variant="success">
@@ -57,23 +57,81 @@ export function HospitalPatientServiceRequestsWorkspace({
   /** Request id to its server-issued confirmation nonce. */
   submissionNonces?: Readonly<Record<string, string>>;
 }): React.JSX.Element {
+  const mutationLockRef = useRef(false);
+  const returnFocusToFeedbackRef = useRef(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
+  const [mutationLocked, setMutationLocked] = useState(false);
+  const [resolvedMutation, setResolvedMutation] = useState<HospitalServiceRequestResolvedMutation>(null);
+
+  function onMutationResolved(
+    kind: "confirm" | "reject",
+    formData: FormData,
+    state: PatientServiceMutationActionState,
+  ): void {
+    mutationLockRef.current = false;
+    setMutationLocked(false);
+    const requestIdValue = formData.get("requestId");
+    const requestId = typeof requestIdValue === "string" ? requestIdValue : "";
+    setResolvedMutation({ kind, requestId, state });
+    if (state.status === "SUCCESS" || (state.status === "ERROR" && state.conflict)) {
+      returnFocusToFeedbackRef.current = true;
+    }
+  }
+
+  async function confirmMutation(
+    previous: PatientServiceMutationActionState,
+    formData: FormData,
+  ): Promise<PatientServiceMutationActionState> {
+    const state = await confirmPatientServiceRequestAction(previous, formData);
+    onMutationResolved("confirm", formData, state);
+    return state;
+  }
+
+  async function rejectMutation(
+    previous: PatientServiceMutationActionState,
+    formData: FormData,
+  ): Promise<PatientServiceMutationActionState> {
+    const state = await rejectPatientServiceRequestAction(previous, formData);
+    onMutationResolved("reject", formData, state);
+    return state;
+  }
+
   // Keep feedback above the list: a successful transition removes the card from its group.
   const [confirmState, confirmAction, confirmPending, confirmUnknown] = useMutationActionState(
-    confirmPatientServiceRequestAction,
+    confirmMutation,
     initialPatientServiceMutationActionState,
   );
   const [rejectState, rejectAction, rejectPending, rejectUnknown] = useMutationActionState(
-    rejectPatientServiceRequestAction,
+    rejectMutation,
     initialPatientServiceMutationActionState,
   );
   const pending = confirmPending || rejectPending;
   const unknownOutcome = confirmUnknown || rejectUnknown;
-  const feedbackRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!pending && (confirmState.status !== "IDLE" || rejectState.status !== "IDLE")) {
-      feedbackRef.current?.focus();
-    }
-  }, [pending, confirmState, rejectState]);
+  const blocked = pending || unknownOutcome || mutationLocked;
+
+  function handleSubmit(dispatch: (formData: FormData) => void) {
+    return (event: FormEvent<HTMLFormElement>): void => {
+      if (mutationLockRef.current || pending || unknownOutcome) {
+        event.preventDefault();
+        return;
+      }
+      mutationLockRef.current = true;
+      setMutationLocked(true);
+      dispatchFormDataPreservingInput(event, dispatch);
+    };
+  }
+
+  const onConfirmSubmit = handleSubmit(confirmAction);
+  const onRejectSubmit = handleSubmit(rejectAction);
+
+  function handleReviewOpen(): void {
+    returnFocusToFeedbackRef.current = false;
+    setResolvedMutation(null);
+  }
+
+  function returnFocusTarget(): HTMLElement | null {
+    return returnFocusToFeedbackRef.current ? feedbackRef.current : null;
+  }
   const group = hospitalServiceRequestGroups.find(({ key }) => key === page.group) ?? hospitalServiceRequestGroups[0];
 
   return (
@@ -195,11 +253,16 @@ export function HospitalPatientServiceRequestsWorkspace({
                 ) : null}
                 {submissionNonces[request.requestId] ? (
                   <HospitalPatientServiceRequestReviewControls
-                    blocked={unknownOutcome}
+                    blocked={blocked}
                     confirmAction={confirmAction}
+                    onConfirmSubmit={onConfirmSubmit}
+                    onRejectSubmit={onRejectSubmit}
+                    onReviewOpen={handleReviewOpen}
                     pending={pending}
                     rejectAction={rejectAction}
                     request={request}
+                    resolvedMutation={resolvedMutation}
+                    returnFocusToFeedback={returnFocusTarget}
                     submissionNonce={submissionNonces[request.requestId] ?? ""}
                   />
                 ) : null}
