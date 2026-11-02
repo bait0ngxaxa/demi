@@ -22,10 +22,10 @@
 - UX-D2.2 บุคลากรและบัญชีผู้ใช้: เปลี่ยนแก้วิชาชีพและเบอร์ติดต่อเป็น Edit Dialog; เปลี่ยนนำความสัมพันธ์ออก, ลบรายการ และ takeover เป็น destructive/security dialog; คงการระงับและคืนสถานะไว้กับ confirmation หรือ submit เดิมตาม semantics. Commit `56195201`.
 - UX-D2.3 ครอบครัวและ caregiver: เปลี่ยน label เป็น Edit Dialog; ยืนยันการยกเลิกคำเชิญ, ยุติ/ถอนความสัมพันธ์, สร้าง QR/link ใหม่ และ revoke appointment/resource grants ด้วย `ConfirmableActionForm`; คงการสร้าง invitation แบบยาว, consent acceptance, grant proposal และ upgrade ไว้ inline. ลิงก์ใช้ครั้งเดียวหลัง reissue แสดงนอก dialog.
 - D2.3 focused regression ล่าสุด: ผ่าน 5 files / 30 tests ครอบคลุม family recovery, relationship label/draft/version, revocation/withdrawal, QR handoff และ appointment/resource grant; targeted ESLint และ `npm run typecheck` ผ่าน.
-- UX-D2.4 นัดหมาย: ย้ายขอเลื่อนและปฏิเสธพร้อมเหตุผลเป็น task dialog; แสดงโรงพยาบาล/เวลานัดปัจจุบันและรายละเอียดคำขอที่กำลังพิจารณา; ใช้ fullscreen เฉพาะมือถือ; ยืนยันผลแล้วอ่านสถานะจาก history ที่ revalidate.
+- UX-D2.4 นัดหมาย: ย้ายขอเลื่อนและปฏิเสธพร้อมเหตุผลเป็น task dialog; แสดงโรงพยาบาล/เวลานัดปัจจุบันและรายละเอียดคำขอที่กำลังพิจารณา; ใช้ fullscreen เฉพาะมือถือ; ยืนยันผลแล้วอ่านสถานะจาก history ที่ revalidate. Commit `d7c8ebf0`.
 - D2.4 focused regression: ผ่าน 2 files / 22 tests ครอบคลุม open/cancel/draft, initial/return focus, payload และ hidden fields, validation/conflict/forbidden feedback, double submit, unknown outcome และ resend `FormData` object เดิมทั้ง request/rejection; targeted ESLint และ `npm run typecheck` ผ่าน.
 - Dialog ที่ยัง unknown ปิดไม่ได้ทั้ง Escape/ปุ่มปิด/ยกเลิกจนกว่าจะตรวจสอบด้วยคำขอเดิมสำเร็จหรือได้ผลที่ยืนยันแล้ว; recovery มี single-flight guard และไม่ปิดเมื่อ dispatch หรือเมื่อเกิด network exception.
-- ยังไม่ได้ตรวจ browser layout, native focus containment, safe area และ virtual keyboard; จะบันทึกผล closeout หลังตรวจความพร้อมของ browser environment.
+- Browser QA: `npm run dev` พร้อมบน `localhost:3000` แต่ CUA รายงานว่าไม่มี browser/app surface และเปิด `iab` ไม่ได้; `@oai/sky` ตอบว่า native pipe ไม่มีอยู่. จึงยังไม่ได้ตรวจ browser layout, native focus containment, safe area, Escape/Tab ใน browser หรือ virtual keyboard.
 
 ## Inventory
 
@@ -82,3 +82,36 @@
 - รายการผลลัพธ์ผูกกับ resource ID; ปุ่ม trigger หรือ logical target ใช้คืน focus หลัง row/action หาย
 - ทดสอบที่ระดับ component สำหรับ open/cancel, submit/pending/success/error/conflict/unknown, payload/hidden fields, keyboard semantics ที่ jsdom รองรับ และทดสอบ role/eligibility ผ่าน existing server tests โดยไม่ใช้ UI เป็นขอบเขต authorization
 - Browser QA ต้องตรวจ 320px, mobile portrait/landscape, tablet และ desktop รวม native focus containment, scroll, safe area และ keyboard เมื่อ environment พร้อม; หากทำไม่ได้ต้องรายงานเป็น unverified
+
+## UX-D2.5 Regression และ closeout
+
+### สรุป surface ที่ย้ายและที่คงไว้
+
+- โรงพยาบาลเครือข่าย: rename เป็น Edit Dialog; child owner invite/replace เป็น Task Dialog; cancel pending facility และ remove from network เป็น Destructive Task Dialog เดียวที่รวมเหตุผล/confirmation; parent owner invite ใช้สิทธิ์ Platform ADMIN และ result holder เดิม.
+- Workforce/users: แก้วิชาชีพและเบอร์ติดต่อเป็น Edit Dialog; release, eligible user deletion และ takeover เป็น Destructive/Security Dialog; suspend/restore ยังคง confirmation/submission เดิมตาม semantics.
+- Family/caregiver: แก้ label เป็น Edit Dialog; withdrawal, revoke, reissue link/QR และ appointment/resource grant revocation ใช้ confirmation dialog; one-time link แสดงใน owner presentation หลังปิด dialog.
+- Appointments: request/reject ใช้ Task/Destructive Task Dialog และ contextual summary; approval คงลิงก์ไปหน้าแก้นัด.
+- คง inline: child facility creation, caregiver invitation ที่ต้องเลือก consent/scope และ handoff QR, grant consent acceptance/proposal/upgrade, status/readback, search/filter/pagination, long clinical forms และ appointment editor.
+
+### Invariant, focus และ responsive
+
+- ไม่มี Server Action signature, server authorization, role/eligibility, network scope, consent, schema, database, nonce/version, audit หรือ recovery contract เปลี่ยนใน UX-D2.
+- ไม่มี nested dialog หรือ nested form; footer submission ใช้ native form association; required fields และ typed confirmation เดิมยังอยู่.
+- Pending ปิด dialog ไม่ได้; unknown ของ reschedule ต้องใช้ explicit resend ของ payload object เดิมและมี single-flight guard; terminal workforce release/takeover/deletion คง recovery model เดิม.
+- การปิด dialog คืน focus ไป trigger; เมื่อ trigger หายใช้ status หรือ logical heading ตาม workflow. jsdom ตรวจ initial focus, status focus, cancel focus และ heading fallback ได้.
+- task dialog นัดหมายใช้ `size="fullscreen"` บนมือถือเพื่อรองรับ datetime picker/keyboard และ content scroll แยก; surface อื่นใช้ขนาดตามความยาวงานเดิม.
+
+### Verification
+
+- Focused tests: D2.1–D2.2 ผ่าน 8 files / 99 tests; D2.3 ผ่าน 5 files / 30 tests; D2.4 ผ่าน 2 files / 22 tests.
+- `npm run typecheck`: ผ่าน.
+- `npm run lint`: ผ่าน.
+- `npm test`: ผ่าน 569 files / 6,336 tests. Vitest stderr มี JSDOM `navigation (except hash changes)` logs จาก `app/line/account/line-account-client.tsx` ที่เรียก `Location.replace`; exit code เป็น 0 และไม่มี test fail.
+- `impeccable.cmd detect --json` กับ production UI targets ที่เปลี่ยนใน UX-D2: ผ่านและไม่พบ findings (`[]`).
+- ไม่ได้รัน `npm run test:integration` แยก: UX-D2 เปลี่ยนเฉพาะ interaction layer และไม่ได้แก้ service/database contract; full repository Vitest ผ่าน.
+- Browser QA ไม่ได้ทำ: inventory ไม่มี browser/app surface, `iab` ไม่พร้อม และ native `@oai/sky` pipe ใช้ไม่ได้. `npm run dev` ขึ้น Ready ที่ `localhost:3000` แล้วหยุดโดยไม่ได้ sign in หรือส่ง mutation. ยังไม่ยืนยัน native focus containment, Tab/Escape ใน browser, viewport 320px/mobile portrait/landscape/tablet/desktop, safe area หรือ software keyboard.
+
+### Findings และ readiness
+
+- ไม่พบ P0/P1/P2 ใหม่ระหว่าง UX-D2 review.
+- พร้อมเริ่ม UX-D3 จากมุม code และ automated checks; ต้องทำ browser/device QA สำหรับรายการที่ยัง unverified ก่อนสรุป UX-D2 ว่าผ่าน visual/mobile accessibility validation.
