@@ -1,16 +1,18 @@
 "use client";
 
-import { useId, useState } from "react";
 import Link from "next/link";
+import { useCallback, useId, useRef, useState, type FormEvent } from "react";
 import type { CaregiverRelationshipLabel, CaregiverResource } from "@prisma/client";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { dispatchFormDataPreservingInput, submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type {
   FamilyInvitationManagementItem,
@@ -60,18 +62,20 @@ function RelationshipLabelFields({
   disabled,
   defaultLabel,
   defaultOther,
+  selectRef,
 }: {
   idPrefix: string;
   disabled: boolean;
   defaultLabel?: CaregiverRelationshipLabel | null;
   defaultOther?: string | null;
+  selectRef?: React.RefObject<HTMLSelectElement | null>;
 }): React.JSX.Element {
   const [kind, setKind] = useState<string>(defaultLabel ?? "");
   return (
     <>
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-text" htmlFor={`${idPrefix}-label`}>ผู้ดูแลเกี่ยวข้องกับคุณอย่างไร</label>
-        <Select disabled={disabled} id={`${idPrefix}-label`} name="relationshipLabel" onChange={(event) => setKind(event.target.value)} required value={kind}>
+        <Select disabled={disabled} id={`${idPrefix}-label`} name="relationshipLabel" onChange={(event) => setKind(event.target.value)} ref={selectRef} required value={kind}>
           <option disabled value="">เลือกความสัมพันธ์</option>
           {(Object.keys(CAREGIVER_RELATIONSHIP_LABELS) as CaregiverRelationshipLabel[]).map((value) => (
             <option key={value} value={value}>{CAREGIVER_RELATIONSHIP_LABELS[value]}</option>
@@ -262,16 +266,31 @@ function RevokePendingInvitation({
     revokePendingCaregiverInvitationAction,
     initialFamilyMutationActionState,
   );
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const participantName = formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
     <div className="mt-3">
-      {invitation.status === "PENDING" ? (
-        <form action={formAction}>
+      {invitation.status === "PENDING" && state.status !== "SUCCESS" ? (
+        <ConfirmableActionForm
+          action={formAction}
+          className="inline"
+          confirmation={{
+            title: `ยกเลิกคำเชิญของ ${participantName} หรือไม่`,
+            description: "คำเชิญที่รอตอบรับนี้จะใช้ไม่ได้ทันที ประวัติคำเชิญยังคงอยู่ หากต้องการเชื่อมต่อภายหลังต้องสร้างคำเชิญใหม่",
+            confirmLabel: "ยกเลิกคำเชิญ",
+            confirmVariant: "destructive",
+          }}
+          outcome={state.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={state}
+          returnFocusTarget={() => triggerRef.current ?? document.getElementById("patient-invitations-heading") ?? document.querySelector<HTMLElement>("main h1")}
+        >
           <input name="invitationId" type="hidden" value={invitation.invitationId} />
-          <Button aria-label={`ยกเลิกคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยกเลิกคำเชิญ: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยกเลิก..." : "ยกเลิกคำเชิญ"}
           </Button>
-        </form>
+        </ConfirmableActionForm>
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
@@ -289,17 +308,32 @@ function ShowPendingInvitationQr({
     reissueCaregiverInvitationLinkAction,
     initialCreateCaregiverInvitationActionState,
   );
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const participantName = formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   if (invitation.status !== "PENDING") return null;
 
   return (
     <div className="mt-3">
-      <form action={formAction}>
+      <ConfirmableActionForm
+        action={formAction}
+        className="inline"
+        confirmation={{
+          title: `สร้างลิงก์คำเชิญใหม่ให้ ${participantName} หรือไม่`,
+          description: "ลิงก์และ QR เดิมจะใช้ไม่ได้ทันที คำเชิญเดิมยังคงรอตอบรับ และระบบจะแสดงลิงก์ใหม่ด้านล่างหลังสร้างสำเร็จ",
+          confirmLabel: "สร้างลิงก์ใหม่",
+          confirmVariant: "destructive",
+        }}
+        outcome={state.status === "SUCCESS" ? "success" : state.status === "ERROR" ? "error" : "idle"}
+        pending={pending}
+        resultKey={state}
+        returnFocusTarget={() => triggerRef.current ?? document.getElementById("patient-invitations-heading") ?? document.querySelector<HTMLElement>("main h1")}
+      >
         <input name="invitationId" type="hidden" value={invitation.invitationId} />
-        <Button aria-label={`แสดงคิวอาร์โค้ดคำเชิญ: ${formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
+        <Button aria-label={`แสดงคิวอาร์โค้ดคำเชิญ: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="secondary">
           {pending ? "กำลังสร้างคิวอาร์โค้ด..." : state.status === "SUCCESS" ? "สร้างคิวอาร์โค้ดใหม่" : "แสดงคิวอาร์โค้ด"}
         </Button>
-      </form>
+      </ConfirmableActionForm>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ใช้เมื่อพบผู้รับต่อหน้า ระบบจะสร้างลิงก์ใหม่ให้คำเชิญเดิม ลิงก์หรือ QR ที่เคยส่งไปจะใช้ไม่ได้อีก
       </p>
@@ -327,16 +361,31 @@ function RevokeRelationship({
     revokeCaregiverRelationshipAction,
     initialFamilyMutationActionState,
   );
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const participantName = formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
     <div className="mt-3">
-      {relationship.status === "ACTIVE" ? (
-        <form action={formAction}>
+      {relationship.status === "ACTIVE" && state.status !== "SUCCESS" ? (
+        <ConfirmableActionForm
+          action={formAction}
+          className="inline"
+          confirmation={{
+            title: `ยุติความสัมพันธ์กับ ${participantName} หรือไม่`,
+            description: "ความสัมพันธ์จะสิ้นสุดทันที และสิทธิ์ดูนัดหมายหรือข้อมูลสุขภาพที่ผูกกับความสัมพันธ์นี้จะถูกเพิกถอน ประวัติยังคงอยู่ หากต้องการเชื่อมต่ออีกครั้งต้องส่งคำเชิญใหม่",
+            confirmLabel: "ยุติความสัมพันธ์",
+            confirmVariant: "destructive",
+          }}
+          outcome={state.status === "ERROR" ? "error" : "idle"}
+          pending={pending}
+          resultKey={state}
+          returnFocusTarget={() => triggerRef.current ?? document.getElementById("patient-relationships-heading") ?? document.querySelector<HTMLElement>("main h1")}
+        >
           <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
+          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
             {pending ? "กำลังยุติ..." : "ยุติความสัมพันธ์ผู้ดูแล"}
           </Button>
-        </form>
+        </ConfirmableActionForm>
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
@@ -345,45 +394,154 @@ function RevokeRelationship({
   );
 }
 
+type RelationshipLabelEditTarget = {
+  relationshipId: string;
+  expectedVersion: number;
+  relationshipLabel: CaregiverRelationshipLabel | null;
+  relationshipLabelOther: string | null;
+  participantName: string;
+};
+
+function RelationshipLabelEditDialog({
+  target,
+  open,
+  triggerRef,
+  onClose,
+  onSuccess,
+}: {
+  target: RelationshipLabelEditTarget | null;
+  open: boolean;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+  onSuccess: (message: string) => void;
+}): React.JSX.Element | null {
+  const [draft, setDraft] = useState<{ relationshipLabel: CaregiverRelationshipLabel | null; relationshipLabelOther: string } | null>(null);
+  const actionWithSuccess = useCallback(async (previous: typeof initialFamilyMutationActionState, formData: FormData) => {
+    const next = await updateCaregiverRelationshipLabelAction(previous, formData);
+    if (next.status === "SUCCESS") {
+      setDraft(null);
+      onSuccess(next.message);
+    }
+    return next;
+  }, [onSuccess]);
+  const [state, dispatch, pending, unknownOutcome] = useMutationActionState(
+    actionWithSuccess,
+    initialFamilyMutationActionState,
+  );
+  const formId = useId();
+  const formRef = useRef<HTMLFormElement>(null);
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  if (!open || !target) return null;
+
+  const relationshipLabel = formatCaregiverRelationshipLabel(target.relationshipLabel, target.relationshipLabelOther) ?? "ยังไม่ได้ระบุ";
+  const locked = pending || unknownOutcome;
+
+  function closeDialog(): void {
+    if (!pending) {
+      const form = formRef.current;
+      const label = form?.elements.namedItem("relationshipLabel");
+      const other = form?.elements.namedItem("relationshipLabelOther");
+      if (label instanceof HTMLSelectElement) {
+        setDraft({
+          relationshipLabel: CAREGIVER_RELATIONSHIP_LABELS[label.value as CaregiverRelationshipLabel] ? label.value as CaregiverRelationshipLabel : null,
+          relationshipLabelOther: other instanceof HTMLInputElement ? other.value : "",
+        });
+      }
+      onClose();
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    if (locked) {
+      event.preventDefault();
+      return;
+    }
+    dispatchFormDataPreservingInput(event, dispatch);
+  }
+
+  return (
+    <ModalDialog
+      description={`แก้ไขป้ายความสัมพันธ์ของ ${target.participantName} ซึ่งปัจจุบันระบุว่า “${relationshipLabel}” ปิดหน้าต่างก่อนบันทึกแล้วกลับมาแก้ ระบบจะเก็บร่างนี้ไว้`}
+      dismissible={!pending}
+      footer={
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button className="w-full sm:w-auto" disabled={pending} onClick={closeDialog} variant="secondary">ยกเลิก</Button>
+          <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} type="submit">
+            {pending ? "กำลังบันทึก..." : "บันทึกความสัมพันธ์"}
+          </Button>
+        </div>
+      }
+      initialFocusRef={selectRef}
+      onRequestClose={closeDialog}
+      returnFocusTarget={() => triggerRef.current ?? document.getElementById("patient-relationships-heading") ?? document.querySelector<HTMLElement>("main h1")}
+      title={`แก้ไขความสัมพันธ์กับ ${target.participantName}`}
+    >
+      <form action={dispatch} className="space-y-4" id={formId} onSubmit={handleSubmit} ref={formRef}>
+        <input name="relationshipId" type="hidden" value={target.relationshipId} />
+        <input name="expectedVersion" type="hidden" value={target.expectedVersion} />
+        <RelationshipLabelFields
+          defaultLabel={draft?.relationshipLabel ?? target.relationshipLabel}
+          defaultOther={draft?.relationshipLabelOther ?? target.relationshipLabelOther}
+          disabled={locked}
+          idPrefix={`relationship-${target.relationshipId}`}
+          selectRef={selectRef}
+        />
+        {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
+        <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
+      </form>
+    </ModalDialog>
+  );
+}
+
 function EditRelationshipLabel({
   relationship,
 }: {
   relationship: FamilyRelationshipManagementItem;
 }): React.JSX.Element | null {
-  const [state, formAction, pending, unknownOutcome] = useMutationActionState(
-    updateCaregiverRelationshipLabelAction,
-    initialFamilyMutationActionState,
-  );
-  const [editing, setEditing] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [target, setTarget] = useState<RelationshipLabelEditTarget | null>(null);
+  const [successMessage, setSuccessMessage] = useState("");
+  const handleSuccess = useCallback((message: string): void => {
+    setSuccessMessage(message);
+    setDialogOpen(false);
+    setTarget(null);
+  }, []);
   if (relationship.status !== "ACTIVE") return null;
+
+  const participantName = formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
     <div className="mt-3">
-      {editing && state.status !== "SUCCESS" ? (
-        <form action={formAction} className="space-y-3">
-          <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-          <input name="expectedVersion" type="hidden" value={relationship.relationshipLabelVersion} />
-          <RelationshipLabelFields
-            defaultLabel={relationship.relationshipLabel}
-            defaultOther={relationship.relationshipLabelOther}
-            disabled={pending || unknownOutcome}
-            idPrefix={`relationship-${relationship.relationshipId}`}
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit">
-              {pending ? "กำลังบันทึก..." : "บันทึกความสัมพันธ์"}
-            </Button>
-            <Button disabled={pending} onClick={() => setEditing(false)} size="compact" type="button" variant="secondary">ยกเลิก</Button>
-          </div>
-        </form>
-      ) : (
-        <Button aria-label={`แก้ไขความสัมพันธ์: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}`} onClick={() => setEditing(true)} size="compact" type="button" variant="secondary">
-          แก้ไขความสัมพันธ์
-        </Button>
-      )}
-      {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
-      {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
+      <Button
+        aria-label={`แก้ไขความสัมพันธ์: ${participantName}`}
+        onClick={() => {
+          setSuccessMessage("");
+          setTarget((current) => current ?? {
+            relationshipId: relationship.relationshipId,
+            expectedVersion: relationship.relationshipLabelVersion,
+            relationshipLabel: relationship.relationshipLabel,
+            relationshipLabelOther: relationship.relationshipLabelOther,
+            participantName,
+          });
+          setDialogOpen(true);
+        }}
+        ref={triggerRef}
+        size="compact"
+        type="button"
+        variant="secondary"
+      >
+        แก้ไขความสัมพันธ์
+      </Button>
+      {successMessage ? <p className="mt-2 text-sm text-success" role="status">{successMessage}</p> : null}
+      <RelationshipLabelEditDialog
+        onClose={() => setDialogOpen(false)}
+        onSuccess={handleSuccess}
+        open={dialogOpen}
+        target={target}
+        triggerRef={triggerRef}
+      />
     </div>
   );
 }
@@ -402,7 +560,8 @@ function WithdrawCaregiverRelationship({
     withdrawOwnCaregiverRelationshipAction,
     initialFamilyMutationActionState,
   );
-  const [confirming, setConfirming] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const participantName = formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย");
 
   if (relationship.status !== "ACTIVE") {
     return <></>;
@@ -414,29 +573,25 @@ function WithdrawCaregiverRelationship({
 
   return (
     <div className="mt-3">
-      {!confirming ? (
-        <Button aria-label={`หยุดการเป็นผู้ดูแล: ${formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}`} onClick={() => setConfirming(true)} size="compact" type="button" variant="danger">
-          หยุดการเป็นผู้ดูแล
+      <ConfirmableActionForm
+        action={formAction}
+        className="inline"
+        confirmation={{
+          title: `หยุดการเป็นผู้ดูแล ${participantName} หรือไม่`,
+          description: `การยืนยันจะยุติความสัมพันธ์กับ ${participantName} ทันทีและไม่สามารถเปิดกลับได้ หากต้องการเชื่อมอีกครั้ง ผู้ป่วยต้องส่งคำเชิญใหม่`,
+          confirmLabel: "ยืนยันหยุดการเป็นผู้ดูแล",
+          confirmVariant: "destructive",
+        }}
+        outcome={state.status === "ERROR" ? "error" : "idle"}
+        pending={pending}
+        resultKey={state}
+        returnFocusTarget={() => triggerRef.current ?? document.getElementById("caregiver-relationships-heading") ?? document.querySelector<HTMLElement>("main h1")}
+      >
+        <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
+        <Button aria-label={`หยุดการเป็นผู้ดูแล: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
+          {pending ? "กำลังยุติ..." : "หยุดการเป็นผู้ดูแล"}
         </Button>
-      ) : (
-        <div aria-label="ยืนยันการหยุดเป็นผู้ดูแล" className="space-y-3">
-          <Alert variant="warning">
-            การยืนยันจะยุติความสัมพันธ์กับ {formatFamilyParticipantName(relationship.participant, "ผู้ป่วยที่ไม่ระบุชื่อ")} ทันทีและไม่สามารถเปิดกลับได้ หากต้องการเชื่อมอีกครั้ง
-            ผู้ป่วยต้องส่งคำเชิญใหม่
-          </Alert>
-          <div className="flex flex-wrap gap-2">
-            <form action={formAction}>
-              <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-              <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? "กำลังยุติ..." : "ยืนยันหยุดการเป็นผู้ดูแล"}
-              </Button>
-            </form>
-            <Button disabled={pending || unknownOutcome} onClick={() => setConfirming(false)} size="compact" type="button" variant="secondary">
-              กลับ
-            </Button>
-          </div>
-        </div>
-      )}
+      </ConfirmableActionForm>
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
@@ -456,7 +611,7 @@ function PatientPerspective({
         <h2 className="text-xl font-semibold text-text" id="patient-caregivers-heading">ผู้ที่ดูแลคุณ</h2>
         <CreateCaregiverInvitationForm sharingOptions={sharingOptions} />
         <Panel className="mt-4">
-          <h3 className="text-lg font-semibold text-text">คำเชิญที่คุณสร้าง</h3>
+          <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-invitations-heading" tabIndex={-1}>คำเชิญที่คุณสร้าง</h3>
           {overview.invitations.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีคำเชิญผู้ดูแล</p>
           ) : (
@@ -486,7 +641,7 @@ function PatientPerspective({
       </section>
 
       <section aria-labelledby="patient-relationships-heading" className="mt-8">
-        <h2 className="text-xl font-semibold text-text" id="patient-relationships-heading">ความสัมพันธ์ผู้ดูแล</h2>
+        <h2 className="text-xl font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-relationships-heading" tabIndex={-1}>ความสัมพันธ์ผู้ดูแล</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
           รายการนี้แสดงสถานะการเชื่อมและการจัดการความสัมพันธ์เท่านั้น ความสัมพันธ์ผู้ดูแลไม่ได้ให้สิทธิ์ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ
         </p>
@@ -568,7 +723,7 @@ function CaregiverPerspective({
         </Panel>
 
         <Panel className="mt-4">
-          <h3 className="text-lg font-semibold text-text">ความสัมพันธ์ที่คุณดูแล</h3>
+          <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="caregiver-relationships-heading" tabIndex={-1}>ความสัมพันธ์ที่คุณดูแล</h3>
           {overview.relationships.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีความสัมพันธ์ผู้ดูแลที่คุณตอบรับ</p>
           ) : (
