@@ -415,7 +415,7 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     const largeOwner = await staff(large, MembershipType.OWNER);
     await bulkPatients(small, smallOwner.userId, 1, "หนึ่ง");
     await bulkPatients(large, largeOwner.userId, 25, "ยี่สิบห้า");
-    const traced = new PrismaClient({ log: [{ emit: "event", level: "query" }] });
+    const traced = new PrismaClient<Prisma.PrismaClientOptions, "query">({ log: [{ emit: "event", level: "query" }] });
     const queries: string[] = [];
     traced.$on("query", ({ query }) => queries.push(query));
 

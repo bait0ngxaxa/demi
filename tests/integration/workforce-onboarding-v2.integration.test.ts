@@ -1058,7 +1058,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
     it("uses a bounded, constant number of real SQL queries as page depth changes", async () => {
       const { hospital, owner } = await setup();
-      const traced = new PrismaClient({ log: [{ emit: "event", level: "query" }] });
+      const traced = new PrismaClient<Prisma.PrismaClientOptions, "query">({ log: [{ emit: "event", level: "query" }] });
       const queries: string[] = [];
       traced.$on("query", ({ query }) => queries.push(query));
       try {
