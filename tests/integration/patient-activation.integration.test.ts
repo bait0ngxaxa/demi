@@ -24,13 +24,20 @@ import {
   hashPatientActivationToken,
 } from "@/modules/patient-activation/services/activation-token-service";
 import { findPatientActivationCandidates } from "@/modules/patient-activation/services/patient-activation-query-service";
+import { accountCreationLegalFields, clearLegalRecords, currentConsentVersionId, publishNewerLegalVersion } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 const password = "patient-activation-password";
 
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientActivation.deleteMany();
@@ -414,7 +421,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     );
 
     await expect(
-      completePatientActivation(oldToken, {
+      completePatientActivation(oldToken, { ...LEGAL,
         password,
         passwordConfirmation: password,
       }),
@@ -430,7 +437,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         newToken,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         { provisionIdentity: provisioner },
       ),
     ).resolves.toEqual({ userId: patient.userId, hospitalId: hospital.id });
@@ -461,13 +468,13 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     });
 
     await expect(
-      completePatientActivation(token, {
+      completePatientActivation(token, { ...LEGAL,
         password,
         passwordConfirmation: password,
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(
-      completePatientActivation("patient-activation-unknown-token", {
+      completePatientActivation("patient-activation-unknown-token", { ...LEGAL,
         password,
         passwordConfirmation: password,
       }),
@@ -499,7 +506,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
 
     await completePatientActivation(
       token,
-      { password, passwordConfirmation: password },
+      { ...LEGAL, password, passwordConfirmation: password },
       { provisionIdentity: provisioner },
     );
 
@@ -569,7 +576,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
 
     await completePatientActivation(
       token,
-      { password, passwordConfirmation: password },
+      { ...LEGAL, password, passwordConfirmation: password },
       { provisionIdentity: createProvisioner("77777777-7777-4777-8777-777777777777") },
     );
 
@@ -605,7 +612,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         token,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         { provisionIdentity: provisioner },
       ),
     ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
@@ -650,7 +657,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         token,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         { provisionIdentity: provisioner, deleteProviderIdentity },
       ),
     ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -691,7 +698,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
 
     const completion = completePatientActivation(
       token,
-      { password, passwordConfirmation: password },
+      { ...LEGAL, password, passwordConfirmation: password },
       { provisionIdentity: provisioner },
     );
     await started.promise;
@@ -734,7 +741,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         token,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         {
           now: () => new Date("2026-08-15T10:10:00.000Z"),
           provisionIdentity: createProvisioner("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
@@ -833,7 +840,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
       claimExpiresAt: null,
     });
     await expect(
-      completePatientActivation(token, { password, passwordConfirmation: password }),
+      completePatientActivation(token, { ...LEGAL, password, passwordConfirmation: password }),
     ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
   });
 
@@ -857,7 +864,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         token,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         { provisionIdentity: provisioner },
       ),
     ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
@@ -907,7 +914,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     await expect(
       completePatientActivation(
         token,
-        { password, passwordConfirmation: password },
+        { ...LEGAL, password, passwordConfirmation: password },
         { provisionIdentity: provisioner, deleteProviderIdentity },
       ),
     ).rejects.toBeInstanceOf(PatientActivationReconciliationError);
@@ -1053,7 +1060,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
 
     const first = completePatientActivation(
       token,
-      { password, passwordConfirmation: password },
+      { ...LEGAL, password, passwordConfirmation: password },
       { provisionIdentity: provisioner },
     );
     await started.promise;
@@ -1065,7 +1072,7 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     expect(claimed.claimExpiresAt).toEqual(expect.any(Date));
     const second = completePatientActivation(
       token,
-      { password, passwordConfirmation: password },
+      { ...LEGAL, password, passwordConfirmation: password },
       { provisionIdentity: provisioner },
     );
     await expect(second).rejects.toMatchObject({ code: "CONFLICT" });
@@ -1117,5 +1124,89 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     }
     expect(byUser.get(activeMulti.userId)).toMatchObject({ activationStatus: "ACTIVE", activationMayBeIssued: false });
     expect(await prisma.patientActivation.count()).toBe(0);
+  });
+});
+
+describe("LG-1 legal acceptance at patient activation (ADR-0028)", () => {
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  async function issuedPatient(code: string, token: string): Promise<{ userId: string }> {
+    const hospital = await createHospital(code);
+    const { actor } = await createHospitalActor({ hospitalId: hospital.id, hospitalStatus: hospital.status });
+    const patient = await createPatient({ hospitalId: hospital.id });
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    return { userId: patient.userId };
+  }
+
+  it("refuses without an acceptance and creates nothing", async () => {
+    const patient = await issuedPatient("INTEGRATION-PA-LG-MISSING", "patient-activation-lg-missing");
+    const provisioner = createProvisioner("44444444-4444-4444-8444-444444444441");
+
+    await expect(completePatientActivation(
+      "patient-activation-lg-missing",
+      { password, passwordConfirmation: password, channel: "WEB" } as never,
+      { provisionIdentity: provisioner },
+    )).rejects.toMatchObject({ code: "VALIDATION" });
+
+    expect(provisioner).not.toHaveBeenCalled();
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId }, select: { status: true } })).toEqual({ status: UserStatus.PROVISIONED });
+    expect(await prisma.legalAcceptance.count()).toBe(0);
+  });
+
+  it("refuses a stale Terms version with a conflict and creates nothing", async () => {
+    const patient = await issuedPatient("INTEGRATION-PA-LG-STALE", "patient-activation-lg-stale");
+    const stale = LEGAL;
+    await publishNewerLegalVersion(prisma, "TERMS", "pa-stale-2");
+    const provisioner = createProvisioner("44444444-4444-4444-8444-444444444442");
+
+    await expect(completePatientActivation(
+      "patient-activation-lg-stale",
+      { ...stale, password, passwordConfirmation: password },
+      { provisionIdentity: provisioner },
+    )).rejects.toMatchObject({ name: "LegalVersionConflictError", code: "CONFLICT" });
+
+    expect(provisioner).not.toHaveBeenCalled();
+    expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId }, select: { status: true } })).toEqual({ status: UserStatus.PROVISIONED });
+    expect(await prisma.legalAcceptance.count()).toBe(0);
+    // The link is still usable once the person accepts the new version.
+    expect(await prisma.patientActivation.findFirstOrThrow({ where: { userId: patient.userId }, select: { usedAt: true, revokedAt: true } }))
+      .toEqual({ usedAt: null, revokedAt: null });
+  });
+
+  it("records the acceptance with source PATIENT_ACTIVATION and writes only the chosen consent", async () => {
+    const patient = await issuedPatient("INTEGRATION-PA-LG-OK", "patient-activation-lg-ok");
+    const healthVersionId = await currentConsentVersionId(prisma, "HEALTH_DATA_DISCLOSURE_CONSENT");
+
+    await completePatientActivation(
+      "patient-activation-lg-ok",
+      { ...LEGAL, password, passwordConfirmation: password, consents: [{ kind: "HEALTH_DATA_DISCLOSURE_CONSENT", documentVersionId: healthVersionId }] },
+      { provisionIdentity: createProvisioner("44444444-4444-4444-8444-444444444443") },
+    );
+
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: patient.userId }, select: { termsVersionId: true, privacyVersionId: true, source: true, channel: true } }))
+      .toEqual([{ ...LEGAL.acceptLegal, source: "PATIENT_ACTIVATION", channel: "WEB" }]);
+    expect(await prisma.consentEvent.findMany({ where: { userId: patient.userId }, select: { kind: true, decision: true, documentVersionId: true, channel: true } }))
+      .toEqual([{ kind: "HEALTH_DATA_DISCLOSURE_CONSENT", decision: "GIVEN", documentVersionId: healthVersionId, channel: "WEB" }]);
+    expect(await prisma.auditEvent.count({ where: { action: "legal.terms_accepted", resourceId: patient.userId } })).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "legal.consent_given", resourceId: patient.userId } })).toBe(1);
+  });
+
+  it("writes no consent when none is chosen", async () => {
+    const patient = await issuedPatient("INTEGRATION-PA-LG-NONE", "patient-activation-lg-none");
+
+    await completePatientActivation(
+      "patient-activation-lg-none",
+      { ...LEGAL, password, passwordConfirmation: password },
+      { provisionIdentity: createProvisioner("44444444-4444-4444-8444-444444444444") },
+    );
+
+    expect(await prisma.legalAcceptance.count({ where: { userId: patient.userId } })).toBe(1);
+    expect(await prisma.consentEvent.count({ where: { userId: patient.userId } })).toBe(0);
   });
 });

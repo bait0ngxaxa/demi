@@ -15,6 +15,7 @@ import {
   PlatformAdminBootstrapReconciliationError,
   type PlatformAdminBootstrapDatabase,
 } from "./platform-admin-bootstrap-service";
+import { legalAcceptanceFixture, legalTablesMock } from "../../../../tests/support/legal-fixtures";
 
 const personId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
@@ -25,6 +26,7 @@ const validInput = {
   givenName: "สมชาย",
   familyName: "ใจดี",
   password: "correct-horse-battery-staple",
+  acceptLegal: legalAcceptanceFixture,
 };
 
 type DatabaseOptions = {
@@ -68,6 +70,7 @@ function createDatabase(options: DatabaseOptions = {}): {
   };
 
   const transaction = {
+    ...legalTablesMock(),
     person: {
       create: vi.fn().mockResolvedValue({ id: personId }),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -93,6 +96,7 @@ function createDatabase(options: DatabaseOptions = {}): {
 
   let transactionCount = 0;
   const database = {
+    legalDocumentVersion: legalTablesMock().legalDocumentVersion,
     userRole: {
       findFirst: vi
         .fn()

@@ -137,6 +137,10 @@ export const userRelationRules = {
   hospitalOnboardingReviews: "EMPTY",
   takeoverLock: "EMPTY",
   takeoverLocksIssued: "EMPTY",
+  legalDocumentVersionsCreated: "EMPTY",
+  legalDocumentVersionsPublished: "EMPTY",
+  legalAcceptances: "EMPTY",
+  consentEvents: "EMPTY",
 } as const satisfies Record<Relations<Prisma.UserInclude>, RelationRule>;
 
 export const personRelationRules = {

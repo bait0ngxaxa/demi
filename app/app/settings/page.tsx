@@ -14,6 +14,16 @@ export default async function SettingsPage(): Promise<React.JSX.Element> {
     <div className="min-w-0 max-w-4xl space-y-6">
       <PageHeader title="ตั้งค่าบัญชีส่วนตัว" description="ข้อมูลติดต่อ การแจ้งเตือน และความปลอดภัยของบัญชีของคุณ" />
       <ContactSettingsForm initial={context.contact} patient={context.patient} />
+      <section aria-labelledby="settings-legal-heading" className="border-t border-border pt-6">
+        <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="settings-legal-heading">เงื่อนไขและการใช้งาน</h2>
+        <p className="mt-1 text-sm leading-6 text-text-muted">ข้อกำหนดการใช้บริการ นโยบายการคุ้มครองข้อมูลส่วนบุคคล และความยินยอมของคุณ</p>
+        <Link
+          className="mt-2 inline-flex min-h-11 items-center rounded-control text-sm font-semibold text-brand-strong underline underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href="/app/settings/legal"
+        >
+          ดูเงื่อนไขและการใช้งาน
+        </Link>
+      </section>
       {context.canChangePassword ? (
         <section aria-labelledby="settings-security-heading" className="border-t border-border pt-6">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="settings-security-heading">ความปลอดภัยของบัญชี</h2>

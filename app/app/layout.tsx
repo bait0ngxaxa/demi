@@ -20,6 +20,7 @@ import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
 import { PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER } from "@/lib/auth/supabase-proxy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { shouldShowLegalReacceptanceBanner } from "@/modules/legal/transport/legal-settings-context";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 export const viewport: Viewport = {
@@ -53,7 +54,7 @@ async function ResolvedProtectedApplicationShell({
   const actor = await resolveProtectedActor(
     requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
   );
-  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName, passwordResetNoticeAt] = await Promise.all([
+  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
     countWorkAppointmentsAwaitingMyAcceptance(actor),
     getActorDisplayName(actor).catch((error: unknown) =>
@@ -63,12 +64,14 @@ async function ResolvedProtectedApplicationShell({
       console.error("Pending password reset notice could not be consumed");
       return null;
     }),
+    shouldShowLegalReacceptanceBanner(actor),
   ]);
   const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
 
   return (
     <AppShell
       displayName={displayName}
+      legalReacceptanceNeeded={legalReacceptanceNeeded}
       navigation={navigation}
       passwordResetNoticeAt={passwordResetNoticeAt}
       roleLabels={actor.roles.map((role) => roleLabels[role])}

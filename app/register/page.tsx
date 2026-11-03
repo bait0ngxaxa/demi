@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { LegalDocumentsUnavailable, LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
+import { getAccountCreationLegalView } from "@/modules/legal/transport/legal-page-context";
+
 import { SelfRegistrationForm } from "./self-registration-form";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +15,9 @@ export const metadata: Metadata = {
   referrer: "no-referrer",
 };
 
-export default function RegisterPage(): React.JSX.Element {
+export default async function RegisterPage(): Promise<React.JSX.Element> {
+  // ADR-0028: Terms + Privacy only; the lookup never reveals whether the person is a Patient, so no consents here.
+  const legal = await getAccountCreationLegalView({ includeConsents: false });
   return (
     <main className="min-h-svh bg-canvas lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(28rem,0.95fr)]">
       <section className="relative overflow-hidden bg-brand-deep px-6 py-8 text-white sm:px-10 lg:flex lg:min-h-svh lg:flex-col lg:justify-between lg:px-14 lg:py-12 xl:px-20">
@@ -39,7 +44,8 @@ export default function RegisterPage(): React.JSX.Element {
           <p className="mt-3 text-base leading-7 text-muted">
             กรอกเลขบัตรประชาชนที่โรงพยาบาลใช้จัดเตรียมบัญชี แล้วตั้งรหัสผ่านด้วยตนเอง
           </p>
-          <SelfRegistrationForm />
+          {legal ? <SelfRegistrationForm legal={legal} /> : <LegalDocumentsUnavailable />}
+          <LegalFooterLinks className="mt-8 justify-center" />
           <p className="mt-6 text-center text-sm leading-6 text-muted">
             มีบัญชีแล้ว?{" "}
             <Link

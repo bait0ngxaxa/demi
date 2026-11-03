@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,10 @@ import {
 import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS, FAMILY_APPOINTMENT_LATEST_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LegalAcceptanceFields, LegalDocumentsUnavailable, LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
+import { LEGAL_ACCEPTANCE_REQUIRED_MESSAGE } from "@/modules/legal/domain/legal-documents";
+import { LEGAL_FORM_FIELDS } from "@/modules/legal/domain/legal-form-fields";
+import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 /**
  * AF-5: the exact acceptance text of every scope the Patient chose; accepting the invitation accepts all of them
@@ -83,26 +88,34 @@ type AccountClaimState =
   | { status: "IDLE" }
   | { status: "PENDING" }
   | { status: "ACCEPTED" }
-  | { status: "ERROR"; message: string };
+  | { status: "ERROR"; message: string; legal?: "VERSION_CHANGED" | "ACCEPTANCE_REQUIRED" };
 
 function CaregiverAccountClaimForm({
   token,
   patientDisplayName,
   expiresAt,
   requestedSharing,
+  legal,
 }: {
+  legal: AccountCreationLegalView;
   token: string;
   patientDisplayName: string;
   expiresAt: string;
   requestedSharing: CaregiverInvitationRequestedSharingView;
 }): React.JSX.Element {
   const [state, setState] = useState<AccountClaimState>({ status: "IDLE" });
+  const router = useRouter();
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (state.status === "PENDING") return;
-    setState({ status: "PENDING" });
     const formData = new FormData(event.currentTarget);
+    // LG-D4: the required box carries the exact versions shown.
+    if (formData.get(LEGAL_FORM_FIELDS.accept) !== "on") {
+      setState({ status: "ERROR", message: LEGAL_ACCEPTANCE_REQUIRED_MESSAGE, legal: "ACCEPTANCE_REQUIRED" });
+      return;
+    }
+    setState({ status: "PENDING" });
 
     try {
       const response = await fetch("/api/v1/family/caregiver-invitations/accept-account", {
@@ -115,6 +128,7 @@ function CaregiverAccountClaimForm({
           familyName: formData.get("familyName"),
           password: formData.get("password"),
           passwordConfirmation: formData.get("passwordConfirmation"),
+          acceptLegal: { termsVersionId: legal.terms.id, privacyVersionId: legal.privacy.id },
         }),
         cache: "no-store",
         credentials: "omit",
@@ -129,8 +143,12 @@ function CaregiverAccountClaimForm({
       const parsed = caregiverAccountClaimResponseSchema.safeParse(payload);
       if (response.ok && parsed.success && parsed.data.status === "ACCEPTED") {
         setState({ status: "ACCEPTED" });
+      } else if (parsed.success && parsed.data.status === "ERROR" && parsed.data.code === "LEGAL_VERSION_CHANGED") {
+        // A newer Terms/Privacy version was published meanwhile: the invitation stays usable; reload and ask again.
+        setState({ status: "ERROR", message: parsed.data.message, legal: "VERSION_CHANGED" });
+        router.refresh();
       } else if (parsed.success && parsed.data.status === "ERROR") {
-        setState({ status: "ERROR", message: parsed.data.message });
+        setState({ status: "ERROR", message: parsed.data.message, ...(parsed.data.code === "LEGAL_ACCEPTANCE_REQUIRED" ? { legal: "ACCEPTANCE_REQUIRED" as const } : {}) });
       } else {
         setState({ status: "ERROR", message: "ไม่สามารถสร้างบัญชีได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" });
       }
@@ -187,7 +205,16 @@ function CaregiverAccountClaimForm({
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password-confirmation">ยืนยันรหัสผ่าน</label>
           <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required />
         </div>
-        {state.status === "ERROR" ? <Alert role="alert" variant="danger">{state.message}</Alert> : null}
+        <LegalAcceptanceFields
+          disabled={state.status === "PENDING"}
+          error={state.status === "ERROR" && state.legal === "ACCEPTANCE_REQUIRED" ? state.message : undefined}
+          idPrefix="caregiver-claim"
+          key={`${legal.terms.id}:${legal.privacy.id}`}
+          legal={legal}
+        />
+        {state.status === "ERROR" && state.legal !== "ACCEPTANCE_REQUIRED" ? (
+          <Alert role="alert" variant={state.legal === "VERSION_CHANGED" ? "warning" : "danger"}>{state.message}</Alert>
+        ) : null}
         <Button disabled={state.status === "PENDING"} loading={state.status === "PENDING"} type="submit">
           {state.status === "PENDING" ? "กำลังสร้างบัญชี..." : "สร้างบัญชีและตอบรับคำเชิญ"}
         </Button>
@@ -251,7 +278,7 @@ function LoginLink({ token }: { token: string }): React.JSX.Element {
   );
 }
 
-export function FamilyInvitationPreview(): React.JSX.Element {
+export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegalView | null }): React.JSX.Element {
   const store = useMemo(() => createInvitationTokenStore(), []);
   const tokenSnapshot = useSyncExternalStore(
     store.subscribe,
@@ -395,12 +422,16 @@ export function FamilyInvitationPreview(): React.JSX.Element {
 
       {preview.status === "NEEDS_ACCOUNT" && token ? (
         <>
+          {legal ? (
           <CaregiverAccountClaimForm
+            legal={legal}
             expiresAt={preview.invitation.expiresAt}
             patientDisplayName={preview.invitation.patientDisplayName}
             requestedSharing={preview.invitation.requestedSharing}
             token={token}
           />
+          ) : <LegalDocumentsUnavailable />}
+          <LegalFooterLinks className="mt-4" />
           <p className="mt-4 text-sm text-text-muted">หากมีบัญชีแล้ว เข้าสู่ระบบเพื่อรับคำเชิญนี้</p>
           <LoginLink token={token} />
         </>

@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ entry: vi.fn() }));
 vi.mock("next/server", () => ({ connection: async () => undefined }));
+vi.mock("@/modules/legal/transport/legal-page-context", async () => ({
+  getAccountCreationLegalView: async () => (await import("../../tests/support/legal-fixtures")).accountCreationLegalViewFixture(),
+}));
 vi.mock("@/modules/line/services/line-deep-link-builder", () => ({ getPublicLineAccountEntryUrl: mocks.entry }));
 vi.mock("./patient/patient-activation-form", () => ({ PatientActivationForm: ({ lineAccountUrl }: { lineAccountUrl: string | null }) => <div data-entry={lineAccountUrl} /> }));
 vi.mock("./workforce/workforce-activation-form", () => ({ WorkforceActivationForm: ({ lineAccountUrl }: { lineAccountUrl: string | null }) => <div data-entry={lineAccountUrl} /> }));

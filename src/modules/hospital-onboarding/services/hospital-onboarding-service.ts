@@ -23,6 +23,10 @@ import {
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
+  assertAccountCreationLegalIsCurrent,
+  recordAccountCreationLegal,
+} from "@/modules/legal/services/account-creation-legal-service";
+import {
   ApplicationError,
   ConflictError,
   ForbiddenError,
@@ -302,6 +306,14 @@ export async function submitHospitalOnboarding(
     throw new ConflictError("This identity must use the existing account path");
   }
 
+  const legal = {
+    acceptLegal: parsed.data.acceptLegal,
+    consents: [],
+    source: "HOSPITAL_ONBOARDING",
+    channel: parsed.data.channel,
+  } as const;
+  await assertAccountCreationLegalIsCurrent(database, legal);
+
   const identity = await createApplicantIdentity(database, {
     identityKeyHash: hashIdentityReference({
       namespace: "thai-national-id",
@@ -405,6 +417,9 @@ export async function submitHospitalOnboarding(
         },
         select: { id: true },
       });
+
+      // LG-1 §3: the applicant's acceptance commits with the application or not at all.
+      await recordAccountCreationLegal(transaction, { userId: identity.userId, ...legal, consents: [] });
 
       await recordAuditEvent(
         {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { hospitalOnboardingSubmissionSchema } from "./hospital-onboarding-schemas";
+import { legalAcceptanceFixture } from "../../../../tests/support/legal-fixtures";
 
 const validInput = {
   hospitalCode: " kang ",
@@ -9,6 +10,8 @@ const validInput = {
   familyName: "ใจดี",
   password: "correct-horse-battery-staple",
   passwordConfirmation: "correct-horse-battery-staple",
+  acceptLegal: legalAcceptanceFixture,
+  channel: "WEB" as const,
 };
 
 afterEach(() => {

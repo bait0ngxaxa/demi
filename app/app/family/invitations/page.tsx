@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { getAccountCreationLegalView } from "@/modules/legal/transport/legal-page-context";
+
 import { FamilyInvitationPreview } from "./family-invitation-preview";
 
 export const metadata: Metadata = {
@@ -10,6 +12,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default function FamilyInvitationPage(): React.JSX.Element {
-  return <FamilyInvitationPreview />;
+export default async function FamilyInvitationPage(): Promise<React.JSX.Element> {
+  // LG-D6: a caregiver account accepts Terms + Privacy only.
+  const legal = await getAccountCreationLegalView({ includeConsents: false });
+  return <FamilyInvitationPreview legal={legal} />;
 }

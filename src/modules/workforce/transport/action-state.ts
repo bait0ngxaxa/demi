@@ -119,9 +119,10 @@ export type WorkforceCompletionActionState =
   | { status: "IDLE" }
   | {
       status: "ERROR";
-      code: WorkforceErrorCode;
+      /** LEGAL_VERSION_CHANGED is recoverable: the screen reloads the current versions and asks again. */
+      code: WorkforceErrorCode | "LEGAL_VERSION_CHANGED";
       message: string;
-      fieldErrors?: { nationalId?: string; password?: string; passwordConfirmation?: string };
+      fieldErrors?: { nationalId?: string; password?: string; passwordConfirmation?: string; acceptLegal?: string };
     }
   | { status: "SUCCESS" };
 

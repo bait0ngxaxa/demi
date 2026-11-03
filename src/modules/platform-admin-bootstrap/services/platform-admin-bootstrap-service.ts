@@ -11,6 +11,11 @@ import {
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import type { LegalAcceptanceInput } from "@/modules/legal/schemas/legal-schemas";
+import {
+  assertAccountCreationLegalIsCurrent,
+  recordAccountCreationLegal,
+} from "@/modules/legal/services/account-creation-legal-service";
 import {
   ApplicationError,
   ConflictError,
@@ -264,6 +269,7 @@ async function finalizePlatformAdmin(
   database: PlatformAdminBootstrapDatabase,
   identity: BootstrapIdentity,
   authSubject: string,
+  acceptLegal: LegalAcceptanceInput,
 ): Promise<void> {
   try {
     await database.$transaction(
@@ -322,6 +328,15 @@ async function finalizePlatformAdmin(
           },
         });
 
+        // LG-1 §3: the operator's CLI acceptance commits with the ADMIN authority or not at all.
+        await recordAccountCreationLegal(transaction, {
+          userId: identity.userId,
+          acceptLegal,
+          consents: [],
+          source: "ADMIN_BOOTSTRAP",
+          channel: null,
+        });
+
         await recordAuditEvent(
           {
             actorUserId: null,
@@ -364,6 +379,8 @@ export async function bootstrapPlatformAdmin(
   if (await hasPlatformAdmin(database)) {
     throwExistingAdminConflict();
   }
+
+  await assertAccountCreationLegalIsCurrent(database, { acceptLegal: parsed.data.acceptLegal });
 
   const identityKeyHash = createIdentityKeyHash(parsed.data.nationalId);
   let existingPerson: { id: string } | null;
@@ -425,7 +442,7 @@ export async function bootstrapPlatformAdmin(
   }
 
   try {
-    await finalizePlatformAdmin(database, identity, authSubject);
+    await finalizePlatformAdmin(database, identity, authSubject, parsed.data.acceptLegal);
   } catch (error: unknown) {
     await compensateProviderAndIdentity(database, identity, authSubject, dependencies);
     throw error;

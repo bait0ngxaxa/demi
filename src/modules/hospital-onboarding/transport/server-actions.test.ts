@@ -20,6 +20,7 @@ import {
   rejectHospitalOnboardingAction,
   submitHospitalOnboardingAction,
 } from "./server-actions";
+import { legalAcceptanceFixture, setLegalAcceptanceFields } from "../../../../tests/support/legal-fixtures";
 
 const mocks = vi.hoisted(() => ({
   actor: vi.fn(),
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": "Mozilla/5.0" }) }));
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
@@ -66,7 +68,7 @@ function createSubmissionFormData(
   overrides: Partial<typeof validSubmission> = {},
 ): FormData {
   const values = { ...validSubmission, ...overrides };
-  const formData = new FormData();
+  const formData = setLegalAcceptanceFields(new FormData());
 
   for (const [key, value] of Object.entries(values)) {
     formData.set(key, value);
@@ -119,7 +121,7 @@ describe("hospital onboarding Server Action", () => {
     );
 
     expect(result).toEqual({ status: "SUCCESS" });
-    expect(mocks.submit).toHaveBeenCalledWith(validSubmission);
+    expect(mocks.submit).toHaveBeenCalledWith({ ...validSubmission, acceptLegal: legalAcceptanceFixture, channel: "WEB" });
   });
 
   it("identifies invalid fields without calling the application service", async () => {

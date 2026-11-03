@@ -1,6 +1,8 @@
 import { MembershipStatus, MembershipType, UserStatus } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { legalAcceptanceFixture, setLegalAcceptanceFields } from "../../../../tests/support/legal-fixtures";
+
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
 import { WorkforceRelationshipConflictError, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE } from "@/modules/identity/services/workforce-relationship-compatibility";
@@ -55,6 +57,7 @@ import {
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": "Mozilla/5.0" }) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: vi.fn(),
 }));
@@ -264,7 +267,7 @@ describe("workforce Server Actions", () => {
 
   it("returns confirmed activation success after the service completes", async () => {
     mockedCompleteWorkforceActivation.mockResolvedValue({ userId: "user-1" });
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
@@ -280,15 +283,29 @@ describe("workforce Server Actions", () => {
       nationalId: "1000000000009",
       password: "target-owned-workforce-password",
       passwordConfirmation: "target-owned-workforce-password",
+      acceptLegal: legalAcceptanceFixture,
+      channel: "WEB",
     });
     expect(mockedCompleteWorkforcePasswordReset).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "SUCCESS" });
     expect(mockedSignOutCurrentSession).not.toHaveBeenCalled();
   });
 
+  it("requires the Terms + Privacy checkbox for an activation (LG-D4)", async () => {
+    const formData = new FormData();
+    formData.set("nationalId", "1000000000009");
+    formData.set("password", "target-owned-workforce-password");
+    formData.set("passwordConfirmation", "target-owned-workforce-password");
+
+    const result = await completeWorkforceActivationAction("one-time-token", "ACTIVATION", initialWorkforceCompletionActionState, formData);
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT", fieldErrors: { acceptLegal: expect.stringContaining("ยอมรับ") } });
+    expect(mockedCompleteWorkforceActivation).not.toHaveBeenCalled();
+  });
+
   it("returns RESET success only after the reset service completes", async () => {
     mockedCompleteWorkforcePasswordReset.mockResolvedValue({ userId: "user-1" });
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
@@ -307,7 +324,7 @@ describe("workforce Server Actions", () => {
 
   it("keeps child-owner onboarding on the activation completion service", async () => {
     mockedCompleteWorkforceActivation.mockResolvedValue({ userId: "user-1" });
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
@@ -323,6 +340,8 @@ describe("workforce Server Actions", () => {
       nationalId: "1000000000009",
       password: "target-owned-workforce-password",
       passwordConfirmation: "target-owned-workforce-password",
+      acceptLegal: legalAcceptanceFixture,
+      channel: "WEB",
     });
     expect(mockedCompleteWorkforcePasswordReset).not.toHaveBeenCalled();
     expect(result).toEqual({ status: "SUCCESS" });
@@ -351,7 +370,7 @@ describe("workforce Server Actions", () => {
   it("returns the same generic message for every completion conflict and preview failure", async () => {
     mockedCompleteWorkforceActivation.mockRejectedValue(new ConflictError("anything specific"));
     mockedPreviewWorkforceActivation.mockRejectedValue(new ConflictError("missing"));
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");
@@ -896,7 +915,7 @@ describe("WF-PHONE action", () => {
   it("keeps activation feedback generic even for a category-specific domain error", async () => {
     const error = new WorkforceRelationshipConflictError("OSM");
     mockedCompleteWorkforceActivation.mockRejectedValue(error);
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("nationalId", "1000000000009");
     formData.set("password", "target-owned-workforce-password");
     formData.set("passwordConfirmation", "target-owned-workforce-password");

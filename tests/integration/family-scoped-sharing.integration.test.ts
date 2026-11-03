@@ -22,8 +22,14 @@ import { acceptResourceGrant, proposeResourceGrant, revokeResourceGrant } from "
 import { getDelegatedAppointment, listDelegatedAppointments } from "@/modules/family/services/delegated-appointment-query-service";
 import { getFamilyHealthSummary } from "@/modules/family/services/family-health-summary-query-service";
 import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
+import { accountCreationLegalFields, clearLegalRecords } from "./support/legal";
 
 const db = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(db);
+});
 const now = new Date("2026-10-23T03:00:00.000Z");
 const days = (value: number): Date => new Date(now.getTime() + value * 24 * 60 * 60 * 1000);
 const caregiverNationalId = "1000000000009";
@@ -87,6 +93,7 @@ async function clear(): Promise<void> {
   await clearProgramRoundCompletions();
   await db.patientProgramRoundVitals.deleteMany();
   await db.patientProgramServiceOneConfidence.deleteMany();
+  await clearLegalRecords(db);
   await db.auditEvent.deleteMany();
   await db.appointmentLineNotification.deleteMany();
   await db.caregiverResourceGrant.deleteMany();
@@ -194,7 +201,7 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     }, deps);
     const claim = await createCaregiverAccountFromInvitation({
       token: invitation.plaintextToken, nationalId: relativeNationalId, givenName: "ญาติ", familyName: "ทดสอบ",
-      password: "caregiver-test-password-2026", passwordConfirmation: "caregiver-test-password-2026",
+      password: "caregiver-test-password-2026", passwordConfirmation: "caregiver-test-password-2026", ...LEGAL,
     }, { ipAddress: "203.0.113.50" }, {
       database: db, now: () => now, rateLimiter: { consume: async () => true },
       createProviderIdentity: async ({ userId }) => ({ authSubject: randomUUID(), providerLoginAlias: `caregiver-${userId}@test.invalid` }),

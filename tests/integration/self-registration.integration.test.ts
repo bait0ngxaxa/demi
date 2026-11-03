@@ -27,8 +27,14 @@ import {
 import { generateWorkforceActivationCredential, hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
 import { completeWorkforceActivation, listWorkforce } from "@/modules/workforce/services/workforce-service";
 import { POST as postLookup } from "../../app/api/v1/self-registration/lookup/route";
+import { accountCreationLegalFields, clearLegalRecords } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 const PASSWORD = "self-registration-integration-password";
 let sequence = 12_000;
 
@@ -40,6 +46,7 @@ function nationalIdFor(value: number): string {
 }
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.publicSelfRegistrationRateLimitBucket.deleteMany();
   await prisma.auditEvent.deleteMany();
   await prisma.patientActivation.deleteMany();
@@ -261,7 +268,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
         nationalId: target.nationalId,
         password: PASSWORD,
         passwordConfirmation: PASSWORD,
-        nameConfirmed: true,
+        nameConfirmed: true, ...LEGAL,
       }, { now: () => lookup.now, provisionIdentity: provisioner() });
 
       await expect(prisma.user.findUnique({ where: { id: target.userId }, select: { status: true, authSubject: true } }))
@@ -287,13 +294,13 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
 
     const memberTarget = await createTarget(hospital.id, { kinds: ["MEMBER"] });
     const memberLookup = await lookupFound(memberTarget.nationalId, "198.51.100.20");
-    await completePublicSelfRegistration({ token: memberLookup.capability, nationalId: memberTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, { now: () => memberLookup.now, provisionIdentity: provisioner() });
+    await completePublicSelfRegistration({ token: memberLookup.capability, nationalId: memberTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL }, { now: () => memberLookup.now, provisionIdentity: provisioner() });
     const workforce = await listWorkforce(owner.actor, { targetHospitalId: hospital.id, selfRegistration: "SELF_REGISTERED" });
     expect(workforce.rows.some(({ id }) => memberTarget.membershipIds.includes(id))).toBe(true);
 
     const patientTarget = await createTarget(hospital.id, { kinds: ["PATIENT"] });
     const patientLookup = await lookupFound(patientTarget.nationalId, "198.51.100.21");
-    await completePublicSelfRegistration({ token: patientLookup.capability, nationalId: patientTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, { now: () => patientLookup.now, provisionIdentity: provisioner() });
+    await completePublicSelfRegistration({ token: patientLookup.capability, nationalId: patientTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL }, { now: () => patientLookup.now, provisionIdentity: provisioner() });
     const patients = await findPatientDirectory(owner.actor, { targetHospitalId: hospital.id, lookupType: "NAME", value: "", page: "1", selfRegistration: "SELF_REGISTERED" });
     expect(patients.items.some(({ patientHospitalRelationshipId }) => patientTarget.patientRelationshipIds.includes(patientHospitalRelationshipId))).toBe(true);
   });
@@ -372,7 +379,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
       nationalId: nationalIdFor(987_654_321),
       password: PASSWORD,
       passwordConfirmation: PASSWORD,
-      nameConfirmed: true,
+      nameConfirmed: true, ...LEGAL,
     };
 
     await expect(completePublicSelfRegistration(input, { now: () => lookup.now, provisionIdentity: provider }))
@@ -391,7 +398,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     const expiredTarget = await createTarget(hospital.id, { kinds: ["MEMBER"] });
     const expiredLookup = await lookupFound(expiredTarget.nationalId, "198.51.100.30");
     const expiredProvider = provisioner();
-    await expect(completePublicSelfRegistration({ token: expiredLookup.capability, nationalId: expiredTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, {
+    await expect(completePublicSelfRegistration({ token: expiredLookup.capability, nationalId: expiredTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL }, {
       now: () => new Date(expiredLookup.now.getTime() + 11 * 60 * 1000),
       provisionIdentity: expiredProvider,
     })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -401,7 +408,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     const disabledLookup = await lookupFound(disabledTarget.nationalId, "198.51.100.31");
     await prisma.hospital.update({ where: { id: hospital.id }, data: { selfRegistrationEnabled: false } });
     const disabledProvider = provisioner();
-    await expect(completePublicSelfRegistration({ token: disabledLookup.capability, nationalId: disabledTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, { now: () => disabledLookup.now, provisionIdentity: disabledProvider }))
+    await expect(completePublicSelfRegistration({ token: disabledLookup.capability, nationalId: disabledTarget.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL }, { now: () => disabledLookup.now, provisionIdentity: disabledProvider }))
       .rejects.toMatchObject({ code: "CONFLICT" });
     expect(disabledProvider).not.toHaveBeenCalled();
     await prisma.hospital.update({ where: { id: hospital.id }, data: { selfRegistrationEnabled: true } });
@@ -420,7 +427,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
       nationalId: suspendedTarget.nationalId,
       password: PASSWORD,
       passwordConfirmation: PASSWORD,
-      nameConfirmed: true,
+      nameConfirmed: true, ...LEGAL,
     }, { now: () => suspendedLookup.now, provisionIdentity: suspendedProvider }))
       .rejects.toMatchObject({ code: "CONFLICT" });
     expect(suspendedProvider).not.toHaveBeenCalled();
@@ -428,7 +435,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     const target = await createTarget(hospital.id, { kinds: ["MEMBER"] });
     const lookup = await lookupFound(target.nationalId, "198.51.100.32");
     const provider = provisioner();
-    const input = { token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true };
+    const input = { token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL };
     await completePublicSelfRegistration(input, { now: () => lookup.now, provisionIdentity: provider });
     await expect(completePublicSelfRegistration(input, { now: () => lookup.now, provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(provider).toHaveBeenCalledOnce();
@@ -458,7 +465,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     });
 
     const inviteProvider = provisioner();
-    await completeWorkforceActivation(invite.plaintextToken, {
+    await completeWorkforceActivation(invite.plaintextToken, { ...LEGAL,
       nationalId: target.nationalId,
       password: PASSWORD,
       passwordConfirmation: PASSWORD,
@@ -470,7 +477,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
       nationalId: target.nationalId,
       password: PASSWORD,
       passwordConfirmation: PASSWORD,
-      nameConfirmed: true,
+      nameConfirmed: true, ...LEGAL,
     }, { now: () => lookup.now, provisionIdentity: selfRegistrationProvider }))
       .rejects.toMatchObject({ code: "CONFLICT" });
 
@@ -498,7 +505,7 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
       await prisma.user.update({ where: { id: userId }, data: { authSubject } });
       return { userId, authSubject };
     });
-    const input = { token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true };
+    const input = { token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL };
     const first = completePublicSelfRegistration(input, { now: () => lookup.now, provisionIdentity: provider });
     await started;
     await expect(completePublicSelfRegistration(input, { now: () => lookup.now, provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -534,10 +541,39 @@ describe("SR-1 public self-registration PostgreSQL flow", () => {
     const lookup = await lookupFound(target.nationalId, "198.51.100.81");
     await prisma.hospitalMembership.create({ data: { userId: target.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: "OTHER", status: MembershipStatus.SUSPENDED } });
     const provider = vi.fn();
-    await expect(completePublicSelfRegistration({ token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true }, { now: () => lookup.now, provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(completePublicSelfRegistration({ token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true, ...LEGAL }, { now: () => lookup.now, provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(provider).not.toHaveBeenCalled();
     expect(await prisma.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ status: UserStatus.PROVISIONED, authSubject: null });
     expect(await prisma.auditEvent.count({ where: { action: "self_registration.completed" } })).toBe(0);
   });
 
+});
+
+describe("LG-1 legal acceptance at self-registration (ADR-0028)", () => {
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  it.each([
+    ["PATIENT", ["PATIENT"]],
+    ["workforce", ["MEMBER"]],
+  ] as const)("refuses a missing acceptance and records SELF_REGISTRATION for a %s capability", async (_label, kinds) => {
+    const hospital = await createHospital();
+    const target = await createTarget(hospital.id, { kinds });
+    const lookup = await lookupFound(target.nationalId, "198.51.100.90");
+    const provider = vi.fn(provisioner());
+    const base = { token: lookup.capability, nationalId: target.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, nameConfirmed: true };
+
+    await expect(completePublicSelfRegistration({ ...base, channel: "WEB" }, { now: () => lookup.now, provisionIdentity: provider }))
+      .rejects.toMatchObject({ name: "LegalAcceptanceRequiredError", code: "VALIDATION" });
+    // ADR-0028: /register offers no consents, so the strict input refuses them.
+    await expect(completePublicSelfRegistration({ ...base, ...LEGAL, consents: [] }, { now: () => lookup.now, provisionIdentity: provider }))
+      .rejects.toMatchObject({ code: "VALIDATION" });
+    expect(provider).not.toHaveBeenCalled();
+
+    await completePublicSelfRegistration({ ...base, ...LEGAL, channel: "LIFF" }, { now: () => lookup.now, provisionIdentity: provider });
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: target.userId }, select: { source: true, channel: true } }))
+      .toEqual([{ source: "SELF_REGISTRATION", channel: "LIFF" }]);
+    expect(await prisma.consentEvent.count()).toBe(0);
+  });
 });

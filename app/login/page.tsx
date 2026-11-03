@@ -12,6 +12,8 @@ import {
 } from "@/modules/auth/schemas/login-schema";
 
 import { ClearHospitalContentRecoveryOnLogin } from "./clear-hospital-content-recovery";
+import { LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
+
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
@@ -140,6 +142,8 @@ export default async function LoginPage({
           <p className="mt-8 text-sm leading-6 text-muted">
             การเข้าสู่ระบบไม่ได้เปิดให้ใช้ทุกส่วน ระบบจะแสดงเฉพาะงานที่บัญชีของคุณเข้าใช้ได้
           </p>
+          {/* LG-D1: no acceptance step at login; the documents stay one tap away. */}
+          <LegalFooterLinks className="mt-4" />
         </div>
       </section>
     </main>

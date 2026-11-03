@@ -51,11 +51,12 @@ Phase 4B implementation อยู่ใน `src/modules/workforce/`, `/app/workf
 Fresh DEMI environment ที่ยังไม่มี Platform `ADMIN` ต้องสร้างผู้ดูแลระบบคนแรกผ่าน trusted server/developer environment เท่านั้น:
 
 ```bash
-npm run admin:bootstrap
+npm run admin:bootstrap -- --accept-legal
 ```
 
 คำสั่งนี้เป็น interactive CLI ภาษาไทย รับ Thai National ID/ตัวระบุ Admin ที่ตั้งเอง, ชื่อ และ user-owned password โดยไม่รับข้อมูลตัวตนหรือ password ผ่าน command-line arguments และไม่ echo password บน terminal เมื่อ terminal รองรับ โครงการไม่มี public “Create Admin”, admin signup page, anonymous Server Action หรือ HTTP endpoint สำหรับ bootstrap
 
+- `--accept-legal` จำเป็น (ADR-0028): ผู้ดำเนินการยอมรับข้อกำหนดและเงื่อนไขการใช้บริการ และรับทราบนโยบายการคุ้มครองข้อมูลส่วนบุคคลฉบับปัจจุบันที่ CLI แสดงก่อนเริ่ม และระบบบันทึก `LegalAcceptance` source `ADMIN_BOOTSTRAP` ใน transaction เดียวกับสิทธิ์ ADMIN; ไม่ระบุ flag = ไม่ทำอะไรเลย
 - bootstrap จะหยุดด้วย conflict ทันทีเมื่อมี `UserRole.ADMIN` อยู่แล้ว ไม่ว่าสถานะ User จะเป็น `ACTIVE`, `SUSPENDED`, `PROVISIONED` หรือ `INVITED`
 - Admin ใช้ตัวระบุในช่องเดียวกับ National ID ได้อย่างอิสระภายใน bounded login schema โดยไม่ตรวจ category/checksum; Hospital onboarding และ role อื่นยังตรวจ Thai National ID แบบ strict เดิม
 - ทั้ง Admin identifier และ Thai National ID ใช้ HMAC namespace `thai-national-id` เดิม; ไม่ persist raw identifier

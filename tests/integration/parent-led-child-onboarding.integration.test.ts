@@ -39,9 +39,15 @@ import { setHospitalNetworkRole, transferHospitalServiceArea } from "@/modules/h
 import { endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { completeWorkforceActivation, previewWorkforceActivation } from "@/modules/workforce/services/workforce-service";
 import { provisionPatientFixture } from "./support/patient-provisioning";
+import { accountCreationLegalFields } from "./support/legal";
 
 // ADR-0018 / Phase O1: ADMIN bulk Parent registration and Parent-led Child onboarding.
 const db = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(db);
+});
 const PASSWORD = "integration-child-owner-password";
 const hospitalIds: string[] = [];
 const userIds: string[] = [];
@@ -131,7 +137,7 @@ function provisioner(authSubject = randomUUID()) {
 }
 
 async function complete(activationToken: string, nid: string) {
-  return completeWorkforceActivation(activationToken, { nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, {
+  return completeWorkforceActivation(activationToken, { ...LEGAL, nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, {
     provisionIdentity: provisioner(),
     deleteProviderIdentity: async () => undefined,
   });
@@ -158,6 +164,8 @@ afterEach(async () => {
   const allHospitalIds = created.map(({ id }) => id);
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+    await tx.consentEvent.deleteMany({ where: { userId: { in: allUserIds } } });
+    await tx.legalAcceptance.deleteMany({ where: { userId: { in: allUserIds } } });
     await tx.auditEvent.deleteMany({ where: { OR: [{ actorUserId: { in: allUserIds } }, { resourceId: { in: [...allHospitalIds, ...allUserIds] } }] } });
     await tx.providerIdentityCleanup.deleteMany({ where: { userId: { in: allUserIds } } });
     await tx.userTakeoverLock.deleteMany({ where: { OR: [{ userId: { in: allUserIds } }, { lockedByUserId: { in: allUserIds } }] } });
@@ -286,7 +294,7 @@ describe("O1-B: public onboarding is for Parents only", () => {
 
     for (const target of [created.child, adminChild, formerChild]) {
       await expect(findOnboardingHospitalByCode(target.hospitalCode)).rejects.toMatchObject({ code: "NOT_FOUND" });
-      await expect(submitHospitalOnboarding({
+      await expect(submitHospitalOnboarding({ ...LEGAL,
         hospitalCode: target.hospitalCode, nationalId: nationalId(), givenName: "สมชาย", familyName: "ใจดี",
         password: "correct-horse-battery-staple", passwordConfirmation: "correct-horse-battery-staple",
       })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -930,7 +938,7 @@ describe("O1-E: denials", () => {
     await db.osmHospitalRelationship.create({ data: { userId: invitation.userId, hospitalId: parent.id, status: MembershipStatus.SUSPENDED } });
     const provider = vi.fn();
     const credential = await db.workforceActivation.findFirstOrThrow({ where: { userId: invitation.userId } });
-    await expect(completeWorkforceActivation(token(created.invitation), { nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(completeWorkforceActivation(token(created.invitation), { ...LEGAL, nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provider })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(issueChildOwnerLink(parentOwner, { parentHospitalId: parent.id, childHospitalId: created.child.id, mode: "REMOTE" })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(provider).not.toHaveBeenCalled();
     expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: credential.id } })).toEqual(credential);

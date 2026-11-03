@@ -114,6 +114,10 @@ function formatFailure(error) {
     return "ข้อมูลไม่ถูกต้อง กรุณาตรวจสอบตัวระบุเข้าสู่ระบบ ชื่อ และรหัสผ่าน";
   }
 
+  if (typeof error === "object" && error !== null && "name" in error && error.name === "LegalVersionConflictError") {
+    return "มีข้อกำหนดหรือนโยบายฉบับใหม่ระหว่างทำรายการ กรุณาเรียกคำสั่งอีกครั้ง และยังไม่ได้สร้างสิทธิ์ ADMIN";
+  }
+
   if (code === "CONFLICT" && typeof error.message === "string") {
     return error.message;
   }
@@ -125,16 +129,53 @@ function formatFailure(error) {
   return "การ bootstrap ไม่สำเร็จ และยังไม่ได้สร้างสิทธิ์ ADMIN";
 }
 
-async function main() {
-  if (process.argv.length > 2) {
-    throw new CliInputError("ไม่รับเลขบัตรประชาชนหรือรหัสผ่านผ่าน command line arguments");
+const ACCEPT_LEGAL_FLAG = "--accept-legal";
+
+function assertArguments(argumentsList) {
+  const unexpected = argumentsList.filter((argument) => argument !== ACCEPT_LEGAL_FLAG);
+
+  if (unexpected.length > 0 || argumentsList.length > 1) {
+    throw new CliInputError(
+      `รับเฉพาะ ${ACCEPT_LEGAL_FLAG} และไม่รับเลขบัตรประชาชนหรือรหัสผ่านผ่าน command line arguments`,
+    );
   }
+
+  // LG-1 §3 (ADR-0028): the operator accepts the current Terms + Privacy explicitly, never by default.
+  if (argumentsList.length !== 1) {
+    throw new CliInputError(
+      `ต้องยอมรับข้อกำหนดและเงื่อนไขการใช้บริการ และรับทราบนโยบายการคุ้มครองข้อมูลส่วนบุคคล ด้วย ${ACCEPT_LEGAL_FLAG}`,
+    );
+  }
+}
+
+async function main() {
+  assertArguments(process.argv.slice(2));
 
   if (!isInteractiveTerminal()) {
     throw new CliInputError("คำสั่งนี้ต้องทำงานจาก terminal แบบ interactive");
   }
 
   console.log("DEMI Platform Admin Bootstrap");
+
+  const jiti = createJiti(import.meta.url, {
+    alias: {
+      "server-only": resolve(repositoryRoot, "node_modules", "server-only", "empty.js"),
+    },
+    tsconfigPaths: true,
+  });
+  const { getCurrentLegalVersions } = await jiti.import(
+    resolve(repositoryRoot, "src", "modules", "legal", "services", "legal-service.ts"),
+  );
+  const currentLegal = await getCurrentLegalVersions();
+
+  if (!currentLegal.TERMS || !currentLegal.PRIVACY_POLICY) {
+    throw new CliInputError("ยังไม่มีข้อกำหนดหรือนโยบายฉบับที่ประกาศใช้ และยังไม่ได้สร้างสิทธิ์ ADMIN");
+  }
+
+  console.log(
+    `ยอมรับ ${currentLegal.TERMS.title} ฉบับ ${currentLegal.TERMS.versionLabel} (/legal/terms)` +
+      ` และรับทราบ ${currentLegal.PRIVACY_POLICY.title} ฉบับ ${currentLegal.PRIVACY_POLICY.versionLabel} (/legal/privacy)`,
+  );
 
   const questionInterface = createInterface({ input, output });
   const nationalId = await questionInterface.question("เลขบัตรประชาชน หรือรหัส Admin: ");
@@ -149,12 +190,6 @@ async function main() {
     throw new CliInputError("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน");
   }
 
-  const jiti = createJiti(import.meta.url, {
-    alias: {
-      "server-only": resolve(repositoryRoot, "node_modules", "server-only", "empty.js"),
-    },
-    tsconfigPaths: true,
-  });
   const { bootstrapPlatformAdmin } = await jiti.import(
     resolve(
       repositoryRoot,
@@ -172,6 +207,10 @@ async function main() {
     givenName,
     familyName,
     password,
+    acceptLegal: {
+      termsVersionId: currentLegal.TERMS.id,
+      privacyVersionId: currentLegal.PRIVACY_POLICY.id,
+    },
   });
 
   console.log("สร้าง Platform Admin สำเร็จ");

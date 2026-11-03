@@ -2,12 +2,17 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { z } from "zod";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { thaiNationalIdFormatSchema } from "@/modules/identity/schemas/identity-schemas";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
+import { LEGAL_ACCEPTANCE_REQUIRED_MESSAGE, LEGAL_VERSION_CHANGED_MESSAGE } from "@/modules/legal/domain/legal-documents";
+import { LEGAL_FORM_FIELDS } from "@/modules/legal/domain/legal-form-fields";
+import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 const lookupValidationErrorSchema = z.object({
   message: z.literal("กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง"),
@@ -22,11 +27,12 @@ const lookupResponseSchema = z.discriminatedUnion("outcome", [
 
 const completionResponseSchema = z.object({
   status: z.enum(["SUCCESS", "ERROR"]),
+  code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED"]).optional(),
   message: z.string().optional(),
 }).strict();
 
 type LookupOutcome = z.infer<typeof lookupResponseSchema>;
-type RegistrationField = "nationalId" | "nameConfirmed" | "password" | "passwordConfirmation";
+type RegistrationField = "nationalId" | "nameConfirmed" | "password" | "passwordConfirmation" | "acceptLegal";
 type CompletionStatus = "IDLE" | "SUCCESS" | "UNCONFIRMED" | "REJECTED";
 
 const retryLookupOutcome: LookupOutcome = {
@@ -45,7 +51,8 @@ function responseMessage(outcome: LookupOutcome): string | null {
   }
 }
 
-export function SelfRegistrationForm(): React.JSX.Element {
+export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalView }): React.JSX.Element {
+  const router = useRouter();
   const [nationalId, setNationalId] = useState("");
   const [capability, setCapability] = useState<string | null>(null);
   const [maskedName, setMaskedName] = useState<string | null>(null);
@@ -188,6 +195,12 @@ export function SelfRegistrationForm(): React.JSX.Element {
     if (password !== passwordConfirmation) {
       nextErrors.passwordConfirmation = "รหัสผ่านไม่ตรงกัน กรุณากรอกให้ตรงกัน";
     }
+    // LG-D4: the required box carries the exact versions shown; ADR-0028: /register offers no consents.
+    const legalFields = new FormData(event.currentTarget);
+    const accepted = legalFields.get(LEGAL_FORM_FIELDS.accept) === "on";
+    if (!accepted) {
+      nextErrors.acceptLegal = LEGAL_ACCEPTANCE_REQUIRED_MESSAGE;
+    }
     if (Object.keys(nextErrors).length > 0) {
       focusErrorsRef.current = true;
       setFieldErrors(nextErrors);
@@ -211,6 +224,7 @@ export function SelfRegistrationForm(): React.JSX.Element {
           password,
           passwordConfirmation,
           nameConfirmed,
+          acceptLegal: { termsVersionId: legal.terms.id, privacyVersionId: legal.privacy.id },
         }),
       });
 
@@ -227,6 +241,17 @@ export function SelfRegistrationForm(): React.JSX.Element {
       if (response.ok && parsed.success && parsed.data.status === "SUCCESS") {
         clearCompletionData();
         setCompletionStatus("SUCCESS");
+        return;
+      }
+
+      // A newer Terms/Privacy version was published meanwhile: keep the capability, reload the versions, ask again.
+      if (parsed.success && parsed.data.code === "LEGAL_VERSION_CHANGED") {
+        setCompletionMessage(LEGAL_VERSION_CHANGED_MESSAGE);
+        router.refresh();
+        return;
+      }
+      if (parsed.success && parsed.data.code === "LEGAL_ACCEPTANCE_REQUIRED") {
+        setFieldErrors({ acceptLegal: LEGAL_ACCEPTANCE_REQUIRED_MESSAGE });
         return;
       }
 
@@ -544,6 +569,14 @@ export function SelfRegistrationForm(): React.JSX.Element {
           </p>
         ) : null}
       </div>
+
+      <LegalAcceptanceFields
+        disabled={busy}
+        error={fieldErrors.acceptLegal}
+        idPrefix="registration"
+        key={`${legal.terms.id}:${legal.privacy.id}`}
+        legal={legal}
+      />
 
       {completionMessage ? (
         <div

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
+import { legalAcceptanceInputSchema, legalChannelSchema } from "@/modules/legal/schemas/legal-schemas";
 
 import { CAREGIVER_RELATIONSHIP_LABEL_OTHER_MAX } from "../domain/caregiver-sharing-contract";
 
@@ -79,6 +80,10 @@ export const caregiverAccountClaimInputSchema = z
     familyName: z.string().trim().min(1).max(120),
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
+    /** LG-D4: required Terms + Privacy acceptance; a caregiver account is offered no consents (LG-D6). */
+    acceptLegal: legalAcceptanceInputSchema,
+    /** Set by the route handler from the request, never taken from the client body. */
+    channel: legalChannelSchema,
   })
   .strict()
   .superRefine((input, context) => {
@@ -89,7 +94,12 @@ export const caregiverAccountClaimInputSchema = z
 
 export const caregiverAccountClaimResponseSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("ACCEPTED") }).strict(),
-  z.object({ status: z.literal("ERROR"), message: z.string().min(1).max(200) }).strict(),
+  z.object({
+    status: z.literal("ERROR"),
+    /** ADR-0028: a recoverable legal outcome; the screen reloads the versions or asks for the checkbox. */
+    code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED"]).optional(),
+    message: z.string().min(1).max(200),
+  }).strict(),
 ]);
 
 export const caregiverInvitationIdSchema = z

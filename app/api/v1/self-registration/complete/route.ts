@@ -3,6 +3,13 @@ import { revalidatePath } from "next/cache";
 import { ApplicationError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 import { completePublicSelfRegistration } from "@/modules/self-registration/services/self-registration-service";
 import { publicSelfRegistrationJson, readBoundedJsonBody } from "@/modules/self-registration/transport/http-response";
+import {
+  isLegalAcceptanceIssue,
+  legalAcceptanceRequiredError,
+  legalChannelFromRequest,
+  mapLegalVersionError,
+  withServerLegalChannel,
+} from "@/modules/legal/transport/legal-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,12 +26,17 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    await completePublicSelfRegistration(body);
+    await completePublicSelfRegistration(withServerLegalChannel(body, legalChannelFromRequest(request)));
     revalidatePath("/app/workforce");
     revalidatePath("/app/patients");
     revalidatePath("/app/patients/assigned");
     return publicSelfRegistrationJson({ status: "SUCCESS" });
   } catch (error: unknown) {
+    const legalError = mapLegalVersionError(error);
+    if (legalError) return publicSelfRegistrationJson({ status: "ERROR", ...legalError }, 409);
+    if (isLegalAcceptanceIssue(error)) {
+      return publicSelfRegistrationJson({ status: "ERROR", ...legalAcceptanceRequiredError() }, 400);
+    }
     if (error instanceof ValidationError) {
       return publicSelfRegistrationJson({ status: "ERROR", message: "กรุณาตรวจสอบชื่อและรหัสผ่านแล้วลองใหม่" }, 400);
     }

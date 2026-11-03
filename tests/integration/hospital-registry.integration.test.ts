@@ -17,9 +17,15 @@ import {
   clearHospitalNetworkRole, setHospitalNetworkRole, transferHospitalServiceArea,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { attachHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
+import { accountCreationLegalFields } from "./support/legal";
 
 // Phase N1 (ADR-0017 amendment): RETIRED Hospitals, idempotent registration and DB-enforced network roles.
 const db = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(db);
+});
 const hospitalIds: string[] = [];
 const personIds: string[] = [];
 const userIds: string[] = [];
@@ -237,7 +243,7 @@ describe("A RETIRED Hospital is withdrawn everywhere (N1-D3)", () => {
     const listed = (await listOnboardingHospitals()).map(({ id }) => id);
     expect(listed).not.toContain(retiredChild.id);
     expect(listed).not.toContain(retiredParent.id);
-    await expect(submitHospitalOnboarding({
+    await expect(submitHospitalOnboarding({ ...LEGAL,
       hospitalCode: retiredChild.hospitalCode, nationalId: "1000000000009", givenName: "สมชาย", familyName: "ใจดี",
       password: "correct-horse-battery-staple", passwordConfirmation: "correct-horse-battery-staple",
     })).rejects.toMatchObject({ code: "CONFLICT" });

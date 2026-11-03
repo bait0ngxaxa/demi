@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ActivationIntroduction, ActivationSuccess } from "@/components/activation/activation-onboarding";
@@ -18,6 +19,8 @@ import {
   type PatientActivationCompletionActionState,
 } from "@/modules/patient-activation/transport/action-state";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
+import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 type ActivationTokenStore = {
   getSnapshot: () => string | null;
@@ -76,7 +79,8 @@ function formatDate(date: string): string {
   }).format(new Date(date));
 }
 
-export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUrl?: string | null }): React.JSX.Element {
+export function PatientActivationForm({ legal, lineAccountUrl = null }: { legal: AccountCreationLegalView; lineAccountUrl?: string | null }): React.JSX.Element {
+  const router = useRouter();
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [details, setDetails] = useState<PatientActivationDetailsActionState | null>(null);
@@ -98,6 +102,12 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
   useEffect(() => {
     store.hydrate();
   }, [store]);
+
+  // A newer Terms/Privacy version was published meanwhile: reload the versions; the link stays usable.
+  const legalVersionChanged = state.status === "ERROR" && state.code === "LEGAL_VERSION_CHANGED";
+  useEffect(() => {
+    if (legalVersionChanged) router.refresh();
+  }, [legalVersionChanged, router]);
 
   useEffect(() => {
     if (
@@ -338,7 +348,15 @@ export function PatientActivationForm({ lineAccountUrl = null }: { lineAccountUr
         ) : null}
       </div>
 
-      {errorMessage && !fieldErrors ? <Alert variant="danger">{errorMessage}</Alert> : null}
+      <LegalAcceptanceFields
+        disabled={pending}
+        error={fieldErrors?.acceptLegal}
+        idPrefix="patient-activation"
+        key={`${legal.terms.id}:${legal.privacy.id}`}
+        legal={legal}
+      />
+
+      {errorMessage && !fieldErrors ? <Alert variant={legalVersionChanged ? "warning" : "danger"}>{errorMessage}</Alert> : null}
 
       <button
         aria-busy={pending || undefined}

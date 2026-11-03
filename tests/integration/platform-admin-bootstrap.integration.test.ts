@@ -11,8 +11,14 @@ import {
   type PlatformAdminBootstrapDependencies,
 } from "@/modules/platform-admin-bootstrap/services/platform-admin-bootstrap-service";
 import { InfrastructureError } from "@/shared/errors/application-error";
+import { accountCreationLegalFields, clearLegalRecords, publishNewerLegalVersion } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 
 const nationalIds = {
   happy: "DEMI-ADMIN-ROOT",
@@ -32,6 +38,7 @@ const baseInput = {
 };
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -50,7 +57,7 @@ async function clearDatabase(): Promise<void> {
 }
 
 function inputFor(nationalId: string) {
-  return { ...baseInput, nationalId };
+  return { ...baseInput, nationalId, acceptLegal: LEGAL.acceptLegal };
 }
 
 function createProviderProvisioner(authSubject: string) {
@@ -320,5 +327,32 @@ describe("Phase 3C platform admin bootstrap PostgreSQL workflow", () => {
     // admin and no leaked provider subject.
     expect(deletedProviderSubjects.length).toBeLessThanOrEqual(1);
     expect(deletedProviderSubjects.every((subject) => providerSubjects.has(subject))).toBe(true);
+  });
+});
+
+describe("LG-1 operator legal acceptance at platform admin bootstrap (ADR-0028)", () => {
+  beforeEach(async () => {
+    await clearDatabase();
+  });
+
+  afterAll(async () => {
+    await clearDatabase();
+  });
+
+  it("refuses a missing or stale acceptance without creating an identity", async () => {
+    const provisionIdentity = vi.fn();
+    await expect(bootstrapPlatformAdmin({ ...baseInput, nationalId: nationalIds.happy } as never, { provisionIdentity }))
+      .rejects.toMatchObject({ code: "VALIDATION" });
+    await publishNewerLegalVersion(prisma, "TERMS", "bootstrap-terms-2");
+    await expect(bootstrapPlatformAdmin(inputFor(nationalIds.happy), { provisionIdentity }))
+      .rejects.toMatchObject({ name: "LegalVersionConflictError" });
+    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(await prisma.person.count()).toBe(0);
+  });
+
+  it("records the acceptance with source ADMIN_BOOTSTRAP and no channel", async () => {
+    const result = await bootstrapPlatformAdmin(inputFor(nationalIds.happy), createDependencies("11111111-1111-4111-8111-111111111199"));
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: result.userId }, select: { termsVersionId: true, privacyVersionId: true, source: true, channel: true } }))
+      .toEqual([{ ...LEGAL.acceptLegal, source: "ADMIN_BOOTSTRAP", channel: null }]);
   });
 });
