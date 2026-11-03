@@ -4,7 +4,8 @@ export type HospitalOnboardingField =
   | "givenName"
   | "familyName"
   | "password"
-  | "passwordConfirmation";
+  | "passwordConfirmation"
+  | "acceptLegal";
 
 export type HospitalOnboardingFieldErrors = Partial<
   Record<HospitalOnboardingField, string>
@@ -14,7 +15,8 @@ export type HospitalOnboardingSubmitActionState =
   | { status: "IDLE" }
   | {
       status: "ERROR";
-      code: "INVALID_INPUT" | "CONFLICT" | "UNAVAILABLE";
+      /** LEGAL_VERSION_CHANGED is recoverable: the screen reloads the current versions and asks again. */
+      code: "INVALID_INPUT" | "CONFLICT" | "UNAVAILABLE" | "LEGAL_VERSION_CHANGED";
       message: string;
       fieldErrors?: HospitalOnboardingFieldErrors;
     }

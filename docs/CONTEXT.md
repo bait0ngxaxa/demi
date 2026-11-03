@@ -670,7 +670,7 @@ Phase 3B implement persistence ตาม contract แล้ว: `Hospital` ม�
 
 Fresh environment ที่ยังไม่มี Platform `ADMIN` ใช้ trusted interactive CLI เป็น operational entry point เดียวสำหรับสร้าง Platform Admin คนแรก:
 
-- รัน `npm run admin:bootstrap` จาก developer/server environment ที่ credentials ชี้ไปยัง DEMI database และ Supabase project ที่ต้องการ
+- รัน `npm run admin:bootstrap -- --accept-legal` (ADR-0028: ผู้ดำเนินการยอมรับ Terms + Privacy ฉบับปัจจุบันที่ CLI แสดง; ไม่มี flag = ปฏิเสธ; บันทึก `LegalAcceptance` source `ADMIN_BOOTSTRAP` ใน final transaction) จาก developer/server environment ที่ credentials ชี้ไปยัง DEMI database และ Supabase project ที่ต้องการ
 - CLI รับ Thai National ID/ตัวระบุ Admin ที่ตั้งเอง, given name, family name และ user-owned password แบบ interactive; ไม่รับ identity/password ผ่าน argv และไม่แสดง password
 - Admin identifier ใช้ bounded login schema เดียวกับ `/login` โดยไม่ตรวจ category/checksum; Hospital onboarding และ role อื่นยังใช้ strict Thai National ID schema เดิม
 - Application Service ใช้ HMAC namespace `thai-national-id`, ปฏิเสธ existing Person/User และตรวจ `UserRole.ADMIN` โดยไม่กรอง User status

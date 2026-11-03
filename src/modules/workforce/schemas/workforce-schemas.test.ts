@@ -1,6 +1,8 @@
 import { Profession } from "@prisma/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { legalAcceptanceFixture } from "../../../../tests/support/legal-fixtures";
+
 import {
   hospitalMemberProvisionSchema,
   workforceContactPhoneSchema,
@@ -44,6 +46,8 @@ describe("workforce National ID schemas", () => {
         nationalId: checksumInvalidNationalId,
         password: "correct-horse-battery-staple",
         passwordConfirmation: "correct-horse-battery-staple",
+        acceptLegal: legalAcceptanceFixture,
+        channel: "WEB",
       }).success,
     ).toBe(true);
   });

@@ -10,6 +10,12 @@ import { signOutCurrentSession } from "@/modules/auth/services/authentication-se
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { ApplicationError } from "@/shared/errors/application-error";
+import {
+  getRequestLegalChannel,
+  legalAcceptanceRequiredError,
+  mapLegalVersionError,
+  readLegalAcceptanceFromForm,
+} from "@/modules/legal/transport/legal-request";
 
 import {
   hospitalMemberProvisionSchema,
@@ -21,6 +27,7 @@ import {
   osmRelationshipTransitionSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
+  workforceCredentialCompletionSchema,
   workforceActivationRequestSchema,
   workforceKindSchema,
   workforcePasswordResetRequestSchema,
@@ -770,53 +777,77 @@ export async function previewWorkforceActivationAction(
   }
 }
 
+type CompletionIssue = { path: readonly PropertyKey[] };
+
+function invalidCompletionInput(issues: readonly CompletionIssue[]): WorkforceCompletionActionState {
+  const fieldErrors: { nationalId?: string; password?: string; passwordConfirmation?: string; acceptLegal?: string } = {};
+
+  for (const issue of issues) {
+    const field = issue.path[0];
+
+    if (field === "nationalId" && !fieldErrors.nationalId) {
+      fieldErrors.nationalId = "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง";
+    }
+
+    if (field === "password" && !fieldErrors.password) {
+      fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
+    }
+
+    if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
+      fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
+    }
+
+    if (field === "acceptLegal" && !fieldErrors.acceptLegal) {
+      fieldErrors.acceptLegal = legalAcceptanceRequiredError().message;
+    }
+  }
+
+  return {
+    status: "ERROR",
+    code: "INVALID_INPUT",
+    message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
+    fieldErrors,
+  };
+}
+
 export async function completeWorkforceActivationAction(
   token: string,
   purpose: WorkforceActivationPreviewPurpose,
   _previousState: WorkforceCompletionActionState,
   formData: FormData,
 ): Promise<WorkforceCompletionActionState> {
-  const parsed = workforceActivationCompletionSchema.safeParse({
+  const credentials = {
     nationalId: getString(formData, "nationalId"),
     password: getString(formData, "password"),
     passwordConfirmation: getString(formData, "passwordConfirmation"),
-  });
+  };
 
-  if (!parsed.success) {
-    const fieldErrors: { nationalId?: string; password?: string; passwordConfirmation?: string } =
-      {};
-
-    for (const issue of parsed.error.issues) {
-      const field = issue.path[0];
-
-      if (field === "nationalId" && !fieldErrors.nationalId) {
-        fieldErrors.nationalId = "กรุณากรอกเลขบัตรประชาชน 13 หลักให้ถูกต้อง";
-      }
-
-      if (field === "password" && !fieldErrors.password) {
-        fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
-      }
-
-      if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
-        fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
-      }
+  // RESET replaces a credential of an existing account (fail-closed, ADR-0008); only account creation accepts legal.
+  if (purpose === "RESET") {
+    const parsed = workforceCredentialCompletionSchema.safeParse(credentials);
+    if (!parsed.success) return invalidCompletionInput(parsed.error.issues);
+    try {
+      await completeWorkforcePasswordReset(token, parsed.data);
+    } catch (error: unknown) {
+      return { status: "ERROR", ...mapCompletionError(error) };
     }
-
-    return {
-      status: "ERROR",
-      code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
-      fieldErrors,
-    };
+    return { status: "SUCCESS" };
   }
 
+  const parsed = workforceActivationCompletionSchema.safeParse({
+    ...credentials,
+    acceptLegal: readLegalAcceptanceFromForm(formData),
+    channel: await getRequestLegalChannel(),
+  });
+  if (!parsed.success) return invalidCompletionInput(parsed.error.issues);
+
   try {
-    if (purpose === "RESET") {
-      await completeWorkforcePasswordReset(token, parsed.data);
-    } else {
-      await completeWorkforceActivation(token, parsed.data);
-    }
+    await completeWorkforceActivation(token, parsed.data);
   } catch (error: unknown) {
+    const legalError = mapLegalVersionError(error);
+    if (legalError?.code === "LEGAL_VERSION_CHANGED") {
+      return { status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: legalError.message };
+    }
     return { status: "ERROR", ...mapCompletionError(error) };
   }
 

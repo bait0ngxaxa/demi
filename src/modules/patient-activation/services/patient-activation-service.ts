@@ -59,6 +59,11 @@ import {
   SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS,
   type SelfRegistrationRelationship,
 } from "@/modules/self-registration/domain/self-registration-schemas";
+import {
+  assertAccountCreationLegalIsCurrent,
+  recordAccountCreationLegal,
+  type AccountCreationLegalInput,
+} from "@/modules/legal/services/account-creation-legal-service";
 
 export type PatientActivationDatabase = PrismaClient;
 export type PatientActivationAuthorizationDatabase =
@@ -1216,6 +1221,7 @@ async function markPatientActivationReconciliationRequired(
 async function finalizePatientActivationLocally(
   claim: PatientActivationClaim,
   authSubject: string,
+  legal: Omit<AccountCreationLegalInput, "userId">,
   dependencies: PatientActivationServiceDependencies,
 ): Promise<void> {
   const database = getDatabase(dependencies);
@@ -1339,6 +1345,9 @@ async function finalizePatientActivationLocally(
       if (consumed.count !== 1) {
         throw new ConflictError("Patient activation credential changed during completion");
       }
+
+      // LG-1 §3: the acceptance (and any chosen consent) commits with the activation or not at all.
+      await recordAccountCreationLegal(transaction, { userId: claim.userId, ...legal });
 
       if (activation.purpose === PatientActivationPurpose.SELF_REGISTRATION) {
         const relationshipsByHospital = new Map<string, number>();
@@ -1471,6 +1480,19 @@ async function completePatientActivationForPurpose(
     throw new ValidationError("Patient self-registration requires national ID verification");
   }
 
+  const consents = parsedInput.data.consents ?? [];
+  // ADR-0028: /register offers no consents (the lookup never reveals that the person is a Patient).
+  if (purpose === PatientActivationPurpose.SELF_REGISTRATION && consents.length > 0) {
+    throw new ValidationError("Self-registration does not record consents");
+  }
+  const legal: Omit<AccountCreationLegalInput, "userId"> = {
+    acceptLegal: parsedInput.data.acceptLegal,
+    consents,
+    source: purpose === PatientActivationPurpose.SELF_REGISTRATION ? "SELF_REGISTRATION" : "PATIENT_ACTIVATION",
+    channel: parsedInput.data.channel,
+  };
+  await assertAccountCreationLegalIsCurrent(getDatabase(dependencies), legal);
+
   const claim = await claimPatientActivation(
     parsedToken.data,
     purpose,
@@ -1517,7 +1539,7 @@ async function completePatientActivationForPurpose(
   }
 
   try {
-    await finalizePatientActivationLocally(claim, provisionedIdentity.authSubject, dependencies);
+    await finalizePatientActivationLocally(claim, provisionedIdentity.authSubject, legal, dependencies);
   } catch (error: unknown) {
     try {
       await compensateFailedPatientFinalization(

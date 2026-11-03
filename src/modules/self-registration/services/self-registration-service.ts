@@ -26,6 +26,7 @@ import {
 } from "@/modules/patient-activation/services/activation-token-service";
 import { completePatientSelfRegistration } from "@/modules/patient-activation/services/patient-activation-service";
 import { ConflictError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { LegalAcceptanceRequiredError } from "@/modules/legal/services/legal-version-reader";
 
 import {
   SELF_REGISTRATION_CAPABILITY_TTL_MS,
@@ -244,7 +245,10 @@ export async function completePublicSelfRegistration(
   dependencies: SelfRegistrationServiceDependencies = {},
 ): Promise<{ userId: string }> {
   const parsed = selfRegistrationCompletionSchema.safeParse(input);
-  if (!parsed.success) throw new ValidationError("Self-registration completion data is invalid");
+  if (!parsed.success) {
+    if (parsed.error.issues.some(({ path }) => path[0] === "acceptLegal")) throw new LegalAcceptanceRequiredError();
+    throw new ValidationError("Self-registration completion data is invalid");
+  }
   if (!parsed.data.nameConfirmed) throw new ValidationError("Self-registration identity confirmation is required");
 
   const database = getDatabase(dependencies);
@@ -271,12 +275,16 @@ export async function completePublicSelfRegistration(
         nationalId: parsed.data.nationalId,
         password: parsed.data.password,
         passwordConfirmation: parsed.data.passwordConfirmation,
+        acceptLegal: parsed.data.acceptLegal,
+        channel: parsed.data.channel,
       }, dependencies);
     }
     return await completePatientSelfRegistration(parsed.data.token, {
       nationalId: parsed.data.nationalId,
       password: parsed.data.password,
       passwordConfirmation: parsed.data.passwordConfirmation,
+      acceptLegal: parsed.data.acceptLegal,
+      channel: parsed.data.channel,
     }, dependencies);
   } catch (error: unknown) {
     if (error instanceof ValidationError || error instanceof ConflictError || error instanceof InfrastructureError) {

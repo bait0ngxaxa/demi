@@ -29,8 +29,14 @@ import { hashIdentityReference } from "@/modules/identity/services/identity-serv
 import { hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
 import { createCaregiverInvitation } from "@/modules/family/services/caregiver-relationship-service";
 import { createCaregiverAccountFromInvitation } from "@/modules/family/services/caregiver-account-claim-service";
+import { accountCreationLegalFields, clearLegalRecords } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 
 const nationalIds = {
   staff: "1000000000009",
@@ -66,6 +72,7 @@ async function linkNetwork(
 }
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.caregiverAppointmentGrant.deleteMany();
   await prisma.caregiverResourceGrant.deleteMany();
@@ -274,7 +281,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
     await completeWorkforceActivation(
       result.activationToken!,
-      {
+      { ...LEGAL,
         nationalId: nationalIds.staff,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
@@ -435,7 +442,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       givenName: "ชื่อที่ผู้ดูแลแจ้ง",
       familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
       password: "caregiver-test-password-2026",
-      passwordConfirmation: "caregiver-test-password-2026",
+      passwordConfirmation: "caregiver-test-password-2026", ...LEGAL,
     }, { ipAddress: "203.0.113.13" }, {
       database: prisma,
       rateLimiter: { consume: async () => true },
@@ -559,7 +566,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await expect(
       completeWorkforceActivation(
         result.activationToken!,
-        {
+        { ...LEGAL,
           nationalId: nationalIds.activationConcurrent,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
@@ -570,7 +577,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
     await completeWorkforceActivation(
       regenerated.activationToken,
-      {
+      { ...LEGAL,
         nationalId: nationalIds.activationConcurrent,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
@@ -605,7 +612,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
 
     const completion = completeWorkforceActivation(
       result.activationToken!,
-      {
+      { ...LEGAL,
         nationalId: nationalIds.activationConcurrent,
         password: "integration-workforce-password",
         passwordConfirmation: "integration-workforce-password",
@@ -654,7 +661,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await expect(
       completeWorkforceActivation(
         result.activationToken!,
-        {
+        { ...LEGAL,
           nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
@@ -706,7 +713,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await expect(
       completeWorkforceActivation(
         result.activationToken!,
-        {
+        { ...LEGAL,
           nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
@@ -732,7 +739,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
     await expect(
       completeWorkforceActivation(
         result.activationToken!,
-        {
+        { ...LEGAL,
           nationalId: nationalIds.providerFailure,
           password: "integration-workforce-password",
           passwordConfirmation: "integration-workforce-password",
@@ -777,6 +784,7 @@ describe("Phase 4B workforce PostgreSQL workflow", () => {
       nationalId: nationalIds.activationConcurrent,
       password: "integration-workforce-password",
       passwordConfirmation: "integration-workforce-password",
+      ...LEGAL,
     };
     const outcomes = await Promise.allSettled([
       completeWorkforceActivation(result.activationToken!, input, { provisionIdentity }),

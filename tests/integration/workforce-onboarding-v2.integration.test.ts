@@ -47,6 +47,7 @@ import {
 import { InfrastructureError } from "@/shared/errors/application-error";
 import { PasswordAuthProvisioningProviderRejectedError } from "@/modules/auth/services/password-auth-provisioning-service";
 import { generateWorkforceActivationCredential } from "@/modules/workforce/services/activation-token-service";
+import { accountCreationLegalFields, clearLegalRecords, currentConsentVersionId, publishNewerLegalVersion } from "./support/legal";
 
 const { mockedReplacePassword } = vi.hoisted(() => ({ mockedReplacePassword: vi.fn() }));
 
@@ -55,6 +56,11 @@ vi.mock("@/modules/account-security/adapters/supabase-account-security-provider"
 }));
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 const PASSWORD = "integration-workforce-password";
 const NEW_PASSWORD = "integration-new-workforce-password";
 const GENERIC_UNAVAILABLE = "ไม่สามารถยืนยันได้";
@@ -85,6 +91,7 @@ function nationalIdFor(sequence: number): string {
 }
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.patientActivation.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
@@ -398,12 +405,12 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
       const wrongId = await completeWorkforceActivation(
         pending.token,
-        { nationalId: nationalIdFor(999), password: PASSWORD, passwordConfirmation: PASSWORD },
+        { ...LEGAL, nationalId: nationalIdFor(999), password: PASSWORD, passwordConfirmation: PASSWORD },
         { provisionIdentity },
       ).catch((error: Error) => error);
       const badLink = await completeWorkforceActivation(
         "not-a-real-token",
-        { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
+        { ...LEGAL, nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
         { provisionIdentity },
       ).catch((error: Error) => error);
 
@@ -426,7 +433,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
       for (let attempt = 0; attempt < 4; attempt += 1) {
         await expect(
-          completeWorkforceActivation(pending.token, {
+          completeWorkforceActivation(pending.token, { ...LEGAL,
             nationalId: nationalIdFor(900 + attempt),
             password: PASSWORD,
             passwordConfirmation: PASSWORD,
@@ -436,7 +443,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
       await completeWorkforceActivation(
         pending.token,
-        { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
+        { ...LEGAL, nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
         { provisionIdentity: provisioner(randomUUID()) },
       );
 
@@ -455,7 +462,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         await expect(
           completeWorkforceActivation(
             pending.token,
-            { nationalId: nationalIdFor(900 + attempt), password: PASSWORD, passwordConfirmation: PASSWORD },
+            { ...LEGAL, nationalId: nationalIdFor(900 + attempt), password: PASSWORD, passwordConfirmation: PASSWORD },
             { provisionIdentity },
           ),
         ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -473,7 +480,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       await expect(
         completeWorkforceActivation(
           pending.token,
-          { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
+          { ...LEGAL, nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD },
           { provisionIdentity },
         ),
       ).rejects.toMatchObject({ code: "CONFLICT" });
@@ -496,7 +503,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const other = await createHospital("BOUND-B");
       const owner = await createMember(hospital.id, MembershipType.OWNER, 1);
       const pending = await provisionPendingOsm(owner, hospital.id, 2);
-      const input = { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD };
+      const input = { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, ...LEGAL };
       const authSubject = randomUUID();
       return { hospital, other, owner, pending, input, authSubject };
     }
@@ -659,7 +666,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         const completion = { nationalId: nationalIdFor(2), password: NEW_PASSWORD, passwordConfirmation: NEW_PASSWORD };
         await expect(completeWorkforcePasswordReset(token, completion)).rejects.toMatchObject({ code: "FORBIDDEN" });
         await expect(previewWorkforceActivation(token)).rejects.toMatchObject({ code: "CONFLICT" });
-        await expect(completeWorkforceActivation(token, completion)).rejects.toMatchObject({ code: "CONFLICT" });
+        await expect(completeWorkforceActivation(token, { ...completion, ...LEGAL })).rejects.toMatchObject({ code: "CONFLICT" });
         expect(mockedReplacePassword).not.toHaveBeenCalled();
         expect(await prisma.workforceActivation.findUniqueOrThrow({ where: { id: legacy.id } })).toMatchObject({ claimedAt: null, usedAt: null });
         expect(await auditCount("workforce_password_reset.completed")).toBe(0);
@@ -736,7 +743,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       await expect(revokeIssuedWorkforceActivation(member.actor, { activationId: activation.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(revokeIssuedWorkforceActivation({ ...member.actor, hospitalMemberships: owner.actor.hospitalMemberships }, { activationId: activation.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(previewWorkforceActivation(pending.token)).resolves.toBeDefined();
-      await completeWorkforceActivation(pending.token, { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provisioner(randomUUID()) });
+      await completeWorkforceActivation(pending.token, { ...LEGAL, nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provisioner(randomUUID()) });
       expect(await prisma.osmHospitalRelationship.findUniqueOrThrow({ where: { id: pending.relationshipId } })).toMatchObject({ status: MembershipStatus.ACTIVE });
     });
   });
@@ -1279,7 +1286,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       return { hospital, owner };
     }
     const person = (nationalId: string) => ({ nationalId, givenName: "ผู้ป่วย", familyName: "ทดสอบ" });
-    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD });
+    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, ...LEGAL });
 
     it("rejects workforce provisioning for a PROVISIONED PATIENT identity and changes nothing", async () => {
       const { hospital, owner } = await setup();
@@ -1414,7 +1421,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     }
     const person = (nationalId: string) => ({ nationalId, givenName: "สมชาย", familyName: "ใจดีมาก" });
     const complete = (token: string, nationalId: string, authSubject = randomUUID()) =>
-      completeWorkforceActivation(token, { nationalId, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provisioner(authSubject) });
+      completeWorkforceActivation(token, { ...LEGAL, nationalId, password: PASSWORD, passwordConfirmation: PASSWORD }, { provisionIdentity: provisioner(authSubject) });
 
     it("rejects a second Hospital for a pending User and leaves Hospital A's activation usable", async () => {
       const { a, b, ownerA, ownerB } = await setup();
@@ -1533,7 +1540,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     const patientInput = (nationalId: string, targetHospitalId: string) => ({
       identity: { namespace: "thai-national-id" as const, value: nationalId }, givenName: "สมชาย", familyName: "ใจดีมาก", targetHospitalId,
     });
-    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD });
+    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, ...LEGAL });
     const patientCompletion = { password: PASSWORD, passwordConfirmation: PASSWORD };
     const patientProvisioner = (authSubject: string) => vi.fn(async ({ userId }: { userId: string; password: string }) => {
       await prisma.user.update({ where: { id: userId }, data: { authSubject } });
@@ -1662,7 +1669,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const patient = await provisionPatient(owner.actor, patientInput(nationalId, hospital.id));
       const issued = await issuePatientActivation(owner.actor, { userId: patient.userId, targetHospitalId: hospital.id, reissue: false });
       const authSubject = randomUUID();
-      await completePatientActivation(issued.activationToken!, patientCompletion, { provisionIdentity: patientProvisioner(authSubject) });
+      await completePatientActivation(issued.activationToken!, { ...patientCompletion, ...LEGAL }, { provisionIdentity: patientProvisioner(authSubject) });
       expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toMatchObject({ status: UserStatus.ACTIVE, authSubject });
     });
 
@@ -1698,7 +1705,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         const provisionIdentity = patientProvisioner(randomUUID());
 
         await expect(getPatientActivationDetails(issued.activationToken!)).rejects.toMatchObject({ code: "CONFLICT" });
-        await expect(completePatientActivation(issued.activationToken!, patientCompletion, { provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
+        await expect(completePatientActivation(issued.activationToken!, { ...patientCompletion, ...LEGAL }, { provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
         await expect(issuePatientActivation(owner.actor, { userId: patient.userId, targetHospitalId: hospital.id, reissue: true }))
           .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("บุคลากร") });
 
@@ -1719,7 +1726,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         return { userId, authSubject };
       };
       const deleteProviderIdentity = vi.fn().mockResolvedValue(undefined);
-      await expect(completePatientActivation(issued.activationToken!, patientCompletion, { provisionIdentity, deleteProviderIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(completePatientActivation(issued.activationToken!, { ...patientCompletion, ...LEGAL }, { provisionIdentity, deleteProviderIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
       expect(deleteProviderIdentity).toHaveBeenCalledWith(authSubject);
       expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toMatchObject({ status: UserStatus.PROVISIONED, authSubject: null });
     });
@@ -1730,7 +1737,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const issued = await issuePatientActivation(owner.actor, { userId: patient.userId, targetHospitalId: hospital.id, reissue: false });
       await expect(provisionOsm(owner.actor, { contactPhone: "0812345678", ...workforcePerson(patient.nationalId), targetHospitalId: hospital.id })).rejects.toMatchObject({ code: "CONFLICT" });
       const authSubject = randomUUID();
-      await completePatientActivation(issued.activationToken!, patientCompletion, { provisionIdentity: patientProvisioner(authSubject) });
+      await completePatientActivation(issued.activationToken!, { ...patientCompletion, ...LEGAL }, { provisionIdentity: patientProvisioner(authSubject) });
       expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toMatchObject({ status: UserStatus.ACTIVE, authSubject });
       expect(await prisma.osmHospitalRelationship.count()).toBe(0);
     });
@@ -1951,7 +1958,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
 
   describe("Hospital/OSM lifecycle compatibility", () => {
-    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD });
+    const completion = (nationalId: string) => ({ nationalId, password: PASSWORD, passwordConfirmation: PASSWORD, ...LEGAL });
     async function setup() {
       const hospital = await createHospital("LIFECYCLE-COMPAT");
       const other = await createHospital("LIFECYCLE-OTHER");
@@ -2079,4 +2086,38 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     });
   });
 
+});
+
+describe("LG-1 legal acceptance at workforce activation (ADR-0028)", () => {
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  it("refuses a missing or stale acceptance before any provider call and records WORKFORCE_ACTIVATION", async () => {
+    const hospital = await createHospital("V2-LG");
+    const owner = await createMember(hospital.id, MembershipType.OWNER, 1);
+    const pending = await provisionPendingOsm(owner, hospital.id, 4100);
+    const provisionIdentity = vi.fn();
+    const credentials = { nationalId: pending.nationalId, password: PASSWORD, passwordConfirmation: PASSWORD };
+
+    await expect(completeWorkforceActivation(pending.token, { ...credentials, channel: "WEB" } as never, { provisionIdentity }))
+      .rejects.toMatchObject({ code: "VALIDATION" });
+    // LG-D6: a workforce step offers no consents; the strict input refuses them.
+    const healthId = await currentConsentVersionId(prisma, "HEALTH_DATA_DISCLOSURE_CONSENT");
+    await expect(completeWorkforceActivation(pending.token, { ...credentials, ...LEGAL, consents: [{ kind: "HEALTH_DATA_DISCLOSURE_CONSENT", documentVersionId: healthId }] } as never, { provisionIdentity }))
+      .rejects.toMatchObject({ code: "VALIDATION" });
+    await publishNewerLegalVersion(prisma, "PRIVACY_POLICY", "wf-privacy-2");
+    await expect(completeWorkforceActivation(pending.token, { ...credentials, ...LEGAL }, { provisionIdentity }))
+      .rejects.toMatchObject({ name: "LegalVersionConflictError" });
+    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(await prisma.legalAcceptance.count()).toBe(0);
+    expect(await prisma.workforceActivation.findFirstOrThrow({ where: { userId: pending.userId }, select: { failedVerificationCount: true, usedAt: true } }))
+      .toEqual({ failedVerificationCount: 0, usedAt: null });
+
+    const current = await accountCreationLegalFields(prisma);
+    await completeWorkforceActivation(pending.token, { ...credentials, ...current }, { provisionIdentity: provisioner(randomUUID()) });
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: pending.userId }, select: { termsVersionId: true, privacyVersionId: true, source: true, channel: true } }))
+      .toEqual([{ ...current.acceptLegal, source: "WORKFORCE_ACTIVATION", channel: "WEB" }]);
+    expect(await prisma.consentEvent.count({ where: { userId: pending.userId } })).toBe(0);
+  });
 });

@@ -2,6 +2,11 @@ import { z } from "zod";
 
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
+import {
+  accountCreationConsentsSchema,
+  legalAcceptanceInputSchema,
+  legalChannelSchema,
+} from "@/modules/legal/schemas/legal-schemas";
 
 export const patientActivationTokenSchema = z.string().trim().min(1).max(256);
 export const PATIENT_ACTIVATION_NAME_MAX_LENGTH = 120;
@@ -79,6 +84,12 @@ export const patientActivationCompletionSchema = z
     nationalId: thaiNationalIdSchema.optional(),
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
+    /** LG-D4: required Terms + Privacy acceptance of the current versions. */
+    acceptLegal: legalAcceptanceInputSchema,
+    /** LG-D4/LG-D6: optional consents of this PATIENT step; an unchecked consent is absent. */
+    consents: accountCreationConsentsSchema.optional(),
+    /** Set by the server transport from the request, never taken from the client body. */
+    channel: legalChannelSchema,
   })
   .strict()
   .superRefine((input, context) => {

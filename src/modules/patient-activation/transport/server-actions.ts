@@ -5,6 +5,13 @@ import { revalidatePath } from "next/cache";
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import {
+  getRequestLegalChannel,
+  legalAcceptanceRequiredError,
+  mapLegalVersionError,
+  readConsentsFromForm,
+  readLegalAcceptanceFromForm,
+} from "@/modules/legal/transport/legal-request";
 
 import {
   patientActivationCompletionSchema,
@@ -260,10 +267,13 @@ export async function getPatientActivationDetailsAction(
   }
 }
 
-function getCompletionInput(formData: FormData) {
+async function getCompletionInput(formData: FormData) {
   return {
     password: getString(formData, "password"),
     passwordConfirmation: getString(formData, "passwordConfirmation"),
+    acceptLegal: readLegalAcceptanceFromForm(formData),
+    consents: readConsentsFromForm(formData),
+    channel: await getRequestLegalChannel(),
   };
 }
 
@@ -272,10 +282,10 @@ export async function completePatientActivationAction(
   _previousState: PatientActivationCompletionActionState,
   formData: FormData,
 ): Promise<PatientActivationCompletionActionState> {
-  const parsed = patientActivationCompletionSchema.safeParse(getCompletionInput(formData));
+  const parsed = patientActivationCompletionSchema.safeParse(await getCompletionInput(formData));
 
   if (!parsed.success) {
-    const fieldErrors: { password?: string; passwordConfirmation?: string } = {};
+    const fieldErrors: { password?: string; passwordConfirmation?: string; acceptLegal?: string } = {};
 
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
@@ -287,12 +297,16 @@ export async function completePatientActivationAction(
       if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
         fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
       }
+
+      if ((field === "acceptLegal" || field === "consents") && !fieldErrors.acceptLegal) {
+        fieldErrors.acceptLegal = legalAcceptanceRequiredError().message;
+      }
     }
 
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง",
+      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
       fieldErrors,
     };
   }
@@ -300,6 +314,10 @@ export async function completePatientActivationAction(
   try {
     await completePatientActivation(token, parsed.data);
   } catch (error: unknown) {
+    const legalError = mapLegalVersionError(error);
+    if (legalError?.code === "LEGAL_VERSION_CHANGED") {
+      return { status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: legalError.message };
+    }
     return { status: "ERROR", ...mapCompletionError(error) };
   }
 

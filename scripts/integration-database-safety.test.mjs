@@ -14,6 +14,7 @@ const { database, construct } = vi.hoisted(() => {
     appointmentLineNotificationWorkerState: { upsert: vi.fn().mockResolvedValue({}) },
     medicationLineReminderWorkerState: { upsert: vi.fn().mockResolvedValue({}) },
     notificationSchedulerState: { upsert: vi.fn().mockResolvedValue({}) },
+    legalDocumentVersion: { createMany: vi.fn().mockResolvedValue({ count: 4 }) },
   };
   return { database, construct: vi.fn(function () { return database; }) };
 });
@@ -97,6 +98,11 @@ describe("integration reset safety", () => {
     expect(database.appointmentLineNotificationWorkerState.upsert).toHaveBeenCalledOnce();
     expect(database.medicationLineReminderWorkerState.upsert).toHaveBeenCalledOnce();
     expect(database.notificationSchedulerState.upsert).toHaveBeenCalledOnce();
+    // ADR-0028: the PUBLISHED placeholder versions removed by TRUNCATE are restored, one per kind.
+    expect(database.legalDocumentVersion.createMany).toHaveBeenCalledOnce();
+    expect(database.legalDocumentVersion.createMany.mock.calls[0][0].data.map(({ kind }) => kind)).toEqual([
+      "TERMS", "PRIVACY_POLICY", "HEALTH_DATA_DISCLOSURE_CONSENT", "MARKETING_CONSENT",
+    ]);
     expect(database.$disconnect).toHaveBeenCalledOnce();
   });
 

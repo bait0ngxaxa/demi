@@ -8,6 +8,7 @@ import {
   type HospitalOnboardingDatabase,
 } from "./hospital-onboarding-service";
 import { publicOnboardableHospitalWhere } from "./onboarding-hospital-service";
+import { legalAcceptanceFixture, legalTablesMock } from "../../../../tests/support/legal-fixtures";
 
 const personId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
@@ -26,6 +27,7 @@ function createDatabase(overrides: {
 } = {}): HospitalOnboardingDatabase {
   const statusAtCommit = overrides.statusAtCommit ?? HospitalStatus.PENDING_VERIFICATION;
   const transaction = {
+    ...legalTablesMock(),
     hospital: {
       // The predicate filters a non-pending Hospital out, as the database would.
       findFirst: vi.fn().mockResolvedValue(statusAtCommit === HospitalStatus.PENDING_VERIFICATION ? { status: statusAtCommit } : null),
@@ -51,6 +53,7 @@ function createDatabase(overrides: {
   };
 
   return {
+    ...legalTablesMock(),
     hospital: {
       findFirst: vi.fn().mockResolvedValue(overrides.notOnboardable ? null : { id: hospitalId, status: HospitalStatus.PENDING_VERIFICATION }),
     },
@@ -76,6 +79,8 @@ const validInput = {
   familyName: "ใจดี",
   password: "correct-horse-battery-staple",
   passwordConfirmation: "correct-horse-battery-staple",
+  acceptLegal: legalAcceptanceFixture,
+  channel: "WEB" as const,
 };
 
 describe("hospital onboarding application service", () => {

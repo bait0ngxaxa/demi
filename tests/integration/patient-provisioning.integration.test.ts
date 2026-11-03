@@ -29,8 +29,14 @@ import {
   type ImportTestHospital,
   type TemplateRow,
 } from "./support/patient-import-template-upload";
+import { accountCreationLegalFields, clearLegalRecords } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 
 const nationalIds = {
   brandNew: "1000000000009",
@@ -50,6 +56,7 @@ const nationalIds = {
 let actorSequence = 0;
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.patientClassificationHistory.deleteMany();
   await prisma.patientClassification.deleteMany();
   await prisma.patientBaseline.deleteMany();
@@ -415,7 +422,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
       givenName: "ชื่อที่ผู้ดูแลแจ้ง",
       familyName: "นามสกุลที่ผู้ดูแลแจ้ง",
       password: "caregiver-test-password-2026",
-      passwordConfirmation: "caregiver-test-password-2026",
+      passwordConfirmation: "caregiver-test-password-2026", ...LEGAL,
     }, { ipAddress: "203.0.113.12" }, {
       database: prisma,
       rateLimiter: { consume: async () => true },

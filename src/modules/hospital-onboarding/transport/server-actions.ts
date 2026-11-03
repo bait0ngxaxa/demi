@@ -5,6 +5,12 @@ import { redirect, unstable_rethrow } from "next/navigation";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import {
+  getRequestLegalChannel,
+  legalAcceptanceRequiredError,
+  mapLegalVersionError,
+  readLegalAcceptanceFromForm,
+} from "@/modules/legal/transport/legal-request";
 
 import { assertHospitalOnboardingCapability, HOSPITAL_ONBOARDING_CAPABILITIES } from "../policies/hospital-onboarding-policy";
 import {
@@ -43,6 +49,8 @@ function getSubmissionFieldErrors(
       fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
     } else if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
       fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
+    } else if (field === "acceptLegal" && !fieldErrors.acceptLegal) {
+      fieldErrors.acceptLegal = legalAcceptanceRequiredError().message;
     }
   }
 
@@ -50,6 +58,11 @@ function getSubmissionFieldErrors(
 }
 
 function mapPublicSubmissionError(error: unknown): HospitalOnboardingSubmitActionState {
+  const legalError = mapLegalVersionError(error);
+  if (legalError?.code === "LEGAL_VERSION_CHANGED") {
+    return { status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: legalError.message };
+  }
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return {
@@ -140,6 +153,8 @@ export async function submitHospitalOnboardingAction(
     familyName: formData.get("familyName"),
     password: formData.get("password"),
     passwordConfirmation: formData.get("passwordConfirmation"),
+    acceptLegal: readLegalAcceptanceFromForm(formData),
+    channel: await getRequestLegalChannel(),
   });
 
   if (!parsed.success) {

@@ -29,9 +29,15 @@ import {
 import { endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import type { HospitalOwnerInvitationIssue } from "@/modules/workforce/services/hospital-owner-invitation";
 import { completeWorkforceActivation, previewWorkforceActivation, revokeIssuedWorkforceActivation } from "@/modules/workforce/services/workforce-service";
+import { accountCreationLegalFields } from "./support/legal";
 
 // ADR-0024 / PO-1: platform ADMIN invites the first (or replacement) OWNER of a Parent Hospital.
 const db = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(db);
+});
 const PASSWORD = "integration-parent-owner-password";
 const hospitalIds: string[] = [];
 const userIds: string[] = [];
@@ -118,7 +124,7 @@ function provisioner(authSubject = randomUUID()) {
 }
 
 async function complete(activationToken: string, nid: string) {
-  return completeWorkforceActivation(activationToken, { nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, {
+  return completeWorkforceActivation(activationToken, { ...LEGAL, nationalId: nid, password: PASSWORD, passwordConfirmation: PASSWORD }, {
     provisionIdentity: provisioner(),
     deleteProviderIdentity: async () => undefined,
   });
@@ -134,7 +140,7 @@ async function pendingApplication(hospitalId: string): Promise<{ id: string }> {
 
 const publicSubmission = (hospitalCode: string) => ({
   hospitalCode, nationalId: nationalId(), givenName: "สมชาย", familyName: "ใจดี",
-  password: "correct-horse-battery-staple", passwordConfirmation: "correct-horse-battery-staple",
+  password: "correct-horse-battery-staple", passwordConfirmation: "correct-horse-battery-staple", ...LEGAL,
 });
 
 beforeEach(async () => {
@@ -153,6 +159,8 @@ afterEach(async () => {
   const allHospitalIds = created.map(({ id }) => id);
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SET LOCAL session_replication_role = replica`;
+    await tx.consentEvent.deleteMany({ where: { userId: { in: allUserIds } } });
+    await tx.legalAcceptance.deleteMany({ where: { userId: { in: allUserIds } } });
     await tx.auditEvent.deleteMany({ where: { OR: [{ actorUserId: { in: allUserIds } }, { resourceId: { in: [...allHospitalIds, ...allUserIds] } }] } });
     await tx.providerIdentityCleanup.deleteMany({ where: { userId: { in: allUserIds } } });
     await tx.accountRecovery.deleteMany({ where: { targetUserId: { in: allUserIds } } });

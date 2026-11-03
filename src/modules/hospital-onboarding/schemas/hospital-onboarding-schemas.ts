@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
+import { legalAcceptanceInputSchema, legalChannelSchema } from "@/modules/legal/schemas/legal-schemas";
 
 export const hospitalCodeSchema = z
   .string()
@@ -19,6 +20,10 @@ export const hospitalOnboardingSubmissionSchema = z
     familyName: personNameSchema,
     password: userOwnedPasswordSchema,
     passwordConfirmation: userOwnedPasswordSchema,
+    /** LG-D4: required Terms + Privacy acceptance; an OWNER applicant is offered no consents (LG-D6). */
+    acceptLegal: legalAcceptanceInputSchema,
+    /** Set by the server transport from the request, never taken from the client body. */
+    channel: legalChannelSchema,
   })
   .strict()
   .superRefine((input, context) => {

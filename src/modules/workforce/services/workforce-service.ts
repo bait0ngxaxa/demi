@@ -105,6 +105,7 @@ import {
   type OsmRelationshipTransitionInput,
   type OsmProvisionInput,
   type WorkforceActivationCompletionInput,
+  type WorkforceCredentialCompletionInput,
   type WorkforceActivationRequestInput,
   type WorkforceActivationSlipRequestInput,
   type WorkforceActivationMode as WorkforceActivationModeValue,
@@ -125,6 +126,11 @@ import {
   WORKFORCE_MAX_FAILED_VERIFICATIONS,
 } from "./activation-identity";
 import { assertCurrentSelfRegistrationEligibility } from "@/modules/self-registration/services/self-registration-eligibility";
+import {
+  assertAccountCreationLegalIsCurrent,
+  recordAccountCreationLegal,
+  type AccountCreationLegalInput,
+} from "@/modules/legal/services/account-creation-legal-service";
 import {
   SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS,
   selfRegistrationRelationshipsSchema,
@@ -3543,6 +3549,7 @@ async function releaseWorkforceActivationClaim(
 async function finalizeWorkforceActivationLocally(
   claim: ActivationClaim,
   authSubject: string,
+  legal: Omit<AccountCreationLegalInput, "userId">,
   dependencies: WorkforceServiceDependencies,
 ): Promise<void> {
   const database = getDatabase(dependencies);
@@ -3729,6 +3736,9 @@ async function finalizeWorkforceActivationLocally(
         throw new ConflictError("Workforce activation credential changed during completion");
       }
 
+      // LG-1 §3: the acceptance commits with the activation or not at all.
+      await recordAccountCreationLegal(transaction, { userId: claim.userId, ...legal });
+
       if (selfRegistration) {
         const relationshipsByHospital = new Map<string, number>();
         for (const relationship of selfRegistrationRelationships) {
@@ -3913,6 +3923,14 @@ async function completeWorkforceActivationForPurposes(
     throw new ValidationError("Workforce activation data is invalid");
   }
 
+  const legal: Omit<AccountCreationLegalInput, "userId"> = {
+    acceptLegal: parsedInput.data.acceptLegal,
+    consents: [],
+    source: purposes.includes(WorkforceActivationPurpose.SELF_REGISTRATION) ? "SELF_REGISTRATION" : "WORKFORCE_ACTIVATION",
+    channel: parsedInput.data.channel,
+  };
+  await assertAccountCreationLegalIsCurrent(getDatabase(dependencies), legal);
+
   const claim = await claimWorkforceActivation(
     parsedToken.data,
     purposes,
@@ -3946,7 +3964,7 @@ async function completeWorkforceActivationForPurposes(
     return requireWorkforceActivationReconciliation(claim, dependencies);
   }
   try {
-    await finalizeWorkforceActivationLocally(claim, provisionedIdentity.authSubject, dependencies);
+    await finalizeWorkforceActivationLocally(claim, provisionedIdentity.authSubject, legal, dependencies);
   } catch (error: unknown) {
     // A lost DB response may hide a committed finalization. Confirm it before considering initial-identity compensation.
     if (await isWorkforceActivationFinalized(claim, provisionedIdentity.authSubject, dependencies)) return { userId: claim.userId };
@@ -3993,7 +4011,7 @@ export async function issueWorkforcePasswordReset(
 
 export async function completeWorkforcePasswordReset(
   _token: string,
-  _input: WorkforceActivationCompletionInput,
+  _input: WorkforceCredentialCompletionInput,
   _dependencies?: WorkforceServiceDependencies,
 ): Promise<{ userId: string }> {
   // Reject even legacy, issuer-held, claimed or consumed tokens before DB/provider side effects.

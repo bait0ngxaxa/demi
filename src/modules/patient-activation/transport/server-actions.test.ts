@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ConflictError } from "@/shared/errors/application-error";
+import { LegalVersionConflictError } from "@/modules/legal/services/legal-version-reader";
 
 import {
   completePatientActivation,
@@ -19,10 +20,18 @@ import {
   getPatientActivationDetailsAction,
   issuePatientActivationAction,
 } from "./server-actions";
+import {
+  HEALTH_CONSENT_VERSION_ID,
+  legalAcceptanceFixture,
+  setLegalAcceptanceFields,
+} from "../../../../tests/support/legal-fixtures";
 
 const mockedRevalidatePath = vi.hoisted(() => vi.fn());
 
+const mockedUserAgent = vi.hoisted(() => ({ value: "Mozilla/5.0" }));
+
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
+vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": mockedUserAgent.value }) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: vi.fn(),
 }));
@@ -315,7 +324,7 @@ describe("patient activation Server Actions", () => {
       userId: "11111111-1111-4111-8111-111111111111",
       hospitalId: "22222222-2222-4222-8222-222222222222",
     });
-    const formData = new FormData();
+    const formData = setLegalAcceptanceFields(new FormData());
     formData.set("password", "patient-password-123");
     formData.set("passwordConfirmation", "patient-password-123");
 
@@ -328,7 +337,54 @@ describe("patient activation Server Actions", () => {
     expect(mockedCompletePatientActivation).toHaveBeenCalledWith("opaque-token", {
       password: "patient-password-123",
       passwordConfirmation: "patient-password-123",
+      acceptLegal: legalAcceptanceFixture,
+      consents: [],
+      channel: "WEB",
     });
     expect(result).toEqual({ status: "SUCCESS" });
+  });
+
+  it("requires the Terms + Privacy checkbox before calling the service (LG-D4)", async () => {
+    const formData = new FormData();
+    formData.set("password", "patient-password-123");
+    formData.set("passwordConfirmation", "patient-password-123");
+    formData.set("legalTermsVersionId", legalAcceptanceFixture.termsVersionId);
+    formData.set("legalPrivacyVersionId", legalAcceptanceFixture.privacyVersionId);
+
+    const result = await completePatientActivationAction("opaque-token", initialPatientActivationCompletionActionState, formData);
+
+    expect(result).toMatchObject({ status: "ERROR", code: "INVALID_INPUT", fieldErrors: { acceptLegal: expect.stringContaining("ยอมรับ") } });
+    expect(mockedCompletePatientActivation).not.toHaveBeenCalled();
+  });
+
+  it("passes only the chosen consent and the LIFF channel taken from the request", async () => {
+    mockedUserAgent.value = "Mozilla/5.0 (iPhone) Line/14.0.0 LIFF";
+    mockedCompletePatientActivation.mockResolvedValue({
+      userId: "11111111-1111-4111-8111-111111111111",
+      hospitalId: "22222222-2222-4222-8222-222222222222",
+    });
+    const formData = setLegalAcceptanceFields(new FormData());
+    formData.set("password", "patient-password-123");
+    formData.set("passwordConfirmation", "patient-password-123");
+    formData.set("consent.HEALTH_DATA_DISCLOSURE_CONSENT", HEALTH_CONSENT_VERSION_ID);
+    formData.set("channel", "WEB");
+
+    await completePatientActivationAction("opaque-token", initialPatientActivationCompletionActionState, formData);
+
+    expect(mockedCompletePatientActivation).toHaveBeenCalledWith("opaque-token", expect.objectContaining({
+      consents: [{ kind: "HEALTH_DATA_DISCLOSURE_CONSENT", documentVersionId: HEALTH_CONSENT_VERSION_ID }],
+      channel: "LIFF",
+    }));
+    mockedUserAgent.value = "Mozilla/5.0";
+  });
+
+  it("reports a newer legal version as recoverable instead of a dead link", async () => {
+    mockedCompletePatientActivation.mockRejectedValue(new LegalVersionConflictError());
+    const formData = setLegalAcceptanceFields(new FormData());
+    formData.set("password", "patient-password-123");
+    formData.set("passwordConfirmation", "patient-password-123");
+
+    await expect(completePatientActivationAction("opaque-token", initialPatientActivationCompletionActionState, formData))
+      .resolves.toMatchObject({ status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: expect.stringContaining("เวอร์ชันใหม่") });
   });
 });

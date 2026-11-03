@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
+import { legalAcceptanceInputSchema, legalChannelSchema } from "@/modules/legal/schemas/legal-schemas";
 
 export const SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 export const SELF_REGISTRATION_CAPABILITY_TTL_MS = 10 * 60 * 1000;
@@ -24,6 +25,10 @@ export const selfRegistrationCompletionSchema = z.object({
   password: z.string().min(12).max(128),
   passwordConfirmation: z.string().min(12).max(128),
   nameConfirmed: z.boolean(),
+  /** LG-D4: required Terms + Privacy acceptance. ADR-0028: /register offers no consents. */
+  acceptLegal: legalAcceptanceInputSchema,
+  /** Set by the route handler from the request, never taken from the client body. */
+  channel: legalChannelSchema,
 }).strict().refine((input) => input.password === input.passwordConfirmation, {
   path: ["passwordConfirmation"],
 });

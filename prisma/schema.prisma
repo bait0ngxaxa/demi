@@ -634,6 +634,10 @@ model User {
   hospitalOnboardingReviews     HospitalOnboardingApplication[] @relation("HospitalOnboardingReviewer")
   takeoverLock        UserTakeoverLock?  @relation("UserTakeoverLockTarget")
   takeoverLocksIssued UserTakeoverLock[] @relation("UserTakeoverLockActor")
+  legalDocumentVersionsCreated LegalDocumentVersion[] @relation("LegalDocumentVersionCreatedBy")
+  legalDocumentVersionsPublished LegalDocumentVersion[] @relation("LegalDocumentVersionPublishedBy")
+  legalAcceptances LegalAcceptance[] @relation("LegalAcceptanceUser")
+  consentEvents ConsentEvent[] @relation("ConsentEventUser")
 
   // Supports a composite FK that keeps an invitation bound to this exact User + Person pair.
   @@unique([id, personId])
@@ -2642,4 +2646,102 @@ model AuthenticationAttemptThrottleBucket {
   updatedAt      DateTime @db.Timestamptz(3)
 
   @@index([expiresAt], map: "AuthenticationAttemptThrottleBucket_expiresAt_idx")
+}
+
+/// ADR-0028: the four agency-owned legal documents, each maintained as immutable published versions.
+enum LegalDocumentKind {
+  TERMS
+  PRIVACY_POLICY
+  HEALTH_DATA_DISCLOSURE_CONSENT
+  MARKETING_CONSENT
+}
+
+enum LegalDocumentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum LegalChannel {
+  WEB
+  LIFF
+}
+
+enum LegalAcceptanceSource {
+  SELF_REGISTRATION
+  PATIENT_ACTIVATION
+  WORKFORCE_ACTIVATION
+  HOSPITAL_ONBOARDING
+  CAREGIVER_ACCOUNT
+  SETTINGS
+  ADMIN_BOOTSTRAP
+}
+
+enum ConsentDecision {
+  GIVEN
+  WITHDRAWN
+}
+
+/// A PUBLISHED row is frozen and never deleted (trigger "legal_document_version_guard"). The current version of a
+/// kind is the PUBLISHED row with the latest publishedAt (a query, not a flag).
+model LegalDocumentVersion {
+  id                String              @id @default(uuid()) @db.Uuid
+  kind              LegalDocumentKind
+  versionLabel      String              @db.VarChar(40)
+  title             String              @db.VarChar(200)
+  body              String              @db.Text
+  isPlaceholder     Boolean             @default(false)
+  status            LegalDocumentStatus @default(DRAFT)
+  publishedAt       DateTime?           @db.Timestamptz(3)
+  publishedByUserId String?             @db.Uuid
+  createdByUserId   String?             @db.Uuid
+  createdAt         DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @db.Timestamptz(3)
+
+  createdBy          User?             @relation("LegalDocumentVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publishedBy        User?             @relation("LegalDocumentVersionPublishedBy", fields: [publishedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  termsAcceptances   LegalAcceptance[] @relation("LegalAcceptanceTerms")
+  privacyAcceptances LegalAcceptance[] @relation("LegalAcceptancePrivacy")
+  consentEvents      ConsentEvent[]
+
+  @@unique([kind, versionLabel])
+  @@index([kind, status, publishedAt])
+}
+
+/// Append-only: one row per User and accepted (TERMS, PRIVACY_POLICY) version pair. channel is NULL only for the
+/// operator CLI (ADMIN_BOOTSTRAP).
+model LegalAcceptance {
+  id               String                @id @default(uuid()) @db.Uuid
+  userId           String                @db.Uuid
+  termsVersionId   String                @db.Uuid
+  privacyVersionId String                @db.Uuid
+  acceptedAt       DateTime              @default(now()) @db.Timestamptz(3)
+  channel          LegalChannel?
+  source           LegalAcceptanceSource
+
+  user           User                 @relation("LegalAcceptanceUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  termsVersion   LegalDocumentVersion @relation("LegalAcceptanceTerms", fields: [termsVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  privacyVersion LegalDocumentVersion @relation("LegalAcceptancePrivacy", fields: [privacyVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([userId, termsVersionId, privacyVersionId])
+  @@index([userId, acceptedAt])
+  @@index([termsVersionId])
+  @@index([privacyVersionId])
+}
+
+/// Append-only PDPA consent decisions (ม.19); the current state of a (User, kind) is its latest event.
+model ConsentEvent {
+  id                String            @id @default(uuid()) @db.Uuid
+  userId            String            @db.Uuid
+  kind              LegalDocumentKind
+  documentVersionId String            @db.Uuid
+  decision          ConsentDecision
+  decidedAt         DateTime          @default(now()) @db.Timestamptz(3)
+  channel           LegalChannel
+  submissionNonce   String            @unique @db.Uuid
+
+  user            User                 @relation("ConsentEventUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  documentVersion LegalDocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId, kind, decidedAt])
+  @@index([documentVersionId])
 }

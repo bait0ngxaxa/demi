@@ -4,6 +4,7 @@ import { z } from "zod";
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { selfRegistrationListFilterSchema } from "@/modules/self-registration/domain/self-registration-schemas";
+import { legalAcceptanceInputSchema, legalChannelSchema } from "@/modules/legal/schemas/legal-schemas";
 
 // Validate raw characters before removing separators (hospital-contact guard style).
 // An ASCII allowlist also rejects controls, invisible characters and unpaired surrogates.
@@ -119,22 +120,41 @@ export const workforceActivationRequestSchema = z
   })
   .strict();
 
+const workforceCredentialFields = {
+  nationalId: thaiNationalIdSchema,
+  password: userOwnedPasswordSchema,
+  passwordConfirmation: userOwnedPasswordSchema,
+};
+
+function refinePasswordConfirmation(
+  input: { password: string; passwordConfirmation: string },
+  context: z.RefinementCtx,
+): void {
+  if (input.password !== input.passwordConfirmation) {
+    context.addIssue({
+      code: "custom",
+      path: ["passwordConfirmation"],
+      message: "รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน",
+    });
+  }
+}
+
+/** Credential replacement of an existing account (RESET); no legal acceptance belongs to it. */
+export const workforceCredentialCompletionSchema = z
+  .object(workforceCredentialFields)
+  .strict()
+  .superRefine(refinePasswordConfirmation);
+
 export const workforceActivationCompletionSchema = z
   .object({
-    nationalId: thaiNationalIdSchema,
-    password: userOwnedPasswordSchema,
-    passwordConfirmation: userOwnedPasswordSchema,
+    ...workforceCredentialFields,
+    /** LG-D4: required Terms + Privacy acceptance; workforce steps offer no consents (LG-D6). */
+    acceptLegal: legalAcceptanceInputSchema,
+    /** Set by the server transport from the request, never taken from the client body. */
+    channel: legalChannelSchema,
   })
   .strict()
-  .superRefine((input, context) => {
-    if (input.password !== input.passwordConfirmation) {
-      context.addIssue({
-        code: "custom",
-        path: ["passwordConfirmation"],
-        message: "รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน",
-      });
-    }
-  });
+  .superRefine(refinePasswordConfirmation);
 
 export const workforceActivationTokenSchema = z.string().trim().min(1).max(256);
 
@@ -200,6 +220,7 @@ export type WorkforceActivationRequestInput = z.infer<
 export type WorkforceActivationCompletionInput = z.infer<
   typeof workforceActivationCompletionSchema
 >;
+export type WorkforceCredentialCompletionInput = z.infer<typeof workforceCredentialCompletionSchema>;
 export type WorkforcePasswordResetRequestInput = z.infer<typeof workforcePasswordResetRequestSchema>;
 export type WorkforceBulkProvisionInput = z.infer<typeof workforceBulkProvisionSchema>;
 export type WorkforceActivationSlipRequestInput = z.infer<

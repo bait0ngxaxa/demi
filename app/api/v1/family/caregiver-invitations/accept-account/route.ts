@@ -9,6 +9,13 @@ import {
   createCaregiverAccountFromInvitation,
 } from "@/modules/family/services/caregiver-account-claim-service";
 import { CAREGIVER_INVITATION_UNAVAILABLE_MESSAGE } from "@/modules/family/transport/action-state";
+import {
+  isLegalAcceptanceIssue,
+  legalAcceptanceRequiredError,
+  legalChannelFromRequest,
+  mapLegalVersionError,
+  withServerLegalChannel,
+} from "@/modules/legal/transport/legal-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +43,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    await createCaregiverAccountFromInvitation(input, {
+    await createCaregiverAccountFromInvitation(withServerLegalChannel(input, legalChannelFromRequest(request)), {
       ipAddress: getTrustedClientIpAddress(request) ?? "",
     });
     revalidatePath("/app/family");
@@ -45,6 +52,11 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     if (error instanceof CaregiverAccountClaimRateLimitedError) {
       return publicSelfRegistrationJson({ status: "ERROR", message: "ลองใหม่ภายหลัง" }, 429);
+    }
+    const legalError = mapLegalVersionError(error);
+    if (legalError) return publicSelfRegistrationJson({ status: "ERROR", ...legalError }, 409);
+    if (isLegalAcceptanceIssue(error)) {
+      return publicSelfRegistrationJson({ status: "ERROR", ...legalAcceptanceRequiredError() }, 400);
     }
     if (error instanceof CaregiverAccountClaimRejectedError) {
       return publicSelfRegistrationJson(rejectedResponse, 400);

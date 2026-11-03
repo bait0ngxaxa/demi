@@ -5,7 +5,7 @@ import {
   UserStatus,
 } from "@prisma/client";
 import { randomBytes, randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -31,8 +31,14 @@ import {
   createCaregiverAccountFromInvitation,
 } from "@/modules/family/services/caregiver-account-claim-service";
 import { hashCaregiverInvitationToken } from "@/modules/family/services/caregiver-invitation-token-service";
+import { accountCreationLegalFields, clearLegalRecords, publishNewerLegalVersion } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 const validNationalId = "1000000000009";
 const alternateNationalId = "1101700203450";
 let sequence = 0;
@@ -40,6 +46,7 @@ let sequence = 0;
 type TestActor = { actor: ActorContext; userId: string; personId: string };
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.$executeRaw`DELETE FROM "PublicSelfRegistrationRateLimitBucket" WHERE "category" IN ('CG_PATIENT', 'CG_IDENTITY')`;
   await prisma.caregiverRelationship.deleteMany();
@@ -142,7 +149,7 @@ function accountClaimInput(token: string, nationalId = validNationalId) {
     givenName: "ผู้ดูแลทดสอบ",
     familyName: "แจ้งเอง",
     password: "caregiver-test-password-2026",
-    passwordConfirmation: "caregiver-test-password-2026",
+    passwordConfirmation: "caregiver-test-password-2026", ...LEGAL,
   };
 }
 
@@ -1424,5 +1431,41 @@ describe("Phase 17F.1 Family caregiver relationship PostgreSQL workflow", () => 
       { caregiverUserId: null, caregiverPersonId: null, recipientIdentityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: alternateNationalId }) },
       { caregiverUserId: null, caregiverPersonId: null, recipientIdentityKeyHash: hashIdentityReference({ namespace: THAI_NATIONAL_IDENTITY_NAMESPACE, value: unregisteredNationalId }) },
     ]));
+  });
+});
+
+describe("LG-1 legal acceptance at caregiver account creation (ADR-0028)", () => {
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  it("refuses a missing or stale acceptance before any provider call and records CAREGIVER_ACCOUNT", async () => {
+    const patient = await createPatient();
+    const invitation = await createCaregiverInvitation(patient.actor, { nationalId: validNationalId });
+    const createProviderIdentity = vi.fn(async ({ userId }: { userId: string; password: string }) => ({
+      authSubject: randomUUID(),
+      providerLoginAlias: "caregiver-" + userId + "@test.invalid",
+    }));
+    const dependencies = accountClaimDependencies({ createProviderIdentity });
+    const { acceptLegal: _accept, ...withoutAcceptance } = accountClaimInput(invitation.plaintextToken);
+    void _accept;
+
+    await expect(createCaregiverAccountFromInvitation(withoutAcceptance, { ipAddress: "203.0.113.90" }, dependencies))
+      .rejects.toMatchObject({ name: "LegalAcceptanceRequiredError" });
+    await publishNewerLegalVersion(prisma, "PRIVACY_POLICY", "caregiver-privacy-2");
+    await expect(createCaregiverAccountFromInvitation(accountClaimInput(invitation.plaintextToken), { ipAddress: "203.0.113.91" }, dependencies))
+      .rejects.toMatchObject({ name: "LegalVersionConflictError" });
+    expect(createProviderIdentity).not.toHaveBeenCalled();
+    expect(await prisma.user.count({ where: { roles: { some: { role: Role.CAREGIVER } } } })).toBe(0);
+
+    const current = await accountCreationLegalFields(prisma);
+    const accepted = await createCaregiverAccountFromInvitation(
+      { ...accountClaimInput(invitation.plaintextToken), ...current },
+      { ipAddress: "203.0.113.92" },
+      dependencies,
+    );
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: accepted.userId }, select: { termsVersionId: true, privacyVersionId: true, source: true, channel: true } }))
+      .toEqual([{ ...current.acceptLegal, source: "CAREGIVER_ACCOUNT", channel: "WEB" }]);
+    expect(await prisma.consentEvent.count()).toBe(0);
   });
 });

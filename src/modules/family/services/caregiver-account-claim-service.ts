@@ -27,6 +27,15 @@ import {
   ConflictError,
   InfrastructureError,
 } from "@/shared/errors/application-error";
+import { legalAcceptanceInputSchema } from "@/modules/legal/schemas/legal-schemas";
+import {
+  assertAccountCreationLegalIsCurrent,
+  recordAccountCreationLegal,
+} from "@/modules/legal/services/account-creation-legal-service";
+import {
+  LegalAcceptanceRequiredError,
+  LegalVersionConflictError,
+} from "@/modules/legal/services/legal-version-reader";
 import {
   createPublicSelfRegistrationRateLimiter,
   type PublicSelfRegistrationRateLimiter,
@@ -190,6 +199,12 @@ export async function createCaregiverAccountFromInvitation(
   const database = databaseFor(dependencies);
   const now = nowFor(dependencies);
   await consumeClaimLimits(input, context.ipAddress, now, dependencies);
+  // LG-1 §3: a missing or stale acceptance is refused before anything is looked up or created.
+  const acceptLegal = input && typeof input === "object" && "acceptLegal" in input ? input.acceptLegal : undefined;
+  if (!legalAcceptanceInputSchema.safeParse(acceptLegal).success) {
+    throw new LegalAcceptanceRequiredError();
+  }
+  await assertAccountCreationLegalIsCurrent(database, { acceptLegal });
   const parsed = caregiverAccountClaimInputSchema.safeParse(input);
   if (!parsed.success) {
     await recordRejectedClaim(database);
@@ -360,6 +375,15 @@ export async function createCaregiverAccountFromInvitation(
         throw error;
       });
 
+      // LG-1 §3: the acceptance commits with the new account or not at all.
+      await recordAccountCreationLegal(transaction, {
+        userId,
+        acceptLegal: parsed.data.acceptLegal,
+        consents: [],
+        source: "CAREGIVER_ACCOUNT",
+        channel: parsed.data.channel,
+      });
+
       await recordAuditEvent({
         actorUserId: userId,
         action: "caregiver_account.created",
@@ -430,6 +454,8 @@ export async function createCaregiverAccountFromInvitation(
       if (!rejectionAudited) await recordRejectedClaim(database, invitation.id);
       throw error;
     }
+    // A version published while the claim was in flight; the person re-accepts and retries the same invitation.
+    if (error instanceof LegalVersionConflictError) throw error;
     throw new InfrastructureError("Caregiver account could not be created");
   }
 }

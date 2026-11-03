@@ -7,7 +7,7 @@ import {
   Role,
   UserStatus,
 } from "@prisma/client";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
@@ -17,8 +17,14 @@ import {
   submitHospitalOnboarding,
 } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
 import { PasswordAuthProvisioningReconciliationError } from "@/modules/auth/services/password-auth-provisioning-service";
+import { accountCreationLegalFields, clearLegalRecords, publishNewerLegalVersion } from "./support/legal";
 
 const prisma = getPrisma();
+
+let LEGAL: Awaited<ReturnType<typeof accountCreationLegalFields>>;
+beforeAll(async () => {
+  LEGAL = await accountCreationLegalFields(prisma);
+});
 // The Master seed is read-only by default; integration tests apply it to the local test database.
 
 const nationalIds = {
@@ -31,6 +37,7 @@ const nationalIds = {
 };
 
 async function clearDatabase(): Promise<void> {
+  await clearLegalRecords(prisma);
   await prisma.auditEvent.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.workforceActivation.deleteMany();
@@ -89,7 +96,7 @@ async function submit(
   authSubject: string,
 ): Promise<{ applicationId: string; applicantUserId: string }> {
   return submitHospitalOnboarding(
-    {
+    { ...LEGAL,
       hospitalCode,
       nationalId,
       givenName: "ผู้สมัคร",
@@ -260,7 +267,7 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
   it("compensates newly-created identity when provider provisioning fails", async () => {
     await expect(
       submitHospitalOnboarding(
-        {
+        { ...LEGAL,
           hospitalCode: "KANG",
           nationalId: "1000000000076",
           givenName: "ผู้สมัคร",
@@ -284,7 +291,7 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
   it("surfaces provider reconciliation and leaves no approvable application", async () => {
     await expect(
       submitHospitalOnboarding(
-        {
+        { ...LEGAL,
           hospitalCode: "KANG",
           nationalId: "1000000000084",
           givenName: "ผู้สมัคร",
@@ -353,5 +360,41 @@ describe("Phase 3B hospital onboarding PostgreSQL workflow", () => {
     await expect(
       approveHospitalOnboarding({ applicationId: result.applicationId, reviewerUserId: owner.id }),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("LG-1 legal acceptance at hospital onboarding (ADR-0028)", () => {
+  beforeEach(async () => {
+    await clearDatabase();
+    await registerPendingHospitals();
+  });
+
+  afterAll(async () => {
+    await clearDatabase();
+  });
+
+  const applicant = {
+    hospitalCode: "KANG",
+    nationalId: nationalIds.sixth,
+    givenName: "ผู้สมัคร",
+    familyName: "กฎหมาย",
+    password: "correct-horse-battery-staple",
+    passwordConfirmation: "correct-horse-battery-staple",
+  };
+
+  it("refuses a missing or stale acceptance without creating an applicant", async () => {
+    const provisionIdentity = vi.fn();
+    await expect(submitHospitalOnboarding({ ...applicant, channel: "WEB" } as never, { provisionIdentity })).rejects.toMatchObject({ code: "VALIDATION" });
+    await publishNewerLegalVersion(prisma, "TERMS", "onboarding-terms-2");
+    await expect(submitHospitalOnboarding({ ...applicant, ...LEGAL }, { provisionIdentity })).rejects.toMatchObject({ name: "LegalVersionConflictError" });
+    expect(provisionIdentity).not.toHaveBeenCalled();
+    expect(await prisma.person.count()).toBe(0);
+    expect(await prisma.legalAcceptance.count()).toBe(0);
+  });
+
+  it("records the applicant acceptance with source HOSPITAL_ONBOARDING", async () => {
+    const result = await submitHospitalOnboarding({ ...applicant, ...LEGAL }, { provisionIdentity: createProviderProvisioner("66666666-6666-4666-8666-666666666699") });
+    expect(await prisma.legalAcceptance.findMany({ where: { userId: result.applicantUserId }, select: { termsVersionId: true, privacyVersionId: true, source: true, channel: true } }))
+      .toEqual([{ ...LEGAL.acceptLegal, source: "HOSPITAL_ONBOARDING", channel: "WEB" }]);
   });
 });
