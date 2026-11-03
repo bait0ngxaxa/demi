@@ -918,8 +918,10 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
   it("rejects cancellation without changing status, supersedes stale requests, and preserves unchanged legacy responsibility", async () => {
     const hospital = await createHospital("REQUEST-LIFECYCLE");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const coordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR });
-    const otherCoordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR });
+    // ADR-0027: any operator is assignable whatever the profession, so the legacy (now ineligible) responsible
+    // person is a staff member whose membership was suspended.
+    const coordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR, membershipStatus: MembershipStatus.SUSPENDED });
+    const otherCoordinator = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.COORDINATOR, membershipStatus: MembershipStatus.SUSPENDED });
     const doctor = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.DOCTOR });
     const nurse = await createHospitalActor({ hospitalId: hospital.id, profession: Profession.NURSE });
     const patient = await provisionPatient(owner.actor, {
@@ -2419,13 +2421,15 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       where: { id: staleAssignmentAppointment.appointmentId },
       data: { assignedOsmUserId: osm.userId },
     });
+    // ADR-0027: an appointment whose อสม. is no longer the patient's current one is a one-off visit; it still
+    // awaits that อสม.'s acceptance.
     expect((await listWorkAppointments(owner.actor, { hospitalId: hospital.id, tab: "UPCOMING" })).items)
-      .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: staleAssignmentAppointment.appointmentId, osmAcceptanceStatus: "NONE" })]));
+      .toEqual(expect.arrayContaining([expect.objectContaining({ appointmentId: staleAssignmentAppointment.appointmentId, osmAcceptanceStatus: "WAITING", isOneOffVisit: true })]));
     expect((await listWorkAppointments(owner.actor, {
       hospitalId: hospital.id,
       tab: "UPCOMING",
       awaitingOsmAcceptance: "true",
-    })).items.map(({ appointmentId }) => appointmentId)).not.toContain(staleAssignmentAppointment.appointmentId);
+    })).items.map(({ appointmentId }) => appointmentId)).toContain(staleAssignmentAppointment.appointmentId);
 
     await unassignOsmFromPatient(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
     expect(await prisma.patientAppointment.findUniqueOrThrow({
@@ -2520,6 +2524,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       "locationType",
       "osmAcceptanceStatus",
       "osmAtCreationDisplayName",
+      "assignedOsmDisplayName",
+      "appointer",
       "patientDisplayName",
       "pendingRequestBadges",
       "relationshipId",
@@ -2611,5 +2617,206 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       select: { id: true },
     });
     expect(actualIds).toEqual(expectedIds.map(({ id }) => id));
+  });
+});
+
+describe("Appointment assignees (ADR-0027, AP-1)", () => {
+  beforeAll(async () => {
+    await prisma.$connect();
+    await clearDatabase();
+  });
+
+  afterEach(async () => {
+    await clearDatabase();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  async function setupHospitalPatient(code: string) {
+    const hospital = await createHospital(code);
+    const otherHospital = await createHospital(`${code}-OTHER`);
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const currentOsm = await createOsmActor(hospital.id);
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "appointment-assignee-integration", value: randomUUID() },
+      targetHospitalId: hospital.id,
+      givenName: "ผู้ป่วย",
+      familyName: `ผู้รับผิดชอบ ${code}`,
+    });
+    await activateProvisionedPatient(patient.userId);
+    await assignOsmToPatient(owner.actor, { patientHospitalRelationshipId: patient.relationshipId, osmUserId: currentOsm.userId });
+    return { hospital, otherHospital, owner, currentOsm, patient };
+  }
+
+  it("assigns any operator of the Hospital whatever the profession and refuses inactive or foreign staff", async () => {
+    const { hospital, otherHospital, owner, patient } = await setupHospitalPatient("AP1-STAFF");
+    const assignable = [
+      await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: Profession.COORDINATOR }),
+      await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: Profession.OTHER }),
+      await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: null }),
+      await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER, profession: null }),
+    ];
+    for (const staff of assignable) {
+      const created = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { responsibleUserId: staff.userId }));
+      expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: created.appointmentId }, select: { responsibleUserId: true } }))
+        .toEqual({ responsibleUserId: staff.userId });
+    }
+
+    const suspendedMembership = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, membershipStatus: MembershipStatus.SUSPENDED });
+    const endedMembership = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, membershipStatus: MembershipStatus.ENDED });
+    const suspendedUser = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: Profession.DOCTOR });
+    await prisma.user.update({ where: { id: suspendedUser.userId }, data: { status: UserStatus.SUSPENDED } });
+    const foreignStaff = await createHospitalActor({ hospitalId: otherHospital.id, membershipType: MembershipType.OWNER, profession: Profession.DOCTOR });
+    for (const refused of [suspendedMembership, endedMembership, suspendedUser, foreignStaff]) {
+      await expect(createAppointment(owner.actor, appointmentInput(patient.relationshipId, { responsibleUserId: refused.userId })))
+        .rejects.toBeInstanceOf(ValidationError);
+    }
+
+    // The same rule on edit, which keeps an unchanged assignee without re-checking it.
+    const [coordinator] = assignable;
+    if (!coordinator) throw new Error("coordinator missing");
+    const appointment = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { responsibleUserId: coordinator.userId }));
+    await expect(rescheduleAppointment(owner.actor, rescheduleInput(patient.relationshipId, appointment.appointmentId, appointment.updatedAt, { responsibleUserId: foreignStaff.userId })))
+      .rejects.toBeInstanceOf(ValidationError);
+    await prisma.hospitalMembership.updateMany({ where: { userId: coordinator.userId }, data: { status: MembershipStatus.SUSPENDED } });
+    await expect(rescheduleAppointment(owner.actor, rescheduleInput(patient.relationshipId, appointment.appointmentId, appointment.updatedAt, { responsibleUserId: coordinator.userId })))
+      .resolves.toMatchObject({ status: AppointmentStatus.SCHEDULED });
+  });
+
+  it("assigns any ACTIVE อสม. of the Hospital at any location, never with a staff assignee", async () => {
+    const { hospital, otherHospital, owner, currentOsm, patient } = await setupHospitalPatient("AP1-OSM");
+    const anyOsm = await createOsmActor(hospital.id);
+    for (const locationType of ["CLINIC", "OTHER", "ONLINE", "HOME_VISIT"] as const) {
+      const created = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { assignedOsmUserId: anyOsm.userId, locationType }));
+      expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: created.appointmentId }, select: { assignedOsmUserId: true, locationType: true, sourceServiceRequestId: true } }))
+        .toEqual({ assignedOsmUserId: anyOsm.userId, locationType, sourceServiceRequestId: null });
+    }
+    const atClinicForCurrent = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { assignedOsmUserId: currentOsm.userId, locationType: "CLINIC" }));
+    await expect(getAppointmentDetail(currentOsm.actor, patient.relationshipId, atClinicForCurrent.appointmentId))
+      .resolves.toMatchObject({ isOneOffVisit: false, canAcceptAssignment: true });
+
+    const foreignOsm = await createOsmActor(otherHospital.id);
+    const suspendedRelationship = await createOsmActor(hospital.id);
+    await prisma.osmHospitalRelationship.updateMany({ where: { userId: suspendedRelationship.userId }, data: { status: MembershipStatus.SUSPENDED } });
+    const suspendedUser = await createOsmActor(hospital.id);
+    await prisma.user.update({ where: { id: suspendedUser.userId }, data: { status: UserStatus.SUSPENDED } });
+    for (const refused of [foreignOsm, suspendedRelationship, suspendedUser]) {
+      await expect(createAppointment(owner.actor, appointmentInput(patient.relationshipId, { assignedOsmUserId: refused.userId })))
+        .rejects.toBeInstanceOf(ValidationError);
+    }
+
+    // AP-4: one assignee, refused by the service and by the database.
+    const staff = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: Profession.NURSE });
+    await expect(createAppointment(owner.actor, appointmentInput(patient.relationshipId, { assignedOsmUserId: anyOsm.userId, responsibleUserId: staff.userId })))
+      .rejects.toBeInstanceOf(ValidationError);
+    const staffOnly = await createAppointment(owner.actor, appointmentInput(patient.relationshipId, { responsibleUserId: staff.userId }));
+    await expect(rescheduleAppointment(owner.actor, rescheduleInput(patient.relationshipId, staffOnly.appointmentId, staffOnly.updatedAt, { responsibleUserId: staff.userId, assignedOsmUserId: anyOsm.userId })))
+      .rejects.toBeInstanceOf(ValidationError);
+    await expect(prisma.patientAppointment.update({ where: { id: staffOnly.appointmentId }, data: { assignedOsmUserId: anyOsm.userId } }))
+      .rejects.toThrow(/PatientAppointment_single_assignee_check/u);
+  });
+
+  it("gives a non-caring อสม. only the five one-off actions on that appointment, ending at the window or on reassignment", async () => {
+    const { hospital, owner, currentOsm, patient } = await setupHospitalPatient("AP1-ONEOFF");
+    const visitOsm = await createOsmActor(hospital.id);
+    const anotherOsm = await createOsmActor(hospital.id);
+    const relationshipId = patient.relationshipId;
+    const created = await createAppointment(owner.actor, appointmentInput(relationshipId, { assignedOsmUserId: visitOsm.userId, locationType: "CLINIC" }));
+    const appointmentId = created.appointmentId;
+
+    // The patient's caring assignment is unchanged and recorded on the appointment; the visit is one-off.
+    expect(await prisma.patientOsmAssignment.count({ where: { patientHospitalRelationshipId: relationshipId, endedAt: null, osmUserId: currentOsm.userId } })).toBe(1);
+    expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: appointmentId }, select: { osmAssignmentAtCreation: { select: { osmUserId: true } } } }))
+      .toEqual({ osmAssignmentAtCreation: { osmUserId: currentOsm.userId } });
+    expect(await prisma.appointmentLineNotification.findMany({ where: { appointmentId, eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED }, select: { recipientUserId: true } }))
+      .toEqual([{ recipientUserId: visitOsm.userId }]);
+
+    await expect(getAppointmentDetail(visitOsm.actor, relationshipId, appointmentId)).resolves.toMatchObject({
+      appointmentId, isOneOffVisit: true, canAcceptAssignment: true, canProxyPatientActions: true, canManage: false, canHospitalManage: false,
+      // AP-5: ผู้นัดหมาย is the creating OWNER (no profession), shown as เจ้าหน้าที่.
+      appointer: { displayName: owner.displayName, role: "STAFF" },
+    });
+    expect((await listWorkAppointments(visitOsm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" })).items.map((item) => item.appointmentId)).toEqual([appointmentId]);
+    await expect(countWorkAppointmentsAwaitingMyAcceptance(visitOsm.actor)).resolves.toBe(1);
+
+    // Nothing beyond the appointment, and no managing it.
+    await expect(getAppointmentHistory(visitOsm.actor, relationshipId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(createAppointment(visitOsm.actor, appointmentInput(relationshipId, { locationType: "HOME_VISIT" }))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(rescheduleAppointment(visitOsm.actor, rescheduleInput(relationshipId, appointmentId, created.updatedAt, { assignedOsmUserId: visitOsm.userId, locationType: "HOME_VISIT" })))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(cancelAppointment(visitOsm.actor, transitionInput(relationshipId, appointmentId, created.updatedAt))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(requestAppointmentCancellationOnBehalfOfPatient(visitOsm.actor, {
+      ...transitionInput(relationshipId, appointmentId, created.updatedAt),
+      submissionNonce: randomUUID(),
+    })).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The five appointment actions.
+    await expect(acknowledgeAppointmentOnBehalfOfPatient(visitOsm.actor, transitionInput(relationshipId, appointmentId, created.updatedAt)))
+      .resolves.toMatchObject({ appointmentId, source: AppointmentInteractionSource.OSM_PROXY });
+    await expect(acceptAppointmentAssignment(visitOsm.actor, {
+      patientHospitalRelationshipId: relationshipId,
+      appointmentId,
+      sourceAppointmentUpdatedAt: created.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    })).resolves.toMatchObject({ appointmentId });
+    await expect(recordAppointmentCoordination(visitOsm.actor, { patientHospitalRelationshipId: relationshipId, appointmentId, submissionNonce: randomUUID() }))
+      .resolves.toMatchObject({ appointmentId });
+    await expect(submitAppointmentRescheduleRequest(visitOsm.actor, {
+      ...transitionInput(relationshipId, appointmentId, created.updatedAt),
+      submissionNonce: randomUUID(),
+      preferredDatetimes: [bangkokIso(new Date(Date.now() + 72 * 60 * 60 * 1000))],
+      reason: "ติดธุระวันนั้น",
+    })).resolves.toMatchObject({ appointmentId });
+
+    // Another อสม. of the Hospital sees nothing.
+    await expect(getAppointmentDetail(anotherOsm.actor, relationshipId, appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The window: up to 24 hours after the scheduled time.
+    await prisma.patientAppointment.update({ where: { id: appointmentId }, data: { scheduledAt: new Date(Date.now() - 23 * 60 * 60 * 1000) } });
+    await expect(getAppointmentDetail(visitOsm.actor, relationshipId, appointmentId)).resolves.toMatchObject({ appointmentId });
+    await prisma.patientAppointment.update({ where: { id: appointmentId }, data: { scheduledAt: new Date(Date.now() - 25 * 60 * 60 * 1000) } });
+    await expect(getAppointmentDetail(visitOsm.actor, relationshipId, appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
+    expect((await listWorkAppointments(visitOsm.actor, { hospitalId: hospital.id, tab: "HISTORY" })).items).toEqual([]);
+
+    // Reassigning the appointment away revokes the scope at once; the new one-off อสม. gains it.
+    const later = await createAppointment(owner.actor, appointmentInput(relationshipId, { assignedOsmUserId: visitOsm.userId, locationType: "OTHER" }));
+    await expect(getAppointmentDetail(visitOsm.actor, relationshipId, later.appointmentId)).resolves.toMatchObject({ isOneOffVisit: true });
+    const reassigned = await rescheduleAppointment(owner.actor, rescheduleInput(relationshipId, later.appointmentId, later.updatedAt, { assignedOsmUserId: anotherOsm.userId, locationType: "OTHER" }));
+    await expect(getAppointmentDetail(visitOsm.actor, relationshipId, later.appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(acceptAppointmentAssignment(visitOsm.actor, {
+      patientHospitalRelationshipId: relationshipId,
+      appointmentId: later.appointmentId,
+      sourceAppointmentUpdatedAt: reassigned.updatedAt.toISOString(),
+      submissionNonce: randomUUID(),
+    })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(countWorkAppointmentsAwaitingMyAcceptance(visitOsm.actor)).resolves.toBe(0);
+    await expect(getAppointmentDetail(anotherOsm.actor, relationshipId, later.appointmentId)).resolves.toMatchObject({ isOneOffVisit: true });
+    expect(await prisma.appointmentLineNotification.count({
+      where: { appointmentId: later.appointmentId, eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED, recipientUserId: anotherOsm.userId },
+    })).toBe(1);
+  });
+
+  it("keeps the current อสม.'s own appointment rules: home visit, self and own patient only", async () => {
+    const { hospital, currentOsm, patient } = await setupHospitalPatient("AP1-SELF");
+    const anyOsm = await createOsmActor(hospital.id);
+    const staff = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER, profession: Profession.NURSE });
+    await expect(createAppointment(currentOsm.actor, appointmentInput(patient.relationshipId, { locationType: "CLINIC" }))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(createAppointment(currentOsm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT", responsibleUserId: staff.userId }))).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(createAppointment(currentOsm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT", assignedOsmUserId: anyOsm.userId }))).rejects.toBeInstanceOf(ForbiddenError);
+    const own = await createAppointment(currentOsm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT" }));
+    expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: own.appointmentId }, select: { assignedOsmUserId: true } }))
+      .toEqual({ assignedOsmUserId: currentOsm.userId });
+    await expect(getAppointmentDetail(currentOsm.actor, patient.relationshipId, own.appointmentId))
+      .resolves.toMatchObject({ appointer: { displayName: currentOsm.displayName, role: "OSM" } });
+
+    // Editing their home visit, they cannot hand it to another อสม. or move it out of the home.
+    await expect(rescheduleAppointment(currentOsm.actor, rescheduleInput(patient.relationshipId, own.appointmentId, own.updatedAt, { locationType: "HOME_VISIT", assignedOsmUserId: anyOsm.userId })))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(rescheduleAppointment(currentOsm.actor, rescheduleInput(patient.relationshipId, own.appointmentId, own.updatedAt, { locationType: "CLINIC", assignedOsmUserId: currentOsm.userId })))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(rescheduleAppointment(currentOsm.actor, rescheduleInput(patient.relationshipId, own.appointmentId, own.updatedAt, { locationType: "HOME_VISIT", assignedOsmUserId: currentOsm.userId })))
+      .resolves.toMatchObject({ status: AppointmentStatus.SCHEDULED });
   });
 });

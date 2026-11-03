@@ -60,6 +60,12 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
     osmAssignmentAtCreation: {
       osmUser: { person: { givenName: "Assigned", familyName: "OSM" } },
     },
+    assignedOsmUser: null,
+    createdByUser: {
+      person: { givenName: "Appointing", familyName: "Nurse" },
+      memberships: [{ profession: Profession.NURSE }],
+      osmHospitalRelationships: [],
+    },
     acknowledgements: [{
       sourceAppointmentUpdatedAt: recordedAt,
       source: AppointmentInteractionSource.OSM_PROXY,
@@ -845,9 +851,17 @@ describe("Patient SELF care read projections", () => {
     const appointmentSelector = JSON.stringify(
       patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId),
     );
+    // ADR-0027 (AP-5): this projection already names staff and อสม., so it names the appointer too, by name
+    // and role only.
+    const appointmentSelect = patientSelfCareQueryInternals.appointmentPatientSelect(relationshipId);
+    expect(appointmentSelect.createdByUser.select.person).toEqual({ select: { givenName: true, familyName: true } });
+    expect(appointmentSelect.createdByUser.select.memberships.select).toEqual({ profession: true });
+    expect(appointmentSelect.createdByUser.select.osmHospitalRelationships.select).toEqual({ id: true });
+    expect(Object.keys(appointmentSelect.createdByUser.select).sort()).toEqual(["memberships", "osmHospitalRelationships", "person"]);
+    expect(appointmentSelect.assignedOsmUser).toEqual({ select: { person: { select: { givenName: true, familyName: true } } } });
     for (const withheld of [
       "responsibleUserId",
-      "createdByUser",
+      "createdByUserId",
       "recordedByUser",
       "submittedByUser",
       "resolvedByUser",
@@ -1017,5 +1031,5 @@ it.each([null, "request"])("SR-C patient projections add only service/source (%s
   database.patientAppointment.findMany = vi.fn().mockResolvedValue([appointmentRecord({ serviceCode: "EMPOWERMENT", sourceServiceRequestId })]);
   const history = await getOwnPatientAppointmentHistory(actor(), relationshipId, { database });
   expect(history.appointments[0]).toMatchObject({ serviceCode: "EMPOWERMENT", source: sourceServiceRequestId ? "PATIENT_REQUEST" : "HOSPITAL" });
-  expect(Object.keys(history.appointments[0] ?? {}).sort()).toEqual(["appointmentId", "type", "scheduledAt", "durationMinutes", "locationType", "locationDetail", "status", "updatedAt", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "acknowledgement", "cancellationRequests", "serviceCode", "source"].sort());
+  expect(Object.keys(history.appointments[0] ?? {}).sort()).toEqual(["appointmentId", "type", "scheduledAt", "durationMinutes", "locationType", "locationDetail", "status", "updatedAt", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "assignedOsmDisplayName", "appointer", "acknowledgement", "cancellationRequests", "serviceCode", "source"].sort());
 });

@@ -1,4 +1,5 @@
 import { AppointmentServiceSource } from "../appointment-service-source";
+import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appointments/domain/appointment-people";
 import Link from "next/link";
 
 import { Panel } from "@/components/ui/panel";
@@ -6,7 +7,6 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
   type AppointmentTypeValue,
   type AppointmentLocationValue,
@@ -104,13 +104,10 @@ export function PatientSelfAppointmentRow({
               </p>
             ) : null}
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-              {appointmentResponsiblePresentation(
-                appointment.responsibleDisplayName,
-                appointment.responsibleProfession,
-              ).heading}: {appointmentResponsiblePresentation(
-                appointment.responsibleDisplayName,
-                appointment.responsibleProfession,
-              ).displayName}
+              {appointmentAssigneePresentation(appointment).heading}: {appointmentAssigneePresentation(appointment).displayName}
+            </p>
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              ผู้นัดหมาย: {appointerLabel(appointment.appointer)}
             </p>
             {appointment.osmAtCreationDisplayName ? (
               <p className="mt-1 break-words text-sm leading-6 text-text-muted">
@@ -259,17 +256,15 @@ export function PatientSelfAppointmentDetailContent({
         <dl className="grid min-w-0 gap-4 sm:grid-cols-2">
           <div className="min-w-0">
             <dt className="text-sm font-semibold text-text-muted">
-              {appointmentResponsiblePresentation(
-                detail.responsibleDisplayName,
-                detail.responsibleProfession,
-              ).heading}
+              {appointmentAssigneePresentation(detail).heading}
             </dt>
             <dd className="mt-1 break-words font-semibold text-text">
-              {appointmentResponsiblePresentation(
-                detail.responsibleDisplayName,
-                detail.responsibleProfession,
-              ).displayName}
+              {appointmentAssigneePresentation(detail).displayName}
             </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">ผู้นัดหมาย</dt>
+            <dd className="mt-1 break-words font-semibold text-text">{appointerLabel(detail.appointer)}</dd>
           </div>
           <div className="min-w-0">
             <dt className="text-sm font-semibold text-text-muted">OSM ที่เกี่ยวข้องเมื่อนัดถูกสร้าง</dt>

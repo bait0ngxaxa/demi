@@ -27,7 +27,7 @@ const appointment = {
   serviceCode: null, source: "HOSPITAL" as const,
   appointmentId, type: AppointmentType.FOLLOW_UP, scheduledAt, durationMinutes: 30, locationType: AppointmentLocationType.CLINIC,
   locationDetail: null, status: AppointmentStatus.SCHEDULED, updatedAt: scheduledAt, responsibleDisplayName: null,
-  responsibleProfession: null, osmAtCreationDisplayName: null, acknowledgement: null, cancellationRequests: [],
+  responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" as const }, acknowledgement: null, cancellationRequests: [],
 };
 const family = {
   kind: "FAMILY" as const, key: grantId, grantId, caregiverRelationshipId: "99999999-9999-4999-8999-999999999999", contractVersion: "family-appointment-read-v1" as const, patient: { givenName: "แม่", familyName: "ใจดี" }, hospitalName: "รพ.สต. บ้านใหม่",

@@ -3,6 +3,7 @@
 - Status: Accepted — Product Owner decisions SR-D1..SR-D7, 2026-10-30
 - Supersedes: the approve-then-book lifecycle of patient service requests (APPROVE with a permanent อสม. reassignment, then a separate "สร้างนัดหมายจากคำขอนี้"), effective when SR-B ships.
 - Related: [ADR-0006](0006-transactional-business-operations.md), [ADR-0016](0016-network-patient-read.md), [ADR-0021](0021-caregiver-accounts-by-invitation.md)
+- Amended by: [ADR-0027](0027-appointment-assignees.md) (2026-11-03) — a one-off visit no longer needs a service request; any ACTIVE อสม. of the Hospital may be an appointment's อสม. at any location.
 
 ## Context
 
@@ -46,7 +47,7 @@ An อสม. reads and records only for patients currently assigned to them. A 
 - Scope: the appointment's detail as its อสม. sees it (patient display name, the contacts and location the appointment shows its อสม.), and the appointment actions of an assigned อสม. (`VISIT_OSM_APPOINTMENT_CAPABILITIES`): acknowledge on the patient's behalf, accept, ask to reschedule, record coordination. The appointment is listed in the อสม.'s work appointments. An assigned อสม. has no completion action, so neither has the visiting one; editing, cancelling and requesting cancellation are not included either.
 - Not included: the patient directory and profile, appointment history, Program, rounds, screening, follow-ups, goals, evidence and care tracking; every other access service is unchanged and stays assignment-based.
 
-The appointment's อสม. is checked when it is booked or changed: the patient's current assignment for a hospital booking, any ACTIVE อสม. of the Hospital for an appointment from a request.
+The appointment's อสม. is checked when it is booked or changed: the patient's current assignment for a hospital booking, any ACTIVE อสม. of the Hospital for an appointment from a request. *Amended 2026-11-03 by [ADR-0027](0027-appointment-assignees.md): any ACTIVE อสม. of the Hospital for either source, and `isOneOffVisitOsm` no longer needs a request; the scope, window and exclusions above are unchanged.*
 
 ### Confirming and rejecting (SR-B)
 

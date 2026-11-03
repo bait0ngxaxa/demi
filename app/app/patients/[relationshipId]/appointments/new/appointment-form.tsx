@@ -24,6 +24,7 @@ import {
   type AppointmentTypeValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import { SERVICE_APPOINTMENT_TYPE } from "@/modules/appointments/domain/appointment-service-definitions";
+import { staffProfessionLabel } from "@/modules/appointments/domain/appointment-people";
 import { PATIENT_SERVICE_LABELS } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 import {
   initialAppointmentActionState,
@@ -60,8 +61,6 @@ type AppointmentFormValue = {
   note: string | null;
   responsibleUserId: string | null;
   assignedOsmUserId: string | null;
-  /** ADR-0023 (SR-D2): the one-off visiting อสม. of an appointment from a service request. */
-  visitOsm: { userId: string; displayName: string } | null;
   /** ADR-0023 (SR-D4): fixed at booking; it sets the type. */
   serviceCode: PatientServiceCode | null;
   updatedAt: string;
@@ -78,7 +77,14 @@ type CommonProps = {
   patient: PatientContext;
   responsibleMembers: readonly ResponsibleMember[];
   currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
+  /** ADR-0027 (AP-2): the Hospital's other ACTIVE อสม.; choosing one is a one-off visit. */
+  osmCandidates: readonly OsmCandidate[];
 };
+
+type OsmCandidate = { userId: string; displayName: string };
+
+/** Above this many อสม. the picker offers a name search. */
+const OSM_SEARCH_THRESHOLD = 8;
 
 type CreateProps = CommonProps & {
   mode: "create";
@@ -130,15 +136,12 @@ function formatBangkokIso(value: string): string {
 }
 
 function responsibleOptionLabel(member: ResponsibleMember): string {
-  if (member.profession === "DOCTOR") {
-    return `${member.displayName} · แพทย์`;
-  }
+  return `${member.displayName} · ${staffProfessionLabel(member.profession)}`;
+}
 
-  if (member.profession === "NURSE") {
-    return `${member.displayName} · พยาบาล`;
-  }
-
-  return `${member.displayName} · ผู้รับผิดชอบเดิม`;
+function matchesOsmSearch(candidate: OsmCandidate, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase("th");
+  return needle === "" || candidate.displayName.toLocaleLowerCase("th").includes(needle);
 }
 
 function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX.Element | null {
@@ -171,17 +174,23 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   const [type, setType] = useState<AppointmentTypeValue>(appointment?.type ?? "FOLLOW_UP");
   const [serviceCode, setServiceCode] = useState<PatientServiceCode | "">(appointment?.serviceCode ?? "");
   const [responsibleUserId, setResponsibleUserId] = useState(appointment?.responsibleUserId ?? "");
-  const visitOsm = appointment?.visitOsm && appointment.visitOsm.userId !== props.currentOsmAssignee?.userId
-    ? appointment.visitOsm
-    : null;
   const [assignedOsmUserId, setAssignedOsmUserId] = useState(
     appointment && appointment.assignedOsmUserId !== null &&
-      (appointment.assignedOsmUserId === props.currentOsmAssignee?.userId || appointment.assignedOsmUserId === visitOsm?.userId)
+      (appointment.assignedOsmUserId === props.currentOsmAssignee?.userId ||
+        props.osmCandidates.some((candidate) => candidate.userId === appointment.assignedOsmUserId))
       ? appointment.assignedOsmUserId
       : appointment
         ? ""
         : (props.homeVisitOnly ? props.currentOsmAssignee?.userId ?? "" : ""),
   );
+  const [osmSearch, setOsmSearch] = useState("");
+  const offerOsmSearch = !props.homeVisitOnly && props.osmCandidates.length > OSM_SEARCH_THRESHOLD;
+  // The chosen อสม. stays listed whatever the search says, so the select never loses its value.
+  const osmSearchMatches = props.osmCandidates.filter((candidate) => matchesOsmSearch(candidate, osmSearch));
+  const visibleOsmCandidates = props.osmCandidates.filter(
+    (candidate) => candidate.userId === assignedOsmUserId || osmSearchMatches.includes(candidate),
+  );
+  const oneOffOsm = assignedOsmUserId !== "" && assignedOsmUserId !== props.currentOsmAssignee?.userId;
   const [durationMinutes, setDurationMinutes] = useState(
     appointment?.durationMinutes?.toString() ?? String(APPOINTMENT_DEFAULT_DURATION_MINUTES),
   );
@@ -341,17 +350,29 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
               </span>
             </label>
 
-            <label className={labelClassName} htmlFor="appointment-responsible-user">
-              <span>ผู้รับผิดชอบนัดหมาย (ไม่บังคับ)</span>
+            <div className="space-y-2 sm:col-span-2">
+              <label className={labelClassName} htmlFor="appointment-responsible-user">
+                ผู้รับผิดชอบนัดหมาย (ไม่บังคับ)
+              </label>
+              {offerOsmSearch ? (
+                <input
+                  aria-label="ค้นหา อสม. ตามชื่อ"
+                  className={inputClassName}
+                  id="appointment-osm-search"
+                  onChange={(event) => setOsmSearch(event.target.value)}
+                  placeholder={`ค้นหา อสม. จาก ${props.osmCandidates.length} คน`}
+                  type="search"
+                  value={osmSearch}
+                />
+              ) : null}
               <Select
+                aria-describedby="appointment-responsible-help"
                 id="appointment-responsible-user"
                 onChange={(event) => {
                   const selected = event.currentTarget.value;
                   if (selected.startsWith("osm:")) {
-                    const osmUserId = selected.slice("osm:".length);
-                    setAssignedOsmUserId(osmUserId);
+                    setAssignedOsmUserId(selected.slice("osm:".length));
                     setResponsibleUserId("");
-                    setLocationType("HOME_VISIT");
                   } else if (selected.startsWith("staff:")) {
                     setResponsibleUserId(selected.slice("staff:".length));
                     setAssignedOsmUserId("");
@@ -364,30 +385,38 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                 disabled={props.homeVisitOnly}
               >
                 <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
-                {props.responsibleMembers.map((member) => (
-                  <option key={member.userId} value={`staff:${member.userId}`}>
-                    {responsibleOptionLabel(member)}
-                  </option>
-                ))}
-                {props.currentOsmAssignee ? (
-                  <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}{props.currentOsmAssignee.contactPhone ? ` · ${props.currentOsmAssignee.contactPhone}` : ""}</option>
-                ) : (
-                  <option disabled value="osm-unavailable">อสม. ผู้ดูแล — ไม่มีผู้ดูแลที่ใช้งานได้ในขณะนี้</option>
-                )}
-                {visitOsm ? (
-                  <option value={`osm:${visitOsm.userId}`}>อสม. ผู้ไปเยี่ยมครั้งนี้ · {visitOsm.displayName}</option>
+                {props.responsibleMembers.length > 0 ? (
+                  <optgroup label="เจ้าหน้าที่">
+                    {props.responsibleMembers.map((member) => (
+                      <option key={member.userId} value={`staff:${member.userId}`}>
+                        {responsibleOptionLabel(member)}
+                      </option>
+                    ))}
+                  </optgroup>
                 ) : null}
+                <optgroup label="อสม.">
+                  {props.currentOsmAssignee ? (
+                    <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}{props.currentOsmAssignee.contactPhone ? ` · ${props.currentOsmAssignee.contactPhone}` : ""}</option>
+                  ) : (
+                    <option disabled value="osm-unavailable">อสม. ผู้ดูแล: ยังไม่มีผู้ดูแลที่ใช้งานได้</option>
+                  )}
+                  {visibleOsmCandidates.map((candidate) => (
+                    <option key={candidate.userId} value={`osm:${candidate.userId}`}>{candidate.displayName}</option>
+                  ))}
+                  {offerOsmSearch && osmSearchMatches.length === 0 ? (
+                    <option disabled value="osm-no-match">ไม่พบ อสม. ที่ตรงกับคำค้น</option>
+                  ) : null}
+                </optgroup>
               </Select>
-              <span className="text-xs font-normal leading-5 text-text-muted">
-                {visitOsm
-                  ? "นัดนี้มาจากคำขอบริการของผู้ป่วย อสม. ผู้ไปเยี่ยมเป็นการเยี่ยมครั้งนี้เท่านั้น"
-                  : props.homeVisitOnly
-                    ? `นัดนี้มอบหมายให้คุณ${props.currentOsmAssignee ? ` · ${props.currentOsmAssignee.displayName}` : ""} และระบบบันทึกการตอบรับให้แล้ว`
-                    : "เลือกแพทย์ พยาบาล หรือ อสม. ผู้ดูแลปัจจุบันของผู้ป่วย อสม. ทำงานเฉพาะนัดเยี่ยมบ้าน"}
-              </span>
-            </label>
-
-            {visitOsm ? <OneOffVisitNote visible /> : null}
+              <p className="text-xs font-normal leading-5 text-text-muted" id="appointment-responsible-help">
+                {props.homeVisitOnly
+                  ? `นัดนี้มอบหมายให้คุณ${props.currentOsmAssignee ? ` · ${props.currentOsmAssignee.displayName}` : ""} และระบบบันทึกการตอบรับให้แล้ว`
+                  : oneOffOsm
+                    ? "อสม. ที่ไม่ได้ดูแลผู้ป่วยรายนี้จะเห็นเฉพาะนัดนี้ จนถึง 24 ชั่วโมงหลังเวลานัด และไม่เห็นข้อมูลอื่นของผู้ป่วย"
+                    : "เลือกเจ้าหน้าที่หรือ อสม. ของโรงพยาบาลนี้ได้หนึ่งคน นัดที่มอบให้ อสม. ใช้สถานที่ใดก็ได้"}
+              </p>
+              {oneOffOsm && !props.homeVisitOnly ? <OneOffVisitNote visible /> : null}
+            </div>
 
             <label className={labelClassName} htmlFor="appointment-duration">
               <span>ระยะเวลา (นาที, ไม่บังคับ)</span>
@@ -409,13 +438,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
               <span>รูปแบบสถานที่ (ไม่บังคับ)</span>
               <Select
                 id="appointment-location-type"
-                onChange={(event) => {
-                  const nextLocation = event.target.value as AppointmentLocationValue | "";
-                  setLocationType(nextLocation);
-                  if (nextLocation !== "HOME_VISIT" && assignedOsmUserId) {
-                    setAssignedOsmUserId("");
-                  }
-                }}
+                onChange={(event) => setLocationType(event.target.value as AppointmentLocationValue | "")}
                 value={locationType}
                 disabled={props.homeVisitOnly}
               >

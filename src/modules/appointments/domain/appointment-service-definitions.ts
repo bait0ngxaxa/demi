@@ -16,21 +16,13 @@ export function appointmentSource(sourceServiceRequestId: string | null): Appoin
 export type OneOffVisitOsmInput = {
   appointmentOsmUserId: string | null;
   assignedOsmUserId: string | null;
-  sourceServiceRequestId: string | null;
 };
 
 /**
- * ADR-0023 (SR-D2): an appointment booked from a service request for an อสม. other than the patient's current
- * assignment is a one-off visit; the assignment itself never changes.
+ * ADR-0023 (SR-D2), generalized by ADR-0027 (AP-2): an appointment whose อสม. is not the patient's current
+ * assignment is a one-off visit, whether it was booked from a service request or by the Hospital. The
+ * assignment itself never changes.
  */
-export function isOneOffVisitOsm({
-  appointmentOsmUserId,
-  assignedOsmUserId,
-  sourceServiceRequestId,
-}: OneOffVisitOsmInput): boolean {
-  return (
-    appointmentOsmUserId !== null &&
-    sourceServiceRequestId !== null &&
-    appointmentOsmUserId !== assignedOsmUserId
-  );
+export function isOneOffVisitOsm({ appointmentOsmUserId, assignedOsmUserId }: OneOffVisitOsmInput): boolean {
+  return appointmentOsmUserId !== null && appointmentOsmUserId !== assignedOsmUserId;
 }

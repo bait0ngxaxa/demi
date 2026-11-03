@@ -9,7 +9,6 @@ import {
   AppointmentLineNotificationEventKind,
   MembershipStatus,
   Prisma,
-  Profession,
   PatientServiceRequestStatus,
   type PatientServiceCode,
   Role,
@@ -21,6 +20,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { hospitalOperatorMembershipWhere } from "@/modules/identity/services/hospital-authority";
 import {
   ApplicationError,
   ConflictError,
@@ -47,7 +47,7 @@ import {
   type AppointmentLocationValue,
   type AppointmentTypeValue,
 } from "../domain/appointment-definitions";
-import { SERVICE_APPOINTMENT_TYPE } from "../domain/appointment-service-definitions";
+import { SERVICE_APPOINTMENT_TYPE, isOneOffVisitOsm } from "../domain/appointment-service-definitions";
 import {
   appointmentPatientRescheduleRequestSchema,
   appointmentRescheduleRejectionSchema,
@@ -338,6 +338,11 @@ function hasSameCreateRequestIdentity(
   );
 }
 
+/**
+ * ADR-0027 (AP-1): the staff assignee is any operator of the appointment's Hospital (ADR-0026: an ACTIVE OWNER
+ * or MEMBER with an ACTIVE User of an ACTIVE Hospital), whatever the profession. A kept assignee is not
+ * re-checked.
+ */
 async function assertResponsibleUserIsEligible(
   transaction: Prisma.TransactionClient,
   hospitalId: string,
@@ -349,13 +354,7 @@ async function assertResponsibleUserIsEligible(
   }
 
   const membership = await transaction.hospitalMembership.findFirst({
-    where: {
-      userId: responsibleUserId,
-      hospitalId,
-      status: MembershipStatus.ACTIVE,
-      user: { status: UserStatus.ACTIVE },
-      profession: { in: [Profession.DOCTOR, Profession.NURSE] },
-    },
+    where: hospitalOperatorMembershipWhere(responsibleUserId, hospitalId),
     select: { userId: true },
   });
 
@@ -364,49 +363,38 @@ async function assertResponsibleUserIsEligible(
   }
 }
 
-async function assertAssignedOsmIsCurrentAndEligible(
+/**
+ * ADR-0027 (AP-2/AP-4): the อสม. assignee is any ACTIVE อสม. with an ACTIVE relationship to the appointment's
+ * ACTIVE Hospital, at any location, and never alongside a staff assignee. One who is not the patient's current
+ * อสม. gets the one-off visit scope for this appointment only.
+ */
+async function assertAssignedOsmIsEligible(
   transaction: Prisma.TransactionClient,
   input: {
-    patientHospitalRelationshipId: string;
     hospitalId: string;
     assignedOsmUserId: string | null;
     responsibleUserId: string | null;
-    locationType: AppointmentLocationValue | null;
-    /** ADR-0023 (SR-D2): an appointment from a service request may go to any ACTIVE อสม. of the Hospital. */
-    sourceServiceRequestId: string | null;
   },
 ): Promise<void> {
-  if (!input.assignedOsmUserId) return;
-  if (input.responsibleUserId || input.locationType !== "HOME_VISIT") {
-    throw new ValidationError("An OSM assignee requires a home visit with no staff assignee");
+  if (input.assignedOsmUserId && input.responsibleUserId) {
+    throw new ValidationError("เลือกผู้รับผิดชอบนัดหมายได้คนเดียว: เจ้าหน้าที่หรือ อสม.");
   }
+  if (!input.assignedOsmUserId) return;
 
-  const [assignment, osm] = await Promise.all([
-    input.sourceServiceRequestId ? Promise.resolve({ id: input.sourceServiceRequestId }) : transaction.patientOsmAssignment.findFirst({
-      where: {
-        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-        osmUserId: input.assignedOsmUserId,
-        endedAt: null,
+  const osm = await transaction.user.findFirst({
+    where: {
+      id: input.assignedOsmUserId,
+      status: UserStatus.ACTIVE,
+      roles: { some: { role: Role.OSM } },
+      osmHospitalRelationships: {
+        some: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE, hospital: { status: "ACTIVE" } },
       },
-      select: { id: true },
-    }),
-    transaction.user.findFirst({
-      where: {
-        id: input.assignedOsmUserId,
-        status: UserStatus.ACTIVE,
-        roles: { some: { role: Role.OSM } },
-        osmHospitalRelationships: {
-          some: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE, hospital: { status: "ACTIVE" } },
-        },
-      },
-      select: { id: true },
-    }),
-  ]);
+    },
+    select: { id: true },
+  });
 
-  if (!assignment || !osm) {
-    throw new ValidationError(input.sourceServiceRequestId
-      ? "เลือกได้เฉพาะ อสม. ที่ปฏิบัติงานอยู่กับโรงพยาบาลนี้"
-      : "เลือกได้เฉพาะ อสม. ที่รับผิดชอบผู้ป่วยรายนี้อยู่ในปัจจุบัน");
+  if (!osm) {
+    throw new ValidationError("เลือกได้เฉพาะ อสม. ที่ปฏิบัติงานอยู่กับโรงพยาบาลนี้");
   }
 }
 
@@ -470,13 +458,14 @@ async function createInTransaction(
   }
 
   await assertResponsibleUserIsEligible(transaction, access.target.hospitalId, fields.responsibleUserId);
-  await assertAssignedOsmIsCurrentAndEligible(transaction, {
-    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+  await assertAssignedOsmIsEligible(transaction, {
     hospitalId: access.target.hospitalId,
     assignedOsmUserId: fields.assignedOsmUserId,
     responsibleUserId: fields.responsibleUserId,
-    locationType: fields.locationType,
-    sourceServiceRequestId,
+  });
+  const oneOffVisit = isOneOffVisitOsm({
+    appointmentOsmUserId: fields.assignedOsmUserId,
+    assignedOsmUserId: access.target.patientCurrentOsmUserId,
   });
 
   let sourceRequest: {
@@ -510,6 +499,8 @@ async function createInTransaction(
   const appointment = await transaction.patientAppointment.create({
     data: {
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      // The patient's current อสม. assignment when the appointment is made (shown as "อสม. ที่ดูแลขณะสร้างนัด"),
+      // whoever the assignee is.
       osmAssignmentIdAtCreation: access.target.assignedOsmAssignmentId,
       assignedOsmUserId: fields.assignedOsmUserId,
       sourceServiceRequestId,
@@ -571,7 +562,7 @@ async function createInTransaction(
         serviceCode: sourceRequest.offering.code,
         fromStatus: sourceRequest.status,
         status: PatientServiceRequestStatus.STARTED,
-        oneOffVisit: fields.assignedOsmUserId !== access.target.patientCurrentOsmUserId,
+        oneOffVisit,
       },
     }, transaction);
   }
@@ -613,7 +604,7 @@ async function createInTransaction(
       sourceUpdatedAt: appointment.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, now, { onlyOsmUserId: fields.assignedOsmUserId, onlyOsmIsVisitOsm: sourceServiceRequestId !== null });
+    }, now, { onlyOsmUserId: fields.assignedOsmUserId, onlyOsmIsVisitOsm: sourceServiceRequestId !== null || oneOffVisit });
   }
 
   return toMutationResult(appointment, access.target.hospitalId);
@@ -739,6 +730,10 @@ async function rescheduleInTransaction(
       target: { ...access.target, ...current, appointmentAssignedOsmUserId: current.assignedOsmUserId, locationType: fields.locationType, responsibleUserId: fields.responsibleUserId, operation: "EDIT" } });
   }
   if (input.rescheduleRequestId && !access.scopes.directHospital) throw new ForbiddenError();
+  // AP-3: an อสม. editing their own home visit keeps it or leaves it unassigned; only staff choose another อสม.
+  if (!access.scopes.directHospital && fields.assignedOsmUserId !== null && fields.assignedOsmUserId !== actor.userId) {
+    throw new ForbiddenError();
+  }
   if (current.status !== AppointmentStatus.SCHEDULED) {
     throw new ConflictError("Only a scheduled Appointment can be rescheduled");
   }
@@ -753,13 +748,10 @@ async function rescheduleInTransaction(
     fields.responsibleUserId,
     current.responsibleUserId,
   );
-  await assertAssignedOsmIsCurrentAndEligible(transaction, {
-    patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+  await assertAssignedOsmIsEligible(transaction, {
     hospitalId: access.target.hospitalId,
     assignedOsmUserId: fields.assignedOsmUserId,
     responsibleUserId: fields.responsibleUserId,
-    locationType: fields.locationType,
-    sourceServiceRequestId: current.sourceServiceRequestId,
   });
 
   const updatedAt = nextUpdatedAt(current.updatedAt, now);
@@ -833,7 +825,13 @@ async function rescheduleInTransaction(
       sourceUpdatedAt: result.updatedAt,
       eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
       patientUserId: access.target.patientUserId,
-    }, now, { onlyOsmUserId: fields.assignedOsmUserId, onlyOsmIsVisitOsm: current.sourceServiceRequestId !== null });
+    }, now, {
+      onlyOsmUserId: fields.assignedOsmUserId,
+      onlyOsmIsVisitOsm: current.sourceServiceRequestId !== null || isOneOffVisitOsm({
+        appointmentOsmUserId: fields.assignedOsmUserId,
+        assignedOsmUserId: access.target.patientCurrentOsmUserId,
+      }),
+    });
   }
 
   if (

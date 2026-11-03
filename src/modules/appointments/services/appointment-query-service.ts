@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+import { appointmentAppointerSelect, toAppointmentAppointer, type AppointmentAppointer } from "../domain/appointment-people";
 
 import {
   AppointmentCancellationRequestStatus,
@@ -12,6 +13,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { hospitalOperatorRosterWhere } from "@/modules/identity/services/hospital-authority";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ApplicationError,
@@ -126,6 +128,8 @@ export type AppointmentDetail = {
   cancellationRequests: AppointmentCancellationRequestSummary[];
   coordinationEvents: AppointmentCoordinationSummary[];
   createdByDisplayName: string;
+  /** ADR-0027 (AP-5): "ผู้นัดหมาย", the creator's name and role at the appointment's Hospital. */
+  appointer: AppointmentAppointer;
   type: AppointmentTypeValue;
   /** ADR-0023 (SR-D4): set for an appointment from a service request; optional for a hospital booking. */
   serviceCode: PatientServiceCode | null;
@@ -141,11 +145,15 @@ export type AppointmentDetail = {
   updatedAt: Date;
 };
 
+export type AppointmentOsmCandidate = { userId: string; displayName: string };
+
 export type AppointmentCreateContext = {
   homeVisitOnly?: boolean;
   patient: AppointmentPatientSummary;
   responsibleMembers: ResponsibleHospitalMember[];
   currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
+  /** ADR-0027 (AP-2): every other ACTIVE อสม. of the Hospital; staff only. Choosing one is a one-off visit. */
+  osmCandidates: AppointmentOsmCandidate[];
 };
 
 export type AppointmentRescheduleContext = AppointmentCreateContext & {
@@ -241,16 +249,7 @@ function appointmentDetailSelect(hospitalId: string) {
   createdAt: true,
   updatedAt: true,
   responsibleUser: { select: responsibleUserSelect(hospitalId) },
-  createdByUser: {
-    select: {
-      person: {
-        select: {
-          givenName: true,
-          familyName: true,
-        },
-      },
-    },
-  },
+  createdByUser: { select: appointmentAppointerSelect(hospitalId) },
   assignedOsmUser: {
     select: { person: { select: { givenName: true, familyName: true } } },
   },
@@ -439,7 +438,6 @@ function toHistoryItem(
     isOneOffVisit: showOneOffVisit && isOneOffVisitOsm({
       appointmentOsmUserId: record.assignedOsmUserId,
       assignedOsmUserId: currentOsmUserId,
-      sourceServiceRequestId: record.sourceServiceRequestId,
     }),
     appointmentId: record.id,
     scheduledAt: record.scheduledAt,
@@ -488,6 +486,7 @@ function toDetail(
     cancellationRequests: toCancellationRequests(record.cancellationRequests),
     coordinationEvents: toCoordinationEvents(record.coordinationEvents),
     createdByDisplayName: toDisplayName(record.createdByUser.person),
+    appointer: toAppointmentAppointer(record.createdByUser, toDisplayName),
     type: record.type,
     serviceCode: record.serviceCode,
     source: appointmentSource(record.sourceServiceRequestId),
@@ -530,14 +529,10 @@ async function getResponsibleMembers(
   database: AppointmentAccessDatabase,
   hospitalId: string,
 ): Promise<ResponsibleHospitalMember[]> {
+  // ADR-0027 (AP-1): every operator of the Hospital, whatever the profession.
   const memberships = await database.hospitalMembership.findMany({
-    where: {
-      hospitalId,
-      status: "ACTIVE",
-      user: { status: "ACTIVE" },
-      profession: { in: [Profession.DOCTOR, Profession.NURSE] },
-    },
-    orderBy: { createdAt: "asc" },
+    where: hospitalOperatorRosterWhere(hospitalId),
+    orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
     select: {
       userId: true,
       profession: true,
@@ -559,6 +554,25 @@ async function getResponsibleMembers(
     displayName: toDisplayName(membership.user.person),
     profession: membership.profession,
   }));
+}
+
+/** ADR-0027 (AP-2): the ACTIVE อสม. of the ACTIVE Hospital other than the patient's current one, by name. */
+async function getOsmCandidates(
+  database: AppointmentAccessDatabase,
+  hospitalId: string,
+  currentOsmUserId: string | null,
+): Promise<AppointmentOsmCandidate[]> {
+  const users = await database.user.findMany({
+    where: {
+      status: "ACTIVE",
+      roles: { some: { role: "OSM" } },
+      osmHospitalRelationships: { some: { hospitalId, status: "ACTIVE", hospital: { status: "ACTIVE" } } },
+      ...(currentOsmUserId ? { id: { not: currentOsmUserId } } : {}),
+    },
+    orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
+    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+  });
+  return users.map((user) => ({ userId: user.id, displayName: toDisplayName(user.person) }));
 }
 
 async function getRescheduleResponsibleMembers(
@@ -584,6 +598,16 @@ async function getRescheduleResponsibleMembers(
   }
 
   return members;
+}
+
+/** An edit keeps the appointment's one-off อสม. selectable even once they are no longer eligible. */
+function withKeptOsm(
+  candidates: AppointmentOsmCandidate[],
+  keptOsmUserId: string | null,
+  keptPerson: { givenName: string | null; familyName: string | null } | null,
+): AppointmentOsmCandidate[] {
+  if (!keptOsmUserId || candidates.some((candidate) => candidate.userId === keptOsmUserId)) return candidates;
+  return [...candidates, { userId: keptOsmUserId, displayName: keptPerson ? toDisplayName(keptPerson) : "อสม. เดิม" }];
 }
 
 export async function getAppointmentHistory(
@@ -679,7 +703,6 @@ export async function getAppointmentDetail(
     const showOneOffVisit = (access.scopes.directHospital || access.scopes.networkRead || access.scopes.visitOsm) && isOneOffVisitOsm({
       appointmentOsmUserId: record.assignedOsmUserId,
       assignedOsmUserId: access.target.patientCurrentOsmUserId ?? null,
-      sourceServiceRequestId: record.sourceServiceRequestId,
     });
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
       target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment || access.scopes.visitOsm, access.scopes.directHospital, canAcceptAssignment, showOneOffVisit), contactPhones };
@@ -729,6 +752,9 @@ export async function getAppointmentCreateContext(
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
       responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
+      osmCandidates: access.scopes.directHospital
+        ? await getOsmCandidates(database, access.target.hospitalId, access.target.patientCurrentOsmUserId)
+        : [],
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
         includePhone: access.scopes.directHospital,
         osmUserId: access.target.patientCurrentOsmUserId,
@@ -788,6 +814,13 @@ export async function getAppointmentRescheduleContext(
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
+      osmCandidates: access.scopes.directHospital
+        ? withKeptOsm(
+          await getOsmCandidates(database, access.target.hospitalId, access.target.patientCurrentOsmUserId),
+          record.assignedOsmUserId === access.target.patientCurrentOsmUserId ? null : record.assignedOsmUserId,
+          record.assignedOsmUser?.person ?? null,
+        )
+        : [],
       responsibleMembers: access.scopes.directHospital ? await getRescheduleResponsibleMembers(
         database,
         access.target.hospitalId,
@@ -833,6 +866,7 @@ export const appointmentQueryInternals = {
   appointmentDetailSelect,
   appointmentHistorySelect,
   responsibleUserSelect,
+  getOsmCandidates,
   getResponsibleMembers,
   resolveManageProjection,
   nullableDisplayName,

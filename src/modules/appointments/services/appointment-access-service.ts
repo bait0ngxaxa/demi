@@ -291,7 +291,7 @@ async function resolveVisitOsmScope(
 
   const appointment = await database.patientAppointment.findFirst({
     where: { id: appointmentId.data, patientHospitalRelationshipId },
-    select: { assignedOsmUserId: true, sourceServiceRequestId: true, status: true, scheduledAt: true },
+    select: { assignedOsmUserId: true, status: true, scheduledAt: true },
   });
 
   return Boolean(

@@ -12,28 +12,27 @@ describe("Appointment service definitions (ADR-0023)", () => {
   });
 
   describe("isOneOffVisitOsm", () => {
-    const requestId = "6a7c9b0e-2d1f-4c3a-9e8b-1f2a3b4c5d6e";
     const assigned = "assigned-osm";
     const other = "other-osm";
 
-    it("is a one-off visit when a request books an อสม. other than the assigned one", () => {
-      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: assigned, sourceServiceRequestId: requestId })).toBe(true);
+    it("is a one-off visit when the appointment names an อสม. other than the assigned one", () => {
+      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: assigned })).toBe(true);
     });
 
     it("is a one-off visit when the patient has no assigned อสม.", () => {
-      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: null, sourceServiceRequestId: requestId })).toBe(true);
+      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: null })).toBe(true);
     });
 
     it("is not a one-off visit for the assigned อสม.", () => {
-      expect(isOneOffVisitOsm({ appointmentOsmUserId: assigned, assignedOsmUserId: assigned, sourceServiceRequestId: requestId })).toBe(false);
+      expect(isOneOffVisitOsm({ appointmentOsmUserId: assigned, assignedOsmUserId: assigned })).toBe(false);
     });
 
     it("is not a one-off visit without an อสม.", () => {
-      expect(isOneOffVisitOsm({ appointmentOsmUserId: null, assignedOsmUserId: assigned, sourceServiceRequestId: requestId })).toBe(false);
+      expect(isOneOffVisitOsm({ appointmentOsmUserId: null, assignedOsmUserId: assigned })).toBe(false);
     });
 
-    it("is not a one-off visit for a hospital-booked appointment", () => {
-      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: assigned, sourceServiceRequestId: null })).toBe(false);
+    it("is a one-off visit for a hospital-booked appointment with another อสม. (ADR-0027)", () => {
+      expect(isOneOffVisitOsm({ appointmentOsmUserId: other, assignedOsmUserId: assigned })).toBe(true);
     });
   });
 });

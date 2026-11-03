@@ -317,13 +317,12 @@ async function currentEligibility(
     }
 
     if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED) {
-      // ADR-0023 (SR-D2): a one-off visiting อสม. is not the patient's assigned อสม.
+      // ADR-0023 (SR-D2) / ADR-0027: the appointment's อสม. is the patient's assigned อสม. or a one-off visiting
+      // อสม.; either way they must still be the assignee and an ACTIVE อสม. of the Hospital.
       if (
         notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
         appointment.assignedOsmUserId !== recipientUserId ||
-        !(appointment.sourceServiceRequestId
-          ? await isActiveHospitalOsm(transaction, recipientUserId, relationship.hospital.id)
-          : await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId)
+        !(await isActiveHospitalOsm(transaction, recipientUserId, relationship.hospital.id))
       ) {
         return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
       }

@@ -7,6 +7,7 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { randomUUID } from "node:crypto";
 
+import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appointments/domain/appointment-people";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -14,7 +15,6 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
-  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import { getFollowupHistoryForProgram } from "@/modules/followups/services/followup-query-service";
@@ -98,10 +98,7 @@ function AppointmentDetailView({
   const locationLabel = detail.locationType
     ? APPOINTMENT_LOCATION_LABELS[detail.locationType]
     : "ไม่ระบุสถานที่";
-  const responsiblePresentation = appointmentResponsiblePresentation(
-    detail.responsibleDisplayName,
-    detail.responsibleProfession,
-  );
+  const responsiblePresentation = appointmentAssigneePresentation(detail);
   const followupContext = getAppointmentFollowupContext({
     activeProgram,
     appointmentId: detail.appointmentId,
@@ -206,9 +203,9 @@ function AppointmentDetailView({
               <dd className="mt-1 font-semibold text-text">{formatDate(detail.createdAt)}</dd>
             </div>
             <div>
-              <dt className="text-sm text-text-muted">ผู้สร้าง</dt>
+              <dt className="text-sm text-text-muted">ผู้นัดหมาย</dt>
               <dd className="mt-1 break-words font-semibold text-text">
-                {detail.createdByDisplayName}
+                {appointerLabel(detail.appointer)}
               </dd>
             </div>
             <AppointmentContactPhoneEntries

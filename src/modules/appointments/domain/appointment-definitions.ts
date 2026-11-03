@@ -66,6 +66,7 @@ export function appointmentResponsiblePresentation(
     return { heading: "พยาบาลผู้ดูแล", displayName };
   }
 
-  return { heading: "ผู้รับผิดชอบเดิม", displayName };
+  // ADR-0027 (AP-1): any staff member may be responsible, whatever the profession.
+  return { heading: "เจ้าหน้าที่ผู้ดูแล", displayName };
 }
 
