@@ -41,7 +41,7 @@ const detail: AppointmentDetail & { contactPhones: { assignedOsmPhone: string | 
   assignedOsmUserId: null, assignedOsmDisplayName: null, currentAssigneeAcceptance: null, canAcceptAssignment: false,
   responsibleUserId: null, responsibleDisplayName: null, responsibleProfession: null,
   osmAtCreationDisplayName: "อสม. เมื่อสร้างนัด", currentAcknowledgement: null, cancellationRequests: [], coordinationEvents: [],
-  createdByDisplayName: "เจ้าหน้าที่ผู้สร้าง", type: "EDUCATION", serviceCode: null, fromServiceRequest: false, status: "SCHEDULED",
+  createdByDisplayName: "เจ้าหน้าที่ผู้สร้าง", appointer: { displayName: "เจ้าหน้าที่ผู้สร้าง", role: "STAFF" }, type: "EDUCATION", serviceCode: null, fromServiceRequest: false, status: "SCHEDULED",
   scheduledAt: new Date("2026-10-14T03:00:00.000Z"), durationMinutes: 30,
   locationType: "CLINIC", locationDetail: "ห้องตรวจ ก", note: null,
   createdAt: new Date("2026-10-13T03:00:00.000Z"), updatedAt: new Date("2026-10-13T03:00:00.000Z"),
@@ -69,6 +69,24 @@ describe("Work appointment journey", () => {
     expect(markup).toContain("ไม่สร้างบันทึกการติดตามผลหรือจบโปรแกรมอัตโนมัติ");
     expect([...markup.matchAll(/id="appointment-acknowledgement-heading"/g)]).toHaveLength(1);
     expect(markup).not.toContain("ส่งคำขอยกเลิกแทนผู้ป่วย");
+  });
+
+  it("shows ผู้นัดหมาย with the creator's role and the one assignee with theirs, to staff and อสม. alike (ADR-0027)", async () => {
+    const staffView = await render();
+    expect(staffView).toContain("ผู้นัดหมาย");
+    expect(staffView).toContain("เจ้าหน้าที่ผู้สร้าง · เจ้าหน้าที่");
+    expect(staffView).not.toContain(">ผู้สร้าง<");
+
+    mocks.detail.mockResolvedValue({
+      ...detail, canManage: false, canHospitalManage: false, canProxyPatientActions: true, isOneOffVisit: true,
+      responsibleUserId: null, responsibleDisplayName: null, responsibleProfession: null,
+      assignedOsmUserId: "osm", assignedOsmDisplayName: "อสม. ผู้ไปเยี่ยม", appointer: { displayName: "หมอ ก", role: "DOCTOR" },
+    });
+    const osmView = await render();
+    expect(osmView).toContain("หมอ ก · แพทย์");
+    expect(osmView).toContain("อสม. ผู้รับผิดชอบนัด");
+    expect(osmView).toContain("อสม. ผู้ไปเยี่ยม");
+    expect(osmView).toContain("เยี่ยมครั้งนี้เท่านั้น");
   });
 
   it("shows the server-projected Hospital and Patient phones as call links (E4)", async () => {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appointmentSource, isOneOffVisitOsm, type AppointmentSource } from "../domain/appointment-service-definitions";
+import { appointmentAppointerSelect, toAppointmentAppointer, type AppointmentAppointer } from "../domain/appointment-people";
 import type { PatientServiceCode } from "@prisma/client";
 
 import {
@@ -90,6 +91,9 @@ export type WorkAppointmentListItem = {
   responsibleDisplayName: string | null;
   responsibleProfession: Profession | null;
   osmAtCreationDisplayName: string | null;
+  /** ADR-0027 (AP-5): the assignee อสม. (one assignee: this or the staff member) and "ผู้นัดหมาย". */
+  assignedOsmDisplayName: string | null;
+  appointer: AppointmentAppointer;
   pendingRequestBadges: {
     reschedule: boolean;
     staleReschedule: boolean;
@@ -618,6 +622,8 @@ function workAppointmentSelect(hospitalId: string) {
         },
       },
     },
+    assignedOsmUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    createdByUser: { select: appointmentAppointerSelect(hospitalId) },
     patientHospitalRelationship: {
       select: {
         hospital: { select: { name: true } },
@@ -699,6 +705,8 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audienc
     osmAtCreationDisplayName: record.osmAssignmentAtCreation
       ? toDisplayName(record.osmAssignmentAtCreation.osmUser.person)
       : null,
+    assignedOsmDisplayName: record.assignedOsmUser ? toDisplayName(record.assignedOsmUser.person) : null,
+    appointer: toAppointmentAppointer(record.createdByUser, toDisplayName),
     pendingRequestBadges: {
       reschedule: hasPendingReschedule,
       staleReschedule: hasPendingReschedule && !hasCurrentReschedule,

@@ -174,7 +174,7 @@ const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   updatedAt: recordedAt,
   responsibleDisplayName: "Doctor Example",
   responsibleProfession: Profession.DOCTOR,
-  osmAtCreationDisplayName: "OSM Example",
+  osmAtCreationDisplayName: "OSM Example", assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" },
   acknowledgement: null,
   cancellationRequests: [
     {
@@ -373,9 +373,9 @@ describe("Patient Personal care read views", () => {
   it.each([
     ["doctor", Profession.DOCTOR, "แพทย์ผู้ดูแล"],
     ["nurse", Profession.NURSE, "พยาบาลผู้ดูแล"],
-    ["historical coordinator", Profession.COORDINATOR, "ผู้รับผิดชอบเดิม"],
-    ["historical other", Profession.OTHER, "ผู้รับผิดชอบเดิม"],
-    ["historical null profession", null, "ผู้รับผิดชอบเดิม"],
+    ["historical coordinator", Profession.COORDINATOR, "เจ้าหน้าที่ผู้ดูแล"],
+    ["historical other", Profession.OTHER, "เจ้าหน้าที่ผู้ดูแล"],
+    ["historical null profession", null, "เจ้าหน้าที่ผู้ดูแล"],
   ] as const)("labels %s appointment responsibility accurately", async (_label, profession, heading) => {
     const detailMarkup = renderToStaticMarkup(
       <PatientSelfAppointmentDetailView

@@ -24,7 +24,7 @@ const appointment = {
   appointmentId: "appointment", type: "EDUCATION" as const, serviceCode: "EMPOWERMENT" as const,
   source: "PATIENT_REQUEST" as const, scheduledAt: at, durationMinutes: 30,
   locationType: "HOME_VISIT" as const, locationDetail: null, status: "SCHEDULED" as const, updatedAt: at,
-  responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null,
+  responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" as const },
   acknowledgement: null, cancellationRequests: [],
 };
 const hospital = { hospitalId: "hospital", hospitalName: "โรงพยาบาล", access: "DIRECT" as const, canCreate: true, canResolveRequests: true, canAcceptAssignments: false };
@@ -80,7 +80,7 @@ describe("SR-C appointment surfaces", () => {
     document.body.append(container);
     const root = createRoot(container);
     try {
-      await act(async () => root.render(<AppointmentForm mode="create" submissionNonce="nonce" relationshipId="relationship" patient={{ patientHospitalRelationshipId: "relationship", displayName: "ผู้ป่วย", hospitalNumber: null, hospital: { id: "hospital", name: "โรงพยาบาล" } }} responsibleMembers={[]} currentOsmAssignee={null} />));
+      await act(async () => root.render(<AppointmentForm mode="create" submissionNonce="nonce" relationshipId="relationship" patient={{ patientHospitalRelationshipId: "relationship", displayName: "ผู้ป่วย", hospitalNumber: null, hospital: { id: "hospital", name: "โรงพยาบาล" } }} responsibleMembers={[]} currentOsmAssignee={null} osmCandidates={[]} />));
       const service = container.querySelector<HTMLSelectElement>("#appointment-service");
       const type = container.querySelector<HTMLSelectElement>("#appointment-type");
       if (!service || !type) throw new Error("Missing booking controls");

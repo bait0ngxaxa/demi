@@ -52,7 +52,7 @@ const work: ComponentProps<typeof AppointmentInteractionControls> = {
 const self: PatientSelfAppointmentItem = {
   appointmentId, serviceCode: null, source: "HOSPITAL", type: "EDUCATION", scheduledAt: updatedAt, updatedAt, status: "SCHEDULED",
   durationMinutes: null, locationType: null, locationDetail: null,
-  responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null,
+  responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" },
   acknowledgement: null, cancellationRequests: [],
 };
 const request: ComponentProps<typeof AppointmentInteractionControls>["cancellationRequests"][number] = {

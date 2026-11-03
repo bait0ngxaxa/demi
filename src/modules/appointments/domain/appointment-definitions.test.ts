@@ -22,9 +22,10 @@ describe("appointment responsible-person presentation", () => {
   it.each([
     [Profession.DOCTOR, "แพทย์ผู้ดูแล"],
     [Profession.NURSE, "พยาบาลผู้ดูแล"],
-    [Profession.COORDINATOR, "ผู้รับผิดชอบเดิม"],
-    [Profession.OTHER, "ผู้รับผิดชอบเดิม"],
-    [null, "ผู้รับผิดชอบเดิม"],
+    // ADR-0027 (AP-1): any staff member may be responsible, whatever the profession.
+    [Profession.COORDINATOR, "เจ้าหน้าที่ผู้ดูแล"],
+    [Profession.OTHER, "เจ้าหน้าที่ผู้ดูแล"],
+    [null, "เจ้าหน้าที่ผู้ดูแล"],
   ] as const)("uses a factual heading for %s", (profession, heading) => {
     expect(appointmentResponsiblePresentation("สมชาย ผู้รับผิดชอบ", profession)).toEqual({
       heading,

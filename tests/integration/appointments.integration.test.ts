@@ -2524,6 +2524,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       "locationType",
       "osmAcceptanceStatus",
       "osmAtCreationDisplayName",
+      "assignedOsmDisplayName",
+      "appointer",
       "patientDisplayName",
       "pendingRequestBadges",
       "relationshipId",
@@ -2733,6 +2735,8 @@ describe("Appointment assignees (ADR-0027, AP-1)", () => {
 
     await expect(getAppointmentDetail(visitOsm.actor, relationshipId, appointmentId)).resolves.toMatchObject({
       appointmentId, isOneOffVisit: true, canAcceptAssignment: true, canProxyPatientActions: true, canManage: false, canHospitalManage: false,
+      // AP-5: ผู้นัดหมาย is the creating OWNER (no profession), shown as เจ้าหน้าที่.
+      appointer: { displayName: owner.displayName, role: "STAFF" },
     });
     expect((await listWorkAppointments(visitOsm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" })).items.map((item) => item.appointmentId)).toEqual([appointmentId]);
     await expect(countWorkAppointmentsAwaitingMyAcceptance(visitOsm.actor)).resolves.toBe(1);
@@ -2804,6 +2808,8 @@ describe("Appointment assignees (ADR-0027, AP-1)", () => {
     const own = await createAppointment(currentOsm.actor, appointmentInput(patient.relationshipId, { locationType: "HOME_VISIT" }));
     expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: own.appointmentId }, select: { assignedOsmUserId: true } }))
       .toEqual({ assignedOsmUserId: currentOsm.userId });
+    await expect(getAppointmentDetail(currentOsm.actor, patient.relationshipId, own.appointmentId))
+      .resolves.toMatchObject({ appointer: { displayName: currentOsm.displayName, role: "OSM" } });
 
     // Editing their home visit, they cannot hand it to another อสม. or move it out of the home.
     await expect(rescheduleAppointment(currentOsm.actor, rescheduleInput(patient.relationshipId, own.appointmentId, own.updatedAt, { locationType: "HOME_VISIT", assignedOsmUserId: anyOsm.userId })))

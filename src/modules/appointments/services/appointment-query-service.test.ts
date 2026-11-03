@@ -70,7 +70,7 @@ function appointmentRecord(overrides: Record<string, unknown> = {}): Record<stri
       person: { givenName: "สมหญิง", familyName: "ผู้รับผิดชอบ" },
       memberships: [{ profession: Profession.DOCTOR }],
     },
-    createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "รายการ" } },
+    createdByUser: { person: { givenName: "ผู้สร้าง", familyName: "รายการ" }, memberships: [{ profession: Profession.NURSE }], osmHospitalRelationships: [] },
     ...overrides,
   };
 }
@@ -111,7 +111,11 @@ function createDatabase(options: {
       : [],
   };
   const database = {
-    user: { findUnique: vi.fn().mockResolvedValue(actorRecord) },
+    user: {
+      findUnique: vi.fn().mockResolvedValue(actorRecord),
+      // ADR-0027: the Hospital's other ACTIVE อสม. offered to staff in the assignee picker.
+      findMany: vi.fn().mockResolvedValue([{ id: "99999999-9999-4999-8999-999999999999", person: { givenName: "สมปอง", familyName: "อสม. อื่น" } }]),
+    },
     // ADR-0016: no active network association unless a test supplies one.
     hospitalServiceArea: { findFirst: vi.fn().mockResolvedValue(null) },
     patientHospitalRelationship: {
@@ -343,4 +347,5 @@ it.each([null, "request"])("SR-C projects service/source without adding source I
   }
   expect(Object.keys(history.items[0] ?? {}).sort()).toEqual(["appointmentId", "scheduledAt", "type", "status", "durationMinutes", "locationType", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "currentAcknowledgement", "cancellationRequests", "coordinationEvents", "serviceCode", "source", "isOneOffVisit"].sort());
   expect(detail.createdByDisplayName).toBe("ผู้สร้าง รายการ");
+  expect(detail.appointer).toEqual({ displayName: "ผู้สร้าง รายการ", role: "NURSE" });
 });

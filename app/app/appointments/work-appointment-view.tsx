@@ -1,5 +1,6 @@
 import { AppointmentServiceSource, OneOffVisitNote } from "../appointment-service-source";
 import Link from "next/link";
+import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appointments/domain/appointment-people";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_TYPE_LABELS,
-  appointmentResponsiblePresentation,
   type AppointmentStatusValue,
 } from "@/modules/appointments/domain/appointment-definitions";
 import type {
@@ -55,10 +55,7 @@ function buildHref(
 }
 
 function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.Element {
-  const responsible = appointmentResponsiblePresentation(
-    item.responsibleDisplayName,
-    item.responsibleProfession,
-  );
+  const responsible = appointmentAssigneePresentation(item);
   return (
     <li>
       <Link
@@ -80,6 +77,9 @@ function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.
             <OneOffVisitNote visible={item.isOneOffVisit} />
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
               {responsible.heading}: {responsible.displayName}
+            </p>
+            <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+              ผู้นัดหมาย: {appointerLabel(item.appointer)}
             </p>
             <p className="mt-1 break-words text-sm leading-6 text-text-muted">
               OSM ณ เวลาสร้างนัด: {item.osmAtCreationDisplayName ?? "ไม่มีข้อมูล"}

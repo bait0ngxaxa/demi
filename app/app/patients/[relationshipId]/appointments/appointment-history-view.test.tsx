@@ -88,7 +88,7 @@ describe("Work appointment responsibility labels", () => {
 
     expect(markup).toContain("แพทย์ผู้ดูแล: Doctor Example");
     expect(markup).toContain("พยาบาลผู้ดูแล: Nurse Example");
-    expect(markup).toContain("ผู้รับผิดชอบเดิม: Coordinator Example");
+    expect(markup).toContain("เจ้าหน้าที่ผู้ดูแล: Coordinator Example");
     expect(markup).toContain("ผู้รับผิดชอบ: ยังไม่ระบุ");
     expect(markup).not.toContain("แพทย์ผู้ดูแล: Coordinator Example");
     expect(markup).not.toContain("พยาบาลผู้ดูแล: Coordinator Example");

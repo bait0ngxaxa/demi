@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appointmentSource, type AppointmentSource } from "@/modules/appointments/domain/appointment-service-definitions";
+import { staffPersonRole, type AppointmentAppointer } from "@/modules/appointments/domain/appointment-people";
 import type { PatientServiceCode } from "@prisma/client";
 import type { AppointmentContactPhones } from "@/modules/appointments/domain/appointment-contact-phones";
 import { loadAppointmentContactPhones } from "@/modules/appointments/services/appointment-contact-phone-service";
@@ -230,6 +231,9 @@ export type PatientSelfAppointmentItem = {
   responsibleDisplayName: string | null;
   responsibleProfession: Profession | null;
   osmAtCreationDisplayName: string | null;
+  /** ADR-0027 (AP-5): the assignee อสม. and "ผู้นัดหมาย"; this projection already shows staff and อสม. names. */
+  assignedOsmDisplayName: string | null;
+  appointer: AppointmentAppointer;
   acknowledgement: {
     source: AppointmentInteractionSource;
     acknowledgedAt: Date;
@@ -409,14 +413,23 @@ function appointmentPatientSelect(relationshipId: string) {
       },
     },
     { profession: true },
+    { id: true },
   );
 }
 
 /** The responsible person's profession comes from their membership at the appointment's Hospital only. */
-function appointmentSelect<TMembershipSelect extends Prisma.HospitalMembershipSelect>(
+function appointmentSelect<
+  TMembershipSelect extends Prisma.HospitalMembershipSelect,
+  TOsmRelationshipSelect extends Prisma.OsmHospitalRelationshipSelect,
+>(
   membershipWhere: Prisma.HospitalMembershipWhereInput,
   membershipSelect: TMembershipSelect,
+  osmRelationshipSelect: TOsmRelationshipSelect,
 ) {
+  // ADR-0027 (AP-5): the appointer's role is read from the same Hospital filter as the responsible person.
+  const osmRelationshipWhere = membershipWhere.hospital
+    ? ({ hospital: membershipWhere.hospital } satisfies Prisma.OsmHospitalRelationshipWhereInput)
+    : {};
   return {
   id: true,
   type: true,
@@ -440,6 +453,14 @@ function appointmentSelect<TMembershipSelect extends Prisma.HospitalMembershipSe
   osmAssignmentAtCreation: {
     select: {
       osmUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+    },
+  },
+  assignedOsmUser: { select: { person: { select: { givenName: true, familyName: true } } } },
+  createdByUser: {
+    select: {
+      person: { select: { givenName: true, familyName: true } },
+      memberships: { where: membershipWhere, select: membershipSelect },
+      osmHospitalRelationships: { where: osmRelationshipWhere, select: osmRelationshipSelect },
     },
   },
   acknowledgements: {
@@ -559,7 +580,14 @@ function toFollowupHistoryItem(record: FollowupHistoryRecord): PatientSelfFollow
   };
 }
 
-function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentItem {
+/** The hub selects each person's relationships with their Hospital and filters them to the row's Hospital first. */
+type AppointmentItemSource = Omit<AppointmentRecord, "createdByUser"> & {
+  createdByUser: Omit<AppointmentRecord["createdByUser"], "osmHospitalRelationships"> & {
+    osmHospitalRelationships: readonly unknown[];
+  };
+};
+
+function toAppointmentItem(record: AppointmentItemSource): PatientSelfAppointmentItem {
   const acknowledgement = record.acknowledgements.find(
     (item) => item.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
   );
@@ -582,6 +610,13 @@ function toAppointmentItem(record: AppointmentRecord): PatientSelfAppointmentIte
     osmAtCreationDisplayName: record.osmAssignmentAtCreation
       ? patientAppointmentDisplayName(record.osmAssignmentAtCreation.osmUser.person)
       : null,
+    assignedOsmDisplayName: record.assignedOsmUser ? patientAppointmentDisplayName(record.assignedOsmUser.person) : null,
+    appointer: {
+      displayName: patientAppointmentDisplayName(record.createdByUser.person),
+      role: record.createdByUser.memberships[0]
+        ? staffPersonRole(record.createdByUser.memberships[0].profession ?? null)
+        : record.createdByUser.osmHospitalRelationships.length > 0 ? "OSM" : null,
+    },
     acknowledgement: acknowledgement
       ? { source: acknowledgement.source, acknowledgedAt: acknowledgement.acknowledgedAt }
       : null,
@@ -1378,6 +1413,7 @@ export async function listOwnPatientAppointmentHub(
         ...appointmentSelect(
           { hospital: { is: { patientRelationships: { some: { id: { in: scopeIds } } } } } },
           { hospitalId: true, profession: true },
+          { hospitalId: true },
         ),
         patientHospitalRelationshipId: true,
         patientHospitalRelationship: { select: { hospitalId: true } },
@@ -1398,6 +1434,11 @@ export async function listOwnPatientAppointmentHub(
                 memberships: record.responsibleUser.memberships.filter((membership) => membership.hospitalId === hospitalId),
               }
             : null,
+          createdByUser: {
+            ...record.createdByUser,
+            memberships: record.createdByUser.memberships.filter((membership) => membership.hospitalId === hospitalId),
+            osmHospitalRelationships: record.createdByUser.osmHospitalRelationships.filter((relationship) => relationship.hospitalId === hospitalId),
+          },
         });
 
         return {

@@ -35,7 +35,7 @@ const relationship = {
 const appointment: PatientSelfAppointmentHistory["appointments"][number] = {
   appointmentId: APPT, serviceCode: null, source: "HOSPITAL", type: "FOLLOW_UP" as never, scheduledAt: new Date("2026-11-01T03:00:00Z"), durationMinutes: 30,
   locationType: "HOSPITAL" as never, locationDetail: "อาคารสังเคราะห์", status: "SCHEDULED" as never, updatedAt: new Date("2026-10-01T00:00:00Z"),
-  responsibleDisplayName: "ผู้ดูแลสังเคราะห์", responsibleProfession: null, osmAtCreationDisplayName: null,
+  responsibleDisplayName: "ผู้ดูแลสังเคราะห์", responsibleProfession: null, osmAtCreationDisplayName: null, assignedOsmDisplayName: null, appointer: { displayName: "พยาบาลผู้นัด", role: "NURSE" },
   acknowledgement: null,
   cancellationRequests: [{ source: AppointmentInteractionSource.PATIENT_SELF, status: AppointmentCancellationRequestStatus.PENDING, submittedAt: new Date("2026-10-02T00:00:00Z") }],
 };
