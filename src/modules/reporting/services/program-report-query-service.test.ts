@@ -1,4 +1,5 @@
-vi.mock("./round-report-query-service", () => ({ loadRoundReports: vi.fn().mockResolvedValue(new Map()) }));
+const mockedLoadProgramRoundReport = vi.hoisted(() => vi.fn());
+vi.mock("./round-report-query-service", () => ({ loadProgramRoundReport: mockedLoadProgramRoundReport }));
 import {
   FollowupActivityProgressStatus,
   HospitalStatus,
@@ -203,6 +204,7 @@ function createDatabase(input: {
     findMany: ReturnType<typeof vi.fn>;
     count: ReturnType<typeof vi.fn>;
   };
+  screeningAssessment: { findMany: ReturnType<typeof vi.fn> };
 } {
   return {
     patientProgram: { findFirst: vi.fn().mockResolvedValue(input.program ?? coreRecord()) },
@@ -226,6 +228,7 @@ function createDatabase(input: {
       findMany: vi.fn().mockResolvedValue(input.followups ?? [followupRecord(1), followupRecord(2), followupRecord(3)]),
       count: vi.fn().mockResolvedValue(input.followups?.length ?? 3),
     },
+    screeningAssessment: { findMany: vi.fn().mockResolvedValue([]) },
   } as unknown as ProgramReportQueryDatabase & {
     patientProgram: { findFirst: ReturnType<typeof vi.fn> };
     patientBaseline: { findFirst: ReturnType<typeof vi.fn> };
@@ -238,6 +241,7 @@ function createDatabase(input: {
       findMany: ReturnType<typeof vi.fn>;
       count: ReturnType<typeof vi.fn>;
     };
+    screeningAssessment: { findMany: ReturnType<typeof vi.fn> };
   };
 }
 
@@ -245,6 +249,7 @@ describe("Program reporting query service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedReportAccess.mockResolvedValue(access);
+    mockedLoadProgramRoundReport.mockResolvedValue({ rounds: [], roundVitals: [] });
   });
 
   it("projects exact source records, explicit missing fields, safe evidence metadata, and bounded pages", async () => {
@@ -362,6 +367,18 @@ describe("Program reporting query service", () => {
         take: 3,
       }),
     );
+    // RPT-01: one batched round read for the exact Program with staff recorder provenance, and the
+    // Program's own screenings read with the workbook select.
+    expect(mockedLoadProgramRoundReport).toHaveBeenCalledTimes(1);
+    expect(mockedLoadProgramRoundReport).toHaveBeenCalledWith(database, programId, { recorderNames: true });
+    expect(database.screeningAssessment.findMany).toHaveBeenCalledTimes(1);
+    expect(database.screeningAssessment.findMany).toHaveBeenCalledWith({
+      where: { patientProgramId: programId, patientHospitalRelationshipId: relationshipId },
+      orderBy: { submittedAt: "asc" },
+      select: { submittedAt: true, instrument: true, scoringVersion: true, result: true },
+    });
+    expect(projection.roundVitals).toEqual([]);
+    expect(projection.screening).toEqual({ pam: { state: "MISSING" }, proms: { state: "MISSING" } });
   });
 
   it("keeps completed Programs with no linked Baseline or Final neutral", async () => {
@@ -398,6 +415,62 @@ describe("Program reporting query service", () => {
       nextCursor: null,
     });
     expect(database.patientBaseline.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("maps each opened round's vitals with explicit missing states and Patient self-recorded provenance", async () => {
+    const serviceDate = new Date("2026-08-20T00:00:00.000Z");
+    const recordedAt = new Date("2026-08-20T05:00:00.000Z");
+    const view = {
+      serviceDate,
+      recordedAt,
+      weight: 70,
+      heightCm: 160,
+      waistCircumference: null,
+      systolicBloodPressure: 120,
+      diastolicBloodPressure: 80,
+      bloodSugar: null,
+      bmi: 27.3,
+    };
+    mockedLoadProgramRoundReport.mockResolvedValue({
+      rounds: [],
+      roundVitals: [
+        { roundNumber: 1, vitals: { ...view, source: "ROUND_VITALS", byPatient: true, recordedByDisplayName: "ชื่อผู้ป่วย" } },
+        { roundNumber: 2, vitals: null },
+        { roundNumber: 3, vitals: { ...view, source: "FOLLOWUP", byPatient: false, recordedByDisplayName: "พยาบาล" } },
+      ],
+    });
+
+    const projection = await getProgramReportingProjection(actor, relationshipId, programId, undefined, {
+      database: createDatabase(),
+    });
+
+    expect(projection.roundVitals).toEqual([
+      {
+        roundNumber: 1,
+        title: expect.stringContaining("ครั้งที่ 1"),
+        vitals: {
+          state: "PRESENT",
+          source: "ROUND_VITALS",
+          serviceDate,
+          recordedAt,
+          recordedBy: { kind: "PATIENT_SELF" },
+          measurements: {
+            weight: { state: "RECORDED", value: 70 },
+            waistCircumference: { state: "NOT_RECORDED" },
+            systolicBloodPressure: { state: "RECORDED", value: 120 },
+            diastolicBloodPressure: { state: "RECORDED", value: 80 },
+            bloodSugar: { state: "NOT_RECORDED" },
+          },
+          heightCm: { state: "RECORDED", value: 160 },
+          bmi: { state: "RECORDED", value: 27.3 },
+        },
+      },
+      { roundNumber: 2, title: expect.stringContaining("ครั้งที่ 2"), vitals: { state: "MISSING" } },
+      expect.objectContaining({
+        roundNumber: 3,
+        vitals: expect.objectContaining({ source: "FOLLOWUP", recordedBy: { kind: "STAFF", displayName: "พยาบาล" } }),
+      }),
+    ]);
   });
 
   it("fails closed if a child source violates exact Program ownership", async () => {

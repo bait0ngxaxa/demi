@@ -1,5 +1,8 @@
 import { addProgramRound, addRoundPlanItem, markCustomItemDone } from "@/modules/patient-program-rounds/services/round-plan-write-service";
-import { completePatientProgramRound } from "@/modules/patient-program-rounds/services/round-service";
+import { completePatientProgramRound, recordPatientProgramRoundVitals } from "@/modules/patient-program-rounds/services/round-service";
+import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
+import { GUIDELINE_ROUND_COUNT } from "@/modules/patient-program-rounds/domain/round-catalog";
+import { submitScreening } from "@/modules/screening/services/screening-service";
 import { getHospitalReportingDatasetForExport } from "@/modules/reporting/services/hospital-report-query-service";
 import {
   HospitalStatus,
@@ -29,6 +32,7 @@ import {
   openFinalAssessmentRound,
   openFollowupRound,
   openGoalPlanRound,
+  openProgramRound,
 } from "./support/program-rounds";
 import { bookletPlan, dreamCard, routineTable, withDefaults } from "./support/booklet-forms";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
@@ -511,6 +515,152 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     expect(JSON.stringify(programBReport)).not.toContain("success");
     expect(JSON.stringify(programBReport)).not.toContain("failure");
   });
+
+  it("reports every opened round's vitals and the Program PAM/PROMs exactly as the Hospital workbook row (RPT-01)", async () => {
+    const hospital = await createHospital("RPT01");
+    const owner = await createHospitalActor({ hospitalId: hospital.id });
+    const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER });
+    const patient = await createPatient(owner.actor, hospital.id, "rpt01-a");
+    const legacyPatient = await createPatient(owner.actor, hospital.id, "rpt01-b");
+    const program = await openPatientProgram(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
+    const legacyProgram = await openPatientProgram(owner.actor, { patientHospitalRelationshipId: legacyPatient.relationshipId });
+    const programId = program.patientProgramId;
+    await prisma.person.update({ where: { id: owner.actor.personId }, data: { givenName: "พยาบาล", familyName: "ผู้บันทึก" } });
+    const vitals = (roundNumber: number, values: Record<string, unknown>): Record<string, unknown> => ({
+      patientProgramId: programId,
+      roundNumber,
+      submissionNonce: randomUUID(),
+      waistCircumference: null,
+      systolicBloodPressure: null,
+      diastolicBloodPressure: null,
+      bloodSugar: null,
+      ...values,
+    });
+
+    // Round 1: vitals plus the booklet PAM and PROMs of this Program.
+    await recordPatientProgramRoundVitals(owner.actor, vitals(1, {
+      serviceDate: "2026-08-17", weight: 74, heightCm: 162, waistCircumference: 92,
+      systolicBloodPressure: 130, diastolicBloodPressure: 85, bloodSugar: 118,
+    }));
+    for (const instrument of ["PAM", "PROMS"] as const) {
+      await submitScreening(owner.actor, {
+        patientHospitalRelationshipId: patient.relationshipId,
+        patientProgramId: programId,
+        submissionNonce: randomUUID(),
+        instrument,
+        responses: {
+          answers: instrument === "PAM"
+            ? { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 }
+            : { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
+        },
+      });
+    }
+    // Round 2: vitals with a new height. Round 3: a Follow-up measurement and no round vitals.
+    await openProgramRound(programId, 2);
+    await recordPatientProgramRoundVitals(owner.actor, vitals(2, { serviceDate: "2026-08-24", weight: 73, heightCm: 160, bloodSugar: 110 }));
+    await createFollowupForProgram(owner.actor, followupInput(programId, 71));
+    // Rounds 4-6 stay without vitals; round 7 is an extra round with vitals and no height of its own.
+    await openProgramRound(programId, GUIDELINE_ROUND_COUNT + 1);
+    await addProgramRound(owner.actor, { patientProgramId: programId, submissionNonce: randomUUID() });
+    await recordPatientProgramRoundVitals(owner.actor, vitals(7, { serviceDate: "2026-10-05", weight: 69, systolicBloodPressure: 121, diastolicBloodPressure: 79 }));
+
+    // A legacy combined screening (read only) answers both PAM and PROMs of its Program.
+    await prisma.screeningAssessment.create({
+      data: {
+        patientHospitalRelationshipId: legacyPatient.relationshipId,
+        patientProgramId: legacyProgram.patientProgramId,
+        conductedByUserId: owner.userId,
+        submissionNonce: randomUUID(),
+        instrument: "COMBINED",
+        questionSetKey: "demi-screening",
+        questionSetVersion: "legacy-prototype-v1",
+        scoringVersion: "legacy-prototype-v1",
+        responses: {
+          pam: { "pam-1": 2, "pam-2": 2, "pam-3": 2, "pam-4": 2, "pam-5": 2 },
+          proms: { "proms-1": 3, "proms-2": 3, "proms-3": 3, "proms-4": 3 },
+          confidenceScore: 7,
+          confidenceImprovementPlan: null,
+        },
+        result: { pamTotal: 10, promsTotal: 12, promsMin: 3, combinedTotal: 22, percentage: 50, level: "L3", zone: "YELLOW" },
+      },
+    });
+
+    const report = await getProgramReportingProjection(owner.actor, patient.relationshipId, programId);
+    const legacyReport = await getProgramReportingProjection(owner.actor, legacyPatient.relationshipId, legacyProgram.patientProgramId);
+    const dataset = await getHospitalReportingDatasetForExport(owner.actor, { hospitalId: hospital.id });
+    const row = dataset.programs.find((candidate) => candidate.patientProgramId === programId);
+    const legacyRow = dataset.programs.find((candidate) => candidate.patientProgramId === legacyProgram.patientProgramId);
+    const byRound = new Map(report.roundVitals.map((round) => [round.roundNumber, round.vitals]));
+    const present = (roundNumber: number) => {
+      const value = byRound.get(roundNumber);
+      if (value?.state !== "PRESENT") throw new Error(`round ${roundNumber} vitals missing`);
+      return value;
+    };
+
+    // Every opened round is reported in order, with explicit missing states.
+    expect(report.roundVitals.map((round) => round.roundNumber)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(report.roundVitals.map((round) => round.title)).toEqual(report.rounds.map((round) => round.title));
+    for (const roundNumber of [4, 5, 6]) expect(byRound.get(roundNumber)).toEqual({ state: "MISSING" });
+
+    // Rounds 1 and 2 equal the workbook row's round vitals (same source, values and height).
+    for (const [roundNumber, workbook] of [[1, row?.roundVitals.round1], [2, row?.roundVitals.round2]] as const) {
+      const vitalsRecord = present(roundNumber);
+      expect(workbook?.state).toBe("PRESENT");
+      expect(vitalsRecord.source).toBe("ROUND_VITALS");
+      expect(workbook).toEqual({
+        state: "PRESENT",
+        value: {
+          serviceDate: vitalsRecord.serviceDate?.toISOString().slice(0, 10),
+          measurements: vitalsRecord.measurements,
+          heightCm: vitalsRecord.heightCm,
+        },
+      });
+      expect(vitalsRecord.recordedBy).toEqual({ kind: "STAFF", displayName: "พยาบาล ผู้บันทึก" });
+      expect(vitalsRecord.recordedAt).toBeInstanceOf(Date);
+    }
+    expect(present(1).bmi).toEqual({ state: "RECORDED", value: calculateBodyMassIndex(74, 162) });
+    expect(present(2).bmi).toEqual({ state: "RECORDED", value: calculateBodyMassIndex(73, 160) });
+
+    // Round 3 reads its Follow-up measurement; round 7 its own vitals with the latest recorded height.
+    expect(present(3)).toMatchObject({
+      source: "FOLLOWUP",
+      measurements: { weight: { state: "RECORDED", value: 71 }, bloodSugar: { state: "NOT_RECORDED" } },
+      heightCm: { state: "RECORDED", value: 160 },
+      bmi: { state: "RECORDED", value: calculateBodyMassIndex(71, 160) },
+    });
+    expect(present(7)).toMatchObject({
+      source: "ROUND_VITALS",
+      measurements: {
+        weight: { state: "RECORDED", value: 69 },
+        systolicBloodPressure: { state: "RECORDED", value: 121 },
+        diastolicBloodPressure: { state: "RECORDED", value: 79 },
+        waistCircumference: { state: "NOT_RECORDED" },
+      },
+      heightCm: { state: "RECORDED", value: 160 },
+      bmi: { state: "RECORDED", value: calculateBodyMassIndex(69, 160) },
+    });
+
+    // PAM/PROMs: identical to the workbook row, booklet and legacy combined alike.
+    expect(report.screening).toEqual(row?.screening);
+    expect(report.screening).toMatchObject({
+      pam: { state: "PRESENT", value: { score: expect.any(Number) } },
+      proms: { state: "PRESENT", value: { hasProblem: expect.any(Boolean) } },
+    });
+    expect(legacyReport.screening).toEqual(legacyRow?.screening);
+    expect(legacyReport.screening).toMatchObject({
+      pam: { state: "PRESENT", value: { score: 10 } },
+      proms: { state: "PRESENT", value: { legacyTotal: 12 } },
+    });
+    expect(legacyReport.roundVitals).toEqual([{ roundNumber: 1, title: report.roundVitals[0]?.title, vitals: { state: "MISSING" } }]);
+
+    // Same values for an equivalent reader; no new reader gains access.
+    const memberReport = await getProgramReportingProjection(member.actor, patient.relationshipId, programId);
+    expect(memberReport.roundVitals).toEqual(report.roundVitals);
+    expect(memberReport.screening).toEqual(report.screening);
+    await expect(
+      getProgramReportingProjection(await createAdminActor(), patient.relationshipId, programId),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  }, 30_000);
 
   it("requires exact relationship ownership and current actor scope", async () => {
     const hospital = await createHospital("AUTH");

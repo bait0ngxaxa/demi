@@ -1,3 +1,4 @@
+import type { ProgramScreeningReport } from "./program-screening-report";
 import type { RoundReport } from "./round-report-projection";
 import type { FollowupActivityProgressStatus, PatientProgramStatus } from "@prisma/client";
 
@@ -143,12 +144,7 @@ export type HospitalReportProgramRow = {
    * PAM/PROMs from the screenings performed in the active plan of an opened round of this Program (R2-C). PAM = total score.
    * PROMs = มีปัญหา/ไม่มีปัญหา (Q6); a legacy combined screening still reports its PROMs total.
    */
-  screening: {
-    pam: HospitalReportRecord<{ submittedAt: string; score: number }>;
-    proms: HospitalReportRecord<
-      { submittedAt: string; hasProblem: boolean } | { submittedAt: string; legacyTotal: number }
-    >;
-  };
+  screening: ProgramScreeningReport;
   illnessDuration: HospitalReportFact<number>;
   /**
    * D9: self-reported PersonalExerciseEntry.durationMinutes, average minutes per week over the 28

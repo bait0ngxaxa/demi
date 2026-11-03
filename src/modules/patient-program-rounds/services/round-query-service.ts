@@ -105,6 +105,8 @@ export type RoundVitalsView = {
   source: "ROUND_VITALS" | "FOLLOWUP";
   byPatient?: boolean;
   serviceDate: Date | null;
+  /** When the winning source row was recorded in the system. */
+  recordedAt: Date;
   weight: number | null;
   heightCm: number | null;
   waistCircumference: number | null;
@@ -379,6 +381,11 @@ export type RoundReadOptions = { recorderNames: boolean };
 const STAFF_READ: RoundReadOptions = { recorderNames: true };
 const PATIENT_SELF_READ: RoundReadOptions = { recorderNames: false };
 
+/** The recorder provenance an actor may see on round reads: a Patient reading their own Program sees no staff names. */
+export function roundReadOptionsFor(actor: Pick<ActorContext, "roles">): RoundReadOptions {
+  return actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ;
+}
+
 function getDatabase(
   dependencies: PatientProgramRoundQueryDependencies,
 ): PatientProgramRoundQueryDatabase {
@@ -627,6 +634,7 @@ export function buildRoundVitalsView(
       source: "ROUND_VITALS",
       byPatient: Boolean(roundVitals.recordedByUser?.id && roundVitals.recordedByUser.id === program.patientHospitalRelationship.patientProfile?.person.user?.id),
       serviceDate: roundVitals.serviceDate,
+      recordedAt: roundVitals.recordedAt,
       weight: roundVitals.weight,
       heightCm,
       waistCircumference: roundVitals.waistCircumference,
@@ -643,6 +651,7 @@ export function buildRoundVitalsView(
       source: "FOLLOWUP",
       byPatient: Boolean(followup.createdByUser?.id && followup.createdByUser.id === program.patientHospitalRelationship.patientProfile?.person.user?.id),
       serviceDate: followup.serviceDate ?? followup.recordedAt,
+      recordedAt: followup.recordedAt,
       weight: followup.weight,
       heightCm,
       waistCircumference: followup.waistCircumference,
@@ -1011,7 +1020,7 @@ export async function getProgramRoundsOverview(
       database,
       access.patient.patientHospitalRelationshipId,
       normalizedProgramId,
-      access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
+      roundReadOptionsFor(access.actor),
     );
 
     return { ...overview, canManage: decidePatientProgramPolicy({ actor: access.actor, capability: PATIENT_PROGRAM_MANAGE_CAPABILITY, target: access.target }).allowed, patientDisplayName: access.patient.displayName };
@@ -1065,7 +1074,7 @@ export async function getProgramRoundDetail(
           capability: PATIENT_PROGRAM_MANAGE_CAPABILITY,
           target: access.target,
         }).allowed,
-        options: access.actor.roles.includes(Role.PATIENT) ? PATIENT_SELF_READ : STAFF_READ,
+        options: roundReadOptionsFor(access.actor),
       },
     );
 
