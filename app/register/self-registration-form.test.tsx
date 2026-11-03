@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SelfRegistrationForm } from "./self-registration-form";
+import { accountCreationLegalViewFixture } from "../../tests/support/legal-fixtures";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -52,20 +53,27 @@ function setInput(element: HTMLInputElement, value: string): void {
 
 async function render(): Promise<void> {
   await act(async () => {
-    root.render(<SelfRegistrationForm />);
+    root.render(<SelfRegistrationForm legal={accountCreationLegalViewFixture()} />);
     await Promise.resolve();
   });
 }
 
-async function submitForm(): Promise<void> {
+async function submitForm(options: { acceptLegal?: boolean } = {}): Promise<void> {
   const form = container.querySelector("form");
   if (!form) throw new Error("Missing self-registration form");
+  const legalBox = form.querySelector<HTMLInputElement>('input[name="acceptLegal"]');
+  if (legalBox) legalBox.checked = options.acceptLegal ?? true;
   await act(async () => {
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await Promise.resolve();
     await Promise.resolve();
   });
 }
+
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 
 describe("public self-registration form", () => {
   it("marks an invalid national ID beside the field and keeps it editable", async () => {
@@ -231,6 +239,46 @@ describe("public self-registration form", () => {
     expect(container.querySelector<HTMLInputElement>("#registration-password")?.value).toBe("a-valid-password");
   });
 
+  async function reachPasswordStep(fetchMock: ReturnType<typeof vi.fn>): Promise<void> {
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, nationalId());
+    await submitForm();
+    const checkbox = container.querySelector<HTMLInputElement>("#registration-name-confirmed");
+    const password = container.querySelector<HTMLInputElement>("#registration-password");
+    const confirmation = container.querySelector<HTMLInputElement>("#registration-password-confirmation");
+    if (!checkbox || !password || !confirmation) throw new Error("Missing password setup fields");
+    await act(async () => checkbox.click());
+    setInput(password, "a-valid-password");
+    setInput(confirmation, "a-valid-password");
+  }
+
+  it("LG-D4: requires the Terms + Privacy box and offers no consents (ADR-0028)", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }));
+    await reachPasswordStep(fetchMock);
+    expect(container.querySelector<HTMLInputElement>('input[name="acceptLegal"]')?.required).toBe(true);
+    expect(container.querySelectorAll('input[name^="consent."]')).toHaveLength(0);
+
+    await submitForm({ acceptLegal: false });
+
+    expect(container.textContent).toContain("กรุณายอมรับข้อกำหนดและเงื่อนไขการใช้บริการ");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the capability and asks again when a newer legal version was published", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
+      .mockResolvedValueOnce(response({ status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: "x" }, 409));
+    await reachPasswordStep(fetchMock);
+    await submitForm();
+
+    expect(container.textContent).toContain("มีเวอร์ชันใหม่ของข้อกำหนดหรือนโยบาย");
+    expect(container.querySelector("#registration-password")).not.toBeNull();
+    expect(container.textContent).not.toContain("ไม่สามารถลงทะเบียนได้ กรุณาเริ่มตรวจสอบใหม่");
+  });
+
   it("shows a durable completion only after a successful response and clears the form", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
@@ -269,6 +317,7 @@ describe("public self-registration form", () => {
         password: "a-valid-password",
         passwordConfirmation: "a-valid-password",
         nameConfirmed: true,
+        acceptLegal: { termsVersionId: accountCreationLegalViewFixture().terms.id, privacyVersionId: accountCreationLegalViewFixture().privacy.id },
       }),
     }));
   });

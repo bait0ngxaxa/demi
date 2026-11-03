@@ -3,7 +3,12 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { accountCreationLegalViewFixture } from "../../../tests/support/legal-fixtures";
 
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 vi.mock("@/modules/hospital-onboarding/transport/server-actions", () => ({
   submitHospitalOnboardingAction: vi.fn(),
 }));
@@ -53,7 +58,7 @@ afterEach(() => {
 });
 
 function renderForm(hospitals: readonly OnboardingHospitalOption[]): void {
-  act(() => root.render(createElement(HospitalOnboardingForm, { hospitals })));
+  act(() => root.render(createElement(HospitalOnboardingForm, { legal: accountCreationLegalViewFixture(), hospitals })));
 }
 
 function buttonByLabel(label: string, index = 0): HTMLButtonElement {
@@ -103,6 +108,12 @@ function fillValidOnboardingForm(): void {
 }
 
 describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
+  it("LG-D4/LG-D6: requires the Terms + Privacy box and offers no consents to an OWNER applicant", () => {
+    renderForm(hospitalOptions());
+    expect(container.querySelector<HTMLInputElement>('input[name="acceptLegal"]')?.required).toBe(true);
+    expect(container.querySelectorAll('input[name^="consent."]')).toHaveLength(0);
+  });
+
   it("groups Hospitals by network role and submits the selected identity", () => {
     renderForm(hospitalOptions({ other: true }));
 
@@ -152,7 +163,7 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     renderForm([]);
     expect(container.textContent).toContain("ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้");
 
-    act(() => root.render(createElement(HospitalOnboardingForm, { hospitals: hospitalOptions() })));
+    act(() => root.render(createElement(HospitalOnboardingForm, { legal: accountCreationLegalViewFixture(), hospitals: hospitalOptions() })));
     changeSearch("โรงพยาบาลที่ไม่มีในระบบ");
     expect(container.textContent).toContain("ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา");
     expect(container.textContent).not.toContain("ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้");

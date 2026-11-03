@@ -75,12 +75,16 @@ export function PatientSelfProfileView({
 
           <PatientSelfRelationshipList relationships={patient.hospitalRelationships} />
 
-          <div className="mt-6">
+          <div className="mt-6 flex flex-wrap gap-3">
             <Link
               className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href="/app/personal/password"
             >
               เปลี่ยนรหัสผ่าน
+            </Link>
+            {/* Canva: โปรไฟล์ → การตั้งค่า → เงื่อนไขและการใช้งาน (ADR-0028). */}
+            <Link className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2" href="/app/settings/legal">
+              เงื่อนไขและการใช้งาน
             </Link>
           </div>
         </>

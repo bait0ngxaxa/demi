@@ -4,6 +4,9 @@ import { connection } from "next/server";
 
 import { listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
 
+import { LegalDocumentsUnavailable, LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
+import { getAccountCreationLegalView } from "@/modules/legal/transport/legal-page-context";
+
 import { HospitalOnboardingForm } from "./onboarding-form";
 
 export const metadata: Metadata = {
@@ -12,6 +15,8 @@ export const metadata: Metadata = {
 
 export default async function HospitalOnboardingPage() {
   await connection();
+  // LG-D6: an OWNER applicant accepts Terms + Privacy only.
+  const legal = await getAccountCreationLegalView({ includeConsents: false });
   const hospitals = await listOnboardingHospitals();
 
   return (
@@ -65,8 +70,9 @@ export default async function HospitalOnboardingPage() {
             </div>
 
             <div className="mt-8 rounded-[16px] border border-line bg-white p-5 sm:p-7">
-              <HospitalOnboardingForm hospitals={hospitals} />
+              {legal ? <HospitalOnboardingForm hospitals={hospitals} legal={legal} /> : <LegalDocumentsUnavailable />}
             </div>
+            <LegalFooterLinks className="mt-6" />
           </div>
         </section>
       </div>

@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { getPublicLineAccountEntryUrl } from "@/modules/line/services/line-deep-link-builder";
 
+import { LegalDocumentsUnavailable, LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
+import { getAccountCreationLegalView } from "@/modules/legal/transport/legal-page-context";
+
 import { WorkforceActivationForm } from "./workforce-activation-form";
 
 export const metadata: Metadata = {
@@ -12,6 +15,8 @@ export const metadata: Metadata = {
 
 export default async function WorkforceActivationPage(): Promise<React.JSX.Element> {
   await connection();
+  // LG-D6: staff, อสม. and OWNER activation accept Terms + Privacy only; no consents.
+  const legal = await getAccountCreationLegalView({ includeConsents: false });
 
   return (
     <main className="min-h-svh bg-canvas text-ink lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(28rem,0.8fr)]">
@@ -43,7 +48,8 @@ export default async function WorkforceActivationPage(): Promise<React.JSX.Eleme
 
       <section className="flex px-6 py-10 sm:px-10 lg:min-h-svh lg:items-center lg:px-14 xl:px-20">
         <div className="mx-auto w-full max-w-md">
-          <WorkforceActivationForm lineAccountUrl={getPublicLineAccountEntryUrl()} />
+          {legal ? <WorkforceActivationForm legal={legal} lineAccountUrl={getPublicLineAccountEntryUrl()} /> : <LegalDocumentsUnavailable />}
+          <LegalFooterLinks className="mt-8 justify-center" />
         </div>
       </section>
     </main>

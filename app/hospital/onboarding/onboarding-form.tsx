@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
 import { buttonClassName, LoadingSpinner } from "@/components/ui/button";
@@ -19,16 +20,20 @@ import {
   type OnboardingHospitalOption,
 } from "./hospital-groups";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
+import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 type HospitalOnboardingFormProps = {
   hospitals: readonly OnboardingHospitalOption[];
+  legal: AccountCreationLegalView;
 };
 
 function normalizeSearchValue(value: string): string {
   return value.normalize("NFC").toLocaleLowerCase("th-TH").trim();
 }
 
-export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProps) {
+export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingFormProps) {
+  const router = useRouter();
   const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     HospitalOnboardingSubmitActionState,
     FormData
@@ -60,6 +65,12 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
   const hasVisibleHospitals = visibleSelectionGroups.length > 0;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors ?? {} : {};
+
+  // A newer Terms/Privacy version was published meanwhile: reload the versions and ask again.
+  const legalVersionChanged = state.status === "ERROR" && state.code === "LEGAL_VERSION_CHANGED";
+  useEffect(() => {
+    if (legalVersionChanged) router.refresh();
+  }, [legalVersionChanged, router]);
 
   function selectHospital(hospitalId: string): void {
     focusAfterSelectionRef.current = "change";
@@ -384,8 +395,16 @@ export function HospitalOnboardingForm({ hospitals }: HospitalOnboardingFormProp
         </div>
       </fieldset>
 
+      <LegalAcceptanceFields
+        disabled={pending}
+        error={fieldErrors.acceptLegal}
+        idPrefix="hospital-onboarding"
+        key={`${legal.terms.id}:${legal.privacy.id}`}
+        legal={legal}
+      />
+
       {state.status === "ERROR" && errorMessage && !Object.keys(fieldErrors).length ? (
-        <Alert role="alert" variant={state.code === "UNAVAILABLE" ? "warning" : "danger"}>
+        <Alert role="alert" variant={state.code === "UNAVAILABLE" || state.code === "LEGAL_VERSION_CHANGED" ? "warning" : "danger"}>
           {errorMessage}
         </Alert>
       ) : null}

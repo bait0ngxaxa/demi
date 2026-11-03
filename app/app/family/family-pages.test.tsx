@@ -127,7 +127,7 @@ describe("Family relationship management pages", () => {
   });
 
   it("does not accept an invitation while rendering the link page", () => {
-    const markup = renderToStaticMarkup(<FamilyInvitationPreview />);
+    const markup = renderToStaticMarkup(<FamilyInvitationPreview legal={null} />);
 
     expect(markup).toContain("กำลังตรวจสอบคำเชิญ");
     expect(markup).toContain("ครอบครัวและผู้ดูแล");

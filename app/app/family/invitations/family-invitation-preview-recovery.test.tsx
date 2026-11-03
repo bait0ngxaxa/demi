@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { accountCreationLegalViewFixture } from "../../../../tests/support/legal-fixtures";
 
 const mocks = vi.hoisted(() => ({
   preview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -10,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   reject: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 vi.mock("@/modules/family/transport/server-actions", () => ({
   acceptCaregiverInvitationAction: mocks.accept,
   previewCaregiverInvitationAction: mocks.preview,
@@ -49,7 +54,7 @@ it("offers a retry when the invitation check cannot reach the server, keeping th
   root = createRoot(container);
 
   await act(async () => {
-    root.render(createElement(FamilyInvitationPreview));
+    root.render(createElement(FamilyInvitationPreview, { legal: accountCreationLegalViewFixture() }));
   });
 
   expect(window.location.hash).toBe("");
@@ -96,7 +101,7 @@ it("checks invitation status after a lost accept response without replaying the 
   root = createRoot(container);
 
   await act(async () => {
-    root.render(createElement(FamilyInvitationPreview));
+    root.render(createElement(FamilyInvitationPreview, { legal: accountCreationLegalViewFixture() }));
   });
   const accept = Array.from(container.querySelectorAll("button")).find((button) =>
     button.textContent?.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"),
@@ -146,7 +151,7 @@ it("allows a deliberate answer only after verification confirms the invitation i
   document.body.append(container);
   root = createRoot(container);
 
-  await act(async () => root.render(createElement(FamilyInvitationPreview)));
+  await act(async () => root.render(createElement(FamilyInvitationPreview, { legal: accountCreationLegalViewFixture() })));
   const acceptButton = (): HTMLButtonElement | undefined =>
     Array.from(container.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"),

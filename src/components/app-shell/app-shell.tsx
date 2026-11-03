@@ -6,6 +6,8 @@ import { AppSidebar } from "./app-sidebar";
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
 import { NavigationWorkspaceProvider } from "./navigation-workspace-provider";
 import { projectMobileNavigation } from "./mobile-tab-projection";
+import Link from "next/link";
+
 import { Alert } from "@/components/ui/alert";
 
 type AppShellProps = {
@@ -14,6 +16,8 @@ type AppShellProps = {
   navigation: readonly ApplicationNavigationGroup[];
   roleLabels: readonly string[];
   passwordResetNoticeAt?: Date | null;
+  /** LG-D7: a newer TERMS or PRIVACY_POLICY version awaits acceptance; informational, never blocks use. */
+  legalReacceptanceNeeded?: boolean;
 };
 
 export function AppShell({
@@ -22,6 +26,7 @@ export function AppShell({
   navigation,
   roleLabels,
   passwordResetNoticeAt = null,
+  legalReacceptanceNeeded = false,
 }: AppShellProps): React.JSX.Element {
   const mobileNavigation = projectMobileNavigation(navigation);
 
@@ -50,6 +55,17 @@ export function AppShell({
             {passwordResetNoticeAt ? (
               <Alert className="mb-6" variant="warning">
                 รหัสผ่านบัญชี DEMI ของคุณถูกเปลี่ยนเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(passwordResetNoticeAt)} หากไม่ใช่คุณ ติดต่อโรงพยาบาล
+              </Alert>
+            ) : null}
+            {legalReacceptanceNeeded ? (
+              <Alert className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1" variant="info">
+                <span>มีข้อกำหนดหรือนโยบายการคุ้มครองข้อมูลส่วนบุคคลฉบับใหม่ ใช้งานต่อได้ตามปกติ</span>
+                <Link
+                  className="inline-flex min-h-11 items-center rounded-control font-semibold underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                  href="/app/settings/legal"
+                >
+                  อ่านและยอมรับ
+                </Link>
               </Alert>
             ) : null}
             {children}

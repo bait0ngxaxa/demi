@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { ActivationIntroduction, ActivationSuccess } from "@/components/activation/activation-onboarding";
@@ -18,6 +19,8 @@ import {
   previewWorkforceActivationAction,
 } from "@/modules/workforce/transport/server-actions";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
+import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 type ActivationTokenStore = {
   getSnapshot: () => string | null;
@@ -69,7 +72,8 @@ function createActivationTokenStore(): ActivationTokenStore {
   };
 }
 
-export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccountUrl?: string | null }): React.JSX.Element {
+export function WorkforceActivationForm({ legal, lineAccountUrl = null }: { legal: AccountCreationLegalView; lineAccountUrl?: string | null }): React.JSX.Element {
+  const router = useRouter();
   const store = useMemo(() => createActivationTokenStore(), []);
   const token = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot);
   const [preview, setPreview] = useState<WorkforceActivationPreviewState | null>(null);
@@ -91,6 +95,12 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
   useEffect(() => {
     store.hydrate();
   }, [store]);
+
+  // A newer Terms/Privacy version was published meanwhile: reload the versions; the link stays usable.
+  const legalVersionChanged = state.status === "ERROR" && state.code === "LEGAL_VERSION_CHANGED";
+  useEffect(() => {
+    if (legalVersionChanged) router.refresh();
+  }, [legalVersionChanged, router]);
 
   useEffect(() => {
     if (
@@ -398,7 +408,17 @@ export function WorkforceActivationForm({ lineAccountUrl = null }: { lineAccount
         ) : null}
       </div>
 
-      {errorMessage && !fieldErrors ? <Alert variant="danger">{errorMessage}</Alert> : null}
+      {purpose === "RESET" ? null : (
+        <LegalAcceptanceFields
+          disabled={pending}
+          error={fieldErrors?.acceptLegal}
+          idPrefix="workforce-activation"
+          key={`${legal.terms.id}:${legal.privacy.id}`}
+          legal={legal}
+        />
+      )}
+
+      {errorMessage && !fieldErrors ? <Alert variant={legalVersionChanged ? "warning" : "danger"}>{errorMessage}</Alert> : null}
 
       <button
         aria-busy={pending || undefined}

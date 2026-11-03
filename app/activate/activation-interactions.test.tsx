@@ -3,6 +3,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { accountCreationLegalViewFixture } from "../../tests/support/legal-fixtures";
 
 const mocks = vi.hoisted(() => ({
   completePatient: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -65,6 +66,12 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+/** LG-D4: account-creation screens submit only with the required Terms + Privacy box checked. */
+function checkLegalAcceptance(): void {
+  const box = document.querySelector<HTMLInputElement>('input[name="acceptLegal"]');
+  if (box) box.checked = true;
+}
+
 function buttonByText(text: string): HTMLButtonElement {
   const found = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes(text));
   if (!found) throw new Error(`Missing button: ${text}`);
@@ -104,6 +111,49 @@ describe("Login form", () => {
 });
 
 describe("Patient activation form", () => {
+  it("LG-D4/LG-D6: the patient screen requires the Terms + Privacy box and offers two optional consents, unchecked", async () => {
+    window.history.replaceState(null, "", "/activate/patient#token-1");
+    mocks.details.mockResolvedValue({ status: "AVAILABLE", displayName: "สมหญิง ใจดี", hospitalName: "โรงพยาบาลทดสอบ", activationExpiresAt: "2026-10-16T00:00:00.000Z" });
+    await act(async () => {
+      root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: null }));
+    });
+    const box = container.querySelector<HTMLInputElement>('input[name="acceptLegal"]');
+    expect(box?.required).toBe(true);
+    expect(box?.checked).toBe(false);
+    const consents = [...container.querySelectorAll<HTMLInputElement>('input[name^="consent."]')];
+    expect(consents.map(({ name }) => name)).toEqual(["consent.HEALTH_DATA_DISCLOSURE_CONSENT", "consent.MARKETING_CONSENT"]);
+    expect(consents.every(({ checked, required }) => !checked && !required)).toBe(true);
+  });
+
+  it("LG-D6: the workforce screen requires the box and offers no consents", async () => {
+    window.history.replaceState(null, "", "/activate/workforce#token-1");
+    mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส***", purpose: "ACTIVATION" });
+    await act(async () => {
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: null }));
+      await Promise.resolve();
+    });
+    expect(container.querySelector<HTMLInputElement>('input[name="acceptLegal"]')?.required).toBe(true);
+    expect(container.querySelectorAll('input[name^="consent."]')).toHaveLength(0);
+  });
+
+  it("keeps the patient link usable and asks again when a newer legal version was published", async () => {
+    window.history.replaceState(null, "", "/activate/patient#token-1");
+    mocks.details.mockResolvedValue({ status: "AVAILABLE", displayName: "สมหญิง ใจดี", hospitalName: "โรงพยาบาลทดสอบ", activationExpiresAt: "2026-10-16T00:00:00.000Z" });
+    mocks.completePatient.mockResolvedValue({ status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: "มีเวอร์ชันใหม่ของข้อกำหนดหรือนโยบาย กรุณาอ่านและยอมรับอีกครั้ง" });
+    await act(async () => {
+      root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: null }));
+    });
+    container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
+    container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
+    checkLegalAcceptance();
+    await act(async () => {
+      buttonByText("เปิดใช้งานบัญชี").click();
+    });
+    expect(container.textContent).toContain("มีเวอร์ชันใหม่");
+    expect(container.textContent).not.toContain("ลิงก์นี้ใช้ไม่ได้แล้ว");
+    expect(container.querySelector("form")).not.toBeNull();
+  });
+
   it("offers a retry when the activation link cannot be checked instead of loading forever", async () => {
     window.history.replaceState(null, "", "/activate/patient#token-1");
     mocks.details.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce({
@@ -114,7 +164,7 @@ describe("Patient activation form", () => {
     });
 
     await act(async () => {
-      root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("ตรวจสอบลิงก์เปิดใช้งานไม่สำเร็จ");
@@ -137,13 +187,14 @@ describe("Patient activation form", () => {
     });
     mocks.completePatient.mockRejectedValue(new TypeError("Failed to fetch"));
     await act(async () => {
-      root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
     container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
 
     await act(async () => {
-      buttonByText("เปิดใช้งานบัญชี").click();
+      checkLegalAcceptance();
+        buttonByText("เปิดใช้งานบัญชี").click();
     });
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
@@ -166,11 +217,12 @@ describe("Patient activation form", () => {
         activationExpiresAt: "2026-10-16T00:00:00.000Z",
       });
       await act(async () => {
-        root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+        root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       });
       container.querySelector<HTMLInputElement>("#patient-password")!.value = "a-strong-password";
       container.querySelector<HTMLInputElement>("#patient-password-confirmation")!.value = "a-strong-password";
       await act(async () => {
+        checkLegalAcceptance();
         buttonByText("เปิดใช้งานบัญชี").click();
       });
     }
@@ -258,7 +310,7 @@ describe("Patient activation form", () => {
       });
 
       await act(async () => {
-        root.render(createElement(PatientActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+        root.render(createElement(PatientActivationForm, { legal: accountCreationLegalViewFixture({ includeConsents: true }), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       });
 
       expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
@@ -299,13 +351,14 @@ describe("Patient activation form", () => {
     );
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       await Promise.resolve();
     });
     expect(Boolean(container.querySelector('ol[aria-label="ขั้นตอนเริ่มใช้งาน DEMI"]'))).toBe(purpose !== "RESET");
     container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
     container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
+    checkLegalAcceptance();
 
     await act(async () => {
       buttonByText(label).click();
@@ -340,7 +393,7 @@ describe("Patient activation form", () => {
     });
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       await Promise.resolve();
     });
 
@@ -353,10 +406,11 @@ describe("Patient activation form", () => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
     mocks.previewWorkforce.mockResolvedValue({ status: "SUCCESS", maskedName: "ส***", purpose: "ACTIVATION" });
     mocks.completeWorkforce.mockResolvedValue({ status: "ERROR", code, message: "ดำเนินการไม่สำเร็จ" });
-    await act(async () => root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
+    await act(async () => root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
     container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
     container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
+    checkLegalAcceptance();
     await act(async () => buttonByText("เปิดใช้งานบัญชี").click());
     expect(container.textContent).not.toContain("เปิดใช้งานบัญชีสำเร็จ!");
     expect(container.querySelector('a[href^="https://liff.line.me/"]')).toBeNull();
@@ -366,7 +420,7 @@ describe("Patient activation form", () => {
   it("does not introduce onboarding for an expired or consumed workforce invitation", async () => {
     window.history.replaceState(null, "", "/activate/workforce#token-1");
     mocks.previewWorkforce.mockResolvedValue({ status: "ERROR", message: "ลิงก์หมดอายุหรือถูกใช้แล้ว" });
-    await act(async () => root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
+    await act(async () => root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" })));
     expect(container.textContent).toContain("ลิงก์หมดอายุหรือถูกใช้แล้ว");
     expect(container.querySelector("form")).toBeNull();
     expect(container.querySelector("ol")).toBeNull();
@@ -383,12 +437,13 @@ describe("Patient activation form", () => {
     mocks.completeWorkforce.mockRejectedValue(new TypeError("Failed to fetch"));
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
     });
     container.querySelector<HTMLInputElement>("#nationalId")!.value = "1000000000009";
     container.querySelector<HTMLInputElement>("#password")!.value = "a-strong-password";
     container.querySelector<HTMLInputElement>("#passwordConfirmation")!.value = "a-strong-password";
 
+    checkLegalAcceptance();
     await act(async () => buttonByText("เปิดใช้งานบัญชี").click());
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
@@ -412,7 +467,7 @@ describe("Patient activation form", () => {
     });
 
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm, { lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture(), lineAccountUrl: "https://liff.line.me/1234567890-Test" }));
       await Promise.resolve();
     });
 

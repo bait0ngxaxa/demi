@@ -42,3 +42,23 @@ export function setLegalAcceptanceFields(formData: FormData): FormData {
   formData.set("legalPrivacyVersionId", PRIVACY_VERSION_ID);
   return formData;
 }
+
+const viewPublishedAt = "2026-11-03T00:00:00.000Z";
+
+/** The client view an account-creation screen receives (`getAccountCreationLegalView`). */
+export function accountCreationLegalViewFixture(options: { includeConsents?: boolean } = {}): {
+  terms: { id: string; kind: "TERMS"; versionLabel: string; title: string; isPlaceholder: boolean; publishedAt: string };
+  privacy: { id: string; kind: "PRIVACY_POLICY"; versionLabel: string; title: string; isPlaceholder: boolean; publishedAt: string };
+  consents: Array<{ id: string; kind: "HEALTH_DATA_DISCLOSURE_CONSENT" | "MARKETING_CONSENT"; versionLabel: string; title: string; isPlaceholder: boolean; publishedAt: string }>;
+} {
+  return {
+    terms: { id: TERMS_VERSION_ID, kind: "TERMS", versionLabel: "placeholder-1", title: "ข้อกำหนดและเงื่อนไขการใช้บริการ", isPlaceholder: true, publishedAt: viewPublishedAt },
+    privacy: { id: PRIVACY_VERSION_ID, kind: "PRIVACY_POLICY", versionLabel: "placeholder-1", title: "นโยบายการคุ้มครองข้อมูลส่วนบุคคล", isPlaceholder: true, publishedAt: viewPublishedAt },
+    consents: options.includeConsents
+      ? [
+          { id: HEALTH_CONSENT_VERSION_ID, kind: "HEALTH_DATA_DISCLOSURE_CONSENT", versionLabel: "placeholder-1", title: "หนังสือแสดงความยินยอมให้เปิดเผยข้อมูลสุขภาพส่วนบุคคล", isPlaceholder: true, publishedAt: viewPublishedAt },
+          { id: MARKETING_CONSENT_VERSION_ID, kind: "MARKETING_CONSENT", versionLabel: "placeholder-1", title: "หนังสือตกลงยินยอมในการเปิดเผยข้อมูลเพื่อวัตถุประสงค์ทางการตลาด", isPlaceholder: true, publishedAt: viewPublishedAt },
+        ]
+      : [],
+  };
+}

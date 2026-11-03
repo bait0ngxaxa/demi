@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/server", () => ({ connection: mocks.connection }));
+vi.mock("@/modules/legal/transport/legal-page-context", async () => ({
+  getAccountCreationLegalView: async () => (await import("../../../tests/support/legal-fixtures")).accountCreationLegalViewFixture(),
+}));
 vi.mock("@/modules/hospital-onboarding/services/onboarding-hospital-service", () => ({
   listOnboardingHospitals: mocks.listHospitals,
 }));

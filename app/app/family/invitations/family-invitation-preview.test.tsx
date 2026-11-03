@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { CaregiverInvitationPreviewActionState } from "@/modules/family/transport/action-state";
+import { accountCreationLegalViewFixture } from "../../../../tests/support/legal-fixtures";
 
 const harness = vi.hoisted(() => ({
   preview: { status: "LOADING" } as CaregiverInvitationPreviewActionState,
@@ -24,6 +25,10 @@ vi.mock("react", async (importOriginal) => ({
     return harness.snapshot;
   },
 }));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 vi.mock("@/modules/family/transport/server-actions", () => ({
   previewCaregiverInvitationAction: harness.previewAction,
   acceptCaregiverInvitationAction: harness.accept,
@@ -33,7 +38,7 @@ vi.mock("@/modules/family/transport/server-actions", () => ({
 import { FamilyInvitationPreview } from "./family-invitation-preview";
 import { metadata } from "./page";
 
-function render(): string { return renderToStaticMarkup(<FamilyInvitationPreview />); }
+function render(): string { return renderToStaticMarkup(<FamilyInvitationPreview legal={accountCreationLegalViewFixture()} />); }
 
 describe("invitation client fragment and preview boundary (Node/SSR)", () => {
   beforeEach(() => {
@@ -87,6 +92,9 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     const markup = render();
     expect(markup).toContain("สร้างบัญชีผู้ดูแล");
     expect(markup).toContain("เลขบัตรประชาชนของคุณ");
+    // LG-D4/LG-D6: the required Terms + Privacy box, and no consent toggles for a caregiver account.
+    expect(markup).toMatch(/<input[^>]*required=""[^>]*name="acceptLegal"|<input[^>]*name="acceptLegal"[^>]*required=""/u);
+    expect(markup).not.toContain('name="consent.');
     expect(markup).toContain("ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง");
     expect(markup).toContain("สร้างบัญชีและตอบรับคำเชิญ");
     expect(markup).toContain("หากมีบัญชีแล้ว เข้าสู่ระบบเพื่อรับคำเชิญนี้");

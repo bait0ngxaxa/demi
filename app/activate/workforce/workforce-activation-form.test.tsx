@@ -3,8 +3,13 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { accountCreationLegalViewFixture } from "../../../tests/support/legal-fixtures";
 
 const mocks = vi.hoisted(() => ({ preview: vi.fn(), complete: vi.fn() }));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
 vi.mock("@/modules/workforce/transport/server-actions", () => ({
   completeWorkforceActivationAction: mocks.complete,
   previewWorkforceActivationAction: mocks.preview,
@@ -35,7 +40,7 @@ afterEach(() => {
 
 describe("workforce activation token transport", () => {
   it("explains the one-open link recovery when no hash token is present", async () => {
-    await act(async () => root.render(createElement(WorkforceActivationForm)));
+    await act(async () => root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture() })));
 
     expect(container.textContent).toContain("ไม่พบลิงก์เปิดใช้งาน");
     expect(container.textContent).toContain("ใช้ได้ครั้งเดียวต่อการเปิดลิงก์");
@@ -46,7 +51,7 @@ describe("workforce activation token transport", () => {
   it("keeps removing the one-time token hash from the address bar after reading it", async () => {
     window.history.replaceState(null, "", "/activate/workforce#single-use-token");
     await act(async () => {
-      root.render(createElement(WorkforceActivationForm));
+      root.render(createElement(WorkforceActivationForm, { legal: accountCreationLegalViewFixture() }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
