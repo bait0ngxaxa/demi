@@ -18,12 +18,12 @@ export const HOSPITAL_ADMINISTRATOR_MEMBERSHIP_TYPES: readonly MembershipType[] 
 export type HospitalAccessBasis = "OWNER" | "MEMBER";
 
 function activeMembershipWhere(
-  userId: string,
+  userId: string | undefined,
   hospitalId: string | undefined,
   membershipTypes: readonly MembershipType[],
 ): Prisma.HospitalMembershipWhereInput {
   return {
-    userId,
+    ...(userId === undefined ? {} : { userId }),
     ...(hospitalId === undefined ? {} : { hospitalId }),
     membershipType: { in: [...membershipTypes] },
     status: MembershipStatus.ACTIVE,
@@ -35,6 +35,11 @@ function activeMembershipWhere(
 /** ACTIVE OWNER or MEMBER of the exact ACTIVE Hospital (every Hospital when `hospitalId` is omitted). */
 export function hospitalOperatorMembershipWhere(userId: string, hospitalId?: string): Prisma.HospitalMembershipWhereInput {
   return activeMembershipWhere(userId, hospitalId, HOSPITAL_OPERATOR_MEMBERSHIP_TYPES);
+}
+
+/** Every operator of the exact ACTIVE Hospital: the roster form of `hospitalOperatorMembershipWhere`. */
+export function hospitalOperatorRosterWhere(hospitalId: string): Prisma.HospitalMembershipWhereInput {
+  return activeMembershipWhere(undefined, hospitalId, HOSPITAL_OPERATOR_MEMBERSHIP_TYPES);
 }
 
 /** ACTIVE OWNER of the exact ACTIVE Hospital (every Hospital when `hospitalId` is omitted). */

@@ -1086,7 +1086,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     await expect(getAppointmentDetail(visitOsm.actor, patient.relationshipId, appointmentId)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
-  it("keeps the current-assignment rule for hospital-booked appointments and sets the type from an optional service", async () => {
+  it("books any อสม. of the Hospital for a hospital appointment and sets the type from an optional service (ADR-0027)", async () => {
     const { owner, assignedOsm, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-HOSPITAL");
     const booking = {
       patientHospitalRelationshipId: patient.relationshipId,
@@ -1094,8 +1094,9 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       locationType: "HOME_VISIT",
       responsibleUserId: null,
     };
-    await expect(createAppointment(owner.actor, { ...booking, submissionNonce: randomUUID(), type: "FOLLOW_UP", assignedOsmUserId: visitOsm.userId }))
-      .rejects.toMatchObject({ code: "VALIDATION" });
+    const oneOff = await createAppointment(owner.actor, { ...booking, submissionNonce: randomUUID(), type: "FOLLOW_UP", assignedOsmUserId: visitOsm.userId });
+    await expect(getAppointmentDetail(visitOsm.actor, patient.relationshipId, oneOff.appointmentId))
+      .resolves.toMatchObject({ source: "HOSPITAL", isOneOffVisit: true });
     const booked = await createAppointment(owner.actor, { ...booking, submissionNonce: randomUUID(), serviceCode: "SCREENING", assignedOsmUserId: assignedOsm.userId });
     expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: booked.appointmentId }, select: { type: true, serviceCode: true, sourceServiceRequestId: true } }))
       .toEqual({ type: "ASSESSMENT", serviceCode: "SCREENING", sourceServiceRequestId: null });

@@ -25,7 +25,16 @@ describe("SR-C work projection", () => {
   });
 
   it("keeps hospital bookings hospital-sourced even when a service is selected", () => {
+    // ADR-0027: a hospital booking for an อสม. other than the patient's current one is a one-off visit too.
     expect(workAppointmentQueryInternals.toWorkAppointmentItem({ ...record, sourceServiceRequestId: null }, now, { hospitalRead: true, osmRead: false, actorUserId: "staff" }))
-      .toMatchObject({ serviceCode: "EMPOWERMENT", source: "HOSPITAL", isOneOffVisit: false });
+      .toMatchObject({ serviceCode: "EMPOWERMENT", source: "HOSPITAL", isOneOffVisit: true });
+    expect(workAppointmentQueryInternals.toWorkAppointmentItem({ ...record, sourceServiceRequestId: null, assignedOsmUserId: "current" }, now, { hospitalRead: true, osmRead: false, actorUserId: "staff" }))
+      .toMatchObject({ source: "HOSPITAL", isOneOffVisit: false });
+  });
+
+  it("awaits the assigned อสม.'s acceptance at any location (ADR-0027)", () => {
+    const future = new Date(now.getTime() + 60 * 60 * 1000);
+    expect(workAppointmentQueryInternals.toWorkAppointmentItem({ ...record, locationType: "CLINIC", scheduledAt: future }, now, { hospitalRead: false, osmRead: true, actorUserId: "visiting" }))
+      .toMatchObject({ osmAcceptanceStatus: "WAITING", hasUnassignedOsm: false });
   });
 });

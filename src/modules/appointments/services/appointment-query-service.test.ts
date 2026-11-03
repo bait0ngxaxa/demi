@@ -217,7 +217,7 @@ describe("Appointment query service", () => {
     }));
   });
 
-  it("returns only doctor/nurse selections without exposing membership type", async () => {
+  it("returns every Hospital operator, whatever the profession, without exposing membership type (ADR-0027)", async () => {
     const database = createDatabase();
     const context = await getAppointmentCreateContext(hospitalActor, relationshipId, { database });
     const membershipFindMany = (database as unknown as {
@@ -238,11 +238,13 @@ describe("Appointment query service", () => {
     }
     expect(membershipFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
+        where: {
           hospitalId,
+          membershipType: { in: ["OWNER", "MEMBER"] },
           status: MembershipStatus.ACTIVE,
-          profession: { in: [Profession.DOCTOR, Profession.NURSE] },
-        }),
+          user: { is: { status: "ACTIVE", roles: { some: { role: "HOSPITAL" } } } },
+          hospital: { is: { status: "ACTIVE" } },
+        },
         select: {
           userId: true,
           profession: true,
@@ -335,7 +337,8 @@ it.each([null, "request"])("SR-C projects service/source without adding source I
   const detail = await getAppointmentDetail(hospitalActor, relationshipId, appointmentId, { database });
   const source = sourceServiceRequestId ? "PATIENT_REQUEST" : "HOSPITAL";
   for (const projected of [history.items[0], detail]) {
-    expect(projected).toMatchObject({ serviceCode: "EMPOWERMENT", source, isOneOffVisit: Boolean(sourceServiceRequestId) });
+    // ADR-0027: an อสม. other than the patient's current one is a one-off visit from either source.
+    expect(projected).toMatchObject({ serviceCode: "EMPOWERMENT", source, isOneOffVisit: true });
     expect(projected).not.toHaveProperty("sourceServiceRequestId");
   }
   expect(Object.keys(history.items[0] ?? {}).sort()).toEqual(["appointmentId", "scheduledAt", "type", "status", "durationMinutes", "locationType", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "currentAcknowledgement", "cancellationRequests", "coordinationEvents", "serviceCode", "source", "isOneOffVisit"].sort());

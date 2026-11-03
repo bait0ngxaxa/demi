@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { hospitalOperatorRosterWhere } from "@/modules/identity/services/hospital-authority";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ApplicationError,
@@ -439,7 +440,6 @@ function toHistoryItem(
     isOneOffVisit: showOneOffVisit && isOneOffVisitOsm({
       appointmentOsmUserId: record.assignedOsmUserId,
       assignedOsmUserId: currentOsmUserId,
-      sourceServiceRequestId: record.sourceServiceRequestId,
     }),
     appointmentId: record.id,
     scheduledAt: record.scheduledAt,
@@ -530,14 +530,10 @@ async function getResponsibleMembers(
   database: AppointmentAccessDatabase,
   hospitalId: string,
 ): Promise<ResponsibleHospitalMember[]> {
+  // ADR-0027 (AP-1): every operator of the Hospital, whatever the profession.
   const memberships = await database.hospitalMembership.findMany({
-    where: {
-      hospitalId,
-      status: "ACTIVE",
-      user: { status: "ACTIVE" },
-      profession: { in: [Profession.DOCTOR, Profession.NURSE] },
-    },
-    orderBy: { createdAt: "asc" },
+    where: hospitalOperatorRosterWhere(hospitalId),
+    orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
     select: {
       userId: true,
       profession: true,
@@ -679,7 +675,6 @@ export async function getAppointmentDetail(
     const showOneOffVisit = (access.scopes.directHospital || access.scopes.networkRead || access.scopes.visitOsm) && isOneOffVisitOsm({
       appointmentOsmUserId: record.assignedOsmUserId,
       assignedOsmUserId: access.target.patientCurrentOsmUserId ?? null,
-      sourceServiceRequestId: record.sourceServiceRequestId,
     });
     return { ...toDetail(record, access.patient, decideAppointmentPolicy({ actor: access.authoritativeActor, capability: APPOINTMENT_HOME_VISIT_MANAGE_CAPABILITY,
       target: { ...access.target, ...record, appointmentAssignedOsmUserId: record.assignedOsmUserId, operation: "EDIT" } }).allowed, access.scopes.exactOsmAssignment || access.scopes.visitOsm, access.scopes.directHospital, canAcceptAssignment, showOneOffVisit), contactPhones };

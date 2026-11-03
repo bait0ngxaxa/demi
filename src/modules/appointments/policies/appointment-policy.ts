@@ -93,7 +93,7 @@ function hasExactActiveOsmAssignment(actor: ActorContext, target: AppointmentPol
 }
 
 /**
- * ADR-0023 (SR-B): what a one-off visiting อสม. may do with the one appointment they visit for. Every other
+ * ADR-0023 (SR-B) / ADR-0027: what a one-off visiting อสม. may do with the one appointment they visit for. Every other
  * capability (and every other module's care record) stays assignment-based.
  */
 export const VISIT_OSM_APPOINTMENT_CAPABILITIES: readonly AppointmentCapability[] = [
@@ -109,14 +109,14 @@ export const VISIT_OSM_ACCESS_GRACE_MS = 24 * 60 * 60 * 1000;
 
 export type VisitOsmAppointment = {
   assignedOsmUserId: string | null;
-  sourceServiceRequestId: string | null;
   status: string;
   scheduledAt: Date;
 };
 
 /**
- * ADR-0023 (SR-B): the actor is the appointment's อสม., an ACTIVE อสม. of its ACTIVE Hospital, the appointment
- * is a one-off visit from a service request, and it is SCHEDULED no later than 24 hours past its time.
+ * ADR-0023 (SR-B) / ADR-0027 (AP-2): the actor is the appointment's อสม., an ACTIVE อสม. of its ACTIVE Hospital,
+ * not the patient's current อสม. (a one-off visit, from a service request or a hospital booking), and the
+ * appointment is SCHEDULED no later than 24 hours past its time. Reassigning the appointment ends it at once.
  */
 function hasOneOffVisitOsmScope(
   actor: ActorContext,
@@ -137,7 +137,6 @@ function hasOneOffVisitOsmScope(
     isOneOffVisitOsm({
       appointmentOsmUserId: appointment.assignedOsmUserId,
       assignedOsmUserId: target.patientCurrentOsmUserId,
-      sourceServiceRequestId: appointment.sourceServiceRequestId,
     }) &&
     appointment.status === "SCHEDULED" &&
     now.getTime() <= appointment.scheduledAt.getTime() + VISIT_OSM_ACCESS_GRACE_MS

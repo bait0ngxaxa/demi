@@ -16,6 +16,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { hospitalOperatorRosterWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -405,7 +406,7 @@ function appointmentRelationshipReadWhere(
 }
 
 /**
- * ADR-0023 (SR-B): a one-off visiting อสม. sees the appointment they visit for, with the same window as
+ * ADR-0023 (SR-B) / ADR-0027: a one-off visiting อสม. sees the appointment they visit for, with the same window as
  * `hasOneOffVisitOsmScope`: SCHEDULED and no later than 24 hours past its time. The caller has already
  * resolved the actor as an ACTIVE อสม. of this ACTIVE Hospital (`scope.osmRead`).
  */
@@ -416,7 +417,6 @@ function visitOsmAppointmentWhere(
 ): Prisma.PatientAppointmentWhereInput {
   return {
     assignedOsmUserId: actorUserId,
-    sourceServiceRequestId: { not: null },
     status: "SCHEDULED",
     scheduledAt: { gte: new Date(now.getTime() - VISIT_OSM_ACCESS_GRACE_MS) },
     patientHospitalRelationship: {
@@ -523,26 +523,10 @@ async function findAppointmentsAwaitingOsmAcceptance(
     JOIN "Hospital" AS hospital ON hospital."id" = relationship."hospitalId"
     JOIN "User" AS osm ON osm."id" = appointment."assignedOsmUserId" AND osm."status" = 'ACTIVE'
     WHERE hospital."status" = 'ACTIVE'
-      -- The patient's current อสม., or (ADR-0023) the อสม. of a one-off visit booked from a service request.
-      AND (
-        appointment."sourceServiceRequestId" IS NOT NULL
-        OR EXISTS (
-          SELECT 1 FROM "PatientOsmAssignment" AS assignment
-          WHERE assignment."patientHospitalRelationshipId" = relationship."id"
-            AND assignment."osmUserId" = appointment."assignedOsmUserId"
-            AND assignment."endedAt" IS NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM "PatientOsmAssignment" AS newer
-              WHERE newer."patientHospitalRelationshipId" = relationship."id"
-                AND newer."endedAt" IS NULL
-                AND (newer."createdAt" > assignment."createdAt"
-                  OR (newer."createdAt" = assignment."createdAt" AND newer."id" > assignment."id"))
-            )
-        )
-      )
+      -- ADR-0027: the patient's current อสม. or a one-off visiting อสม. (any ACTIVE อสม. of the Hospital, checked
+      -- below), at any location; a future SCHEDULED appointment is inside the one-off window.
       AND relationship."endedAt" IS NULL
       AND appointment."status" = 'SCHEDULED'
-      AND appointment."locationType" = 'HOME_VISIT'
       AND appointment."scheduledAt" > ${input.now}
       AND appointment."assignedOsmUserId" IS NOT NULL
       AND EXISTS (
@@ -676,11 +660,8 @@ type WorkAppointmentRecord = Prisma.PatientAppointmentGetPayload<{
 
 function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audience?: { hospitalRead: boolean; osmRead: boolean; actorUserId: string }): WorkAppointmentListItem {
   const currentOsmUserId = record.patientHospitalRelationship.osmAssignments[0]?.osmUserId ?? null;
-  // ADR-0023: a one-off visit from a service request has its own อสม., not the patient's current one.
-  const hasCurrentAssignment = Boolean(
-    record.assignedOsmUserId &&
-    (record.assignedOsmUserId === currentOsmUserId || record.sourceServiceRequestId !== null),
-  );
+  // ADR-0023 / ADR-0027: the appointment's อสม. is the patient's current one or a one-off visiting อสม.
+  const hasCurrentAssignment = record.assignedOsmUserId !== null;
   const hasCurrentAcceptance = hasCurrentAssignment && record.assigneeAcceptances.some(
     (acceptance) => acceptance.sourceAppointmentUpdatedAt.getTime() === record.updatedAt.getTime(),
   );
@@ -690,7 +671,6 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audienc
   const hasPendingReschedule = record.rescheduleRequests.length > 0;
   const isWaiting = Boolean(
     hasCurrentAssignment &&
-    record.locationType === "HOME_VISIT" &&
     record.status === "SCHEDULED" &&
     record.scheduledAt.getTime() > now.getTime() &&
     !hasCurrentAcceptance &&
@@ -702,7 +682,6 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audienc
     isOneOffVisit: Boolean(audience && (audience.hospitalRead || (audience.osmRead && record.assignedOsmUserId === audience.actorUserId))) && isOneOffVisitOsm({
       appointmentOsmUserId: record.assignedOsmUserId,
       assignedOsmUserId: currentOsmUserId,
-      sourceServiceRequestId: record.sourceServiceRequestId,
     }),
     appointmentId: record.id,
     relationshipId: record.patientHospitalRelationshipId,
@@ -860,13 +839,9 @@ async function listResponsibleOptions(
   database: WorkAppointmentDatabase,
   hospitalId: string,
 ): Promise<WorkAppointmentResponsibleOption[]> {
+  // ADR-0027 (AP-1): every operator of the Hospital can be the staff assignee, whatever the profession.
   const memberships = await database.hospitalMembership.findMany({
-    where: {
-      hospitalId,
-      status: MembershipStatus.ACTIVE,
-      user: { is: { status: UserStatus.ACTIVE } },
-      profession: { in: [Profession.DOCTOR, Profession.NURSE] },
-    },
+    where: hospitalOperatorRosterWhere(hospitalId),
     orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
     select: {
       userId: true,
