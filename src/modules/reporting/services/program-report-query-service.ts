@@ -1,6 +1,6 @@
 import "server-only";
 
-import { loadRoundReports } from "./round-report-query-service";
+import { loadProgramRoundReport } from "./round-report-query-service";
 
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { Buffer } from "node:buffer";
@@ -15,6 +15,7 @@ import {
 import {
   patientProgramServiceOneSelect,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
+import { roundReadOptionsFor } from "@/modules/patient-program-rounds/services/round-query-service";
 import {
   ApplicationError,
   InfrastructureError,
@@ -35,6 +36,10 @@ import {
   type ProgramReportPage,
   type ProgramReportingProjection,
 } from "../projections/program-report-projection";
+import {
+  programScreeningReportSelect,
+  type ProgramScreeningReportSource,
+} from "../projections/program-screening-report";
 
 export const PROGRAM_REPORT_DEFAULT_PAGE_SIZE = 20;
 export const PROGRAM_REPORT_MAX_PAGE_SIZE = 50;
@@ -423,6 +428,18 @@ async function loadFinalAssessment(
   });
 }
 
+/** RPT-01: the Program's own screenings, read with the Hospital workbook's select. */
+async function loadProgramScreenings(
+  database: ProgramReportQueryDatabase,
+  patientProgramId: string,
+  patientHospitalRelationshipId: string,
+): Promise<ProgramScreeningReportSource[]> {
+  return database.screeningAssessment.findMany({
+    where: { patientProgramId, patientHospitalRelationshipId },
+    ...programScreeningReportSelect,
+  });
+}
+
 export async function getProgramReportingProjection(
   actor: ActorContext | null | undefined,
   patientHospitalRelationshipId: unknown,
@@ -463,19 +480,23 @@ export async function getProgramReportingProjection(
       throw new NotFoundError();
     }
 
-    const [linkedBaseline, finalAssessment, goalPlans, followups, roundReports] = await Promise.all([
+    const [linkedBaseline, finalAssessment, goalPlans, followups, roundReport, screenings] = await Promise.all([
       loadLinkedBaseline(database, program),
       loadFinalAssessment(database, normalizedProgramId, normalizedRelationshipId),
       loadGoalPlans(database, normalizedProgramId, normalizedRelationshipId, normalizedOptions.goalPlans),
       loadFollowups(database, normalizedProgramId, normalizedRelationshipId, normalizedOptions.followups),
-      loadRoundReports(database, [normalizedProgramId]),
+      // RPT-01: rounds and every opened round's vitals come from one batched Program round read.
+      loadProgramRoundReport(database, normalizedProgramId, roundReadOptionsFor(access.actor)),
+      loadProgramScreenings(database, normalizedProgramId, normalizedRelationshipId),
     ]);
 
     return toProgramReportingProjection({
       program,
       hospital: access.patient.hospital,
       patientDisplayName: access.patient.displayName,
-      rounds: roundReports.get(normalizedProgramId) ?? [],
+      rounds: roundReport.rounds,
+      roundVitals: roundReport.roundVitals,
+      screenings,
       linkedBaseline,
       finalAssessment,
       goalPlans,
@@ -498,6 +519,7 @@ export const programReportQueryInternals = {
   loadFollowups,
   loadGoalPlans,
   loadLinkedBaseline,
+  loadProgramScreenings,
   normalizePageOptions,
   parseProjectionOptions,
   programReportBaselineSelect,

@@ -2,6 +2,7 @@ import "server-only";
 
 import { loadRoundReports } from "./round-report-query-service";
 import { completedExtraRounds, type RoundReport } from "../projections/round-report-projection";
+import { programScreeningReportSelect, toProgramScreeningReport } from "../projections/program-screening-report";
 
 import { illnessDuration } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 
@@ -26,7 +27,6 @@ import {
   DREAM_CARD_ROUND,
   SERVICE_ONE_HOME_ROUND,
 } from "@/modules/patient-program-rounds/domain/round-catalog";
-import { parseScreeningOutcome, screeningAnswersInstrument } from "@/modules/screening/domain/screening-outcome";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import { serviceDateToUtcDate, toServiceDateOnly } from "@/shared/time/service-date";
 import {
@@ -334,11 +334,6 @@ const reportProgramRoundVitalsSelect = {
   },
 } satisfies Prisma.PatientProgramSelect["roundVitals"];
 
-const reportProgramScreeningSelect = {
-  orderBy: { submittedAt: "asc" },
-  select: { submittedAt: true, instrument: true, scoringVersion: true, result: true },
-} satisfies Prisma.PatientProgramSelect["screeningAssessments"];
-
 const reportProgramBaseSelect = {
   id: true,
   patientHospitalRelationshipId: true,
@@ -356,7 +351,7 @@ const reportProgramBaseSelect = {
   },
   finalAssessment: reportProgramFinalSelect,
   roundVitals: reportProgramRoundVitalsSelect,
-  screeningAssessments: reportProgramScreeningSelect,
+  screeningAssessments: programScreeningReportSelect,
 } satisfies Prisma.PatientProgramSelect;
 
 export const hospitalReportPageProgramSelect = {
@@ -617,39 +612,6 @@ function toBmiFact(weightKg: number | null, heightCm: number | null): HospitalRe
   return toFact(calculateBodyMassIndex(weightKg, heightCm));
 }
 
-/** R2-C: each instrument's result is mapped explicitly; a legacy combined screening answers both. */
-function toScreeningRecord(
-  screenings: HospitalReportProgramRecord["screeningAssessments"],
-): HospitalReportProgramRow["screening"] {
-  const outcomeFor = (step: "PAM" | "PROMS") => {
-    const screening = screenings.find((candidate) => screeningAnswersInstrument(candidate.instrument, step));
-    const outcome = screening
-      ? parseScreeningOutcome(screening.instrument, screening.scoringVersion, screening.result)
-      : null;
-
-    return screening && outcome ? { submittedAt: screening.submittedAt.toISOString(), outcome } : null;
-  };
-  const pam = outcomeFor("PAM");
-  const proms = outcomeFor("PROMS");
-
-  return {
-    pam: toRecord(
-      pam?.outcome.kind === "PAM"
-        ? { submittedAt: pam.submittedAt, score: pam.outcome.total }
-        : pam?.outcome.kind === "LEGACY"
-          ? { submittedAt: pam.submittedAt, score: pam.outcome.pamTotal }
-          : null,
-    ),
-    proms: toRecord(
-      proms?.outcome.kind === "PROMS"
-        ? { submittedAt: proms.submittedAt, hasProblem: proms.outcome.hasProblem }
-        : proms?.outcome.kind === "LEGACY"
-          ? { submittedAt: proms.submittedAt, legacyTotal: proms.outcome.promsTotal }
-          : null,
-    ),
-  };
-}
-
 function toServiceOneActivity(record: { recordedAt: Date } | undefined): HospitalReportProgramRow["serviceOne"]["routine"] {
   return record
     ? { state: "PRESENT", value: { recordedAt: record.recordedAt.toISOString() } }
@@ -858,7 +820,7 @@ function toHospitalReportProgramRow(
       baseline: toBmiFact(baseline?.weight ?? null, baseline?.heightCm ?? null),
       after: toBmiFact(finalAssessment?.weight ?? null, latestHeightCm),
     },
-    screening: toScreeningRecord(record.screeningAssessments),
+    screening: toProgramScreeningReport(record.screeningAssessments),
     illnessDuration: toFact(illnessDuration(relationship.healthHistory?.diagnosisYear)),
     weeklyExercise,
     unavailable: {

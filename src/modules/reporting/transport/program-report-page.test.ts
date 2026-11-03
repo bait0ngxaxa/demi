@@ -100,6 +100,8 @@ function page<T>(items: T[], overrides: Partial<ProgramReportPage<T>> = {}): Pro
 function report(overrides: Partial<ProgramReportingProjection> = {}): ProgramReportingProjection {
   return {
     rounds: [], extraRoundsCompleted: 0,
+    roundVitals: [],
+    screening: { pam: { state: "MISSING" }, proms: { state: "MISSING" } },
     patientProgramId: programId,
     patientHospitalRelationshipId: relationshipId,
     hospitalId,
@@ -461,6 +463,132 @@ describe("Program factual report presentation", () => {
       }),
     );
     expect(completedMissingMarkup).toContain("โปรแกรมนี้ไม่มีข้อมูล Final Assessment ที่บันทึกไว้");
+  });
+
+  it("renders every opened round's vitals with source, provenance and explicit missing states", () => {
+    const markup = renderReport(
+      report({
+        roundVitals: [
+          {
+            roundNumber: 1,
+            title: "ครั้งที่ 1 · รอบแรก",
+            vitals: {
+              state: "PRESENT",
+              source: "ROUND_VITALS",
+              serviceDate: new Date("2026-08-20T00:00:00.000Z"),
+              recordedAt,
+              recordedBy: { kind: "STAFF", displayName: "พยาบาลผู้บันทึก" },
+              measurements: {
+                weight: { state: "RECORDED", value: 70.5 },
+                waistCircumference: { state: "NOT_RECORDED" },
+                systolicBloodPressure: { state: "RECORDED", value: 128 },
+                diastolicBloodPressure: { state: "RECORDED", value: 82 },
+                bloodSugar: { state: "RECORDED", value: 101 },
+              },
+              heightCm: { state: "RECORDED", value: 160 },
+              bmi: { state: "RECORDED", value: 27.5 },
+            },
+          },
+          {
+            roundNumber: 2,
+            title: "ครั้งที่ 2 · รอบสอง",
+            vitals: {
+              state: "PRESENT",
+              source: "ROUND_VITALS",
+              serviceDate: new Date("2026-08-27T00:00:00.000Z"),
+              recordedAt,
+              recordedBy: { kind: "PATIENT_SELF" },
+              measurements: {
+                weight: { state: "RECORDED", value: 69 },
+                waistCircumference: { state: "NOT_RECORDED" },
+                systolicBloodPressure: { state: "NOT_RECORDED" },
+                diastolicBloodPressure: { state: "NOT_RECORDED" },
+                bloodSugar: { state: "NOT_RECORDED" },
+              },
+              heightCm: { state: "RECORDED", value: 160 },
+              bmi: { state: "RECORDED", value: 27 },
+            },
+          },
+          {
+            roundNumber: 3,
+            title: "ครั้งที่ 3 · ติดตาม",
+            vitals: {
+              state: "PRESENT",
+              source: "FOLLOWUP",
+              serviceDate: null,
+              recordedAt,
+              recordedBy: { kind: "STAFF", displayName: null },
+              measurements: {
+                weight: { state: "RECORDED", value: 68 },
+                waistCircumference: { state: "NOT_RECORDED" },
+                systolicBloodPressure: { state: "NOT_RECORDED" },
+                diastolicBloodPressure: { state: "NOT_RECORDED" },
+                bloodSugar: { state: "NOT_RECORDED" },
+              },
+              heightCm: { state: "NOT_RECORDED" },
+              bmi: { state: "NOT_RECORDED" },
+            },
+          },
+          { roundNumber: 4, title: "ครั้งที่ 4 · ติดตาม", vitals: { state: "MISSING" } },
+        ],
+      }),
+    );
+
+    expect(markup).toContain("ค่าตรวจรายครั้ง");
+    expect(markup).toContain("ครั้งที่ 1 · รอบแรก");
+    expect(markup).toContain("70.5");
+    expect(markup).toContain("27.5");
+    expect(markup).toContain("128 / 82");
+    expect(markup).toContain("101");
+    expect(markup).toContain("พยาบาลผู้บันทึก");
+    expect(markup).toContain("ผู้ป่วยบันทึกเอง");
+    expect(markup).toContain("ไม่ระบุ");
+    expect(markup).toContain("ค่าตรวจของครั้งนี้");
+    expect(markup).toContain("ค่าจากการติดตามผล");
+    expect(markup).toContain('dateTime="2026-08-20"');
+    expect(markup).toContain(`dateTime="${recordedAt.toISOString()}"`);
+    expect(markup).toContain("ยังไม่บันทึกค่าตรวจของครั้งนี้");
+    expect(markup).toContain("ยังไม่บันทึก");
+    // 380 px: two measurement columns on the narrowest screens, rows in one bordered list (no nested cards).
+    expect(markup).toContain("grid-cols-2");
+    expect(markup).toContain('aria-label="ค่าตรวจรายครั้งในโปรแกรม"');
+    expect(markup).toContain("divide-y");
+  });
+
+  it("renders a neutral state when the Program has no opened round", () => {
+    const markup = renderReport(report());
+
+    expect(markup).toContain("ค่าตรวจรายครั้ง");
+    expect(markup).toContain("โปรแกรมนี้ยังไม่มีครั้งบริการที่เปิดไว้");
+  });
+
+  it("renders PAM and PROMs results, legacy combined totals and missing states", () => {
+    const missing = renderReport(report());
+    const booklet = renderReport(
+      report({
+        screening: {
+          pam: { state: "PRESENT", value: { submittedAt: "2026-08-20T05:00:00.000Z", score: 42 } },
+          proms: { state: "PRESENT", value: { submittedAt: "2026-08-20T06:00:00.000Z", hasProblem: true } },
+        },
+      }),
+    );
+    const legacy = renderReport(
+      report({
+        screening: {
+          pam: { state: "PRESENT", value: { submittedAt: "2026-08-20T05:00:00.000Z", score: 31 } },
+          proms: { state: "PRESENT", value: { submittedAt: "2026-08-20T05:00:00.000Z", legacyTotal: 17 } },
+        },
+      }),
+    );
+
+    expect(missing).toContain("PAM / PROMs");
+    expect(missing.match(/ยังไม่บันทึก/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(booklet).toContain("คะแนนรวม 42");
+    expect(booklet).toContain("มีปัญหา");
+    expect(booklet).not.toContain("ไม่มีปัญหา");
+    expect(booklet).toContain('dateTime="2026-08-20T06:00:00.000Z"');
+    expect(legacy).toContain("คะแนนรวม 31");
+    expect(legacy).toContain("คะแนนรวม 17 (แบบประเมินชุดเดิม)");
   });
 
   it("uses responsive, semantic markup for narrow screens", () => {

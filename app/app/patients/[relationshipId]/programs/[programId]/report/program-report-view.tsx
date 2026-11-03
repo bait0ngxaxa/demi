@@ -8,18 +8,27 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { getGoalActivity, getGoalTemplate } from "@/modules/goals/domain/goal-templates";
+import { PROMS_RESULT_LABELS } from "@/modules/screening/presentation/screening-labels";
 import type {
   ProgramReportBaselineMeasurements,
   ProgramReportFollowup,
   ProgramReportGoalPlan,
   ProgramReportMeasurements,
   ProgramReportPage,
+  ProgramReportRoundVitals,
+  ProgramReportRoundVitalsRecorder,
   ProgramReportServiceOneActivity,
   ProgramReportingProjection,
   ReportFact,
 } from "@/modules/reporting/projections/program-report-projection";
 
 const MISSING_VALUE_LABEL = "ไม่มีข้อมูล";
+const NOT_RECORDED_LABEL = "ยังไม่บันทึก";
+
+const roundVitalsSourceLabels: Record<"ROUND_VITALS" | "FOLLOWUP", string> = {
+  ROUND_VITALS: "ค่าตรวจของครั้งนี้",
+  FOLLOWUP: "ค่าจากการติดตามผล",
+};
 
 const progressStatusLabels: Record<FollowupActivityProgressStatus, string> = {
   DONE: "ทำได้",
@@ -64,6 +73,20 @@ function statusVariant(status: ProgramReportingProjection["lifecycle"]["status"]
 
 function factValue<T>(fact: ReportFact<T>): string {
   return fact.state === "RECORDED" ? String(fact.value) : MISSING_VALUE_LABEL;
+}
+
+function recordedValue(fact: ReportFact<number>): string {
+  return fact.state === "RECORDED" ? String(fact.value) : NOT_RECORDED_LABEL;
+}
+
+function bloodPressureValue(systolic: ReportFact<number>, diastolic: ReportFact<number>): string {
+  return systolic.state === "NOT_RECORDED" && diastolic.state === "NOT_RECORDED"
+    ? NOT_RECORDED_LABEL
+    : `${recordedValue(systolic)} / ${recordedValue(diastolic)}`;
+}
+
+function roundVitalsRecorderLabel(recorder: ProgramReportRoundVitalsRecorder): string {
+  return recorder.kind === "PATIENT_SELF" ? "ผู้ป่วยบันทึกเอง" : recorder.displayName ?? "ไม่ระบุ";
 }
 
 function reportPath(
@@ -246,6 +269,165 @@ function LinkedBaselineSection({
           </div>
         </Panel>
       )}
+    </ReportSection>
+  );
+}
+
+function RoundVitalsRow({ round }: { round: ProgramReportRoundVitals }): React.JSX.Element {
+  const vitals = round.vitals;
+  const headingId = `program-report-round-vitals-${round.roundNumber}`;
+
+  return (
+    <li aria-labelledby={headingId} className="px-4 py-5 sm:px-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <h3 className="break-words font-semibold text-text" id={headingId}>
+          {round.title}
+        </h3>
+        {vitals.state === "PRESENT" ? (
+          <StatusBadge variant="info">{roundVitalsSourceLabels[vitals.source]}</StatusBadge>
+        ) : (
+          <StatusBadge variant="neutral">{NOT_RECORDED_LABEL}</StatusBadge>
+        )}
+      </div>
+
+      {vitals.state === "PRESENT" ? (
+        <>
+          <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 tabular-nums sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: "น้ำหนัก · kg", value: recordedValue(vitals.measurements.weight) },
+              { label: "ส่วนสูง · cm", value: recordedValue(vitals.heightCm) },
+              { label: "รอบเอว · cm", value: recordedValue(vitals.measurements.waistCircumference) },
+              { label: "ดัชนีมวลกาย · kg/m²", value: recordedValue(vitals.bmi) },
+              { label: "น้ำตาลในเลือด · mg/dL", value: recordedValue(vitals.measurements.bloodSugar) },
+              {
+                label: "ความดัน · mmHg",
+                value: bloodPressureValue(
+                  vitals.measurements.systolicBloodPressure,
+                  vitals.measurements.diastolicBloodPressure,
+                ),
+              },
+            ].map((item) => (
+              <div className="min-w-0" key={item.label}>
+                <dt className="text-sm text-text-muted">{item.label}</dt>
+                <dd className="mt-1 break-words font-semibold text-text">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-4 text-sm leading-6 text-text-muted">
+            {vitals.serviceDate ? (
+              <>
+                วันที่ให้บริการ{" "}
+                <time dateTime={vitals.serviceDate.toISOString().slice(0, 10)}>{formatDate(vitals.serviceDate)}</time>
+                {" · "}
+              </>
+            ) : null}
+            บันทึกในระบบเมื่อ <time dateTime={vitals.recordedAt.toISOString()}>{formatDateTime(vitals.recordedAt)}</time>
+            {" · ผู้บันทึก: "}
+            {roundVitalsRecorderLabel(vitals.recordedBy)}
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่บันทึกค่าตรวจของครั้งนี้</p>
+      )}
+    </li>
+  );
+}
+
+function RoundVitalsSection({
+  report,
+}: {
+  report: ProgramReportingProjection;
+}): React.JSX.Element {
+  return (
+    <ReportSection
+      description="แสดงค่าตรวจของทุกครั้งบริการที่เปิดในโปรแกรมนี้ ใช้ค่าที่บันทึกล่าสุดระหว่างค่าตรวจของครั้งนั้นกับค่าจากการติดตามผล โดยไม่เพิ่มการแปลผล"
+      id="program-report-round-vitals"
+      title="ค่าตรวจรายครั้ง"
+    >
+      {report.roundVitals.length > 0 ? (
+        <ol
+          aria-label="ค่าตรวจรายครั้งในโปรแกรม"
+          className="divide-y divide-border rounded-panel border border-border bg-surface"
+        >
+          {report.roundVitals.map((round) => (
+            <RoundVitalsRow key={round.roundNumber} round={round} />
+          ))}
+        </ol>
+      ) : (
+        <Alert variant="neutral">โปรแกรมนี้ยังไม่มีครั้งบริการที่เปิดไว้</Alert>
+      )}
+    </ReportSection>
+  );
+}
+
+type ScreeningDisplay = {
+  key: string;
+  title: string;
+  present: boolean;
+  result: string;
+  submittedAt: string | null;
+};
+
+function screeningDisplays(screening: ProgramReportingProjection["screening"]): ScreeningDisplay[] {
+  const { pam, proms } = screening;
+
+  return [
+    {
+      key: "pam",
+      title: "PAM",
+      present: pam.state === "PRESENT",
+      result: pam.state === "PRESENT" ? `คะแนนรวม ${pam.value.score}` : NOT_RECORDED_LABEL,
+      submittedAt: pam.state === "PRESENT" ? pam.value.submittedAt : null,
+    },
+    {
+      key: "proms",
+      title: "PROMs",
+      present: proms.state === "PRESENT",
+      result:
+        proms.state === "MISSING"
+          ? NOT_RECORDED_LABEL
+          : "legacyTotal" in proms.value
+            ? `คะแนนรวม ${proms.value.legacyTotal} (แบบประเมินชุดเดิม)`
+            : proms.value.hasProblem
+              ? PROMS_RESULT_LABELS.problem
+              : PROMS_RESULT_LABELS.noProblem,
+      submittedAt: proms.state === "PRESENT" ? proms.value.submittedAt : null,
+    },
+  ];
+}
+
+function ScreeningSection({
+  report,
+}: {
+  report: ProgramReportingProjection;
+}): React.JSX.Element {
+  return (
+    <ReportSection
+      description="แสดงผล PAM และ PROMs ที่ทำในโปรแกรมนี้ตามที่บันทึกไว้ ใช้หลักเดียวกับรายงาน Excel ของโรงพยาบาล"
+      id="program-report-screening"
+      title="PAM / PROMs"
+    >
+      <Panel>
+        <ul className="grid gap-6 sm:grid-cols-2" aria-label="ผล PAM และ PROMs ในโปรแกรม">
+          {screeningDisplays(report.screening).map((item) => (
+            <li className="min-w-0" key={item.key}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-semibold text-text">{item.title}</h3>
+                <StatusBadge variant={item.present ? "info" : "neutral"}>
+                  {item.present ? "มีข้อมูล" : NOT_RECORDED_LABEL}
+                </StatusBadge>
+              </div>
+              <p className="mt-2 break-words text-lg font-semibold tabular-nums text-text">{item.result}</p>
+              {item.submittedAt ? (
+                <p className="mt-1 text-sm leading-6 text-text-muted">
+                  ส่งแบบประเมินเมื่อ{" "}
+                  <time dateTime={item.submittedAt}>{formatDateTime(new Date(item.submittedAt))}</time>
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </Panel>
     </ReportSection>
   );
 }
@@ -736,6 +918,8 @@ export function ProgramReportView({
         </ReportSection>
 
         <LinkedBaselineSection report={report} />
+        <RoundVitalsSection report={report} />
+        <ScreeningSection report={report} />
         <ServiceOneSection report={report} />
         <GoalPlansSection
           currentCursors={currentCursors}
@@ -763,6 +947,7 @@ export function ProgramReportView({
 }
 
 export const programReportViewInternals = {
+  bloodPressureValue,
   factValue,
   formatDate,
   formatDateTime,

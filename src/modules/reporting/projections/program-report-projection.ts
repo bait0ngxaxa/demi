@@ -1,5 +1,10 @@
 import { completedExtraRounds } from "./round-report-projection";
 import type { RoundReport } from "./round-report-projection";
+import {
+  toProgramScreeningReport,
+  type ProgramScreeningReport,
+  type ProgramScreeningReportSource,
+} from "./program-screening-report";
 import type {
   FollowupActivityProgressStatus,
   PatientProgramStatus,
@@ -11,6 +16,8 @@ import type {
   PatientProgramServiceOneRecord,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import { toPatientProgramServiceOneReportProjection } from "@/modules/patient-program/services/patient-program-service-one-query-service";
+import { roundTitle } from "@/modules/patient-program-rounds/domain/round-catalog";
+import type { RoundVitalsView } from "@/modules/patient-program-rounds/services/round-query-service";
 import { InfrastructureError } from "@/shared/errors/application-error";
 
 export type ReportFact<T> =
@@ -130,6 +137,41 @@ export type ProgramReportFollowup = {
   activityProgress: ProgramReportFollowupActivityProgress[];
 };
 
+/**
+ * RPT-01: who recorded a round's vitals. A Patient's own entry is shown as such; a staff name is present only
+ * when the viewer may see recorder names (the same rule as the round reads).
+ */
+export type ProgramReportRoundVitalsRecorder =
+  | { kind: "PATIENT_SELF" }
+  | { kind: "STAFF"; displayName: string | null };
+
+export type ProgramReportRoundVitalsRecord =
+  | {
+      state: "PRESENT";
+      /** Round vitals or the round's Follow-up measurements, whichever was recorded last. */
+      source: "ROUND_VITALS" | "FOLLOWUP";
+      serviceDate: Date | null;
+      recordedAt: Date;
+      recordedBy: ProgramReportRoundVitalsRecorder;
+      measurements: ProgramReportMeasurements;
+      /** Latest recorded height up to this round (round vitals, then Baseline). */
+      heightCm: ReportFact<number>;
+      /** WB-DF-04: value only, `calculateBodyMassIndex(weight, heightCm)`. */
+      bmi: ReportFact<number>;
+    }
+  | { state: "MISSING" };
+
+export type ProgramReportRoundVitals = {
+  roundNumber: number;
+  title: string;
+  vitals: ProgramReportRoundVitalsRecord;
+};
+
+export type ProgramReportRoundVitalsSource = {
+  roundNumber: number;
+  vitals: RoundVitalsView | null;
+};
+
 export type ProgramReportPage<T> = {
   items: T[];
   totalCount: number;
@@ -141,6 +183,10 @@ export type ProgramReportPage<T> = {
 export type ProgramReportingProjection = {
   rounds: readonly RoundReport[];
   extraRoundsCompleted: number;
+  /** RPT-01: every opened round's vitals, in round order. */
+  roundVitals: readonly ProgramReportRoundVitals[];
+  /** RPT-01: PAM and PROMs of this Program, mapped exactly as the Hospital workbook maps them. */
+  screening: ProgramScreeningReport;
   patientProgramId: string;
   patientHospitalRelationshipId: string;
   hospitalId: string;
@@ -424,6 +470,29 @@ function toServiceOneProjection(
   };
 }
 
+export function toProgramReportRoundVitals(source: ProgramReportRoundVitalsSource): ProgramReportRoundVitals {
+  const vitals = source.vitals;
+
+  return {
+    roundNumber: source.roundNumber,
+    title: roundTitle(source.roundNumber),
+    vitals: vitals
+      ? {
+          state: "PRESENT",
+          source: vitals.source,
+          serviceDate: vitals.serviceDate,
+          recordedAt: vitals.recordedAt,
+          recordedBy: vitals.byPatient
+            ? { kind: "PATIENT_SELF" }
+            : { kind: "STAFF", displayName: vitals.recordedByDisplayName },
+          measurements: toMeasurements(vitals),
+          heightCm: toReportFact(vitals.heightCm),
+          bmi: toReportFact(vitals.bmi),
+        }
+      : { state: "MISSING" },
+  };
+}
+
 export function toProgramReportGoalPlan(
   source: ProgramReportGoalPlanSource,
   expectedProgramId: string,
@@ -488,6 +557,8 @@ export function toProgramReportFollowup(
 
 export function toProgramReportingProjection(input: {
   rounds?: readonly RoundReport[];
+  roundVitals?: readonly ProgramReportRoundVitalsSource[];
+  screenings?: readonly ProgramScreeningReportSource[];
   program: ProgramReportProgramSource;
   hospital: { id: string; name: string };
   patientDisplayName: string;
@@ -506,6 +577,8 @@ export function toProgramReportingProjection(input: {
   return {
     rounds: input.rounds ?? [],
     extraRoundsCompleted: completedExtraRounds(input.rounds ?? []),
+    roundVitals: (input.roundVitals ?? []).map(toProgramReportRoundVitals),
+    screening: toProgramScreeningReport(input.screenings ?? []),
     patientProgramId: input.program.id,
     patientHospitalRelationshipId: input.program.patientHospitalRelationshipId,
     hospitalId: input.hospital.id,
