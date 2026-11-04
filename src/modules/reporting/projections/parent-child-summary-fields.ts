@@ -1,7 +1,18 @@
 import type { ParentChildHospitalReportingProjection } from "./hospital-report-projection";
 
+export type ParentChildSummaryFieldKey =
+  | "patientHospitalRelationships"
+  | "relationshipsWithoutProgram"
+  | "programsTotal"
+  | "programsActive"
+  | "programsCompleted"
+  | "programsWithRoutineRecord"
+  | "programsWithFloatingChartRecord"
+  | "programsWithDreamCardRecord"
+  | "programsWithConfidenceRecord";
+
 export type ParentChildSummaryField = {
-  key: string;
+  key: ParentChildSummaryFieldKey;
   label: string;
   grain: "PATIENT_HOSPITAL_RELATIONSHIP" | "PATIENT_PROGRAM";
   value: number;

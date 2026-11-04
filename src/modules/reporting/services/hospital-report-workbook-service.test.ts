@@ -194,7 +194,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("B10").value).toBe("สมชาย");
     expect(dashboard.getCell("D10").value).toBe("LOCAL-001");
     expect(dashboard.getCell("A11").value).toBe(2);
-    expect(dashboard.getCell("AI9").value).toBe("โปรแกรมยังดำเนินอยู่");
+    expect(dashboard.getCell("AI9").value).toBe("ยังดำเนิน Program");
     expect(dashboard.getCell("AI11").value).toBeInstanceOf(Date);
     // D7/D8: CVD not recorded on this Baseline; HbA1c is approved and reported as recorded.
     expect(dashboard.getCell("H9").value).toBe("ยังไม่บันทึก");

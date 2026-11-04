@@ -459,17 +459,23 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
 
   it("places Hospital, case-count and classification facts in each sheet's native header rows", () => {
     expect(normalizedCell(dashboard, "A1")).toBe("โรงพยาบาล: รพ.สต. ทดสอบ");
-    expect(normalizedCell(dashboard, "A2")).toBe("จำนวนรายการผู้ป่วย");
+    expect(normalizedCell(dashboard, "A2")).toBe("จำนวนเคส");
     expect(normalizedCell(dashboard, "B2")).toBe(1);
+    expect(normalizedCell(dashboard, "E2")).toBe("Program ทั้งหมด");
     expect(normalizedCell(dashboard, "C2")).toBe("เบาหวาน (DM)");
+    expect(normalizedCell(dashboard, "A3")).toBe("ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program");
+    expect(normalizedCell(dashboard, "E3")).toBe("Program ACTIVE / COMPLETED");
     expect(normalizedCell(dashboard, "C3")).toBe("กลุ่มเสี่ยง (Pre-DM)");
     expect(normalizedCell(dashboard, "F2")).toBe(1);
     expect(normalizedCell(dashboard, "B3")).toBe(0);
 
     expect(normalizedCell(service, "A1")).toBe("Service Process record");
     expect(normalizedCell(service, "A2")).toBe("โรงพยาบาล: รพ.สต. ทดสอบ");
-    expect(normalizedCell(service, "A3")).toBe("จำนวนรายการผู้ป่วย");
+    expect(normalizedCell(service, "A3")).toBe("จำนวนเคส");
     expect(normalizedCell(service, "B3")).toBe(1);
+    expect(normalizedCell(service, "E3")).toBe("Program ทั้งหมด");
+    expect(normalizedCell(service, "A4")).toBe("ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program");
+    expect(normalizedCell(service, "E4")).toBe("Program ACTIVE / COMPLETED");
     expect(normalizedCell(service, "C3")).toBe("เบาหวาน (DM)");
     expect(normalizedCell(service, "C4")).toBe("กลุ่มเสี่ยง (Pre-DM)");
     expect(normalizedCell(service, "F3")).toBe(1);

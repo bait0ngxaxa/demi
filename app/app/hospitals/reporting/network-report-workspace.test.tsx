@@ -34,6 +34,10 @@ describe("unified network reporting", () => {
     expect(switcher).toContain("ลูกข่าย (2)");
     expect(html).toContain("PARENT_CHILD%3Aparent%3Achild");
     expect(html.match(/<td /gu)).toHaveLength(9);
+    expect(html).toContain("จำนวนรายการผู้ป่วยในโรงพยาบาล");
+    expect(html).toContain("โปรแกรมทั้งหมด");
+    expect(html).toContain("โปรแกรมที่กำลังดำเนินอยู่");
+    expect(html).toContain("รายการผู้ป่วยที่ยังไม่มีโปรแกรม");
     expect(html).not.toContain("/app/patients/");
     expect(html).not.toContain("<details");
     expect(html).toContain("grid-cols-2");

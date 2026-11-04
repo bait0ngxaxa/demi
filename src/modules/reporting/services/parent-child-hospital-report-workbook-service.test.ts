@@ -143,6 +143,17 @@ describe("RPT-32 Parent-to-Child summary export (ADR-0013 §3/§7)", () => {
     expect(values.filter((value) => value instanceof Date)).toHaveLength(1);
     expect(values).toContain("เวลาที่สร้างไฟล์ (เวลาไทย)");
     expect(values).toContain("เวลาที่สร้างไฟล์เป็นเวลาไทย ไม่ใช่เวลาอ้างอิงของข้อมูล");
+    expect(text).toContain("จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล");
+    expect(text).toContain("จำนวนความสัมพันธ์ที่ไม่มี Program");
+    expect(text).toContain("Program ทั้งหมด");
+    expect(text).toContain("Program ที่กำลังดำเนิน");
+    expect(text).toContain("Program ที่สิ้นสุดแล้ว");
+    expect(text).toContain("Program ที่มีบันทึก Routine");
+    expect(text).toContain("Program ที่มีบันทึก Floating Chart");
+    expect(text).toContain("Program ที่มีบันทึก Dream Card");
+    expect(text).toContain("Program ที่มีบันทึก Confidence");
+    expect(text).toContain("ขั้นตอนบริการนับจำนวน Program ที่มีบันทึก ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ");
+    expect(text).not.toContain("จำนวนรายการผู้ป่วยในโรงพยาบาล");
 
     // Phase F: active Patient–Hospital relationships only; there is no include-ended option.
     expect(relationshipCount).toHaveBeenNthCalledWith(1, { where: { hospitalId: childHospitalId, endedAt: null } });
