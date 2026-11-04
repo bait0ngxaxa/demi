@@ -2,6 +2,12 @@ import type { PatientServiceCode, PatientServiceRequestSlot } from "@prisma/clie
 
 import { serviceDateToUtcDate, toServiceDateOnly } from "@/shared/time/service-date";
 
+/**
+ * ADR-0029: the home-visit services a patient may request, in display order. They are native to DEMI and
+ * requestable at every ACTIVE Hospital; no Hospital setting switches them on or off.
+ */
+export const PATIENT_SERVICE_CODES: readonly PatientServiceCode[] = ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"];
+
 /** ADR-0023: the home-visit services a patient may request. */
 export const PATIENT_SERVICE_LABELS: Record<PatientServiceCode, string> = {
   SCREENING: "คัดกรอง",

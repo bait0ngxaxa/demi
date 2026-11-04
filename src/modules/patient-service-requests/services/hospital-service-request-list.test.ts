@@ -21,7 +21,7 @@ const actor: ActorContext = { userId: "reviewer", personId: "person", roles: ["H
 function row(id: string = requestId) {
   return {
     id, hospitalId: hospitalA, status: "PENDING", createdAt, preferredOsmUserId: null,
-    offering: { code: "SCREENING" }, preferredOsm: null,
+    serviceCode: "SCREENING", preferredOsm: null,
     appointments: [],
     relationship: {
       id: "relationship-a",

@@ -24,6 +24,7 @@ import {
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { getPatientDirectoryDetail } from "@/modules/patient-directory/services/patient-directory-query-service";
+import { expectEveryNativeServiceRequestable } from "./support/native-patient-services";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { listWorkforce } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
@@ -435,17 +436,12 @@ describe("Phase 12B.0 Hospital governance PostgreSQL workflow", () => {
     })).toEqual({
       serviceAreaEligibility: { kind: "PARENT", classifiedByUserId: admin.userId },
     });
-    // ADR-0023 (SR-D5): a new Hospital offers every service, recorded as set by its registrar.
-    expect(await prisma.hospitalServiceOffering.findMany({
-      where: { hospitalId: created.id },
-      orderBy: { code: "asc" },
-      select: { code: true, enabled: true, createdByUserId: true, updatedByUserId: true },
-    })).toEqual(["SCREENING", "FOLLOW_UP", "EMPOWERMENT"].map((code) => ({
-      code, enabled: true, createdByUserId: admin.userId, updatedByUserId: admin.userId,
-    })));
     const generated = await registerHospital(admin.actor, { submissionNonce: randomUUID(), name: "โรงพยาบาลรหัสอัตโนมัติ" });
     expect(generated.hospitalCode).toMatch(/^H-[2-9A-HJKMNP-Z]{6}$/u);
     expect(generated.hospitalCode).not.toBe(created.hospitalCode);
+    // ADR-0029: hospital creation writes no service rows; once ACTIVE, its patients request every native service.
+    await prisma.hospital.update({ where: { id: generated.id }, data: { status: HospitalStatus.ACTIVE }, select: { id: true } });
+    await expectEveryNativeServiceRequestable(prisma, generated.id);
     // Codes are always generated, ADMIN cannot choose a network role (ADR-0018 amendment) and there is no Parent link.
     for (const extra of [{ hospitalCode: "MINE-1" }, { hospitalCode: " " }, { networkRole: "CHILD" }, { networkRole: "PARENT" }, { parentHospitalId: created.id }]) {
       await expect(

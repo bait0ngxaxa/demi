@@ -160,7 +160,6 @@ async function cleanup(): Promise<void> {
   await db.lineAppointmentNotificationPreference.deleteMany({ where: { userId: { in: users } } });
   await db.lineAccountBinding.deleteMany({ where: { userId: { in: users } } });
   await db.patientServiceRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
-  await db.hospitalServiceOffering.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await clearProgramRoundCompletions((await db.patientProgram.findMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } }, select: { id: true } })).map((program) => program.id));
   await db.patientProgram.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationshipId: { in: relationshipIds } } });
@@ -294,8 +293,7 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
       submittedByUserId: f.patient.userId, source: "PATIENT_SELF", submissionNonce: randomUUID(), reason: "ไม่สะดวก", preferredDatetimes: [new Date("2026-11-02T03:00:00Z")] } });
     await db.patientAppointmentCancellationRequest.create({ data: { appointmentId: past.appointmentId, sourceAppointmentUpdatedAt: now,
       submittedByUserId: f.patient.userId, source: "PATIENT_SELF", submissionNonce: randomUUID() } });
-    const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: f.hospitalId, code: "SCREENING", enabled: true, createdByUserId: f.owner.userId, updatedByUserId: f.owner.userId } });
-    const request = await db.patientServiceRequest.create({ data: { patientHospitalRelationshipId: f.relationshipId, hospitalId: f.hospitalId, offeringId: offering.id, requestedByUserId: f.patient.userId } });
+    const request = await db.patientServiceRequest.create({ data: { patientHospitalRelationshipId: f.relationshipId, hospitalId: f.hospitalId, serviceCode: "SCREENING", requestedByUserId: f.patient.userId } });
     const historicalAccessRequest = await db.patientAccessRequest.create({ data: {
       hospitalId: f.hospitalId,
       identityKeyHash: randomUUID(),
@@ -367,7 +365,6 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
   it("the Patient keeps read-only history for the ended Hospital, marked as ended, and full access at the other Hospital", async () => {
     const f = await fixture();
     const future = await createAppointment(f.owner, appointmentInput(f.relationshipId, "2026-10-30T10:00:00+07:00"), dependencies);
-    const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: f.hospitalId, code: "SCREENING", enabled: true, createdByUserId: f.owner.userId, updatedByUserId: f.owner.userId } });
     await db.hospitalContact.create({ data: { hospitalId: f.hospitalId, phoneNumber: "021234567" } });
     await expect(getOwnPatientAppointmentDetail(f.patient, f.relationshipId, future.appointmentId, { database: db })).resolves.toMatchObject({ contactPhones: { assignedOsmPhone: null, hospitalPhone: "021234567" } });
     await endPatientHospitalRelationship(f.owner, endInput(f.relationshipId), dependencies);
@@ -387,9 +384,12 @@ describe("Phase F: ending a Patient's care relationship with one Hospital (Postg
     const row = await db.patientAppointment.findUniqueOrThrow({ where: { id: future.appointmentId } });
     await expect(acknowledgeOwnPatientAppointment(f.patient, { patientHospitalRelationshipId: f.relationshipId, appointmentId: future.appointmentId, expectedUpdatedAt: row.updatedAt.toISOString() }, dependencies))
       .rejects.toBeInstanceOf(NotFoundError);
-    await expect(createPatientServiceRequest(f.patient, { relationshipId: f.relationshipId, offeringId: offering.id, preferredDate: "2026-10-20", preferredSlot: "MORNING" }, dependencies)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(createPatientServiceRequest(f.patient, { relationshipId: f.relationshipId, serviceCode: "SCREENING", preferredDate: "2026-10-20", preferredSlot: "MORNING" }, dependencies)).rejects.toBeInstanceOf(NotFoundError);
     const services = await listOwnPatientServiceRequests(f.patient, dependencies);
-    expect(services.find(({ relationshipId }) => relationshipId === f.relationshipId)).toMatchObject({ careEnded: true, offerings: [] });
+    expect(services.find(({ relationshipId }) => relationshipId === f.relationshipId)).toMatchObject({ careEnded: true, services: [] });
+    // ADR-0029: the active Hospital still offers every native service.
+    expect(services.find(({ relationshipId }) => relationshipId === f.otherRelationshipId))
+      .toMatchObject({ careEnded: false, services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"] });
 
     await expect(resolveAppointmentAccessContext(f.patient, f.otherRelationshipId, APPOINTMENT_ACKNOWLEDGE_CAPABILITY, db)).resolves.toMatchObject({ scopes: { patientSelf: true } });
     await expect(getOwnPatientAppointmentHistory(f.patient, f.otherRelationshipId, { database: db })).resolves.toMatchObject({ relationship: { careEndedAt: null } });

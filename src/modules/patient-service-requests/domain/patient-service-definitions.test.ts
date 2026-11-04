@@ -1,6 +1,8 @@
+import { PatientServiceCode } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import {
+  PATIENT_SERVICE_CODES,
   PATIENT_SERVICE_LABELS,
   PATIENT_SERVICE_REQUEST_SLOT_LABELS,
   isValidPreferredDate,
@@ -15,6 +17,11 @@ describe("preferredDateBounds (ADR-0023 SR-D6)", () => {
 });
 
 describe("Patient service definitions (ADR-0023)", () => {
+  it("lists every native service once, in display order (ADR-0029)", () => {
+    expect(PATIENT_SERVICE_CODES).toEqual(["SCREENING", "FOLLOW_UP", "EMPOWERMENT"]);
+    expect([...PATIENT_SERVICE_CODES].sort()).toEqual(Object.values(PatientServiceCode).sort());
+  });
+
   it("labels the three services and the preferred slots in Thai", () => {
     expect(PATIENT_SERVICE_LABELS).toEqual({
       SCREENING: "คัดกรอง",

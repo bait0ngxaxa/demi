@@ -16,23 +16,15 @@ import {
   PATIENT_SERVICE_REQUEST_REJECTION_REASON_MAX_LENGTH,
 } from "../domain/patient-service-definitions";
 
-export const hospitalServiceOfferingMutationSchema = z
-  .object({
-    hospitalId: z.uuid(),
-    code: z.nativeEnum(PatientServiceCode),
-    enabled: z.boolean(),
-  })
-  .strict();
-
 /**
  * ADR-0023 (SR-D6): a request states a preferred date and slot; the date range (tomorrow to +60 days,
  * Asia/Bangkok) depends on the request time and is checked by the service with `isValidPreferredDate`.
- * A blank note is no note.
+ * A blank note is no note. ADR-0029: the service is one of the native DEMI services, never a Hospital setting.
  */
 export const patientServiceRequestCreateSchema = z
   .object({
     relationshipId: z.uuid(),
-    offeringId: z.uuid(),
+    serviceCode: z.nativeEnum(PatientServiceCode),
     preferredOsmRelationshipId: z.uuid().nullable().optional(),
     preferredDate: serviceDateSchema,
     preferredSlot: z.nativeEnum(PatientServiceRequestSlot),
@@ -76,9 +68,6 @@ export const patientServiceRequestRejectSchema = z
   })
   .strict();
 
-export type HospitalServiceOfferingMutationInput = z.infer<
-  typeof hospitalServiceOfferingMutationSchema
->;
 export type PatientServiceRequestCreateInput = z.infer<
   typeof patientServiceRequestCreateSchema
 >;

@@ -28,7 +28,6 @@ import {
   correctWorkforcePersonName,
 } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
-import { setHospitalServiceOffering } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
 import { HOSPITAL_NETWORK_CHILD_REPORT_CAPABILITIES } from "@/modules/reporting/policies/hospital-network-child-report-policy";
 import { HOSPITAL_REPORT_CAPABILITIES } from "@/modules/reporting/policies/hospital-report-policy";
 import {
@@ -190,7 +189,6 @@ async function cleanup(): Promise<void> {
   await db.patientHospitalRelationship.deleteMany({ where: relationshipWhere });
   await db.patientProfile.deleteMany({ where: { personId: { in: people } } });
   await db.workforceActivation.deleteMany({ where: { userId: { in: users } } });
-  await db.hospitalServiceOffering.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalServiceAreaEligibility.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.hospitalMembership.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.osmHospitalRelationship.deleteMany({ where: { hospitalId: { in: hospitals } } });
@@ -327,7 +325,6 @@ describe("ADR-0026 MEMBER operational parity / PostgreSQL", () => {
       hospitalId: f.parentId, submissionNonce: randomUUID(), title: "ข่าว", body: "รายละเอียด", category: "NEWS", sourceText: null,
     })).rejects.toSatisfy(forbiddenOrHidden);
     await expect(setHospitalSelfRegistrationEnabled(f.member, { hospitalId: f.parentId, enabled: false })).rejects.toSatisfy(forbiddenOrHidden);
-    await expect(setHospitalServiceOffering(f.member, { hospitalId: f.parentId, code: "SCREENING", enabled: false })).rejects.toSatisfy(forbiddenOrHidden);
     await expect(attachHospitalServiceArea(f.member, { parentHospitalId: f.parentId, childHospitalId: f.otherId })).rejects.toSatisfy(forbiddenOrHidden);
     await expect(endHospitalServiceArea(f.member, { parentHospitalId: f.parentId, areaId: f.areaId, confirm: true, endReason: "ห้าม" }))
       .rejects.toSatisfy(forbiddenOrHidden);

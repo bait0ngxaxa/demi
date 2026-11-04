@@ -6,7 +6,6 @@ const patientDetailStaticSegments = new Set([
   "assigned",
   "activation",
   "provision",
-  "service-catalog",
   "service-requests",
 ]);
 

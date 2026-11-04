@@ -11,9 +11,7 @@ import {
   rejectPatientServiceRequest,
   withdrawOwnPatientServiceRequest,
 } from "../services/patient-service-request-service";
-import { setHospitalServiceOffering } from "../services/patient-service-catalog-service";
 import {
-  hospitalServiceOfferingMutationSchema,
   patientServiceRequestConfirmSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
@@ -60,33 +58,6 @@ function mapMutationError(error: unknown): PatientServiceMutationActionState {
   return { status: "ERROR", message: "ระบบไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง" };
 }
 
-export async function setHospitalServiceOfferingAction(
-  _previousState: PatientServiceMutationActionState,
-  formData: FormData,
-): Promise<PatientServiceMutationActionState> {
-  const enabledValue = formString(formData, "enabled");
-  const parsed = hospitalServiceOfferingMutationSchema.safeParse({
-    hospitalId: formString(formData, "hospitalId"),
-    code: formString(formData, "code"),
-    enabled: enabledValue === "true" ? true : enabledValue === "false" ? false : undefined,
-  });
-
-  if (!parsed.success) {
-    return { status: "ERROR", message: "กรุณาตรวจสอบรายการบริการที่เลือก" };
-  }
-
-  try {
-    const actor = await getProtectedApplicationActor();
-    await setHospitalServiceOffering(actor, parsed.data);
-    revalidatePath("/app/patients/service-catalog");
-    revalidatePath("/app/patients/service-requests");
-    revalidatePath("/app/personal/services");
-    return { status: "SUCCESS" };
-  } catch (error: unknown) {
-    return mapMutationError(error);
-  }
-}
-
 export async function createPatientServiceRequestAction(
   _previousState: PatientServiceMutationActionState,
   formData: FormData,
@@ -94,7 +65,7 @@ export async function createPatientServiceRequestAction(
   const preferredOsmRelationshipId = formString(formData, "preferredOsmRelationshipId");
   const parsed = patientServiceRequestCreateSchema.safeParse({
     relationshipId: formString(formData, "relationshipId"),
-    offeringId: formString(formData, "offeringId"),
+    serviceCode: formString(formData, "serviceCode"),
     preferredOsmRelationshipId: preferredOsmRelationshipId || null,
     preferredDate: formString(formData, "preferredDate"),
     preferredSlot: formString(formData, "preferredSlot"),

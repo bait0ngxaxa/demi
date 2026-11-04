@@ -97,10 +97,7 @@ Decisions recorded with the Product Owner on 2026-11-01 for rows the decision ta
 | `src/modules/patient-program/policies/patient-program-policy.ts` | `hasActiveDirectHospitalScope` | Program care work | ACTIVE OWNER or MEMBER | OPERATIONAL | OWNER + MEMBER (unchanged) |
 | `src/modules/patient-provisioning/policies/patient-provisioning-policy.ts` | `isActiveDirectHospitalScope` | Patient Excel import | ACTIVE OWNER | USER_MANAGEMENT | OWNER |
 | `src/modules/patient-provisioning/services/patient-provisioning-transaction.ts` | `assertPatientProvisioningActorInDatabase` | Patient Excel import rows | persisted ACTIVE OWNER | USER_MANAGEMENT | OWNER |
-| `src/modules/patient-service-requests/policies/patient-service-request-policy.ts` | `decidePatientServiceRequestPolicy` | `manageCatalog` | ACTIVE OWNER | HOSPITAL_MANAGEMENT | OWNER |
 | `src/modules/patient-service-requests/policies/patient-service-request-policy.ts` | `decidePatientServiceRequestPolicy` | `review` (confirm/reject, inbox) | ACTIVE OWNER | OPERATIONAL | OWNER + MEMBER |
-| `src/modules/patient-service-requests/services/patient-service-catalog-service.ts` | `assertPersistedOwnerScope` | service catalog edit | persisted ACTIVE OWNER | HOSPITAL_MANAGEMENT | OWNER |
-| `src/modules/patient-service-requests/services/patient-service-catalog-service.ts` | `listManagedHospitalServiceCatalog` | service catalog page | persisted ACTIVE OWNER | HOSPITAL_MANAGEMENT | OWNER |
 | `src/modules/patient-service-requests/services/patient-service-request-service.ts` | `assertPersistedHospitalReviewer` | confirm/reject | persisted ACTIVE OWNER | OPERATIONAL | OWNER + MEMBER |
 | `src/modules/patient-service-requests/services/patient-service-request-service.ts` | `listHospitalPatientServiceRequests` | service-request inbox | persisted ACTIVE OWNER | OPERATIONAL | OWNER + MEMBER |
 | `src/modules/reporting/policies/hospital-network-child-report-policy.ts` | `decideHospitalNetworkChildReportPolicy` | Parent→Child summary read/export (RPT-32) | ACTIVE Parent OWNER | OPERATIONAL | OWNER + MEMBER |

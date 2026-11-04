@@ -416,7 +416,7 @@ async function patientServiceRequestEligibility(
       preferredOsmUserId: true,
       preferredDate: true,
       preferredSlot: true,
-      offering: { select: { code: true } },
+      serviceCode: true,
       relationship: { select: { endedAt: true, hospital: { select: { status: true } } } },
     },
   });
@@ -440,7 +440,7 @@ async function patientServiceRequestEligibility(
     return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
   }
   return resolveLineEligibility(transaction, notification, recipientUserId, now, patientServiceRequestLineNotificationText({
-    serviceCode: request.offering.code,
+    serviceCode: request.serviceCode,
     preferredDate: request.preferredDate,
     preferredSlot: request.preferredSlot,
   }));

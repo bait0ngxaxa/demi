@@ -107,6 +107,10 @@ function canReadPatients(actor: ActorContext): boolean {
   );
 }
 
+/**
+ * Settings hold the Hospital contact and patient self-registration. ADR-0029: patient services are native, so
+ * there is no service setting; an active direct OWNER still reaches the page through self-registration.
+ */
 export function canOpenHospitalSettings(actor: ActorContext, hospitalId: string): boolean {
   const canManageSelfRegistration = actor.roles.includes(Role.HOSPITAL) &&
     !actor.roles.includes(Role.ADMIN) &&
@@ -121,11 +125,6 @@ export function canOpenHospitalSettings(actor: ActorContext, hospitalId: string)
       actor,
       capability: HOSPITAL_CONTACT_CAPABILITIES.read,
       scope: "DIRECT_HOSPITAL_OWNER",
-      hospitalId,
-    }).allowed ||
-    decidePatientServiceRequestPolicy({
-      actor,
-      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
       hospitalId,
     }).allowed;
 }

@@ -99,8 +99,6 @@ export const userRelationRules = {
   patientBaselinesRecorded: "EMPTY",
   patientClassificationsUpdated: "EMPTY",
   patientClassificationHistoryChanged: "EMPTY",
-  patientServiceOfferingsCreated: "EMPTY",
-  patientServiceOfferingsUpdated: "EMPTY",
   patientServiceRequestsRequested: "EMPTY",
   patientServiceRequestsPreferredOsm: "EMPTY",
   patientServiceRequestsReviewed: "EMPTY",

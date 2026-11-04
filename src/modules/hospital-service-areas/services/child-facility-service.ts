@@ -25,7 +25,6 @@ import type { ProviderSessionRevocationOutcome } from "@/modules/account-securit
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { generateUniqueHospitalCode } from "@/modules/hospital-governance/services/hospital-governance-service";
-import { createDefaultHospitalServiceOfferingsInTransaction } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import type { ActivationCredentialGenerator } from "@/modules/workforce/services/activation-token-service";
@@ -293,7 +292,6 @@ export async function createChildFacility(
         },
         select: { id: true, hospitalCode: true, name: true },
       });
-      await createDefaultHospitalServiceOfferingsInTransaction(tx, [child.id], actor.userId);
       const area = await tx.hospitalServiceArea.create({
         data: { parentHospitalId: data.parentHospitalId, childHospitalId: child.id, createdByUserId: actor.userId },
         select: { id: true },

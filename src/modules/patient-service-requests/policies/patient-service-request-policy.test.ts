@@ -44,21 +44,13 @@ describe("Patient service request policy", () => {
     }
   });
 
-  it("limits catalog management to the exact active direct Hospital Owner", () => {
-    expect(
-      decidePatientServiceRequestPolicy({
-        actor: actor([Role.HOSPITAL], MembershipType.OWNER),
-        capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
-        hospitalId,
-      }).allowed,
-    ).toBe(true);
-    expect(
-      decidePatientServiceRequestPolicy({
-        actor: actor([Role.HOSPITAL], MembershipType.MEMBER),
-        capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
-        hospitalId,
-      }).allowed,
-    ).toBe(false);
+  it("has no capability for switching a patient service on or off (ADR-0029)", () => {
+    expect(Object.values(PATIENT_SERVICE_REQUEST_CAPABILITIES)).toEqual([
+      "patient-service-request:create",
+      "patient-service-request:read-self",
+      "patient-service-request:withdraw-self",
+      "patient-service-request:review",
+    ]);
   });
 
   it.each([MembershipType.OWNER, MembershipType.MEMBER])(
@@ -85,13 +77,6 @@ describe("Patient service request policy", () => {
       decidePatientServiceRequestPolicy({
         actor: candidate,
         capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.review,
-        hospitalId,
-      }).allowed,
-    ).toBe(false);
-    expect(
-      decidePatientServiceRequestPolicy({
-        actor: candidate,
-        capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
         hospitalId,
       }).allowed,
     ).toBe(false);

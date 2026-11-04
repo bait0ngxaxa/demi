@@ -471,7 +471,7 @@ async function createInTransaction(
   let sourceRequest: {
     id: string;
     status: PatientServiceRequestStatus;
-    offering: { code: PatientServiceCode };
+    serviceCode: PatientServiceCode;
   } | null = null;
   if (sourceServiceRequestId) {
     if (!access.scopes.directHospital || !fields.assignedOsmUserId) throw new ForbiddenError();
@@ -481,7 +481,7 @@ async function createInTransaction(
         patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
         hospitalId: access.target.hospitalId,
       },
-      select: { id: true, status: true, offering: { select: { code: true } } },
+      select: { id: true, status: true, serviceCode: true },
     });
     // ADR-0023: a PENDING request is confirmed; a legacy APPROVED one can still be booked.
     if (
@@ -491,7 +491,7 @@ async function createInTransaction(
     ) {
       throw new ConflictError("The Patient service request is no longer awaiting confirmation");
     }
-    if (fields.serviceCode !== sourceRequest.offering.code) {
+    if (fields.serviceCode !== sourceRequest.serviceCode) {
       throw new ValidationError("The appointment service must be the requested service");
     }
   }
@@ -559,7 +559,7 @@ async function createInTransaction(
       metadata: {
         hospitalId: access.target.hospitalId,
         appointmentLinked: true,
-        serviceCode: sourceRequest.offering.code,
+        serviceCode: sourceRequest.serviceCode,
         fromStatus: sourceRequest.status,
         status: PatientServiceRequestStatus.STARTED,
         oneOffVisit,

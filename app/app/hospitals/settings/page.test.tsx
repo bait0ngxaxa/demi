@@ -6,10 +6,8 @@ import { HospitalStatus, MembershipStatus, MembershipType, Profession, Role } fr
 const mocks = vi.hoisted(() => ({
   actor: { userId: "owner", personId: "person", roles: ["HOSPITAL"], hospitalMemberships: [{ hospitalId: "hospital-a", membershipType: "OWNER", profession: "NURSE", status: "ACTIVE", hospitalStatus: "ACTIVE" }], osmHospitalRelationships: [] } as Record<string, unknown>,
   contacts: [{ id: "hospital-a", name: "โรงพยาบาล ก" }],
-  catalogs: [{ hospitalId: "hospital-a", hospitalName: "โรงพยาบาล ก", offerings: [] }],
   selfRegistration: [{ hospitalId: "hospital-a", hospitalName: "โรงพยาบาล ก", enabled: true }],
   contactRead: vi.fn(),
-  catalogRead: vi.fn(),
   selfRegistrationRead: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
@@ -29,9 +27,6 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 vi.mock("@/modules/hospital-contact/services/hospital-contact-service", () => ({
   listEligibleHospitalContactOwnerHospitals: () => mocks.contactRead(),
 }));
-vi.mock("@/modules/patient-service-requests/services/patient-service-catalog-service", () => ({
-  listManagedHospitalServiceCatalog: () => mocks.catalogRead(),
-}));
 vi.mock("@/modules/hospital-settings/services/hospital-self-registration-settings-service", () => ({
   listOwnedHospitalSelfRegistrationSettings: () => mocks.selfRegistrationRead(),
 }));
@@ -46,10 +41,8 @@ describe("Hospital Settings workspace", () => {
     vi.clearAllMocks();
     mocks.actor = { userId: "owner", personId: "person", roles: [Role.HOSPITAL], hospitalMemberships: [{ hospitalId: "hospital-a", membershipType: MembershipType.OWNER, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }], osmHospitalRelationships: [] };
     mocks.contacts = [{ id: "hospital-a", name: "โรงพยาบาล ก" }];
-    mocks.catalogs = [{ hospitalId: "hospital-a", hospitalName: "โรงพยาบาล ก", offerings: [] }];
     mocks.selfRegistration = [{ hospitalId: "hospital-a", hospitalName: "โรงพยาบาล ก", enabled: true }];
     mocks.contactRead.mockImplementation(() => Promise.resolve(mocks.contacts));
-    mocks.catalogRead.mockImplementation(() => Promise.resolve(mocks.catalogs));
     mocks.selfRegistrationRead.mockImplementation(() => Promise.resolve(mocks.selfRegistration));
     mocks.redirect.mockImplementation((href: string) => { throw new Error(`REDIRECT:${href}`); });
     mocks.notFound.mockImplementation(() => { throw new Error("NOT_FOUND"); });
@@ -60,30 +53,39 @@ describe("Hospital Settings workspace", () => {
 
     expect(html).toContain("ตั้งค่าโรงพยาบาล");
     expect(html).toContain("ข้อมูลติดต่อ");
-    expect(html).toContain("บริการที่ผู้ป่วยขอได้");
     expect(html).toContain("ตั้งค่าการลงทะเบียนเอง");
     expect(html).toContain('href="/app/hospitals/contact?hospitalId=hospital-a"');
-    expect(html).toContain('href="/app/patients/service-catalog?hospitalId=hospital-a"');
+  });
+
+  it("has no setting that switches patient services on or off (ADR-0029)", async () => {
+    const html = renderToStaticMarkup(await HospitalSettingsPage({ searchParams: Promise.resolve({ hospitalId: "hospital-a" }) }));
+
+    expect(html).not.toContain("บริการที่ผู้ป่วยขอได้");
+    expect(html).not.toContain("/app/patients/service");
+  });
+
+  it("keeps an OWNER with only self-registration settings in the workspace", async () => {
+    mocks.contacts = [];
+    const html = renderToStaticMarkup(await HospitalSettingsPage({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("ตั้งค่าการลงทะเบียนเอง");
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
   it("shows only the configuration section returned by its own read permission", async () => {
-    mocks.catalogs = [];
     mocks.selfRegistration = [];
     const html = renderToStaticMarkup(await HospitalSettingsPage({ searchParams: Promise.resolve({}) }));
 
     expect(html).toContain("ข้อมูลติดต่อ");
-    expect(html).not.toContain("บริการที่ผู้ป่วยขอได้");
     expect(html).not.toContain("ตั้งค่าการลงทะเบียนเอง");
   });
 
   it("keeps a Hospital MEMBER outside the OWNER settings workspace", async () => {
     mocks.actor = { userId: "member", personId: "person", roles: [Role.HOSPITAL], hospitalMemberships: [{ hospitalId: "hospital-a", membershipType: MembershipType.MEMBER, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }], osmHospitalRelationships: [] };
     mocks.contacts = [];
-    mocks.catalogs = [];
     mocks.selfRegistration = [];
 
     await expect(HospitalSettingsPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("REDIRECT:/app");
     expect(mocks.contactRead).not.toHaveBeenCalled();
-    expect(mocks.catalogRead).not.toHaveBeenCalled();
   });
 });

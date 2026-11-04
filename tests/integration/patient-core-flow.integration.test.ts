@@ -47,10 +47,6 @@ import { getPatientProgramPageContext } from "@/modules/patient-program/services
 import { getScreeningHistory } from "@/modules/screening/services/screening-query-service";
 import { serviceDateToUtcDate, toServiceDateOnly } from "@/shared/time/service-date";
 import {
-  listManagedHospitalServiceCatalog,
-  setHospitalServiceOffering,
-} from "@/modules/patient-service-requests/services/patient-service-catalog-service";
-import {
   DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE,
   confirmPatientServiceRequest,
   createPatientServiceRequest,
@@ -61,7 +57,6 @@ import {
 } from "@/modules/patient-service-requests/services/patient-service-request-service";
 
 const prisma = getPrisma();
-const nationalId = "1000000000009";
 let sequence = 0;
 
 async function clearDatabase(): Promise<void> {
@@ -78,7 +73,6 @@ async function clearDatabase(): Promise<void> {
   await prisma.patientServiceRequest.deleteMany();
   await prisma.patientActivation.deleteMany();
   await prisma.patientAccessRequest.deleteMany();
-  await prisma.hospitalServiceOffering.deleteMany();
   await prisma.patientOsmAssignment.deleteMany();
   await prisma.patientHospitalHealthHistory.deleteMany();
   await prisma.patientHospitalRelationship.deleteMany();
@@ -292,18 +286,6 @@ async function createOsm(input: {
   };
 }
 
-async function enableService(
-  actor: ActorContext,
-  hospitalId: string,
-  code: PatientServiceCode = PatientServiceCode.SCREENING,
-): Promise<{ id: string }> {
-  await setHospitalServiceOffering(actor, { hospitalId, code, enabled: true });
-  return prisma.hospitalServiceOffering.findUniqueOrThrow({
-    where: { hospitalId_code: { hospitalId, code } },
-    select: { id: true },
-  });
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** SR-D6: a week ahead on the Bangkok calendar is inside the tomorrow..+60 days window. */
@@ -313,7 +295,7 @@ function preferredDateAhead(days = 7): string {
 
 function requestInput(input: {
   relationshipId: string;
-  offeringId: string;
+  serviceCode?: PatientServiceCode;
   preferredOsmRelationshipId?: string | null;
   preferredDate?: string;
   preferredSlot?: "MORNING" | "AFTERNOON" | "ANY";
@@ -321,7 +303,7 @@ function requestInput(input: {
 }) {
   return {
     relationshipId: input.relationshipId,
-    offeringId: input.offeringId,
+    serviceCode: input.serviceCode ?? PatientServiceCode.SCREENING,
     preferredOsmRelationshipId: input.preferredOsmRelationshipId ?? null,
     preferredDate: input.preferredDate ?? preferredDateAhead(),
     preferredSlot: input.preferredSlot ?? "MORNING",
@@ -357,60 +339,11 @@ describe("Patient service requests PostgreSQL workflow", () => {
     await prisma.$disconnect();
   });
 
-  it("audits the persisted offering row ID on create/update and skips a true no-op", async () => {
-    const hospital = await createHospital("CATALOG-AUDIT");
-    const { actor } = await createHospitalActor({ hospitalId: hospital.id, membershipType: "OWNER" });
-    const offering = await enableService(actor, hospital.id);
-    await setHospitalServiceOffering(actor, { hospitalId: hospital.id, code: "SCREENING", enabled: true });
-    expect(await prisma.auditEvent.count()).toBe(1);
-    await setHospitalServiceOffering(actor, { hospitalId: hospital.id, code: "SCREENING", enabled: false });
-    const events = await prisma.auditEvent.findMany({ select: { resourceId: true, metadata: true } });
-    expect(events).toHaveLength(2);
-    expect(events.every(({ resourceId }) => resourceId === offering.id)).toBe(true);
-    expect(JSON.stringify(events)).not.toContain(nationalId);
-  });
-
-  it("enforces OWNER-only exact-Hospital catalog configuration and keeps Hospitals isolated", async () => {
-    const hospitalA = await createHospital("CORE-CATALOG-A");
-    const hospitalB = await createHospital("CORE-CATALOG-B");
-    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.OWNER });
-    const memberA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.MEMBER });
-    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id, membershipType: MembershipType.OWNER });
-    const admin = await createPlatformAdmin();
-    const patient = await createActivePatient({ hospitalId: hospitalA.id });
-    const osm = await createOsm({ hospitalId: hospitalA.id });
-    const patientActor: ActorContext = {
-      userId: patient.userId,
-      personId: patient.personId,
-      roles: [Role.PATIENT],
-      hospitalMemberships: [],
-      osmHospitalRelationships: [],
-    };
-
-    await expect(setHospitalServiceOffering(ownerA.actor, { hospitalId: hospitalA.id, code: "SCREENING", enabled: true })).resolves.toBeUndefined();
-    await expect(setHospitalServiceOffering(memberA.actor, { hospitalId: hospitalA.id, code: "FOLLOW_UP", enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(setHospitalServiceOffering(ownerA.actor, { hospitalId: hospitalB.id, code: "FOLLOW_UP", enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(setHospitalServiceOffering(admin.actor, { hospitalId: hospitalA.id, code: "EMPOWERMENT", enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(setHospitalServiceOffering(patientActor, { hospitalId: hospitalA.id, code: "EMPOWERMENT", enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(setHospitalServiceOffering(osm.actor, { hospitalId: hospitalA.id, code: "EMPOWERMENT", enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
-
-    await setHospitalServiceOffering(ownerA.actor, { hospitalId: hospitalA.id, code: "SCREENING", enabled: false });
-    await setHospitalServiceOffering(ownerA.actor, { hospitalId: hospitalA.id, code: "SCREENING", enabled: true });
-    expect(await prisma.hospitalServiceOffering.count({ where: { hospitalId: hospitalA.id, code: PatientServiceCode.SCREENING } })).toBe(1);
-    await expect(listManagedHospitalServiceCatalog(ownerA.actor)).resolves.toHaveLength(1);
-    await expect(listManagedHospitalServiceCatalog(ownerB.actor)).resolves.toHaveLength(1);
-    expect(await prisma.hospitalServiceOffering.count({ where: { hospitalId: hospitalB.id } })).toBe(0);
-  });
-
-  it("creates a Patient request only for an enabled offering under the Patient's exact Hospital relationship", async () => {
+  it("lets a Patient of any ACTIVE Hospital request each native service with no Hospital setup (ADR-0029)", async () => {
     const hospitalA = await createHospital("CORE-REQUEST-A");
     const hospitalB = await createHospital("CORE-REQUEST-B");
-    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospitalA.id });
     const unrelatedPatient = await createActivePatient({ hospitalId: hospitalB.id });
-    const offeringA = await enableService(ownerA.actor, hospitalA.id);
-    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id, membershipType: MembershipType.OWNER });
-    const offeringB = await enableService(ownerB.actor, hospitalB.id);
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -426,34 +359,92 @@ describe("Patient service requests PostgreSQL workflow", () => {
       osmHospitalRelationships: [],
     };
 
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offeringA.id }))).resolves.toMatchObject({
-      status: PatientServiceRequestStatus.PENDING,
-    });
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: unrelatedPatient.relationshipId, offeringId: offeringA.id }))).rejects.toMatchObject({ code: "NOT_FOUND" });
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offeringB.id }))).rejects.toMatchObject({ code: "VALIDATION" });
+    const [view] = await listOwnPatientServiceRequests(patientActor);
+    expect(view).toMatchObject({ relationshipId: patient.relationshipId, hospitalActive: true, careEnded: false, services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"] });
+    for (const serviceCode of Object.values(PatientServiceCode)) {
+      await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode })))
+        .resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
+    }
+    expect((await prisma.patientServiceRequest.findMany({ where: { patientHospitalRelationshipId: patient.relationshipId }, select: { serviceCode: true, hospitalId: true } }))
+      .map(({ serviceCode, hospitalId }) => [serviceCode, hospitalId]).sort())
+      .toEqual(Object.values(PatientServiceCode).map((serviceCode) => [serviceCode, hospitalA.id]).sort());
 
-    const disabled = await prisma.hospitalServiceOffering.findUniqueOrThrow({ where: { id: offeringA.id }, select: { enabled: true } });
-    expect(disabled.enabled).toBe(true);
-    const disabledOffering = await prisma.hospitalServiceOffering.create({
-      data: {
-        hospitalId: hospitalA.id,
-        code: PatientServiceCode.FOLLOW_UP,
-        enabled: false,
-        createdByUserId: ownerA.userId,
-        updatedByUserId: ownerA.userId,
-      },
-      select: { id: true },
+    // Another person's relationship, an unknown service, an invalid preferred date.
+    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: unrelatedPatient.relationshipId }))).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(createPatientServiceRequest(unrelatedActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: PatientServiceCode.FOLLOW_UP }))).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(createPatientServiceRequest(unrelatedActor, { ...requestInput({ relationshipId: unrelatedPatient.relationshipId }), serviceCode: "HOME_CARE" })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(createPatientServiceRequest(unrelatedActor, { ...requestInput({ relationshipId: unrelatedPatient.relationshipId }), legacyServiceId: randomUUID() })).rejects.toMatchObject({ code: "VALIDATION" });
+    await expect(createPatientServiceRequest(unrelatedActor, requestInput({ relationshipId: unrelatedPatient.relationshipId, preferredDate: toServiceDateOnly(new Date()) }))).rejects.toMatchObject({ code: "VALIDATION" });
+
+    // An inactive Hospital takes no request and lists no service; an ended relationship neither.
+    await prisma.hospital.update({ where: { id: hospitalB.id }, data: { status: HospitalStatus.SUSPENDED } });
+    await expect(createPatientServiceRequest(unrelatedActor, requestInput({ relationshipId: unrelatedPatient.relationshipId }))).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(listOwnPatientServiceRequests(unrelatedActor)).resolves.toMatchObject([{ hospitalActive: false, services: [] }]);
+    await prisma.hospital.update({ where: { id: hospitalB.id }, data: { status: HospitalStatus.ACTIVE } });
+    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id, membershipType: MembershipType.OWNER });
+    await prisma.patientHospitalRelationship.update({
+      where: { id: unrelatedPatient.relationshipId },
+      data: { endedAt: new Date(), endedByUserId: ownerB.userId, endReason: "ย้ายไปรับการดูแลที่อื่น" },
     });
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: disabledOffering.id }))).rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(createPatientServiceRequest(unrelatedActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offeringA.id }))).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(createPatientServiceRequest(unrelatedActor, requestInput({ relationshipId: unrelatedPatient.relationshipId }))).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(listOwnPatientServiceRequests(unrelatedActor)).resolves.toMatchObject([{ careEnded: true, services: [] }]);
+    expect(await prisma.patientServiceRequest.count({ where: { patientHospitalRelationshipId: unrelatedPatient.relationshipId } })).toBe(0);
+  });
+
+  it("allows one open request per service: a duplicate conflicts, another service is fine, and a closed request frees the service", async () => {
+    const hospital = await createHospital("NATIVE-DUPLICATE");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const osm = await createOsm({ hospitalId: hospital.id });
+    const patient = await createActivePatient({ hospitalId: hospital.id });
+    const patientActor: ActorContext = { userId: patient.userId, personId: patient.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+    const request = (serviceCode: PatientServiceCode) =>
+      createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode }));
+
+    const screening = await request(PatientServiceCode.SCREENING);
+    await expect(request(PatientServiceCode.SCREENING)).rejects.toMatchObject({ code: "CONFLICT", message: DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE });
+    const followUp = await request(PatientServiceCode.FOLLOW_UP);
+    const empowerment = await request(PatientServiceCode.EMPOWERMENT);
+
+    // The partial unique index holds without the service's own check, for PENDING and legacy APPROVED.
+    await expect(prisma.patientServiceRequest.create({ data: {
+      patientHospitalRelationshipId: patient.relationshipId, hospitalId: hospital.id, serviceCode: PatientServiceCode.SCREENING, requestedByUserId: patient.userId,
+    } })).rejects.toMatchObject({ code: "P2002" });
+    await prisma.patientServiceRequest.update({ where: { id: followUp.requestId }, data: { status: PatientServiceRequestStatus.APPROVED } });
+    await expect(prisma.patientServiceRequest.create({ data: {
+      patientHospitalRelationshipId: patient.relationshipId, hospitalId: hospital.id, serviceCode: PatientServiceCode.FOLLOW_UP, requestedByUserId: patient.userId,
+    } })).rejects.toMatchObject({ code: "P2002" });
+    await expect(request(PatientServiceCode.FOLLOW_UP)).rejects.toMatchObject({ message: DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE });
+
+    // WITHDRAWN, REJECTED and STARTED requests free their service again.
+    await rejectPatientServiceRequest(owner.actor, { requestId: screening.requestId, reason: "ไม่มี อสม. ว่าง" });
+    await withdrawOwnPatientServiceRequest(patientActor, { requestId: followUp.requestId });
+    await confirmPatientServiceRequest(owner.actor, confirmInput(empowerment.requestId, osm.userId));
+    for (const serviceCode of Object.values(PatientServiceCode)) {
+      await expect(request(serviceCode)).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
+    }
+  });
+
+  it("books every service as its mapped appointment type", async () => {
+    const hospital = await createHospital("NATIVE-TYPES");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const osm = await createOsm({ hospitalId: hospital.id });
+    const patient = await createActivePatient({ hospitalId: hospital.id });
+    const patientActor: ActorContext = { userId: patient.userId, personId: patient.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+    const expectedType = { SCREENING: "ASSESSMENT", FOLLOW_UP: "FOLLOW_UP", EMPOWERMENT: "EDUCATION" } as const;
+
+    for (const serviceCode of Object.values(PatientServiceCode)) {
+      const created = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode }));
+      const confirmed = await confirmPatientServiceRequest(owner.actor, confirmInput(created.requestId, osm.userId));
+      expect(await prisma.patientAppointment.findUniqueOrThrow({ where: { id: confirmed.appointmentId }, select: { serviceCode: true, type: true } }))
+        .toEqual({ serviceCode, type: expectedType[serviceCode] });
+    }
   });
 
   it("validates preferred OSM against exact active Hospital scope and never creates an assignment or Program", async () => {
     const hospitalA = await createHospital("CORE-REQUEST-OSM-A");
     const hospitalB = await createHospital("CORE-REQUEST-OSM-B");
-    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospitalA.id });
-    const offeringA = await enableService(ownerA.actor, hospitalA.id);
+    const serviceA = PatientServiceCode.SCREENING;
     const osmA = await createOsm({ hospitalId: hospitalA.id });
     const osmB = await createOsm({ hospitalId: hospitalB.id });
     const inactiveOsm = await createOsm({ hospitalId: hospitalA.id, relationshipStatus: MembershipStatus.SUSPENDED });
@@ -466,7 +457,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
         hospitalMemberships: [],
         osmHospitalRelationships: [],
       },
-      requestInput({ relationshipId: patient.relationshipId, offeringId: offeringA.id, preferredOsmRelationshipId: osmA.relationshipId }),
+      requestInput({ relationshipId: patient.relationshipId, serviceCode: serviceA, preferredOsmRelationshipId: osmA.relationshipId }),
     );
     await expect(createPatientServiceRequest(
       {
@@ -476,7 +467,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
         hospitalMemberships: [],
         osmHospitalRelationships: [],
       },
-      requestInput({ relationshipId: patient.relationshipId, offeringId: offeringA.id, preferredOsmRelationshipId: osmB.relationshipId }),
+      requestInput({ relationshipId: patient.relationshipId, serviceCode: serviceA, preferredOsmRelationshipId: osmB.relationshipId }),
     )).rejects.toMatchObject({ code: "VALIDATION" });
     await expect(createPatientServiceRequest(
       {
@@ -486,7 +477,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
         hospitalMemberships: [],
         osmHospitalRelationships: [],
       },
-      requestInput({ relationshipId: patient.relationshipId, offeringId: offeringA.id, preferredOsmRelationshipId: inactiveOsm.relationshipId }),
+      requestInput({ relationshipId: patient.relationshipId, serviceCode: serviceA, preferredOsmRelationshipId: inactiveOsm.relationshipId }),
     )).rejects.toMatchObject({ code: "VALIDATION" });
 
     const stored = await prisma.patientServiceRequest.findUniqueOrThrow({
@@ -518,7 +509,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const memberA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.MEMBER });
     const patientA = await createActivePatient({ hospitalId: hospitalA.id });
     const patientB = await createActivePatient({ hospitalId: hospitalA.id });
-    const offeringA = await enableService(ownerA.actor, hospitalA.id);
+    const serviceA = PatientServiceCode.SCREENING;
     const patientActorA: ActorContext = {
       userId: patientA.userId,
       personId: patientA.personId,
@@ -533,8 +524,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const requestA = await createPatientServiceRequest(patientActorA, requestInput({ relationshipId: patientA.relationshipId, offeringId: offeringA.id }));
-    await createPatientServiceRequest(patientActorB, requestInput({ relationshipId: patientB.relationshipId, offeringId: offeringA.id }));
+    const requestA = await createPatientServiceRequest(patientActorA, requestInput({ relationshipId: patientA.relationshipId, serviceCode: serviceA }));
+    await createPatientServiceRequest(patientActorB, requestInput({ relationshipId: patientB.relationshipId, serviceCode: serviceA }));
 
     const own = await listOwnPatientServiceRequests(patientActorA);
     expect(own).toHaveLength(1);
@@ -555,9 +546,9 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const mixed = await createHospitalActor({ hospitalId: hospital.id, extraRoles: [Role.ADMIN] });
     const osm = await createOsm({ hospitalId: hospital.id });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = { userId: patient.userId, personId: patient.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     for (const denied of [inactive.actor, mixed.actor, patientActor]) {
       await expect(listHospitalPatientServiceRequests(denied)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(confirmPatientServiceRequest(denied, confirmInput(request.requestId, osm.userId))).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -565,9 +556,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
     }
     await prisma.hospitalMembership.create({ data: { userId: member.userId, hospitalId: otherHospital.id, membershipType: MembershipType.OWNER, status: MembershipStatus.ACTIVE } });
     const otherPatient = await createActivePatient({ hospitalId: otherHospital.id });
-    const otherOwner = await createHospitalActor({ hospitalId: otherHospital.id, membershipType: MembershipType.OWNER });
-    const otherOffering = await enableService(otherOwner.actor, otherHospital.id);
-    await prisma.patientServiceRequest.create({ data: { patientHospitalRelationshipId: otherPatient.relationshipId, hospitalId: otherHospital.id, offeringId: otherOffering.id, requestedByUserId: otherPatient.userId } });
+    const otherService = PatientServiceCode.SCREENING;
+    await prisma.patientServiceRequest.create({ data: { patientHospitalRelationshipId: otherPatient.relationshipId, hospitalId: otherHospital.id, serviceCode: otherService, requestedByUserId: otherPatient.userId } });
     const multi = await listHospitalPatientServiceRequests(member.actor);
     expect(new Set(multi.requests.map(({ hospitalId }) => hospitalId))).toEqual(new Set([hospital.id, otherHospital.id]));
     // Keep the original ACTIVE actor snapshot; persistence is authoritative for mutations.
@@ -589,12 +579,12 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const hospital = await createHospital("CORE-REQUEST-PAGING");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const createdAt = new Date("2026-10-01T00:00:00.000Z");
     await prisma.patientServiceRequest.createMany({ data: Array.from({ length: 25 }, () => ({
       patientHospitalRelationshipId: patient.relationshipId,
       hospitalId: hospital.id,
-      offeringId: offering.id,
+      serviceCode: service,
       requestedByUserId: patient.userId,
       status: PatientServiceRequestStatus.REJECTED,
       createdAt,
@@ -621,7 +611,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const member = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.MEMBER });
     const osm = await createOsm({ hospitalId: hospital.id });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -629,9 +619,9 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id, preferredOsmRelationshipId: osm.relationshipId }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service, preferredOsmRelationshipId: osm.relationshipId }));
 
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }))).rejects.toMatchObject({ code: "CONFLICT" });
     // ADR-0026: an OSM never reviews; a MEMBER confirms like the OWNER (below).
     await expect(confirmPatientServiceRequest(osm.actor, confirmInput(request.requestId, osm.userId))).rejects.toMatchObject({ code: "FORBIDDEN" });
     // Booking from a request is only possible through the confirmation.
@@ -654,7 +644,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     expect(await prisma.patientServiceRequest.findUniqueOrThrow({ where: { id: request.requestId }, select: { status: true, reviewedByUserId: true, startedByUserId: true } }))
       .toEqual({ status: PatientServiceRequestStatus.STARTED, reviewedByUserId: member.userId, startedByUserId: member.userId });
     await expect(withdrawOwnPatientServiceRequest(patientActor, { requestId: request.requestId })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
+    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }))).resolves.toMatchObject({ status: PatientServiceRequestStatus.PENDING });
     expect(await prisma.patientProgram.count()).toBe(0);
     expect(await prisma.patientOsmAssignment.count({ where: { patientHospitalRelationshipId: patient.relationshipId } })).toBe(0);
     expect(await prisma.screeningAssessment.count()).toBe(0);
@@ -664,9 +654,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
 
   it("allows Patient withdrawal from PENDING and legacy APPROVED", async () => {
     const hospital = await createHospital("CORE-REQUEST-WITHDRAW");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -674,9 +663,9 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const pending = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const pending = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     await withdrawOwnPatientServiceRequest(patientActor, { requestId: pending.requestId });
-    const approved = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const approved = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     // ADR-0023: APPROVED is legacy; no service writes it any more.
     await prisma.patientServiceRequest.update({ where: { id: approved.requestId }, data: { status: PatientServiceRequestStatus.APPROVED } });
     await withdrawOwnPatientServiceRequest(patientActor, { requestId: approved.requestId });
@@ -695,7 +684,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const admin = await createPlatformAdmin();
     const osm = await createOsm({ hospitalId: hospital.id });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -703,7 +692,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
 
     for (const deniedActor of [other.actor, osm.actor, admin.actor]) {
       await expect(confirmPatientServiceRequest(deniedActor, confirmInput(request.requestId, osm.userId))).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -719,7 +708,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const rejected = await createPatientServiceRequest(secondPatientActor, requestInput({ relationshipId: secondPatient.relationshipId, offeringId: offering.id }));
+    const rejected = await createPatientServiceRequest(secondPatientActor, requestInput({ relationshipId: secondPatient.relationshipId, serviceCode: service }));
     await rejectPatientServiceRequest(owner.actor, { requestId: rejected.requestId, reason: "ไม่อนุมัติ" });
     await expect(confirmPatientServiceRequest(owner.actor, confirmInput(rejected.requestId, osm.userId))).rejects.toMatchObject({ code: "CONFLICT" });
   });
@@ -728,7 +717,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const hospital = await createHospital("CORE-REQUEST-CONCURRENT-REVIEW");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -737,7 +726,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
       osmHospitalRelationships: [],
     };
     const osm = await createOsm({ hospitalId: hospital.id });
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const results = await Promise.allSettled([
       confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, osm.userId)),
       confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, osm.userId)),
@@ -754,7 +743,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
     const hospital = await createHospital("CORE-REQUEST-UNASSIGNED-APPROVAL");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -762,7 +751,7 @@ describe("Patient service requests PostgreSQL workflow", () => {
       hospitalMemberships: [],
       osmHospitalRelationships: [],
     };
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const withoutOsm = { ...confirmInput(request.requestId, randomUUID()), osmUserId: undefined };
     await expect(confirmPatientServiceRequest(owner.actor, withoutOsm))
       .rejects.toMatchObject({ code: "VALIDATION" });
@@ -772,9 +761,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
 
   it("enforces the partial unique unresolved-request index for concurrent Patient creates", async () => {
     const hospital = await createHospital("CORE-REQUEST-CONCURRENT-DUP");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id);
+    const service = PatientServiceCode.SCREENING;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -784,8 +772,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
     };
 
     const results = await Promise.allSettled([
-      createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id })),
-      createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id })),
+      createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service })),
+      createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service })),
     ]);
 
     expect(results.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
@@ -818,7 +806,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     const visitOsm = await createOsm({ hospitalId: hospital.id });
     const otherOsm = await createOsm({ hospitalId: hospital.id });
     const patient = await createActivePatient({ hospitalId: hospital.id });
-    const offering = await enableService(owner.actor, hospital.id, PatientServiceCode.EMPOWERMENT);
+    const service = PatientServiceCode.EMPOWERMENT;
     const patientActor: ActorContext = {
       userId: patient.userId,
       personId: patient.personId,
@@ -827,7 +815,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       osmHospitalRelationships: [],
     };
     await assignOsmToPatient(owner.actor, { patientHospitalRelationshipId: patient.relationshipId, osmUserId: assignedOsm.userId });
-    return { hospital, owner, assignedOsm, visitOsm, otherOsm, patient, patientActor, offering };
+    return { hospital, owner, assignedOsm, visitOsm, otherOsm, patient, patientActor, service };
   }
 
   async function assignmentSnapshot(relationshipId: string) {
@@ -839,11 +827,11 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   }
 
   it("stores the preference, notifies the preferred อสม. once and confirms a one-off visit without touching the assignment", async () => {
-    const { owner, assignedOsm, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-CONFIRM");
+    const { owner, assignedOsm, visitOsm, patient, patientActor, service } = await setupVisit("SRB-CONFIRM");
     const preferredDate = preferredDateAhead(5);
     const request = await createPatientServiceRequest(patientActor, requestInput({
       relationshipId: patient.relationshipId,
-      offeringId: offering.id,
+      serviceCode: service,
       preferredOsmRelationshipId: visitOsm.relationshipId,
       preferredDate,
       preferredSlot: "AFTERNOON",
@@ -918,7 +906,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("SR-C paginates pending requests by preferred date, then recency/id, with legacy dates last", async () => {
-    const { hospital, owner, offering } = await setupVisit("SRC-QUEUE");
+    const { hospital, owner, service } = await setupVisit("SRC-QUEUE");
     const rows: Array<{ id: string; date: string | null; createdAt: Date }> = [];
     // Enough equal dates and legacy rows to cross both date and null-date page boundaries.
     for (let index = 0; index < 43; index += 1) {
@@ -926,7 +914,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       const date = index < 21 ? preferredDateAhead(2) : index < 24 ? preferredDateAhead(6) : null;
       const createdAt = new Date(Date.UTC(2026, 9, 1, 0, index % 3));
       const row = await prisma.patientServiceRequest.create({ data: {
-        patientHospitalRelationshipId: patient.relationshipId, hospitalId: hospital.id, offeringId: offering.id,
+        patientHospitalRelationshipId: patient.relationshipId, hospitalId: hospital.id, serviceCode: service,
         requestedByUserId: patient.userId, preferredDate: date ? serviceDateToUtcDate(date) : null,
         preferredSlot: date ? "ANY" : null, createdAt,
       }, select: { id: true } });
@@ -943,8 +931,8 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("notifies the assigned อสม. when the patient leaves the choice to the hospital, and nobody when there is none", async () => {
-    const { assignedOsm, patient, patientActor, offering, hospital } = await setupVisit("SRB-NOTIFY");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { assignedOsm, patient, patientActor, service, hospital } = await setupVisit("SRB-NOTIFY");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     expect(await prisma.appointmentLineNotification.findMany({
       where: { patientServiceRequestId: request.requestId },
       select: { recipientUserId: true },
@@ -952,29 +940,29 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
 
     const unassigned = await createActivePatient({ hospitalId: hospital.id });
     const unassignedActor: ActorContext = { userId: unassigned.userId, personId: unassigned.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
-    const silent = await createPatientServiceRequest(unassignedActor, requestInput({ relationshipId: unassigned.relationshipId, offeringId: offering.id }));
+    const silent = await createPatientServiceRequest(unassignedActor, requestInput({ relationshipId: unassigned.relationshipId, serviceCode: service }));
     expect(await prisma.appointmentLineNotification.count({ where: { patientServiceRequestId: silent.requestId } })).toBe(0);
   });
 
   it("validates the preferred date on the server clock and rejects a second open request for the service", async () => {
-    const { patient, patientActor, offering } = await setupVisit("SRB-WINDOW");
+    const { patient, patientActor, service } = await setupVisit("SRB-WINDOW");
     // 2026-11-01 10:00 Asia/Bangkok: the window is 2026-11-02 .. 2026-12-31.
     const now = () => new Date("2026-11-01T03:00:00.000Z");
     for (const preferredDate of ["2026-11-01", "2027-01-01"]) {
-      await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id, preferredDate }), { now }))
+      await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service, preferredDate }), { now }))
         .rejects.toMatchObject({ code: "VALIDATION" });
     }
-    await expect(createPatientServiceRequest(patientActor, { relationshipId: patient.relationshipId, offeringId: offering.id, preferredOsmRelationshipId: null }, { now }))
+    await expect(createPatientServiceRequest(patientActor, { relationshipId: patient.relationshipId, serviceCode: service, preferredOsmRelationshipId: null }, { now }))
       .rejects.toMatchObject({ code: "VALIDATION" });
-    await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id, preferredDate: "2026-12-31" }), { now });
-    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id, preferredDate: "2026-11-02" }), { now }))
+    await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service, preferredDate: "2026-12-31" }), { now });
+    await expect(createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service, preferredDate: "2026-11-02" }), { now }))
       .rejects.toMatchObject({ code: "CONFLICT", message: DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE });
     expect(await prisma.patientServiceRequest.count({ where: { patientHospitalRelationshipId: patient.relationshipId } })).toBe(1);
   });
 
   it("gives the visiting อสม. that appointment only, while it is SCHEDULED and until 24 hours after its time", async () => {
-    const { owner, hospital, visitOsm, otherOsm, patient, patientActor, offering } = await setupVisit("SRB-ACCESS");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { owner, hospital, visitOsm, otherOsm, patient, patientActor, service } = await setupVisit("SRB-ACCESS");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const { appointmentId } = await confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, visitOsm.userId));
     const relationshipId = patient.relationshipId;
 
@@ -1078,8 +1066,8 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("ends the visiting อสม.'s access when the appointment is cancelled", async () => {
-    const { owner, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-CANCEL");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { owner, visitOsm, patient, patientActor, service } = await setupVisit("SRB-CANCEL");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const { appointmentId } = await confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, visitOsm.userId));
     const current = await prisma.patientAppointment.findUniqueOrThrow({ where: { id: appointmentId } });
     await cancelAppointment(owner.actor, { patientHospitalRelationshipId: patient.relationshipId, appointmentId, expectedUpdatedAt: current.updatedAt.toISOString() });
@@ -1087,7 +1075,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("books any อสม. of the Hospital for a hospital appointment and sets the type from an optional service (ADR-0027)", async () => {
-    const { owner, assignedOsm, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-HOSPITAL");
+    const { owner, assignedOsm, visitOsm, patient, patientActor, service } = await setupVisit("SRB-HOSPITAL");
     const booking = {
       patientHospitalRelationshipId: patient.relationshipId,
       scheduledAt: new Date(Date.now() + 3 * DAY_MS).toISOString(),
@@ -1104,7 +1092,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
       .rejects.toMatchObject({ code: "VALIDATION" });
 
     // Staff may still edit a confirmed visit: its อสม. stays, its type follows the service.
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const { appointmentId } = await confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, visitOsm.userId));
     const current = await prisma.patientAppointment.findUniqueOrThrow({ where: { id: appointmentId } });
     const edit = {
@@ -1123,8 +1111,8 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("rejects only with a reason, which the patient sees", async () => {
-    const { owner, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-REJECT");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { owner, visitOsm, patient, patientActor, service } = await setupVisit("SRB-REJECT");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     for (const reason of [undefined, "   ", "ก".repeat(501)]) {
       await expect(rejectPatientServiceRequest(owner.actor, { requestId: request.requestId, reason })).rejects.toMatchObject({ code: "VALIDATION" });
     }
@@ -1139,8 +1127,8 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("confirms a legacy APPROVED request too", async () => {
-    const { owner, visitOsm, patient, patientActor, offering } = await setupVisit("SRB-LEGACY");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { owner, visitOsm, patient, patientActor, service } = await setupVisit("SRB-LEGACY");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     await prisma.patientServiceRequest.update({ where: { id: request.requestId }, data: { status: PatientServiceRequestStatus.APPROVED, reviewedByUserId: owner.userId, reviewedAt: new Date() } });
     await expect(rejectPatientServiceRequest(owner.actor, { requestId: request.requestId, reason: "ไม่อนุมัติ" })).rejects.toMatchObject({ code: "CONFLICT" });
     const { appointmentId } = await confirmPatientServiceRequest(owner.actor, confirmInput(request.requestId, visitOsm.userId));
@@ -1150,7 +1138,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("sends the request and visit notifications to the visiting อสม. over LINE, and nothing for a closed request", async () => {
-    const { owner, visitOsm, patient, patientActor, offering, hospital } = await setupVisit("SRB-LINE");
+    const { owner, visitOsm, patient, patientActor, service, hospital } = await setupVisit("SRB-LINE");
     const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
     await prisma.lineAccountBinding.create({
       data: {
@@ -1177,7 +1165,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     const preferredDate = preferredDateAhead(6);
     const request = await createPatientServiceRequest(patientActor, requestInput({
       relationshipId: patient.relationshipId,
-      offeringId: offering.id,
+      serviceCode: service,
       preferredOsmRelationshipId: visitOsm.relationshipId,
       preferredDate,
       preferredSlot: "AFTERNOON",
@@ -1186,7 +1174,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     const otherActor: ActorContext = { userId: other.userId, personId: other.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
     const withdrawn = await createPatientServiceRequest(otherActor, requestInput({
       relationshipId: other.relationshipId,
-      offeringId: offering.id,
+      serviceCode: service,
       preferredOsmRelationshipId: visitOsm.relationshipId,
     }));
     await withdrawOwnPatientServiceRequest(otherActor, { requestId: withdrawn.requestId });
@@ -1203,8 +1191,8 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
   });
 
   it("is idempotent for a concurrent retry and safe against a concurrent withdrawal", async () => {
-    const { owner, visitOsm, patient, patientActor, offering, hospital } = await setupVisit("SRB-RACE");
-    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, offeringId: offering.id }));
+    const { owner, visitOsm, patient, patientActor, service, hospital } = await setupVisit("SRB-RACE");
+    const request = await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
     const input = confirmInput(request.requestId, visitOsm.userId);
     const retried = await Promise.allSettled([
       confirmPatientServiceRequest(owner.actor, input),
@@ -1218,7 +1206,7 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const other = await createActivePatient({ hospitalId: hospital.id });
       const otherActor: ActorContext = { userId: other.userId, personId: other.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
-      const raced = await createPatientServiceRequest(otherActor, requestInput({ relationshipId: other.relationshipId, offeringId: offering.id }));
+      const raced = await createPatientServiceRequest(otherActor, requestInput({ relationshipId: other.relationshipId, serviceCode: service }));
       const results = await Promise.allSettled([
         confirmPatientServiceRequest(owner.actor, confirmInput(raced.requestId, visitOsm.userId)),
         withdrawOwnPatientServiceRequest(otherActor, { requestId: raced.requestId }),
@@ -1234,18 +1222,6 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
 });
 
 describe("Service request appointments schema (ADR-0023, SR-A)", () => {
-  const migrationSql = readFileSync(
-    resolve(process.cwd(), "prisma/migrations/20261128100000_service_request_appointments/migration.sql"),
-    "utf8",
-  );
-  // Data step statements are separated by a blank line; the DO block has none inside.
-  const dataStepStatements = migrationSql
-    .slice(migrationSql.indexOf("-- BEGIN SR-A data step"), migrationSql.indexOf("-- END SR-A data step"))
-    .split(/;\s*\n\s*\n/u)
-    .map((statement) => statement.replace(/^\s*--.*$/gmu, "").trim().replace(/;$/u, ""))
-    .filter(Boolean);
-  const rollback = new Error("roll back the SR-A data step rehearsal");
-
   beforeAll(async () => {
     await prisma.$connect();
   });
@@ -1262,171 +1238,9 @@ describe("Service request appointments schema (ADR-0023, SR-A)", () => {
     await prisma.$disconnect();
   });
 
-  // Temporary tables shadow the real ones for this transaction only (as in the FR-1 data step test).
-  async function createShadowTables(transaction: Prisma.TransactionClient): Promise<void> {
-    await transaction.$executeRaw`CREATE TEMPORARY TABLE "User" ("id" UUID PRIMARY KEY) ON COMMIT DROP`;
-    await transaction.$executeRaw`
-      CREATE TEMPORARY TABLE "Hospital" ("id" UUID PRIMARY KEY, "registeredByUserId" UUID) ON COMMIT DROP`;
-    await transaction.$executeRaw`
-      CREATE TEMPORARY TABLE "HospitalMembership" (
-        "hospitalId" UUID NOT NULL, "userId" UUID NOT NULL, "membershipType" "MembershipType" NOT NULL,
-        "status" "MembershipStatus" NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL
-      ) ON COMMIT DROP`;
-    await transaction.$executeRaw`
-      CREATE TEMPORARY TABLE "HospitalServiceOffering" (
-        "id" UUID PRIMARY KEY, "hospitalId" UUID NOT NULL, "code" "PatientServiceCode" NOT NULL, "enabled" BOOLEAN NOT NULL,
-        "createdByUserId" UUID NOT NULL, "updatedByUserId" UUID NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL,
-        "updatedAt" TIMESTAMP(3) NOT NULL, UNIQUE ("hospitalId", "code")
-      ) ON COMMIT DROP`;
-    await transaction.$executeRaw`
-      CREATE TEMPORARY TABLE "PatientServiceRequest" (
-        "id" UUID PRIMARY KEY, "offeringId" UUID NOT NULL, "status" "PatientServiceRequestStatus" NOT NULL
-      ) ON COMMIT DROP`;
-    await transaction.$executeRaw`
-      CREATE TEMPORARY TABLE "PatientAppointment" (
-        "id" UUID PRIMARY KEY, "sourceServiceRequestId" UUID, "serviceCode" "PatientServiceCode"
-      ) ON COMMIT DROP`;
-  }
-
-  async function runDataStep(transaction: Prisma.TransactionClient): Promise<void> {
-    for (const statement of dataStepStatements) {
-      await transaction.$executeRawUnsafe(statement);
-    }
-  }
-
-  it("backfills request appointments and adds only the missing offerings, attributed to the earliest ACTIVE OWNER or the registrar", async () => {
-    const [endedOwner, laterOwner, earliestOwner, member, registrarOwned, registrarPending] =
-      Array.from({ length: 6 }, () => randomUUID());
-    const owned = randomUUID();
-    const pending = randomUUID();
-    const complete = randomUUID();
-    const existingAt = new Date("2026-09-01T00:00:00.000Z");
-    const offering = {
-      ownedScreening: randomUUID(),
-      completeScreening: randomUUID(),
-      completeFollowUp: randomUUID(),
-      completeEmpowerment: randomUUID(),
-    };
-    const requests = Object.values(PatientServiceRequestStatus).map((status) => ({ id: randomUUID(), status }));
-    const startedRequest = requests.find(({ status }) => status === PatientServiceRequestStatus.STARTED);
-    const approvedRequest = requests.find(({ status }) => status === PatientServiceRequestStatus.APPROVED);
-    if (!startedRequest || !approvedRequest) throw new Error("fixture needs STARTED and APPROVED requests");
-    const fromEmpowerment = randomUUID();
-    const fromScreening = randomUUID();
-    const hospitalBooked = randomUUID();
-
-    await expect(
-      prisma.$transaction(async (transaction) => {
-        await createShadowTables(transaction);
-        for (const id of [endedOwner, laterOwner, earliestOwner, member, registrarOwned, registrarPending]) {
-          await transaction.$executeRaw`INSERT INTO "User" ("id") VALUES (${id}::uuid)`;
-        }
-        await transaction.$executeRaw`
-          INSERT INTO "Hospital" ("id", "registeredByUserId") VALUES
-            (${owned}::uuid, ${registrarOwned}::uuid), (${pending}::uuid, ${registrarPending}::uuid), (${complete}::uuid, NULL)`;
-        await transaction.$executeRaw`
-          INSERT INTO "HospitalMembership" ("hospitalId", "userId", "membershipType", "status", "createdAt") VALUES
-            (${owned}::uuid, ${endedOwner}::uuid, 'OWNER', 'ENDED', '2025-01-01'),
-            (${owned}::uuid, ${member}::uuid, 'MEMBER', 'ACTIVE', '2025-06-01'),
-            (${owned}::uuid, ${laterOwner}::uuid, 'OWNER', 'ACTIVE', '2026-02-01'),
-            (${owned}::uuid, ${earliestOwner}::uuid, 'OWNER', 'ACTIVE', '2026-01-01')`;
-        await transaction.$executeRaw`
-          INSERT INTO "HospitalServiceOffering" ("id", "hospitalId", "code", "enabled", "createdByUserId", "updatedByUserId", "createdAt", "updatedAt") VALUES
-            (${offering.ownedScreening}::uuid, ${owned}::uuid, 'SCREENING', false, ${laterOwner}::uuid, ${laterOwner}::uuid, ${existingAt}, ${existingAt}),
-            (${offering.completeScreening}::uuid, ${complete}::uuid, 'SCREENING', true, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt}),
-            (${offering.completeFollowUp}::uuid, ${complete}::uuid, 'FOLLOW_UP', false, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt}),
-            (${offering.completeEmpowerment}::uuid, ${complete}::uuid, 'EMPOWERMENT', true, ${member}::uuid, ${member}::uuid, ${existingAt}, ${existingAt})`;
-        for (const request of requests) {
-          const offeringId = request === approvedRequest ? offering.ownedScreening : offering.completeEmpowerment;
-          await transaction.$executeRaw`
-            INSERT INTO "PatientServiceRequest" ("id", "offeringId", "status")
-            VALUES (${request.id}::uuid, ${offeringId}::uuid, ${request.status}::"PatientServiceRequestStatus")`;
-        }
-        await transaction.$executeRaw`
-          INSERT INTO "PatientAppointment" ("id", "sourceServiceRequestId", "serviceCode") VALUES
-            (${fromEmpowerment}::uuid, ${startedRequest.id}::uuid, NULL),
-            (${fromScreening}::uuid, ${approvedRequest.id}::uuid, NULL),
-            (${hospitalBooked}::uuid, NULL, NULL)`;
-
-        await runDataStep(transaction);
-
-        const appointments = await transaction.$queryRaw<Array<{ id: string; serviceCode: PatientServiceCode | null }>>`
-          SELECT "id"::text AS "id", "serviceCode" FROM "PatientAppointment"`;
-        expect(new Map(appointments.map(({ id, serviceCode }) => [id, serviceCode]))).toEqual(new Map([
-          [fromEmpowerment, PatientServiceCode.EMPOWERMENT],
-          [fromScreening, PatientServiceCode.SCREENING],
-          [hospitalBooked, null],
-        ]));
-
-        const offerings = await transaction.$queryRaw<Array<{
-          id: string; hospitalId: string; code: PatientServiceCode; enabled: boolean;
-          createdByUserId: string; updatedByUserId: string; createdAt: Date;
-        }>>`
-          SELECT "id"::text AS "id", "hospitalId"::text AS "hospitalId", "code", "enabled",
-                 "createdByUserId"::text AS "createdByUserId", "updatedByUserId"::text AS "updatedByUserId", "createdAt"
-          FROM "HospitalServiceOffering" ORDER BY "hospitalId", "code"`;
-        const byHospital = (hospitalId: string) => offerings
-          .filter((row) => row.hospitalId === hospitalId)
-          .map(({ code, enabled, createdByUserId, updatedByUserId }) => ({ code, enabled, createdByUserId, updatedByUserId }));
-
-        expect(byHospital(owned)).toEqual([
-          { code: "SCREENING", enabled: false, createdByUserId: laterOwner, updatedByUserId: laterOwner },
-          { code: "FOLLOW_UP", enabled: true, createdByUserId: earliestOwner, updatedByUserId: earliestOwner },
-          { code: "EMPOWERMENT", enabled: true, createdByUserId: earliestOwner, updatedByUserId: earliestOwner },
-        ]);
-        expect(byHospital(pending)).toEqual(Object.values(PatientServiceCode).map((code) => ({
-          code, enabled: true, createdByUserId: registrarPending, updatedByUserId: registrarPending,
-        })));
-        expect(byHospital(complete)).toEqual([
-          { code: "SCREENING", enabled: true, createdByUserId: member, updatedByUserId: member },
-          { code: "FOLLOW_UP", enabled: false, createdByUserId: member, updatedByUserId: member },
-          { code: "EMPOWERMENT", enabled: true, createdByUserId: member, updatedByUserId: member },
-        ]);
-        const existingIds: readonly string[] = Object.values(offering);
-        expect(offerings.filter(({ id }) => existingIds.includes(id)).map(({ createdAt }) => createdAt.getTime()))
-          .toEqual(Array(4).fill(existingAt.getTime()));
-
-        const requestStatuses = await transaction.$queryRaw<Array<{ id: string; status: PatientServiceRequestStatus }>>`
-          SELECT "id"::text AS "id", "status" FROM "PatientServiceRequest"`;
-        expect(new Map(requestStatuses.map(({ id, status }) => [id, status])))
-          .toEqual(new Map(requests.map(({ id, status }) => [id, status])));
-
-        // Rerunning the data step adds nothing.
-        await runDataStep(transaction);
-        const [total] = await transaction.$queryRaw<Array<{ count: bigint }>>`
-          SELECT count(*) AS "count" FROM "HospitalServiceOffering"`;
-        expect(Number(total?.count)).toBe(9);
-
-        throw rollback;
-      }),
-    ).rejects.toBe(rollback);
-  });
-
-  it("refuses Hospitals that need offerings but have no ACTIVE OWNER or registering user, reporting the count", async () => {
-    const endedOwner = randomUUID();
-    const missingRegistrar = randomUUID();
-    const withEndedOwner = randomUUID();
-
-    await expect(
-      prisma.$transaction(async (transaction) => {
-        await createShadowTables(transaction);
-        await transaction.$executeRaw`INSERT INTO "User" ("id") VALUES (${endedOwner}::uuid)`;
-        await transaction.$executeRaw`
-          INSERT INTO "Hospital" ("id", "registeredByUserId") VALUES
-            (${withEndedOwner}::uuid, NULL), (gen_random_uuid(), ${missingRegistrar}::uuid)`;
-        await transaction.$executeRaw`
-          INSERT INTO "HospitalMembership" ("hospitalId", "userId", "membershipType", "status", "createdAt")
-          VALUES (${withEndedOwner}::uuid, ${endedOwner}::uuid, 'OWNER', 'ENDED', '2025-01-01')`;
-
-        await runDataStep(transaction);
-      }),
-    ).rejects.toThrow(/SR-A: 2 Hospital\(s\) need service offerings/u);
-  });
-
   it("keeps legacy requests valid and enforces the preference, note, rejection reason and appointment service CHECKs", async () => {
     const hospital = await createHospital("SR-A-CHECKS");
     const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    const offering = await enableService(owner.actor, hospital.id);
     const requestIds = new Map<PatientServiceRequestStatus, string>();
     for (const status of Object.values(PatientServiceRequestStatus)) {
       const patient = await createActivePatient({ hospitalId: hospital.id });
@@ -1434,7 +1248,7 @@ describe("Service request appointments schema (ADR-0023, SR-A)", () => {
         data: {
           patientHospitalRelationshipId: patient.relationshipId,
           hospitalId: hospital.id,
-          offeringId: offering.id,
+          serviceCode: PatientServiceCode.SCREENING,
           requestedByUserId: patient.userId,
           status,
         },
@@ -1499,13 +1313,170 @@ describe("Service request appointments schema (ADR-0023, SR-A)", () => {
       select: { serviceCode: true },
     })).resolves.toEqual({ serviceCode: null });
   });
+});
 
-  it("offers a service by default", async () => {
-    const hospital = await createHospital("SR-A-DEFAULT");
-    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
-    await expect(prisma.hospitalServiceOffering.create({
-      data: { hospitalId: hospital.id, code: "FOLLOW_UP", createdByUserId: owner.userId, updatedByUserId: owner.userId },
-      select: { enabled: true },
-    })).resolves.toEqual({ enabled: true });
+describe("Native patient services migration (ADR-0029)", () => {
+  const migrationSql = readFileSync(
+    resolve(process.cwd(), "prisma/migrations/20261205100000_native_patient_services/migration.sql"),
+    "utf8",
+  );
+  // Statements are separated by a blank line; the DO blocks have none inside.
+  const statements = migrationSql
+    .split(/;\s*\n\s*\n/u)
+    .map((statement) => statement.replace(/^\s*--.*$/gmu, "").trim().replace(/;$/u, ""))
+    .filter(Boolean);
+  const rollback = new Error("roll back the ADR-0029 migration rehearsal");
+
+  beforeAll(async () => {
+    await prisma.$connect();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  // Temporary tables shadow the real ones for this transaction only, in their shape before the migration.
+  // Unconstrained tables hold rows only a damaged database could have, to rehearse the migration's guards.
+  async function createLegacyTables(transaction: Prisma.TransactionClient, options: { constrained: boolean }): Promise<void> {
+    await transaction.$executeRawUnsafe(`
+      CREATE TEMPORARY TABLE "HospitalServiceOffering" (
+        "id" UUID PRIMARY KEY, "hospitalId" UUID NOT NULL, "code" "PatientServiceCode" NOT NULL,
+        UNIQUE ("id", "hospitalId")${options.constrained ? ', UNIQUE ("hospitalId", "code")' : ""}
+      ) ON COMMIT DROP`);
+    await transaction.$executeRawUnsafe(`
+      CREATE TEMPORARY TABLE "PatientServiceRequest" (
+        "id" UUID PRIMARY KEY, "patientHospitalRelationshipId" UUID NOT NULL, "hospitalId" UUID NOT NULL,
+        "offeringId" UUID NOT NULL, "status" "PatientServiceRequestStatus" NOT NULL
+      ) ON COMMIT DROP`);
+    if (options.constrained) {
+      await transaction.$executeRawUnsafe(`
+        ALTER TABLE "PatientServiceRequest" ADD CONSTRAINT "PatientServiceRequest_offeringId_hospitalId_fkey"
+          FOREIGN KEY ("offeringId", "hospitalId") REFERENCES "HospitalServiceOffering"("id", "hospitalId")`);
+    }
+    await transaction.$executeRawUnsafe(`CREATE INDEX "PatientServiceRequest_offeringId_idx" ON "PatientServiceRequest"("offeringId")`);
+    await transaction.$executeRawUnsafe(`
+      CREATE UNIQUE INDEX "PatientServiceRequest_one_unresolved_key" ON "PatientServiceRequest"("patientHospitalRelationshipId", "offeringId")
+        WHERE "status" IN ('PENDING', 'APPROVED')`);
+  }
+
+  async function runMigration(transaction: Prisma.TransactionClient): Promise<void> {
+    for (const statement of statements) {
+      await transaction.$executeRawUnsafe(statement);
+    }
+  }
+
+  it("copies each request's service code, makes it required, and keys one open request per service", async () => {
+    const [hospitalA, hospitalB, relationshipA, relationshipB] = Array.from({ length: 4 }, () => randomUUID());
+    const offering = {
+      aScreening: randomUUID(), aFollowUp: randomUUID(), aEmpowerment: randomUUID(), bScreening: randomUUID(),
+    };
+    const requests = [
+      { id: randomUUID(), relationshipId: relationshipA, hospitalId: hospitalA, offeringId: offering.aScreening, status: "PENDING", code: "SCREENING" },
+      { id: randomUUID(), relationshipId: relationshipA, hospitalId: hospitalA, offeringId: offering.aScreening, status: "REJECTED", code: "SCREENING" },
+      { id: randomUUID(), relationshipId: relationshipA, hospitalId: hospitalA, offeringId: offering.aFollowUp, status: "APPROVED", code: "FOLLOW_UP" },
+      { id: randomUUID(), relationshipId: relationshipA, hospitalId: hospitalA, offeringId: offering.aEmpowerment, status: "STARTED", code: "EMPOWERMENT" },
+      { id: randomUUID(), relationshipId: relationshipB, hospitalId: hospitalB, offeringId: offering.bScreening, status: "WITHDRAWN", code: "SCREENING" },
+    ] as const;
+
+    await expect(prisma.$transaction(async (transaction) => {
+      await createLegacyTables(transaction, { constrained: true });
+      await transaction.$executeRaw`
+        INSERT INTO "HospitalServiceOffering" ("id", "hospitalId", "code") VALUES
+          (${offering.aScreening}::uuid, ${hospitalA}::uuid, 'SCREENING'),
+          (${offering.aFollowUp}::uuid, ${hospitalA}::uuid, 'FOLLOW_UP'),
+          (${offering.aEmpowerment}::uuid, ${hospitalA}::uuid, 'EMPOWERMENT'),
+          (${offering.bScreening}::uuid, ${hospitalB}::uuid, 'SCREENING')`;
+      for (const request of requests) {
+        await transaction.$executeRaw`
+          INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "offeringId", "status")
+          VALUES (${request.id}::uuid, ${request.relationshipId}::uuid, ${request.hospitalId}::uuid, ${request.offeringId}::uuid,
+                  ${request.status}::"PatientServiceRequestStatus")`;
+      }
+
+      await runMigration(transaction);
+
+      const migrated = await transaction.$queryRaw<Array<{ id: string; serviceCode: PatientServiceCode; status: PatientServiceRequestStatus }>>`
+        SELECT "id"::text AS "id", "serviceCode", "status" FROM "PatientServiceRequest"`;
+      expect(new Map(migrated.map(({ id, serviceCode, status }) => [id, [serviceCode, status]])))
+        .toEqual(new Map(requests.map(({ id, code, status }) => [id, [code, status]])));
+      const columns = await transaction.$queryRaw<Array<{ column: string; nullable: string }>>`
+        SELECT "column_name" AS "column", "is_nullable" AS "nullable" FROM information_schema.columns
+        WHERE "table_schema" = pg_my_temp_schema()::regnamespace::text AND "table_name" = 'PatientServiceRequest'
+        ORDER BY "column_name"`;
+      expect(columns).toContainEqual({ column: "serviceCode", nullable: "NO" });
+      expect(columns.map(({ column }) => column)).not.toContain("offeringId");
+      const [catalog] = await transaction.$queryRaw<Array<{ remaining: string | null }>>`
+        SELECT to_regclass('pg_temp."HospitalServiceOffering"')::text AS "remaining"`;
+      expect(catalog?.remaining).toBeNull();
+      const indexes = await transaction.$queryRaw<Array<{ name: string; definition: string }>>`
+        SELECT "indexname" AS "name", "indexdef" AS "definition" FROM pg_indexes
+        WHERE "schemaname" = pg_my_temp_schema()::regnamespace::text AND "tablename" = 'PatientServiceRequest'`;
+      expect(indexes.map(({ name }) => name).sort()).toEqual(["PatientServiceRequest_one_unresolved_key", "PatientServiceRequest_pkey"]);
+      expect(indexes.find(({ name }) => name === "PatientServiceRequest_one_unresolved_key")?.definition)
+        .toMatch(/UNIQUE INDEX .*\("patientHospitalRelationshipId", "serviceCode"\) WHERE .*PENDING.*APPROVED/u);
+
+      // A WITHDRAWN request does not hold its service; an open one does (next rehearsal).
+      await transaction.$executeRaw`
+        INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "serviceCode", "status")
+        VALUES (gen_random_uuid(), ${relationshipB}::uuid, ${hospitalB}::uuid, 'SCREENING', 'PENDING')`;
+      throw rollback;
+    })).rejects.toBe(rollback);
+
+    await expect(prisma.$transaction(async (transaction) => {
+      await createLegacyTables(transaction, { constrained: true });
+      await transaction.$executeRaw`
+        INSERT INTO "HospitalServiceOffering" ("id", "hospitalId", "code") VALUES (${offering.aScreening}::uuid, ${hospitalA}::uuid, 'SCREENING')`;
+      await transaction.$executeRaw`
+        INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "offeringId", "status")
+        VALUES (gen_random_uuid(), ${relationshipA}::uuid, ${hospitalA}::uuid, ${offering.aScreening}::uuid, 'PENDING')`;
+      await runMigration(transaction);
+      await transaction.$executeRaw`
+        INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "serviceCode", "status")
+        VALUES (gen_random_uuid(), ${relationshipA}::uuid, ${hospitalA}::uuid, 'SCREENING', 'APPROVED')`;
+    })).rejects.toThrow(/Key \("patientHospitalRelationshipId", "serviceCode"\)=\(.*, SCREENING\) already exists/u);
+  });
+
+  it("refuses a request whose service cannot be resolved, reporting the count", async () => {
+    await expect(prisma.$transaction(async (transaction) => {
+      await createLegacyTables(transaction, { constrained: false });
+      await transaction.$executeRaw`
+        INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "offeringId", "status")
+        VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'PENDING')`;
+      await runMigration(transaction);
+    })).rejects.toThrow(/ADR-0029: 1 PatientServiceRequest\(s\) have no service code/u);
+  });
+
+  it("refuses two open requests that resolve to the same relationship and service", async () => {
+    const [hospitalId, relationshipId, first, second] = Array.from({ length: 4 }, () => randomUUID());
+    await expect(prisma.$transaction(async (transaction) => {
+      await createLegacyTables(transaction, { constrained: false });
+      await transaction.$executeRaw`
+        INSERT INTO "HospitalServiceOffering" ("id", "hospitalId", "code") VALUES
+          (${first}::uuid, ${hospitalId}::uuid, 'SCREENING'), (${second}::uuid, ${hospitalId}::uuid, 'SCREENING')`;
+      await transaction.$executeRaw`
+        INSERT INTO "PatientServiceRequest" ("id", "patientHospitalRelationshipId", "hospitalId", "offeringId", "status") VALUES
+          (gen_random_uuid(), ${relationshipId}::uuid, ${hospitalId}::uuid, ${first}::uuid, 'PENDING'),
+          (gen_random_uuid(), ${relationshipId}::uuid, ${hospitalId}::uuid, ${second}::uuid, 'APPROVED')`;
+      await runMigration(transaction);
+    })).rejects.toThrow(/ADR-0029: 1 relationship\/service pair\(s\) have more than one open PatientServiceRequest/u);
+  });
+
+  it("leaves the migrated database with a required service code, the per-service partial unique index and no catalog", async () => {
+    const [catalog] = await prisma.$queryRaw<Array<{ remaining: string | null }>>`
+      SELECT to_regclass('public."HospitalServiceOffering"')::text AS "remaining"`;
+    expect(catalog?.remaining).toBeNull();
+    const columns = await prisma.$queryRaw<Array<{ column: string; nullable: string }>>`
+      SELECT "column_name" AS "column", "is_nullable" AS "nullable" FROM information_schema.columns
+      WHERE "table_schema" = 'public' AND "table_name" = 'PatientServiceRequest' AND "column_name" IN ('serviceCode', 'offeringId')`;
+    expect(columns).toEqual([{ column: "serviceCode", nullable: "NO" }]);
+    const [index] = await prisma.$queryRaw<Array<{ definition: string }>>`
+      SELECT "indexdef" AS "definition" FROM pg_indexes
+      WHERE "schemaname" = 'public' AND "indexname" = 'PatientServiceRequest_one_unresolved_key'`;
+    expect(index?.definition).toMatch(/UNIQUE INDEX .*\("patientHospitalRelationshipId", "serviceCode"\) WHERE .*PENDING.*APPROVED/u);
+    // Historical audit rows keep their text; AuditEvent.resourceId never referenced the catalog.
+    const auditForeignKeys = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT "conname" AS "name" FROM pg_constraint
+      WHERE "conrelid" = 'public."AuditEvent"'::regclass AND "contype" = 'f'`;
+    expect(auditForeignKeys.map(({ name }) => name)).toEqual(["AuditEvent_actorUserId_fkey"]);
   });
 });
