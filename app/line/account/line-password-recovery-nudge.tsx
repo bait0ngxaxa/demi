@@ -81,9 +81,9 @@ export function LinePasswordRecoveryNudge({
               <p className="mt-1 text-sm leading-6 text-text-muted">แม้ผูก LINE แล้ว ระบบยังต้องพร้อมก่อนจึงจะส่งลิงก์กู้คืนได้</p>
             ) : null}
             {soleOwnerHospitalCount !== null && soleOwnerHospitalCount > 0 ? (
-              <p className="mt-2 text-sm leading-6 text-text-muted">คุณเป็น OWNER ที่ใช้งานได้เพียงคนเดียวใน {soleOwnerHospitalCount} โรงพยาบาล หากใช้ LINE ไม่ได้ ยังติดต่อ Platform ADMIN เพื่อขอความช่วยเหลือได้</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">คุณเป็นแอดมินโรงพยาบาลที่ใช้งานได้เพียงคนเดียวใน {soleOwnerHospitalCount} โรงพยาบาล หากใช้ LINE ไม่ได้ ให้ติดต่อผู้ดูแลระบบ DEMI เพื่อขอความช่วยเหลือ</p>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-text-muted">การผูก LINE เป็นทางเลือก หากใช้ LINE ไม่ได้ ขอ OWNER คนอื่นหรือ Platform ADMIN ช่วยกู้คืนบัญชีได้</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">การผูก LINE เป็นทางเลือก หากใช้ LINE ไม่ได้ ขอแอดมินโรงพยาบาลคนอื่นหรือผู้ดูแลระบบ DEMI ช่วยกู้คืนบัญชีได้</p>
             )}
             <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={href}>
               {readiness.status === "UNLINKED" ? "ดูวิธีเชื่อม LINE (ทางเลือก)" : "ตรวจสอบหรือจัดการสถานะ LINE"}

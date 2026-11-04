@@ -6,7 +6,7 @@ import { getPatientSelfGoalPlanDetailPageContext } from "@/modules/patient-self/
 import { PatientSelfGoalPlanDetailView } from "../../../../patient-self-record-detail-views";
 
 export const metadata: Metadata = {
-  title: "รายละเอียดแผนเป้าหมาย",
+  title: "รายละเอียดแผนสุขภาพ",
 };
 
 type PatientSelfGoalPlanPageProps = {

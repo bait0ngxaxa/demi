@@ -231,7 +231,7 @@ export function HospitalGovernanceControls({
         expectedUpdatedAt: submittedContext.expectedUpdatedAt,
         sourceStatus: expectedStatus,
       });
-      notify.success(kind === "suspend" ? "ระงับโรงพยาบาลแล้ว" : "คืนสถานะโรงพยาบาลแล้ว");
+      notify.success(kind === "suspend" ? "ระงับการใช้งานโรงพยาบาลแล้ว" : "เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
       return result;
     },
     [],
@@ -334,8 +334,8 @@ export function HospitalGovernanceControls({
           kind: "reload",
           label: "โหลดและตรวจสอบสถานะล่าสุด",
           message: latestSubmission?.kind === "suspend"
-            ? "ระบบยังยืนยันผลการระงับโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ"
-            : "ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ",
+            ? "ระบบยังยืนยันผลการระงับการใช้งานโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ"
+            : "ระบบยังยืนยันผลการเปิดใช้งานโรงพยาบาลอีกครั้งไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ",
         }}
       />
       {status === "ACTIVE" ? (
@@ -344,10 +344,10 @@ export function HospitalGovernanceControls({
           className="mt-6 border-t border-border pt-5"
           key={hospitalId}
           confirmation={{
-            title: "ระงับโรงพยาบาลนี้หรือไม่",
-            description: "เมื่อบันทึกสำเร็จ ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้",
-            details: <p>ข้อมูลเดิมจะไม่ถูกลบหรือแก้ไข</p>,
-            confirmLabel: "ระงับโรงพยาบาล",
+            title: "ระงับการใช้งานโรงพยาบาลนี้หรือไม่",
+            description: "มีผลเฉพาะโรงพยาบาลนี้ ผู้ใช้งานจะไม่สามารถทำงานภายใต้โรงพยาบาลนี้ได้",
+            details: <p>บัญชีและข้อมูลเดิมจะไม่ถูกลบ โครงสร้างเครือข่าย การมอบหมายผู้ป่วย นัดหมาย และประวัติจะไม่เปลี่ยน</p>,
+            confirmLabel: "ระงับการใช้งานโรงพยาบาล",
             confirmVariant: "destructive",
           }}
           outcome={latestSuspendOutcome}
@@ -357,10 +357,10 @@ export function HospitalGovernanceControls({
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            เมื่อระงับโรงพยาบาล ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้ ข้อมูลเดิมจะไม่ถูกลบหรือปรับแก้
+            เมื่อระงับการใช้งานโรงพยาบาล ผู้ใช้งานจะไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้ ข้อมูลเดิมจะไม่ถูกลบหรือปรับแก้
           </p>
           <Button className="mt-3" disabled={controlsLocked} loading={suspendPending} size="compact" type="submit" variant="danger">
-            {suspendPending ? "กำลังระงับ..." : "ระงับโรงพยาบาล"}
+            {suspendPending ? "กำลังระงับการใช้งาน..." : "ระงับการใช้งานโรงพยาบาล"}
           </Button>
         </ConfirmableActionForm>
       ) : (
@@ -381,10 +381,10 @@ export function HospitalGovernanceControls({
           <input name="hospitalId" type="hidden" value={hospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            คืนสถานะโรงพยาบาลเพื่อให้กลับมาดำเนินงานได้ หากส่วนงานใดยังไม่พร้อม ส่วนนั้นจะยังใช้งานไม่ได้
+            เปิดใช้งานโรงพยาบาลอีกครั้งเพื่อให้กลับมาดำเนินงานได้ หากส่วนงานใดยังไม่พร้อม ส่วนนั้นจะยังใช้งานไม่ได้
           </p>
           <Button className="mt-3" disabled={controlsLocked} loading={restorePending} size="compact" type="submit">
-            {restorePending ? "กำลังคืนสถานะ..." : "คืนสถานะโรงพยาบาล"}
+            {restorePending ? "กำลังเปิดใช้งานโรงพยาบาลอีกครั้ง..." : "เปิดใช้งานโรงพยาบาลอีกครั้ง"}
           </Button>
         </form>
       )}

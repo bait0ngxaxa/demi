@@ -95,8 +95,8 @@ function mapFieldErrors(
         profession: "กรุณาเลือกวิชาชีพที่กำหนด",
         contactPhone: "กรุณากรอกเบอร์ติดต่อไทยให้ถูกต้อง",
         userId: "ไม่พบผู้ใช้งานที่ต้องการดำเนินการ",
-        relationshipId: "ไม่พบความสัมพันธ์บุคลากรที่ต้องการดำเนินการ",
-        expectedUpdatedAt: "ข้อมูลบุคลากรล้าสมัย กรุณาโหลดข้อมูลใหม่",
+        relationshipId: "ไม่พบข้อมูลการทำงานของเจ้าหน้าที่ที่ต้องการแก้ไข",
+        expectedUpdatedAt: "ข้อมูลเจ้าหน้าที่เปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
       };
       const message = messages[field as WorkforceField];
 
@@ -121,13 +121,13 @@ function mapWorkforceError(error: unknown): {
     }
 
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
-      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์จัดการบุคลากรของโรงพยาบาลนี้" };
+      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์จัดการเจ้าหน้าที่ของโรงพยาบาลนี้" };
     }
 
     if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
       return {
         code: "CONFLICT",
-        message: "ไม่สามารถดำเนินการกับบุคลากรรายนี้ได้ กรุณาตรวจสอบสถานะแล้วลองใหม่",
+        message: "ยังเปลี่ยนแปลงข้อมูลเจ้าหน้าที่รายนี้ไม่ได้ กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่",
       };
     }
   }
@@ -161,12 +161,12 @@ function mapCompletionError(error: unknown): {
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบยังไม่สามารถเปิดใช้งานบัญชีได้ กรุณาลองใหม่หรือติดต่อผู้ดูแลโรงพยาบาล",
+    message: "ระบบยังไม่สามารถเปิดใช้งานบัญชีได้ กรุณาลองใหม่หรือติดต่อแอดมินโรงพยาบาล",
   };
 }
 
 const CONFIGURED_ACTIVATION_ORIGIN_MESSAGE =
-  "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ";
+  "ไม่สามารถสร้างลิงก์เปิดใช้งานได้ในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ DEMI";
 
 function isConfiguredActivationOriginError(error: unknown): boolean {
   return isApplicationPublicOriginConfigurationError(error);
@@ -216,24 +216,24 @@ function mapOsmRelationshipError(error: unknown): {
 
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
-      return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบข้อมูลความสัมพันธ์ อสม. ให้ถูกต้อง" };
+      return { code: "INVALID_INPUT", message: "กรุณาตรวจสอบข้อมูลการทำงานของ อสม. ให้ถูกต้อง" };
     }
 
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
-      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์จัดการความสัมพันธ์ อสม. ของโรงพยาบาลนี้" };
+      return { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์จัดการสิทธิ์การทำงานของ อสม. ในโรงพยาบาลนี้" };
     }
 
     if (error.code === "CONFLICT" || error.code === "NOT_FOUND") {
       return {
         code: "CONFLICT",
-        message: "ไม่สามารถเปลี่ยนสถานะความสัมพันธ์ อสม. ได้ กรุณาตรวจสอบสถานะและจำนวนผู้ป่วยแล้วลองใหม่",
+        message: "เปลี่ยนสิทธิ์การทำงานของ อสม. ไม่ได้ กรุณาตรวจสอบสถานะและผู้ป่วยที่ยังรับผิดชอบ แล้วลองใหม่",
       };
     }
   }
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมเปลี่ยนสถานะความสัมพันธ์ อสม. ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "เปลี่ยนสิทธิ์การทำงานของ อสม. ไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 
@@ -247,14 +247,14 @@ function mapHospitalOwnerGovernanceError(error: unknown): {
     if (error.code === "VALIDATION") {
       return {
         code: "INVALID_INPUT",
-        message: "ข้อมูลการเปลี่ยนแปลงสิทธิ์เจ้าของโรงพยาบาลไม่ถูกต้อง",
+        message: "ข้อมูลการเปลี่ยนแปลงสิทธิ์แอดมินโรงพยาบาลไม่ถูกต้อง",
       };
     }
 
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์จัดการสิทธิ์เจ้าของโรงพยาบาล",
+        message: "บัญชีนี้ไม่มีสิทธิ์จัดการสิทธิ์แอดมินโรงพยาบาล",
       };
     }
 
@@ -262,14 +262,14 @@ function mapHospitalOwnerGovernanceError(error: unknown): {
       return {
         code: "CONFLICT",
         message:
-          "ไม่สามารถเปลี่ยนสิทธิ์เจ้าของโรงพยาบาลได้ กรุณาโหลดข้อมูลล่าสุดแล้วตรวจสอบสถานะสมาชิกอีกครั้ง",
+          "เปลี่ยนสิทธิ์แอดมินโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดแล้วตรวจสอบสถานะการทำงานอีกครั้ง",
       };
     }
   }
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมเปลี่ยนสิทธิ์เจ้าของโรงพยาบาลในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "เปลี่ยนสิทธิ์แอดมินโรงพยาบาลไม่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 
@@ -483,7 +483,7 @@ export async function suspendHospitalMembershipAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการระงับความสัมพันธ์บุคลากรไม่ถูกต้อง",
+      message: "ข้อมูลการพักสิทธิ์เจ้าหน้าที่ไม่ถูกต้อง",
     };
   }
 
@@ -509,7 +509,7 @@ export async function restoreHospitalMembershipAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการคืนสถานะความสัมพันธ์บุคลากรไม่ถูกต้อง",
+      message: "ข้อมูลการเปิดสิทธิ์เจ้าหน้าที่อีกครั้งไม่ถูกต้อง",
     };
   }
 
@@ -563,7 +563,7 @@ export async function promoteHospitalOwnerAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการเลื่อนสถานะเป็นเจ้าของโรงพยาบาลไม่ถูกต้อง",
+      message: "ข้อมูลการเปลี่ยนเป็นแอดมินโรงพยาบาลไม่ถูกต้อง",
     };
   }
 
@@ -589,7 +589,7 @@ export async function demoteHospitalOwnerAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการลดสถานะเจ้าของโรงพยาบาลไม่ถูกต้อง",
+      message: "ข้อมูลการเปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาลไม่ถูกต้อง",
     };
   }
 
@@ -613,7 +613,7 @@ export async function suspendOsmRelationshipAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการระงับความสัมพันธ์ อสม. ไม่ถูกต้อง",
+      message: "ข้อมูลการพักสิทธิ์ อสม. ไม่ถูกต้อง",
     };
   }
 
@@ -637,7 +637,7 @@ export async function restoreOsmRelationshipAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการคืนสถานะความสัมพันธ์ อสม. ไม่ถูกต้อง",
+      message: "ข้อมูลการเปิดสิทธิ์ อสม. อีกครั้งไม่ถูกต้อง",
     };
   }
 

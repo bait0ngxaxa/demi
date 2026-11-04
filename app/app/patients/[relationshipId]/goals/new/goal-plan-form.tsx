@@ -133,7 +133,7 @@ function ActionFeedback({ state }: { state: GoalPlanActionState }): React.JSX.El
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">บันทึกแผนเป้าหมายไม่สำเร็จ</p>
+      <p className="font-semibold">บันทึกแผนสุขภาพไม่สำเร็จ</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -337,7 +337,7 @@ export function GoalPlanForm({
           <StatusBadge variant="info">
             {scope.kind === "program"
               ? "Service 2 — แผนสุขภาพและเป้าหมาย"
-              : "แผนเป้าหมาย"}
+              : "แผนสุขภาพ"}
           </StatusBadge>
         }
         breadcrumbs={[
@@ -352,15 +352,15 @@ export function GoalPlanForm({
             : [
                 {
                   href: `/app/patients/${encodeURIComponent(relationshipId)}/goals`,
-                  label: "ประวัติแผนเป้าหมาย",
+                  label: "ประวัติแผนสุขภาพ",
                 },
-                { label: "สร้างแผนเป้าหมาย" },
+                { label: "สร้างแผนสุขภาพ" },
               ]),
         ]}
         description={
           scope.kind === "program"
             ? "สร้างแผนสุขภาพรอบใหม่ในโปรแกรมนี้ โดยรอบเดิมจะยังคงเป็นประวัติอ่านได้"
-            : "สร้างแผนเป้าหมายและกิจกรรมในประวัติความสัมพันธ์ของโรงพยาบาล"
+            : "สร้างแผนสุขภาพและกิจกรรมในประวัติการดูแลของโรงพยาบาลนี้"
         }
         title={template.label}
       />

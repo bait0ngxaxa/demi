@@ -75,7 +75,7 @@ export default async function LoginPage({
         <div className="mx-auto w-full max-w-md">
           <h2 className="text-3xl font-semibold tracking-[-0.03em] text-ink">เข้าสู่ระบบ DEMI</h2>
           <p className="mt-3 text-base leading-7 text-muted">
-            ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบแทนเลขบัตรประชาชน
+            ใช้เลขบัตรประชาชนและรหัสผ่านของบัญชีที่เปิดใช้งานแล้ว หากเป็นผู้ดูแลระบบ DEMI ให้ใช้รหัสผู้ดูแลระบบ DEMI แทนเลขบัตรประชาชน
           </p>
 
           {safeReturnTo === "/line/account" ? (
@@ -116,7 +116,7 @@ export default async function LoginPage({
               >
                 <h4 className="font-semibold text-text group-hover:text-brand-strong">ลงทะเบียนครั้งแรก</h4>
                 <p className="mt-1 text-sm leading-6 text-text-muted">
-                  สำหรับบุคลากร อสม. และผู้ป่วยที่โรงพยาบาลเพิ่มข้อมูลไว้แล้ว
+                  สำหรับเจ้าหน้าที่โรงพยาบาล อสม. และผู้ป่วยที่โรงพยาบาลเพิ่มข้อมูลไว้แล้ว
                 </p>
                 <span className="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-strong underline underline-offset-4">
                   เริ่มลงทะเบียน

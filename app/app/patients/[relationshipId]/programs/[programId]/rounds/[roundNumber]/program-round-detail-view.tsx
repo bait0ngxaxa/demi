@@ -351,7 +351,7 @@ function StepContent({ context, step }: { context: StepContext; step: RoundStepS
           </Link>
         ) : editable ? (
           <div className="space-y-2">
-            <p className="text-sm leading-6 text-text-muted">สร้างแผนสุขภาพของโปรแกรม บันทึกเสร็จแล้วระบบจะพากลับมาที่ขั้นตอนถัดไป</p>
+            <p className="text-sm leading-6 text-text-muted">สร้างแผนสุขภาพของโปรแกรมบันทึกเสร็จแล้วระบบจะพากลับมาที่ขั้นตอนถัดไป</p>
             <Link className={buttonClassName({ variant: "primary" })} href={`${programPath}/goals/new?${buildRoundReturnQuery(nextHref)}`}>
               สร้างแผนสุขภาพ
             </Link>

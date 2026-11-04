@@ -123,13 +123,13 @@ function projectHospitalCareActions(
 
 function navigationDescription(href: string): string {
   if (href === "/app/admin/reporting") {
-    return "เลือกโรงพยาบาลเพื่อดูรายงานตามสิทธิ์ผู้ดูแลระบบ";
+    return "เลือกโรงพยาบาลเพื่อดูรายงานตามสิทธิ์ผู้ดูแลระบบ DEMI";
   }
   if (href === "/app/admin/hospital-onboarding") {
-    return "ตรวจสอบและตัดสินคำขอขึ้นทะเบียนโรงพยาบาล";
+    return "ผู้ดูแลระบบ DEMI ตรวจสอบและตัดสินคำขอขึ้นทะเบียนโรงพยาบาล";
   }
 
-  return "ดูสถานะและกำกับดูแลโรงพยาบาลตามสิทธิ์ผู้ดูแลระบบ";
+  return "ดูสถานะและกำกับดูแลโรงพยาบาลตามสิทธิ์ผู้ดูแลระบบ DEMI";
 }
 
 function projectGovernanceActions(actor: ActorContext): ApplicationWorkspaceAction[] {
@@ -364,13 +364,33 @@ function projectWorkAreaGroups(
   );
 }
 
+function workforceContextStatusLabel(status: MembershipStatus): string | null {
+  switch (status) {
+    case MembershipStatus.ACTIVE:
+      return null;
+    case MembershipStatus.SUSPENDED:
+      return "พักสิทธิ์ชั่วคราว";
+    case MembershipStatus.ENDED:
+      return "สิ้นสุดแล้ว";
+    case MembershipStatus.INVITED:
+      return "รอตอบรับคำเชิญ";
+    case MembershipStatus.PROVISIONED:
+      return "รอเปิดใช้งานบัญชี";
+  }
+}
+
 function workspaceContextLabel(actor: ActorContext, hospitalId: string): string {
   const labels = actor.hospitalMemberships
     .filter((membership) => membership.hospitalId === hospitalId)
-    .map((membership) => `${membership.membershipType === "OWNER" ? "เจ้าของโรงพยาบาล" : "สมาชิกโรงพยาบาล"}${membership.status !== MembershipStatus.ACTIVE ? " (สมาชิกไม่พร้อมใช้งาน)" : ""}`);
+    .map((membership) => {
+      const roleLabel = membership.membershipType === "OWNER" ? "แอดมินโรงพยาบาล" : "เจ้าหน้าที่โรงพยาบาล";
+      const statusLabel = workforceContextStatusLabel(membership.status);
+      return statusLabel ? `${roleLabel} (${statusLabel})` : roleLabel;
+    });
   const relationship = actor.osmHospitalRelationships.find((item) => item.hospitalId === hospitalId);
   if (relationship) {
-    labels.push(`อสม. ที่สัมพันธ์กับโรงพยาบาล${relationship.status !== MembershipStatus.ACTIVE ? " (ความสัมพันธ์ไม่พร้อมใช้งาน)" : ""}`);
+    const statusLabel = workforceContextStatusLabel(relationship.status);
+    labels.push(`อสม. ที่ทำงานร่วมกับโรงพยาบาลนี้${statusLabel ? ` (${statusLabel})` : ""}`);
   }
   return labels.join(" · ");
 }

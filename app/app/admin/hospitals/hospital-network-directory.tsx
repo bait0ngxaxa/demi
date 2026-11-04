@@ -24,7 +24,7 @@ export function hospitalStatusLabel(status: HospitalNetworkDirectoryEntry["statu
     case "ACTIVE":
       return "ใช้งานอยู่";
     case "SUSPENDED":
-      return "ถูกระงับ";
+      return "ระงับการใช้งาน";
     case "PENDING_VERIFICATION":
       return "รอขึ้นทะเบียน";
     case "RETIRED":
@@ -75,9 +75,9 @@ function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): 
     <Panel aria-labelledby="create-hospital-heading">
       <h2 className="text-xl font-semibold tracking-[-0.02em]" id="create-hospital-heading">เพิ่มโรงพยาบาลแม่ข่าย</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        โรงพยาบาลที่เพิ่มเป็นแม่ข่ายในสถานะรอขึ้นทะเบียน ผู้รับผิดชอบสมัครใช้งานผ่านหน้าขึ้นทะเบียนโรงพยาบาล และเมื่อได้รับอนุมัติจะเป็นเจ้าของโรงพยาบาลคนแรก
-        หรือผู้ดูแลระบบเชิญผู้ดูแลคนแรกได้จากหน้ารายละเอียดของโรงพยาบาล
-        รพ.สต. และหน่วยบริการลูกข่ายให้เจ้าของโรงพยาบาลแม่ข่ายสร้างเองที่หน้าจัดการลูกข่าย
+        โรงพยาบาลแม่ข่ายที่รอขึ้นทะเบียนต้องมีผู้รับผิดชอบสมัครผ่านหน้าขึ้นทะเบียน เมื่อได้รับอนุมัติ ผู้สมัครจะได้สิทธิ์แอดมินโรงพยาบาลคนแรก
+        หรือผู้ดูแลระบบ DEMI เชิญแอดมินโรงพยาบาลคนแรกได้จากหน้ารายละเอียด
+        แอดมินโรงพยาบาลแม่ข่ายเพิ่ม รพ.สต. และหน่วยบริการลูกข่ายได้จากหน้าจัดการลูกข่าย
       </p>
       <NetworkMutationForm
         action={createNetworkHospitalAction}

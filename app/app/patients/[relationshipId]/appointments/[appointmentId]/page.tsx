@@ -128,7 +128,7 @@ function AppointmentDetailView({
         {detail.status === "COMPLETED" ? (
           <Alert variant="info">
             <p className="font-semibold">นัดหมายนี้เสร็จสิ้นแล้ว</p>
-            <p className="mt-1">สถานะนัดหมายไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือการจบโปรแกรม ต้องตรวจรายการดูแลแยกกัน</p>
+            <p className="mt-1">สถานะนัดหมายไม่ได้ยืนยันว่ามีบันทึกการติดตามผลหรือการจบโปรแกรมต้องตรวจรายการดูแลแยกกัน</p>
             <p className="mt-1">{followupContext.description}</p>
             <Link
               className="mt-3 inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-3 py-2 text-sm font-semibold text-brand-strong transition-colors hover:border-action-primary hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"

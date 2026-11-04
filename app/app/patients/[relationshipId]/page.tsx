@@ -200,14 +200,14 @@ function PatientActivationStatusPanel({
   if (!candidate) {
     return (
       <Alert role="status" variant="warning">
-        <p className="font-semibold">ไม่พบความสัมพันธ์ผู้ป่วยที่พร้อมจัดการบัญชี</p>
-        <p className="mt-1">ตรวจสอบสถานะผู้ป่วยและโรงพยาบาลก่อนดำเนินการ</p>
+        <p className="font-semibold">ไม่พบข้อมูลผู้ป่วยที่พร้อมให้จัดการบัญชี</p>
+        <p className="mt-1">ตรวจสอบสถานะบัญชีผู้ป่วยและโรงพยาบาลก่อนดำเนินการ</p>
       </Alert>
     );
   }
 
   const accountLabel = candidate.accountStatus === "ACTIVE"
-    ? "ใช้งานอยู่"
+    ? "บัญชีใช้งานได้"
     : candidate.accountStatus === "PROVISIONED"
       ? "ยังไม่เปิดใช้งาน"
       : candidate.accountStatus === "SUSPENDED"
@@ -256,7 +256,7 @@ function PatientActivationStatusPanel({
       ) : candidate.accountStatus === "SUSPENDED" ? (
         <p className="mt-4 text-sm leading-6 text-text-muted">
           บัญชีถูกระงับ การเปิดใช้งานใหม่ไม่พร้อมใช้
-          {canIssueRecovery ? " หากต้องคืนบัญชี ให้ใช้ขั้นตอนยืนยันตัวตนในส่วนคืนบัญชีด้านล่าง" : " กรุณาติดต่อผู้ดูแลที่มีสิทธิ์"}
+          {canIssueRecovery ? " หากต้องการกู้คืนบัญชี ให้ใช้ขั้นตอนยืนยันตัวตนด้านล่าง" : " กรุณาติดต่อแอดมินโรงพยาบาลนี้"}
         </p>
       ) : candidate.activationStatus === "RECONCILIATION_REQUIRED" ? (
         <p className="mt-4 text-sm leading-6 text-text-muted">ระบบต้องตรวจสอบข้อมูลบัญชีก่อน ไม่สามารถออกลิงก์เปิดใช้งานได้{canIssueRecovery ? " การคืนรหัสผ่านยังเป็นอีกขั้นตอนหนึ่งที่ต้องยืนยันตัวตน" : ""}</p>
@@ -398,7 +398,7 @@ function HistoryTab({
   const simpleDestinations = [
     { label: "นัดหมาย", href: `${patientPath}/appointments`, action: "ดูนัดหมาย" },
     { label: "การคัดกรอง/ประเมิน", href: `${patientPath}/screenings`, action: "ดูประวัติการประเมิน" },
-    { label: "แผนเป้าหมาย", href: `${patientPath}/goals`, action: "ดูแผนเป้าหมาย" },
+    { label: "แผนสุขภาพ", href: `${patientPath}/goals`, action: "ดูแผนสุขภาพ" },
     { label: "การติดตามผล", href: `${patientPath}/followups`, action: "ดูการติดตามผล" },
     { label: "หลักฐาน/รูปภาพ", href: `${patientPath}/evidence`, action: "ดูหลักฐาน" },
   ] as const;

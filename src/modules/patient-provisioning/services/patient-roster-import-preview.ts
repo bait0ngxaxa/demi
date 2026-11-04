@@ -385,7 +385,7 @@ function hasNameConflict(
 
 /** ENDED_RELATIONSHIP: shown for a national ID whose care with this Hospital has ended. */
 export const PATIENT_IMPORT_ENDED_RELATIONSHIP_REASON =
-  "ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว ระบบไม่เปิดการดูแลเดิมกลับมาเอง กรุณาติดต่อผู้ดูแลระบบ";
+  "ผู้ป่วยรายนี้สิ้นสุดการดูแลกับโรงพยาบาลนี้แล้ว ระบบไม่เปิดการดูแลเดิมกลับมาเอง กรุณาติดต่อผู้ดูแลระบบ DEMI";
 
 /**
  * Identity check for a person that already exists. A patient that already has a
@@ -436,7 +436,7 @@ export function classifyExistingPatient(
   ) {
     return {
       classification: "CONFLICT",
-      reason: "HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน",
+      reason: "HN ของผู้ป่วยรายนี้ไม่ตรงกับข้อมูลของโรงพยาบาล",
     };
   }
 

@@ -122,7 +122,7 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
               ส่งคำขอเรียบร้อยแล้ว
             </h3>
             <p className="mt-2" id="hospital-onboarding-success-description">
-              ระบบได้รับคำขอของคุณแล้ว กรุณารอผู้ดูแลระบบตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ
+              ระบบได้รับคำขอของคุณแล้ว กรุณารอผู้ดูแลระบบ DEMI ตรวจสอบและอนุมัติก่อนเข้าสู่ระบบ
             </p>
           </Alert>
         </div>
@@ -140,7 +140,7 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
     <form action={formAction} className="space-y-7" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <div className="rounded-[12px] bg-brand-soft px-4 py-3 text-sm leading-6 text-brand-deep">
         ข้อมูลที่ส่งจะใช้เพื่อจับคู่ตัวตนและตรวจสอบคำขอเท่านั้น
-        ผู้ดูแลระบบจะเป็นผู้อนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
+        ผู้ดูแลระบบ DEMI จะอนุมัติสิทธิ์ของโรงพยาบาลภายหลัง
       </div>
 
       <fieldset

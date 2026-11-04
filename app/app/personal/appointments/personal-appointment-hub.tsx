@@ -271,8 +271,8 @@ export function PersonalAppointmentHub({ context }: { context: PersonalAppointme
       <div className="space-y-6 pt-6">
         {selected === null ? (
           <Alert variant="info">
-            <p className="font-semibold">ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย</p>
-            <p className="mt-1">เมื่อมีข้อมูลความสัมพันธ์กับโรงพยาบาล รายการนัดหมายจะปรากฏที่นี่</p>
+            <p className="font-semibold">ยังไม่มีข้อมูลโรงพยาบาลที่ดูแลคุณ</p>
+            <p className="mt-1">เมื่อโรงพยาบาลบันทึกนัดหมาย รายการนัดหมายจะปรากฏที่นี่</p>
           </Alert>
         ) : (
           <>

@@ -59,7 +59,7 @@ const retirementIneligibilityCopy: Record<HospitalRetirementIneligibility, strin
   NOT_PENDING: "ไม่ได้อยู่ในสถานะรอขึ้นทะเบียน",
   ACTIVE_SERVICE_AREA: "อยู่ในเครือข่ายแม่ข่าย–ลูกข่ายที่ใช้งานอยู่ ต้องนำออกจากเครือข่ายก่อน",
   PENDING_APPLICATION: "มีคำขอขึ้นทะเบียนรอพิจารณา ต้องปฏิเสธคำขอก่อน",
-  HELD_OWNER_INVITATION: "มีคำเชิญผู้ดูแลโรงพยาบาลที่รอผู้ดูแลระบบยืนยันตัวตน ต้องยกเลิกคำเชิญก่อน",
+  HELD_OWNER_INVITATION: "มีคำเชิญแอดมินโรงพยาบาลที่รอผู้ดูแลระบบ DEMI กู้คืนบัญชี ต้องยกเลิกคำเชิญก่อน",
 };
 
 function toErrorState(error: unknown, copy: ErrorCopy): HospitalNetworkActionState {
@@ -117,7 +117,7 @@ export async function attachServiceAreaAction(
     }),
     "เพิ่มลูกข่ายเข้าเครือข่ายแล้ว",
     {
-      CONFLICT: "โรงพยาบาลนี้มีแม่ข่ายดูแลอยู่แล้ว หากต้องการย้าย กรุณาติดต่อผู้ดูแลระบบ",
+      CONFLICT: "โรงพยาบาลนี้มีแม่ข่ายอยู่แล้ว หากต้องการย้าย กรุณาติดต่อผู้ดูแลระบบ DEMI",
       INVALID_INPUT: "โรงพยาบาลนี้ยังเพิ่มเป็นลูกข่ายไม่ได้ (ต้องเป็นลูกข่ายที่ใช้งานอยู่)",
     },
     ["/app/hospitals/network", "/app/hospitals/reporting"],
@@ -239,7 +239,7 @@ export async function setNetworkRoleAction(
       : setHospitalNetworkRole(actor, { hospitalId, kind }),
     "บันทึกประเภทในเครือข่ายแล้ว",
     {
-      CONFLICT: "เปลี่ยนประเภทไม่ได้ขณะที่ยังมีความสัมพันธ์แม่ข่าย–ลูกข่ายอยู่ หรือโรงพยาบาลถูกถอนออกจากรายชื่อ กรุณาโหลดหน้าใหม่แล้วตรวจสอบ",
+      CONFLICT: "เปลี่ยนประเภทไม่ได้ขณะที่โรงพยาบาลนี้ยังเชื่อมกับแม่ข่ายหรือลูกข่าย หรือถูกถอนออกจากรายชื่อ กรุณาโหลดหน้าใหม่แล้วตรวจสอบ",
       NOT_FOUND: "โรงพยาบาลนี้ยังไม่ได้กำหนดประเภท",
     },
     ["/app/admin/hospitals", `/app/admin/hospitals/${hospitalId}`],
@@ -285,7 +285,7 @@ const NETWORK_PATHS = ["/app/hospitals/network", "/app/hospitals/reporting"] as 
 
 const childOwnerInviteeCopy: ErrorCopy = {
   INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: ชื่อหน่วยบริการ (ไม่เกิน 200 ตัวอักษร) เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",
-  CONFLICT: "ดำเนินการไม่ได้ บัญชีของผู้ถูกเชิญต้องตรวจสอบโดยผู้ดูแลระบบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  CONFLICT: "ส่งคำเชิญไม่ได้ กรณีนี้ต้องให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อน หรือข้อมูลอาจเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
   NOT_FOUND: "หน่วยบริการนี้ไม่ได้อยู่ในเครือข่ายของคุณแล้ว กรุณาโหลดหน้าใหม่",
 };
 
@@ -327,7 +327,7 @@ async function runInvitation(
       return {
         status: "ERROR",
         code: "UNAVAILABLE",
-        message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+        message: "ยังสร้างลิงก์เปิดใช้งานไม่ได้ กรุณาลองใหม่ภายหลัง",
       };
     }
     const state = toErrorState(error, copy);
@@ -379,7 +379,7 @@ export async function inviteReplacementChildOwnerAction(
 ): Promise<ChildOwnerInvitationActionState> {
   return runInvitation(async (actor) => ({
     invitation: await inviteReplacementChildOwner(actor, { ...inviteeInput(formData), childHospitalId: getString(formData, "childHospitalId") }),
-    message: "ส่งคำเชิญผู้ดูแลคนใหม่แล้ว",
+    message: "ส่งคำเชิญแอดมินโรงพยาบาลคนใหม่แล้ว",
   }), childOwnerInviteeCopy);
 }
 

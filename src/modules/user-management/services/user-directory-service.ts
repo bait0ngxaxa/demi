@@ -51,6 +51,8 @@ export type UserDirectoryRow = {
   displayName: string;
   hospitalNumber: string | null;
   status: UserDirectoryStatus;
+  accountStatus: UserStatus | null;
+  relationshipStatus: MembershipStatus;
   identityAssurance: IdentityAssurance;
   method: ActivationMethod;
   selfRegisteredAt: Date | null;
@@ -190,6 +192,8 @@ export async function listHospitalUsers(
           kind: "patient" as const, relationshipId: relationship.id, userId: user?.id ?? null,
           displayName: toDisplayName(relationship.patientProfile.person), hospitalNumber: relationship.hospitalNumber,
           status: deriveUserDirectoryStatus({ ended: relationship.endedAt !== null, relationshipSuspended: false, userStatus: user?.status ?? null }),
+          accountStatus: user?.status ?? null,
+          relationshipStatus: relationship.endedAt === null ? MembershipStatus.ACTIVE : MembershipStatus.ENDED,
           method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: user?.status ?? null, usedActivations: usedActivationsOf(user) }),
           identityAssurance: user?.identityAssurance ?? IdentityAssurance.HOSPITAL_PROOFED,
           selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt, latestPasswordReset: null,
@@ -220,6 +224,8 @@ export async function listHospitalUsers(
           relationshipSuspended: relationship.status === MembershipStatus.SUSPENDED,
           userStatus: relationship.user.status,
         }),
+        accountStatus: relationship.user.status,
+        relationshipStatus: relationship.status,
         method: deriveActivationMethod({ selfRegisteredAt: relationship.selfRegisteredAt, userStatus: relationship.user.status, usedActivations: usedActivationsOf(relationship.user) }),
         identityAssurance: relationship.user.identityAssurance,
         selfRegisteredAt: relationship.selfRegisteredAt, addedAt: relationship.createdAt, latestPasswordReset: null,
@@ -279,6 +285,7 @@ export type UserDetail = {
   hospitalNumber: string | null;
   status: UserDirectoryStatus;
   accountStatus: UserStatus;
+  relationshipStatus: MembershipStatus;
   identityAssurance: IdentityAssurance;
   relationshipUpdatedAt: string;
   activation: {
@@ -312,20 +319,20 @@ const TIMELINE_LABELS: Record<string, string> = {
   "workforce_password_reset.issued": "ออกลิงก์รีเซ็ตรหัสผ่าน",
   "workforce_password_reset.completed": "รีเซ็ตรหัสผ่านแล้ว",
   "account.password_reset.issued": "ออกลิงก์รีเซ็ตรหัสผ่านแบบยืนยันตัวตน",
-  "account.password_reset.completed": "เปลี่ยนรหัสผ่านและคืนบัญชีแล้ว",
-  "hospital_membership.suspended": "ระงับสิทธิ์",
-  "osm_relationship.suspended": "ระงับสิทธิ์",
-  "hospital_membership.restored": "คืนสิทธิ์",
-  "osm_relationship.restored": "คืนสิทธิ์",
+  "account.password_reset.completed": "ตั้งรหัสผ่านใหม่แล้ว",
+  "hospital_membership.suspended": "พักสิทธิ์การทำงานชั่วคราว",
+  "osm_relationship.suspended": "พักสิทธิ์การทำงานชั่วคราว",
+  "hospital_membership.restored": "เปิดสิทธิ์การทำงานอีกครั้ง",
+  "osm_relationship.restored": "เปิดสิทธิ์การทำงานอีกครั้ง",
   "workforce.contact_phone_updated": "แก้ไขเบอร์ติดต่อ",
   "hospital_membership.profession_changed": "เปลี่ยนวิชาชีพ",
-  "hospital_owner.promoted": "แต่งตั้งเป็นเจ้าของโรงพยาบาล",
-  "hospital_owner.demoted": "ถอดจากเจ้าของโรงพยาบาล",
-  "workforce.permanently_released": "นำออกจากระบบ",
+  "hospital_owner.promoted": "เปลี่ยนเป็นแอดมินโรงพยาบาล",
+  "hospital_owner.demoted": "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล",
+  "workforce.permanently_released": "สิ้นสุดสิทธิ์การทำงานกับโรงพยาบาลนี้",
   "patient.hospital_relationship.ended": "สิ้นสุดการดูแล",
   "patient.person_name.corrected": "แก้ไขชื่อ-สกุล",
   "workforce.person_name.corrected": "แก้ไขชื่อ-สกุล",
-  "user.takeover_locked": "ล็อกบัญชี: แจ้งว่าไม่ใช่เจ้าของจริง",
+  "user.takeover_locked": "ล็อกบัญชี: สงสัยว่ามีผู้อื่นใช้บัญชีนี้",
   "user.takeover_provider_sessions": "ตรวจสอบการยกเลิกการเข้าสู่ระบบ",
   "user.takeover_lock_resolved": "คืนสิทธิ์ที่ถูกระงับจากการล็อกบัญชี",
 };
@@ -349,7 +356,14 @@ async function loadDetailRecord(transaction: Prisma.TransactionClient, kind: Use
       },
     });
     const user = row?.patientProfile.person.user;
-    return row && user ? { ...row, ended: row.endedAt !== null, suspended: false, ownerMembership: false, user } : null;
+    return row && user ? {
+      ...row,
+      relationshipStatus: row.endedAt === null ? MembershipStatus.ACTIVE : MembershipStatus.ENDED,
+      ended: row.endedAt !== null,
+      suspended: false,
+      ownerMembership: false,
+      user,
+    } : null;
   }
   const select = {
     id: true, hospitalId: true, createdAt: true, updatedAt: true, status: true, selfRegisteredAt: true, contactPhone: true,
@@ -363,6 +377,7 @@ async function loadDetailRecord(transaction: Prisma.TransactionClient, kind: Use
     ? {
         ...row,
         hospitalNumber: null,
+        relationshipStatus: row.status,
         ended: row.status === MembershipStatus.ENDED,
         suspended: row.status === MembershipStatus.SUSPENDED,
         ownerMembership: "membershipType" in row && row.membershipType === MembershipType.OWNER,
@@ -444,6 +459,7 @@ export async function getHospitalUserDetail(
         contactPhone: "contactPhone" in record ? record.contactPhone : null,
         status,
         accountStatus: user.status,
+        relationshipStatus: record.relationshipStatus,
         identityAssurance: user.identityAssurance,
         relationshipUpdatedAt: record.updatedAt.toISOString(),
         activation: {

@@ -57,8 +57,8 @@ function revalidateAdminHospitals(): void {
 }
 
 const inviteeCopy: ErrorCopy = {
-  INVALID_INPUT: "กรุณาตรวจสอบข้อมูล: เลขบัตรประชาชน 13 หลัก และชื่อ–นามสกุลผู้ดูแล",
-  CONFLICT: "ดำเนินการไม่ได้ อาจมีคำขอขึ้นทะเบียนรอพิจารณา มีผู้ดูแลที่ใช้งานอยู่ บัญชีของผู้ถูกเชิญต้องตรวจสอบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่",
+  INVALID_INPUT: "กรุณาตรวจสอบเลขบัตรประชาชน 13 หลักและชื่อ–นามสกุลของผู้ถูกเชิญ",
+  CONFLICT: "ส่งคำเชิญไม่ได้ อาจมีคำขอขึ้นทะเบียนรอพิจารณา มีแอดมินโรงพยาบาลที่ใช้งานอยู่ บัญชีของผู้ถูกเชิญต้องตรวจสอบก่อน หรือข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่",
 };
 
 function inviteeInput(formData: FormData): Record<string, string> {
@@ -100,7 +100,7 @@ async function runInvitation(
       return {
         status: "ERROR",
         code: "UNAVAILABLE",
-        message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาตรวจสอบการตั้งค่าระบบ",
+        message: "ยังสร้างลิงก์เปิดใช้งานไม่ได้ กรุณาลองใหม่ภายหลัง",
       };
     }
     return toErrorState(error, copy);
@@ -113,7 +113,7 @@ export async function inviteParentOwnerAction(
 ): Promise<ChildOwnerInvitationActionState> {
   return runInvitation(
     async () => inviteParentOwner(await getProtectedApplicationActor(), inviteeInput(formData)),
-    "ส่งคำเชิญผู้ดูแลโรงพยาบาลแล้ว",
+    "ส่งคำเชิญแอดมินโรงพยาบาลแล้ว",
     inviteeCopy,
   );
 }

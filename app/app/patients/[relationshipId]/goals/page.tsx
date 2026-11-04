@@ -10,7 +10,7 @@ import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/er
 import { GoalPlanOverviewView } from "./goal-plan-overview-view";
 
 export const metadata: Metadata = {
-  title: "ประวัติแผนเป้าหมายทั้งหมด",
+  title: "ประวัติแผนสุขภาพทั้งหมด",
 };
 
 type GoalPlanOverviewPageProps = {

@@ -127,7 +127,7 @@ type PatientActivationTargetRecord = {
 const DEFAULT_TRANSACTION_RETRIES = 2;
 const GENERIC_ACTIVATION_ERROR = "ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ";
 const WORKFORCE_AUTHORITY_PENDING_MESSAGE =
-  "บัญชีนี้มีสิทธิ์บุคลากรที่รอเปิดใช้งานอยู่ จึงออกลิงก์เปิดใช้งานผู้ป่วยไม่ได้ ต้องเปิดใช้งานบัญชีให้เสร็จหรือให้ผู้ดูแลระบบตรวจสอบก่อน";
+  "บัญชีนี้มีสิทธิ์เจ้าหน้าที่โรงพยาบาลที่รอเปิดใช้งานอยู่ จึงออกลิงก์เปิดใช้งานผู้ป่วยไม่ได้ ต้องเปิดใช้งานบัญชีให้เสร็จหรือให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อน";
 
 export class PatientActivationReconciliationError extends InfrastructureError {
   readonly requiresReconciliation = true;

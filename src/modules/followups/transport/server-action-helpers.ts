@@ -220,7 +220,7 @@ export function mapFollowupError(error: unknown): {
     if (error.code === "NOT_FOUND") {
       return {
         code: "FORBIDDEN",
-        message: "ไม่พบผู้ป่วย นัดหมาย หรือแผนเป้าหมายในขอบเขตที่บัญชีนี้เข้าถึงได้",
+        message: "ไม่พบผู้ป่วย นัดหมาย หรือแผนสุขภาพที่บัญชีนี้มีสิทธิ์เข้าถึง",
       };
     }
   }

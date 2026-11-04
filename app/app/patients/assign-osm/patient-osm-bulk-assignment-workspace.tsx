@@ -538,7 +538,7 @@ export function PatientOsmBulkAssignmentWorkspace({
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none" ref={osmHeading} tabIndex={-1}>เลือก อสม.</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                แสดงเฉพาะบัญชี อสม. ที่เปิดใช้งานและมีความสัมพันธ์กับโรงพยาบาลนี้
+                แสดงเฉพาะ อสม. ที่เปิดใช้งานและมีสิทธิ์ทำงานกับโรงพยาบาลนี้
               </p>
               <OsmSearchPicker
                 disabled={confirming || pending}

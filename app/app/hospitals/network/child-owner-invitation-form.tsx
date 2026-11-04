@@ -25,13 +25,13 @@ export type OwnerInvitationAudience = "PARENT_OWNER" | "PLATFORM_ADMIN";
 
 const resultCopy: Record<OwnerInvitationAudience, { heldForReset: string; awaitingAcceptance: string; alreadyIssued: string }> = {
   PARENT_OWNER: {
-    heldForReset: "รอ platform ADMIN ยืนยันตัวตน บัญชีนี้จะตอบรับคำเชิญหรือเข้าสู่ระบบไม่ได้จนกว่าจะรีเซ็ตรหัสผ่านผ่านการตรวจสอบตัวตน",
-    awaitingAcceptance: "ผู้ดูแลมีบัญชี DEMI อยู่แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนหน่วยบริการจะเปิดใช้งาน",
+    heldForReset: "รอผู้ดูแลระบบ DEMI ยืนยันตัวตน บัญชีนี้จะตอบรับคำเชิญหรือเข้าสู่ระบบไม่ได้จนกว่าจะกู้คืนบัญชี",
+    awaitingAcceptance: "ผู้ได้รับเชิญมีบัญชี DEMI แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนจึงจะได้รับสิทธิ์แอดมินโรงพยาบาลลูกข่าย",
     alreadyIssued: "ลิงก์เดิมแสดงได้ครั้งเดียว หากยังไม่ได้ส่งมอบ ให้ออกลิงก์ใหม่จากรายการลูกข่าย",
   },
   PLATFORM_ADMIN: {
-    heldForReset: "บัญชีนี้ต้องคืนบัญชีโดยผู้ดูแลระบบก่อน ยืนยันตัวตนและรีเซ็ตรหัสผ่านด้วยเครื่องมือคืนบัญชี แล้วผู้ถูกเชิญจึงตอบรับคำเชิญได้ด้วยตนเอง",
-    awaitingAcceptance: "ผู้ดูแลมีบัญชี DEMI อยู่แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนโรงพยาบาลจะเปิดใช้งาน",
+    heldForReset: "ผู้ดูแลระบบ DEMI ต้องยืนยันตัวตนและกู้คืนบัญชีนี้ก่อน ผู้ถูกเชิญจึงจะตอบรับคำเชิญได้ด้วยตนเอง",
+    awaitingAcceptance: "ผู้ได้รับเชิญมีบัญชี DEMI แล้ว จะเห็นคำเชิญที่หน้าหลักเมื่อเข้าสู่ระบบ และต้องตอบรับด้วยตนเองก่อนจึงจะได้รับสิทธิ์แอดมินโรงพยาบาล",
     alreadyIssued: "ลิงก์เดิมแสดงได้ครั้งเดียว หากยังไม่ได้ส่งมอบ ให้ออกลิงก์ใหม่จากหน้านี้",
   },
 };
@@ -41,7 +41,7 @@ export function ChildOwnerInviteeFields({ idPrefix, nationalIdRef }: { idPrefix:
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="min-w-0 sm:col-span-2">
-        <label className="text-sm font-semibold text-text" htmlFor={`${idPrefix}-national-id`}>เลขบัตรประชาชนผู้ดูแล</label>
+        <label className="text-sm font-semibold text-text" htmlFor={`${idPrefix}-national-id`}>เลขบัตรประชาชนของแอดมินโรงพยาบาล</label>
         <Input
           autoComplete="off"
           className="mt-2"
@@ -82,7 +82,7 @@ export function ChildOwnerDeliveryModeField({ idPrefix }: { idPrefix: string }):
         </label>
       </div>
       <p className="mt-1 text-xs leading-5 text-text-muted">
-        หากผู้ดูแลมีบัญชี DEMI ที่ใช้งานอยู่แล้ว ระบบจะไม่ออกลิงก์ ผู้ดูแลต้องเข้าสู่ระบบและตอบรับคำเชิญด้วยตนเอง
+        หากบุคคลนี้มีบัญชี DEMI ที่ใช้งานอยู่แล้ว ระบบจะไม่ออกลิงก์ เจ้าตัวต้องเข้าสู่ระบบและตอบรับคำเชิญด้วยตนเอง
       </p>
     </fieldset>
   );
@@ -213,7 +213,7 @@ export function ChildOwnerInvitationForm({
     handled.current = state;
     if (state.status === "SUCCESS") {
       if (taskDialog && taskDialogSucceeded) clearDraft();
-      notify.success("บันทึกคำเชิญผู้ดูแลแล้ว");
+      notify.success("บันทึกคำเชิญแอดมินโรงพยาบาลแล้ว");
       container.current?.querySelector("form")?.reset();
       onSuccess?.(state);
       router.refresh();

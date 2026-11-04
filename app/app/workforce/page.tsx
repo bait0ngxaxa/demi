@@ -13,7 +13,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 import { WorkforceWorkspace, type WorkforceTab } from "./workforce-workspace";
 
 export const metadata: Metadata = {
-  title: "จัดการบุคลากรโรงพยาบาล",
+  title: "จัดการเจ้าหน้าที่โรงพยาบาล",
 };
 
 type WorkforcePageProps = {

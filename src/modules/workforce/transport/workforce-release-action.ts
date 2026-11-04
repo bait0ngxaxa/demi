@@ -12,19 +12,33 @@ export async function releaseWorkforceAction(_state: WorkforceReleaseActionState
     await releaseWorkforceRelationship(actor, Object.fromEntries(form.entries()));
     revalidatePath("/app/workforce", "layout");
     revalidatePath("/app/patients", "layout");
-    return { success: true, outcome: "RELEASED", message: "นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่" };
+    return { success: true, outcome: "RELEASED", message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่" };
   } catch (error: unknown) {
     if (error instanceof ConflictError) {
-      return { success: false, outcome: "CONFLICT", message: "ดำเนินการไม่ได้ ข้อมูลเปลี่ยนแปลง หรือเป็นเจ้าของโรงพยาบาลคนสุดท้ายที่ยังใช้งานอยู่ กรุณาโหลดหน้าใหม่" };
+      return { success: false, outcome: "CONFLICT", message: "ข้อมูลเปลี่ยนแปลง หรือโรงพยาบาลนี้ต้องมีแอดมินอย่างน้อย 1 คน กรุณาโหลดข้อมูลล่าสุด" };
     }
     if (error instanceof ValidationError) {
-      return { success: false, outcome: "INVALID_CONFIRMATION", message: "กรุณาพิมพ์ นำออกจากระบบ เพื่อยืนยัน" };
+      return { success: false, outcome: "INVALID_CONFIRMATION", message: "กรุณาพิมพ์ นำออกจากโรงพยาบาลนี้อย่างถาวร เพื่อยืนยัน" };
+    }
+    if (error instanceof UnauthenticatedError) {
+      return {
+        success: false,
+        outcome: "FORBIDDEN",
+        message: "กรุณาเข้าสู่ระบบอีกครั้งก่อนนำบุคคลนี้ออกจากโรงพยาบาล",
+      };
+    }
+    if (error instanceof ForbiddenError) {
+      return {
+        success: false,
+        outcome: "FORBIDDEN",
+        message: "บัญชีนี้ไม่มีสิทธิ์นำบุคคลนี้ออกจากโรงพยาบาล",
+      };
     }
     return {
       success: false,
-      // Only an explicit access refusal is a confirmed FORBIDDEN; anything else may have followed a commit.
-      outcome: error instanceof ForbiddenError || error instanceof UnauthenticatedError ? "FORBIDDEN" : "UNAVAILABLE",
-      message: "ดำเนินการไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง",
+      // An unavailable result may follow a committed release, so keep its outcome explicitly unconfirmed.
+      outcome: "UNAVAILABLE",
+      message: "ยังยืนยันผลการนำบุคคลนี้ออกจากโรงพยาบาลไม่ได้ กรุณาตรวจสอบสถานะก่อนลองใหม่",
     };
   }
 }

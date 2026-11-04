@@ -1839,7 +1839,7 @@ type HospitalRelationshipPasswordResetCandidate = {
   hospitalId: string;
   hospitalName: string;
   relationshipId: string;
-  relationshipStatus: string;
+  relationshipStatus: MembershipStatus;
 };
 
 type HospitalCaregiverPasswordResetCandidate = {
@@ -1849,7 +1849,7 @@ type HospitalCaregiverPasswordResetCandidate = {
   hospitalId: string;
   hospitalName: string;
   relationshipId: null;
-  relationshipStatus: string;
+  relationshipStatus: "CAREGIVER_ONLY" | "CAREGIVER";
 };
 
 type PlatformAdminPasswordResetCandidate = {
@@ -1980,7 +1980,7 @@ export async function searchMediatedPasswordResetTargets(
           ]);
           result.push(...memberships.map((row) => ({ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
           result.push(...osmRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "osm" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status })));
-          result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? "ENDED" : "ACTIVE" })));
+          result.push(...patientRelationships.map((row) => ({ userId: user.id, displayName, targetKind: "patient" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.endedAt ? MembershipStatus.ENDED : MembershipStatus.ACTIVE })));
           result.push(...heldOwnerMemberships.flatMap((row) =>
             isHeldOwnerInvitationHospital(row, [HospitalStatus.PENDING_VERIFICATION])
               ? [{ userId: user.id, displayName, targetKind: "staff" as const, hospitalId: row.hospitalId, hospitalName: row.hospital.name, relationshipId: row.id, relationshipStatus: row.status }]
@@ -1988,7 +1988,7 @@ export async function searchMediatedPasswordResetTargets(
           ));
           if (user.roles.some(({ role }) => role === Role.CAREGIVER)) {
             const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
-            result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" })));
+            result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" as const })));
           }
         }
         if (!user.roles.some(({ role }) => role === Role.ADMIN) && !ordinaryNationalIdIsValid) result.length = 0;

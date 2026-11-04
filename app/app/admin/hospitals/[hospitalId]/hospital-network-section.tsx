@@ -63,7 +63,7 @@ export function HospitalNetworkSection({
         </div>
         <p className="mt-2 text-sm leading-6 text-text-muted">
           แม่ข่ายเลือกลูกข่ายเข้าเครือข่ายได้เอง และดูผู้ป่วยของลูกข่ายแบบอ่านอย่างเดียว ลูกข่ายจะถูกเลือกได้เมื่อขึ้นทะเบียนใช้งานแล้ว
-          {hasActiveAreas ? " โรงพยาบาลนี้ยังมีความสัมพันธ์ในเครือข่ายอยู่ จึงต้องนำออกหรือโอนก่อนเปลี่ยนประเภท" : ""}
+          {hasActiveAreas ? " โรงพยาบาลนี้ยังเชื่อมกับเครือข่ายอยู่ จึงต้องนำออกหรือโอนก่อนเปลี่ยนประเภท" : ""}
         </p>
         {hospital.status === "RETIRED" ? (
           // N1-D3: the role stays as it was while the Hospital is withdrawn; restore it to change the role.
@@ -91,7 +91,7 @@ export function HospitalNetworkSection({
         <Panel>
           <h3 className="text-lg font-semibold">ลูกข่าย ({network.children.length.toLocaleString("th-TH")})</h3>
           {network.children.length === 0 ? (
-            <p className="mt-2 text-sm text-text-muted">ยังไม่มีลูกข่าย เจ้าของโรงพยาบาลแม่ข่ายเพิ่มได้จากหน้า “จัดการลูกข่าย”</p>
+            <p className="mt-2 text-sm text-text-muted">ยังไม่มีลูกข่าย แอดมินโรงพยาบาลแม่ข่ายเพิ่มได้จากหน้า “จัดการลูกข่าย”</p>
           ) : (
             <ul className="mt-3 divide-y divide-border border-t border-border">
               {network.children.map(({ areaId, createdAt, child }) => (
@@ -156,7 +156,7 @@ export function HospitalNetworkSection({
             </div>
             <div className="min-w-0">
               <h4 className="font-semibold">นำออกจากเครือข่าย</h4>
-              <p className="mt-1 text-sm text-text-muted">ใช้เมื่อแม่ข่ายไม่มีเจ้าของที่ดำเนินการได้</p>
+              <p className="mt-1 text-sm text-text-muted">ใช้เมื่อไม่มีแอดมินโรงพยาบาลของแม่ข่ายที่ดำเนินการได้</p>
               <NetworkMutationForm
                 action={adminEndServiceAreaAction}
                 className="mt-3"

@@ -85,7 +85,7 @@ async function PatientNameCorrectionSection({
           แก้ไขชื่อ-สกุลผู้ป่วย
         </h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          ใช้เมื่อเจ้าของโรงพยาบาลแจ้งว่าผู้ป่วยเชื่อมกับหลายโรงพยาบาล ชื่อ-สกุลที่แก้จะแสดงในทุกโรงพยาบาลที่ผู้ป่วยเชื่อมอยู่
+          ใช้เมื่อแอดมินโรงพยาบาลแจ้งว่าชื่อ-สกุลของผู้ป่วยไม่ถูกต้อง ชื่อที่แก้จะแสดงในทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
         </p>
         <form className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
           <div className="min-w-0 flex-1">
@@ -124,7 +124,7 @@ function statusLabel(status: HospitalStatus): string {
     case HospitalStatus.ACTIVE:
       return "ใช้งานอยู่";
     case HospitalStatus.SUSPENDED:
-      return "ถูกระงับ";
+      return "ระงับการใช้งาน";
     case HospitalStatus.PENDING_VERIFICATION:
       return "รอยืนยันการขึ้นทะเบียน";
     case HospitalStatus.RETIRED:
@@ -242,11 +242,11 @@ export default async function HospitalGovernanceDetailPage({
       <PageHeader
         actions={<StatusBadge variant={statusVariant(hospital.status)}>{statusLabel(hospital.status)}</StatusBadge>}
         breadcrumbs={[
-          { label: "ผู้ดูแลระบบ" },
+          { label: "ผู้ดูแลระบบ DEMI" },
           { href: "/app/admin/hospitals", label: "การกำกับดูแลโรงพยาบาล" },
           { label: "รายละเอียดโรงพยาบาล" },
         ]}
-        description="ตรวจสอบและเปลี่ยนสถานะของโรงพยาบาล แก้ชื่อและประเภทในเครือข่าย โอนย้ายลูกข่าย และแก้ชื่อ-สกุลผู้ป่วยตามที่เจ้าของโรงพยาบาลแจ้ง ไม่รวมการดูข้อมูลผู้ป่วย"
+        description="ตรวจสอบและเปลี่ยนสถานะโรงพยาบาล แก้ชื่อและประเภทในเครือข่าย โอนย้ายลูกข่าย และแก้ชื่อ-สกุลผู้ป่วยตามที่แอดมินโรงพยาบาลแจ้ง หน้านี้ไม่มีข้อมูลผู้ป่วย"
         title={hospital.name}
       />
 
@@ -282,9 +282,9 @@ export default async function HospitalGovernanceDetailPage({
         <HospitalRetirementSection hospital={hospital} />
 
         <Alert variant={hospital.status === HospitalStatus.SUSPENDED ? "warning" : "info"}>
-          <p className="font-semibold">ขอบเขตการเปลี่ยนสถานะ</p>
+          <p className="font-semibold">ขอบเขตผลกระทบ</p>
           <p className="mt-1">
-            การระงับหรือคืนสถานะมีผลเฉพาะโรงพยาบาลนี้ ไม่ลบบัญชี ไม่เปลี่ยนความสัมพันธ์หรือการมอบหมายผู้ป่วย และไม่แก้ไขนัดหมายหรือข้อมูลประวัติ
+            การระงับหรือเปิดใช้งานอีกครั้งมีผลเฉพาะโรงพยาบาลนี้ ไม่ลบบัญชี ไม่เปลี่ยนโครงสร้างเครือข่ายหรือการมอบหมายผู้ป่วย และไม่แก้ไขนัดหมายหรือประวัติ
           </p>
         </Alert>
 
@@ -296,11 +296,11 @@ export default async function HospitalGovernanceDetailPage({
           />
         ) : (
           <Alert variant="neutral">
-            <p className="font-semibold">ยังไม่อยู่ในวงจรการระงับ/คืนสถานะ</p>
+            <p className="font-semibold">ยังระงับหรือเปิดใช้งานโรงพยาบาลนี้ไม่ได้</p>
             <p className="mt-1">
               {hospital.status === HospitalStatus.RETIRED
-                ? "โรงพยาบาลนี้ถูกถอนออกจากรายชื่อรอสมัคร จึงไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้"
-                : "โรงพยาบาลนี้ยังอยู่ในขั้นตอนลงทะเบียน จึงยังไม่มีปุ่มระงับหรือคืนสถานะในหน้านี้"}
+                ? "โรงพยาบาลนี้ถูกถอนออกจากรายชื่อรอสมัคร จึงไม่มีปุ่มระงับหรือเปิดใช้งานในหน้านี้"
+                : "โรงพยาบาลนี้ยังอยู่ในขั้นตอนลงทะเบียน จึงยังไม่มีปุ่มระงับหรือเปิดใช้งานในหน้านี้"}
             </p>
           </Alert>
         )}
@@ -308,12 +308,12 @@ export default async function HospitalGovernanceDetailPage({
         {hospital.status === HospitalStatus.ACTIVE ? (
           <section aria-labelledby="owner-reset-heading" className="space-y-4">
             <h2 className="text-xl font-semibold tracking-[-0.02em]" id="owner-reset-heading">
-              คืนบัญชีผู้ใช้
+              กู้คืนบัญชีผู้ใช้
             </h2>
             <p className="text-sm leading-6 text-text-muted">
-              ผู้ดูแลระบบค้นหาบัญชีด้วยเลขบัตรประชาชนแบบตรงกันได้ และต้องบันทึกวิธียืนยันตัวตนก่อนออกลิงก์รีเซ็ต
+              ผู้ดูแลระบบ DEMI ค้นหาบัญชีด้วยเลขบัตรประชาชนแบบตรงกันได้ และต้องบันทึกวิธียืนยันตัวตนก่อนออกลิงก์รีเซ็ต
             </p>
-            <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/app/admin/recovery">เปิดเครื่องมือคืนบัญชี</Link>
+            <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/app/admin/recovery">เปิดเครื่องมือกู้คืนบัญชี</Link>
           </section>
         ) : null}
 

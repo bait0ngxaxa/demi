@@ -115,7 +115,7 @@ ${input.slips.map(renderSlip).join("\n")}
 export function renderActivationSlipsError(
   message: string,
   managementHref?: string,
-  managementLinkLabel = "กลับไปตรวจสอบสถานะบุคลากร",
+  managementLinkLabel = "กลับไปตรวจสอบสถานะเจ้าหน้าที่",
 ): string {
   const managementLink = managementHref
     ? `<p><a href="${escapeHtml(managementHref)}">${escapeHtml(managementLinkLabel)}</a></p>`

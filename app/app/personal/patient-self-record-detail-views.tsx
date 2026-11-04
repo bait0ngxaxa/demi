@@ -42,8 +42,8 @@ function programContextText(
   program: PatientSelfGoalPlanDetail["program"] | PatientSelfFollowupDetail["program"],
 ): string {
   return program
-    ? `Program เริ่ม ${formatPatientDateOnly(program.startedAt)} · ${patientProgramStatusLabels[program.status]}`
-    : "ไม่ได้เชื่อมกับ Program";
+    ? `โปรแกรมเริ่ม ${formatPatientDateOnly(program.startedAt)} · ${patientProgramStatusLabels[program.status]}`
+    : "ไม่ได้เชื่อมกับโปรแกรม";
 }
 
 function followupStatusLabel(status: FollowupProgressStatus): string {
@@ -67,10 +67,10 @@ export function PatientSelfGoalPlanDetailView({
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
           { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
           { href: careHref, label: relationship.hospitalName },
-          { label: `แผนเป้าหมาย รอบที่ ${detail.roundNumber}` },
+          { label: `แผนสุขภาพ รอบที่ ${detail.roundNumber}` },
         ]}
-        description="แสดงรายละเอียดแผนเป้าหมายตามข้อมูลที่บันทึกไว้"
-        title={`แผนเป้าหมาย รอบที่ ${detail.roundNumber}`}
+        description="แสดงรายละเอียดแผนสุขภาพตามข้อมูลที่บันทึกไว้"
+        title={`แผนสุขภาพ รอบที่ ${detail.roundNumber}`}
       />
 
       <div className="space-y-6 pt-6">
@@ -84,7 +84,7 @@ export function PatientSelfGoalPlanDetailView({
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">Program</dt>
+              <dt className="text-sm font-semibold text-text-muted">โปรแกรม</dt>
               <dd className="mt-1 break-words font-semibold text-text">
                 {programContextText(detail.program)}
               </dd>
@@ -182,7 +182,7 @@ export function PatientSelfFollowupDetailView({
               </dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-sm font-semibold text-text-muted">Program</dt>
+              <dt className="text-sm font-semibold text-text-muted">โปรแกรม</dt>
               <dd className="mt-1 break-words font-semibold text-text">
                 {programContextText(detail.program)}
               </dd>

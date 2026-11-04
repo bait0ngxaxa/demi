@@ -41,12 +41,12 @@ const professionLabels = {
 } as const;
 
 const membershipRefusals = {
-  conflict: "สถานะสมาชิกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
-  forbidden: "ไม่มีสิทธิ์จัดการสมาชิกโรงพยาบาลนี้",
+  conflict: "สิทธิ์การทำงานเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการเจ้าหน้าที่โรงพยาบาลนี้",
 };
 const professionNotice = standardNotice({ success: "บันทึกวิชาชีพแล้ว", ...membershipRefusals });
-const suspendNotice = standardNotice({ success: "ระงับสมาชิกโรงพยาบาลแล้ว", ...membershipRefusals });
-const restoreNotice = standardNotice({ success: "คืนสถานะสมาชิกโรงพยาบาลแล้ว", ...membershipRefusals });
+const suspendNotice = standardNotice({ success: "พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราวแล้ว", ...membershipRefusals });
+const restoreNotice = standardNotice({ success: "เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว", ...membershipRefusals });
 
 type MembershipResult = Extract<WorkforceMembershipMutationActionState, { status: "SUCCESS" }>["result"];
 
@@ -208,8 +208,8 @@ export function StaffMembershipControls({
       <div className="space-y-6">
         {ownerControls}
         <Alert variant="neutral">
-          <p className="font-semibold">ความสัมพันธ์เจ้าของโรงพยาบาล</p>
-          <p className="mt-1">การแก้ไขวิชาชีพหรือระงับความสัมพันธ์ของเจ้าของโรงพยาบาลจัดการจากขั้นตอนเฉพาะ</p>
+          <p className="font-semibold">แอดมินโรงพยาบาล</p>
+          <p className="mt-1">การแก้ไขวิชาชีพหรือพักสิทธิ์แอดมินโรงพยาบาลต้องทำจากขั้นตอนเฉพาะ</p>
         </Alert>
       </div>
     );
@@ -220,9 +220,9 @@ export function StaffMembershipControls({
       <div className="space-y-6">
         {ownerControls}
         <Alert variant="warning">
-          <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
+          <p className="font-semibold">ยังเปลี่ยนสิทธิ์การทำงานไม่ได้</p>
           <p className="mt-1">
-            บัญชีนี้ยังไม่พร้อมใช้งาน จึงไม่สามารถเปลี่ยนวิชาชีพ ระงับ หรือคืนสถานะได้
+            บัญชีนี้ยังใช้งานไม่ได้ จึงยังเปลี่ยนวิชาชีพหรือสิทธิ์การทำงานในโรงพยาบาลนี้ไม่ได้
           </p>
         </Alert>
       </div>
@@ -234,8 +234,8 @@ export function StaffMembershipControls({
       <div className="space-y-6">
         {ownerControls}
         <Alert variant="neutral">
-          <p className="font-semibold">ไม่มีการดำเนินการสำหรับสถานะนี้</p>
-          <p className="mt-1">กรุณาตรวจสอบสถานะความสัมพันธ์ล่าสุดแล้วโหลดหน้านี้ใหม่</p>
+          <p className="font-semibold">ไม่มีรายการที่เปลี่ยนได้ในสถานะนี้</p>
+          <p className="mt-1">กรุณาตรวจสอบสถานะการทำงานล่าสุด แล้วโหลดหน้านี้ใหม่</p>
         </Alert>
       </div>
     );
@@ -245,9 +245,9 @@ export function StaffMembershipControls({
     <div className="space-y-6">
       {ownerControls}
       <Panel>
-        <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="staff-membership-controls-heading" tabIndex={-1}>การจัดการความสัมพันธ์บุคลากร</h2>
+        <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="staff-membership-controls-heading" tabIndex={-1}>จัดการสิทธิ์เจ้าหน้าที่</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          การดำเนินการมีผลเฉพาะความสัมพันธ์บุคลากรกับโรงพยาบาลนี้ บัญชีผู้ใช้งานจะไม่ถูกเปลี่ยนสถานะ
+          การดำเนินการมีผลเฉพาะสิทธิ์การทำงานของเจ้าหน้าที่รายนี้ในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชีหรือสิทธิ์ในโรงพยาบาลอื่น
         </p>
 
         <UnknownOutcomeAlert
@@ -279,7 +279,7 @@ export function StaffMembershipControls({
             </div>
             {visibleProfessionDialogOpen ? (
               <ModalDialog
-                description="เปลี่ยนเฉพาะวิชาชีพของความสัมพันธ์บุคลากรกับโรงพยาบาลนี้"
+                description="เปลี่ยนเฉพาะวิชาชีพของเจ้าหน้าที่รายนี้ในโรงพยาบาลนี้"
                 dismissible={!updateProfession.pending}
                 footer={
                   <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -331,10 +331,10 @@ export function StaffMembershipControls({
             action={suspend.action}
             className="mt-6 border-t border-border pt-5"
             confirmation={{
-              title: "ระงับความสัมพันธ์บุคลากรนี้หรือไม่",
-              description: "การระงับมีผลเฉพาะความสัมพันธ์กับโรงพยาบาลนี้",
-              details: <p>ความสัมพันธ์กับโรงพยาบาลอื่นและบัญชีผู้ใช้งานจะคงเดิม</p>,
-              confirmLabel: "ระงับความสัมพันธ์",
+              title: "พักสิทธิ์เจ้าหน้าที่รายนี้ชั่วคราวหรือไม่",
+              description: "เจ้าหน้าที่รายนี้จะใช้สิทธิ์ทำงานในโรงพยาบาลนี้ไม่ได้ชั่วคราว",
+              details: <p>บัญชีผู้ใช้และสิทธิ์ในโรงพยาบาลอื่นจะคงเดิม การพักสิทธิ์นี้ไม่เปลี่ยนผู้รับผิดชอบผู้ป่วย</p>,
+              confirmLabel: "พักสิทธิ์เจ้าหน้าที่ชั่วคราว",
               confirmVariant: "destructive",
             }}
             outcome={suspendOutcome}
@@ -345,7 +345,7 @@ export function StaffMembershipControls({
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
             <p className="text-sm leading-6 text-text-muted">
-              ระงับเฉพาะความสัมพันธ์ของบุคลากรกับโรงพยาบาลนี้ ความสัมพันธ์กับโรงพยาบาลอื่นและบัญชีผู้ใช้งานจะคงเดิม
+              พักสิทธิ์การทำงานของเจ้าหน้าที่รายนี้เฉพาะในโรงพยาบาลนี้ บัญชีผู้ใช้และสิทธิ์ในโรงพยาบาลอื่นจะคงเดิม
             </p>
             <Button
               className="mt-3"
@@ -355,7 +355,7 @@ export function StaffMembershipControls({
               type="submit"
               variant="danger"
             >
-              {suspend.pending ? "กำลังระงับ..." : "ระงับความสัมพันธ์"}
+              {suspend.pending ? "กำลังพักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้..." : "พักสิทธิ์เจ้าหน้าที่ชั่วคราว"}
             </Button>
           </ConfirmableActionForm>
         ) : null}
@@ -366,18 +366,25 @@ export function StaffMembershipControls({
             <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
             <p className="text-sm leading-6 text-text-muted">
-              คืนสถานะเฉพาะความสัมพันธ์นี้ บัญชีต้องพร้อมใช้งานอยู่แล้ว
+              เปิดสิทธิ์การทำงานของเจ้าหน้าที่รายนี้ในโรงพยาบาลนี้อีกครั้ง บัญชีต้องใช้งานได้อยู่แล้ว
             </p>
             <Button className="mt-3" disabled={locked} loading={restore.pending} size="compact" type="submit">
-              {restore.pending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์"}
+              {restore.pending ? "กำลังเปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้ง..." : "เปิดสิทธิ์การทำงานอีกครั้ง"}
             </Button>
           </form>
         ) : null}
 
-        <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว"} />
+        <ScopedMutationFeedback
+          session={session}
+          success={(submission) => submission.kind === "suspend"
+            ? "พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราวแล้ว"
+            : submission.kind === "restore"
+              ? "เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว"
+              : "บันทึกวิชาชีพของเจ้าหน้าที่แล้ว"}
+        />
 
         {relationshipStatus === "SUSPENDED" && !actions.restore ? (
-          <p className="mt-4 text-sm leading-6 text-text-muted">สถานะนี้ไม่พร้อมให้คืนสถานะจากหน้าปัจจุบัน</p>
+          <p className="mt-4 text-sm leading-6 text-text-muted">ยังเปิดสิทธิ์การทำงานอีกครั้งจากหน้านี้ไม่ได้</p>
         ) : null}
       </Panel>
     </div>

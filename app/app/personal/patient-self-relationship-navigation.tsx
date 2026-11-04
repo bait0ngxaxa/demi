@@ -31,7 +31,7 @@ export function PatientSelfRelationshipNavigation({
   if (relationships.length === 0) {
     return (
       <Alert className="mt-6" variant="info">
-        <p className="font-semibold">ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย</p>
+        <p className="font-semibold">ยังไม่มีข้อมูลการดูแลจากโรงพยาบาล</p>
         <p className="mt-1">{emptyMessage}</p>
       </Alert>
     );

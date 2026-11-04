@@ -84,9 +84,9 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
         <section aria-labelledby="recover-hospital-heading" className="mt-5" id="recover-hospital">
           <h2 className="text-lg font-semibold text-text" id="recover-hospital-heading">ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน</h2>
           <p className="mt-2 break-words text-sm leading-6 text-text-muted">
-            หากไม่ได้ผูก LINE หรือใช้ช่องทางนี้ไม่ได้ กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อขอความช่วยเหลือและยืนยันตัวตน หากเป็นเจ้าของโรงพยาบาลเพียงคนเดียวและไม่มี OWNER คนอื่นช่วยได้ ให้ติดต่อผู้ดูแลระบบ DEMI
+            หากไม่ได้ผูก LINE หรือใช้ช่องทางนี้ไม่ได้ กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อขอความช่วยเหลือและยืนยันตัวตน หากเป็นแอดมินโรงพยาบาลเพียงคนเดียวและไม่มีแอดมินคนอื่นช่วยได้ ให้ติดต่อผู้ดูแลระบบ DEMI
           </p>
-          <p className="mt-3 break-words text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ต้องให้ ADMIN อีกคนช่วยกู้คืนบัญชี หากทำไม่ได้ให้ติดต่อผู้ปฏิบัติงานระบบตามช่องทางสนับสนุนที่กำหนด</p>
+          <p className="mt-3 break-words text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ต้องให้ผู้ดูแลระบบ DEMI อีกคนช่วยกู้คืนบัญชี หากทำไม่ได้ให้ติดต่อผู้ปฏิบัติงานระบบตามช่องทางสนับสนุนที่กำหนด</p>
         </section>
         <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/login">ไปหน้าเข้าสู่ระบบ</Link>
       </Panel>
@@ -111,7 +111,7 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
     return (
       <Panel>
         <h1 className="text-2xl font-semibold tracking-[-0.02em] text-text">เปลี่ยนรหัสผ่านแล้ว</h1>
-        <p className="mt-3 text-sm leading-6 text-text-muted">เข้าสู่ระบบด้วย{isPlatformAdminReset ? "ตัวระบุบัญชี ADMIN ที่ลงทะเบียนไว้" : "เลขบัตรประชาชน"}และรหัสผ่านใหม่</p>
+        <p className="mt-3 text-sm leading-6 text-text-muted">เข้าสู่ระบบด้วย{isPlatformAdminReset ? "รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI" : "เลขบัตรประชาชน"}และรหัสผ่านใหม่</p>
         <Link className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/login">ไปหน้าเข้าสู่ระบบ</Link>
       </Panel>
     );
@@ -122,7 +122,7 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
       <h1 className="break-words text-2xl font-semibold tracking-[-0.02em] text-text">ตั้งรหัสผ่านใหม่</h1>
       <p className="mt-3 text-sm leading-6 text-text-muted">
         {isPlatformAdminReset
-          ? "ADMIN อีกคนได้ตรวจสอบตัวตนของคุณและส่งลิงก์นี้ให้โดยตรง ตัวระบุด้านล่างใช้ยืนยันว่าลิงก์ตรงกับบัญชีที่เลือก ไม่ใช้แทนการตรวจสอบตัวตน ลิงก์ใช้ได้ครั้งเดียว"
+          ? "ผู้ดูแลระบบ DEMI อีกคนได้ตรวจสอบตัวตนของคุณและส่งลิงก์นี้ให้โดยตรง รหัสด้านล่างใช้ยืนยันว่าลิงก์ตรงกับบัญชีที่เลือก ไม่ใช้แทนการตรวจสอบตัวตน ลิงก์ใช้ได้ครั้งเดียว"
           : "กรอกเลขบัตรประชาชนของเจ้าของบัญชีเพื่อยืนยันตัวตน ลิงก์ใช้ได้ครั้งเดียว"}
       </p>
       {currentReset?.expiresAt ? (
@@ -134,7 +134,7 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
         <input name="token" type="hidden" value={token} />
         {isPlatformAdminReset ? (
           <label className="grid gap-1 text-sm font-medium">
-            ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้
+            รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้
             <input autoComplete="username" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={32} name="platformAdminIdentifier" required />
           </label>
         ) : (

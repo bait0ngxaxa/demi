@@ -11,7 +11,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 import { QuarantinedMediatedResets } from "./quarantined-resets";
 import { AdminMediatedPasswordResetSearch } from "./reset-search";
 
-export const metadata: Metadata = { title: "คืนบัญชีผู้ใช้" };
+export const metadata: Metadata = { title: "กู้คืนบัญชีผู้ใช้" };
 
 async function requireAdmin(): Promise<ActorContext> {
   try {
@@ -32,9 +32,9 @@ export default async function AdminPasswordRecoveryPage(): Promise<React.JSX.Ele
   return (
     <div className="content-detail space-y-6">
       <PageHeader
-        breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ" }, { label: "คืนบัญชีผู้ใช้" }]}
-        description="ค้นหาด้วยเลขบัตรประชาชนของผู้ใช้ทั่วไป หรือตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้ ตรวจสอบตัวตนก่อนส่งลิงก์ให้เจ้าของบัญชี"
-        title="คืนบัญชีผู้ใช้"
+        breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "กู้คืนบัญชีผู้ใช้" }]}
+        description="ค้นหาด้วยเลขบัตรประชาชน หรือรหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้ ตรวจสอบตัวตนก่อนส่งลิงก์ให้เจ้าของบัญชี"
+        title="กู้คืนบัญชีผู้ใช้"
       />
       <AdminMediatedPasswordResetSearch />
       <QuarantinedMediatedResets

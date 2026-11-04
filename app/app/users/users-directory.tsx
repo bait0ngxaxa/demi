@@ -15,7 +15,13 @@ import type { ActivationMethodFilter, UserDirectoryStatus, UserKind } from "@/mo
 import type { UserDirectoryPage } from "@/modules/user-management/services/user-directory-service";
 import { CaregiverPasswordResetSearch } from "./caregiver-password-reset-search";
 
-import { ACTIVATION_METHOD_LABELS, USER_KIND_LABELS, USER_STATUS_PRESENTATION } from "./user-presentation";
+import {
+  ACTIVATION_METHOD_LABELS,
+  hospitalRelationshipStatusPresentation,
+  USER_ACCOUNT_STATUS_PRESENTATION,
+  USER_KIND_LABELS,
+  USER_STATUS_PRESENTATION,
+} from "./user-presentation";
 
 export type UsersDirectoryFilters = {
   kind: UserKind;
@@ -54,7 +60,7 @@ export function UsersDirectory({ hospitals, page, filters }: {
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(hospitalId)}` },
           { label: "ผู้ใช้และสิทธิ์" },
         ]}
-        description="ตรวจสอบสถานะและจัดการบัญชีเจ้าหน้าที่ อสม. และผู้ป่วยในโรงพยาบาลที่คุณเป็นเจ้าของ"
+        description="ตรวจสอบสถานะและจัดการบัญชีเจ้าหน้าที่ อสม. และผู้ป่วยในโรงพยาบาลที่คุณเป็นแอดมิน"
         title="ผู้ใช้และสิทธิ์"
       />
 
@@ -72,12 +78,12 @@ export function UsersDirectory({ hospitals, page, filters }: {
           </Select>
           {switching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
-            แสดงเฉพาะรายการของ {page.hospital.name} ที่คุณเป็นเจ้าของโรงพยาบาล การเปิดบัญชีและจัดการการเป็นสมาชิกยังใช้ขั้นตอนเดิม
+            แสดงเฉพาะรายการของ {page.hospital.name} ที่คุณเป็นแอดมินโรงพยาบาล การเปิดบัญชีและจัดการสิทธิ์เจ้าหน้าที่ยังใช้ขั้นตอนเดิม
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce/new?hospitalId=${encodeURIComponent(hospitalId)}&step=1`}>เพิ่มบุคลากร / อสม.</Link>
+            <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce/new?hospitalId=${encodeURIComponent(hospitalId)}&step=1`}>เพิ่มเจ้าหน้าที่ / อสม.</Link>
             <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/patients/provision?hospitalId=${encodeURIComponent(hospitalId)}`}>นำเข้าผู้ป่วย</Link>
-            <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`}>งานบุคลากรและนำเข้ารายชื่อ</Link>
+            <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/workforce?hospitalId=${encodeURIComponent(hospitalId)}`}>จัดการเจ้าหน้าที่และนำเข้ารายชื่อ</Link>
           </div>
           <CaregiverPasswordResetSearch hospitalId={hospitalId} hospitalName={page.hospital.name} />
         </Panel>
@@ -135,7 +141,8 @@ export function UsersDirectory({ hospitals, page, filters }: {
           ) : (
             <ul>
               {page.rows.map((row) => {
-                const status = USER_STATUS_PRESENTATION[row.status];
+                const accountStatus = row.accountStatus ? USER_ACCOUNT_STATUS_PRESENTATION[row.accountStatus] : null;
+                const relationshipStatus = hospitalRelationshipStatusPresentation(row.kind, row.relationshipStatus);
                 const needsIdentityProof = row.identityAssurance === "CAREGIVER_INVITATION";
                 return (
                   <li className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={row.relationshipId}>
@@ -148,21 +155,21 @@ export function UsersDirectory({ hospitals, page, filters }: {
                       {row.selfRegisteredAt ? (
                         <p className="mt-1 text-xs font-medium text-brand-strong">ลงทะเบียนเองเมื่อ {dateFormat.format(row.selfRegisteredAt)}</p>
                       ) : null}
+                      {needsIdentityProof ? <p className="mt-1 text-xs text-text-muted">บัญชีนี้สร้างผ่านคำเชิญจากญาติหรือผู้ดูแล</p> : null}
                       {row.latestPasswordReset ? (
                         <p className="mt-1 text-xs leading-5 text-text-muted">
                           รีเซ็ตรหัสผ่านล่าสุด {dateFormat.format(row.latestPasswordReset.completedAt)} · {row.latestPasswordReset.path}
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
                       {needsIdentityProof ? (
-                        <div className="text-sm">
-                          <StatusBadge variant="danger">ต้องยืนยันตัวตนก่อนใช้งาน</StatusBadge>
-                          <p className="mt-1 text-xs text-text-muted">บัญชีนี้สร้างผ่านคำเชิญญาติ</p>
-                        </div>
-                      ) : <StatusBadge variant={status.variant}>{status.label}</StatusBadge>}
+                        <StatusBadge variant="danger">ต้องยืนยันตัวตนก่อนใช้งาน</StatusBadge>
+                      ) : null}
+                      {accountStatus ? <StatusBadge variant={accountStatus.variant}>{accountStatus.label}</StatusBadge> : null}
+                      <StatusBadge variant={relationshipStatus.variant}>{relationshipStatus.label}</StatusBadge>
                       <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={`/app/users/${row.kind}/${encodeURIComponent(row.relationshipId)}`}>
-                        จัดการ
+                        ดูรายละเอียด
                       </Link>
                     </div>
                   </li>

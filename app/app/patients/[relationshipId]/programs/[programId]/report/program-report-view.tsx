@@ -643,13 +643,13 @@ function GoalPlansSection({
 }): React.JSX.Element {
   return (
     <ReportSection
-      description="แสดงประวัติ Goal Plan ที่ผูกกับโปรแกรมนี้โดยตรงเป็นรอบ ๆ และใช้การแบ่งหน้าตามข้อมูลที่มี"
+      description="แสดงประวัติแผนสุขภาพที่ผูกกับโปรแกรมนี้โดยตรงเป็นรอบ ๆ และใช้การแบ่งหน้าตามข้อมูลที่มี"
       id="program-report-goal-plans"
-      title="แผนเป้าหมาย (Goal Plan)"
+      title="แผนสุขภาพ"
     >
       {report.goalPlans.items.length > 0 ? (
         <>
-          <ol className="space-y-4" aria-label="ประวัติแผนเป้าหมายในโปรแกรม">
+          <ol className="space-y-4" aria-label="ประวัติแผนสุขภาพในโปรแกรม">
             {report.goalPlans.items.map((plan) => (
               <GoalPlanCard key={plan.goalPlanId} plan={plan} />
             ))}
@@ -668,7 +668,7 @@ function GoalPlansSection({
           ไม่พบรายการแผนในหน้าที่เลือก จากทั้งหมด {report.goalPlans.totalCount} รายการ
         </Alert>
       ) : (
-        <Alert variant="neutral">ยังไม่มี Goal Plan ที่บันทึกในโปรแกรมนี้</Alert>
+        <Alert variant="neutral">ยังไม่มีแผนสุขภาพที่บันทึกในโปรแกรมนี้</Alert>
       )}
     </ReportSection>
   );
@@ -888,11 +888,11 @@ export function ProgramReportView({
         </Panel>
 
         <Alert variant="info">
-          หน้านี้แสดงข้อมูลที่บันทึกไว้แยกตามแหล่งข้อมูลของโปรแกรม ไม่คำนวณหรือตีความค่าทางคลินิก และไม่ใช้ข้อมูลจากโปรแกรมอื่นมาแทน
+          หน้านี้แสดงข้อมูลที่บันทึกไว้แยกตามแหล่งข้อมูลของโปรแกรมไม่คำนวณหรือตีความค่าทางคลินิก และไม่ใช้ข้อมูลจากโปรแกรมอื่นมาแทน
         </Alert>
 
         <ReportSection
-          description="วันที่ในส่วนนี้เป็นเวลาตามวงจรของโปรแกรม ไม่ใช่เวลาการสังเกตหรือการวัดค่า"
+          description="วันที่ในส่วนนี้เป็นเวลาตามวงจรของโปรแกรมไม่ใช่เวลาการสังเกตหรือการวัดค่า"
           id="program-report-lifecycle"
           title="วงจรโปรแกรม"
         >

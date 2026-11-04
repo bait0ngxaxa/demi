@@ -26,11 +26,11 @@ import {
 } from "../../scoped-mutation";
 
 const ownerRefusals = {
-  conflict: "สิทธิ์เจ้าของเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
-  forbidden: "ไม่มีสิทธิ์จัดการสิทธิ์เจ้าของโรงพยาบาล",
+  conflict: "สิทธิ์แอดมินโรงพยาบาลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการสิทธิ์แอดมินโรงพยาบาล",
 };
-const promoteNotice = standardNotice({ success: "กำหนดสิทธิ์เจ้าของโรงพยาบาลแล้ว", ...ownerRefusals });
-const demoteNotice = standardNotice({ success: "เปลี่ยนสิทธิ์เจ้าของโรงพยาบาลแล้ว", ...ownerRefusals });
+const promoteNotice = standardNotice({ success: "เปลี่ยนเป็นแอดมินโรงพยาบาลแล้ว", ...ownerRefusals });
+const demoteNotice = standardNotice({ success: "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาลแล้ว", ...ownerRefusals });
 
 /** A success counts only for this relationship and only when it carries the membership type that was requested. */
 function ownerConfirms(
@@ -117,9 +117,9 @@ export function HospitalOwnerGovernanceControls({
 
   return (
     <Panel>
-      <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการเจ้าของโรงพยาบาล</h2>
+      <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสิทธิ์แอดมินโรงพยาบาล</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        การเปลี่ยนแปลงนี้มีผลเฉพาะบทบาทในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชี ข้อมูลเข้าสู่ระบบ หรือความสัมพันธ์อื่น
+        การเปลี่ยนแปลงนี้มีผลเฉพาะสิทธิ์ในโรงพยาบาลนี้ ไม่เปลี่ยนสถานะบัญชีหรือข้อมูลเข้าสู่ระบบ
       </p>
 
       <UnknownOutcomeAlert
@@ -133,10 +133,10 @@ export function HospitalOwnerGovernanceControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            เปลี่ยนสมาชิกที่พร้อมใช้งานรายนี้เป็นเจ้าของโรงพยาบาลนี้
+            เปลี่ยนเจ้าหน้าที่ที่พร้อมใช้งานรายนี้เป็นแอดมินโรงพยาบาล
           </p>
           <Button className="mt-3" disabled={locked} loading={promote.pending} size="compact" type="submit">
-            {promote.pending ? "กำลังบันทึก..." : "เปลี่ยนเป็นเจ้าของโรงพยาบาล"}
+            {promote.pending ? "กำลังเปลี่ยนเป็นแอดมินโรงพยาบาล..." : "เปลี่ยนเป็นแอดมินโรงพยาบาล"}
           </Button>
         </form>
       ) : null}
@@ -146,10 +146,10 @@ export function HospitalOwnerGovernanceControls({
           action={demote.action}
           className="mt-6 border-t border-border pt-5"
           confirmation={{
-            title: "เปลี่ยนเจ้าของโรงพยาบาลรายนี้เป็นสมาชิกหรือไม่",
-            description: "ความสัมพันธ์กับโรงพยาบาลนี้จะคงอยู่ แต่สิทธิ์เจ้าของจะถูกนำออก",
-            details: <p>ระบบต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>,
-            confirmLabel: "เปลี่ยนเป็นสมาชิก",
+            title: "เปลี่ยนแอดมินโรงพยาบาลรายนี้เป็นเจ้าหน้าที่หรือไม่",
+            description: "สิทธิ์แอดมินโรงพยาบาลของรายนี้จะสิ้นสุด แต่ยังเป็นเจ้าหน้าที่โรงพยาบาลนี้ได้",
+            details: <p>โรงพยาบาลต้องมีแอดมินโรงพยาบาลที่ยังมีสิทธิ์อย่างน้อยหนึ่งคน</p>,
+            confirmLabel: "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล",
           }}
           outcome={demoteOutcome}
           pending={pending}
@@ -159,7 +159,7 @@ export function HospitalOwnerGovernanceControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            เปลี่ยนเป็นสมาชิก และคงความสัมพันธ์กับโรงพยาบาลนี้ไว้ ระบบต้องมีเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย
+            เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล และคงสิทธิ์ทำงานในโรงพยาบาลนี้ไว้ โรงพยาบาลต้องมีแอดมินอย่างน้อยหนึ่งคน
           </p>
           <Button
             className="mt-3"
@@ -169,19 +169,24 @@ export function HospitalOwnerGovernanceControls({
             type="submit"
             variant="secondary"
           >
-            {demote.pending ? "กำลังบันทึก..." : "เปลี่ยนเป็นสมาชิก"}
+            {demote.pending ? "กำลังเปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล..." : "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล"}
           </Button>
         </ConfirmableActionForm>
       ) : null}
 
       {membershipType === "OWNER" && isActiveTarget && !ownerGovernance.canDemote ? (
         <Alert className="mt-6" variant="warning">
-          <p className="font-semibold">ยังไม่สามารถเปลี่ยนเจ้าของโรงพยาบาลรายนี้เป็นสมาชิกได้</p>
-          <p className="mt-1">ต้องเหลือเจ้าของโรงพยาบาลที่มีสิทธิ์อย่างน้อยหนึ่งราย</p>
+          <p className="font-semibold">ยังเปลี่ยนแอดมินโรงพยาบาลรายนี้เป็นเจ้าหน้าที่ไม่ได้</p>
+          <p className="mt-1">โรงพยาบาลต้องมีแอดมินที่ยังมีสิทธิ์อย่างน้อยหนึ่งคน</p>
         </Alert>
       ) : null}
 
-      <ScopedMutationFeedback session={session} success={() => "บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว"} />
+      <ScopedMutationFeedback
+        session={session}
+        success={(submission) => submission.kind === "promote"
+          ? "เปลี่ยนเป็นแอดมินโรงพยาบาลแล้ว"
+          : "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาลแล้ว"}
+      />
     </Panel>
   );
 }

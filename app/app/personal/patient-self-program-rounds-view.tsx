@@ -43,7 +43,7 @@ export function PatientSelfProgramRoundsView({
           { href: "/app/personal", label: "พื้นที่ส่วนตัว" },
           { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
           { href: careHref, label: rounds.relationship.hospitalName },
-          { href: programHref, label: "Program" },
+          { href: programHref, label: "โปรแกรม" },
           { label: "ประวัติการรับบริการรายครั้ง" },
         ]}
         description={rounds.rounds.some((round) => round.canSelfRecord) ? "บันทึกรายการของคุณในครั้งที่เปิดอยู่ และดูประวัติการรับบริการ" : "สรุปสิ่งที่บันทึกไว้ในแต่ละครั้ง ข้อมูลนี้อ่านอย่างเดียวและไม่ใช่การประเมินผลสุขภาพ"}
@@ -136,7 +136,7 @@ export function PatientSelfProgramRoundsView({
         </Panel>
 
         <Link className={linkClassName} href={programHref}>
-          กลับไปหน้า Program
+          กลับไปหน้าโปรแกรม
         </Link>
       </div>
     </div>

@@ -76,7 +76,7 @@ export function ProgramFollowupHistoryView({
           <div className="rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
             <p className="font-semibold text-text">ยังไม่มีการติดตามผลในโปรแกรมนี้</p>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              การติดตามผลไม่จำเป็นต้องอ้างอิงแผนเป้าหมาย และจะปรากฏในประวัติหลังจากบันทึกสำเร็จ
+              การติดตามผลไม่จำเป็นต้องอ้างอิงแผนสุขภาพ และจะปรากฏในประวัติหลังจากบันทึกสำเร็จ
             </p>
             {canCreate ? (
               <Link

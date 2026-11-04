@@ -8,7 +8,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 
 import { WorkforceNewWorkspace } from "../workforce-new-workspace";
 
-export const metadata: Metadata = { title: "เพิ่มบุคลากร / อสม." };
+export const metadata: Metadata = { title: "เพิ่มเจ้าหน้าที่ / อสม." };
 
 type WorkforceNewPageProps = {
   searchParams: Promise<{ hospitalId?: string | string[]; step?: string | string[]; kind?: string | string[] }>;

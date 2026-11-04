@@ -10,6 +10,7 @@ import {
   type MediatedPasswordResetSearchActionResult,
 } from "@/modules/account-security/transport/server-actions";
 
+import { hospitalRelationshipStatusPresentation } from "../../users/user-presentation";
 import { MediatedPasswordResetControl } from "../../users/mediated-password-reset-control";
 
 export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
@@ -35,14 +36,23 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
 
   const candidates = result?.status === "MATCH" ? result.candidates : [];
   const selected = selectedIndex === "" ? null : candidates[Number(selectedIndex)] ?? null;
+  const candidateStatusLabel = (candidate: (typeof candidates)[number]): string | null => {
+    switch (candidate.targetKind) {
+      case "staff": return hospitalRelationshipStatusPresentation("staff", candidate.relationshipStatus).label;
+      case "osm": return hospitalRelationshipStatusPresentation("osm", candidate.relationshipStatus).label;
+      case "patient": return hospitalRelationshipStatusPresentation("patient", candidate.relationshipStatus).label;
+      case "caregiver":
+      case "platform_admin": return null;
+    }
+  };
 
   return (
     <Panel>
       <h2 className="text-xl font-semibold text-text">ค้นหาบัญชี</h2>
-      <p className="mt-2 text-sm leading-6 text-text-muted">ค้นหาผู้ใช้ทั่วไปด้วยเลขบัตรประชาชน หรือค้นหา Platform ADMIN ด้วยตัวระบุเข้าสู่ระบบที่ลงทะเบียนไว้ โดยต้องตรงกันทุกตัว ระบบจะไม่บันทึกตัวระบุหรือค่า HMAC ลงใน audit</p>
+      <p className="mt-2 text-sm leading-6 text-text-muted">ค้นหาผู้ใช้ด้วยเลขบัตรประชาชน หรือค้นหาผู้ดูแลระบบ DEMI ด้วยรหัสเข้าสู่ระบบที่ลงทะเบียนไว้ โดยต้องตรงกันทุกตัว ระบบจะไม่บันทึกรหัสนี้ลงในประวัติการใช้งาน</p>
       <form className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={(event) => void search(event)}>
         <label className="grid flex-1 gap-1 text-sm font-medium">
-          เลขบัตรประชาชน หรือ ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้
+          เลขบัตรประชาชน หรือรหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้
           <input autoComplete="off" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={32} name="nationalId" required />
         </label>
         <button className={buttonClassName({ variant: "primary", size: "compact" })} disabled={pending} type="submit">{pending ? "กำลังค้นหา…" : "ค้นหา"}</button>
@@ -57,16 +67,23 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
             เลือกบัญชีและขอบเขต
             <select className="min-h-11 rounded-md border border-border bg-surface px-3" onChange={(event) => setSelectedIndex(event.target.value)} value={selectedIndex}>
               <option value="">เลือกบัญชี</option>
-              {candidates.map((candidate, index) => (
-                <option key={`${candidate.targetKind}-${candidate.relationshipId ?? candidate.userId}-${candidate.hospitalId}`} value={String(index)}>
-                  {candidate.displayName} · {candidate.targetKind === "staff" ? "บุคลากร" : candidate.targetKind === "osm" ? "อสม." : candidate.targetKind === "patient" ? "ผู้ป่วย" : candidate.targetKind === "caregiver" ? "ผู้ดูแลญาติ" : "บัญชี ADMIN"}{candidate.hospitalName ? ` · ${candidate.hospitalName}` : ""} · {candidate.relationshipStatus}
-                </option>
-              ))}
+              {candidates.map((candidate, index) => {
+                const statusLabel = candidateStatusLabel(candidate);
+                const kindLabel = candidate.targetKind === "staff" ? "เจ้าหน้าที่โรงพยาบาล"
+                  : candidate.targetKind === "osm" ? "อสม."
+                    : candidate.targetKind === "patient" ? "ผู้ป่วย"
+                      : candidate.targetKind === "caregiver" ? "ญาติหรือผู้ดูแล" : "ผู้ดูแลระบบ DEMI";
+                return (
+                  <option key={`${candidate.targetKind}-${candidate.relationshipId ?? candidate.userId}-${candidate.hospitalId}`} value={String(index)}>
+                    {candidate.displayName} · {kindLabel}{candidate.hospitalName ? ` · ${candidate.hospitalName}` : ""}{statusLabel ? ` · ${statusLabel}` : ""}
+                  </option>
+                );
+              })}
             </select>
           </label>
           {selected ? (
             <div className="rounded-lg border border-border p-4">
-              <p className="mb-3 text-sm leading-6 text-text-muted">ผู้ดูแลระบบต้องตรวจสอบตัวตนด้วยตนเองก่อนออกลิงก์</p>
+              <p className="mb-3 text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ต้องตรวจสอบตัวตนด้วยตนเองก่อนออกลิงก์</p>
               {selected.targetKind === "platform_admin" ? (
                 <MediatedPasswordResetControl
                   eligibility="ADMIN_ALLOWED"

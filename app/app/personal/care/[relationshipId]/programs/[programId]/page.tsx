@@ -6,7 +6,7 @@ import { getPatientSelfProgramDetailPageContext } from "@/modules/patient-self/t
 import { PatientSelfProgramDetailView } from "../../../../patient-self-program-detail-view";
 
 export const metadata: Metadata = {
-  title: "Program",
+  title: "โปรแกรม",
 };
 
 type PatientSelfProgramPageProps = {

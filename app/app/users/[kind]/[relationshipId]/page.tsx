@@ -23,7 +23,12 @@ import {
 import { PatientCareEndForm } from "../../../patients/patient-care-end-form";
 import { PatientNameCorrectionForm } from "../../../patients/patient-name-correction-form";
 import { WorkforceManagementControls } from "../../../workforce/[kind]/[relationshipId]/workforce-management-controls";
-import { ACTIVATION_METHOD_LABELS, USER_KIND_LABELS, USER_STATUS_PRESENTATION } from "../../user-presentation";
+import {
+  ACTIVATION_METHOD_LABELS,
+  hospitalRelationshipStatusPresentation,
+  USER_ACCOUNT_STATUS_PRESENTATION,
+  USER_KIND_LABELS,
+} from "../../user-presentation";
 import { UserRecordDeleteControl } from "./user-record-delete-control";
 import { UserTakeoverControl } from "./user-takeover-control";
 import { MediatedPasswordResetControl } from "../../mediated-password-reset-control";
@@ -41,10 +46,10 @@ const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeSty
 const TAKEOVER_BLOCK_TEXT: Record<NonNullable<UserDetail["takeoverBlock"]>, string> = {
   SELF: "ใช้กับบัญชีของตัวเองไม่ได้",
   LOCKED: "บัญชีนี้ถูกล็อกแล้ว",
-  REMOVED: "รายการนี้นำออกจากระบบแล้ว",
-  OWNER_MEMBERSHIP: "ใช้กับเจ้าของโรงพยาบาลไม่ได้ กรุณาถอดสิทธิ์เจ้าของก่อนหรือติดต่อผู้ดูแลระบบ",
-  NOT_ACTIVATED: "บัญชียังไม่เปิดใช้งาน หากเพิ่มรายการผิดให้ใช้ “ลบรายการ” แทน",
-  REQUIRES_ADMIN: "บัญชีนี้เชื่อมกับโรงพยาบาลอื่นด้วย กรุณาติดต่อผู้ดูแลระบบ",
+  REMOVED: "สิทธิ์การทำงานหรือการดูแลรายการนี้สิ้นสุดแล้ว",
+  OWNER_MEMBERSHIP: "ใช้กับแอดมินโรงพยาบาลไม่ได้ กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบ",
+  NOT_ACTIVATED: "บัญชียังไม่เปิดใช้งาน หากเพิ่มข้อมูลผิดให้ใช้ “ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน” แทน",
+  REQUIRES_ADMIN: "กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบกรณีนี้",
 };
 
 async function resolveActor() {
@@ -76,7 +81,8 @@ function ActionSection({ title, children, id }: { title: string; children: React
 }
 
 function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: UserDetail; workforce: WorkforceDetail | null; recoveryEligibility: "OWNER_ELIGIBLE" | "ADMIN_ALLOWED" | "ADMIN_REQUIRED" }): React.JSX.Element {
-  const status = USER_STATUS_PRESENTATION[detail.status];
+  const accountStatus = USER_ACCOUNT_STATUS_PRESENTATION[detail.accountStatus];
+  const relationshipStatus = hospitalRelationshipStatusPresentation(detail.kind, detail.relationshipStatus);
   const directoryHref = `/app/users?hospitalId=${encodeURIComponent(detail.hospital.id)}&tab=${detail.kind}`;
   const removed = detail.status === "REMOVED";
   const lockRetry = detail.takeoverLock !== null && detail.takeoverLock.providerState !== "CONFIRMED";
@@ -84,9 +90,11 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
   return (
     <div className="content-detail break-words">
       <PageHeader
-        actions={<StatusBadge variant={detail.identityAssurance === "CAREGIVER_INVITATION" ? "danger" : status.variant}>
-          {detail.identityAssurance === "CAREGIVER_INVITATION" ? "ต้องยืนยันตัวตนก่อนใช้งาน" : status.label}
-        </StatusBadge>}
+        actions={<div className="flex flex-wrap justify-end gap-2">
+          {detail.identityAssurance === "CAREGIVER_INVITATION" ? <StatusBadge variant="danger">ต้องยืนยันตัวตนก่อนใช้งาน</StatusBadge> : null}
+          <StatusBadge variant={accountStatus.variant}>{accountStatus.label}</StatusBadge>
+          <StatusBadge variant={relationshipStatus.variant}>{relationshipStatus.label}</StatusBadge>
+        </div>}
         breadcrumbs={[{ href: directoryHref, label: "จัดการผู้ใช้งาน" }, { label: "รายละเอียด" }]}
         description={`${USER_KIND_LABELS[detail.kind]} · ${detail.hospital.name}`}
         title={detail.displayName}
@@ -95,15 +103,15 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
       <div className="space-y-6 pt-8">
         {detail.identityAssurance === "CAREGIVER_INVITATION" ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
-            <p className="font-semibold">บัญชีนี้สร้างผ่านคำเชิญญาติ</p>
+            <p className="font-semibold">บัญชีนี้สร้างผ่านคำเชิญจากญาติหรือผู้ดูแล</p>
             <p className="mt-1">ต้องยืนยันตัวตนผ่านการรีเซ็ตรหัสผ่านแบบมีผู้ดูแลก่อนใช้งาน บัญชีถูกระงับและข้อมูลครอบครัวเดิมยังคงอยู่</p>
-            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการตัดการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ ระบบภายในปิดการเข้าถึงแล้ว กรุณาตรวจสอบการคืนบัญชี</p> : null}
+            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการออกจากระบบทุกอุปกรณ์ไม่ได้ บัญชีถูกล็อกใน DEMI แล้ว กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อนกู้คืนบัญชี</p> : null}
           </Alert>
         ) : detail.takeoverLock ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
-            <p className="font-semibold">บัญชีถูกล็อก: แจ้งว่าไม่ใช่เจ้าของจริง</p>
-            <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} ใช้การคืนบัญชีด้านล่างเพื่อยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>
-            {lockRetry ? <p className="mt-1">ยังยืนยันการตัดการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ ระบบภายในปิดการเข้าถึงแล้ว กรุณากดยืนยันอีกครั้งด้านล่าง</p> : null}
+            <p className="font-semibold">บัญชีถูกล็อก: สงสัยว่ามีผู้อื่นใช้บัญชีนี้</p>
+            <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} ใช้ขั้นตอนกู้คืนบัญชีด้านล่างเพื่อยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>
+            {lockRetry ? <p className="mt-1">ยังยืนยันการออกจากระบบทุกอุปกรณ์ไม่ได้ บัญชีถูกล็อกใน DEMI แล้ว กรุณากดยืนยันอีกครั้งด้านล่าง</p> : null}
           </Alert>
         ) : null}
 
@@ -146,10 +154,10 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
           <ActionSection title="แก้ไขข้อมูล">
             <Panel>
               <p className="mb-4 text-sm leading-6 text-text-muted">
-                เลขบัตรประชาชนแก้ไขไม่ได้ หากเลขผิด ให้ “ลบรายการ” (เมื่อระบบอนุญาต) แล้วเพิ่มใหม่ด้วยเลขที่ถูกต้อง
+                เลขบัตรประชาชนแก้ไขไม่ได้ หากเลขผิด ให้ “ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน” (เมื่อระบบอนุญาต) แล้วเพิ่มข้อมูลใหม่ด้วยเลขที่ถูกต้อง
               </p>
               {removed ? (
-                <p className="text-sm text-text-muted">รายการที่นำออกแล้วแก้ไขไม่ได้</p>
+                <p className="text-sm text-text-muted">ข้อมูลที่สิ้นสุดการดูแลหรือสิทธิ์แล้วแก้ไขไม่ได้</p>
               ) : detail.singleHospital ? (
                 <PatientNameCorrectionForm
                   familyName={detail.familyName}
@@ -159,7 +167,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
                   {...(detail.kind === "patient" ? {} : { workforceKind: detail.kind })}
                 />
               ) : (
-                <Alert variant="info">บุคคลนี้เชื่อมกับหลายโรงพยาบาล การแก้ชื่อ-สกุลกรุณาติดต่อผู้ดูแลระบบ</Alert>
+                <Alert variant="info">แก้ไขชื่อ-สกุลจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI</Alert>
               )}
               {detail.kind === "patient" && !removed ? (
                 <Link className="mt-4 inline-flex min-h-11 items-center font-semibold text-brand-strong underline" href={`/app/patients/${detail.relationshipId}/profile`}>
@@ -185,7 +193,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
               ) : null}
               {!removed ? (
                 <Panel>
-                  <h4 className="text-base font-semibold text-text">สิ้นสุดการดูแล (นำออกจากระบบ)</h4>
+                  <h4 className="text-base font-semibold text-text">สิ้นสุดการดูแลผู้ป่วยรายนี้</h4>
                   <div className="mt-4">
                     <PatientCareEndForm hospitalId={detail.hospital.id} hospitalName={detail.hospital.name} relationshipId={detail.relationshipId} />
                   </div>
@@ -194,7 +202,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
             </ActionSection>
           )}
 
-          <ActionSection title={detail.takeoverLock ? "คืนบัญชีให้เจ้าของจริง" : "รีเซ็ตรหัสผ่าน / คืนบัญชี"}>
+          <ActionSection title={detail.takeoverLock ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}>
             <Panel>
               <p className="mb-4 text-sm leading-6 text-text-muted">
                 ผู้ใช้ต้องกรอกเลขบัตรประชาชนของตนเองและตั้งรหัสผ่านใหม่ เลือกวิธียืนยันตัวตนก่อนออกลิงก์
@@ -211,7 +219,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
             </Panel>
           </ActionSection>
 
-          <ActionSection id="user-takeover-heading" title="บัญชีนี้ไม่ใช่เจ้าของจริง">
+          <ActionSection id="user-takeover-heading" title="แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้">
             {detail.takeoverBlock === null || lockRetry ? (
               <UserTakeoverControl
                 hospitalId={detail.hospital.id}
@@ -227,7 +235,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
             )}
           </ActionSection>
 
-          <ActionSection id="user-delete-heading" title="ลบรายการ">
+          <ActionSection id="user-delete-heading" title="ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน">
             {detail.deletionBlockers.length === 0 ? (
               <UserRecordDeleteControl
                 directoryHref={directoryHref}
@@ -239,7 +247,7 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
               />
             ) : (
               <div className="text-sm leading-6 text-text-muted">
-                <p>ลบรายการนี้ไม่ได้ ใช้ “{detail.kind === "patient" ? "สิ้นสุดการดูแล" : "นำออกจากระบบ"}” แทน เพื่อเก็บประวัติไว้</p>
+                <p>ลบข้อมูลผู้ใช้นี้ไม่ได้ โปรดตรวจสอบเหตุผลด้านล่าง เพื่อเลือกขั้นตอนที่ตรงกับข้อมูลและเก็บประวัติไว้</p>
                 <ul className="mt-2 list-disc pl-5">
                   {detail.deletionBlockers.map((blocker) => <li key={blocker}>{DELETION_BLOCKER_LABELS[blocker]}</li>)}
                 </ul>

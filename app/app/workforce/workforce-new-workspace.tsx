@@ -75,10 +75,10 @@ function provisionMatches(state: WorkforceProvisionActionState, formData: FormDa
 
 function provisionNotice(verdict: MutationVerdict, state: WorkforceProvisionActionState): MutationNotice | null {
   if (verdict === "SUCCESS" && state.status === "SUCCESS") {
-    return { level: "success", message: state.result.kind === "OSM" ? "เพิ่มข้อมูล อสม. แล้ว" : "เพิ่มข้อมูลบุคลากรแล้ว" };
+    return { level: "success", message: state.result.kind === "OSM" ? "เพิ่มข้อมูล อสม. แล้ว" : "เพิ่มข้อมูลเจ้าหน้าที่แล้ว" };
   }
   if (verdict === "CONFLICT") return { level: "warning", message: "ไม่สามารถเพิ่มรายการได้ กรุณาตรวจสอบรายชื่อล่าสุด" };
-  if (verdict === "FORBIDDEN") return { level: "error", message: "ไม่มีสิทธิ์เพิ่มบุคลากรหรือ อสม. ในโรงพยาบาลนี้" };
+  if (verdict === "FORBIDDEN") return { level: "error", message: "ไม่มีสิทธิ์เพิ่มเจ้าหน้าที่หรือ อสม. ในโรงพยาบาลนี้" };
   return null;
 }
 
@@ -197,12 +197,12 @@ export function WorkforceNewWorkspace({
   return (
     <div className="content-workspace mx-auto max-w-3xl break-words">
       <PageHeader
-        breadcrumbs={[{ label: "จัดการบุคลากร", href: `/app/workforce?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่มบุคลากร / อสม." }]}
+        breadcrumbs={[{ label: "จัดการเจ้าหน้าที่", href: `/app/workforce?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "เพิ่มเจ้าหน้าที่ / อสม." }]}
         description={`เพิ่มรายชื่อสำหรับ ${hospitals.find(({ id }) => id === selectedHospitalId)?.name ?? "โรงพยาบาล"}`}
-        title="เพิ่มบุคลากร / อสม."
+        title="เพิ่มเจ้าหน้าที่ / อสม."
       />
 
-      <ol aria-label="ขั้นตอนการเพิ่มบุคลากร" className="mt-6 grid grid-cols-3 gap-2">
+      <ol aria-label="ขั้นตอนการเพิ่มเจ้าหน้าที่" className="mt-6 grid grid-cols-3 gap-2">
         {([ [1, "ประเภท"], [2, "ข้อมูล"], [3, "วิธีส่งมอบ"] ] as const).map(([number, label]) => (
           <li aria-current={step === number ? "step" : undefined} className={`flex min-h-14 items-center gap-2 border-b-2 px-2 py-2 text-sm ${step === number ? "border-action-primary font-semibold text-brand-strong" : "border-border text-text-muted"}`} key={number}>
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${step === number ? "bg-brand-soft text-brand-strong" : "bg-surface-muted"}`}>{number}</span>
@@ -233,7 +233,7 @@ export function WorkforceNewWorkspace({
               setStep(1);
               router.push(`/app/workforce/new?hospitalId=${encodeURIComponent(selectedHospitalId)}&step=1`);
             }}
-          >เพิ่มบุคลากร / อสม. อีกคน</Link>
+          >เพิ่มเจ้าหน้าที่ / อสม. อีกคน</Link>
         </div>
       ) : outcome ? (
         <Panel className="mt-6">
@@ -251,8 +251,8 @@ export function WorkforceNewWorkspace({
           <p className="text-sm leading-6 text-muted">โรงพยาบาลที่เลือก: <strong className="text-text">{hospitals.find(({ id }) => id === selectedHospitalId)?.name ?? "โรงพยาบาล"}</strong></p>
           {step === 1 ? (
             <fieldset className="mt-5 space-y-3">
-              <legend className="text-lg font-semibold">เลือกประเภทบุคลากร</legend>
-              {([ ["HOSPITAL_MEMBER", "บุคลากรโรงพยาบาล"], ["OSM", "อสม."] ] as const).map(([value, label]) => (
+              <legend className="text-lg font-semibold">เลือกประเภทผู้ปฏิบัติงาน</legend>
+              {([ ["HOSPITAL_MEMBER", "เจ้าหน้าที่โรงพยาบาล"], ["OSM", "อสม."] ] as const).map(([value, label]) => (
                 <label className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-control border px-4 py-3 ${kind === value ? "border-action-primary bg-brand-soft" : "border-border bg-surface"}`} key={value}>
                   <input checked={kind === value} name="workforce-kind" onChange={() => setKind(value)} type="radio" value={value} />
                   <span className="font-semibold">{label}</span>
@@ -264,7 +264,7 @@ export function WorkforceNewWorkspace({
 
           {step === 2 ? (
             <form className="mt-5 space-y-4" onSubmit={submitDetails}>
-              <h2 className="text-lg font-semibold">กรอกข้อมูล{kind === "OSM" ? " อสม." : "บุคลากรโรงพยาบาล"}</h2>
+              <h2 className="text-lg font-semibold">กรอกข้อมูล{kind === "OSM" ? " อสม." : "เจ้าหน้าที่โรงพยาบาล"}</h2>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2 text-sm font-semibold"><span>ชื่อ</span><Input autoComplete="given-name" maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, givenName: event.target.value }))} required value={draft.givenName} /></label>
                 <label className="space-y-2 text-sm font-semibold"><span>นามสกุล</span><Input autoComplete="family-name" maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, familyName: event.target.value }))} required value={draft.familyName} /></label>
@@ -315,7 +315,7 @@ export function WorkforceNewWorkspace({
                 {failureState && !provisionSession.unconfirmed ? <Alert role="alert" variant={failureState.code === "CONFLICT" ? "warning" : "danger"}>{failureState.message}</Alert> : null}
                 <UnknownOutcomeAlert active={provision.unknownOutcome || provisionSession.unconfirmed} recovery={{ kind: "reload", label: "ตรวจสอบรายชื่อ", message: "ผลการเพิ่มอาจบันทึกแล้ว กรุณาตรวจสอบรายชื่อก่อนเริ่มรายการใหม่" }} />
                 {activationFailure && !activationSession.unconfirmed ? <Alert role="alert" variant={activationFailure.code === "CONFLICT" ? "warning" : "danger"}>{activationFailure.message}</Alert> : null}
-                <UnknownOutcomeAlert active={remote.unknownOutcome || assisted.unknownOutcome || activationSession.unconfirmed} recovery={{ kind: "reload", label: "ตรวจสอบรายละเอียด", message: "เพิ่มรายชื่อแล้ว แต่ระบบยังยืนยันผลการออกลิงก์ไม่ได้ กรุณาตรวจสอบรายละเอียดบุคลากรก่อนออกลิงก์อีกครั้ง" }} />
+                <UnknownOutcomeAlert active={remote.unknownOutcome || assisted.unknownOutcome || activationSession.unconfirmed} recovery={{ kind: "reload", label: "ตรวจสอบรายละเอียด", message: "เพิ่มรายชื่อแล้ว แต่ระบบยังยืนยันผลการออกลิงก์ไม่ได้ กรุณาตรวจสอบรายชื่อก่อนออกลิงก์อีกครั้ง" }} />
                 {created ? <Link className="text-sm font-semibold underline" href={relationshipHref}>ดูรายละเอียดรายชื่อที่เพิ่มแล้ว</Link> : null}
                 <div className="flex flex-wrap justify-between gap-3 pt-2">
                   <Button disabled={provision.pending || provisionSession.unconfirmed || activationSession.locked} onClick={() => setRouteStep(2)} type="button" variant="secondary">ย้อนกลับ</Button>

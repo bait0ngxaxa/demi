@@ -37,6 +37,8 @@ Professional classifications remain specific: `DOCTOR` → แพทย์, `NUR
 | OSM–Hospital work permission | สิทธิ์ อสม. ในโรงพยาบาลนี้ / อสม. ที่ทำงานร่วมกับโรงพยาบาลนี้ | A patient assignment or access to patients outside the existing assignment scope. |
 | Patient–Hospital care | การดูแลผู้ป่วยกับโรงพยาบาลนี้ | Patient account deletion or a change to care at another Hospital. |
 | Patient–OSM assignment | ผู้รับผิดชอบผู้ป่วย / การมอบหมาย อสม. | A change unless the relevant service confirms it. |
+| `PatientProgram` / Program | โปรแกรม | A care-program record groups its existing service and follow-up records; its status does not prove clinical success or completed service. |
+| Goal Plan / `PatientGoalPlan` | แผนสุขภาพ | WB-D4 approves this name for Goal Plan. Do not infer that separately named health-plan artifacts are the same record. |
 | Caregiver connection | ผู้ดูแลที่เชื่อมไว้ / การเชื่อมต่อกับผู้ดูแล | A data grant. State each accepted sharing permission separately. |
 | Appointment/resource sharing | สิทธิ์ดูนัดหมาย / สิทธิ์ดูข้อมูล [รายการ] | The end of the caregiver connection or access to all clinical information. |
 | Parent/Child Hospital | โรงพยาบาลแม่ข่าย / โรงพยาบาลลูกข่าย | Clinical or patient access beyond the accepted network policy. |
@@ -79,7 +81,7 @@ This is a cross-Hospital side effect and a separate functional/security review f
 
 The following are not resolved by style preference and must not be inferred from this glossary:
 
-- The mapping between `PatientGoalPlan` and any customer-facing “Health Plan” or “แผนสุขภาพ” artifact.
+- `PatientGoalPlan` is presented as “แผนสุขภาพ” for the Goal Plan workflow under WB-D4 in `docs/requirements/WB_ALIGNMENT_DECISIONS.md`. This does not resolve whether separately named artifacts such as “แผนสุขภาพดีของฉัน” or health-plan review are the same artifact; do not collapse them without a newer decision.
 - Validated Thai wording and semantics for PAM/PROMs and other clinical instruments, including questions, scales, scoring, and classifications.
 - Approved names for Service 2 and other service artifacts whose meaning is still open in the current canonical requirements.
 - Legal wording supplied by the responsible agency. ADR-0028 describes versioned documents but does not make placeholder legal copy final.

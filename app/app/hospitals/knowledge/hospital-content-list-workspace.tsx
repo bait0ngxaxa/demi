@@ -46,7 +46,7 @@ export function HospitalContentListWorkspace({
           </Link>
         )}
         breadcrumbs={[{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "ข่าวสารและความรู้" }]}
-        description="จัดการฉบับร่าง การเผยแพร่ และการเก็บถาวรของโรงพยาบาลที่เลือก ใช้สิทธิ์เจ้าของโดยตรง"
+        description="จัดการฉบับร่าง การเผยแพร่ และการเก็บถาวรของโรงพยาบาลที่เลือก ใช้สิทธิ์แอดมินโรงพยาบาลโดยตรง"
         title="ข่าวสารและความรู้"
       />
 

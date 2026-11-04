@@ -14,12 +14,12 @@ export default async function HospitalWorkContactsPage(): Promise<React.JSX.Elem
     <div className="min-w-0 max-w-5xl space-y-6">
       <PageHeader
         title="ติดต่อโรงพยาบาล"
-        description="ที่อยู่และหมายเลขโทรศัพท์ของโรงพยาบาลที่สัมพันธ์กับบัญชีงานของคุณ"
+        description="ที่อยู่และหมายเลขโทรศัพท์ของโรงพยาบาลที่คุณทำงานด้วย"
       />
 
       {contacts.length === 0 ? (
         <p className="rounded-panel border border-border p-5 text-text-muted">
-          ไม่พบโรงพยาบาลที่มีความสัมพันธ์ที่ใช้งานได้
+          ไม่พบโรงพยาบาลที่คุณทำงานด้วยในขณะนี้
         </p>
       ) : (
         <ul className="divide-y divide-border">

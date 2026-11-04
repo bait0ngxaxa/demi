@@ -25,11 +25,11 @@ export const initialUserLegalHistoryState: UserLegalHistoryState = { status: "ID
 export const LEGAL_ACCEPTANCE_SOURCE_LABELS: Readonly<Record<LegalAcceptanceSource, string>> = {
   SELF_REGISTRATION: "ลงทะเบียนด้วยเลขบัตร",
   PATIENT_ACTIVATION: "เปิดใช้งานบัญชีผู้ป่วย",
-  WORKFORCE_ACTIVATION: "เปิดใช้งานบัญชีบุคลากร/อสม.",
+  WORKFORCE_ACTIVATION: "เปิดใช้งานบัญชีเจ้าหน้าที่โรงพยาบาล/อสม.",
   HOSPITAL_ONBOARDING: "ขอใช้งานสำหรับโรงพยาบาล",
   CAREGIVER_ACCOUNT: "สร้างบัญชีผู้ดูแล",
   SETTINGS: "ยอมรับในการตั้งค่า",
-  ADMIN_BOOTSTRAP: "สร้างผู้ดูแลระบบคนแรก",
+  ADMIN_BOOTSTRAP: "สร้างผู้ดูแลระบบ DEMI คนแรก",
 };
 
 export const LEGAL_CHANNEL_LABELS: Readonly<Record<LegalChannel, string>> = {

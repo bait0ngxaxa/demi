@@ -420,7 +420,7 @@ export function HospitalContentDetailWorkspace({
         <PageHeader
           onBreadcrumbClick={leavePage}
           breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ข่าวสารและความรู้", href: "/app/hospitals/knowledge" }]}
-          description="จัดการเนื้อหาของโรงพยาบาลที่คุณเป็นเจ้าของโดยตรง"
+          description="จัดการเนื้อหาของโรงพยาบาลที่คุณเป็นแอดมินโดยตรง"
           title="ข่าวสารและความรู้"
         />
         <Alert className="mt-6" variant="warning">
@@ -472,7 +472,7 @@ export function HospitalContentDetailWorkspace({
 
       <div aria-live="polite" className="sr-only">
         {/* Outcomes are announced by their Toast or their own Alert, so this region only reports progress. */}
-        {isPending ? pendingAnnouncement ?? "กำลังดำเนินการกับเนื้อหา..." : ""}
+        {isPending ? pendingAnnouncement ?? "กำลังปรับปรุงเนื้อหา..." : ""}
       </div>
 
       {successMessage ? (

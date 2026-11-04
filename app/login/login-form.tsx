@@ -101,13 +101,13 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
           role="status"
         >
           บัญชีนี้ยังเข้าใช้งาน DEMI ไม่ได้
-          กรุณาใช้บัญชีที่ได้รับการเปิดใช้งาน หรือติดต่อผู้ดูแลระบบ
+          กรุณาใช้บัญชีที่เปิดใช้งานแล้ว หรือติดต่อผู้ดูแลระบบ DEMI
         </div>
       ) : null}
 
       <div className="space-y-2">
         <label className="block text-sm font-semibold text-ink" htmlFor="nationalId">
-          เลขบัตรประชาชน หรือรหัสผู้ดูแลระบบ
+          เลขบัตรประชาชน หรือรหัสผู้ดูแลระบบ DEMI
         </label>
         <input
           aria-describedby={errorMessage ? "login-error" : undefined}
@@ -119,7 +119,7 @@ export function LoginForm({ applicationAccessDenied, safeReturnTo }: LoginFormPr
           inputMode="text"
           maxLength={32}
           name="nationalId"
-          placeholder="กรอกเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบ"
+          placeholder="กรอกเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบ DEMI"
           required
           spellCheck={false}
           type="text"

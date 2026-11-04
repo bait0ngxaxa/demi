@@ -6,13 +6,13 @@ import { ConflictError } from "@/shared/errors/application-error";
 export type WorkforceCategory = "HOSPITAL" | "OSM";
 
 export const WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE =
-  "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ";
+  "ไม่สามารถเพิ่มบุคคลนี้ได้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ DEMI";
 
 export class WorkforceRelationshipConflictError extends ConflictError {
   constructor(category: WorkforceCategory) {
     super(category === "OSM"
-      ? "ไม่สามารถเพิ่มเป็น อสม. ได้ เนื่องจากบุคคลนี้มีสถานะเป็นบุคลากรโรงพยาบาลอยู่แล้ว"
-      : "ไม่สามารถเพิ่มเป็นบุคลากรโรงพยาบาลได้ เนื่องจากบุคคลนี้มีสถานะเป็น อสม. อยู่แล้ว");
+      ? "เพิ่มบุคคลนี้เป็น อสม. ไม่ได้ เพราะทำงานเป็นเจ้าหน้าที่โรงพยาบาลอยู่แล้ว"
+      : "เพิ่มบุคคลนี้เป็นเจ้าหน้าที่โรงพยาบาลไม่ได้ เพราะทำงานเป็น อสม. อยู่แล้ว");
   }
 }
 

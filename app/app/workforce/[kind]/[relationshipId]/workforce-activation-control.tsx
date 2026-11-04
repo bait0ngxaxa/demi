@@ -129,7 +129,7 @@ export function WorkforceActivationControl({
   return (
     <section className="rounded-panel border border-border bg-surface p-4 sm:p-6" aria-labelledby="workforce-activation-heading">
       <h2 className="text-xl font-semibold" id="workforce-activation-heading">เปิดใช้งานบัญชี</h2>
-      <p className="mt-2 text-sm leading-6 text-muted">ออกลิงก์ใหม่หรือช่วยเปิดใช้งานบนเครื่องนี้ได้จากหน้ารายละเอียดบุคลากร</p>
+      <p className="mt-2 text-sm leading-6 text-muted">ออกลิงก์ใหม่หรือช่วยเปิดใช้งานบนเครื่องนี้ได้จากหน้ารายละเอียดเจ้าหน้าที่</p>
       {handoff ? (
         <div className="mt-4">
           <ActivationPresentation

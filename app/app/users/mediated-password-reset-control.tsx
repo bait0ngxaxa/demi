@@ -35,7 +35,7 @@ function formatThaiDate(value: string): string {
 
 export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   const targetConfirmationLabel = props.targetKind === "platform_admin"
-    ? "ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้"
+    ? "รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้"
     : "เลขบัตรประชาชนของเจ้าของบัญชี";
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [mode, setMode] = useState<MediatedPasswordResetMode>("IN_PERSON");
@@ -113,13 +113,13 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
   }
 
   if (props.eligibility === "ADMIN_REQUIRED") {
-    return <p className="text-sm leading-6 text-text-muted">ต้องให้ผู้ดูแลระบบดำเนินการ</p>;
+    return <p className="text-sm leading-6 text-text-muted">ต้องให้ผู้ดูแลระบบ DEMI ดำเนินการ</p>;
   }
 
   return (
     <>
       <button className={buttonClassName({ variant: "primary", size: "compact" })} onClick={openDialog} type="button">
-        {props.locked ? "คืนบัญชีให้เจ้าของจริง" : "รีเซ็ตรหัสผ่าน / คืนบัญชี"}
+        {props.locked ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}
       </button>
       <dialog
         aria-labelledby="mediated-reset-title"
@@ -129,7 +129,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
       >
         <div className="space-y-5 p-6">
           <div>
-            <h3 className="text-xl font-semibold" id="mediated-reset-title">{props.locked ? "คืนบัญชีให้เจ้าของจริง" : "รีเซ็ตรหัสผ่าน / คืนบัญชี"}</h3>
+            <h3 className="text-xl font-semibold" id="mediated-reset-title">{props.locked ? "กู้คืนบัญชีและตั้งรหัสผ่านใหม่" : "รีเซ็ตรหัสผ่าน"}</h3>
             <p className="mt-1 text-sm text-text-muted">{props.targetName}{props.hospitalName ? ` · ${props.hospitalName}` : ""}</p>
           </div>
 
@@ -167,7 +167,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
                 ))}
                 <p className="text-sm leading-6 text-text-muted">หากโทรกลับ ให้ใช้เฉพาะหมายเลขในเวชระเบียนของโรงพยาบาล ห้ามใช้หมายเลขที่ผู้ขอแจ้ง</p>
                 {props.targetKind === "platform_admin" ? (
-                  <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบที่ออกลิงก์ต้องตรวจสอบตัวตนของ ADMIN ผู้รับอย่างเป็นอิสระก่อน การกรอกตัวระบุบัญชีและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
+                  <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน การกรอกรหัสเข้าสู่ระบบและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
                 ) : null}
               </fieldset>
 

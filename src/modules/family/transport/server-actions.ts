@@ -185,7 +185,7 @@ export async function acceptCaregiverInvitationAction(
     await acceptCaregiverInvitation(actor, parsed.data);
     revalidatePath("/app/family");
     revalidatePath("/app/family/invitations");
-    return { status: "SUCCESS", message: "ยอมรับคำเชิญและเชื่อมความสัมพันธ์แล้ว" };
+    return { status: "SUCCESS", message: "รับคำเชิญเป็นผู้ดูแลแล้ว" };
   } catch (error: unknown) {
     if (error instanceof ApplicationError && error.code === "FORBIDDEN") {
       return { status: "ERROR", message: "บัญชีนี้ไม่ใช่ผู้รับคำเชิญนี้" };
@@ -272,7 +272,7 @@ export async function revokeCaregiverRelationshipAction(
     relationshipId: formString(formData, "relationshipId"),
   });
   if (!parsed.success) {
-    return { status: "ERROR", message: "ไม่พบความสัมพันธ์ที่ต้องการยุติ" };
+    return { status: "ERROR", message: "ไม่พบรายการเชื่อมต่อที่ต้องการ" };
   }
 
   try {
@@ -281,7 +281,7 @@ export async function revokeCaregiverRelationshipAction(
     revalidatePath("/app/family");
     revalidatePath("/app/family/grants/[grantId]/appointments", "page");
     revalidatePath("/app/family/grants/[grantId]/appointments/[appointmentId]", "page");
-    return { status: "SUCCESS", message: "ยุติความสัมพันธ์ผู้ดูแลแล้ว" };
+    return { status: "SUCCESS", message: "ยกเลิกการเชื่อมต่อกับผู้ดูแลแล้ว" };
   } catch (error: unknown) {
     return safeMutationError(error);
   }
@@ -295,7 +295,7 @@ export async function withdrawOwnCaregiverRelationshipAction(
     relationshipId: formString(formData, "relationshipId"),
   });
   if (!parsed.success) {
-    return { status: "ERROR", message: "ไม่พบความสัมพันธ์ที่ต้องการยุติ" };
+    return { status: "ERROR", message: "ไม่พบรายการเชื่อมต่อที่ต้องการ" };
   }
 
   try {
@@ -304,7 +304,7 @@ export async function withdrawOwnCaregiverRelationshipAction(
     revalidatePath("/app/family");
     revalidatePath("/app/family/grants/[grantId]/appointments", "page");
     revalidatePath("/app/family/grants/[grantId]/appointments/[appointmentId]", "page");
-    return { status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" };
+    return { status: "SUCCESS", message: "หยุดดูแลผู้ป่วยรายนี้แล้ว" };
   } catch (error: unknown) {
     return safeMutationError(error);
   }

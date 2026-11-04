@@ -40,7 +40,7 @@ function Feedback({ state }: { state: FamilyMutationActionState }): React.JSX.El
 function ProposeForm({ relationships, hospitals }: { relationships: readonly FamilyRelationshipManagementItem[]; hospitals: NonNullable<AppointmentGrantManagement["patient"]>["hospitals"] }): React.JSX.Element {
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(proposeAppointmentGrantAction, initialFamilyMutationActionState);
   const active = relationships.filter((row) => row.status === "ACTIVE");
-  if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีความสัมพันธ์ผู้ดูแลที่ใช้งานอยู่และหน่วยบริการของคุณที่พร้อมใช้งาน จึงจะเสนอสิทธิ์ได้</p>;
+  if (!active.length || !hospitals.length) return <p className="mt-3 text-sm text-text-muted">ต้องมีผู้ดูแลที่เชื่อมไว้และโรงพยาบาลที่ดูแลผู้ป่วยรายนี้ จึงจะเสนอสิทธิ์ดูนัดหมายได้</p>;
   return <form action={action} className="mt-4 space-y-4">
     <div className="space-y-2"><label htmlFor="appointment-caregiver" className="block text-sm font-semibold">ผู้ดูแลที่คุณอนุญาต</label>
       <Select id="appointment-caregiver" name="caregiverRelationshipId" required disabled={pending} defaultValue="">
@@ -217,7 +217,7 @@ export function AppointmentSharingWorkspace({ management, relationships, resourc
 }): React.JSX.Element {
   return <section className="mt-8 max-w-4xl" aria-labelledby="appointment-sharing-heading">
     <h2 id="appointment-sharing-heading" className="text-xl font-semibold text-text">แชร์นัดหมายให้ผู้ดูแล</h2>
-    <p className="type-readable mt-2 text-sm leading-7 text-text-muted">แชร์เฉพาะข้อมูลนัดหมายแบบอ่านอย่างเดียวในหนึ่งหน่วยบริการ ไม่เปิดข้อมูลอื่นของผู้ป่วย ผู้ดูแลต้องยอมรับสิทธิ์แยกจากการเชื่อมความสัมพันธ์</p>
+    <p className="type-readable mt-2 text-sm leading-7 text-text-muted">แชร์เฉพาะข้อมูลนัดหมายแบบอ่านอย่างเดียวในหนึ่งหน่วยบริการ ไม่เปิดข้อมูลอื่นของผู้ป่วย ผู้ดูแลต้องยอมรับสิทธิ์นี้แยกต่างหากจากคำเชิญให้เป็นผู้ดูแล</p>
     {management.patient ? <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-appointment-grants-heading" tabIndex={-1}>สิทธิ์ดูนัดหมายที่คุณเสนอ</h3>
       <ProposeForm relationships={relationships} hospitals={management.patient.hospitals} />

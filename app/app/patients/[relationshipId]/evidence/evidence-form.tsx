@@ -125,7 +125,7 @@ export function PatientEvidenceForm({ relationshipId }: PatientEvidenceFormProps
       <div id="new-evidence">
         <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">เพิ่มรูปหลักฐาน</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          รูปจะถูกเก็บเป็นหลักฐานภายใต้ความสัมพันธ์ผู้ป่วย–โรงพยาบาลนี้เท่านั้น
+          รูปจะถูกเก็บไว้ในประวัติการดูแลของโรงพยาบาลนี้เท่านั้น
         </p>
       </div>
 

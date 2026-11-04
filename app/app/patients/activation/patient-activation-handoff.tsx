@@ -356,7 +356,7 @@ export function PatientActivationHandoff({
     return (
       <Alert className="mt-4" variant="danger">
         <p className="font-semibold">บัญชีนี้ต้องได้รับการตรวจสอบก่อนออกลิงก์ใหม่</p>
-        <p className="mt-1">กรุณาติดต่อผู้ดูแลระบบเพื่อตรวจสอบข้อมูลก่อนดำเนินการต่อ</p>
+        <p className="mt-1">กรุณาติดต่อผู้ดูแลระบบ DEMI เพื่อตรวจสอบข้อมูลก่อนดำเนินการต่อ</p>
       </Alert>
     );
   }

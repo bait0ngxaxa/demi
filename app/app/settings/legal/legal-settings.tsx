@@ -188,7 +188,7 @@ export function LegalSettings({ legal }: { legal: LegalSettingsView }): React.JS
         </ul>
         <TermsAcceptance legal={legal} />
         {legal.canManageDocuments ? (
-          <Link className={linkClass} href="/app/admin/legal">จัดการฉบับเอกสาร (ผู้ดูแลระบบ)</Link>
+          <Link className={linkClass} href="/app/admin/legal">จัดการฉบับเอกสาร (ผู้ดูแลระบบ DEMI)</Link>
         ) : null}
       </section>
 

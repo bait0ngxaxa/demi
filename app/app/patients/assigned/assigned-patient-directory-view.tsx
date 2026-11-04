@@ -204,7 +204,7 @@ export function AssignedPatientDirectoryView({
         breadcrumbs={[{ href: "/app", label: "พื้นที่ทำงาน" }, { label: "ผู้ป่วยที่รับผิดชอบ" }]}
         description={taskMode
           ? taskPresentation[taskMode].description
-          : "เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติตามสิทธิ์ของคุณ แสดงเฉพาะความสัมพันธ์ผู้ป่วยที่มอบหมายให้คุณอยู่ในขณะนี้และมีขอบเขตโรงพยาบาลที่ใช้งานได้"}
+          : "เลือกผู้ป่วยเพื่อดูโปรแกรมปัจจุบัน บันทึกการดูแล และประวัติที่คุณมีสิทธิ์ดู รายชื่อแสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบอยู่ในโรงพยาบาลที่ใช้งานได้"}
         title={taskMode ? taskPresentation[taskMode].title : "ผู้ป่วยที่รับผิดชอบ"}
       />
 
@@ -296,9 +296,9 @@ export function AssignedPatientDirectoryView({
                 <h2 className="text-xl font-semibold tracking-[-0.02em]" id="assigned-patient-results-heading">
                   {taskMode ? "เลือกผู้ป่วยที่รับผิดชอบ" : "รายชื่อผู้ป่วยที่รับผิดชอบ"}
                 </h2>
-                <p className="mt-1 text-sm text-text-muted">แต่ละรายการเป็นความสัมพันธ์ผู้ป่วยกับโรงพยาบาล ตรวจสอบโรงพยาบาลและ HN ก่อนเปิดดูแลต่อ</p>
+                <p className="mt-1 text-sm text-text-muted">รายชื่อแยกตามโรงพยาบาล โปรดตรวจสอบชื่อโรงพยาบาลและ HN ก่อนเปิดข้อมูลผู้ป่วย</p>
               </div>
-              <p className="text-sm text-text-muted">พบ {result.total} ความสัมพันธ์ผู้ป่วย{hasFilters ? "ตามการค้นหาและตัวกรอง" : "ที่รับผิดชอบ"}</p>
+              <p className="text-sm text-text-muted">พบ {result.total} รายการผู้ป่วย{hasFilters ? "ตามการค้นหาและตัวกรอง" : "ที่รับผิดชอบ"}</p>
             </div>
 
             {result.items.length > 0 ? (
@@ -320,7 +320,7 @@ export function AssignedPatientDirectoryView({
                 <p className="mt-2 text-sm leading-6 text-text-muted">
                   {hasFilters
                     ? "ลองเปลี่ยนคำค้นหา ตรวจสอบ HN แบบตรงตัว หรือล้างตัวกรองเพื่อดูผู้ป่วยที่รับผิดชอบทั้งหมด"
-                    : "รายการนี้แสดงเฉพาะการมอบหมายที่ใช้งานได้ในขณะนี้ หากต้องการตรวจสอบการมอบหมาย กรุณาติดต่อเจ้าของโรงพยาบาล"}
+                    : "รายชื่อนี้แสดงเฉพาะผู้ป่วยที่มีการมอบหมายและสิทธิ์ดูแลใช้งานอยู่ หากต้องการตรวจสอบการมอบหมาย กรุณาติดต่อแอดมินโรงพยาบาล"}
                 </p>
               </div>
             )}

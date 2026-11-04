@@ -53,15 +53,15 @@ export default async function HospitalNetworkPage({
     <div className="content-workspace">
       <PageHeader
         breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "จัดการลูกข่าย" }]}
-        description="สร้าง รพ.สต. และหน่วยบริการลูกข่ายพร้อมเชิญผู้ดูแลคนแรก เพิ่มหรือนำลูกข่ายออกจากเครือข่าย เมื่อลูกข่ายเปิดใช้งานแล้ว เจ้าของและเจ้าหน้าที่ (สมาชิก) ของแม่ข่ายจะดูรายชื่อและข้อมูลผู้ป่วยของลูกข่ายได้แบบอ่านอย่างเดียว"
+        description="สร้าง รพ.สต. และหน่วยบริการลูกข่ายพร้อมเชิญแอดมินคนแรก เพิ่มหรือนำลูกข่ายออกจากเครือข่าย เมื่อลูกข่ายเปิดใช้งานแล้ว แอดมินและเจ้าหน้าที่ของแม่ข่ายจะดูรายชื่อและข้อมูลผู้ป่วยของลูกข่ายได้แบบอ่านอย่างเดียว"
         title="จัดการลูกข่าย"
       />
 
       {!selected ? (
         <Alert className="mt-6" variant="info">
-          <p className="font-semibold">ยังไม่มีโรงพยาบาลแม่ข่ายที่คุณเป็นเจ้าของ</p>
+          <p className="font-semibold">ยังไม่มีโรงพยาบาลแม่ข่ายที่คุณเป็นแอดมิน</p>
           <p className="mt-1">
-            หน้านี้ใช้ได้เมื่อผู้ดูแลระบบกำหนดให้โรงพยาบาลของคุณเป็นแม่ข่าย และคุณเป็นเจ้าของโรงพยาบาลนั้น หากข้อมูลไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ
+            หน้านี้ใช้ได้เมื่อผู้ดูแลระบบ DEMI กำหนดให้โรงพยาบาลของคุณเป็นแม่ข่าย และคุณเป็นแอดมินโรงพยาบาลนั้น หากข้อมูลไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ DEMI
           </p>
         </Alert>
       ) : (
@@ -111,7 +111,7 @@ export default async function HospitalNetworkPage({
           <section aria-labelledby="network-create-heading" className="mt-10 min-w-0">
             <h2 className="text-xl font-semibold text-text" id="network-create-heading">สร้างลูกข่ายใหม่</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-              สร้าง รพ.สต. หรือหน่วยบริการที่ยังไม่มีในระบบ หน่วยบริการจะอยู่ในเครือข่ายนี้ทันทีในสถานะรอเปิดใช้งาน และเปิดใช้งานเมื่อผู้ดูแลคนแรกยืนยันตัวตนด้วยเลขบัตรประชาชนของตนเอง ผู้ดูแลของลูกข่ายจะจัดการบุคลากรและ อสม. ของหน่วยบริการเอง
+              สร้าง รพ.สต. หรือหน่วยบริการที่ยังไม่มีในระบบ หน่วยบริการจะอยู่ในเครือข่ายนี้ทันทีในสถานะรอเปิดใช้งาน และเปิดใช้งานเมื่อแอดมินโรงพยาบาลคนแรกยืนยันตัวตนด้วยเลขบัตรประชาชนของตนเอง แอดมินโรงพยาบาลลูกข่ายจะจัดการเจ้าหน้าที่และ อสม. ของหน่วยบริการเอง
             </p>
             <Panel className="mt-4 min-w-0">
               <ChildOwnerInvitationForm
@@ -119,7 +119,7 @@ export default async function HospitalNetworkPage({
                 // Rendered per request: a replay of this submission returns the facility it already created.
                 hidden={{ parentHospitalId: selected.parent.id, submissionNonce: randomUUID() }}
                 idempotent
-                submitLabel="สร้างลูกข่ายและเชิญผู้ดูแล"
+                submitLabel="สร้างลูกข่ายและเชิญแอดมินโรงพยาบาล"
                 submitVariant="primary"
               >
                 <div className="max-w-xl min-w-0">
@@ -127,7 +127,7 @@ export default async function HospitalNetworkPage({
                   <Input className="mt-2" id="create-child-name" maxLength={200} name="name" required />
                   <p className="mt-1 text-xs text-text-muted">ระบบสร้างรหัสหน่วยบริการให้อัตโนมัติ</p>
                 </div>
-                <h3 className="mt-6 text-base font-semibold text-text">ผู้ดูแลคนแรก</h3>
+                <h3 className="mt-6 text-base font-semibold text-text">แอดมินโรงพยาบาลคนแรก</h3>
                 <div className="mt-3">
                   <ChildOwnerInviteeFields idPrefix="create-child" />
                 </div>
@@ -138,7 +138,7 @@ export default async function HospitalNetworkPage({
           <section aria-labelledby="network-add-heading" className="mt-10 min-w-0">
             <h2 className="text-xl font-semibold text-text" id="network-add-heading">เพิ่มลูกข่ายที่มีในระบบแล้ว</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              แสดงเฉพาะหน่วยบริการประเภทลูกข่ายที่ผู้ดูแลระบบเพิ่มไว้ ขึ้นทะเบียนใช้งานแล้ว และยังไม่มีแม่ข่าย หากหน่วยบริการที่ต้องการมีแม่ข่ายอื่นอยู่แล้ว กรุณาติดต่อผู้ดูแลระบบเพื่อโอนย้าย
+              แสดงเฉพาะหน่วยบริการประเภทลูกข่ายที่ผู้ดูแลระบบ DEMI เพิ่มไว้ ขึ้นทะเบียนแล้ว และยังไม่มีแม่ข่าย หากหน่วยบริการที่ต้องการมีแม่ข่ายอื่นอยู่แล้ว กรุณาติดต่อผู้ดูแลระบบ DEMI เพื่อโอนย้าย
             </p>
             <form className="mt-4 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end" method="get">
               {context.parents.length > 1 ? <input name="hospitalId" type="hidden" value={selected.parent.id} /> : null}

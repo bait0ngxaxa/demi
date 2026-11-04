@@ -5,19 +5,19 @@ import type {
 } from "@/modules/reporting/projections/hospital-report-projection";
 
 export const SERVICE_PROCESS_CHART_DESCRIPTION =
-  "จำนวน Program ที่มีบันทึกกิจกรรม ไม่ใช่การยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา";
+  "จำนวนโปรแกรมที่มีบันทึกกิจกรรม ไม่ได้ยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา";
 
 export function serviceProcessNote(programsTotal: number): string {
-  return `Program หนึ่งอาจมีบันทึกได้หลายประเภท จึงห้ามนำตัวเลขแต่ละแถวมารวมกัน · ความยาวแถบเทียบกับ Program ทั้งหมด ${programsTotal.toLocaleString("th-TH")} รายการ`;
+  return `โปรแกรมหนึ่งรายการอาจมีบันทึกได้หลายประเภท จึงไม่ควรนำตัวเลขแต่ละแถวมารวมกัน · แถบแสดงสัดส่วนเทียบกับโปรแกรมทั้งหมด ${programsTotal.toLocaleString("th-TH")} รายการ`;
 }
 
 /** The four exact-Hospital record-presence counts, in the order the Service 1 report lists them. */
 export function serviceProcessCategories(summary: HospitalReportingServiceProcessSummary): readonly ReportingChartCategory[] {
   return [
-    { key: "routine", axisLabel: "ตารางกิจวัตร", label: "Program ที่มีบันทึกตารางกิจวัตร (Routine)", value: countValue(summary.programsWithRoutineRecord.value) },
-    { key: "floatingChart", axisLabel: "กราฟวัดลอยจม", label: "Program ที่มีบันทึกกราฟวัดลอยจม (Floating Chart)", value: countValue(summary.programsWithFloatingChartRecord.value) },
-    { key: "dreamCard", axisLabel: "การ์ดความฝัน", label: "Program ที่มีบันทึกการ์ดความฝัน (Dream Card)", value: countValue(summary.programsWithDreamCardRecord.value) },
-    { key: "confidence", axisLabel: "คะแนนความมั่นใจ", label: "Program ที่มีบันทึกคะแนนความมั่นใจ (Confidence)", value: countValue(summary.programsWithConfidenceRecord.value) },
+    { key: "routine", axisLabel: "ตารางกิจวัตร", label: "โปรแกรมที่มีบันทึกตารางกิจวัตร (Routine)", value: countValue(summary.programsWithRoutineRecord.value) },
+    { key: "floatingChart", axisLabel: "กราฟวัดลอยจม", label: "โปรแกรมที่มีบันทึกกราฟวัดลอยจม (Floating Chart)", value: countValue(summary.programsWithFloatingChartRecord.value) },
+    { key: "dreamCard", axisLabel: "การ์ดความฝัน", label: "โปรแกรมที่มีบันทึกการ์ดความฝัน (Dream Card)", value: countValue(summary.programsWithDreamCardRecord.value) },
+    { key: "confidence", axisLabel: "คะแนนความมั่นใจ", label: "โปรแกรมที่มีบันทึกคะแนนความมั่นใจ (Confidence)", value: countValue(summary.programsWithConfidenceRecord.value) },
   ];
 }
 
@@ -40,14 +40,14 @@ export function roundProgressCategories(
     {
       key: "after-recorded",
       axisLabel: "มี After · รอจบ",
-      label: "บันทึก After แล้ว · รอจบ Program",
+      label: "บันทึก After แล้ว · รอจบโปรแกรม",
       value: countValue(roundProgress.afterRecorded),
       href: progressHref("AFTER_RECORDED"),
     },
     {
       key: "completed",
-      axisLabel: "สิ้นสุด Program",
-      label: "สิ้นสุด Program",
+      axisLabel: "สิ้นสุดโปรแกรม",
+      label: "สิ้นสุดโปรแกรม",
       value: countValue(roundProgress.completed),
       href: progressHref("COMPLETED"),
     },

@@ -39,7 +39,7 @@ const professionLabels = {
 const bulkReasonLabels = {
   INVALID_ROW: "ข้อมูลในแถวไม่ถูกต้อง",
   CONFLICT: "ข้อมูลขัดแย้งกับรายการเดิม กรุณาตรวจสอบและลองใหม่",
-  ROLE_INCOMPATIBLE: "ไม่สามารถเพิ่มเป็นบุคลากรโรงพยาบาลและ อสม. พร้อมกันได้",
+  ROLE_INCOMPATIBLE: "เพิ่มบุคคลเดียวกันเป็นเจ้าหน้าที่โรงพยาบาลและ อสม. พร้อมกันไม่ได้",
   UNAVAILABLE: "ระบบไม่พร้อม ลองใหม่ได้",
 } as const;
 
@@ -66,7 +66,7 @@ function bulkNotice(
   const isStaff = formString(formData, "kind") !== "OSM";
   if (verdict === "SUCCESS" && state.status === "SUCCESS") {
     const invalid = state.result.rows.filter(({ status }) => status === "invalid").length;
-    if (invalid === 0) return { level: "success", message: isStaff ? "บันทึกรายการบุคลากรแล้ว" : "บันทึกรายการ อสม. แล้ว" };
+    if (invalid === 0) return { level: "success", message: isStaff ? "บันทึกรายชื่อเจ้าหน้าที่แล้ว" : "บันทึกรายชื่อ อสม. แล้ว" };
     return {
       level: "warning",
       message: invalid === state.result.rows.length
@@ -75,7 +75,7 @@ function bulkNotice(
     };
   }
   if (verdict === "CONFLICT") return { level: "warning", message: "ไม่สามารถบันทึกรายการได้ กรุณาตรวจสอบรายการล่าสุด" };
-  if (verdict === "FORBIDDEN") return { level: "error", message: isStaff ? "ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้" : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้" };
+  if (verdict === "FORBIDDEN") return { level: "error", message: isStaff ? "ไม่มีสิทธิ์เพิ่มเจ้าหน้าที่ของโรงพยาบาลนี้" : "ไม่มีสิทธิ์เพิ่ม อสม. ของโรงพยาบาลนี้" };
   return null;
 }
 
@@ -159,7 +159,7 @@ function BulkAddPanel({
               onChange={(event) => { setKind(event.target.value === "OSM" ? "OSM" : "HOSPITAL_MEMBER"); setSubmissionId(""); setShowOutcome(false); }}
               value={kind}
             >
-              <option value="HOSPITAL_MEMBER">บุคลากรโรงพยาบาล</option>
+              <option value="HOSPITAL_MEMBER">เจ้าหน้าที่โรงพยาบาล</option>
               <option value="OSM">อสม.</option>
             </Select>
           </label>
@@ -354,9 +354,9 @@ export function WorkforceImportWorkspace({
     <div className="content-workspace break-words">
       <PageHeader
         actions={<Link className={buttonClassName({ variant: "secondary" })} href={`/app/workforce?hospitalId=${encodeURIComponent(selectedHospitalId)}&tab=pending`}>กลับรายชื่อที่รอเปิดใช้งาน</Link>}
-        breadcrumbs={[{ label: "จัดการบุคลากร", href: `/app/workforce?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าและพิมพ์ใบ" }]}
+        breadcrumbs={[{ label: "จัดการเจ้าหน้าที่", href: `/app/workforce?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "นำเข้าและพิมพ์ใบ" }]}
         description={`จัดการข้อมูลหลายรายการและพิมพ์ใบเปิดใช้งานสำหรับ ${hospitalName}`}
-        title="นำเข้าบุคลากรและพิมพ์ใบเปิดใช้งาน"
+        title="นำเข้ารายชื่อและพิมพ์ใบเปิดใช้งาน"
       />
       <div className="mt-6">
         <Panel>
@@ -378,14 +378,14 @@ export function WorkforceImportWorkspace({
               <Input defaultValue={pageInfo.search} id="import-search" maxLength={120} name="search" type="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="import-status">
-              <span>สถานะความสัมพันธ์</span>
+              <span>สถานะการทำงานกับโรงพยาบาล</span>
               <Select defaultValue={pageInfo.status ?? ""} id="import-status" name="status">
                 <option value="">ทุกสถานะ</option>
-                <option value="PROVISIONED">รอเปิดใช้งาน</option>
-                <option value="INVITED">รอตอบรับ</option>
-                <option value="ACTIVE">ใช้งานอยู่</option>
-                <option value="SUSPENDED">ถูกระงับ</option>
-                <option value="ENDED">นำออกแล้ว</option>
+                <option value="PROVISIONED">รอเปิดใช้งานบัญชี</option>
+                <option value="INVITED">รอตอบรับคำเชิญ</option>
+                <option value="ACTIVE">ทำงานอยู่</option>
+                <option value="SUSPENDED">พักสิทธิ์ชั่วคราว</option>
+                <option value="ENDED">สิ้นสุดสิทธิ์แล้ว</option>
               </Select>
             </label>
             <Button type="submit">ค้นหา</Button>
@@ -401,14 +401,14 @@ export function WorkforceImportWorkspace({
           </p>
           {pendingRows.length === 0 ? <p className="mt-4 rounded-panel border border-border bg-surface px-4 py-8 text-center text-sm text-muted">ไม่มีรายชื่อที่ต้องเปิดใช้งานในรายการนี้</p> : (
             <div className="mt-4 grid gap-6 @5xl/workspace:grid-cols-2">
-              {([ ["บุคลากรโรงพยาบาลที่รอเปิดใช้งาน", "HOSPITAL_MEMBER"], ["อสม. ที่รอเปิดใช้งาน", "OSM"] ] as const).map(([title, kind]) => {
+              {([ ["เจ้าหน้าที่โรงพยาบาลที่รอเปิดใช้งาน", "HOSPITAL_MEMBER"], ["อสม. ที่รอเปิดใช้งาน", "OSM"] ] as const).map(([title, kind]) => {
                 const groupRows = pendingRows.filter((row) => row.kind === kind);
                 return groupRows.length > 0 ? <PendingActivationGroup hospitalId={selectedHospitalId} key={`${kind}:${groupRows.map((row) => row.id).join(",")}`} kind={kind} pending={pending} rows={groupRows} title={title} /> : null;
               })}
             </div>
           )}
           <nav aria-label="หน้ารายชื่อสำหรับพิมพ์ใบ" className="mt-4 flex flex-wrap gap-3">
-            {pageInfo.staffNextCursor ? <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={importHref({ staffCursor: pageInfo.staffNextCursor })}>หน้าถัดไป · บุคลากร</Link> : null}
+            {pageInfo.staffNextCursor ? <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={importHref({ staffCursor: pageInfo.staffNextCursor })}>หน้าถัดไป · เจ้าหน้าที่</Link> : null}
             {pageInfo.osmNextCursor ? <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={importHref({ osmCursor: pageInfo.osmNextCursor })}>หน้าถัดไป · อสม.</Link> : null}
             {(pageInfo.staffCursor || pageInfo.osmCursor) ? <Link className="inline-flex min-h-10 items-center text-sm font-semibold underline" href={importHref({ staffCursor: null, osmCursor: null })}>กลับหน้าแรก</Link> : null}
           </nav>

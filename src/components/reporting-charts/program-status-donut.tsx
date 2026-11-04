@@ -9,8 +9,8 @@ import { ReportingChartFrame } from "./reporting-chart-frame";
 const DONUT_HEIGHT = 208;
 
 const PROGRAM_STATUS_SLICES = [
-  { key: "ACTIVE", label: "Program ที่กำลังดำเนิน", fill: "var(--brand)" },
-  { key: "COMPLETED", label: "Program ที่สิ้นสุดแล้ว", fill: "var(--brand-muted)" },
+  { key: "ACTIVE", label: "โปรแกรมที่กำลังดำเนินอยู่", fill: "var(--brand)" },
+  { key: "COMPLETED", label: "โปรแกรมที่สิ้นสุดแล้ว", fill: "var(--brand-muted)" },
 ] as const;
 
 /** ACTIVE / COMPLETED Program counts of the full report cohort. Status is lifecycle, not a clinical outcome. */
@@ -64,15 +64,15 @@ export function ProgramStatusDonut({
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-semibold tabular-nums text-text">{formatReportingCount(total)}</span>
-            <span className="text-xs text-text-muted">Program ทั้งหมด</span>
+            <span className="text-xs text-text-muted">โปรแกรมทั้งหมด</span>
           </div>
         </div>
       )}
-      description={description ?? "สถานะ Program บอกว่ายังดำเนินอยู่หรือสิ้นสุดแล้ว ไม่ใช่ผลลัพธ์หรือความสำเร็จทางการรักษา"}
+      description={description ?? "สถานะโปรแกรมบอกว่ากำลังดำเนินอยู่หรือสิ้นสุดแล้ว ไม่ได้บอกผลหรือความสำเร็จทางการรักษา"}
       headingId={headingId}
-      listLabel="จำนวน Program แยกตามสถานะ"
-      message={total === 0 ? "ยังไม่มี Program ในชุดข้อมูลนี้" : undefined}
-      title="สถานะ Program"
+      listLabel="จำนวนโปรแกรมแยกตามสถานะ"
+      message={total === 0 ? "ยังไม่มีโปรแกรมในชุดข้อมูลนี้" : undefined}
+      title="สถานะโปรแกรม"
     />
   );
 }

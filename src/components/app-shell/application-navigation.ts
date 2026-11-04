@@ -225,7 +225,7 @@ export function projectPlatformGovernanceNavigation(actor: ActorContext): {
       ? { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียน รพ.", match: "prefix" }
       : null,
     recovery: isAdmin
-      ? { href: "/app/admin/recovery", label: "คืนบัญชีผู้ใช้", match: "prefix", prefetch: false }
+      ? { href: "/app/admin/recovery", label: "กู้คืนบัญชีผู้ใช้", match: "prefix", prefetch: false }
       : null,
     // WB-DF-14 (Product Owner 2026-10-26): usage-problem reports go to the platform ADMIN, never a Hospital OWNER.
     support: isAdmin

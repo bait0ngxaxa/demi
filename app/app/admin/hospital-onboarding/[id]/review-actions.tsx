@@ -329,7 +329,7 @@ function ReviewActionsForApplication({
         ตัดสินใจคำขอ
       </h2>
       <p className="mt-2 text-sm leading-6 text-muted">
-        การอนุมัติจะเปิดใช้งานโรงพยาบาล บัญชีผู้สมัคร และสิทธิ์เจ้าของโรงพยาบาลพร้อมกัน
+        การอนุมัติจะเปิดใช้งานโรงพยาบาล บัญชีผู้สมัคร และสิทธิ์แอดมินโรงพยาบาลพร้อมกัน
       </p>
 
       <UnknownOutcomeAlert

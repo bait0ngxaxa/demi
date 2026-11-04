@@ -12,13 +12,13 @@ const userRecordMutationFields = {
 /** UM-D2a: the OWNER types the exact phrase; the server alone decides whether the record is deletable. */
 export const userRecordDeletionSchema = z.object({
   ...userRecordMutationFields,
-  confirmation: z.literal("ลบรายการ"),
+  confirmation: z.literal("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน"),
 }).strict();
 
 /** UM-D5: suspected takeover lock. Repeating it retries only the provider session revocation. */
 export const suspectedTakeoverLockSchema = z.object({
   ...userRecordMutationFields,
-  confirmation: z.literal("ไม่ใช่เจ้าของจริง"),
+  confirmation: z.literal("สงสัยว่ามีผู้อื่นใช้บัญชีนี้"),
 }).strict();
 
 export type UserRecordDeletionInput = z.infer<typeof userRecordDeletionSchema>;

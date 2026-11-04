@@ -58,7 +58,7 @@ export async function endPatientHospitalRelationshipAction(
       : error instanceof ConflictError
         ? { status: "ERROR", code: "CONFLICT", message: "สถานะผู้ป่วยเปลี่ยนแปลงแล้วหรือสิ้นสุดการดูแลไปแล้ว กรุณาโหลดหน้าใหม่" }
         : error instanceof ForbiddenError || error instanceof NotFoundError
-          ? { status: "ERROR", code: "FORBIDDEN", message: "เฉพาะเจ้าของโรงพยาบาลนี้ที่สิ้นสุดการดูแลผู้ป่วยได้" }
+          ? { status: "ERROR", code: "FORBIDDEN", message: "เฉพาะแอดมินโรงพยาบาลนี้ที่สิ้นสุดการดูแลผู้ป่วยได้" }
           : { status: "ERROR", code: "UNAVAILABLE", message: "บันทึกไม่ได้ กรุณาลองใหม่อีกครั้ง" };
   }
 

@@ -61,7 +61,7 @@ const GOAL_TARGET_MINUTES_UNIT = "minutes";
 const unavailableLabels = {
   SOURCE_MISSING: "ไม่มีแหล่งข้อมูลในระบบ",
   CLINICAL_SEMANTICS_UNAPPROVED: "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง",
-  NOT_PROGRAM_SCOPED: "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้",
+  NOT_PROGRAM_SCOPED: "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับโปรแกรมนี้",
   DERIVATION_UNAPPROVED: "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง",
 } as const;
 
@@ -176,11 +176,11 @@ function baselineMeasurementCell(
   program: HospitalReportProgramRow,
   key: "bloodSugar" | "weight" | "waistCircumference" | "systolicBloodPressure" | "diastolicBloodPressure",
 ): number | string {
-  if (program.baseline.state === "MISSING") return "ไม่มี Baseline ที่เชื่อมกับ Program";
+  if (program.baseline.state === "MISSING") return "ไม่มี Baseline ที่เชื่อมกับโปรแกรม";
   return factCell(program.baseline.value.measurements[key]);
 }
 
-const NO_BASELINE_LABEL = "ไม่มี Baseline ที่เชื่อมกับ Program";
+const NO_BASELINE_LABEL = "ไม่มี Baseline ที่เชื่อมกับโปรแกรม";
 const NO_FINAL_ASSESSMENT_LABEL = "ไม่มี Final Assessment";
 const NO_ROUND_VITALS_LABEL = "ยังไม่บันทึกสัญญาณชีพครั้งนี้";
 const NO_PROGRAM_SCREENING_LABEL = "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1";
@@ -343,33 +343,33 @@ function setHeaderFacts(
   const classificationUnavailable = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
   if (sheet.name === SERVICE_SHEET_NAME) {
     sheet.getCell("A2").value = hospitalLabel;
-    sheet.getCell("A3").value = "จำนวนเคส";
+    sheet.getCell("A3").value = "จำนวนรายการผู้ป่วย";
     sheet.getCell("B3").value = dataset.counts.patientHospitalRelationships.value;
     sheet.getCell("C3").value = "เบาหวาน (DM)";
     sheet.getCell("D3").value = classificationUnavailable;
-    sheet.getCell("E3").value = "Program ทั้งหมด";
+    sheet.getCell("E3").value = "โปรแกรมทั้งหมด";
     sheet.getCell("F3").value = dataset.counts.programs.total;
-    sheet.getCell("A4").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
+    sheet.getCell("A4").value = "รายการผู้ป่วยที่ยังไม่มีโปรแกรม";
     sheet.getCell("B4").value = dataset.counts.relationshipsWithoutProgram.value;
     sheet.getCell("C4").value = "กลุ่มเสี่ยง (Pre-DM)";
     sheet.getCell("D4").value = classificationUnavailable;
-    sheet.getCell("E4").value = "Program ACTIVE / COMPLETED";
+    sheet.getCell("E4").value = "โปรแกรมที่กำลังดำเนินอยู่ / สิ้นสุดแล้ว";
     sheet.getCell("F4").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
     return;
   }
 
   sheet.getCell("A1").value = hospitalLabel;
-  sheet.getCell("A2").value = "จำนวนเคส";
+  sheet.getCell("A2").value = "จำนวนรายการผู้ป่วย";
   sheet.getCell("B2").value = dataset.counts.patientHospitalRelationships.value;
   sheet.getCell("C2").value = "เบาหวาน (DM)";
   sheet.getCell("D2").value = classificationUnavailable;
-  sheet.getCell("E2").value = "Program ทั้งหมด";
+  sheet.getCell("E2").value = "โปรแกรมทั้งหมด";
   sheet.getCell("F2").value = dataset.counts.programs.total;
-  sheet.getCell("A3").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
+  sheet.getCell("A3").value = "รายการผู้ป่วยที่ยังไม่มีโปรแกรม";
   sheet.getCell("B3").value = dataset.counts.relationshipsWithoutProgram.value;
   sheet.getCell("C3").value = "กลุ่มเสี่ยง (Pre-DM)";
   sheet.getCell("D3").value = classificationUnavailable;
-  sheet.getCell("E3").value = "Program ACTIVE / COMPLETED";
+  sheet.getCell("E3").value = "โปรแกรมที่กำลังดำเนินอยู่ / สิ้นสุดแล้ว";
   sheet.getCell("F3").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
 }
 
@@ -415,7 +415,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(10).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(11).value = baselineMeasurementCell(program, "weight");
     row.getCell(12).value = baselineBmiCell(program);
-    row.getCell(13).value = program.baseline.state === "PRESENT" ? factCell(program.baseline.value.heightCm) : "ไม่มี Baseline ที่เชื่อมกับ Program";
+    row.getCell(13).value = program.baseline.state === "PRESENT" ? factCell(program.baseline.value.heightCm) : "ไม่มี Baseline ที่เชื่อมกับโปรแกรม";
     row.getCell(14).value = baselineMeasurementCell(program, "waistCircumference");
     row.getCell(15).value = baselineMeasurementCell(program, "systolicBloodPressure");
     row.getCell(16).value = baselineMeasurementCell(program, "diastolicBloodPressure");
@@ -472,7 +472,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(35).value = program.lifecycle.completedAt.state === "RECORDED"
       ? toExcelDate(program.lifecycle.completedAt.value)
       : program.lifecycle.status === "ACTIVE"
-        ? "ยังดำเนิน Program"
+        ? "โปรแกรมยังดำเนินอยู่"
         : "ยังไม่บันทึกวันที่สิ้นสุด";
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 35);
     row.getCell(36).value = afterCvdRiskCell(program);
@@ -529,8 +529,8 @@ function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): number |
 function writeRoundTwoGoalCells(row: ExcelJS.Row, program: HospitalReportProgramRow): void {
   const plan = firstGoalPlan(program);
   if (plan === null) {
-    row.getCell(25).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
-    row.getCell(30).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
+    row.getCell(25).value = "ไม่มีแผนสุขภาพที่ผูกกับโปรแกรมนี้";
+    row.getCell(30).value = "ไม่มีแผนสุขภาพที่ผูกกับโปรแกรมนี้";
     return;
   }
   const foodItems = plan.items.filter((item) => item.category === "FOOD");
@@ -591,7 +591,7 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(8).value = program.lifecycle.completedAt.state === "RECORDED"
       ? toExcelDate(program.lifecycle.completedAt.value)
       : program.lifecycle.status === "ACTIVE"
-        ? "ยังดำเนิน Program"
+        ? "โปรแกรมยังดำเนินอยู่"
         : "ยังไม่บันทึกวันที่สิ้นสุด";
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 8);
     row.getCell(9).value = baselineMeasurementCell(program, "bloodSugar");
@@ -760,10 +760,10 @@ const NETWORK_SUMMARY_HEADERS = [
   "รหัส",
   "ประเภท",
   "จำนวนเคส",
-  "Program ทั้งหมด",
-  "ACTIVE",
-  "COMPLETED",
-  "ความสัมพันธ์ที่ยังไม่มี Program",
+  "โปรแกรมทั้งหมด",
+  "กำลังดำเนินอยู่",
+  "สิ้นสุดแล้ว",
+  "รายการผู้ป่วยที่ยังไม่มีโปรแกรม",
 ] as const;
 
 function summaryRowValues(counts: HospitalReportingSummary): number[] {

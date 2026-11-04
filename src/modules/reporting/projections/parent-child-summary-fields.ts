@@ -14,14 +14,14 @@ export function parentChildSummaryFields(
   const dashboard = content.dashboard.value;
   const serviceProcess = content.serviceProcess.value;
   return [
-    { key: "patientHospitalRelationships", label: "จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล", grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: dashboard.patientHospitalRelationships.value },
-    { key: "relationshipsWithoutProgram", label: "จำนวนความสัมพันธ์ที่ไม่มี Program", grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: dashboard.relationshipsWithoutProgram.value },
-    { key: "programsTotal", label: "Program ทั้งหมด", grain: "PATIENT_PROGRAM", value: dashboard.programs.total },
-    { key: "programsActive", label: "Program ที่กำลังดำเนิน", grain: "PATIENT_PROGRAM", value: dashboard.programs.active },
-    { key: "programsCompleted", label: "Program ที่สิ้นสุดแล้ว", grain: "PATIENT_PROGRAM", value: dashboard.programs.completed },
-    { key: "programsWithRoutineRecord", label: "Program ที่มีบันทึก Routine", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithRoutineRecord.value },
-    { key: "programsWithFloatingChartRecord", label: "Program ที่มีบันทึก Floating Chart", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithFloatingChartRecord.value },
-    { key: "programsWithDreamCardRecord", label: "Program ที่มีบันทึก Dream Card", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithDreamCardRecord.value },
-    { key: "programsWithConfidenceRecord", label: "Program ที่มีบันทึก Confidence", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithConfidenceRecord.value },
+    { key: "patientHospitalRelationships", label: "จำนวนรายการผู้ป่วยในโรงพยาบาล", grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: dashboard.patientHospitalRelationships.value },
+    { key: "relationshipsWithoutProgram", label: "รายการผู้ป่วยที่ยังไม่มีโปรแกรม", grain: "PATIENT_HOSPITAL_RELATIONSHIP", value: dashboard.relationshipsWithoutProgram.value },
+    { key: "programsTotal", label: "โปรแกรมทั้งหมด", grain: "PATIENT_PROGRAM", value: dashboard.programs.total },
+    { key: "programsActive", label: "โปรแกรมที่กำลังดำเนินอยู่", grain: "PATIENT_PROGRAM", value: dashboard.programs.active },
+    { key: "programsCompleted", label: "โปรแกรมที่สิ้นสุดแล้ว", grain: "PATIENT_PROGRAM", value: dashboard.programs.completed },
+    { key: "programsWithRoutineRecord", label: "โปรแกรมที่มีบันทึก Routine", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithRoutineRecord.value },
+    { key: "programsWithFloatingChartRecord", label: "โปรแกรมที่มีบันทึก Floating Chart", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithFloatingChartRecord.value },
+    { key: "programsWithDreamCardRecord", label: "โปรแกรมที่มีบันทึก Dream Card", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithDreamCardRecord.value },
+    { key: "programsWithConfidenceRecord", label: "โปรแกรมที่มีบันทึก Confidence", grain: "PATIENT_PROGRAM", value: serviceProcess.programsWithConfidenceRecord.value },
   ];
 }

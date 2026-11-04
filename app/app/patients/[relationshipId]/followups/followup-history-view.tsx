@@ -63,9 +63,9 @@ function FollowupHistoryRow({
             <dd className="mt-1 font-semibold text-text">{appointmentSummary(item)}</dd>
           </div>
           <div>
-            <dt className="text-text-muted">แผนเป้าหมายที่อ้างอิง</dt>
+            <dt className="text-text-muted">แผนสุขภาพที่อ้างอิง</dt>
             <dd className="mt-1 font-semibold text-text">
-              {item.sourceGoalPlan ? `รอบที่ ${item.sourceGoalPlan.roundNumber}` : "ไม่มีการเชื่อมโยงแผนเป้าหมาย"}
+              {item.sourceGoalPlan ? `รอบที่ ${item.sourceGoalPlan.roundNumber}` : "ไม่มีการเชื่อมโยงแผนสุขภาพ"}
             </dd>
           </div>
           <div>
@@ -125,7 +125,7 @@ export function FollowupHistoryView({
       <div className="space-y-6 pt-8">
         {activeProgram && activeProgramHref ? (
           <Alert variant="info">
-            หน้านี้เป็นประวัติรวมของความสัมพันธ์กับโรงพยาบาล การติดตามผลรอบใหม่ให้บันทึกจากโปรแกรมปัจจุบัน
+            หน้านี้รวมประวัติการดูแลจากโรงพยาบาลนี้ การติดตามผลรอบใหม่ให้บันทึกจากโปรแกรมปัจจุบัน
             <Link
               className="ml-1 font-semibold underline decoration-brand-soft underline-offset-4 hover:text-brand-strong focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
               href={activeProgramHref}

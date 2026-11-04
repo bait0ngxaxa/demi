@@ -77,7 +77,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     urls = createWorkforceActivationUrlBuilder();
   } catch {
-    return htmlError("ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับใบเปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ", 503);
+    return htmlError("ยังสร้างใบเปิดใช้งานไม่ได้ กรุณาลองใหม่ภายหลัง", 503);
   }
   if (
     request.headers.get("sec-fetch-site") === "same-origin" &&
@@ -109,7 +109,7 @@ export async function POST(request: Request): Promise<Response> {
   });
 
   if (!parsed.success) {
-    return htmlError("กรุณาเลือกบุคลากรที่ต้องการพิมพ์ใบเปิดใช้งาน (ไม่เกิน 50 คน)", 400);
+    return htmlError("กรุณาเลือกเจ้าหน้าที่ที่ต้องการพิมพ์ใบเปิดใช้งาน (ไม่เกิน 50 คน)", 400);
   }
 
   try {

@@ -28,6 +28,8 @@ async function run(form: FormData, reject: boolean): Promise<RescheduleRequestAc
   } catch (error: unknown) {
     return { status: "ERROR", message: error instanceof ConflictError ? "นัดหมายเปลี่ยนแปลงหรือมีคำขอค้างอยู่แล้ว กรุณาโหลดหน้าใหม่"
       : error instanceof ValidationError ? "กรุณาเลือกวันเวลาในอนาคตไม่เกิน 366 วัน พร้อมเหตุผลไม่เกิน 500 ตัวอักษร"
-        : "ดำเนินการไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง" };
+        : reject
+          ? "ไม่สามารถปฏิเสธคำขอเลื่อนนัดได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง"
+          : "ไม่สามารถส่งคำขอเลื่อนนัดได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง" };
   }
 }

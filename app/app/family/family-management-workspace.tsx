@@ -202,7 +202,7 @@ function CreateCaregiverInvitationForm({ sharingOptions }: { sharingOptions: Car
       <h3 className="text-lg font-semibold text-text">เพิ่มผู้ดูแล</h3>
       <p className="type-readable mt-2 text-sm leading-6 text-text-muted">
         ระบุเลขบัตรประชาชนและความสัมพันธ์ของผู้ดูแล เลือกข้อมูลที่ต้องการแชร์ แล้วแชร์ลิงก์หรือ QR ให้ผู้รับด้วยตนเอง หากยังไม่มีบัญชี ผู้รับสามารถสร้างบัญชีจากคำเชิญนี้โดยใช้เลขบัตรเดียวกัน
-        การรู้เลขบัตรประชาชนอย่างเดียวไม่ทำให้เกิดสิทธิ์หรือความสัมพันธ์
+        การทราบเลขบัตรประชาชนเพียงอย่างเดียวไม่ทำให้ผู้รับเข้าถึงข้อมูลได้ ผู้รับต้องตอบรับคำเชิญก่อน
       </p>
       <form
         action={formAction}
@@ -371,9 +371,9 @@ function RevokeRelationship({
           action={formAction}
           className="inline"
           confirmation={{
-            title: `ยุติความสัมพันธ์กับ ${participantName} หรือไม่`,
-            description: "ความสัมพันธ์จะสิ้นสุดทันที และสิทธิ์ดูนัดหมายหรือข้อมูลสุขภาพที่ผูกกับความสัมพันธ์นี้จะถูกเพิกถอน ประวัติยังคงอยู่ หากต้องการเชื่อมต่ออีกครั้งต้องส่งคำเชิญใหม่",
-            confirmLabel: "ยุติความสัมพันธ์",
+            title: `ยกเลิกการเชื่อมต่อกับ ${participantName} หรือไม่`,
+            description: "การเชื่อมต่อกับผู้ดูแลรายนี้จะสิ้นสุดทันที สิทธิ์ดูนัดหมายและข้อมูลสุขภาพที่แชร์ให้จะถูกยกเลิก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้งต้องส่งคำเชิญใหม่",
+            confirmLabel: "ยกเลิกการเชื่อมต่อ",
             confirmVariant: "destructive",
           }}
           outcome={state.status === "ERROR" ? "error" : "idle"}
@@ -382,8 +382,8 @@ function RevokeRelationship({
           returnFocusTarget={() => triggerRef.current ?? document.getElementById("patient-relationships-heading") ?? document.querySelector<HTMLElement>("main h1")}
         >
           <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-          <Button aria-label={`ยุติความสัมพันธ์ผู้ดูแล: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
-            {pending ? "กำลังยุติ..." : "ยุติความสัมพันธ์ผู้ดูแล"}
+          <Button aria-label={`ยกเลิกการเชื่อมต่อกับผู้ดูแล: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
+            {pending ? "กำลังยกเลิกการเชื่อมต่อ..." : "ยกเลิกการเชื่อมต่อกับผู้ดูแล"}
           </Button>
         </ConfirmableActionForm>
       ) : null}
@@ -577,9 +577,9 @@ function WithdrawCaregiverRelationship({
         action={formAction}
         className="inline"
         confirmation={{
-          title: `หยุดการเป็นผู้ดูแล ${participantName} หรือไม่`,
-          description: `การยืนยันจะยุติความสัมพันธ์กับ ${participantName} ทันทีและไม่สามารถเปิดกลับได้ หากต้องการเชื่อมอีกครั้ง ผู้ป่วยต้องส่งคำเชิญใหม่`,
-          confirmLabel: "ยืนยันหยุดการเป็นผู้ดูแล",
+          title: `หยุดดูแล ${participantName} หรือไม่`,
+          description: `การเชื่อมต่อกับผู้ป่วยรายนี้จะสิ้นสุดทันที คุณจะดูข้อมูลที่ผู้ป่วยแชร์ไว้ไม่ได้อีก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้ง ผู้ป่วยต้องส่งคำเชิญใหม่`,
+          confirmLabel: "หยุดดูแลผู้ป่วยรายนี้",
           confirmVariant: "destructive",
         }}
         outcome={state.status === "ERROR" ? "error" : "idle"}
@@ -588,8 +588,8 @@ function WithdrawCaregiverRelationship({
         returnFocusTarget={() => triggerRef.current ?? document.getElementById("caregiver-relationships-heading") ?? document.querySelector<HTMLElement>("main h1")}
       >
         <input name="relationshipId" type="hidden" value={relationship.relationshipId} />
-        <Button aria-label={`หยุดการเป็นผู้ดูแล: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
-          {pending ? "กำลังยุติ..." : "หยุดการเป็นผู้ดูแล"}
+        <Button aria-label={`หยุดดูแลผู้ป่วย: ${participantName}`} disabled={pending || unknownOutcome} loading={pending} ref={triggerRef} size="compact" type="submit" variant="danger">
+          {pending ? "กำลังหยุดดูแล..." : "หยุดดูแลผู้ป่วยรายนี้"}
         </Button>
       </ConfirmableActionForm>
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
@@ -641,13 +641,13 @@ function PatientPerspective({
       </section>
 
       <section aria-labelledby="patient-relationships-heading" className="mt-8">
-        <h2 className="text-xl font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-relationships-heading" tabIndex={-1}>ความสัมพันธ์ผู้ดูแล</h2>
+        <h2 className="text-xl font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-relationships-heading" tabIndex={-1}>ผู้ดูแลที่เชื่อมไว้</h2>
         <p className="mt-2 text-sm leading-6 text-text-muted">
-          รายการนี้แสดงสถานะการเชื่อมและการจัดการความสัมพันธ์เท่านั้น ความสัมพันธ์ผู้ดูแลไม่ได้ให้สิทธิ์ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ
+          รายการนี้แสดงผู้ดูแลที่เชื่อมต่อและสถานะการเชื่อมต่อ การเชื่อมต่อไม่ได้เปิดสิทธิ์ให้ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ
         </p>
         <Panel className="mt-4">
           {overview.relationships.length === 0 ? (
-            <p className="text-sm leading-6 text-text-muted">ยังไม่มีความสัมพันธ์ผู้ดูแลที่ตอบรับแล้ว</p>
+            <p className="text-sm leading-6 text-text-muted">ยังไม่มีผู้ดูแลที่ตอบรับคำเชิญและเชื่อมต่อแล้ว</p>
           ) : (
             <ul className="divide-y divide-border">
               {overview.relationships.map((relationship) => (
@@ -723,9 +723,9 @@ function CaregiverPerspective({
         </Panel>
 
         <Panel className="mt-4">
-          <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="caregiver-relationships-heading" tabIndex={-1}>ความสัมพันธ์ที่คุณดูแล</h3>
+          <h3 className="text-lg font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="caregiver-relationships-heading" tabIndex={-1}>ผู้ป่วยที่คุณดูแล</h3>
           {overview.relationships.length === 0 ? (
-            <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีความสัมพันธ์ผู้ดูแลที่คุณตอบรับ</p>
+            <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีผู้ป่วยที่คุณตอบรับคำเชิญให้ดูแล</p>
           ) : (
             <ul className="mt-3 divide-y divide-border">
               {overview.relationships.map((relationship) => (
@@ -773,13 +773,13 @@ export function FamilyManagementWorkspace({
   return (
     <div className="max-w-4xl">
       <PageHeader
-        description="จัดการคำเชิญและความสัมพันธ์ระหว่างผู้ป่วยกับผู้ดูแล การเชื่อมความสัมพันธ์ไม่ทำให้เข้าถึงข้อมูลสุขภาพของผู้ป่วย"
+        description="จัดการคำเชิญ ผู้ดูแล และผู้ป่วยที่เชื่อมต่อกับบัญชีของคุณ การเชื่อมต่อไม่เปิดสิทธิ์ดูข้อมูลสุขภาพโดยอัตโนมัติ"
         title="ครอบครัวและผู้ดูแล"
       />
       <Alert className="mt-6" variant="info">
-        <p className="font-semibold">การเชื่อมนี้ยังไม่ให้สิทธิ์เข้าถึงข้อมูลผู้ป่วย</p>
+        <p className="font-semibold">การเชื่อมต่อยังไม่เปิดสิทธิ์ดูข้อมูลผู้ป่วย</p>
         <p className="mt-1">
-          ความสัมพันธ์นี้เพียงอย่างเดียวไม่ทำให้ผู้ดูแลอ่านโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลได้
+          การเชื่อมต่อเพียงอย่างเดียวไม่ทำให้ผู้ดูแลดูโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลได้
           {" "}ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว คุณยกเลิกสิทธิ์แต่ละรายการได้ทุกเมื่อ
         </p>
       </Alert>

@@ -76,7 +76,7 @@ function mapPublicSubmissionError(error: unknown): HospitalOnboardingSubmitActio
       return {
         status: "ERROR",
         code: "CONFLICT",
-        message: "ไม่สามารถส่งคำขอนี้ได้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ",
+        message: "ไม่สามารถส่งคำขอนี้ได้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ DEMI",
       };
     }
   }

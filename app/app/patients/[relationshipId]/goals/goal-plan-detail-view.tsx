@@ -76,7 +76,7 @@ export function GoalPlanDetailView({
       <PageHeader
         actions={
           <StatusBadge variant="info">
-            {isProgramRoute ? "Service 2 — แผนสุขภาพและเป้าหมาย" : "แผนเป้าหมาย"}
+            {isProgramRoute ? "Service 2 — แผนสุขภาพและเป้าหมาย" : "แผนสุขภาพ"}
           </StatusBadge>
         }
         breadcrumbs={
@@ -99,17 +99,17 @@ export function GoalPlanDetailView({
                 },
                 {
                   href: historyHref,
-                  label: "ประวัติแผนเป้าหมาย",
+                  label: "ประวัติแผนสุขภาพ",
                 },
-                { label: "รายละเอียดแผนเป้าหมาย" },
+                { label: "รายละเอียดแผนสุขภาพ" },
               ]
         }
         description={
           isProgramRoute
             ? "รายละเอียดแผนสุขภาพที่บันทึกเป็นประวัติของโปรแกรมนี้"
-            : "รายละเอียดแผนเป้าหมายที่บันทึกเป็นประวัติในบริบทของโรงพยาบาลนี้"
+            : "รายละเอียดแผนสุขภาพที่บันทึกเป็นประวัติในบริบทของโรงพยาบาลนี้"
         }
-        title={`${isProgramRoute ? "แผนสุขภาพ" : "แผนเป้าหมาย"}รอบที่ ${detail.roundNumber}`}
+        title={`${isProgramRoute ? "แผนสุขภาพ" : "แผนสุขภาพ"}รอบที่ ${detail.roundNumber}`}
       />
 
       <div className="space-y-6 pt-8">
@@ -258,7 +258,7 @@ export function GoalPlanDetailView({
               className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={newGoalHref}
             >
-              {isProgramRoute ? "สร้างแผนรอบใหม่" : "สร้างแผนเป้าหมายรอบใหม่"}
+              {isProgramRoute ? "สร้างแผนรอบใหม่" : "สร้างแผนสุขภาพรอบใหม่"}
             </Link>
           </div>
         ) : scope.kind === "program" ? (

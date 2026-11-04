@@ -51,8 +51,8 @@ export function PatientSelfProgramDetailView({
           },
           { label: "รายละเอียดโปรแกรม" },
         ]}
-        description="ข้อมูลสถานะและประวัติที่บันทึกไว้ใน Program นี้"
-        title="Program"
+        description="ข้อมูลสถานะและประวัติที่บันทึกไว้ในโปรแกรมนี้"
+        title="โปรแกรม"
       />
 
       <div className="space-y-8 pt-6">
@@ -60,7 +60,7 @@ export function PatientSelfProgramDetailView({
 
         <section aria-labelledby="patient-self-program-status-heading">
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-status-heading">
-            สถานะ Program
+            สถานะโปรแกรม
           </h2>
           <Panel className="mt-4">
             <StatusBadge variant={detail.status === "ACTIVE" ? "info" : "neutral"}>
@@ -123,7 +123,7 @@ export function PatientSelfProgramDetailView({
         <section aria-labelledby="patient-self-program-goals-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-goals-heading">
-              แผนเป้าหมายใน Program นี้
+              แผนสุขภาพในโปรแกรมนี้
             </h2>
             {detail.goalPlans.length > 0 ? (
               <p className="text-sm text-text-muted">
@@ -139,7 +139,7 @@ export function PatientSelfProgramDetailView({
                     className={`${linkClassName} break-words`}
                     href={`/app/personal/care/${encodeURIComponent(relationshipId)}/goal-plans/${encodeURIComponent(plan.goalPlanId)}`}
                   >
-                    แผนเป้าหมาย รอบที่ {plan.roundNumber}
+                    แผนสุขภาพ รอบที่ {plan.roundNumber}
                   </Link>
                   <p className="mt-1 break-words text-sm leading-6 text-text">
                     เป้าหมายหลัก: {plan.primaryGoalLabel}
@@ -151,7 +151,7 @@ export function PatientSelfProgramDetailView({
               ))}
             </ul>
           ) : (
-            <PatientSelfEmptyState title="ยังไม่มีแผนเป้าหมายใน Program นี้" />
+            <PatientSelfEmptyState title="ยังไม่มีแผนสุขภาพในโปรแกรมนี้" />
           )}
           {detail.historyPages.goalPlans.hasMore ? (
             <PatientSelfHistoryMoreLink
@@ -167,7 +167,7 @@ export function PatientSelfProgramDetailView({
         <section aria-labelledby="patient-self-program-followups-heading">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-program-followups-heading">
-              การติดตามใน Program นี้
+              การติดตามในโปรแกรมนี้
             </h2>
             {detail.followups.length > 0 ? (
               <p className="text-sm text-text-muted">
@@ -192,7 +192,7 @@ export function PatientSelfProgramDetailView({
               ))}
             </ul>
           ) : (
-            <PatientSelfEmptyState title="ยังไม่มีข้อมูลติดตามใน Program นี้" />
+            <PatientSelfEmptyState title="ยังไม่มีข้อมูลติดตามในโปรแกรมนี้" />
           )}
           {detail.historyPages.followups.hasMore ? (
             <PatientSelfHistoryMoreLink

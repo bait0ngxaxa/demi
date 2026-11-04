@@ -30,7 +30,7 @@ export function PatientServicesWorkspace({
 
       {relationships.length === 0 ? (
         <Alert className="mt-6" variant="info">
-          ยังไม่พบความสัมพันธ์กับโรงพยาบาลในบัญชีนี้ หากข้อมูลไม่ถูกต้อง โปรดติดต่อโรงพยาบาล
+          ยังไม่พบข้อมูลการดูแลจากโรงพยาบาลในบัญชีนี้ หากข้อมูลไม่ถูกต้อง โปรดติดต่อโรงพยาบาลที่ดูแลคุณ
         </Alert>
       ) : (
         <div className="mt-6 space-y-6">
@@ -44,7 +44,7 @@ export function PatientServicesWorkspace({
                   <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id={`${sectionId}-hospital`}>
                     {relationship.hospitalName}
                   </h2>
-                  <p className="mt-1 text-sm leading-6 text-text-muted">โรงพยาบาลที่เชื่อมกับบัญชีผู้ป่วยของคุณ</p>
+                  <p className="mt-1 text-sm leading-6 text-text-muted">โรงพยาบาลที่ดูแลคุณ</p>
                 </div>
                 <StatusBadge variant={relationship.hospitalActive && !relationship.careEnded ? "success" : "neutral"}>
                   {relationship.careEnded
@@ -75,7 +75,7 @@ export function PatientServicesWorkspace({
                 {relationship.hospitalActive && !relationship.careEnded && relationship.offerings.length > 0 ? (
                   <>
                     <p className="mt-1 text-sm leading-6 text-text-muted">
-                      เลือกบริการที่เปิดรับคำขอ การส่งคำขอยังไม่ใช่การลงทะเบียนใน Program
+                      เลือกบริการที่เปิดรับคำขอ การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม
                     </p>
                     <PatientServiceRequestForm
                       relationshipId={relationship.relationshipId}

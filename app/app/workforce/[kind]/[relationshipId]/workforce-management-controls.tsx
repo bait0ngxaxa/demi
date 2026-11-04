@@ -40,7 +40,7 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
         detail.activationInProgress ? (
           <Alert variant="warning">
             <p className="font-semibold">กำลังเปิดใช้งานบัญชี</p>
-            <p className="mt-1">มีการเปิดลิงก์แล้วและกำลังตรวจสอบผล กรุณารอหรือติดต่อผู้ดูแลระบบหากค้างนาน</p>
+            <p className="mt-1">มีการเปิดลิงก์แล้วและกำลังตรวจสอบผล กรุณารอสักครู่ หากค้างนานให้ติดต่อแอดมินโรงพยาบาลที่ส่งลิงก์</p>
           </Alert>
         ) : detail.kind === "staff" && detail.membershipType === "OWNER" ? null : (
         <WorkforceActivationControl
@@ -57,9 +57,9 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
 
       {detail.viewerScope === "MEMBER" ? (
         <Alert variant="info">
-          <p className="font-semibold">มุมมองสำหรับสมาชิกโรงพยาบาล</p>
+          <p className="font-semibold">มุมมองสำหรับเจ้าหน้าที่โรงพยาบาล</p>
           <p className="mt-1">
-            สมาชิกดูข้อมูล อสม. ได้อย่างเดียว การระงับ คืนสถานะ ยกเลิกลิงก์ และรีเซ็ตรหัสผ่านทำได้เฉพาะเจ้าของโรงพยาบาล
+            ในหน้านี้ เจ้าหน้าที่ดูข้อมูล อสม. ได้ การเปลี่ยนสิทธิ์ ยกเลิกลิงก์ และรีเซ็ตรหัสผ่านทำได้เฉพาะแอดมินโรงพยาบาล
           </p>
         </Alert>
       ) : null}
@@ -93,7 +93,7 @@ export function WorkforceManagementControls({ detail }: { detail: WorkforceDetai
         <WorkforcePasswordResetControl
           relationshipId={detail.relationshipId}
           targetKind={detail.kind === "staff" ? "staff" : "osm"}
-          subjectLabel={isStaff ? "บุคลากรรายนี้" : "อสม. รายนี้"}
+          subjectLabel={isStaff ? "เจ้าหน้าที่รายนี้" : "อสม. รายนี้"}
         />
       ) : null}
 

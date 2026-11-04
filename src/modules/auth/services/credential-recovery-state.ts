@@ -31,5 +31,5 @@ export async function assertPasswordChangeRecoveryAvailable(
 }
 
 export function assertIndependentCredentialRecoverySupported(): never {
-  throw new ForbiddenError("การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน เนื่องจากยังไม่มีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแล กรุณาติดต่อผู้ดูแลระบบเพื่อรับแนวทางดำเนินการ");
+  throw new ForbiddenError("การกู้คืนรหัสผ่านยังไม่เปิดใช้งาน เนื่องจากยังไม่มีวิธียืนยันเจ้าของบัญชีที่เป็นอิสระจากผู้ดูแล กรุณาติดต่อผู้ดูแลระบบ DEMI เพื่อรับแนวทางดำเนินการ");
 }

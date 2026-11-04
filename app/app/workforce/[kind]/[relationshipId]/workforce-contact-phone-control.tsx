@@ -108,7 +108,7 @@ export function WorkforceContactPhoneControl(props: {
       </div>
       {visibleDialogOpen ? (
         <ModalDialog
-          description={props.kind === "osm" ? "เบอร์นี้จะแสดงให้ผู้ป่วยที่ อสม. ดูแลเห็น" : "เปลี่ยนเฉพาะเบอร์ติดต่อของความสัมพันธ์บุคลากรนี้"}
+          description={props.kind === "osm" ? "เบอร์นี้จะแสดงให้ผู้ป่วยที่ อสม. ดูแลเห็น" : "เปลี่ยนเฉพาะเบอร์ติดต่อของเจ้าหน้าที่รายนี้ในโรงพยาบาลนี้"}
           dismissible={!mutation.pending}
           footer={
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">

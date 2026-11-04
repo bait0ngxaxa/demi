@@ -79,7 +79,7 @@ export default async function HospitalOnboardingDetailPage({
       <PageHeader
         actions={<StatusBadge variant={statusVariant[application.status]}>{statusLabel}</StatusBadge>}
         breadcrumbs={[
-          { label: "ผู้ดูแลระบบ" },
+          { label: "ผู้ดูแลระบบ DEMI" },
           { href: "/app/admin/hospital-onboarding", label: "คำขอขึ้นทะเบียนโรงพยาบาล" },
           { label: "รายละเอียดคำขอ" },
         ]}

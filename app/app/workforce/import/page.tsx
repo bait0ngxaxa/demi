@@ -8,7 +8,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 
 import { WorkforceImportWorkspace } from "../workforce-import-workspace";
 
-export const metadata: Metadata = { title: "นำเข้าบุคลากรและพิมพ์ใบเปิดใช้งาน" };
+export const metadata: Metadata = { title: "นำเข้ารายชื่อและพิมพ์ใบเปิดใช้งาน" };
 
 type WorkforceImportPageProps = {
   searchParams: Promise<{

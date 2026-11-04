@@ -84,7 +84,7 @@ export function PatientProgramDetailView({
           { href: `/app/patients/${encodeURIComponent(relationshipId)}`, label: "รายละเอียดผู้ป่วย" },
           { label: "รายละเอียดโปรแกรม" },
         ]}
-        description="ภาพรวมช่วงการดำเนินโปรแกรมของผู้ป่วยในความสัมพันธ์กับโรงพยาบาลนี้"
+        description="ภาพรวมช่วงการดำเนินโปรแกรมของผู้ป่วยภายใต้การดูแลของโรงพยาบาลนี้"
         title="รายละเอียดโปรแกรม"
       />
 
@@ -156,7 +156,7 @@ export function PatientProgramDetailView({
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {[
               ["program-service-one", "เครื่องมือ Service 1 รายครั้ง", serviceOneRecorded ? "มีบันทึกกิจกรรม" : "ยังไม่มีบันทึกกิจกรรม"],
-              ["program-goals", "แผนเป้าหมาย", goalPlanOverview.latest ? "มีแผนเป้าหมาย" : "ยังไม่มีแผนเป้าหมาย"],
+              ["program-goals", "แผนสุขภาพ", goalPlanOverview.latest ? "มีแผนสุขภาพ" : "ยังไม่มีแผนสุขภาพ"],
               ["program-followups", "การติดตามผล", followupHistory.totalCount > 0 ? "มีบันทึกการติดตามผล" : "ยังไม่มีบันทึกการติดตามผล"],
               ["program-final", "การประเมินสุดท้ายและจบโปรแกรม", finalAssessment.finalAssessment ? "มีบันทึกการประเมินสุดท้าย" : "ยังไม่มีบันทึกการประเมินสุดท้าย"],
             ].map(([id, label, state]) => (
@@ -197,11 +197,11 @@ export function PatientProgramDetailView({
             <Panel>
               <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">การดำเนินการของโปรแกรม</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                เมื่อจบแล้ว โปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกข้อมูลใน Service 1 แผนสุขภาพ
+                เมื่อจบแล้วโปรแกรมจะเปลี่ยนเป็นประวัติอ่านอย่างเดียว ไม่สามารถบันทึกข้อมูลใน Service 1 แผนสุขภาพ
                 หรือการติดตามผลเพิ่มได้ และจะไม่สามารถเปิดโปรแกรมเดิมซ้ำได้
               </p>
               <p className="mt-3 text-sm leading-6 text-text-muted">
-                การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรม ไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิก
+                การจบโปรแกรมเป็นเพียงการเปลี่ยนสถานะของโปรแกรมไม่ได้หมายถึงผลสำเร็จหรือผลลัพธ์ทางคลินิก
               </p>
               <div className="mt-5">
                 <PatientProgramCompleteControl programId={detail.programId} />
@@ -213,7 +213,7 @@ export function PatientProgramDetailView({
         <details className="border-t border-border pt-5">
           <summary className="min-h-11 cursor-pointer content-center font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">ขอบเขตของโปรแกรม</summary>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            โปรแกรมเป็นช่วงการเข้าร่วมหนึ่งรอบ ข้อมูล Service 1 แผนเป้าหมาย และการติดตามผลที่บันทึกผ่านเส้นทางนี้
+            โปรแกรมเป็นช่วงการเข้าร่วมหนึ่งรอบ ข้อมูล Service 1 แผนสุขภาพ และการติดตามผลที่บันทึกผ่านเส้นทางนี้
             อยู่ภายใต้โปรแกรมรอบนี้ ข้อมูลผู้ป่วย หลักฐานทั่วไป การประเมิน และนัดหมายยังเป็นข้อมูลคนละขอบเขต
           </p>
         </details>

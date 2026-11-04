@@ -120,13 +120,13 @@ function hospitalStatusPresentation(workspace: ApplicationHospitalWorkspace): {
   variant: "danger" | "warning" | "neutral";
 } {
   if (workspace.hospitalStatus === HospitalStatus.SUSPENDED) {
-    return { label: "ถูกระงับ", message: "ขณะนี้ไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้", variant: "danger" };
+    return { label: "โรงพยาบาลถูกระงับการใช้งาน", message: "ขณะนี้ยังทำงานในโรงพยาบาลนี้ไม่ได้", variant: "danger" };
   }
   if (workspace.hospitalStatus !== HospitalStatus.ACTIVE) {
-    return { label: "ยังไม่พร้อมใช้งาน", message: "ขณะนี้ยังไม่สามารถดำเนินงานภายใต้โรงพยาบาลนี้ได้", variant: "warning" };
+    return { label: "โรงพยาบาลยังไม่เปิดใช้งาน", message: "ขณะนี้ยังทำงานในโรงพยาบาลนี้ไม่ได้", variant: "warning" };
   }
 
-  return { label: "ไม่พร้อมใช้งาน", message: "ความสัมพันธ์กับโรงพยาบาลนี้ยังไม่เปิดให้ทำงาน", variant: "neutral" };
+  return { label: "ยังไม่มีสิทธิ์ทำงาน", message: "ขณะนี้คุณยังไม่มีสิทธิ์ทำงานในโรงพยาบาลนี้", variant: "neutral" };
 }
 
 function UnavailableHospitalList({
@@ -137,7 +137,7 @@ function UnavailableHospitalList({
   return (
     <section aria-labelledby="work-home-unavailable-heading" className="mt-8 min-w-0">
       <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="work-home-unavailable-heading">
-        โรงพยาบาลที่ยังทำงานไม่ได้
+        โรงพยาบาลที่ยังเข้าใช้งานไม่ได้
       </h2>
       <ul className="mt-3 divide-y divide-border border-y border-border">
         {hospitals.map((workspace) => {
@@ -233,13 +233,13 @@ export default async function ApplicationPage(
           {/* ADR-0019: only a direct OWNER has administration actions. */}
           {selectedHospital?.actions.some(({ category }) => category === "administration") ? (
             <p className="mt-2 text-sm leading-6 text-text-muted">
-              บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
+              บริหารโรงพยาบาล · สิทธิ์แอดมินโรงพยาบาลโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
             </p>
           ) : null}
         </>
       ) : selectedHospital ? (
         <p className="mt-7 text-sm leading-6 text-text-muted">
-          ยังไม่มีการดำเนินงานที่เปิดให้บัญชีนี้ในโรงพยาบาลนี้ ความสัมพันธ์หรือสถานะสมาชิกไม่ได้ให้สิทธิ์ดูแลผู้ป่วยโดยอัตโนมัติ
+          ยังไม่มีงานที่เปิดให้คุณทำในโรงพยาบาลนี้ การมีบัญชีหรือได้รับคำเชิญยังไม่ทำให้มีสิทธิ์ดูแลผู้ป่วยโดยอัตโนมัติ
         </p>
       ) : null}
 
@@ -277,7 +277,7 @@ export default async function ApplicationPage(
       {hasNoActions && !hasInvitations ? (
         <Alert className="mt-8" variant="neutral">
           <p className="font-semibold">ยังไม่มีการดำเนินงานที่พร้อมใช้งาน</p>
-          <p className="mt-1">เมื่อมีบทบาทและความสัมพันธ์ที่ใช้งานได้ รายการตามสิทธิ์จะแสดงที่นี่</p>
+          <p className="mt-1">เมื่อคุณมีสิทธิ์ทำงาน รายการที่คุณเข้าถึงได้จะแสดงที่นี่</p>
         </Alert>
       ) : null}
 

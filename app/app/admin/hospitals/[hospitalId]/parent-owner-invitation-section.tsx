@@ -43,9 +43,9 @@ function formatDateTime(value: string): string {
 function invitationStatus(invitation: NonNullable<ParentOwnerInvitationSectionProps["invitation"]>): InvitationStatus {
   if (invitation.delivery === "ADMIN_RESET_REQUIRED") {
     return {
-      label: "ต้องคืนบัญชีโดยผู้ดูแลระบบ",
+      label: "ต้องให้ผู้ดูแลระบบ DEMI กู้คืนบัญชี",
       variant: "danger",
-      detail: "บัญชีนี้ถูกพักไว้ ยืนยันตัวตนและรีเซ็ตรหัสผ่านด้วยเครื่องมือคืนบัญชีก่อน แล้วผู้ถูกเชิญจึงตอบรับคำเชิญได้ด้วยตนเอง",
+      detail: "บัญชีนี้ถูกพักไว้ ผู้ดูแลระบบ DEMI ต้องยืนยันตัวตนและรีเซ็ตรหัสผ่านก่อน ผู้ถูกเชิญจึงจะตอบรับคำเชิญได้ด้วยตนเอง",
     };
   }
   if (invitation.delivery === "ACCOUNT_ACCEPTANCE") {
@@ -78,7 +78,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
   const returnFocusTarget = useCallback(() => headingRef.current, []);
   const target = { hospitalId: hospital.id };
   const replacement = availability === "REPLACEMENT";
-  const title = replacement ? "เชิญผู้ดูแลโรงพยาบาลแทน" : "เชิญผู้ดูแลโรงพยาบาลคนแรก";
+  const title = replacement ? "เชิญแอดมินโรงพยาบาลคนใหม่" : "เชิญแอดมินโรงพยาบาลคนแรก";
   const manageable = availability === "FIRST_OWNER" || availability === "REPLACEMENT";
   const status = invitation ? invitationStatus(invitation) : null;
   // A pending Parent rejoins the public application list once its invitation ends; a replacement does not.
@@ -92,7 +92,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
             <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="parent-owner-invitation-heading" ref={headingRef} tabIndex={-1}>{title}</h2>
             <p className="mt-2 text-sm leading-6 text-text-muted">
               {replacement
-                ? "โรงพยาบาลนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากร อสม. และเครือข่ายของโรงพยาบาลเอง"
+                ? "โรงพยาบาลนี้ยังไม่มีแอดมินโรงพยาบาลที่ใช้งานได้ แอดมินคนใหม่จะจัดการเจ้าหน้าที่ อสม. และเครือข่ายของโรงพยาบาลเอง"
                 : "อีกทางหนึ่งนอกจากคำขอขึ้นทะเบียนสาธารณะ เมื่อผู้ถูกเชิญเปิดใช้งานหรือตอบรับ โรงพยาบาลจะเปิดใช้งานทันที ระหว่างที่คำเชิญเปิดอยู่ โรงพยาบาลจะไม่แสดงในหน้าขอขึ้นทะเบียน"}
             </p>
           </div>
@@ -103,7 +103,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
           <Alert className="mt-4" variant="info">
             <p className="font-semibold">มีคำขอขึ้นทะเบียนรอพิจารณา</p>
             <p className="mt-1">
-              ส่งคำขอเมื่อ {formatDateTime(pendingApplication.createdAt)} ต้องอนุมัติหรือปฏิเสธคำขอนี้ก่อน จึงจะเชิญผู้ดูแลจากหน้านี้ได้
+              ส่งคำขอเมื่อ {formatDateTime(pendingApplication.createdAt)} ต้องอนุมัติหรือปฏิเสธคำขอนี้ก่อน จึงจะเชิญแอดมินโรงพยาบาลจากหน้านี้ได้
             </p>
             <Link
               className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4"
@@ -122,7 +122,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
             <p className="mt-1 text-sm leading-6 text-text-muted">{status.detail}</p>
             {invitation.delivery === "ADMIN_RESET_REQUIRED" ? (
               <Link className="mt-1 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href="/app/admin/recovery">
-                เปิดเครื่องมือคืนบัญชี
+                เปิดเครื่องมือกู้คืนบัญชี
               </Link>
             ) : null}
             {/* ADR-0024: an open invitation can always be withdrawn, whatever its state or the Hospital's. */}
@@ -134,9 +134,9 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                   description: [
                     "คำเชิญและลิงก์จะใช้ไม่ได้ทันที",
                     returnsToPublicList
-                      ? "โรงพยาบาลจะกลับไปอยู่ในรายชื่อขอขึ้นทะเบียนสาธารณะ และเชิญผู้ดูแลใหม่ได้ภายหลัง"
-                      : "เชิญผู้ดูแลคนใหม่ได้ภายหลัง",
-                    invitation.delivery === "ADMIN_RESET_REQUIRED" ? "บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะคืนบัญชี" : null,
+                      ? "โรงพยาบาลจะกลับไปอยู่ในรายชื่อขอขึ้นทะเบียนสาธารณะ และเชิญแอดมินโรงพยาบาลคนใหม่ได้ภายหลัง"
+                      : "เชิญแอดมินโรงพยาบาลคนใหม่ได้ภายหลัง",
+                    invitation.delivery === "ADMIN_RESET_REQUIRED" ? "บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะกู้คืนบัญชี" : null,
                   ].filter(Boolean).join(" "),
                   confirmLabel: "ยกเลิกคำเชิญ",
                   destructive: true,
@@ -149,7 +149,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
             </div>
           </div>
         ) : props.lastDeclinedAt && manageable ? (
-          <p className="mt-4 text-sm leading-6 text-warning">ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ {formatDateTime(props.lastDeclinedAt)} · เชิญผู้ดูแลคนใหม่ได้ด้านล่าง</p>
+          <p className="mt-4 text-sm leading-6 text-warning">ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ {formatDateTime(props.lastDeclinedAt)} · เชิญแอดมินโรงพยาบาลคนใหม่ได้ด้านล่าง</p>
         ) : null}
 
         {result ? <InvitationResult audience="PLATFORM_ADMIN" state={result} /> : null}
@@ -211,7 +211,7 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                 idempotent
                 onSuccess={keepResult}
                 taskDialog={{
-                  title: `เปลี่ยนผู้ดูแล ${hospital.name}`,
+                  title: `เปลี่ยนแอดมินโรงพยาบาลของ ${hospital.name}`,
                   triggerLabel: "เปลี่ยนผู้ถูกเชิญ",
                   description: `คำเชิญและลิงก์ของ ${invitation.inviteeName} จะใช้ไม่ได้ทันที`,
                   destructive: true,
@@ -231,10 +231,10 @@ export function ParentOwnerInvitationSection(props: ParentOwnerInvitationSection
                 onSuccess={keepResult}
                 taskDialog={{
                   title,
-                  triggerLabel: replacement ? "เชิญผู้ดูแลคนใหม่" : "ระบุข้อมูลผู้ดูแล",
+                  triggerLabel: replacement ? "เชิญแอดมินโรงพยาบาลคนใหม่" : "ระบุข้อมูลแอดมินโรงพยาบาล",
                   description: replacement
-                    ? "โรงพยาบาลนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากร อสม. และเครือข่ายของโรงพยาบาลเอง"
-                    : "กรอกข้อมูลผู้ดูแลคนแรกและเลือกวิธีส่งมอบคำเชิญ",
+                    ? "โรงพยาบาลนี้ยังไม่มีแอดมินโรงพยาบาลที่ใช้งานได้ แอดมินคนใหม่จะจัดการเจ้าหน้าที่ อสม. และเครือข่ายของโรงพยาบาลเอง"
+                    : "กรอกข้อมูลแอดมินโรงพยาบาลคนแรกและเลือกวิธีส่งมอบคำเชิญ",
                   initialFocusRef: inviteeNationalIdRef,
                   returnFocusTarget,
                 }}

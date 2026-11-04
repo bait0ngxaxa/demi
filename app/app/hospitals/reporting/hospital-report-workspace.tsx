@@ -59,7 +59,7 @@ function unavailableText(reason: HospitalReportProgramRow["unavailable"][keyof H
   switch (reason) {
     case "SOURCE_MISSING": return "ไม่มีแหล่งข้อมูลในระบบ";
     case "CLINICAL_SEMANTICS_UNAPPROVED": return "มีข้อมูลต้นทาง แต่ความหมายหรือหน่วยยังไม่ได้รับรอง";
-    case "NOT_PROGRAM_SCOPED": return "ข้อมูลที่มีไม่ได้ผูกกับ Program นี้";
+    case "NOT_PROGRAM_SCOPED": return "ข้อมูลที่มีไม่ได้ผูกกับโปรแกรมนี้";
     case "DERIVATION_UNAPPROVED": return "ยังไม่มีสูตรคำนวณที่ได้รับรอง";
   }
 }
@@ -77,7 +77,7 @@ function promsReportText(proms: HospitalReportProgramRow["screening"]["proms"]):
 }
 
 function recordText<T>(record: { state: "PRESENT"; value: T } | { state: "MISSING" }): string {
-  return record.state === "PRESENT" ? "มีบันทึก" : "ไม่มีบันทึกใน Program นี้";
+  return record.state === "PRESENT" ? "มีบันทึก" : "ไม่มีบันทึกในโปรแกรมนี้";
 }
 
 function displayDate(value: string): string {
@@ -98,7 +98,7 @@ function displayDateTime(value: string): string {
 function hierarchyStatusLabel(status: HospitalHierarchyContext["hospital"]["status"]): string {
   switch (status) {
     case "ACTIVE": return "ใช้งานอยู่";
-    case "SUSPENDED": return "ถูกระงับ";
+    case "SUSPENDED": return "ระงับการใช้งาน";
     case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
     case "RETIRED": return "ถอนออกจากรายชื่อ";
   }
@@ -176,13 +176,13 @@ function ProgramContext({ program }: { program: HospitalReportProgramRow }): Rea
   const completedAt = program.lifecycle.completedAt.state === "RECORDED"
     ? displayDate(program.lifecycle.completedAt.value)
     : program.lifecycle.status === "ACTIVE"
-      ? "Program กำลังดำเนินอยู่"
+      ? "โปรแกรมกำลังดำเนินอยู่"
       : "ยังไม่บันทึกวันที่สิ้นสุด";
 
   return (
     <dl className="grid min-w-0 gap-x-6 gap-y-3 border-b border-border pb-5 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
       <div className="min-w-0"><dt className="text-sm text-text-muted">รหัสผู้ป่วยในโรงพยาบาล</dt><dd className="mt-1 break-words font-medium">{hospitalNumber}</dd></div>
-      <div className="min-w-0"><dt className="text-sm text-text-muted">เริ่ม Program</dt><dd className="mt-1 break-words font-medium">{displayDate(program.lifecycle.startedAt)}</dd></div>
+      <div className="min-w-0"><dt className="text-sm text-text-muted">เริ่มโปรแกรม</dt><dd className="mt-1 break-words font-medium">{displayDate(program.lifecycle.startedAt)}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">วันที่สิ้นสุด</dt><dd className="mt-1 break-words font-medium">{completedAt}</dd></div>
       <div className="min-w-0"><dt className="text-sm text-text-muted">อสม. ที่มอบหมายปัจจุบัน</dt><dd className="mt-1 break-words font-medium">{program.currentRelationshipOsmAssignment.state === "PRESENT" ? program.currentRelationshipOsmAssignment.value.displayName : "ไม่มีการมอบหมายปัจจุบัน"}</dd></div>
     </dl>
@@ -201,11 +201,11 @@ function ProgramDetailAccess({
       className={buttonClassName({ variant: "secondary", size: "compact" })}
       href={`/app/patients/${program.patientHospitalRelationshipId}/programs/${program.patientProgramId}/report`}
     >
-      เปิดรายละเอียด Program
+      เปิดรายละเอียดโปรแกรม
     </Link>
   ) : (
     <p className="text-right text-xs leading-5 text-text-muted">
-      การดูรายละเอียด Program ต้องมีสิทธิ์ในโรงพยาบาลโดยตรง
+      การดูรายละเอียดโปรแกรมต้องมีสิทธิ์ในโรงพยาบาลโดยตรง
     </p>
   );
 }
@@ -224,7 +224,7 @@ function ProgramOverview({
           <h3 className="break-words text-lg font-semibold text-text" id={`overview-program-${program.patientProgramId}`}>{program.patient.displayName}</h3>
         </div>
         <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>
-          {program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "สิ้นสุด Program แล้ว"}
+          {program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}
         </StatusBadge>
       </div>
 
@@ -239,16 +239,16 @@ function ProgramOverview({
               <MeasurementList measurements={program.baseline.value.measurements} />
               <p className="mt-3 text-sm text-text-muted">ส่วนสูง: {factText(program.baseline.value.heightCm)}{program.baseline.value.heightCm.state === "RECORDED" ? " ซม." : ""}</p>
             </>
-          ) : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
+          ) : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้</p>}
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
-            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.cvdRiskScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
-            <li>HbA1c (%): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.hba1c) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
-            <li>BMI (kg/m²): {program.baseline.state === "PRESENT" ? factText(program.bmi.baseline) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
+            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.cvdRiskScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้"}</li>
+            <li>HbA1c (%): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.hba1c) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้"}</li>
+            <li>BMI (kg/m²): {program.baseline.state === "PRESENT" ? factText(program.bmi.baseline) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้"}</li>
           </ul>
         </section>
 
         <section aria-labelledby={`during-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
-          <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่าง Program · การติดตามผล</h4>
+          <h4 className="mb-3 font-semibold text-text" id={`during-${program.patientProgramId}`}>ระหว่างโปรแกรม · การติดตามผล</h4>
           <ul className="mb-4 space-y-1 text-sm text-text-muted">
             {([["ครั้งที่ 1", program.roundVitals.round1], ["ครั้งที่ 2", program.roundVitals.round2]] as const).map(([label, vitals]) => (
               <li key={label}>
@@ -257,7 +257,7 @@ function ProgramOverview({
               </li>
             ))}
           </ul>
-          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : (
+          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลในโปรแกรมนี้</p> : (
             <ol className="space-y-4">
               {program.followups.items.map((followup) => (
                 <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={followup.id}>
@@ -267,28 +267,28 @@ function ProgramOverview({
               ))}
             </ol>
           )}
-          {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูรายละเอียดทั้งหมดได้ที่รายงาน Program" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
+          {program.followups.hasMore ? <p className="mt-2 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูรายละเอียดทั้งหมดได้ที่รายงานโปรแกรม" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
         </section>
 
         <section aria-labelledby={`after-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5 @5xl/workspace:border-l @5xl/workspace:border-t-0 @5xl/workspace:pl-6 @5xl/workspace:pt-0">
-          <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลัง Program · การประเมินครั้งสุดท้าย</h4>
+          <h4 className="mb-3 font-semibold text-text" id={`after-${program.patientProgramId}`}>หลังจบโปรแกรม · การประเมินครั้งสุดท้าย</h4>
           {program.finalAssessment.state === "PRESENT" ? (
             <>
               <p className="mb-3 text-sm text-text-muted">วันที่ประเมิน {program.finalAssessment.value.serviceDate ?? "ไม่ได้บันทึก"} · บันทึกวันที่ {displayDateTime(program.finalAssessment.value.recordedAt)}</p>
               <MeasurementList measurements={program.finalAssessment.value.measurements} />
             </>
-          ) : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
+          ) : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบโปรแกรมที่บันทึกไว้</p>}
           <ul className="mt-3 space-y-1 text-sm text-text-muted">
-            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.cvdRiskScore) : "ไม่มีการประเมินหลังจบ Program"}</li>
-            <li>HbA1c (%): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.hba1c) : "ไม่มีการประเมินหลังจบ Program"}</li>
-            <li>BMI (kg/m²): {program.finalAssessment.state === "PRESENT" ? factText(program.bmi.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>ความเสี่ยงโรคหัวใจและหลอดเลือด (CVD Risk %): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.cvdRiskScore) : "ไม่มีการประเมินหลังจบโปรแกรม"}</li>
+            <li>HbA1c (%): {program.finalAssessment.state === "PRESENT" ? factText(program.finalAssessment.value.hba1c) : "ไม่มีการประเมินหลังจบโปรแกรม"}</li>
+            <li>BMI (kg/m²): {program.finalAssessment.state === "PRESENT" ? factText(program.bmi.after) : "ไม่มีการประเมินหลังจบโปรแกรม"}</li>
             <li>ส่วนสูงล่าสุดที่บันทึก (ใช้คำนวณ BMI): {factText(program.latestHeightCm)}</li>
           </ul>
         </section>
       </div>
 
       <div className="mt-5 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"} · สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก</p>
+        <p className="break-words text-xs text-text-muted">ระยะเวลาที่ป่วย: {program.illnessDuration.state === "RECORDED" ? `${program.illnessDuration.value} ปี` : "ไม่ทราบปีวินิจฉัย"} · สถานะโปรแกรมไม่ใช่ผลลัพธ์ทางคลินิก</p>
         <ProgramDetailAccess allowed={allowProgramDetail} program={program} />
       </div>
     </Panel>
@@ -370,24 +370,24 @@ function ServiceProgram({
     <Panel aria-labelledby={`service-program-${program.patientProgramId}`} className="p-5 sm:p-6">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0"><h3 className="break-words text-lg font-semibold text-text" id={`service-program-${program.patientProgramId}`}>{program.patient.displayName}</h3></div>
-        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "สิ้นสุด Program แล้ว"}</StatusBadge>
+        <StatusBadge variant={program.lifecycle.status === "ACTIVE" ? "info" : "neutral"}>{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}</StatusBadge>
       </div>
       <ProgramContext program={program} />
 
       <div className="grid min-w-0 gap-6 pt-5 @5xl/workspace:grid-cols-2">
         <section aria-labelledby={`service-before-${program.patientProgramId}`} className="min-w-0">
           <h4 className="mb-3 font-semibold text-text" id={`service-before-${program.patientProgramId}`}>ก่อนเริ่ม · ข้อมูลตั้งต้น</h4>
-          {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้</p>}
+          {program.baseline.state === "PRESENT" ? <MeasurementList measurements={program.baseline.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>แบบประเมิน PAM: {program.screening.pam.state === "PRESENT" ? `คะแนน ${program.screening.pam.value.score}` : "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1"}</li>
             <li>แบบประเมิน PROMs: {promsReportText(program.screening.proms)}</li>
-            <li>ไม้บรรทัดวัดใจ (0–10): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับ Program นี้"}</li>
+            <li>ไม้บรรทัดวัดใจ (0–10): {program.baseline.state === "PRESENT" ? factText(program.baseline.value.confidenceScore) : "ไม่มีข้อมูลตั้งต้นที่เชื่อมกับโปรแกรมนี้"}</li>
             <li>เวลาออกกำลังกายต่อสัปดาห์: {weeklyExerciseText(program.weeklyExercise.before)}</li>
           </ul>
-          <h4 className="mb-3 mt-6 font-semibold text-text">หลัง Program · ข้อมูลการประเมิน</h4>
-          {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบ Program ที่บันทึกไว้</p>}
+          <h4 className="mb-3 mt-6 font-semibold text-text">หลังจบโปรแกรม · ข้อมูลการประเมิน</h4>
+          {program.finalAssessment.state === "PRESENT" ? <MeasurementList measurements={program.finalAssessment.value.measurements} /> : <p className="text-sm text-text-muted">ไม่มีการประเมินหลังจบโปรแกรมที่บันทึกไว้</p>}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
-            <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบ Program"}</li>
+            <li>เวลาออกกำลังกายต่อสัปดาห์: {program.finalAssessment.state === "PRESENT" ? weeklyExerciseText(program.weeklyExercise.after) : "ไม่มีการประเมินหลังจบโปรแกรม"}</li>
             <li>จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: {achievementOver70Text(program)}</li>
           </ul>
         </section>
@@ -400,7 +400,7 @@ function ServiceProgram({
 
         <section aria-labelledby={`service-goal-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
           <h4 className="mb-3 font-semibold text-text" id={`service-goal-${program.patientProgramId}`}>บริการ 2 · ทำแผนสุขภาพ</h4>
-          {goalPlans.length === 0 ? <p className="text-sm text-text-muted">ไม่มีแผนสุขภาพที่ผูกกับ Program นี้</p> : (
+          {goalPlans.length === 0 ? <p className="text-sm text-text-muted">ไม่มีแผนสุขภาพที่ผูกกับโปรแกรมนี้</p> : (
             <ol className="space-y-4">
               {goalPlans.map((plan) => (
                 <li className="min-w-0 border-b border-border pb-4 last:border-b-0" key={plan.id}>
@@ -419,14 +419,14 @@ function ServiceProgram({
               ))}
             </ol>
           )}
-          {program.goalPlans.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {goalPlans.length} จาก {program.goalPlans.totalCount} แผน · {allowProgramDetail ? "เปิดรายละเอียด Program เพื่อดูรายการทั้งหมด" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
+          {program.goalPlans.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {goalPlans.length} จาก {program.goalPlans.totalCount} แผน · {allowProgramDetail ? "เปิดรายละเอียดโปรแกรมเพื่อดูรายการทั้งหมด" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <p className="mt-3 text-sm text-text-muted">ค่าในแผนเป็นเป้าหมายที่บันทึก ไม่ใช่ผลการปฏิบัติ</p>
         </section>
 
         <section aria-labelledby={`service-followup-${program.patientProgramId}`} className="min-w-0 border-t border-border pt-5">
           <h4 className="mb-3 font-semibold text-text" id={`service-followup-${program.patientProgramId}`}>บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า</h4>
-          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลใน Program นี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
-          {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูทั้งหมดในรายละเอียด Program หรือไฟล์ Excel" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
+          {program.followups.items.length === 0 ? <p className="text-sm text-text-muted">ยังไม่มีบันทึกติดตามผลในโปรแกรมนี้</p> : <ol><>{program.followups.items.map((followup) => <ServiceFollowup followup={followup} key={followup.id} />)}</></ol>}
+          {program.followups.hasMore ? <p className="mt-3 text-sm text-text-muted">แสดง {program.followups.items.length} จาก {program.followups.totalCount} รายการ · {allowProgramDetail ? "ดูทั้งหมดในรายละเอียดโปรแกรมหรือไฟล์ Excel" : "ดูรายการทั้งหมดได้ในไฟล์ Excel"}</p> : null}
           <ul className="mt-4 space-y-1 text-sm text-text-muted">
             <li>ผลลัพธ์ที่ได้: {unavailableText(program.unavailable.outcome)}</li>
           </ul>
@@ -449,7 +449,7 @@ function CompactProgram({ program, view, allowProgramDetail }: {
         <span className="min-w-0 break-words font-semibold">{program.patient.displayName}<span className="mt-1 block text-xs font-normal text-text-muted">กดเพื่อดูรายละเอียด</span></span>
         <span className="min-w-0 break-words text-sm">HN: {factText(program.patient.hospitalNumber)}</span>
         <span className="min-w-0 break-words text-sm">อสม.: {program.currentRelationshipOsmAssignment.state === "PRESENT" ? program.currentRelationshipOsmAssignment.value.displayName : "ยังไม่มอบหมาย"}</span>
-        <span className="text-sm">{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนิน Program" : "สิ้นสุด Program แล้ว"}</span>
+        <span className="text-sm">{program.lifecycle.status === "ACTIVE" ? "กำลังดำเนินโปรแกรม" : "สิ้นสุดโปรแกรมแล้ว"}</span>
         <span className="text-sm tabular-nums">จัดบริการแล้ว {program.completedRounds} ครั้ง</span>
         <span className="text-sm">บริการล่าสุด: {program.latestServiceDate ? displayDate(program.latestServiceDate) : "ยังไม่บันทึก"}</span>
       </span>
@@ -578,8 +578,8 @@ export function HospitalReportWorkspace({
           ? [{ label: "หน้าหลัก", href: "/app" }, { label: "รายงานระบบ", href: "/app/admin/reporting" }, { label: "รายงานโรงพยาบาล" }]
           : [{ label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` }, { label: "รายงานโรงพยาบาล" }]}
         description={isGlobalAdmin
-          ? "ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น"
-          : "ดูข้อมูลผู้ป่วยตาม Program และตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
+          ? "ดูรายงานผู้ป่วยและโปรแกรมของโรงพยาบาลที่เลือกเท่านั้น"
+          : "ดูข้อมูลผู้ป่วยตามโปรแกรมและตรวจว่ามีการบันทึกขั้นตอนบริการใดไว้บ้าง"}
         title="รายงานโรงพยาบาล"
       />
 
@@ -633,11 +633,11 @@ export function HospitalReportWorkspace({
         )}
 
         <dl aria-label="ตัวเลขสรุปของรายงาน" className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @3xl/workspace:grid-cols-3 @7xl/workspace:grid-cols-6">
-          <SummaryMetric hint="นับการเชื่อมโยงผู้ป่วยกับโรงพยาบาล ไม่ใช่จำนวนผู้ป่วยที่ไม่ซ้ำกัน" label="ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล" value={page.counts.patientHospitalRelationships.value} />
-          <SummaryMetric hint="ผู้ป่วยหนึ่งคนอาจมีหลาย Program" label="Program ทั้งหมด" value={page.counts.programs.total} />
-          <SummaryMetric hint="สถานะ Program ไม่ใช่ผลลัพธ์ทางคลินิก" label="Program ที่กำลังดำเนิน" value={page.counts.programs.active} />
-          <SummaryMetric hint="สิ้นสุดแล้วไม่ได้หมายถึงประสบความสำเร็จทางการรักษา" label="Program ที่สิ้นสุดแล้ว" value={page.counts.programs.completed} />
-          <SummaryMetric hint="ไม่มีการสร้างรายการ Program ขึ้นเอง" label="ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program" value={page.counts.relationshipsWithoutProgram.value} />
+          <SummaryMetric hint="นับแยกตามโรงพยาบาล ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ" label="รายการผู้ป่วยในโรงพยาบาล" value={page.counts.patientHospitalRelationships.value} />
+          <SummaryMetric hint="ผู้ป่วยหนึ่งคนอาจมีหลายโปรแกรม" label="โปรแกรมทั้งหมด" value={page.counts.programs.total} />
+          <SummaryMetric hint="สถานะโปรแกรมไม่ใช่ผลลัพธ์ทางคลินิก" label="โปรแกรมที่กำลังดำเนิน" value={page.counts.programs.active} />
+          <SummaryMetric hint="สิ้นสุดแล้วไม่ได้หมายถึงประสบความสำเร็จทางการรักษา" label="โปรแกรมที่สิ้นสุดแล้ว" value={page.counts.programs.completed} />
+          <SummaryMetric hint="นับรายการผู้ป่วยที่ยังไม่มีโปรแกรมในโรงพยาบาลนี้" label="รายการผู้ป่วยที่ยังไม่มีโปรแกรม" value={page.counts.relationshipsWithoutProgram.value} />
           <div className="min-w-0 rounded-panel border border-border bg-surface p-4 sm:p-5">
             <dt className="text-sm text-text-muted">DM / Pre-DM</dt>
             <dd className="mt-1 font-semibold text-text">ยังสรุปไม่ได้</dd>
@@ -649,7 +649,7 @@ export function HospitalReportWorkspace({
       <section aria-labelledby="hospital-report-charts-heading" className="mt-8">
         <h2 className="text-lg font-semibold text-text" id="hospital-report-charts-heading">ภาพรวมการจัดบริการ</h2>
         <p className="mt-1 max-w-4xl text-sm leading-6 text-text-muted">
-          ตัวเลขทุกค่าในส่วนนี้นับจาก Program ทั้งหมดของชุดข้อมูลที่เลือก ไม่เปลี่ยนตามการค้นหา ตัวกรอง หรือหน้ารายการด้านล่าง
+          ตัวเลขทุกค่าในส่วนนี้นับจากโปรแกรมทั้งหมดของชุดข้อมูลที่เลือก ไม่เปลี่ยนตามการค้นหา ตัวกรอง หรือหน้ารายการด้านล่าง
         </p>
         <div className="mt-4 grid min-w-0 gap-4 @5xl/workspace:grid-cols-2">
           <ProgramStatusDonut
@@ -661,9 +661,9 @@ export function HospitalReportWorkspace({
           <CountBarChart
             categories={serviceProcessCategories(page.serviceProcess)}
             description={SERVICE_PROCESS_CHART_DESCRIPTION}
-            emptyMessage="ยังไม่มี Program ที่มีบันทึกกิจกรรมเหล่านี้"
+            emptyMessage="ยังไม่มีโปรแกรมที่มีบันทึกกิจกรรมเหล่านี้"
             headingId="hospital-report-service-process-chart"
-            listLabel="จำนวน Program ที่มีบันทึกกิจกรรมแต่ละประเภท"
+            listLabel="จำนวนโปรแกรมที่มีบันทึกกิจกรรมแต่ละประเภท"
             note={serviceProcessNote(page.counts.programs.total)}
             scaleMax={page.counts.programs.total}
             title="บันทึกกิจกรรมบริการ 1"
@@ -672,10 +672,10 @@ export function HospitalReportWorkspace({
         <div className="mt-4">
           <CountBarChart
             categories={roundProgressCategories(page.roundProgress, (progress) => `${cohortHref}&progress=${progress}&view=${view}`)}
-            description="แต่ละ Program อยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับ Program ทั้งหมดในชุดข้อมูลนี้ กดชื่อกลุ่มเพื่อกรองรายการ Program ด้านล่าง"
-            emptyMessage="ยังไม่มี Program ในชุดข้อมูลนี้"
+            description="แต่ละโปรแกรมอยู่ในกลุ่มเดียว รวมทุกกลุ่มเท่ากับโปรแกรมทั้งหมดในชุดข้อมูลนี้ กดชื่อกลุ่มเพื่อกรองรายการโปรแกรมด้านล่าง"
+            emptyMessage="ยังไม่มีโปรแกรมในชุดข้อมูลนี้"
             headingId="hospital-report-round-progress-chart"
-            listLabel="จำนวน Program แยกตามความคืบหน้ารอบบริการ"
+            listLabel="จำนวนโปรแกรมแยกตามความคืบหน้ารอบบริการ"
             title="ความคืบหน้ารอบบริการ"
           />
         </div>
@@ -695,9 +695,9 @@ export function HospitalReportWorkspace({
         {includesEnded ? <input type="hidden" name="cohort" value="INCLUDE_ENDED" /> : null}
         <label className="min-w-0 text-sm">ชื่อผู้ป่วย / HN<input type="search" name="search" maxLength={100} defaultValue={page.filters.search} key={page.filters.search} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring" /></label>
         <label className="min-w-0 text-sm">ความคืบหน้า<select name="progress" defaultValue={page.filters.progress} key={page.filters.progress} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring">
-          <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>{round === 6 ? "ครบอย่างน้อย 6 รอบ" : `ครบ ${round} รอบ`}</option>)}<option value="AFTER_RECORDED">บันทึก After แล้ว · รอจบ Program</option><option value="COMPLETED">สิ้นสุด Program</option>
+          <option value="">ทุกรอบ</option>{Array.from({ length: 7 }, (_, round) => <option value={round} key={round}>{round === 6 ? "ครบอย่างน้อย 6 รอบ" : `ครบ ${round} รอบ`}</option>)}<option value="AFTER_RECORDED">บันทึก After แล้ว · รอจบโปรแกรม</option><option value="COMPLETED">สิ้นสุดโปรแกรม</option>
         </select></label>
-        <label className="min-w-0 text-sm">สถานะ Program<select name="status" defaultValue={page.filters.status} key={page.filters.status} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring"><option value="">ทุกสถานะ</option><option value="ACTIVE">กำลังดำเนิน</option><option value="COMPLETED">สิ้นสุดแล้ว</option></select></label>
+        <label className="min-w-0 text-sm">สถานะโปรแกรม<select name="status" defaultValue={page.filters.status} key={page.filters.status} className="mt-2 min-h-12 w-full rounded-control border border-border-strong bg-surface px-3 focus-visible:ring-4 focus-visible:ring-focus-ring"><option value="">ทุกสถานะ</option><option value="ACTIVE">กำลังดำเนิน</option><option value="COMPLETED">สิ้นสุดแล้ว</option></select></label>
         <div className="flex flex-wrap items-end gap-2"><PendingSubmitButton pendingLabel="กำลังค้นหา..." variant="secondary">ค้นหา / กรอง</PendingSubmitButton><Link className={buttonClassName({ variant: "secondary" })} href={`${cohortHref}&view=${view}`}>ล้างตัวกรอง</Link></div>
       </Form>
 
@@ -712,7 +712,7 @@ export function HospitalReportWorkspace({
           </h2>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-text-muted">
             {view === "overview"
-              ? "แต่ละแถวแสดงข้อมูลหนึ่ง Program กดเพื่อขยายรายละเอียด ผู้ป่วยคนเดียวอาจมีหลาย Program; ระบบจะแจ้งเมื่อข้อมูลยังไม่ถูกบันทึกหรือไม่มีแหล่งข้อมูลรองรับ"
+              ? "แต่ละแถวแสดงข้อมูลของหนึ่งโปรแกรม กดเพื่อขยายรายละเอียด ผู้ป่วยคนเดียวอาจมีหลายโปรแกรม ระบบจะแจ้งเมื่อข้อมูลยังไม่ถูกบันทึกหรือไม่มีแหล่งข้อมูลรองรับ"
               : "ตรวจการมีบันทึกของแต่ละบริการ เป้าหมายที่ตั้งไว้ และความคืบหน้าที่บันทึกไว้ โดยการมีบันทึกไม่ยืนยันว่าบริการส่งมอบหรือเกิดผลสำเร็จ"}
           </p>
         </div>
@@ -721,17 +721,17 @@ export function HospitalReportWorkspace({
 
         {page.page.items.length === 0 && page.counts.programs.total === 0 ? (
           <Panel>
-            <h3 className="font-semibold text-text">ยังไม่มี Program ที่รายงานได้</h3>
+            <h3 className="font-semibold text-text">ยังไม่มีโปรแกรมที่รายงานได้</h3>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
               {page.counts.patientHospitalRelationships.value === 0
-                ? "ยังไม่มีผู้ป่วยที่เชื่อมกับโรงพยาบาลนี้"
-                : `มีความสัมพันธ์ผู้ป่วย ${page.counts.relationshipsWithoutProgram.value.toLocaleString("th-TH")} รายที่ยังไม่มี Program จึงไม่มีรายการ Program ให้แสดง`}
+                ? "ยังไม่มีรายการผู้ป่วยในโรงพยาบาลนี้"
+                : `พบรายการผู้ป่วยที่ยังไม่มีโปรแกรม ${page.counts.relationshipsWithoutProgram.value.toLocaleString("th-TH")} รายการ จึงไม่มีโปรแกรมให้แสดง`}
             </p>
           </Panel>
         ) : page.page.items.length === 0 ? (
           <Panel>
-            <h3 className="font-semibold text-text">ไม่พบ Program ตามเงื่อนไขนี้</h3>
-            <p className="mt-2 text-sm leading-6 text-text-muted">ยังมี Program {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ ลองล้างตัวกรองหรือค้นหาด้วยชื่อ / HN อื่น</p>
+            <h3 className="font-semibold text-text">ไม่พบโปรแกรมตามเงื่อนไขนี้</h3>
+            <p className="mt-2 text-sm leading-6 text-text-muted">ยังมีโปรแกรม {page.counts.programs.total.toLocaleString("th-TH")} รายการในโรงพยาบาลนี้ ลองล้างตัวกรองหรือค้นหาด้วยชื่อ / HN อื่น</p>
             <Link className={`${buttonClassName({ variant: "secondary" })} mt-4`} href={`${baseHref}&view=${view}`} prefetch={false}>กลับไปหน้าแรก</Link>
           </Panel>
         ) : (
@@ -741,9 +741,9 @@ export function HospitalReportWorkspace({
         )}
       </section>
 
-      <nav aria-label="หน้ารายการ Program ของรายงานโรงพยาบาล" className="mt-5 flex flex-wrap items-center justify-between gap-3">
+      <nav aria-label="หน้ารายการโปรแกรมของรายงานโรงพยาบาล" className="mt-5 flex flex-wrap items-center justify-between gap-3">
         {page.page.previousCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.previousCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="prev">หน้าก่อนหน้า</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าก่อนหน้า</span>}
-        <p className="text-sm text-text-muted">หน้า {page.page.number} จาก {Math.max(1, Math.ceil(page.page.total / page.page.pageSize))} · {page.page.total.toLocaleString("th-TH")} Program</p>
+        <p className="text-sm text-text-muted">หน้า {page.page.number} จาก {Math.max(1, Math.ceil(page.page.total / page.page.pageSize))} · {page.page.total.toLocaleString("th-TH")} โปรแกรม</p>
         {page.page.nextCursor ? <Link className={buttonClassName({ variant: "secondary" })} href={`${baseHref}&cursor=${encodeURIComponent(page.page.nextCursor)}&pageSize=${page.page.pageSize}&view=${view}`} prefetch={false} rel="next">หน้าถัดไป</Link> : <span aria-disabled="true" className="text-sm text-text-muted">หน้าถัดไป</span>}
       </nav>
       <p className="mt-4 text-xs leading-5 text-text-muted">ชื่อ อสม. แสดงเฉพาะผู้ที่ได้รับมอบหมายให้ดูแลผู้ป่วยรายนี้ในปัจจุบัน รายงานนี้ไม่มีข้อมูลผู้ดูแลย้อนหลังของบริการ</p>

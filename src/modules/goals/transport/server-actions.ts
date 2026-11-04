@@ -147,7 +147,7 @@ function mapGoalPlanError(error: unknown): {
     if (error.code === "FORBIDDEN" || error.code === "UNAUTHENTICATED") {
       return {
         code: "FORBIDDEN",
-        message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนเป้าหมายสำหรับผู้ป่วยรายนี้",
+        message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนสุขภาพให้ผู้ป่วยรายนี้",
       };
     }
 
@@ -156,7 +156,7 @@ function mapGoalPlanError(error: unknown): {
         code: "CONFLICT",
         message:
           roundConflictMessage(error) ??
-          "การบันทึกแผนเป้าหมายนี้เสร็จสิ้นแล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาเริ่มรอบใหม่",
+          "บันทึกแผนสุขภาพนี้แล้ว หรือข้อมูลเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุด",
       };
     }
 
@@ -170,7 +170,7 @@ function mapGoalPlanError(error: unknown): {
 
   return {
     code: "UNAVAILABLE",
-    message: "ระบบไม่พร้อมบันทึกแผนเป้าหมายในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    message: "ระบบไม่พร้อมบันทึกแผนสุขภาพในขณะนี้ กรุณาลองใหม่อีกครั้ง",
   };
 }
 

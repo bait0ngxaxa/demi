@@ -33,7 +33,7 @@ function revalidateUserViews(): void {
 
 const isRefusal = (error: unknown): boolean => error instanceof ForbiddenError || error instanceof UnauthenticatedError;
 
-/** UM-D2a "ลบรายการ". Only an explicit server outcome is reported as confirmed. */
+/** UM-D2a. Only an explicit server outcome is reported as confirmed. */
 export async function deleteUserRecordAction(
   _state: UserRecordDeletionActionState,
   form: FormData,
@@ -42,30 +42,30 @@ export async function deleteUserRecordAction(
     const actor = await getProtectedApplicationActor();
     await deleteUnusedUserRecord(actor, Object.fromEntries(form.entries()));
     revalidateUserViews();
-    return { success: true, outcome: "DELETED", blockers: [], message: "ลบรายการแล้ว หากเลขบัตรประชาชนผิด เพิ่มรายการใหม่ด้วยเลขที่ถูกต้องได้ทันที" };
+    return { success: true, outcome: "DELETED", blockers: [], message: "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งานแล้ว หากเลขบัตรประชาชนผิด เพิ่มข้อมูลใหม่ด้วยเลขที่ถูกต้องได้" };
   } catch (error: unknown) {
     if (error instanceof UserRecordNotDeletableError) {
-      return { success: false, outcome: "NOT_DELETABLE", blockers: [...error.blockers], message: "ลบรายการนี้ไม่ได้ ใช้ “นำออกจากระบบ” แทน" };
+      return { success: false, outcome: "NOT_DELETABLE", blockers: [...error.blockers], message: "ลบข้อมูลผู้ใช้นี้ไม่ได้ โปรดดูเหตุผลด้านบน" };
     }
     if (error instanceof ConflictError) {
-      return { success: false, outcome: "CONFLICT", blockers: [], message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดหน้าใหม่ก่อนดำเนินการ" };
+      return { success: false, outcome: "CONFLICT", blockers: [], message: "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดหน้าใหม่ก่อนลบ" };
     }
     if (error instanceof NotFoundError) {
-      return { success: false, outcome: "NOT_FOUND", blockers: [], message: "ไม่พบรายการนี้แล้ว อาจถูกลบไปก่อนหน้า" };
+      return { success: false, outcome: "NOT_FOUND", blockers: [], message: "ไม่พบข้อมูลผู้ใช้นี้แล้ว อาจถูกลบไปก่อนหน้า" };
     }
     if (error instanceof ValidationError) {
-      return { success: false, outcome: "INVALID_CONFIRMATION", blockers: [], message: "กรุณาพิมพ์ ลบรายการ เพื่อยืนยัน" };
+      return { success: false, outcome: "INVALID_CONFIRMATION", blockers: [], message: "กรุณาพิมพ์ ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน เพื่อยืนยัน" };
     }
     return {
       success: false,
       outcome: isRefusal(error) ? "FORBIDDEN" : "UNAVAILABLE",
       blockers: [],
-      message: "ดำเนินการไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง",
+      message: "ลบข้อมูลผู้ใช้ไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง",
     };
   }
 }
 
-/** UM-D5 "บัญชีนี้ไม่ใช่เจ้าของจริง". A repeat only retries the provider session revocation. */
+/** UM-D5 suspected account misuse. A repeat only retries provider-session revocation. */
 export async function lockSuspectedTakeoverAction(
   _state: UserTakeoverActionState,
   form: FormData,
@@ -80,25 +80,25 @@ export async function lockSuspectedTakeoverAction(
       outcome: "LOCKED",
       providerState: result.providerState,
       message: confirmed
-        ? "ล็อกบัญชีแล้ว ผู้ที่ใช้บัญชีนี้ถูกตัดออกจากระบบ"
-        : "ล็อกบัญชีในระบบแล้ว แต่ยังยืนยันการยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ กรุณากดซ้ำเพื่อลองอีกครั้ง",
+        ? "ล็อกบัญชีใน DEMI แล้ว และยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการแล้ว"
+        : "ล็อกบัญชีใน DEMI แล้ว แต่ยังยืนยันการยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ กรุณากดซ้ำเพื่อลองอีกครั้ง",
     };
   } catch (error: unknown) {
     const refused = (outcome: UserTakeoverActionState["outcome"], message: string): UserTakeoverActionState =>
       ({ success: false, outcome, providerState: null, message });
     if (error instanceof UserTakeoverRequiresAdminError) {
-      return refused("REQUIRES_ADMIN", "บัญชีนี้เชื่อมกับโรงพยาบาลอื่นด้วย กรุณาติดต่อผู้ดูแลระบบ");
+      return refused("REQUIRES_ADMIN", "กรณีนี้ต้องให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อน");
     }
     if (error instanceof UserTakeoverNotEligibleError) {
-      return refused("NOT_ELIGIBLE", "บัญชีนี้ล็อกไม่ได้ (ยังไม่เปิดใช้งาน นำออกแล้ว หรือเป็นเจ้าของโรงพยาบาล)");
+      return refused("NOT_ELIGIBLE", "ไม่สามารถล็อกบัญชีนี้ได้ตามเงื่อนไขที่กำหนด");
     }
     if (error instanceof ConflictError || error instanceof NotFoundError) {
       return refused("CONFLICT", "ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดหน้าใหม่ก่อนดำเนินการ");
     }
     if (error instanceof ValidationError) {
-      return refused("INVALID_CONFIRMATION", "กรุณาพิมพ์ ไม่ใช่เจ้าของจริง เพื่อยืนยัน");
+      return refused("INVALID_CONFIRMATION", "กรุณาพิมพ์ สงสัยว่ามีผู้อื่นใช้บัญชีนี้ เพื่อยืนยัน");
     }
-    return refused(isRefusal(error) ? "FORBIDDEN" : "UNAVAILABLE", "ดำเนินการไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง");
+    return refused(isRefusal(error) ? "FORBIDDEN" : "UNAVAILABLE", "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้ไม่ได้ กรุณาตรวจสอบสิทธิ์หรือลองใหม่อีกครั้ง");
   }
 }
 
@@ -120,7 +120,7 @@ export async function correctWorkforcePersonNameAction(
     return { status: "SUCCESS", message: "แก้ไขชื่อ-สกุลแล้ว" };
   } catch (error: unknown) {
     return error instanceof PatientNameCorrectionRequiresAdminError
-      ? { status: "ERROR", code: "FORBIDDEN", message: "บุคคลนี้เชื่อมกับหลายโรงพยาบาล กรุณาติดต่อผู้ดูแลระบบ" }
+      ? { status: "ERROR", code: "FORBIDDEN", message: "แก้ไขชื่อจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI" }
       : error instanceof ConflictError ? { status: "ERROR", code: "CONFLICT", message: "ชื่อ-สกุลเปลี่ยนแปลงแล้วหรือไม่ได้แก้ไข กรุณาโหลดหน้าใหม่ก่อนบันทึก" }
         : error instanceof ValidationError ? { status: "ERROR", code: "INVALID_INPUT", message: "กรุณากรอกชื่อและนามสกุล (ไม่เกิน 120 ตัวอักษร)" }
           : error instanceof ForbiddenError || error instanceof NotFoundError ? { status: "ERROR", code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์แก้ไขชื่อ-สกุลของรายการนี้" }

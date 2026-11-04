@@ -38,7 +38,7 @@ export default async function HospitalPatientProfilePage({ params }: { params: P
       <Link href={`/app/patients/${relationshipId}`} className="font-semibold text-brand-strong underline">กลับไปข้อมูลผู้ป่วย</Link>
       <h1 className="text-2xl font-semibold text-text">ข้อมูลสำหรับ{record.hospital.name}</h1>
       {canCorrectName ? <Panel><h2 className="text-lg font-semibold text-text">ชื่อ-สกุลผู้ป่วย</h2>
-        <p className="mb-5 mt-2 text-sm leading-6 text-text-muted">แก้ได้เมื่อผู้ป่วยเชื่อมกับโรงพยาบาลนี้เพียงแห่งเดียว หากเชื่อมหลายโรงพยาบาล ระบบจะให้ติดต่อผู้ดูแลระบบ</p>
+        <p className="mb-5 mt-2 text-sm leading-6 text-text-muted">หากแก้ชื่อ-สกุลจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI</p>
         <PatientNameCorrectionForm relationshipId={relationshipId} version={record.patientProfile.person.version} givenName={record.patientProfile.person.givenName} familyName={record.patientProfile.person.familyName} />
       </Panel> : <p className="text-text-muted">{record.patientProfile.person.givenName} {record.patientProfile.person.familyName} · ชื่อ-สกุลแก้ไขได้โดยเจ้าหน้าที่โรงพยาบาลที่ดูแลผู้ป่วย</p>}
       <Panel><h2 className="mb-5 text-lg font-semibold text-text">ข้อมูลติดต่อและข้อมูลทั่วไป</h2>

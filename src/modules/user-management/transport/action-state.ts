@@ -50,12 +50,12 @@ export const initialUserTakeoverActionState: UserTakeoverActionState = {
 
 /** Owner-facing reasons; the server decides, these only explain (UM-D2a). */
 export const DELETION_BLOCKER_LABELS: Record<UserRecordDeletionBlocker, string> = {
-  REMOVED: "รายการนี้นำออกจากระบบหรือสิ้นสุดการดูแลแล้ว ประวัติต้องเก็บไว้",
-  OWNER_MEMBERSHIP: "เจ้าของโรงพยาบาลลบรายการไม่ได้",
+  REMOVED: "การทำงานหรือการดูแลรายการนี้สิ้นสุดแล้ว ประวัติต้องเก็บไว้",
+  OWNER_MEMBERSHIP: "ลบข้อมูลของแอดมินโรงพยาบาลไม่ได้",
   ACTIVATED: "บัญชีนี้เคยเปิดใช้งานแล้ว",
-  ACTIVATION_STARTED: "มีการเริ่มเปิดใช้งานบัญชีแล้ว",
-  OTHER_RELATIONSHIP: "บุคคลนี้เชื่อมกับโรงพยาบาลอื่นหรือบทบาทอื่นด้วย",
-  OTHER_ROLE: "บัญชีนี้มีบทบาทอื่นในระบบ",
-  HAS_DATA: "มีข้อมูลการดูแล นัดหมาย การมอบหมาย หลักฐาน หรือข้อมูลที่แก้ไขหลังนำเข้าแล้ว",
-  UNKNOWN_RELATION: "ระบบตรวจสอบข้อมูลที่เกี่ยวข้องได้ไม่ครบ จึงไม่อนุญาตให้ลบ",
+  ACTIVATION_STARTED: "เริ่มเปิดใช้งานบัญชีนี้แล้ว",
+  OTHER_RELATIONSHIP: "บัญชีนี้ยังมีสิทธิ์หรือข้อมูลการดูแลที่โรงพยาบาลอื่น",
+  OTHER_ROLE: "บัญชีนี้ยังมีบทบาทอื่นใน DEMI",
+  HAS_DATA: "มีข้อมูลการดูแล นัดหมาย การมอบหมาย หลักฐาน หรือข้อมูลที่บันทึกไว้แล้ว",
+  UNKNOWN_RELATION: "ตรวจสอบข้อมูลที่เกี่ยวข้องได้ไม่ครบ จึงยังลบข้อมูลนี้ไม่ได้",
 };

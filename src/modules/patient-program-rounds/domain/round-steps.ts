@@ -484,7 +484,7 @@ export function roundPlanItemUnavailableReason(facts: ProgramRoundFacts, roundNu
     const otherRound = Number(key);
     return otherRound !== roundNumber && computeRoundStatus(facts, otherRound, roundPlan(facts, otherRound)).steps.some((step) => step.code === stepCode && step.status === "DONE");
   })) return "รายการนี้ทำแล้วในโปรแกรมนี้";
-  if (["HEALTH_PLAN_REVIEW", "HEALTHY_PLAN"].includes(stepCode) && !facts.firstGoalPlan) return "ต้องมีแผนเป้าหมายก่อนเพิ่มรายการนี้";
+  if (["HEALTH_PLAN_REVIEW", "HEALTHY_PLAN"].includes(stepCode) && !facts.firstGoalPlan) return "ต้องมีแผนสุขภาพก่อนเพิ่มรายการนี้";
   if (stepCode === "HEALTH_PATH_REVIEW" && (roundNumber < MIN_HEALTH_PATH_REVIEW_ROUND || !facts.roundVitals[1])) return "ทบทวนเส้นทางสุขภาพได้ตั้งแต่ครั้งที่ 6 และต้องมีสัญญาณชีพครั้งที่ 1";
   return null;
 }

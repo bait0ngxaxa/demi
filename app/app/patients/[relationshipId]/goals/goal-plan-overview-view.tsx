@@ -131,7 +131,7 @@ export function GoalPlanOverviewView({
               className="inline-flex min-h-11 items-center justify-center rounded-control bg-action-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-action-primary-hover focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
               href={createHref}
             >
-              {activeProgram ? "สร้างแผนในโปรแกรมปัจจุบัน" : "สร้างแผนเป้าหมายรอบใหม่"}
+              {activeProgram ? "สร้างแผนในโปรแกรมปัจจุบัน" : "สร้างแผนสุขภาพรอบใหม่"}
             </Link>
           ) : null
         }
@@ -140,16 +140,16 @@ export function GoalPlanOverviewView({
             href: `/app/patients/${encodeURIComponent(relationshipId)}`,
             label: "รายละเอียดผู้ป่วย",
           },
-          { label: "แผนเป้าหมาย" },
+          { label: "แผนสุขภาพ" },
         ]}
-        description="ประวัติรวมแผนเป้าหมายและกิจกรรมของผู้ป่วย เรียงจากรอบล่าสุด"
-        title="ประวัติแผนเป้าหมายทั้งหมด"
+        description="ประวัติรวมแผนสุขภาพและกิจกรรมของผู้ป่วย เรียงจากรอบล่าสุด"
+        title="ประวัติแผนสุขภาพทั้งหมด"
       />
 
       <div className="space-y-6 pt-8">
         {activeProgram && activeProgramHref ? (
           <Alert variant="info">
-            หน้านี้เป็นประวัติรวมของความสัมพันธ์กับโรงพยาบาล แผนที่บันทึกในโปรแกรมปัจจุบันให้ดูและสร้างต่อจากหน้าโปรแกรม
+            หน้านี้รวมประวัติการดูแลจากโรงพยาบาลนี้ แผนในโปรแกรมปัจจุบันดูและสร้างต่อได้จากหน้าโปรแกรม
             <Link
               className="ml-1 font-semibold underline decoration-brand-soft underline-offset-4 hover:text-brand-strong focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
               href={activeProgramHref}
@@ -185,7 +185,7 @@ export function GoalPlanOverviewView({
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="latest-goal-plan-heading">
-                แผนเป้าหมายล่าสุด
+                แผนสุขภาพล่าสุด
               </h2>
               <p className="mt-1 text-sm text-text-muted">รอบล่าสุดเป็นข้อมูลอ้างอิงเท่านั้น รอบเก่ายังคงอ่านได้</p>
             </div>
@@ -196,7 +196,7 @@ export function GoalPlanOverviewView({
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
-              <p className="font-semibold text-text">ยังไม่มีแผนเป้าหมายสำหรับผู้ป่วยรายนี้</p>
+              <p className="font-semibold text-text">ยังไม่มีแผนสุขภาพสำหรับผู้ป่วยรายนี้</p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
                 สร้างรอบแรกเพื่อบันทึกเป้าหมายและกิจกรรมของผู้ป่วย
               </p>
@@ -208,7 +208,7 @@ export function GoalPlanOverviewView({
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold tracking-[-0.02em]" id="goal-plan-history-heading">
-                ประวัติแผนเป้าหมาย
+                ประวัติแผนสุขภาพ
               </h2>
               <p className="mt-1 text-sm text-text-muted">แสดงล่าสุดไม่เกิน 50 รอบ เรียงใหม่ไปเก่า</p>
             </div>
@@ -216,7 +216,7 @@ export function GoalPlanOverviewView({
 
           {overview.items.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-panel border border-border bg-surface">
-              <ul aria-label="ประวัติแผนเป้าหมาย" className="divide-y divide-border">
+              <ul aria-label="ประวัติแผนสุขภาพ" className="divide-y divide-border">
                 {overview.items.map((item) => (
                   <HistoryRow item={item} key={item.goalPlanId} relationshipId={relationshipId} />
                 ))}
@@ -224,8 +224,8 @@ export function GoalPlanOverviewView({
             </div>
           ) : (
             <div className="mt-4 rounded-panel border border-dashed border-border bg-surface px-5 py-8 text-center sm:px-7">
-              <p className="font-semibold text-text">ยังไม่มีประวัติแผนเป้าหมาย</p>
-              <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลจะปรากฏหลังจากบันทึกแผนเป้าหมายรอบแรก</p>
+              <p className="font-semibold text-text">ยังไม่มีประวัติแผนสุขภาพ</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลจะปรากฏหลังจากบันทึกแผนสุขภาพรอบแรก</p>
             </div>
           )}
         </section>

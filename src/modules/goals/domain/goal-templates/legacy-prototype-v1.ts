@@ -11,7 +11,7 @@ const exerciseTarget = {
 export const legacyPrototypeV1GoalTemplate = {
   key: "demi-goals",
   version: "legacy-prototype-v1",
-  label: "DEMI — แผนเป้าหมายและกิจกรรม",
+  label: "DEMI — แผนสุขภาพและกิจกรรม",
   primaryGoals: [
     { code: "weight", label: "น้ำหนักลด" },
     { code: "glucose", label: "ควบคุมระดับน้ำตาล" },

@@ -88,7 +88,7 @@ const followupPayloadSchema = z
           if (seen.has(row.goalActivityCode)) {
             context.addIssue({
               code: "custom",
-              message: "ไม่สามารถเลือกกิจกรรมซ้ำกันในแผนเป้าหมายได้",
+              message: "เลือกกิจกรรมซ้ำกันในแผนสุขภาพไม่ได้",
               path: [index, "goalActivityCode"],
             });
           }

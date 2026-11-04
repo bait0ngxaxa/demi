@@ -28,7 +28,7 @@ export default async function AdminLegalPage(): Promise<React.JSX.Element> {
   return (
     <div className="content-detail space-y-8 [overflow-wrap:anywhere]">
       <PageHeader
-        breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ" }, { label: "เอกสารทางกฎหมาย" }]}
+        breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "เอกสารทางกฎหมาย" }]}
         description="ข้อความเป็นของหน่วยงานผู้ให้บริการ ฉบับที่ประกาศใช้แล้วแก้ไขหรือลบไม่ได้ ต้องสร้างฉบับใหม่แทน"
         title="เอกสารทางกฎหมาย"
       />

@@ -1033,7 +1033,7 @@ async function assertTargetUserCanReceiveWorkforce(
 }
 
 const PATIENT_IDENTITY_CREDENTIAL_MESSAGE =
-  "บัญชีนี้เป็นบัญชีผู้ป่วยที่ยังไม่ได้เปิดใช้งาน จึงไม่สามารถเพิ่มสิทธิ์บุคลากรหรือออกลิงก์เปิดใช้งานบุคลากรได้ ผู้ป่วยต้องเปิดใช้งานบัญชีของตนเองก่อน";
+  "บัญชีผู้ป่วยนี้ยังไม่เปิดใช้งาน จึงเพิ่มสิทธิ์เจ้าหน้าที่โรงพยาบาลหรือส่งลิงก์ให้ไม่ได้ ผู้ป่วยต้องเปิดใช้งานบัญชีด้วยตนเองก่อน";
 const CROSS_HOSPITAL_PENDING_MESSAGE =
   WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE;
 

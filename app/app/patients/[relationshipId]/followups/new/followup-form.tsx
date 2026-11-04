@@ -545,7 +545,7 @@ export function FollowupForm({
         description={
           scope.kind === "program"
             ? "บันทึกการติดตามผลในครั้งบริการที่เปิดอยู่ของโปรแกรมนี้"
-            : "บันทึกการติดตามผลเป็นรายการใหม่ในประวัติความสัมพันธ์ของโรงพยาบาล"
+            : "บันทึกการติดตามผลไว้ในประวัติการดูแลของโรงพยาบาลนี้"
         }
         title="บันทึกการติดตามผล"
       />
@@ -600,12 +600,12 @@ export function FollowupForm({
           </p>
           {scope.kind === "program" ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">
-              การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนเป้าหมายของโปรแกรมเดียวกันได้
+              การบันทึกนี้จะอยู่ในประวัติของโปรแกรมนี้โดยตรง และสามารถอ้างอิงแผนสุขภาพของโปรแกรมเดียวกันได้
             </p>
           ) : (
             <Alert className="mt-4" variant="warning">
-              การติดตามผลนี้บันทึกนอก Program จึงจะไม่อยู่ในรายงานโรงพยาบาลตาม Program (ไฟล์ Excel)
-              หากต้องการให้อยู่ในรายงาน ให้บันทึกจากครั้งที่ของ Program ของผู้ป่วยรายนี้
+              การติดตามผลนี้บันทึกนอกโปรแกรมจึงจะไม่อยู่ในรายงานโรงพยาบาลตามโปรแกรม (ไฟล์ Excel)
+              หากต้องการให้อยู่ในรายงาน ให้บันทึกจากรอบบริการของโปรแกรมผู้ป่วยรายนี้
             </Alert>
           )}
         </Panel>
@@ -634,7 +634,7 @@ export function FollowupForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em]">บริบทที่เลือก (ไม่บังคับ)</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนเป้าหมายย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน
+            เลือกนัดหมายที่เสร็จสิ้นแล้ว หรือแผนสุขภาพย้อนหลังที่ต้องการอ้างอิงอย่างชัดเจน
             ระบบจะไม่แนบรายการล่าสุดให้โดยอัตโนมัติ
           </p>
           <fieldset className="mt-6 grid gap-5 sm:grid-cols-2" disabled={busy || state.status === "SUCCESS"}>
@@ -657,7 +657,7 @@ export function FollowupForm({
               </span>
             </label>
             <label className={labelClassName} htmlFor="followup-goal-plan">
-              <span>แผนเป้าหมายที่อ้างอิง</span>
+              <span>แผนสุขภาพที่อ้างอิง</span>
               <Select
                 id="followup-goal-plan"
                 onChange={(event) => {
@@ -671,17 +671,17 @@ export function FollowupForm({
                 }}
                 value={goalPlanId}
               >
-                <option value="">ไม่เชื่อมโยงแผนเป้าหมาย</option>
+                <option value="">ไม่เชื่อมโยงแผนสุขภาพ</option>
                 {goalPlans.map((plan) => (
                   <option key={plan.goalPlanId} value={plan.goalPlanId}>
-                    {scope.kind === "program" ? "แผนเป้าหมายรอบที่" : "รอบที่"} {plan.roundNumber} · {plan.primaryGoalLabel} · {formatDate(plan.createdAt)}
+                    {scope.kind === "program" ? "แผนสุขภาพรอบที่" : "รอบที่"} {plan.roundNumber} · {plan.primaryGoalLabel} · {formatDate(plan.createdAt)}
                   </option>
                 ))}
               </Select>
               <span className="text-xs font-normal leading-5 text-text-muted">
                 {scope.kind === "program"
-                  ? "เลือกได้เฉพาะแผนเป้าหมายของโปรแกรมนี้ ไม่เกิน 50 รอบล่าสุด"
-                  : "เลือกได้จากแผนเป้าหมายย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด"}
+                  ? "เลือกได้เฉพาะแผนสุขภาพของโปรแกรมนี้ ไม่เกิน 50 รอบล่าสุด"
+                  : "เลือกได้จากแผนสุขภาพย้อนหลังที่คุณมีสิทธิ์เข้าถึง ไม่เกิน 50 รอบล่าสุด"}
               </span>
             </label>
           </fieldset>
@@ -825,7 +825,7 @@ export function FollowupForm({
                 />
               </label>
               <p className="text-sm leading-6 text-text-muted">
-                ขั้นตอน “ทบทวนแผนสุขภาพ” ของครั้งนี้จะนับว่าบันทึกแล้วเมื่ออ้างอิงแผนเป้าหมาย ตอบว่าทำตามแผนได้หรือไม่ และกรอก “เกิดอะไรขึ้นบ้าง?”
+                ขั้นตอน “ทบทวนแผนสุขภาพ” ของครั้งนี้จะนับว่าบันทึกแล้วเมื่ออ้างอิงแผนสุขภาพ ตอบว่าทำตามแผนได้หรือไม่ และกรอก “เกิดอะไรขึ้นบ้าง?”
               </p>
             </div>
           </Panel>
@@ -834,9 +834,9 @@ export function FollowupForm({
         {selectedGoalPlan ? (
           <Panel>
             <div>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนเป้าหมาย</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนสุขภาพ</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                แสดงกิจกรรมจากแผนเป้าหมายรอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
+                แสดงกิจกรรมจากแผนสุขภาพรอบที่ {selectedGoalPlan.roundNumber} เท่านั้น
                 เลือกสถานะตามข้อมูลที่ต้องการบันทึกในการติดตามผลรอบนี้
               </p>
               <p className="mt-2 text-sm leading-6 text-text-muted">
@@ -884,8 +884,8 @@ export function FollowupForm({
               {planAdjusted === "true" ? (
                 <p className="text-sm leading-6 text-text-muted">
                   {scope.kind === "program"
-                    ? "หลังบันทึก ระบบจะพาไปสร้างแผนเป้าหมายรอบใหม่ที่เชื่อมกับการติดตามครั้งนี้"
-                    : "หลังบันทึก ให้สร้างแผนเป้าหมายรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป"}
+                    ? "หลังบันทึก ระบบจะพาไปสร้างแผนสุขภาพรอบใหม่ที่เชื่อมกับการติดตามครั้งนี้"
+                    : "หลังบันทึก ให้สร้างแผนสุขภาพรอบใหม่เพื่อใช้ในการติดตามครั้งถัดไป"}
                 </p>
               ) : null}
             </fieldset>
@@ -1005,7 +1005,7 @@ export function FollowupForm({
               </dd>
             </div>
             <div>
-              <dt className="text-text-muted">แผนเป้าหมายที่อ้างอิง</dt>
+              <dt className="text-text-muted">แผนสุขภาพที่อ้างอิง</dt>
               <dd className="mt-1 font-semibold text-text">
                 {selectedGoalPlan ? `รอบที่ ${selectedGoalPlan.roundNumber}` : "ไม่ได้เชื่อมโยง"}
               </dd>
@@ -1058,7 +1058,7 @@ export function FollowupForm({
             ผู้ป่วย {patient.displayName} · โรงพยาบาล {patient.hospital.name}
             {programId
               ? ` · โปรแกรมสุขภาพ · ครั้งบริการที่ ${programRoundNumber ?? "ไม่ได้ระบุ"}`
-              : " · การติดตามผลนอก Program"}
+              : " · การติดตามผลนอกโปรแกรม"}
           </>
         }
         details={
@@ -1080,10 +1080,10 @@ export function FollowupForm({
                     : appointmentId ? "ไม่พบรายละเอียดนัดหมายที่เลือก" : "ไม่ได้เชื่อมโยงนัดหมาย"}
                 />
                 <ReviewField
-                  label="แผนเป้าหมายที่เลือก"
+                  label="แผนสุขภาพที่เลือก"
                   value={selectedGoalPlan
                     ? `รอบที่ ${selectedGoalPlan.roundNumber} · ${selectedGoalPlan.primaryGoalLabel} · ${formatDate(selectedGoalPlan.createdAt)}`
-                    : goalPlanId ? "ไม่พบรายละเอียดแผนเป้าหมายที่เลือก" : "ไม่ได้เชื่อมโยงแผนเป้าหมาย"}
+                    : goalPlanId ? "ไม่พบรายละเอียดแผนสุขภาพที่เลือก" : "ไม่ได้เชื่อมโยงแผนสุขภาพ"}
                 />
               </dl>
             </section>
@@ -1111,7 +1111,7 @@ export function FollowupForm({
                   <ReviewField label="เกิดอะไรขึ้นบ้าง?" value={reviewValue(reflectionNote)} />
                   <ReviewField label="คำแนะนำจากผู้เชี่ยวชาญ" value={reviewValue(expertAdvice)} />
                   <ReviewField
-                    label="ความคืบหน้าตามแผนเป้าหมาย"
+                    label="ความคืบหน้าตามแผนสุขภาพ"
                     value={selectedGoalPlan && selectedGoalPlan.items.length > 0 ? (
                       <ul className="list-disc space-y-2 pl-5 font-normal">
                         {selectedGoalPlan.items.map((activity) => {
@@ -1136,7 +1136,7 @@ export function FollowupForm({
                           );
                         })}
                       </ul>
-                    ) : "ไม่มีแผนเป้าหมายที่เลือก"}
+                    ) : "ไม่มีแผนสุขภาพที่เลือก"}
                   />
                 </dl>
               </section>

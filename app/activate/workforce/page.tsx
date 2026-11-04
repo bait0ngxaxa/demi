@@ -42,7 +42,7 @@ export default async function WorkforceActivationPage(): Promise<React.JSX.Eleme
           </p>
         </div>
         <p className="relative mt-6 max-w-md lg:mt-12 text-sm leading-6 text-brand-pale/80">
-          อย่าเปิดเผยรหัสผ่านให้ผู้ดูแลโรงพยาบาลหรือบุคคลอื่น
+          อย่าเปิดเผยรหัสผ่านให้แอดมินโรงพยาบาลหรือบุคคลอื่น
         </p>
       </section>
 

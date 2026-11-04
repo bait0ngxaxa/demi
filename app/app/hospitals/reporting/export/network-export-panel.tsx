@@ -166,7 +166,7 @@ export function NetworkExportPanel({
                         <StatusBadge variant={hospital.kind === "PARENT" ? "info" : "neutral"}>{hospital.kind === "PARENT" ? "แม่ข่าย" : "ลูกข่าย"}</StatusBadge>
                       </span>
                       <span className="mt-1 block text-sm tabular-nums text-text-muted">
-                        รหัส {hospital.hospitalCode} · {numberFormat(hospital.relationships)} เคส · {numberFormat(hospital.programs)} Program
+                        รหัส {hospital.hospitalCode} · {numberFormat(hospital.relationships)} เคส · {numberFormat(hospital.programs)} โปรแกรม
                       </span>
                     </span>
                   </label>
@@ -181,7 +181,7 @@ export function NetworkExportPanel({
         {([
           ["หน่วยบริการ", `${numberFormat(totals.hospitals)} แห่ง`],
           ["เคส", numberFormat(totals.relationships)],
-          ["Program", numberFormat(totals.programs)],
+          ["โปรแกรม", numberFormat(totals.programs)],
         ] as const).map(([label, value]) => (
           <div className="min-w-0" key={label}>
             <dt className="text-sm text-text-muted">{label}</dt>
@@ -192,8 +192,7 @@ export function NetworkExportPanel({
 
       {overLimit ? (
         <Alert variant="warning">
-          ไฟล์เดียวส่งออกได้ไม่เกิน {numberFormat(preview.maxPrograms)} Program แต่ที่เลือกไว้มี {numberFormat(totals.programs)} Program
-          กรุณาเลือกหน่วยบริการให้น้อยลงแล้วส่งออกเป็นหลายไฟล์
+          ไฟล์เดียวส่งออกได้ไม่เกิน {numberFormat(preview.maxPrograms)} โปรแกรม แต่ที่เลือกไว้มี {numberFormat(totals.programs)} โปรแกรม กรุณาเลือกหน่วยบริการให้น้อยลง แล้วส่งออกเป็นหลายไฟล์
         </Alert>
       ) : null}
       {nothingSelected ? <p className="text-sm text-text-muted" role="status">เลือกอย่างน้อยหนึ่งหน่วยบริการเพื่อส่งออก</p> : null}
@@ -212,7 +211,7 @@ export function NetworkExportPanel({
         description={NETWORK_EXPORT_CONFIRMATION}
         details={
           <p>
-            {numberFormat(totals.hospitals)} หน่วยบริการ · {numberFormat(totals.programs)} Program ·{" "}
+            {numberFormat(totals.hospitals)} หน่วยบริการ · {numberFormat(totals.programs)} โปรแกรม ·{" "}
             {cohort === "INCLUDE_ENDED" ? "รวมผู้ที่สิ้นสุดการดูแล" : "เฉพาะผู้ที่ยังอยู่ในการดูแล"} ทุกการส่งออกถูกบันทึกไว้
             กรุณาใช้และเก็บไฟล์ตามนโยบายข้อมูลของโรงพยาบาล
           </p>

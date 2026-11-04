@@ -302,7 +302,7 @@ export function WorkforceActivationForm({ legal, lineAccountUrl = null }: { lega
       >
         <p className="font-semibold" id="workforce-link-error-title">ไม่สามารถใช้ลิงก์นี้ได้</p>
         <p className="mt-1" id="workforce-link-error-description">{preview.message}</p>
-        <p className="mt-1">ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
+        <p className="mt-1">ขอลิงก์ใหม่จากแอดมินโรงพยาบาล แล้วเปิดลิงก์อีกครั้ง</p>
       </div>
     );
   }
@@ -316,15 +316,15 @@ export function WorkforceActivationForm({ legal, lineAccountUrl = null }: { lega
           {purpose === "RESET"
             ? "รีเซ็ตรหัสผ่านของ"
             : purpose === "CHILD_OWNER_ONBOARDING"
-              ? "เปิดใช้งานบัญชีผู้ดูแลหน่วยบริการของ"
+              ? "เปิดใช้งานบัญชีแอดมินโรงพยาบาลของ"
               : purpose === "PARENT_OWNER_ONBOARDING"
-                ? "เปิดใช้งานบัญชีผู้ดูแลโรงพยาบาลของ"
+                ? "เปิดใช้งานบัญชีแอดมินโรงพยาบาลของ"
                 : "เปิดใช้งานบัญชีของ"}{" "}
           <span className="font-semibold">{preview.maskedName}</span>
         </p>
         {purpose === "PARENT_OWNER_ONBOARDING" ? (
           <p className="mt-1">
-            คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นผู้ดูแล{" "}
+            คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นแอดมินโรงพยาบาล{" "}
             <span className="font-semibold">{preview.hospitalName ?? "โรงพยาบาล"}</span>{" "}
             เมื่อเปิดใช้งาน โรงพยาบาลจะเริ่มใช้งานได้ทันที
           </p>

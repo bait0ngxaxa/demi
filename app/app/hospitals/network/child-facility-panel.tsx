@@ -39,7 +39,7 @@ export type ChildFacilityPanelProps = {
 const stateCopy: Record<ChildFacilityPanelProps["state"], { label: string; variant: StatusVariant }> = {
   PENDING_ACTIVATION: { label: "รอเปิดใช้งาน", variant: "warning" },
   ACTIVE: { label: "ใช้งานอยู่", variant: "success" },
-  NO_OWNER: { label: "ไม่มีผู้ดูแล", variant: "danger" },
+  NO_OWNER: { label: "ไม่มีแอดมินโรงพยาบาล", variant: "danger" },
   INACTIVE: { label: "ไม่พร้อมใช้งาน", variant: "neutral" },
 };
 
@@ -50,12 +50,12 @@ function formatDateTime(value: string): string {
 function InvitationSummary({ invitation, lastDeclinedAt }: Pick<ChildFacilityPanelProps, "invitation" | "lastDeclinedAt">): React.JSX.Element | null {
   if (!invitation) {
     return lastDeclinedAt
-      ? <p className="mt-2 text-sm text-warning">ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ {formatDateTime(lastDeclinedAt)} · เชิญผู้ดูแลคนใหม่ได้ด้านล่าง</p>
+      ? <p className="mt-2 text-sm text-warning">ผู้ได้รับเชิญปฏิเสธคำเชิญเมื่อ {formatDateTime(lastDeclinedAt)} · เชิญแอดมินโรงพยาบาลคนใหม่ได้ด้านล่าง</p>
       : null;
   }
   const link = invitation.link;
   const linkText = invitation.delivery === "ADMIN_RESET_REQUIRED"
-    ? "รอ platform ADMIN ยืนยันตัวตน"
+    ? "รอผู้ดูแลระบบ DEMI ยืนยันตัวตน"
     : invitation.delivery === "ACCOUNT_ACCEPTANCE"
       ? "รอผู้ถูกเชิญตอบรับในบัญชี DEMI ของตนเอง"
     : link.status === "OPEN"
@@ -67,7 +67,7 @@ function InvitationSummary({ invitation, lastDeclinedAt }: Pick<ChildFacilityPan
           : "ยังไม่มีลิงก์ที่ใช้ได้ ออกลิงก์ใหม่ได้";
   return (
     <p className="mt-2 text-sm leading-6 text-text-muted">
-      ผู้ถูกเชิญเป็นผู้ดูแล: <span className="font-semibold text-text">{invitation.inviteeName}</span> · {linkText}
+      ผู้ได้รับเชิญเป็นแอดมินโรงพยาบาล: <span className="font-semibold text-text">{invitation.inviteeName}</span> · {linkText}
     </p>
   );
 }
@@ -125,7 +125,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
 
       {state === "PENDING_ACTIVATION" ? (
         <p className="mt-3 text-sm leading-6 text-text-muted">
-          แม่ข่ายยังดูผู้ป่วยและรายงานของหน่วยบริการนี้ไม่ได้จนกว่าผู้ดูแลจะเปิดใช้งาน
+          แม่ข่ายยังดูผู้ป่วยและรายงานของหน่วยบริการนี้ไม่ได้จนกว่าแอดมินโรงพยาบาลลูกข่ายจะเปิดใช้งานบัญชี
         </p>
       ) : null}
 
@@ -199,8 +199,8 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             hidden={target}
             onSuccess={keepResult}
             taskDialog={{
-              title: invitation ? `เปลี่ยนผู้ถูกเชิญของ ${child.name}` : `เชิญผู้ดูแล ${child.name}`,
-              triggerLabel: invitation ? "เปลี่ยนผู้ถูกเชิญ" : "เชิญผู้ดูแล",
+              title: invitation ? `เปลี่ยนผู้ถูกเชิญของ ${child.name}` : `เชิญแอดมินโรงพยาบาลของ ${child.name}`,
+              triggerLabel: invitation ? "เปลี่ยนผู้ถูกเชิญ" : "เชิญแอดมินโรงพยาบาล",
               contextKey: JSON.stringify([
                 child.updatedAt,
                 state,
@@ -210,7 +210,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
                 invitation?.link.expiresAt ?? null,
                 invitation?.link.mode ?? null,
               ]),
-              description: invitation ? "คำเชิญและลิงก์เดิมจะใช้ไม่ได้ทันที" : "กรอกข้อมูลผู้ดูแลและเลือกวิธีส่งมอบคำเชิญ",
+              description: invitation ? "คำเชิญและลิงก์เดิมจะใช้ไม่ได้ทันที" : "กรอกข้อมูลแอดมินโรงพยาบาลและเลือกวิธีส่งมอบคำเชิญ",
               destructive: Boolean(invitation),
               initialFocusRef: inviteeNationalIdRef,
               returnFocusTarget,
@@ -227,10 +227,10 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             hidden={target}
             onSuccess={keepResult}
             taskDialog={{
-              title: `เชิญผู้ดูแลคนใหม่ของ ${child.name}`,
-              triggerLabel: "เชิญผู้ดูแลคนใหม่",
+              title: `เชิญแอดมินโรงพยาบาลคนใหม่ของ ${child.name}`,
+              triggerLabel: "เชิญแอดมินโรงพยาบาลคนใหม่",
               contextKey: JSON.stringify([child.updatedAt, state, props.lastDeclinedAt]),
-              description: "หน่วยบริการนี้ไม่มีผู้ดูแลที่ใช้งานอยู่ ผู้ดูแลคนใหม่จะจัดการบุคลากรของหน่วยบริการเอง",
+              description: "หน่วยบริการนี้ยังไม่มีแอดมินโรงพยาบาลที่ใช้งานได้ แอดมินคนใหม่จะจัดการเจ้าหน้าที่และ อสม. ของหน่วยบริการเอง",
               initialFocusRef: inviteeNationalIdRef,
               returnFocusTarget,
             }}
@@ -262,7 +262,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             taskDialog={{
               title: `ยกเลิกหน่วยบริการ ${child.name}`,
               triggerLabel: "ยกเลิกหน่วยบริการ",
-              description: "คำเชิญและลิงก์ทั้งหมดจะใช้ไม่ได้ หน่วยบริการจะออกจากเครือข่ายและถูกถอนออกจากรายชื่อ ข้อมูลไม่ถูกลบ ผู้ดูแลระบบคืนได้ภายหลัง",
+              description: "คำเชิญและลิงก์ทั้งหมดจะใช้ไม่ได้ หน่วยบริการจะออกจากเครือข่ายและถูกถอนออกจากรายชื่อ แต่ข้อมูลยังอยู่ในระบบและเพิ่มกลับเข้าเครือข่ายได้ภายหลัง",
               destructive: true,
               returnFocusTarget,
             }}
@@ -281,7 +281,7 @@ export function ChildFacilityPanel(props: ChildFacilityPanelProps): React.JSX.El
             taskDialog={{
               title: `นำ ${child.name} ออกจากเครือข่าย`,
               triggerLabel: "นำออกจากเครือข่าย",
-              description: "เจ้าของและเจ้าหน้าที่ของแม่ข่ายจะหมดสิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้ทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
+              description: "แอดมินและเจ้าหน้าที่ของโรงพยาบาลแม่ข่ายจะหมดสิทธิ์ดูผู้ป่วยและรายงานสรุปของลูกข่ายนี้ทันที ข้อมูลของลูกข่ายจะไม่ถูกลบ และเพิ่มกลับได้ภายหลัง",
               destructive: true,
               returnFocusTarget,
             }}

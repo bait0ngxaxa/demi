@@ -37,7 +37,7 @@ export default async function PatientSelfCarePage(): Promise<React.JSX.Element> 
         <h2 className="text-xl font-semibold text-text" id="care-history-heading">ประวัติการดูแล</h2>
         <PatientSelfRelationshipNavigation
           area="care"
-          emptyMessage="เมื่อมีข้อมูลความสัมพันธ์กับโรงพยาบาล รายการประวัติจะปรากฏที่นี่"
+          emptyMessage="เมื่อมีข้อมูลการดูแลจากโรงพยาบาล รายการประวัติจะปรากฏที่นี่"
           relationships={relationships}
         />
       </section>

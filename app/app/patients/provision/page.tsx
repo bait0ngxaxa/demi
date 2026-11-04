@@ -64,7 +64,7 @@ export default async function PatientProvisioningPage({
         />
         <Alert className="mt-6" variant="warning">
           <p className="font-semibold">ไม่พบโรงพยาบาลที่เปิดให้ดำเนินการ</p>
-          <p className="mt-1">ขณะนี้บัญชีนี้ไม่มีขอบเขตโรงพยาบาลที่ใช้งานได้สำหรับนำเข้าผู้ป่วย กรุณาติดต่อผู้ดูแลโรงพยาบาลเพื่อตรวจสอบสิทธิ์และความสัมพันธ์ปัจจุบัน</p>
+          <p className="mt-1">บัญชีนี้ยังไม่มีสิทธิ์นำเข้าผู้ป่วยในโรงพยาบาลใด กรุณาติดต่อแอดมินโรงพยาบาลเพื่อตรวจสอบสิทธิ์</p>
         </Alert>
         <Link className={buttonClassName({ className: "mt-5", variant: "secondary" })} href="/app">
           กลับพื้นที่ทำงาน

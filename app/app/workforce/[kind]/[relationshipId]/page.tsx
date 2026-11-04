@@ -31,7 +31,7 @@ import {
 } from "./workforce-osm-assigned-patients-section";
 
 export const metadata: Metadata = {
-  title: "รายละเอียดความสัมพันธ์บุคลากร",
+  title: "รายละเอียดการทำงานกับโรงพยาบาล",
 };
 
 type WorkforceDetailPageProps = {
@@ -51,15 +51,15 @@ function resolvePatientPage(value: unknown): number {
 function relationshipStatusLabel(status: WorkforceDetail["relationshipStatus"]): string {
   switch (status) {
     case "ENDED":
-      return "นำออกจากระบบถาวรแล้ว";
+      return "สิ้นสุดสิทธิ์การทำงานแล้ว";
     case "ACTIVE":
-      return "ความสัมพันธ์ใช้งานอยู่";
+      return "สิทธิ์การทำงานเปิดอยู่";
     case "SUSPENDED":
-      return "ความสัมพันธ์ถูกระงับ";
+      return "พักสิทธิ์ชั่วคราว";
     case "INVITED":
-      return "อยู่ระหว่างเชิญ";
+      return "รอตอบรับคำเชิญ";
     case "PROVISIONED":
-      return "รอเปิดใช้งาน";
+      return "รอเปิดใช้งานบัญชี";
   }
 }
 
@@ -109,7 +109,16 @@ function accountStatusVariant(status: WorkforceDetail["accountStatus"]): StatusV
 }
 
 function hospitalStatusLabel(status: WorkforceDetail["hospital"]["status"]): string {
-  return status === "ACTIVE" ? "โรงพยาบาลใช้งานอยู่" : "โรงพยาบาลถูกระงับ";
+  switch (status) {
+    case "ACTIVE":
+      return "เปิดใช้งาน";
+    case "PENDING_VERIFICATION":
+      return "รอตรวจสอบ";
+    case "SUSPENDED":
+      return "ระงับการใช้งาน";
+    case "RETIRED":
+      return "ยุติการใช้งาน";
+  }
 }
 
 function WorkforceDetailView({
@@ -138,10 +147,10 @@ function WorkforceDetailView({
           </StatusBadge>
         }
         breadcrumbs={[
-          { href: `/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`, label: "จัดการบุคลากร" },
-          { label: "รายละเอียดความสัมพันธ์" },
+          { href: `/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`, label: "จัดการเจ้าหน้าที่" },
+          { label: "รายละเอียดการทำงาน" },
         ]}
-        description="สถานะบัญชีและสถานะความสัมพันธ์กับโรงพยาบาลแสดงแยกกัน"
+        description="สถานะบัญชีและสิทธิ์การทำงานกับโรงพยาบาลแสดงแยกกัน"
         title={detail.displayName}
       />
 
@@ -149,7 +158,7 @@ function WorkforceDetailView({
         <Panel>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-sm text-text-muted">{isStaff ? "บุคลากรโรงพยาบาล" : "อสม."}</p>
+              <p className="text-sm text-text-muted">{isStaff ? "เจ้าหน้าที่โรงพยาบาล" : "อสม."}</p>
               <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-text">
                 {detail.displayName}
               </h2>
@@ -175,7 +184,7 @@ function WorkforceDetailView({
               </div>
             ) : null}
             <div>
-              <dt className="text-sm text-text-muted">สถานะความสัมพันธ์</dt>
+              <dt className="text-sm text-text-muted">สถานะการทำงานกับโรงพยาบาล</dt>
               <dd className="mt-1 font-semibold text-text">
                 {relationshipStatusLabel(detail.relationshipStatus)}
               </dd>
@@ -206,7 +215,7 @@ function WorkforceDetailView({
           className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
           href={`/app/workforce?hospitalId=${encodeURIComponent(detail.hospital.id)}`}
         >
-          กลับไปจัดการบุคลากร
+          กลับไปจัดการเจ้าหน้าที่
         </Link>
       </div>
     </div>

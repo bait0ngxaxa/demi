@@ -71,10 +71,10 @@ export async function changeAuthenticatedPasswordAction(
       return { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน ระบบไม่รับรหัสผ่านใหม่นี้ กรุณาตั้งรหัสผ่านใหม่ที่ต่างจากรหัสเดิมและคาดเดายาก แล้วลองอีกครั้ง" };
     }
     if (error instanceof PasswordChangeRecoveryPendingError) {
-      return { status: "ERROR", message: "ยังเปลี่ยนรหัสผ่านไม่ได้ในขณะนี้ เนื่องจากบัญชีมีการเปลี่ยนหรือกู้คืนรหัสผ่านที่ยังดำเนินการอยู่หรือรอผู้ดูแลระบบตรวจสอบ กรุณาอย่าทำรายการซ้ำ หากยังเป็นเช่นนี้ให้ติดต่อผู้ดูแลระบบ" };
+      return { status: "ERROR", message: "ยังเปลี่ยนรหัสผ่านไม่ได้ในขณะนี้ เนื่องจากบัญชีมีการเปลี่ยนหรือกู้คืนรหัสผ่านที่ยังดำเนินการอยู่หรือรอผู้ดูแลระบบ DEMI ตรวจสอบ กรุณาอย่าทำรายการซ้ำ หากยังเป็นเช่นนี้ให้ติดต่อผู้ดูแลระบบ DEMI" };
     }
     if (error instanceof PasswordChangeOutcomeUncertainError) {
-      return { status: "OUTCOME_UNCERTAIN", message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะบัญชี" };
+      return { status: "OUTCOME_UNCERTAIN", message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบ DEMI เพื่อตรวจสอบสถานะบัญชี" };
     }
     return { status: "ERROR", message: genericAccountError };
   }

@@ -66,7 +66,7 @@ export function HospitalSelfRegistrationSettings({
         การลงทะเบียนด้วยตนเอง
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-        ค่าเริ่มต้นเปิดอยู่ ปิดการลงทะเบียนเองได้ทันทีสำหรับโรงพยาบาลที่คุณเป็น OWNER
+        ค่าเริ่มต้นเปิดอยู่ ปิดการลงทะเบียนเองได้ทันทีสำหรับโรงพยาบาลที่คุณเป็นแอดมิน
         รายชื่อที่ลงทะเบียนเองจะแสดงวันที่ในรายชื่อ และเลือกกรองรายการเหล่านั้นได้
       </p>
       <ul className="mt-3 divide-y divide-line">

@@ -77,9 +77,9 @@ export function ParentChildHospitalReportWorkspace({
           <CountBarChart
             categories={serviceProcessCategories(serviceProcess)}
             description={SERVICE_PROCESS_CHART_DESCRIPTION}
-            emptyMessage="ยังไม่มี Program ที่มีบันทึกกิจกรรมเหล่านี้"
+            emptyMessage="ยังไม่มีโปรแกรมที่มีบันทึกกิจกรรมเหล่านี้"
             headingId="parent-child-report-service-process-chart"
-            listLabel="จำนวน Program ที่มีบันทึกกิจกรรมแต่ละประเภท"
+            listLabel="จำนวนโปรแกรมที่มีบันทึกกิจกรรมแต่ละประเภท"
             note={serviceProcessNote(dashboard.programs.total)}
             scaleMax={dashboard.programs.total}
             title="บันทึกกิจกรรมบริการ 1"
@@ -92,15 +92,15 @@ export function ParentChildHospitalReportWorkspace({
               ภาพรวมรายงาน
             </h3>
             <p className="mt-2 max-w-prose text-sm leading-6 text-text-muted">
-              จำนวนความสัมพันธ์นับตามรายการในโรงพยาบาล ส่วน Program นับเฉพาะสถานะกำลังดำเนินและสิ้นสุดแล้ว
+              จำนวนรายการผู้ป่วยนับแยกตามโรงพยาบาล ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ ส่วนโปรแกรมนับเฉพาะที่กำลังดำเนินหรือสิ้นสุดแล้ว
             </p>
           </div>
           <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-5">
-            <ReportingMetric label="จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล" value={dashboard.patientHospitalRelationships.value} />
-            <ReportingMetric label="จำนวนความสัมพันธ์ที่ไม่มี Program" value={dashboard.relationshipsWithoutProgram.value} />
-            <ReportingMetric label="Program ทั้งหมด" value={dashboard.programs.total} />
-            <ReportingMetric label="Program ที่กำลังดำเนิน" value={dashboard.programs.active} />
-            <ReportingMetric label="Program ที่สิ้นสุดแล้ว" value={dashboard.programs.completed} />
+            <ReportingMetric label="รายการผู้ป่วยในโรงพยาบาล" value={dashboard.patientHospitalRelationships.value} />
+            <ReportingMetric label="รายการผู้ป่วยที่ยังไม่มีโปรแกรม" value={dashboard.relationshipsWithoutProgram.value} />
+            <ReportingMetric label="โปรแกรมทั้งหมด" value={dashboard.programs.total} />
+            <ReportingMetric label="โปรแกรมที่กำลังดำเนิน" value={dashboard.programs.active} />
+            <ReportingMetric label="โปรแกรมที่สิ้นสุดแล้ว" value={dashboard.programs.completed} />
           </div>
         </section>
 
@@ -110,14 +110,14 @@ export function ParentChildHospitalReportWorkspace({
               ขั้นตอนบริการ
             </h3>
             <p className="mt-2 max-w-prose text-sm leading-6 text-text-muted">
-              ตัวเลขแสดงจำนวน Program ที่มีบันทึกในแต่ละขั้นตอน ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ
+              ตัวเลขแสดงจำนวนโปรแกรมที่มีบันทึกในแต่ละขั้นตอน ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ
             </p>
           </div>
           <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 @5xl/workspace:grid-cols-4">
-            <ReportingMetric label="Program ที่มีบันทึก Routine" value={serviceProcess.programsWithRoutineRecord.value} />
-            <ReportingMetric label="Program ที่มีบันทึก Floating Chart" value={serviceProcess.programsWithFloatingChartRecord.value} />
-            <ReportingMetric label="Program ที่มีบันทึก Dream Card" value={serviceProcess.programsWithDreamCardRecord.value} />
-            <ReportingMetric label="Program ที่มีบันทึก Confidence" value={serviceProcess.programsWithConfidenceRecord.value} />
+            <ReportingMetric label="โปรแกรมที่มีบันทึก Routine" value={serviceProcess.programsWithRoutineRecord.value} />
+            <ReportingMetric label="โปรแกรมที่มีบันทึก Floating Chart" value={serviceProcess.programsWithFloatingChartRecord.value} />
+            <ReportingMetric label="โปรแกรมที่มีบันทึก Dream Card" value={serviceProcess.programsWithDreamCardRecord.value} />
+            <ReportingMetric label="โปรแกรมที่มีบันทึก Confidence" value={serviceProcess.programsWithConfidenceRecord.value} />
           </div>
         </section>
       </section>

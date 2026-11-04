@@ -235,5 +235,5 @@ export const workforceReleaseSchema = z.object({
   targetHospitalId: workforceTargetHospitalIdSchema,
   expectedUpdatedAt: workforceExpectedUpdatedAtSchema,
   kind: workforceDetailKindSchema,
-  confirmation: z.literal("นำออกจากระบบ"),
+  confirmation: z.literal("นำออกจากโรงพยาบาลนี้อย่างถาวร"),
 }).strict();

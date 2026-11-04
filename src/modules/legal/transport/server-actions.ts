@@ -138,7 +138,7 @@ export async function lookupUserLegalHistoryAction(_previous: UserLegalHistorySt
         terms: acceptance.terms.versionLabel,
         privacy: acceptance.privacy.versionLabel,
         source: LEGAL_ACCEPTANCE_SOURCE_LABELS[acceptance.source],
-        channel: acceptance.channel ? LEGAL_CHANNEL_LABELS[acceptance.channel] : "คำสั่งผู้ดูแลระบบ",
+        channel: acceptance.channel ? LEGAL_CHANNEL_LABELS[acceptance.channel] : "คำสั่งผู้ดูแลระบบ DEMI",
       })),
       consentEvents: history.consentEvents.map((event) => ({
         id: event.id,

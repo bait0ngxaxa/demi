@@ -91,7 +91,7 @@ export function LegalDocumentsUnavailable(): React.JSX.Element {
   return (
     <div className="mt-8 rounded-panel border border-warning/20 bg-warning-soft px-4 py-4 text-sm leading-6 text-warning" role="status">
       <p className="font-semibold">ยังไม่สามารถสร้างบัญชีได้ในขณะนี้</p>
-      <p className="mt-1">ระบบยังไม่มีข้อกำหนดและนโยบายฉบับที่ประกาศใช้ กรุณาลองใหม่ภายหลังหรือติดต่อผู้ดูแลระบบ</p>
+      <p className="mt-1">ระบบยังไม่มีข้อกำหนดและนโยบายฉบับที่ประกาศใช้ กรุณาลองใหม่ภายหลังหรือติดต่อผู้ดูแลระบบ DEMI</p>
     </div>
   );
 }

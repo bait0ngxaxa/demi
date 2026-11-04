@@ -15,7 +15,7 @@ export function WorkforcePasswordResetControl({ subjectLabel, relationshipId, ta
       </Alert>
       <p className="mt-3 text-sm leading-6 text-muted">
         หากยังเข้าสู่ระบบได้ เจ้าของบัญชีเปลี่ยนรหัสผ่านได้ในหน้าความปลอดภัยโดยยืนยันรหัสผ่านปัจจุบัน
-        หากบัญชีนี้อยู่หลายโรงพยาบาล เป็นเจ้าของโรงพยาบาล หรือเป็นบัญชีผู้ดูแลระบบ ให้ผู้ดูแลระบบดำเนินการ
+        หากบัญชีนี้มีสิทธิ์ทำงานในหลายโรงพยาบาล เป็นแอดมินโรงพยาบาล หรือเป็นผู้ดูแลระบบ DEMI ให้ผู้ดูแลระบบ DEMI ดำเนินการ
       </p>
       <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={`/app/users/${targetKind}/${relationshipId}`}>
         เปิดหน้ารายละเอียดผู้ใช้

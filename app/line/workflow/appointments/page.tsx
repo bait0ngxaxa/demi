@@ -28,7 +28,7 @@ export default async function LineWorkflowAppointmentRelationshipsPage(): Promis
       </header>
       <PatientSelfRelationshipNavigation
         area="appointments"
-        emptyMessage="เมื่อมีข้อมูลความสัมพันธ์กับโรงพยาบาล รายการนัดหมายจะปรากฏที่นี่"
+        emptyMessage="เมื่อมีโรงพยาบาลที่กำลังดูแลคุณ รายการนัดหมายจะปรากฏที่นี่"
         hrefFor={lineWorkflowAppointmentLinks.history}
         relationships={result.data}
       />

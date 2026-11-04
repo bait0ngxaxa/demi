@@ -32,7 +32,7 @@ export function PatientSelfRelationshipList({
         className="text-xl font-semibold tracking-[-0.02em] text-text"
         id="patient-self-hospitals-heading"
       >
-        โรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย
+        โรงพยาบาลที่ดูแลคุณ
       </h2>
       {showCareLink ? <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลการดูแลและข้อมูลส่วนตัวแยกตามโรงพยาบาล เลือกโรงพยาบาลที่ต้องการดูหรือติดต่อ</p> : null}
       {relationships.length > 0 ? (
@@ -133,7 +133,7 @@ export function PatientSelfRelationshipList({
         </ul>
       ) : (
         <p className="mt-3 text-sm leading-6 text-text-muted">
-          ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย
+          ยังไม่มีข้อมูลการดูแลจากโรงพยาบาล
         </p>
       )}
     </section>

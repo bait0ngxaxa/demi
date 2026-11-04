@@ -25,9 +25,9 @@ import {
 } from "../../../workforce/scoped-mutation";
 
 const deleteNotice = standardNotice({
-  success: "ลบรายการแล้ว",
-  conflict: "ลบรายการนี้ไม่ได้ กรุณาตรวจสอบเหตุผลที่แสดง",
-  forbidden: "ไม่มีสิทธิ์ลบรายการนี้",
+  success: "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งานแล้ว",
+  conflict: "ลบข้อมูลผู้ใช้นี้ไม่ได้ กรุณาตรวจสอบเหตุผลที่แสดง",
+  forbidden: "ไม่มีสิทธิ์ลบข้อมูลผู้ใช้นี้",
 });
 
 function classifyDelete(state: UserRecordDeletionActionState): MutationVerdict {
@@ -49,7 +49,7 @@ function classifyDelete(state: UserRecordDeletionActionState): MutationVerdict {
 
 type DeletePayload = { kind: UserKind; relationshipId: string; hospitalId: string; updatedAt: string };
 
-/** UM-D2a "ลบรายการ": shown only when the server found the record unused; the action re-checks everything. */
+/** UM-D2a: shown only when the server found the record unused; the action re-checks everything. */
 export function UserRecordDeleteControl({ kind, relationshipId, hospitalId, updatedAt, directoryHref, resourceName }: {
   kind: UserKind;
   relationshipId: string;
@@ -120,15 +120,15 @@ export function UserRecordDeleteControl({ kind, relationshipId, hospitalId, upda
         </div>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
-          ลบรายการ
+          ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน
         </Button>
       )}
       {visibleDialogOpen ? (
         <ModalDialog
           description={
             <>
-              รายการที่ได้รับอนุญาตให้ลบคือรายการของ {resourceName} ที่ยังไม่เคยเปิดใช้งานและไม่มีข้อมูลการดูแลหรือข้อมูลอื่นที่ผูกอยู่
-              ระบบจะลบรายการ บัญชีที่ยังไม่เปิดใช้งาน และยกเลิกลิงก์เปิดใช้งานหรือการลงทะเบียนเองที่ค้างอยู่ทันที
+              ลบได้เฉพาะข้อมูลของ {resourceName} ที่บัญชียังไม่เคยเปิดใช้งานและไม่มีประวัติการดูแลหรือข้อมูลอื่นที่ผูกอยู่
+              ระบบจะลบข้อมูลผู้ใช้และบัญชีที่ยังไม่เปิดใช้งาน พร้อมยกเลิกลิงก์เปิดใช้งานหรือการลงทะเบียนด้วยตนเองที่ยังค้างอยู่
               <strong> การลบย้อนกลับไม่ได้</strong> หลังลบแล้วจึงเพิ่มรายการใหม่ด้วยข้อมูลที่ถูกต้องได้
             </>
           }
@@ -139,7 +139,7 @@ export function UserRecordDeleteControl({ kind, relationshipId, hospitalId, upda
                 ยกเลิก
               </Button>
               <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? "กำลังลบ…" : "ยืนยันลบรายการถาวร"}
+                {pending ? "กำลังลบข้อมูลผู้ใช้…" : "ยืนยันลบข้อมูลผู้ใช้ถาวร"}
               </Button>
             </div>
           }
@@ -149,7 +149,7 @@ export function UserRecordDeleteControl({ kind, relationshipId, hospitalId, upda
             ? directoryLinkRef.current ?? Array.from(document.querySelectorAll<HTMLAnchorElement>("main a")).find((link) => link.getAttribute("href") === directoryHref) ?? document.querySelector<HTMLElement>("main h1")
             : triggerRef.current ?? document.getElementById("user-delete-heading") ?? document.querySelector<HTMLElement>("main h1")}
           size="default"
-          title={`ลบรายการของ ${resourceName} หรือไม่`}
+          title={`ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งานของ ${resourceName} หรือไม่`}
         >
           <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
             <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />
@@ -157,7 +157,7 @@ export function UserRecordDeleteControl({ kind, relationshipId, hospitalId, upda
             <input name="targetHospitalId" type="hidden" value={dialogPayload?.hospitalId ?? hospitalId} />
             <input name="expectedUpdatedAt" type="hidden" value={dialogPayload?.updatedAt ?? updatedAt} />
             <label className="block space-y-2 text-sm font-semibold text-text" htmlFor={`delete-confirmation-${relationshipId}`}>
-              <span>พิมพ์ “ลบรายการ” เพื่อยืนยัน</span>
+              <span>พิมพ์ “ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน” เพื่อยืนยัน</span>
               <input
                 autoComplete="off"
                 className="min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"

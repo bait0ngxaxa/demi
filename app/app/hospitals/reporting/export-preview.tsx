@@ -28,24 +28,22 @@ export function ExportPreview({
       <p className="mt-1 break-words text-sm text-text-muted">โรงพยาบาล: {hospitalName}</p>
       <dl className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
-          <dt className="text-sm text-text-muted">แถวข้อมูลในไฟล์ (หนึ่งแถวต่อหนึ่ง Program)</dt>
-          <dd className="mt-1 text-xl font-semibold text-text">{programRows.toLocaleString("th-TH")} Program</dd>
+          <dt className="text-sm text-text-muted">แถวข้อมูลในไฟล์ (หนึ่งแถวต่อหนึ่งโปรแกรม)</dt>
+          <dd className="mt-1 text-xl font-semibold text-text">{programRows.toLocaleString("th-TH")} โปรแกรม</dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-sm text-text-muted">ผู้ป่วยที่ยังไม่มี Program (นับในหัวรายงาน ไม่มีแถวในไฟล์)</dt>
+          <dt className="text-sm text-text-muted">ผู้ป่วยที่ยังไม่มีโปรแกรม (นับในหัวรายงาน ไม่มีแถวในไฟล์)</dt>
           <dd className="mt-1 text-xl font-semibold text-text">{relationshipsWithoutProgram.toLocaleString("th-TH")} ราย</dd>
         </div>
       </dl>
       {programRows === 0 ? (
         <Alert className="mt-4" variant="warning">
           <p>
-            ไฟล์นี้จะมีเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล เพราะรายงานแสดงหนึ่งแถวต่อหนึ่ง Program
-            และโรงพยาบาลนี้ยังไม่มี Program ที่กำลังดำเนินหรือสิ้นสุดแล้ว แบบประเมินหรือการติดตามผลที่บันทึกนอก Program
-            จะไม่อยู่ในรายงานจนกว่าจะบันทึกในครั้งที่ของ Program
+            ไฟล์นี้จะแสดงเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล เพราะรายงานแสดงข้อมูลหนึ่งแถวต่อหนึ่งโปรแกรม และโรงพยาบาลนี้ยังไม่มีโปรแกรมที่กำลังดำเนินอยู่หรือสิ้นสุดแล้ว แบบประเมินหรือการติดตามผลที่บันทึกนอกโปรแกรมจะไม่รวมในรายงาน หากต้องการให้แสดง ให้บันทึกจากรอบบริการของโปรแกรมผู้ป่วยรายนี้
           </p>
           {programEntryHref ? (
             <Link className={buttonClassName({ variant: "secondary", size: "compact", className: "mt-3" })} href={programEntryHref} prefetch={false}>
-              เปิด Program จากหน้าข้อมูลผู้ป่วย
+              เปิดโปรแกรมจากหน้าข้อมูลผู้ป่วย
             </Link>
           ) : null}
         </Alert>

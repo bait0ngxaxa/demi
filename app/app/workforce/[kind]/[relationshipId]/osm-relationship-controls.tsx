@@ -26,11 +26,11 @@ import {
 } from "../../scoped-mutation";
 
 const osmRefusals = {
-  conflict: "ไม่สามารถเปลี่ยนความสัมพันธ์ อสม. ได้ กรุณาตรวจสอบสถานะล่าสุด",
-  forbidden: "ไม่มีสิทธิ์จัดการความสัมพันธ์ อสม. นี้",
+  conflict: "สิทธิ์การทำงานของ อสม. เปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์จัดการสิทธิ์การทำงานของ อสม. รายนี้",
 };
-const suspendNotice = standardNotice({ success: "ระงับความสัมพันธ์ อสม. แล้ว", ...osmRefusals });
-const restoreNotice = standardNotice({ success: "คืนสถานะความสัมพันธ์ อสม. แล้ว", ...osmRefusals });
+const suspendNotice = standardNotice({ success: "พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว", ...osmRefusals });
+const restoreNotice = standardNotice({ success: "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้งแล้ว", ...osmRefusals });
 
 /** A success counts only for this relationship and only when it carries the status the submission asked for. */
 function osmConfirms(
@@ -73,9 +73,9 @@ function BlockedReason({
   if (accountStatus !== "ACTIVE") {
     return (
       <Alert variant="warning">
-        <p className="font-semibold">ยังไม่มีการดำเนินการด้านความสัมพันธ์</p>
+        <p className="font-semibold">ยังเปลี่ยนสิทธิ์การทำงานไม่ได้</p>
         <p className="mt-1">
-          บัญชีนี้ยังไม่พร้อมใช้งาน จึงไม่สามารถระงับหรือคืนสถานะความสัมพันธ์ อสม. ได้
+          บัญชีนี้ยังใช้งานไม่ได้ จึงยังเปลี่ยนสิทธิ์การทำงานของ อสม. ในโรงพยาบาลนี้ไม่ได้
         </p>
       </Alert>
     );
@@ -84,8 +84,8 @@ function BlockedReason({
   if (lifecycleBlockReason === "MISSING_OSM_ROLE") {
     return (
       <Alert variant="warning">
-        <p className="font-semibold">ไม่สามารถยืนยันบทบาท อสม. ของบัญชีนี้ได้</p>
-        <p className="mt-1">ระบบจึงปิดการเปลี่ยนสถานะความสัมพันธ์ไว้ก่อน กรุณาตรวจสอบข้อมูลในระบบ</p>
+        <p className="font-semibold">ตรวจสอบบทบาท อสม. ของบัญชีนี้ไม่ได้</p>
+        <p className="mt-1">จึงยังเปลี่ยนสิทธิ์การทำงานในโรงพยาบาลนี้ไม่ได้ กรุณาตรวจสอบข้อมูลบัญชี</p>
       </Alert>
     );
   }
@@ -94,11 +94,11 @@ function BlockedReason({
     return (
       <Alert variant="warning">
         <p className="font-semibold">
-          OSM รายนี้ยังรับผิดชอบผู้ป่วย {currentAssignmentCount} ราย
+          อสม. รายนี้ยังรับผิดชอบผู้ป่วย {currentAssignmentCount} ราย
         </p>
         <p className="mt-1">
-          กรุณาจัดการผู้รับผิดชอบผู้ป่วยก่อน
-          {relationshipStatus === "SUSPENDED" ? "คืนสถานะความสัมพันธ์" : "ระงับความสัมพันธ์"}
+          กรุณาเปลี่ยนผู้รับผิดชอบผู้ป่วยก่อน
+          {relationshipStatus === "SUSPENDED" ? "เปิดสิทธิ์ อสม. อีกครั้ง" : "พักสิทธิ์ อสม. ชั่วคราว"}
         </p>
       </Alert>
     );
@@ -107,8 +107,8 @@ function BlockedReason({
   if (lifecycleBlockReason === "INVALID_RELATIONSHIP_STATE") {
     return (
       <Alert variant="neutral">
-        <p className="font-semibold">ไม่มีการดำเนินการสำหรับสถานะความสัมพันธ์นี้</p>
-        <p className="mt-1">กรุณาตรวจสอบสถานะล่าสุดแล้วโหลดหน้านี้ใหม่</p>
+        <p className="font-semibold">ไม่มีรายการที่เปลี่ยนได้ในสถานะนี้</p>
+        <p className="mt-1">กรุณาตรวจสอบสถานะการทำงานล่าสุด แล้วโหลดหน้านี้ใหม่</p>
       </Alert>
     );
   }
@@ -180,16 +180,16 @@ export function OsmRelationshipControls({
           lifecycleBlockReason={lifecycleBlockReason}
           relationshipStatus={relationshipStatus}
         />
-        <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว"} />
+        <ScopedMutationFeedback session={session} success={() => "อัปเดตสิทธิ์การทำงานของ อสม. แล้ว"} />
       </div>
     );
   }
 
   return (
     <Panel>
-      <h2 className="text-xl font-semibold tracking-[-0.02em]">การจัดการความสัมพันธ์ อสม.</h2>
+      <h2 className="text-xl font-semibold tracking-[-0.02em]">จัดการสิทธิ์การทำงานของ อสม.</h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        การดำเนินการมีผลเฉพาะความสัมพันธ์ อสม. กับโรงพยาบาลนี้ บัญชีผู้ใช้งาน บทบาท และข้อมูลผู้ป่วยจะไม่ถูกเปลี่ยน
+        การดำเนินการมีผลเฉพาะสิทธิ์การทำงานของ อสม. รายนี้ในโรงพยาบาลนี้ ไม่เปลี่ยนบัญชี บทบาท อสม. หรือข้อมูลผู้ป่วย
       </p>
 
       <UnknownOutcomeAlert
@@ -202,10 +202,10 @@ export function OsmRelationshipControls({
           action={suspend.action}
           className="mt-6 border-t border-border pt-5"
           confirmation={{
-            title: "ระงับความสัมพันธ์ อสม. นี้หรือไม่",
-            description: "การระงับมีผลเฉพาะความสัมพันธ์กับโรงพยาบาลนี้",
-            details: <p>บัญชีผู้ใช้งาน บทบาท และข้อมูลผู้ป่วยจะไม่ถูกเปลี่ยน</p>,
-            confirmLabel: "ระงับความสัมพันธ์",
+            title: "พักสิทธิ์ อสม. รายนี้ชั่วคราวหรือไม่",
+            description: "อสม. รายนี้จะใช้สิทธิ์ทำงานในโรงพยาบาลนี้ไม่ได้ชั่วคราว",
+            details: <p>บัญชีและบทบาท อสม. จะคงเดิม การพักสิทธิ์ทำได้เมื่อไม่มีผู้ป่วยที่ยังรับผิดชอบอยู่</p>,
+            confirmLabel: "พักสิทธิ์ อสม. ชั่วคราว",
             confirmVariant: "destructive",
           }}
           outcome={suspendOutcome}
@@ -216,7 +216,7 @@ export function OsmRelationshipControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            ระงับได้เมื่อไม่มีผู้ป่วยที่ยังรับผิดชอบอยู่ในโรงพยาบาลนี้
+            พักสิทธิ์ได้เมื่อ อสม. รายนี้ไม่มีผู้ป่วยที่ยังรับผิดชอบในโรงพยาบาลนี้
           </p>
           <Button
             className="mt-3"
@@ -226,7 +226,7 @@ export function OsmRelationshipControls({
             type="submit"
             variant="danger"
           >
-            {suspend.pending ? "กำลังระงับ..." : "ระงับความสัมพันธ์ อสม."}
+            {suspend.pending ? "กำลังพักสิทธิ์ อสม. ในโรงพยาบาลนี้..." : "พักสิทธิ์ อสม. ในโรงพยาบาลนี้"}
           </Button>
         </ConfirmableActionForm>
       ) : null}
@@ -237,15 +237,20 @@ export function OsmRelationshipControls({
           <input name="targetHospitalId" type="hidden" value={targetHospitalId} />
           <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} />
           <p className="text-sm leading-6 text-text-muted">
-            คืนสถานะเฉพาะความสัมพันธ์นี้ โดยไม่สร้างหรือคืนการมอบหมายผู้ป่วยเดิม
+            เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง ระบบจะไม่คืนผู้ป่วยที่เคยรับผิดชอบให้อัตโนมัติ
           </p>
           <Button className="mt-3" disabled={locked} loading={restore.pending} size="compact" type="submit">
-            {restore.pending ? "กำลังคืนสถานะ..." : "คืนสถานะความสัมพันธ์ อสม."}
+            {restore.pending ? "กำลังเปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง..." : "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"}
           </Button>
         </form>
       ) : null}
 
-      <ScopedMutationFeedback session={session} success={() => "บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว"} />
+      <ScopedMutationFeedback
+        session={session}
+        success={(submission) => submission.kind === "suspend"
+          ? "พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว"
+          : "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้งแล้ว"}
+      />
     </Panel>
   );
 }

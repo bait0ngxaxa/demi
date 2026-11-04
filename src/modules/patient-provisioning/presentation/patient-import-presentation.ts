@@ -142,7 +142,7 @@ const patientImportRecoveryGuidanceByAction: Record<
   RETRY_FAILED: {
     kind: "RETRY_FAILED",
     message: "มีบางรายการที่ระบบไม่สามารถบันทึกได้ กรุณาลองนำเข้าอีกครั้ง",
-    detail: "หากยังเกิดปัญหาเดิม กรุณาแจ้งผู้ดูแลระบบ",
+    detail: "หากยังเกิดปัญหาเดิม กรุณาแจ้งแอดมินโรงพยาบาล",
   },
 };
 

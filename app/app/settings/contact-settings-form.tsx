@@ -114,7 +114,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
     {patient ? <section aria-labelledby="notification-settings-heading" className="border-t border-border pt-6">
       <h2 className="text-xl font-semibold text-text" id="notification-settings-heading">การแจ้งเตือน</h2>
       <AppointmentNotificationPreference initial={patient.appointment} />
-      {patient.medication ? <MedicationReminderPreference initial={patient.medication} /> : <p className="mt-5 text-sm text-text-muted">การตั้งค่าแจ้งเตือนยาเปิดได้เมื่อบัญชีผู้ป่วยและความสัมพันธ์โรงพยาบาลพร้อมใช้งาน</p>}
+      {patient.medication ? <MedicationReminderPreference initial={patient.medication} /> : <p className="mt-5 text-sm text-text-muted">การตั้งค่าแจ้งเตือนยาเปิดได้เมื่อบัญชีผู้ป่วยและโรงพยาบาลยังเปิดใช้งานอยู่</p>}
     </section> : null}
     {patient ? <section aria-labelledby="phone-settings-heading" className="border-t border-border pt-6">
       <h2 className="text-xl font-semibold text-text" id="phone-settings-heading">เบอร์โทรศัพท์ผู้ป่วย</h2>

@@ -60,7 +60,7 @@ export async function correctPatientNameAction(relationshipId: string, _state: H
     return { status: "SUCCESS", message: "แก้ไขชื่อ-สกุลแล้ว" };
   } catch (error: unknown) {
     return error instanceof PatientNameCorrectionRequiresAdminError
-      ? { status: "ERROR", code: "FORBIDDEN", message: "ผู้ป่วยรายนี้เชื่อมกับหลายโรงพยาบาล กรุณาติดต่อผู้ดูแลระบบ" }
+      ? { status: "ERROR", code: "FORBIDDEN", message: "แก้ไขชื่อผู้ป่วยจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI" }
       : error instanceof ConflictError ? { status: "ERROR", code: "CONFLICT", message: "ชื่อ-สกุลเปลี่ยนแปลงแล้วหรือไม่ได้แก้ไข กรุณาโหลดหน้าใหม่ก่อนบันทึก" }
         : error instanceof ValidationError ? { status: "ERROR", code: "INVALID_INPUT", message: "กรุณากรอกชื่อและนามสกุล (ไม่เกิน 120 ตัวอักษร)" }
           : error instanceof ForbiddenError || error instanceof NotFoundError ? { status: "ERROR", code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์แก้ไขชื่อ-สกุลผู้ป่วยรายนี้" }

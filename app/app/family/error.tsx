@@ -19,7 +19,7 @@ export default function FamilyManagementError({
   return (
     <div className="max-w-3xl">
       <Alert variant="danger">
-        <p className="font-semibold">ไม่สามารถโหลดข้อมูลความสัมพันธ์ผู้ดูแลได้</p>
+        <p className="font-semibold">ไม่สามารถโหลดรายชื่อผู้ดูแลและผู้ป่วยที่เชื่อมไว้ได้</p>
         <p className="mt-1">กรุณาลองอีกครั้ง หากยังพบปัญหาให้กลับมาใหม่ภายหลัง</p>
         <Button className="mt-4" onClick={retry} size="compact" type="button" variant="secondary">
           ลองอีกครั้ง

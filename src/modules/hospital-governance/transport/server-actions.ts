@@ -89,7 +89,7 @@ export async function suspendHospitalAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการระงับโรงพยาบาลไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+      message: "ข้อมูลสำหรับระงับการใช้งานโรงพยาบาลไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
     };
   }
 
@@ -113,7 +113,7 @@ export async function restoreHospitalAction(
     return {
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "ข้อมูลการคืนสถานะโรงพยาบาลไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+      message: "ข้อมูลสำหรับเปิดใช้งานโรงพยาบาลอีกครั้งไม่ถูกต้อง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
     };
   }
 

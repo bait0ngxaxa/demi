@@ -717,7 +717,7 @@ export function HospitalContentCreateForm({
 
       {isPending && progress ? (
         <Panel aria-labelledby="hospital-content-progress-heading" className="mt-5">
-          <h2 className="text-base font-semibold text-text" id="hospital-content-progress-heading">กำลังดำเนินการ อย่าปิดหน้านี้</h2>
+          <h2 className="text-base font-semibold text-text" id="hospital-content-progress-heading">{runMode === "PUBLISH" ? "กำลังบันทึกและเผยแพร่เนื้อหา อย่าปิดหน้านี้" : "กำลังบันทึกฉบับร่าง อย่าปิดหน้านี้"}</h2>
           <ol className="mt-3 space-y-1 text-sm leading-6 text-text-muted">
             <li aria-current={progress.step === "CREATE" ? "step" : undefined} className={progress.step === "CREATE" ? "font-semibold text-text" : undefined}>1. บันทึกเนื้อหา</li>
             {progress.imageTotal > 0 ? (

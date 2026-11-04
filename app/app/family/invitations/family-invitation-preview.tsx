@@ -443,7 +443,7 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
             <div>
               <h2 className="text-xl font-semibold text-text">{preview.invitation.patientDisplayName}</h2>
               <p className="mt-2 text-sm leading-6 text-text-muted">
-                คำเชิญให้เชื่อมความสัมพันธ์เป็นผู้ดูแล
+                คำเชิญให้เป็นผู้ดูแลของผู้ป่วยรายนี้
               </p>
             </div>
             <StatusBadge variant={caregiverInvitationStatusVariant(preview.invitation.invitationStatus)}>
@@ -497,7 +497,7 @@ export function FamilyInvitationPreview({ legal }: { legal: AccountCreationLegal
               <form action={submitAcceptance}>
                 <input name="token" type="hidden" value={token ?? ""} />
                 <Button disabled={accepting || rejecting || ((acceptingUnknown || rejectingUnknown) && !canRetryAfterStatusCheck)} loading={accepting} type="submit">
-                  {accepting ? "กำลังยอมรับ..." : "ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"}
+                  {accepting ? "กำลังตอบรับคำเชิญ..." : "ยอมรับคำเชิญเป็นผู้ดูแล"}
                 </Button>
               </form>
               <form action={submitRejection}>

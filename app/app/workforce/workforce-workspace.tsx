@@ -28,25 +28,30 @@ type WorkforceWorkspaceProps = {
 
 const kindName = (row: WorkforceListRow): string => row.kind === "OSM"
   ? "อสม."
-  : `บุคลากรโรงพยาบาล · ${row.profession ? {
+  : `เจ้าหน้าที่โรงพยาบาล · ${row.profession ? {
       DOCTOR: "แพทย์",
       NURSE: "พยาบาล",
       COORDINATOR: "ผู้ประสานงาน",
       OTHER: "อื่น ๆ",
     }[row.profession] : "ยังไม่ระบุวิชาชีพ"}`;
 
-function statusFor(row: WorkforceListRow): { label: string; variant: StatusVariant } {
-  if (row.relationshipStatus === "ENDED") return { label: "นำออกจากระบบถาวรแล้ว", variant: "neutral" };
-  if (row.accountStatus === "SUSPENDED" || row.relationshipStatus === "SUSPENDED") {
-    return { label: "ถูกระงับ", variant: "danger" };
+function statusFor(row: WorkforceListRow): { label: string; variant: StatusVariant }[] {
+  const statuses: { label: string; variant: StatusVariant }[] = [];
+  if (row.accountStatus === "SUSPENDED") statuses.push({ label: "บัญชีถูกระงับ", variant: "danger" });
+  if (row.relationshipStatus === "SUSPENDED") {
+    statuses.push({ label: row.kind === "OSM" ? "พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราว" : "พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราว", variant: "danger" });
+  } else if (row.relationshipStatus === "ENDED") {
+    statuses.push({ label: "สิ้นสุดการทำงานกับโรงพยาบาลนี้", variant: "neutral" });
   }
+  if (statuses.length > 0) return statuses;
+
   if (row.accountStatus === "ACTIVE" && row.relationshipStatus === "ACTIVE") {
-    return { label: "พร้อมใช้งาน", variant: "success" };
+    return [{ label: "พร้อมใช้งาน", variant: "success" }];
   }
   if (row.accountStatus === "INVITED" || row.relationshipStatus === "INVITED") {
-    return { label: "รอตอบรับคำเชิญ", variant: "neutral" };
+    return [{ label: "รอตอบรับคำเชิญ", variant: "neutral" }];
   }
-  return { label: row.activationStatus === "IN_PROGRESS" ? "กำลังเปิดใช้งาน" : "รอเปิดใช้งาน", variant: "warning" };
+  return [{ label: row.activationStatus === "IN_PROGRESS" ? "กำลังเปิดใช้งานบัญชี" : "รอเปิดใช้งานบัญชี", variant: "warning" }];
 }
 
 function directoryHref(
@@ -80,7 +85,7 @@ export function WorkforceWorkspace({
     if (tab === "osm") return row.kind === "OSM";
     return row.activationRequired;
   });
-  const selectedTitle = tab === "staff" ? "บุคลากรโรงพยาบาล" : tab === "osm" ? "อสม." : "รอเปิดใช้งาน";
+  const selectedTitle = tab === "staff" ? "เจ้าหน้าที่โรงพยาบาล" : tab === "osm" ? "อสม." : "รอเปิดใช้งาน";
   const importParams = new URLSearchParams({ hospitalId: selectedHospitalId });
   if (pageInfo.search) importParams.set("search", pageInfo.search);
   if (pageInfo.status) importParams.set("status", pageInfo.status);
@@ -92,13 +97,13 @@ export function WorkforceWorkspace({
   return (
     <div className="content-workspace break-words">
       <PageHeader
-        actions={<Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มบุคลากร / อสม.</Link>}
+        actions={<Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มเจ้าหน้าที่ / อสม.</Link>}
         breadcrumbs={[
           { label: "งานโรงพยาบาล", href: `/app?hospitalId=${encodeURIComponent(selectedHospitalId)}` },
-          { label: "จัดการบุคลากร" },
+          { label: "จัดการเจ้าหน้าที่และ อสม." },
         ]}
-        description="จัดการรายชื่อบุคลากรโรงพยาบาลและ อสม. ในโรงพยาบาลที่คุณเป็นเจ้าของ"
-        title="จัดการบุคลากรโรงพยาบาล"
+        description="จัดการรายชื่อเจ้าหน้าที่โรงพยาบาลและ อสม. ในโรงพยาบาลที่คุณเป็นแอดมิน"
+        title="จัดการเจ้าหน้าที่โรงพยาบาลและ อสม."
       />
 
       <div className="pt-8">
@@ -125,18 +130,18 @@ export function WorkforceWorkspace({
           </Select>
           {hospitalSwitching ? <p className="mt-2 text-sm text-text-muted" role="status">กำลังเปลี่ยนโรงพยาบาล...</p> : null}
           <p className="mt-2 text-sm leading-6 text-muted">
-            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น ใช้สิทธิ์เจ้าของโรงพยาบาลโดยตรง ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
+            รายชื่อและการดำเนินการเป็นของ {workforce.hospital.name} เท่านั้น สำหรับแอดมินโรงพยาบาล ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ
           </p>
         </Panel>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Link className={buttonClassName({ variant: "secondary" })} href={importHref}>นำเข้าหลายคน / พิมพ์ใบ</Link>
-          <Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มบุคลากร / อสม.</Link>
+          <Link className={buttonClassName({ variant: "primary" })} href={addHref}>เพิ่มเจ้าหน้าที่ / อสม.</Link>
         </div>
 
-        <nav aria-label="ประเภทบุคลากร" className="mt-6 flex flex-wrap gap-2 border-b border-line">
+        <nav aria-label="ประเภทเจ้าหน้าที่และ อสม." className="mt-6 flex flex-wrap gap-2 border-b border-line">
           {([
-            ["staff", "บุคลากร"],
+            ["staff", "เจ้าหน้าที่โรงพยาบาล"],
             ["osm", "อสม."],
             ["pending", `รอเปิดใช้งาน (${workforce.pendingCount})`],
           ] as const).map(([value, label]) => (
@@ -163,14 +168,14 @@ export function WorkforceWorkspace({
               <Input defaultValue={pageInfo.search} id="workforce-search" maxLength={120} name="search" type="search" />
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-status">
-              <span>สถานะความสัมพันธ์</span>
+              <span>สถานะการทำงานกับโรงพยาบาล</span>
               <Select defaultValue={pageInfo.status ?? ""} id="workforce-status" name="status">
                 <option value="">ทุกสถานะ</option>
-                <option value="PROVISIONED">รอเปิดใช้งาน</option>
-                <option value="INVITED">รอตอบรับ</option>
-                <option value="ACTIVE">ใช้งานอยู่</option>
-                <option value="SUSPENDED">ถูกระงับ</option>
-                <option value="ENDED">นำออกแล้ว</option>
+                <option value="PROVISIONED">รอเปิดใช้งานบัญชี</option>
+                <option value="INVITED">รอตอบรับคำเชิญ</option>
+                <option value="ACTIVE">ทำงานอยู่</option>
+                <option value="SUSPENDED">พักสิทธิ์ชั่วคราว</option>
+                <option value="ENDED">สิ้นสุดสิทธิ์แล้ว</option>
               </Select>
             </label>
             <label className="block space-y-2 text-sm font-semibold" htmlFor="workforce-self-registration">
@@ -197,7 +202,7 @@ export function WorkforceWorkspace({
           ) : (
             <ul>
               {rows.map((row) => {
-                const status = statusFor(row);
+                const statuses = statusFor(row);
                 const kindPath = row.kind === "OSM" ? "osm" : "staff";
                 return (
                   <li className="flex flex-col gap-3 border-t border-line px-4 py-4 first:border-t-0 sm:flex-row sm:items-center sm:justify-between sm:px-6" key={`${row.kind}-${row.id}`}>
@@ -213,7 +218,7 @@ export function WorkforceWorkspace({
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                      <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
+                      {statuses.map((status) => <StatusBadge key={status.label} variant={status.variant}>{status.label}</StatusBadge>)}
                       <Link
                         className={buttonClassName({ variant: "secondary", size: "compact" })}
                         href={`/app/workforce/${kindPath}/${encodeURIComponent(row.id)}`}
@@ -228,7 +233,7 @@ export function WorkforceWorkspace({
           )}
           <nav aria-label={`หน้ารายชื่อ${selectedTitle}`} className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-4 sm:px-6">
             {tab !== "osm" && pageInfo.staffNextCursor ? (
-              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: pageInfo.staffNextCursor, osmCursor: pageInfo.osmCursor })}>หน้าถัดไป · บุคลากร</Link>
+              <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: pageInfo.staffNextCursor, osmCursor: pageInfo.osmCursor })}>หน้าถัดไป · เจ้าหน้าที่</Link>
             ) : null}
             {tab !== "staff" && pageInfo.osmNextCursor ? (
               <Link className={buttonClassName({ variant: "secondary", size: "compact" })} href={directoryHref(selectedHospitalId, tab, pageInfo.search, pageInfo.status, pageInfo.selfRegistration, { staffCursor: pageInfo.staffCursor, osmCursor: pageInfo.osmNextCursor })}>หน้าถัดไป · อสม.</Link>

@@ -28,10 +28,10 @@ const linkClassName =
 
 function programContextText(program: PatientSelfGoalPlanHistoryItem["program"]): string {
   if (!program) {
-    return "ไม่ได้เชื่อมกับ Program";
+    return "ไม่ได้เชื่อมกับโปรแกรม";
   }
 
-  return `Program เริ่ม ${formatPatientDateOnly(program.startedAt)} · ${patientProgramStatusLabels[program.status]}`;
+  return `โปรแกรมเริ่ม ${formatPatientDateOnly(program.startedAt)} · ${patientProgramStatusLabels[program.status]}`;
 }
 
 function ProgramHistoryItem({
@@ -46,7 +46,7 @@ function ProgramHistoryItem({
   return (
     <li className="min-w-0 py-4 first:pt-0 last:pb-0">
       <Link className={`${linkClassName} break-words`} href={href}>
-        Program · {formatPatientDateOnly(item.startedAt)}
+        โปรแกรม · {formatPatientDateOnly(item.startedAt)}
       </Link>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         <StatusBadge variant={item.status === "ACTIVE" ? "info" : "neutral"}>
@@ -76,7 +76,7 @@ function GoalPlanHistoryItem({
     <li className="min-w-0 py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <Link className={`${linkClassName} break-words`} href={href}>
-          แผนเป้าหมาย รอบที่ {item.roundNumber}
+          แผนสุขภาพ รอบที่ {item.roundNumber}
         </Link>
         <StatusBadge variant={current ? "info" : "neutral"}>{current ? "แผนปัจจุบัน" : "ฉบับก่อนหน้า"}</StatusBadge>
       </div>
@@ -147,7 +147,7 @@ export function PatientSelfCareJourneyView({
           { href: "/app/personal/care", label: "ข้อมูลการดูแล" },
           { label: journey.relationship.hospitalName },
         ]}
-        description="แสดงรายการที่บันทึกไว้สำหรับความสัมพันธ์กับโรงพยาบาลนี้"
+        description="แสดงรายการที่โรงพยาบาลนี้บันทึกไว้ในการดูแลคุณ"
         title="ข้อมูลการดูแล"
       />
 

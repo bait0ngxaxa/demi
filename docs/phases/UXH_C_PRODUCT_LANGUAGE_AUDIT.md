@@ -49,10 +49,10 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 | Screening | ขั้นตอนคัดกรองตามเครื่องมือที่กำหนด | การคัดกรอง; คงชื่อเครื่องมือทางการ | Clinical workflow | PRODUCT.md; screening requirements |
 | Baseline | จุดวัดตั้งต้นใน workflow | OWNER DECISION REQUIRED — รอคำไทยที่ยืนยันแล้ว | Clinical workflow | PRODUCT.md; canonical requirements |
 | Classification | ผลจัดกลุ่มตามกติกาผลิตภัณฑ์ ไม่ใช่คำวินิจฉัยโดยอัตโนมัติ | OWNER DECISION REQUIRED สำหรับคำกลาง; คงถ้อยคำชั่วคราวที่ระบุสถานะให้ชัด | Clinical workflow | PRODUCT.md; clinical requirements |
-| Goal Plan | แผนและกิจกรรมตาม workflow | OWNER DECISION REQUIRED — canonical source ไม่อนุมัติให้เรียก “แผนสุขภาพ” โดยอัตโนมัติ | Goals / activity | canonical requirements |
+| Goal Plan | แผนและกิจกรรมตาม workflow | แผนสุขภาพ ตาม WB-D4 สำหรับ Goal Plan; อย่ารวมกับ “แผนสุขภาพดีของฉัน” หรือ artifact อื่นที่ยังไม่มีข้อสรุป | Goals / activity | WB_ALIGNMENT_DECISIONS.md §จ, D4; canonical requirements |
 | Appointment / Follow-up | นัดหมาย / การติดตาม | นัดหมาย / ติดตามผล | Patient / Hospital / caregiver | PRODUCT.md; workflow requirements |
 | Service 1 / Service 2 | ชื่อบริการตามกระบวนการที่แยกกัน | คง Service 1 / Service 2 จนมีชื่อทางการ; OWNER DECISION REQUIRED สำหรับคำไทยของ Service 2 | Care journey | canonical requirements |
-| Program | การลงทะเบียนและติดตามตามรายการบริการที่กำหนด | Program (คงชื่อที่ใช้ในเอกสารผลิตภัณฑ์และรายงาน) | Patient service workflow / reporting | PRODUCT.md; service requirements |
+| Program / `PatientProgram` | การลงทะเบียนและติดตามตามรายการบริการที่กำหนด | โปรแกรม ใน UI; คง `Program` ในเอกสารเทคนิคและตัวระบุ | Patient service workflow / reporting | PRODUCT.md; service requirements |
 | Hospital reporting | รายงานภายใต้ขอบเขตที่อนุญาต | รายงานโรงพยาบาล; ระบุข้อมูลและขอบเขตตามหน้าจริง | Hospital / Platform Admin | reporting requirements |
 | Import / Export | อ่านไฟล์นำเข้า / นำข้อมูลออก | นำเข้าจาก Excel / ดาวน์โหลดรายงาน ตามการกระทำจริง | Roster / reporting | import and reporting contracts |
 | Patient access request | คำขอสาธารณะเพื่อให้โรงพยาบาลตรวจสอบและดำเนินการตามขั้นตอน | คำขอใช้บัญชีผู้ป่วย | ผู้ป่วย / โรงพยาบาล | AUTH-04; ADR-0004 |
@@ -78,7 +78,7 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 | รายงานโรงพยาบาล / ผู้ดูแลระบบ | “Platform ADMIN”, “Patient/Program”, “exact-Hospital”, “Child Hospital”, “Dashboard” | อธิบายข้อมูลผู้ป่วยและ Program ของโรงพยาบาลที่เลือก; ใช้ “โรงพยาบาลลูกข่าย” และ “ภาพรวม” | คงรายงานเฉพาะโรงพยาบาลที่เลือก, สิทธิ์ดูรายละเอียด Program แยกกัน และข้อจำกัดผลรวมเครือข่าย | PRODUCT.md; Reporting Access Canonical; ADR-0003 | สูง | CHANGED |
 | ครอบครัวและผู้ดูแล | ชื่อหน้า “ความสัมพันธ์ผู้ดูแล” ไม่สอดคล้องกับกลุ่ม navigation | “ครอบครัวและผู้ดูแล” ในชื่อหน้าและ breadcrumb | ผู้ใช้เข้าใจส่วนงานได้โดยไม่ขยายสิทธิ์; การเชื่อมความสัมพันธ์ยังไม่เปิดข้อมูลสุขภาพ | family flow; appointment grant contract | สูง | CHANGED |
 | Workforce, appointment และ content lifecycle | ป้ายระงับบัญชีกับระงับความสัมพันธ์, ลิงก์ครั้งเดียว, การถอน/เก็บถาวร, คำขอยกเลิกนัด | คงคำแยกตามผลจริงและคำเตือนผลกระทบที่มีอยู่ | แยกบัญชีกับความสัมพันธ์, ระงับชั่วคราวกับนำออกถาวร, คำขอยกเลิกกับยกเลิกนัด และร่าง/เผยแพร่/ถอน/เก็บถาวร | ADR-0008; workforce/content/appointment contracts | สูง | ALREADY CORRECT |
-| Patient care journey | คำที่ใช้อยู่ในส่วนข้อมูลตั้งต้น การจัดกลุ่ม Goal Plan และ Service 2 | คงชื่อที่มีอยู่พร้อมข้อจำกัดทางคลินิก; ยังไม่เปลี่ยน Baseline, Classification, Goal Plan หรือ Service 2 เป็นคำไทยที่ไม่ได้อนุมัติ | ชื่อบางคำยังไม่มีข้อสรุปจากเจ้าของผลิตภัณฑ์; ห้ามสื่อเป็นการวินิจฉัยหรือการรับรอง | PRODUCT.md; canonical clinical and service requirements | สูง | OWNER DECISION REQUIRED |
+| Patient care journey | คำที่ใช้อยู่ในส่วนข้อมูลตั้งต้น การจัดกลุ่มแผนสุขภาพ และ Service 2 | ใช้ “แผนสุขภาพ” สำหรับ Goal Plan ตาม WB-D4; คง Baseline และ Classification ตามข้อจำกัดทางคลินิก และไม่ตั้งชื่อ Service 2 เอง | Goal Plan ได้ชื่อแล้ว แต่ความหมายของ artifact อื่นและชื่อ Service 2 ยังต้องอิงข้อกำหนดที่อนุมัติ; ห้ามสื่อเป็นการวินิจฉัยหรือการรับรอง | WB_ALIGNMENT_DECISIONS.md §จ, D4; PRODUCT.md; canonical clinical and service requirements | สูง | RECONCILED |
 | Patient self-service | คำขอนัด/บริการ, ข้อมูลยาและบันทึกสุขภาพที่ผู้ป่วยกรอก, ความชอบ และการตั้งค่าบัญชี | คงคำที่แยกคำขอจากบริการที่อนุมัติ และข้อมูลที่ผู้ป่วยบันทึกจากค่าที่ผู้เชี่ยวชาญตรวจยืนยัน | ไม่สื่อว่าคำขอได้รับอนุมัติหรือค่าที่บันทึกเองเป็นผลตรวจยืนยัน; ไม่เพิ่มคำแนะนำทางคลินิก | PRODUCT.md; patient self-service flows | กลาง | ALREADY CORRECT |
 | คำขอบริการและการเริ่มให้บริการ | “ประเภทคำขอ” อาจเข้าใจว่าเป็นบริการที่เริ่มแล้ว | คงข้อความ “หมวดบริการเป็นประเภทคำขอ ไม่ใช่การยืนยันว่าเริ่มให้บริการแล้ว” | แยกคำขอออกจากการให้บริการที่เกิดขึ้นจริง | patient service request contract | สูง | ALREADY CORRECT |
 | การมอบหมายผู้ป่วยให้ อสม. | ผู้ป่วยที่ได้รับมอบหมาย / ความสัมพันธ์กับโรงพยาบาล / กิจกรรมที่เสร็จแล้ว | คงคำแยกตามความสัมพันธ์ งานที่มอบหมาย และกิจกรรมที่บันทึกเสร็จ | ไม่เปลี่ยนการมอบหมายเป็นสิทธิ์โรงพยาบาลหรือการให้บริการเสร็จแล้ว | OSM assignment and activity contracts | สูง | ALREADY CORRECT |
@@ -121,9 +121,13 @@ C.1 ตรวจภาษาสาธารณะของผู้ป่วย�
 
 - ชื่อภาษาไทยที่ต้องใช้กับบทบาท Hospital OWNER และ MEMBER โดยไม่ชวนให้เข้าใจผิดเรื่องการถือครองหรืออำนาจ
 - คำกลางภาษาไทยสำหรับ Baseline และ Classification; ห้ามเปลี่ยนเป็นคำวินิจฉัย
-- ชื่อภาษาไทยของ Goal Plan และ Service 2 ตามแหล่งที่อนุมัติแล้ว
+- ชื่อภาษาไทยของ Service 2 ตามแหล่งที่อนุมัติแล้ว; อย่าขยายชื่อ “แผนสุขภาพ” จาก WB-D4 ไปยัง artifact อื่นที่ยังไม่สรุป
 - วิธีพิสูจน์ตัวตนและกระบวนการกู้คืนบัญชีที่ปลอดภัย; ระหว่างนี้ข้อความต้องบอกว่ายังไม่มีช่องทางกู้คืนที่รองรับ
 - ถ้อยคำทางกฎหมาย/คลินิกที่ยังไม่มีข้อความอนุมัติ ให้คงเดิมและระบุ OWNER DECISION REQUIRED
+
+### Reconciliation to later Product Owner decisions (2026-11-04)
+
+WB-D4 in `docs/requirements/WB_ALIGNMENT_DECISIONS.md` explicitly approves “แผนสุขภาพ” as the user-facing name for Goal Plan. This supersedes the older unresolved wording above and the former assumption that the label was not approved. The decision is limited to Goal Plan; it does not merge Goal Plan with “แผนสุขภาพดีของฉัน”, health-plan review, or other artifacts whose identity and lifecycle remain open in the current canonical requirements. The implementation uses “แผนสุขภาพ” for Goal Plan UI and keeps questionnaire wording, instruments, scales, scores, and classifications unchanged.
 
 ## 9. การตรวจและผลการทดสอบ
 

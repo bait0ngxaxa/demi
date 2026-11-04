@@ -21,7 +21,7 @@ type StatusFilter = "ALL" | HospitalHierarchyUnit["status"];
 function statusLabel(status: HospitalHierarchyUnit["status"]): string {
   switch (status) {
     case "ACTIVE": return "ใช้งานอยู่";
-    case "SUSPENDED": return "ถูกระงับ";
+    case "SUSPENDED": return "ระงับการใช้งาน";
     case "PENDING_VERIFICATION": return "รอยืนยันการขึ้นทะเบียน";
     case "RETIRED": return "ถอนออกจากรายชื่อ";
   }
@@ -173,7 +173,7 @@ function GlobalHospitalDirectory({
             เลือกโรงพยาบาล
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            แสดงหน่วยงานที่มีอยู่ในฐานข้อมูลปัจจุบันตามความสัมพันธ์แม่ข่ายและลูกข่ายโดยตรง
+            แสดงโรงพยาบาลและหน่วยบริการลูกข่ายที่ขึ้นทะเบียนไว้ โดยจัดตามเครือข่ายแม่ข่ายและลูกข่ายโดยตรง
           </p>
         </div>
         <p aria-live="polite" className="text-sm text-text-muted">
@@ -205,7 +205,7 @@ function GlobalHospitalDirectory({
             <option value="ALL">ทุกสถานะ</option>
             <option value="ACTIVE">ใช้งานอยู่</option>
             <option value="PENDING_VERIFICATION">รอยืนยันการขึ้นทะเบียน</option>
-            <option value="SUSPENDED">ถูกระงับ</option>
+            <option value="SUSPENDED">ระงับการใช้งาน</option>
           </select>
         </div>
       </div>
@@ -213,7 +213,7 @@ function GlobalHospitalDirectory({
       {directory.hierarchy.hospitalCount === 0 ? (
         <Panel className="mt-5 border-dashed text-center">
           <p className="font-semibold text-text">ยังไม่มีโรงพยาบาลในฐานข้อมูล</p>
-          <p className="mt-2 text-sm leading-6 text-text-muted">หน่วยงานที่เพิ่มเข้าสู่ระบบจะแสดงตามสถานะและความสัมพันธ์ปัจจุบัน</p>
+          <p className="mt-2 text-sm leading-6 text-text-muted">โรงพยาบาลและหน่วยบริการจะแสดงตามสถานะและโครงสร้างเครือข่ายปัจจุบัน</p>
         </Panel>
       ) : visibleCount === 0 ? (
         <Panel className="mt-5 border-dashed text-center">
@@ -315,9 +315,9 @@ export function GlobalAdminReportingWorkspace({
   return (
     <div className="min-w-0">
       <PageHeader
-        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ" }, { label: "รายงานระบบ" }]}
-        description="ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและ Program จำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย"
-        title="รายงานสำหรับผู้ดูแลระบบ"
+        breadcrumbs={[{ label: "หน้าหลัก", href: "/app" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "รายงานระบบ" }]}
+        description="ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและโปรแกรมจำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย"
+        title="รายงานสำหรับผู้ดูแลระบบ DEMI"
       />
 
       <section aria-labelledby="global-reporting-organization-heading" className="mt-7">
@@ -334,7 +334,7 @@ export function GlobalAdminReportingWorkspace({
             <SummaryValue label="โรงพยาบาลลูกข่าย" value={summary.subordinateHospitalCount} />
             <SummaryValue label="ใช้งานอยู่" value={directory.statusCounts.ACTIVE} />
             <SummaryValue label="รอยืนยัน" value={directory.statusCounts.PENDING_VERIFICATION} />
-            <SummaryValue label="ถูกระงับ" value={directory.statusCounts.SUSPENDED} />
+            <SummaryValue label="ระงับการใช้งาน" value={directory.statusCounts.SUSPENDED} />
           </dl>
         </Panel>
       </section>
@@ -351,7 +351,7 @@ export function GlobalAdminReportingWorkspace({
           </p>
           {selectedHospital.status !== "ACTIVE" ? (
             <Alert className="mt-4" variant={selectedHospital.status === "SUSPENDED" ? "warning" : "info"}>
-              <p className="font-semibold">รายงานผู้ป่วยและ Program ยังไม่พร้อมใช้งาน</p>
+              <p className="font-semibold">รายงานผู้ป่วยและโปรแกรมยังไม่พร้อมใช้งาน</p>
               <p className="mt-1 text-sm leading-6">
                 สถานะปัจจุบัน: {statusLabel(selectedHospital.status)} ไม่มีการโหลดหรือแสดงค่ารายงานเป็นศูนย์
               </p>

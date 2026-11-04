@@ -24,8 +24,8 @@ import {
 
 const SHEET_NAME = "สรุปรายลูกข่าย";
 const grainLabels = {
-  PATIENT_HOSPITAL_RELATIONSHIP: "ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล",
-  PATIENT_PROGRAM: "Program",
+  PATIENT_HOSPITAL_RELATIONSHIP: "รายการผู้ป่วยแยกตามโรงพยาบาล",
+  PATIENT_PROGRAM: "โปรแกรม",
 } as const;
 
 function toBangkokExcelDate(value: Date): Date {
@@ -84,7 +84,7 @@ export async function generateParentChildHospitalReportWorkbook(
   }
   sheet.addRow([]);
   sheet.addRow(["หมายเหตุ: ค่าทั้งหมดเป็นจำนวนรวมของโรงพยาบาลลูกข่ายที่เลือก ไม่มีข้อมูลระบุตัวผู้ป่วย"]);
-  sheet.addRow(["ขั้นตอนบริการนับจำนวน Program ที่มีบันทึก ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ"]);
+  sheet.addRow(["ขั้นตอนบริการนับจำนวนโปรแกรมที่มีบันทึก ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ"]);
   sheet.addRow(["เวลาที่สร้างไฟล์เป็นเวลาไทย ไม่ใช่เวลาอ้างอิงของข้อมูล"]);
 
   return Buffer.from(await workbook.xlsx.writeBuffer());

@@ -185,20 +185,20 @@ export function FollowupDetailView({
               )}
             </div>
             <div>
-              <p className="text-sm text-text-muted">แผนเป้าหมาย</p>
+              <p className="text-sm text-text-muted">แผนสุขภาพ</p>
               {detail.sourceGoalPlan ? (
                 <p className="mt-1 font-semibold text-text">
                   รอบที่ {detail.sourceGoalPlan.roundNumber} · {detail.sourceGoalPlan.primaryGoalLabel}
                 </p>
               ) : (
-                <p className="mt-1 font-semibold text-text">ไม่มีการเชื่อมโยงแผนเป้าหมาย</p>
+                <p className="mt-1 font-semibold text-text">ไม่มีการเชื่อมโยงแผนสุขภาพ</p>
               )}
             </div>
           </div>
           {detail.sourceGoalPlan ? (
             <div className="mt-5 border-t border-border pt-5">
               <p className="text-sm leading-6 text-text-muted">
-                กิจกรรมและเป้าหมายด้านล่างอ้างอิงจากแผนเป้าหมายรอบนี้โดยตรง ไม่ได้เปลี่ยนตามแผนเป้าหมายล่าสุด
+                กิจกรรมและเป้าหมายด้านล่างอ้างอิงจากแผนสุขภาพรอบนี้โดยตรง ไม่ได้เปลี่ยนตามแผนสุขภาพล่าสุด
               </p>
               <p className="mt-2 text-sm text-text-muted">
                 {detail.sourceGoalPlan.primaryGoalNote ?? "ไม่มีหมายเหตุเป้าหมายหลัก"} · {detail.sourceGoalPlan.weeklyNote ?? "ไม่มีหมายเหตุรายสัปดาห์"}
@@ -250,7 +250,7 @@ export function FollowupDetailView({
 
         {detail.sourceGoalPlan ? (
           <Panel>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนเป้าหมาย</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">ความคืบหน้าตามแผนสุขภาพ</h2>
             <ul className="mt-6 space-y-5">
               {detail.activityProgress.map((progress) => (
                 <li className="border-t border-border pt-5 first:border-t-0 first:pt-0" key={progress.progressId}>
@@ -325,17 +325,17 @@ export function FollowupDetailView({
                       className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4"
                       href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(linkedProgramId)}/goals/${encodeURIComponent(detail.adjustedGoalPlan.goalPlanId)}`}
                     >
-                      แผนเป้าหมายที่ปรับ: รอบที่ {detail.adjustedGoalPlan.roundNumber}
+                      แผนสุขภาพที่ปรับ: รอบที่ {detail.adjustedGoalPlan.roundNumber}
                     </Link>
                   ) : scope.kind === "program" && scope.canManage && scope.programStatus === "ACTIVE" ? (
                     <Link
                       className="font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4"
                       href={`/app/patients/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(linkedProgramId)}/goals/new?sourceFollowupId=${encodeURIComponent(detail.followupId)}`}
                     >
-                      สร้างแผนเป้าหมายรอบใหม่จากการติดตามครั้งนี้
+                      สร้างแผนสุขภาพรอบใหม่จากการติดตามครั้งนี้
                     </Link>
                   ) : (
-                    <span className="text-text-muted">ยังไม่มีแผนเป้าหมายที่สร้างจากการติดตามครั้งนี้</span>
+                    <span className="text-text-muted">ยังไม่มีแผนสุขภาพที่สร้างจากการติดตามครั้งนี้</span>
                   )}
                 </dd>
               ) : null}

@@ -265,8 +265,8 @@ function projectWorkTabs(
     {
       href: "/app/workforce",
       id: "workforce",
-      label: "บุคลากร",
-      accessibleLabel: "จัดการบุคลากร",
+      label: "เจ้าหน้าที่/อสม.",
+      accessibleLabel: "จัดการเจ้าหน้าที่โรงพยาบาลและ อสม.",
       icon: "workforce",
     },
   ] as const;

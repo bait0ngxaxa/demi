@@ -56,9 +56,9 @@ export function FollowupHistoryList({
             </div>
             <dl className="mt-4 grid gap-3 border-t border-border pt-4 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-text-muted">แผนเป้าหมายที่อ้างอิง</dt>
+                <dt className="text-text-muted">แผนสุขภาพที่อ้างอิง</dt>
                 <dd className="mt-1 font-semibold text-text">
-                  {item.sourceGoalPlan ? `แผนรอบที่ ${item.sourceGoalPlan.roundNumber}` : "ไม่มีการเชื่อมโยงแผนเป้าหมาย"}
+                  {item.sourceGoalPlan ? `แผนรอบที่ ${item.sourceGoalPlan.roundNumber}` : "ไม่มีการเชื่อมโยงแผนสุขภาพ"}
                 </dd>
               </div>
               <div>
@@ -93,7 +93,7 @@ export function PatientProgramFollowupWorkspace({
             การติดตามผล
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-text-muted">
-            บันทึกการติดตามผลเป็นรอบประวัติของโปรแกรมนี้ แผนเป้าหมายและนัดหมายเป็นบริบทที่เลือกอ้างอิงได้
+            บันทึกการติดตามผลเป็นรอบประวัติของโปรแกรมนี้ แผนสุขภาพและนัดหมายเป็นบริบทที่เลือกอ้างอิงได้
           </p>
         </div>
         {canCreate ? (
@@ -146,7 +146,7 @@ export function PatientProgramFollowupWorkspace({
         <div className="mt-5 rounded-panel border border-dashed border-border bg-surface px-5 py-8 sm:px-7">
           <p className="font-semibold text-text">ยังไม่มีการติดตามผลในโปรแกรมนี้</p>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
-            สามารถบันทึกการติดตามผลได้แม้ยังไม่ได้เลือกแผนเป้าหมาย
+            สามารถบันทึกการติดตามผลได้แม้ยังไม่ได้เลือกแผนสุขภาพ
           </p>
         </div>
       )}

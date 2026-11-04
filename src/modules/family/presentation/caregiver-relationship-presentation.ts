@@ -34,11 +34,11 @@ export function caregiverInvitationStatusVariant(status: CaregiverInvitationStat
 export function caregiverRelationshipStatusLabel(status: CaregiverRelationshipStatus): string {
   switch (status) {
     case "ACTIVE":
-      return "กำลังเชื่อมความสัมพันธ์";
+      return "เชื่อมต่ออยู่";
     case "REVOKED":
-      return "ผู้ป่วยยุติความสัมพันธ์แล้ว";
+      return "ผู้ป่วยยกเลิกการเชื่อมต่อแล้ว";
     case "WITHDRAWN":
-      return "ผู้ดูแลยุติความสัมพันธ์แล้ว";
+      return "ผู้ดูแลยกเลิกการเชื่อมต่อแล้ว";
   }
 }
 

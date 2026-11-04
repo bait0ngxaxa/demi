@@ -75,7 +75,7 @@ export default async function AdminSupportInboxPage({ searchParams }: { searchPa
   };
   return <div className="min-w-0 max-w-5xl space-y-8">
     <PageHeader
-      breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ" }, { label: "กล่องแจ้งปัญหา" }]}
+      breadcrumbs={[{ href: "/app", label: "หน้าหลัก" }, { label: "ผู้ดูแลระบบ DEMI" }, { label: "กล่องแจ้งปัญหา" }]}
       description="รายงานปัญหาการใช้งานจากผู้ใช้ทุกโรงพยาบาล รับทราบและบันทึกเมื่อแก้ไขแล้ว"
       title="กล่องแจ้งปัญหา"
     />

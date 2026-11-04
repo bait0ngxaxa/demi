@@ -22,9 +22,9 @@ import {
 } from "../../scoped-mutation";
 
 const releaseNotice = standardNotice({
-  success: "นำความสัมพันธ์ออกจากระบบแล้ว",
-  conflict: "ไม่สามารถนำออกจากระบบได้ กรุณาโหลดข้อมูลล่าสุด",
-  forbidden: "ไม่มีสิทธิ์นำความสัมพันธ์ออกจากระบบ",
+  success: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว",
+  conflict: "ข้อมูลเปลี่ยนแปลง หรือโรงพยาบาลนี้ต้องมีแอดมินอย่างน้อย 1 คน กรุณาโหลดข้อมูลล่าสุด",
+  forbidden: "ไม่มีสิทธิ์สิ้นสุดสิทธิ์การทำงานกับโรงพยาบาลนี้",
 });
 
 /** Only the server's typed outcome counts; a bare `{ success: false }` is never read as a conflict or refusal. */
@@ -65,6 +65,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
   });
   const latest = session.latest?.scope === relationshipId ? session.latest : null;
   const released = latest?.status === "SUCCESS";
+  const subjectLabel = kind === "osm" ? "อสม." : "เจ้าหน้าที่";
   const failure = latest && (latest.status === "CONFLICT" || latest.status === "FORBIDDEN" || latest.status === "REJECTED")
     ? latest.message
     : null;
@@ -111,20 +112,20 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
     <div className="rounded-panel border border-border bg-surface p-5">
       {released ? (
         <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
-          {latest.state?.message ?? "นำความสัมพันธ์ออกจากระบบแล้ว"}
+          {latest.state?.message ?? "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่"}
         </p>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
-          นำออกจากระบบ
+          นำ{subjectLabel}ออกจากโรงพยาบาลนี้อย่างถาวร
         </Button>
       )}
       {visibleDialogOpen ? (
         <ModalDialog
           description={
             <>
-              การนำ {resourceName} ออกจาก {hospitalName} จะสิ้นสุดสิทธิ์ในโรงพยาบาลนี้ทันที
+              สิทธิ์การทำงานของ {subjectLabel} {resourceName} ใน {hospitalName} จะสิ้นสุดถาวรและเปิดสิทธิ์เดิมกลับไม่ได้ หากต้องการให้ทำงานอีกครั้ง ต้องเพิ่มผ่านขั้นตอนเดิม ประวัติการทำงานยังคงอยู่
               {kind === "osm" ? " การมอบหมายผู้ป่วยที่ค้างอยู่จะสิ้นสุดด้วย" : ""}
-              {" "}ลิงก์เปิดใช้งานและตั้งรหัสผ่านใหม่ที่ค้างอยู่จะถูกเพิกถอน ประวัติจะยังเก็บไว้ และการนำออกนี้ย้อนกลับไม่ได้ หากต้องการให้ทำงานอีกครั้งต้องเพิ่มใหม่ตามขั้นตอนปกติ
+              {" "}บัญชีผู้ใช้และสิทธิ์ที่มีอยู่ในโรงพยาบาลอื่นจะคงเดิม แต่ลิงก์เปิดใช้งานงานที่ยังไม่ถูกใช้ของบัญชีนี้ในทุกโรงพยาบาลจะถูกเพิกถอน
             </>
           }
           dismissible={!pending}
@@ -134,7 +135,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
                 ยกเลิก
               </Button>
               <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? "กำลังนำออก…" : "ยืนยันนำออกจากระบบถาวร"}
+                {pending ? "กำลังนำออกจากโรงพยาบาลนี้…" : "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร"}
               </Button>
             </div>
           }
@@ -142,7 +143,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
           onRequestClose={closeDialog}
           returnFocusTarget={() => released ? statusRef.current : triggerRef.current ?? document.querySelector<HTMLElement>("main h1")}
           size="default"
-          title={`นำความสัมพันธ์ของ ${resourceName} ออกจากระบบ`}
+          title={`นำ${subjectLabel} ${resourceName} ออกจาก ${hospitalName} อย่างถาวร`}
         >
           <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
             <input name="relationshipId" type="hidden" value={dialogPayload?.relationshipId ?? relationshipId} />
@@ -150,7 +151,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
             <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />
             <input name="expectedUpdatedAt" type="hidden" value={dialogPayload?.updatedAt ?? updatedAt} />
             <label className="block space-y-2 text-sm font-semibold text-text" htmlFor="release-confirmation">
-              <span>พิมพ์ “นำออกจากระบบ” เพื่อยืนยัน</span>
+              <span>พิมพ์ “นำออกจากโรงพยาบาลนี้อย่างถาวร” เพื่อยืนยัน</span>
               <input
                 autoComplete="off"
                 className="min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"

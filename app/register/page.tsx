@@ -34,7 +34,7 @@ export default async function RegisterPage(): Promise<React.JSX.Element> {
           </p>
         </div>
         <p className="relative mt-12 hidden max-w-md text-sm leading-6 text-brand-pale/80 lg:block">
-          สำหรับบุคลากรโรงพยาบาล อสม. และผู้ป่วย
+          สำหรับเจ้าหน้าที่โรงพยาบาล อสม. และผู้ป่วย
         </p>
       </section>
 

@@ -7,7 +7,7 @@ import { getGlobalReportingPageContext } from "@/modules/reporting/transport/glo
 
 import { GlobalAdminReportingWorkspace } from "./global-admin-reporting-workspace";
 
-export const metadata: Metadata = { title: "รายงานสำหรับผู้ดูแลระบบ" };
+export const metadata: Metadata = { title: "รายงานสำหรับผู้ดูแลระบบ DEMI" };
 
 type SearchParams = {
   search?: string | string[];

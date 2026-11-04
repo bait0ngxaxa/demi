@@ -43,7 +43,7 @@ export default async function HospitalOnboardingReviewPage(): Promise<React.JSX.
     <div>
       <PageHeader
         actions={<StatusBadge variant="info">รอตรวจสอบ {applications.length} รายการ</StatusBadge>}
-        breadcrumbs={[{ label: "ผู้ดูแลระบบ" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}
+        breadcrumbs={[{ label: "ผู้ดูแลระบบ DEMI" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}
         description="ตรวจสอบข้อมูลที่ผู้สมัครส่งมา แล้วเลือกอนุมัติหรือปฏิเสธคำขอจากฝั่ง DEMI"
         title="คำขอขึ้นทะเบียนโรงพยาบาล"
       />
