@@ -203,7 +203,7 @@ describe("Phase B hospital operations", () => {
     const a = await createAppointment(f.osm, appointmentInput(f.relationshipId, true), dependencies);
     const rel = await db.osmHospitalRelationship.findFirstOrThrow({ where: { userId: f.osm.userId, hospitalId: f.hospitalId } });
     await db.workforceActivation.create({ data: { userId: f.osm.userId, hospitalId: f.hospitalId, relationshipId: rel.id, relationshipKind: "OSM", tokenHash: randomUUID(), expiresAt: new Date("2027-01-01"), createdByUserId: f.owner.userId } });
-    await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: rel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: rel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: rel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: rel.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }, dependencies);
     expect(await db.patientOsmAssignment.count({ where: { osmUserId: f.osm.userId, endedAt: null } })).toBe(0);
     expect(await db.workforceActivation.count({ where: { userId: f.osm.userId, revokedAt: null } })).toBe(0);
     await expect(getAppointmentDetail(f.osm, f.relationshipId, a.appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
@@ -219,9 +219,9 @@ describe("Phase B hospital operations", () => {
     expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: rel.id } })).status).toBe("ENDED");
     await expect(getAppointmentDetail(f.osm, f.relationshipId, a.appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
     const ownerRel = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.owner.userId, hospitalId: f.hospitalId } });
-    await expect(releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: ownerRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: ownerRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies)).rejects.toBeInstanceOf(ConflictError);
+    await expect(releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: ownerRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: ownerRel.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }, dependencies)).rejects.toBeInstanceOf(ConflictError);
     const staffRel = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.staff.userId, hospitalId: f.hospitalId } });
-    await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }, dependencies);
     await expect(getAppointmentDetail(f.staff, f.relationshipId, a.appointmentId)).rejects.toBeInstanceOf(ForbiddenError);
     const endedStaff = await db.hospitalMembership.findUniqueOrThrow({ where: { id: staffRel.id } });
     await expect(restoreHospitalMembership(f.owner, { relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: endedStaff.updatedAt.toISOString() }, dependencies)).rejects.toBeInstanceOf(ConflictError);
@@ -241,7 +241,7 @@ describe("Phase B hospital operations", () => {
     await db.workforceActivation.create({ data: { userId: dual, hospitalId: f.hospitalId, relationshipId: staffRel.id, relationshipKind: "HOSPITAL_MEMBER", tokenHash: randomUUID(), expiresAt: new Date("2027-01-01"), createdByUserId: f.owner.userId } });
     const active = (hospitalId: string) => db.patientOsmAssignment.count({ where: { osmUserId: dual, endedAt: null, patientHospitalRelationship: { hospitalId } } });
 
-    await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }, dependencies);
     expect((await db.hospitalMembership.findUniqueOrThrow({ where: { id: staffRel.id } })).status).toBe(MembershipStatus.ENDED);
     expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: osmRel.id } })).status).toBe(MembershipStatus.ACTIVE);
     expect(await active(f.hospitalId)).toBe(1);
@@ -251,7 +251,7 @@ describe("Phase B hospital operations", () => {
     expect(staffAudit.metadata).toMatchObject({ endedAssignmentCount: 0 });
 
     const currentOsmRel = await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: osmRel.id } });
-    await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: osmRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: currentOsmRel.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" }, dependencies);
+    await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: osmRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: currentOsmRel.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }, dependencies);
     expect(await active(f.hospitalId)).toBe(0);
     expect(await db.patientOsmAssignment.findFirstOrThrow({ where: { osmUserId: dual, patientHospitalRelationshipId: f.relationshipId, endedAt: now } })).toMatchObject({ endedByUserId: f.owner.userId });
     expect(await active(other.hospitalId)).toBe(1);
@@ -279,7 +279,7 @@ describe("Phase B hospital operations", () => {
     const second = await actor(Role.HOSPITAL, f.hospitalId, MembershipType.OWNER);
     const firstRel = await db.hospitalMembership.findFirstOrThrow({ where: { userId: f.owner.userId, hospitalId: f.hospitalId } });
     const secondRel = await db.hospitalMembership.findFirstOrThrow({ where: { userId: second.userId, hospitalId: f.hospitalId } });
-    const release = (target: typeof firstRel): Record<string, unknown> => ({ kind: "staff", relationshipId: target.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: target.updatedAt.toISOString(), confirmation: "นำออกจากระบบ" });
+    const release = (target: typeof firstRel): Record<string, unknown> => ({ kind: "staff", relationshipId: target.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: target.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" });
     await expect(releaseWorkforceRelationship(f.staff, release(secondRel), dependencies)).rejects.toBeInstanceOf(ForbiddenError);
     const results = await Promise.allSettled([releaseWorkforceRelationship(f.owner, release(secondRel), dependencies), releaseWorkforceRelationship(second, release(firstRel), dependencies)]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);

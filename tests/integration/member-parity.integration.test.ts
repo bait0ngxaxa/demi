@@ -357,7 +357,7 @@ describe("ADR-0026 MEMBER operational parity / PostgreSQL", () => {
       kind: "osm", relationshipId: osmRelationship.id, targetHospitalId: f.parentId, expectedUpdatedAt: osmRelationship.updatedAt.toISOString(), contactPhone: "021234567",
     })).rejects.toSatisfy(forbiddenOrHidden);
     await expect(releaseWorkforceRelationship(f.member, {
-      kind: "osm", relationshipId: osmRelationship.id, targetHospitalId: f.parentId, expectedUpdatedAt: osmRelationship.updatedAt.toISOString(), confirmation: "นำออกจากระบบ",
+      kind: "osm", relationshipId: osmRelationship.id, targetHospitalId: f.parentId, expectedUpdatedAt: osmRelationship.updatedAt.toISOString(), confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร",
     })).rejects.toSatisfy(forbiddenOrHidden);
     await expect(issuePatientActivation(f.member, { userId: f.patientA.userId, targetHospitalId: f.parentId, reissue: false }))
       .rejects.toSatisfy(forbiddenOrHidden);

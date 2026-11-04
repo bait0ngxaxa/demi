@@ -44,7 +44,7 @@ import {
 } from "@/modules/user-management/services/user-takeover-service";
 import type { UserKind } from "@/modules/user-management/domain/user-management-values";
 import { provisionHospitalMember, provisionOsm } from "@/modules/workforce/services/workforce-service";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { provisionPatientFixture } from "./support/patient-provisioning";
 import { createTemplateUpload } from "./support/patient-import-template-upload";
@@ -151,11 +151,11 @@ async function updatedAtOf(kind: UserKind, relationshipId: string): Promise<stri
 }
 
 async function deletion(kind: UserKind, relationshipId: string, targetHospitalId: string) {
-  return { kind, relationshipId, targetHospitalId, expectedUpdatedAt: await updatedAtOf(kind, relationshipId), confirmation: "ลบรายการ" };
+  return { kind, relationshipId, targetHospitalId, expectedUpdatedAt: await updatedAtOf(kind, relationshipId), confirmation: "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน" };
 }
 
 async function takeover(kind: UserKind, relationshipId: string, targetHospitalId: string) {
-  return { kind, relationshipId, targetHospitalId, expectedUpdatedAt: await updatedAtOf(kind, relationshipId), confirmation: "ไม่ใช่เจ้าของจริง" };
+  return { kind, relationshipId, targetHospitalId, expectedUpdatedAt: await updatedAtOf(kind, relationshipId), confirmation: "สงสัยว่ามีผู้อื่นใช้บัญชีนี้" };
 }
 
 async function expectNotDeletable(owner: ActorContext, input: Awaited<ReturnType<typeof deletion>>, blocker: string) {
@@ -288,7 +288,7 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
 
       // Idempotent from the OWNER's view: a second request finds nothing to delete.
       await expect(deleteUnusedUserRecord(owner, { kind: "staff", relationshipId: record.relationshipId, targetHospitalId: h.id,
-        expectedUpdatedAt: now.toISOString(), confirmation: "ลบรายการ" }, db)).rejects.toBeInstanceOf(NotFoundError);
+        expectedUpdatedAt: now.toISOString(), confirmation: "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน" }, db)).rejects.toBeInstanceOf(NotFoundError);
       const again = await staff(owner, h.id, nationalId);
       expect(again.reusedExistingUser).toBe(false);
     });
@@ -318,7 +318,8 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
         .rejects.toBeInstanceOf(ConflictError);
       await expect(deleteUnusedUserRecord(member, await deletion("staff", record.relationshipId, h.id), db)).rejects.toBeInstanceOf(ForbiddenError);
       await expect(deleteUnusedUserRecord(otherOwner, await deletion("staff", record.relationshipId, h.id), db)).rejects.toBeInstanceOf(ForbiddenError);
-      await expect(deleteUnusedUserRecord(owner, { ...(await deletion("staff", record.relationshipId, h.id)), confirmation: "ลบ" }, db)).rejects.toThrow();
+      await expect(deleteUnusedUserRecord(owner, { ...(await deletion("staff", record.relationshipId, h.id)), confirmation: "ลบ" }, db)).rejects.toBeInstanceOf(ValidationError);
+      await expect(deleteUnusedUserRecord(owner, { ...(await deletion("staff", record.relationshipId, h.id)), confirmation: "ลบรายการ" }, db)).rejects.toBeInstanceOf(ValidationError);
       expect(await db.hospitalMembership.count({ where: { id: record.relationshipId } })).toBe(1);
     });
 
@@ -466,8 +467,13 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
       const owner = await hospitalActor(h.id);
       const target = await selfRegisteredOsm(owner, h.id);
       const revokeProviderSessions = vi.fn(async () => "CONFIRMED" as const);
+      const input = await takeover("osm", target.relationshipId, h.id);
 
-      await expect(lockSuspectedTakeover(owner, await takeover("osm", target.relationshipId, h.id), { database: db, now: () => now, revokeProviderSessions }))
+      await expect(lockSuspectedTakeover(owner, { ...input, confirmation: "ไม่ใช่เจ้าของจริง" }, { database: db, now: () => now, revokeProviderSessions }))
+        .rejects.toBeInstanceOf(ValidationError);
+      expect(revokeProviderSessions).not.toHaveBeenCalled();
+
+      await expect(lockSuspectedTakeover(owner, input, { database: db, now: () => now, revokeProviderSessions }))
         .resolves.toEqual({ providerState: UserTakeoverProviderState.CONFIRMED, alreadyLocked: false });
       expect(revokeProviderSessions).toHaveBeenCalledWith(target.authSubject);
       expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ status: UserStatus.SUSPENDED });

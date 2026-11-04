@@ -132,7 +132,8 @@ describe("UserRecordDeleteControl destructive dialog", () => {
   });
 
   it("closes only after confirmed deletion and keeps the directory link available", async () => {
-    mocks.delete.mockResolvedValueOnce({ success: true, outcome: "DELETED", blockers: [], message: "ลบรายการแล้ว เพิ่มรายการใหม่ด้วยเลขที่ถูกต้องได้ทันที" });
+    const successMessage = "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งานแล้ว หากเลขบัตรประชาชนผิด เพิ่มข้อมูลใหม่ด้วยเลขที่ถูกต้องได้";
+    mocks.delete.mockResolvedValueOnce({ success: true, outcome: "DELETED", blockers: [], message: successMessage });
     renderDelete();
     const dialog = openDialog("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
     confirmInput(dialog, "confirmation").value = "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน";
@@ -141,6 +142,7 @@ describe("UserRecordDeleteControl destructive dialog", () => {
     await settle();
 
     expect(container.querySelector("dialog")).toBeNull();
+    expect(container.textContent).toContain(successMessage);
     expect(container.querySelector("button")).toBeNull();
     expect(container.querySelector(`a[href='${DIRECTORY_HREF}']`)?.textContent).toContain("กลับไปรายชื่อ");
   });

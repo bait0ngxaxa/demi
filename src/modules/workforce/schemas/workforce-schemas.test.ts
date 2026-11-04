@@ -5,6 +5,7 @@ import { legalAcceptanceFixture } from "../../../../tests/support/legal-fixtures
 
 import {
   hospitalMemberProvisionSchema,
+  workforceReleaseSchema,
   workforceContactPhoneSchema,
   osmProvisionSchema,
   workforceActivationCompletionSchema,
@@ -12,6 +13,8 @@ import {
 
 const targetHospitalId = "11111111-1111-4111-8111-111111111111";
 const checksumInvalidNationalId = "1111111111111";
+const relationId = "22222222-2222-4222-8222-222222222222";
+const expectedUpdatedAt = "2026-10-01T00:00:00Z";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -66,5 +69,17 @@ describe("workforce contact phones", () => {
   });
   it.each([hospitalMemberProvisionSchema, osmProvisionSchema])("requires a phone at provisioning", (schema) => {
     expect(schema.safeParse({ nationalId: "1000000000009", givenName: "สมใจ", familyName: "ใจดี", targetHospitalId, ...(schema === hospitalMemberProvisionSchema ? { profession: "NURSE" } : {}) }).success).toBe(false);
+  });
+});
+
+describe("workforce release confirmation", () => {
+  const base = { kind: "staff", relationshipId: relationId, targetHospitalId, expectedUpdatedAt };
+
+  it("accepts the current permanent-release confirmation", () => {
+    expect(workforceReleaseSchema.safeParse({ ...base, confirmation: "นำออกจากโรงพยาบาลนี้อย่างถาวร" }).success).toBe(true);
+  });
+
+  it.each(["นำออกจากระบบ", "ยืนยัน", ""])("rejects obsolete or incorrect confirmation %j", (confirmation) => {
+    expect(workforceReleaseSchema.safeParse({ ...base, confirmation }).success).toBe(false);
   });
 });

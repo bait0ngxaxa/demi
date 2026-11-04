@@ -486,7 +486,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       relationshipId: caregiverPatient.relationshipId,
       targetHospitalId: hospital.id,
       expectedUpdatedAt: caregiverPatientRelationship.updatedAt.toISOString(),
-      confirmation: "ไม่ใช่เจ้าของจริง",
+      confirmation: "สงสัยว่ามีผู้อื่นใช้บัญชีนี้",
     }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
     const caregiverResetProvider = fakeProvider();
     const previousCaregiverSubject = caregiverPatient.authSubject;
@@ -1022,7 +1022,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       relationshipId: target.relationshipId,
       targetHospitalId: hospital.id,
       expectedUpdatedAt: relationBeforeLock.updatedAt.toISOString(),
-      confirmation: "ไม่ใช่เจ้าของจริง",
+      confirmation: "สงสัยว่ามีผู้อื่นใช้บัญชีนี้",
     }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
 
     const postLockLineId = "U" + randomUUID().replace(/-/gu, "");
@@ -2475,7 +2475,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     const target = await createTarget("osm", hospital.id);
     const staff = await db.hospitalMembership.create({ data: { userId: target.userId, hospitalId: hospital.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.ACTIVE } });
     const relationship = await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: target.relationshipId } });
-    await lockSuspectedTakeover(owner, { kind: "osm", relationshipId: relationship.id, targetHospitalId: hospital.id, expectedUpdatedAt: relationship.updatedAt.toISOString(), confirmation: "ไม่ใช่เจ้าของจริง" }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
+    await lockSuspectedTakeover(owner, { kind: "osm", relationshipId: relationship.id, targetHospitalId: hospital.id, expectedUpdatedAt: relationship.updatedAt.toISOString(), confirmation: "สงสัยว่ามีผู้อื่นใช้บัญชีนี้" }, { database: db, now: () => now, revokeProviderSessions: async () => "CONFIRMED" });
     const before = await db.user.findUniqueOrThrow({ where: { id: target.userId } });
     const audits = await db.auditEvent.count();
     await expect(issueMediatedPasswordReset(admin, issueInput("osm", hospital.id, target.relationshipId), { database: db, now: () => now })).rejects.toMatchObject({ code: "CONFLICT" });
