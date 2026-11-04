@@ -280,15 +280,22 @@ describe("OSM relationship controls Toasts", () => {
 });
 
 describe("Workforce release control Toasts", () => {
-  function render(relationshipId = RELATIONSHIP_ID): void {
+  let renderedKind: "osm" | "staff" = "osm";
+
+  function releaseTriggerLabel(): string {
+    return renderedKind === "osm" ? "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร" : "นำเจ้าหน้าที่ออกจากโรงพยาบาลนี้อย่างถาวร";
+  }
+
+  function render(relationshipId = RELATIONSHIP_ID, kind: "osm" | "staff" = "osm"): void {
+    renderedKind = kind;
     act(() =>
       root.render(
         createElement(WorkforceReleaseControl, {
           relationshipId,
           hospitalId: HOSPITAL_ID,
-          kind: "osm",
+          kind,
           updatedAt: V1,
-          resourceName: "อสม. สมพร",
+          resourceName: kind === "osm" ? "อสม. สมพร" : "สมพร ใจดี",
           hospitalName: "โรงพยาบาลชุมชน",
         }),
       ),
@@ -315,7 +322,7 @@ describe("Workforce release control Toasts", () => {
   function openReleaseDialog(): HTMLDialogElement | null {
     let dialog = container.querySelector("dialog");
     if (dialog) return dialog;
-    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร");
+    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === releaseTriggerLabel());
     if (!trigger || trigger.disabled) return null;
     flushSync(() => trigger.click());
     dialog = container.querySelector("dialog");
@@ -341,7 +348,7 @@ describe("Workforce release control Toasts", () => {
     expect(dialog.textContent).toContain("เปิดสิทธิ์เดิมกลับไม่ได้");
     expect(dialog.textContent).toContain("ประวัติการทำงานยังคงอยู่");
     expect(dialog.textContent).toContain("สิทธิ์ที่มีอยู่ในโรงพยาบาลอื่นจะคงเดิม");
-    expect(dialog.textContent).toContain("ลิงก์เปิดใช้งานงานที่ยังไม่ถูกใช้ของบัญชีนี้ในทุกโรงพยาบาลจะถูกเพิกถอน");
+    expect(dialog.textContent).toContain("ลิงก์เปิดใช้งานที่ยังไม่ได้ใช้ของบัญชีนี้ในทุกโรงพยาบาลจะถูกเพิกถอน");
     expect(dialog.querySelectorAll("form")).toHaveLength(1);
     expect(document.activeElement).toBe(findButton(dialog, "ยกเลิก"));
     expect(mocks.release).not.toHaveBeenCalled();
@@ -374,7 +381,7 @@ describe("Workforce release control Toasts", () => {
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว");
     expect(container.textContent).toContain("สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่");
     expect(container.querySelector("dialog")).toBeNull();
-    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร")).toBe(false);
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === releaseTriggerLabel())).toBe(false);
     expect(mocks.refresh).not.toHaveBeenCalled();
     const formData = mocks.release.mock.calls[0]?.[1];
     expect(formData?.get("expectedUpdatedAt")).toBe(V1);
@@ -393,17 +400,27 @@ describe("Workforce release control Toasts", () => {
     expect(mocks.release).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    ["CONFLICT", "warning", "ข้อมูลเปลี่ยนแปลง หรือโรงพยาบาลต้องมีแอดมินอย่างน้อยหนึ่งคน กรุณาโหลดใหม่"],
-    ["FORBIDDEN", "error", "ไม่มีสิทธิ์สิ้นสุดสิทธิ์การทำงานกับโรงพยาบาลนี้"],
-  ] as const)("maps a confirmed %s outcome to a %s Toast with the server text inline", async (outcome, level, message) => {
-    mocks.release.mockResolvedValueOnce(release(outcome));
+  it.each(["osm", "staff"] as const)("uses cause-neutral conflict wording for %s release", async (kind) => {
+    const conflictMessage = "ไม่สามารถดำเนินการได้ ข้อมูลอาจเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่";
+    mocks.release.mockResolvedValueOnce({ success: false, outcome: "CONFLICT", message: conflictMessage });
+    render(RELATIONSHIP_ID, kind);
+
+    await submitRelease();
+
+    expect(mocks.warning).toHaveBeenCalledExactlyOnceWith(conflictMessage);
+    expect(container.textContent).toContain(conflictMessage);
+    expect(container.textContent).not.toContain("แอดมินอย่างน้อยหนึ่งคน");
+    expect(findButton(container, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร").disabled).toBe(false);
+  });
+
+  it("maps a confirmed authorization refusal to an error Toast", async () => {
+    mocks.release.mockResolvedValueOnce(release("FORBIDDEN"));
     render();
 
     await submitRelease();
 
-    expect(mocks[level]).toHaveBeenCalledExactlyOnceWith(message);
-    expect(container.textContent).toContain(`ผลลัพธ์ ${outcome} จากระบบ`);
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith("ไม่มีสิทธิ์สิ้นสุดสิทธิ์การทำงานกับโรงพยาบาลนี้");
+    expect(container.textContent).toContain("ผลลัพธ์ FORBIDDEN จากระบบ");
     expect(findButton(container, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร").disabled).toBe(false);
   });
 

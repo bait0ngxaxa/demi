@@ -47,7 +47,7 @@ function classifyTakeover(state: UserTakeoverActionState): MutationVerdict {
 
 type TakeoverPayload = { kind: UserKind; relationshipId: string; hospitalId: string; updatedAt: string };
 
-/** UM-D5. A repeated request only revokes provider sessions for an existing lock. */
+/** UM-D5. A repeated request retries only the provider ban for an existing lock. */
 export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedAt, retry, resourceName, hospitalName }: {
   kind: UserKind;
   relationshipId: string;
@@ -117,23 +117,32 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
     <div className="rounded-panel border border-border bg-surface p-5">
       {providerConfirmed ? (
         <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
-          {latest?.state?.message ?? "ล็อกบัญชีใน DEMI แล้ว และยืนยันการออกจากระบบทุกอุปกรณ์แล้ว"}
+          {latest?.state?.message ?? "ล็อกบัญชีใน DEMI แล้ว"}
         </p>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
-          {retryMode ? "ยืนยันการออกจากระบบทุกอุปกรณ์อีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
+          {retryMode ? "ลองยืนยันการระงับการเข้าสู่ระบบกับผู้ให้บริการอีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
         </Button>
       )}
       {visibleDialogOpen ? (
         <ModalDialog
           description={retryMode ? (
             <>
-              บัญชี {resourceName} ถูกล็อกใน DEMI แล้ว การดำเนินการนี้จะลองให้ออกจากระบบทุกอุปกรณ์อีกครั้งเท่านั้น
-              จะไม่ล็อกบัญชีหรือพักสิทธิ์ในโรงพยาบาลนี้ซ้ำ
+              บัญชี {resourceName} ถูกล็อกใน DEMI แล้ว การกดครั้งนี้จะลองส่งคำขอให้ผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมอีกครั้งเท่านั้น
+              {kind === "patient"
+                ? ` จะไม่ล็อกบัญชีซ้ำหรือเปลี่ยนข้อมูลการดูแลผู้ป่วยของ “${hospitalName}”`
+                : ` จะไม่ล็อกบัญชีหรือพักสิทธิ์การทำงานที่ “${hospitalName}” ซ้ำ`}
+              {" "}อุปกรณ์ที่มีเซสชันเดิมอาจยังแสดงว่าล็อกอินอยู่ แต่เข้าใช้ DEMI ไม่ได้
             </>
           ) : (
             <>
-              ใช้เมื่อสงสัยว่ามีผู้อื่นลงทะเบียนหรือใช้บัญชี {resourceName} ระบบจะล็อกบัญชีใน DEMI ทำให้เข้าใช้บัญชีไม่ได้ พักสิทธิ์การทำงานใน {hospitalName} และให้ออกจากระบบทุกอุปกรณ์
+              ใช้เมื่อสงสัยว่ามีผู้อื่นลงทะเบียนหรือใช้บัญชี {resourceName}{" "}
+              {kind === "patient" ? (
+                <>ระบบจะล็อกบัญชีใน DEMI ทำให้บัญชีนี้เข้าใช้ DEMI ไม่ได้ และข้อมูลการดูแลผู้ป่วยของ “{hospitalName}” จะยังคงเดิม</>
+              ) : (
+                <>ระบบจะล็อกบัญชีใน DEMI ทำให้บัญชีนี้เข้าใช้ DEMI ไม่ได้ และพักสิทธิ์การทำงานที่ “{hospitalName}”</>
+              )}
+              {" "}ระบบจะขอให้ผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิม อุปกรณ์ที่มีเซสชันเดิมอาจยังแสดงว่าล็อกอินอยู่ แต่ระบบ DEMI จะปฏิเสธการใช้งานของบัญชีที่ถูกล็อก
               การเชื่อม LINE ที่เกิดหลังเปิดใช้งานจะถูกยกเลิกและบันทึกประวัติไว้ การกู้คืนบัญชีต้องยืนยันตัวตนและตั้งรหัสผ่านใหม่ตามขั้นตอน
             </>
           )}
@@ -144,7 +153,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
                 ยกเลิก
               </Button>
               <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? "กำลังล็อกบัญชี..." : retryMode ? "ลองให้ออกจากระบบทุกอุปกรณ์อีกครั้ง" : "ยืนยันล็อกบัญชี"}
+                {pending ? retryMode ? "กำลังยืนยันกับผู้ให้บริการ..." : "กำลังล็อกบัญชี..." : retryMode ? "ลองยืนยันการระงับการเข้าสู่ระบบอีกครั้ง" : "ยืนยันล็อกบัญชี"}
               </Button>
             </div>
           }
@@ -152,7 +161,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
           onRequestClose={closeDialog}
           returnFocusTarget={() => providerConfirmed ? statusRef.current : triggerRef.current ?? headingTarget()}
           size="default"
-          title={retryMode ? `ลองให้ออกจากระบบทุกอุปกรณ์ของ ${resourceName} อีกครั้ง` : `ล็อกบัญชี ${resourceName} ที่สงสัยว่ามีผู้อื่นใช้`}
+          title={retryMode ? `ยืนยันการระงับการเข้าสู่ระบบของ ${resourceName} กับผู้ให้บริการอีกครั้ง` : `ล็อกบัญชี ${resourceName} ที่สงสัยว่ามีผู้อื่นใช้`}
         >
           <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
             <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />

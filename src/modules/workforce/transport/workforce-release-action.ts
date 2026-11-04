@@ -15,7 +15,7 @@ export async function releaseWorkforceAction(_state: WorkforceReleaseActionState
     return { success: true, outcome: "RELEASED", message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่" };
   } catch (error: unknown) {
     if (error instanceof ConflictError) {
-      return { success: false, outcome: "CONFLICT", message: "ข้อมูลเปลี่ยนแปลง หรือโรงพยาบาลนี้ต้องมีแอดมินอย่างน้อย 1 คน กรุณาโหลดข้อมูลล่าสุด" };
+      return { success: false, outcome: "CONFLICT", message: "ไม่สามารถดำเนินการได้ ข้อมูลอาจเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่" };
     }
     if (error instanceof ValidationError) {
       return { success: false, outcome: "INVALID_CONFIRMATION", message: "กรุณาพิมพ์ นำออกจากโรงพยาบาลนี้อย่างถาวร เพื่อยืนยัน" };

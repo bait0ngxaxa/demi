@@ -45,7 +45,11 @@ describe("releaseWorkforceAction outcome classification", () => {
 
     const result = await releaseWorkforceAction(initialWorkforceReleaseActionState, form);
 
-    expect(result).toMatchObject({ success: false, outcome: "CONFLICT" });
+    expect(result).toEqual({
+      success: false,
+      outcome: "CONFLICT",
+      message: "ไม่สามารถดำเนินการได้ ข้อมูลอาจเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่",
+    });
     expect(mockedRevalidatePath).not.toHaveBeenCalled();
   });
 
