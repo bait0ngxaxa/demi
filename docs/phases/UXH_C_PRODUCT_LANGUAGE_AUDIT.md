@@ -143,3 +143,15 @@ C.3 — npm run test -- app/activate/activation-interactions.test.tsx app/line/a
 - ตรวจจริงด้วย Chrome ที่เดสก์ท็อปและ viewport 390 × 844 พิกเซล: ชื่อ navigation และชื่อระบบแสดงครบ; หน้าหลัก/การ์ดขึ้นบรรทัดได้และไม่พบ horizontal overflow; ชื่อเมนูใน drawer มือถืออ่านได้ครบ
 - UXH-D ยังควรตรวจหน้าของ role อื่น, ข้อความยาวใน workflow และการประกาศสถานะด้วย screen reader บนอุปกรณ์จริง
 - หน้า role-protected อื่น ๆ ส่งต่อ UXH-D ให้ทดสอบด้วยบัญชีแต่ละบทบาทและข้อมูลที่ได้รับอนุญาต
+
+## 11. Current authority reconciliation — 2026-11-04
+
+This dated addendum reconciles the historical OWNER DECISION REQUIRED entries above with decisions and implementation evidence later than the UXH-C baseline. It does not change business behavior.
+
+- Hospital role labels are resolved for presentation: `OWNER` is “แอดมินโรงพยาบาล” and `MEMBER` is “เจ้าหน้าที่โรงพยาบาล”. `ADMIN` is “ผู้ดูแลระบบ DEMI”. These labels do not change persisted roles. ADR-0026 confirms that OWNER and MEMBER share operational capabilities while Hospital management and user management remain OWNER-only.
+- The former generic recovery wording decision must be evaluated against the accepted REC-1/REC-2 recovery contracts and current flow. Keep the current verification and privacy boundaries; do not tell users that a recovery path is unavailable when the implemented, eligible path exists, or imply that a hospital membership operation changes the global account.
+- The mapping between `PatientGoalPlan` and a customer-facing Health Plan, validated Thai wording for PAM/PROMs and other clinical instruments, and any unapproved Service 2 label remain unresolved in the current canonical business-flow requirements. Do not translate or reinterpret these terms by style preference.
+- Current Patient care ending and caregiver consent boundaries remain as described in the source service and accepted requirements. Ending care at one Hospital is not Patient account deletion; accepting a caregiver invitation is not consent to every data grant.
+- The current workforce release implementation revokes all outstanding unused workforce activation tokens for the target user, even when issued for another Hospital. This is a cross-Hospital side effect, while the membership/OSM relationship and OSM assignment termination are scoped to the selected Hospital. Review the current service evidence and disclose this accurately in the confirmation. The older UXH-C summary does not establish that other Hospital activation links are unaffected.
+
+The application-wide presentation glossary, high-impact occurrence inventory, and implementation record are maintained in [`docs/ux/PRODUCT_LANGUAGE_GUIDELINES.md`](../ux/PRODUCT_LANGUAGE_GUIDELINES.md).
