@@ -81,6 +81,10 @@ describe("application workspace projection", () => {
       `/app/hospitals/knowledge?hospitalId=${hospitalId}`,
       `/app/hospitals/reporting?hospitalId=${hospitalId}`,
     ]);
+    // ADR-0029: patient services are native, so settings no longer mention a service setting.
+    const settings = actions.find(({ href }) => href === `/app/hospitals/settings?hospitalId=${hospitalId}`);
+    expect(settings?.description).toBe("จัดการข้อมูลติดต่อและการลงทะเบียนเองตามสิทธิ์ของคุณ");
+    expect(settings?.description).not.toContain("บริการที่เปิดให้ขอ");
   });
 
   it("offers the network report to the direct OWNER or MEMBER of a Parent with active Children (ADR-0013, ADR-0026)", () => {

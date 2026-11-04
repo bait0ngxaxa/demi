@@ -15,7 +15,7 @@ An ACTIVE OWNER and an ACTIVE MEMBER of an ACTIVE Hospital have the same rights,
 
 | Capability | Class | Who |
 | --- | --- | --- |
-| Hospital settings, contact info edit, self-registration switch, service catalog (`HospitalServiceOffering`) | HOSPITAL_MANAGEMENT | OWNER |
+| Hospital settings, contact info edit, self-registration switch, service catalog (`HospitalServiceOffering`) *Removed by ADR-0029 (2026-11-04): patient services are native; no catalog.* | HOSPITAL_MANAGEMENT | OWNER |
 | Hospital news/content composer (create/edit/publish/images) | HOSPITAL_MANAGEMENT | OWNER |
 | Network: create/attach/end Child, rename/cancel Child, Child OWNER invitation (network-read grant management is retired below) | HOSPITAL_MANAGEMENT | OWNER |
 | Workforce staff/OSM: provision, lifecycle, promote/demote, activation links/slips, credential reset/recovery issuance, account-misuse report (UM-1), staff/OSM name correction | USER_MANAGEMENT | OWNER |
