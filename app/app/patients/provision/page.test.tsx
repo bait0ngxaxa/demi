@@ -58,7 +58,7 @@ describe("Patient provisioning page navigation", () => {
     }));
 
     expect(markup).toContain("ไม่พบโรงพยาบาลที่เปิดให้ดำเนินการ");
-    expect(markup).toContain("ไม่มีขอบเขตโรงพยาบาลที่ใช้งานได้");
+    expect(markup).toContain("บัญชีนี้ยังไม่มีสิทธิ์นำเข้าผู้ป่วยในโรงพยาบาลใด กรุณาติดต่อแอดมินโรงพยาบาลเพื่อตรวจสอบสิทธิ์");
     expect(markup).toContain('href="/app"');
     expect(mocks.renderWorkspace).not.toHaveBeenCalled();
   });

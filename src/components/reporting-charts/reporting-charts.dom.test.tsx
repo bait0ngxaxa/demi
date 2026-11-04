@@ -50,8 +50,8 @@ describe("reporting charts in the browser", () => {
     act(() => root.render(createElement(CountBarChart, {
       headingId: "bars", title: "กราฟ", description: "คำอธิบาย", emptyMessage: "ว่าง", listLabel: "รายการ", scaleMax: 10,
       categories: [
-        { key: "r", axisLabel: "Routine", label: "Program ที่มีบันทึก Routine", value: countValue(4) },
-        { key: "f", axisLabel: "Floating Chart", label: "Program ที่มีบันทึก Floating Chart", value: countValue(2) },
+        { key: "r", axisLabel: "Routine", label: "โปรแกรมที่มีบันทึกตารางกิจวัตร (Routine)", value: countValue(4) },
+        { key: "f", axisLabel: "Floating Chart", label: "โปรแกรมที่มีบันทึกกราฟวัดลอยจม (Floating Chart)", value: countValue(2) },
         { key: "u", axisLabel: "ไม่พร้อม", label: "ค่าที่ไม่พร้อม", value: { state: "UNAVAILABLE" } },
       ],
     })));
@@ -74,6 +74,6 @@ describe("reporting charts in the browser", () => {
 
     const sectors = [...container.querySelectorAll(".recharts-pie-sector path")];
     expect(sectors.map((sector) => sector.getAttribute("fill"))).toEqual(["var(--brand)", "var(--brand-muted)"]);
-    expect(container.textContent).toContain("Program ทั้งหมด");
+    expect(container.textContent).toContain("โปรแกรมทั้งหมด");
   });
 });

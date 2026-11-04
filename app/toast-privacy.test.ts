@@ -76,7 +76,7 @@ function noticeTables(): Found[] {
 }
 
 function expectSafeCopy(message: string, where: string): void {
-  expect(message, where).toMatch(/^[\u0E00-\u0E7F .-]+$/);
+  expect(message, where).toMatch(/^(?:[\u0E00-\u0E7F .-]|DEMI)+$/);
   expect(message.length, where).toBeLessThanOrEqual(80);
 }
 

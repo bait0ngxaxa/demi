@@ -148,19 +148,19 @@ function findButton(label: string, scope: ParentNode = container): HTMLButtonEle
 }
 
 function openSuspendConfirmation(): HTMLDialogElement {
-  act(() => findButton("ระงับโรงพยาบาล").click());
+  act(() => findButton("ระงับการใช้งานโรงพยาบาล").click());
   return query<HTMLDialogElement>("dialog");
 }
 
 function submitSuspendConfirmation(): HTMLDialogElement {
   const dialog = openSuspendConfirmation();
-  act(() => findButton("ระงับโรงพยาบาล", dialog).click());
+  act(() => findButton("ระงับการใช้งานโรงพยาบาล", dialog).click());
   return dialog;
 }
 
 function dispatchRestoreSubmit(): void {
   const form = query<HTMLFormElement>("form");
-  const submitter = findButton("คืนสถานะโรงพยาบาล", form);
+  const submitter = findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง", form);
   act(() => form.dispatchEvent(new SubmitEvent("submit", {
     bubbles: true,
     cancelable: true,
@@ -197,7 +197,7 @@ describe("HospitalGovernanceControls notifications", () => {
     expect(mocks.suspend).not.toHaveBeenCalled();
     expectNoToast();
 
-    act(() => findButton("ระงับโรงพยาบาล", dialog).click());
+    act(() => findButton("ระงับการใช้งานโรงพยาบาล", dialog).click());
     expect(mocks.notify.success).not.toHaveBeenCalled();
     await settleAction();
 
@@ -205,10 +205,10 @@ describe("HospitalGovernanceControls notifications", () => {
     const submittedFormData = mocks.suspend.mock.calls[0]?.[1];
     expect(submittedFormData?.get("hospitalId")).toBe(HOSPITAL_ID);
     expect(submittedFormData?.get("expectedUpdatedAt")).toBe(ORIGINAL_VERSION);
-    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("ระงับโรงพยาบาลแล้ว");
+    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("ระงับการใช้งานโรงพยาบาลแล้ว");
     expect(mocks.notify.warning).not.toHaveBeenCalled();
     expect(mocks.notify.error).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).toContain("ระงับการใช้งานโรงพยาบาลแล้ว");
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -254,7 +254,7 @@ describe("HospitalGovernanceControls notifications", () => {
     expect(mocks.suspend).toHaveBeenCalledTimes(1);
     expect(dialog.querySelector("[role='alert']")?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
     expect(findButton("ปิดหน้าต่าง", dialog)).toBeTruthy();
-    expect(findButton("ระงับโรงพยาบาล", dialog).disabled).toBe(true);
+    expect(findButton("ระงับการใช้งานโรงพยาบาล", dialog).disabled).toBe(true);
     expect(container.textContent).toContain("โหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะ");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     expectNoToast();
@@ -297,8 +297,8 @@ describe("HospitalGovernanceControls notifications", () => {
     const submittedFormData = mocks.restore.mock.calls[0]?.[1];
     expect(submittedFormData?.get("hospitalId")).toBe(HOSPITAL_ID);
     expect(submittedFormData?.get("expectedUpdatedAt")).toBe(ORIGINAL_VERSION);
-    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("คืนสถานะโรงพยาบาลแล้ว");
-    expect(container.textContent).toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
+    expect(container.textContent).toContain("เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -332,10 +332,10 @@ describe("HospitalGovernanceControls notifications", () => {
     await settleAction();
 
     expect(mocks.restore).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการเปิดใช้งานโรงพยาบาลอีกครั้งไม่ได้");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     expect(findButton("โหลดและตรวจสอบสถานะล่าสุด")).toBeTruthy();
-    expect(findButton("คืนสถานะโรงพยาบาล").disabled).toBe(true);
+    expect(findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง").disabled).toBe(true);
     expectNoToast();
 
     dispatchRestoreSubmit();
@@ -351,10 +351,10 @@ describe("HospitalGovernanceControls notifications", () => {
     await settleAction();
 
     expect(mocks.restore).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการเปิดใช้งานโรงพยาบาลอีกครั้งไม่ได้");
     expect(container.textContent).toContain("ก่อนดำเนินการต่อ");
     expect(container.textContent).not.toContain("private server failure");
-    expect(findButton("คืนสถานะโรงพยาบาล").disabled).toBe(true);
+    expect(findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง").disabled).toBe(true);
     expectNoToast();
 
     dispatchRestoreSubmit();
@@ -370,7 +370,7 @@ describe("HospitalGovernanceControls notifications", () => {
     render("SUSPENDED", UPDATED_VERSION);
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("คืนสถานะโรงพยาบาลเพื่อให้กลับมาดำเนินงานได้");
+    expect(container.textContent).toContain("เปิดใช้งานโรงพยาบาลอีกครั้งเพื่อให้กลับมาดำเนินงานได้");
 
     render("SUSPENDED", UPDATED_VERSION);
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
@@ -384,18 +384,18 @@ describe("HospitalGovernanceControls notifications", () => {
 
     submitSuspendConfirmation();
     await settleAction();
-    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("ระงับโรงพยาบาลแล้ว");
+    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("ระงับการใช้งานโรงพยาบาลแล้ว");
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
 
     render("SUSPENDED", UPDATED_VERSION);
-    expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("ระงับการใช้งานโรงพยาบาลแล้ว");
 
     dispatchRestoreSubmit();
     await settleAction();
 
     expect(mocks.restore).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้");
-    expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการเปิดใช้งานโรงพยาบาลอีกครั้งไม่ได้");
+    expect(container.textContent).not.toContain("เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
     expect(mocks.notify.success).toHaveBeenCalledTimes(1);
     expect(mocks.notify.warning).not.toHaveBeenCalled();
@@ -409,7 +409,7 @@ describe("HospitalGovernanceControls notifications", () => {
     }));
     render("SUSPENDED");
     const form = query<HTMLFormElement>("form");
-    const submitter = findButton("คืนสถานะโรงพยาบาล", form);
+    const submitter = findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง", form);
 
     act(() => {
       const event = () => form.dispatchEvent(new SubmitEvent("submit", {
@@ -437,7 +437,7 @@ describe("HospitalGovernanceControls notifications", () => {
     }));
     render();
     const dialog = openSuspendConfirmation();
-    const confirmButton = findButton("ระงับโรงพยาบาล", dialog);
+    const confirmButton = findButton("ระงับการใช้งานโรงพยาบาล", dialog);
 
     act(() => {
       confirmButton.click();
@@ -488,7 +488,7 @@ describe("HospitalGovernanceControls notifications", () => {
     });
 
     expectNoToast();
-    expect(container.textContent).not.toContain("บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
   });
 
   it("suppresses inline and toast errors from Hospital A after the context changes to Hospital B", async () => {
@@ -507,7 +507,7 @@ describe("HospitalGovernanceControls notifications", () => {
     });
 
     expect(container.textContent).not.toContain("ผลลัพธ์ FORBIDDEN จากระบบ");
-    expect(findButton("คืนสถานะโรงพยาบาล").disabled).toBe(false);
+    expect(findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง").disabled).toBe(false);
     expectNoToast();
     expect(mocks.router.refresh).not.toHaveBeenCalled();
   });
@@ -525,7 +525,7 @@ describe("HospitalGovernanceControls notifications", () => {
     dispatchRestoreSubmit();
     await settleAction();
     expect(mocks.restore).toHaveBeenCalledTimes(2);
-    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("คืนสถานะโรงพยาบาลแล้ว");
+    expect(mocks.notify.success).toHaveBeenCalledExactlyOnceWith("เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว");
     expect(mocks.router.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -537,9 +537,9 @@ describe("HospitalGovernanceControls notifications", () => {
     await settleAction();
 
     expect(mocks.restore).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการคืนสถานะโรงพยาบาลไม่ได้");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการเปิดใช้งานโรงพยาบาลอีกครั้งไม่ได้");
     expect(findButton("โหลดและตรวจสอบสถานะล่าสุด")).toBeTruthy();
-    expect(findButton("คืนสถานะโรงพยาบาล").disabled).toBe(true);
+    expect(findButton("เปิดใช้งานโรงพยาบาลอีกครั้ง").disabled).toBe(true);
     expectNoToast();
   });
 });

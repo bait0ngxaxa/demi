@@ -36,8 +36,8 @@ function render(props: Partial<ParentOwnerInvitationSectionProps> = {}): string 
 describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
   it("opens a task dialog to invite the first OWNER of a pending Parent", () => {
     const markup = render();
-    expect(markup).toContain("เชิญผู้ดูแลโรงพยาบาลคนแรก");
-    expect(markup).toContain("ระบุข้อมูลผู้ดูแล");
+    expect(markup).toContain("เชิญแอดมินโรงพยาบาลคนแรก");
+    expect(markup).toContain("ระบุข้อมูลแอดมินโรงพยาบาล");
     expect(markup).not.toContain("เลขบัตรประชาชนผู้ดูแล");
     expect(markup).not.toContain('name="submissionNonce"');
     expect(markup).not.toContain("ออกลิงก์ใหม่");
@@ -48,7 +48,7 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
     ["รอเปิดใช้งาน", invitation],
     ["หมดอายุ", { ...invitation, link: { status: "EXPIRED" as const, expiresAt: "2026-10-30T03:00:00.000Z", mode: "REMOTE" as const } }],
     ["รอตอบรับ", { ...invitation, delivery: "ACCOUNT_ACCEPTANCE" as const, link: { status: "NONE" as const, expiresAt: null, mode: null } }],
-    ["ต้องคืนบัญชีโดยผู้ดูแลระบบ", { ...invitation, delivery: "ADMIN_RESET_REQUIRED" as const, link: { status: "NONE" as const, expiresAt: null, mode: null } }],
+    ["ต้องให้ผู้ดูแลระบบ DEMI กู้คืนบัญชี", { ...invitation, delivery: "ADMIN_RESET_REQUIRED" as const, link: { status: "NONE" as const, expiresAt: null, mode: null } }],
   ])("offers ยกเลิกคำเชิญ for the exact open invitation in state %s", (label, current) => {
     const markup = render({ invitation: current });
     expect(markup).toContain(label);
@@ -65,8 +65,8 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
 
   it("titles a replacement OWNER invitation for an ACTIVE Parent without an OWNER", () => {
     const markup = render({ availability: "REPLACEMENT" });
-    expect(markup).toContain("เชิญผู้ดูแลโรงพยาบาลแทน");
-    expect(markup).not.toContain("เชิญผู้ดูแลโรงพยาบาลคนแรก");
+    expect(markup).toContain("เชิญแอดมินโรงพยาบาลคนใหม่");
+    expect(markup).not.toContain("เชิญแอดมินโรงพยาบาลคนแรก");
   });
 
   it("shows an open link as รอเปิดใช้งาน with its expiry and the regenerate, revoke and change actions", () => {
@@ -93,9 +93,9 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
     expect(markup).not.toContain("ยกเลิกลิงก์");
   });
 
-  it("shows a held caregiver-claimed invitee as ต้องคืนบัญชีโดยผู้ดูแลระบบ with the recovery tool and cancel", () => {
+  it("shows a held caregiver-claimed invitee as ต้องให้ผู้ดูแลระบบ DEMI กู้คืนบัญชี with the recovery tool and cancel", () => {
     const markup = render({ invitation: { ...invitation, delivery: "ADMIN_RESET_REQUIRED", link: { status: "NONE", expiresAt: null, mode: null } } });
-    expect(markup).toContain("ต้องคืนบัญชีโดยผู้ดูแลระบบ");
+    expect(markup).toContain("ต้องให้ผู้ดูแลระบบ DEMI กู้คืนบัญชี");
     expect(markup).toContain('href="/app/admin/recovery"');
     expect(markup).toContain("ยกเลิกคำเชิญ");
     expect(markup).not.toContain("ออกลิงก์ใหม่");
@@ -116,7 +116,7 @@ describe("platform ADMIN Parent OWNER invitation section (ADR-0024)", () => {
   it("reports a decline and offers a new invitation", () => {
     const markup = render({ lastDeclinedAt: "2026-10-31T05:00:00.000Z" });
     expect(markup).toContain("ผู้ถูกเชิญปฏิเสธคำเชิญเมื่อ");
-    expect(markup).toContain("ระบุข้อมูลผู้ดูแล");
+    expect(markup).toContain("ระบุข้อมูลแอดมินโรงพยาบาล");
   });
 
   it("keeps a 380 px layout: one column below sm, wrapping actions and breakable names", () => {

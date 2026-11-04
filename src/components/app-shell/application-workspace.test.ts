@@ -252,7 +252,7 @@ describe("application workspace projection", () => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.OSM], osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.SUSPENDED, hospitalStatus: HospitalStatus.ACTIVE }] }), [workspace()]);
     expect(projection.assignedPatientsAction).toBeNull();
     expect(projection.hospitals[0]?.actions).toEqual([]);
-    expect(projection.hospitals[0]?.contextLabel).toContain("ความสัมพันธ์ไม่พร้อมใช้งาน");
+    expect(projection.hospitals[0]?.contextLabel).toContain("พักสิทธิ์ชั่วคราว");
     expect(projectApplicationWorkspace(actor({ roles: [Role.OSM] }), []).hospitals).toEqual([]);
   });
 
@@ -278,8 +278,8 @@ describe("application workspace projection", () => {
     ).toEqual([]);
     expect(projection.hospitals[1]?.actions.find(({ category }) => category === "care")?.href).toBe(`/app/appointments?hospitalId=${secondId}`);
     expect(projection.assignedPatientsAction?.href).toBe("/app/patients/assigned");
-    expect(projection.hospitals[1]?.contextLabel).toContain("สมาชิกโรงพยาบาล");
-    expect(projection.hospitals[1]?.contextLabel).not.toContain("เจ้าของโรงพยาบาล");
+    expect(projection.hospitals[1]?.contextLabel).toContain("เจ้าหน้าที่โรงพยาบาล");
+    expect(projection.hospitals[1]?.contextLabel).not.toContain("แอดมินโรงพยาบาล");
   });
 
   it("preserves domain-specific ADMIN + HOSPITAL policies", () => {
@@ -291,9 +291,13 @@ describe("application workspace projection", () => {
     expect(projection.supportingActions).toEqual([]);
   });
 
-  it.each([MembershipStatus.SUSPENDED, MembershipStatus.PROVISIONED, MembershipStatus.INVITED])("keeps %s memberships visible without operational or management actions", (status) => {
+  it.each([
+    [MembershipStatus.SUSPENDED, "พักสิทธิ์ชั่วคราว"],
+    [MembershipStatus.PROVISIONED, "รอเปิดใช้งานบัญชี"],
+    [MembershipStatus.INVITED, "รอตอบรับคำเชิญ"],
+  ] as const)("keeps %s memberships visible without operational or management actions", (status, statusLabel) => {
     const projection = projectApplicationWorkspace(actor({ roles: [Role.HOSPITAL], hospitalMemberships: [{ ...directMembership(MembershipType.OWNER), status }] }), [workspace()]);
-    expect(projection.hospitals[0]?.contextLabel).toContain("สมาชิกไม่พร้อมใช้งาน");
+    expect(projection.hospitals[0]?.contextLabel).toContain(`แอดมินโรงพยาบาล (${statusLabel})`);
     expect(projection.hospitals[0]?.actions).toEqual([]);
     expect(projection.requestActions).toEqual([]);
     expect(projection.supportingActions).toEqual([]);

@@ -25,7 +25,7 @@ const patient = {
   hospitalNumber: null,
   hospital: { id: "11111111-1111-4111-8111-111111111111", name: "โรงพยาบาลทดสอบ" },
 };
-const NOTICE = "บันทึกนอก Program จึงจะไม่อยู่ในรายงานโรงพยาบาลตาม Program (ไฟล์ Excel)";
+const NOTICE = "บันทึกนอกโปรแกรมจึงจะไม่อยู่ในรายงานโรงพยาบาลตามโปรแกรม (ไฟล์ Excel)";
 
 function screening(withProgram: boolean): string {
   return renderToStaticMarkup(createElement(ScreeningForm, {

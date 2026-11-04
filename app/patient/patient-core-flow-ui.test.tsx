@@ -78,7 +78,7 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("หมายเหตุ: สะดวกหลังบ่ายสอง");
     expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");
     expect(markup).toContain("รอโรงพยาบาลยืนยัน");
-    expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนใน Program");
+    expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม");
     expect(markup).not.toContain("อสม.ที่ได้รับมอบหมาย");
     expect(markup).not.toContain(osmUserId);
     expect(markup).not.toContain("authSubject");
@@ -106,7 +106,7 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("คัดกรอง");
     expect(markup).toContain("ติดตาม");
     expect(markup).toContain("เสริมพลัง");
-    expect(markup).toContain("ไม่สร้าง Program หรือมอบหมาย อสม.");
+    expect(markup).toContain("ไม่สร้างโปรแกรมหรือมอบหมาย อสม.");
   });
 
 });

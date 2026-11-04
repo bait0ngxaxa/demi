@@ -128,7 +128,7 @@ function Feedback({
     result.result.status === getNextStatus(submission.kind) ? (
     // The success Toast announces this; the Alert stays as the visible record without a second announcement.
     <Alert className="mt-4" role="none" variant="success">
-      บันทึกสถานะโรงพยาบาลเรียบร้อยแล้ว
+      {submission.kind === "suspend" ? "ระงับการใช้งานโรงพยาบาลแล้ว" : "เปิดใช้งานโรงพยาบาลอีกครั้งแล้ว"}
     </Alert>
   ) : null;
 }

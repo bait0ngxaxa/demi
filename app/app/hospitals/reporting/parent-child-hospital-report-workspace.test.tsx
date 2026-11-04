@@ -62,9 +62,10 @@ describe("Parent-to-Child Hospital report workspace", () => {
     expect(markup).not.toContain("Child Hospital");
     expect(markup).toContain("ภาพรวมรายงาน");
     expect(markup).toContain("ขั้นตอนบริการ");
-    expect(markup).toContain("จำนวนความสัมพันธ์ผู้ป่วยกับโรงพยาบาล");
+    expect(markup).toContain("รายการผู้ป่วยในโรงพยาบาล");
+    expect(markup).toContain("ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ");
     expect(markup).toContain("ไม่ได้ยืนยันว่าบริการเสร็จสิ้นหรือเกิดผลสำเร็จ");
-    expect(markup).toContain("Program ที่มีบันทึก Floating Chart");
+    expect(markup).toContain("โปรแกรมที่มีบันทึกกราฟวัดลอยจม (Floating Chart)");
     expect(markup).toContain(">3</dd>");
     expect(markup).toContain(">2</dd>");
     expect(markup).toContain(">1</dd>");
@@ -97,8 +98,8 @@ describe("Parent-to-Child Hospital report workspace", () => {
 
     expect(markup).toContain('id="parent-child-report-status-chart"');
     expect(markup).toContain('id="parent-child-report-service-process-chart"');
-    expect(markup).toContain("จำนวน Program ที่มีบันทึกกิจกรรม ไม่ใช่การยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
-    expect(markup).toContain("ห้ามนำตัวเลขแต่ละแถวมารวมกัน");
+    expect(markup).toContain("จำนวนโปรแกรมที่มีบันทึกกิจกรรม ไม่ได้ยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
+    expect(markup).toContain("ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ");
     // No round progress (not in the nine values) and no report filter or Program links from the charts.
     expect(markup).not.toContain("ความคืบหน้ารอบบริการ");
     expect(markup).not.toMatch(/href="[^"]*(status|progress|cursor|search)=/u);

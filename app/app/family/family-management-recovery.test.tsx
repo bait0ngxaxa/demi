@@ -62,7 +62,7 @@ beforeEach(() => {
     throw new TypeError(`Failed to fetch after committing ${generatedToken}`);
   });
   mocks.revokeInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยกเลิกคำเชิญแล้ว" });
-  mocks.revokeRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยุติความสัมพันธ์ผู้ดูแลแล้ว" });
+  mocks.revokeRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "ยกเลิกการเชื่อมต่อกับผู้ดูแลแล้ว" });
   mocks.withdrawRelationship.mockReset().mockResolvedValue({ status: "SUCCESS", message: "หยุดการเป็นผู้ดูแลแล้ว" });
   mocks.reissueInvitation.mockReset().mockResolvedValue({ status: "SUCCESS", invitationUrl: `https://canonical.example/app/family/invitations#${"b".repeat(43)}`, expiresAt: "2026-10-17T00:00:00.000Z" });
   mocks.updateRelationshipLabel.mockReset().mockResolvedValue({ status: "SUCCESS", message: "บันทึกความสัมพันธ์แล้ว" });
@@ -289,25 +289,25 @@ describe("Caregiver invitation lost-response recovery", () => {
     };
     act(() => root.render(createElement(FamilyManagementWorkspace, { overview })));
 
-    const revoke = buttonByText("ยุติความสัมพันธ์ผู้ดูแล");
+    const revoke = buttonByText("ยกเลิกการเชื่อมต่อกับผู้ดูแล");
     await act(async () => revoke.click());
     expect(mocks.revokeRelationship).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open]")?.textContent).toContain("ผู้ดูแล ทดสอบ");
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("สิทธิ์ดูนัดหมายหรือข้อมูลสุขภาพ");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("สิทธิ์ดูนัดหมายและข้อมูลสุขภาพที่แชร์ให้จะถูกยกเลิก");
     await act(async () => dialogButtonByText("ยกเลิก").click());
     expect(mocks.revokeRelationship).not.toHaveBeenCalled();
     await act(async () => revoke.click());
-    await act(async () => dialogButtonByText("ยุติความสัมพันธ์").click());
+    await act(async () => dialogButtonByText("ยกเลิกการเชื่อมต่อ").click());
     await settle();
     expect(mocks.revokeRelationship.mock.calls[0]?.[1].get("relationshipId")).toBe("patient-owned-relationship");
-    expect(container.querySelector('button[aria-label^="ยุติความสัมพันธ์ผู้ดูแล:"]')).toBeNull();
+    expect(container.querySelector('button[aria-label^="ยกเลิกการเชื่อมต่อกับผู้ดูแล:"]')).toBeNull();
     expect(document.activeElement).toBe(container.querySelector("#patient-relationships-heading"));
 
-    const withdraw = buttonByText("หยุดการเป็นผู้ดูแล");
+    const withdraw = buttonByText("หยุดดูแลผู้ป่วยรายนี้");
     await act(async () => withdraw.click());
     expect(mocks.withdrawRelationship).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open]")?.textContent).toContain("ผู้ป่วยต้องส่งคำเชิญใหม่");
-    await act(async () => dialogButtonByText("ยืนยันหยุดการเป็นผู้ดูแล").click());
+    await act(async () => dialogButtonByText("หยุดดูแลผู้ป่วยรายนี้").click());
     await settle();
     expect(mocks.withdrawRelationship).toHaveBeenCalledOnce();
     expect(mocks.withdrawRelationship.mock.calls[0]?.[1].get("relationshipId")).toBe("caregiver-owned-relationship");

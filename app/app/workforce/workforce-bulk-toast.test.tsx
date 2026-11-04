@@ -183,7 +183,7 @@ describe("Workforce bulk provisioning Toasts", () => {
   it.each([
     ["INVALID_ROW", "ข้อมูลในแถวไม่ถูกต้อง"],
     ["CONFLICT", "ข้อมูลขัดแย้งกับรายการเดิม กรุณาตรวจสอบและลองใหม่"],
-    ["ROLE_INCOMPATIBLE", "ไม่สามารถเพิ่มเป็นบุคลากรโรงพยาบาลและ อสม. พร้อมกันได้"],
+    ["ROLE_INCOMPATIBLE", "เพิ่มบุคคลเดียวกันเป็นเจ้าหน้าที่โรงพยาบาลและ อสม. พร้อมกันไม่ได้"],
     ["UNAVAILABLE", "ระบบไม่พร้อม ลองใหม่ได้"],
   ] as const)("shows the correct Thai explanation for %s", async (reason, copy) => {
     mocks.bulkAction.mockResolvedValueOnce(bulkResult([{ rowNumber: 1, status: "invalid", reason }]));
@@ -201,7 +201,7 @@ describe("Workforce bulk provisioning Toasts", () => {
     await act(async () => submitBulk());
 
     expect(mocks.bulkAction).toHaveBeenCalledOnce();
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายการบุคลากรแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายชื่อเจ้าหน้าที่แล้ว");
     expect(mocks.warning).not.toHaveBeenCalled();
     expect(container.textContent).toContain("สร้างใหม่ 2 · มีอยู่แล้ว 0 · ไม่สำเร็จ 0");
   });
@@ -213,7 +213,7 @@ describe("Workforce bulk provisioning Toasts", () => {
 
     await act(async () => submitBulk());
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายการบุคลากรแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายชื่อเจ้าหน้าที่แล้ว");
     expect(JSON.stringify(toastCalls())).not.toMatch(/สร้าง/);
     expect(container.textContent).toContain("สร้างใหม่ 0 · มีอยู่แล้ว 2 · ไม่สำเร็จ 0");
   });
@@ -225,7 +225,7 @@ describe("Workforce bulk provisioning Toasts", () => {
 
     await act(async () => submitBulk());
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายการบุคลากรแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายชื่อเจ้าหน้าที่แล้ว");
     expect(container.textContent).toContain("สร้างใหม่ 1 · มีอยู่แล้ว 1 · ไม่สำเร็จ 0");
   });
 
@@ -267,7 +267,7 @@ describe("Workforce bulk provisioning Toasts", () => {
 
     await act(async () => submitBulk());
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายการ อสม. แล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายชื่อ อสม. แล้ว");
   });
 
   it("keeps duplicate-row validation inline with no Toast", async () => {
@@ -313,7 +313,7 @@ describe("Workforce bulk provisioning Toasts", () => {
 
     await act(async () => submitBulk());
 
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith("ไม่มีสิทธิ์เพิ่มบุคลากรของโรงพยาบาลนี้");
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith("ไม่มีสิทธิ์เพิ่มเจ้าหน้าที่ของโรงพยาบาลนี้");
     expect(mocks.success).not.toHaveBeenCalled();
   });
 
@@ -352,7 +352,7 @@ describe("Workforce bulk provisioning Toasts", () => {
 
     expect(mocks.bulkAction).toHaveBeenCalledTimes(2);
     expect(submittedKey(1)).toBe(submittedKey(0));
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายการบุคลากรแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("บันทึกรายชื่อเจ้าหน้าที่แล้ว");
     expect(container.textContent).not.toContain("ระบบยังยืนยันผลการบันทึกไม่ได้");
   });
 

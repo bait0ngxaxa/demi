@@ -67,19 +67,19 @@ describe("ProgramStatusDonut", () => {
       headingId: "status", active: 7, completed: 3,
       hrefs: { active: "/r?status=ACTIVE", completed: "/r?status=COMPLETED" },
     }));
-    expect(html).toContain("Program ที่กำลังดำเนิน");
-    expect(html).toContain("Program ที่สิ้นสุดแล้ว");
+    expect(html).toContain("โปรแกรมที่กำลังดำเนิน");
+    expect(html).toContain("โปรแกรมที่สิ้นสุดแล้ว");
     expect(html).toMatch(/>7</u);
     expect(html).toMatch(/>3</u);
     expect(html).toContain('href="/r?status=ACTIVE"');
-    expect(html).toContain("ไม่ใช่ผลลัพธ์หรือความสำเร็จทางการรักษา");
+    expect(html).toContain("ไม่ได้บอกผลหรือความสำเร็จทางการรักษา");
     // No percentage anywhere in the visible text: status shares are not treatment success.
     expect(html).not.toMatch(/>[^<]*%[^<]*</u);
   });
 
   it("replaces the donut with an empty message when the cohort has no Programs", () => {
     const html = renderToStaticMarkup(createElement(ProgramStatusDonut, { headingId: "status", active: 0, completed: 0 }));
-    expect(html).toContain("ยังไม่มี Program ในชุดข้อมูลนี้");
+    expect(html).toContain("ยังไม่มีโปรแกรมในชุดข้อมูลนี้");
     expect(html).not.toContain("href=");
   });
 });

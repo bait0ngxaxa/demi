@@ -36,7 +36,7 @@ export function WorkforceOsmAssignedPatientsSection({
 
         {state.status === "SUMMARY_ONLY" ? (
           <Alert className="mt-4" role="status" variant="info">
-            แสดงได้เฉพาะจำนวนรายการมอบหมายที่ยังไม่สิ้นสุด ผู้ดูรายนี้ไม่มีสิทธิ์ดูรายชื่อผู้ป่วย
+            แสดงได้เฉพาะจำนวนผู้ป่วยที่ อสม. รายนี้รับผิดชอบ บัญชีของคุณไม่มีสิทธิ์ดูรายชื่อผู้ป่วย
           </Alert>
         ) : state.status === "ERROR" ? (
           <Alert className="mt-4" role="alert" variant="warning">

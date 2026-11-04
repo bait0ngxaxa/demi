@@ -191,12 +191,12 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("ภาพรวม");
     expect(markup).not.toContain("Dashboard");
     expect(markup).toContain("รายงานการจัดบริการ");
-    expect(markup).toContain("ความสัมพันธ์ผู้ป่วยกับโรงพยาบาล");
-    expect(markup).toContain("ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program");
+    expect(markup).toContain("รายการผู้ป่วยในโรงพยาบาล");
+    expect(markup).toContain("รายการผู้ป่วยที่ยังไม่มีโปรแกรม");
     expect(markup).toContain("ยังสรุปไม่ได้");
     expect(markup).toContain("ก่อนเริ่ม · ข้อมูลตั้งต้น");
-    expect(markup).toContain("ระหว่าง Program · การติดตามผล");
-    expect(markup).toContain("หลัง Program · การประเมินครั้งสุดท้าย");
+    expect(markup).toContain("ระหว่างโปรแกรม · การติดตามผล");
+    expect(markup).toContain("หลังจบโปรแกรม · การประเมินครั้งสุดท้าย");
     expect(markup).toContain("ยังไม่บันทึก");
     expect(markup).toContain("โรงพยาบาลแม่ข่าย");
     expect(markup).toContain("ลูกข่าย 3 แห่ง");
@@ -204,7 +204,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).not.toContain("<details open");
     expect(markup.indexOf("ความคืบหน้ารอบบริการ")).toBeLessThan(markup.indexOf("<details "));
     expect(markup).toContain("ครบอย่างน้อย 6 รอบ");
-    expect(markup).toContain("บันทึก After แล้ว · รอจบ Program");
+    expect(markup).toContain("บันทึก After แล้ว · รอจบโปรแกรม");
     expect(markup).toContain("progress=AFTER_RECORDED");
     expect(markup).not.toContain("progress=WAITING_AFTER");
     expect(markup).toContain("จัดบริการแล้ว 0 ครั้ง");
@@ -229,13 +229,13 @@ describe("Hospital reporting dashboard presentation", () => {
   it("presents full-cohort KPIs and charts before the Program filters and rows", () => {
     const markup = render("service");
 
-    expect(markup).toContain("Program ที่กำลังดำเนิน");
-    expect(markup).toContain("Program ที่สิ้นสุดแล้ว");
-    expect(markup).toContain("ไม่ใช่จำนวนผู้ป่วยที่ไม่ซ้ำกัน");
+    expect(markup).toContain("โปรแกรมที่กำลังดำเนิน");
+    expect(markup).toContain("โปรแกรมที่สิ้นสุดแล้ว");
+    expect(markup).toContain("นับแยกตามโรงพยาบาล ผู้ป่วยคนเดียวกันอาจมีมากกว่าหนึ่งรายการ");
     expect(markup).toContain('id="hospital-report-status-chart"');
     expect(markup).toContain('id="hospital-report-service-process-chart"');
     expect(markup).toContain('id="hospital-report-round-progress-chart"');
-    expect(markup).toContain("จำนวน Program ที่มีบันทึกกิจกรรม ไม่ใช่การยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
+    expect(markup).toContain("จำนวนโปรแกรมที่มีบันทึกกิจกรรม ไม่ได้ยืนยันว่าจัดบริการเสร็จสิ้นหรือเกิดผลสำเร็จทางการรักษา");
     expect(markup).toContain("ไม่เปลี่ยนตามการค้นหา ตัวกรอง หรือหน้ารายการด้านล่าง");
     // Charts and their text equivalents reuse the existing filter query contract and keep the view.
     expect(markup).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}&amp;status=ACTIVE&amp;view=service"`);
@@ -252,7 +252,7 @@ describe("Hospital reporting dashboard presentation", () => {
     expect(markup).toContain("บริการ 2 · ทำแผนสุขภาพ");
     expect(markup).toContain("บริการ 3 เป็นต้นไป · การติดตามผลและความคืบหน้า");
     expect(markup).toContain("มีบันทึก");
-    expect(markup).toContain("ไม่มีบันทึกใน Program นี้");
+    expect(markup).toContain("ไม่มีบันทึกในโปรแกรมนี้");
     expect(markup).toContain("เดินออกกำลังกาย");
     expect(markup).toContain("เป้าหมาย 3 วัน/สัปดาห์ · 0 นาที");
     expect(markup).toContain("แบบประเมิน PAM: ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1");
@@ -260,7 +260,7 @@ describe("Hospital reporting dashboard presentation", () => {
     // D8/D9: confidence ruler 0-10 and self-reported exercise (no Final Assessment for After).
     expect(markup).toContain("ไม้บรรทัดวัดใจ (0–10): 6");
     expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: 37.5 นาที (ผู้ป่วยบันทึกเอง)");
-    expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: ไม่มีการประเมินหลังจบ Program");
+    expect(markup).toContain("เวลาออกกำลังกายต่อสัปดาห์: ไม่มีการประเมินหลังจบโปรแกรม");
     expect(markup).toContain("จำนวนครั้งที่ผลสำเร็จมากกว่า 70%: ดูได้ในไฟล์ Excel (แสดงการติดตามไม่ครบในหน้านี้)");
     expect(markup).toContain("ครั้งที่ 1");
     expect(markup).toContain("วันที่ทำได้ / อัตราความสำเร็จ: 2/3 วัน · 67%");
@@ -281,10 +281,10 @@ describe("Hospital reporting dashboard presentation", () => {
       audience: "GLOBAL_ADMIN",
     }));
 
-    expect(markup).toContain("ดูรายงานผู้ป่วยและ Program ของโรงพยาบาลที่เลือกเท่านั้น");
+    expect(markup).toContain("ดูรายงานผู้ป่วยและโปรแกรมของโรงพยาบาลที่เลือกเท่านั้น");
     expect(markup).toContain("ส่งออก Excel");
     expect(markup).not.toContain("/app/patients/");
-    expect(markup).toContain("การดูรายละเอียด Program ต้องมีสิทธิ์ในโรงพยาบาลโดยตรง");
+    expect(markup).toContain("การดูรายละเอียดโปรแกรมต้องมีสิทธิ์ในโรงพยาบาลโดยตรง");
     expect(markup).toContain("รายงานนี้ใช้ข้อมูลของโรงพยาบาลที่เลือกเท่านั้น");
     expect(markup).toContain("รายงานเฉพาะโรงพยาบาลที่เลือก");
     expect(markup).not.toContain("exact-Hospital");
@@ -298,31 +298,31 @@ describe("Hospital reporting dashboard presentation", () => {
 
   it("does not create a fake Program row when only a relationship without a Program exists", () => {
     const markup = render("overview", [], 0);
-    expect(markup).toContain("ยังไม่มี Program ที่รายงานได้");
-    expect(markup).toContain("มีความสัมพันธ์ผู้ป่วย 1 รายที่ยังไม่มี Program");
+    expect(markup).toContain("ยังไม่มีโปรแกรมที่รายงานได้");
+    expect(markup).toContain("พบรายการผู้ป่วยที่ยังไม่มีโปรแกรม 1 รายการ จึงไม่มีโปรแกรมให้แสดง");
     expect(markup).not.toContain("Program ID:");
     // P1 Part D: the pre-download summary explains the empty workbook and links to where a Program is opened.
     expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
     expect(markup).toContain("โรงพยาบาล: โรงพยาบาลทดสอบ");
-    expect(markup).toContain("0 Program");
-    expect(markup).toContain("ไฟล์นี้จะมีเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล");
+    expect(markup).toContain("0 โปรแกรม");
+    expect(markup).toContain("ไฟล์นี้จะแสดงเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล");
     expect(markup).toContain('href="/app/patients"');
   });
 
   it("shows the pre-download row counts without an empty-file warning when Programs exist", () => {
     const markup = render("overview");
     expect(markup).toContain("ไฟล์ Excel ที่จะส่งออก");
-    expect(markup).toContain("2 Program");
-    expect(markup).toContain("ผู้ป่วยที่ยังไม่มี Program (นับในหัวรายงาน ไม่มีแถวในไฟล์)");
+    expect(markup).toContain("2 โปรแกรม");
+    expect(markup).toContain("ผู้ป่วยที่ยังไม่มีโปรแกรม (นับในหัวรายงาน ไม่มีแถวในไฟล์)");
     expect(markup).toContain("1 ราย");
-    expect(markup).not.toContain("ไฟล์นี้จะมีเฉพาะหัวรายงาน");
+    expect(markup).not.toContain("ไฟล์นี้จะแสดงเฉพาะหัวรายงานและยังไม่มีแถวข้อมูล");
   });
 
   it("distinguishes an empty continuation page from an empty Hospital report", () => {
     const markup = render("overview", [], 3);
-    expect(markup).toContain("ไม่พบ Program ตามเงื่อนไขนี้");
+    expect(markup).toContain("ไม่พบโปรแกรมตามเงื่อนไขนี้");
     expect(markup).toContain("กลับไปหน้าแรก");
-    expect(markup).not.toContain("ยังไม่มี Program ที่รายงานได้");
+    expect(markup).not.toContain("ยังไม่มีโปรแกรมที่รายงานได้");
   });
 
   it("shows a subordinate Hospital's parent identity without sibling structure", () => {

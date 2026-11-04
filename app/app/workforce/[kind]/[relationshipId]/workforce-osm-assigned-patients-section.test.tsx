@@ -34,7 +34,7 @@ describe("OSM assigned patient detail section", () => {
     expect(html).toContain("สมชาย ผู้ป่วย");
     expect(html).toContain("HN-001 · โรงพยาบาลตัวอย่าง");
     expect(html).toContain("รายชื่อที่แสดงได้ 26 ราย · รายการมอบหมายที่ยังไม่สิ้นสุด 30 รายการ");
-    expect(html).toContain("ยอดด้านบนเป็นจำนวนรายการมอบหมายที่ยังไม่สิ้นสุด");
+    expect(html).toContain("ยอดด้านบนเป็นจำนวนผู้ป่วยที่ยังมอบหมายอยู่ ส่วนรายชื่อนี้แสดงเฉพาะผู้ป่วยที่ยังรับการดูแลจากโรงพยาบาลนี้ และผู้รับผิดชอบมีบัญชีและสิทธิ์ทำงานกับโรงพยาบาลนี้อยู่");
     expect(html).toContain(`href="/app/patients/${patientRelationshipId}"`);
     expect(html).toContain("href=\"/app/workforce/osm/11111111-1111-4111-8111-111111111111?patientsPage=1\"");
     expect(html).toContain("หน้า 2 จาก 2");
@@ -45,7 +45,7 @@ describe("OSM assigned patient detail section", () => {
       <WorkforceOsmAssignedPatientsSection currentAssignmentCount={1} relationshipId={osmRelationshipId} state={{ status: "SUMMARY_ONLY" }} />,
     );
 
-    expect(html).toContain("แสดงได้เฉพาะจำนวนรายการมอบหมายที่ยังไม่สิ้นสุด");
+    expect(html).toContain("แสดงได้เฉพาะจำนวนผู้ป่วยที่ อสม. รายนี้รับผิดชอบ บัญชีของคุณไม่มีสิทธิ์ดูรายชื่อผู้ป่วย");
     expect(html).not.toContain("สมชาย ผู้ป่วย");
     expect(html).not.toContain("/app/patients/");
   });
@@ -67,7 +67,7 @@ describe("OSM assigned patient detail section", () => {
       }} />,
     );
 
-    expect(html).toContain("มีรายการมอบหมายที่ยังไม่สิ้นสุด แต่ไม่มีรายชื่อผู้ป่วยที่ผ่านเงื่อนไขแสดงผล");
+    expect(html).toContain("มีผู้ป่วยที่ยังมอบหมายอยู่ แต่ไม่มีรายชื่อที่แสดงได้");
     expect(html).not.toContain("ยังไม่มีรายการมอบหมายที่ยังไม่สิ้นสุดในขณะนี้");
   });
 });

@@ -69,7 +69,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     harness.preview = { status: "INVALID", message: "ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน" };
     const unavailable = render();
     expect(unavailable).toContain("ไม่พบคำเชิญหรือคำเชิญไม่พร้อมใช้งาน");
-    expect(unavailable).not.toContain("ยอมรับการเชื่อมความสัมพันธ์");
+    expect(unavailable).not.toContain("ยอมรับคำเชิญเป็นผู้ดูแล");
     expect(unavailable).not.toContain("สมชาย");
   });
 
@@ -105,7 +105,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     harness.preview = { status: "READY", invitation: { invitationStatus, patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z", acceptanceContractVersion: "family-delegation-v1", requestedSharing: { relationshipLabel: null, appointmentHospitalCount: 0, appointmentHospitalNames: null, resources: [] } } };
     const markup = render();
     expect(markup).toContain("สมชาย ใจดี");
-    expect(markup.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล")).toBe(invitationStatus === "PENDING");
+    expect(markup.includes("ยอมรับคำเชิญเป็นผู้ดูแล")).toBe(invitationStatus === "PENDING");
     harness.effects[1]?.();
     await Promise.resolve();
     expect(harness.previewAction).toHaveBeenCalledWith("a".repeat(43));

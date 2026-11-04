@@ -87,13 +87,13 @@ describe("Platform ADMIN recovery search", () => {
     mocks.search.mockResolvedValue({ status: "MATCH", candidates: [customAdminCandidate] });
     await renderSearch();
 
-    expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
+    expect(container.textContent).toContain("รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้");
     await submit("demi-admin.custom-01");
     expect(mocks.search).toHaveBeenCalledWith("demi-admin.custom-01");
 
     const select = container.querySelector<HTMLSelectElement>("select");
     if (!select) throw new Error("Missing account selection");
-    expect(select.options[1]?.textContent).toContain("บัญชี ADMIN");
+    expect(select.options[1]?.textContent).toContain("ผู้ดูแลระบบ DEMI");
     expect(select.options[1]?.textContent).not.toContain("โรงพยาบาล");
     await act(async () => {
       select.value = "0";

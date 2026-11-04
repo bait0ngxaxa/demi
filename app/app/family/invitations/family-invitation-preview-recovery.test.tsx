@@ -104,7 +104,7 @@ it("checks invitation status after a lost accept response without replaying the 
     root.render(createElement(FamilyInvitationPreview, { legal: accountCreationLegalViewFixture() }));
   });
   const accept = Array.from(container.querySelectorAll("button")).find((button) =>
-    button.textContent?.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"),
+    button.textContent?.includes("ยอมรับคำเชิญเป็นผู้ดูแล"),
   );
   if (!accept) throw new Error("Missing invitation acceptance action");
 
@@ -154,7 +154,7 @@ it("allows a deliberate answer only after verification confirms the invitation i
   await act(async () => root.render(createElement(FamilyInvitationPreview, { legal: accountCreationLegalViewFixture() })));
   const acceptButton = (): HTMLButtonElement | undefined =>
     Array.from(container.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("ยอมรับการเชื่อมความสัมพันธ์เป็นผู้ดูแล"),
+      button.textContent?.includes("ยอมรับคำเชิญเป็นผู้ดูแล"),
     );
   const accept = acceptButton();
   if (!accept) throw new Error("Missing invitation acceptance action");

@@ -79,7 +79,7 @@ describe("Hospital request review workspace", () => {
     expect(markup).toContain('aria-current="page"');
     expect(markup).toContain("ไม่มีคำขอรอตรวจสอบในกลุ่มนี้");
     expect(markup).toContain("รวมคำขอจากทุกโรงพยาบาล");
-    expect(markup).toContain("หน้านี้ไม่ได้เลือกกรองโรงพยาบาล");
+    expect(markup).toContain("หน้านี้ไม่ได้กรองตามโรงพยาบาล");
     expect(markup).not.toContain("พบ 0");
     expect(markup).not.toContain("hospitalId=");
   });

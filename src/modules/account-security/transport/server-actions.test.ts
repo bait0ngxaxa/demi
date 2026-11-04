@@ -207,7 +207,7 @@ describe("authenticated password change action outcomes", () => {
     const result = await changePassword();
 
     expect(result).toMatchObject({ status: "ERROR", message: expect.stringContaining("กรุณาอย่าทำรายการซ้ำ") });
-    expect(result.message).toContain("รอผู้ดูแลระบบตรวจสอบ");
+    expect(result.message).toContain("รอผู้ดูแลระบบ DEMI ตรวจสอบ");
     expect(result.message).not.toContain("ลองอีกครั้ง");
     expect(result.message).not.toMatch(sensitive);
   });
@@ -218,7 +218,7 @@ describe("authenticated password change action outcomes", () => {
 
     expect(result).toEqual({
       status: "OUTCOME_UNCERTAIN",
-      message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบเพื่อตรวจสอบสถานะบัญชี",
+      message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบ DEMI เพื่อตรวจสอบสถานะบัญชี",
     });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
     expect(result.message).not.toMatch(sensitive);

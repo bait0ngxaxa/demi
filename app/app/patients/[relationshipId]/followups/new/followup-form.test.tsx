@@ -341,7 +341,7 @@ describe("follow-up recording review", () => {
     fillRelationshipRequiredFields();
     openReview();
     const dialog = container.querySelector<HTMLDialogElement>("dialog");
-    expect(dialog?.textContent).toContain("การติดตามผลนอก Program");
+    expect(dialog?.textContent).toContain("การติดตามผลนอกโปรแกรม");
     expect(dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]')).toBeNull();
     expect(dialog?.textContent).toContain("ความมั่นใจและสิ่งที่ต้องการสะท้อน");
     click("บันทึกต่อ", dialog ?? container);

@@ -114,16 +114,16 @@ describe("OSM relationship controls Toasts", () => {
   }
 
   function suspendWithConfirmation(): void {
-    act(() => findButton(container, "ระงับความสัมพันธ์ อสม.").click());
+    act(() => findButton(container, "พักสิทธิ์ อสม. ในโรงพยาบาลนี้").click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing confirmation dialog");
-    act(() => findButton(dialog, "ระงับความสัมพันธ์").click());
+    act(() => findButton(dialog, "พักสิทธิ์ อสม. ชั่วคราว").click());
   }
 
   it("requires confirmation before suspending and notifies only after a confirmed SUSPENDED result", async () => {
     mocks.osmSuspend.mockResolvedValueOnce(osm("SUSPENDED"));
     render();
-    act(() => findButton(container, "ระงับความสัมพันธ์ อสม.").click());
+    act(() => findButton(container, "พักสิทธิ์ อสม. ในโรงพยาบาลนี้").click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing confirmation dialog");
     act(() => findButton(dialog, "ยกเลิก").click());
@@ -135,20 +135,30 @@ describe("OSM relationship controls Toasts", () => {
     await settle();
 
     expect(mocks.osmSuspend).toHaveBeenCalledOnce();
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ระงับความสัมพันธ์ อสม. แล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว");
+    expect(container.textContent).toContain("พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว");
     expect(mocks.osmSuspend.mock.calls[0]?.[1]?.get("expectedUpdatedAt")).toBe(V1);
+  });
+
+  it("shows the current assignment count and blocks suspension while patients remain assigned", () => {
+    render({ currentAssignmentCount: 2, actions: { updateProfession: false, suspend: false, restore: false, resetPassword: false } });
+
+    expect(container.textContent).toContain("อสม. รายนี้ยังรับผิดชอบผู้ป่วย 2 ราย");
+    expect(container.textContent).toContain("กรุณาเปลี่ยนผู้รับผิดชอบผู้ป่วยก่อนพักสิทธิ์ อสม. ชั่วคราว");
+    expect(container.querySelector("button")).toBeNull();
+    expect(mocks.osmSuspend).not.toHaveBeenCalled();
+    expect(mocks.osmRestore).not.toHaveBeenCalled();
   });
 
   it("restores with one Toast and refreshes once", async () => {
     mocks.osmRestore.mockResolvedValueOnce(osm("ACTIVE"));
     render();
 
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     await settle();
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("คืนสถานะความสัมพันธ์ อสม. แล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้งแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -156,7 +166,7 @@ describe("OSM relationship controls Toasts", () => {
     mocks.osmRestore.mockResolvedValueOnce(osm("SUSPENDED"));
     render();
 
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     await settle();
 
     noToast();
@@ -165,13 +175,13 @@ describe("OSM relationship controls Toasts", () => {
   });
 
   it.each([
-    ["CONFLICT", "warning", "ไม่สามารถเปลี่ยนความสัมพันธ์ อสม. ได้ กรุณาตรวจสอบสถานะล่าสุด"],
-    ["FORBIDDEN", "error", "ไม่มีสิทธิ์จัดการความสัมพันธ์ อสม. นี้"],
+    ["CONFLICT", "warning", "สิทธิ์การทำงานของ อสม. เปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด"],
+    ["FORBIDDEN", "error", "ไม่มีสิทธิ์จัดการสิทธิ์การทำงานของ อสม. รายนี้"],
   ] as const)("maps a confirmed %s to a %s Toast and keeps the server text inline", async (code, level, message) => {
     mocks.osmRestore.mockResolvedValueOnce(osmRefusal(code));
     render();
 
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     await settle();
 
     expect(mocks[level]).toHaveBeenCalledExactlyOnceWith(message);
@@ -184,7 +194,7 @@ describe("OSM relationship controls Toasts", () => {
     mocks.osmRestore.mockResolvedValueOnce(osmRefusal("INVALID_INPUT"));
     render();
 
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     await settle();
 
     noToast();
@@ -203,8 +213,8 @@ describe("OSM relationship controls Toasts", () => {
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
-    expect(findButton(container, "คืนสถานะความสัมพันธ์ อสม.").disabled).toBe(true);
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    expect(findButton(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง").disabled).toBe(true);
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     expect(mocks.osmRestore).not.toHaveBeenCalled();
     expect(mocks.osmSuspend).toHaveBeenCalledOnce();
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -218,13 +228,13 @@ describe("OSM relationship controls Toasts", () => {
     render({ expectedUpdatedAt: V2, relationshipStatus: "SUSPENDED" });
 
     mocks.osmRestore.mockResolvedValueOnce(osmRefusal("UNAVAILABLE"));
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์ อสม."));
+    await act(async () => submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง"));
     await settle();
 
     expect(mocks.success).toHaveBeenCalledOnce();
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-    expect(container.textContent).not.toContain("บันทึกการเปลี่ยนแปลงความสัมพันธ์ อสม. เรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว");
   });
 
   it("drops a rapid duplicate restore", async () => {
@@ -233,8 +243,8 @@ describe("OSM relationship controls Toasts", () => {
     render();
 
     await act(async () => {
-      submitForm(container, "คืนสถานะความสัมพันธ์ อสม.");
-      submitForm(container, "คืนสถานะความสัมพันธ์ อสม.");
+      submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง");
+      submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง");
       await Promise.resolve();
     });
     await act(async () => {
@@ -252,7 +262,7 @@ describe("OSM relationship controls Toasts", () => {
     mocks.osmRestore.mockReturnValueOnce(pending.promise);
     render();
     await act(async () => {
-      submitForm(container, "คืนสถานะความสัมพันธ์ อสม.");
+      submitForm(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง");
       await Promise.resolve();
     });
 
@@ -288,7 +298,7 @@ describe("Workforce release control Toasts", () => {
   const released: WorkforceReleaseActionState = {
     success: true,
     outcome: "RELEASED",
-    message: "นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่",
+    message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่",
   };
 
   function release(outcome: WorkforceReleaseActionState["outcome"], success = false): WorkforceReleaseActionState {
@@ -305,7 +315,7 @@ describe("Workforce release control Toasts", () => {
   function openReleaseDialog(): HTMLDialogElement | null {
     let dialog = container.querySelector("dialog");
     if (dialog) return dialog;
-    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === "นำออกจากระบบ");
+    const trigger = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร");
     if (!trigger || trigger.disabled) return null;
     flushSync(() => trigger.click());
     dialog = container.querySelector("dialog");
@@ -315,20 +325,23 @@ describe("Workforce release control Toasts", () => {
   async function submitRelease(): Promise<void> {
     const dialog = openReleaseDialog();
     if (!dialog) return;
-    await act(async () => submitForm(dialog, "ยืนยันนำออกจากระบบถาวร"));
+    await act(async () => submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร"));
     await settle();
   }
 
   it("opens a focused destructive dialog and cancel returns focus without mutation", () => {
     render();
-    const trigger = findButton(container, "นำออกจากระบบ");
+    const trigger = findButton(container, "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร");
     act(() => trigger.click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing workforce release dialog");
 
     expect(dialog.textContent).toContain("อสม. สมพร");
     expect(dialog.textContent).toContain("โรงพยาบาลชุมชน");
-    expect(dialog.textContent).toContain("ย้อนกลับไม่ได้");
+    expect(dialog.textContent).toContain("เปิดสิทธิ์เดิมกลับไม่ได้");
+    expect(dialog.textContent).toContain("ประวัติการทำงานยังคงอยู่");
+    expect(dialog.textContent).toContain("สิทธิ์ที่มีอยู่ในโรงพยาบาลอื่นจะคงเดิม");
+    expect(dialog.textContent).toContain("ลิงก์เปิดใช้งานงานที่ยังไม่ถูกใช้ของบัญชีนี้ในทุกโรงพยาบาลจะถูกเพิกถอน");
     expect(dialog.querySelectorAll("form")).toHaveLength(1);
     expect(document.activeElement).toBe(findButton(dialog, "ยกเลิก"));
     expect(mocks.release).not.toHaveBeenCalled();
@@ -348,7 +361,7 @@ describe("Workforce release control Toasts", () => {
     if (!dialog) throw new Error("Missing workforce release dialog");
 
     await act(async () => {
-      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร");
       await Promise.resolve();
     });
     expect(mocks.success).not.toHaveBeenCalled();
@@ -358,10 +371,10 @@ describe("Workforce release control Toasts", () => {
     });
     await settle();
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("นำความสัมพันธ์ออกจากระบบแล้ว");
-    expect(container.textContent).toContain("นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว");
+    expect(container.textContent).toContain("สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่");
     expect(container.querySelector("dialog")).toBeNull();
-    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "นำออกจากระบบ")).toBe(false);
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.trim() === "นำอสม.ออกจากโรงพยาบาลนี้อย่างถาวร")).toBe(false);
     expect(mocks.refresh).not.toHaveBeenCalled();
     const formData = mocks.release.mock.calls[0]?.[1];
     expect(formData?.get("expectedUpdatedAt")).toBe(V1);
@@ -381,8 +394,8 @@ describe("Workforce release control Toasts", () => {
   });
 
   it.each([
-    ["CONFLICT", "warning", "ไม่สามารถนำออกจากระบบได้ กรุณาโหลดข้อมูลล่าสุด"],
-    ["FORBIDDEN", "error", "ไม่มีสิทธิ์นำความสัมพันธ์ออกจากระบบ"],
+    ["CONFLICT", "warning", "ข้อมูลเปลี่ยนแปลง หรือโรงพยาบาลต้องมีแอดมินอย่างน้อยหนึ่งคน กรุณาโหลดใหม่"],
+    ["FORBIDDEN", "error", "ไม่มีสิทธิ์สิ้นสุดสิทธิ์การทำงานกับโรงพยาบาลนี้"],
   ] as const)("maps a confirmed %s outcome to a %s Toast with the server text inline", async (outcome, level, message) => {
     mocks.release.mockResolvedValueOnce(release(outcome));
     render();
@@ -391,7 +404,7 @@ describe("Workforce release control Toasts", () => {
 
     expect(mocks[level]).toHaveBeenCalledExactlyOnceWith(message);
     expect(container.textContent).toContain(`ผลลัพธ์ ${outcome} จากระบบ`);
-    expect(findButton(container, "ยืนยันนำออกจากระบบถาวร").disabled).toBe(false);
+    expect(findButton(container, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร").disabled).toBe(false);
   });
 
   it("keeps a wrong confirmation phrase inline, preserves the typed text, and allows a corrected submission", async () => {
@@ -421,7 +434,7 @@ describe("Workforce release control Toasts", () => {
     noToast();
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
-    expect(findButton(container, "ยืนยันนำออกจากระบบถาวร").disabled).toBe(true);
+    expect(findButton(container, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร").disabled).toBe(true);
     await submitRelease();
     expect(mocks.release).toHaveBeenCalledOnce();
   });
@@ -468,8 +481,8 @@ describe("Workforce release control Toasts", () => {
     await act(async () => {
       const dialog = openReleaseDialog();
       if (!dialog) throw new Error("Missing workforce release dialog");
-      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
-      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร");
       await Promise.resolve();
     });
     await act(async () => {
@@ -489,7 +502,7 @@ describe("Workforce release control Toasts", () => {
     const dialog = openReleaseDialog();
     if (!dialog) throw new Error("Missing workforce release dialog");
     await act(async () => {
-      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร");
       await Promise.resolve();
     });
 
@@ -501,7 +514,7 @@ describe("Workforce release control Toasts", () => {
     await settle();
 
     noToast();
-    expect(container.textContent).not.toContain("นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่");
+    expect(container.textContent).not.toContain("สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่");
   });
 
   it("shows no Toast for a response that arrives after unmount", async () => {
@@ -511,7 +524,7 @@ describe("Workforce release control Toasts", () => {
     const dialog = openReleaseDialog();
     if (!dialog) throw new Error("Missing workforce release dialog");
     await act(async () => {
-      submitForm(dialog, "ยืนยันนำออกจากระบบถาวร");
+      submitForm(dialog, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร");
       await Promise.resolve();
     });
 
@@ -530,7 +543,7 @@ describe("Workforce release control Toasts", () => {
     render();
     await act(async () => {
       const input = confirmationInput();
-      input.value = "นำออกจากระบบ";
+      input.value = "นำออกจากโรงพยาบาลนี้อย่างถาวร";
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await submitRelease();
@@ -538,6 +551,6 @@ describe("Workforce release control Toasts", () => {
     const serialized = JSON.stringify(toastCalls(mocks));
     expect(serialized).not.toContain(RELATIONSHIP_ID);
     expect(serialized).not.toContain(HOSPITAL_ID);
-    expect(serialized).not.toContain("นำออกจากระบบ\"");
+    expect(serialized).not.toContain("นำออกจากโรงพยาบาลนี้อย่างถาวร\"");
   });
 });

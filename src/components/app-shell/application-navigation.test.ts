@@ -487,10 +487,10 @@ describe("application navigation visibility (unchanged policies)", () => {
     expect(adminLabels).toContain("กำกับดูแล");
     expect(adminLabels).toContain("โรงพยาบาลทั้งหมด");
     expect(adminLabels).toContain("คำขอขึ้นทะเบียน รพ.");
-    expect(adminLabels).toContain("คืนบัญชีผู้ใช้");
+    expect(adminLabels).toContain("กู้คืนบัญชีผู้ใช้");
     expect(hospitalLabels).not.toContain("กำกับดูแล");
     expect(hospitalLabels).not.toContain("โรงพยาบาลทั้งหมด");
-    expect(hospitalLabels).not.toContain("คืนบัญชีผู้ใช้");
+    expect(hospitalLabels).not.toContain("กู้คืนบัญชีผู้ใช้");
   });
 
   it.each(runtimeEnvironments)("shows Global Reporting to Platform ADMIN on %s", (_name, environment) => {

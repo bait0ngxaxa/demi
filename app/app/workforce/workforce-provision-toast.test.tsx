@@ -278,14 +278,14 @@ describe("workforce three-step onboarding", () => {
     mocks.remoteAction.mockResolvedValueOnce({
       status: "ERROR",
       code: "CONFIGURATION",
-      message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      message: "ไม่สามารถสร้างลิงก์เปิดใช้งานได้ในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ DEMI",
     });
     render();
     await stepToDelivery();
     await submitDelivery();
 
     expect(mocks.remoteAction).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain("ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน");
+    expect(container.textContent).toContain("ไม่สามารถสร้างลิงก์เปิดใช้งานได้ในขณะนี้");
     expect(container.textContent).not.toContain("ผลการออกลิงก์ไม่ได้");
     expect(container.textContent).not.toContain(ACTIVATION_URL);
   });

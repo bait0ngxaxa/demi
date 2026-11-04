@@ -61,7 +61,7 @@ function renderSidebar(): HTMLDivElement {
     availableWorkspaces: ["personal", "work"],
     displayName: "สมชาย ใจดี",
     navigation,
-    roleLabels: ["เจ้าของโรงพยาบาล"],
+    roleLabels: ["แอดมินโรงพยาบาล"],
   })));
   return container;
 }
@@ -88,7 +88,7 @@ describe("collapsed desktop sidebar icon rail", () => {
     expect(sidebar.querySelectorAll("nav").length).toBe(2);
     expect(sidebar.querySelector('[data-icon-only="true"]')).not.toBeNull();
     expect(sidebar.querySelector(".rounded-full")?.textContent).toBe("ส");
-    expect([...sidebar.querySelectorAll(".sr-only")].map(({ textContent }) => textContent)).toContain("สมชาย ใจดี · เจ้าของโรงพยาบาล");
+    expect([...sidebar.querySelectorAll(".sr-only")].map(({ textContent }) => textContent)).toContain("สมชาย ใจดี · แอดมินโรงพยาบาล");
     expect([...sidebar.querySelectorAll("p")].some(({ textContent }) => textContent === "สมชาย ใจดี")).toBe(false);
     // The workspace switch is a segmented control above the sections, not a section.
     expect([...sidebar.querySelectorAll('nav[aria-label="พื้นที่ใช้งาน"] a')].map((link) => link.getAttribute("href"))).toEqual(["/app/personal", "/app"]);

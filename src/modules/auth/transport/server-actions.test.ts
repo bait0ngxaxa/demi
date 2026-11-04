@@ -42,7 +42,7 @@ describe("authentication Server Actions", () => {
     expect(result).toEqual({
       status: "ERROR",
       code: "INVALID_INPUT",
-      message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบและรหัสผ่าน",
+      message: "กรุณาตรวจสอบเลขบัตรประชาชนหรือรหัสผู้ดูแลระบบ DEMI และรหัสผ่าน",
     });
     expect(mockedAuthenticateWithPassword).not.toHaveBeenCalled();
   });

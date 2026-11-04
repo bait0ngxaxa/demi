@@ -24,7 +24,7 @@ vi.mock("../services/workforce-service", () => ({ releaseWorkforceRelationship: 
 
 const form = new FormData();
 form.set("relationshipId", "relationship-1");
-form.set("confirmation", "นำออกจากระบบ");
+form.set("confirmation", "นำออกจากโรงพยาบาลนี้อย่างถาวร");
 
 beforeEach(() => {
   vi.mocked(getProtectedApplicationActor).mockReset().mockResolvedValue({ userId: "actor-1" } as never);
@@ -36,7 +36,7 @@ describe("releaseWorkforceAction outcome classification", () => {
   it("returns RELEASED only after the service committed and revalidates the roster", async () => {
     const result = await releaseWorkforceAction(initialWorkforceReleaseActionState, form);
 
-    expect(result).toEqual({ success: true, outcome: "RELEASED", message: "นำออกจากระบบถาวรแล้ว ประวัติยังคงอยู่" });
+    expect(result).toEqual({ success: true, outcome: "RELEASED", message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่" });
     expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/workforce", "layout");
   });
 
@@ -54,7 +54,7 @@ describe("releaseWorkforceAction outcome classification", () => {
 
     const result = await releaseWorkforceAction(initialWorkforceReleaseActionState, form);
 
-    expect(result).toEqual({ success: false, outcome: "INVALID_CONFIRMATION", message: "กรุณาพิมพ์ นำออกจากระบบ เพื่อยืนยัน" });
+    expect(result).toEqual({ success: false, outcome: "INVALID_CONFIRMATION", message: "กรุณาพิมพ์ นำออกจากโรงพยาบาลนี้อย่างถาวร เพื่อยืนยัน" });
   });
 
   it.each([new ForbiddenError(), new UnauthenticatedError()])("classifies %s as FORBIDDEN", async (error) => {

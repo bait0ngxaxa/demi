@@ -37,7 +37,7 @@ describe("bounded appointment sharing UI", () => {
   });
   it("ordinary Family management explains that a relationship alone grants no access", () => {
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ patient: { invitations: [], relationships: [relationship], nextInvitationsCursor: null, nextRelationshipsCursor: null }, caregiver: { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null } }} />);
-    expect(markup).toContain("สร้างลิงก์คำเชิญ"); expect(markup).toContain("ยุติความสัมพันธ์ผู้ดูแล");
+    expect(markup).toContain("สร้างลิงก์คำเชิญ"); expect(markup).toContain("ยกเลิกการเชื่อมต่อกับผู้ดูแล");
     expect(markup).not.toContain("เสนอสิทธิ์ดูนัดหมาย");
     expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
   });

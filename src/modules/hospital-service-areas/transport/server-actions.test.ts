@@ -76,7 +76,7 @@ describe("Child OWNER invitation activation URL", () => {
     expect(result).toMatchObject({
       status: "ERROR",
       code: "UNAVAILABLE",
-      message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      message: "ยังสร้างลิงก์เปิดใช้งานไม่ได้ กรุณาลองใหม่ภายหลัง",
     });
     expect(mocks.issueChildOwnerLink).not.toHaveBeenCalled();
   });

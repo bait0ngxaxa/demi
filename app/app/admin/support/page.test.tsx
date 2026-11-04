@@ -154,7 +154,7 @@ describe("Platform ADMIN support inbox routes", () => {
     expect(markup).toContain("ผู้แจ้ง");
     expect(markup).toContain("สมหญิง ทดสอบ");
     expect(markup).toContain("บทบาทของผู้แจ้ง");
-    expect(markup).toContain("ผู้ป่วย · ผู้ดูแลครอบครัว");
+    expect(markup).toContain("ผู้ป่วย · ญาติหรือผู้ดูแล");
   });
 
   it("redirects an ADMIN away from the reporter history pages before any read", async () => {

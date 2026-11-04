@@ -56,7 +56,7 @@ describe("Parent Child facility panel (ADR-0018 O-D5)", () => {
       delivery: "ADMIN_RESET_REQUIRED",
       link: { status: "NONE", expiresAt: null, mode: null },
     }} />);
-    expect(markup).toContain("รอ platform ADMIN ยืนยันตัวตน");
+    expect(markup).toContain("รอผู้ดูแลระบบ DEMI ยืนยันตัวตน");
     expect(markup).toContain("ยกเลิกคำเชิญ");
     expect(markup).toContain("เปลี่ยนผู้ถูกเชิญ");
     expect(markup).toContain("ยกเลิกหน่วยบริการ");
@@ -66,8 +66,8 @@ describe("Parent Child facility panel (ADR-0018 O-D5)", () => {
 
   it("lets the Parent invite someone else after a decline", () => {
     const markup = renderToStaticMarkup(<ChildFacilityPanel {...base} invitation={null} lastDeclinedAt="2026-10-21T05:00:00.000Z" />);
-    expect(markup).toContain("ผู้ถูกเชิญปฏิเสธคำเชิญ");
-    expect(markup).toContain("เชิญผู้ดูแล");
+    expect(markup).toContain("ผู้ได้รับเชิญปฏิเสธคำเชิญ");
+    expect(markup).toContain("เชิญแอดมินโรงพยาบาล");
     expect(markup).not.toContain("ออกลิงก์ใหม่");
   });
 
@@ -77,15 +77,15 @@ describe("Parent Child facility panel (ADR-0018 O-D5)", () => {
     expect(markup).toContain(`href="/app/patients?hospitalId=${base.child.id}"`);
     expect(markup).toContain("เปลี่ยนชื่อ");
     expect(markup).toContain("นำออกจากเครือข่าย");
-    for (const label of ["ออกลิงก์ใหม่", "เปลี่ยนผู้ถูกเชิญ", "เชิญผู้ดูแลคนใหม่", "ยกเลิกหน่วยบริการ"]) {
+    for (const label of ["ออกลิงก์ใหม่", "เปลี่ยนผู้ถูกเชิญ", "เชิญแอดมินโรงพยาบาลคนใหม่", "ยกเลิกหน่วยบริการ"]) {
       expect(markup).not.toContain(label);
     }
   });
 
   it("offers a replacement OWNER invitation only when an ACTIVE Child has no OWNER", () => {
     const markup = renderToStaticMarkup(<ChildFacilityPanel {...base} invitation={null} state="NO_OWNER" />);
-    expect(markup).toContain("ไม่มีผู้ดูแล");
-    expect(markup).toContain("เชิญผู้ดูแลคนใหม่");
+    expect(markup).toContain("ไม่มีแอดมินโรงพยาบาล");
+    expect(markup).toContain("เชิญแอดมินโรงพยาบาลคนใหม่");
     expect(markup).not.toContain("ยกเลิกหน่วยบริการ");
   });
 });

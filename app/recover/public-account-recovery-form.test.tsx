@@ -42,8 +42,8 @@ describe("public account recovery", () => {
     expect(container.textContent).toContain("ติดต่อโรงพยาบาลเพื่อยืนยันตัวตน");
     expect(container.textContent).toContain("ลืมรหัสผ่าน · รับลิงก์ทาง LINE");
     expect(container.textContent).toContain("ผูกบัญชี LINE และผ่านเงื่อนไข");
-    expect(container.textContent).toContain("เจ้าของโรงพยาบาลเพียงคนเดียว");
-    expect(container.textContent).toContain("ADMIN อีกคน");
+    expect(container.textContent).toContain("แอดมินโรงพยาบาลเพียงคนเดียว");
+    expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI อีกคน");
     expect(container.textContent).toContain("ผู้ปฏิบัติงานระบบ");
     expect(container.textContent).not.toContain("admin:recover");
     expect(container.querySelector('a[href="/recover/line"]')).not.toBeNull();
@@ -78,7 +78,7 @@ describe("public account recovery", () => {
 
     expect(container.querySelector('input[name="platformAdminIdentifier"]')).not.toBeNull();
     expect(container.querySelector('input[name="nationalId"]')).toBeNull();
-    expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
+    expect(container.textContent).toContain("รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้");
     expect(container.textContent).toContain("ไม่ใช้แทนการตรวจสอบตัวตน");
     expect(container.textContent).toContain("ลิงก์ออนไลน์ใช้ได้ 24 ชั่วโมง");
   });

@@ -82,7 +82,7 @@ describe("Global Admin reporting workspace", () => {
     expect(markup).not.toContain("DEMO-CHILD");
     expect(markup).not.toContain("DEMO-STANDALONE");
     expect(markup).toContain("สถานะโรงพยาบาล");
-    expect(markup).toContain("ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและ Program จำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย");
+    expect(markup).toContain("ดูโครงสร้างโรงพยาบาลและรายงานของแห่งที่เลือก ข้อมูลผู้ป่วยและโปรแกรมจำกัดอยู่ในโรงพยาบาลนั้น ไม่รวมแม่ข่ายหรือลูกข่าย");
     expect(markup).not.toContain("เปิดใช้เฉพาะ ADMIN");
     expect(markup).not.toContain("สภาพแวดล้อม demo");
     expect(markup).toContain("โรงพยาบาลแม่ข่ายทดสอบ");
@@ -107,7 +107,7 @@ describe("Global Admin reporting workspace", () => {
     };
     const markup = render({ selectedHospital, selectedHierarchy });
 
-    expect(markup).toContain("รายงานผู้ป่วยและ Program ยังไม่พร้อมใช้งาน");
+    expect(markup).toContain("รายงานผู้ป่วยและโปรแกรมยังไม่พร้อมใช้งาน");
     expect(markup).not.toMatch(/Patient\/Program|Hospital ที่|Master ทั้ง/u);
     expect(markup).toContain("รอยืนยันการขึ้นทะเบียน");
     expect(markup).not.toContain("Program ทั้งหมด");

@@ -226,7 +226,7 @@ describe("workforce Server Actions", () => {
     expect(result).toMatchObject({
       status: "ERROR",
       code: "CONFIGURATION",
-      message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      message: "ไม่สามารถสร้างลิงก์เปิดใช้งานได้ในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ DEMI",
     });
     expect(mockedProvisionHospitalMember).not.toHaveBeenCalled();
   });
@@ -469,7 +469,7 @@ describe("workforce Server Actions", () => {
 
     const result = await regenerateWorkforceActivationAction(initialWorkforceActivationActionState, formData);
 
-    expect(result).toMatchObject({ status: "ERROR", code: "CONFIGURATION", message: "ระบบยังไม่ได้ตั้งค่าที่อยู่สำหรับลิงก์เปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ" });
+    expect(result).toMatchObject({ status: "ERROR", code: "CONFIGURATION", message: "ไม่สามารถสร้างลิงก์เปิดใช้งานได้ในขณะนี้ กรุณาติดต่อผู้ดูแลระบบ DEMI" });
     expect(mockedRegenerateWorkforceActivation).not.toHaveBeenCalled();
   });
 

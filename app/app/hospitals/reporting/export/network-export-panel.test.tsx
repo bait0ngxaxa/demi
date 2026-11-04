@@ -96,7 +96,7 @@ describe("ADR-0025 network export selection", () => {
     mount(preview([30, 8, 0]));
     act(() => labelled("เลือกหน่วยบริการ").click());
 
-    expect(container.textContent).toContain("รหัส C-002 · 4 เคส · 8 Program");
+    expect(container.textContent).toContain("รหัส C-002 · 4 เคส · 8 โปรแกรม");
     expect(totals()).toEqual(["3 แห่ง", "16", "38"]);
 
     act(() => button("ไม่เลือกเลย").click());
@@ -122,7 +122,7 @@ describe("ADR-0025 network export selection", () => {
   it("blocks a selection above 5,000 Programs until fewer Hospitals are chosen", () => {
     mount(preview([4_500, 600, 10]));
 
-    expect(container.textContent).toContain("ไฟล์เดียวส่งออกได้ไม่เกิน 5,000 Program แต่ที่เลือกไว้มี 5,110 Program");
+    expect(container.textContent).toContain("ไฟล์เดียวส่งออกได้ไม่เกิน 5,000 โปรแกรม แต่ที่เลือกไว้มี 5,110 โปรแกรม");
     expect(button("ส่งออก Excel เครือข่าย").disabled).toBe(true);
 
     act(() => labelled("เลือกหน่วยบริการ").click());
@@ -144,7 +144,7 @@ describe("ADR-0025 network export selection", () => {
     act(() => button("ส่งออก Excel เครือข่าย").click());
     const dialog = container.querySelector("dialog");
     expect(dialog?.textContent).toContain(NETWORK_EXPORT_CONFIRMATION);
-    expect(dialog?.textContent).toContain("2 หน่วยบริการ · 10 Program · รวมผู้ที่สิ้นสุดการดูแล");
+    expect(dialog?.textContent).toContain("2 หน่วยบริการ · 10 โปรแกรม · รวมผู้ที่สิ้นสุดการดูแล");
     expect(fetchMock).not.toHaveBeenCalled();
 
     await act(async () => button("ยืนยันและดาวน์โหลด").click());

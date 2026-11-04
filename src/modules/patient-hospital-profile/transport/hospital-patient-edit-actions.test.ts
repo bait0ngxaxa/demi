@@ -88,7 +88,7 @@ describe("name correction restriction", () => {
     expect(result).toEqual({
       status: "ERROR",
       code: "FORBIDDEN",
-      message: "ผู้ป่วยรายนี้เชื่อมกับหลายโรงพยาบาล กรุณาติดต่อผู้ดูแลระบบ",
+      message: "แก้ไขชื่อผู้ป่วยจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI",
     });
   });
 });

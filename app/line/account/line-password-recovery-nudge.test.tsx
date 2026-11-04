@@ -44,8 +44,8 @@ describe("Hospital OWNER LINE recovery readiness notice", () => {
     await renderNotice({ status: "UNLINKED", recoveryConfigured: true }, 1);
 
     expect(container.textContent).toContain("การผูก LINE เป็นทางเลือก");
-    expect(container.textContent).toContain("OWNER ที่ใช้งานได้เพียงคนเดียวใน 1 โรงพยาบาล");
-    expect(container.textContent).toContain("Platform ADMIN");
+    expect(container.textContent).toContain("คุณเป็นแอดมินโรงพยาบาลที่ใช้งานได้เพียงคนเดียวใน 1 โรงพยาบาล");
+    expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI");
     expect(container.querySelector('a[href="/line/account"]')?.textContent).toContain("(ทางเลือก)");
     expect(container.querySelector('button[aria-label="ปิดคำแนะนำความพร้อมกู้คืนผ่าน LINE"]')).not.toBeNull();
   });
@@ -72,7 +72,7 @@ describe("Hospital OWNER LINE recovery readiness notice", () => {
     await renderNotice({ status: "UNAVAILABLE", recoveryConfigured: false });
 
     expect(container.textContent).toContain("ยังตั้งค่าช่องทางกู้คืนผ่าน LINE ไม่ครบ");
-    expect(container.textContent).toContain("Platform ADMIN");
+    expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI");
   });
 
   it("remembers dismissal for this user and readiness state", async () => {

@@ -215,7 +215,7 @@ describe("Patient Personal care read views", () => {
       "ข้อมูลเริ่มต้น / Baseline",
       "72 kg",
       "165 cm",
-      "แผนเป้าหมาย รอบที่ 7",
+      "แผนสุขภาพ รอบที่ 7",
       "การติดตาม",
       "ติดตาม รอบที่ 7",
       "โปรแกรมการดูแล",
@@ -241,8 +241,8 @@ describe("Patient Personal care read views", () => {
     );
 
     expect(markup).toContain("แผนสุขภาพ");
-    expect(markup.indexOf("แผนเป้าหมาย รอบที่ 7")).toBeLessThan(markup.indexOf("แผนปัจจุบัน"));
-    expect(markup.indexOf("แผนปัจจุบัน")).toBeLessThan(markup.indexOf("แผนเป้าหมาย รอบที่ 6"));
+    expect(markup.indexOf("แผนสุขภาพ รอบที่ 7")).toBeLessThan(markup.indexOf("แผนปัจจุบัน"));
+    expect(markup.indexOf("แผนปัจจุบัน")).toBeLessThan(markup.indexOf("แผนสุขภาพ รอบที่ 6"));
     expect(markup.match(/แผนปัจจุบัน/gu)).toHaveLength(1);
     expect(markup).toContain("ฉบับก่อนหน้า");
     expect(markup).toContain("/goal-plans/44444444-4444-4444-8444-444444444445");
@@ -281,7 +281,7 @@ describe("Patient Personal care read views", () => {
       "Floating Chart",
       "Dream Card",
       "Confidence",
-      "แผนเป้าหมาย รอบที่ 7",
+      "แผนสุขภาพ รอบที่ 7",
       "ติดตาม รอบที่ 7",
       "การประเมินสิ้นสุด",
       "68 kg",
@@ -305,7 +305,7 @@ describe("Patient Personal care read views", () => {
       <PatientSelfFollowupDetailView detail={followupDetail} />,
     );
 
-    expect(goalMarkup).toContain("แผนเป้าหมาย รอบที่ 7");
+    expect(goalMarkup).toContain("แผนสุขภาพ รอบที่ 7");
     expect(goalMarkup).toContain("เดินออกกำลังกาย");
     expect(goalMarkup).toContain("เป้าหมาย 3 วัน");
     expect(goalMarkup).not.toContain("Health Plan");

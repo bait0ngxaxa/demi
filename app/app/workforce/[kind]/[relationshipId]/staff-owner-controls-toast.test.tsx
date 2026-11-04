@@ -165,22 +165,22 @@ const triggers = {
   },
   suspend: {
     action: mocks.suspend,
-    label: "ระงับความสัมพันธ์",
+    label: "พักสิทธิ์เจ้าหน้าที่ชั่วคราว",
     run: (): void => {
-      act(() => findButton(container, "ระงับความสัมพันธ์").click());
+      act(() => findButton(container, "พักสิทธิ์เจ้าหน้าที่ชั่วคราว").click());
       const dialog = container.querySelector("dialog");
       if (!dialog) throw new Error("Missing confirmation dialog");
-      act(() => findButton(dialog, "ระงับความสัมพันธ์").click());
+      act(() => findButton(dialog, "พักสิทธิ์เจ้าหน้าที่ชั่วคราว").click());
     },
     success: () => membership({ membershipStatus: "SUSPENDED" }),
-    toast: "ระงับสมาชิกโรงพยาบาลแล้ว",
+    toast: "พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราวแล้ว",
   },
   restore: {
     action: mocks.restore,
-    label: "คืนสถานะความสัมพันธ์",
-    run: (): void => act(() => submitForm(container, "คืนสถานะความสัมพันธ์")),
+    label: "เปิดสิทธิ์การทำงานอีกครั้ง",
+    run: (): void => act(() => submitForm(container, "เปิดสิทธิ์การทำงานอีกครั้ง")),
     success: () => membership({ membershipStatus: "ACTIVE" }),
-    toast: "คืนสถานะสมาชิกโรงพยาบาลแล้ว",
+    toast: "เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว",
   },
 } as const;
 
@@ -230,8 +230,8 @@ describe("Staff membership controls Toasts", () => {
 
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith(trigger.toast);
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
-    expect(liveRegionsContaining(container, "บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว")).toHaveLength(0);
+    expect(container.textContent).toContain(name === "profession" ? "บันทึกวิชาชีพของเจ้าหน้าที่แล้ว" : trigger.toast);
+    expect(liveRegionsContaining(container, trigger.toast)).toHaveLength(0);
     const formData = trigger.action.mock.calls[0]?.[1];
     expect(formData?.get("expectedUpdatedAt")).toBe(V1);
     expect(formData?.get("relationshipId")).toBe(RELATIONSHIP_ID);
@@ -250,7 +250,7 @@ describe("Staff membership controls Toasts", () => {
 
   it("does not submit or notify when the suspension confirmation is canceled", async () => {
     render();
-    act(() => findButton(container, "ระงับความสัมพันธ์").click());
+    act(() => findButton(container, "พักสิทธิ์เจ้าหน้าที่ชั่วคราว").click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing confirmation dialog");
 
@@ -265,8 +265,8 @@ describe("Staff membership controls Toasts", () => {
   it.each(names)("%s: maps confirmed refusals to Toasts, keeps text inline, and does not refresh", async (name) => {
     const trigger = triggers[name];
     for (const [code, level, message] of [
-      ["CONFLICT", "warning", "สถานะสมาชิกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด"],
-      ["FORBIDDEN", "error", "ไม่มีสิทธิ์จัดการสมาชิกโรงพยาบาลนี้"],
+      ["CONFLICT", "warning", "สิทธิ์การทำงานเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด"],
+      ["FORBIDDEN", "error", "ไม่มีสิทธิ์จัดการเจ้าหน้าที่โรงพยาบาลนี้"],
     ] as const) {
       for (const mock of Object.values(mocks)) mock.mockReset();
       trigger.action.mockResolvedValueOnce(refusal(code));
@@ -384,7 +384,7 @@ describe("Staff membership controls Toasts", () => {
       submitProfession();
       await Promise.resolve();
     });
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์"));
+    await act(async () => submitForm(container, "เปิดสิทธิ์การทำงานอีกครั้ง"));
     await act(async () => {
       pending.resolve(membership());
       await pending.promise;
@@ -399,11 +399,11 @@ describe("Staff membership controls Toasts", () => {
     render();
     await act(async () => submitProfession());
     await settle();
-    expect(findButton(container, "คืนสถานะความสัมพันธ์").disabled).toBe(true);
+    expect(findButton(container, "เปิดสิทธิ์การทำงานอีกครั้ง").disabled).toBe(true);
 
     render({ expectedUpdatedAt: V2 });
 
-    expect(findButton(container, "คืนสถานะความสัมพันธ์").disabled).toBe(false);
+    expect(findButton(container, "เปิดสิทธิ์การทำงานอีกครั้ง").disabled).toBe(false);
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -425,12 +425,12 @@ describe("Staff membership controls Toasts", () => {
     render();
     triggers.suspend.run();
     await settle();
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ระงับสมาชิกโรงพยาบาลแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราวแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
 
     render({ expectedUpdatedAt: V2, relationshipStatus: "SUSPENDED" });
     mocks.restore.mockResolvedValueOnce(refusal("UNAVAILABLE"));
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์"));
+    await act(async () => submitForm(container, "เปิดสิทธิ์การทำงานอีกครั้ง"));
     await settle();
 
     expect(mocks.success).toHaveBeenCalledOnce();
@@ -438,7 +438,7 @@ describe("Staff membership controls Toasts", () => {
     expect(mocks.error).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-    expect(container.textContent).not.toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว");
   });
 
   it("Profession SUCCESS then Suspend CONFLICT: the old success neither refreshes nor displays again", async () => {
@@ -452,10 +452,10 @@ describe("Staff membership controls Toasts", () => {
     triggers.suspend.run();
     await settle();
 
-    expect(mocks.warning).toHaveBeenCalledExactlyOnceWith("สถานะสมาชิกเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
+    expect(mocks.warning).toHaveBeenCalledExactlyOnceWith("สิทธิ์การทำงานเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("ผลลัพธ์ CONFLICT จากระบบ");
-    expect(container.textContent).not.toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("บันทึกวิชาชีพของเจ้าหน้าที่แล้ว");
   });
 
   it("earlier error does not appear after a later success", async () => {
@@ -466,11 +466,11 @@ describe("Staff membership controls Toasts", () => {
     expect(container.textContent).toContain("ผลลัพธ์ CONFLICT จากระบบ");
 
     mocks.restore.mockResolvedValueOnce(membership({ membershipStatus: "ACTIVE" }));
-    await act(async () => submitForm(container, "คืนสถานะความสัมพันธ์"));
+    await act(async () => submitForm(container, "เปิดสิทธิ์การทำงานอีกครั้ง"));
     await settle();
 
     expect(container.textContent).not.toContain("ผลลัพธ์ CONFLICT จากระบบ");
-    expect(container.textContent).toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+    expect(container.textContent).toContain("เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -492,7 +492,7 @@ describe("Staff membership controls Toasts", () => {
 
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).not.toContain("บันทึกการเปลี่ยนแปลงเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("บันทึกวิชาชีพของเจ้าหน้าที่แล้ว");
   });
 
   it("shows no Toast or refresh for a response that arrives after unmount", async () => {
@@ -531,29 +531,29 @@ describe("Hospital owner governance controls Toasts", () => {
   };
 
   function demote(): void {
-    act(() => findButton(container, "เปลี่ยนเป็นสมาชิก").click());
+    act(() => findButton(container, "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล").click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing demotion dialog");
-    act(() => findButton(dialog, "เปลี่ยนเป็นสมาชิก").click());
+    act(() => findButton(dialog, "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล").click());
   }
 
   it("promotes with one Toast after confirmed OWNER result and refreshes once", async () => {
     mocks.promote.mockResolvedValueOnce(ownerResult("OWNER"));
     render(ownerProps);
 
-    await act(async () => submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล"));
+    await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));
     await settle();
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("กำหนดสิทธิ์เจ้าของโรงพยาบาลแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("เปลี่ยนเป็นแอดมินโรงพยาบาลแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).toContain("เปลี่ยนเป็นแอดมินโรงพยาบาลแล้ว");
     expect(mocks.promote.mock.calls[0]?.[1]?.get("expectedUpdatedAt")).toBe(V1);
   });
 
   it("requires demotion confirmation and announces only a confirmed MEMBER result", async () => {
     mocks.demote.mockResolvedValueOnce(ownerResult("MEMBER"));
     render(ownerProps);
-    act(() => findButton(container, "เปลี่ยนเป็นสมาชิก").click());
+    act(() => findButton(container, "เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาล").click());
     expect(mocks.demote).not.toHaveBeenCalled();
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Missing demotion dialog");
@@ -565,7 +565,7 @@ describe("Hospital owner governance controls Toasts", () => {
     demote();
     await settle();
 
-    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("เปลี่ยนสิทธิ์เจ้าของโรงพยาบาลแล้ว");
+    expect(mocks.success).toHaveBeenCalledExactlyOnceWith("เปลี่ยนเป็นเจ้าหน้าที่โรงพยาบาลแล้ว");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -573,7 +573,7 @@ describe("Hospital owner governance controls Toasts", () => {
     mocks.promote.mockResolvedValueOnce(ownerResult("MEMBER"));
     render(ownerProps);
 
-    await act(async () => submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล"));
+    await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));
     await settle();
 
     noToast();
@@ -584,7 +584,7 @@ describe("Hospital owner governance controls Toasts", () => {
   it("Promote SUCCESS then Demote FORBIDDEN: warns with the later error only and refreshes once", async () => {
     mocks.promote.mockResolvedValueOnce(ownerResult("OWNER"));
     render(ownerProps);
-    await act(async () => submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล"));
+    await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));
     await settle();
     render({ ...ownerProps, expectedUpdatedAt: V2 });
 
@@ -593,10 +593,10 @@ describe("Hospital owner governance controls Toasts", () => {
     await settle();
 
     expect(mocks.success).toHaveBeenCalledOnce();
-    expect(mocks.error).toHaveBeenCalledExactlyOnceWith("ไม่มีสิทธิ์จัดการสิทธิ์เจ้าของโรงพยาบาล");
+    expect(mocks.error).toHaveBeenCalledExactlyOnceWith("ไม่มีสิทธิ์จัดการสิทธิ์แอดมินโรงพยาบาล");
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("ผลลัพธ์ FORBIDDEN จากระบบ");
-    expect(container.textContent).not.toContain("บันทึกบทบาทเจ้าของโรงพยาบาลเรียบร้อยแล้ว");
+    expect(container.textContent).not.toContain("เปลี่ยนเป็นแอดมินโรงพยาบาลแล้ว");
   });
 
   it("keeps the last-owner conflict as a warning plus the server's inline explanation", async () => {
@@ -606,7 +606,7 @@ describe("Hospital owner governance controls Toasts", () => {
     demote();
     await settle();
 
-    expect(mocks.warning).toHaveBeenCalledExactlyOnceWith("สิทธิ์เจ้าของเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
+    expect(mocks.warning).toHaveBeenCalledExactlyOnceWith("สิทธิ์แอดมินโรงพยาบาลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุด");
     expect(container.textContent).toContain("ผลลัพธ์ CONFLICT จากระบบ");
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
@@ -615,7 +615,7 @@ describe("Hospital owner governance controls Toasts", () => {
     mocks.promote.mockResolvedValueOnce(ownerRefusal("INVALID_INPUT"));
     render(ownerProps);
 
-    await act(async () => submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล"));
+    await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));
     await settle();
 
     noToast();
@@ -633,8 +633,8 @@ describe("Hospital owner governance controls Toasts", () => {
     noToast();
     expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
-    expect(findButton(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล").disabled).toBe(true);
-    await act(async () => submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล"));
+    expect(findButton(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล").disabled).toBe(true);
+    await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));
     expect(mocks.promote).not.toHaveBeenCalled();
     expect(mocks.demote).toHaveBeenCalledOnce();
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -646,8 +646,8 @@ describe("Hospital owner governance controls Toasts", () => {
     render(ownerProps);
 
     await act(async () => {
-      submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล");
-      submitForm(container, "เปลี่ยนเป็นเจ้าของโรงพยาบาล");
+      submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล");
+      submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล");
       await Promise.resolve();
     });
     await act(async () => {

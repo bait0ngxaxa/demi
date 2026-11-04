@@ -112,14 +112,14 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     await renderControl("ADMIN_ALLOWED", "platform_admin");
     click("button");
 
-    expect(container.textContent).toContain("ตรวจสอบตัวตนของ ADMIN ผู้รับอย่างเป็นอิสระก่อน");
+    expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน");
     expect(container.textContent).toContain("ห้ามใช้หมายเลขที่ผู้ขอแจ้ง");
 
     click('input[name="verificationMethod"][value="VIDEO_CALL_FACE_AND_ID_CARD"]');
     click('input[name="mode"][value="ONLINE"]');
     await submitForm();
 
-    expect(container.textContent).toContain("ตัวระบุเข้าสู่ระบบ ADMIN ที่ลงทะเบียนไว้");
+    expect(container.textContent).toContain("รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้");
     expect(container.textContent).toContain("ห้ามส่งต่อให้ผู้อื่น");
     expect(mocks.issue).toHaveBeenCalledWith(expect.objectContaining({
       targetKind: "platform_admin",
@@ -153,7 +153,7 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
       targetName: "ผู้ใช้ตัวอย่าง",
       eligibility: "ADMIN_REQUIRED",
     })));
-    expect(container.textContent).toContain("ต้องให้ผู้ดูแลระบบดำเนินการ");
+    expect(container.textContent).toContain("ต้องให้ผู้ดูแลระบบ DEMI ดำเนินการ");
     expect(container.querySelector("button")).toBeNull();
   });
 });

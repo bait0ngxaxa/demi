@@ -100,7 +100,7 @@ describe("Patient care journey and Program workspace", () => {
     expect(html.match(/กลับไปยังรายละเอียดผู้ป่วย/gu)).toHaveLength(1);
     expect(html).toContain("ไม่ต้องทำตามลำดับ");
     expect(html).toContain("ยังไม่มีบันทึกกิจกรรม");
-    expect(html).toContain("ยังไม่มีแผนเป้าหมาย");
+    expect(html).toContain("ยังไม่มีแผนสุขภาพ");
     expect(html.match(/href="[^"]+\/goals\/new"/gu)).toHaveLength(1);
     expect(html.match(/href="[^"]+\/followups\/new"/gu)).toHaveLength(1);
     expect(html).toContain("จบโปรแกรม");
@@ -119,7 +119,7 @@ describe("Patient care journey and Program workspace", () => {
     expect(html).toContain("มีบันทึกกิจกรรม");
     expect(html).toContain("มีบันทึกการติดตามผล");
     expect(html).toContain("มีบันทึกการประเมินสุดท้าย");
-    expect(html).toContain("ยังไม่มีแผนเป้าหมาย");
+    expect(html).toContain("ยังไม่มีแผนสุขภาพ");
     expect(html).not.toContain("ครบ 6");
   });
 

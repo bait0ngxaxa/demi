@@ -110,6 +110,6 @@ describe("cancelling a platform ADMIN Parent OWNER invitation (ADR-0024 PO-3)", 
       invitation: { ...invitation, delivery: "ADMIN_RESET_REQUIRED" },
     });
     expect(dialog.textContent).not.toContain("รายชื่อขอขึ้นทะเบียนสาธารณะ");
-    expect(dialog.textContent).toContain("บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะคืนบัญชี");
+    expect(dialog.textContent).toContain("บัญชีของผู้ถูกเชิญยังคงถูกพักไว้จนกว่าจะกู้คืนบัญชี");
   });
 });

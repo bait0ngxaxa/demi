@@ -173,12 +173,12 @@ describe("patient activation Server Actions", () => {
       lookupType: "HOSPITAL_NUMBER",
       value: "HN-001",
       message:
-        "พบข้อมูลผู้ป่วยหลายรายการสำหรับ HN นี้ กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ",
+        "พบข้อมูลผู้ป่วยหลายรายการสำหรับ HN นี้ กรุณาตรวจสอบข้อมูลหรือติดต่อแอดมินโรงพยาบาล",
     },
     {
       lookupType: "NATIONAL_ID",
       value: "1000000000009",
-      message: "พบข้อมูลผู้ป่วยหลายรายการที่ต้องตรวจสอบ กรุณาติดต่อผู้ดูแลระบบ",
+      message: "พบข้อมูลผู้ป่วยหลายรายการที่ต้องตรวจสอบ กรุณาติดต่อแอดมินโรงพยาบาล",
     },
   ])(
     "returns lookup-aware guidance when a $lookupType search is ambiguous",

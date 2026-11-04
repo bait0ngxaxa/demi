@@ -352,7 +352,7 @@ describe("Patient Personal pages", () => {
   it("shows a truthful empty care selection with a Personal return path", async () => {
     vi.mocked(getPatientSelfRelationshipNavigationPageContext).mockResolvedValue([]);
     const markup = renderToStaticMarkup(await PersonalCarePage());
-    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
+    expect(markup).toContain("ยังไม่มีข้อมูลการดูแลจากโรงพยาบาล");
     expect(markup).toContain('href="/app/personal"');
     expect(markup).not.toMatch(/href="\/app\/personal\/(?:care|appointments)\//u);
   });
@@ -360,7 +360,7 @@ describe("Patient Personal pages", () => {
   it("shows a truthful empty appointment hub with a Personal return path", async () => {
     vi.mocked(getPersonalAppointmentHubPageContext).mockResolvedValue({ subjects: [], selected: null, tab: "upcoming", self: null, family: null });
     const markup = renderToStaticMarkup(await PersonalAppointmentsPage({ searchParams: Promise.resolve({ subject: "me" }) }));
-    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
+    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่ดูแลคุณ");
     expect(markup).toContain('href="/app/personal"');
     expect(markup).not.toMatch(/href="\/app\/personal\/appointments\//u);
     expect(getPersonalAppointmentHubPageContext).toHaveBeenCalledWith({ subject: "me" }, "/app/personal/appointments");
@@ -435,7 +435,7 @@ describe("Patient Personal pages", () => {
     const markup = renderToStaticMarkup(await PersonalProfilePage());
 
     expect(markup).toContain("ยังไม่ได้บันทึก");
-    expect(markup).toContain("โรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
-    expect(markup).toContain("ยังไม่มีข้อมูลโรงพยาบาลที่เชื่อมกับข้อมูลผู้ป่วย");
+    expect(markup).toContain("โรงพยาบาลที่ดูแลคุณ");
+    expect(markup).toContain("ยังไม่มีข้อมูลการดูแลจากโรงพยาบาล");
   });
 });

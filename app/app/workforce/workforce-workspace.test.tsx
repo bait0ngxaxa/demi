@@ -63,7 +63,7 @@ describe("OWNER workforce roster", () => {
 
   it("renders all three URL-backed tabs and retains the existing search, status and cursors", () => {
     const html = render();
-    expect(html).toContain("บุคลากร");
+    expect(html).toContain("เจ้าหน้าที่โรงพยาบาล");
     expect(html).toContain("อสม.");
     expect(html).toContain("รอเปิดใช้งาน (3)");
     expect(html).toContain(`href="/app/workforce?hospitalId=${second.id}&amp;tab=osm&amp;search=%E0%B8%AA%E0%B8%A1&amp;status=PROVISIONED&amp;staffCursor=staff-cursor&amp;osmCursor=osm-cursor"`);
@@ -90,10 +90,21 @@ describe("OWNER workforce roster", () => {
     expect(html).not.toContain("สมาชิกโรงพยาบาล");
   });
 
+  it("distinguishes account suspension from hospital-specific permission suspension", () => {
+    const html = render([{
+      ...row,
+      accountStatus: UserStatus.SUSPENDED,
+      relationshipStatus: MembershipStatus.SUSPENDED,
+    }]);
+
+    expect(html).toContain("บัญชีถูกระงับ");
+    expect(html).toContain("พักสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้ชั่วคราว");
+  });
+
   it("shows the empty roster state without MEMBER-only workspace copy", () => {
     const html = render([], "osm", { staffCursor: null, osmCursor: null, staffNextCursor: null, osmNextCursor: null });
     expect(html).toContain("ไม่พบรายการในหน้านี้หรือไม่ตรงกับการค้นหา");
-    expect(html).toContain("เพิ่มบุคลากร / อสม.");
+    expect(html).toContain("เพิ่มเจ้าหน้าที่ / อสม.");
     expect(html).not.toContain("มุมมองสำหรับสมาชิกโรงพยาบาล");
     expect(html).not.toContain("สมาชิกโรงพยาบาล</span>");
   });

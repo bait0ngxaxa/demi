@@ -397,8 +397,8 @@ describe("Patient activation form", () => {
       await Promise.resolve();
     });
 
-    expect(container.textContent).toContain("เปิดใช้งานบัญชีผู้ดูแลโรงพยาบาลของ ส*** ใจ***");
-    expect(container.textContent).toContain("คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นผู้ดูแล โรงพยาบาลชุมชนใหม่");
+    expect(container.textContent).toContain("เปิดใช้งานบัญชีแอดมินโรงพยาบาลของ ส*** ใจ***");
+    expect(container.textContent).toContain("คำเชิญจากผู้ดูแลระบบ DEMI ให้เป็นแอดมินโรงพยาบาล โรงพยาบาลชุมชนใหม่");
     expect(container.querySelector("#nationalId")).not.toBeNull();
   });
 
@@ -472,7 +472,7 @@ describe("Patient activation form", () => {
     });
 
     expect(container.textContent).toContain("ลิงก์เปิดใช้งานไม่ถูกต้องหรือหมดอายุ");
-    expect(container.textContent).toContain("ขอลิงก์ใหม่จากผู้ดูแลโรงพยาบาล");
+    expect(container.textContent).toContain("ขอลิงก์ใหม่จากแอดมินโรงพยาบาล");
     expect(container.querySelector('[role="alert"]')?.getAttribute("aria-live")).toBe("off");
     expect(document.activeElement).toBe(container.querySelector('[role="alert"]'));
     expect(container.querySelector("form")).toBeNull();

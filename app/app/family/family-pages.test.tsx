@@ -39,7 +39,7 @@ describe("Family relationship management pages", () => {
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแล");
     expect(markup).toContain("ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้");
     expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
-    expect(markup).toContain("การเชื่อมความสัมพันธ์ไม่ทำให้เข้าถึงข้อมูลสุขภาพของผู้ป่วย");
+    expect(markup).toContain("การเชื่อมต่อไม่เปิดสิทธิ์ดูข้อมูลสุขภาพโดยอัตโนมัติ");
   });
 
   it("shows bounded caregiver identity beside Patient management actions", () => {
@@ -81,7 +81,7 @@ describe("Family relationship management pages", () => {
 
     expect(markup).toContain("สมหญิง ใจดี");
     expect(markup).toContain("ยกเลิกคำเชิญ");
-    expect(markup).toContain("ยุติความสัมพันธ์ผู้ดูแล");
+    expect(markup).toContain("ยกเลิกการเชื่อมต่อกับผู้ดูแล");
     expect(markup).not.toContain("1000000000009");
   });
 

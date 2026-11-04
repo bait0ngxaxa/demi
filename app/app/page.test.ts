@@ -98,7 +98,7 @@ describe("application home workspace routing", () => {
     expect(mockedRedirect).not.toHaveBeenCalled();
     expect(markup).toContain("คำเชิญเป็นผู้ดูแล โรงพยาบาลชุมชนใหม่");
     expect(markup).toContain("จาก ผู้ดูแลระบบ DEMI · รหัสโรงพยาบาล H-PARENT");
-    expect(markup).toContain("ผู้ดูแลของโรงพยาบาลนี้");
+    expect(markup).toContain("คุณจะเป็นแอดมินโรงพยาบาลนี้");
     expect(markup).not.toContain("(แม่ข่าย)");
   });
 
@@ -158,9 +158,8 @@ describe("application home workspace routing", () => {
     expect(section(html, "work-home-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
     expect(html).not.toContain('href="/app/patients/activation"');
     expect(html).not.toContain('href="/app/patients/service-catalog"');
-    // Overflowed actions remain on the shared More destination; OWNER retains the direct administration note.
+    // Overflowed administration actions remain on the shared More destination.
     expect(section(html, "work-home-menu-heading")).toContain('href="/app/more"');
-    expect(html.includes("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง")).toBe(type === MembershipType.OWNER);
     expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
     expect(scheduleCurrentLineAccountReconciliation).toHaveBeenCalledOnce();
     expect(html).not.toMatch(/งานถัดไป|งานค้าง|วันนี้|เปอร์เซ็นต์/);
@@ -187,7 +186,6 @@ describe("application home workspace routing", () => {
     expect(section(html, "work-home-menu-heading")).toContain(`href="/app/hospitals/reporting?hospitalId=${hospitalId}"`);
     expect(section(html, "work-home-shared-heading")).toContain('href="/app/patients/service-requests"');
     expect(html).not.toContain("จัดการ อสม. · สิทธิ์สมาชิกโดยตรง");
-    expect(html).not.toContain("บริหารโรงพยาบาล · สิทธิ์เจ้าของโดยตรง");
     expect(html).toContain("การเลือกโรงพยาบาลไม่เพิ่มสิทธิ์ให้บัญชี");
   });
 
@@ -236,7 +234,7 @@ describe("application home workspace routing", () => {
 
   it("marks a suspended association without exposing active operations", async () => {
     const html = await renderHome({ ...patientActor, roles: [Role.OSM], osmHospitalRelationships: [{ hospitalId, status: MembershipStatus.SUSPENDED, hospitalStatus: HospitalStatus.ACTIVE }] });
-    expect(html).toContain("ความสัมพันธ์ไม่พร้อมใช้งาน");
+    expect(html).toContain("พักสิทธิ์ชั่วคราว");
     expect(html).toContain("ยังไม่มีการดำเนินงานที่พร้อมใช้งาน");
     expect(html).not.toContain('/app/patients');
   });
@@ -244,7 +242,7 @@ describe("application home workspace routing", () => {
   it.each([HospitalStatus.SUSPENDED, HospitalStatus.PENDING_VERIFICATION])("marks %s hospitals without active operations", async (status) => {
     const actor = staff(MembershipType.OWNER);
     const html = await renderHome({ ...actor, hospitalMemberships: actor.hospitalMemberships.map((item) => ({ ...item, hospitalStatus: status })) }, status);
-    expect(html).toContain(status === HospitalStatus.SUSPENDED ? "ถูกระงับ" : "ยังไม่พร้อมใช้งาน");
+    expect(html).toContain(status === HospitalStatus.SUSPENDED ? "โรงพยาบาลถูกระงับ" : "โรงพยาบาลยังไม่เปิดใช้งาน");
     expect(html).not.toContain('/app/patients');
     expect(html).not.toContain('/app/workforce');
   });
@@ -377,7 +375,7 @@ describe("application home workspace routing", () => {
       expect(section(html, "work-home-menu-heading")).not.toContain(`/app/patients?hospitalId=${hospitalId}`);
       const unavailable = section(html, "work-home-unavailable-heading");
       expect(unavailable).toContain("โรงพยาบาล 5555");
-      expect(unavailable).toContain("(สมาชิกไม่พร้อมใช้งาน)");
+      expect(unavailable).toContain("เจ้าหน้าที่โรงพยาบาล (พักสิทธิ์ชั่วคราว)");
       expect(unavailable).not.toContain("href=");
       expect(listHospitalWorkContent).toHaveBeenCalledWith(forgedActor, { hospitalId: parentId, limit: 3 });
     });

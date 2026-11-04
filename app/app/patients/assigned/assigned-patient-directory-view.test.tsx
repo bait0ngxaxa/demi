@@ -46,7 +46,7 @@ function render(
 describe("assigned patient operational directory", () => {
   it("identifies the current assigned scope and offers one care entry per relationship", () => {
     const html = render();
-    expect(html).toContain("มอบหมายให้คุณอยู่ในขณะนี้");
+    expect(html).toContain("แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้");
     expect(html).toContain('href="/app"');
     expect(html.match(/href="\/app\/patients\/relationship-1"/gu)).toHaveLength(1);
     expect(html).toContain("เปิดผู้ป่วยเพื่อดูแลต่อ");
@@ -62,8 +62,8 @@ describe("assigned patient operational directory", () => {
 
   it("shows the authoritative scoped total rather than the loaded row count", () => {
     const html = render();
-    expect(html).toContain("พบ 51 ความสัมพันธ์ผู้ป่วยที่รับผิดชอบ");
-    expect(html).not.toContain("พบ 1 ความสัมพันธ์");
+    expect(html).toContain("พบ 51 รายการผู้ป่วยที่รับผิดชอบ");
+    expect(html).not.toContain("พบ 1 รายการผู้ป่วย");
     expect(html).toContain("หน้า 1 จาก 3");
   });
 
@@ -90,7 +90,7 @@ describe("assigned patient operational directory", () => {
     expect(html).toContain('name="classification"');
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;classification=RISK"');
     expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=3&amp;classification=RISK"');
-    expect(html).toContain("พบ 51 ความสัมพันธ์ผู้ป่วยตามการค้นหาและตัวกรอง");
+    expect(html).toContain("พบ 51 รายการผู้ป่วยตามการค้นหาและตัวกรอง");
     expect(html).toContain("HN แบบตรงตัว");
   });
 
@@ -104,7 +104,7 @@ describe("assigned patient operational directory", () => {
     const empty = { ...result, items: [], total: 0, totalPages: 1, hasNextPage: false };
     const html = render(empty);
     expect(html).toContain("ยังไม่มีผู้ป่วยที่ได้รับมอบหมายในขอบเขตที่ใช้งานได้");
-    expect(html).toContain("ติดต่อเจ้าของโรงพยาบาล");
+    expect(html).toContain("ติดต่อแอดมินโรงพยาบาล");
     expect(html).not.toContain("ล้างการค้นหาและตัวกรอง");
     expect(html).not.toContain('aria-label="หน้าผู้ป่วยที่รับผิดชอบ"');
     for (const page of [{ ...empty, value: "ไม่พบ" }, { ...empty, classificationFilter: "DIABETES" as const }]) {

@@ -90,8 +90,8 @@ function confirmInput(dialog: ParentNode, name: string): HTMLInputElement {
 describe("UserRecordDeleteControl destructive dialog", () => {
   it("identifies the record and cancels without mutation", () => {
     renderDelete();
-    const trigger = findButton(container, "ลบรายการ");
-    const dialog = openDialog("ลบรายการ");
+    const trigger = findButton(container, "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
+    const dialog = openDialog("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
 
     expect(dialog.textContent).toContain("สมชาย ใจดี");
     expect(dialog.textContent).toContain("ย้อนกลับไม่ได้");
@@ -109,14 +109,14 @@ describe("UserRecordDeleteControl destructive dialog", () => {
       success: false,
       outcome: "NOT_DELETABLE",
       blockers: ["HAS_DATA"],
-      message: "ลบรายการนี้ไม่ได้ ใช้ นำออกจากระบบ แทน",
+      message: "ลบข้อมูลผู้ใช้นี้ไม่ได้ โปรดดูเหตุผลด้านบน",
     });
     renderDelete();
-    const dialog = openDialog("ลบรายการ");
+    const dialog = openDialog("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
     const confirmation = confirmInput(dialog, "confirmation");
-    confirmation.value = "ลบรายการ";
+    confirmation.value = "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน";
 
-    await act(async () => submitForm(dialog, "ยืนยันลบรายการถาวร"));
+    await act(async () => submitForm(dialog, "ยืนยันลบข้อมูลผู้ใช้ถาวร"));
     await settle();
 
     expect(mocks.delete).toHaveBeenCalledOnce();
@@ -124,20 +124,20 @@ describe("UserRecordDeleteControl destructive dialog", () => {
     expect(mocks.delete.mock.calls[0]?.[1].get("relationshipId")).toBe(RELATIONSHIP_ID);
     expect(mocks.delete.mock.calls[0]?.[1].get("targetHospitalId")).toBe(HOSPITAL_ID);
     expect(mocks.delete.mock.calls[0]?.[1].get("expectedUpdatedAt")).toBe(V1);
-    expect(mocks.delete.mock.calls[0]?.[1].get("confirmation")).toBe("ลบรายการ");
+    expect(mocks.delete.mock.calls[0]?.[1].get("confirmation")).toBe("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
     expect(container.querySelector("dialog")).not.toBeNull();
     expect(dialog.textContent).toContain("มีข้อมูลการดูแล");
     expect(dialog.textContent).toContain("ข้อมูลการดูแล นัดหมาย");
-    expect(dialog.textContent).toContain("ลบรายการนี้ไม่ได้ ใช้ นำออกจากระบบ แทน");
+    expect(dialog.textContent).toContain("ลบข้อมูลผู้ใช้นี้ไม่ได้ โปรดดูเหตุผลด้านบน");
   });
 
   it("closes only after confirmed deletion and keeps the directory link available", async () => {
     mocks.delete.mockResolvedValueOnce({ success: true, outcome: "DELETED", blockers: [], message: "ลบรายการแล้ว เพิ่มรายการใหม่ด้วยเลขที่ถูกต้องได้ทันที" });
     renderDelete();
-    const dialog = openDialog("ลบรายการ");
-    confirmInput(dialog, "confirmation").value = "ลบรายการ";
+    const dialog = openDialog("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
+    confirmInput(dialog, "confirmation").value = "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน";
 
-    await act(async () => submitForm(dialog, "ยืนยันลบรายการถาวร"));
+    await act(async () => submitForm(dialog, "ยืนยันลบข้อมูลผู้ใช้ถาวร"));
     await settle();
 
     expect(container.querySelector("dialog")).toBeNull();
@@ -148,16 +148,16 @@ describe("UserRecordDeleteControl destructive dialog", () => {
   it("keeps an unknown deletion outcome locked with reload recovery", async () => {
     mocks.delete.mockResolvedValueOnce({ success: false, outcome: "UNAVAILABLE", blockers: [], message: "private error" });
     renderDelete();
-    const dialog = openDialog("ลบรายการ");
-    confirmInput(dialog, "confirmation").value = "ลบรายการ";
+    const dialog = openDialog("ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน");
+    confirmInput(dialog, "confirmation").value = "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน";
 
-    await act(async () => submitForm(dialog, "ยืนยันลบรายการถาวร"));
+    await act(async () => submitForm(dialog, "ยืนยันลบข้อมูลผู้ใช้ถาวร"));
     await settle();
 
     expect(dialog.textContent).toContain("โหลดข้อมูลล่าสุด");
     expect(dialog.textContent).not.toContain("private error");
-    expect(findButton(dialog, "ยืนยันลบรายการถาวร").disabled).toBe(true);
-    await act(async () => submitForm(dialog, "ยืนยันลบรายการถาวร"));
+    expect(findButton(dialog, "ยืนยันลบข้อมูลผู้ใช้ถาวร").disabled).toBe(true);
+    await act(async () => submitForm(dialog, "ยืนยันลบข้อมูลผู้ใช้ถาวร"));
     expect(mocks.delete).toHaveBeenCalledOnce();
   });
 });
@@ -165,12 +165,12 @@ describe("UserRecordDeleteControl destructive dialog", () => {
 describe("UserTakeoverControl security dialog", () => {
   it("opens and cancels without a mutation", () => {
     renderTakeover();
-    const trigger = findButton(container, "บัญชีนี้ไม่ใช่เจ้าของจริง");
-    const dialog = openDialog("บัญชีนี้ไม่ใช่เจ้าของจริง");
+    const trigger = findButton(container, "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้");
+    const dialog = openDialog("แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้");
     expect(dialog.textContent).toContain("ล็อกบัญชี");
-    expect(dialog.textContent).toContain("ระงับสิทธิ์");
-    expect(dialog.textContent).toContain("ตัดการเข้าสู่ระบบทุกอุปกรณ์");
-    expect(dialog.textContent).toContain("ยกเลิกการเชื่อม LINE");
+    expect(dialog.textContent).toContain("พักสิทธิ์การทำงาน");
+    expect(dialog.textContent).toContain("ออกจากระบบทุกอุปกรณ์");
+    expect(dialog.textContent).toContain("การเชื่อม LINE ที่เกิดหลังเปิดใช้งานจะถูกยกเลิก");
     expect(mocks.takeover).not.toHaveBeenCalled();
 
     act(() => findButton(dialog, "ยกเลิก").click());
@@ -184,53 +184,53 @@ describe("UserTakeoverControl security dialog", () => {
         success: true,
         outcome: "LOCKED",
         providerState: UserTakeoverProviderState.RECONCILIATION_REQUIRED,
-        message: "ล็อกบัญชีแล้ว แต่ยังยืนยันการยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ กรุณากดซ้ำเพื่อลองอีกครั้ง",
+        message: "ล็อกบัญชีใน DEMI แล้ว แต่ยังยืนยันการยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการไม่ได้ กรุณากดซ้ำเพื่อลองอีกครั้ง",
       })
       .mockResolvedValueOnce({
         success: true,
         outcome: "LOCKED",
         providerState: UserTakeoverProviderState.CONFIRMED,
-        message: "ล็อกบัญชีแล้ว ผู้ที่ใช้บัญชีนี้ถูกตัดออกจากระบบ",
+        message: "ล็อกบัญชีใน DEMI แล้ว และยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการแล้ว",
       });
     renderTakeover(true);
     expect(container.querySelector("dialog")).toBeNull();
-    const retryTrigger = findButton(container, "ยืนยันการตัดการเข้าสู่ระบบอีกครั้ง");
+    const retryTrigger = findButton(container, "ยืนยันการออกจากระบบทุกอุปกรณ์อีกครั้ง");
     expect(mocks.takeover).not.toHaveBeenCalled();
     act(() => retryTrigger.click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Retry mode should open its security dialog after user action");
-    expect(dialog.textContent).toContain("บัญชีที่ถูกล็อกอยู่เท่านั้น");
-    expect(dialog.textContent).toContain("จะไม่เริ่มการล็อกบัญชีหรือระงับความสัมพันธ์ซ้ำ");
+    expect(dialog.textContent).toContain("อีกครั้งเท่านั้น");
+    expect(dialog.textContent).toContain("จะไม่ล็อกบัญชีหรือพักสิทธิ์ในโรงพยาบาลนี้ซ้ำ");
     expect(mocks.takeover).not.toHaveBeenCalled();
     const confirmation = confirmInput(dialog, "confirmation");
-    confirmation.value = "ไม่ใช่เจ้าของจริง";
+    confirmation.value = "สงสัยว่ามีผู้อื่นใช้บัญชีนี้";
 
-    await act(async () => submitForm(dialog, "ลองตัดการเข้าสู่ระบบอีกครั้ง"));
+    await act(async () => submitForm(dialog, "ลองให้ออกจากระบบทุกอุปกรณ์อีกครั้ง"));
     await settle();
 
     expect(mocks.takeover).toHaveBeenCalledOnce();
     expect(mocks.takeover.mock.calls[0]?.[1].get("relationshipId")).toBe(RELATIONSHIP_ID);
     expect(mocks.takeover.mock.calls[0]?.[1].get("expectedUpdatedAt")).toBe(V1);
-    expect(mocks.takeover.mock.calls[0]?.[1].get("confirmation")).toBe("ไม่ใช่เจ้าของจริง");
+    expect(mocks.takeover.mock.calls[0]?.[1].get("confirmation")).toBe("สงสัยว่ามีผู้อื่นใช้บัญชีนี้");
     expect(mocks.takeover.mock.calls[0]?.[1].has("retry")).toBe(false);
-    expect(dialog.textContent).toContain("ล็อกบัญชีแล้ว แต่ยังยืนยันการยกเลิก");
-    expect(findButton(dialog, "ลองตัดการเข้าสู่ระบบอีกครั้ง").disabled).toBe(false);
+    expect(dialog.textContent).toContain("ล็อกบัญชีใน DEMI แล้ว แต่ยังยืนยันการยกเลิก");
+    expect(findButton(dialog, "ลองให้ออกจากระบบทุกอุปกรณ์อีกครั้ง").disabled).toBe(false);
 
-    await act(async () => submitForm(dialog, "ลองตัดการเข้าสู่ระบบอีกครั้ง"));
+    await act(async () => submitForm(dialog, "ลองให้ออกจากระบบทุกอุปกรณ์อีกครั้ง"));
     await settle();
 
     expect(mocks.takeover).toHaveBeenCalledTimes(2);
     expect(mocks.takeover.mock.calls[1]?.[1].get("expectedUpdatedAt")).toBe(V1);
     expect(container.querySelector("dialog")).toBeNull();
-    expect(container.textContent).toContain("ล็อกบัญชีแล้ว ผู้ที่ใช้บัญชีนี้ถูกตัดออกจากระบบ");
-    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.includes("บัญชีนี้ไม่ใช่เจ้าของจริง"))).toBe(false);
+    expect(container.textContent).toContain("ล็อกบัญชีใน DEMI แล้ว และยกเลิกการเข้าสู่ระบบที่ผู้ให้บริการแล้ว");
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.includes("แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"))).toBe(false);
   });
 
   it("keeps unknown outcomes recoverable without repeating the lock", async () => {
     mocks.takeover.mockResolvedValueOnce({ success: false, outcome: "UNAVAILABLE", providerState: null, message: "private error" });
     renderTakeover();
-    const dialog = openDialog("บัญชีนี้ไม่ใช่เจ้าของจริง");
-    confirmInput(dialog, "confirmation").value = "ไม่ใช่เจ้าของจริง";
+    const dialog = openDialog("แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้");
+    confirmInput(dialog, "confirmation").value = "สงสัยว่ามีผู้อื่นใช้บัญชีนี้";
 
     await act(async () => submitForm(dialog, "ยืนยันล็อกบัญชี"));
     await settle();

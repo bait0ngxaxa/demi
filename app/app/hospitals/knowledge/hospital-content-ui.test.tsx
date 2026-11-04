@@ -96,7 +96,7 @@ describe("Hospital Content publisher UI output", () => {
     expect(markup.match(new RegExp(`href="/app/hospitals/knowledge/new\\?hospitalId=${secondHospital.id}"`, "g"))).toHaveLength(1);
     expect(markup).toContain(`href="/app?hospitalId=${secondHospital.id}"`);
     expect(markup).toContain("ยังไม่มีข่าวสารและความรู้");
-    expect(markup).toContain("ใช้สิทธิ์เจ้าของโดยตรง");
+    expect(markup).toContain("ใช้สิทธิ์แอดมินโรงพยาบาลโดยตรง");
     expect(markup).not.toContain('href="/app/patients');
   });
 

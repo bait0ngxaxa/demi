@@ -64,7 +64,7 @@ describe("Hospital patient operations navigation", () => {
     expect(html).toContain("โรงพยาบาล ก");
     expect(html).toContain("โรงพยาบาล ข");
     expect(html).toContain("แต่ละรายการบันทึกแยกตามโรงพยาบาล");
-    expect(html).toContain("ไม่สร้าง Program หรือมอบหมาย อสม.");
+    expect(html).toContain("ไม่สร้างโปรแกรมหรือมอบหมาย อสม.");
     expect(html).toContain('href="/app/hospitals/settings"');
     expect(html).not.toContain('href="/app/patients/service-catalog?hospitalId=');
   });

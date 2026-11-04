@@ -141,7 +141,7 @@ describe("Goal Plan Server Action", () => {
     await expect(submitGoalPlanAction(initialGoalPlanActionState, goalPlanFormData())).resolves.toEqual({
       status: "ERROR",
       code: "FORBIDDEN",
-      message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนเป้าหมายสำหรับผู้ป่วยรายนี้",
+      message: "บัญชีนี้ไม่มีสิทธิ์สร้างแผนสุขภาพให้ผู้ป่วยรายนี้",
     });
   });
 
