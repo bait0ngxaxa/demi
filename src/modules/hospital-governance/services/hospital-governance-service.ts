@@ -19,7 +19,6 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent, recordAuditEvents } from "@/modules/audit/services/audit-service";
-import { createDefaultHospitalServiceOfferingsInTransaction } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
 import {
   ApplicationError,
   ConflictError,
@@ -494,7 +493,6 @@ export async function createHospital(
           },
           select: hospitalGovernanceSelect,
         });
-        await createDefaultHospitalServiceOfferingsInTransaction(transaction, [created.id], currentActor.userId);
 
         await recordAuditEvent(
           {
@@ -1188,11 +1186,6 @@ export async function applyHospitalBulkRegistration(
           });
           created.push(toProjection(hospital));
         }
-        await createDefaultHospitalServiceOfferingsInTransaction(
-          transaction,
-          created.map(({ id }) => id),
-          currentActor.userId,
-        );
 
         await recordAuditEvents(
           [

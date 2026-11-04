@@ -16,17 +16,14 @@ type MutationAction = (
 const serverActions = vi.hoisted(() => ({
   create: vi.fn<MutationAction>(),
   withdraw: vi.fn<MutationAction>(),
-  offering: vi.fn<MutationAction>(),
 }));
 
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: serverActions.create,
   withdrawOwnPatientServiceRequestAction: serverActions.withdraw,
-  setHospitalServiceOfferingAction: serverActions.offering,
 }));
 
 import { PatientServiceRequestForm, PatientServiceRequestHistoryItem } from "./patient-service-request-controls";
-import { HospitalServiceOfferingControl } from "../../patients/service-catalog/hospital-service-catalog-controls";
 
 const pendingRequest: PatientServiceRequestStatusView = {
   requestId: "11111111-1111-4111-8111-111111111111",
@@ -41,11 +38,6 @@ const pendingRequest: PatientServiceRequestStatusView = {
   rejectionReason: null,
   createdAt: new Date("2026-10-30T00:00:00.000Z"),
 };
-
-const catalogs = [
-  { hospitalId: "hospital-a", code: "SCREENING" as const, enabled: true },
-  { hospitalId: "hospital-b", code: "EMPOWERMENT" as const, enabled: false },
-];
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -125,14 +117,13 @@ afterEach(() => {
   container = null;
   serverActions.create.mockReset();
   serverActions.withdraw.mockReset();
-  serverActions.offering.mockReset();
 });
 
 describe("Patient service request interactions", () => {
   it("keeps request creation on the page with the existing Bangkok date bounds and optional preferences", () => {
     const markup = renderToStaticMarkup(createElement(PatientServiceRequestForm, {
       relationshipId: pendingRequest.relationshipId,
-      offerings: [{ offeringId: "offering-1", code: "SCREENING" }],
+      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
       osmChoices: [{ relationshipId: "osm-1", displayName: "สมชาย อสม.", assigned: true }],
       preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
     }));
@@ -146,6 +137,24 @@ describe("Patient service request interactions", () => {
     expect(markup).toContain("เลือกได้ตั้งแต่พรุ่งนี้ถึง 60 วันข้างหน้า");
     expect(markup).toContain("การเลือก อสม. ท่านอื่นเป็นการเยี่ยมครั้งนี้เท่านั้น");
     expect(markup).not.toContain("<dialog");
+  });
+
+  it("offers the three native services by code and marks one that already has an open request (ADR-0029)", () => {
+    const markup = renderToStaticMarkup(createElement(PatientServiceRequestForm, {
+      relationshipId: pendingRequest.relationshipId,
+      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
+      openServiceCodes: ["FOLLOW_UP"],
+      osmChoices: [],
+      preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
+    }));
+
+    expect(markup).toContain('name="serviceCode"');
+    expect(markup).not.toContain("offeringId");
+    expect(markup).toContain('<option value="SCREENING">คัดกรอง</option>');
+    expect(markup).toContain('<option disabled="" value="FOLLOW_UP">ติดตาม (มีคำขอที่รอดำเนินการอยู่แล้ว)</option>');
+    expect(markup).toContain('<option value="EMPOWERMENT">เสริมพลังใจ</option>');
+    expect(markup.indexOf("คัดกรอง")).toBeLessThan(markup.indexOf("ติดตาม"));
+    expect(markup.indexOf("ติดตาม")).toBeLessThan(markup.indexOf("เสริมพลังใจ"));
   });
 
   it.each(["PENDING", "APPROVED"] as const)("requires explicit confirmation before withdrawing a %s request", async (status) => {
@@ -213,75 +222,5 @@ describe("Patient service request interactions", () => {
     expect(container?.querySelector("dialog")).toBeNull();
     expect(container?.textContent).toContain("โหลดข้อมูลล่าสุด");
     expect(button("ถอนคำขอ").disabled).toBe(true);
-  });
-});
-
-describe("Hospital service offering interactions", () => {
-  function renderCatalogRows(): React.JSX.Element {
-    return (
-      <div>
-        {catalogs.map((catalog) => (
-          <HospitalServiceOfferingControl {...catalog} key={catalog.hospitalId} />
-        ))}
-      </div>
-    );
-  }
-
-  it("confirms only stopping new requests and keeps exact Hospital/service scope for both operations", async () => {
-    serverActions.offering.mockResolvedValue({ status: "SUCCESS" });
-    mount(renderCatalogRows());
-    const disableTrigger = button("ปิดรับคำขอ");
-    disableTrigger.focus();
-    act(() => disableTrigger.click());
-    const dialog = container?.querySelector<HTMLDialogElement>("dialog");
-    expect(dialog?.textContent).toContain("หยุดเฉพาะการรับคำขอใหม่ประเภทนี้ใน DEMI");
-    expect(dialog?.textContent).toContain("ไม่ถอนคำขอที่ส่งแล้ว ไม่ยกเลิกนัดหมาย");
-    expect(serverActions.offering).not.toHaveBeenCalled();
-
-    act(() => button("ยกเลิก", dialog ?? document).click());
-    expect(document.activeElement).toBe(disableTrigger);
-    expect(serverActions.offering).not.toHaveBeenCalled();
-
-    act(() => button("ปิดรับคำขอ").click());
-    act(() => button("ปิดรับคำขอ", container?.querySelector("dialog") ?? document).click());
-    await settle();
-
-    expect(serverActions.offering).toHaveBeenCalledOnce();
-    expect(Object.fromEntries(serverActions.offering.mock.calls[0]?.[1].entries() ?? [])).toEqual({
-      hospitalId: "hospital-a",
-      code: "SCREENING",
-      enabled: "false",
-    });
-    expect(container?.querySelector("dialog")).toBeNull();
-
-    act(() => button("เปิดรับคำขอ").click());
-    await settle();
-    expect(serverActions.offering).toHaveBeenCalledTimes(2);
-    expect(Object.fromEntries(serverActions.offering.mock.calls[1]?.[1].entries() ?? [])).toEqual({
-      hospitalId: "hospital-b",
-      code: "EMPOWERMENT",
-      enabled: "true",
-    });
-    expect(container?.querySelector("dialog")).toBeNull();
-  });
-
-  it("keeps an uncertain disable outcome locked and exposes safe reload recovery", async () => {
-    serverActions.offering.mockRejectedValue(new TypeError("Failed to fetch"));
-    mount(createElement(HospitalServiceOfferingControl, catalogs[0]));
-    act(() => button("ปิดรับคำขอ").click());
-    act(() => button("ปิดรับคำขอ", container?.querySelector("dialog") ?? document).click());
-    await settle();
-
-    const dialog = container?.querySelector<HTMLDialogElement>("dialog");
-    expect(dialog?.open).toBe(true);
-    expect(dialog?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
-    expect(button("ปิดรับคำขอ", dialog ?? document).disabled).toBe(true);
-    expect(serverActions.offering).toHaveBeenCalledOnce();
-
-    act(() => button("ปิดหน้าต่าง", dialog ?? document).click());
-    expect(container?.querySelector("dialog")).toBeNull();
-    expect(container?.textContent).toContain("โหลดข้อมูลล่าสุด");
-    expect(button("ปิดรับคำขอ").disabled).toBe(true);
-    expect(serverActions.offering).toHaveBeenCalledOnce();
   });
 });

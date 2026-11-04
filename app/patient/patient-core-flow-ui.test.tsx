@@ -5,17 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: vi.fn(),
   withdrawOwnPatientServiceRequestAction: vi.fn(),
-  setHospitalServiceOfferingAction: vi.fn(),
   confirmPatientServiceRequestAction: vi.fn(),
   rejectPatientServiceRequestAction: vi.fn(),
 }));
 
-import { HospitalServiceCatalogWorkspace } from "../app/patients/service-catalog/hospital-service-catalog-workspace";
 import { PatientServicesWorkspace } from "../app/personal/services/patient-services-workspace";
 
-const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
-const offeringId = "33333333-3333-4333-8333-333333333333";
 const osmRelationshipId = "44444444-4444-4444-8444-444444444444";
 const osmUserId = "55555555-5555-4555-8555-555555555555";
 
@@ -30,7 +26,7 @@ describe("Patient service request presentation", () => {
             hospitalName: "โรงพยาบาลทดสอบ",
             hospitalActive: true,
             careEnded: false,
-            offerings: [{ offeringId, code: "SCREENING" as const }],
+            services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"] as const,
             // The service lists the assigned อสม. first.
             osmChoices: [
               { relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล", assigned: true },
@@ -79,34 +75,15 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");
     expect(markup).toContain("รอโรงพยาบาลยืนยัน");
     expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม");
+    // ADR-0029: all three native services are offered; the one with an open request is marked and disabled.
+    expect(markup).toContain('name="serviceCode"');
+    expect(markup).toContain('<option disabled="" value="SCREENING">คัดกรอง (มีคำขอที่รอดำเนินการอยู่แล้ว)</option>');
+    expect(markup).toContain('<option value="FOLLOW_UP">ติดตาม</option>');
+    expect(markup).toContain('<option value="EMPOWERMENT">เสริมพลังใจ</option>');
+    expect(markup).not.toContain("ยังไม่ได้เปิดบริการ");
     expect(markup).not.toContain("อสม.ที่ได้รับมอบหมาย");
     expect(markup).not.toContain(osmUserId);
     expect(markup).not.toContain("authSubject");
     expect(markup).not.toContain("identityKeyHash");
   });
-
-  it("labels the supported catalog categories as request offerings", () => {
-    const markup = renderToStaticMarkup(
-      createElement(HospitalServiceCatalogWorkspace, {
-        catalogs: [
-          {
-            hospitalId,
-            hospitalCode: "TEST-01",
-            hospitalName: "โรงพยาบาลทดสอบ",
-            offerings: [
-              { code: "SCREENING" as const, enabled: true },
-              { code: "FOLLOW_UP" as const, enabled: false },
-              { code: "EMPOWERMENT" as const, enabled: false },
-            ],
-          },
-        ],
-      }),
-    );
-
-    expect(markup).toContain("คัดกรอง");
-    expect(markup).toContain("ติดตาม");
-    expect(markup).toContain("เสริมพลัง");
-    expect(markup).toContain("ไม่สร้างโปรแกรมหรือมอบหมาย อสม.");
-  });
-
 });

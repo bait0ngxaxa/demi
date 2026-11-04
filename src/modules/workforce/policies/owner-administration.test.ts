@@ -27,7 +27,6 @@ const ownerOnlyOperations: Operation[] = [
   ...Object.values(WORKFORCE_CAPABILITIES).map((capability) => ({ name: capability, allows: (subject: ActorContext, targetHospitalId: string): boolean => decideWorkforcePolicy({ actor: subject, targetHospitalId, capability }).allowed })),
   { name: "patient import", allows: (subject, targetHospitalId) => decidePatientProvisioningPolicy({ actor: subject, targetHospitalId, capability: PATIENT_PROVISIONING_CAPABILITY }).allowed },
   { name: "patient activation", allows: (subject, targetHospitalId) => decidePatientActivationIssuePolicy({ actor: subject, targetHospitalId, capability: PATIENT_ACTIVATION_ISSUE_CAPABILITY }).allowed },
-  { name: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog, allows: (subject, targetHospitalId) => decidePatientServiceRequestPolicy({ actor: subject, hospitalId: targetHospitalId, capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog }).allowed },
 ];
 
 /** ADR-0026: operational capabilities every ACTIVE OWNER or MEMBER holds. */

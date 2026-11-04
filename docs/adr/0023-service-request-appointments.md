@@ -4,6 +4,7 @@
 - Supersedes: the approve-then-book lifecycle of patient service requests (APPROVE with a permanent อสม. reassignment, then a separate "สร้างนัดหมายจากคำขอนี้"), effective when SR-B ships.
 - Related: [ADR-0006](0006-transactional-business-operations.md), [ADR-0016](0016-network-patient-read.md), [ADR-0021](0021-caregiver-accounts-by-invitation.md)
 - Amended by: [ADR-0027](0027-appointment-assignees.md) (2026-11-03) — a one-off visit no longer needs a service request; any ACTIVE อสม. of the Hospital may be an appointment's อสม. at any location.
+- Amended by: [ADR-0029](0029-native-patient-services.md) (2026-11-04) — the three services are native to DEMI and always requestable at an ACTIVE Hospital; supersedes SR-D5 and the `HospitalServiceOffering` catalog.
 
 ## Context
 
@@ -19,7 +20,7 @@ The Product Owner confirmed on 2026-10-30 that a service request is the patient 
 - **SR-D2 — One-off visit.** Choosing an อสม. other than the patient's assigned อสม. is a one-off visit: a request or its confirmation never changes the patient's `PatientOsmAssignment`.
 - **SR-D3 — Choosing the อสม.** The patient chooses from the ACTIVE อสม. of the patient's own Hospital, with the assigned อสม. listed first and preselected, or "ไม่ระบุ — ให้โรงพยาบาลจัดให้". There is no area model finer than the Hospital/รพ.สต. (`OsmHospitalRelationship` has no area or village), so "อสม. ในพื้นที่" means the อสม. of that Hospital.
 - **SR-D4 — Service on the appointment.** The requested service is stored on the appointment and the appointment type is derived from it: SCREENING → ASSESSMENT, FOLLOW_UP → FOLLOW_UP, EMPOWERMENT → EDUCATION (`SERVICE_APPOINTMENT_TYPE`). Hospital-initiated appointments may set the service too (optional).
-- **SR-D5 — Offered by default.** Every Hospital offers all three services by default; staff can switch a service off.
+- **SR-D5 — Offered by default.** Every Hospital offers all three services by default; staff can switch a service off. *Superseded 2026-11-04 by [ADR-0029](0029-native-patient-services.md): the services are native and always requestable at an ACTIVE Hospital; no Hospital setting switches them off, and a request stores its `serviceCode`.*
 - **SR-D6 — Preferred date and slot.** The patient states a preferred date, from tomorrow to 60 days ahead on the Asia/Bangkok calendar (`isValidPreferredDate`), and a slot เช้า / บ่าย / ตามสะดวก, plus an optional note (≤ 500 characters); no exact time. Staff set the exact time on confirmation.
 - **SR-D7 — Patients only.** Caregivers do not request on the patient's behalf in this release.
 
@@ -67,7 +68,7 @@ The appointment's อสม. is checked when it is booked or changed: the patien
 
 - `PatientServiceRequest` gains `preferredDate DATE`, `preferredSlot PatientServiceRequestSlot { MORNING AFTERNOON ANY }`, `note VARCHAR(500)` and `rejectionReason VARCHAR(500)`, all nullable for legacy rows. CHECKs: date and slot both null or both set; `note` trimmed and non-blank when present; `rejectionReason` trimmed, non-blank and only on REJECTED rows. The service requires a reason for every rejection from SR-B on; requests rejected before this ADR have none.
 - `PatientAppointment.serviceCode PatientServiceCode NULL`, backfilled from the source request's offering. CHECK `sourceServiceRequestId IS NULL OR serviceCode IS NOT NULL`. No index is added until a query needs one.
-- `HospitalServiceOffering.enabled` defaults to true. The migration inserts every missing (Hospital, service) row enabled and keeps existing rows unchanged. A Hospital that predates this ADR may have no ACTIVE OWNER yet (an ADMIN-registered Parent awaiting onboarding, a Child whose OWNER has not activated), so its rows are attributed to the earliest ACTIVE OWNER, otherwise to the user who registered it (`registeredByUserId`); a Hospital with neither makes the migration fail with the count. Every Hospital creation path (`createHospital`, bulk registration, `createChildFacility`) creates the three rows enabled in the same transaction, with the creator as actor; the creation is the audited event.
+- `HospitalServiceOffering.enabled` defaults to true. The migration inserts every missing (Hospital, service) row enabled and keeps existing rows unchanged. A Hospital that predates this ADR may have no ACTIVE OWNER yet (an ADMIN-registered Parent awaiting onboarding, a Child whose OWNER has not activated), so its rows are attributed to the earliest ACTIVE OWNER, otherwise to the user who registered it (`registeredByUserId`); a Hospital with neither makes the migration fail with the count. Every Hospital creation path (`createHospital`, bulk registration, `createChildFacility`) creates the three rows enabled in the same transaction, with the creator as actor; the creation is the audited event. *Superseded 2026-11-04 by [ADR-0029](0029-native-patient-services.md): `HospitalServiceOffering` is dropped, `PatientServiceRequest.serviceCode` replaces `offeringId`, and Hospital creation writes no service rows.*
 
 ### Phasing
 

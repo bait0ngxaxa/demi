@@ -596,8 +596,6 @@ model User {
   patientBaselinesRecorded PatientBaseline[] @relation("PatientBaselineRecordedBy")
   patientClassificationsUpdated PatientClassification[] @relation("PatientClassificationUpdatedBy")
   patientClassificationHistoryChanged PatientClassificationHistory[] @relation("PatientClassificationHistoryChangedBy")
-  patientServiceOfferingsCreated HospitalServiceOffering[] @relation("HospitalServiceOfferingCreatedBy")
-  patientServiceOfferingsUpdated HospitalServiceOffering[] @relation("HospitalServiceOfferingUpdatedBy")
   patientServiceRequestsRequested PatientServiceRequest[] @relation("PatientServiceRequestRequester")
   patientServiceRequestsPreferredOsm PatientServiceRequest[] @relation("PatientServiceRequestPreferredOsm")
   patientServiceRequestsReviewed PatientServiceRequest[] @relation("PatientServiceRequestReviewer")
@@ -689,7 +687,6 @@ model Hospital {
   patientRelationships     PatientHospitalRelationship[]
   patientActivations      PatientActivation[]
   onboardingApplications   HospitalOnboardingApplication[]
-  serviceOfferings         HospitalServiceOffering[]
   patientAccessRequests    PatientAccessRequest[]
   contact                  HospitalContact?
   contents                 HospitalContent[]
@@ -2098,31 +2095,13 @@ model PatientFollowupActivityProgress {
   @@index([followupId, createdAt])
 }
 
-model HospitalServiceOffering {
-  id              String            @id @default(uuid()) @db.Uuid
-  hospitalId      String            @db.Uuid
-  code            PatientServiceCode
-  enabled         Boolean           @default(true)
-  createdByUserId String            @db.Uuid
-  updatedByUserId String            @db.Uuid
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
-  hospital      Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
-  createdByUser User     @relation("HospitalServiceOfferingCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedByUser User     @relation("HospitalServiceOfferingUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
-  requests      PatientServiceRequest[]
-
-  @@unique([hospitalId, code])
-  @@unique([id, hospitalId])
-  @@index([hospitalId, enabled])
-}
-
 model PatientServiceRequest {
   id                            String                     @id @default(uuid()) @db.Uuid
   patientHospitalRelationshipId String                     @db.Uuid
   hospitalId                    String                     @db.Uuid
-  offeringId                    String                     @db.Uuid
+  // ADR-0029: one of the three native DEMI services. A partial unique index (SQL) allows one PENDING or
+  // APPROVED request per (patientHospitalRelationshipId, serviceCode).
+  serviceCode                   PatientServiceCode
   requestedByUserId              String                     @db.Uuid
   preferredOsmUserId             String?                    @db.Uuid
   // ADR-0023 (SR-D6): date and slot both set or both null (SQL CHECK); null on requests made before SR-B.
@@ -2142,7 +2121,6 @@ model PatientServiceRequest {
   updatedAt                      DateTime                   @updatedAt
 
   relationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId, hospitalId], references: [id, hospitalId], onDelete: Cascade)
-  offering     HospitalServiceOffering      @relation(fields: [offeringId, hospitalId], references: [id, hospitalId], onDelete: Restrict)
   requestedBy  User                         @relation("PatientServiceRequestRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
   preferredOsm User?                        @relation("PatientServiceRequestPreferredOsm", fields: [preferredOsmUserId], references: [id], onDelete: SetNull)
   reviewedBy   User?                        @relation("PatientServiceRequestReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
@@ -2154,7 +2132,6 @@ model PatientServiceRequest {
   @@unique([id, patientHospitalRelationshipId])
   @@index([patientHospitalRelationshipId, createdAt])
   @@index([hospitalId, status, createdAt])
-  @@index([offeringId])
   @@index([requestedByUserId, createdAt])
 }
 

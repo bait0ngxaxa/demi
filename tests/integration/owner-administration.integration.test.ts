@@ -69,7 +69,6 @@ async function cleanupFixtures(): Promise<void> {
   await db.patientBaseline.deleteMany({ where: { patientHospitalRelationship: { hospitalId: { in: hospitals } } } });
   await db.auditEvent.deleteMany({ where: { actorUserId: { in: users } } });
   await db.patientServiceRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
-  await db.hospitalServiceOffering.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.patientAccessRequest.deleteMany({ where: { hospitalId: { in: hospitals } } });
   await db.appointmentLineNotification.deleteMany({ where: { patientHospitalRelationship: { hospitalId: { in: hospitals } } } });
   await db.patientOsmAssignment.deleteMany({ where: { patientHospitalRelationship: { hospitalId: { in: hospitals } } } });
@@ -156,8 +155,7 @@ describe("persisted Owner administration", () => {
     const relationship = await db.patientHospitalRelationship.findFirstOrThrow({ where: { hospitalId: hospital.id }, select: { id: true, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } } });
     const requester = relationship.patientProfile.person.user;
     if (!requester) throw new Error("Missing synthetic patient account");
-    const offering = await db.hospitalServiceOffering.create({ data: { hospitalId: hospital.id, code: "SCREENING", enabled: true, createdByUserId: owner.userId, updatedByUserId: owner.userId } });
-    const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, offeringId: offering.id, requestedByUserId: requester.id } });
+    const serviceRequest = await db.patientServiceRequest.create({ data: { hospitalId: hospital.id, patientHospitalRelationshipId: relationship.id, serviceCode: "SCREENING", requestedByUserId: requester.id } });
     await expect(rejectPatientServiceRequest(osm, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await db.patientServiceRequest.findUniqueOrThrow({ where: { id: serviceRequest.id } })).toMatchObject({ status: "PENDING" });
     await expect(rejectPatientServiceRequest(member, { requestId: serviceRequest.id, reason: "ไม่มี อสม. ว่าง" })).resolves.toBe("REJECTED");

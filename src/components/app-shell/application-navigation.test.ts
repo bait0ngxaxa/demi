@@ -211,7 +211,7 @@ const cases: Case[] = [
     name: "adminOwner",
     subject: actor({ roles: [Role.ADMIN, Role.HOSPITAL], hospitalMemberships: [membership(hospitalId, MembershipType.OWNER)] }),
     workspaces: [workspace(hospitalId, parentId)],
-    // Request and service-catalog policies deny ADMIN, exactly as before UI-4.
+    // Request review policy denies ADMIN, exactly as before UI-4.
     expected: { work: [
       ["home", null, ["/app"]],
       ["care", "ดูแลผู้ป่วย", ["/app/appointments", "/app/patients", "/app/patients/assign-osm", "/app/services", "/app/appointments/new"]],
@@ -388,12 +388,19 @@ describe("UI-4 task-based navigation per actor", () => {
     const lost = (previousHrefs[name] ?? []).filter((href) => !reachable.has(href));
 
     // Password stays on Personal Settings; administration entry points are consolidated into their primary directories.
+    // ADR-0029 removes the service on/off page: patient services are native to DEMI.
     // WB-DF-14 (Product Owner 2026-10-26) removes the OWNER support inbox and the ADMIN submit entry on purpose.
     expect(lost).toEqual(subject.roles.includes(Role.PATIENT) ? ["/app/personal/password"] : name === "owner"
       ? ["/app/workforce", "/app/hospitals/contact", "/app/hospitals/support", "/app/patients/activation", "/app/patients/service-catalog"]
       : name === "adminOwner"
         ? ["/app/workforce", "/app/hospitals/contact", "/app/hospitals/support", "/app/patients/activation", "/app/support"]
         : []);
+  });
+
+  it("projects no Hospital service on/off destination for any actor (ADR-0029)", () => {
+    for (const { subject, workspaces } of cases) {
+      expect(allHrefs(project(subject, workspaces)).filter((href) => href.startsWith("/app/patients/service-catalog"))).toEqual([]);
+    }
   });
 
   it("keeps sections at six items or fewer for every projected actor", () => {

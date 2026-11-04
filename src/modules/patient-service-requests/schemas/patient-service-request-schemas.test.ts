@@ -8,7 +8,7 @@ import {
 
 const base = {
   relationshipId: "0b7c6f0a-8f61-4a55-9b1b-0e0b6f5a1c11",
-  offeringId: "5c3d2e1f-0a9b-4c8d-8e7f-6a5b4c3d2e1f",
+  serviceCode: "SCREENING",
   preferredDate: "2026-11-02",
   preferredSlot: "MORNING",
 };
@@ -18,6 +18,10 @@ describe("patientServiceRequestCreateSchema (ADR-0023)", () => {
     expect(
       patientServiceRequestCreateSchema.parse({ ...base, preferredOsmRelationshipId: null, note: "  ขอช่วงก่อนเที่ยง  " }),
     ).toEqual({ ...base, preferredOsmRelationshipId: null, note: "ขอช่วงก่อนเที่ยง" });
+  });
+
+  it.each(["SCREENING", "FOLLOW_UP", "EMPOWERMENT"])("accepts the native service %s", (serviceCode) => {
+    expect(patientServiceRequestCreateSchema.parse({ ...base, serviceCode }).serviceCode).toBe(serviceCode);
   });
 
   it("treats a blank note as no note", () => {
@@ -31,6 +35,12 @@ describe("patientServiceRequestCreateSchema (ADR-0023)", () => {
     [{ preferredDate: "02/11/2026" }],
     [{ preferredSlot: "EVENING" }],
     [{ note: "ก".repeat(501) }],
+    // ADR-0029: the service is one of the native codes; the retired offering id is unknown input.
+    [{ serviceCode: undefined }],
+    [{ serviceCode: "HOME_CARE" }],
+    [{ serviceCode: "screening" }],
+    [{ serviceCode: "5c3d2e1f-0a9b-4c8d-8e7f-6a5b4c3d2e1f" }],
+    [{ offeringId: "5c3d2e1f-0a9b-4c8d-8e7f-6a5b4c3d2e1f" }],
   ])("rejects %j", (change) => {
     expect(patientServiceRequestCreateSchema.safeParse({ ...base, ...change }).success).toBe(false);
   });

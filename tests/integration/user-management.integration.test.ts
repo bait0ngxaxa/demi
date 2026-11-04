@@ -33,6 +33,7 @@ import {
 import { confirmPatientImportAction, previewPatientImportAction } from "@/modules/patient-provisioning/transport/server-actions";
 import { listHospitalUsers, getHospitalUserDetail } from "@/modules/user-management/services/user-directory-service";
 import {
+  assessStaffRecordDeletion,
   deleteUnusedUserRecord,
   findRelationRegistryGaps,
   UserRecordNotDeletableError,
@@ -291,6 +292,24 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
         expectedUpdatedAt: now.toISOString(), confirmation: "ลบข้อมูลผู้ใช้ที่ยังไม่เปิดใช้งาน" }, db)).rejects.toBeInstanceOf(NotFoundError);
       const again = await staff(owner, h.id, nationalId);
       expect(again.reusedExistingUser).toBe(false);
+    });
+
+    it("blocks a Hospital registrar only by the registration itself; no service setting ties the account (ADR-0029)", async () => {
+      const h = await hospital();
+      const owner = await hospitalActor(h.id);
+      const record = await staff(owner, h.id, nationalIdFor(++sequence));
+      const registered = await db.hospital.create({
+        data: { hospitalCode: `UM1-REG-${++sequence}`, name: "โรงพยาบาลที่ลงทะเบียน", status: HospitalStatus.ACTIVE, registeredByUserId: record.userId },
+        select: { id: true },
+      });
+      try {
+        const assessment = await db.$transaction((transaction) => assessStaffRecordDeletion(transaction, h.id, record.relationshipId));
+        expect(assessment?.blockingRelations).toEqual(["User.hospitalsRegistered"]);
+        expect(assessment?.blockers).toEqual(["HAS_DATA"]);
+      } finally {
+        // The shared cleanup removes users before Hospitals; a registered Hospital would hold its registrar.
+        await db.hospital.delete({ where: { id: registered.id } });
+      }
     });
 
     it("refuses staff that was activated, is an OWNER, is shared with another Hospital, or changed; and non-OWNERs", async () => {

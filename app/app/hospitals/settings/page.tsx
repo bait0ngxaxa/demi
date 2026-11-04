@@ -12,8 +12,6 @@ import {
 } from "@/modules/hospital-contact/policies/hospital-contact-policy";
 import { listEligibleHospitalContactOwnerHospitals } from "@/modules/hospital-contact/services/hospital-contact-service";
 import { listOwnedHospitalSelfRegistrationSettings } from "@/modules/hospital-settings/services/hospital-self-registration-settings-service";
-import { PATIENT_SERVICE_REQUEST_CAPABILITIES, decidePatientServiceRequestPolicy } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
-import { listManagedHospitalServiceCatalog } from "@/modules/patient-service-requests/services/patient-service-catalog-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { HospitalSelfRegistrationSettings } from "../../settings/hospital-self-registration-settings";
@@ -50,34 +48,23 @@ export default async function HospitalSettingsPage({ searchParams }: HospitalSet
       hospitalId: membership.hospitalId,
     }).allowed ? [membership.hospitalId] : [],
   ));
-  const catalogIds = new Set(actor.hospitalMemberships.flatMap((membership) =>
-    decidePatientServiceRequestPolicy({
-      actor,
-      capability: PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog,
-      hospitalId: membership.hospitalId,
-    }).allowed ? [membership.hospitalId] : [],
-  ));
 
-  const [contactHospitals, catalogs, selfRegistrationHospitals] = await Promise.all([
+  const [contactHospitals, selfRegistrationHospitals] = await Promise.all([
     contactIds.size > 0 ? listEligibleHospitalContactOwnerHospitals(actor) : Promise.resolve([]),
-    catalogIds.size > 0 ? listManagedHospitalServiceCatalog(actor) : Promise.resolve([]),
     listOwnedHospitalSelfRegistrationSettings(actor),
   ]);
   const contacts = contactHospitals.filter(({ id }) => contactIds.has(id));
-  const services = catalogs.filter(({ hospitalId }) => catalogIds.has(hospitalId));
   const selfRegistration = selfRegistrationHospitals.filter(({ hospitalId }) =>
     !requestedHospitalId || hospitalId === requestedHospitalId,
   );
   const visibleContacts = contacts.filter(({ id }) => !requestedHospitalId || id === requestedHospitalId);
-  const visibleServices = services.filter(({ hospitalId }) => !requestedHospitalId || hospitalId === requestedHospitalId);
   const hasRequestedHospital = [
     ...visibleContacts.map(({ id }) => id),
-    ...visibleServices.map(({ hospitalId }) => hospitalId),
     ...selfRegistration.map(({ hospitalId }) => hospitalId),
   ].includes(requestedHospitalId ?? "");
 
   if (requestedHospitalId && !hasRequestedHospital) notFound();
-  if (visibleContacts.length === 0 && visibleServices.length === 0 && selfRegistration.length === 0) redirect("/app");
+  if (visibleContacts.length === 0 && selfRegistration.length === 0) redirect("/app");
 
   return (
     <div className="content-workspace min-w-0 max-w-4xl break-words">
@@ -101,23 +88,6 @@ export default async function HospitalSettingsPage({ searchParams }: HospitalSet
                   <span className="min-w-0 font-medium text-text">{hospital.name}</span>
                   <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/hospitals/contact?hospitalId=${encodeURIComponent(hospital.id)}`}>
                     จัดการข้อมูลติดต่อ
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        ) : null}
-
-        {visibleServices.length > 0 ? (
-          <Panel>
-            <h2 className="text-lg font-semibold text-text">บริการที่ผู้ป่วยขอได้</h2>
-            <p className="mt-1 text-sm leading-6 text-text-muted">กำหนดประเภทคำขอที่ผู้ป่วยส่งให้โรงพยาบาลได้ การตั้งค่านี้ไม่ใช่การทบทวนคำขอหรือการส่งมอบบริการ</p>
-            <ul className="mt-3 divide-y divide-border border-y border-border">
-              {visibleServices.map((hospital) => (
-                <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={hospital.hospitalId}>
-                  <span className="min-w-0 font-medium text-text">{hospital.hospitalName}</span>
-                  <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/patients/service-catalog?hospitalId=${encodeURIComponent(hospital.hospitalId)}`}>
-                    จัดการบริการที่เปิดให้ขอ
                   </Link>
                 </li>
               ))}

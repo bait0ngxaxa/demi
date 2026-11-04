@@ -113,7 +113,7 @@ flowchart TD
 | ลงทะเบียนผู้ป่วย | นำเข้าผู้ป่วย, เปิดใช้งานบัญชี | `/app/patients/provision`, `/app/patients/activation` |
 | คำขอรอตรวจ | คำขอใช้บัญชี, คำขอรับบริการ, ~~กล่องแจ้งปัญหา~~ (ย้ายไป Platform ADMIN ตาม WB-DF-14 2026-10-26) | `/app/patients/access-requests`, `/app/patients/service-requests` |
 | รายงานและข้อมูล | รายงานโรงพยาบาล, เขตความรับผิดชอบ, ข่าวสารและความรู้, ติดต่อโรงพยาบาล | `/app/hospitals/reporting`, `/app/hospitals/areas`, `/app/hospitals/content`, `/app/hospitals/contacts` |
-| บริหารโรงพยาบาล | บุคลากร, บริการที่เปิดให้ขอ, เผยแพร่ข่าวสาร, ข้อมูลติดต่อของ รพ., จัดการลูกข่าย | `/app/workforce`, `/app/patients/service-catalog`, `/app/hospitals/knowledge`, `/app/hospitals/contact`, `/app/hospitals/network` |
+| บริหารโรงพยาบาล | บุคลากร, บริการที่เปิดให้ขอ *Removed by ADR-0029 (2026-11-04): patient services are native; no catalog.*, เผยแพร่ข่าวสาร, ข้อมูลติดต่อของ รพ., จัดการลูกข่าย | `/app/workforce`, `/app/patients/service-catalog`, `/app/hospitals/knowledge`, `/app/hospitals/contact`, `/app/hospitals/network` |
 | บัญชีและช่วยเหลือ | ครอบครัวและผู้ดูแล, ตั้งค่า, แจ้งปัญหาการใช้งาน | `/app/family`, `/app/settings`, `/app/support` |
 
 Mobile: `หน้าแรก / ผู้ป่วย / บุคลากร / รายงาน / เพิ่มเติม`
@@ -196,7 +196,7 @@ flowchart TD
 | F-USER-03 | OWNER | "แก้ไข/ลบ ผู้ใช้งานทั่วไป" | จัดการผู้ใช้งาน | แก้/สิ้นสุดผู้ป่วย | | รายละเอียดผู้ป่วย | `/patients/[id]/profile`, หน้าข้อมูลสำหรับโรงพยาบาล | hospital patient edit form | WB-DF-09, E3, F1 | แก้ข้อมูลระดับ รพ., แก้ชื่อ (ผูก รพ. เดียว), สิ้นสุดความสัมพันธ์ | ALIGNED | — | ทางเข้าจาก F-USER-01 | คง | OWNER-04/05 | VERIFIED |
 | F-USER-04 | OWNER | "Add/ลบ/แก้ไข อสม. และ เจ้าหน้าที่ รพ./รพ.สต." | จัดการผู้ใช้งาน | บุคลากร | | บุคลากร | `/workforce`, `/workforce/[kind]/[relationshipId]` | workforce views | `decideWorkforcePolicy` (OWNER) | ครบ (OWNER-06..11) | ALIGNED | — | คงไว้ | คง OWNER-only | `workforce*.integration.test.ts` | VERIFIED |
 | F-USER-05 | OWNER | "ตั้งค่าผู้ใช้งานให้อยู่ในเขตความรับผิดชอบ" | จัดการผู้ใช้งาน | กำหนดเขตผู้ใช้ | | ไม่มี | — | — | OWNER-13 SUPERSEDED, ADR-0018 O-D4 | OWNER ลูกข่ายจัดการบุคลากรของตนเอง; แม่ข่ายไม่จัดบุคลากรลูกข่าย | APPROVED_DEVIATION | — | คงไว้; ข้อความอธิบายในหน้า | ห้าม Parent provision Child workforce | ADR-0018 tests | VERIFIED |
-| F-ADM-01 | OWNER | ไม่มีบน Whiteboard | Administration | บริการที่เปิดให้ขอ, คำขอรับบริการ, ~~กล่องแจ้งปัญหา~~ (ย้ายไป Platform ADMIN `/app/admin/support` ตาม WB-DF-14 2026-10-26), แก้ข้อมูลติดต่อ, เปิดใช้งานบัญชี | | sidebar หลาย section | `/patients/service-catalog`, `/patients/service-requests`, `/hospitals/contact` | — | ADR-0019 HOSPITAL_ADMINISTRATION | ความสามารถที่ PO อนุมัติแยก (CARE-07, WB-DF-14, 17I) | APPROVED_DEVIATION | P3 (nav) | รวมใต้กลุ่ม Administration ไม่อยู่ระดับเดียวกับเมนูธุรกิจ | ต้องคง OWNER-only | `application-navigation.test.ts` | VERIFIED |
+| F-ADM-01 | OWNER | ไม่มีบน Whiteboard | Administration | บริการที่เปิดให้ขอ *Removed by ADR-0029 (2026-11-04): patient services are native; no catalog.*, คำขอรับบริการ, ~~กล่องแจ้งปัญหา~~ (ย้ายไป Platform ADMIN `/app/admin/support` ตาม WB-DF-14 2026-10-26), แก้ข้อมูลติดต่อ, เปิดใช้งานบัญชี | | sidebar หลาย section | `/patients/service-catalog`, `/patients/service-requests`, `/hospitals/contact` | — | ADR-0019 HOSPITAL_ADMINISTRATION | ความสามารถที่ PO อนุมัติแยก (CARE-07, WB-DF-14, 17I) | APPROVED_DEVIATION | P3 (nav) | รวมใต้กลุ่ม Administration ไม่อยู่ระดับเดียวกับเมนูธุรกิจ | ต้องคง OWNER-only | `application-navigation.test.ts` | VERIFIED |
 | F-ADM-02 | OWNER | C2 "03 มอบหมาย/ตอบรับ" | จัดการผู้ใช้งาน | มอบหมาย อสม. | | ดูแลผู้ป่วย → มอบหมาย อสม., ปุ่มในรายละเอียดผู้ป่วย | `/patients/assign-osm`, `/patients/[id]/assignment` | assignment views | `decidePatientOsmAssignmentPolicy` (OWNER) | ครบ (OSM-10) | ALIGNED | P3 (nav) | ย้ายใต้ "จัดการผู้ใช้งาน > อสม." | คง | `patient-osm-assignment.integration.test.ts` | VERIFIED |
 | F-NAV-01 | MEMBER (ผลต่อ OWNER) | — | หน้าหลัก | ข้อความสิทธิ์ | | Work Home | `/app` | `app/app/page.tsx` 304–306 | — | ข้อความ MEMBER "สมาชิกเพิ่มและดูแลการเปิดใช้งานบัญชี อสม. ได้เท่านั้น" ขัด ADR-0019 (สาขานี้ไม่น่าแสดงจริงเพราะ MEMBER ไม่มี administration action แต่เป็น copy ล้าสมัย) | NAVIGATION_DRIFT | P3 | แก้/ลบ copy ใน phase cleanup | ไม่มี | UAT M-1 | VERIFIED |
 | F-NAV-02 | OWNER/MEMBER/OSM | — | ติดตาม | โครงหน้า Program | | หน้า Program | `/programs/[pid]` | `program-detail-view.tsx`, `patient-program-view.tsx` 144–166 | — | สองโครง (module vs ครั้งที่) ชี้ข้อมูลเดียวกัน; ข้อความ "ไม่จำเป็นต้องทำตามลำดับ" | JOURNEY_FRAGMENTATION | P2 | ให้ "ครั้งที่ 1–6" เป็นโครงหลัก, anchors module เป็นรอง (ป้ายเดิม + ครั้งที่) | คง | `program-detail-view.test.tsx` | VERIFIED |
@@ -305,7 +305,7 @@ Severity (ตามคอลัมน์ Sev): **P0 = 0**; **P1 = 3** (F-HOME-02
 | Global Navigation | หน้าหลัก · ข้อมูลสุขภาพ · การจัดบริการ · ติดตาม · นัดหมาย · โปรไฟล์ (+ จัดการผู้ใช้งาน สำหรับผู้มีสิทธิ์บริหาร) |
 | Context Navigation | ตัวเลือก รพ./ลูกข่าย (reuse `HomeHospitalChip` + `projectWorkAreaGroups` + network children), ผู้ป่วยที่เลือก (breadcrumb เดิม), Program, ครั้งที่ N |
 | Workflow Actions | บันทึก vitals, Service 1 tools, ทำแผน, บันทึกการติดตามผล, ทบทวน, Add การจัดบริการเพิ่ม, สร้าง/แก้/ยกเลิกนัด, พิจารณาคำขอเลื่อน |
-| Administration (OWNER-only) | จัดการผู้ใช้งาน (ผู้ป่วย: นำเข้า/เปิดใช้งาน/คำขอใช้บัญชี · อสม. + มอบหมาย · เจ้าหน้าที่), เขตความรับผิดชอบ (ลูกข่าย + ภาพรวม), รายงานและดาวน์โหลด, เผยแพร่ข่าวสาร, ข้อมูลติดต่อ รพ., บริการที่เปิดให้ขอ + คำขอรับบริการ (กล่องแจ้งปัญหาย้ายไป Platform ADMIN ตาม WB-DF-14 2026-10-26) |
+| Administration (OWNER-only) | จัดการผู้ใช้งาน (ผู้ป่วย: นำเข้า/เปิดใช้งาน/คำขอใช้บัญชี · อสม. + มอบหมาย · เจ้าหน้าที่), เขตความรับผิดชอบ (ลูกข่าย + ภาพรวม), รายงานและดาวน์โหลด, เผยแพร่ข่าวสาร, ข้อมูลติดต่อ รพ., บริการที่เปิดให้ขอ *Removed by ADR-0029 (2026-11-04): patient services are native; no catalog.* + คำขอรับบริการ (กล่องแจ้งปัญหาย้ายไป Platform ADMIN ตาม WB-DF-14 2026-10-26) |
 | Personal Workspace | เฉพาะผู้มี PATIENT: ข้อมูลของฉัน, นัดของฉัน, ยา, Food & Fitness, ตัวฉันในตอนนี้, ข่าวสาร/สื่อความรู้ส่วนตัว — สลับผ่าน `WorkspaceSwitch` เดิม |
 
 ### 9.2 Proposed canonical navigation hierarchy
@@ -328,6 +328,8 @@ flowchart TD
   AD --> A6[ข่าวสาร · ติดต่อ · บริการที่เปิดให้ขอ · คำขอรับบริการ]
   BT -.mobile 4+1.-> X[หน้าหลัก · ติดตาม · นัดหมาย · ข้อมูลสุขภาพ/การจัดบริการ ตาม Q-01 · เพิ่มเติม=โปรไฟล์+บริหาร]
 ```
+
+A6 "บริการที่เปิดให้ขอ": *Removed by ADR-0029 (2026-11-04): patient services are native; no catalog.*
 
 ข้อเสนอ mobile (รอ Q-01): `หน้าหลัก · ข้อมูลสุขภาพ · [นัดหมาย | การจัดบริการ] · ติดตาม · โปรไฟล์/เพิ่มเติม` — "เพิ่มเติม" เปลี่ยนชื่อเป็น "โปรไฟล์" ได้ถ้าหน้า More เป็นที่รวมบัญชี + จัดการผู้ใช้งาน (ลดการสร้างหน้าใหม่)
 

@@ -1,13 +1,9 @@
 import { Role } from "@prisma/client";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  isActiveHospitalAdministrator,
-  isActiveHospitalOperator,
-} from "@/modules/identity/services/hospital-authority";
+import { isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 
 export const PATIENT_SERVICE_REQUEST_CAPABILITIES = {
-  manageCatalog: "patient-service-catalog:manage",
   create: "patient-service-request:create",
   readSelf: "patient-service-request:read-self",
   withdrawSelf: "patient-service-request:withdraw-self",
@@ -24,15 +20,14 @@ export type PatientServiceRequestPolicyInput = {
 };
 
 export type PatientServiceRequestPolicyDecision =
-  | { allowed: true; reason: "patient_self" | "hospital_owner" | "hospital_reviewer" }
+  | { allowed: true; reason: "patient_self" | "hospital_reviewer" }
   | {
       allowed: false;
       reason:
         | "missing_actor"
         | "invalid_capability"
         | "role_required"
-        | "exact_hospital_scope_required"
-        | "active_owner_scope_required";
+        | "exact_hospital_scope_required";
     };
 
 const capabilities = new Set<PatientServiceRequestCapability>(
@@ -68,15 +63,6 @@ export function decidePatientServiceRequestPolicy(
   const hasHospitalRole = input.actor.roles.includes(Role.HOSPITAL);
   const hasPlatformAdminRole = input.actor.roles.includes(Role.ADMIN);
 
-  if (
-    input.capability === PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog &&
-    hasHospitalRole &&
-    !hasPlatformAdminRole &&
-    isActiveHospitalAdministrator(input.actor, targetHospitalId)
-  ) {
-    return { allowed: true, reason: "hospital_owner" };
-  }
-
   // ADR-0026: an ACTIVE OWNER or MEMBER confirms ("ยืนยันนัด") and rejects requests of the Hospital.
 
   if (
@@ -92,12 +78,6 @@ export function decidePatientServiceRequestPolicy(
     return { allowed: false, reason: "role_required" };
   }
 
-  return {
-    allowed: false,
-    reason:
-      input.capability === PATIENT_SERVICE_REQUEST_CAPABILITIES.manageCatalog
-        ? "active_owner_scope_required"
-        : "exact_hospital_scope_required",
-  };
+  return { allowed: false, reason: "exact_hospital_scope_required" };
 }
 

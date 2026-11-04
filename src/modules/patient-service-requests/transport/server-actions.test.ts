@@ -100,12 +100,25 @@ describe("Patient request action (ADR-0023 SR-D6)", () => {
   function createForm(overrides: Record<string, string> = {}): FormData {
     const data = new FormData();
     const fields = {
-      relationshipId, offeringId: requestId, preferredOsmRelationshipId: "",
+      relationshipId, serviceCode: "FOLLOW_UP", preferredOsmRelationshipId: "",
       preferredDate: "2026-11-02", preferredSlot: "MORNING", note: "", ...overrides,
     };
     for (const [key, value] of Object.entries(fields)) data.set(key, value);
     return data;
   }
+
+  it("sends the chosen native service code to the service (ADR-0029)", async () => {
+    mocks.create.mockResolvedValueOnce({ requestId, status: "PENDING" });
+    expect(await createPatientServiceRequestAction({ status: "IDLE" }, createForm())).toEqual({ status: "SUCCESS" });
+    expect(mocks.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ relationshipId, serviceCode: "FOLLOW_UP" }));
+  });
+
+  it("rejects a missing or unknown service code before calling the service", async () => {
+    for (const serviceCode of ["", "HOME_CARE"]) {
+      expect(await createPatientServiceRequestAction({ status: "IDLE" }, createForm({ serviceCode }))).toMatchObject({ status: "ERROR" });
+    }
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
 
   it("requires the preferred date and slot", async () => {
     for (const overrides of [{ preferredDate: "" }, { preferredSlot: "" }] as Record<string, string>[]) {

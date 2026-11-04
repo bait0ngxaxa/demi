@@ -19,7 +19,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { completePatientActivation, getPatientActivationDetails, issuePatientActivation } from "@/modules/patient-activation/services/patient-activation-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
-import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { assertWorkforceRelationshipsCompatible, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { hashWorkforceActivationToken } from "@/modules/workforce/services/activation-token-service";
 import {
   completeWorkforceActivation,
@@ -1429,7 +1429,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const before = await identityState(pending.userId);
 
       await expect(provisionOsm(ownerB.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: b.id }))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ไม่เข้าเงื่อนไข") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE });
       await expect(provisionHospitalMember(ownerB.actor, { contactPhone: "0812345678", ...person(pending.nationalId), targetHospitalId: b.id, profession: "NURSE" }))
         .rejects.toMatchObject({ code: "CONFLICT" });
       await expect(regenerateWorkforceActivation(ownerB.actor, { userId: pending.userId, targetHospitalId: b.id, kind: "OSM", mode: "REMOTE" }))
@@ -1644,7 +1644,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const before = await domainState();
 
       await expect(provisionPatient(owner.actor, patientInput(nationalId, hospital.id)))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("บุคลากร") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("เจ้าหน้าที่โรงพยาบาล") });
       expect(await domainState()).toEqual(before);
 
       await expect(previewWorkforceActivation(pending.activationToken!)).resolves.toBeDefined();
@@ -1707,7 +1707,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         await expect(getPatientActivationDetails(issued.activationToken!)).rejects.toMatchObject({ code: "CONFLICT" });
         await expect(completePatientActivation(issued.activationToken!, { ...patientCompletion, ...LEGAL }, { provisionIdentity })).rejects.toMatchObject({ code: "CONFLICT" });
         await expect(issuePatientActivation(owner.actor, { userId: patient.userId, targetHospitalId: hospital.id, reissue: true }))
-          .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("บุคลากร") });
+          .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("เจ้าหน้าที่โรงพยาบาล") });
 
         expect(provisionIdentity).not.toHaveBeenCalled();
         expect(await domainState()).toEqual(before);
@@ -1791,9 +1791,9 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
         if (kind === "OSM") await provisionOsm(ownerB.actor, input);
         else await provisionHospitalMember(ownerB.actor, { ...input, profession: "OTHER" });
       } catch (error) { caught = error; }
-      expect(caught).toMatchObject({ code: "CONFLICT", name: "ConflictError", message: "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ" });
+      expect(caught).toMatchObject({ code: "CONFLICT", name: "ConflictError", message: WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE });
       const serialized = JSON.stringify({ ...(caught as object), message: (caught as Error).message, name: (caught as Error).name });
-      for (const secret of [a.id, nationalIdFor(9003), "บุคลากรโรงพยาบาล", "อสม.", "DOCTOR", "ACTIVE"]) expect(serialized).not.toContain(secret);
+      for (const secret of [a.id, nationalIdFor(9003), "เจ้าหน้าที่โรงพยาบาล", "อสม.", "DOCTOR", "ACTIVE"]) expect(serialized).not.toContain(secret);
       expect((await identityState(target.userId)).activations).toBe(0);
     });
 
@@ -1802,7 +1802,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const target = await createMember(a.id, MembershipType.MEMBER, 9003);
       await prisma.hospitalMembership.create({ data: { userId: target.userId, hospitalId: b.id, membershipType: MembershipType.MEMBER, status: MembershipStatus.SUSPENDED } });
       await expect(provisionOsm(ownerA.actor, { ...person(9003), targetHospitalId: a.id }))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("บุคลากรโรงพยาบาล") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("เจ้าหน้าที่โรงพยาบาล") });
     });
 
     it("scoped disclosure explains a local OSM conflict to its authorized Hospital owner", async () => {
@@ -1815,7 +1815,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
     it("scoped disclosure defaults to generic for absent or forged authorization", async () => {
       const { a } = await setup();
       const target = await createMember(a.id, MembershipType.MEMBER, 9003);
-      const generic = "ไม่สามารถเพิ่มบุคคลนี้ได้ เนื่องจากข้อมูลหรือสถานะบัญชีไม่เข้าเงื่อนไข กรุณาตรวจสอบข้อมูลหรือติดต่อผู้ดูแลระบบ";
+      const generic = WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE;
       await expect(prisma.$transaction(tx => assertWorkforceRelationshipsCompatible(tx, target.userId, "OSM"))).rejects.toMatchObject({ code: "CONFLICT", message: generic });
       await expect(prisma.$transaction(tx => assertWorkforceRelationshipsCompatible(tx, target.userId, "OSM", { actorUserId: target.userId, hospitalId: a.id }))).rejects.toMatchObject({ code: "CONFLICT", message: generic });
     });
@@ -1977,7 +1977,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const before = await identityState(pending.userId);
       const provider = vi.fn();
       await expect(completeWorkforceActivation(pending.token, completion(pending.nationalId), { provisionIdentity: provider }))
-        .rejects.toMatchObject({ code: "CONFLICT", message: expect.stringContaining("ไม่เข้าเงื่อนไข") });
+        .rejects.toMatchObject({ code: "CONFLICT", message: WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE });
       expect(provider).not.toHaveBeenCalled();
       await expect(regenerateWorkforceActivation(owner.actor, { userId: pending.userId, targetHospitalId: hospital.id, kind: "OSM", mode: "REMOTE" }))
         .rejects.toMatchObject({ code: "CONFLICT" });

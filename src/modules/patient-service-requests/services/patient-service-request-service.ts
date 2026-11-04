@@ -31,7 +31,7 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import { isValidPreferredDate } from "../domain/patient-service-definitions";
+import { PATIENT_SERVICE_CODES, isValidPreferredDate } from "../domain/patient-service-definitions";
 import {
   PATIENT_SERVICE_REQUEST_CAPABILITIES,
   decidePatientServiceRequestPolicy,
@@ -79,7 +79,8 @@ export type PatientServiceRelationshipView = {
   hospitalActive: boolean;
   /** Phase F: care with this Hospital ended; request history only, no new requests. */
   careEnded: boolean;
-  offerings: readonly { offeringId: string; code: PatientServiceCode }[];
+  /** ADR-0029: the native services the patient may request now; empty once care ended or the Hospital is inactive. */
+  services: readonly PatientServiceCode[];
   /** SR-D3: the ACTIVE อสม. of the Hospital, the patient's assigned อสม. first. */
   osmChoices: readonly { relationshipId: string; displayName: string; assigned: boolean }[];
   requests: readonly PatientServiceRequestStatusView[];
@@ -265,11 +266,6 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
         id: true,
         name: true,
         status: true,
-        serviceOfferings: {
-          where: { enabled: true },
-          select: { id: true, code: true },
-          orderBy: { code: "asc" },
-        },
         osmHospitalRelationships: {
           where: {
             status: MembershipStatus.ACTIVE,
@@ -309,7 +305,7 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
         preferredSlot: true,
         note: true,
         rejectionReason: true,
-        offering: { select: { code: true } },
+        serviceCode: true,
         preferredOsm: {
           select: { person: { select: { givenName: true, familyName: true } } },
         },
@@ -374,19 +370,14 @@ export async function listOwnPatientServiceRequests(
         hospitalName: relationship.hospital.name,
         hospitalActive,
         careEnded,
-        offerings: acceptsRequests
-          ? relationship.hospital.serviceOfferings.map(({ id, code }) => ({
-              offeringId: id,
-              code,
-            }))
-          : [],
+        services: acceptsRequests ? PATIENT_SERVICE_CODES : [],
         osmChoices,
         requests: relationship.serviceRequests.map((request) => ({
           ...toPreferenceView(request),
           requestId: request.id,
           relationshipId: relationship.id,
           appointmentId: request.appointments[0]?.id ?? null,
-          serviceCode: request.offering.code,
+          serviceCode: request.serviceCode,
           status: request.status,
           rejectionReason: request.rejectionReason,
           preferredOsmName: request.preferredOsm
@@ -449,19 +440,6 @@ export async function createPatientServiceRequest(
           throw new NotFoundError();
         }
 
-        const offering = await transaction.hospitalServiceOffering.findUnique({
-          where: { id: parsed.data.offeringId },
-          select: { id: true, hospitalId: true, code: true, enabled: true },
-        });
-
-        if (
-          !offering ||
-          offering.hospitalId !== relationship.hospitalId ||
-          !offering.enabled
-        ) {
-          throw new ValidationError("The requested service is not currently available");
-        }
-
         const preferredOsmRelationshipId = parsed.data.preferredOsmRelationshipId ?? null;
         let preferredOsmUserId: string | null = null;
 
@@ -491,7 +469,7 @@ export async function createPatientServiceRequest(
         const open = await transaction.patientServiceRequest.findFirst({
           where: {
             patientHospitalRelationshipId: relationship.id,
-            offeringId: offering.id,
+            serviceCode: parsed.data.serviceCode,
             status: { in: [PatientServiceRequestStatus.PENDING, PatientServiceRequestStatus.APPROVED] },
           },
           select: { id: true },
@@ -505,7 +483,7 @@ export async function createPatientServiceRequest(
           data: {
             patientHospitalRelationshipId: relationship.id,
             hospitalId: relationship.hospitalId,
-            offeringId: offering.id,
+            serviceCode: parsed.data.serviceCode,
             requestedByUserId: actor.userId,
             preferredOsmUserId,
             preferredDate: serviceDateToUtcDate(parsed.data.preferredDate),
@@ -514,6 +492,13 @@ export async function createPatientServiceRequest(
             createdAt: now,
           },
           select: { id: true, status: true, createdAt: true },
+        }).catch((error: unknown) => {
+          // The request's other unique keys hold a fresh id, so a unique violation here is the one-open-request
+          // partial unique index: a concurrent request for the same service was saved first.
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            throw new ConflictError(DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE);
+          }
+          throw error;
         });
 
         const recipientOsmUserId = preferredOsmUserId ??
@@ -615,7 +600,7 @@ async function findReviewableRequest(
       hospitalId: true,
       patientHospitalRelationshipId: true,
       status: true,
-      offering: { select: { code: true } },
+      serviceCode: true,
     },
   });
 
@@ -668,8 +653,8 @@ export async function confirmPatientServiceRequest(
             patientHospitalRelationshipId: request.patientHospitalRelationshipId,
             submissionNonce: parsed.data.submissionNonce,
             scheduledAt: parsed.data.scheduledAt,
-            type: SERVICE_APPOINTMENT_TYPE[request.offering.code],
-            serviceCode: request.offering.code,
+            type: SERVICE_APPOINTMENT_TYPE[request.serviceCode],
+            serviceCode: request.serviceCode,
             responsibleUserId: null,
             assignedOsmUserId: parsed.data.osmUserId,
             durationMinutes: parsed.data.durationMinutes ?? null,
@@ -743,7 +728,7 @@ export async function rejectPatientServiceRequest(
             resourceId: request.id,
             metadata: {
               hospitalId: request.hospitalId,
-              serviceCode: request.offering.code,
+              serviceCode: request.serviceCode,
               status: PatientServiceRequestStatus.REJECTED,
             },
           },
@@ -834,7 +819,7 @@ export async function listHospitalPatientServiceRequests(
         preferredSlot: true,
         note: true,
         rejectionReason: true,
-        offering: { select: { code: true } },
+        serviceCode: true,
         appointments: { select: { id: true } },
         relationship: {
           select: {
@@ -902,7 +887,7 @@ export async function listHospitalPatientServiceRequests(
           request.relationship.patientProfile.person.givenName,
           request.relationship.patientProfile.person.familyName,
         ),
-        serviceCode: request.offering.code,
+        serviceCode: request.serviceCode,
         status: request.status,
         preferredOsmName: request.preferredOsm
           ? fullName(

@@ -190,7 +190,7 @@ function projectHospitalActions(
     actions.push({
       href: withHospitalContext("/app/hospitals/settings", hospitalId),
       label: "ตั้งค่าโรงพยาบาล",
-      description: "จัดการข้อมูลติดต่อ บริการที่เปิดให้ขอ และการลงทะเบียนเองตามสิทธิ์ของคุณ",
+      description: "จัดการข้อมูลติดต่อและการลงทะเบียนเองตามสิทธิ์ของคุณ",
       category: "administration",
       prefetch: false,
     });

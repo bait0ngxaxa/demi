@@ -29,11 +29,6 @@ import {
   withdrawOwnPatientServiceRequestAction,
 } from "@/modules/patient-service-requests/transport/server-actions";
 
-type PatientServiceOfferingOption = {
-  offeringId: string;
-  code: PatientServiceCode;
-};
-
 type PatientOsmOption = {
   relationshipId: string;
   displayName: string;
@@ -45,17 +40,25 @@ const SLOT_OPTIONS: readonly PatientServiceRequestSlot[] = ["MORNING", "AFTERNOO
 const inputClassName =
   "min-h-12 w-full rounded-control border border-border bg-surface px-4 py-2.5 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring disabled:cursor-not-allowed disabled:bg-surface-muted";
 
+/** Shown beside a service that already has an open request; the server's duplicate check stays authoritative. */
+export const OPEN_SERVICE_REQUEST_OPTION_NOTE = "มีคำขอที่รอดำเนินการอยู่แล้ว";
+
 export function PatientServiceRequestForm({
   relationshipId,
-  offerings,
+  services,
+  openServiceCodes = [],
   osmChoices,
   preferredDateBounds,
 }: {
   relationshipId: string;
-  offerings: readonly PatientServiceOfferingOption[];
+  /** ADR-0029: the native DEMI services, in display order. */
+  services: readonly PatientServiceCode[];
+  /** Services with a PENDING or APPROVED request at this Hospital. */
+  openServiceCodes?: readonly PatientServiceCode[];
   osmChoices: readonly PatientOsmOption[];
   preferredDateBounds: { min: string; max: string };
 }): React.JSX.Element {
+  const open = new Set(openServiceCodes);
   const [state, action, pending, unknownOutcome] = useMutationActionState(
     createPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
@@ -75,11 +78,11 @@ export function PatientServiceRequestForm({
         <label className="block text-sm font-semibold text-text" htmlFor={`service-${relationshipId}`}>
           บริการที่ต้องการ
         </label>
-        <Select defaultValue="" disabled={pending || unknownOutcome} id={`service-${relationshipId}`} name="offeringId" required>
+        <Select defaultValue="" disabled={pending || unknownOutcome} id={`service-${relationshipId}`} name="serviceCode" required>
           <option disabled value="">เลือกบริการ</option>
-          {offerings.map((offering) => (
-            <option key={offering.offeringId} value={offering.offeringId}>
-              {patientServiceLabel(offering.code)}
+          {services.map((code) => (
+            <option disabled={open.has(code)} key={code} value={code}>
+              {open.has(code) ? `${patientServiceLabel(code)} (${OPEN_SERVICE_REQUEST_OPTION_NOTE})` : patientServiceLabel(code)}
             </option>
           ))}
         </Select>
