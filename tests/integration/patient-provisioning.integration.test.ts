@@ -759,7 +759,7 @@ describe("Phase 5B.1 patient provisioning PostgreSQL workflow", () => {
     const summary = await importPatientProvisioning(actor, hospital.id, candidates);
 
     expect(summary).toMatchObject({ imported: 0, conflict: 1, failed: 0 });
-    expect(summary.rows[0]).toMatchObject({ result: "CONFLICT", reason: "HN ของความสัมพันธ์กับโรงพยาบาลนี้ไม่ตรงกัน" });
+    expect(summary.rows[0]).toMatchObject({ result: "CONFLICT", reason: "HN ของผู้ป่วยรายนี้ไม่ตรงกับข้อมูลของโรงพยาบาล" });
   });
 
   it("does not allow OSM to use the Hospital-only bulk import adapter", async () => {
