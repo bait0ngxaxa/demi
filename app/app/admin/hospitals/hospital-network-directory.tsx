@@ -10,8 +10,10 @@ import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import {
   HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH,
   type HOSPITAL_DIRECTORY_FILTER_VALUES,
+  type HOSPITAL_DIRECTORY_PLACEMENT_VALUES,
 } from "@/modules/hospital-service-areas/schemas/hospital-service-area-schemas";
 import type {
+  HospitalNetworkCounts,
   HospitalNetworkDirectoryEntry,
   HospitalNetworkDirectoryPage,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
@@ -28,6 +30,16 @@ export const HOSPITAL_DIRECTORY_FILTERS = [
 ] as const satisfies readonly { value: (typeof HOSPITAL_DIRECTORY_FILTER_VALUES)[number]; label: string }[];
 
 export type HospitalDirectoryFilter = (typeof HOSPITAL_DIRECTORY_FILTERS)[number]["value"];
+
+/** Network-structure views inside the network filter. */
+export const HOSPITAL_DIRECTORY_PLACEMENTS = [
+  { value: "all", label: "ทั้งหมด" },
+  { value: "parent", label: "แม่ข่าย" },
+  { value: "child_unplaced", label: "ลูกข่ายที่ยังไม่มีแม่ข่าย" },
+  { value: "unclassified", label: "ยังไม่กำหนดประเภท" },
+] as const satisfies readonly { value: (typeof HOSPITAL_DIRECTORY_PLACEMENT_VALUES)[number]; label: string }[];
+
+export type HospitalDirectoryPlacement = (typeof HOSPITAL_DIRECTORY_PLACEMENTS)[number]["value"];
 
 export function hospitalStatusLabel(status: HospitalNetworkDirectoryEntry["status"]): string {
   switch (status) {
@@ -117,21 +129,33 @@ function DirectoryFilterNavigation({ filter }: { filter: HospitalDirectoryFilter
   );
 }
 
-/** The directory URL for a filter, search and page; the network view is the default. */
-export function hospitalDirectoryHref(filter: HospitalDirectoryFilter, value: string, page = 1): string {
+/** The directory URL for a filter, search, page and (network view only) placement; the network view is the default. */
+export function hospitalDirectoryHref(
+  filter: HospitalDirectoryFilter, value: string, page = 1, placement: HospitalDirectoryPlacement = "all",
+): string {
   const params = new URLSearchParams();
   if (filter !== "network") params.set("status", filter);
+  if (filter === "network" && placement !== "all") params.set("placement", placement);
   if (value) params.set("value", value);
   if (page > 1) params.set("page", String(page));
   const query = params.toString();
   return query ? `/app/admin/hospitals?${query}` : "/app/admin/hospitals";
 }
 
-function DirectorySearch({ filter, value }: { filter: HospitalDirectoryFilter; value: string }): React.JSX.Element {
+function DirectorySearch({
+  filter,
+  placement = "all",
+  value,
+}: {
+  filter: HospitalDirectoryFilter;
+  placement?: HospitalDirectoryPlacement;
+  value: string;
+}): React.JSX.Element {
   return (
     // A new search starts again on page 1: the form sends no page.
     <Form action="/app/admin/hospitals" className="flex max-w-xl flex-col gap-2 sm:flex-row sm:items-end" role="search">
       {filter !== "network" ? <input name="status" type="hidden" value={filter} /> : null}
+      {filter === "network" && placement !== "all" ? <input name="placement" type="hidden" value={placement} /> : null}
       <label className="min-w-0 flex-1 text-sm font-semibold text-text" htmlFor="hospital-directory-search">
         ค้นหาชื่อหรือรหัสโรงพยาบาล
         <Input
@@ -154,19 +178,21 @@ function DirectorySearch({ filter, value }: { filter: HospitalDirectoryFilter; v
 function DirectoryPagination({
   directory,
   filter,
+  placement = "all",
   value,
 }: {
   directory: HospitalNetworkDirectoryPage;
   filter: HospitalDirectoryFilter;
+  placement?: HospitalDirectoryPlacement;
   value: string;
 }): React.JSX.Element | null {
   return (
     <PageNumberPagination
       className="mt-4 border-t border-border pt-4"
       label="หน้ารายชื่อโรงพยาบาล"
-      next={directory.hasNextPage ? { href: hospitalDirectoryHref(filter, value, directory.page + 1) } : null}
+      next={directory.hasNextPage ? { href: hospitalDirectoryHref(filter, value, directory.page + 1, placement) } : null}
       page={directory.page}
-      previous={directory.hasPreviousPage ? { href: hospitalDirectoryHref(filter, value, directory.page - 1) } : null}
+      previous={directory.hasPreviousPage ? { href: hospitalDirectoryHref(filter, value, directory.page - 1, placement) } : null}
       totalPages={directory.totalPages}
     />
   );
@@ -218,6 +244,41 @@ function RetiredHospitalList({
   );
 }
 
+const count = (value: number): string => value.toLocaleString("th-TH");
+
+/** The structure of the whole network (non-RETIRED), whatever the search and placement. */
+function networkCountsSummary(counts: HospitalNetworkCounts): string {
+  return [
+    `แม่ข่าย ${count(counts.parents)} แห่ง`,
+    `ลูกข่ายที่ยังไม่มีแม่ข่าย ${count(counts.childrenWithoutParent)} แห่ง`,
+    `ยังไม่กำหนดประเภท ${count(counts.unclassified)} แห่ง`,
+    `ทั้งหมด ${count(counts.total)} แห่ง`,
+  ].join(" · ");
+}
+
+/** Placement links keep the search and start again on page 1. */
+function PlacementNavigation({ placement, value }: { placement: HospitalDirectoryPlacement; value: string }): React.JSX.Element {
+  return (
+    <nav aria-label="โครงสร้างเครือข่าย" className="flex flex-wrap gap-2">
+      {HOSPITAL_DIRECTORY_PLACEMENTS.map((item) => {
+        const selected = item.value === placement;
+        return (
+          <Link
+            aria-current={selected ? "page" : undefined}
+            className={`inline-flex min-h-11 items-center rounded-control border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring ${
+              selected ? "border-brand-strong bg-surface text-brand-strong" : "border-border text-text-muted hover:bg-surface-muted hover:text-text"
+            }`}
+            href={hospitalDirectoryHref("network", value, 1, item.value)}
+            key={item.value}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 /** ADR-0018: which Parent registered this Child, shown from the names the page loaded. */
 function provenanceLabel(hospital: HospitalNetworkDirectoryEntry): string {
   return hospital.registeredForParentHospitalName ? ` · สร้างโดยแม่ข่าย ${hospital.registeredForParentHospitalName}` : "";
@@ -247,7 +308,20 @@ function NetworkHospitalRow({
         >
           {hospital.name} <span className="text-sm font-normal text-text-muted">({hospital.hospitalCode})</span>
         </Link>
-        <p className="mt-0.5 break-words text-sm text-text-muted">{networkPlacementLabel(hospital)}{provenanceLabel(hospital)}</p>
+        <p className="mt-0.5 break-words text-sm text-text-muted">
+          {networkPlacementLabel(hospital)}{provenanceLabel(hospital)}
+          {hospital.role === "PARENT" ? (
+            <>
+              {" · "}
+              <Link
+                className="font-semibold text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+                href={`/app/admin/hospitals/${hospital.id}`}
+              >
+                ลูกข่าย {count(hospital.activeChildCount)} แห่ง
+              </Link>
+            </>
+          ) : null}
+        </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {onboardingPath ? <StatusBadge variant="info">{onboardingPath}</StatusBadge> : null}
@@ -259,6 +333,7 @@ function NetworkHospitalRow({
 
 export function HospitalNetworkDirectory({
   filter,
+  placement = "all",
   value,
   directory,
   onboardingPaths = {},
@@ -266,6 +341,8 @@ export function HospitalNetworkDirectory({
   bulkSubmissionNonce,
 }: {
   filter: HospitalDirectoryFilter;
+  /** Network view only. */
+  placement?: HospitalDirectoryPlacement;
   /** The trimmed name or code search; empty for none. */
   value: string;
   /** One page (at most 25) of the filtered directory. */
@@ -316,7 +393,9 @@ export function HospitalNetworkDirectory({
         <h2 className="text-xl font-semibold tracking-[-0.02em]" id="network-directory-heading">
           เครือข่ายโรงพยาบาล
         </h2>
-        <DirectorySearch filter={filter} value={value} />
+        {directory.networkCounts ? <p className="text-sm text-text-muted">{networkCountsSummary(directory.networkCounts)}</p> : null}
+        <PlacementNavigation placement={placement} value={value} />
+        <DirectorySearch filter={filter} placement={placement} value={value} />
         <Panel>
           <p className="text-sm text-text-muted">{resultSummary(directory, value)}</p>
           {directory.items.length === 0 ? (
@@ -332,7 +411,7 @@ export function HospitalNetworkDirectory({
               ))}
             </ul>
           )}
-          <DirectoryPagination directory={directory} filter={filter} value={value} />
+          <DirectoryPagination directory={directory} filter={filter} placement={placement} value={value} />
         </Panel>
       </section>
     </div>

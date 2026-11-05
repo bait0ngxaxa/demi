@@ -18,8 +18,10 @@ import { parsePageSearchParam } from "@/shared/pagination/page-number";
 
 import {
   HOSPITAL_DIRECTORY_FILTERS,
+  HOSPITAL_DIRECTORY_PLACEMENTS,
   HospitalNetworkDirectory,
   type HospitalDirectoryFilter,
+  type HospitalDirectoryPlacement,
   type ParentOnboardingPathLabels,
 } from "./hospital-network-directory";
 
@@ -51,6 +53,11 @@ function parseFilter(value: string | string[] | undefined): HospitalDirectoryFil
   return HOSPITAL_DIRECTORY_FILTERS.find((item) => item.value === raw)?.value ?? "network";
 }
 
+function parsePlacement(value: string | string[] | undefined): HospitalDirectoryPlacement {
+  const raw = firstSearchParam(value);
+  return HOSPITAL_DIRECTORY_PLACEMENTS.find((item) => item.value === raw)?.value ?? "all";
+}
+
 /** A search longer than the limit is cut to the limit rather than refused. */
 function parseSearch(value: string | string[] | undefined): string {
   return (firstSearchParam(value) ?? "").trim().slice(0, HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH).trim();
@@ -59,14 +66,22 @@ function parseSearch(value: string | string[] | undefined): string {
 export default async function HospitalGovernanceDirectoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string | string[]; value?: string | string[]; page?: string | string[] }>;
+  searchParams: Promise<{
+    status?: string | string[];
+    placement?: string | string[];
+    value?: string | string[];
+    page?: string | string[];
+  }>;
 }): Promise<React.JSX.Element> {
   await connection();
   const actor = await requirePlatformAdmin();
   const params = await searchParams;
   const filter = parseFilter(params.status);
+  const placement = filter === "network" ? parsePlacement(params.placement) : "all";
   const value = parseSearch(params.value);
-  const directory = await listHospitalNetworkDirectoryForAdmin(actor, { filter, value, page: parsePageSearchParam(params.page) });
+  const directory = await listHospitalNetworkDirectoryForAdmin(actor, {
+    filter, placement, value, page: parsePageSearchParam(params.page),
+  });
   // ADR-0024: only a pending or ACTIVE Parent can have an open first-OWNER path; one page of at most 25 ids.
   const parentIds = directory.items
     .filter(({ role, status: hospitalStatus }) => role === "PARENT" && (hospitalStatus === "PENDING_VERIFICATION" || hospitalStatus === "ACTIVE"))
@@ -88,6 +103,7 @@ export default async function HospitalGovernanceDirectoryPage({
         directory={directory}
         filter={filter}
         onboardingPaths={onboardingPaths}
+        placement={placement}
         submissionNonce={randomUUID()}
         value={value}
       />

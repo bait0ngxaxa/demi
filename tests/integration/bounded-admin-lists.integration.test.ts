@@ -138,6 +138,60 @@ describe("ADMIN Hospital directory (paged, filtered in SQL)", () => {
     })]);
   });
 
+  it("narrows the network view by placement in the query, counts the structure and counts each Parent's active Children", async () => {
+    const before = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "network", value: `${token}-ไม่มี` });
+    const parent = await hospital(`${token} ก แม่ข่าย`, HospitalStatus.ACTIVE, "PARENT");
+    const placed = await hospital(`${token} ข ลูกข่ายมีแม่`, HospitalStatus.ACTIVE, "CHILD");
+    const ended = await hospital(`${token} ค ลูกข่ายสิ้นสุด`, HospitalStatus.ACTIVE, "CHILD");
+    const free = await hospital(`${token} ง ลูกข่ายว่าง`, HospitalStatus.PENDING_VERIFICATION, "CHILD");
+    const unclassified = await hospital(`${token} จ ไม่กำหนด`, HospitalStatus.ACTIVE, null);
+    // RETIRED stays out of every network count and placement.
+    await hospital(`${token} ฉ ถอน`, HospitalStatus.RETIRED, null);
+    await hospital(`${token} ช ถอนแม่`, HospitalStatus.RETIRED, "PARENT");
+    await db.hospitalServiceArea.create({ data: { parentHospitalId: parent.id, childHospitalId: placed.id, createdByUserId: admin.userId } });
+    await db.hospitalServiceArea.create({
+      data: { parentHospitalId: parent.id, childHospitalId: ended.id, createdByUserId: admin.userId,
+        createdAt: new Date(Date.now() - 60_000), endedAt: new Date(), endedByUserId: admin.userId, endReason: "สิ้นสุด" },
+    });
+
+    const ids = async (placement: string): Promise<string[]> =>
+      (await listHospitalNetworkDirectoryForAdmin(admin, { filter: "network", placement, value: token })).items.map(({ id }) => id);
+    expect(await ids("all")).toEqual([parent.id, placed.id, ended.id, free.id, unclassified.id]);
+    expect(await ids("parent")).toEqual([parent.id]);
+    // A Child whose only area has ended has no active Parent.
+    expect(await ids("child_unplaced")).toEqual([ended.id, free.id]);
+    expect(await ids("unclassified")).toEqual([unclassified.id]);
+
+    const page = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "network", placement: "parent", value: token });
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({ id: parent.id, activeChildCount: 1 });
+    expect((await listHospitalNetworkDirectoryForAdmin(admin, { filter: "network", placement: "all", value: `${token} ข` })).items[0])
+      .toMatchObject({ id: placed.id, activeChildCount: 0 });
+
+    // The counts cover the whole non-RETIRED network, whatever the search and placement.
+    expect(page.networkCounts).toEqual({
+      parents: before.networkCounts!.parents + 1,
+      childrenWithoutParent: before.networkCounts!.childrenWithoutParent + 2,
+      unclassified: before.networkCounts!.unclassified + 1,
+      total: before.networkCounts!.total + 5,
+    });
+    const notRetired = { status: { not: HospitalStatus.RETIRED } } as const;
+    expect(page.networkCounts).toEqual({
+      parents: await db.hospital.count({ where: { ...notRetired, serviceAreaEligibility: { is: { kind: "PARENT" } } } }),
+      childrenWithoutParent: await db.hospital.count({
+        where: { ...notRetired, serviceAreaEligibility: { is: { kind: "CHILD" } }, serviceAreaAssignments: { none: { endedAt: null } } },
+      }),
+      unclassified: await db.hospital.count({ where: { ...notRetired, serviceAreaEligibility: { is: null } } }),
+      total: await db.hospital.count({ where: notRetired }),
+    });
+
+    // The placement applies to the network view only; the other views carry no counts.
+    const retiredView = await listHospitalNetworkDirectoryForAdmin(admin, { filter: "retired", placement: "parent", value: token });
+    expect(retiredView.items).toHaveLength(2);
+    expect(retiredView.networkCounts).toBeNull();
+    await expect(listHospitalNetworkDirectoryForAdmin(admin, { placement: "orphans" })).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it("refuses a non-ADMIN and a search longer than 100 characters", async () => {
     await expect(listHospitalNetworkDirectoryForAdmin(await user([Role.HOSPITAL]), {})).rejects.toBeInstanceOf(ForbiddenError);
     await expect(listHospitalNetworkDirectoryForAdmin(admin, { value: "ก".repeat(101) })).rejects.toBeInstanceOf(ValidationError);

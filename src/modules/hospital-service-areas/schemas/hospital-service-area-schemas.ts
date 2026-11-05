@@ -71,8 +71,11 @@ const directorySearch = z
   .max(HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH)
   .optional()
   .transform((value) => value || undefined);
+// Network-structure narrowing, applied only to the network view.
+export const HOSPITAL_DIRECTORY_PLACEMENT_VALUES = ["all", "parent", "child_unplaced", "unclassified"] as const;
 export const hospitalDirectoryQuerySchema = z.object({
   filter: z.enum(HOSPITAL_DIRECTORY_FILTER_VALUES).default("network"),
+  placement: z.enum(HOSPITAL_DIRECTORY_PLACEMENT_VALUES).default("all"),
   value: directorySearch,
   page: pageNumberSchema,
 }).strict();

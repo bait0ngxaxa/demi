@@ -192,12 +192,24 @@ export type HospitalNetworkDirectoryEntry = HospitalNetworkFacilitySummary & {
   /** ADR-0018 provenance: the Parent whose OWNER registered this Child, if any. */
   registeredForParentHospitalId: string | null;
   registeredForParentHospitalName: string | null;
+  /** Active Children of a PARENT row (counted, not listed); 0 for other rows. */
+  activeChildCount: number;
+};
+
+/** The structure of the whole network view (non-RETIRED), independent of the search and the placement filter. */
+export type HospitalNetworkCounts = {
+  parents: number;
+  childrenWithoutParent: number;
+  unclassified: number;
+  total: number;
 };
 
 export type HospitalNetworkDirectoryPage = PageNumberPosition & {
   items: HospitalNetworkDirectoryEntry[];
-  /** Hospitals matching the filter and search across all pages. */
+  /** Hospitals matching the filter, placement and search across all pages. */
   total: number;
+  /** Only for the network view. */
+  networkCounts: HospitalNetworkCounts | null;
 };
 
 /** N1-D3: the network view leaves RETIRED Hospitals out; they are listed only under "ถอนแล้ว". */
@@ -210,6 +222,36 @@ function directoryFilterWhere(filter: HospitalDirectoryQuery["filter"]): Prisma.
     case "retired":
       return { status: HospitalStatus.RETIRED };
   }
+}
+
+function placementWhere(placement: HospitalDirectoryQuery["placement"]): Prisma.HospitalWhereInput {
+  switch (placement) {
+    case "all":
+      return {};
+    case "parent":
+      return { serviceAreaEligibility: { is: { kind: "PARENT" } } };
+    case "child_unplaced":
+      return { serviceAreaEligibility: { is: { kind: "CHILD" } }, serviceAreaAssignments: { none: { endedAt: null } } };
+    case "unclassified":
+      return { serviceAreaEligibility: { is: null } };
+  }
+}
+
+/** One counting statement over the non-RETIRED network; no rows are loaded. */
+async function countNetworkStructure(tx: Prisma.TransactionClient): Promise<HospitalNetworkCounts> {
+  const [row] = await tx.$queryRaw<HospitalNetworkCounts[]>`
+    SELECT
+      count(*) FILTER (WHERE e."kind" = 'PARENT')::int AS "parents",
+      count(*) FILTER (WHERE e."kind" = 'CHILD' AND NOT EXISTS (
+        SELECT 1 FROM "HospitalServiceArea" a WHERE a."childHospitalId" = h."id" AND a."endedAt" IS NULL
+      ))::int AS "childrenWithoutParent",
+      count(*) FILTER (WHERE e."hospitalId" IS NULL)::int AS "unclassified",
+      count(*)::int AS "total"
+    FROM "Hospital" h
+    LEFT JOIN "HospitalServiceAreaEligibility" e ON e."hospitalId" = h."id"
+    WHERE h."status" <> 'RETIRED'::"HospitalStatus"`;
+  if (!row) throw new InfrastructureError();
+  return row;
 }
 
 function hospitalNameOrCodeWhere(value: string | undefined): Prisma.HospitalWhereInput {
@@ -225,10 +267,13 @@ export async function listHospitalNetworkDirectoryForAdmin(
   if (!actor) throw new ForbiddenError();
   const parsed = hospitalDirectoryQuerySchema.safeParse(input);
   if (!parsed.success) throw new ValidationError();
-  const { filter, value, page: requestedPage } = parsed.data;
+  const { filter, placement, value, page: requestedPage } = parsed.data;
   return operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkAreaGovern);
-    const where: Prisma.HospitalWhereInput = { AND: [directoryFilterWhere(filter), hospitalNameOrCodeWhere(value)] };
+    const where: Prisma.HospitalWhereInput = {
+      AND: [directoryFilterWhere(filter), filter === "network" ? placementWhere(placement) : {}, hospitalNameOrCodeWhere(value)],
+    };
+    const networkCounts = filter === "network" ? await countNetworkStructure(tx) : null;
     const total = await tx.hospital.count({ where });
     const { skip, ...position } = resolvePagePosition(requestedPage, total, HOSPITAL_DIRECTORY_PAGE_SIZE);
     const hospitals = await tx.hospital.findMany({
@@ -241,6 +286,7 @@ export async function listHospitalNetworkDirectoryForAdmin(
         serviceAreaEligibility: { select: { kind: true } },
         serviceAreaAssignments: { where: { endedAt: null }, take: 1, select: { parentHospitalId: true } },
         registeredForParentHospitalId: true,
+        _count: { select: { managedServiceAreas: { where: { endedAt: null } } } },
       },
     });
     // Only the Parents the page refers to: at most two per row.
@@ -255,11 +301,14 @@ export async function listHospitalNetworkDirectoryForAdmin(
     return {
       ...position,
       total,
-      items: hospitals.map(({ serviceAreaEligibility, serviceAreaAssignments, ...hospital }) => {
+      networkCounts,
+      items: hospitals.map(({ serviceAreaEligibility, serviceAreaAssignments, _count, ...hospital }) => {
         const networkParentId = serviceAreaAssignments[0]?.parentHospitalId ?? null;
+        const role = serviceAreaEligibility?.kind ?? null;
         return {
           ...hospital,
-          role: serviceAreaEligibility?.kind ?? null,
+          role,
+          activeChildCount: role === "PARENT" ? _count.managedServiceAreas : 0,
           networkParentId,
           networkParentName: networkParentId ? nameById.get(networkParentId) ?? null : null,
           registeredForParentHospitalName: hospital.registeredForParentHospitalId

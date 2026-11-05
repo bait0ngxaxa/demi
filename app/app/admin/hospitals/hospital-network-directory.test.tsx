@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  HospitalNetworkCounts,
   HospitalNetworkDirectoryEntry,
   HospitalNetworkDirectoryPage,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
@@ -16,7 +17,7 @@ vi.mock("@/modules/hospital-service-areas/transport/server-actions", () => ({
   retireHospitalsAction: vi.fn(),
 }));
 
-import { hospitalDirectoryHref, HospitalNetworkDirectory } from "./hospital-network-directory";
+import { hospitalDirectoryHref, HospitalNetworkDirectory, type HospitalDirectoryPlacement } from "./hospital-network-directory";
 
 function entry(
   id: string, status: HospitalNetworkDirectoryEntry["status"], role: HospitalNetworkDirectoryEntry["role"],
@@ -25,14 +26,20 @@ function entry(
   return {
     id, hospitalCode: `CODE-${id}`, name: `โรงพยาบาล ${id}`, status, role,
     networkParentId: null, networkParentName: null, registeredForParentHospitalId: null, registeredForParentHospitalName: null,
+    activeChildCount: 0,
     ...extra,
   };
 }
 
-function directoryPage(items: HospitalNetworkDirectoryEntry[], position: { page?: number; totalPages?: number; total?: number } = {}): HospitalNetworkDirectoryPage {
+type PageOptions = { page?: number; totalPages?: number; total?: number; networkCounts?: HospitalNetworkCounts | null };
+
+function directoryPage(items: HospitalNetworkDirectoryEntry[], position: PageOptions = {}): HospitalNetworkDirectoryPage {
   const page = position.page ?? 1;
   const totalPages = position.totalPages ?? 1;
-  return { items, page, totalPages, hasPreviousPage: page > 1, hasNextPage: page < totalPages, total: position.total ?? items.length };
+  return {
+    items, page, totalPages, hasPreviousPage: page > 1, hasNextPage: page < totalPages, total: position.total ?? items.length,
+    networkCounts: position.networkCounts ?? null,
+  };
 }
 
 const nonce = "11111111-1111-4111-8111-111111111111";
@@ -41,7 +48,11 @@ const bulkNonce = "22222222-2222-4222-8222-222222222222";
 function render(
   filter: "network" | "pending" | "retired",
   items: HospitalNetworkDirectoryEntry[],
-  options: { value?: string; page?: number; totalPages?: number; total?: number; onboardingPaths?: Record<string, "PENDING_APPLICATION" | "OPEN_INVITATION"> } = {},
+  options: PageOptions & {
+    value?: string;
+    placement?: HospitalDirectoryPlacement;
+    onboardingPaths?: Record<string, "PENDING_APPLICATION" | "OPEN_INVITATION">;
+  } = {},
 ): string {
   return renderToStaticMarkup(
     <HospitalNetworkDirectory
@@ -49,6 +60,7 @@ function render(
       directory={directoryPage(items, options)}
       filter={filter}
       onboardingPaths={options.onboardingPaths}
+      placement={options.placement}
       submissionNonce={nonce}
       value={options.value ?? ""}
     />,
@@ -128,6 +140,34 @@ describe("Hospital governance directory views", () => {
     expect(markup).toContain("โรงพยาบาล retired");
     expect(markup).toContain("คืนสู่รายชื่อรอสมัคร");
     expect(markup).toContain('href="/app/admin/hospitals/retired#hospital-retirement-heading"');
+  });
+
+  it("summarises the network structure and links each Parent's active Children", () => {
+    const markup = render("network", [entry("parent", "ACTIVE", "PARENT", { activeChildCount: 3 }), entry("child", "ACTIVE", "CHILD")], {
+      networkCounts: { parents: 12, childrenWithoutParent: 4, unclassified: 2, total: 40 },
+    });
+    expect(markup).toContain("แม่ข่าย 12 แห่ง · ลูกข่ายที่ยังไม่มีแม่ข่าย 4 แห่ง · ยังไม่กำหนดประเภท 2 แห่ง · ทั้งหมด 40 แห่ง");
+    expect(markup).toContain('href="/app/admin/hospitals/parent">ลูกข่าย 3 แห่ง</a>');
+    // A Child row has no child count.
+    expect(markup.match(/ลูกข่าย \d+ แห่ง<\/a>/gu)).toHaveLength(1);
+  });
+
+  it("offers placement links that keep the search, start on page 1 and are kept by paging and searching", () => {
+    const markup = render("network", [entry("free", "ACTIVE", "CHILD")], {
+      placement: "child_unplaced", value: "ก", page: 2, totalPages: 3, total: 60,
+    });
+    expect(markup).toContain('href="/app/admin/hospitals?value=%E0%B8%81"');
+    expect(markup).toContain('href="/app/admin/hospitals?placement=parent&amp;value=%E0%B8%81"');
+    expect(markup).toContain('href="/app/admin/hospitals?placement=unclassified&amp;value=%E0%B8%81"');
+    expect(markup).toContain('aria-current="page" class="inline-flex min-h-11 items-center rounded-control border');
+    expect(markup).toContain('href="/app/admin/hospitals?placement=child_unplaced&amp;value=%E0%B8%81&amp;page=3"');
+    expect(markup).toContain('href="/app/admin/hospitals?placement=child_unplaced&amp;value=%E0%B8%81"');
+    expect(markup).toContain('<input type="hidden" name="placement" value="child_unplaced"/>');
+  });
+
+  it("drops the placement outside the network view", () => {
+    expect(hospitalDirectoryHref("pending", "x", 2, "parent")).toBe("/app/admin/hospitals?status=pending&value=x&page=2");
+    expect(hospitalDirectoryHref("network", "", 1, "unclassified")).toBe("/app/admin/hospitals?placement=unclassified");
   });
 
   it("says when a search finds nothing", () => {
