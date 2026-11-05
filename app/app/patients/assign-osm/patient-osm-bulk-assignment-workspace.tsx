@@ -297,6 +297,9 @@ export function PatientOsmBulkAssignmentWorkspace({
   // The selection spans pages and searches of one Hospital; the page remounts this workspace
   // for another Hospital, which starts with an empty selection.
   const [selection, setSelection] = useState<ReadonlyMap<string, SelectedPatient>>(() => new Map());
+  const [review, setReview] = useState<AssignmentReview | null>(null);
+  /** Why patients just left the selection; shown until the owner opens a new review. */
+  const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
 
   // The payload of an unconfirmed request, including its submissionNonce, is kept by the hook
   // and re-sent unchanged; nothing here generates a new nonce.
@@ -332,7 +335,23 @@ export function PatientOsmBulkAssignmentWorkspace({
         setSelection(new Map());
         router.refresh();
       } else if (result.code === "CONFLICT") {
-        // The selection is kept so the owner can adjust it; the server rejected the whole batch.
+        // The server rejected the whole batch. Named patients leave the selection; everyone else
+        // stays selected. No request is pending here, so closing the review drops nothing.
+        const unavailable = result.unavailableRelationshipIds ?? [];
+
+        if (unavailable.length > 0) {
+          setSelection((current) => {
+            const next = new Map(current);
+            for (const relationshipId of unavailable) {
+              next.delete(relationshipId);
+            }
+            return next;
+          });
+          setReview(null);
+          setSelectionNotice(result.message);
+        }
+        // The current page then drops patients that now have an OSM.
+        router.refresh();
         notify.warning("ไม่สามารถมอบหมายได้ ระบบไม่บันทึกรายการใด กรุณาตรวจสอบข้อมูลล่าสุด");
       } else if (result.code === "FORBIDDEN") {
         notify.error("ไม่มีสิทธิ์มอบหมาย อสม. ในโรงพยาบาลนี้");
@@ -363,7 +382,6 @@ export function PatientOsmBulkAssignmentWorkspace({
     resendUnconfirmed();
   }
   const [selectedOsm, setSelectedOsm] = useState<PatientOsmCandidate | null>(null);
-  const [review, setReview] = useState<AssignmentReview | null>(null);
   const reviewTrigger = useRef<HTMLButtonElement>(null);
   const returnToEdit = useRef<HTMLButtonElement>(null);
   const osmHeading = useRef<HTMLHeadingElement>(null);
@@ -427,6 +445,7 @@ export function PatientOsmBulkAssignmentWorkspace({
       return;
     }
     // One nonce per confirmation: a repeated submit of the same confirmation is replayed, not re-applied.
+    setSelectionNotice(null);
     setReview({
       hospitalId: selectedScope.hospitalId,
       hospitalName: selectedScope.hospitalName,
@@ -531,6 +550,12 @@ export function PatientOsmBulkAssignmentWorkspace({
                     ค้นหา
                   </PendingSubmitButton>
                 </Form>
+
+                {selectionNotice ? (
+                  <Alert className="mt-5" role="alert" variant="warning">
+                    {selectionNotice}
+                  </Alert>
+                ) : null}
 
                 <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                   <p aria-live="polite" className="font-semibold text-text" role="status">
@@ -740,16 +765,17 @@ export function PatientOsmBulkAssignmentWorkspace({
                     </ul>
                     {review.patients.length > REVIEW_PATIENT_PREVIEW_LIMIT ? (
                       <p className="text-sm text-text-muted">
-                        และอีก {review.patients.length - REVIEW_PATIENT_PREVIEW_LIMIT} คนที่เลือกไว้ในรายการบนหน้า
+                        และอีก {review.patients.length - REVIEW_PATIENT_PREVIEW_LIMIT} คนที่เลือกไว้
                       </p>
                     ) : null}
                   </section>
                   {reviewStale && !unknownOutcome ? (
                     <Alert role="alert" variant="warning">
-                      รายชื่อผู้ป่วยหรือโรงพยาบาลเปลี่ยนไปหลังเปิดหน้าตรวจสอบ กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย
+                      โรงพยาบาลเปลี่ยนไปหลังเปิดหน้าตรวจสอบ กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย
                     </Alert>
                   ) : null}
-                  {state.status === "ERROR" ? (
+                  {/* Unavailable patients were already dropped and explained beside the selection. */}
+                  {state.status === "ERROR" && !state.unavailableRelationshipIds?.length ? (
                     <Alert variant="danger">
                       <p className="font-semibold">ดำเนินการไม่สำเร็จ</p>
                       <p className="mt-1">{state.message}</p>

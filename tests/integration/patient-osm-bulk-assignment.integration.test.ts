@@ -20,6 +20,7 @@ import {
 } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
 import { ForbiddenError } from "@/shared/errors/application-error";
+import { BulkAssignmentSelectionUnavailableError } from "@/modules/patient-assignment/services/patient-osm-bulk-assignment-errors";
 
 const prisma = getPrisma();
 let sequence = 0;
@@ -426,25 +427,32 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(await prisma.patientOsmAssignment.count()).toBe(0);
   });
 
-  it("rolls the whole batch back when one patient already has an OSM, and never reassigns", async () => {
+  it("rolls the whole batch back when one patient already has an OSM or has left care, naming exactly those", async () => {
     const hospital = await createHospital("BULK-ASSIGN-ROLLBACK");
     const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
     const osmUserId = await createOsm(hospital.id);
     const otherOsmUserId = await createOsm(hospital.id);
-    const ids = await createPatients(owner.actor, hospital.id, 4, "rollback");
+    const ids = await createPatients(owner.actor, hospital.id, 5, "rollback");
     await assignOsmToPatient(owner.actor, {
       patientHospitalRelationshipId: ids[2] as string,
       osmUserId: otherOsmUserId,
     });
+    await prisma.patientHospitalRelationship.update({
+      where: { id: ids[4] as string },
+      data: { endedAt: new Date(), endedByUserId: owner.userId, endReason: "สิ้นสุดการดูแลสังเคราะห์" },
+    });
 
-    await expect(
-      assignOsmToPatients(owner.actor, {
-        hospitalId: hospital.id,
-        osmUserId,
-        patientHospitalRelationshipIds: ids,
-        submissionNonce: newNonce(),
-      }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const rejected = assignOsmToPatients(owner.actor, {
+      hospitalId: hospital.id,
+      osmUserId,
+      patientHospitalRelationshipIds: ids,
+      submissionNonce: newNonce(),
+    });
+    await expect(rejected).rejects.toBeInstanceOf(BulkAssignmentSelectionUnavailableError);
+    await expect(rejected).rejects.toMatchObject({
+      code: "CONFLICT",
+      unavailableRelationshipIds: [ids[2] as string, ids[4] as string].sort(),
+    });
 
     expect(await activeAssignmentCount()).toBe(1);
     expect(await prisma.patientOsmAssignment.count()).toBe(1);

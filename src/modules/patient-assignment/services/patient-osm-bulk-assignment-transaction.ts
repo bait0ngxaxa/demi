@@ -7,11 +7,9 @@ import { HospitalStatus, Prisma, Role } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { recordAuditEvents } from "@/modules/audit/services/audit-service";
-import {
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
+
+import { BulkAssignmentSelectionUnavailableError } from "./patient-osm-bulk-assignment-errors";
 
 import {
   assertPatientOsmAssignmentPolicy,
@@ -142,16 +140,20 @@ export async function assignOsmToPatientsInTransaction(
     },
   });
 
-  if (relationships.length !== input.patientHospitalRelationshipIds.length) {
-    throw new NotFoundError();
-  }
-
+  // A selected patient of another Hospital stays a denial, never a per-patient detail.
   if (relationships.some(({ hospitalId }) => hospitalId !== input.hospitalId)) {
     throw new ForbiddenError();
   }
 
-  if (relationships.some(({ osmAssignments }) => osmAssignments.length > 0)) {
-    throw new ConflictError("A selected patient already has a current OSM");
+  // Not an active patient of this Hospital any more, or already has a current OSM: reject the
+  // whole batch and name exactly those submitted ids so the owner can drop them.
+  const available = new Set(
+    relationships.filter(({ osmAssignments }) => osmAssignments.length === 0).map(({ id }) => id),
+  );
+  const unavailable = input.patientHospitalRelationshipIds.filter((id) => !available.has(id));
+
+  if (unavailable.length > 0) {
+    throw new BulkAssignmentSelectionUnavailableError(unavailable);
   }
 
   const created = await transaction.patientOsmAssignment.createManyAndReturn({

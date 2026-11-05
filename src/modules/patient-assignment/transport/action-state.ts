@@ -23,6 +23,8 @@ export type PatientOsmBulkAssignmentActionState =
       status: "ERROR";
       code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
       message: string;
+      /** CONFLICT only: submitted patients that blocked the batch and should leave the selection. */
+      unavailableRelationshipIds?: string[];
     }
   | { status: "SUCCESS"; result: PatientOsmBulkAssignmentResult };
 

@@ -18,6 +18,7 @@ import {
   assignOsmToPatients,
   type PatientOsmAssignmentDatabase,
 } from "./patient-osm-assignment-service";
+import { BulkAssignmentSelectionUnavailableError } from "./patient-osm-bulk-assignment-errors";
 
 type AuditRecord = {
   actorUserId: string | null;
@@ -385,9 +386,9 @@ describe("assignOsmToPatients", () => {
     };
     const { database, state } = createFakeDatabase({ relationships });
 
-    await expect(
-      assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now }),
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    const rejected = assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now });
+    await expect(rejected).rejects.toBeInstanceOf(BulkAssignmentSelectionUnavailableError);
+    await expect(rejected).rejects.toMatchObject({ code: "CONFLICT", unavailableRelationshipIds: [ids[1]] });
     expect(activeCount(state)).toBe(1);
     expect(state.relationships.get(ids[1]!)?.assignments).toEqual([
       { id: "existing", osmUserId: "55555555-5555-4555-8555-555555555555", endedAt: null },
@@ -395,17 +396,18 @@ describe("assignOsmToPatients", () => {
     expect(state.audits).toEqual([]);
   });
 
-  it("rejects a selection that includes an unknown patient and rolls back", async () => {
+  it("names an unknown or ended patient as unavailable and rolls back", async () => {
     const ids = relationshipIds(3);
     const { database, state } = createFakeDatabase({ relationships: freeRelationships(ids.slice(0, 2)) });
 
     await expect(
       assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    ).rejects.toMatchObject({ code: "CONFLICT", unavailableRelationshipIds: [ids[2]] });
     expect(activeCount(state)).toBe(0);
+    expect(state.audits).toEqual([]);
   });
 
-  it("rejects a patient without the patient role", async () => {
+  it("names a patient without the patient role as unavailable", async () => {
     const ids = relationshipIds(2);
     const relationships = freeRelationships(ids);
     relationships[0] = { ...relationships[0]!, patientRole: false };
@@ -413,7 +415,40 @@ describe("assignOsmToPatients", () => {
 
     await expect(
       assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    ).rejects.toMatchObject({ code: "CONFLICT", unavailableRelationshipIds: [ids[0]] });
+    expect(activeCount(state)).toBe(0);
+  });
+
+  it("names every missing and already-assigned patient at once, sorted, and only submitted ids", async () => {
+    const ids = relationshipIds(5);
+    const relationships = freeRelationships(ids.slice(0, 4));
+    relationships[3] = {
+      ...relationships[3]!,
+      assignments: [{ id: "existing", osmUserId: "55555555-5555-4555-8555-555555555555", endedAt: null }],
+    };
+    relationships[0] = {
+      ...relationships[0]!,
+      assignments: [{ id: "existing-0", osmUserId: "55555555-5555-4555-8555-555555555555", endedAt: null }],
+    };
+    const { database, state } = createFakeDatabase({ relationships });
+    const submitted = [ids[4]!, ids[3]!, ids[2]!, ids[1]!, ids[0]!];
+
+    await expect(
+      assignOsmToPatients(actorWith(MembershipType.OWNER), request(submitted), { database, now: () => now }),
+    ).rejects.toMatchObject({ unavailableRelationshipIds: [ids[0], ids[3], ids[4]] });
+    expect(activeCount(state)).toBe(2);
+    expect(state.audits).toEqual([]);
+  });
+
+  it("keeps a patient of another Hospital a denial even when others are unavailable", async () => {
+    const ids = relationshipIds(3);
+    const relationships = freeRelationships(ids.slice(0, 2));
+    relationships[1] = { ...relationships[1]!, hospitalId: otherHospitalId };
+    const { database, state } = createFakeDatabase({ relationships });
+
+    await expect(
+      assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids), { database, now: () => now }),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(activeCount(state)).toBe(0);
   });
 
@@ -446,6 +481,13 @@ describe("assignOsmToPatients", () => {
         transactionRetries: 0,
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(
+      assignOsmToPatients(actorWith(MembershipType.OWNER), request(ids, { submissionNonce: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" }), {
+        database,
+        now: () => now,
+        transactionRetries: 0,
+      }),
+    ).rejects.not.toBeInstanceOf(BulkAssignmentSelectionUnavailableError);
     expect(activeCount(state)).toBe(0);
     expect(state.audits).toEqual([]);
   });

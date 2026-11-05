@@ -11,6 +11,7 @@ import {
   patientOsmUnassignmentRequestSchema,
 } from "../schemas/patient-osm-assignment-schemas";
 import { listPatientOsmBulkCandidates } from "../services/patient-osm-assignment-query-service";
+import { BulkAssignmentSelectionUnavailableError } from "../services/patient-osm-bulk-assignment-errors";
 import {
   assignOsmToPatient,
   assignOsmToPatients,
@@ -99,7 +100,16 @@ export async function assignOsmToPatientAction(
 function mapBulkAssignmentError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
+  unavailableRelationshipIds?: string[];
 } {
+  if (error instanceof BulkAssignmentSelectionUnavailableError) {
+    return {
+      code: "CONFLICT",
+      message: `ผู้ป่วย ${error.unavailableRelationshipIds.length} คนที่เลือกมี อสม. ผู้รับผิดชอบแล้วหรือไม่อยู่ในความดูแลของโรงพยาบาลนี้แล้ว ระบบไม่บันทึกรายการใดเลย และนำออกจากรายการที่เลือกให้แล้ว กรุณาตรวจสอบแล้วยืนยันอีกครั้ง`,
+      unavailableRelationshipIds: [...error.unavailableRelationshipIds],
+    };
+  }
+
   if (error instanceof ApplicationError) {
     if (error.code === "CONFLICT") {
       return {

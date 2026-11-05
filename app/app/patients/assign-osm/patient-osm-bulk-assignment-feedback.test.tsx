@@ -268,11 +268,14 @@ describe("bulk OSM assignment feedback", () => {
     await confirmAssignment();
     expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
 
+    // A conflict refreshes the list so patients that now have an OSM drop out.
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+
     mocks.bulk.mockResolvedValue({ status: "ERROR", code: "FORBIDDEN", message: "ไม่มีสิทธิ์" });
     await confirmAssignment();
     expect(mocks.notifyError).toHaveBeenCalledTimes(1);
     expect(mocks.notifySuccess).not.toHaveBeenCalled();
-    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -482,7 +485,10 @@ describe("bulk OSM assignment feedback", () => {
       );
     });
 
-    expect(dialog()?.textContent).toContain("กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย");
+    expect(dialog()?.textContent).toContain(
+      "โรงพยาบาลเปลี่ยนไปหลังเปิดหน้าตรวจสอบ กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย",
+    );
+    expect(dialog()?.textContent).not.toContain("รายชื่อผู้ป่วยหรือโรงพยาบาล");
     expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(true);
     await confirmAssignment();
     expect(mocks.bulk).not.toHaveBeenCalled();
@@ -583,12 +589,58 @@ describe("bulk OSM assignment feedback", () => {
 
     expect(dialog()?.textContent).toContain("บางรายการมี อสม. ผู้รับผิดชอบแล้ว");
     expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
     await act(async () => buttonByText("กลับไปแก้ไข").click());
     expect(container.textContent).toContain("เลือกแล้ว 2 คน");
     expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, true]);
     await act(async () => patientCheckboxes()[1]!.click());
     await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
     expect(reviewedIds()).toEqual(["relationship-1"]);
+  });
+
+  it("drops the patients the server names as unavailable, keeps the rest, and confirms only those", async () => {
+    const unavailableMessage =
+      "ผู้ป่วย 1 คนที่เลือกมี อสม. ผู้รับผิดชอบแล้วหรือไม่อยู่ในความดูแลของโรงพยาบาลนี้แล้ว ระบบไม่บันทึกรายการใดเลย และนำออกจากรายการที่เลือกให้แล้ว กรุณาตรวจสอบแล้วยืนยันอีกครั้ง";
+    mocks.bulk.mockResolvedValueOnce({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: unavailableMessage,
+      unavailableRelationshipIds: ["relationship-4"],
+    });
+    await render(scope, patientPage(1, [1, 2]));
+    await act(async () => selectAllOnPage().click());
+    await render(scope, patientPage(2, [3, 4]));
+    await act(async () => selectAllOnPage().click());
+    await act(async () => container.querySelector<HTMLInputElement>('input[name="osm-candidate"]')!.click());
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+    expect(reviewedIds()).toEqual(["relationship-1", "relationship-2", "relationship-3", "relationship-4"]);
+
+    await confirmAssignment();
+
+    expect(dialog()).toBeNull();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain(unavailableMessage);
+    expect(container.textContent).toContain("เลือกแล้ว 3 คน");
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, false]);
+    // The summary sits below the notice in the patient panel.
+    const summary = [...container.querySelectorAll('[role="status"]')].find((node) => node.textContent?.includes("เลือกแล้ว"));
+    expect(alert!.compareDocumentPosition(summary!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // After refresh the page no longer lists the patient that now has an OSM.
+    await render(scope, patientPage(2, [3]));
+    mocks.bulk.mockResolvedValueOnce(bulkResult("ASSIGNED", { assignedCount: 3 }));
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย (3 คน)").click());
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(dialog()?.textContent).not.toContain("ดำเนินการไม่สำเร็จ");
+    expect(reviewedIds()).toEqual(["relationship-1", "relationship-2", "relationship-3"]);
+    const first = mocks.bulk.mock.calls[0][1] as FormData;
+    await confirmAssignment();
+    const second = mocks.bulk.mock.calls[1][1] as FormData;
+    expect(second.getAll("patientHospitalRelationshipId")).toEqual(["relationship-1", "relationship-2", "relationship-3"]);
+    expect(second.get("submissionNonce")).not.toBe(first.get("submissionNonce"));
+    expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);
   });
 
   it("pages the OSM picker 10 at a time and keeps the chosen OSM across pages and searches", async () => {
@@ -713,7 +765,8 @@ describe("bulk OSM assignment feedback", () => {
     await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
 
     expect(dialog()?.querySelectorAll('section[aria-label="ผู้ป่วยที่จะได้รับการมอบหมาย"] li')).toHaveLength(8);
-    expect(dialog()?.textContent).toContain("และอีก 4 คน");
+    expect(dialog()?.textContent).toContain("และอีก 4 คนที่เลือกไว้");
+    expect(dialog()?.textContent).not.toContain("ในรายการบนหน้า");
     expect(confirmForm().querySelectorAll('input[name="patientHospitalRelationshipId"]')).toHaveLength(12);
   });
 });

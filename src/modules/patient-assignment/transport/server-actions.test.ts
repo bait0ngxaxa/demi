@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { BulkAssignmentSelectionUnavailableError } from "../services/patient-osm-bulk-assignment-errors";
 
 const mockedActor = vi.hoisted(() => vi.fn());
 const mockedAssign = vi.hoisted(() => vi.fn());
@@ -221,6 +222,21 @@ describe("Patient assignment Server Actions", () => {
       });
     });
 
+    it("names the unavailable patients so the workspace can drop them", async () => {
+      const unavailable = ["66666666-6666-4666-8666-666666666666", "77777777-7777-4777-8777-777777777777"];
+      mockedBulkAssign.mockRejectedValueOnce(new BulkAssignmentSelectionUnavailableError([unavailable[1]!, unavailable[0]!]));
+
+      const result = await bulkAssignOsmToPatientsAction(initialPatientOsmBulkAssignmentActionState, bulkFormData());
+
+      expect(result).toEqual({
+        status: "ERROR",
+        code: "CONFLICT",
+        message:
+          "ผู้ป่วย 2 คนที่เลือกมี อสม. ผู้รับผิดชอบแล้วหรือไม่อยู่ในความดูแลของโรงพยาบาลนี้แล้ว ระบบไม่บันทึกรายการใดเลย และนำออกจากรายการที่เลือกให้แล้ว กรุณาตรวจสอบแล้วยืนยันอีกครั้ง",
+        unavailableRelationshipIds: unavailable,
+      });
+    });
+
     it("maps an already-assigned or vanished patient to a no-change conflict message", async () => {
       for (const error of [new ConflictError(), new NotFoundError()]) {
         mockedBulkAssign.mockRejectedValueOnce(error);
@@ -231,6 +247,7 @@ describe("Patient assignment Server Actions", () => {
         );
 
         expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
+        expect(result).not.toHaveProperty("unavailableRelationshipIds");
         const message = result.status === "ERROR" ? result.message : "";
         expect(message).toContain("ระบบไม่บันทึกรายการใดเลย");
         // The workspace keeps the selection after a conflict, so the message must not ask for a reload.
