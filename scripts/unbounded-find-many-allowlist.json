@@ -2,679 +2,2472 @@
   {
     "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
     "function": "lockCaregiverInvitationIdentityInTransaction",
-    "model": "hospitalMembership",
+    "target": "user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "target": "user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One identity's MEMBER memberships at one Hospital, locked for a takeover."
   },
   {
     "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
     "function": "lockCaregiverInvitationIdentityInTransaction",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
+    "reason": "One identity's OSM relationships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "target": "hospitalMembership",
+    "occurrence": 2,
+    "reason": "One identity's MEMBER memberships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "target": "osmHospitalRelationship",
+    "occurrence": 2,
     "reason": "One identity's OSM relationships at one Hospital, locked for a takeover."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.roles",
+    "occurrence": 2,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.memberships",
+    "occurrence": 2,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 2,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "hospitalMembership.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "hospitalMembership.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "osmHospitalRelationship.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "osmHospitalRelationship.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "osmHospitalRelationship.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "patientHospitalRelationship.patientProfile.person.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "locateTarget",
+    "target": "patientHospitalRelationship.patientProfile.person.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "caregiverPatientProfiles",
-    "model": "caregiverRelationship",
+    "target": "caregiverRelationship",
+    "occurrence": 1,
     "reason": "One caregiver's own relationships."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "caregiverPatientProfiles",
-    "model": "caregiverAppointmentGrant",
+    "target": "caregiverAppointmentGrant",
+    "occurrence": 1,
     "reason": "One caregiver's own appointment grants."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "caregiverPatientProfiles",
-    "model": "caregiverResourceGrant",
+    "target": "caregiverResourceGrant",
+    "occurrence": 1,
     "reason": "One caregiver's own resource grants."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "findEligibleLinePasswordRecoveryTarget",
-    "model": "lineAccountBinding",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "findEligibleLinePasswordRecoveryTarget",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "findEligibleLinePasswordRecoveryTarget",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "findEligibleLinePasswordRecoveryTarget",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "One user's linked LINE bindings (at most one active)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "isCaregiverOnlyTarget",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "Care relationships of the given patient profiles (an id IN list of one caregiver's patients)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "allTargetRelationshipsInHospital",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "One patient's own care relationships."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "allTargetRelationshipsInHospital",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "allTargetRelationshipsInHospital",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "authorizeIssuerAndTarget",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "authorizeIssuerAndTarget",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "restoreTakeoverRelationships",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One user's suspended memberships at one Hospital, restored by count."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "restoreTakeoverRelationships",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "One user's suspended OSM relationships at one Hospital, restored by count."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "authorizeBreakGlassTarget",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "authorizeBreakGlassTarget",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "authorizeBreakGlassTarget",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "switchIdentityAndFinalize",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "switchIdentityAndFinalize",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "switchIdentityAndFinalize",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "recoverPlatformAdminPassword",
+    "target": "person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "recoverPlatformAdminPassword",
+    "target": "person.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "recoverPlatformAdminPassword",
+    "target": "person.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "reconcilePlatformAdminBreakGlassPassword",
+    "target": "person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "searchMediatedPasswordResetTargets",
-    "model": "hospitalMembership",
+    "target": "person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account). / id IN the takeover lock's held OWNER memberships."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "searchMediatedPasswordResetTargets",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "searchMediatedPasswordResetTargets",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "One patient's own care relationships."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "searchMediatedPasswordResetTargets",
-    "model": "hospital",
+    "target": "hospitalMembership",
+    "occurrence": 2,
+    "reason": "One user's own relationships (a handful per account). / id IN the takeover lock's held OWNER memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: every ACTIVE Hospital, one result row each, for a caregiver-only reset target; page or narrow it."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
-    "model": "workforceActivation",
+    "target": "workforceActivation",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled resets; operationally small but not paged."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
-    "model": "accountRecovery",
+    "target": "accountRecovery",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled recoveries; operationally small but not paged."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
-    "model": "linePasswordRecoveryCapability",
+    "target": "linePasswordRecoveryCapability",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled LINE recoveries; operationally small but not paged."
   },
   {
     "file": "src/modules/account-security/services/password-change-notification.ts",
     "function": "notifyPasswordChangeLineBindings",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "One user's linked LINE bindings."
   },
   {
     "file": "src/modules/account-security/services/password-change-service.ts",
     "function": "listUnresolvedPasswordChangeOperations",
-    "model": "user",
+    "target": "user",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: reconciliation CLI over users with an unfinished password change; operationally small, not a page."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-access-service.ts",
+    "function": "resolveAppointmentAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-line-notification-delivery-service.ts",
+    "function": "currentEligibility",
+    "target": "patientAppointment.patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-line-notification-outbox-service.ts",
+    "function": "createAppointmentLineNotificationIntent",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-line-notification-preference-service.ts",
+    "function": "loadCurrentNotificationUser",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/appointments/services/appointment-line-notification-recipient-service.ts",
     "function": "activeCaregiverRecipients",
-    "model": "caregiverAppointmentGrant",
+    "target": "caregiverAppointmentGrant",
+    "occurrence": 1,
     "reason": "Caregiver grants of one care relationship."
   },
   {
     "file": "src/modules/appointments/services/appointment-reschedule-history-service.ts",
     "function": "getAppointmentRescheduleHistory",
-    "model": "patientAppointmentRescheduleRequest",
+    "target": "patientAppointmentRescheduleRequest",
+    "occurrence": 1,
     "reason": "Reschedule requests of one appointment."
   },
   {
     "file": "src/modules/appointments/services/work-appointment-query-service.ts",
     "function": "resolveWorkScopes",
-    "model": "hospital",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/appointments/services/work-appointment-query-service.ts",
+    "function": "resolveWorkScopes",
+    "target": "hospital",
+    "occurrence": 1,
+    "reason": "The actor's own direct Hospitals (workspace scopes). / The actor's own OSM Hospitals (workspace scopes)."
+  },
+  {
+    "file": "src/modules/appointments/services/work-appointment-query-service.ts",
+    "function": "resolveWorkScopes",
+    "target": "hospital",
+    "occurrence": 2,
     "reason": "The actor's own direct Hospitals (workspace scopes). / The actor's own OSM Hospitals (workspace scopes)."
   },
   {
     "file": "src/modules/appointments/services/work-appointment-query-service.ts",
     "function": "listResponsibleOptions",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: /app/appointments responsible-staff filter loads the Hospital operator roster; move to a server search."
+  },
+  {
+    "file": "src/modules/auth/services/actor-context-service.ts",
+    "function": "readActorUser",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/auth/services/actor-context-service.ts",
+    "function": "readActorUser",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/auth/services/actor-context-service.ts",
+    "function": "readActorUser",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
   },
   {
     "file": "src/modules/auth/services/actor-workspace-service.ts",
     "function": "listActorHospitalWorkspaces",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "id IN the actor's own Hospital ids."
   },
   {
     "file": "src/modules/auth/services/auth-attempt-throttle-service.ts",
     "function": "isBlocked",
-    "model": "authenticationAttemptThrottleBucket",
+    "target": "authenticationAttemptThrottleBucket",
+    "occurrence": 1,
     "reason": "id IN the throttle keys of one attempt (a few keys)."
   },
   {
     "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
     "function": "loadPageItems",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "id IN one care-tracking page of relationships (at most 20)."
   },
   {
     "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
     "function": "loadPageItems",
-    "model": "patientProgram",
+    "target": "patientProgram",
+    "occurrence": 1,
     "reason": "Active Programs of one care-tracking page (at most 20)."
   },
   {
     "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
     "function": "listCareTrackingScopes",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own operated Hospitals (scope selector). / The actor's own OSM Hospitals (scope selector)."
+  },
+  {
+    "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
+    "function": "listCareTrackingScopes",
+    "target": "hospital",
+    "occurrence": 2,
+    "reason": "The actor's own operated Hospitals (scope selector). / The actor's own OSM Hospitals (scope selector)."
+  },
+  {
+    "file": "src/modules/family/services/appointment-grant-management-query-service.ts",
+    "function": "getAppointmentGrantManagement",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/family/services/caregiver-relationship-query-service.ts",
+    "function": "getFamilyManagementOverview",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/family/services/caregiver-relationship-service.ts",
+    "function": "assertActiveUser",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/family/services/caregiver-relationship-service.ts",
     "function": "toRequestedSharing",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "id IN one invitation's appointment-sharing relationships."
   },
   {
     "file": "src/modules/family/services/caregiver-relationship-service.ts",
     "function": "revokeRelationshipGrants",
-    "model": "caregiverAppointmentGrant",
+    "target": "caregiverAppointmentGrant",
+    "occurrence": 1,
     "reason": "Grants of one caregiver relationship being revoked."
   },
   {
     "file": "src/modules/family/services/caregiver-relationship-service.ts",
     "function": "revokeRelationshipGrants",
-    "model": "caregiverResourceGrant",
+    "target": "caregiverResourceGrant",
+    "occurrence": 1,
     "reason": "Grants of one caregiver relationship being revoked."
+  },
+  {
+    "file": "src/modules/family/services/family-health-summary-query-service.ts",
+    "function": "getFamilyHealthSummary",
+    "target": "caregiverResourceGrant.patientProfile.hospitalRelationships.goalPlans.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/family/services/family-health-summary-query-service.ts",
+    "function": "getFamilyHealthSummary",
+    "target": "caregiverResourceGrant.patientProfile.personalMedications.schedules",
+    "occurrence": 1,
+    "reason": "One medication's own dose schedules."
+  },
+  {
+    "file": "src/modules/followups/services/followup-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/followups/services/followup-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/followups/services/followup-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/followups/services/followup-access-service.ts",
+    "function": "resolveFollowupAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/goals/services/goal-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/goals/services/goal-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/goals/services/goal-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/goals/services/goal-access-service.ts",
+    "function": "resolveGoalAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getGoalPlanDetail",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getGoalPlanDetailForProgram",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessibleGoalPlanOptions",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessiblePreProgramGoalPlanOptions",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessibleGoalPlanOptionsForProgram",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessibleGoalPlanActivityContext",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessiblePreProgramGoalPlanActivityContext",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-query-service.ts",
+    "function": "getAccessibleGoalPlanActivityContextForProgram",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/goals/services/goal-service.ts",
+    "function": "createInTransaction",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
   },
   {
     "file": "src/modules/hospital-contact/services/hospital-contact-service.ts",
     "function": "listEligibleHospitalContactOwnerHospitals",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own OWNER Hospitals."
   },
   {
     "file": "src/modules/hospital-contact/services/hospital-contact-work-query-service.ts",
     "function": "listWorkHospitalContacts",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own work Hospitals."
   },
   {
     "file": "src/modules/hospital-content/services/hospital-content-image-service.ts",
     "function": "readOrderedImages",
-    "model": "hospitalContentImage",
+    "target": "hospitalContentImage",
+    "occurrence": 1,
     "reason": "Images of one content item (capped by the upload rules)."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-patient-query-service.ts",
+    "function": "listPatientHospitalContent",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-patient-query-service.ts",
+    "function": "getPatientHospitalContent",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-service.ts",
+    "function": "readCurrentDetail",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
   },
   {
     "file": "src/modules/hospital-content/services/hospital-content-service.ts",
     "function": "listEligibleHospitalContentOwnerHospitals",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own OWNER Hospitals."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-service.ts",
+    "function": "readHospitalContentForOwner",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-service.ts",
+    "function": "reconcileHospitalContentCreate",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-work-query-service.ts",
+    "function": "listHospitalWorkContent",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-work-query-service.ts",
+    "function": "getHospitalWorkContent",
+    "target": "hospitalContent.images",
+    "occurrence": 1,
+    "reason": "At most HOSPITAL_CONTENT_IMAGE_LIMIT (3) images per content item."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "assertPlatformAdminInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
     "function": "retireHospitalsInTransaction",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
+    "reason": "id IN the Hospitals of one bulk retirement request."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "retireHospitalsInTransaction",
+    "target": "hospital.memberships",
+    "occurrence": 1,
+    "reason": "Open OWNER invitations of one Hospital being retired."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "retireHospitalsInTransaction",
+    "target": "hospital",
+    "occurrence": 2,
     "reason": "id IN the Hospitals of one bulk retirement request."
   },
   {
     "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
     "function": "evaluateRegistrationRows",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: ADMIN bulk import reads every Hospital name/code server-side for duplicate detection (never shipped)."
   },
   {
     "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
     "function": "findReplayedBulkRegistration",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "Hospitals of one import's registration nonces (one file's rows)."
   },
   {
     "file": "src/modules/hospital-governance/services/hospital-owner-recovery-readiness-service.ts",
     "function": "countSoleActiveOwnerHospitals",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "id IN the Hospitals the actor owns."
   },
   {
     "file": "src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts",
+    "function": "findOperatorContext",
+    "target": "hospitalMembership.hospital.managedServiceAreas",
+    "occurrence": 1,
+    "reason": "One Parent's active Child areas: the network scope of that Parent."
+  },
+  {
+    "file": "src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts",
+    "function": "findAdminContext",
+    "target": "hospital.managedServiceAreas",
+    "occurrence": 1,
+    "reason": "One Parent's active Child areas: the network scope of that Parent."
+  },
+  {
+    "file": "src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts",
     "function": "getHospitalHierarchyDirectory",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "FOLLOW-UP: platform ADMIN global reporting directory loads every non-retired Hospital; page or search it."
+  },
+  {
+    "file": "src/modules/hospital-onboarding/services/hospital-onboarding-service.ts",
+    "function": "assertPlatformAdmin",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/hospital-onboarding/services/parent-owner-invitation-service.ts",
     "function": "listParentOnboardingPaths",
-    "model": "hospitalOnboardingApplication",
+    "target": "hospitalOnboardingApplication",
+    "occurrence": 1,
     "reason": "id IN one directory page of Parents (at most 25)."
   },
   {
     "file": "src/modules/hospital-onboarding/services/parent-owner-invitation-service.ts",
     "function": "listParentOnboardingPaths",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "id IN one directory page of Parents (at most 25)."
   },
   {
     "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
     "function": "cancelPendingChildFacility",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
+    "reason": "Held OWNER memberships of one pending Child facility. / Open memberships of one pending Child facility being cancelled."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
+    "function": "cancelPendingChildFacility",
+    "target": "hospitalMembership",
+    "occurrence": 2,
     "reason": "Held OWNER memberships of one pending Child facility. / Open memberships of one pending Child facility being cancelled."
   },
   {
     "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
     "function": "listManagedChildFacilities",
-    "model": "workforceActivation",
+    "target": "hospitalServiceArea.child.memberships",
+    "occurrence": 1,
+    "reason": "One Child's OWNER memberships (active, open or declined invitations)."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
+    "function": "listManagedChildFacilities",
+    "target": "workforceActivation",
+    "occurrence": 1,
     "reason": "Open activations of the actor's own managed Child facilities."
   },
   {
     "file": "src/modules/hospital-service-areas/services/hospital-network-access.ts",
     "function": "listNetworkScopes",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own network Parents with their active Children (network scope selector)."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/hospital-network-access.ts",
+    "function": "listNetworkScopes",
+    "target": "hospital.managedServiceAreas",
+    "occurrence": 1,
+    "reason": "One Parent's active Child areas: the network scope of that Parent."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/hospital-network-access.ts",
+    "function": "findNetworkReportExportScope",
+    "target": "hospital.managedServiceAreas",
+    "occurrence": 1,
+    "reason": "One Parent's active Child areas: the network scope of that Parent."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/hospital-network-governance-service.ts",
+    "function": "getHospitalNetworkForAdmin",
+    "target": "hospital.managedServiceAreas",
+    "occurrence": 1,
+    "reason": "FOLLOW-UP: one Parent's active Children listed whole on the ADMIN detail page; page them like the directory."
   },
   {
     "file": "src/modules/hospital-service-areas/services/hospital-network-governance-service.ts",
     "function": "listHospitalNetworkDirectoryForAdmin",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "id IN the Parents one directory page refers to (at most 50)."
   },
   {
     "file": "src/modules/hospital-settings/services/hospital-self-registration-settings-service.ts",
     "function": "listOwnedHospitalSelfRegistrationSettings",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own OWNER Hospitals."
   },
   {
     "file": "src/modules/legal/services/legal-service.ts",
     "function": "getCurrentLegalDocuments",
-    "model": "legalDocumentVersion",
+    "target": "legalDocumentVersion",
+    "occurrence": 1,
     "reason": "id IN the current legal document versions (one per kind)."
   },
   {
     "file": "src/modules/legal/services/legal-service.ts",
     "function": "listPublishedLegalVersions",
-    "model": "legalDocumentVersion",
+    "target": "legalDocumentVersion",
+    "occurrence": 1,
     "reason": "Published versions of one legal document kind (a few per year)."
   },
   {
     "file": "src/modules/legal/services/legal-service.ts",
     "function": "listLegalVersions",
-    "model": "legalDocumentVersion",
+    "target": "legalDocumentVersion",
+    "occurrence": 1,
     "reason": "Every legal document version for the ADMIN legal screen (a few per year)."
   },
   {
     "file": "src/modules/legal/services/legal-service.ts",
     "function": "getUserLegalHistory",
-    "model": "legalAcceptance",
+    "target": "legalAcceptance",
+    "occurrence": 1,
     "reason": "One user's own legal acceptances."
   },
   {
     "file": "src/modules/legal/services/legal-service.ts",
     "function": "getUserLegalHistory",
-    "model": "consentEvent",
+    "target": "consentEvent",
+    "occurrence": 1,
     "reason": "One user's own consent events."
   },
   {
     "file": "src/modules/legal/services/legal-version-reader.ts",
     "function": "findCurrentLegalVersions",
-    "model": "legalDocumentVersion",
+    "target": "legalDocumentVersion",
+    "occurrence": 1,
     "reason": "The current published version per legal document kind (distinct on kind)."
   },
   {
     "file": "src/modules/line/services/line-account-service.ts",
     "function": "linkLineAccount",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "History of one LINE subject's bindings."
   },
   {
     "file": "src/modules/line/services/line-account-service.ts",
     "function": "requireRelinkPolicy",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "One user's LINE bindings, locked for a relink."
   },
   {
     "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
     "function": "lockRows",
-    "model": "lineAuthorizationLifecycle",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 1,
     "reason": "Lifecycle rows of one LINE binding."
   },
   {
     "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
     "function": "initializeLineTermination",
-    "model": "lineAuthorizationLifecycle",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 1,
     "reason": "id IN the latest lifecycle rows of one binding."
   },
   {
     "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
     "function": "evaluateLineRelinkEligibility",
-    "model": "lineAuthorizationLifecycle",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 1,
     "reason": "Lifecycle rows of one LINE binding."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "getLineDisconnectionStatus",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "The session user's LINE bindings."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "getLineDisconnectionStatus",
-    "model": "lineAuthorizationLifecycle",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 1,
     "reason": "Lifecycle rows of the session user's bindings."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "hasLineLifecycleHistoryForCurrentOwner",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "The session user's LINE bindings."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "hasLineLifecycleHistoryForCurrentOwner",
-    "model": "auditEvent",
+    "target": "auditEvent",
+    "occurrence": 1,
     "reason": "Unlink audits of the session user's bindings."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "prepareLineAccountRecovery",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "The session user's unlinked LINE bindings."
   },
   {
     "file": "src/modules/line/services/line-disconnection-service.ts",
     "function": "prepareLineAccountRecovery",
-    "model": "lineAuthorizationLifecycle",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 1,
     "reason": "Lifecycle rows of the session user's unlinked bindings. / id IN one recovery set's lifecycle rows."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "prepareLineAccountRecovery",
+    "target": "lineAuthorizationLifecycle",
+    "occurrence": 2,
+    "reason": "Lifecycle rows of the session user's unlinked bindings. / id IN one recovery set's lifecycle rows."
+  },
+  {
+    "file": "src/modules/line/services/line-eligibility-service.ts",
+    "function": "resolveEligibleLineRoles",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/line/services/line-eligibility-service.ts",
+    "function": "resolveEligibleLineRoles",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/line/services/line-eligibility-service.ts",
+    "function": "resolveEligibleLineRoles",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
   },
   {
     "file": "src/modules/line/services/line-reachability-service.ts",
     "function": "applyLineReachabilityObservation",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "Bindings of one LINE user id."
   },
   {
     "file": "src/modules/line/services/line-reactive-appointment-service.ts",
     "function": "executeLineReactiveAppointment",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "Active bindings of one LINE user id (at most one)."
   },
   {
     "file": "src/modules/line/services/line-reactive-help-service.ts",
     "function": "executeLineReactiveHelp",
-    "model": "lineAccountBinding",
+    "target": "lineAccountBinding",
+    "occurrence": 1,
     "reason": "Active bindings of one LINE user id (at most one)."
+  },
+  {
+    "file": "src/modules/medications/services/medication-line-reminder-delivery-service.ts",
+    "function": "eligibility",
+    "target": "person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/medications/services/personal-medication-query-service.ts",
+    "function": "listOwnActiveMedicationSummaries",
+    "target": "personalMedication.schedules",
+    "occurrence": 1,
+    "reason": "One medication's own dose schedules."
+  },
+  {
+    "file": "src/modules/medications/services/personal-medication-query-service.ts",
+    "function": "getOwnPersonalMedication",
+    "target": "personalMedication.schedules",
+    "occurrence": 1,
+    "reason": "One medication's own dose schedules."
   },
   {
     "file": "src/modules/medications/services/personal-medication-service.ts",
     "function": "replacePersonalMedicationSchedules",
-    "model": "medicationSchedule",
+    "target": "medicationSchedule",
+    "occurrence": 1,
     "reason": "Reminder times of one personal medication."
   },
   {
     "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
     "function": "listPatientActivationScopes",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own OWNER Hospitals (activation scopes)."
   },
   {
     "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
     "function": "findPatientActivationCandidates",
-    "model": "patientActivation",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "findPatientActivationCandidates",
+    "target": "patientActivation",
+    "occurrence": 1,
     "reason": "Activations of id IN one candidate page of patients."
   },
   {
     "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
     "function": "findPatientActivationCandidates",
-    "model": "user",
+    "target": "user",
+    "occurrence": 1,
     "reason": "id IN one candidate page of patients."
   },
   {
     "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
     "function": "getPatientActivationCandidateForRelationship",
-    "model": "patientActivation",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "getPatientActivationCandidateForRelationship",
+    "target": "patientActivation",
+    "occurrence": 1,
     "reason": "Activations of one patient user."
   },
   {
     "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
     "function": "getPatientActivationCandidateForRelationship",
-    "model": "user",
+    "target": "user",
+    "occurrence": 1,
     "reason": "One user id checked for workforce authority."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-service.ts",
+    "function": "assertPatientActivationActorIdentityInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-service.ts",
+    "function": "findPatientActivationTarget",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-service.ts",
+    "function": "findPatientActivationTarget",
+    "target": "user.person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-service.ts",
+    "function": "getPatientActivationDetails",
+    "target": "patientActivation.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-service.ts",
+    "function": "getPatientActivationDetails",
+    "target": "patientActivation.user.person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
   },
   {
     "file": "src/modules/patient-assignment/services/patient-osm-assignment-query-service.ts",
     "function": "listPatientOsmAssignmentScopes",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own operated Hospitals (assignment scopes)."
   },
   {
     "file": "src/modules/patient-assignment/services/patient-osm-assignment-transaction.ts",
+    "function": "assertOperatorInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-assignment/services/patient-osm-assignment-transaction.ts",
     "function": "handoffFutureAppointments",
-    "model": "patientAppointment",
+    "target": "patientAppointment",
+    "occurrence": 1,
     "reason": "Future appointments of one relationship handed to the new อสม."
   },
   {
     "file": "src/modules/patient-assignment/services/patient-osm-bulk-assignment-transaction.ts",
     "function": "assignOsmToPatientsInTransaction",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "id IN one bulk assignment request (capped by the request schema)."
+  },
+  {
+    "file": "src/modules/patient-baseline/services/patient-baseline-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-baseline/services/patient-baseline-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/patient-baseline/services/patient-baseline-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-baseline/services/patient-baseline-access-service.ts",
+    "function": "resolvePatientBaselineAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-classification/services/patient-classification-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-classification/services/patient-classification-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/patient-classification/services/patient-classification-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-classification/services/patient-classification-access-service.ts",
+    "function": "resolvePatientClassificationAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/patient-directory/services/patient-directory-query-service.ts",
     "function": "listPatientDirectoryScopes",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own authorized Hospitals (directory scopes)."
+  },
+  {
+    "file": "src/modules/patient-evidence/services/patient-evidence-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-evidence/services/patient-evidence-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/patient-evidence/services/patient-evidence-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-evidence/services/patient-evidence-access-service.ts",
+    "function": "resolvePatientEvidenceAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
+    "function": "loadActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
+    "function": "loadActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
   },
   {
     "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
     "function": "personHospitalIds",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "One patient's own active care relationships."
   },
   {
     "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
     "function": "personHospitalIds",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account)."
   },
   {
     "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
     "function": "personHospitalIds",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "One user's own relationships (a handful per account)."
   },
   {
     "file": "src/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service.ts",
     "function": "endPatientHospitalRelationship",
-    "model": "patientAppointment",
+    "target": "patientAppointment",
+    "occurrence": 1,
     "reason": "Future appointments of one relationship being ended."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-plan-service.ts",
     "function": "classifyRoundActivity",
-    "model": "patientProgramRoundPlanItem",
+    "target": "patientProgramRoundPlanItem",
+    "occurrence": 1,
     "reason": "Plan items of one Program round."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-plan-write-service.ts",
     "function": "addProgramRound",
-    "model": "patientProgramRound",
+    "target": "patientProgramRound",
+    "occurrence": 1,
     "reason": "Opened rounds of one Program (at most 12)."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-plan-write-service.ts",
     "function": "addProgramRound",
-    "model": "patientProgramRoundCompletion",
+    "target": "patientProgramRoundCompletion",
+    "occurrence": 1,
     "reason": "Completed rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.roundVitals",
+    "occurrence": 1,
+    "reason": "One Patient program's own round vitals."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.roundActivities",
+    "occurrence": 1,
+    "reason": "One Patient program's own round activities."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.roundCompletions",
+    "occurrence": 1,
+    "reason": "One Patient program's own round completions."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.rounds",
+    "occurrence": 1,
+    "reason": "One Patient program's rounds: unique (patientProgramId, roundNumber)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.rounds.planItems",
+    "occurrence": 1,
+    "reason": "One round's own plan items."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.roundStepSkips",
+    "occurrence": 1,
+    "reason": "One Patient program's own round step skips."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.screeningAssessments",
+    "occurrence": 1,
+    "reason": "One Patient program's own screening assessments."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.goalPlans.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.followups",
+    "occurrence": 1,
+    "reason": "One Patient program's own follow-ups."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-query-service.ts",
+    "function": "loadProgramRoundRecord",
+    "target": "patientProgram.followups.activityProgress",
+    "occurrence": 1,
+    "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
     "function": "completedRounds",
-    "model": "patientProgramRoundCompletion",
+    "target": "patientProgramRoundCompletion",
+    "occurrence": 1,
     "reason": "Completed rounds of one Program (at most 12)."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
     "function": "currentOpenRound",
-    "model": "patientProgramRound",
+    "target": "patientProgramRound",
+    "occurrence": 1,
     "reason": "Opened rounds of one Program (at most 12)."
   },
   {
     "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
     "function": "assertRoundsFinished",
-    "model": "patientProgramRound",
+    "target": "patientProgramRound",
+    "occurrence": 1,
     "reason": "Opened rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-access-service.ts",
+    "function": "resolvePatientProgramAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/patient-program/services/patient-program-lifecycle-service.ts",
     "function": "lockActivePatientProgram",
-    "model": "patientProgramRoundPlanItem",
+    "target": "patientProgramRoundPlanItem",
+    "occurrence": 1,
     "reason": "Plan items of one Program round."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-query-service.ts",
+    "function": "getPatientProgramDetail",
+    "target": "patientProgram.rounds",
+    "occurrence": 1,
+    "reason": "One Patient program's rounds: unique (patientProgramId, roundNumber)."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-query-service.ts",
+    "function": "getPatientProgramDetail",
+    "target": "patientProgram.rounds.planItems",
+    "occurrence": 1,
+    "reason": "One round's own plan items."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-service-one-service.ts",
+    "function": "recordRoutineInTransaction",
+    "target": "patientProgramServiceOneRoutine.entries",
+    "occurrence": 1,
+    "reason": "One routine's own entries."
+  },
+  {
+    "file": "src/modules/patient-provisioning/services/patient-provisioning-service.ts",
+    "function": "listPatientProvisioningScopes",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-provisioning/services/patient-provisioning-service.ts",
+    "function": "listPatientProvisioningScopes",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/patient-provisioning/services/patient-provisioning-transaction.ts",
+    "function": "assertPatientProvisioningActorInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/patient-provisioning/services/patient-roster-import-preview.ts",
     "function": "preparePatientRosterImportPreview",
-    "model": "person",
+    "target": "person",
+    "occurrence": 1,
     "reason": "People of id IN one import file's identity hashes (capped by the import row limit)."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-care-query-service.ts",
+    "function": "getOwnPatientGoalPlanDetail",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-care-query-service.ts",
+    "function": "getOwnPatientFollowupDetail",
+    "target": "patientFollowup.activityProgress",
+    "occurrence": 1,
+    "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-query-service.ts",
+    "function": "resolveOwnPatientContext",
+    "target": "person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-query-service.ts",
+    "function": "listOwnPatientRelationshipNavigation",
+    "target": "person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-self-query-service.ts",
+    "function": "resolveOwnPatientRelationshipContext",
+    "target": "person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-self/services/patient-service-progress-query-service.ts",
+    "function": "getOwnServiceProgress",
+    "target": "person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "assertPersistedPatient",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "assertPersistedHospitalReviewer",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
     "function": "listOwnPatientServiceRequests",
-    "model": "patientHospitalRelationship",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listOwnPatientServiceRequests",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "One patient's own care relationships."
   },
   {
     "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
     "function": "listOwnPatientServiceRequests",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "The patient's own assigned อสม., one per care relationship (an OR of id pairs)."
   },
   {
     "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
     "function": "listHospitalPatientServiceRequests",
-    "model": "hospitalMembership",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listHospitalPatientServiceRequests",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "The actor's own operator memberships."
   },
   {
     "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
     "function": "listHospitalPatientServiceRequests",
-    "model": "osmHospitalRelationship",
+    "target": "patientServiceRequest.appointments",
+    "occurrence": 1,
+    "reason": "One service request's own appointments (ids only)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listHospitalPatientServiceRequests",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "At most two อสม. per visible request of one inbox page (an OR of id pairs)."
+  },
+  {
+    "file": "src/modules/platform-admin-bootstrap/services/platform-admin-bootstrap-service.ts",
+    "function": "finalizePlatformAdmin",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/platform-admin-bootstrap/services/platform-admin-bootstrap-service.ts",
+    "function": "finalizePlatformAdmin",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/reporting/services/global-reporting-access-service.ts",
+    "function": "resolveGlobalReportingAccessContext",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/reporting/services/hospital-report-access-service.ts",
     "function": "listHospitalReportingHospitals",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "The actor's own operator memberships (report Hospital selector)."
   },
   {
     "file": "src/modules/reporting/services/hospital-report-query-service.ts",
     "function": "loadWeeklyExerciseFacts",
-    "model": "personalExerciseEntry",
+    "target": "personalExerciseEntry",
+    "occurrence": 1,
     "reason": "Exercise entries of one report chunk of patient-week windows."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.serviceOneRoutines",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One routines."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.serviceOneFloatingCharts",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One floating charts."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.serviceOneDreamCards",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One dream cards."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.serviceOneConfidences",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One confidence records."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.roundVitals",
+    "occurrence": 1,
+    "reason": "One Patient program's own round vitals."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.roundCompletions",
+    "occurrence": 1,
+    "reason": "One Patient program's own round completions."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.goalPlans.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.followups.sourceGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadHospitalReportingPage",
+    "target": "patientProgram.followups.activityProgress",
+    "occurrence": 1,
+    "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.serviceOneRoutines",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One routines."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.serviceOneFloatingCharts",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One floating charts."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.serviceOneDreamCards",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One dream cards."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.serviceOneConfidences",
+    "occurrence": 1,
+    "reason": "One Patient program's own Service One confidence records."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.roundVitals",
+    "occurrence": 1,
+    "reason": "One Patient program's own round vitals."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.goalPlans",
+    "occurrence": 1,
+    "reason": "One Patient program's own goal plans."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.goalPlans.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.followups",
+    "occurrence": 1,
+    "reason": "One Patient program's own follow-ups."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.followups.sourceGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadExportProgramRecords",
+    "target": "patientProgram.followups.activityProgress",
+    "occurrence": 1,
+    "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
+  },
+  {
+    "file": "src/modules/reporting/services/program-report-query-service.ts",
+    "function": "loadGoalPlans",
+    "target": "patientGoalPlan.items",
+    "occurrence": 1,
+    "reason": "One goal plan's own activity items."
+  },
+  {
+    "file": "src/modules/reporting/services/program-report-query-service.ts",
+    "function": "loadFollowups",
+    "target": "patientFollowup.activityProgress",
+    "occurrence": 1,
+    "reason": "One follow-up's progress: one row per goal activity (unique followupId, goalActivityCode)."
   },
   {
     "file": "src/modules/reporting/services/program-report-query-service.ts",
     "function": "loadProgramScreenings",
-    "model": "screeningAssessment",
+    "target": "screeningAssessment",
+    "occurrence": 1,
     "reason": "Screenings of one Program."
   },
   {
     "file": "src/modules/reporting/services/round-report-query-service.ts",
     "function": "loadRoundSources",
-    "model": "patientProgram",
+    "target": "patientProgram",
+    "occurrence": 1,
     "reason": "id IN the Programs of one report."
   },
   {
     "file": "src/modules/reporting/services/round-report-query-service.ts",
     "function": "loadRoundSources",
-    "model": "patientProgramRoundAchieveScore",
+    "target": "patientProgramRoundAchieveScore",
+    "occurrence": 1,
     "reason": "Achieve scores of id IN the Programs of one report."
+  },
+  {
+    "file": "src/modules/screening/services/screening-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/screening/services/screening-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/screening/services/screening-access-service.ts",
+    "function": "loadAuthoritativeActor",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/screening/services/screening-access-service.ts",
+    "function": "resolveScreeningAccessContext",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
     "file": "src/modules/screening/services/screening-query-service.ts",
     "function": "getAccessibleScreeningSummaries",
-    "model": "screeningAssessment",
+    "target": "screeningAssessment",
+    "occurrence": 1,
     "reason": "id IN the requested screenings of one relationship."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByIdentityHash",
+    "target": "person.user.accountRecoveries",
+    "occurrence": 1,
+    "reason": "One user's own account recoveries, read to decide self-registration eligibility."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.person.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/self-registration/services/self-registration-eligibility.ts",
+    "function": "evaluateSelfRegistrationByUserId",
+    "target": "user.accountRecoveries",
+    "occurrence": 1,
+    "reason": "One user's own account recoveries, read to decide self-registration eligibility."
   },
   {
     "file": "src/modules/support/services/support-report-service.ts",
     "function": "listOwnSupportHospitals",
-    "model": "hospital",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own Hospitals (support form selector)."
   },
   {
+    "file": "src/modules/support/services/support-report-service.ts",
+    "function": "getAdminSupportReport",
+    "target": "supportReport.reporter.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
     "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "listHospitalUsers",
-    "model": "patientHospitalRelationship",
+    "target": "patientHospitalRelationship",
+    "occurrence": 1,
     "reason": "Paged: the spread `page` argument carries skip/take."
   },
   {
     "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "listHospitalUsers",
-    "model": "hospitalMembership",
+    "target": "patientHospitalRelationship.patientProfile.person.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "target": "patientHospitalRelationship.patientProfile.person.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "Paged: the spread `page` argument carries skip/take."
   },
   {
     "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "listHospitalUsers",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "Paged: the spread `page` argument carries skip/take."
   },
   {
     "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "listHospitalUsers",
-    "model": "auditEvent",
+    "target": "auditEvent",
+    "occurrence": 1,
     "reason": "Password reset audits of id IN one directory page of users."
   },
   {
     "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "loadDetailRecord",
+    "target": "patientHospitalRelationship.patientProfile.person.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "loadDetailRecord",
+    "target": "patientHospitalRelationship.patientProfile.person.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "getHospitalUserDetail",
-    "model": "workforceActivation",
+    "target": "workforceActivation",
+    "occurrence": 1,
     "reason": "Activations of one user at one Hospital."
   },
   {
     "file": "src/modules/user-management/services/user-directory-service.ts",
     "function": "getHospitalUserDetail",
-    "model": "patientActivation",
+    "target": "patientActivation",
+    "occurrence": 1,
     "reason": "Activations of one user at one Hospital."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessStaffRecordDeletion",
+    "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessStaffRecordDeletion",
+    "target": "hospitalMembership.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessStaffRecordDeletion",
+    "target": "hospitalMembership.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessStaffRecordDeletion",
+    "target": "hospitalMembership.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessStaffRecordDeletion",
+    "target": "hospitalMembership.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessOsmRecordDeletion",
+    "target": "osmHospitalRelationship.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessOsmRecordDeletion",
+    "target": "osmHospitalRelationship.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessOsmRecordDeletion",
+    "target": "osmHospitalRelationship.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessOsmRecordDeletion",
+    "target": "osmHospitalRelationship.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessOsmRecordDeletion",
+    "target": "osmHospitalRelationship.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.hospitalRelationships",
+    "occurrence": 1,
+    "reason": "One patient's own Hospital relationships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.classificationHistory",
+    "occurrence": 1,
+    "reason": "One patient's classification changes, read once to assess deleting that patient record."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.person.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.person.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.person.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.person.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-record-deletion-service.ts",
+    "function": "assessPatientRecordDeletion",
+    "target": "patientHospitalRelationship.patientProfile.person.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "patientHospitalRelationship.patientProfile.person.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "patientHospitalRelationship.patientProfile.person.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "hospitalMembership.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "hospitalMembership.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "osmHospitalRelationship.user.workforceActivations",
+    "occurrence": 1,
+    "reason": "One user's own workforce activation records."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "locateTarget",
+    "target": "osmHospitalRelationship.user.patientActivations",
+    "occurrence": 1,
+    "reason": "One user's own patient activation records."
   },
   {
     "file": "src/modules/user-management/services/user-takeover-service.ts",
     "function": "lockSuspectedTakeover",
-    "model": "hospitalMembership",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "One identity's MEMBER memberships at one Hospital, locked for a takeover."
   },
   {
     "file": "src/modules/user-management/services/user-takeover-service.ts",
     "function": "lockSuspectedTakeover",
-    "model": "osmHospitalRelationship",
+    "target": "osmHospitalRelationship",
+    "occurrence": 1,
     "reason": "One identity's OSM relationships at one Hospital, locked for a takeover."
   },
   {
     "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "assertHospitalActorInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
     "function": "listWorkforceHospitals",
-    "model": "hospital",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listWorkforceHospitals",
+    "target": "hospital",
+    "occurrence": 1,
     "reason": "The actor's own OWNER Hospitals (workforce scopes)."
   },
   {
     "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listWorkforceHospitals",
+    "target": "hospital.memberships",
+    "occurrence": 1,
+    "reason": "The actor's own ACTIVE memberships at each listed Hospital."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "getWorkforceDetail",
+    "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "getWorkforceDetail",
+    "target": "osmHospitalRelationship.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
     "function": "listWorkforce",
-    "model": "workforceActivation",
+    "target": "workforceActivation",
+    "occurrence": 1,
     "reason": "Open activations of id IN one workforce page of users."
   },
   {
     "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "assertHospitalOwnerGovernanceTarget",
+    "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "assertOsmRelationshipMutationTarget",
+    "target": "osmHospitalRelationship.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "previewWorkforceActivation",
+    "target": "workforceActivation.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "previewWorkforceActivation",
+    "target": "workforceActivation.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "previewWorkforceActivation",
+    "target": "workforceActivation.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "claimWorkforceActivation",
+    "target": "workforceActivation.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "claimWorkforceActivation",
+    "target": "workforceActivation.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "claimWorkforceActivation",
+    "target": "workforceActivation.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "finalizeWorkforceActivationLocally",
+    "target": "workforceActivation.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "finalizeWorkforceActivationLocally",
+    "target": "workforceActivation.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "finalizeWorkforceActivationLocally",
+    "target": "workforceActivation.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "transitionWorkforceProviderOperation",
+    "target": "workforceActivation.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "transitionWorkforceProviderOperation",
+    "target": "workforceActivation.user.memberships",
+    "occurrence": 1,
+    "reason": "One user's own Hospital memberships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "transitionWorkforceProviderOperation",
+    "target": "workforceActivation.user.osmHospitalRelationships",
+    "occurrence": 1,
+    "reason": "One user's own อสม. Hospital relationships."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
     "function": "listHospitalOwnersForPasswordReset",
-    "model": "hospitalMembership",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listHospitalOwnersForPasswordReset",
+    "target": "hospitalMembership",
+    "occurrence": 1,
     "reason": "ACTIVE OWNERs of one Hospital (a handful)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listHospitalOwnersForPasswordReset",
+    "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   }
 ]
