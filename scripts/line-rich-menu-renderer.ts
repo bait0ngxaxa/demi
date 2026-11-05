@@ -25,6 +25,11 @@ const colors = {
   accountPrimary: "#F2E8D0",
   accountSecondary: "#F8F4E9",
   headerContext: "#DCEEE9",
+  utilitySurface: "#EEF3F1",
+  utilityBorder: "#C8D6D1",
+  statusBorder: "#D5E0DC",
+  separator: "#AEBFBA",
+  utilityInk: "#536B64",
 } as const;
 
 const toneColors: Record<LineRichMenuIllustrationTone, { primary: string; secondary: string }> = {
@@ -65,21 +70,25 @@ const OSM_TASK_INTENTS = new Set([
 
 type FontWeight = "Medium" | "Semi-Bold" | "Bold";
 
-type MenuActionManifest = {
+type MenuActionManifestBase = {
   label: string;
   kind: "uri" | "richmenuswitch" | "message";
   intent: string | null;
-  illustration: LineRichMenuIllustration;
-  tone: LineRichMenuIllustrationTone;
   bounds: LineMenuBounds;
 };
+
+export type LineRichMenuMenuAction = MenuActionManifestBase & (
+  | { region: "primary"; illustration: LineRichMenuIllustration; tone: LineRichMenuIllustrationTone }
+  | { region: "utility"; icon: "settings" }
+);
 
 export type LineRichMenuAssetManifestEntry = {
   key: string;
   title: string;
   context: string;
   assetFile: string;
-  actions: readonly MenuActionManifest[];
+  actions: readonly LineRichMenuMenuAction[];
+  status: { label: string; bounds: LineMenuBounds } | null;
 };
 
 export type LineMenuTextStyle = { fontSize: number; weight: FontWeight; color: string };
@@ -150,7 +159,7 @@ async function createTextOverlay(
 
 function isPrimaryAction(
   menu: LineRichMenuAssetManifestEntry,
-  action: MenuActionManifest,
+  action: LineRichMenuMenuAction,
   index: number,
 ): boolean {
   if (menu.key.startsWith("CHOOSER_")) return action.kind === "richmenuswitch";
@@ -163,12 +172,15 @@ function isPrimaryAction(
   return menu.actions.length === 1 || index === 0;
 }
 
-function getActionFontSize(action: MenuActionManifest): number {
-  return action.bounds.width < 500 ? 88 : action.bounds.width < 800 ? 112 : 144;
+function getActionFontSize(action: LineRichMenuMenuAction): number {
+  if (action.bounds.width < 500) return 84;
+  if (action.bounds.width < 600) return 96;
+  if (action.bounds.width < 800) return 112;
+  return 144;
 }
 
 function getIllustrationSize(bounds: LineMenuBounds): number {
-  return Math.round(Math.min(bounds.width * 0.76, bounds.height * 0.43));
+  return Math.round(Math.min(bounds.width * 0.76, bounds.height * 0.4));
 }
 
 export function getLineRichMenuActionLines(label: string): readonly string[] {
@@ -176,14 +188,69 @@ export function getLineRichMenuActionLines(label: string): readonly string[] {
 }
 
 function buildBaseSvg(menu: LineRichMenuAssetManifestEntry): string {
-  const areas = menu.actions.map((action, index) => {
+  const areas = menu.actions.filter((action) => action.region === "primary").map((action, index) => {
     const background = toneColors[action.tone][isPrimaryAction(menu, action, index) ? "primary" : "secondary"];
     const { x, y, width, height } = action.bounds;
     // The flat rectangular field aligns with LINE's tappable area; gutters remain visible between actions.
     return `<rect x="${x + 1}" y="${y + 1}" width="${width - 2}" height="${height - 2}" fill="${background}"/>`;
   }).join("");
+  const utility = menu.actions.find(
+    (action): action is Extract<LineRichMenuMenuAction, { region: "utility" }> => action.region === "utility",
+  );
+  const utilitySurface = utility
+    ? `<rect x="${utility.bounds.x + 1}" y="${utility.bounds.y + 1}" width="${utility.bounds.width - 2}" height="${utility.bounds.height - 2}" fill="${colors.utilitySurface}" stroke="${colors.utilityBorder}" stroke-width="2"/>`
+    : "";
+  const separator = utility
+    ? `<path d="M${utility.bounds.x} ${utility.bounds.y - 20}H${utility.bounds.x + utility.bounds.width}" stroke="${colors.separator}" stroke-width="2"/>`
+    : "";
+  const status = menu.status
+    ? `<rect x="${menu.status.bounds.x + 1}" y="${menu.status.bounds.y + 1}" width="${menu.status.bounds.width - 2}" height="${menu.status.bounds.height - 2}" fill="${colors.utilitySurface}" stroke="${colors.statusBorder}" stroke-width="2"/>`
+    : "";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${LINE_RICH_MENU_CANVAS.width}" height="${LINE_RICH_MENU_CANVAS.height}" viewBox="0 0 2500 1686"><rect width="2500" height="1686" fill="${colors.canvas}"/><rect width="2500" height="204" fill="${colors.brand}"/>${areas}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${LINE_RICH_MENU_CANVAS.width}" height="${LINE_RICH_MENU_CANVAS.height}" viewBox="0 0 2500 1686"><rect width="2500" height="1686" fill="${colors.canvas}"/><rect width="2500" height="204" fill="${colors.brand}"/>${areas}${status}${separator}${utilitySurface}</svg>`;
+}
+
+function createSettingsGearBuffer(): Buffer {
+  const teeth = Array.from({ length: 8 }, (_, index) =>
+    `<rect x="42" y="2" width="12" height="26" rx="3" transform="rotate(${index * 45} 48 48)"/>`,
+  ).join("");
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><g fill="${colors.utilityInk}">${teeth}</g><circle cx="48" cy="48" r="27" fill="none" stroke="${colors.utilityInk}" stroke-width="13"/><circle cx="48" cy="48" r="9" fill="${colors.utilitySurface}"/></svg>`,
+  );
+}
+
+async function createUtilityFooterOverlays(action: Extract<LineRichMenuMenuAction, { region: "utility" }>): Promise<ImageOverlay[]> {
+  const icon = createSettingsGearBuffer();
+  const iconSize = 96;
+  const iconBuffer = await sharp(icon).resize(iconSize, iconSize).png().toBuffer();
+  const labelBuffer = await renderThaiTextBuffer(action.label, {
+    fontSize: 92,
+    weight: "Semi-Bold",
+    color: colors.ink,
+  });
+  const metadata = await sharp(labelBuffer).metadata();
+  if (metadata.width === undefined || metadata.height === undefined) {
+    throw new Error("Could not measure the Manage Account footer label.");
+  }
+
+  const gap = 30;
+  const groupWidth = iconSize + gap + metadata.width;
+  if (groupWidth > action.bounds.width - 80 || metadata.height > action.bounds.height - 24) {
+    throw new Error("Manage Account footer content exceeds its LINE tappable area.");
+  }
+  const groupLeft = Math.round(action.bounds.x + (action.bounds.width - groupWidth) / 2);
+  return [
+    {
+      input: iconBuffer,
+      left: groupLeft,
+      top: action.bounds.y + Math.round((action.bounds.height - iconSize) / 2),
+    },
+    {
+      input: labelBuffer,
+      left: groupLeft + iconSize + gap,
+      top: action.bounds.y + Math.round((action.bounds.height - metadata.height) / 2),
+    },
+  ];
 }
 
 export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEntry): Promise<Buffer> {
@@ -193,6 +260,7 @@ export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEnt
   const textOverlays: ImageOverlay[] = [];
 
   for (const action of menu.actions) {
+    if (action.region !== "primary") continue;
     const illustrationSize = getIllustrationSize(action.bounds);
     const illustration = await getLineRichMenuIllustrationBuffer(action.illustration);
     const image = await sharp(illustration)
@@ -233,6 +301,7 @@ export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEnt
   ));
 
   for (const action of menu.actions) {
+    if (action.region !== "primary") continue;
     const fontSize = getActionFontSize(action);
     textOverlays.push(await createTextOverlay(
       getLineRichMenuActionLines(action.label).join("\n"),
@@ -245,6 +314,20 @@ export async function renderLineRichMenuImage(menu: LineRichMenuAssetManifestEnt
       { fontSize, weight: "Semi-Bold", color: colors.ink },
       { horizontal: 24, vertical: 4 },
       `${menu.key} action “${action.label}”`,
+    ));
+  }
+
+  const utilityAction = menu.actions.find(
+    (action): action is Extract<LineRichMenuMenuAction, { region: "utility" }> => action.region === "utility",
+  );
+  if (utilityAction) illustrationOverlays.push(...await createUtilityFooterOverlays(utilityAction));
+  if (menu.status) {
+    textOverlays.push(await createTextOverlay(
+      menu.status.label,
+      menu.status.bounds,
+      { fontSize: 84, weight: "Medium", color: colors.ink },
+      { horizontal: 32, vertical: 12 },
+      `${menu.key} non-interactive account status`,
     ));
   }
 

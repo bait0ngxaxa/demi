@@ -17,8 +17,7 @@ export type LineRichMenuIllustration =
   | "osm-community-workspace"
   | "osm-workflow-coordination"
   | "hospital-operations"
-  | "account-linking"
-  | "account-management";
+  | "account-linking";
 
 export type LineRichMenuIllustrationTone = "patient" | "osm" | "hospital" | "account";
 
@@ -54,7 +53,6 @@ const illustrationSources: Record<LineRichMenuIllustration, IllustrationSource> 
   "patient-medication-review": { kind: "atlas", atlas: "patient-care", quadrant: 2 },
   "patient-care-guidance": { kind: "atlas", atlas: "patient-care", quadrant: 3 },
   "account-linking": { kind: "atlas", atlas: "identity-and-workspaces", quadrant: 0 },
-  "account-management": { kind: "atlas", atlas: "identity-and-workspaces", quadrant: 1 },
   "patient-workspace": { kind: "atlas", atlas: "identity-and-workspaces", quadrant: 2 },
   "osm-community-workspace": { kind: "atlas", atlas: "identity-and-workspaces", quadrant: 3 },
   "osm-workflow-coordination": {
@@ -76,7 +74,6 @@ const illustrationTones: Record<LineRichMenuIllustration, LineRichMenuIllustrati
   "osm-workflow-coordination": "osm",
   "hospital-operations": "hospital",
   "account-linking": "account",
-  "account-management": "account",
 };
 
 const roleIllustrations = {
@@ -112,7 +109,7 @@ export function getLineRichMenuActionVisual(
     case "LINK_ACCOUNT":
       return actionVisual("account-linking");
     case "MANAGE_ACCOUNT":
-      return actionVisual("account-management");
+      throw new Error("MANAGE_ACCOUNT is a utility footer action and has no illustration.");
     case "OPEN_PATIENT_APPOINTMENTS":
       return actionVisual("patient-appointment-history");
     case "OPEN_PATIENT_WELLNESS":

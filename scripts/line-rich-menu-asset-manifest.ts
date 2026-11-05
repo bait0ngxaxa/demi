@@ -1,23 +1,34 @@
 import { LINE_RICH_MENU_CATALOG } from "../src/modules/line/rich-menu/catalog";
-import { getLineMenuAreaBounds } from "../src/modules/line/rich-menu/layout";
-import type { LineRichMenuAssetManifestEntry } from "./line-rich-menu-renderer";
+import { getLineMenuLayout } from "../src/modules/line/rich-menu/layout";
+import type { LineRichMenuAssetManifestEntry, LineRichMenuMenuAction } from "./line-rich-menu-renderer";
 import { getLineRichMenuActionVisual } from "./line-rich-menu-illustrations";
 
 export function createLineRichMenuAssetManifest(): LineRichMenuAssetManifestEntry[] {
   return LINE_RICH_MENU_CATALOG.map((menu) => {
-    const bounds = getLineMenuAreaBounds(menu);
+    const layout = getLineMenuLayout(menu);
+    const actions: LineRichMenuMenuAction[] = layout.actionAreas.map(({ action, region, bounds }) => {
+      const shared = {
+        label: action.label,
+        kind: action.type,
+        intent: action.type === "uri" ? action.intent : null,
+        bounds,
+      };
+
+      if (region === "utility") {
+        return { ...shared, region, icon: "settings" };
+      }
+
+      return { ...shared, region, ...getLineRichMenuActionVisual(menu, action) };
+    });
+    const status = layout.statusRegion ? { label: menu.context, bounds: layout.statusRegion } : null;
+
     return {
       key: menu.key,
       title: menu.title,
       context: menu.context,
       assetFile: menu.assetFile,
-      actions: menu.actions.map((action, index) => ({
-        label: action.label,
-        kind: action.type,
-        intent: action.type === "uri" ? action.intent : null,
-        ...getLineRichMenuActionVisual(menu, action),
-        bounds: bounds[index],
-      })),
+      actions,
+      status,
     };
   });
 }

@@ -12,7 +12,7 @@ import {
 } from "../../../../scripts/line-rich-menu-illustrations";
 import { getLineRichMenuActionLines, getLineRichMenuColors, renderLineRichMenuImage } from "../../../../scripts/line-rich-menu-renderer";
 import { LINE_RICH_MENU_CATALOG } from "./catalog";
-import { getLineMenuAreaBounds } from "./layout";
+import { getLineMenuLayout } from "./layout";
 
 const assetDirectory = join(dirname(fileURLToPath(import.meta.url)), "../../../../public/line/rich-menus");
 
@@ -42,13 +42,15 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     for (const menu of LINE_RICH_MENU_CATALOG) {
       const assetMenu = manifest.find((entry) => entry.key === menu.key);
       if (!assetMenu) throw new Error(`Missing asset manifest entry for ${menu.key}.`);
-      expect(assetMenu.actions.map((action) => action.bounds)).toEqual(getLineMenuAreaBounds(menu));
+      expect(assetMenu.actions.map((action) => action.bounds)).toEqual(
+        getLineMenuLayout(menu).actionAreas.map(({ bounds }) => bounds),
+      );
     }
   });
 
   it("maps catalog actions to bundled, role-aware editorial illustrations independent of labels", async () => {
     const expected: Record<string, LineRichMenuIllustration> = {
-      LINK_ACCOUNT: "account-linking", MANAGE_ACCOUNT: "account-management",
+      LINK_ACCOUNT: "account-linking",
       OPEN_PATIENT_APPOINTMENTS: "patient-appointment-history", OPEN_PATIENT_WELLNESS: "patient-wellness-recording",
       OPEN_PATIENT_MEDICATIONS: "patient-medication-review", OPEN_PATIENT_CARE: "patient-care-guidance",
       OPEN_OSM_ASSIGNED_PATIENTS: "osm-community-workspace", START_OSM_SCREENING: "osm-screening",
@@ -59,6 +61,10 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     const seenIllustrations = new Set<LineRichMenuIllustration>();
     for (const menu of LINE_RICH_MENU_CATALOG) {
       for (const action of menu.actions) {
+        if (action.type === "uri" && action.intent === "MANAGE_ACCOUNT") {
+          expect(() => getLineRichMenuActionVisual(menu, action)).toThrow("has no illustration");
+          continue;
+        }
         const visual = getLineRichMenuActionVisual(menu, { ...action, label: "เปลี่ยนข้อความทดสอบ" });
         const expectedIllustration = action.type === "message" ? "patient-appointment-consultation"
           : action.type === "richmenuswitch" ? roles[action.role]
@@ -75,7 +81,35 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
         expect(metadata.height).toBeGreaterThan(0);
       }
     }
-    expect(seenIllustrations.size).toBe(13);
+    expect(seenIllustrations.size).toBe(12);
+  });
+
+  it("renders Manage Account only as a settings utility and keeps the ineligible status non-interactive", () => {
+    const manifest = createLineRichMenuAssetManifest();
+    expect(manifest).toHaveLength(18);
+    expect(JSON.stringify(manifest)).not.toContain("account-management");
+
+    for (const menu of manifest) {
+      const utilityActions = menu.actions.filter((action) => action.region === "utility");
+      const primaryActions = menu.actions.filter((action) => action.region === "primary");
+      expect(utilityActions, menu.key).toHaveLength(menu.key === "UNLINKED" ? 0 : 1);
+      expect(primaryActions.some((action) => action.intent === "MANAGE_ACCOUNT"), menu.key).toBe(false);
+      for (const action of utilityActions) {
+        expect(action).toMatchObject({ region: "utility", icon: "settings", label: "จัดการบัญชี" });
+        expect("illustration" in action).toBe(false);
+        expect("tone" in action).toBe(false);
+      }
+    }
+
+    const unlinked = manifest.find((menu) => menu.key === "UNLINKED");
+    const ineligible = manifest.find((menu) => menu.key === "LINKED_INELIGIBLE");
+    expect(unlinked?.status).toBeNull();
+    expect(ineligible?.status).toEqual({
+      label: "บัญชีนี้ยังไม่มีเมนูให้ใช้งาน",
+      bounds: { x: 220, y: 620, width: 2060, height: 420 },
+    });
+    expect(ineligible?.actions).toHaveLength(1);
+    expect(ineligible?.actions[0]).toMatchObject({ region: "utility", icon: "settings" });
   });
 
   it("preserves every Thai label through intentional line breaks", () => {
@@ -124,6 +158,13 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
       };
       for (const [index, action] of menu.actions.entries()) {
         const { x, y, width, height } = action.bounds;
+        if (action.region === "utility") {
+          expect(action.bounds).toEqual({ x: 80, y: 1366, width: 2340, height: 320 });
+          expect(pixel(x + Math.floor(width / 2), y + 5), menu.key).toEqual(rgb(colors.utilitySurface));
+          expect(pixel(x - 1, y + Math.floor(height / 2)), menu.key).toEqual(rgb(colors.canvas));
+          expect(pixel(x + Math.floor(width / 2), y - 1), menu.key).toEqual(rgb(colors.canvas));
+          continue;
+        }
         const primary = menu.key.startsWith("CHOOSER_") ? action.kind === "richmenuswitch"
           : menu.key.startsWith("PATIENT_")
             ? action.kind === "message" || (action.intent !== null && [
