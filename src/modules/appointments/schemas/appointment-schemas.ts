@@ -1,6 +1,9 @@
 import { PatientServiceCode } from "@prisma/client";
 import { z } from "zod";
 
+import { pageNumberSchema } from "@/shared/pagination/page-number";
+import { assigneeSearchTermSchema } from "@/shared/search/assignee-search";
+
 import { SERVICE_APPOINTMENT_TYPE } from "../domain/appointment-service-definitions";
 
 import {
@@ -153,4 +156,11 @@ export const appointmentRescheduleRejectionSchema = z.object({
   appointmentId: appointmentIdSchema,
   requestId: appointmentIdSchema,
   rejectionReason: z.string().trim().min(1).max(500),
+}).strict();
+
+/** One page of the appointment form's assignee search; the relationship scopes the Hospital. */
+export const appointmentAssigneeSearchSchema = z.object({
+  relationshipId: appointmentRelationshipIdSchema,
+  value: assigneeSearchTermSchema,
+  page: pageNumberSchema,
 }).strict();

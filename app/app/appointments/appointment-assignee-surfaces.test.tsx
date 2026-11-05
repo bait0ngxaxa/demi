@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppointmentForm, type AppointmentFormProps } from "../patients/[relationshipId]/appointments/new/appointment-form";
 import { PatientSelfAppointmentDetailContent, PatientSelfAppointmentRow } from "../personal/patient-self-appointment-content";
@@ -12,19 +12,26 @@ import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appoi
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/modules/appointments/transport/server-actions", () => ({ createAppointmentAction: vi.fn(), rescheduleAppointmentAction: vi.fn() }));
+const mocks = vi.hoisted(() => ({ searchStaff: vi.fn(), searchOsm: vi.fn() }));
+vi.mock("@/modules/appointments/transport/assignee-search-actions", () => ({
+  searchAppointmentResponsibleMembersAction: mocks.searchStaff,
+  searchAppointmentOsmCandidatesAction: mocks.searchOsm,
+}));
 
 beforeAll(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
 const patient = { patientHospitalRelationshipId: "relationship", displayName: "ผู้ป่วย", hospitalNumber: null, hospital: { id: "hospital", name: "โรงพยาบาล" } };
-const staff = [
-  { userId: "doctor", displayName: "หมอ ก", profession: "DOCTOR" as const },
-  { userId: "coordinator", displayName: "ประสาน ข", profession: "COORDINATOR" as const },
-  { userId: "no-profession", displayName: "เจ้าหน้าที่ ค", profession: null },
-];
 const currentOsm = { userId: "current-osm", displayName: "อสม. ผู้ดูแล ง", contactPhone: null };
-const candidates = (count: number) => Array.from({ length: count }, (_, index) => ({ userId: `osm-${index}`, displayName: `อสม. คนที่ ${index + 1}` }));
+const page = (items: { id: string; displayName: string; detail?: string }[], position = { page: 1, totalPages: 1 }) => ({
+  status: "OK" as const,
+  items,
+  page: position.page,
+  totalPages: position.totalPages,
+  hasPreviousPage: position.page > 1,
+  hasNextPage: position.page < position.totalPages,
+});
 
 async function renderForm(props: Partial<AppointmentFormProps> = {}) {
   const container = document.createElement("div");
@@ -34,10 +41,10 @@ async function renderForm(props: Partial<AppointmentFormProps> = {}) {
     <AppointmentForm
       currentOsmAssignee={currentOsm}
       mode="create"
-      osmCandidates={candidates(3)}
       patient={patient}
       relationshipId="relationship"
-      responsibleMembers={staff}
+      selectedOsm={null}
+      selectedResponsible={null}
       submissionNonce="nonce"
       {...(props as object)}
     />,
@@ -47,7 +54,16 @@ async function renderForm(props: Partial<AppointmentFormProps> = {}) {
     if (!element) throw new Error(`Missing #${id}`);
     return element;
   };
-  const hidden = (name: string) => container.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value;
+  const hidden = (name: string) => container.querySelector<HTMLInputElement>(`input[type="hidden"][name="${name}"]`)?.value;
+  const kind = (label: string) => {
+    const input = [...container.querySelectorAll<HTMLInputElement>('input[name="appointment-assignee-kind"]')]
+      .find((candidate) => candidate.closest("label")?.textContent?.startsWith(label));
+    if (!input) throw new Error(`Missing kind ${label}`);
+    return input;
+  };
+  const click = async (element: HTMLElement) => {
+    await act(async () => element.click());
+  };
   const change = async (element: HTMLSelectElement | HTMLInputElement, value: string) => {
     await act(async () => {
       if (element instanceof HTMLInputElement) {
@@ -64,22 +80,35 @@ async function renderForm(props: Partial<AppointmentFormProps> = {}) {
     await act(async () => root.unmount());
     container.remove();
   };
-  return { container, select, hidden, change, cleanup };
+  return { container, select, hidden, kind, click, change, cleanup };
 }
 
-describe("Appointment assignee picker (ADR-0027, AP-2)", () => {
-  it("groups every staff member by profession label and every อสม., current one first", async () => {
+describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
+  beforeEach(() => {
+    mocks.searchStaff.mockReset().mockResolvedValue(page([
+      { id: "doctor", displayName: "หมอ ก", detail: "แพทย์" },
+      { id: "coordinator", displayName: "ประสาน ข", detail: "ผู้ประสานงาน" },
+    ]));
+    mocks.searchOsm.mockReset().mockResolvedValue(page([
+      { id: "osm-0", displayName: "อสม. คนที่ 1" },
+      { id: "osm-1", displayName: "อสม. คนที่ 2" },
+    ], { page: 1, totalPages: 2 }));
+  });
+
+  it("ships no roster: staff and other อสม. are searched on the server for this relationship only", async () => {
     const form = await renderForm();
     try {
-      const groups = [...form.select("appointment-responsible-user").querySelectorAll("optgroup")];
-      expect(groups.map((group) => group.label)).toEqual(["เจ้าหน้าที่", "อสม."]);
-      expect([...(groups[0]?.querySelectorAll("option") ?? [])].map((option) => option.textContent)).toEqual([
-        "หมอ ก · แพทย์", "ประสาน ข · ผู้ประสานงาน", "เจ้าหน้าที่ ค · เจ้าหน้าที่",
-      ]);
-      expect([...(groups[1]?.querySelectorAll("option") ?? [])].map((option) => option.textContent)).toEqual([
-        "อสม. ผู้ดูแล · อสม. ผู้ดูแล ง", "อสม. คนที่ 1", "อสม. คนที่ 2", "อสม. คนที่ 3",
-      ]);
-      expect(form.container.querySelector("#appointment-osm-search")).toBeNull();
+      expect(mocks.searchStaff).not.toHaveBeenCalled();
+      expect(mocks.searchOsm).not.toHaveBeenCalled();
+      expect(form.container.textContent).toContain("อสม. ผู้ดูแล · อสม. ผู้ดูแล ง");
+
+      await form.click(form.kind("เจ้าหน้าที่"));
+      expect(mocks.searchStaff).toHaveBeenCalledWith("relationship", "", 1);
+      expect(form.container.textContent).toContain("หมอ ก · แพทย์");
+
+      await form.click(form.kind("อสม. คนอื่น"));
+      expect(mocks.searchOsm).toHaveBeenCalledWith("relationship", "", 1);
+      expect(form.container.textContent).toContain("อสม. คนที่ 2");
     } finally {
       await form.cleanup();
     }
@@ -88,10 +117,10 @@ describe("Appointment assignee picker (ADR-0027, AP-2)", () => {
   it("keeps the chosen location for an อสม., explains a one-off visit and sends one assignee", async () => {
     const form = await renderForm();
     try {
-      const picker = form.select("appointment-responsible-user");
       const location = form.select("appointment-location-type");
       await form.change(location, "CLINIC");
-      await form.change(picker, "osm:osm-1");
+      await form.click(form.kind("อสม. คนอื่น"));
+      await form.click(form.container.querySelector<HTMLInputElement>('input[name="osm-candidate"][value="osm-1"]')!);
       expect(location.value).toBe("CLINIC");
       expect(form.hidden("locationType")).toBe("CLINIC");
       expect(form.hidden("assignedOsmUserId")).toBe("osm-1");
@@ -103,51 +132,79 @@ describe("Appointment assignee picker (ADR-0027, AP-2)", () => {
       await form.change(location, "ONLINE");
       expect(form.hidden("assignedOsmUserId")).toBe("osm-1");
 
-      await form.change(picker, "osm:current-osm");
+      await form.click(form.kind("อสม. ผู้ดูแล"));
+      expect(form.hidden("assignedOsmUserId")).toBe("current-osm");
       expect(form.container.textContent).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
 
-      await form.change(picker, "staff:coordinator");
+      await form.click(form.kind("เจ้าหน้าที่"));
+      await form.click(form.container.querySelector<HTMLInputElement>('input[name="staff-candidate"][value="coordinator"]')!);
       expect(form.hidden("responsibleUserId")).toBe("coordinator");
+      expect(form.hidden("assignedOsmUserId")).toBe("");
+
+      await form.click(form.kind("ยังไม่ระบุ"));
+      expect(form.hidden("responsibleUserId")).toBe("");
       expect(form.hidden("assignedOsmUserId")).toBe("");
     } finally {
       await form.cleanup();
     }
   });
 
-  it("offers a name search for a long อสม. list and keeps the chosen อสม. listed", async () => {
-    const form = await renderForm({ osmCandidates: candidates(12) });
+  it("never submits the picker's own controls as form fields", async () => {
+    const form = await renderForm();
     try {
-      const search = form.container.querySelector<HTMLInputElement>("#appointment-osm-search");
-      if (!search) throw new Error("Missing search");
-      const picker = form.select("appointment-responsible-user");
-      await form.change(picker, "osm:osm-0");
-      await form.change(search, "คนที่ 12");
-      const osmOptions = () => [...(picker.querySelectorAll("optgroup")[1]?.querySelectorAll("option") ?? [])].map((option) => option.textContent);
-      expect(osmOptions()).toEqual(["อสม. ผู้ดูแล · อสม. ผู้ดูแล ง", "อสม. คนที่ 1", "อสม. คนที่ 12"]);
-      expect(picker.value).toBe("osm:osm-0");
-      await form.change(search, "ไม่มีชื่อนี้");
-      expect(osmOptions()).toContain("ไม่พบ อสม. ที่ตรงกับคำค้น");
+      await form.click(form.kind("อสม. คนอื่น"));
+      await form.click(form.container.querySelector<HTMLInputElement>('input[name="osm-candidate"][value="osm-0"]')!);
+      const fields = [...new FormData(form.container.querySelector("form")!).keys()];
+      expect(fields).not.toContain("osm-candidate");
+      expect(fields).not.toContain("appointment-assignee-kind");
+      expect(fields.filter((name) => name === "assignedOsmUserId")).toHaveLength(1);
+    } finally {
+      await form.cleanup();
+    }
+  });
+
+  it("keeps a one-off อสม. already on the Appointment chosen when it is not on the page shown", async () => {
+    const form = await renderForm({
+      mode: "reschedule",
+      submissionNonce: undefined,
+      appointment: {
+        appointmentId: "appointment", type: "HOME_VISIT", scheduledAt: "2026-12-01T03:00:00.000Z", durationMinutes: 30,
+        locationType: "HOME_VISIT", locationDetail: null, note: null, responsibleUserId: null,
+        assignedOsmUserId: "osm-far", serviceCode: null, updatedAt: "2026-11-01T00:00:00.000Z",
+      },
+      selectedOsm: { userId: "osm-far", displayName: "อสม. หน้าอื่น" },
+    } as unknown as Partial<AppointmentFormProps>);
+    try {
+      expect(form.kind("อสม. คนอื่น").checked).toBe(true);
+      expect(form.hidden("assignedOsmUserId")).toBe("osm-far");
+      expect(form.container.textContent).toContain("อสม. ที่เลือก: อสม. หน้าอื่น");
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+      await form.click([...form.container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "ถัดไป")!);
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+      expect(mocks.searchOsm).toHaveBeenLastCalledWith("relationship", "", 2);
+      expect(form.hidden("assignedOsmUserId")).toBe("osm-far");
     } finally {
       await form.cleanup();
     }
   });
 
   it("keeps an อสม.'s own form to their home visit", async () => {
-    const form = await renderForm({ homeVisitOnly: true, responsibleMembers: [], osmCandidates: [] });
+    const form = await renderForm({ homeVisitOnly: true });
     try {
-      expect(form.select("appointment-responsible-user").disabled).toBe(true);
+      expect(form.container.querySelector('input[name="appointment-assignee-kind"]')).toBeNull();
       expect(form.hidden("assignedOsmUserId")).toBe("current-osm");
       expect(form.hidden("locationType")).toBe("HOME_VISIT");
-      expect(form.container.querySelector("#appointment-osm-search")).toBeNull();
+      expect(mocks.searchOsm).not.toHaveBeenCalled();
+      expect(mocks.searchStaff).not.toHaveBeenCalled();
     } finally {
       await form.cleanup();
     }
   });
 
-  it("stacks the picker in one column at 380 px", async () => {
-    const form = await renderForm({ osmCandidates: candidates(12) });
+  it("stacks the assignee choice in one column at 380 px", async () => {
+    const form = await renderForm();
     try {
-      const field = form.select("appointment-responsible-user").closest("div.space-y-2");
+      const field = form.kind("เจ้าหน้าที่").closest("fieldset");
       expect(field?.className).toContain("sm:col-span-2");
       expect(form.container.querySelector("fieldset")?.className).toContain("grid gap-5 sm:grid-cols-2");
       expect(form.container.innerHTML).not.toMatch(/\bw-\[(?:[4-9]\d\d|\d{4,})px\]/u);

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { OneOffVisitNote } from "../../../../appointment-service-source";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PatientServiceCode, Profession } from "@prisma/client";
 
+import { AssigneeSearchPicker, type AssigneeOption } from "@/components/assignee/assignee-search-picker";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -34,6 +35,10 @@ import {
   createAppointmentAction,
   rescheduleAppointmentAction,
 } from "@/modules/appointments/transport/server-actions";
+import {
+  searchAppointmentOsmCandidatesAction,
+  searchAppointmentResponsibleMembersAction,
+} from "@/modules/appointments/transport/assignee-search-actions";
 
 type PatientContext = {
   patientHospitalRelationshipId: string;
@@ -75,16 +80,26 @@ type CommonProps = {
   rescheduleReason?: string;
   relationshipId: string;
   patient: PatientContext;
-  responsibleMembers: readonly ResponsibleMember[];
   currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
-  /** ADR-0027 (AP-2): the Hospital's other ACTIVE อสม.; choosing one is a one-off visit. */
-  osmCandidates: readonly OsmCandidate[];
+  /** The staff member already responsible for the Appointment; others are searched on the server. */
+  selectedResponsible: ResponsibleMember | null;
+  /** ADR-0027 (AP-2): a one-off อสม. already on the Appointment; others are searched on the server. */
+  selectedOsm: OsmCandidate | null;
 };
 
 type OsmCandidate = { userId: string; displayName: string };
 
-/** Above this many อสม. the picker offers a name search. */
-const OSM_SEARCH_THRESHOLD = 8;
+/** Who the Appointment is given to; the picker for the chosen kind follows. */
+type AssigneeKind = "NONE" | "STAFF" | "CURRENT_OSM" | "OTHER_OSM";
+
+const ASSIGNEE_KIND_LABELS: Record<AssigneeKind, string> = {
+  NONE: "ยังไม่ระบุผู้รับผิดชอบ",
+  STAFF: "เจ้าหน้าที่",
+  CURRENT_OSM: "อสม. ผู้ดูแล",
+  OTHER_OSM: "อสม. คนอื่นของโรงพยาบาล",
+};
+
+const ASSIGNEE_KINDS = Object.keys(ASSIGNEE_KIND_LABELS) as AssigneeKind[];
 
 type CreateProps = CommonProps & {
   mode: "create";
@@ -135,13 +150,30 @@ function formatBangkokIso(value: string): string {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) ? `${value}:00+07:00` : "";
 }
 
-function responsibleOptionLabel(member: ResponsibleMember): string {
-  return `${member.displayName} · ${staffProfessionLabel(member.profession)}`;
+function toStaffOption(member: ResponsibleMember): AssigneeOption {
+  return { id: member.userId, displayName: member.displayName, detail: staffProfessionLabel(member.profession) };
 }
 
-function matchesOsmSearch(candidate: OsmCandidate, query: string): boolean {
-  const needle = query.trim().toLocaleLowerCase("th");
-  return needle === "" || candidate.displayName.toLocaleLowerCase("th").includes(needle);
+function toOsmOption(candidate: OsmCandidate): AssigneeOption {
+  return { id: candidate.userId, displayName: candidate.displayName };
+}
+
+function initialAssigneeKind(props: AppointmentFormProps): AssigneeKind {
+  const appointment = props.mode === "reschedule" ? props.appointment : null;
+  const currentOsmUserId = props.currentOsmAssignee?.userId ?? null;
+
+  if (!appointment) {
+    return props.homeVisitOnly && currentOsmUserId ? "CURRENT_OSM" : "NONE";
+  }
+
+  if (appointment.assignedOsmUserId !== null) {
+    if (appointment.assignedOsmUserId === currentOsmUserId) return "CURRENT_OSM";
+    return props.selectedOsm?.userId === appointment.assignedOsmUserId ? "OTHER_OSM" : "NONE";
+  }
+
+  return appointment.responsibleUserId !== null && props.selectedResponsible?.userId === appointment.responsibleUserId
+    ? "STAFF"
+    : "NONE";
 }
 
 function ActionFeedback({ state }: { state: AppointmentActionState }): React.JSX.Element | null {
@@ -173,24 +205,20 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
   );
   const [type, setType] = useState<AppointmentTypeValue>(appointment?.type ?? "FOLLOW_UP");
   const [serviceCode, setServiceCode] = useState<PatientServiceCode | "">(appointment?.serviceCode ?? "");
-  const [responsibleUserId, setResponsibleUserId] = useState(appointment?.responsibleUserId ?? "");
-  const [assignedOsmUserId, setAssignedOsmUserId] = useState(
-    appointment && appointment.assignedOsmUserId !== null &&
-      (appointment.assignedOsmUserId === props.currentOsmAssignee?.userId ||
-        props.osmCandidates.some((candidate) => candidate.userId === appointment.assignedOsmUserId))
-      ? appointment.assignedOsmUserId
-      : appointment
-        ? ""
-        : (props.homeVisitOnly ? props.currentOsmAssignee?.userId ?? "" : ""),
+  const [assigneeKind, setAssigneeKind] = useState<AssigneeKind>(() => initialAssigneeKind(props));
+  // The chosen people live here, so they stay chosen across paging and searching in the pickers.
+  const [selectedStaff, setSelectedStaff] = useState<AssigneeOption | null>(
+    props.selectedResponsible ? toStaffOption(props.selectedResponsible) : null,
   );
-  const [osmSearch, setOsmSearch] = useState("");
-  const offerOsmSearch = !props.homeVisitOnly && props.osmCandidates.length > OSM_SEARCH_THRESHOLD;
-  // The chosen อสม. stays listed whatever the search says, so the select never loses its value.
-  const osmSearchMatches = props.osmCandidates.filter((candidate) => matchesOsmSearch(candidate, osmSearch));
-  const visibleOsmCandidates = props.osmCandidates.filter(
-    (candidate) => candidate.userId === assignedOsmUserId || osmSearchMatches.includes(candidate),
+  const [selectedOtherOsm, setSelectedOtherOsm] = useState<AssigneeOption | null>(
+    props.selectedOsm ? toOsmOption(props.selectedOsm) : null,
   );
+  const responsibleUserId = assigneeKind === "STAFF" ? selectedStaff?.id ?? "" : "";
+  const assignedOsmUserId = assigneeKind === "CURRENT_OSM"
+    ? props.currentOsmAssignee?.userId ?? ""
+    : assigneeKind === "OTHER_OSM" ? selectedOtherOsm?.id ?? "" : "";
   const oneOffOsm = assignedOsmUserId !== "" && assignedOsmUserId !== props.currentOsmAssignee?.userId;
+  const detachedFormId = `${useId()}-assignee`;
   const [durationMinutes, setDurationMinutes] = useState(
     appointment?.durationMinutes?.toString() ?? String(APPOINTMENT_DEFAULT_DURATION_MINUTES),
   );
@@ -350,64 +378,63 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
               </span>
             </label>
 
-            <div className="space-y-2 sm:col-span-2">
-              <label className={labelClassName} htmlFor="appointment-responsible-user">
-                ผู้รับผิดชอบนัดหมาย (ไม่บังคับ)
-              </label>
-              {offerOsmSearch ? (
-                <input
-                  aria-label="ค้นหา อสม. ตามชื่อ"
-                  className={inputClassName}
-                  id="appointment-osm-search"
-                  onChange={(event) => setOsmSearch(event.target.value)}
-                  placeholder={`ค้นหา อสม. จาก ${props.osmCandidates.length} คน`}
-                  type="search"
-                  value={osmSearch}
+            <fieldset aria-describedby="appointment-responsible-help" className="space-y-3 sm:col-span-2">
+              <legend className="text-sm font-semibold text-text">ผู้รับผิดชอบนัดหมาย (ไม่บังคับ)</legend>
+              {props.homeVisitOnly ? null : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ASSIGNEE_KINDS.map((kind) => {
+                    const unavailable = kind === "CURRENT_OSM" && !props.currentOsmAssignee;
+                    return (
+                      <label
+                        className="flex min-h-11 items-center gap-3 rounded-control border border-border bg-surface px-4 py-2.5 text-sm font-normal text-text has-[:checked]:border-action-primary has-[:checked]:bg-brand-soft has-[:disabled]:text-text-muted"
+                        key={kind}
+                      >
+                        <input
+                          checked={assigneeKind === kind}
+                          className="size-4 accent-brand-strong"
+                          disabled={unavailable}
+                          // The choice travels in the hidden fields above, never as its own form field.
+                          form={detachedFormId}
+                          name="appointment-assignee-kind"
+                          onChange={() => setAssigneeKind(kind)}
+                          type="radio"
+                          value={kind}
+                        />
+                        <span className="min-w-0 break-words">
+                          {kind === "CURRENT_OSM"
+                            ? props.currentOsmAssignee
+                              ? `${ASSIGNEE_KIND_LABELS[kind]} · ${props.currentOsmAssignee.displayName}${props.currentOsmAssignee.contactPhone ? ` · ${props.currentOsmAssignee.contactPhone}` : ""}`
+                              : "อสม. ผู้ดูแล: ยังไม่มีผู้ดูแลที่ใช้งานได้"
+                            : ASSIGNEE_KIND_LABELS[kind]}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {assigneeKind === "STAFF" && !props.homeVisitOnly ? (
+                <AssigneeSearchPicker
+                  disabled={false}
+                  formId={detachedFormId}
+                  hospitalId={props.patient.hospital.id}
+                  onSelect={setSelectedStaff}
+                  search={(query, page) => searchAppointmentResponsibleMembersAction(props.relationshipId, query, page)}
+                  selected={selectedStaff}
+                  variant="staff"
                 />
               ) : null}
-              <Select
-                aria-describedby="appointment-responsible-help"
-                id="appointment-responsible-user"
-                onChange={(event) => {
-                  const selected = event.currentTarget.value;
-                  if (selected.startsWith("osm:")) {
-                    setAssignedOsmUserId(selected.slice("osm:".length));
-                    setResponsibleUserId("");
-                  } else if (selected.startsWith("staff:")) {
-                    setResponsibleUserId(selected.slice("staff:".length));
-                    setAssignedOsmUserId("");
-                  } else {
-                    setResponsibleUserId("");
-                    setAssignedOsmUserId("");
-                  }
-                }}
-                value={assignedOsmUserId ? `osm:${assignedOsmUserId}` : responsibleUserId ? `staff:${responsibleUserId}` : ""}
-                disabled={props.homeVisitOnly}
-              >
-                <option value="">ยังไม่ระบุผู้รับผิดชอบ</option>
-                {props.responsibleMembers.length > 0 ? (
-                  <optgroup label="เจ้าหน้าที่">
-                    {props.responsibleMembers.map((member) => (
-                      <option key={member.userId} value={`staff:${member.userId}`}>
-                        {responsibleOptionLabel(member)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-                <optgroup label="อสม.">
-                  {props.currentOsmAssignee ? (
-                    <option value={`osm:${props.currentOsmAssignee.userId}`}>อสม. ผู้ดูแล · {props.currentOsmAssignee.displayName}{props.currentOsmAssignee.contactPhone ? ` · ${props.currentOsmAssignee.contactPhone}` : ""}</option>
-                  ) : (
-                    <option disabled value="osm-unavailable">อสม. ผู้ดูแล: ยังไม่มีผู้ดูแลที่ใช้งานได้</option>
-                  )}
-                  {visibleOsmCandidates.map((candidate) => (
-                    <option key={candidate.userId} value={`osm:${candidate.userId}`}>{candidate.displayName}</option>
-                  ))}
-                  {offerOsmSearch && osmSearchMatches.length === 0 ? (
-                    <option disabled value="osm-no-match">ไม่พบ อสม. ที่ตรงกับคำค้น</option>
-                  ) : null}
-                </optgroup>
-              </Select>
+              {assigneeKind === "OTHER_OSM" && !props.homeVisitOnly ? (
+                <AssigneeSearchPicker
+                  disabled={false}
+                  excludeUserId={props.currentOsmAssignee?.userId ?? null}
+                  formId={detachedFormId}
+                  hospitalId={props.patient.hospital.id}
+                  onSelect={setSelectedOtherOsm}
+                  search={(query, page) => searchAppointmentOsmCandidatesAction(props.relationshipId, query, page)}
+                  selected={selectedOtherOsm}
+                  variant="osm"
+                />
+              ) : null}
               <p className="text-xs font-normal leading-5 text-text-muted" id="appointment-responsible-help">
                 {props.homeVisitOnly
                   ? `นัดนี้มอบหมายให้คุณ${props.currentOsmAssignee ? ` · ${props.currentOsmAssignee.displayName}` : ""} และระบบบันทึกการตอบรับให้แล้ว`
@@ -416,7 +443,7 @@ export function AppointmentForm(props: AppointmentFormProps): React.JSX.Element 
                     : "เลือกเจ้าหน้าที่หรือ อสม. ของโรงพยาบาลนี้ได้หนึ่งคน นัดที่มอบให้ อสม. ใช้สถานที่ใดก็ได้"}
               </p>
               {oneOffOsm && !props.homeVisitOnly ? <OneOffVisitNote visible /> : null}
-            </div>
+            </fieldset>
 
             <label className={labelClassName} htmlFor="appointment-duration">
               <span>ระยะเวลา (นาที, ไม่บังคับ)</span>

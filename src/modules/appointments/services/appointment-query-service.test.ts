@@ -17,6 +17,8 @@ import {
   getAppointmentHistory,
   getAppointmentCreateContext,
   getAppointmentRescheduleContext,
+  searchAppointmentOsmCandidates,
+  searchAppointmentResponsibleMembers,
   type AppointmentQueryDatabase,
 } from "./appointment-query-service";
 
@@ -114,7 +116,12 @@ function createDatabase(options: {
     user: {
       findUnique: vi.fn().mockResolvedValue(actorRecord),
       // ADR-0027: the Hospital's other ACTIVE อสม. offered to staff in the assignee picker.
-      findMany: vi.fn().mockResolvedValue([{ id: "99999999-9999-4999-8999-999999999999", person: { givenName: "สมปอง", familyName: "อสม. อื่น" } }]),
+      count: vi.fn().mockResolvedValue(1),
+      findMany: vi.fn().mockResolvedValue([{
+        id: "99999999-9999-4999-8999-999999999999",
+        person: { givenName: "สมปอง", familyName: "อสม. อื่น" },
+        osmHospitalRelationships: [{ id: "66666666-6666-4666-8666-666666666666", contactPhone: "0800000000" }],
+      }]),
     },
     // ADR-0016: no active network association unless a test supplies one.
     hospitalServiceArea: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -144,6 +151,7 @@ function createDatabase(options: {
       ),
     },
     hospitalMembership: {
+      count: vi.fn().mockResolvedValue(12),
       findMany: vi.fn().mockResolvedValue([
         {
           userId: responsibleUserId,
@@ -221,41 +229,77 @@ describe("Appointment query service", () => {
     }));
   });
 
-  it("returns every Hospital operator, whatever the profession, without exposing membership type (ADR-0027)", async () => {
+  it("ships no Hospital roster with the create context (ADR-0027)", async () => {
     const database = createDatabase();
     const context = await getAppointmentCreateContext(hospitalActor, relationshipId, { database });
-    const membershipFindMany = (database as unknown as {
+    const db = database as unknown as {
       hospitalMembership: { findMany: ReturnType<typeof vi.fn> };
-    }).hospitalMembership.findMany;
+      user: { findMany: ReturnType<typeof vi.fn> };
+    };
 
-    expect(context.responsibleMembers).toMatchObject([
-      { userId: responsibleUserId, displayName: "สมหญิง ผู้รับผิดชอบ", profession: Profession.DOCTOR },
-      {
-        userId: "77777777-7777-4777-8777-777777777777",
-        displayName: "สมใจ พยาบาล",
-        profession: Profession.NURSE,
-      },
-    ]);
-    expect(JSON.stringify(context.responsibleMembers)).not.toContain("membershipType");
-    for (const member of context.responsibleMembers) {
-      expect(member).not.toHaveProperty("membershipType");
-    }
-    expect(membershipFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          hospitalId,
-          membershipType: { in: ["OWNER", "MEMBER"] },
-          status: MembershipStatus.ACTIVE,
-          user: { is: { status: "ACTIVE", roles: { some: { role: "HOSPITAL" } } } },
-          hospital: { is: { status: "ACTIVE" } },
-        },
-        select: {
-          userId: true,
-          profession: true,
-          user: { select: { person: { select: { givenName: true, familyName: true } } } },
-        },
-      }),
+    expect(context).toMatchObject({ selectedResponsible: null, selectedOsm: null });
+    expect(context).not.toHaveProperty("responsibleMembers");
+    expect(context).not.toHaveProperty("osmCandidates");
+    expect(db.hospitalMembership.findMany).not.toHaveBeenCalled();
+    expect(db.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("searches one page of every Hospital operator, whatever the profession, without membership type (ADR-0027)", async () => {
+    const database = createDatabase();
+    const result = await searchAppointmentResponsibleMembers(
+      hospitalActor,
+      { relationshipId, value: " สม ", page: 9 },
+      { database },
     );
+    const membership = (database as unknown as {
+      hospitalMembership: { count: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> };
+    }).hospitalMembership;
+    const roster = {
+      hospitalId,
+      membershipType: { in: ["OWNER", "MEMBER"] },
+      status: MembershipStatus.ACTIVE,
+      user: { is: { status: "ACTIVE", roles: { some: { role: "HOSPITAL" } } } },
+      hospital: { is: { status: "ACTIVE" } },
+    };
+    const where = {
+      AND: [roster, { user: { is: { person: { AND: [{ OR: [
+        { givenName: { contains: "สม", mode: "insensitive" } },
+        { familyName: { contains: "สม", mode: "insensitive" } },
+      ] }] } } } }],
+    };
+
+    // 12 operators, 10 per page: page 9 is clamped to page 2.
+    expect(result).toMatchObject({ page: 2, totalPages: 2, hasPreviousPage: true, hasNextPage: false });
+    expect(result.items).toEqual([
+      { userId: responsibleUserId, displayName: "สมหญิง ผู้รับผิดชอบ", profession: Profession.DOCTOR },
+      { userId: "77777777-7777-4777-8777-777777777777", displayName: "สมใจ พยาบาล", profession: Profession.NURSE },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("membershipType\":\"");
+    expect(membership.count).toHaveBeenCalledWith({ where });
+    expect(membership.findMany).toHaveBeenCalledWith(expect.objectContaining({ where, skip: 10, take: 10 }));
+  });
+
+  it("searches the Hospital's other อสม. one page at a time, leaving out the Patient's current อสม. (ADR-0027)", async () => {
+    const currentOsmUserId = "12121212-1212-4121-8121-121212121212";
+    const database = createDatabase({ assignedOsmUserId: currentOsmUserId });
+    const result = await searchAppointmentOsmCandidates(hospitalActor, { relationshipId, page: 1 }, { database });
+    const user = (database as unknown as { user: { count: ReturnType<typeof vi.fn>; findMany: ReturnType<typeof vi.fn> } }).user;
+
+    expect(result).toEqual({
+      page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+      items: [{ userId: "99999999-9999-4999-8999-999999999999", displayName: "สมปอง อสม. อื่น" }],
+    });
+    expect(user.count).toHaveBeenCalledWith({ where: expect.objectContaining({ id: { notIn: [currentOsmUserId] } }) });
+    expect(user.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 0, take: 10 }));
+  });
+
+  it("refuses the assignee search for an actor without direct Hospital scope", async () => {
+    const database = createDatabase({ manageAllowed: false });
+
+    await expect(searchAppointmentOsmCandidates(hospitalActor, { relationshipId, page: 1 }, { database }))
+      .rejects.toBeInstanceOf(ForbiddenError);
+    await expect(searchAppointmentResponsibleMembers(hospitalActor, { relationshipId, value: "x".repeat(121) }, { database }))
+      .rejects.toThrow();
   });
 
   it.each([
@@ -310,15 +354,12 @@ describe("Appointment query service", () => {
     );
 
     expect(context.appointment.responsibleProfession).toBe(Profession.COORDINATOR);
-    expect(context.responsibleMembers).toContainEqual({
+    expect(context.selectedResponsible).toEqual({
       userId: historicalUserId,
       displayName: "ประวัติ ผู้ประสานงาน",
       profession: Profession.COORDINATOR,
     });
-    expect(JSON.stringify(context.responsibleMembers)).not.toContain("membershipType");
-    for (const member of context.responsibleMembers) {
-      expect(member).not.toHaveProperty("membershipType");
-    }
+    expect(context.selectedResponsible).not.toHaveProperty("membershipType");
   });
 
   it("fails closed when the actor loses direct membership before a read", async () => {

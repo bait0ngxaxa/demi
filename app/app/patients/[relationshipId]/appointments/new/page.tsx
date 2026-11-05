@@ -70,10 +70,10 @@ export default async function NewAppointmentPage({
       mode="create"
       patient={context.patient}
       currentOsmAssignee={context.currentOsmAssignee}
-      osmCandidates={context.osmCandidates}
+      selectedOsm={context.selectedOsm}
       relationshipId={relationshipId}
       returnTo={parsedReturnTo.success ? parsedReturnTo.data : undefined}
-      responsibleMembers={context.responsibleMembers}
+      selectedResponsible={context.selectedResponsible}
       submissionNonce={randomUUID()}
     />
   );

@@ -92,9 +92,9 @@ export default async function RescheduleAppointmentPage({
       mode="reschedule"
       patient={context.patient}
       relationshipId={relationshipId}
-      responsibleMembers={context.responsibleMembers}
+      selectedResponsible={context.selectedResponsible}
       currentOsmAssignee={context.currentOsmAssignee}
-      osmCandidates={context.osmCandidates}
+      selectedOsm={context.selectedOsm}
     />
   );
 }

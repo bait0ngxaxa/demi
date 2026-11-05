@@ -14,12 +14,17 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import { hospitalOperatorRosterWhere } from "@/modules/identity/services/hospital-authority";
+import { searchEligibleOsmCandidatePage } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
+import { buildNameWhere } from "@/modules/patient-directory/services/patient-directory-query-service";
+import { resolvePagePosition, type PageNumberPosition } from "@/shared/pagination/page-number";
+import { ASSIGNEE_SEARCH_PAGE_SIZE } from "@/shared/search/assignee-search";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
   ApplicationError,
   ForbiddenError,
   InfrastructureError,
   NotFoundError,
+  ValidationError,
 } from "@/shared/errors/application-error";
 
 import {
@@ -35,7 +40,7 @@ import {
   APPOINTMENT_MANAGE_CAPABILITY,
   APPOINTMENT_READ_CAPABILITY,
 } from "../policies/appointment-policy";
-import { appointmentIdSchema, appointmentRelationshipIdSchema } from "../schemas/appointment-schemas";
+import { appointmentAssigneeSearchSchema, appointmentIdSchema, appointmentRelationshipIdSchema } from "../schemas/appointment-schemas";
 import {
   resolveAppointmentAccessContext,
   type AppointmentAccessDatabase,
@@ -150,11 +155,18 @@ export type AppointmentOsmCandidate = { userId: string; displayName: string };
 export type AppointmentCreateContext = {
   homeVisitOnly?: boolean;
   patient: AppointmentPatientSummary;
-  responsibleMembers: ResponsibleHospitalMember[];
   currentOsmAssignee: { userId: string; displayName: string; contactPhone: string | null } | null;
-  /** ADR-0027 (AP-2): every other ACTIVE อสม. of the Hospital; staff only. Choosing one is a one-off visit. */
-  osmCandidates: AppointmentOsmCandidate[];
+  /**
+   * The form searches the Hospital's staff and อสม. on the server (searchAppointmentResponsibleMembers,
+   * searchAppointmentOsmCandidates); only the people already chosen on the Appointment travel with the context.
+   */
+  selectedResponsible: ResponsibleHospitalMember | null;
+  /** ADR-0027 (AP-2): an อสม. other than the Patient's current one; choosing one is a one-off visit. */
+  selectedOsm: AppointmentOsmCandidate | null;
 };
+
+/** One page of the appointment form's assignee search. */
+export type AppointmentAssigneePage<T> = PageNumberPosition & { items: T[] };
 
 export type AppointmentRescheduleContext = AppointmentCreateContext & {
   appointment: AppointmentDetail;
@@ -525,14 +537,25 @@ async function resolveManageProjection(
   }
 }
 
-async function getResponsibleMembers(
-  database: AppointmentAccessDatabase,
-  hospitalId: string,
-): Promise<ResponsibleHospitalMember[]> {
+function responsibleMemberWhere(hospitalId: string, value: string | undefined): Prisma.HospitalMembershipWhereInput {
   // ADR-0027 (AP-1): every operator of the Hospital, whatever the profession.
-  const memberships = await database.hospitalMembership.findMany({
-    where: hospitalOperatorRosterWhere(hospitalId),
-    orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
+  const roster = hospitalOperatorRosterWhere(hospitalId);
+  return value ? { AND: [roster, { user: { is: { person: buildNameWhere(value) } } }] } : roster;
+}
+
+/** One counted page of the Hospital's operators by name. The caller has authorized the Hospital. */
+async function searchResponsibleMembers(
+  database: AppointmentAccessDatabase,
+  input: { hospitalId: string; value?: string; page: number },
+): Promise<AppointmentAssigneePage<ResponsibleHospitalMember>> {
+  const where = responsibleMemberWhere(input.hospitalId, input.value);
+  const total = await database.hospitalMembership.count({ where });
+  const { skip, ...position } = resolvePagePosition(input.page, total, ASSIGNEE_SEARCH_PAGE_SIZE);
+  const memberships = total === 0 ? [] : await database.hospitalMembership.findMany({
+    where,
+    orderBy: [{ user: { person: { givenName: "asc" } } }, { user: { person: { familyName: "asc" } } }, { userId: "asc" }],
+    skip,
+    take: ASSIGNEE_SEARCH_PAGE_SIZE,
     select: {
       userId: true,
       profession: true,
@@ -549,65 +572,48 @@ async function getResponsibleMembers(
     },
   });
 
-  return memberships.map((membership) => ({
-    userId: membership.userId,
-    displayName: toDisplayName(membership.user.person),
-    profession: membership.profession,
-  }));
+  return {
+    ...position,
+    items: memberships.map((membership) => ({
+      userId: membership.userId,
+      displayName: toDisplayName(membership.user.person),
+      profession: membership.profession,
+    })),
+  };
 }
 
-/** ADR-0027 (AP-2): the ACTIVE อสม. of the ACTIVE Hospital other than the patient's current one, by name. */
-async function getOsmCandidates(
+/** ADR-0027 (AP-2): one page of the ACTIVE อสม. of the ACTIVE Hospital other than the patient's current one, by name. */
+async function searchOsmCandidates(
   database: AppointmentAccessDatabase,
-  hospitalId: string,
-  currentOsmUserId: string | null,
-): Promise<AppointmentOsmCandidate[]> {
-  const users = await database.user.findMany({
-    where: {
-      status: "ACTIVE",
-      roles: { some: { role: "OSM" } },
-      osmHospitalRelationships: { some: { hospitalId, status: "ACTIVE", hospital: { status: "ACTIVE" } } },
-      ...(currentOsmUserId ? { id: { not: currentOsmUserId } } : {}),
-    },
-    orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
-    select: { id: true, person: { select: { givenName: true, familyName: true } } },
+  input: { hospitalId: string; currentOsmUserId: string | null; value?: string; page: number },
+): Promise<AppointmentAssigneePage<AppointmentOsmCandidate>> {
+  const { candidates, ...position } = await searchEligibleOsmCandidatePage(database, {
+    hospitalId: input.hospitalId,
+    value: input.value,
+    excludeUserIds: input.currentOsmUserId ? [input.currentOsmUserId] : [],
+    page: input.page,
+    pageSize: ASSIGNEE_SEARCH_PAGE_SIZE,
   });
-  return users.map((user) => ({ userId: user.id, displayName: toDisplayName(user.person) }));
+  return { ...position, items: candidates.map(({ userId, displayName }) => ({ userId, displayName })) };
 }
 
-async function getRescheduleResponsibleMembers(
-  database: AppointmentAccessDatabase,
-  hospitalId: string,
-  currentResponsibleUserId: string | null,
-  currentResponsiblePerson: { givenName: string | null; familyName: string | null } | null,
-  currentResponsibleProfession: Profession | null,
-): Promise<ResponsibleHospitalMember[]> {
-  const members = await getResponsibleMembers(database, hospitalId);
-
-  if (
-    currentResponsibleUserId &&
-    !members.some((member) => member.userId === currentResponsibleUserId)
-  ) {
-    members.push({
-      userId: currentResponsibleUserId,
-      displayName: currentResponsiblePerson
-        ? toDisplayName(currentResponsiblePerson)
-        : "ผู้รับผิดชอบเดิม",
-      profession: currentResponsibleProfession,
-    });
-  }
-
-  return members;
+/** The responsible person already on the Appointment stays chosen even after they left the Hospital. */
+function keptResponsible(
+  userId: string | null,
+  person: { givenName: string | null; familyName: string | null } | null,
+  profession: Profession | null,
+): ResponsibleHospitalMember | null {
+  return userId
+    ? { userId, displayName: person ? toDisplayName(person) : "ผู้รับผิดชอบเดิม", profession }
+    : null;
 }
 
-/** An edit keeps the appointment's one-off อสม. selectable even once they are no longer eligible. */
-function withKeptOsm(
-  candidates: AppointmentOsmCandidate[],
+/** A one-off อสม. already on the Appointment stays chosen whatever the search shows. */
+function keptOsm(
   keptOsmUserId: string | null,
   keptPerson: { givenName: string | null; familyName: string | null } | null,
-): AppointmentOsmCandidate[] {
-  if (!keptOsmUserId || candidates.some((candidate) => candidate.userId === keptOsmUserId)) return candidates;
-  return [...candidates, { userId: keptOsmUserId, displayName: keptPerson ? toDisplayName(keptPerson) : "อสม. เดิม" }];
+): AppointmentOsmCandidate | null {
+  return keptOsmUserId ? { userId: keptOsmUserId, displayName: keptPerson ? toDisplayName(keptPerson) : "อสม. เดิม" } : null;
 }
 
 export async function getAppointmentHistory(
@@ -751,10 +757,8 @@ export async function getAppointmentCreateContext(
     return {
       homeVisitOnly: !access.scopes.directHospital,
       patient: access.patient,
-      responsibleMembers: access.scopes.directHospital ? await getResponsibleMembers(database, access.target.hospitalId) : [],
-      osmCandidates: access.scopes.directHospital
-        ? await getOsmCandidates(database, access.target.hospitalId, access.target.patientCurrentOsmUserId)
-        : [],
+      selectedResponsible: null,
+      selectedOsm: null,
       currentOsmAssignee: await resolveCurrentOsmAssignee(database, {
         includePhone: access.scopes.directHospital,
         osmUserId: access.target.patientCurrentOsmUserId,
@@ -814,20 +818,17 @@ export async function getAppointmentRescheduleContext(
         osmUserId: access.target.patientCurrentOsmUserId,
         hospitalId: access.target.hospitalId,
       }),
-      osmCandidates: access.scopes.directHospital
-        ? withKeptOsm(
-          await getOsmCandidates(database, access.target.hospitalId, access.target.patientCurrentOsmUserId),
+      selectedOsm: access.scopes.directHospital
+        ? keptOsm(
           record.assignedOsmUserId === access.target.patientCurrentOsmUserId ? null : record.assignedOsmUserId,
           record.assignedOsmUser?.person ?? null,
         )
-        : [],
-      responsibleMembers: access.scopes.directHospital ? await getRescheduleResponsibleMembers(
-        database,
-        access.target.hospitalId,
+        : null,
+      selectedResponsible: access.scopes.directHospital ? keptResponsible(
         record.responsibleUserId,
         record.responsibleUser?.person ?? null,
         record.responsibleUser?.memberships[0]?.profession ?? null,
-      ) : [],
+      ) : null,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -838,21 +839,41 @@ export async function getAppointmentRescheduleContext(
   }
 }
 
-export async function listResponsibleHospitalMembers(
+type AppointmentAssigneeSearch = { relationshipId: string; value?: string; page: number };
+
+/** Direct Hospital staff of the Patient's Hospital only; the Hospital comes from the relationship, never the client. */
+async function resolveAssigneeSearchScope(
   actor: ActorContext | null | undefined,
-  relationshipId: unknown,
+  input: unknown,
+  database: AppointmentQueryDatabase,
+): Promise<{ hospitalId: string; currentOsmUserId: string | null; search: AppointmentAssigneeSearch }> {
+  const parsed = appointmentAssigneeSearchSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("Appointment assignee search is invalid");
+  }
+
+  const access = await resolveAppointmentAccessContext(actor, parsed.data.relationshipId, APPOINTMENT_READ_CAPABILITY, database);
+  if (!access.scopes.directHospital) {
+    throw new ForbiddenError();
+  }
+
+  return {
+    hospitalId: access.target.hospitalId,
+    currentOsmUserId: access.target.patientCurrentOsmUserId ?? null,
+    search: parsed.data,
+  };
+}
+
+/** ADR-0027 (AP-1): one page of the Patient's Hospital operators, by name, for the appointment form. */
+export async function searchAppointmentResponsibleMembers(
+  actor: ActorContext | null | undefined,
+  input: unknown,
   dependencies: AppointmentQueryDependencies = {},
-): Promise<ResponsibleHospitalMember[]> {
+): Promise<AppointmentAssigneePage<ResponsibleHospitalMember>> {
   try {
     const database = getDatabase(dependencies);
-    const access = await resolveAppointmentAccessContext(
-      actor,
-      relationshipId,
-      APPOINTMENT_READ_CAPABILITY,
-      database,
-    );
-
-    return access.scopes.directHospital ? getResponsibleMembers(database, access.target.hospitalId) : [];
+    const scope = await resolveAssigneeSearchScope(actor, input, database);
+    return await searchResponsibleMembers(database, { hospitalId: scope.hospitalId, value: scope.search.value, page: scope.search.page });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -862,12 +883,36 @@ export async function listResponsibleHospitalMembers(
   }
 }
 
+/** ADR-0027 (AP-2): one page of the Hospital's other ACTIVE อสม., by name, for the appointment form. */
+export async function searchAppointmentOsmCandidates(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: AppointmentQueryDependencies = {},
+): Promise<AppointmentAssigneePage<AppointmentOsmCandidate>> {
+  try {
+    const database = getDatabase(dependencies);
+    const scope = await resolveAssigneeSearchScope(actor, input, database);
+    return await searchOsmCandidates(database, {
+      hospitalId: scope.hospitalId,
+      currentOsmUserId: scope.currentOsmUserId,
+      value: scope.search.value,
+      page: scope.search.page,
+    });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw new InfrastructureError("OSM candidates could not be loaded");
+  }
+}
+
 export const appointmentQueryInternals = {
   appointmentDetailSelect,
   appointmentHistorySelect,
   responsibleUserSelect,
-  getOsmCandidates,
-  getResponsibleMembers,
+  searchOsmCandidates,
+  searchResponsibleMembers,
   resolveManageProjection,
   nullableDisplayName,
   toDetail,
