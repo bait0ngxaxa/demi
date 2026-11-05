@@ -9,6 +9,7 @@ import {
   searchAppointmentOsmCandidates,
   searchAppointmentResponsibleMembers,
 } from "../services/appointment-query-service";
+import { searchWorkAppointmentResponsibleFilter } from "../services/work-appointment-query-service";
 
 const INVALID_SEARCH = "คำค้นหาไม่ถูกต้อง กรุณาค้นหาใหม่";
 
@@ -58,5 +59,28 @@ export async function searchAppointmentOsmCandidatesAction(
     };
   } catch (error: unknown) {
     return searchError(error, "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
+  }
+}
+
+/** ADR-0027 (AP-1): one page of a selected work Hospital's operators for the list's responsible-person filter. */
+export async function searchWorkAppointmentResponsibleFilterAction(
+  hospitalId: string,
+  value: string,
+  page: number,
+): Promise<AssigneeSearchResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const { items, ...position } = await searchWorkAppointmentResponsibleFilter(actor, { hospitalId, value, page });
+    return {
+      status: "OK",
+      ...position,
+      items: items.map((member) => ({
+        id: member.userId,
+        displayName: member.displayName,
+        detail: staffProfessionLabel(member.profession),
+      })),
+    };
+  } catch (error: unknown) {
+    return searchError(error, "ไม่สามารถค้นหาเจ้าหน้าที่ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง");
   }
 }

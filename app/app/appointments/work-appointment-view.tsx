@@ -1,6 +1,6 @@
 import { AppointmentServiceSource, OneOffVisitNote } from "../appointment-service-source";
 import Link from "next/link";
-import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appointments/domain/appointment-people";
+import { appointerLabel, appointmentAssigneePresentation, staffProfessionLabel } from "@/modules/appointments/domain/appointment-people";
 
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import type {
   WorkAppointmentListItem,
 } from "@/modules/appointments/services/work-appointment-query-service";
 import type { WorkAppointmentTab } from "@/modules/appointments/schemas/work-appointment-schemas";
+
+import { ResponsibleFilterPicker } from "./responsible-filter-picker";
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -185,13 +187,15 @@ export function WorkAppointmentView({
               {Object.entries(APPOINTMENT_LOCATION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </Select>
           </label>
-          <label className="block space-y-2 text-sm font-semibold text-text">
-            ผู้รับผิดชอบ
-            <Select defaultValue={page.filters.responsibleUserId ?? ""} name="responsibleUserId">
-              <option value="">ทุกคน</option>
-              {page.responsibleOptions.map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
-            </Select>
-          </label>
+          {page.responsibleFilter.mode === "VISIBLE" ? (
+            <label className="block space-y-2 text-sm font-semibold text-text">
+              ผู้รับผิดชอบ
+              <Select defaultValue={page.filters.responsibleUserId ?? ""} name="responsibleUserId">
+                <option value="">ทุกคน</option>
+                {page.responsibleFilter.options.map((person) => <option key={person.userId} value={person.userId}>{person.displayName}</option>)}
+              </Select>
+            </label>
+          ) : null}
           {page.canResolveRequests && page.tab === "UPCOMING" ? (
             <>
               <label className="block space-y-2 text-sm font-semibold text-text">
@@ -209,6 +213,17 @@ export function WorkAppointmentView({
                 </Select>
               </label>
             </>
+          ) : null}
+          {page.responsibleFilter.mode === "SEARCH" ? (
+            <ResponsibleFilterPicker
+              hospitalId={page.hospital.hospitalId}
+              key={`${page.hospital.hospitalId}\n${page.filters.responsibleUserId ?? ""}`}
+              selected={page.responsibleFilter.selected ? {
+                id: page.responsibleFilter.selected.userId,
+                displayName: page.responsibleFilter.selected.displayName,
+                detail: staffProfessionLabel(page.responsibleFilter.selected.profession),
+              } : null}
+            />
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
             <Button type="submit">ค้นหา</Button>

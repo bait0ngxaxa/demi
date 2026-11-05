@@ -483,13 +483,6 @@
     "reason": "The actor's own direct Hospitals (workspace scopes). / The actor's own OSM Hospitals (workspace scopes)."
   },
   {
-    "file": "src/modules/appointments/services/work-appointment-query-service.ts",
-    "function": "listResponsibleOptions",
-    "target": "hospitalMembership",
-    "occurrence": 1,
-    "reason": "FOLLOW-UP: /app/appointments responsible-staff filter loads the Hospital operator roster; move to a server search."
-  },
-  {
     "file": "src/modules/auth/services/actor-context-service.ts",
     "function": "readActorUser",
     "target": "user.roles",

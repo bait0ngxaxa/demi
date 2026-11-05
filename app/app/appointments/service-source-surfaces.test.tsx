@@ -30,7 +30,7 @@ const appointment = {
 const hospital = { hospitalId: "hospital", hospitalName: "โรงพยาบาล", access: "DIRECT" as const, canCreate: true, canResolveRequests: true, canAcceptAssignments: false };
 const page: WorkAppointmentPage = {
   hospital, hospitals: [hospital], tab: "UPCOMING", filters: {}, nextCursor: null, hasNextPage: false,
-  canCreate: true, canResolveRequests: true, canAcceptAssignments: false, responsibleOptions: [],
+  canCreate: true, canResolveRequests: true, canAcceptAssignments: false, responsibleFilter: { mode: "VISIBLE", options: [] },
   items: [{ ...appointment, relationshipId: "relationship", patientDisplayName: "ผู้ป่วย", hospitalName: "โรงพยาบาล",
     pendingRequestBadges: { reschedule: false, staleReschedule: false, cancellation: false }, hasUnassignedOsm: false,
     osmAcceptanceStatus: "WAITING", isOneOffVisit: true }],

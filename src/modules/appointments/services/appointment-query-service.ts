@@ -544,7 +544,7 @@ function responsibleMemberWhere(hospitalId: string, value: string | undefined): 
 }
 
 /** One counted page of the Hospital's operators by name. The caller has authorized the Hospital. */
-async function searchResponsibleMembers(
+export async function searchResponsibleMembers(
   database: AppointmentAccessDatabase,
   input: { hospitalId: string; value?: string; page: number },
 ): Promise<AppointmentAssigneePage<ResponsibleHospitalMember>> {

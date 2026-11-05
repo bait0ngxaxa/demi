@@ -17,7 +17,6 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { hospitalOperatorRosterWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -42,6 +41,7 @@ import { VISIT_OSM_ACCESS_GRACE_MS } from "../policies/appointment-policy";
 import {
   WORK_APPOINTMENT_PAGE_SIZE,
   workAppointmentQuerySchema,
+  workAppointmentResponsibleSearchSchema,
   type WorkAppointmentFilters,
   type WorkAppointmentQueryInput,
   type WorkAppointmentTab,
@@ -52,6 +52,7 @@ import {
   type WorkAppointmentCursorContext,
   type WorkAppointmentCursorPosition,
 } from "./work-appointment-cursor";
+import { searchResponsibleMembers, type AppointmentAssigneePage } from "./appointment-query-service";
 
 export type WorkAppointmentDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -114,7 +115,13 @@ export type WorkAppointmentPage = {
   canCreate: boolean;
   canResolveRequests: boolean;
   canAcceptAssignments: boolean;
-  responsibleOptions: WorkAppointmentResponsibleOption[];
+  /**
+   * The responsible-person filter. A direct operator searches the Hospital's operators on the server and sees the
+   * chosen person named even when not on the page; a network or อสม. reader picks from the people on the page.
+   */
+  responsibleFilter:
+    | { mode: "SEARCH"; selected: WorkAppointmentResponsibleOption | null }
+    | { mode: "VISIBLE"; options: WorkAppointmentResponsibleOption[] };
 };
 
 type ResolvedHospitalScope = {
@@ -843,30 +850,48 @@ function toPublicHospitalScope(scope: ResolvedHospitalScope): WorkAppointmentHos
   return toPublicScope(scope);
 }
 
-async function listResponsibleOptions(
+/**
+ * The name of the person the filter is set to: a current operator of the Hospital, or someone who was a member of it
+ * (an Appointment keeps its responsible person after they leave). Nobody outside the Hospital is named.
+ */
+async function findSelectedResponsible(
   database: WorkAppointmentDatabase,
   hospitalId: string,
-): Promise<WorkAppointmentResponsibleOption[]> {
-  // ADR-0027 (AP-1): every operator of the Hospital can be the staff assignee, whatever the profession.
-  const memberships = await database.hospitalMembership.findMany({
-    where: hospitalOperatorRosterWhere(hospitalId),
-    orderBy: [{ createdAt: "asc" }, { userId: "asc" }],
-    select: {
-      userId: true,
-      profession: true,
-      user: {
-        select: {
-          person: { select: { givenName: true, familyName: true } },
-        },
-      },
-    },
+  userId: string | undefined,
+): Promise<WorkAppointmentResponsibleOption | null> {
+  if (!userId) return null;
+  const membership = await database.hospitalMembership.findFirst({
+    where: { hospitalId, userId },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { userId: true, profession: true, user: { select: { person: { select: { givenName: true, familyName: true } } } } },
   });
+  return membership
+    ? { userId: membership.userId, displayName: toDisplayName(membership.user.person), profession: membership.profession }
+    : null;
+}
 
-  return memberships.map((membership) => ({
-    userId: membership.userId,
-    displayName: toDisplayName(membership.user.person),
-    profession: membership.profession,
-  }));
+/**
+ * ADR-0027 (AP-1): one page of a selected work Hospital's operators for the list's responsible-person filter. Only a
+ * direct operator of that Hospital, as on the list itself, where a network or อสม. reader picks from the page.
+ */
+export async function searchWorkAppointmentResponsibleFilter(
+  actorInput: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: WorkAppointmentQueryDependencies = {},
+): Promise<AppointmentAssigneePage<WorkAppointmentResponsibleOption>> {
+  const actor = ensureActor(actorInput);
+  const parsed = workAppointmentResponsibleSearchSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Work appointment responsible search is invalid");
+  try {
+    const database = getDatabase(dependencies.database);
+    const scopes = await resolveWorkScopes(actor, database);
+    const scope = scopes.find(({ hospitalId }) => hospitalId === parsed.data.hospitalId);
+    if (!scope?.directRead) throw new ForbiddenError();
+    return await searchResponsibleMembers(database, { hospitalId: scope.hospitalId, value: parsed.data.value, page: parsed.data.page });
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw new InfrastructureError("Responsible Hospital members could not be loaded");
+  }
 }
 
 function visibleResponsibleOptions(
@@ -1120,9 +1145,9 @@ export async function listWorkAppointments(
     }
 
     await auditNetworkRead(database, actor.userId, resolvedScope, records);
-    const responsibleOptions = resolvedScope.directRead
-      ? await listResponsibleOptions(database, resolvedScope.hospitalId)
-      : visibleResponsibleOptions(records);
+    const responsibleFilter: WorkAppointmentPage["responsibleFilter"] = resolvedScope.directRead
+      ? { mode: "SEARCH", selected: await findSelectedResponsible(database, resolvedScope.hospitalId, filters.responsibleUserId) }
+      : { mode: "VISIBLE", options: visibleResponsibleOptions(records) };
 
     const publicScope = toPublicHospitalScope(resolvedScope);
     return {
@@ -1136,7 +1161,7 @@ export async function listWorkAppointments(
       canCreate: publicScope.canCreate,
       canResolveRequests: publicScope.canResolveRequests,
       canAcceptAssignments: publicScope.canAcceptAssignments,
-      responsibleOptions,
+      responsibleFilter,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;

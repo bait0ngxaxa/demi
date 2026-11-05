@@ -6,7 +6,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import { getAppointmentDetail, getAppointmentHistory } from "@/modules/appointments/services/appointment-query-service";
-import { listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
+import { listWorkAppointments, searchWorkAppointmentResponsibleFilter } from "@/modules/appointments/services/work-appointment-query-service";
 import { transferHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { attachHospitalServiceArea, endHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
@@ -211,7 +211,9 @@ describe("ADR-0016 network Patient read / PostgreSQL", () => {
     expect(appointmentPage.hospitals.map(({ hospitalId }) => hospitalId)).toContain(n.childId);
     expect(appointmentPage.hospitals.map(({ hospitalId }) => hospitalId)).not.toContain(n.otherChildId);
     expect(appointmentPage.canCreate).toBe(false);
-    expect(appointmentPage.responsibleOptions).toEqual([]);
+    expect(appointmentPage.responsibleFilter).toEqual({ mode: "VISIBLE", options: [] });
+    // A network reader picks from the page; the Child's operators are not searchable.
+    await expect(searchWorkAppointmentResponsibleFilter(n.parentOwner, { hospitalId: n.childId, page: 1 })).rejects.toBeInstanceOf(ForbiddenError);
     const invalidChildSelection = await listWorkAppointments(n.parentOwner, {
       hospitalId: n.otherChildId,
       tab: "UPCOMING",

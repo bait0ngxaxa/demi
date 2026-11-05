@@ -12,10 +12,11 @@ import { appointerLabel, appointmentAssigneePresentation } from "@/modules/appoi
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/modules/appointments/transport/server-actions", () => ({ createAppointmentAction: vi.fn(), rescheduleAppointmentAction: vi.fn() }));
-const mocks = vi.hoisted(() => ({ searchStaff: vi.fn(), searchOsm: vi.fn() }));
+const mocks = vi.hoisted(() => ({ searchStaff: vi.fn(), searchOsm: vi.fn(), searchFilter: vi.fn() }));
 vi.mock("@/modules/appointments/transport/assignee-search-actions", () => ({
   searchAppointmentResponsibleMembersAction: mocks.searchStaff,
   searchAppointmentOsmCandidatesAction: mocks.searchOsm,
+  searchWorkAppointmentResponsibleFilterAction: mocks.searchFilter,
 }));
 
 beforeAll(() => {
@@ -239,13 +240,47 @@ describe("ผู้นัดหมาย and the assignee (ADR-0027, AP-5)", () 
   it.each(["DIRECT", "OSM"] as const)("shows the appointer and the อสม. assignee in the %s work list row", (access) => {
     const page = {
       hospital: { hospitalId: "hospital", hospitalName: "โรงพยาบาล", access, canCreate: false, canResolveRequests: false, canAcceptAssignments: access === "OSM" },
-      tab: "UPCOMING", filters: {}, items: [item], nextCursor: null, responsibleOptions: [], hospitals: [],
+      tab: "UPCOMING", filters: {}, items: [item], nextCursor: null, responsibleFilter: { mode: "VISIBLE", options: [] }, hospitals: [],
       canCreate: false, canResolveRequests: false, canAcceptAssignments: access === "OSM",
     } as unknown as WorkAppointmentPage;
     const markup = renderToStaticMarkup(<WorkAppointmentView page={page} queryError={null} />);
     expect(markup).toContain("ผู้นัดหมาย: หมอ ก · แพทย์");
     expect(markup).toContain("อสม. ผู้รับผิดชอบนัด: อสม. คนที่ 2");
     expect(markup).toContain("break-words");
+  });
+
+  it("searches the work Hospital's operators for the responsible filter and names the chosen one from the URL", async () => {
+    mocks.searchFilter.mockResolvedValue(page([{ id: "nurse", displayName: "พยาบาล ข", detail: "พยาบาล" }]));
+    const workPage = {
+      hospital: { hospitalId: "hospital-a", hospitalName: "โรงพยาบาล", access: "DIRECT", canCreate: true, canResolveRequests: true, canAcceptAssignments: false },
+      tab: "UPCOMING", filters: { responsibleUserId: "doctor" }, items: [], nextCursor: null, hasNextPage: false, hospitals: [],
+      canCreate: true, canResolveRequests: true, canAcceptAssignments: false,
+      responsibleFilter: { mode: "SEARCH", selected: { userId: "doctor", displayName: "หมอ ก", profession: "DOCTOR" } },
+    } as unknown as WorkAppointmentPage;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<WorkAppointmentView page={workPage} queryError={null} />));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    const form = container.querySelector<HTMLFormElement>('form[action="/app/appointments"]')!;
+    // The chosen person is named even though no search result shows them, and travels as the list form's filter.
+    expect(container.textContent).toContain("เจ้าหน้าที่ที่เลือก: หมอ ก · แพทย์");
+    expect(new FormData(form).get("responsibleUserId")).toBe("doctor");
+    expect(container.querySelector('select[name="responsibleUserId"]')).toBeNull();
+    expect(mocks.searchFilter).toHaveBeenCalledWith("hospital-a", "", 1);
+    // The picker's own radios and search box are not fields of the list form.
+    expect([...new FormData(form).keys()].sort()).toEqual(["responsibleUserId", "tab", "dateFrom", "dateTo", "status", "type", "locationType", "awaitingOsmAcceptance", "unassignedOsm"].sort());
+
+    const radio = (label: string) => [...container.querySelectorAll<HTMLInputElement>('input[name="responsible-filter"]')]
+      .find((input) => input.closest("label")?.textContent?.startsWith(label))!;
+    await act(async () => radio("พยาบาล ข").click());
+    expect(new FormData(form).get("responsibleUserId")).toBe("nurse");
+    // "ทุกคน" sends no filter.
+    await act(async () => radio("ทุกคน").click());
+    expect(new FormData(form).has("responsibleUserId")).toBe(false);
+    await act(async () => root.unmount());
+    container.remove();
   });
 
   it("shows the patient the appointer by name and role, as their projection already names staff", () => {

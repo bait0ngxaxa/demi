@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { pageNumberSchema } from "@/shared/pagination/page-number";
+import { assigneeSearchTermSchema } from "@/shared/search/assignee-search";
+
 import {
   APPOINTMENT_LOCATION_VALUES,
   APPOINTMENT_STATUS_VALUES,
@@ -71,3 +74,12 @@ export const workAppointmentQuerySchema = z
 export type WorkAppointmentTab = z.infer<typeof workAppointmentTabSchema>;
 export type WorkAppointmentFilters = z.infer<typeof workAppointmentFiltersSchema>;
 export type WorkAppointmentQueryInput = z.output<typeof workAppointmentQuerySchema>;
+
+/** One page of the list's responsible-person filter search, for one selected work Hospital. */
+export const workAppointmentResponsibleSearchSchema = z
+  .object({
+    hospitalId: z.uuid().transform((value) => value.toLowerCase()),
+    value: assigneeSearchTermSchema,
+    page: pageNumberSchema,
+  })
+  .strict();

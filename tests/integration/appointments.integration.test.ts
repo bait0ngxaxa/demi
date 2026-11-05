@@ -25,7 +25,11 @@ import {
   getAppointmentDetail,
   getAppointmentHistory,
 } from "@/modules/appointments/services/appointment-query-service";
-import { countWorkAppointmentsAwaitingMyAcceptance, listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
+import {
+  countWorkAppointmentsAwaitingMyAcceptance,
+  listWorkAppointments,
+  searchWorkAppointmentResponsibleFilter,
+} from "@/modules/appointments/services/work-appointment-query-service";
 import {
   acceptAppointmentAssignment,
   acknowledgeAppointmentOnBehalfOfPatient,
@@ -2192,7 +2196,23 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     expect(directPage.items.map(({ appointmentId }) => appointmentId)).toContain(appointmentA.appointmentId);
     expect(directPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(appointmentB.appointmentId);
     expect(directPage.items.map(({ appointmentId }) => appointmentId)).not.toContain(endedAppointment.appointmentId);
-    expect(directPage.responsibleOptions.map(({ userId }) => userId)).toContain(doctorA.userId);
+    // The responsible filter is a server search for a direct operator; no roster ships with the page.
+    expect(directPage.responsibleFilter).toEqual({ mode: "SEARCH", selected: null });
+    const filteredPage = await listWorkAppointments(ownerA.actor, { hospitalId: hospitalA.id, tab: "UPCOMING", responsibleUserId: doctorA.userId });
+    expect(filteredPage.responsibleFilter).toEqual({
+      mode: "SEARCH", selected: { userId: doctorA.userId, displayName: doctorA.displayName, profession: Profession.DOCTOR },
+    });
+    // Someone who was never a member of the Hospital is not named.
+    const foreignFilterPage = await listWorkAppointments(ownerA.actor, { hospitalId: hospitalA.id, tab: "UPCOMING", responsibleUserId: ownerB.userId });
+    expect(foreignFilterPage.responsibleFilter).toEqual({ mode: "SEARCH", selected: null });
+    const foundDoctor = await searchWorkAppointmentResponsibleFilter(ownerA.actor, { hospitalId: hospitalA.id, value: doctorA.displayName, page: 1 });
+    expect(foundDoctor).toMatchObject({ page: 1, totalPages: 1, items: [{ userId: doctorA.userId, displayName: doctorA.displayName, profession: Profession.DOCTOR }] });
+    const everyoneA = await searchWorkAppointmentResponsibleFilter(ownerA.actor, { hospitalId: hospitalA.id, page: 1 });
+    expect(everyoneA.items.map(({ userId }) => userId)).toEqual(expect.arrayContaining([ownerA.userId, doctorA.userId]));
+    expect(everyoneA.items.map(({ userId }) => userId)).not.toContain(ownerB.userId);
+    // Only a selected work Hospital of the actor, as on the list.
+    await expect(searchWorkAppointmentResponsibleFilter(ownerA.actor, { hospitalId: hospitalB.id, page: 1 })).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(searchWorkAppointmentResponsibleFilter(ownerA.actor, { hospitalId: "not-a-hospital-id", page: 1 })).rejects.toBeInstanceOf(ValidationError);
     expect(JSON.stringify(directPage.items)).not.toContain("HN-AF1-PRIVATE");
 
     const forgedHospitalPage = await listWorkAppointments(ownerA.actor, {
@@ -2247,7 +2267,8 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     const unassignedAppointment = await createAppointment(ownerA.actor, appointmentInput(secondPatientA.relationshipId));
     const osmPage = await listWorkAppointments(osm.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" });
     expect(osmPage.items.map(({ appointmentId }) => appointmentId)).toEqual([appointmentA.appointmentId]);
-    expect(osmPage.responsibleOptions).toEqual([]);
+    expect(osmPage.responsibleFilter).toEqual({ mode: "VISIBLE", options: [] });
+    await expect(searchWorkAppointmentResponsibleFilter(osm.actor, { hospitalId: hospitalA.id, page: 1 })).rejects.toBeInstanceOf(ForbiddenError);
     expect(osmPage.canCreate).toBe(true);
     await unassignOsmFromPatient(ownerA.actor, { patientHospitalRelationshipId: patientA.relationshipId });
     const endedAssignmentPage = await listWorkAppointments(osm.actor, { hospitalId: hospitalA.id, tab: "UPCOMING" });
