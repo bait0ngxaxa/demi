@@ -358,13 +358,6 @@
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
-    "function": "searchMediatedPasswordResetTargets",
-    "target": "hospital",
-    "occurrence": 1,
-    "reason": "FOLLOW-UP: every ACTIVE Hospital, one result row each, for a caregiver-only reset target; page or narrow it."
-  },
-  {
-    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
     "target": "workforceActivation",
     "occurrence": 1,

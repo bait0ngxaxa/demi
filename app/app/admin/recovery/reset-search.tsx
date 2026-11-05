@@ -13,6 +13,8 @@ import {
 import { hospitalRelationshipStatusPresentation } from "../../users/user-presentation";
 import { MediatedPasswordResetControl } from "../../users/mediated-password-reset-control";
 
+import { CaregiverResetHospitalPicker } from "./caregiver-reset-hospital-picker";
+
 export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
   const [result, setResult] = useState<MediatedPasswordResetSearchActionResult | null>(null);
   const [selectedIndex, setSelectedIndex] = useState("");
@@ -94,6 +96,8 @@ export function AdminMediatedPasswordResetSearch(): React.JSX.Element {
                   targetKind="platform_admin"
                   targetName={selected.displayName}
                 />
+              ) : selected.targetKind === "caregiver" && selected.hospitalId === null ? (
+                <CaregiverResetHospitalPicker key={selected.userId} targetName={selected.displayName} targetUserId={selected.userId} />
               ) : selected.targetKind === "caregiver" ? (
                 <MediatedPasswordResetControl
                   eligibility="ADMIN_ALLOWED"

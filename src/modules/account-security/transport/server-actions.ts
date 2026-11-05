@@ -13,7 +13,8 @@ import {
   PasswordChangeRecoveryPendingError,
 } from "../services/password-change-service";
 import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
-import { ConflictError, InfrastructureError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, InfrastructureError } from "@/shared/errors/application-error";
+import type { ServerSearchPageResult } from "@/shared/search/server-search-result";
 
 import { ProviderIdentityRejectedError } from "../adapters/supabase-account-security-provider";
 import {
@@ -30,8 +31,10 @@ import {
   issueMediatedPasswordReset,
   reconcileMediatedPasswordReset,
   revokeIssuedMediatedPasswordReset,
+  searchMediatedPasswordResetHospitals,
   searchMediatedPasswordResetTargets,
   type MediatedPasswordResetCandidate,
+  type MediatedPasswordResetHospitalOption,
 } from "../services/mediated-password-reset-service";
 import type { MediatedPasswordResetIssueInput } from "../schemas/account-security-schemas";
 import type {
@@ -256,5 +259,21 @@ export async function reconcileMediatedPasswordResetAction(resetId: string): Pro
       return { status: "ERROR", message: "สถานะบัญชีกับผู้ให้บริการยืนยันตัวตนไม่ตรงกับผลที่แก้ไขได้อัตโนมัติ บัญชียังถูกกักไว้ ต้องตรวจสอบตามคู่มือ" };
     }
     return { status: "ERROR", message: genericAccountError };
+  }
+}
+
+export type MediatedPasswordResetHospitalSearchActionResult = ServerSearchPageResult<MediatedPasswordResetHospitalOption>;
+
+/** Platform ADMIN: at most ten ACTIVE Hospitals by name or code, to record a caregiver reset against. */
+export async function searchMediatedPasswordResetHospitalsAction(value: string): Promise<MediatedPasswordResetHospitalSearchActionResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const items = await searchMediatedPasswordResetHospitals(actor, { value });
+    return { status: "OK", items, page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError && error.code === "VALIDATION") {
+      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อหรือรหัสโรงพยาบาล (ไม่เกิน 100 ตัวอักษร)" };
+    }
+    return { status: "ERROR", message: "ไม่สามารถค้นหาโรงพยาบาลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
   }
 }

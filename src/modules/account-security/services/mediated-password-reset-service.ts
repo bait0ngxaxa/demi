@@ -21,6 +21,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { HOSPITAL_SEARCH_MAX_LENGTH, HOSPITAL_SEARCH_RESULT_LIMIT } from "@/shared/search/hospital-search";
 import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
@@ -1849,7 +1850,18 @@ type HospitalCaregiverPasswordResetCandidate = {
   hospitalId: string;
   hospitalName: string;
   relationshipId: null;
-  relationshipStatus: "CAREGIVER_ONLY" | "CAREGIVER";
+  relationshipStatus: "CAREGIVER_ONLY";
+};
+
+/** Platform ADMIN path: one caregiver candidate; the ADMIN chooses the Hospital recorded for the reset afterwards. */
+type PlatformCaregiverPasswordResetCandidate = {
+  userId: string;
+  displayName: string;
+  targetKind: "caregiver";
+  hospitalId: null;
+  hospitalName: null;
+  relationshipId: null;
+  relationshipStatus: "CAREGIVER";
 };
 
 type PlatformAdminPasswordResetCandidate = {
@@ -1865,6 +1877,7 @@ type PlatformAdminPasswordResetCandidate = {
 export type MediatedPasswordResetCandidate =
   | HospitalRelationshipPasswordResetCandidate
   | HospitalCaregiverPasswordResetCandidate
+  | PlatformCaregiverPasswordResetCandidate
   | PlatformAdminPasswordResetCandidate;
 
 export type MediatedPasswordResetSearchOptions = {
@@ -1987,8 +2000,8 @@ export async function searchMediatedPasswordResetTargets(
               : []
           ));
           if (user.roles.some(({ role }) => role === Role.CAREGIVER)) {
-            const activeHospitals = await transaction.hospital.findMany({ where: { status: HospitalStatus.ACTIVE }, select: { id: true, name: true } });
-            result.push(...activeHospitals.map((hospital) => ({ userId: user.id, displayName, targetKind: "caregiver" as const, hospitalId: hospital.id, hospitalName: hospital.name, relationshipId: null, relationshipStatus: "CAREGIVER" as const })));
+            // One candidate, not one per ACTIVE Hospital: the ADMIN picks the Hospital with a bounded search.
+            result.push({ userId: user.id, displayName, targetKind: "caregiver", hospitalId: null, hospitalName: null, relationshipId: null, relationshipStatus: "CAREGIVER" });
           }
         }
         if (!user.roles.some(({ role }) => role === Role.ADMIN) && !ordinaryNationalIdIsValid) result.length = 0;
@@ -2003,6 +2016,43 @@ export async function searchMediatedPasswordResetTargets(
     });
     if (candidates.length === 0) await attemptThrottle.recordFailure(throttleInput);
     return candidates;
+  } catch (error: unknown) {
+    return asApplicationError(error);
+  }
+}
+
+export type MediatedPasswordResetHospitalOption = { id: string; hospitalCode: string; name: string };
+
+const mediatedPasswordResetHospitalSearchSchema = z.object({
+  value: z.string().trim().min(1).max(HOSPITAL_SEARCH_MAX_LENGTH),
+}).strict();
+
+/**
+ * Platform ADMIN: the ACTIVE Hospitals a caregiver reset can be recorded against, by name or code, the first
+ * HOSPITAL_SEARCH_RESULT_LIMIT only. The reset itself re-checks the Hospital.
+ */
+export async function searchMediatedPasswordResetHospitals(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  database: MediatedPasswordResetDatabase = getPrisma(),
+): Promise<MediatedPasswordResetHospitalOption[]> {
+  if (!actor?.userId) throw new ForbiddenError();
+  const parsed = mediatedPasswordResetHospitalSearchSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError("Hospital search is invalid");
+  const { value } = parsed.data;
+  try {
+    return await database.$transaction(async (transaction) => {
+      await assertPlatformAdminInDatabase(transaction, actor.userId);
+      return transaction.hospital.findMany({
+        where: {
+          status: HospitalStatus.ACTIVE,
+          OR: [{ name: { contains: value, mode: "insensitive" } }, { hospitalCode: { contains: value, mode: "insensitive" } }],
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+        take: HOSPITAL_SEARCH_RESULT_LIMIT,
+        select: { id: true, hospitalCode: true, name: true },
+      });
+    });
   } catch (error: unknown) {
     return asApplicationError(error);
   }

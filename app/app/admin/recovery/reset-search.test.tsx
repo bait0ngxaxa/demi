@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 const mocks = vi.hoisted(() => ({
   search: vi.fn(),
+  searchHospitals: vi.fn(),
   controlProps: null as {
     eligibility: string;
     hospitalId: string | null;
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/modules/account-security/transport/server-actions", () => ({
   searchMediatedPasswordResetTargetsAction: mocks.search,
+  searchMediatedPasswordResetHospitalsAction: mocks.searchHospitals,
 }));
 vi.mock("../../users/mediated-password-reset-control", () => ({
   MediatedPasswordResetControl: (props: {
@@ -82,7 +84,63 @@ async function submit(identifier: string): Promise<void> {
   });
 }
 
+async function selectCandidate(index: number): Promise<void> {
+  const select = container.querySelector<HTMLSelectElement>("select");
+  if (!select) throw new Error("Missing account selection");
+  await act(async () => {
+    select.value = String(index);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 describe("Platform ADMIN recovery search", () => {
+  it("offers one caregiver target and lets the ADMIN choose the Hospital from a bounded search before issuing", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.search.mockResolvedValue({ status: "MATCH", candidates: [{
+        userId: "22222222-2222-4222-8222-222222222222", displayName: "ญาติ ก", targetKind: "caregiver",
+        hospitalId: null, hospitalName: null, relationshipId: null, relationshipStatus: "CAREGIVER",
+      }] });
+      mocks.searchHospitals.mockResolvedValue({
+        status: "OK", page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+        items: [{ id: "33333333-3333-4333-8333-333333333333", hospitalCode: "H-1", name: "โรงพยาบาลหนึ่ง" }],
+      });
+      await renderSearch();
+      await submit("1101700203451");
+      const select = container.querySelector<HTMLSelectElement>("select")!;
+      expect(select.options).toHaveLength(2);
+      expect(select.options[1]?.textContent).toBe("ญาติ ก · ญาติหรือผู้ดูแล");
+      await selectCandidate(0);
+
+      // No Hospital yet: no reset control, and nothing is asked until the ADMIN types.
+      expect(mocks.controlProps).toBeNull();
+      expect(container.textContent).toContain("เลือกโรงพยาบาลก่อนออกลิงก์รีเซ็ต");
+      expect(mocks.searchHospitals).not.toHaveBeenCalled();
+
+      const input = container.querySelector<HTMLInputElement>('input[type="search"]')!;
+      await act(async () => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        setValue.call(input, "หนึ่ง");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(400); });
+      expect(mocks.searchHospitals).toHaveBeenCalledWith("หนึ่ง");
+
+      const radio = container.querySelector<HTMLInputElement>('input[name="caregiver-reset-hospital"]')!;
+      await act(async () => radio.click());
+      expect(mocks.controlProps).toMatchObject({
+        eligibility: "ADMIN_ALLOWED",
+        targetKind: "caregiver",
+        targetUserId: "22222222-2222-4222-8222-222222222222",
+        hospitalId: "33333333-3333-4333-8333-333333333333",
+        hospitalName: "โรงพยาบาลหนึ่ง",
+        relationshipId: null,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows one Hospital-free Platform ADMIN target and passes its null scope to issuance", async () => {
     mocks.search.mockResolvedValue({ status: "MATCH", candidates: [customAdminCandidate] });
     await renderSearch();

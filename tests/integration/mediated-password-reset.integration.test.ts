@@ -46,6 +46,7 @@ import {
   reconcileMediatedPasswordReset,
   reconcilePlatformAdminBreakGlassPassword,
   recoverPlatformAdminPassword,
+  searchMediatedPasswordResetHospitals,
   searchMediatedPasswordResetTargets,
 } from "@/modules/account-security/services/mediated-password-reset-service";
 import {
@@ -1222,6 +1223,40 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     await expect(getMediatedPasswordResetEligibility(owner, sharedInput, db)).resolves.toBe("ADMIN_REQUIRED");
     await expect(issueMediatedPasswordReset(owner, sharedInput, { database: db, now: () => now })).rejects.toBeInstanceOf(ForbiddenError);
     await expect(getMediatedPasswordResetEligibility(admin, sharedInput, db)).resolves.toBe("ADMIN_ALLOWED");
+  });
+
+  it("answers a platform ADMIN one Hospital-free caregiver candidate and a bounded ACTIVE Hospital search to record the reset against", async () => {
+    const hospital = await createHospital();
+    const admin = await createAdmin();
+    const caregiver = await createCaregiverTarget([hospital.id]);
+    const extraHospitals = [];
+    for (let index = 0; index < 11; index += 1) extraHospitals.push(await createHospital());
+
+    // One candidate, not one per ACTIVE Hospital.
+    expect(await searchMediatedPasswordResetTargets(admin, { nationalId: caregiver.nationalId }, db)).toEqual([{
+      userId: caregiver.userId, displayName: expect.any(String), targetKind: "caregiver",
+      hospitalId: null, hospitalName: null, relationshipId: null, relationshipStatus: "CAREGIVER",
+    }]);
+
+    const target = extraHospitals[10]!;
+    expect(await searchMediatedPasswordResetHospitals(admin, { value: ` ${target.name} ` }, db))
+      .toEqual([{ id: target.id, hospitalCode: target.hospitalCode, name: target.name }]);
+    const broad = await searchMediatedPasswordResetHospitals(admin, { value: "REC1-" }, db);
+    expect(broad).toHaveLength(10);
+    expect(broad.map(({ name }) => name)).toEqual([...broad.map(({ name }) => name)].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)));
+    await db.hospital.update({ where: { id: target.id }, data: { status: HospitalStatus.SUSPENDED } });
+    expect(await searchMediatedPasswordResetHospitals(admin, { value: target.name }, db)).toEqual([]);
+    await expect(searchMediatedPasswordResetHospitals(admin, { value: " " }, db)).rejects.toBeInstanceOf(ValidationError);
+    await expect(searchMediatedPasswordResetHospitals(await createOwner(hospital.id), { value: "REC1-" }, db)).rejects.toBeInstanceOf(ForbiddenError);
+
+    // The reset is recorded against the Hospital the ADMIN chose, as before.
+    const chosen = extraHospitals[0]!;
+    const reset = await issueMediatedPasswordReset(admin, {
+      targetKind: "caregiver", targetUserId: caregiver.userId, hospitalId: chosen.id, relationshipId: null,
+      mode: "IN_PERSON", verificationMethod: "IN_PERSON_ID_CARD",
+    }, { database: db, now: () => now });
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: reset.resetId } }))
+      .toMatchObject({ hospitalId: chosen.id, userId: caregiver.userId, relationshipKind: "caregiver" });
   });
 
   it("limits caregiver-only reset to single-Hospital patients and keeps mixed, takeover-locked and quarantined users ADMIN-only", async () => {
