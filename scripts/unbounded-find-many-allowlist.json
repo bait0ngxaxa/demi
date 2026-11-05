@@ -1,0 +1,680 @@
+[
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "model": "hospitalMembership",
+    "reason": "One identity's MEMBER memberships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/account-security/services/caregiver-invitation-takeover-lock.ts",
+    "function": "lockCaregiverInvitationIdentityInTransaction",
+    "model": "osmHospitalRelationship",
+    "reason": "One identity's OSM relationships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "caregiverPatientProfiles",
+    "model": "caregiverRelationship",
+    "reason": "One caregiver's own relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "caregiverPatientProfiles",
+    "model": "caregiverAppointmentGrant",
+    "reason": "One caregiver's own appointment grants."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "caregiverPatientProfiles",
+    "model": "caregiverResourceGrant",
+    "reason": "One caregiver's own resource grants."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "findEligibleLinePasswordRecoveryTarget",
+    "model": "lineAccountBinding",
+    "reason": "One user's linked LINE bindings (at most one active)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "isCaregiverOnlyTarget",
+    "model": "patientHospitalRelationship",
+    "reason": "Care relationships of the given patient profiles (an id IN list of one caregiver's patients)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "allTargetRelationshipsInHospital",
+    "model": "patientHospitalRelationship",
+    "reason": "One patient's own care relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "allTargetRelationshipsInHospital",
+    "model": "hospitalMembership",
+    "reason": "One user's own relationships (a handful per account)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "allTargetRelationshipsInHospital",
+    "model": "osmHospitalRelationship",
+    "reason": "One user's own relationships (a handful per account)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "restoreTakeoverRelationships",
+    "model": "hospitalMembership",
+    "reason": "One user's suspended memberships at one Hospital, restored by count."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "restoreTakeoverRelationships",
+    "model": "osmHospitalRelationship",
+    "reason": "One user's suspended OSM relationships at one Hospital, restored by count."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "model": "hospitalMembership",
+    "reason": "One user's own relationships (a handful per account). / id IN the takeover lock's held OWNER memberships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "model": "osmHospitalRelationship",
+    "reason": "One user's own relationships (a handful per account)."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "model": "patientHospitalRelationship",
+    "reason": "One patient's own care relationships."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "searchMediatedPasswordResetTargets",
+    "model": "hospital",
+    "reason": "FOLLOW-UP: every ACTIVE Hospital, one result row each, for a caregiver-only reset target; page or narrow it."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "listQuarantinedMediatedPasswordResets",
+    "model": "workforceActivation",
+    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled resets; operationally small but not paged."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "listQuarantinedMediatedPasswordResets",
+    "model": "accountRecovery",
+    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled recoveries; operationally small but not paged."
+  },
+  {
+    "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
+    "function": "listQuarantinedMediatedPasswordResets",
+    "model": "linePasswordRecoveryCapability",
+    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled LINE recoveries; operationally small but not paged."
+  },
+  {
+    "file": "src/modules/account-security/services/password-change-notification.ts",
+    "function": "notifyPasswordChangeLineBindings",
+    "model": "lineAccountBinding",
+    "reason": "One user's linked LINE bindings."
+  },
+  {
+    "file": "src/modules/account-security/services/password-change-service.ts",
+    "function": "listUnresolvedPasswordChangeOperations",
+    "model": "user",
+    "reason": "FOLLOW-UP: reconciliation CLI over users with an unfinished password change; operationally small, not a page."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-line-notification-recipient-service.ts",
+    "function": "activeCaregiverRecipients",
+    "model": "caregiverAppointmentGrant",
+    "reason": "Caregiver grants of one care relationship."
+  },
+  {
+    "file": "src/modules/appointments/services/appointment-reschedule-history-service.ts",
+    "function": "getAppointmentRescheduleHistory",
+    "model": "patientAppointmentRescheduleRequest",
+    "reason": "Reschedule requests of one appointment."
+  },
+  {
+    "file": "src/modules/appointments/services/work-appointment-query-service.ts",
+    "function": "resolveWorkScopes",
+    "model": "hospital",
+    "reason": "The actor's own direct Hospitals (workspace scopes). / The actor's own OSM Hospitals (workspace scopes)."
+  },
+  {
+    "file": "src/modules/appointments/services/work-appointment-query-service.ts",
+    "function": "listResponsibleOptions",
+    "model": "hospitalMembership",
+    "reason": "FOLLOW-UP: /app/appointments responsible-staff filter loads the Hospital operator roster; move to a server search."
+  },
+  {
+    "file": "src/modules/auth/services/actor-workspace-service.ts",
+    "function": "listActorHospitalWorkspaces",
+    "model": "hospital",
+    "reason": "id IN the actor's own Hospital ids."
+  },
+  {
+    "file": "src/modules/auth/services/auth-attempt-throttle-service.ts",
+    "function": "isBlocked",
+    "model": "authenticationAttemptThrottleBucket",
+    "reason": "id IN the throttle keys of one attempt (a few keys)."
+  },
+  {
+    "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
+    "function": "loadPageItems",
+    "model": "patientHospitalRelationship",
+    "reason": "id IN one care-tracking page of relationships (at most 20)."
+  },
+  {
+    "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
+    "function": "loadPageItems",
+    "model": "patientProgram",
+    "reason": "Active Programs of one care-tracking page (at most 20)."
+  },
+  {
+    "file": "src/modules/care-tracking/services/care-tracking-query-service.ts",
+    "function": "listCareTrackingScopes",
+    "model": "hospital",
+    "reason": "The actor's own operated Hospitals (scope selector). / The actor's own OSM Hospitals (scope selector)."
+  },
+  {
+    "file": "src/modules/family/services/caregiver-relationship-service.ts",
+    "function": "toRequestedSharing",
+    "model": "patientHospitalRelationship",
+    "reason": "id IN one invitation's appointment-sharing relationships."
+  },
+  {
+    "file": "src/modules/family/services/caregiver-relationship-service.ts",
+    "function": "revokeRelationshipGrants",
+    "model": "caregiverAppointmentGrant",
+    "reason": "Grants of one caregiver relationship being revoked."
+  },
+  {
+    "file": "src/modules/family/services/caregiver-relationship-service.ts",
+    "function": "revokeRelationshipGrants",
+    "model": "caregiverResourceGrant",
+    "reason": "Grants of one caregiver relationship being revoked."
+  },
+  {
+    "file": "src/modules/hospital-contact/services/hospital-contact-service.ts",
+    "function": "listEligibleHospitalContactOwnerHospitals",
+    "model": "hospital",
+    "reason": "The actor's own OWNER Hospitals."
+  },
+  {
+    "file": "src/modules/hospital-contact/services/hospital-contact-work-query-service.ts",
+    "function": "listWorkHospitalContacts",
+    "model": "hospital",
+    "reason": "The actor's own work Hospitals."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-image-service.ts",
+    "function": "readOrderedImages",
+    "model": "hospitalContentImage",
+    "reason": "Images of one content item (capped by the upload rules)."
+  },
+  {
+    "file": "src/modules/hospital-content/services/hospital-content-service.ts",
+    "function": "listEligibleHospitalContentOwnerHospitals",
+    "model": "hospital",
+    "reason": "The actor's own OWNER Hospitals."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "retireHospitalsInTransaction",
+    "model": "hospital",
+    "reason": "id IN the Hospitals of one bulk retirement request."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "evaluateRegistrationRows",
+    "model": "hospital",
+    "reason": "FOLLOW-UP: ADMIN bulk import reads every Hospital name/code server-side for duplicate detection (never shipped)."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
+    "function": "findReplayedBulkRegistration",
+    "model": "hospital",
+    "reason": "Hospitals of one import's registration nonces (one file's rows)."
+  },
+  {
+    "file": "src/modules/hospital-governance/services/hospital-owner-recovery-readiness-service.ts",
+    "function": "countSoleActiveOwnerHospitals",
+    "model": "hospitalMembership",
+    "reason": "id IN the Hospitals the actor owns."
+  },
+  {
+    "file": "src/modules/hospital-hierarchy/services/hospital-hierarchy-service.ts",
+    "function": "getHospitalHierarchyDirectory",
+    "model": "hospital",
+    "reason": "FOLLOW-UP: platform ADMIN global reporting directory loads every non-retired Hospital; page or search it."
+  },
+  {
+    "file": "src/modules/hospital-onboarding/services/parent-owner-invitation-service.ts",
+    "function": "listParentOnboardingPaths",
+    "model": "hospitalOnboardingApplication",
+    "reason": "id IN one directory page of Parents (at most 25)."
+  },
+  {
+    "file": "src/modules/hospital-onboarding/services/parent-owner-invitation-service.ts",
+    "function": "listParentOnboardingPaths",
+    "model": "hospitalMembership",
+    "reason": "id IN one directory page of Parents (at most 25)."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
+    "function": "cancelPendingChildFacility",
+    "model": "hospitalMembership",
+    "reason": "Held OWNER memberships of one pending Child facility. / Open memberships of one pending Child facility being cancelled."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/child-facility-service.ts",
+    "function": "listManagedChildFacilities",
+    "model": "workforceActivation",
+    "reason": "Open activations of the actor's own managed Child facilities."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/hospital-network-access.ts",
+    "function": "listNetworkScopes",
+    "model": "hospital",
+    "reason": "The actor's own network Parents with their active Children (network scope selector)."
+  },
+  {
+    "file": "src/modules/hospital-service-areas/services/hospital-network-governance-service.ts",
+    "function": "listHospitalNetworkDirectoryForAdmin",
+    "model": "hospital",
+    "reason": "id IN the Parents one directory page refers to (at most 50)."
+  },
+  {
+    "file": "src/modules/hospital-settings/services/hospital-self-registration-settings-service.ts",
+    "function": "listOwnedHospitalSelfRegistrationSettings",
+    "model": "hospital",
+    "reason": "The actor's own OWNER Hospitals."
+  },
+  {
+    "file": "src/modules/legal/services/legal-service.ts",
+    "function": "getCurrentLegalDocuments",
+    "model": "legalDocumentVersion",
+    "reason": "id IN the current legal document versions (one per kind)."
+  },
+  {
+    "file": "src/modules/legal/services/legal-service.ts",
+    "function": "listPublishedLegalVersions",
+    "model": "legalDocumentVersion",
+    "reason": "Published versions of one legal document kind (a few per year)."
+  },
+  {
+    "file": "src/modules/legal/services/legal-service.ts",
+    "function": "listLegalVersions",
+    "model": "legalDocumentVersion",
+    "reason": "Every legal document version for the ADMIN legal screen (a few per year)."
+  },
+  {
+    "file": "src/modules/legal/services/legal-service.ts",
+    "function": "getUserLegalHistory",
+    "model": "legalAcceptance",
+    "reason": "One user's own legal acceptances."
+  },
+  {
+    "file": "src/modules/legal/services/legal-service.ts",
+    "function": "getUserLegalHistory",
+    "model": "consentEvent",
+    "reason": "One user's own consent events."
+  },
+  {
+    "file": "src/modules/legal/services/legal-version-reader.ts",
+    "function": "findCurrentLegalVersions",
+    "model": "legalDocumentVersion",
+    "reason": "The current published version per legal document kind (distinct on kind)."
+  },
+  {
+    "file": "src/modules/line/services/line-account-service.ts",
+    "function": "linkLineAccount",
+    "model": "lineAccountBinding",
+    "reason": "History of one LINE subject's bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-account-service.ts",
+    "function": "requireRelinkPolicy",
+    "model": "lineAccountBinding",
+    "reason": "One user's LINE bindings, locked for a relink."
+  },
+  {
+    "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
+    "function": "lockRows",
+    "model": "lineAuthorizationLifecycle",
+    "reason": "Lifecycle rows of one LINE binding."
+  },
+  {
+    "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
+    "function": "initializeLineTermination",
+    "model": "lineAuthorizationLifecycle",
+    "reason": "id IN the latest lifecycle rows of one binding."
+  },
+  {
+    "file": "src/modules/line/services/line-authorization-lifecycle-service.ts",
+    "function": "evaluateLineRelinkEligibility",
+    "model": "lineAuthorizationLifecycle",
+    "reason": "Lifecycle rows of one LINE binding."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "getLineDisconnectionStatus",
+    "model": "lineAccountBinding",
+    "reason": "The session user's LINE bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "getLineDisconnectionStatus",
+    "model": "lineAuthorizationLifecycle",
+    "reason": "Lifecycle rows of the session user's bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "hasLineLifecycleHistoryForCurrentOwner",
+    "model": "lineAccountBinding",
+    "reason": "The session user's LINE bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "hasLineLifecycleHistoryForCurrentOwner",
+    "model": "auditEvent",
+    "reason": "Unlink audits of the session user's bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "prepareLineAccountRecovery",
+    "model": "lineAccountBinding",
+    "reason": "The session user's unlinked LINE bindings."
+  },
+  {
+    "file": "src/modules/line/services/line-disconnection-service.ts",
+    "function": "prepareLineAccountRecovery",
+    "model": "lineAuthorizationLifecycle",
+    "reason": "Lifecycle rows of the session user's unlinked bindings. / id IN one recovery set's lifecycle rows."
+  },
+  {
+    "file": "src/modules/line/services/line-reachability-service.ts",
+    "function": "applyLineReachabilityObservation",
+    "model": "lineAccountBinding",
+    "reason": "Bindings of one LINE user id."
+  },
+  {
+    "file": "src/modules/line/services/line-reactive-appointment-service.ts",
+    "function": "executeLineReactiveAppointment",
+    "model": "lineAccountBinding",
+    "reason": "Active bindings of one LINE user id (at most one)."
+  },
+  {
+    "file": "src/modules/line/services/line-reactive-help-service.ts",
+    "function": "executeLineReactiveHelp",
+    "model": "lineAccountBinding",
+    "reason": "Active bindings of one LINE user id (at most one)."
+  },
+  {
+    "file": "src/modules/medications/services/personal-medication-service.ts",
+    "function": "replacePersonalMedicationSchedules",
+    "model": "medicationSchedule",
+    "reason": "Reminder times of one personal medication."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "listPatientActivationScopes",
+    "model": "hospital",
+    "reason": "The actor's own OWNER Hospitals (activation scopes)."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "findPatientActivationCandidates",
+    "model": "patientActivation",
+    "reason": "Activations of id IN one candidate page of patients."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "findPatientActivationCandidates",
+    "model": "user",
+    "reason": "id IN one candidate page of patients."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "getPatientActivationCandidateForRelationship",
+    "model": "patientActivation",
+    "reason": "Activations of one patient user."
+  },
+  {
+    "file": "src/modules/patient-activation/services/patient-activation-query-service.ts",
+    "function": "getPatientActivationCandidateForRelationship",
+    "model": "user",
+    "reason": "One user id checked for workforce authority."
+  },
+  {
+    "file": "src/modules/patient-assignment/services/patient-osm-assignment-query-service.ts",
+    "function": "listPatientOsmAssignmentScopes",
+    "model": "hospital",
+    "reason": "The actor's own operated Hospitals (assignment scopes)."
+  },
+  {
+    "file": "src/modules/patient-assignment/services/patient-osm-assignment-transaction.ts",
+    "function": "handoffFutureAppointments",
+    "model": "patientAppointment",
+    "reason": "Future appointments of one relationship handed to the new อสม."
+  },
+  {
+    "file": "src/modules/patient-assignment/services/patient-osm-bulk-assignment-transaction.ts",
+    "function": "assignOsmToPatientsInTransaction",
+    "model": "patientHospitalRelationship",
+    "reason": "id IN one bulk assignment request (capped by the request schema)."
+  },
+  {
+    "file": "src/modules/patient-directory/services/patient-directory-query-service.ts",
+    "function": "listPatientDirectoryScopes",
+    "model": "hospital",
+    "reason": "The actor's own authorized Hospitals (directory scopes)."
+  },
+  {
+    "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
+    "function": "personHospitalIds",
+    "model": "patientHospitalRelationship",
+    "reason": "One patient's own active care relationships."
+  },
+  {
+    "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
+    "function": "personHospitalIds",
+    "model": "hospitalMembership",
+    "reason": "One user's own relationships (a handful per account)."
+  },
+  {
+    "file": "src/modules/patient-hospital-profile/services/patient-name-correction-service.ts",
+    "function": "personHospitalIds",
+    "model": "osmHospitalRelationship",
+    "reason": "One user's own relationships (a handful per account)."
+  },
+  {
+    "file": "src/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service.ts",
+    "function": "endPatientHospitalRelationship",
+    "model": "patientAppointment",
+    "reason": "Future appointments of one relationship being ended."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-plan-service.ts",
+    "function": "classifyRoundActivity",
+    "model": "patientProgramRoundPlanItem",
+    "reason": "Plan items of one Program round."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-plan-write-service.ts",
+    "function": "addProgramRound",
+    "model": "patientProgramRound",
+    "reason": "Opened rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-plan-write-service.ts",
+    "function": "addProgramRound",
+    "model": "patientProgramRoundCompletion",
+    "reason": "Completed rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
+    "function": "completedRounds",
+    "model": "patientProgramRoundCompletion",
+    "reason": "Completed rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
+    "function": "currentOpenRound",
+    "model": "patientProgramRound",
+    "reason": "Opened rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program-rounds/services/round-sequencing.ts",
+    "function": "assertRoundsFinished",
+    "model": "patientProgramRound",
+    "reason": "Opened rounds of one Program (at most 12)."
+  },
+  {
+    "file": "src/modules/patient-program/services/patient-program-lifecycle-service.ts",
+    "function": "lockActivePatientProgram",
+    "model": "patientProgramRoundPlanItem",
+    "reason": "Plan items of one Program round."
+  },
+  {
+    "file": "src/modules/patient-provisioning/services/patient-roster-import-preview.ts",
+    "function": "preparePatientRosterImportPreview",
+    "model": "person",
+    "reason": "People of id IN one import file's identity hashes (capped by the import row limit)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listOwnPatientServiceRequests",
+    "model": "patientHospitalRelationship",
+    "reason": "One patient's own care relationships."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listOwnPatientServiceRequests",
+    "model": "osmHospitalRelationship",
+    "reason": "The patient's own assigned อสม., one per care relationship (an OR of id pairs)."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listHospitalPatientServiceRequests",
+    "model": "hospitalMembership",
+    "reason": "The actor's own operator memberships."
+  },
+  {
+    "file": "src/modules/patient-service-requests/services/patient-service-request-service.ts",
+    "function": "listHospitalPatientServiceRequests",
+    "model": "osmHospitalRelationship",
+    "reason": "At most two อสม. per visible request of one inbox page (an OR of id pairs)."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-access-service.ts",
+    "function": "listHospitalReportingHospitals",
+    "model": "hospitalMembership",
+    "reason": "The actor's own operator memberships (report Hospital selector)."
+  },
+  {
+    "file": "src/modules/reporting/services/hospital-report-query-service.ts",
+    "function": "loadWeeklyExerciseFacts",
+    "model": "personalExerciseEntry",
+    "reason": "Exercise entries of one report chunk of patient-week windows."
+  },
+  {
+    "file": "src/modules/reporting/services/program-report-query-service.ts",
+    "function": "loadProgramScreenings",
+    "model": "screeningAssessment",
+    "reason": "Screenings of one Program."
+  },
+  {
+    "file": "src/modules/reporting/services/round-report-query-service.ts",
+    "function": "loadRoundSources",
+    "model": "patientProgram",
+    "reason": "id IN the Programs of one report."
+  },
+  {
+    "file": "src/modules/reporting/services/round-report-query-service.ts",
+    "function": "loadRoundSources",
+    "model": "patientProgramRoundAchieveScore",
+    "reason": "Achieve scores of id IN the Programs of one report."
+  },
+  {
+    "file": "src/modules/screening/services/screening-query-service.ts",
+    "function": "getAccessibleScreeningSummaries",
+    "model": "screeningAssessment",
+    "reason": "id IN the requested screenings of one relationship."
+  },
+  {
+    "file": "src/modules/support/services/support-report-service.ts",
+    "function": "listOwnSupportHospitals",
+    "model": "hospital",
+    "reason": "The actor's own Hospitals (support form selector)."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "model": "patientHospitalRelationship",
+    "reason": "Paged: the spread `page` argument carries skip/take."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "model": "hospitalMembership",
+    "reason": "Paged: the spread `page` argument carries skip/take."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "model": "osmHospitalRelationship",
+    "reason": "Paged: the spread `page` argument carries skip/take."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "listHospitalUsers",
+    "model": "auditEvent",
+    "reason": "Password reset audits of id IN one directory page of users."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "getHospitalUserDetail",
+    "model": "workforceActivation",
+    "reason": "Activations of one user at one Hospital."
+  },
+  {
+    "file": "src/modules/user-management/services/user-directory-service.ts",
+    "function": "getHospitalUserDetail",
+    "model": "patientActivation",
+    "reason": "Activations of one user at one Hospital."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "lockSuspectedTakeover",
+    "model": "hospitalMembership",
+    "reason": "One identity's MEMBER memberships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/user-management/services/user-takeover-service.ts",
+    "function": "lockSuspectedTakeover",
+    "model": "osmHospitalRelationship",
+    "reason": "One identity's OSM relationships at one Hospital, locked for a takeover."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listWorkforceHospitals",
+    "model": "hospital",
+    "reason": "The actor's own OWNER Hospitals (workforce scopes)."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listWorkforce",
+    "model": "workforceActivation",
+    "reason": "Open activations of id IN one workforce page of users."
+  },
+  {
+    "file": "src/modules/workforce/services/workforce-service.ts",
+    "function": "listHospitalOwnersForPasswordReset",
+    "model": "hospitalMembership",
+    "reason": "ACTIVE OWNERs of one Hospital (a handful)."
+  }
+]
