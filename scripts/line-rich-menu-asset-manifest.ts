@@ -1,7 +1,7 @@
 import { LINE_RICH_MENU_CATALOG } from "../src/modules/line/rich-menu/catalog";
 import { getLineMenuAreaBounds } from "../src/modules/line/rich-menu/layout";
 import type { LineRichMenuAssetManifestEntry } from "./line-rich-menu-renderer";
-import { getLineRichMenuActionIcon } from "./line-rich-menu-icons";
+import { getLineRichMenuActionVisual } from "./line-rich-menu-illustrations";
 
 export function createLineRichMenuAssetManifest(): LineRichMenuAssetManifestEntry[] {
   return LINE_RICH_MENU_CATALOG.map((menu) => {
@@ -15,7 +15,7 @@ export function createLineRichMenuAssetManifest(): LineRichMenuAssetManifestEntr
         label: action.label,
         kind: action.type,
         intent: action.type === "uri" ? action.intent : null,
-        icon: getLineRichMenuActionIcon(menu, action),
+        ...getLineRichMenuActionVisual(menu, action),
         bounds: bounds[index],
       })),
     };

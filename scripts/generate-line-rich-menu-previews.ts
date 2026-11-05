@@ -123,8 +123,8 @@ async function writeThaiGlyphProof(outputDirectory: string): Promise<void> {
 
   const rowSvg = samples.map((_, index) => {
     const y = headerHeight + index * rowHeight;
-    const fill = index % 2 === 0 ? colors.surface : colors.soft;
-    return `<rect x="0" y="${y}" width="${proofWidth}" height="${rowHeight}" fill="${fill}"/><path d="M0 ${y}H${proofWidth}" stroke="${colors.line}" stroke-width="2"/>`;
+    const fill = index % 2 === 0 ? colors.surface : colors.brandSoft;
+    return `<rect x="0" y="${y}" width="${proofWidth}" height="${rowHeight}" fill="${fill}"/><path d="M0 ${y}H${proofWidth}" stroke="#D5E0DC" stroke-width="2"/>`;
   }).join("");
   const background = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${proofWidth}" height="${proofHeight}"><rect width="100%" height="100%" fill="${colors.canvas}"/><rect width="${proofWidth}" height="${headerHeight}" fill="${colors.brand}"/><text x="40" y="52" font-family="Arial" font-size="30" font-weight="700" fill="#FFFFFF">DEMI · THAI GLYPH SAMPLES</text>${rowSvg}</svg>`,

@@ -5,7 +5,11 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 
 import { createLineRichMenuAssetManifest } from "../../../../scripts/line-rich-menu-asset-manifest";
-import { getLineRichMenuActionIcon, renderLineRichMenuIcon } from "../../../../scripts/line-rich-menu-icons";
+import {
+  getLineRichMenuActionVisual,
+  getLineRichMenuIllustrationBuffer,
+  type LineRichMenuIllustration,
+} from "../../../../scripts/line-rich-menu-illustrations";
 import { getLineRichMenuActionLines, getLineRichMenuColors, renderLineRichMenuImage } from "../../../../scripts/line-rich-menu-renderer";
 import { LINE_RICH_MENU_CATALOG } from "./catalog";
 import { getLineMenuAreaBounds } from "./layout";
@@ -42,31 +46,36 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     }
   });
 
-  it("maps every action to a bundled semantic icon independent of its label", () => {
-    const expected: Record<string, string> = {
-      LINK_ACCOUNT: "link", MANAGE_ACCOUNT: "user-round-cog",
-      OPEN_PATIENT_APPOINTMENTS: "calendar-days", OPEN_PATIENT_WELLNESS: "heart-pulse",
-      OPEN_PATIENT_MEDICATIONS: "pills", OPEN_PATIENT_CARE: "stethoscope",
-      OPEN_OSM_ASSIGNED_PATIENTS: "users", START_OSM_SCREENING: "clipboard-check",
-      START_OSM_FOLLOWUP: "notebook-pen", OPEN_PATIENT_WORKSPACE: "layout-grid",
-      OPEN_WORK_WORKSPACE: "layout-grid",
+  it("maps catalog actions to bundled, role-aware editorial illustrations independent of labels", async () => {
+    const expected: Record<string, LineRichMenuIllustration> = {
+      LINK_ACCOUNT: "account-linking", MANAGE_ACCOUNT: "account-management",
+      OPEN_PATIENT_APPOINTMENTS: "patient-appointment-history", OPEN_PATIENT_WELLNESS: "patient-wellness-recording",
+      OPEN_PATIENT_MEDICATIONS: "patient-medication-review", OPEN_PATIENT_CARE: "patient-care-guidance",
+      OPEN_OSM_ASSIGNED_PATIENTS: "osm-community-workspace", START_OSM_SCREENING: "osm-screening",
+      START_OSM_FOLLOWUP: "osm-home-visit", OPEN_PATIENT_WORKSPACE: "patient-workspace",
+      OPEN_WORK_WORKSPACE: "osm-workflow-coordination",
     };
-    const roles = { PATIENT: "user-round", OSM: "stethoscope", HOSPITAL: "hospital" } as const;
+    const roles = { PATIENT: "patient-workspace", OSM: "osm-workflow-coordination", HOSPITAL: "hospital-operations" } as const;
+    const seenIllustrations = new Set<LineRichMenuIllustration>();
     for (const menu of LINE_RICH_MENU_CATALOG) {
       for (const action of menu.actions) {
-        const icon = getLineRichMenuActionIcon(menu, { ...action, label: "เปลี่ยนข้อความทดสอบ" });
-        const expectedIcon = action.type === "message" ? "calendar-check"
-          : action.type === "richmenuswitch" ? menu.key.startsWith("CHOOSER_") ? roles[action.role] : "arrow-left-right"
-          : action.intent === "OPEN_WORK_WORKSPACE" && menu.key.startsWith("HOSPITAL_") ? "hospital"
+        const visual = getLineRichMenuActionVisual(menu, { ...action, label: "เปลี่ยนข้อความทดสอบ" });
+        const expectedIllustration = action.type === "message" ? "patient-appointment-consultation"
+          : action.type === "richmenuswitch" ? roles[action.role]
+          : action.intent === "OPEN_WORK_WORKSPACE" && menu.key.startsWith("HOSPITAL_") ? "hospital-operations"
           : expected[action.intent];
-        expect(icon, `${menu.key}: ${action.label}`).toBe(expectedIcon);
-        const svg = renderLineRichMenuIcon(icon, 10, 20, 144, "#0E3C35");
-        expect(svg).toContain('viewBox="0 0 24 24"');
-        expect(svg).toContain('width="144"');
-        expect(svg).toContain('stroke="#0E3C35"');
-        expect(svg).not.toMatch(/https?:\/\/(?!www.w3.org)|<image|<text|currentColor/u);
+        expect(visual.illustration, `${menu.key}: ${action.label}`).toBe(expectedIllustration);
+        seenIllustrations.add(visual.illustration);
+
+        const image = await getLineRichMenuIllustrationBuffer(visual.illustration);
+        const metadata = await sharp(image).metadata();
+        expect(metadata.format).toBe("png");
+        expect(metadata.hasAlpha).toBe(true);
+        expect(metadata.width).toBeGreaterThan(0);
+        expect(metadata.height).toBeGreaterThan(0);
       }
     }
+    expect(seenIllustrations.size).toBe(13);
   });
 
   it("preserves every Thai label through intentional line breaks", () => {
@@ -96,9 +105,16 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     })).rejects.toThrow("refusing to shrink or truncate");
   });
 
-  it("places rounded bitmap edges exactly inside each rectangular hitbox", async () => {
+  it("keeps the flat illustrated fields inside LINE's rectangular hitboxes", async () => {
     const colors = getLineRichMenuColors();
     const rgb = (hex: string): number[] => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+    const tones = {
+      patient: { primary: "#F5E8E1", secondary: "#FBF5F1" },
+      osm: { primary: "#DCEEE9", secondary: "#EFF5F2" },
+      hospital: { primary: "#E1EDF1", secondary: "#F2F6F7" },
+      account: { primary: "#F2E8D0", secondary: "#F8F4E9" },
+    } as const;
+
     for (const menu of createLineRichMenuAssetManifest()) {
       const { data, info } = await sharp(await readFile(join(assetDirectory, menu.assetFile)))
         .removeAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -106,10 +122,24 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
         const offset = (y * info.width + x) * info.channels;
         return [...data.subarray(offset, offset + 3)];
       };
-      for (const { bounds: { x, y, width, height } } of menu.actions) {
+      for (const [index, action] of menu.actions.entries()) {
+        const { x, y, width, height } = action.bounds;
+        const primary = menu.key.startsWith("CHOOSER_") ? action.kind === "richmenuswitch"
+          : menu.key.startsWith("PATIENT_")
+            ? action.kind === "message" || (action.intent !== null && [
+              "OPEN_PATIENT_APPOINTMENTS", "OPEN_PATIENT_WELLNESS", "OPEN_PATIENT_MEDICATIONS", "OPEN_PATIENT_CARE",
+            ].includes(action.intent))
+            : menu.key.startsWith("OSM_")
+              ? action.intent !== null && [
+                "OPEN_OSM_ASSIGNED_PATIENTS", "START_OSM_SCREENING", "START_OSM_FOLLOWUP", "OPEN_WORK_WORKSPACE",
+              ].includes(action.intent)
+              : menu.actions.length === 1 || index === 0;
+
         expect(pixel(x, y), menu.key).toEqual(rgb(colors.canvas));
         expect(pixel(x - 1, y + Math.floor(height / 2)), menu.key).toEqual(rgb(colors.canvas));
-        expect(pixel(x + Math.floor(width / 2), y + 1), menu.key).toEqual(rgb(colors.line));
+        expect(pixel(x + Math.floor(width / 2), y + 5), menu.key).toEqual(
+          rgb(tones[action.tone][primary ? "primary" : "secondary"]),
+        );
         expect(pixel(x + Math.floor(width / 2), y + height), menu.key).toEqual(rgb(colors.canvas));
       }
     }
