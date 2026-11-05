@@ -19,7 +19,8 @@ import {
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { approveHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
-import { findOnboardingHospitalByCode, listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
+import { findOnboardingHospitalByCode } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
+import { publiclyFoundHospitalIds } from "../support/onboarding-search";
 import {
   acceptChildOwnerInvitation,
   cancelPendingChildFacility,
@@ -205,7 +206,7 @@ describe("O1-A: ADMIN bulk Parent registration", () => {
       where: { id: { in: ids } }, orderBy: { name: "asc" },
       select: { status: true, registeredByUserId: true, serviceAreaEligibility: { select: { kind: true } } },
     })).toEqual(Array(3).fill({ status: "PENDING_VERIFICATION", registeredByUserId: admin.userId, serviceAreaEligibility: { kind: "PARENT" } }));
-    const listed = (await listOnboardingHospitals()).map(({ id }) => id);
+    const listed = await publiclyFoundHospitalIds(ids);
     for (const id of ids) expect(listed).toContain(id);
 
     expect(await db.auditEvent.count({ where: { action: "hospital.created", resourceId: { in: ids } } })).toBe(3);
@@ -290,7 +291,7 @@ describe("O1-B: public onboarding is for Parents only", () => {
     await setHospitalNetworkRole(admin, { hospitalId: formerChild.id, kind: "PARENT" });
     await db.hospital.update({ where: { id: formerChild.id }, data: { status: HospitalStatus.PENDING_VERIFICATION } });
 
-    const listed = (await listOnboardingHospitals()).map(({ id }) => id);
+    const listed = await publiclyFoundHospitalIds([pendingParent.id, created.child.id, adminChild.id, unclassified.id, formerChild.id]);
     expect(listed).toContain(pendingParent.id);
     for (const id of [created.child.id, adminChild.id, unclassified.id, formerChild.id]) expect(listed).not.toContain(id);
 

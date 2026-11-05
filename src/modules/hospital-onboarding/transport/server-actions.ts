@@ -1,10 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
+import type { ServerSearchPageResult } from "@/shared/search/server-search-result";
 import {
   getRequestLegalChannel,
   legalAcceptanceRequiredError,
@@ -19,6 +22,11 @@ import {
   submitHospitalOnboarding,
 } from "../services/hospital-onboarding-service";
 import { hospitalOnboardingSubmissionSchema } from "../schemas/hospital-onboarding-schemas";
+import {
+  OnboardingHospitalSearchRateLimitedError,
+  searchOnboardingHospitals,
+  type OnboardingHospitalOption,
+} from "../services/onboarding-hospital-service";
 import type {
   HospitalOnboardingFieldErrors,
   HospitalOnboardingReviewActionState,
@@ -235,4 +243,20 @@ export async function rejectHospitalOnboardingAction(
   }
 
   redirect(`/app/admin/hospital-onboarding/${applicationId}`);
+}
+
+/** Public: at most ten onboardable Parents by name or code; rate limited per client IP. */
+export async function searchOnboardingHospitalsAction(value: string): Promise<ServerSearchPageResult<OnboardingHospitalOption>> {
+  try {
+    const items = await searchOnboardingHospitals(value, { ipAddress: trustedClientIpAddress(await headers()) ?? "" });
+    return { status: "OK", items, page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
+  } catch (error: unknown) {
+    if (error instanceof OnboardingHospitalSearchRateLimitedError) {
+      return { status: "ERROR", message: "ค้นหาบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง" };
+    }
+    if (error instanceof ApplicationError && error.code === "VALIDATION") {
+      return { status: "ERROR", message: "กรุณาพิมพ์ชื่อหรือรหัสโรงพยาบาลอย่างน้อย 2 ตัวอักษร (ไม่เกิน 100 ตัวอักษร)" };
+    }
+    return { status: "ERROR", message: "ไม่สามารถค้นหาโรงพยาบาลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง" };
+  }
 }

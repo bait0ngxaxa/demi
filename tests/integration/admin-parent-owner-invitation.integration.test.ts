@@ -10,7 +10,8 @@ import { HospitalRetirementIneligibleError, retireHospitals } from "@/modules/ho
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { approveHospitalOnboarding, rejectHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
-import { findOnboardingHospitalByCode, listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
+import { findOnboardingHospitalByCode } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
+import { publiclyFoundHospitalIds } from "../support/onboarding-search";
 import {
   cancelParentOwnerInvitation,
   changeParentOwnerInvitee,
@@ -197,7 +198,7 @@ describe("PO-1: ADMIN invites the first OWNER of a Parent Hospital", () => {
     expect(JSON.stringify(invitedAudit.metadata)).not.toContain(token(issued));
 
     // Q1: hidden from the public list and code lookup, and submission is refused.
-    expect((await listOnboardingHospitals()).map(({ id }) => id)).not.toContain(parent.id);
+    expect(await publiclyFoundHospitalIds([parent.id])).not.toContain(parent.id);
     await expect(findOnboardingHospitalByCode(parent.hospitalCode)).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(submitHospitalOnboarding(publicSubmission(parent.hospitalCode))).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await listParentOnboardingPaths(admin, [parent.id])).toEqual(new Map([[parent.id, "OPEN_INVITATION"]]));
@@ -243,7 +244,7 @@ describe("PO-1: ADMIN invites the first OWNER of a Parent Hospital", () => {
     expect(await getParentOwnerInvitationState(admin, { hospitalId: second.id }))
       .toMatchObject({ availability: "FIRST_OWNER", invitation: null, lastDeclinedAt: expect.any(Date) });
     // After a decline the Parent is back on the public list and ADMIN may invite again.
-    expect((await listOnboardingHospitals()).map(({ id }) => id)).toContain(second.id);
+    expect(await publiclyFoundHospitalIds([second.id])).toContain(second.id);
   });
 
   it("holds a caregiver-claimed invitee for an ADMIN reset; after the reset the invitee accepts in their own session", async () => {
@@ -487,7 +488,7 @@ describe("PO-3: ADMIN cancels a Parent OWNER invitation", () => {
     expect(cancelled.metadata).toEqual({ membershipId: membership.id, fromStatus: "PROVISIONED", held: false });
     expect(JSON.stringify(cancelled.metadata)).not.toContain(String(input.nationalId));
 
-    expect((await listOnboardingHospitals()).map(({ id }) => id)).toContain(parent.id);
+    expect(await publiclyFoundHospitalIds([parent.id])).toContain(parent.id);
     await expect(findOnboardingHospitalByCode(parent.hospitalCode)).resolves.toMatchObject({ id: parent.id });
     const submitted = await submitHospitalOnboarding(publicSubmission(parent.hospitalCode), { provisionIdentity: provisioner() });
     expect(submitted.applicationId).toEqual(expect.any(String));
@@ -528,7 +529,7 @@ describe("PO-3: ADMIN cancels a Parent OWNER invitation", () => {
     expect(await db.user.findUniqueOrThrow({ where: { id: invitee.userId } })).toMatchObject({ status: UserStatus.SUSPENDED });
     expect((await db.auditEvent.findFirstOrThrow({ where: { resourceId: parent.id, action: "hospital.parent_owner_invitation_cancelled" } })).metadata)
       .toMatchObject({ fromStatus: "PROVISIONED", held: true });
-    expect((await listOnboardingHospitals()).map(({ id }) => id)).toContain(parent.id);
+    expect(await publiclyFoundHospitalIds([parent.id])).toContain(parent.id);
   });
 
   it("refuses while the link is being used and changes nothing", async () => {

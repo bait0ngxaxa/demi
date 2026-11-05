@@ -12,7 +12,7 @@ import {
   retireHospitals,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { approveHospitalOnboarding, submitHospitalOnboarding } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
-import { listOnboardingHospitals } from "@/modules/hospital-onboarding/services/onboarding-hospital-service";
+import { publiclyFoundHospitalIds } from "../support/onboarding-search";
 import {
   clearHospitalNetworkRole, setHospitalNetworkRole, transferHospitalServiceArea,
 } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
@@ -240,7 +240,7 @@ describe("A RETIRED Hospital is withdrawn everywhere (N1-D3)", () => {
     const retiredParent = await hospital(HospitalStatus.PENDING_VERIFICATION, "PARENT");
     await retireHospitals(admin, { hospitalIds: [retiredChild.id, retiredParent.id], reason: "ไม่ใช้งาน" });
 
-    const listed = (await listOnboardingHospitals()).map(({ id }) => id);
+    const listed = await publiclyFoundHospitalIds([retiredChild.id, retiredParent.id]);
     expect(listed).not.toContain(retiredChild.id);
     expect(listed).not.toContain(retiredParent.id);
     await expect(submitHospitalOnboarding({ ...LEGAL,

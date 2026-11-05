@@ -12,7 +12,16 @@ import {
   initialHospitalOnboardingSubmitActionState,
   type HospitalOnboardingSubmitActionState,
 } from "@/modules/hospital-onboarding/transport/action-state";
-import { submitHospitalOnboardingAction } from "@/modules/hospital-onboarding/transport/server-actions";
+import {
+  searchOnboardingHospitalsAction,
+  submitHospitalOnboardingAction,
+} from "@/modules/hospital-onboarding/transport/server-actions";
+import { useServerSearch } from "@/components/search/use-server-search";
+import {
+  HOSPITAL_SEARCH_MAX_LENGTH,
+  HOSPITAL_SEARCH_RESULT_LIMIT,
+  ONBOARDING_HOSPITAL_SEARCH_MIN_LENGTH,
+} from "@/shared/search/hospital-search";
 
 import {
   groupOnboardingHospitals,
@@ -24,44 +33,37 @@ import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-field
 import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
 type HospitalOnboardingFormProps = {
-  hospitals: readonly OnboardingHospitalOption[];
   legal: AccountCreationLegalView;
 };
 
-function normalizeSearchValue(value: string): string {
-  return value.normalize("NFC").toLocaleLowerCase("th-TH").trim();
-}
+const HOSPITAL_SEARCH_ERROR = "ไม่สามารถค้นหาโรงพยาบาลได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง";
 
-export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingFormProps) {
+export function HospitalOnboardingForm({ legal }: HospitalOnboardingFormProps) {
   const router = useRouter();
   const [state, formAction, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<
     HospitalOnboardingSubmitActionState,
     FormData
   >(submitHospitalOnboardingAction, initialHospitalOnboardingSubmitActionState);
-  const [hospitalQuery, setHospitalQuery] = useState("");
-  const [selectedHospitalId, setSelectedHospitalId] = useState("");
+  // The server answers at most ten matches for two or more characters; the registry never reaches the browser.
+  const hospitalSearch = useServerSearch<OnboardingHospitalOption>({
+    scope: "onboarding",
+    search: (query) => searchOnboardingHospitalsAction(query),
+    errorMessage: HOSPITAL_SEARCH_ERROR,
+    minLength: ONBOARDING_HOSPITAL_SEARCH_MIN_LENGTH,
+  });
+  const [selectedHospital, setSelectedHospital] = useState<OnboardingHospitalOption | null>(null);
+  const selectedHospitalId = selectedHospital?.id ?? "";
   const formRef = useRef<HTMLFormElement>(null);
   const successStatusRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const changeHospitalButtonRef = useRef<HTMLButtonElement>(null);
   const focusAfterSelectionRef = useRef<"search" | "change" | null>(null);
-  const selectionGroups = useMemo(() => groupOnboardingHospitals(hospitals), [hospitals]);
-  const selectedHospital = hospitals.find((hospital) => hospital.id === selectedHospitalId);
+  const searchResults = hospitalSearch.shown?.items;
+  const visibleSelectionGroups = useMemo(() => groupOnboardingHospitals(searchResults ?? []), [searchResults]);
   const selectedHospitalContext = selectedHospital ? hospitalRoleLabel(selectedHospital) : null;
   const selectedHospitalStatus = selectedHospital
     ? `เลือกแล้ว: ${selectedHospital.name}${selectedHospitalContext ? ` ${selectedHospitalContext}` : ""}`
     : "กรุณาเลือกโรงพยาบาลจากรายการ";
-  const visibleSelectionGroups = useMemo(() => {
-    const normalizedQuery = normalizeSearchValue(hospitalQuery);
-    if (!normalizedQuery) return selectionGroups;
-
-    return selectionGroups.flatMap((group) => {
-      const hospitals = group.hospitals.filter((hospital) =>
-        normalizeSearchValue(hospital.name).includes(normalizedQuery),
-      );
-      return hospitals.length > 0 ? [{ ...group, hospitals }] : [];
-    });
-  }, [hospitalQuery, selectionGroups]);
   const hasVisibleHospitals = visibleSelectionGroups.length > 0;
   const errorMessage = state.status === "ERROR" ? state.message : undefined;
   const fieldErrors = state.status === "ERROR" ? state.fieldErrors ?? {} : {};
@@ -72,10 +74,10 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
     if (legalVersionChanged) router.refresh();
   }, [legalVersionChanged, router]);
 
-  function selectHospital(hospitalId: string): void {
+  function selectHospital(hospital: OnboardingHospitalOption): void {
     focusAfterSelectionRef.current = "change";
-    setSelectedHospitalId(hospitalId);
-    setHospitalQuery("");
+    setSelectedHospital(hospital);
+    hospitalSearch.setQuery("");
   }
 
   useEffect(() => {
@@ -166,8 +168,8 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
               ref={changeHospitalButtonRef}
               onClick={() => {
                 focusAfterSelectionRef.current = "search";
-                setSelectedHospitalId("");
-                setHospitalQuery("");
+                setSelectedHospital(null);
+                hospitalSearch.setQuery("");
               }}
               type="button"
             >
@@ -178,19 +180,21 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
           <>
             <div className="space-y-2">
               <label className="block text-sm font-semibold text-ink" htmlFor="hospitalSearch">
-                ค้นหาชื่อโรงพยาบาลหรือโรงพยาบาลแม่ข่าย
+                ค้นหาชื่อหรือรหัสโรงพยาบาลแม่ข่าย
               </label>
               <input
                 autoComplete="off"
                 className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] placeholder:text-muted focus:border-brand focus:ring-4 focus:ring-brand-soft"
-                disabled={pending || hospitals.length === 0}
+                disabled={pending}
                 id="hospitalSearch"
-                onChange={(event) => setHospitalQuery(event.target.value)}
+                maxLength={HOSPITAL_SEARCH_MAX_LENGTH}
+                onChange={(event) => hospitalSearch.setQuery(event.target.value)}
                 placeholder="เช่น โรงพยาบาลแก่งคอย"
                 ref={searchInputRef}
                 type="search"
-                value={hospitalQuery}
+                value={hospitalSearch.query}
               />
+              <p className="text-xs leading-5 text-muted">พิมพ์อย่างน้อย {ONBOARDING_HOSPITAL_SEARCH_MIN_LENGTH} ตัวอักษร ระบบแสดงไม่เกิน {HOSPITAL_SEARCH_RESULT_LIMIT} แห่งที่ตรงกัน</p>
             </div>
 
             <div
@@ -200,13 +204,29 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
               role="region"
               tabIndex={0}
             >
-              {hospitals.length === 0 ? (
+              {hospitalSearch.belowMinimum ? (
                 <p className="px-3 py-4 text-sm leading-6 text-muted">
-                  ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้
+                  พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา
                 </p>
+              ) : !hospitalSearch.shown ? (
+                <p className="px-3 py-4 text-sm leading-6 text-muted" role="status">
+                  กำลังค้นหาโรงพยาบาล...
+                </p>
+              ) : hospitalSearch.shown.error && !hasVisibleHospitals ? (
+                <div className="px-3 py-4 text-sm leading-6 text-muted" role="alert">
+                  <p>{hospitalSearch.shown.error}</p>
+                  <button
+                    className="mt-2 min-h-11 rounded-[12px] border border-line bg-white px-3 text-sm font-semibold text-ink transition-[border-color] hover:border-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft disabled:opacity-50"
+                    disabled={pending || !hospitalSearch.answered}
+                    onClick={hospitalSearch.retry}
+                    type="button"
+                  >
+                    ลองอีกครั้ง
+                  </button>
+                </div>
               ) : !hasVisibleHospitals ? (
                 <p className="px-3 py-4 text-sm leading-6 text-muted">
-                  ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา
+                  ไม่พบโรงพยาบาลที่เปิดรับคำขอที่ตรงกับคำค้นหา
                 </p>
               ) : (
                 <>
@@ -228,7 +248,7 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
                                 aria-label={`เลือกโรงพยาบาล ${hospital.name}`}
                                 className="w-full rounded-[10px] border border-transparent bg-white/70 px-3 py-3 text-left transition-[border-color,background-color] hover:border-line hover:bg-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft"
                                 disabled={pending}
-                                onClick={() => selectHospital(hospital.id)}
+                                onClick={() => selectHospital(hospital)}
                                 type="button"
                               >
                                 <span className="block break-words font-semibold text-ink">
@@ -414,7 +434,7 @@ export function HospitalOnboardingForm({ hospitals, legal }: HospitalOnboardingF
       <button
         aria-busy={pending || undefined}
         className="flex h-12 w-full items-center justify-center rounded-[12px] bg-brand px-5 text-base font-semibold text-white shadow-[0_8px_22px_rgba(18,103,89,0.22)] transition-[background-color,box-shadow,transform] hover:bg-brand-strong hover:shadow-[0_10px_26px_rgba(18,103,89,0.28)] active:translate-y-px disabled:cursor-not-allowed disabled:bg-brand-muted disabled:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-soft focus-visible:ring-offset-2"
-        disabled={pending || unknownOutcome || hospitals.length === 0 || !selectedHospital}
+        disabled={pending || unknownOutcome || !selectedHospital}
         type="submit"
       >
         {pending ? <LoadingSpinner className="mr-2" /> : null}

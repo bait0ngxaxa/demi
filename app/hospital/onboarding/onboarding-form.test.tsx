@@ -11,11 +11,15 @@ vi.mock("next/navigation", async (importOriginal) => ({
 }));
 vi.mock("@/modules/hospital-onboarding/transport/server-actions", () => ({
   submitHospitalOnboardingAction: vi.fn(),
+  searchOnboardingHospitalsAction: vi.fn(),
 }));
 
 import { HospitalOnboardingForm } from "./onboarding-form";
 import type { OnboardingHospitalOption } from "./hospital-groups";
-import { submitHospitalOnboardingAction } from "@/modules/hospital-onboarding/transport/server-actions";
+import {
+  searchOnboardingHospitalsAction,
+  submitHospitalOnboardingAction,
+} from "@/modules/hospital-onboarding/transport/server-actions";
 
 const parentId = "00000000-0000-4000-8000-000000000001";
 const childId = "00000000-0000-4000-8000-000000000002";
@@ -47,6 +51,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.mocked(submitHospitalOnboardingAction).mockReset();
+  vi.mocked(searchOnboardingHospitalsAction).mockReset();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -57,8 +62,30 @@ afterEach(() => {
   container.remove();
 });
 
+/** The server's answer: matches by name or code among the given onboardable Hospitals, at most ten. */
+function serveHospitals(hospitals: readonly OnboardingHospitalOption[]): void {
+  vi.mocked(searchOnboardingHospitalsAction).mockImplementation(async (value: string) => ({
+    status: "OK",
+    items: hospitals
+      .filter((hospital) => hospital.name.includes(value) || hospital.hospitalCode.includes(value))
+      .slice(0, 10)
+      .map((hospital) => ({ ...hospital })),
+    page: 1,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  }));
+}
+
 function renderForm(hospitals: readonly OnboardingHospitalOption[]): void {
-  act(() => root.render(createElement(HospitalOnboardingForm, { legal: accountCreationLegalViewFixture(), hospitals })));
+  serveHospitals(hospitals);
+  act(() => root.render(createElement(HospitalOnboardingForm, { legal: accountCreationLegalViewFixture() })));
+}
+
+/** Types a term and waits out the debounce and the server's answer. */
+async function search(value: string): Promise<void> {
+  changeSearch(value);
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
 }
 
 function buttonByLabel(label: string, index = 0): HTMLButtonElement {
@@ -98,7 +125,8 @@ async function submitOnboardingForm(): Promise<void> {
   });
 }
 
-function fillValidOnboardingForm(): void {
+async function fillValidOnboardingForm(): Promise<void> {
+  await search("-00");
   act(() => buttonByLabel(`เลือกโรงพยาบาล ${parentName}`).click());
   setField("givenName", "สมชาย");
   setField("familyName", "ตัวอย่าง");
@@ -114,8 +142,9 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(container.querySelectorAll('input[name^="consent."]')).toHaveLength(0);
   });
 
-  it("groups Hospitals by network role and submits the selected identity", () => {
+  it("groups Hospitals by network role and submits the selected identity", async () => {
     renderForm(hospitalOptions({ other: true }));
+    await search("-00");
 
     const headings = Array.from(container.querySelectorAll("section[aria-labelledby] h3")).map((heading) => heading.textContent);
     expect(headings).toEqual(["โรงพยาบาลแม่ข่าย", "รพ.สต. / หน่วยบริการลูกข่าย", "โรงพยาบาลอื่น"]);
@@ -126,8 +155,9 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe(`เลือกแล้ว: ${childName} รพ.สต. / หน่วยบริการลูกข่าย`);
   });
 
-  it("selects a Parent and labels it by role", () => {
+  it("selects a Parent and labels it by role", async () => {
     renderForm(hospitalOptions());
+    await search("-00");
 
     act(() => buttonByLabel(`เลือกโรงพยาบาล ${parentName}`).click());
 
@@ -135,9 +165,9 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe(`เลือกแล้ว: ${parentName} โรงพยาบาลแม่ข่าย`);
   });
 
-  it("filters every group by name and hides empty groups", () => {
+  it("shows only the server's matches and hides empty groups", async () => {
     renderForm(hospitalOptions({ other: true }));
-    changeSearch("ลูกข่าย ก");
+    await search("ลูกข่าย ก");
 
     const region = container.querySelector('[role="region"][aria-label="รายการโรงพยาบาลที่เลือกได้"]');
     expect(region?.textContent).toContain(childName);
@@ -145,8 +175,9 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(region?.textContent).not.toContain("โรงพยาบาลอื่น");
   });
 
-  it("preserves separate identities for duplicate Hospital names", () => {
+  it("preserves separate identities for duplicate Hospital names", async () => {
     renderForm(hospitalOptions({ duplicateChild: true }));
+    await search("CHILD-00");
     const label = `เลือกโรงพยาบาล ${childName}`;
 
     expect(
@@ -159,18 +190,49 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(selectedHospitalCode()).toBe("CHILD-002");
   });
 
-  it("distinguishes an empty eligible list from a search with no matches", () => {
-    renderForm([]);
-    expect(container.textContent).toContain("ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้");
+  it("asks for two characters before searching and says when nothing matches", async () => {
+    renderForm(hospitalOptions());
+    expect(container.textContent).toContain("พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา");
 
-    act(() => root.render(createElement(HospitalOnboardingForm, { legal: accountCreationLegalViewFixture(), hospitals: hospitalOptions() })));
-    changeSearch("โรงพยาบาลที่ไม่มีในระบบ");
-    expect(container.textContent).toContain("ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา");
-    expect(container.textContent).not.toContain("ยังไม่มีโรงพยาบาลที่เปิดรับคำขอในขณะนี้");
+    await search("ก");
+    expect(searchOnboardingHospitalsAction).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("พิมพ์ชื่อหรือรหัสโรงพยาบาลเพื่อค้นหา");
+
+    await search("โรงพยาบาลที่ไม่มีในระบบ");
+    expect(searchOnboardingHospitalsAction).toHaveBeenCalledWith("โรงพยาบาลที่ไม่มีในระบบ");
+    expect(container.textContent).toContain("ไม่พบโรงพยาบาลที่เปิดรับคำขอที่ตรงกับคำค้นหา");
   });
 
-  it("uses native keyboard-operable buttons, named groups, and returns focus after selection", () => {
+  it("debounces typing into one request and never lets an older answer replace a newer one", async () => {
     renderForm(hospitalOptions());
+    let answerFirst: (() => void) | null = null;
+    vi.mocked(searchOnboardingHospitalsAction)
+      .mockImplementationOnce((value: string) => new Promise((resolve) => {
+        answerFirst = () => resolve({
+          status: "OK", page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+          items: [{ id: otherId, hospitalCode: "OLD-001", name: `คำตอบเก่าของ ${value}`, networkRole: "PARENT" }],
+        });
+      }));
+
+    changeSearch("โร");
+    changeSearch("โรง");
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 350)));
+    expect(searchOnboardingHospitalsAction).toHaveBeenCalledTimes(1);
+    expect(searchOnboardingHospitalsAction).toHaveBeenLastCalledWith("โรง");
+
+    await search(parentName);
+    await act(async () => {
+      answerFirst?.();
+      await Promise.resolve();
+    });
+    const region = container.querySelector('[role="region"][aria-label="รายการโรงพยาบาลที่เลือกได้"]');
+    expect(region?.textContent).toContain(parentName);
+    expect(region?.textContent).not.toContain("คำตอบเก่า");
+  });
+
+  it("uses native keyboard-operable buttons, named groups, and returns focus after selection", async () => {
+    renderForm(hospitalOptions());
+    await search("-00");
     const group = container.querySelector("section[aria-labelledby]");
     const headingId = group?.getAttribute("aria-labelledby");
     const option = buttonByLabel(`เลือกโรงพยาบาล ${childName}`);
@@ -189,8 +251,9 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
     expect(document.activeElement).toBe(container.querySelector("#hospitalSearch"));
   });
 
-  it("does not expose Hospital codes in visible copy or accessible names", () => {
+  it("does not expose Hospital codes in visible copy or accessible names", async () => {
     renderForm(hospitalOptions({ other: true }));
+    await search("-00");
 
     const accessibleLabels = Array.from(container.querySelectorAll<HTMLElement>("[aria-label]"))
       .map((element) => element.getAttribute("aria-label") ?? "")
@@ -204,7 +267,7 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
   it("clearly says a submitted request is waiting for review, not approved", async () => {
     vi.mocked(submitHospitalOnboardingAction).mockResolvedValue({ status: "SUCCESS" });
     renderForm(hospitalOptions());
-    fillValidOnboardingForm();
+    await fillValidOnboardingForm();
 
     await submitOnboardingForm();
 
@@ -228,7 +291,7 @@ describe("Hospital onboarding selector (ADR-0015 network roles)", () => {
       fieldErrors: { givenName: "กรุณากรอกชื่อ" },
     });
     renderForm(hospitalOptions());
-    fillValidOnboardingForm();
+    await fillValidOnboardingForm();
 
     await submitOnboardingForm();
 

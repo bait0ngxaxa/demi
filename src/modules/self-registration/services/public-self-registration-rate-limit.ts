@@ -17,6 +17,8 @@ export const PUBLIC_SELF_REGISTRATION_RATE_LIMITS = {
   GLOBAL: { limit: 1000, windowMs: 60 * 60 * 1000 },
   CG_PATIENT: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
   CG_IDENTITY: { limit: 10, windowMs: 24 * 60 * 60 * 1000 },
+  /** Public Hospital onboarding search, per client IP: typing a name sends a few debounced requests. */
+  HOSPITAL_SEARCH: { limit: 60, windowMs: 5 * 60 * 1000 },
 } as const;
 
 export type PublicSelfRegistrationRateLimitCategory = keyof typeof PUBLIC_SELF_REGISTRATION_RATE_LIMITS;
