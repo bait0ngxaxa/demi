@@ -7,10 +7,12 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { assertHospitalGovernanceCapability, HOSPITAL_GOVERNANCE_CAPABILITIES } from "@/modules/hospital-governance/policies/hospital-governance-policy";
 import { assertPlatformAdminInDatabase } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { resolvePagePosition, type PageNumberPosition } from "@/shared/pagination/page-number";
 import { isEligibleServiceAreaPair } from "../domain/service-area-eligibility";
 import {
-  governedAreaEndSchema, governedAreaPageSchema, governedAreaTransferSchema, governedHospitalIdSchema, networkRoleClearSchema,
-  networkRoleSetSchema,
+  governedAreaEndSchema, governedAreaPageSchema, governedAreaTransferSchema, governedHospitalIdSchema, HOSPITAL_DIRECTORY_PAGE_SIZE,
+  HOSPITAL_TRANSFER_TARGET_SEARCH_LIMIT, hospitalDirectoryQuerySchema, networkRoleClearSchema, networkRoleSetSchema,
+  transferTargetSearchSchema, type HospitalDirectoryQuery,
 } from "../schemas/hospital-service-area-schemas";
 import {
   areaSelect, facilitySelect, hasUnsupportedShape, operation, page,
@@ -143,8 +145,6 @@ export type HospitalNetworkAdminView = {
   children: { areaId: string; createdAt: Date; child: HospitalNetworkFacilitySummary }[];
   /** The active association where this Hospital is the Child, if any. */
   parentArea: { areaId: string; createdAt: Date; parent: HospitalNetworkFacilitySummary } | null;
-  /** ACTIVE network PARENT Hospitals other than the current Parent, for transfers. */
-  transferTargets: HospitalNetworkFacilitySummary[];
 };
 
 const summarySelect = { id: true, hospitalCode: true, name: true, status: true } satisfies Prisma.HospitalSelect;
@@ -176,22 +176,10 @@ export async function getHospitalNetworkForAdmin(
     });
     if (!hospital) throw new NotFoundError();
     const parentArea = hospital.serviceAreaAssignments[0] ?? null;
-    const transferTargets = parentArea
-      ? await tx.hospital.findMany({
-          where: {
-            id: { not: parentArea.parent.id },
-            status: HospitalStatus.ACTIVE,
-            serviceAreaEligibility: { is: { kind: "PARENT" } },
-          },
-          orderBy: [{ name: "asc" }, { id: "asc" }],
-          select: summarySelect,
-        })
-      : [];
     return {
       role: hospital.serviceAreaEligibility?.kind ?? null,
       children: hospital.managedServiceAreas.map(({ id, createdAt, child }) => ({ areaId: id, createdAt, child })),
       parentArea: parentArea ? { areaId: parentArea.id, createdAt: parentArea.createdAt, parent: parentArea.parent } : null,
-      transferTargets,
     };
   });
 }
@@ -199,19 +187,55 @@ export async function getHospitalNetworkForAdmin(
 export type HospitalNetworkDirectoryEntry = HospitalNetworkFacilitySummary & {
   role: HospitalServiceAreaFacilityKind | null;
   networkParentId: string | null;
+  /** Name of the active network Parent, loaded only for the rows of the page. */
+  networkParentName: string | null;
   /** ADR-0018 provenance: the Parent whose OWNER registered this Child, if any. */
   registeredForParentHospitalId: string | null;
+  registeredForParentHospitalName: string | null;
 };
 
-/** Every Hospital with its network role and active Parent, for the governance directory. Identity data only. */
+export type HospitalNetworkDirectoryPage = PageNumberPosition & {
+  items: HospitalNetworkDirectoryEntry[];
+  /** Hospitals matching the filter and search across all pages. */
+  total: number;
+};
+
+/** N1-D3: the network view leaves RETIRED Hospitals out; they are listed only under "ถอนแล้ว". */
+function directoryFilterWhere(filter: HospitalDirectoryQuery["filter"]): Prisma.HospitalWhereInput {
+  switch (filter) {
+    case "network":
+      return { status: { not: HospitalStatus.RETIRED } };
+    case "pending":
+      return { status: HospitalStatus.PENDING_VERIFICATION };
+    case "retired":
+      return { status: HospitalStatus.RETIRED };
+  }
+}
+
+function hospitalNameOrCodeWhere(value: string | undefined): Prisma.HospitalWhereInput {
+  return value
+    ? { OR: [{ name: { contains: value, mode: "insensitive" } }, { hospitalCode: { contains: value, mode: "insensitive" } }] }
+    : {};
+}
+
+/** One counted page of the governance directory with its network role and active Parent. Identity data only. */
 export async function listHospitalNetworkDirectoryForAdmin(
-  actor: ActorContext | null | undefined, dependencies: HospitalServiceAreaDependencies = {},
-): Promise<HospitalNetworkDirectoryEntry[]> {
+  actor: ActorContext | null | undefined, input: unknown = {}, dependencies: HospitalServiceAreaDependencies = {},
+): Promise<HospitalNetworkDirectoryPage> {
   if (!actor) throw new ForbiddenError();
+  const parsed = hospitalDirectoryQuerySchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError();
+  const { filter, value, page: requestedPage } = parsed.data;
   return operation(dependencies.database ?? getPrisma(), async (tx) => {
     await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkAreaGovern);
+    const where: Prisma.HospitalWhereInput = { AND: [directoryFilterWhere(filter), hospitalNameOrCodeWhere(value)] };
+    const total = await tx.hospital.count({ where });
+    const { skip, ...position } = resolvePagePosition(requestedPage, total, HOSPITAL_DIRECTORY_PAGE_SIZE);
     const hospitals = await tx.hospital.findMany({
+      where,
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }, { id: "asc" }],
+      skip,
+      take: HOSPITAL_DIRECTORY_PAGE_SIZE,
       select: {
         ...summarySelect,
         serviceAreaEligibility: { select: { kind: true } },
@@ -219,11 +243,63 @@ export async function listHospitalNetworkDirectoryForAdmin(
         registeredForParentHospitalId: true,
       },
     });
-    return hospitals.map(({ serviceAreaEligibility, serviceAreaAssignments, ...hospital }) => ({
-      ...hospital,
-      role: serviceAreaEligibility?.kind ?? null,
-      networkParentId: serviceAreaAssignments[0]?.parentHospitalId ?? null,
-    }));
+    // Only the Parents the page refers to: at most two per row.
+    const parentIds = [...new Set(hospitals.flatMap(({ serviceAreaAssignments, registeredForParentHospitalId }) => [
+      ...serviceAreaAssignments.map(({ parentHospitalId }) => parentHospitalId),
+      ...(registeredForParentHospitalId ? [registeredForParentHospitalId] : []),
+    ]))];
+    const parents = parentIds.length === 0
+      ? []
+      : await tx.hospital.findMany({ where: { id: { in: parentIds } }, select: { id: true, name: true } });
+    const nameById = new Map(parents.map(({ id, name }) => [id, name]));
+    return {
+      ...position,
+      total,
+      items: hospitals.map(({ serviceAreaEligibility, serviceAreaAssignments, ...hospital }) => {
+        const networkParentId = serviceAreaAssignments[0]?.parentHospitalId ?? null;
+        return {
+          ...hospital,
+          role: serviceAreaEligibility?.kind ?? null,
+          networkParentId,
+          networkParentName: networkParentId ? nameById.get(networkParentId) ?? null : null,
+          registeredForParentHospitalName: hospital.registeredForParentHospitalId
+            ? nameById.get(hospital.registeredForParentHospitalId) ?? null
+            : null,
+        };
+      }),
+    };
+  });
+}
+
+/**
+ * Transfer targets for a Child with an active Parent: ACTIVE network PARENT Hospitals other than the current Parent,
+ * by name or code, the first matches only. The transfer itself re-checks eligibility.
+ */
+export async function searchHospitalTransferTargetsForAdmin(
+  actor: ActorContext | null | undefined, input: unknown, dependencies: HospitalServiceAreaDependencies = {},
+): Promise<HospitalNetworkFacilitySummary[]> {
+  if (!actor) throw new ForbiddenError();
+  const parsed = transferTargetSearchSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError();
+  const { hospitalId, value } = parsed.data;
+  return operation(dependencies.database ?? getPrisma(), async (tx) => {
+    await authorizeAdmin(tx, actor, HOSPITAL_GOVERNANCE_CAPABILITIES.networkAreaGovern);
+    const parentArea = await tx.hospitalServiceArea.findFirst({
+      where: { childHospitalId: hospitalId, endedAt: null },
+      select: { parentHospitalId: true },
+    });
+    if (!parentArea) return [];
+    return tx.hospital.findMany({
+      where: {
+        AND: [
+          { id: { not: parentArea.parentHospitalId }, status: HospitalStatus.ACTIVE, serviceAreaEligibility: { is: { kind: "PARENT" } } },
+          hospitalNameOrCodeWhere(value),
+        ],
+      },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+      take: HOSPITAL_TRANSFER_TARGET_SEARCH_LIMIT,
+      select: summarySelect,
+    });
   });
 }
 

@@ -11,8 +11,10 @@ import {
   HOSPITAL_GOVERNANCE_CAPABILITIES,
 } from "@/modules/hospital-governance/policies/hospital-governance-policy";
 import { listParentOnboardingPaths } from "@/modules/hospital-onboarding/services/parent-owner-invitation-service";
+import { HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH } from "@/modules/hospital-service-areas/schemas/hospital-service-area-schemas";
 import { listHospitalNetworkDirectoryForAdmin } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { parsePageSearchParam } from "@/shared/pagination/page-number";
 
 import {
   HOSPITAL_DIRECTORY_FILTERS,
@@ -40,27 +42,38 @@ async function requirePlatformAdmin() {
   }
 }
 
+function firstSearchParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function parseFilter(value: string | string[] | undefined): HospitalDirectoryFilter {
-  return HOSPITAL_DIRECTORY_FILTERS.find((item) => item.value === value)?.value ?? "network";
+  const raw = firstSearchParam(value);
+  return HOSPITAL_DIRECTORY_FILTERS.find((item) => item.value === raw)?.value ?? "network";
+}
+
+/** A search longer than the limit is cut to the limit rather than refused. */
+function parseSearch(value: string | string[] | undefined): string {
+  return (firstSearchParam(value) ?? "").trim().slice(0, HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH).trim();
 }
 
 export default async function HospitalGovernanceDirectoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string | string[] }>;
+  searchParams: Promise<{ status?: string | string[]; value?: string | string[]; page?: string | string[] }>;
 }): Promise<React.JSX.Element> {
   await connection();
   const actor = await requirePlatformAdmin();
-  const network = await listHospitalNetworkDirectoryForAdmin(actor);
-  const { status } = await searchParams;
-  // ADR-0024: only a pending or ACTIVE Parent can have an open first-OWNER path; the read is bounded per call.
-  const parentIds = network
+  const params = await searchParams;
+  const filter = parseFilter(params.status);
+  const value = parseSearch(params.value);
+  const directory = await listHospitalNetworkDirectoryForAdmin(actor, { filter, value, page: parsePageSearchParam(params.page) });
+  // ADR-0024: only a pending or ACTIVE Parent can have an open first-OWNER path; one page of at most 25 ids.
+  const parentIds = directory.items
     .filter(({ role, status: hospitalStatus }) => role === "PARENT" && (hospitalStatus === "PENDING_VERIFICATION" || hospitalStatus === "ACTIVE"))
     .map(({ id }) => id);
   const onboardingPaths: Record<string, ParentOnboardingPathLabels[string]> = {};
-  for (let start = 0; start < parentIds.length; start += 200) {
-    const paths = await listParentOnboardingPaths(actor, parentIds.slice(start, start + 200));
-    for (const [hospitalId, path] of paths) onboardingPaths[hospitalId] = path;
+  if (parentIds.length > 0) {
+    for (const [hospitalId, path] of await listParentOnboardingPaths(actor, parentIds)) onboardingPaths[hospitalId] = path;
   }
 
   return (
@@ -72,10 +85,11 @@ export default async function HospitalGovernanceDirectoryPage({
       />
       <HospitalNetworkDirectory
         bulkSubmissionNonce={randomUUID()}
-        filter={parseFilter(status)}
-        hospitals={network}
+        directory={directory}
+        filter={filter}
         onboardingPaths={onboardingPaths}
         submissionNonce={randomUUID()}
+        value={value}
       />
     </div>
   );

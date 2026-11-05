@@ -11,10 +11,11 @@ import {
   adminEndServiceAreaAction,
   renameHospitalAction,
   setNetworkRoleAction,
-  transferServiceAreaAction,
 } from "@/modules/hospital-service-areas/transport/server-actions";
 
 import { hospitalStatusLabel, hospitalStatusVariant, networkRoleLabel } from "../hospital-network-directory";
+
+import { TransferServiceAreaForm } from "./transfer-service-area-form";
 
 function ReasonField({ id, name }: { id: string; name: string }): React.JSX.Element {
   return (
@@ -129,30 +130,7 @@ export function HospitalNetworkSection({
           <div className="mt-5 grid gap-6 border-t border-border pt-5 lg:grid-cols-2">
             <div className="min-w-0">
               <h4 className="font-semibold">โอนไปแม่ข่ายอื่น</h4>
-              {network.transferTargets.length === 0 ? (
-                <p className="mt-2 text-sm text-text-muted">ยังไม่มีแม่ข่ายอื่นที่ใช้งานอยู่</p>
-              ) : (
-                <NetworkMutationForm
-                  action={transferServiceAreaAction}
-                  className="mt-3"
-                  confirmation={{
-                    title: "โอนลูกข่ายไปแม่ข่ายใหม่หรือไม่",
-                    description: "แม่ข่ายเดิมจะหมดสิทธิ์ดูผู้ป่วยและรายงานของลูกข่ายนี้ทันที และแม่ข่ายใหม่จะเริ่มมีสิทธิ์ ประวัติเดิมยังคงอยู่",
-                    confirmLabel: "โอนย้าย",
-                  }}
-                  hidden={{ areaId: network.parentArea.areaId, confirm: "true" }}
-                  submitLabel="โอนย้าย"
-                >
-                  <label className="text-sm font-semibold text-text" htmlFor="transfer-target">แม่ข่ายปลายทาง</label>
-                  <Select className="mb-3 mt-2" defaultValue="" id="transfer-target" name="toParentHospitalId" required>
-                    <option disabled value="">เลือกแม่ข่าย</option>
-                    {network.transferTargets.map((target) => (
-                      <option key={target.id} value={target.id}>{target.name} ({target.hospitalCode})</option>
-                    ))}
-                  </Select>
-                  <ReasonField id="transfer-reason" name="reason" />
-                </NetworkMutationForm>
-              )}
+              <TransferServiceAreaForm areaId={network.parentArea.areaId} hospitalId={hospital.id} />
             </div>
             <div className="min-w-0">
               <h4 className="font-semibold">นำออกจากเครือข่าย</h4>

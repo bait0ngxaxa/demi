@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { pageNumberSchema } from "@/shared/pagination/page-number";
+import { HOSPITAL_SEARCH_MAX_LENGTH, HOSPITAL_SEARCH_RESULT_LIMIT } from "@/shared/search/hospital-search";
+
 import { hospitalNameSchema } from "@/modules/hospital-governance/schemas/hospital-governance-schemas";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { personNameSchema, workforceActivationModeSchema } from "@/modules/workforce/schemas/workforce-schemas";
@@ -57,3 +60,24 @@ export const governedAreaTransferSchema = z.object({
   confirm: z.literal(true),
   reason,
 }).strict();
+
+// Platform ADMIN governance directory: one counted page per filter, optionally narrowed by name or code.
+export const HOSPITAL_DIRECTORY_FILTER_VALUES = ["network", "pending", "retired"] as const;
+export const HOSPITAL_DIRECTORY_PAGE_SIZE = 25;
+export const HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH = HOSPITAL_SEARCH_MAX_LENGTH;
+const directorySearch = z
+  .string()
+  .trim()
+  .max(HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH)
+  .optional()
+  .transform((value) => value || undefined);
+export const hospitalDirectoryQuerySchema = z.object({
+  filter: z.enum(HOSPITAL_DIRECTORY_FILTER_VALUES).default("network"),
+  value: directorySearch,
+  page: pageNumberSchema,
+}).strict();
+export type HospitalDirectoryQuery = z.infer<typeof hospitalDirectoryQuerySchema>;
+
+// Transfer target search: the first matches only; the ADMIN narrows by name or code.
+export const HOSPITAL_TRANSFER_TARGET_SEARCH_LIMIT = HOSPITAL_SEARCH_RESULT_LIMIT;
+export const transferTargetSearchSchema = z.object({ hospitalId: id, value: directorySearch }).strict();

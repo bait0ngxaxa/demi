@@ -1,10 +1,20 @@
+import Form from "next/form";
 import Link from "next/link";
 
 import { NetworkMutationForm } from "@/components/hospital-network/network-mutation-form";
 import { Input } from "@/components/ui/input";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
-import type { HospitalNetworkDirectoryEntry } from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
+import {
+  HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH,
+  type HOSPITAL_DIRECTORY_FILTER_VALUES,
+} from "@/modules/hospital-service-areas/schemas/hospital-service-area-schemas";
+import type {
+  HospitalNetworkDirectoryEntry,
+  HospitalNetworkDirectoryPage,
+} from "@/modules/hospital-service-areas/services/hospital-network-governance-service";
 import { createNetworkHospitalAction } from "@/modules/hospital-service-areas/transport/server-actions";
 
 import { HospitalBulkRegistration } from "./hospital-bulk-registration";
@@ -15,7 +25,7 @@ export const HOSPITAL_DIRECTORY_FILTERS = [
   { value: "network", label: "เครือข่าย" },
   { value: "pending", label: "รอขึ้นทะเบียน" },
   { value: "retired", label: "ถอนแล้ว" },
-] as const;
+] as const satisfies readonly { value: (typeof HOSPITAL_DIRECTORY_FILTER_VALUES)[number]; label: string }[];
 
 export type HospitalDirectoryFilter = (typeof HOSPITAL_DIRECTORY_FILTERS)[number]["value"];
 
@@ -54,20 +64,6 @@ export type ParentOnboardingPathLabels = Readonly<Record<string, "PENDING_APPLIC
 
 export function onboardingPathLabel(path: ParentOnboardingPathLabels[string] | undefined): string | null {
   return path === "PENDING_APPLICATION" ? "มีคำขอรออนุมัติ" : path === "OPEN_INVITATION" ? "มีคำเชิญเปิดอยู่" : null;
-}
-
-function HospitalLine({ hospital }: { hospital: HospitalNetworkDirectoryEntry }): React.JSX.Element {
-  return (
-    <li className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-2">
-      <Link
-        className="min-w-0 break-words font-medium text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-        href={`/app/admin/hospitals/${hospital.id}`}
-      >
-        {hospital.name} <span className="text-sm font-normal text-text-muted">({hospital.hospitalCode})</span>
-      </Link>
-      <StatusBadge variant={hospitalStatusVariant(hospital.status)}>{hospitalStatusLabel(hospital.status)}</StatusBadge>
-    </li>
-  );
 }
 
 function CreateHospitalPanel({ submissionNonce }: { submissionNonce: string }): React.JSX.Element {
@@ -121,17 +117,84 @@ function DirectoryFilterNavigation({ filter }: { filter: HospitalDirectoryFilter
   );
 }
 
-function RetiredHospitalList({ hospitals }: { hospitals: readonly HospitalNetworkDirectoryEntry[] }): React.JSX.Element {
+/** The directory URL for a filter, search and page; the network view is the default. */
+export function hospitalDirectoryHref(filter: HospitalDirectoryFilter, value: string, page = 1): string {
+  const params = new URLSearchParams();
+  if (filter !== "network") params.set("status", filter);
+  if (value) params.set("value", value);
+  if (page > 1) params.set("page", String(page));
+  const query = params.toString();
+  return query ? `/app/admin/hospitals?${query}` : "/app/admin/hospitals";
+}
+
+function DirectorySearch({ filter, value }: { filter: HospitalDirectoryFilter; value: string }): React.JSX.Element {
+  return (
+    // A new search starts again on page 1: the form sends no page.
+    <Form action="/app/admin/hospitals" className="flex max-w-xl flex-col gap-2 sm:flex-row sm:items-end" role="search">
+      {filter !== "network" ? <input name="status" type="hidden" value={filter} /> : null}
+      <label className="min-w-0 flex-1 text-sm font-semibold text-text" htmlFor="hospital-directory-search">
+        ค้นหาชื่อหรือรหัสโรงพยาบาล
+        <Input
+          className="mt-2"
+          defaultValue={value}
+          id="hospital-directory-search"
+          key={`${filter}\n${value}`}
+          maxLength={HOSPITAL_DIRECTORY_SEARCH_MAX_LENGTH}
+          name="value"
+          type="search"
+        />
+      </label>
+      <PendingSubmitButton className="shrink-0" pendingLabel="กำลังค้นหา..." variant="secondary">
+        ค้นหา
+      </PendingSubmitButton>
+    </Form>
+  );
+}
+
+function DirectoryPagination({
+  directory,
+  filter,
+  value,
+}: {
+  directory: HospitalNetworkDirectoryPage;
+  filter: HospitalDirectoryFilter;
+  value: string;
+}): React.JSX.Element | null {
+  return (
+    <PageNumberPagination
+      className="mt-4 border-t border-border pt-4"
+      label="หน้ารายชื่อโรงพยาบาล"
+      next={directory.hasNextPage ? { href: hospitalDirectoryHref(filter, value, directory.page + 1) } : null}
+      page={directory.page}
+      previous={directory.hasPreviousPage ? { href: hospitalDirectoryHref(filter, value, directory.page - 1) } : null}
+      totalPages={directory.totalPages}
+    />
+  );
+}
+
+function resultSummary(directory: HospitalNetworkDirectoryPage, value: string): string {
+  const total = directory.total.toLocaleString("th-TH");
+  return value ? `พบ ${total} แห่งที่ตรงกับ “${value}”` : `ทั้งหมด ${total} แห่ง`;
+}
+
+function RetiredHospitalList({
+  directory,
+  value,
+}: {
+  directory: HospitalNetworkDirectoryPage;
+  value: string;
+}): React.JSX.Element {
+  const hospitals = directory.items;
   return (
     <Panel aria-labelledby="retired-hospitals-heading">
       <h2 className="text-lg font-semibold" id="retired-hospitals-heading">
-        ถอนออกจากรายชื่อแล้ว ({hospitals.length.toLocaleString("th-TH")})
+        ถอนออกจากรายชื่อแล้ว ({directory.total.toLocaleString("th-TH")})
       </h2>
       <p className="mt-2 text-sm leading-6 text-text-muted">
         ไม่แสดงในหน้าขึ้นทะเบียนสาธารณะและไม่อยู่ในเครือข่าย ข้อมูลยังอยู่ครบ รหัสโรงพยาบาลยังสงวนไว้ และคืนสู่รายชื่อรอสมัครได้จากหน้ารายละเอียด
       </p>
       {hospitals.length === 0 ? (
-        <p className="mt-4 text-sm text-text-muted">ไม่มี</p>
+        <p className="mt-4 text-sm text-text-muted">{value ? "ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา" : "ไม่มี"}</p>
       ) : (
         <ul className="mt-3 divide-y divide-border border-t border-border">
           {hospitals.map((hospital) => (
@@ -150,67 +213,95 @@ function RetiredHospitalList({ hospitals }: { hospitals: readonly HospitalNetwor
           ))}
         </ul>
       )}
+      <DirectoryPagination directory={directory} filter="retired" value={value} />
     </Panel>
   );
 }
 
+/** ADR-0018: which Parent registered this Child, shown from the names the page loaded. */
+function provenanceLabel(hospital: HospitalNetworkDirectoryEntry): string {
+  return hospital.registeredForParentHospitalName ? ` · สร้างโดยแม่ข่าย ${hospital.registeredForParentHospitalName}` : "";
+}
+
 /** ADR-0015: the operational network (not canonical Master placement) is the authoritative structure. */
-function provenanceLabel(hospital: HospitalNetworkDirectoryEntry, nameById: ReadonlyMap<string, string>): string {
-  const parentName = hospital.registeredForParentHospitalId ? nameById.get(hospital.registeredForParentHospitalId) : undefined;
-  return parentName ? ` · สร้างโดยแม่ข่าย ${parentName}` : "";
+function networkPlacementLabel(hospital: HospitalNetworkDirectoryEntry): string {
+  if (hospital.role === "CHILD") {
+    return hospital.networkParentName ? `ลูกข่ายของ ${hospital.networkParentName}` : "ลูกข่ายที่ยังไม่มีแม่ข่าย";
+  }
+  return networkRoleLabel(hospital.role);
+}
+
+function NetworkHospitalRow({
+  hospital,
+  onboardingPath,
+}: {
+  hospital: HospitalNetworkDirectoryEntry;
+  onboardingPath: string | null;
+}): React.JSX.Element {
+  return (
+    <li className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3">
+      <div className="min-w-0">
+        <Link
+          className="break-words font-medium text-brand-strong underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+          href={`/app/admin/hospitals/${hospital.id}`}
+        >
+          {hospital.name} <span className="text-sm font-normal text-text-muted">({hospital.hospitalCode})</span>
+        </Link>
+        <p className="mt-0.5 break-words text-sm text-text-muted">{networkPlacementLabel(hospital)}{provenanceLabel(hospital)}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {onboardingPath ? <StatusBadge variant="info">{onboardingPath}</StatusBadge> : null}
+        <StatusBadge variant={hospitalStatusVariant(hospital.status)}>{hospitalStatusLabel(hospital.status)}</StatusBadge>
+      </div>
+    </li>
+  );
 }
 
 export function HospitalNetworkDirectory({
   filter,
-  hospitals: allHospitals,
+  value,
+  directory,
   onboardingPaths = {},
   submissionNonce,
   bulkSubmissionNonce,
 }: {
   filter: HospitalDirectoryFilter;
-  hospitals: readonly HospitalNetworkDirectoryEntry[];
+  /** The trimmed name or code search; empty for none. */
+  value: string;
+  /** One page (at most 25) of the filtered directory. */
+  directory: HospitalNetworkDirectoryPage;
   onboardingPaths?: ParentOnboardingPathLabels;
   submissionNonce: string;
   /** O1-A: a separate per-request nonce for the file import. */
   bulkSubmissionNonce: string;
 }): React.JSX.Element {
   if (filter !== "network") {
-    const nameById = new Map(allHospitals.map(({ id, name }) => [id, name]));
     return (
       <div className="space-y-6 pt-8">
         <DirectoryFilterNavigation filter={filter} />
+        <DirectorySearch filter={filter} value={value} />
         {filter === "pending" ? (
-          <PendingHospitalRetirement
-            hospitals={allHospitals
-              .filter(({ status }) => status === "PENDING_VERIFICATION")
-              .map((hospital) => ({
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">{resultSummary(directory, value)}</p>
+            <PendingHospitalRetirement
+              hospitals={directory.items.map((hospital) => ({
                 id: hospital.id,
                 hospitalCode: hospital.hospitalCode,
                 name: hospital.name,
                 roleLabel: [
-                  `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital, nameById)}`,
+                  `${networkRoleLabel(hospital.role)}${provenanceLabel(hospital)}`,
                   onboardingPathLabel(onboardingPaths[hospital.id]),
                 ].filter(Boolean).join(" · "),
               }))}
-          />
+            />
+            <DirectoryPagination directory={directory} filter="pending" value={value} />
+          </div>
         ) : (
-          <RetiredHospitalList hospitals={allHospitals.filter(({ status }) => status === "RETIRED")} />
+          <RetiredHospitalList directory={directory} value={value} />
         )}
       </div>
     );
   }
-
-  // N1-D3: a RETIRED Hospital is outside the network; it is listed only under "ถอนแล้ว".
-  const hospitals = allHospitals.filter(({ status }) => status !== "RETIRED");
-  const parents = hospitals.filter(({ role }) => role === "PARENT");
-  const childrenByParent = new Map<string, HospitalNetworkDirectoryEntry[]>();
-  for (const hospital of hospitals) {
-    if (hospital.networkParentId) {
-      childrenByParent.set(hospital.networkParentId, [...(childrenByParent.get(hospital.networkParentId) ?? []), hospital]);
-    }
-  }
-  const freeChildren = hospitals.filter(({ role, networkParentId }) => role === "CHILD" && networkParentId === null);
-  const unclassified = hospitals.filter(({ role }) => role === null);
 
   return (
     <div className="space-y-6 pt-8">
@@ -220,69 +311,30 @@ export function HospitalNetworkDirectory({
 
       <DirectoryFilterNavigation filter={filter} />
 
+      {/* N1-D3: a RETIRED Hospital is outside the network; it is listed only under "ถอนแล้ว". */}
       <section aria-labelledby="network-directory-heading" className="space-y-4">
         <h2 className="text-xl font-semibold tracking-[-0.02em]" id="network-directory-heading">
           เครือข่ายโรงพยาบาล
         </h2>
-        <p className="text-sm leading-6 text-text-muted">
-          แม่ข่าย {parents.length.toLocaleString("th-TH")} แห่ง · ลูกข่ายที่ยังไม่มีแม่ข่าย {freeChildren.length.toLocaleString("th-TH")} แห่ง · ทั้งหมด {hospitals.length.toLocaleString("th-TH")} แห่ง
-        </p>
-        <ul className="grid min-w-0 gap-4">
-          {parents.map((parent) => {
-            const children = childrenByParent.get(parent.id) ?? [];
-            return (
-              <li className="min-w-0" key={parent.id}>
-                <Panel aria-labelledby={`network-parent-${parent.id}`} className="min-w-0">
-                  <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                    <h3 className="min-w-0 break-words text-lg font-semibold" id={`network-parent-${parent.id}`}>
-                      <Link
-                        className="text-text underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                        href={`/app/admin/hospitals/${parent.id}`}
-                      >
-                        {parent.name}
-                      </Link>
-                      <span className="ml-2 text-sm font-normal text-text-muted">({parent.hospitalCode})</span>
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {onboardingPathLabel(onboardingPaths[parent.id]) ? (
-                        <StatusBadge variant="info">{onboardingPathLabel(onboardingPaths[parent.id])}</StatusBadge>
-                      ) : null}
-                      <StatusBadge variant={hospitalStatusVariant(parent.status)}>{hospitalStatusLabel(parent.status)}</StatusBadge>
-                    </div>
-                  </div>
-                  {children.length === 0 ? (
-                    <p className="mt-3 text-sm text-text-muted">ยังไม่มีลูกข่าย</p>
-                  ) : (
-                    <ul className="mt-3 divide-y divide-border border-t border-border">
-                      {children.map((child) => <HospitalLine hospital={child} key={child.id} />)}
-                    </ul>
-                  )}
-                </Panel>
-              </li>
-            );
-          })}
-        </ul>
+        <DirectorySearch filter={filter} value={value} />
+        <Panel>
+          <p className="text-sm text-text-muted">{resultSummary(directory, value)}</p>
+          {directory.items.length === 0 ? (
+            <p className="mt-3 text-sm text-text-muted">{value ? "ไม่พบโรงพยาบาลที่ตรงกับคำค้นหา" : "ยังไม่มีโรงพยาบาลในเครือข่าย"}</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-border border-t border-border">
+              {directory.items.map((hospital) => (
+                <NetworkHospitalRow
+                  hospital={hospital}
+                  key={hospital.id}
+                  onboardingPath={onboardingPathLabel(onboardingPaths[hospital.id])}
+                />
+              ))}
+            </ul>
+          )}
+          <DirectoryPagination directory={directory} filter={filter} value={value} />
+        </Panel>
       </section>
-
-      {[
-        { id: "free-children", title: "ลูกข่ายที่ยังไม่มีแม่ข่าย", items: freeChildren, empty: "ไม่มี" },
-        { id: "unclassified", title: "ยังไม่กำหนดประเภท", items: unclassified, empty: "ไม่มี" },
-      ].map((group) => (
-        <section aria-labelledby={`network-${group.id}-heading`} key={group.id}>
-          <Panel>
-            <h2 className="text-lg font-semibold" id={`network-${group.id}-heading`}>
-              {group.title} ({group.items.length.toLocaleString("th-TH")})
-            </h2>
-            {group.items.length === 0 ? (
-              <p className="mt-2 text-sm text-text-muted">{group.empty}</p>
-            ) : (
-              <ul className="mt-3 divide-y divide-border border-t border-border">
-                {group.items.map((hospital) => <HospitalLine hospital={hospital} key={hospital.id} />)}
-              </ul>
-            )}
-          </Panel>
-        </section>
-      ))}
     </div>
   );
 }

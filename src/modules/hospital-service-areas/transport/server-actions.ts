@@ -21,12 +21,15 @@ import {
   type HospitalRetirementIneligibility,
 } from "@/modules/hospital-governance/services/hospital-governance-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import type { ServerSearchPageResult } from "@/shared/search/server-search-result";
 
 import {
   adminEndHospitalServiceArea,
   clearHospitalNetworkRole,
+  searchHospitalTransferTargetsForAdmin,
   setHospitalNetworkRole,
   transferHospitalServiceArea,
+  type HospitalNetworkFacilitySummary,
 } from "../services/hospital-network-governance-service";
 import {
   acceptChildOwnerInvitation,
@@ -261,6 +264,25 @@ export async function transferServiceAreaAction(
     { INVALID_INPUT: "กรุณาเลือกแม่ข่ายปลายทางที่ใช้งานอยู่และระบุเหตุผล" },
     ["/app/admin/hospitals"],
   );
+}
+
+/** Platform ADMIN: the first matching ACTIVE network Parents (by name or code) a Child could move to. */
+export async function searchTransferTargetsAction(
+  hospitalId: string,
+  value: string,
+): Promise<ServerSearchPageResult<HospitalNetworkFacilitySummary>> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const items = await searchHospitalTransferTargetsForAdmin(actor, { hospitalId, value });
+    return { status: "OK", items, page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
+  } catch (error: unknown) {
+    return {
+      status: "ERROR",
+      message: error instanceof ApplicationError && error.code === "VALIDATION"
+        ? "คำค้นหาไม่ถูกต้อง กรุณาค้นหาใหม่ (ไม่เกิน 100 ตัวอักษร)"
+        : "ไม่สามารถค้นหาแม่ข่ายได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+    };
+  }
 }
 
 export async function adminEndServiceAreaAction(
