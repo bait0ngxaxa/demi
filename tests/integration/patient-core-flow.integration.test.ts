@@ -557,6 +557,8 @@ describe("Patient service requests PostgreSQL workflow", () => {
     expect(reviewAll.map(({ userId }) => userId)).not.toContain(osmB.userId);
     expect(reviewAll).toHaveLength(13);
     await expect(searchServiceRequestOsmCandidates(ownerB.actor, { requestId, page: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    // A request that does not exist answers like a forbidden one.
+    await expect(searchServiceRequestOsmCandidates(ownerA.actor, { requestId: randomUUID(), page: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
     // Confirm still re-validates the chosen อสม.: another Hospital's อสม. is refused.
     await expect(confirmPatientServiceRequest(ownerA.actor, confirmInput(requestId, osmB.userId))).rejects.toMatchObject({ code: "VALIDATION" });

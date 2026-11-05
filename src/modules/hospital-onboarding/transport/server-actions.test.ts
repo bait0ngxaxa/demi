@@ -15,9 +15,11 @@ import {
   initialHospitalOnboardingReviewActionState,
   initialHospitalOnboardingSubmitActionState,
 } from "./action-state";
+import { OnboardingHospitalSearchRateLimitedError } from "../services/onboarding-hospital-service";
 import {
   approveHospitalOnboardingAction,
   rejectHospitalOnboardingAction,
+  searchOnboardingHospitalsAction,
   submitHospitalOnboardingAction,
 } from "./server-actions";
 import { legalAcceptanceFixture, setLegalAcceptanceFields } from "../../../../tests/support/legal-fixtures";
@@ -27,13 +29,15 @@ const mocks = vi.hoisted(() => ({
   approve: vi.fn(),
   reject: vi.fn(),
   submit: vi.fn(),
+  searchHospitals: vi.fn(),
+  requestHeaders: new Headers({ "user-agent": "Mozilla/5.0" }),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   navigationSignal: new Error("next navigation signal"),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
-vi.mock("next/headers", () => ({ headers: async () => new Headers({ "user-agent": "Mozilla/5.0" }) }));
+vi.mock("next/headers", () => ({ headers: async () => mocks.requestHeaders }));
 
 vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
@@ -47,6 +51,11 @@ vi.mock("next/navigation", async (importOriginal) => ({
 
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mocks.actor,
+}));
+
+vi.mock("../services/onboarding-hospital-service", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/onboarding-hospital-service")>()),
+  searchOnboardingHospitals: mocks.searchHospitals,
 }));
 
 vi.mock("../services/hospital-onboarding-service", () => ({
@@ -99,6 +108,38 @@ function createReviewFormData(enhanced = true, rejectionReason?: string): FormDa
   }
   return formData;
 }
+
+describe("public onboarding Hospital search Server Action", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requestHeaders = new Headers({ "user-agent": "Mozilla/5.0" });
+  });
+
+  it("fails closed with an unavailable message and a server warning when there is no trusted client IP", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await expect(searchOnboardingHospitalsAction("โรงพยาบาล")).resolves.toEqual({
+        status: "ERROR", message: "ระบบค้นหาโรงพยาบาลไม่พร้อมใช้งานในขณะนี้",
+      });
+      expect(warn).toHaveBeenCalledWith("onboarding search without trusted client IP");
+      expect(mocks.searchHospitals).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("searches with the trusted client IP and keeps the rate-limit message for a limited client", async () => {
+    mocks.requestHeaders = new Headers({ "x-real-ip": "203.0.113.7" });
+    mocks.searchHospitals.mockResolvedValueOnce([{ id: "h", hospitalCode: "H", name: "โรงพยาบาล", role: "PARENT" }]);
+    await expect(searchOnboardingHospitalsAction("โรง")).resolves.toMatchObject({ status: "OK", items: [{ id: "h" }] });
+    expect(mocks.searchHospitals).toHaveBeenCalledWith("โรง", { ipAddress: "203.0.113.7" });
+
+    mocks.searchHospitals.mockRejectedValueOnce(new OnboardingHospitalSearchRateLimitedError());
+    await expect(searchOnboardingHospitalsAction("โรง")).resolves.toEqual({
+      status: "ERROR", message: "ค้นหาบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง",
+    });
+  });
+});
 
 describe("hospital onboarding Server Action", () => {
   beforeEach(() => {

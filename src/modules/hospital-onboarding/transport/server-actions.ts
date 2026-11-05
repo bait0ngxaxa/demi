@@ -248,7 +248,13 @@ export async function rejectHospitalOnboardingAction(
 /** Public: at most ten onboardable Parents by name or code; rate limited per client IP. */
 export async function searchOnboardingHospitalsAction(value: string): Promise<ServerSearchPageResult<OnboardingHospitalOption>> {
   try {
-    const items = await searchOnboardingHospitals(value, { ipAddress: trustedClientIpAddress(await headers()) ?? "" });
+    const ipAddress = trustedClientIpAddress(await headers());
+    if (!ipAddress) {
+      // Fail closed: without a trusted client IP the search cannot be rate limited.
+      console.warn("onboarding search without trusted client IP");
+      return { status: "ERROR", message: "ระบบค้นหาโรงพยาบาลไม่พร้อมใช้งานในขณะนี้" };
+    }
+    const items = await searchOnboardingHospitals(value, { ipAddress });
     return { status: "OK", items, page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
   } catch (error: unknown) {
     if (error instanceof OnboardingHospitalSearchRateLimitedError) {

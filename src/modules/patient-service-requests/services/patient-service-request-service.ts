@@ -942,8 +942,10 @@ export async function searchServiceRequestOsmCandidates(
       select: { hospitalId: true },
     });
 
+    // The review policy needs the request's Hospital, so the read comes first; a missing request answers exactly
+    // like a forbidden one, so the search never tells an outsider which request ids exist.
     if (!request) {
-      throw new NotFoundError();
+      throw new ForbiddenError();
     }
 
     assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.review, request.hospitalId);
