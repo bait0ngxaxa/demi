@@ -12,7 +12,6 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
-  buildNetworkReadableChildHospitalWhere,
   findNetworkChild,
   listNetworkScopes,
   recordNetworkPatientRead,
@@ -30,12 +29,11 @@ import {
   buildAuthorizedHospitalWhere,
   buildNameWhere,
   buildOsmActiveHospitalWhere,
-  buildOsmAssignedPatientRelationshipWhere,
+  nameSearchTerms,
   patientResponsibleOsmSelect,
   toDisplayName,
   toPatientResponsibleOsmProjection,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
-import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import {
   decidePatientProgramPolicy,
   PATIENT_PROGRAM_MANAGE_CAPABILITY,
@@ -135,10 +133,25 @@ export type CareTrackingPage = {
   totalPages: number;
 };
 
+/**
+ * The relationship-level part of a proven scope. resolveScope has already proved the Hospital-level authority (the
+ * actor's membership, network association or active OSM relationship) with the existing read builders; what remains
+ * is per relationship and is applied inside the tracking statement, so no id list ever reaches the application.
+ */
+type TrackingScopeFilter = {
+  hospitalId: string;
+  /** ADR-0026: a direct OWNER or MEMBER may include ended care; network and OSM reads never do. */
+  includeEndedRelationships: boolean;
+  /** An OSM read: only relationships with this OSM's current assignment. */
+  assignedOsmUserId: string | null;
+  /** The directory's lookup rules: every name term, or the exact HN. */
+  search: string | undefined;
+};
+
 type CareTrackingScope = {
   hospital: { id: string; name: string };
   access: "DIRECT" | "NETWORK";
-  where: Prisma.PatientHospitalRelationshipWhereInput;
+  filter: Omit<TrackingScopeFilter, "search">;
 };
 
 /** The facts of one page patient, read by the tracking statement. */
@@ -200,10 +213,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_STAGE_VALUES = CARE_STAGES.filter((stage) => ACTIVE_CARE_STAGES.has(stage));
 const ENDED_STAGE_VALUES = CARE_STAGES.filter((stage) => ENDED_CARE_STAGES.has(stage));
 
-const patientRoleWhere = {
-  patientProfile: { person: { user: { roles: { some: { role: Role.PATIENT } } } } },
-} satisfies Prisma.PatientHospitalRelationshipWhereInput;
-
 function getDatabase(dependencies: CareTrackingQueryDependencies): CareTrackingDatabase {
   return dependencies.database ?? getPrisma();
 }
@@ -223,6 +232,51 @@ function buildSearchWhere(search: string | undefined): Prisma.PatientHospitalRel
   return search
     ? { OR: [{ hospitalNumber: search }, { patientProfile: { person: buildNameWhere(search) } }] }
     : {};
+}
+
+/**
+ * buildSearchWhere as SQL over the "relationship" and "person" aliases of the scope CTE. Prisma renders a
+ * case-insensitive `contains` as `ILIKE '%' || term || '%'` without escaping LIKE wildcards, so this does the same
+ * and both forms match exactly the same rows (the integration equality test compares them).
+ */
+function buildSearchSql(search: string | undefined): Prisma.Sql {
+  if (!search) {
+    return Prisma.sql`TRUE`;
+  }
+
+  const terms = nameSearchTerms(search).map((term) => {
+    const pattern = `%${term}%`;
+    return Prisma.sql`(person."givenName" ILIKE ${pattern} OR person."familyName" ILIKE ${pattern})`;
+  });
+  const nameMatch = terms.length > 0 ? Prisma.join(terms, " AND ") : Prisma.sql`TRUE`;
+  return Prisma.sql`(relationship."hospitalNumber" = ${search} OR (${nameMatch}))`;
+}
+
+/** The relationship-level scope predicates over the "relationship" and "person" aliases. */
+function buildScopeSql(filter: TrackingScopeFilter): Prisma.Sql {
+  const assignedOsm = filter.assignedOsmUserId
+    ? Prisma.sql`EXISTS (
+        SELECT 1 FROM "PatientOsmAssignment" AS assignment
+        JOIN "User" AS osm_user ON osm_user."id" = assignment."osmUserId"
+        WHERE assignment."patientHospitalRelationshipId" = relationship."id"
+          AND assignment."osmUserId" = ${filter.assignedOsmUserId}::uuid
+          AND assignment."endedAt" IS NULL
+          AND osm_user."status" = 'ACTIVE'::"UserStatus"
+          AND EXISTS (
+            SELECT 1 FROM "UserRole" AS osm_role WHERE osm_role."userId" = osm_user."id" AND osm_role."role" = 'OSM'::"Role"
+          )
+      )`
+    : Prisma.sql`TRUE`;
+
+  return Prisma.sql`relationship."hospitalId" = ${filter.hospitalId}::uuid
+        AND (${filter.includeEndedRelationships}::boolean OR relationship."endedAt" IS NULL)
+        AND EXISTS (
+          SELECT 1 FROM "User" AS patient_user
+          JOIN "UserRole" AS patient_role ON patient_role."userId" = patient_user."id"
+          WHERE patient_user."personId" = person."id" AND patient_role."role" = 'PATIENT'::"Role"
+        )
+        AND ${assignedOsm}
+        AND ${buildSearchSql(filter.search)}`;
 }
 
 /**
@@ -257,12 +311,7 @@ async function resolveScope(
     return {
       hospital: { id: area.child.id, name: area.child.name },
       access: "NETWORK",
-      where: {
-        ...activePatientHospitalRelationshipWhere,
-        ...patientRoleWhere,
-        hospitalId: area.child.id,
-        hospital: buildNetworkReadableChildHospitalWhere(actor.userId),
-      },
+      filter: { hospitalId: area.child.id, includeEndedRelationships: false, assignedOsmUserId: null },
     };
   }
 
@@ -280,13 +329,8 @@ async function resolveScope(
     return {
       hospital,
       access: "DIRECT",
-      where: {
-        ...patientRoleWhere,
-        hospitalId: hospital.id,
-        hospital: hospitalWhere,
-        // ADR-0026: every direct reader (OWNER or MEMBER) may include ended care relationships.
-        ...(input.includeEnded ? {} : activePatientHospitalRelationshipWhere),
-      },
+      // ADR-0026: every direct reader (OWNER or MEMBER) may include ended care relationships.
+      filter: { hospitalId: hospital.id, includeEndedRelationships: input.includeEnded ?? false, assignedOsmUserId: null },
     };
   }
 
@@ -303,7 +347,7 @@ async function resolveScope(
     return {
       hospital,
       access: "DIRECT",
-      where: { ...buildOsmAssignedPatientRelationshipWhere(actor.userId), hospitalId: hospital.id },
+      filter: { hospitalId: hospital.id, includeEndedRelationships: false, assignedOsmUserId: actor.userId },
     };
   }
 
@@ -343,7 +387,7 @@ function buildCareSignalColumns(now: Date): Prisma.Sql {
 }
 
 /**
- * One statement for every relationship in scope: the coarse facts, stage and signals, the summary counts, the
+ * One statement for every relationship in scope (selected inside it, from the scope filter): the coarse facts, stage and signals, the summary counts, the
  * stage/signal filters, the sort and the page. "Last care activity" is the latest of:
  * PatientBaseline.recordedOn, PatientProgram.startedAt, PatientProgramRound.openedAt,
  * PatientProgramRoundCompletion.completedAt, PatientProgramRoundVitals.recordedAt, PatientFollowup.recordedAt,
@@ -352,7 +396,7 @@ function buildCareSignalColumns(now: Date): Prisma.Sql {
  * result does not depend on the session TimeZone. Sort: any signal first, then next appointment (soonest, none
  * last), then last activity (oldest, none first), then name in the database collation (as the Patient directory).
  */
-function buildTrackingStatement(relationshipIds: readonly string[], input: TrackingStatementInput): Prisma.Sql {
+function buildTrackingStatement(scope: TrackingScopeFilter, input: TrackingStatementInput): Prisma.Sql {
   const stageCounts = Prisma.join(
     CARE_STAGES.map((stage) => Prisma.sql`${stage}::text, COUNT(*) FILTER (WHERE tracked."stage" = ${stage}::text)`),
   );
@@ -372,7 +416,7 @@ function buildTrackingStatement(relationshipIds: readonly string[], input: Track
       FROM "PatientHospitalRelationship" AS relationship
       JOIN "PatientProfile" AS profile ON profile."id" = relationship."patientProfileId"
       JOIN "Person" AS person ON person."id" = profile."personId"
-      WHERE relationship."id" = ANY(${[...relationshipIds]}::uuid[])
+      WHERE ${buildScopeSql(scope)}
     ),
     program AS (
       SELECT patient_program."id", patient_program."patientHospitalRelationshipId", patient_program."status", patient_program."startedAt"
@@ -742,8 +786,8 @@ export async function listCareTrackingScopes(
 
 /**
  * CT-1 read model of the "จัดบริการ" workspace. A fixed number of SQL statements per request: scope proof
- * (and the network audit), the in-scope relationship ids from the existing read builders, one tracking statement
- * (stage, signals, counts, filters, sort and page over every in-scope patient), and one batched load for the page.
+ * (and the network audit) from the existing read builders, one tracking statement (scope, search, stage, signals,
+ * counts, filters, sort and page over every in-scope patient), and one batched load for the page.
  */
 export async function getCareTrackingPage(
   actor: ActorContext | null | undefined,
@@ -760,20 +804,15 @@ export async function getCareTrackingPage(
     const database = getDatabase(dependencies);
     const now = dependencies.now?.() ?? new Date();
     const scope = await resolveScope(database, actor, parsed);
-    const relationships = await database.patientHospitalRelationship.findMany({
-      where: { AND: [scope.where, buildSearchWhere(parsed.search)] },
-      select: { id: true },
-    });
-    const rows = relationships.length > 0
-      ? await database.$queryRaw<TrackingRow[]>(buildTrackingStatement(relationships.map(({ id }) => id), {
-          now,
-          stages: parsed.stages ?? [],
-          signals: parsed.signals ?? [],
-          includeEnded: parsed.includeEnded ?? false,
-          page: parsed.page,
-          pageSize: CARE_TRACKING_PAGE_SIZE,
-        }))
-      : [];
+    // PostgreSQL selects, filters, counts, sorts and pages the scope in one statement; no id list reaches Node.
+    const rows = await database.$queryRaw<TrackingRow[]>(buildTrackingStatement({ ...scope.filter, search: parsed.search }, {
+      now,
+      stages: parsed.stages ?? [],
+      signals: parsed.signals ?? [],
+      includeEnded: parsed.includeEnded ?? false,
+      page: parsed.page,
+      pageSize: CARE_TRACKING_PAGE_SIZE,
+    }));
     const first = rows[0];
     const total = first?.total ?? 0;
 
@@ -798,6 +837,9 @@ export async function getCareTrackingPage(
 export const careTrackingQueryInternals = {
   buildCareSignalColumns,
   buildCareStageCase,
+  buildScopeSql,
   buildSearchWhere,
   buildTrackingStatement,
 };
+
+export type { TrackingScopeFilter };

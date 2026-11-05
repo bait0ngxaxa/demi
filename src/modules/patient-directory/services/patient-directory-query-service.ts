@@ -382,8 +382,13 @@ export function buildAuthorizedHospitalWhere(actorUserId: string): Prisma.Hospit
   return hospitalOperatedByWhere(actorUserId);
 }
 
+/** The name search terms: whitespace-separated, each matched against the given or family name. */
+export function nameSearchTerms(value: string): string[] {
+  return value.split(/\s+/u).filter(Boolean);
+}
+
 export function buildNameWhere(value: string): Prisma.PersonWhereInput {
-  const terms = value.split(/\s+/u).filter(Boolean);
+  const terms = nameSearchTerms(value);
 
   return {
     AND: terms.map((term) => ({

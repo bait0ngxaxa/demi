@@ -28,7 +28,14 @@ import {
   getCareTrackingPage,
   listCareTrackingScopes,
   type CareTrackingPage,
+  type TrackingScopeFilter,
 } from "@/modules/care-tracking/services/care-tracking-query-service";
+import { buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
+import {
+  buildAuthorizedHospitalWhere,
+  buildOsmAssignedPatientRelationshipWhere,
+} from "@/modules/patient-directory/services/patient-directory-query-service";
+import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import { attachHospitalServiceArea } from "@/modules/hospital-service-areas/services/hospital-service-area-service";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { endPatientHospitalRelationship } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-end-service";
@@ -254,6 +261,34 @@ async function cleanup(): Promise<void> {
   people.length = 0;
 }
 
+function directScope(hospitalId: string): TrackingScopeFilter {
+  return { hospitalId, includeEndedRelationships: false, assignedOsmUserId: null, search: undefined };
+}
+
+const patientRoleWhere = {
+  patientProfile: { person: { user: { roles: { some: { role: Role.PATIENT } } } } },
+} satisfies Prisma.PatientHospitalRelationshipWhereInput;
+
+/** The ids the scope CTE of the tracking statement selects, read with the statement's own SQL. */
+async function scopeSqlIds(filter: TrackingScopeFilter): Promise<string[]> {
+  const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT relationship."id"::text AS "id"
+    FROM "PatientHospitalRelationship" AS relationship
+    JOIN "PatientProfile" AS profile ON profile."id" = relationship."patientProfileId"
+    JOIN "Person" AS person ON person."id" = profile."personId"
+    WHERE ${careTrackingQueryInternals.buildScopeSql(filter)}`);
+  return rows.map(({ id }) => id).sort();
+}
+
+/** The ids the replaced code selected: the existing read builders and the directory search, through Prisma. */
+async function prismaOracleIds(where: Prisma.PatientHospitalRelationshipWhereInput, search: string | undefined): Promise<string[]> {
+  const rows = await db.patientHospitalRelationship.findMany({
+    where: { AND: [where, careTrackingQueryInternals.buildSearchWhere(search)] },
+    select: { id: true },
+  });
+  return rows.map(({ id }) => id).sort();
+}
+
 function statementInput(now: Date) {
   return { now, stages: [], signals: [], includeEnded: false, page: 1, pageSize: 20 };
 }
@@ -380,6 +415,91 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     expect(await db.auditEvent.count({ where: { actorUserId: f.owner.userId, action: "patient.network_read" } })).toBe(1);
   });
 
+  it("selects exactly the relationships the read builders did, for direct, OSM and network scopes and every search", async () => {
+    const f = await careFixture();
+    const childOsm = await osm(f.childHospitalId);
+    await assignOsmToPatient(f.childOwner, { patientHospitalRelationshipId: f.patients.childPatient.relationshipId, osmUserId: childOsm.userId });
+    // Names with LIKE wildcards and a backslash, so the SQL must treat them the way Prisma's `contains` does.
+    await patient(f.owner, f.hospitalId, "ร้อย%ละ", "ขีด_ล่าง");
+    await patient(f.owner, f.hospitalId, "ร้อยXละ", "ขีดYล่าง");
+    await patient(f.owner, f.hospitalId, "ทับ\\กลับ", "หลัง");
+    const hn = (await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.patients.notStarted.relationshipId }, select: { hospitalNumber: true } })).hospitalNumber ?? "";
+    const searches = [undefined, "คณิต", "  คณิต  ครั้ง ", "ครั้ง", hn, hn.toLowerCase(), "ณัฐ", "%", "_", "ร้อย%ละ", "ขีด_", "\\", "อสม.", "รพ"];
+
+    const scopes: { label: string; where: Prisma.PatientHospitalRelationshipWhereInput; filter: Omit<TrackingScopeFilter, "search"> }[] = [
+      {
+        label: "direct OWNER/MEMBER",
+        where: { ...patientRoleWhere, hospitalId: f.hospitalId, hospital: buildAuthorizedHospitalWhere(f.owner.userId), ...activePatientHospitalRelationshipWhere },
+        filter: { hospitalId: f.hospitalId, includeEndedRelationships: false, assignedOsmUserId: null },
+      },
+      {
+        label: "direct with ended care",
+        where: { ...patientRoleWhere, hospitalId: f.hospitalId, hospital: buildAuthorizedHospitalWhere(f.member.userId) },
+        filter: { hospitalId: f.hospitalId, includeEndedRelationships: true, assignedOsmUserId: null },
+      },
+      {
+        label: "assigned OSM",
+        where: { ...buildOsmAssignedPatientRelationshipWhere(f.assignedOsm.userId), hospitalId: f.hospitalId },
+        filter: { hospitalId: f.hospitalId, includeEndedRelationships: false, assignedOsmUserId: f.assignedOsm.userId },
+      },
+      {
+        label: "Child OSM",
+        where: { ...buildOsmAssignedPatientRelationshipWhere(childOsm.userId), hospitalId: f.childHospitalId },
+        filter: { hospitalId: f.childHospitalId, includeEndedRelationships: false, assignedOsmUserId: childOsm.userId },
+      },
+      {
+        label: "network Child",
+        where: {
+          ...activePatientHospitalRelationshipWhere,
+          ...patientRoleWhere,
+          hospitalId: f.childHospitalId,
+          hospital: buildNetworkReadableChildHospitalWhere(f.owner.userId),
+        },
+        filter: { hospitalId: f.childHospitalId, includeEndedRelationships: false, assignedOsmUserId: null },
+      },
+    ];
+
+    let compared = 0;
+    for (const scope of scopes) {
+      for (const search of searches) {
+        const expected = await prismaOracleIds(scope.where, search);
+        expect(await scopeSqlIds({ ...scope.filter, search }), `${scope.label} / ${String(search)}`).toEqual(expected);
+        compared += expected.length;
+      }
+    }
+    // The fixture is not vacuous: the scopes select patients, including the ended and the wildcard-named ones.
+    expect(compared).toBeGreaterThan(20);
+    expect(await prismaOracleIds(scopes[1]!.where, undefined)).toContain(f.patients.ended.relationshipId);
+    expect(await prismaOracleIds(scopes[0]!.where, "ร้อย%ละ")).toHaveLength(2);
+
+    // End to end: the page counts what the builders select (ended care hidden by default, shown on request).
+    for (const [actor, input, where] of [
+      [f.owner, { hospitalId: f.hospitalId, includeEnded: true }, scopes[1]!.where],
+      [f.assignedOsm, { hospitalId: f.hospitalId }, scopes[2]!.where],
+      [f.owner, { hospitalId: f.hospitalId, childHospitalId: f.childHospitalId }, scopes[4]!.where],
+    ] as const) {
+      const page = await getCareTrackingPage(actor, input);
+      expect(page.summary.total).toBe((await prismaOracleIds(where, undefined)).length);
+    }
+  });
+
+  it("issues no query that returns the in-scope relationship ids to the application", async () => {
+    const f = await careFixture();
+    const traced = new PrismaClient<Prisma.PrismaClientOptions, "query">({ log: [{ emit: "event", level: "query" }] });
+    const queries: string[] = [];
+    traced.$on("query", ({ query }) => queries.push(query));
+    try {
+      await getCareTrackingPage(f.owner, { hospitalId: f.hospitalId, search: "คณิต" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      // The replaced read selected only ids from PatientHospitalRelationship (`SELECT ..."id" FROM ...`).
+      const idOnly = queries.filter((query) =>
+        /^SELECT "public"\."PatientHospitalRelationship"\."id" FROM "public"\."PatientHospitalRelationship"/u.test(query));
+      expect(idOnly).toEqual([]);
+    } finally {
+      await traced.$disconnect();
+    }
+  });
+
   it("searches by name terms and exact HN", async () => {
     const f = await careFixture();
     const hn = (await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.patients.notStarted.relationshipId }, select: { hospitalNumber: true } })).hospitalNumber;
@@ -444,7 +564,8 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     const relationshipIds = await bulkPatients(hospitalId, owner.userId, 500, "แผน");
     await db.$executeRaw`ANALYZE`;
 
-    const statement = careTrackingQueryInternals.buildTrackingStatement(relationshipIds, statementInput(new Date()));
+    expect(relationshipIds).toHaveLength(500);
+    const statement = careTrackingQueryInternals.buildTrackingStatement(directScope(hospitalId), statementInput(new Date()));
     const plan = await db.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${statement}`);
     const text = plan.map((row) => row["QUERY PLAN"]).join("\n");
     console.info(`Care tracking tracking statement, 500 patients:\n${text}`);
@@ -473,7 +594,8 @@ describe("CT-1 care tracking read model / PostgreSQL", () => {
     await db.patientFollowup.create({
       data: { patientHospitalRelationshipId: relationshipId, createdByUserId: owner.userId, roundNumber: 1, submissionNonce: randomUUID(), submissionRequestHash: "f".repeat(64), recordedAt },
     });
-    const statement = careTrackingQueryInternals.buildTrackingStatement([relationshipId], statementInput(new Date()));
+    expect(relationshipId).toBeDefined();
+    const statement = careTrackingQueryInternals.buildTrackingStatement(directScope(hospitalId), statementInput(new Date()));
     const lastActivityIn = (timeZone: "UTC" | "Asia/Bangkok"): Promise<Date | null> => db.$transaction(async (transaction) => {
       if (timeZone === "UTC") await transaction.$executeRaw`SET LOCAL TIME ZONE 'UTC'`;
       else await transaction.$executeRaw`SET LOCAL TIME ZONE 'Asia/Bangkok'`;
