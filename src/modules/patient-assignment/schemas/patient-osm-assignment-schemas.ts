@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { pageNumberSchema } from "@/shared/pagination/page-number";
+
 export const PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH = 120;
 
 const patientHospitalRelationshipIdSchema = z.uuid();
@@ -57,14 +59,6 @@ export const PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE = 25;
 
 /** OSM candidates shown per page of the bulk OSM picker. */
 export const PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE = 10;
-
-/** 1-based page number; a page past the last one is clamped by the service. */
-const pageNumberSchema = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .refine(Number.isSafeInteger, "Page must be a safe integer")
-  .default(1);
 
 export const patientOsmBulkAssignmentQuerySchema = z
   .object({

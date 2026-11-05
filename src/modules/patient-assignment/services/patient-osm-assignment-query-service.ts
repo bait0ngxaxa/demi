@@ -12,6 +12,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { resolvePagePosition, type PageNumberPosition } from "@/shared/pagination/page-number";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
@@ -79,13 +80,7 @@ export type PatientOsmAssignmentScope = {
   hospitalName: string;
 };
 
-/** A 1-based page of a counted list; `page` is already clamped to `1..totalPages`. */
-export type PageNumberPosition = {
-  page: number;
-  totalPages: number;
-  hasPreviousPage: boolean;
-  hasNextPage: boolean;
-};
+export type { PageNumberPosition };
 
 export type PatientOsmBulkAssignmentView = PageNumberPosition & {
   hospital: PatientOsmAssignmentScope;
@@ -102,20 +97,6 @@ export type PatientOsmBulkCandidatePage = PageNumberPosition & {
 
 /** The single-patient selector lists the first matches only; the owner narrows the name search. */
 const SINGLE_PATIENT_OSM_CANDIDATE_LIMIT = 25;
-
-/** Clamps a requested page to the last page (page 1 when nothing matches) so rows and count agree. */
-function resolvePagePosition(requestedPage: number, total: number, pageSize: number): PageNumberPosition & { skip: number } {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(requestedPage, totalPages);
-
-  return {
-    page,
-    totalPages,
-    hasPreviousPage: page > 1,
-    hasNextPage: page < totalPages,
-    skip: (page - 1) * pageSize,
-  };
-}
 
 export async function countCurrentAssignmentsForOsmInHospital(
   database: PatientOsmAssignmentCountDatabase,
@@ -273,18 +254,20 @@ export async function getPatientOsmAssignmentManagementView(
   }
 }
 
-type EligibleOsmCandidateFilter = { hospitalId: string; value?: string; excludeUserId?: string };
+type EligibleOsmCandidateFilter = { hospitalId: string; value?: string; excludeUserIds?: readonly string[] };
 
 /**
  * Active OSM accounts with an active relationship to one Hospital, optionally narrowed by
- * name. The single and the bulk selector share this filter; callers authorize the
- * Hospital first.
+ * name. Every OSM selector (single, bulk, appointment, service request) shares this filter;
+ * callers authorize the Hospital first.
  */
 function buildEligibleOsmCandidateWhere(input: EligibleOsmCandidateFilter): Prisma.UserWhereInput {
+  const excluded = input.excludeUserIds?.filter(Boolean) ?? [];
+
   return {
     status: UserStatus.ACTIVE,
     roles: { some: { role: Role.OSM } },
-    ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
+    ...(excluded.length > 0 ? { id: { notIn: [...excluded] } } : {}),
     osmHospitalRelationships: {
       some: {
         hospitalId: input.hospitalId,
@@ -302,23 +285,53 @@ const eligibleOsmCandidateOrderBy = [
   { id: "asc" },
 ] satisfies Prisma.UserOrderByWithRelationInput[];
 
+/** An eligible อสม. with the Hospital relationship that makes them eligible (the Patient form submits its id). */
+export type HospitalOsmCandidate = PatientOsmCandidate & { osmRelationshipId: string };
+
+type EligibleOsmCandidateDatabase = Pick<PrismaClient, "user"> | Pick<Prisma.TransactionClient, "user">;
+
+function toPatientOsmCandidate({ userId, displayName, contactPhone }: HospitalOsmCandidate): PatientOsmCandidate {
+  return { userId, displayName, contactPhone };
+}
+
 async function findEligibleOsmCandidates(
-  database: PatientOsmAssignmentQueryDatabase,
+  database: EligibleOsmCandidateDatabase,
   input: EligibleOsmCandidateFilter & { skip: number; take: number },
-): Promise<PatientOsmCandidate[]> {
+): Promise<HospitalOsmCandidate[]> {
   const records = await database.user.findMany({
     where: buildEligibleOsmCandidateWhere(input),
-    select: { id: true, person: { select: { givenName: true, familyName: true } }, osmHospitalRelationships: { where: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE }, select: { contactPhone: true }, take: 1 } },
+    select: { id: true, person: { select: { givenName: true, familyName: true } }, osmHospitalRelationships: { where: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE }, select: { id: true, contactPhone: true }, take: 1 } },
     orderBy: eligibleOsmCandidateOrderBy,
     skip: input.skip,
     take: input.take,
   });
 
-  return records.map((record) => ({
-    userId: record.id,
-    displayName: toDisplayName(record.person),
-    contactPhone: record.osmHospitalRelationships[0]?.contactPhone ?? null,
-  }));
+  return records.flatMap((record) => {
+    const relationship = record.osmHospitalRelationships[0];
+    return relationship
+      ? [{
+          userId: record.id,
+          osmRelationshipId: relationship.id,
+          displayName: toDisplayName(record.person),
+          contactPhone: relationship.contactPhone ?? null,
+        }]
+      : [];
+  });
+}
+
+/**
+ * One counted page of a Hospital's eligible อสม. by name, for the shared OSM picker. The caller has already
+ * authorized the actor for `hospitalId`; this function adds no authority of its own.
+ */
+export async function searchEligibleOsmCandidatePage(
+  database: EligibleOsmCandidateDatabase,
+  input: EligibleOsmCandidateFilter & { page: number; pageSize: number },
+): Promise<PageNumberPosition & { candidates: HospitalOsmCandidate[] }> {
+  const total = await database.user.count({ where: buildEligibleOsmCandidateWhere(input) });
+  const { skip, ...position } = resolvePagePosition(input.page, total, input.pageSize);
+  const candidates = await findEligibleOsmCandidates(database, { ...input, skip, take: input.pageSize });
+
+  return { candidates, ...position };
 }
 
 export async function listPatientOsmCandidates(
@@ -356,12 +369,13 @@ export async function listPatientOsmCandidates(
       targetHospitalId: relationship.hospitalId,
     });
 
-    return await findEligibleOsmCandidates(database, {
+    const candidates = await findEligibleOsmCandidates(database, {
       hospitalId: relationship.hospitalId,
       value: parsed.data.value,
       skip: 0,
       take: SINGLE_PATIENT_OSM_CANDIDATE_LIMIT,
     });
+    return candidates.map(toPatientOsmCandidate);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -521,20 +535,15 @@ export async function listPatientOsmBulkCandidates(
       throw new ForbiddenError();
     }
 
-    const filter = { hospitalId: hospital.id, value: parsed.data.value, excludeUserId: actor.userId };
-    const total = await database.user.count({ where: buildEligibleOsmCandidateWhere(filter) });
-    const { skip, ...position } = resolvePagePosition(
-      parsed.data.page,
-      total,
-      PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
-    );
-    const candidates = await findEligibleOsmCandidates(database, {
-      ...filter,
-      skip,
-      take: PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
+    const { candidates, ...position } = await searchEligibleOsmCandidatePage(database, {
+      hospitalId: hospital.id,
+      value: parsed.data.value,
+      excludeUserIds: [actor.userId],
+      page: parsed.data.page,
+      pageSize: PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
     });
 
-    return { candidates, ...position };
+    return { candidates: candidates.map(toPatientOsmCandidate), ...position };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

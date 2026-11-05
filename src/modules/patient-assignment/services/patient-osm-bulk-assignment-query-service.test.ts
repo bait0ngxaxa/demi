@@ -257,7 +257,7 @@ describe("listPatientOsmBulkCandidates", () => {
     const query = candidateQuery(user);
     expect(query.where).toMatchObject({
       status: UserStatus.ACTIVE,
-      id: { not: ownerUserId },
+      id: { notIn: [ownerUserId] },
       osmHospitalRelationships: { some: { hospitalId, status: MembershipStatus.ACTIVE } },
     });
     expect(JSON.stringify(query.where)).toContain("สมหญิง");

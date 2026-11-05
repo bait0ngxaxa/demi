@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { AssigneeSearchPicker, type AssigneeOption } from "@/components/assignee/assignee-search-picker";
+import type { ServerSearchPageResult } from "@/components/search/server-search-paging";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,24 +33,11 @@ import type { PatientDirectoryItem } from "@/modules/patient-directory/services/
 import {
   initialPatientOsmBulkAssignmentActionState,
   type PatientOsmBulkAssignmentActionState,
-  type PatientOsmBulkCandidateSearchResult,
 } from "@/modules/patient-assignment/transport/action-state";
 import {
   bulkAssignOsmToPatientsAction,
   searchPatientOsmBulkCandidatesAction,
 } from "@/modules/patient-assignment/transport/server-actions";
-
-import {
-  answersRequest,
-  createLatestRequestGate,
-  listFromPageResult,
-  OSM_SEARCH_ERROR,
-  osmCandidateListKey,
-  type OsmCandidateList,
-  type OsmCandidateRequest,
-} from "./osm-candidate-paging";
-
-const OSM_SEARCH_DEBOUNCE_MS = 300;
 
 /** Thrown inside the awaited wrapper so the shared hook reports an unconfirmed outcome. */
 class UnconfirmedBulkAssignment extends Error {}
@@ -93,177 +82,27 @@ function bulkAssignmentPageHref(hospitalId: string, search: string, page: number
   return `/app/patients/assign-osm?${params.toString()}`;
 }
 
-type OsmSearchPickerProps = {
-  hospitalId: string;
-  selected: PatientOsmCandidate | null;
-  disabled: boolean;
-  onSelect: (candidate: PatientOsmCandidate | null) => void;
-};
+function toOsmOption(candidate: PatientOsmCandidate): AssigneeOption {
+  return { id: candidate.userId, displayName: candidate.displayName, detail: candidate.contactPhone };
+}
 
-/**
- * Server-side OSM search, one page at a time. A new search term starts again on page 1; a
- * response that is no longer current is ignored. The chosen OSM lives in the parent so it
- * survives paging and searching within the hospital.
- */
-function OsmSearchPicker({
-  hospitalId,
-  selected,
-  disabled,
-  onSelect,
-}: OsmSearchPickerProps): React.JSX.Element {
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
-  const [attempt, setAttempt] = useState(0);
-  const [list, setList] = useState<OsmCandidateList | null>(null);
-  const [requestGate] = useState(createLatestRequestGate);
-  const lastRequestedKey = useRef<string | null>(null);
-  const trimmedQuery = query.trim();
-  const key = osmCandidateListKey(hospitalId, trimmedQuery);
-  const request: OsmCandidateRequest = { key, requestedPage: page, attempt };
-  const answered = answersRequest(list, request);
-  // The page already shown for this search stays visible while the next one loads.
-  const shown = list !== null && list.key === key ? list : null;
+function fromOsmOption(option: AssigneeOption): PatientOsmCandidate {
+  return { userId: option.id, displayName: option.displayName, contactPhone: option.detail ?? null };
+}
 
-  useEffect(() => {
-    const requestId = requestGate.start();
-    const current: OsmCandidateRequest = { key, requestedPage: page, attempt };
-    // Only typing is debounced; paging and retrying the same search answer at once.
-    const typing = lastRequestedKey.current !== key && trimmedQuery !== "";
-    lastRequestedKey.current = key;
-    const timer = setTimeout(
-      () => {
-        searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery, page)
-          .catch(
-            (): PatientOsmBulkCandidateSearchResult => ({ status: "ERROR", message: OSM_SEARCH_ERROR }),
-          )
-          .then((result) => {
-            if (!requestGate.isCurrent(requestId)) {
-              return;
-            }
+/** The bulk page's OSM search: the shared picker over the Hospital's eligible อสม., one page of 10 at a time. */
+async function searchBulkOsmCandidates(
+  hospitalId: string,
+  query: string,
+  page: number,
+): Promise<ServerSearchPageResult<AssigneeOption>> {
+  const result = await searchPatientOsmBulkCandidatesAction(hospitalId, query, page);
+  if (result.status === "ERROR") {
+    return result;
+  }
 
-            setList((previous) => listFromPageResult(previous, current, result));
-          });
-      },
-      typing ? OSM_SEARCH_DEBOUNCE_MS : 0,
-    );
-
-    return () => clearTimeout(timer);
-  }, [attempt, hospitalId, key, page, requestGate, trimmedQuery]);
-
-  const retryButton = (
-    <Button
-      className="mt-3"
-      disabled={!answered}
-      onClick={() => setAttempt((value) => value + 1)}
-      size="compact"
-      type="button"
-      variant="secondary"
-    >
-      ลองอีกครั้ง
-    </Button>
-  );
-
-  return (
-    <div className="mt-4 space-y-3">
-      <p aria-live="polite" className="text-sm" role="status">
-        {selected ? (
-          <>
-            อสม. ที่เลือก: <span className="font-semibold">{selected.displayName}</span>
-            <button
-              aria-label="ล้างการเลือก อสม."
-              className="ml-3 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring disabled:opacity-50"
-              disabled={disabled}
-              onClick={() => onSelect(null)}
-              type="button"
-            >
-              ล้างการเลือก
-            </button>
-          </>
-        ) : (
-          <span className="text-text-muted">ยังไม่ได้เลือก อสม.</span>
-        )}
-      </p>
-      <label className="block space-y-2 text-sm font-semibold">
-        <span>ค้นหาชื่อ อสม.</span>
-        <Input
-          disabled={disabled}
-          maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setPage(1);
-          }}
-          type="search"
-          value={query}
-        />
-      </label>
-      <div aria-busy={!answered}>
-        {!shown || (!answered && shown.candidates.length === 0) ? (
-          <p className="text-sm text-text-muted" role="status">
-            กำลังค้นหา อสม....
-          </p>
-        ) : shown.candidates.length === 0 && shown.error ? (
-          <Alert variant="danger">
-            <p>{shown.error}</p>
-            {retryButton}
-          </Alert>
-        ) : shown.candidates.length === 0 ? (
-          <p className="rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
-            {trimmedQuery === ""
-              ? "ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้"
-              : "ไม่พบ อสม. ที่ตรงกับคำค้นหา"}
-          </p>
-        ) : (
-          <>
-            <ul
-              aria-label="ผลการค้นหา อสม."
-              className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface"
-              role="radiogroup"
-            >
-              {shown.candidates.map((candidate) => (
-                <li key={candidate.userId}>
-                  <label className="flex items-center gap-3 px-4 py-3 text-sm">
-                    <input
-                      checked={selected?.userId === candidate.userId}
-                      className="size-4 accent-brand-strong"
-                      disabled={disabled}
-                      name="osm-candidate"
-                      onChange={() => onSelect(candidate)}
-                      type="radio"
-                    />
-                    <span className="min-w-0 flex-1 break-words font-semibold text-text">
-                      {candidate.displayName}{candidate.contactPhone ? ` · ${candidate.contactPhone}` : ""}
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {shown.error ? (
-              <Alert className="mt-2" variant="danger">
-                <p>{shown.error}</p>
-                {retryButton}
-              </Alert>
-            ) : null}
-            <PageNumberPagination
-              className="mt-3"
-              label="หน้าผลการค้นหา อสม."
-              next={
-                shown.hasNextPage
-                  ? { onSelect: () => setPage(shown.page + 1), disabled: disabled || !answered }
-                  : null
-              }
-              page={shown.page}
-              previous={
-                shown.hasPreviousPage
-                  ? { onSelect: () => setPage(shown.page - 1), disabled: disabled || !answered }
-                  : null
-              }
-              totalPages={shown.totalPages}
-            />
-          </>
-        )}
-      </div>
-    </div>
-  );
+  const { candidates, ...position } = result;
+  return { ...position, items: candidates.map(toOsmOption) };
 }
 
 type PatientOsmBulkAssignmentWorkspaceProps = {
@@ -651,11 +490,13 @@ export function PatientOsmBulkAssignmentWorkspace({
                   <p className="mt-2 text-sm leading-6 text-text-muted">
                     แสดงเฉพาะ อสม. ที่เปิดใช้งานและมีสิทธิ์ทำงานกับโรงพยาบาลนี้
                   </p>
-                  <OsmSearchPicker
+                  <AssigneeSearchPicker
                     disabled={selectionLocked}
                     hospitalId={selectedScope.hospitalId}
-                    onSelect={setSelectedOsm}
-                    selected={selectedOsm}
+                    onSelect={(option) => setSelectedOsm(option ? fromOsmOption(option) : null)}
+                    search={(query, page) => searchBulkOsmCandidates(selectedScope.hospitalId, query, page)}
+                    selected={selectedOsm ? toOsmOption(selectedOsm) : null}
+                    variant="osm"
                   />
                 </Panel>
 
