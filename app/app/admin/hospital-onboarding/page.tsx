@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/modules/hospital-onboarding/policies/hospital-onboarding-policy";
 import { listPendingHospitalOnboardingApplications } from "@/modules/hospital-onboarding/services/hospital-onboarding-service";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { parsePageSearchParam } from "@/shared/pagination/page-number";
 
 export const metadata: Metadata = {
   title: "ตรวจสอบคำขอโรงพยาบาล",
@@ -34,15 +36,26 @@ async function requirePlatformAdmin(): Promise<void> {
   }
 }
 
-export default async function HospitalOnboardingReviewPage(): Promise<React.JSX.Element> {
+/** Oldest first; page 1 has no page parameter. */
+function pendingApplicationsHref(page: number): string {
+  return page > 1 ? `/app/admin/hospital-onboarding?page=${page}` : "/app/admin/hospital-onboarding";
+}
+
+export default async function HospitalOnboardingReviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}): Promise<React.JSX.Element> {
   await connection();
   await requirePlatformAdmin();
-  const applications = await listPendingHospitalOnboardingApplications();
+  const { page } = await searchParams;
+  const pending = await listPendingHospitalOnboardingApplications({ page: parsePageSearchParam(page) });
+  const applications = pending.items;
 
   return (
     <div>
       <PageHeader
-        actions={<StatusBadge variant="info">รอตรวจสอบ {applications.length} รายการ</StatusBadge>}
+        actions={<StatusBadge variant="info">รอตรวจสอบ {pending.total.toLocaleString("th-TH")} รายการ</StatusBadge>}
         breadcrumbs={[{ label: "ผู้ดูแลระบบ DEMI" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}
         description="ตรวจสอบข้อมูลที่ผู้สมัครส่งมา แล้วเลือกอนุมัติหรือปฏิเสธคำขอจากฝั่ง DEMI"
         title="คำขอขึ้นทะเบียนโรงพยาบาล"
@@ -100,6 +113,14 @@ export default async function HospitalOnboardingReviewPage(): Promise<React.JSX.
             </div>
           </div>
         )}
+        <PageNumberPagination
+          className="mt-5 border-t border-border pt-5"
+          label="หน้ารายการคำขอที่รอตรวจสอบ"
+          next={pending.hasNextPage ? { href: pendingApplicationsHref(pending.page + 1) } : null}
+          page={pending.page}
+          previous={pending.hasPreviousPage ? { href: pendingApplicationsHref(pending.page - 1) } : null}
+          totalPages={pending.totalPages}
+        />
       </section>
     </div>
   );

@@ -14,7 +14,10 @@ import {
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { assertWorkforceRelationshipsCompatible } from "@/modules/identity/services/workforce-relationship-compatibility";
+import { z } from "zod";
+
 import { getPrisma } from "@/lib/db/prisma";
+import { pageNumberSchema, resolvePagePosition, type PageNumberPosition } from "@/shared/pagination/page-number";
 import {
   provisionPasswordAuthIdentity,
   PasswordAuthProvisioningReconciliationError,
@@ -459,17 +462,40 @@ export async function submitHospitalOnboarding(
   }
 }
 
+/** Pending applications shown per page of the ADMIN review queue. */
+export const PENDING_HOSPITAL_ONBOARDING_PAGE_SIZE = 25;
+
+const pendingApplicationPageSchema = z.object({ page: pageNumberSchema }).strict();
+
+export type PendingHospitalOnboardingApplicationPage = PageNumberPosition & {
+  items: HospitalOnboardingApplicationSummary[];
+  /** Pending applications across all pages. */
+  total: number;
+};
+
+/** One counted page of the pending review queue, oldest first. The page authorizes the platform ADMIN. */
 export async function listPendingHospitalOnboardingApplications(
+  input: unknown = {},
   database: HospitalOnboardingDatabase = getPrisma(),
-): Promise<HospitalOnboardingApplicationSummary[]> {
+): Promise<PendingHospitalOnboardingApplicationPage> {
+  const parsed = pendingApplicationPageSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("Hospital onboarding application page is invalid");
+  }
+
   try {
-    const applications = await database.hospitalOnboardingApplication.findMany({
-      where: { status: HospitalOnboardingApplicationStatus.PENDING },
+    const where = { status: HospitalOnboardingApplicationStatus.PENDING };
+    const total = await database.hospitalOnboardingApplication.count({ where });
+    const { skip, ...position } = resolvePagePosition(parsed.data.page, total, PENDING_HOSPITAL_ONBOARDING_PAGE_SIZE);
+    const applications = total === 0 ? [] : await database.hospitalOnboardingApplication.findMany({
+      where,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      skip,
+      take: PENDING_HOSPITAL_ONBOARDING_PAGE_SIZE,
       select: applicationSummarySelect,
     });
 
-    return applications.map((application) => ({
+    return { ...position, total, items: applications.map((application) => ({
       id: application.id,
       status: application.status,
       createdAt: application.createdAt,
@@ -478,7 +504,7 @@ export async function listPendingHospitalOnboardingApplications(
       hospitalName: application.hospital.name,
       applicantGivenName: application.applicantUser.person.givenName,
       applicantFamilyName: application.applicantUser.person.familyName,
-    }));
+    })) };
   } catch {
     throw new InfrastructureError("Hospital onboarding applications could not be loaded");
   }
