@@ -498,25 +498,25 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
 
     async function readAll(value?: string): Promise<string[]> {
       const ids: string[] = [];
-      let cursor: string | undefined;
 
-      for (let guard = 0; guard < 10; guard += 1) {
-        const page = await listPatientOsmBulkCandidates(owner.actor, {
+      for (let page = 1; page <= 10; page += 1) {
+        const result = await listPatientOsmBulkCandidates(owner.actor, {
           hospitalId: hospital.id,
           ...(value ? { value } : {}),
-          ...(cursor ? { cursor } : {}),
+          page,
         });
 
-        expect(page.candidates.length).toBeLessThanOrEqual(25);
-        ids.push(...page.candidates.map(({ userId }) => userId));
+        expect(result.page).toBe(page);
+        expect(result.candidates.length).toBeLessThanOrEqual(10);
+        expect(result.hasPreviousPage).toBe(page > 1);
+        ids.push(...result.candidates.map(({ userId }) => userId));
 
-        if (!page.hasMore) {
-          expect(page.nextCursor).toBeNull();
+        if (!result.hasNextPage) {
+          expect(result.totalPages).toBe(page);
           return ids;
         }
 
-        expect(page.nextCursor).toBe(page.candidates[page.candidates.length - 1]?.userId);
-        cursor = page.nextCursor ?? undefined;
+        expect(result.candidates).toHaveLength(10);
       }
 
       throw new Error("pagination did not terminate");
@@ -532,42 +532,94 @@ describe("Bulk Patient ↔ OSM assignment PostgreSQL workflow", () => {
     expect(all).not.toContain(inactive);
     expect(all).not.toContain(foreign);
     expect(all).not.toContain(owner.userId);
-    expect(firstPage.candidates.map(({ userId }) => userId)).toEqual(all.slice(0, 25));
+    expect(firstPage).toMatchObject({ page: 1, totalPages: 5, hasPreviousPage: false, hasNextPage: true });
+    expect(firstPage.candidates.map(({ userId }) => userId)).toEqual(all.slice(0, 10));
     expect(await readAll()).toEqual(all);
     expect(await readAll("สมชาย")).toHaveLength(40);
 
-    // Exactly 25 matches: one page, no cursor.
+    // A search is paged on its own: one match is one page.
     const exact = await listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, value: "อรุณ" });
-    expect(exact).toMatchObject({ hasMore: false, nextCursor: null });
+    expect(exact).toMatchObject({ page: 1, totalPages: 1, hasNextPage: false });
     expect(exact.candidates).toHaveLength(1);
 
-    // A cursor is bound to the hospital, the search term and eligibility.
-    const cursor = firstPage.nextCursor as string;
+    // A page past the end is clamped to the last page of the same search.
+    const beyond = await listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, value: "สมชาย", page: 99 });
+    expect(beyond).toMatchObject({ page: 4, totalPages: 4, hasNextPage: false });
+    expect(beyond.candidates.map(({ userId }) => userId)).toEqual((await readAll("สมชาย")).slice(30));
     await expect(
-      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, value: "อรุณ", cursor }),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(
-      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: foreign }),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(
-      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: suspended }),
-    ).rejects.toMatchObject({ code: "VALIDATION" });
-    await expect(
-      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, cursor: "not-a-uuid" }),
+      listPatientOsmBulkCandidates(owner.actor, { hospitalId: hospital.id, page: 0 }),
     ).rejects.toMatchObject({ code: "VALIDATION" });
 
     // Authorization is re-checked on every page: a MEMBER pages like the OWNER until its membership is suspended.
     await expect(
-      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, cursor }),
+      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, page: 2 }),
     ).resolves.toBeDefined();
     await prisma.hospitalMembership.updateMany({ where: { userId: member.userId }, data: { status: MembershipStatus.SUSPENDED } });
     await expect(
-      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, cursor }),
+      listPatientOsmBulkCandidates(member.actor, { hospitalId: hospital.id, page: 2 }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
-      listPatientOsmBulkCandidates(otherOwner.actor, { hospitalId: hospital.id, cursor }),
+      listPatientOsmBulkCandidates(otherOwner.actor, { hospitalId: hospital.id, page: 2 }),
     ).rejects.toBeInstanceOf(ForbiddenError);
   }, 120_000);
+
+  it("pages every patient without an OSM in a stable order, with search and clamping", async () => {
+    const hospital = await createHospital("BULK-ASSIGN-PATIENT-PAGING");
+    const owner = await createHospitalActor(hospital.id, MembershipType.OWNER);
+    const osmUserId = await createOsm(hospital.id);
+    const ids = await createPatients(owner.actor, hospital.id, 53, "page");
+    await assignOsmToPatient(owner.actor, { patientHospitalRelationshipId: ids[0] as string, osmUserId });
+
+    async function readAll(value?: string): Promise<string[]> {
+      const seen: string[] = [];
+
+      for (let page = 1; page <= 10; page += 1) {
+        const view = await getPatientOsmBulkAssignmentView(owner.actor, {
+          hospitalId: hospital.id,
+          ...(value ? { value } : {}),
+          page,
+        });
+
+        expect(view).toMatchObject({ page, pageSize: 25, hasPreviousPage: page > 1 });
+        expect(view.patients.length).toBeLessThanOrEqual(25);
+        seen.push(...view.patients.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId));
+
+        if (!view.hasNextPage) {
+          return seen;
+        }
+      }
+
+      throw new Error("pagination did not terminate");
+    }
+
+    const first = await getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: hospital.id });
+    expect(first).toMatchObject({ page: 1, totalPages: 3, totalWithoutOsm: 52, hasNextPage: true });
+    expect(first.patients).toHaveLength(25);
+
+    const all = await readAll();
+    expect(all).toHaveLength(52);
+    expect(new Set(all).size).toBe(52);
+    expect([...all].sort()).toEqual(ids.slice(1).sort());
+    expect(await readAll()).toEqual(all);
+
+    const last = await getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: hospital.id, page: 3 });
+    expect(last.patients.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId)).toEqual(all.slice(50));
+    expect(last).toMatchObject({ hasNextPage: false, totalWithoutOsm: 52 });
+
+    const beyond = await getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: hospital.id, page: 40 });
+    expect(beyond).toMatchObject({ page: 3, totalPages: 3, totalWithoutOsm: 52 });
+    expect(beyond.patients.map(({ patientHospitalRelationshipId }) => patientHospitalRelationshipId)).toEqual(all.slice(50));
+
+    // The name search "page-1" matches page-1 and page-10 to page-19 (page-0 already has an OSM).
+    const searched = await readAll("page-1");
+    const searchedView = await getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: hospital.id, value: "page-1" });
+    expect(searchedView).toMatchObject({ totalWithoutOsm: 11, totalPages: 1 });
+    expect(searched).toHaveLength(11);
+    expect(searched.every((id) => all.includes(id))).toBe(true);
+
+    const none = await getPatientOsmBulkAssignmentView(owner.actor, { hospitalId: hospital.id, value: "ไม่มีชื่อนี้", page: 5 });
+    expect(none).toMatchObject({ page: 1, totalPages: 1, totalWithoutOsm: 0, patients: [] });
+  }, 300_000);
 
   it("lists only the unassigned patients and the eligible OSMs of the owned hospital", async () => {
     const hospital = await createHospital("BULK-ASSIGN-VIEW-A");

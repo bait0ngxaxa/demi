@@ -51,7 +51,35 @@ const patients = [1, 2].map((index) => ({
   hospitalNumber: `HN-${index}`,
   classification: null,
 }));
-const view = { hospital: scope, patients, totalWithoutOsm: 2 };
+const pagePosition = { page: 1, pageSize: 25, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
+const view = { hospital: scope, patients, totalWithoutOsm: 2, ...pagePosition };
+
+function patientRow(index: number) {
+  return {
+    patientProfileId: `profile-${index}`,
+    patientHospitalRelationshipId: `relationship-${index}`,
+    displayName: `ผู้ป่วย ${index}`,
+    hospital: { id: hospitalId, name: scope.hospitalName },
+    hospitalNumber: `HN-${index}`,
+    classification: null,
+  };
+}
+
+/** A page of the patient list as the server would send it after a page link. */
+function patientPage(page: number, indexes: number[], totalPages = 2): typeof view {
+  return {
+    hospital: scope,
+    patients: indexes.map(patientRow),
+    totalWithoutOsm: totalPages * indexes.length,
+    page,
+    pageSize: 25,
+    totalPages,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+  };
+}
+
+const osm = (index: number) => ({ userId: `osm-${index}`, displayName: `อสม. ${index}`, contactPhone: null });
 
 let container: HTMLDivElement;
 let root: Root;
@@ -85,8 +113,10 @@ beforeEach(() => {
   mocks.search.mockResolvedValue({
     status: "OK",
     candidates: [{ userId: "osm-1", displayName: "สมใจ อสม." }],
-    hasMore: false,
-    nextCursor: null,
+    page: 1,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
   });
   container = document.createElement("div");
   document.body.append(container);
@@ -104,17 +134,55 @@ function buttonByText(text: string): HTMLButtonElement {
   return found;
 }
 
-async function render(selectedScope = scope, currentView: typeof view = view): Promise<void> {
+async function render(selectedScope = scope, currentView: typeof view = view, search = ""): Promise<void> {
   await act(async () => {
     root.render(
+      // Keyed by Hospital exactly like page.tsx: paging and searching keep client state.
       createElement(PatientOsmBulkAssignmentWorkspace, {
+        key: selectedScope.hospitalId,
         scopes: [scope, otherScope],
         selectedScope,
         view: currentView as never,
-        search: "",
+        search,
         errorMessage: null,
       }),
     );
+  });
+}
+
+function patientCheckboxes(): HTMLInputElement[] {
+  return [...container.querySelectorAll<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."] input[type=checkbox]')];
+}
+
+function selectAllOnPage(): HTMLInputElement {
+  return container.querySelector<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."]')!
+    .closest("div")!.querySelector<HTMLInputElement>("label input[type=checkbox]")!;
+}
+
+function reviewedIds(): string[] {
+  return [...confirmForm().querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value);
+}
+
+async function flush(ms = 0): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+function osmPager(): HTMLElement | null {
+  return container.querySelector<HTMLElement>('nav[aria-label="หน้าผลการค้นหา อสม."]');
+}
+
+function osmNames(): string[] {
+  return [...container.querySelectorAll('ul[aria-label="ผลการค้นหา อสม."] li')].map((item) => item.textContent ?? "");
+}
+
+async function typeOsmSearch(value: string): Promise<void> {
+  const input = [...container.querySelectorAll<HTMLInputElement>('input[type="search"]')]
+    .find((candidate) => candidate.closest("label")?.textContent?.includes("ค้นหาชื่อ อสม."))!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
 
@@ -332,7 +400,7 @@ describe("bulk OSM assignment feedback", () => {
       container.querySelector<HTMLInputElement>('ul[aria-label="ผู้ป่วยที่ยังไม่มี อสม."] input[type=checkbox]')!.click();
     });
     expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(false);
-    await act(async () => buttonByText("ล้างการเลือก").click());
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="ล้างการเลือก อสม."]')!.click());
     expect(buttonByText("ตรวจสอบก่อนมอบหมาย").disabled).toBe(true);
     expect(dialog()).toBeNull();
   });
@@ -383,24 +451,225 @@ describe("bulk OSM assignment feedback", () => {
     expect(third.getAll("patientHospitalRelationshipId")).toEqual(["relationship-1", "relationship-2"]);
   });
 
-  it("requires a new review when the authoritative patient list changes under it", async () => {
+  it("keeps an open review valid when the visible page changes, and submits the snapshot", async () => {
+    mocks.bulk.mockResolvedValue(bulkResult("ASSIGNED"));
     await reachConfirmation();
 
-    await render(scope, { ...view, patients: [patients[0]], totalWithoutOsm: 1 });
+    await render(scope, patientPage(2, [3, 4]));
+
+    expect(dialog()?.textContent).not.toContain("กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย");
+    expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(false);
+    expect(reviewedIds()).toEqual(["relationship-1", "relationship-2"]);
+    await confirmAssignment();
+    expect((mocks.bulk.mock.calls[0][1] as FormData).getAll("patientHospitalRelationshipId"))
+      .toEqual(["relationship-1", "relationship-2"]);
+  });
+
+  it("requires a new review when the Hospital changes under it", async () => {
+    await reachConfirmation();
+
+    // Same mounted workspace, another Hospital: the snapshot no longer matches the context.
+    await act(async () => {
+      root.render(
+        createElement(PatientOsmBulkAssignmentWorkspace, {
+          key: scope.hospitalId,
+          scopes: [scope, otherScope],
+          selectedScope: otherScope,
+          view: view as never,
+          search: "",
+          errorMessage: null,
+        }),
+      );
+    });
 
     expect(dialog()?.textContent).toContain("กรุณากลับไปแก้ไขแล้วตรวจสอบใหม่ก่อนมอบหมาย");
     expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(true);
-    // The snapshot is unchanged; nothing from the new list is mixed into it.
-    expect([...confirmForm().querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value))
-      .toEqual(["relationship-1", "relationship-2"]);
     await confirmAssignment();
     expect(mocks.bulk).not.toHaveBeenCalled();
+  });
 
-    await act(async () => buttonByText("กลับไปแก้ไข").click());
+  it("keeps the selection across pages and searches and submits every selected patient", async () => {
+    await render(scope, patientPage(1, [1, 2]));
+    await act(async () => patientCheckboxes()[0]!.click());
+    expect(container.textContent).toContain("เลือกแล้ว 1 คน");
+
+    await render(scope, patientPage(2, [3, 4]));
+    expect(container.textContent).toContain("ผู้ป่วย 3");
+    expect(container.textContent).not.toContain("ผู้ป่วย 1");
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([false, false]);
+    await act(async () => patientCheckboxes()[1]!.click());
+
+    await render(scope, patientPage(1, [5], 1), "ค้นหา");
+    await act(async () => patientCheckboxes()[0]!.click());
+    expect(container.textContent).toContain("เลือกแล้ว 3 คน");
+
+    await render(scope, patientPage(1, [1, 2]));
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, false]);
+
+    await act(async () => {
+      container.querySelector<HTMLInputElement>('input[name="osm-candidate"]')!.click();
+    });
+    expect(buttonByText("ตรวจสอบก่อนมอบหมาย (3 คน)").disabled).toBe(false);
     await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
-    expect([...confirmForm().querySelectorAll<HTMLInputElement>('input[name="patientHospitalRelationshipId"]')].map((input) => input.value))
-      .toEqual(["relationship-1"]);
-    expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(false);
+
+    expect(reviewedIds()).toEqual(["relationship-1", "relationship-4", "relationship-5"]);
+    expect(dialog()?.textContent).toContain("ผู้ป่วย 4");
+    expect(dialog()?.textContent).toContain("3 คน");
+  });
+
+  it("selects and clears only the rows of the current page with the page checkbox", async () => {
+    await render(scope, patientPage(1, [1, 2]));
+    await act(async () => selectAllOnPage().click());
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, true]);
+    expect(container.textContent).toContain("เลือกทั้งหมดในหน้านี้ (2)");
+
+    await render(scope, patientPage(2, [3, 4]));
+    expect(selectAllOnPage().checked).toBe(false);
+    expect(selectAllOnPage().indeterminate).toBe(false);
+    await act(async () => patientCheckboxes()[0]!.click());
+    expect(selectAllOnPage().indeterminate).toBe(true);
+    await act(async () => selectAllOnPage().click());
+    expect(selectAllOnPage().checked).toBe(true);
+    expect(selectAllOnPage().indeterminate).toBe(false);
+    expect(container.textContent).toContain("เลือกแล้ว 4 คน");
+
+    await act(async () => selectAllOnPage().click());
+    expect(container.textContent).toContain("เลือกแล้ว 2 คน");
+    await render(scope, patientPage(1, [1, 2]));
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, true]);
+
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="ล้างการเลือกผู้ป่วย"]')!.click());
+    expect(container.textContent).toContain("เลือกแล้ว 0 คน");
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([false, false]);
+  });
+
+  it("stops at 500 selected patients and disables the remaining boxes", async () => {
+    const indexes = Array.from({ length: 502 }, (_, index) => index + 1);
+    await render(scope, { ...patientPage(1, indexes, 1), totalWithoutOsm: 502 });
+    await act(async () => selectAllOnPage().click());
+
+    expect(container.textContent).toContain("เลือกแล้ว 500 คน");
+    expect(container.textContent).toContain("เลือกได้ไม่เกิน 500 คนต่อครั้ง");
+    const boxes = patientCheckboxes();
+    expect(boxes.filter((checkbox) => checkbox.checked)).toHaveLength(500);
+    expect(boxes.slice(500).map((checkbox) => [checkbox.checked, checkbox.disabled])).toEqual([[false, true], [false, true]]);
+    expect(boxes[0]?.disabled).toBe(false);
+
+    await act(async () => boxes[501]!.click());
+    expect(container.textContent).toContain("เลือกแล้ว 500 คน");
+    await act(async () => boxes[0]!.click());
+    expect(container.textContent).toContain("เลือกแล้ว 499 คน");
+    expect(patientCheckboxes()[501]?.disabled).toBe(false);
+  });
+
+  it("clears the selection when the Hospital changes", async () => {
+    await render(scope, patientPage(1, [1, 2]));
+    await act(async () => selectAllOnPage().click());
+    expect(container.textContent).toContain("เลือกแล้ว 2 คน");
+
+    await render(otherScope, { ...patientPage(1, [1, 2]), hospital: otherScope });
+    expect(container.textContent).toContain("เลือกแล้ว 0 คน");
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([false, false]);
+  });
+
+  it("shows a server conflict and keeps the selection so the owner can adjust it", async () => {
+    mocks.bulk.mockResolvedValue({
+      status: "ERROR",
+      code: "CONFLICT",
+      message: "บางรายการมี อสม. ผู้รับผิดชอบแล้ว",
+    });
+    await reachConfirmation();
+    await confirmAssignment();
+
+    expect(dialog()?.textContent).toContain("บางรายการมี อสม. ผู้รับผิดชอบแล้ว");
+    expect(mocks.notifyWarning).toHaveBeenCalledTimes(1);
+    await act(async () => buttonByText("กลับไปแก้ไข").click());
+    expect(container.textContent).toContain("เลือกแล้ว 2 คน");
+    expect(patientCheckboxes().map((checkbox) => checkbox.checked)).toEqual([true, true]);
+    await act(async () => patientCheckboxes()[1]!.click());
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+    expect(reviewedIds()).toEqual(["relationship-1"]);
+  });
+
+  it("pages the OSM picker 10 at a time and keeps the chosen OSM across pages and searches", async () => {
+    mocks.search.mockImplementation(async (...args: unknown[]) => {
+      const [, value, page] = args as [string, string, number];
+      if (value) {
+        return { status: "OK", candidates: [osm(99)], page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false };
+      }
+      const from = (page - 1) * 10 + 1;
+      return {
+        status: "OK",
+        candidates: Array.from({ length: page === 3 ? 3 : 10 }, (_, index) => osm(from + index)),
+        page,
+        totalPages: 3,
+        hasPreviousPage: page > 1,
+        hasNextPage: page < 3,
+      };
+    });
+    await render();
+    await flush();
+
+    expect(osmNames()).toHaveLength(10);
+    expect(osmPager()?.textContent).toContain("หน้า 1 จาก 3");
+    expect(mocks.search).toHaveBeenLastCalledWith(hospitalId, "", 1);
+    await act(async () => container.querySelector<HTMLInputElement>('input[name="osm-candidate"]')!.click());
+    expect(container.textContent).toContain("อสม. ที่เลือก: อสม. 1");
+
+    const next = [...osmPager()!.querySelectorAll("button")].find((button) => button.textContent === "ถัดไป")!;
+    await act(async () => next.click());
+    await flush();
+    expect(mocks.search).toHaveBeenLastCalledWith(hospitalId, "", 2);
+    expect(osmNames()).toEqual(Array.from({ length: 10 }, (_, index) => `อสม. ${index + 11}`));
+    expect(osmPager()?.textContent).toContain("หน้า 2 จาก 3");
+    expect(container.textContent).toContain("อสม. ที่เลือก: อสม. 1");
+    expect(container.querySelectorAll<HTMLInputElement>('input[name="osm-candidate"]:checked')).toHaveLength(0);
+
+    await typeOsmSearch("สม");
+    await flush(350);
+    expect(mocks.search).toHaveBeenLastCalledWith(hospitalId, "สม", 1);
+    expect(osmNames()).toEqual(["อสม. 99"]);
+    expect(osmPager()).toBeNull();
+    expect(container.textContent).toContain("อสม. ที่เลือก: อสม. 1");
+
+    await act(async () => patientCheckboxes()[0]!.click());
+    await act(async () => buttonByText("ตรวจสอบก่อนมอบหมาย").click());
+    expect(confirmForm().querySelector<HTMLInputElement>('input[name="osmUserId"]')?.value).toBe("osm-1");
+  });
+
+  it("keeps the shown OSM page and offers a retry when the next page fails", async () => {
+    mocks.search
+      .mockResolvedValueOnce({
+        status: "OK",
+        candidates: Array.from({ length: 10 }, (_, index) => osm(index + 1)),
+        page: 1,
+        totalPages: 2,
+        hasPreviousPage: false,
+        hasNextPage: true,
+      })
+      .mockResolvedValueOnce({ status: "ERROR", message: "ค้นหาไม่สำเร็จ" })
+      .mockResolvedValueOnce({
+        status: "OK",
+        candidates: [osm(11)],
+        page: 2,
+        totalPages: 2,
+        hasPreviousPage: true,
+        hasNextPage: false,
+      });
+    await render();
+    await flush();
+
+    const next = [...osmPager()!.querySelectorAll("button")].find((button) => button.textContent === "ถัดไป")!;
+    await act(async () => next.click());
+    await flush();
+    expect(osmNames()).toHaveLength(10);
+    expect(container.textContent).toContain("ค้นหาไม่สำเร็จ");
+
+    await act(async () => buttonByText("ลองอีกครั้ง").click());
+    await flush();
+    expect(mocks.search).toHaveBeenLastCalledWith(hospitalId, "", 2);
+    expect(osmNames()).toEqual(["อสม. 11"]);
+    expect(container.textContent).not.toContain("ค้นหาไม่สำเร็จ");
   });
 
   it("keeps an unknown outcome review open and non-dismissible", async () => {

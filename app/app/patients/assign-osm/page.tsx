@@ -29,6 +29,16 @@ function firstSearchParam(value: string | string[] | undefined): string | undefi
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** A missing or malformed `page` opens the first page; the service clamps a page past the end. */
+function parsePageParam(value: string | undefined): number {
+  if (value === undefined || !/^[1-9]\d*$/u.test(value)) {
+    return 1;
+  }
+
+  const page = Number(value);
+  return Number.isSafeInteger(page) ? page : 1;
+}
+
 async function resolveActor() {
   try {
     return await getProtectedApplicationActor();
@@ -86,6 +96,7 @@ export default async function PatientOsmBulkAssignmentPage({
     view = await getPatientOsmBulkAssignmentView(actor, {
       hospitalId: selectedScope.hospitalId,
       value: search,
+      page: parsePageParam(firstSearchParam(params.page)),
     });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) {
@@ -101,7 +112,8 @@ export default async function PatientOsmBulkAssignmentPage({
 
   return (
     <PatientOsmBulkAssignmentWorkspace
-      key={`${selectedScope.hospitalId}:${displaySearch}`}
+      // Paging and searching keep the selection; only another Hospital starts over.
+      key={selectedScope.hospitalId}
       errorMessage={errorMessage}
       scopes={scopes}
       search={displaySearch}

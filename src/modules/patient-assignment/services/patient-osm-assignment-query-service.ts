@@ -24,7 +24,8 @@ import {
   patientOsmBulkAssignmentQuerySchema,
   patientOsmBulkCandidateQuerySchema,
   patientOsmCandidateQuerySchema,
-  PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
+  PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE,
+  PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
   PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH,
 } from "@/modules/patient-assignment/schemas/patient-osm-assignment-schemas";
 import {
@@ -78,23 +79,43 @@ export type PatientOsmAssignmentScope = {
   hospitalName: string;
 };
 
-export type PatientOsmBulkAssignmentView = {
+/** A 1-based page of a counted list; `page` is already clamped to `1..totalPages`. */
+export type PageNumberPosition = {
+  page: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+export type PatientOsmBulkAssignmentView = PageNumberPosition & {
   hospital: PatientOsmAssignmentScope;
-  /** Patients of the Hospital with no current OSM, capped at the bulk batch size. */
+  /** One page of the Hospital's patients with no current OSM. */
   patients: PatientDirectoryItem[];
-  /** Number of patients without a current OSM in the Hospital (may exceed `patients`). */
+  /** Number of patients without a current OSM in the Hospital across all pages. */
   totalWithoutOsm: number;
+  pageSize: number;
 };
 
-export type PatientOsmBulkCandidatePage = {
+export type PatientOsmBulkCandidatePage = PageNumberPosition & {
   candidates: PatientOsmCandidate[];
-  /** More eligible OSMs match than are listed; the owner narrows the name search. */
-  hasMore: boolean;
-  /** Pass back as `cursor` to read the next page; null on the last page. */
-  nextCursor: string | null;
 };
 
-const OSM_CANDIDATE_PAGE_SIZE = 25;
+/** The single-patient selector lists the first matches only; the owner narrows the name search. */
+const SINGLE_PATIENT_OSM_CANDIDATE_LIMIT = 25;
+
+/** Clamps a requested page to the last page (page 1 when nothing matches) so rows and count agree. */
+function resolvePagePosition(requestedPage: number, total: number, pageSize: number): PageNumberPosition & { skip: number } {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+
+  return {
+    page,
+    totalPages,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+    skip: (page - 1) * pageSize,
+  };
+}
 
 export async function countCurrentAssignmentsForOsmInHospital(
   database: PatientOsmAssignmentCountDatabase,
@@ -252,60 +273,52 @@ export async function getPatientOsmAssignmentManagementView(
   }
 }
 
+type EligibleOsmCandidateFilter = { hospitalId: string; value?: string; excludeUserId?: string };
+
 /**
  * Active OSM accounts with an active relationship to one Hospital, optionally narrowed by
  * name. The single and the bulk selector share this filter; callers authorize the
  * Hospital first.
  */
+function buildEligibleOsmCandidateWhere(input: EligibleOsmCandidateFilter): Prisma.UserWhereInput {
+  return {
+    status: UserStatus.ACTIVE,
+    roles: { some: { role: Role.OSM } },
+    ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
+    osmHospitalRelationships: {
+      some: {
+        hospitalId: input.hospitalId,
+        status: MembershipStatus.ACTIVE,
+        hospital: { status: HospitalStatus.ACTIVE },
+      },
+    },
+    person: input.value ? buildNameWhere(input.value) : {},
+  };
+}
+
+const eligibleOsmCandidateOrderBy = [
+  { person: { givenName: "asc" } },
+  { person: { familyName: "asc" } },
+  { id: "asc" },
+] satisfies Prisma.UserOrderByWithRelationInput[];
+
 async function findEligibleOsmCandidates(
   database: PatientOsmAssignmentQueryDatabase,
-  input: { hospitalId: string; value?: string; excludeUserId?: string; cursor?: string },
-): Promise<PatientOsmBulkCandidatePage> {
-  const where: Prisma.UserWhereInput = {
-      status: UserStatus.ACTIVE,
-      roles: { some: { role: Role.OSM } },
-      ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
-      osmHospitalRelationships: {
-        some: {
-          hospitalId: input.hospitalId,
-          status: MembershipStatus.ACTIVE,
-          hospital: { status: HospitalStatus.ACTIVE },
-        },
-      },
-      person: input.value ? buildNameWhere(input.value) : {},
-  };
-
-  if (input.cursor) {
-    // A cursor is only valid inside the same hospital / search / eligibility filter.
-    const cursorRecord = await database.user.findFirst({
-      where: { AND: [where, { id: input.cursor }] },
-      select: { id: true },
-    });
-
-    if (!cursorRecord) {
-      throw new ValidationError("OSM candidate cursor is invalid");
-    }
-  }
-
+  input: EligibleOsmCandidateFilter & { skip: number; take: number },
+): Promise<PatientOsmCandidate[]> {
   const records = await database.user.findMany({
-    where,
+    where: buildEligibleOsmCandidateWhere(input),
     select: { id: true, person: { select: { givenName: true, familyName: true } }, osmHospitalRelationships: { where: { hospitalId: input.hospitalId, status: MembershipStatus.ACTIVE }, select: { contactPhone: true }, take: 1 } },
-    orderBy: [{ person: { givenName: "asc" } }, { person: { familyName: "asc" } }, { id: "asc" }],
-    take: OSM_CANDIDATE_PAGE_SIZE + 1,
-    ...(input.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+    orderBy: eligibleOsmCandidateOrderBy,
+    skip: input.skip,
+    take: input.take,
   });
-  const page = records.slice(0, OSM_CANDIDATE_PAGE_SIZE);
-  const hasMore = records.length > OSM_CANDIDATE_PAGE_SIZE;
 
-  return {
-    candidates: page.map((record) => ({
-      userId: record.id,
-      displayName: toDisplayName(record.person),
-      contactPhone: record.osmHospitalRelationships[0]?.contactPhone ?? null,
-    })),
-    hasMore,
-    nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
-  };
+  return records.map((record) => ({
+    userId: record.id,
+    displayName: toDisplayName(record.person),
+    contactPhone: record.osmHospitalRelationships[0]?.contactPhone ?? null,
+  }));
 }
 
 export async function listPatientOsmCandidates(
@@ -343,12 +356,12 @@ export async function listPatientOsmCandidates(
       targetHospitalId: relationship.hospitalId,
     });
 
-    return (
-      await findEligibleOsmCandidates(database, {
-        hospitalId: relationship.hospitalId,
-        value: parsed.data.value,
-      })
-    ).candidates;
+    return await findEligibleOsmCandidates(database, {
+      hospitalId: relationship.hospitalId,
+      value: parsed.data.value,
+      skip: 0,
+      take: SINGLE_PATIENT_OSM_CANDIDATE_LIMIT,
+    });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;
@@ -436,24 +449,31 @@ export async function getPatientOsmBulkAssignmentView(
       },
       osmAssignments: { none: { endedAt: null } },
     };
-    const [records, totalWithoutOsm] = await Promise.all([
-      database.patientHospitalRelationship.findMany({
-        where: patientWhere,
-        select: patientDirectorySelect,
-        orderBy: [
-          { patientProfile: { person: { givenName: "asc" } } },
-          { patientProfile: { person: { familyName: "asc" } } },
-          { id: "asc" },
-        ],
-        take: PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS,
-      }),
-      database.patientHospitalRelationship.count({ where: patientWhere }),
-    ]);
+    // Count first so the clamped page and its rows answer the same total.
+    const totalWithoutOsm = await database.patientHospitalRelationship.count({ where: patientWhere });
+    const { skip, ...position } = resolvePagePosition(
+      parsed.data.page,
+      totalWithoutOsm,
+      PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE,
+    );
+    const records = await database.patientHospitalRelationship.findMany({
+      where: patientWhere,
+      select: patientDirectorySelect,
+      orderBy: [
+        { patientProfile: { person: { givenName: "asc" } } },
+        { patientProfile: { person: { familyName: "asc" } } },
+        { id: "asc" },
+      ],
+      skip,
+      take: PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE,
+    });
 
     return {
       hospital: { hospitalId: hospital.id, hospitalName: hospital.name },
       patients: records.map(toPatientDirectoryItem),
       totalWithoutOsm,
+      pageSize: PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE,
+      ...position,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -501,12 +521,20 @@ export async function listPatientOsmBulkCandidates(
       throw new ForbiddenError();
     }
 
-    return await findEligibleOsmCandidates(database, {
-      hospitalId: hospital.id,
-      value: parsed.data.value,
-      excludeUserId: actor.userId,
-      cursor: parsed.data.cursor,
+    const filter = { hospitalId: hospital.id, value: parsed.data.value, excludeUserId: actor.userId };
+    const total = await database.user.count({ where: buildEligibleOsmCandidateWhere(filter) });
+    const { skip, ...position } = resolvePagePosition(
+      parsed.data.page,
+      total,
+      PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
+    );
+    const candidates = await findEligibleOsmCandidates(database, {
+      ...filter,
+      skip,
+      take: PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE,
     });
+
+    return { candidates, ...position };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
       throw error;

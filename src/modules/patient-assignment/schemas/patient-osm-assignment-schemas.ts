@@ -52,17 +52,30 @@ export const patientOsmBulkAssignmentRequestSchema = z
   })
   .strict();
 
+/** Patients shown per page of the bulk assignment list; the selection spans pages. */
+export const PATIENT_OSM_BULK_ASSIGNMENT_PAGE_SIZE = 25;
+
+/** OSM candidates shown per page of the bulk OSM picker. */
+export const PATIENT_OSM_BULK_CANDIDATE_PAGE_SIZE = 10;
+
+/** 1-based page number; a page past the last one is clamped by the service. */
+const pageNumberSchema = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .refine(Number.isSafeInteger, "Page must be a safe integer")
+  .default(1);
+
 export const patientOsmBulkAssignmentQuerySchema = z
   .object({
     hospitalId: z.uuid(),
     value: optionalCandidateSearchSchema,
+    page: pageNumberSchema,
   })
   .strict();
 
-export const patientOsmBulkCandidateQuerySchema = patientOsmBulkAssignmentQuerySchema.extend({
-  /** The `nextCursor` of the previous page: the user id the next page continues after. */
-  cursor: z.uuid().optional(),
-});
+/** Same Hospital, name search and page shape as the patient list. */
+export const patientOsmBulkCandidateQuerySchema = patientOsmBulkAssignmentQuerySchema;
 
 export type PatientOsmAssignmentRequest = z.infer<typeof patientOsmAssignmentRequestSchema>;
 export type PatientOsmUnassignmentRequest = z.infer<typeof patientOsmUnassignmentRequestSchema>;

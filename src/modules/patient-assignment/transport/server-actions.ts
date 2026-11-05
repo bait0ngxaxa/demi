@@ -105,14 +105,15 @@ function mapBulkAssignmentError(error: unknown): {
       return {
         code: "CONFLICT",
         message:
-          "บางรายการมี อสม. ผู้รับผิดชอบแล้วหรือข้อมูลเปลี่ยนแปลง ระบบไม่บันทึกรายการใดเลย กรุณาโหลดหน้าแล้วเลือกใหม่",
+          "บางรายการมี อสม. ผู้รับผิดชอบแล้วหรือข้อมูลเปลี่ยนแปลง ระบบไม่บันทึกรายการใดเลย รายการที่เลือกยังอยู่ครบ กรุณากลับไปแก้ไขรายการที่เลือกแล้วลองใหม่",
       };
     }
 
     if (error.code === "NOT_FOUND") {
       return {
         code: "CONFLICT",
-        message: "ไม่พบผู้ป่วยบางรายที่เลือก ระบบไม่บันทึกรายการใดเลย กรุณาโหลดหน้าแล้วเลือกใหม่",
+        message:
+          "ไม่พบผู้ป่วยบางรายที่เลือก ระบบไม่บันทึกรายการใดเลย รายการที่เลือกยังอยู่ครบ กรุณากลับไปแก้ไขรายการที่เลือกแล้วลองใหม่",
       };
     }
   }
@@ -157,17 +158,17 @@ export async function bulkAssignOsmToPatientsAction(
 export async function searchPatientOsmBulkCandidatesAction(
   hospitalId: string,
   value: string,
-  cursor?: string,
+  page = 1,
 ): Promise<PatientOsmBulkCandidateSearchResult> {
   try {
     const actor = await getProtectedApplicationActor();
-    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value, ...(cursor ? { cursor } : {}) })) };
+    return { status: "OK", ...(await listPatientOsmBulkCandidates(actor, { hospitalId, value, page })) };
   } catch (error: unknown) {
     return {
       status: "ERROR",
       message:
         error instanceof ApplicationError && error.code === "VALIDATION"
-          ? "คำค้นหา อสม. ไม่ถูกต้องหรือหมดอายุ กรุณาค้นหาใหม่"
+          ? "คำค้นหา อสม. ไม่ถูกต้อง กรุณาค้นหาใหม่"
           : "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
     };
   }

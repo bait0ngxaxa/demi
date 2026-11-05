@@ -33,6 +33,11 @@ const view = {
   hospital: scope,
   patients,
   totalWithoutOsm: 3,
+  page: 1,
+  pageSize: 25,
+  totalPages: 1,
+  hasPreviousPage: false,
+  hasNextPage: false,
 };
 
 function render(
@@ -66,7 +71,10 @@ describe("Bulk OSM assignment workspace", () => {
     }
 
     expect(markup).toContain("พบ 3 คน");
-    expect(markup).toContain("เลือกทั้งหมดที่แสดง (3)");
+    expect(markup).toContain("เลือกทั้งหมดในหน้านี้ (3)");
+    expect(markup).toContain("เลือกแล้ว 0 คน");
+    expect(markup).not.toContain("แสดง 3 คนแรก");
+    expect(markup).not.toContain("หน้า 1 จาก 1");
     expect(markup.match(/type="checkbox"/gu)).toHaveLength(4);
     expect(markup).toContain("ค้นหาชื่อ อสม.");
     expect(markup).not.toContain("<select");
@@ -81,11 +89,41 @@ describe("Bulk OSM assignment workspace", () => {
     expect(markup).not.toContain('name="submissionNonce"');
   });
 
-  it("explains the 500-patient cap when more patients exist than are shown", () => {
-    const markup = render({ status: "IDLE" }, { view: { ...view, totalWithoutOsm: 731 } });
+  it("explains the 500-patient cap when more patients exist than one batch allows", () => {
+    const markup = render({ status: "IDLE" }, { view: { ...view, totalWithoutOsm: 731, totalPages: 30, hasNextPage: true } });
 
     expect(markup).toContain("พบ 731 คน");
+    expect(markup).not.toContain("คนแรก");
     expect(markup).toContain("เลือกได้ไม่เกิน 500 คนต่อครั้ง");
+  });
+
+  it("pages the patient list with links that keep the hospital and the search", () => {
+    const markup = render(
+      { status: "IDLE" },
+      { search: "สม ใจ", view: { ...view, totalWithoutOsm: 80, page: 2, totalPages: 4, hasPreviousPage: true, hasNextPage: true } },
+    );
+    const links = [...markup.matchAll(/<a[^>]*href="([^"]*)"[^>]*>(ก่อนหน้า|ถัดไป)<\/a>/gu)].map((match) => [
+      match[2],
+      new URL(match[1]?.replaceAll("&amp;", "&") ?? "", "https://demi.invalid"),
+    ] as const);
+
+    expect(markup).toContain('aria-label="หน้ารายชื่อผู้ป่วยที่ยังไม่มี อสม."');
+    expect(markup).toContain("หน้า 2 จาก 4");
+    expect(links.map(([label, url]) => [label, url.pathname, url.searchParams.get("hospitalId"), url.searchParams.get("value"), url.searchParams.get("page")]))
+      .toEqual([
+        ["ก่อนหน้า", "/app/patients/assign-osm", hospitalId, "สม ใจ", null],
+        ["ถัดไป", "/app/patients/assign-osm", hospitalId, "สม ใจ", "3"],
+      ]);
+  });
+
+  it("shows no previous link on the first page and no next link on the last", () => {
+    const first = render({ status: "IDLE" }, { view: { ...view, totalPages: 2, hasNextPage: true } });
+    const last = render({ status: "IDLE" }, { view: { ...view, page: 2, totalPages: 2, hasPreviousPage: true } });
+
+    expect(first).toMatch(/<span[^>]*>ก่อนหน้า<\/span>/u);
+    expect(first).toMatch(/<a[^>]*>ถัดไป<\/a>/u);
+    expect(last).toMatch(/<a[^>]*>ก่อนหน้า<\/a>/u);
+    expect(last).toMatch(/<span[^>]*>ถัดไป<\/span>/u);
   });
 
   it("shows an empty state when every patient already has an OSM", () => {

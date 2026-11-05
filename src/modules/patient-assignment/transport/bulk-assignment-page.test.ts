@@ -35,7 +35,11 @@ const view = {
   hospital: scopes[0],
   patients: [],
   totalWithoutOsm: 0,
-  osmCandidates: [],
+  page: 1,
+  pageSize: 25,
+  totalPages: 1,
+  hasPreviousPage: false,
+  hasNextPage: false,
 };
 
 describe("Bulk OSM assignment page boundary", () => {
@@ -50,15 +54,45 @@ describe("Bulk OSM assignment page boundary", () => {
     });
   });
 
-  it("loads the view for the first owned hospital by default and keys the workspace by it", async () => {
+  it("loads page 1 for the first owned hospital by default and keys the workspace by the hospital only", async () => {
     const page = await PatientOsmBulkAssignmentPage({ searchParams: Promise.resolve({}) });
 
     expect(mockedGetBulkView).toHaveBeenCalledWith(expect.anything(), {
       hospitalId: scopes[0]?.hospitalId,
       value: "",
+      page: 1,
     });
     expect(page.props).toMatchObject({ selectedScope: scopes[0], view });
+    expect(page.key).toBe(scopes[0]?.hospitalId);
   });
+
+  it("keeps the workspace key across pages and searches of the same hospital", async () => {
+    const first = await PatientOsmBulkAssignmentPage({ searchParams: Promise.resolve({ hospitalId: scopes[1]?.hospitalId }) });
+    const paged = await PatientOsmBulkAssignmentPage({
+      searchParams: Promise.resolve({ hospitalId: scopes[1]?.hospitalId, value: "สม", page: "3" }),
+    });
+
+    expect(paged.key).toBe(first.key);
+    expect(paged.props).toMatchObject({ search: "สม" });
+    expect(mockedGetBulkView).toHaveBeenLastCalledWith(expect.anything(), {
+      hospitalId: scopes[1]?.hospitalId,
+      value: "สม",
+      page: 3,
+    });
+  });
+
+  it.each([["0"], ["-2"], ["abc"], ["1.5"], ["99999999999999999999"], [["2", "3"]]])(
+    "reads page %j as a positive integer, otherwise page 1",
+    async (requested) => {
+      await PatientOsmBulkAssignmentPage({ searchParams: Promise.resolve({ page: requested }) });
+
+      expect(mockedGetBulkView).toHaveBeenCalledWith(expect.anything(), {
+        hospitalId: scopes[0]?.hospitalId,
+        value: "",
+        page: Array.isArray(requested) ? 2 : 1,
+      });
+    },
+  );
 
   it("uses only a hospital the actor owns, otherwise sends the user back", async () => {
     await expect(
@@ -77,6 +111,7 @@ describe("Bulk OSM assignment page boundary", () => {
     expect(mockedGetBulkView).toHaveBeenCalledWith(expect.anything(), {
       hospitalId: scopes[1]?.hospitalId,
       value: "สม",
+      page: 1,
     });
   });
 

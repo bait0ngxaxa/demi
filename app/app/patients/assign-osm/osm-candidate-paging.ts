@@ -3,12 +3,23 @@ import type { PatientOsmBulkCandidateSearchResult } from "@/modules/patient-assi
 
 export const OSM_SEARCH_ERROR = "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง";
 
-export type OsmCandidateList = {
-  /** Hospital and search term this list answers; a list for another key is never shown. */
+/** What one picker request asks for; a response is shown only while it still answers this. */
+export type OsmCandidateRequest = {
+  /** Hospital and search term; a list for another key is never shown. */
   key: string;
+  requestedPage: number;
+  /** Retry counter, so a retry of the same page is a new request. */
+  attempt: number;
+};
+
+/** One page of OSM candidates, replaced (never appended) by the next page's response. */
+export type OsmCandidateList = OsmCandidateRequest & {
   candidates: PatientOsmCandidate[];
-  nextCursor: string | null;
-  hasMore: boolean;
+  /** The page the server answered, clamped to the last page. */
+  page: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
   error: string | null;
 };
 
@@ -16,50 +27,48 @@ export function osmCandidateListKey(hospitalId: string, trimmedQuery: string): s
   return `${hospitalId}\n${trimmedQuery}`;
 }
 
-/** The first page replaces everything: a new hospital or search starts with no cursor. */
-export function listFromFirstPage(
-  key: string,
-  result: PatientOsmBulkCandidateSearchResult,
-): OsmCandidateList {
-  return result.status === "OK"
-    ? {
-        key,
-        candidates: result.candidates,
-        nextCursor: result.nextCursor,
-        hasMore: result.hasMore,
-        error: null,
-      }
-    : { key, candidates: [], nextCursor: null, hasMore: false, error: result.message };
+export function answersRequest(list: OsmCandidateList | null, request: OsmCandidateRequest): boolean {
+  return (
+    list !== null &&
+    list.key === request.key &&
+    list.requestedPage === request.requestedPage &&
+    list.attempt === request.attempt
+  );
 }
 
 /**
- * Appends a later page without duplicates. A page for another key (the user searched
- * again meanwhile) or for no list at all is dropped; a failed page keeps what is shown.
+ * The page a response shows. A failed page of the same search keeps the page already shown so the
+ * owner can retry; a failure for a new search shows no candidates.
  */
-export function appendPage(
+export function listFromPageResult(
   previous: OsmCandidateList | null,
-  key: string,
+  request: OsmCandidateRequest,
   result: PatientOsmBulkCandidateSearchResult,
-): OsmCandidateList | null {
-  if (!previous || previous.key !== key) {
-    return previous;
+): OsmCandidateList {
+  if (result.status === "OK") {
+    return {
+      ...request,
+      candidates: result.candidates,
+      page: result.page,
+      totalPages: result.totalPages,
+      hasPreviousPage: result.hasPreviousPage,
+      hasNextPage: result.hasNextPage,
+      error: null,
+    };
   }
 
-  if (result.status !== "OK") {
-    return { ...previous, error: result.message };
+  if (previous && previous.key === request.key) {
+    return { ...previous, ...request, error: result.message };
   }
-
-  const seen = new Set(previous.candidates.map(({ userId }) => userId));
 
   return {
-    ...previous,
-    candidates: [
-      ...previous.candidates,
-      ...result.candidates.filter(({ userId }) => !seen.has(userId)),
-    ],
-    nextCursor: result.nextCursor,
-    hasMore: result.hasMore,
-    error: null,
+    ...request,
+    candidates: [],
+    page: 1,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+    error: result.message,
   };
 }
 

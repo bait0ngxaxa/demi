@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -26,6 +27,7 @@ import type {
   PatientOsmBulkAssignmentView,
   PatientOsmCandidate,
 } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
+import type { PatientDirectoryItem } from "@/modules/patient-directory/services/patient-directory-query-service";
 import {
   initialPatientOsmBulkAssignmentActionState,
   type PatientOsmBulkAssignmentActionState,
@@ -37,12 +39,13 @@ import {
 } from "@/modules/patient-assignment/transport/server-actions";
 
 import {
-  appendPage,
+  answersRequest,
   createLatestRequestGate,
-  listFromFirstPage,
+  listFromPageResult,
   OSM_SEARCH_ERROR,
   osmCandidateListKey,
   type OsmCandidateList,
+  type OsmCandidateRequest,
 } from "./osm-candidate-paging";
 
 const OSM_SEARCH_DEBOUNCE_MS = 300;
@@ -53,6 +56,9 @@ class UnconfirmedBulkAssignment extends Error {}
 /** How many selected patients the review lists by name before summarizing the rest as a count. */
 const REVIEW_PATIENT_PREVIEW_LIMIT = 8;
 
+/** A chosen patient, kept by relationship id so the choice survives paging and searching. */
+type SelectedPatient = { relationshipId: string; displayName: string; hospitalNumber: string | null };
+
 /**
  * The exact assignment intent captured when the review opens. The submitted payload comes only
  * from this snapshot, so a background list update can never change what is being confirmed.
@@ -61,9 +67,31 @@ type AssignmentReview = {
   hospitalId: string;
   hospitalName: string;
   osm: PatientOsmCandidate;
-  patients: readonly { relationshipId: string; displayName: string; hospitalNumber: string | null }[];
+  patients: readonly SelectedPatient[];
   submissionNonce: string;
 };
+
+function toSelectedPatient(patient: PatientDirectoryItem): SelectedPatient {
+  return {
+    relationshipId: patient.patientHospitalRelationshipId,
+    displayName: patient.displayName,
+    hospitalNumber: patient.hospitalNumber,
+  };
+}
+
+function bulkAssignmentPageHref(hospitalId: string, search: string, page: number): string {
+  const params = new URLSearchParams({ hospitalId });
+
+  if (search) {
+    params.set("value", search);
+  }
+
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+
+  return `/app/patients/assign-osm?${params.toString()}`;
+}
 
 type OsmSearchPickerProps = {
   hospitalId: string;
@@ -73,9 +101,9 @@ type OsmSearchPickerProps = {
 };
 
 /**
- * Server-side, paginated OSM search. A new hospital or search term discards the list
- * and the cursor; a response that is no longer current is ignored. The chosen OSM
- * lives in the parent so it survives paging and searching within the hospital.
+ * Server-side OSM search, one page at a time. A new search term starts again on page 1; a
+ * response that is no longer current is ignored. The chosen OSM lives in the parent so it
+ * survives paging and searching within the hospital.
  */
 function OsmSearchPicker({
   hospitalId,
@@ -84,20 +112,27 @@ function OsmSearchPicker({
   onSelect,
 }: OsmSearchPickerProps): React.JSX.Element {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [attempt, setAttempt] = useState(0);
   const [list, setList] = useState<OsmCandidateList | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [retryTick, setRetryTick] = useState(0);
   const [requestGate] = useState(createLatestRequestGate);
+  const lastRequestedKey = useRef<string | null>(null);
   const trimmedQuery = query.trim();
   const key = osmCandidateListKey(hospitalId, trimmedQuery);
-  const loading = list === null || list.key !== key;
-  const current = loading ? null : list;
+  const request: OsmCandidateRequest = { key, requestedPage: page, attempt };
+  const answered = answersRequest(list, request);
+  // The page already shown for this search stays visible while the next one loads.
+  const shown = list !== null && list.key === key ? list : null;
 
   useEffect(() => {
     const requestId = requestGate.start();
+    const current: OsmCandidateRequest = { key, requestedPage: page, attempt };
+    // Only typing is debounced; paging and retrying the same search answer at once.
+    const typing = lastRequestedKey.current !== key && trimmedQuery !== "";
+    lastRequestedKey.current = key;
     const timer = setTimeout(
       () => {
-        searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery)
+        searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery, page)
           .catch(
             (): PatientOsmBulkCandidateSearchResult => ({ status: "ERROR", message: OSM_SEARCH_ERROR }),
           )
@@ -106,44 +141,36 @@ function OsmSearchPicker({
               return;
             }
 
-            setLoadingMore(false);
-            setList(listFromFirstPage(key, result));
+            setList((previous) => listFromPageResult(previous, current, result));
           });
       },
-      trimmedQuery === "" ? 0 : OSM_SEARCH_DEBOUNCE_MS,
+      typing ? OSM_SEARCH_DEBOUNCE_MS : 0,
     );
 
     return () => clearTimeout(timer);
-  }, [hospitalId, key, requestGate, retryTick, trimmedQuery]);
+  }, [attempt, hospitalId, key, page, requestGate, trimmedQuery]);
 
-  function loadMore(): void {
-    if (!current || !current.nextCursor || loadingMore) {
-      return;
-    }
-
-    const requestId = requestGate.start();
-    setLoadingMore(true);
-    searchPatientOsmBulkCandidatesAction(hospitalId, trimmedQuery, current.nextCursor)
-      .catch(
-        (): PatientOsmBulkCandidateSearchResult => ({ status: "ERROR", message: OSM_SEARCH_ERROR }),
-      )
-      .then((result) => {
-        if (!requestGate.isCurrent(requestId)) {
-          return;
-        }
-
-        setLoadingMore(false);
-        setList((previous) => appendPage(previous, key, result));
-      });
-  }
+  const retryButton = (
+    <Button
+      className="mt-3"
+      disabled={!answered}
+      onClick={() => setAttempt((value) => value + 1)}
+      size="compact"
+      type="button"
+      variant="secondary"
+    >
+      ลองอีกครั้ง
+    </Button>
+  );
 
   return (
-    <div className="mt-4 max-w-xl space-y-3">
+    <div className="mt-4 space-y-3">
       <p aria-live="polite" className="text-sm" role="status">
         {selected ? (
           <>
             อสม. ที่เลือก: <span className="font-semibold">{selected.displayName}</span>
             <button
+              aria-label="ล้างการเลือก อสม."
               className="ml-3 font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring disabled:opacity-50"
               disabled={disabled}
               onClick={() => onSelect(null)}
@@ -161,33 +188,25 @@ function OsmSearchPicker({
         <Input
           disabled={disabled}
           maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(1);
+          }}
           type="search"
           value={query}
         />
       </label>
-      <div aria-busy={loading || loadingMore}>
-        {!current ? (
+      <div aria-busy={!answered}>
+        {!shown || (!answered && shown.candidates.length === 0) ? (
           <p className="text-sm text-text-muted" role="status">
             กำลังค้นหา อสม....
           </p>
-        ) : current.candidates.length === 0 && current.error ? (
+        ) : shown.candidates.length === 0 && shown.error ? (
           <Alert variant="danger">
-            <p>{current.error}</p>
-            <Button
-              className="mt-3"
-              onClick={() => {
-                setList(null);
-                setRetryTick((tick) => tick + 1);
-              }}
-              size="compact"
-              type="button"
-              variant="secondary"
-            >
-              ลองอีกครั้ง
-            </Button>
+            <p>{shown.error}</p>
+            {retryButton}
           </Alert>
-        ) : current.candidates.length === 0 ? (
+        ) : shown.candidates.length === 0 ? (
           <p className="rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
             {trimmedQuery === ""
               ? "ไม่พบ อสม. ที่เปิดใช้งานในโรงพยาบาลนี้"
@@ -200,7 +219,7 @@ function OsmSearchPicker({
               className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface"
               role="radiogroup"
             >
-              {current.candidates.map((candidate) => (
+              {shown.candidates.map((candidate) => (
                 <li key={candidate.userId}>
                   <label className="flex items-center gap-3 px-4 py-3 text-sm">
                     <input
@@ -218,26 +237,28 @@ function OsmSearchPicker({
                 </li>
               ))}
             </ul>
-            {current.error ? (
+            {shown.error ? (
               <Alert className="mt-2" variant="danger">
-                {current.error}
+                <p>{shown.error}</p>
+                {retryButton}
               </Alert>
             ) : null}
-            {current.hasMore ? (
-              <div className="mt-2 flex flex-wrap items-center gap-3">
-                <Button
-                  disabled={disabled || loadingMore}
-                  loading={loadingMore}
-                  onClick={loadMore}
-                  size="compact"
-                  type="button"
-                  variant="secondary"
-                >
-                  {loadingMore ? "กำลังโหลด..." : current.error ? "ลองโหลดเพิ่มเติมอีกครั้ง" : "โหลดเพิ่มเติม"}
-                </Button>
-                <span className="text-sm text-text-muted">แสดง {current.candidates.length} รายการ</span>
-              </div>
-            ) : null}
+            <PageNumberPagination
+              className="mt-3"
+              label="หน้าผลการค้นหา อสม."
+              next={
+                shown.hasNextPage
+                  ? { onSelect: () => setPage(shown.page + 1), disabled: disabled || !answered }
+                  : null
+              }
+              page={shown.page}
+              previous={
+                shown.hasPreviousPage
+                  ? { onSelect: () => setPage(shown.page - 1), disabled: disabled || !answered }
+                  : null
+              }
+              totalPages={shown.totalPages}
+            />
           </>
         )}
       </div>
@@ -273,6 +294,10 @@ export function PatientOsmBulkAssignmentWorkspace({
     };
   }, [selectedScope.hospitalId]);
 
+  // The selection spans pages and searches of one Hospital; the page remounts this workspace
+  // for another Hospital, which starts with an empty selection.
+  const [selection, setSelection] = useState<ReadonlyMap<string, SelectedPatient>>(() => new Map());
+
   // The payload of an unconfirmed request, including its submissionNonce, is kept by the hook
   // and re-sent unchanged; nothing here generates a new nonce.
   const assignAndNotify = async (
@@ -304,8 +329,10 @@ export function PatientOsmBulkAssignmentWorkspace({
         if (result.result.operation === "ASSIGNED") {
           notify.success("มอบหมาย อสม. ให้ผู้ป่วยแล้ว");
         }
+        setSelection(new Map());
         router.refresh();
       } else if (result.code === "CONFLICT") {
+        // The selection is kept so the owner can adjust it; the server rejected the whole batch.
         notify.warning("ไม่สามารถมอบหมายได้ ระบบไม่บันทึกรายการใด กรุณาตรวจสอบข้อมูลล่าสุด");
       } else if (result.code === "FORBIDDEN") {
         notify.error("ไม่มีสิทธิ์มอบหมาย อสม. ในโรงพยาบาลนี้");
@@ -335,7 +362,6 @@ export function PatientOsmBulkAssignmentWorkspace({
     inFlight.current = true;
     resendUnconfirmed();
   }
-  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
   const [selectedOsm, setSelectedOsm] = useState<PatientOsmCandidate | null>(null);
   const [review, setReview] = useState<AssignmentReview | null>(null);
   const reviewTrigger = useRef<HTMLButtonElement>(null);
@@ -343,25 +369,51 @@ export function PatientOsmBulkAssignmentWorkspace({
   const osmHeading = useRef<HTMLHeadingElement>(null);
   const resultFeedback = useRef<HTMLDivElement>(null);
   const confirming = review !== null;
-  const patients = view?.patients ?? [];
-  const allSelected = patients.length > 0 && selectedIds.size === patients.length;
+  const pagePatients = view?.patients ?? [];
   const succeeded = state.status === "SUCCESS";
-  const selectedPatients = patients.filter((patient) =>
-    selectedIds.has(patient.patientHospitalRelationshipId),
-  );
+  const selectedPatients = [...selection.values()];
+  const selectedCount = selection.size;
+  const atSelectionCap = selectedCount >= PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS;
+  const pageSelectedCount = pagePatients.filter((patient) =>
+    selection.has(patient.patientHospitalRelationshipId),
+  ).length;
+  const allPageSelected = pagePatients.length > 0 && pageSelectedCount === pagePatients.length;
+  const somePageSelected = pageSelectedCount > 0 && !allPageSelected;
+  const selectionLocked = confirming || pending;
 
-  function toggleAll(checked: boolean): void {
-    setSelectedIds(
-      checked ? new Set(patients.map((patient) => patient.patientHospitalRelationshipId)) : new Set(),
-    );
+  function togglePage(checked: boolean): void {
+    setSelection((current) => {
+      const next = new Map(current);
+
+      for (const patient of pagePatients) {
+        const relationshipId = patient.patientHospitalRelationshipId;
+
+        if (!checked) {
+          next.delete(relationshipId);
+        } else if (!next.has(relationshipId) && next.size < PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS) {
+          next.set(relationshipId, toSelectedPatient(patient));
+        }
+      }
+
+      return next;
+    });
   }
 
-  function togglePatient(relationshipId: string, checked: boolean): void {
-    setSelectedIds((current) => {
-      const next = new Set(current);
+  function togglePatient(patient: PatientDirectoryItem, checked: boolean): void {
+    setSelection((current) => {
+      const relationshipId = patient.patientHospitalRelationshipId;
+
+      if (
+        checked === current.has(relationshipId) ||
+        (checked && current.size >= PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS)
+      ) {
+        return current;
+      }
+
+      const next = new Map(current);
 
       if (checked) {
-        next.add(relationshipId);
+        next.set(relationshipId, toSelectedPatient(patient));
       } else {
         next.delete(relationshipId);
       }
@@ -379,11 +431,7 @@ export function PatientOsmBulkAssignmentWorkspace({
       hospitalId: selectedScope.hospitalId,
       hospitalName: selectedScope.hospitalName,
       osm: selectedOsm,
-      patients: selectedPatients.map((patient) => ({
-        relationshipId: patient.patientHospitalRelationshipId,
-        displayName: patient.displayName,
-        hospitalNumber: patient.hospitalNumber,
-      })),
+      patients: selectedPatients,
       submissionNonce: crypto.randomUUID(),
     });
   }
@@ -396,16 +444,13 @@ export function PatientOsmBulkAssignmentWorkspace({
   }
 
   const canConfirm = selectedPatients.length > 0 && selectedOsm !== null;
-  const visiblePatientIds = new Set(patients.map((patient) => patient.patientHospitalRelationshipId));
-  // The authoritative list changed under the review: confirming would mix old and new context.
-  const reviewStale = review !== null && (
-    review.hospitalId !== selectedScope.hospitalId ||
-    review.patients.some((patient) => !visiblePatientIds.has(patient.relationshipId))
-  );
+  // The selection spans pages, so only another Hospital invalidates a review. The server
+  // re-validates every patient and rejects the whole batch if one already has an OSM.
+  const reviewStale = review !== null && review.hospitalId !== selectedScope.hospitalId;
   const reviewOpen = review !== null && !succeeded;
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-6xl">
       <PageHeader
         actions={<StatusBadge variant="info">เจ้าหน้าที่โรงพยาบาล</StatusBadge>}
         breadcrumbs={[
@@ -463,102 +508,155 @@ export function PatientOsmBulkAssignmentWorkspace({
 
         {view && !succeeded ? (
           <>
-            <Panel>
-              <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยที่ยังไม่มี อสม.</h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                พบ {view.totalWithoutOsm} คน
-                {view.totalWithoutOsm > patients.length
-                  ? ` · แสดง ${patients.length} คนแรก (เลือกได้ไม่เกิน ${PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS} คนต่อครั้ง)`
-                  : ""}
-              </p>
-              <Form action="" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
-                <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
-                  <span>ค้นหาชื่อผู้ป่วย</span>
-                  <Input
-                    defaultValue={search}
-                    disabled={confirming}
-                    key={search}
-                    maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
-                    name="value"
-                    type="search"
-                  />
-                </label>
-                <PendingSubmitButton disabled={confirming} size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">
-                  ค้นหา
-                </PendingSubmitButton>
-              </Form>
-
-              {patients.length === 0 ? (
-                <p className="mt-5 rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
-                  ผู้ป่วยทุกคนในโรงพยาบาลนี้มี อสม. ผู้รับผิดชอบแล้ว
-                </p>
-              ) : (
-                <div className="mt-5 overflow-hidden rounded-panel border border-border bg-surface">
-                  <label className="flex items-center gap-3 border-b border-border bg-canvas px-4 py-3 text-sm font-semibold">
-                    <input
-                      checked={allSelected}
-                      className="size-4 accent-brand-strong"
-                      disabled={confirming || pending}
-                      onChange={(event) => toggleAll(event.currentTarget.checked)}
-                      type="checkbox"
+            {/* Mobile stacks patients, then the OSM picker; the review bar sticks above the bottom navigation.
+                From lg the picker and the review button stay beside the patient list. */}
+            <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,24rem)] lg:items-start">
+              <Panel>
+                <h2 className="text-xl font-semibold tracking-[-0.02em]">ผู้ป่วยที่ยังไม่มี อสม.</h2>
+                <p className="mt-2 text-sm leading-6 text-text-muted">พบ {view.totalWithoutOsm} คน</p>
+                <Form action="" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <input name="hospitalId" type="hidden" value={selectedScope.hospitalId} />
+                  <label className="block min-w-0 flex-1 space-y-2 text-sm font-semibold">
+                    <span>ค้นหาชื่อผู้ป่วย</span>
+                    <Input
+                      defaultValue={search}
+                      disabled={confirming}
+                      key={search}
+                      maxLength={PATIENT_OSM_CANDIDATE_SEARCH_MAX_LENGTH}
+                      name="value"
+                      type="search"
                     />
-                    <span>เลือกทั้งหมดที่แสดง ({patients.length})</span>
                   </label>
-                  <ul aria-label="ผู้ป่วยที่ยังไม่มี อสม." className="divide-y divide-border">
-                    {patients.map((patient) => (
-                      <li key={patient.patientHospitalRelationshipId}>
-                        <label className="flex items-center gap-3 px-4 py-3 text-sm">
-                          <input
-                            checked={selectedIds.has(patient.patientHospitalRelationshipId)}
-                            className="size-4 accent-brand-strong"
-                            disabled={confirming || pending}
-                            onChange={(event) =>
-                              togglePatient(
-                                patient.patientHospitalRelationshipId,
-                                event.currentTarget.checked,
-                              )
-                            }
-                            type="checkbox"
-                          />
-                          <span className="min-w-0 flex-1 break-words font-semibold text-text">
-                            {patient.displayName}
-                          </span>
-                          <span className="shrink-0 text-text-muted">
-                            HN {patient.hospitalNumber ?? "ไม่ระบุ"}
-                          </span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
+                  <PendingSubmitButton disabled={confirming} size="compact" variant="secondary" pendingLabel="กำลังค้นหา...">
+                    ค้นหา
+                  </PendingSubmitButton>
+                </Form>
+
+                <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <p aria-live="polite" className="font-semibold text-text" role="status">
+                    เลือกแล้ว {selectedCount} คน
+                  </p>
+                  <button
+                    aria-label="ล้างการเลือกผู้ป่วย"
+                    className="font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring disabled:opacity-50"
+                    disabled={selectedCount === 0 || selectionLocked}
+                    onClick={() => setSelection(new Map())}
+                    type="button"
+                  >
+                    ล้างการเลือก
+                  </button>
+                  {atSelectionCap || view.totalWithoutOsm > PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS ? (
+                    <p className={atSelectionCap ? "w-full font-semibold text-warning" : "w-full text-text-muted"}>
+                      เลือกได้ไม่เกิน {PATIENT_OSM_BULK_ASSIGNMENT_MAX_PATIENTS} คนต่อครั้ง
+                    </p>
+                  ) : null}
                 </div>
-              )}
-            </Panel>
 
-            <Panel>
-              <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none" ref={osmHeading} tabIndex={-1}>เลือก อสม.</h2>
-              <p className="mt-2 text-sm leading-6 text-text-muted">
-                แสดงเฉพาะ อสม. ที่เปิดใช้งานและมีสิทธิ์ทำงานกับโรงพยาบาลนี้
-              </p>
-              <OsmSearchPicker
-                disabled={confirming || pending}
-                hospitalId={selectedScope.hospitalId}
-                onSelect={setSelectedOsm}
-                selected={selectedOsm}
-              />
+                {pagePatients.length === 0 ? (
+                  <p className="mt-4 rounded-control border border-dashed border-border bg-surface-muted px-4 py-4 text-sm leading-6 text-text-muted">
+                    ผู้ป่วยทุกคนในโรงพยาบาลนี้มี อสม. ผู้รับผิดชอบแล้ว
+                  </p>
+                ) : (
+                  <div className="mt-4 overflow-hidden rounded-panel border border-border bg-surface">
+                    <label className="flex items-center gap-3 border-b border-border bg-canvas px-4 py-3 text-sm font-semibold">
+                      <input
+                        checked={allPageSelected}
+                        className="size-4 accent-brand-strong"
+                        disabled={selectionLocked || (atSelectionCap && !allPageSelected)}
+                        onChange={(event) => togglePage(event.currentTarget.checked)}
+                        ref={(element) => {
+                          if (element) {
+                            element.indeterminate = somePageSelected;
+                          }
+                        }}
+                        type="checkbox"
+                      />
+                      <span>เลือกทั้งหมดในหน้านี้ ({pagePatients.length})</span>
+                    </label>
+                    <ul aria-label="ผู้ป่วยที่ยังไม่มี อสม." className="divide-y divide-border">
+                      {pagePatients.map((patient) => {
+                        const checked = selection.has(patient.patientHospitalRelationshipId);
 
-              <Button
-                className="mt-5"
-                disabled={!canConfirm || pending || unknownOutcome}
-                onClick={startConfirmation}
-                ref={reviewTrigger}
-                type="button"
-              >
-                {selectedPatients.length > 0
-                  ? `ตรวจสอบก่อนมอบหมาย (${selectedPatients.length} คน)`
-                  : "ตรวจสอบก่อนมอบหมาย"}
-              </Button>
-            </Panel>
+                        return (
+                          <li key={patient.patientHospitalRelationshipId}>
+                            <label className="flex items-center gap-3 px-4 py-3 text-sm">
+                              <input
+                                checked={checked}
+                                className="size-4 accent-brand-strong"
+                                disabled={selectionLocked || (atSelectionCap && !checked)}
+                                onChange={(event) => togglePatient(patient, event.currentTarget.checked)}
+                                type="checkbox"
+                              />
+                              <span className="min-w-0 flex-1 break-words font-semibold text-text">
+                                {patient.displayName}
+                              </span>
+                              <span className="shrink-0 text-text-muted">
+                                HN {patient.hospitalNumber ?? "ไม่ระบุ"}
+                              </span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                <PageNumberPagination
+                  className="mt-5 border-t border-border pt-5"
+                  label="หน้ารายชื่อผู้ป่วยที่ยังไม่มี อสม."
+                  next={
+                    view.hasNextPage
+                      ? { href: bulkAssignmentPageHref(selectedScope.hospitalId, search, view.page + 1) }
+                      : null
+                  }
+                  page={view.page}
+                  previous={
+                    view.hasPreviousPage
+                      ? { href: bulkAssignmentPageHref(selectedScope.hospitalId, search, view.page - 1) }
+                      : null
+                  }
+                  totalPages={view.totalPages}
+                />
+              </Panel>
+
+              {/* `contents` below lg lets the review bar stick within the whole stacked column. */}
+              <div className="contents lg:sticky lg:top-6 lg:block lg:max-h-[calc(100dvh-3rem)] lg:space-y-6 lg:self-start lg:overflow-y-auto">
+                <Panel>
+                  <h2 className="text-xl font-semibold tracking-[-0.02em] focus-visible:outline-none" ref={osmHeading} tabIndex={-1}>เลือก อสม.</h2>
+                  <p className="mt-2 text-sm leading-6 text-text-muted">
+                    แสดงเฉพาะ อสม. ที่เปิดใช้งานและมีสิทธิ์ทำงานกับโรงพยาบาลนี้
+                  </p>
+                  <OsmSearchPicker
+                    disabled={selectionLocked}
+                    hospitalId={selectedScope.hospitalId}
+                    onSelect={setSelectedOsm}
+                    selected={selectedOsm}
+                  />
+                </Panel>
+
+                <div className="sticky bottom-[var(--app-mobile-bottom-navigation-content-inset)] z-20 rounded-panel border border-border bg-surface px-4 py-3 shadow-surface lg:static lg:px-5 lg:py-5 lg:shadow-none">
+                  <div className="flex flex-wrap items-center justify-between gap-3 lg:block">
+                    <div className="min-w-0 text-sm">
+                      <p className="font-semibold text-text">เลือกแล้ว {selectedCount} คน</p>
+                      <p className="truncate text-text-muted">
+                        {selectedOsm ? `อสม. ${selectedOsm.displayName}` : "ยังไม่ได้เลือก อสม."}
+                      </p>
+                    </div>
+                    <Button
+                      className="shrink-0 lg:mt-4 lg:w-full"
+                      disabled={!canConfirm || pending || unknownOutcome}
+                      onClick={startConfirmation}
+                      ref={reviewTrigger}
+                      type="button"
+                    >
+                      {selectedPatients.length > 0
+                        ? `ตรวจสอบก่อนมอบหมาย (${selectedPatients.length} คน)`
+                        : "ตรวจสอบก่อนมอบหมาย"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {reviewOpen && review ? (
               <ModalDialog

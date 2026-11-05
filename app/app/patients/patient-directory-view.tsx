@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -127,59 +128,24 @@ function PatientDirectoryPagination({
 }: {
   result: PatientDirectoryPage;
 }): React.JSX.Element | null {
-  if (result.totalPages <= 1) {
-    return null;
-  }
+  const pageHref = (page: number): string =>
+    directoryUrl({
+      hospitalId: result.hospital.hospitalId,
+      lookupType: result.lookupType,
+      value: result.value,
+      page,
+      classification: result.classificationFilter,
+      selfRegistration: result.selfRegistrationFilter,
+    });
 
   return (
-    <nav
-      aria-label="หน้ารายชื่อผู้ป่วย"
-      className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <p className="text-sm text-text-muted">
-        หน้า {result.page} จาก {result.totalPages}
-      </p>
-      <div className="flex gap-3">
-        {result.hasPreviousPage ? (
-          <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={directoryUrl({
-              hospitalId: result.hospital.hospitalId,
-              lookupType: result.lookupType,
-              value: result.value,
-              page: result.page - 1,
-              classification: result.classificationFilter,
-              selfRegistration: result.selfRegistrationFilter,
-            })}
-          >
-            ก่อนหน้า
-          </Link>
-        ) : (
-          <span className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-surface-muted px-4 py-2 text-sm font-semibold text-text-subtle">
-            ก่อนหน้า
-          </span>
-        )}
-        {result.hasNextPage ? (
-          <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-            href={directoryUrl({
-              hospitalId: result.hospital.hospitalId,
-              lookupType: result.lookupType,
-              value: result.value,
-              page: result.page + 1,
-              classification: result.classificationFilter,
-              selfRegistration: result.selfRegistrationFilter,
-            })}
-          >
-            ถัดไป
-          </Link>
-        ) : (
-          <span className="inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-surface-muted px-4 py-2 text-sm font-semibold text-text-subtle">
-            ถัดไป
-          </span>
-        )}
-      </div>
-    </nav>
+    <PageNumberPagination
+      label="หน้ารายชื่อผู้ป่วย"
+      next={result.hasNextPage ? { href: pageHref(result.page + 1) } : null}
+      page={result.page}
+      previous={result.hasPreviousPage ? { href: pageHref(result.page - 1) } : null}
+      totalPages={result.totalPages}
+    />
   );
 }
 

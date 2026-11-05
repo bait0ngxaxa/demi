@@ -231,7 +231,11 @@ describe("Patient assignment Server Actions", () => {
         );
 
         expect(result).toMatchObject({ status: "ERROR", code: "CONFLICT" });
-        expect(result.status === "ERROR" ? result.message : "").toContain("ระบบไม่บันทึกรายการใดเลย");
+        const message = result.status === "ERROR" ? result.message : "";
+        expect(message).toContain("ระบบไม่บันทึกรายการใดเลย");
+        // The workspace keeps the selection after a conflict, so the message must not ask for a reload.
+        expect(message).toContain("รายการที่เลือกยังอยู่ครบ กรุณากลับไปแก้ไขรายการที่เลือกแล้วลองใหม่");
+        expect(message).not.toContain("โหลดหน้า");
       }
     });
 
@@ -247,31 +251,31 @@ describe("Patient assignment Server Actions", () => {
   describe("searchPatientOsmBulkCandidatesAction", () => {
     const hospitalId = "55555555-5555-4555-8555-555555555555";
 
-    it("authorizes through the service with the protected actor and returns one page", async () => {
+    const position = { page: 1, totalPages: 2, hasPreviousPage: false, hasNextPage: true };
+
+    it("authorizes through the service with the protected actor and returns page 1 by default", async () => {
       mockedBulkCandidates.mockResolvedValue({
         candidates: [{ userId: osmUserId, displayName: "อสม. หนึ่ง" }],
-        hasMore: true,
-        nextCursor: osmUserId,
+        ...position,
       });
 
       await expect(searchPatientOsmBulkCandidatesAction(hospitalId, "หนึ่ง")).resolves.toEqual({
         status: "OK",
         candidates: [{ userId: osmUserId, displayName: "อสม. หนึ่ง" }],
-        hasMore: true,
-        nextCursor: osmUserId,
+        ...position,
       });
-      expect(mockedBulkCandidates).toHaveBeenCalledWith(actor, { hospitalId, value: "หนึ่ง" });
+      expect(mockedBulkCandidates).toHaveBeenCalledWith(actor, { hospitalId, value: "หนึ่ง", page: 1 });
     });
 
-    it("passes the cursor to the service and returns the next cursor", async () => {
-      const cursor = "66666666-6666-4666-8666-666666666666";
-      mockedBulkCandidates.mockResolvedValue({ candidates: [], hasMore: false, nextCursor: null });
+    it("passes the requested page to the service and returns its position", async () => {
+      mockedBulkCandidates.mockResolvedValue({ candidates: [], page: 2, totalPages: 2, hasPreviousPage: true, hasNextPage: false });
 
-      await expect(searchPatientOsmBulkCandidatesAction(hospitalId, "", cursor)).resolves.toMatchObject({
+      await expect(searchPatientOsmBulkCandidatesAction(hospitalId, "", 2)).resolves.toMatchObject({
         status: "OK",
-        nextCursor: null,
+        page: 2,
+        hasNextPage: false,
       });
-      expect(mockedBulkCandidates).toHaveBeenCalledWith(actor, { hospitalId, value: "", cursor });
+      expect(mockedBulkCandidates).toHaveBeenCalledWith(actor, { hospitalId, value: "", page: 2 });
     });
 
     it("returns a Thai error and no candidates when the service denies or fails", async () => {
@@ -286,7 +290,7 @@ describe("Patient assignment Server Actions", () => {
         expect(outcome.status).toBe("ERROR");
         expect(outcome).not.toHaveProperty("candidates");
       }
-      expect(invalid).toMatchObject({ message: "คำค้นหา อสม. ไม่ถูกต้องหรือหมดอายุ กรุณาค้นหาใหม่" });
+      expect(invalid).toMatchObject({ message: "คำค้นหา อสม. ไม่ถูกต้อง กรุณาค้นหาใหม่" });
     });
   });
 });

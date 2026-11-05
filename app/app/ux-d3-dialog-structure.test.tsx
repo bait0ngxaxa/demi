@@ -81,7 +81,7 @@ afterAll(() => {
 });
 beforeEach(() => {
   Object.values(actions).forEach((action) => action.mockReset());
-  actions.search.mockResolvedValue({ status: "OK", candidates: [{ userId: "osm-1", displayName: "สมใจ อสม." }], hasMore: false, nextCursor: null });
+  actions.search.mockResolvedValue({ status: "OK", candidates: [{ userId: "osm-1", displayName: "สมใจ อสม." }], page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false });
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -110,7 +110,7 @@ const surfaces: Surface[] = [
   },
   {
     name: "Bulk OSM assignment review",
-    element: <PatientOsmBulkAssignmentWorkspace errorMessage={null} scopes={[hospital]} search="" selectedScope={hospital} view={{ hospital, totalWithoutOsm: 1, patients: [{ patientProfileId: "profile-1", patientHospitalRelationshipId: relationshipId, displayName: "ผู้ป่วยทดสอบ", hospital: { id: hospital.hospitalId, name: hospital.hospitalName }, hospitalNumber: null, classification: null }] } as never} />,
+    element: <PatientOsmBulkAssignmentWorkspace errorMessage={null} scopes={[hospital]} search="" selectedScope={hospital} view={{ hospital, totalWithoutOsm: 1, page: 1, pageSize: 25, totalPages: 1, hasPreviousPage: false, hasNextPage: false, patients: [{ patientProfileId: "profile-1", patientHospitalRelationshipId: relationshipId, displayName: "ผู้ป่วยทดสอบ", hospital: { id: hospital.hospitalId, name: hospital.hospitalName }, hospitalNumber: null, classification: null }] } as never} />,
     prepare: prepareBulkSelection,
     trigger: "ตรวจสอบก่อนมอบหมาย (1 คน)",
     title: "ยืนยันการมอบหมาย อสม.",
