@@ -27,11 +27,8 @@ describe("Patient service request presentation", () => {
             hospitalActive: true,
             careEnded: false,
             services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"] as const,
-            // The service lists the assigned อสม. first.
-            osmChoices: [
-              { relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล", assigned: true },
-              { relationshipId: "77777777-7777-4777-8777-777777777777", displayName: "สมหญิง อสม.", assigned: false },
-            ],
+            // SR-D3: only the patient's own assigned อสม. travels with the view; others are searched.
+            assignedOsm: { relationshipId: osmRelationshipId, displayName: "สมใจ ผู้ดูแล" },
             requests: [
               {
                 relationshipId: "relationship", appointmentId: null, requestId: "66666666-6666-4666-8666-666666666666",
@@ -67,9 +64,10 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain('max="2026-11-30"');
     expect(markup).toContain('name="preferredSlot"');
     expect(markup).toContain('name="note"');
-    expect(markup).toContain(`<option value="${osmRelationshipId}" selected="">สมใจ ผู้ดูแล (อสม. ผู้ดูแลของคุณ)</option>`);
-    expect(markup.indexOf("(อสม. ผู้ดูแลของคุณ)")).toBeLessThan(markup.indexOf("สมหญิง อสม."));
-    expect(markup).toContain("ไม่ระบุ — ให้โรงพยาบาลจัดให้");
+    expect(markup).toContain(`name="preferredOsmRelationshipId" value="${osmRelationshipId}"`);
+    expect(markup).toContain("อสม. ผู้ดูแลของคุณ · สมใจ ผู้ดูแล");
+    expect(markup.indexOf("ไม่ระบุ — ให้โรงพยาบาลจัดให้")).toBeLessThan(markup.indexOf("อสม. ผู้ดูแลของคุณ · สมใจ ผู้ดูแล"));
+    expect(markup).not.toContain("สมหญิง อสม.");
     expect(markup).toContain("5 ตุลาคม 2569 · บ่าย");
     expect(markup).toContain("หมายเหตุ: สะดวกหลังบ่ายสอง");
     expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");

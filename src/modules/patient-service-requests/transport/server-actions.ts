@@ -3,12 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
+import type { AssigneeSearchResult } from "@/shared/search/assignee-search";
 
 import {
   DUPLICATE_OPEN_SERVICE_REQUEST_MESSAGE,
   confirmPatientServiceRequest,
   createPatientServiceRequest,
   rejectPatientServiceRequest,
+  searchOwnServiceRequestOsmChoices,
+  searchServiceRequestOsmCandidates,
   withdrawOwnPatientServiceRequest,
 } from "../services/patient-service-request-service";
 import {
@@ -177,5 +180,44 @@ export async function rejectPatientServiceRequestAction(
     return { status: "SUCCESS", message: "บันทึกผลไม่อนุมัติแล้ว ผู้ป่วยจะเห็นเหตุผลนี้" };
   } catch (error: unknown) {
     return conflictState(error);
+  }
+}
+
+function osmSearchError(error: unknown): AssigneeSearchResult {
+  return {
+    status: "ERROR",
+    message: error instanceof ApplicationError && error.code === "VALIDATION"
+      ? "คำค้นหา อสม. ไม่ถูกต้อง กรุณาค้นหาใหม่"
+      : "ไม่สามารถค้นหา อสม. ได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
+  };
+}
+
+/** SR-D2: one page of the request's Hospital อสม. for the confirm dialog; reviewers of that Hospital only. */
+export async function searchServiceRequestOsmCandidatesAction(
+  requestId: string,
+  value: string,
+  page: number,
+): Promise<AssigneeSearchResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const { items, ...position } = await searchServiceRequestOsmCandidates(actor, { requestId, value, page });
+    return { status: "OK", ...position, items: items.map(({ userId, displayName }) => ({ id: userId, displayName })) };
+  } catch (error: unknown) {
+    return osmSearchError(error);
+  }
+}
+
+/** SR-D3: one page of the Hospital อสม. for the patient's own request form; the patient's own care only. */
+export async function searchOwnServiceRequestOsmChoicesAction(
+  relationshipId: string,
+  value: string,
+  page: number,
+): Promise<AssigneeSearchResult> {
+  try {
+    const actor = await getProtectedApplicationActor();
+    const { items, ...position } = await searchOwnServiceRequestOsmChoices(actor, { relationshipId, value, page });
+    return { status: "OK", ...position, items: items.map(({ relationshipId: id, displayName }) => ({ id, displayName })) };
+  } catch (error: unknown) {
+    return osmSearchError(error);
   }
 }

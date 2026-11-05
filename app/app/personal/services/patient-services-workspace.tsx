@@ -83,7 +83,7 @@ export function PatientServicesWorkspace({
                       openServiceCodes={relationship.requests
                         .filter(({ status }) => status === "PENDING" || status === "APPROVED")
                         .map(({ serviceCode }) => serviceCode)}
-                      osmChoices={relationship.osmChoices}
+                      assignedOsm={relationship.assignedOsm}
                       preferredDateBounds={preferredDateBounds}
                     />
                   </>

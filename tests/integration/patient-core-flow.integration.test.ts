@@ -30,8 +30,11 @@ import {
 } from "@/modules/appointments/services/appointment-service";
 import { getOwnPatientAppointmentDetail, listOwnPatientAppointmentHub } from "@/modules/patient-self/services/patient-self-care-query-service";
 import {
+  getAppointmentCreateContext,
   getAppointmentDetail,
   getAppointmentHistory,
+  searchAppointmentOsmCandidates,
+  searchAppointmentResponsibleMembers,
 } from "@/modules/appointments/services/appointment-query-service";
 import {
   countWorkAppointmentsAwaitingMyAcceptance,
@@ -53,6 +56,8 @@ import {
   listHospitalPatientServiceRequests,
   listOwnPatientServiceRequests,
   rejectPatientServiceRequest,
+  searchOwnServiceRequestOsmChoices,
+  searchServiceRequestOsmCandidates,
   withdrawOwnPatientServiceRequest,
 } from "@/modules/patient-service-requests/services/patient-service-request-service";
 
@@ -498,7 +503,74 @@ describe("Patient service requests PostgreSQL workflow", () => {
     expect(JSON.stringify(projection)).not.toContain(osmA.userId);
     expect(JSON.stringify(projection)).not.toContain("osmUserId");
     expect(JSON.stringify(projection)).not.toContain("authSubject");
-    expect(projection[0]?.osmChoices).toEqual([{ relationshipId: osmA.relationshipId, displayName: "สมใจ อสม.", assigned: false }]);
+    // SR-D3: no Hospital roster travels with the view; osmA is not the patient's assigned อสม.
+    expect(projection[0]?.assignedOsm).toBeNull();
+    expect(projection[0]).not.toHaveProperty("osmChoices");
+    expect(JSON.stringify(projection)).not.toContain(osmA.relationshipId);
+  });
+
+  it("ships no Hospital อสม. roster with the request lists; the pickers search one page for the right actor only", async () => {
+    const hospitalA = await createHospital("CORE-ROSTER-A");
+    const hospitalB = await createHospital("CORE-ROSTER-B");
+    const ownerA = await createHospitalActor({ hospitalId: hospitalA.id, membershipType: MembershipType.OWNER });
+    const ownerB = await createHospitalActor({ hospitalId: hospitalB.id, membershipType: MembershipType.OWNER });
+    const patient = await createActivePatient({ hospitalId: hospitalA.id });
+    const otherPatient = await createActivePatient({ hospitalId: hospitalB.id });
+    const assigned = await createOsm({ hospitalId: hospitalA.id });
+    const roster = [];
+    for (let index = 0; index < 12; index += 1) roster.push(await createOsm({ hospitalId: hospitalA.id }));
+    await createOsm({ hospitalId: hospitalA.id, relationshipStatus: MembershipStatus.SUSPENDED });
+    const osmB = await createOsm({ hospitalId: hospitalB.id });
+    await assignOsmToPatient(ownerA.actor, { patientHospitalRelationshipId: patient.relationshipId, osmUserId: assigned.userId });
+    const patientActor = { userId: patient.userId, personId: patient.personId, roles: [Role.PATIENT], hospitalMemberships: [], osmHospitalRelationships: [] };
+    await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, preferredOsmRelationshipId: roster[0]!.relationshipId }));
+
+    // The patient view carries the assigned อสม. only, never the Hospital roster.
+    const own = await listOwnPatientServiceRequests(patientActor);
+    expect(own[0]?.assignedOsm).toEqual({ relationshipId: assigned.relationshipId, displayName: "สมใจ อสม." });
+    expect(own[0]).not.toHaveProperty("osmChoices");
+    for (const osm of roster.slice(1)) expect(JSON.stringify(own)).not.toContain(osm.relationshipId);
+
+    // The inbox loads O(page) rows: no roster, only whether the preferred and current อสม. are still eligible.
+    const inbox = await listHospitalPatientServiceRequests(ownerA.actor);
+    expect(inbox.requests[0]).toMatchObject({ preferredOsmUserId: roster[0]!.userId, preferredOsmEligible: true, currentOsmUserId: assigned.userId, currentOsmEligible: true });
+    expect(inbox.requests[0]).not.toHaveProperty("osmChoices");
+    for (const osm of roster.slice(1)) expect(JSON.stringify(inbox)).not.toContain(osm.userId);
+
+    // Patient search: one page of 10 by name, the assigned อสม. left out (it is pinned), names only.
+    const ownFirst = await searchOwnServiceRequestOsmChoices(patientActor, { relationshipId: patient.relationshipId, page: 1 });
+    expect(ownFirst).toMatchObject({ page: 1, totalPages: 2, hasNextPage: true });
+    expect(ownFirst.items).toHaveLength(10);
+    expect(Object.keys(ownFirst.items[0] ?? {}).sort()).toEqual(["displayName", "relationshipId"]);
+    const ownAll = [...ownFirst.items, ...(await searchOwnServiceRequestOsmChoices(patientActor, { relationshipId: patient.relationshipId, page: 2 })).items];
+    expect(new Set(ownAll.map(({ relationshipId }) => relationshipId))).toEqual(new Set(roster.map(({ relationshipId }) => relationshipId)));
+    await expect(searchOwnServiceRequestOsmChoices(patientActor, { relationshipId: otherPatient.relationshipId, page: 1 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(searchOwnServiceRequestOsmChoices(ownerA.actor, { relationshipId: patient.relationshipId, page: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    // Reviewer search: scoped to the request's Hospital and to its reviewers.
+    const requestId = inbox.requests[0]!.requestId;
+    const reviewFirst = await searchServiceRequestOsmCandidates(ownerA.actor, { requestId, page: 1 });
+    expect(reviewFirst).toMatchObject({ page: 1, totalPages: 2 });
+    expect(reviewFirst.items).toHaveLength(10);
+    const reviewAll = [...reviewFirst.items, ...(await searchServiceRequestOsmCandidates(ownerA.actor, { requestId, page: 2 })).items];
+    expect(reviewAll.map(({ userId }) => userId)).toContain(assigned.userId);
+    expect(reviewAll.map(({ userId }) => userId)).not.toContain(osmB.userId);
+    expect(reviewAll).toHaveLength(13);
+    await expect(searchServiceRequestOsmCandidates(ownerB.actor, { requestId, page: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    // Confirm still re-validates the chosen อสม.: another Hospital's อสม. is refused.
+    await expect(confirmPatientServiceRequest(ownerA.actor, confirmInput(requestId, osmB.userId))).rejects.toMatchObject({ code: "VALIDATION" });
+
+    // Appointment form: no roster in the context; staff and อสม. are searched for the relationship's Hospital only.
+    const context = await getAppointmentCreateContext(ownerA.actor, patient.relationshipId);
+    expect(context).toMatchObject({ selectedOsm: null, selectedResponsible: null });
+    expect(JSON.stringify(context)).not.toContain(roster[1]!.userId);
+    const osmPage = await searchAppointmentOsmCandidates(ownerA.actor, { relationshipId: patient.relationshipId, page: 1 });
+    expect(osmPage.items).toHaveLength(10);
+    expect(osmPage.items.map(({ userId }) => userId)).not.toContain(assigned.userId);
+    expect((await searchAppointmentResponsibleMembers(ownerA.actor, { relationshipId: patient.relationshipId, page: 1 })).items)
+      .toEqual([expect.objectContaining({ userId: ownerA.userId })]);
+    await expect(searchAppointmentOsmCandidates(ownerB.actor, { relationshipId: patient.relationshipId, page: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("keeps Patient request history self-scoped and Hospital lists exact direct membership scopes", async () => {

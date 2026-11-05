@@ -22,6 +22,9 @@ import { SERVICE_APPOINTMENT_TYPE } from "@/modules/appointments/domain/appointm
 import { createServiceRequestAppointmentInTransaction } from "@/modules/appointments/services/appointment-service";
 import { createPatientServiceRequestLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
 import { currentAssignedOsmRecipient } from "@/modules/appointments/services/appointment-line-notification-recipient-service";
+import { searchEligibleOsmCandidatePage } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
+import type { PageNumberPosition } from "@/shared/pagination/page-number";
+import { ASSIGNEE_SEARCH_PAGE_SIZE } from "@/shared/search/assignee-search";
 import { serviceDateToUtcDate } from "@/shared/time/service-date";
 import {
   ConflictError,
@@ -38,10 +41,12 @@ import {
 } from "../policies/patient-service-request-policy";
 import {
   hospitalServiceRequestListSchema,
+  ownServiceRequestOsmSearchSchema,
   patientServiceRequestConfirmSchema,
   patientServiceRequestCreateSchema,
   patientServiceRequestIdSchema,
   patientServiceRequestRejectSchema,
+  serviceRequestOsmSearchSchema,
   type HospitalServiceRequestListInput,
 } from "../schemas/patient-service-request-schemas";
 
@@ -81,8 +86,11 @@ export type PatientServiceRelationshipView = {
   careEnded: boolean;
   /** ADR-0029: the native services the patient may request now; empty once care ended or the Hospital is inactive. */
   services: readonly PatientServiceCode[];
-  /** SR-D3: the ACTIVE อสม. of the Hospital, the patient's assigned อสม. first. */
-  osmChoices: readonly { relationshipId: string; displayName: string; assigned: boolean }[];
+  /**
+   * SR-D3: the patient's assigned อสม. when they are an ACTIVE อสม. of the Hospital, offered first. The Hospital's
+   * other อสม. are searched on the server (searchOwnServiceRequestOsmChoices); no roster travels with this view.
+   */
+  assignedOsm: { relationshipId: string; displayName: string } | null;
   requests: readonly PatientServiceRequestStatusView[];
 };
 
@@ -100,7 +108,9 @@ export type HospitalPatientServiceRequestView = PatientServiceRequestPreferenceV
   preferredOsmName: string | null;
   currentOsmUserId: string | null;
   currentOsmName: string | null;
-  osmChoices: readonly { userId: string; displayName: string }[];
+  /** The confirm dialog starts from these when they are still ACTIVE อสม. of the Hospital; confirm re-checks. */
+  preferredOsmEligible: boolean;
+  currentOsmEligible: boolean;
   rejectionReason: string | null;
   createdAt: Date;
 };
@@ -266,25 +276,6 @@ function getPatientRelationshipsSelect(requestedByUserId: string) {
         id: true,
         name: true,
         status: true,
-        osmHospitalRelationships: {
-          where: {
-            status: MembershipStatus.ACTIVE,
-            user: {
-              status: UserStatus.ACTIVE,
-              roles: { some: { role: Role.OSM } },
-            },
-          },
-          select: {
-            id: true,
-            user: {
-              select: {
-                id: true,
-                person: { select: { givenName: true, familyName: true } },
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
       },
     },
     osmAssignments: {
@@ -349,29 +340,35 @@ export async function listOwnPatientServiceRequests(
       select: getPatientRelationshipsSelect(actor.userId),
       orderBy: { hospital: { name: "asc" } },
     });
+    const acceptsRequests = (relationship: (typeof relationships)[number]): boolean =>
+      relationship.hospital.status === HospitalStatus.ACTIVE && relationship.endedAt === null;
+    // One read for the patient's own assigned อสม. (one per care relationship), never the Hospital roster.
+    const assignedPairs = relationships.flatMap((relationship) => {
+      const osmUserId = relationship.osmAssignments[0]?.osmUserId;
+      return acceptsRequests(relationship) && osmUserId ? [{ userId: osmUserId, hospitalId: relationship.hospitalId }] : [];
+    });
+    const assignedOsmRelationships = assignedPairs.length === 0 ? [] : await database.osmHospitalRelationship.findMany({
+      where: { AND: [{ OR: assignedPairs }, eligibleOsmRelationshipWhere] },
+      select: { id: true, userId: true, hospitalId: true, user: { select: { person: { select: { givenName: true, familyName: true } } } } },
+    });
 
     return relationships.map((relationship) => {
       const hospitalActive = relationship.hospital.status === HospitalStatus.ACTIVE;
       const careEnded = relationship.endedAt !== null;
-      const acceptsRequests = hospitalActive && !careEnded;
       const assignedOsmUserId = relationship.osmAssignments[0]?.osmUserId ?? null;
-      const osmChoices = acceptsRequests
-        ? relationship.hospital.osmHospitalRelationships
-            .map(({ id, user: osm }) => ({
-              relationshipId: id,
-              displayName: fullName(osm.person.givenName, osm.person.familyName),
-              assigned: osm.id === assignedOsmUserId,
-            }))
-            .sort((left, right) => Number(right.assigned) - Number(left.assigned))
-        : [];
+      const assigned = acceptsRequests(relationship)
+        ? assignedOsmRelationships.find(({ userId, hospitalId }) => userId === assignedOsmUserId && hospitalId === relationship.hospitalId)
+        : undefined;
 
       return {
         relationshipId: relationship.id,
         hospitalName: relationship.hospital.name,
         hospitalActive,
         careEnded,
-        services: acceptsRequests ? PATIENT_SERVICE_CODES : [],
-        osmChoices,
+        services: acceptsRequests(relationship) ? PATIENT_SERVICE_CODES : [],
+        assignedOsm: assigned
+          ? { relationshipId: assigned.id, displayName: fullName(assigned.user.person.givenName, assigned.user.person.familyName) }
+          : null,
         requests: relationship.serviceRequests.map((request) => ({
           ...toPreferenceView(request),
           requestId: request.id,
@@ -448,12 +445,7 @@ export async function createPatientServiceRequest(
             where: {
               id: preferredOsmRelationshipId,
               hospitalId: relationship.hospitalId,
-              status: MembershipStatus.ACTIVE,
-              hospital: { status: HospitalStatus.ACTIVE },
-              user: {
-                status: UserStatus.ACTIVE,
-                roles: { some: { role: Role.OSM } },
-              },
+              ...eligibleOsmRelationshipWhere,
             },
             select: { userId: true },
           });
@@ -842,17 +834,6 @@ export async function listHospitalPatientServiceRequests(
               select: {
                 hospitalCode: true,
                 name: true,
-                osmHospitalRelationships: {
-                  where: {
-                    status: MembershipStatus.ACTIVE,
-                    user: { status: UserStatus.ACTIVE, roles: { some: { role: Role.OSM } } },
-                  },
-                  orderBy: { user: { person: { givenName: "asc" } } },
-                  select: {
-                    userId: true,
-                    user: { select: { person: { select: { givenName: true, familyName: true } } } },
-                  },
-                },
               },
             },
           },
@@ -869,6 +850,19 @@ export async function listHospitalPatientServiceRequests(
 
     const visible = requests.slice(0, HOSPITAL_REQUEST_PAGE_SIZE);
     const last = visible.at(-1);
+    // At most two people per visible request: the preferred and the current อสม., never the Hospital roster.
+    const osmPairs = visible.flatMap((request) =>
+      [request.preferredOsmUserId, request.relationship.osmAssignments[0]?.osmUserId ?? null]
+        .filter((userId): userId is string => userId !== null)
+        .map((userId) => ({ userId, hospitalId: request.hospitalId })));
+    const eligibleOsm = osmPairs.length === 0 ? [] : await database.osmHospitalRelationship.findMany({
+      where: { AND: [{ OR: osmPairs }, eligibleOsmRelationshipWhere] },
+      select: { userId: true, hospitalId: true },
+    });
+    const osmKey = (hospitalId: string, userId: string): string => `${hospitalId}:${userId}`;
+    const eligibleOsmKeys = new Set(eligibleOsm.map(({ userId, hospitalId }) => osmKey(hospitalId, userId)));
+    const isEligibleOsm = (hospitalId: string, userId: string | null): boolean =>
+      userId !== null && eligibleOsmKeys.has(osmKey(hospitalId, userId));
     return {
       group,
       after,
@@ -897,20 +891,126 @@ export async function listHospitalPatientServiceRequests(
           : null,
         preferredOsmUserId: request.preferredOsmUserId,
         currentOsmUserId: request.relationship.osmAssignments[0]?.osmUserId ?? null,
+        preferredOsmEligible: isEligibleOsm(request.hospitalId, request.preferredOsmUserId),
+        currentOsmEligible: isEligibleOsm(request.hospitalId, request.relationship.osmAssignments[0]?.osmUserId ?? null),
         currentOsmName: request.relationship.osmAssignments[0]
           ? fullName(
               request.relationship.osmAssignments[0].osmUser.person.givenName,
               request.relationship.osmAssignments[0].osmUser.person.familyName,
             )
           : null,
-        osmChoices: request.relationship.hospital.osmHospitalRelationships.map((osm) => ({
-          userId: osm.userId,
-          displayName: fullName(osm.user.person.givenName, osm.user.person.familyName),
-        })),
         rejectionReason: request.rejectionReason,
         createdAt: request.createdAt,
       })),
     };
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+/** An ACTIVE อสม. of an ACTIVE Hospital: the one rule for offering and accepting a preferred or visiting อสม. */
+const eligibleOsmRelationshipWhere = {
+  status: MembershipStatus.ACTIVE,
+  hospital: { status: HospitalStatus.ACTIVE },
+  user: { status: UserStatus.ACTIVE, roles: { some: { role: Role.OSM } } },
+} satisfies Prisma.OsmHospitalRelationshipWhereInput;
+
+export type ServiceRequestOsmChoicePage<T> = PageNumberPosition & { items: T[] };
+
+/**
+ * SR-D2: one page of the request's Hospital อสม., by name, for the confirm dialog. Only a reviewer of the request's
+ * Hospital may search; confirmPatientServiceRequest re-validates the chosen อสม. when it books.
+ */
+export async function searchServiceRequestOsmCandidates(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientServiceRequestDependencies = {},
+): Promise<ServiceRequestOsmChoicePage<{ userId: string; displayName: string }>> {
+  const parsed = serviceRequestOsmSearchSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("OSM search is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const request = await database.patientServiceRequest.findUnique({
+      where: { id: parsed.data.requestId, relationship: { is: activePatientHospitalRelationshipWhere } },
+      select: { hospitalId: true },
+    });
+
+    if (!request) {
+      throw new NotFoundError();
+    }
+
+    assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.review, request.hospitalId);
+    await assertPersistedHospitalReviewer(database, actor.userId, request.hospitalId);
+
+    const { candidates, ...position } = await searchEligibleOsmCandidatePage(database, {
+      hospitalId: request.hospitalId,
+      value: parsed.data.value,
+      page: parsed.data.page,
+      pageSize: ASSIGNEE_SEARCH_PAGE_SIZE,
+    });
+    return { ...position, items: candidates.map(({ userId, displayName }) => ({ userId, displayName })) };
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+/**
+ * SR-D3: one page of the Hospital's other ACTIVE อสม., by name, for the patient's own request form. Only the patient
+ * of an active care relationship with an ACTIVE Hospital may search it; the assigned อสม. is offered separately.
+ */
+export async function searchOwnServiceRequestOsmChoices(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientServiceRequestDependencies = {},
+): Promise<ServiceRequestOsmChoicePage<{ relationshipId: string; displayName: string }>> {
+  const parsed = ownServiceRequestOsmSearchSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ValidationError("OSM search is invalid");
+  }
+
+  assertPolicy(actor, PATIENT_SERVICE_REQUEST_CAPABILITIES.create);
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    const database = getDatabase(dependencies);
+    const patient = await assertPersistedPatient(database, actor);
+    const relationship = await database.patientHospitalRelationship.findFirst({
+      where: {
+        id: parsed.data.relationshipId,
+        ...activePatientHospitalRelationshipWhere,
+        patientProfile: { personId: patient.personId },
+        hospital: { status: HospitalStatus.ACTIVE },
+      },
+      select: {
+        hospitalId: true,
+        osmAssignments: { where: { endedAt: null }, orderBy: { createdAt: "desc" }, take: 1, select: { osmUserId: true } },
+      },
+    });
+
+    if (!relationship) {
+      throw new NotFoundError();
+    }
+
+    const assignedOsmUserId = relationship.osmAssignments[0]?.osmUserId;
+    const { candidates, ...position } = await searchEligibleOsmCandidatePage(database, {
+      hospitalId: relationship.hospitalId,
+      value: parsed.data.value,
+      excludeUserIds: assignedOsmUserId ? [assignedOsmUserId] : [],
+      page: parsed.data.page,
+      pageSize: ASSIGNEE_SEARCH_PAGE_SIZE,
+    });
+    // Names only: a patient never receives another อสม.'s contact phone.
+    return { ...position, items: candidates.map(({ osmRelationshipId, displayName }) => ({ relationshipId: osmRelationshipId, displayName })) };
   } catch (error: unknown) {
     throw normalizeDatabaseError(error);
   }

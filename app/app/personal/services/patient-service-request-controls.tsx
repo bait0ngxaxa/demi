@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
+import { AssigneeSearchPicker, type AssigneeOption } from "@/components/assignee/assignee-search-picker";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
@@ -26,14 +27,17 @@ import {
 } from "@/modules/patient-service-requests/transport/action-state";
 import {
   createPatientServiceRequestAction,
+  searchOwnServiceRequestOsmChoicesAction,
   withdrawOwnPatientServiceRequestAction,
 } from "@/modules/patient-service-requests/transport/server-actions";
 
-type PatientOsmOption = {
+/** SR-D3: the patient's assigned อสม. (by their Hospital relationship id), offered first. */
+type PatientAssignedOsm = {
   relationshipId: string;
   displayName: string;
-  assigned: boolean;
 };
+
+const NO_PREFERRED_OSM = "ไม่ระบุ — ให้โรงพยาบาลจัดให้";
 
 const SLOT_OPTIONS: readonly PatientServiceRequestSlot[] = ["MORNING", "AFTERNOON", "ANY"];
 
@@ -47,7 +51,7 @@ export function PatientServiceRequestForm({
   relationshipId,
   services,
   openServiceCodes = [],
-  osmChoices,
+  assignedOsm,
   preferredDateBounds,
 }: {
   relationshipId: string;
@@ -55,15 +59,29 @@ export function PatientServiceRequestForm({
   services: readonly PatientServiceCode[];
   /** Services with a PENDING or APPROVED request at this Hospital. */
   openServiceCodes?: readonly PatientServiceCode[];
-  osmChoices: readonly PatientOsmOption[];
+  assignedOsm: PatientAssignedOsm | null;
   preferredDateBounds: { min: string; max: string };
 }): React.JSX.Element {
+  const assignedOption: AssigneeOption | null = assignedOsm
+    ? { id: assignedOsm.relationshipId, displayName: assignedOsm.displayName }
+    : null;
+  // The assigned อสม. is preselected, as before; the Hospital's other อสม. are searched on the server.
+  const [preferredOsm, setPreferredOsm] = useState<AssigneeOption | null>(assignedOption);
+  const pickerFormId = `${useId()}-osm-picker`;
   const open = new Set(openServiceCodes);
   const [state, action, pending, unknownOutcome] = useMutationActionState(
     createPatientServiceRequestAction,
     initialPatientServiceMutationActionState,
   );
   const formRef = useRef<HTMLFormElement>(null);
+  // A new successful result resets the chosen อสม. with the rest of the form (adjusted while rendering).
+  const [resetForState, setResetForState] = useState(state);
+  if (resetForState !== state) {
+    setResetForState(state);
+    if (state.status === "SUCCESS") {
+      setPreferredOsm(assignedOption);
+    }
+  }
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
@@ -119,22 +137,23 @@ export function PatientServiceRequestForm({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-text" htmlFor={`preferred-osm-${relationshipId}`}>
+        <p className="block text-sm font-semibold text-text" id={`preferred-osm-${relationshipId}`}>
           อสม.ที่ต้องการ <span className="font-normal text-text-muted">(ไม่บังคับ)</span>
-        </label>
-        <Select
-          defaultValue={osmChoices.find((osm) => osm.assigned)?.relationshipId ?? ""}
+        </p>
+        <input name="preferredOsmRelationshipId" readOnly type="hidden" value={preferredOsm?.id ?? ""} />
+        <AssigneeSearchPicker
           disabled={pending || unknownOutcome}
-          id={`preferred-osm-${relationshipId}`}
-          name="preferredOsmRelationshipId"
-        >
-          <option value="">ไม่ระบุ — ให้โรงพยาบาลจัดให้</option>
-          {osmChoices.map((osm) => (
-            <option key={osm.relationshipId} value={osm.relationshipId}>
-              {osm.assigned ? `${osm.displayName} (อสม. ผู้ดูแลของคุณ)` : osm.displayName}
-            </option>
-          ))}
-        </Select>
+          formId={pickerFormId}
+          hospitalId={relationshipId}
+          inputName={`preferred-osm-${relationshipId}`}
+          noneOption={NO_PREFERRED_OSM}
+          onSelect={setPreferredOsm}
+          pinned={assignedOption ? { option: assignedOption, label: "อสม. ผู้ดูแลของคุณ" } : null}
+          search={(query, page) => searchOwnServiceRequestOsmChoicesAction(relationshipId, query, page)}
+          searchLabel="ค้นหา อสม. ท่านอื่นของโรงพยาบาล"
+          selected={preferredOsm}
+          variant="osm"
+        />
         <p className="text-sm leading-6 text-text-muted">
           โรงพยาบาลเป็นผู้ยืนยัน อสม. ที่ไปเยี่ยม การเลือก อสม. ท่านอื่นเป็นการเยี่ยมครั้งนี้เท่านั้น ไม่เปลี่ยนผู้ดูแลของคุณ
         </p>

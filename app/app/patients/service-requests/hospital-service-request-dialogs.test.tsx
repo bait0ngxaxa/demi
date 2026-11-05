@@ -9,11 +9,18 @@ import type { HospitalPatientServiceRequestPage, HospitalPatientServiceRequestVi
 const serverActions = vi.hoisted(() => ({
   confirm: vi.fn(),
   reject: vi.fn(),
+  // SR-D2: the confirm dialog searches the request's Hospital อสม. on the server; the current one is pinned.
+  searchOsm: vi.fn(async () => ({
+    status: "OK",
+    items: [{ id: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." }],
+    page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+  })),
 }));
 
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   confirmPatientServiceRequestAction: serverActions.confirm,
   rejectPatientServiceRequestAction: serverActions.reject,
+  searchServiceRequestOsmCandidatesAction: serverActions.searchOsm,
 }));
 
 import { HospitalPatientServiceRequestsWorkspace } from "./hospital-service-requests-workspace";
@@ -32,10 +39,8 @@ const request: HospitalPatientServiceRequestView = {
   preferredOsmUserId: "77777777-7777-4777-8777-777777777777",
   currentOsmUserId: "99999999-9999-4999-8999-999999999999",
   currentOsmName: "สมศรี อสม.",
-  osmChoices: [
-    { userId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." },
-    { userId: "99999999-9999-4999-8999-999999999999", displayName: "สมศรี อสม." },
-  ],
+  preferredOsmEligible: true,
+  currentOsmEligible: true,
   preferredDate: "2026-11-02",
   preferredSlot: "AFTERNOON",
   note: "สะดวกหลังบ่ายสอง",
@@ -177,7 +182,11 @@ describe("Hospital service request decision dialogs", () => {
 
     const dialog = container?.querySelector("dialog");
     if (!dialog) throw new Error("Missing confirmation dialog");
-    const osm = dialog.querySelector<HTMLSelectElement>(`#confirm-osm-${request.requestId}`);
+    await settle();
+    expect(serverActions.searchOsm).toHaveBeenCalledWith(request.requestId, "", 1);
+    const osm = dialog.querySelector<HTMLInputElement>('input[name="osmUserId"]');
+    const osmRadio = (userId: string | null) =>
+      dialog.querySelector<HTMLInputElement>(`input[name="osm-candidate-${request.requestId}"][value="${userId}"]`);
     const dateTime = dialog.querySelector<HTMLInputElement>(`#confirm-at-${request.requestId}`);
     const duration = dialog.querySelector<HTMLInputElement>(`#confirm-duration-${request.requestId}`);
     const location = dialog.querySelector<HTMLInputElement>(`#confirm-location-${request.requestId}`);
@@ -186,16 +195,16 @@ describe("Hospital service request decision dialogs", () => {
     expect(osm.value).toBe(request.preferredOsmUserId);
     expect(dateTime.value).toBe("2026-11-02T13:00");
     expect(dateTime.required).toBe(true);
-    expect(osm.required).toBe(true);
+    expect(osmRadio(request.preferredOsmUserId)?.checked).toBe(true);
+    expect(dialog.textContent).toContain("ผู้ดูแลปัจจุบัน · สมศรี อสม.");
     expect(duration.value).toBe("30");
     expect(getForm(`confirm-request-${request.requestId}`).checkValidity()).toBe(true);
 
-    act(() => {
-      typeValue(osm, request.currentOsmUserId ?? "");
-    });
+    act(() => osmRadio(request.currentOsmUserId)?.click());
+    expect(osm.value).toBe(request.currentOsmUserId);
     expect(dialog.textContent).not.toContain("อสม. ที่เลือกจะปฏิบัติงานเฉพาะการเยี่ยมครั้งนี้");
     act(() => {
-      typeValue(osm, request.preferredOsmUserId ?? "");
+      osmRadio(request.preferredOsmUserId)?.click();
       typeValue(dateTime, "2026-11-03T15:45");
       typeValue(duration, "45");
       typeValue(location, "อาคารชุมชน");

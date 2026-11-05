@@ -21,6 +21,7 @@ const serverActions = vi.hoisted(() => ({
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: serverActions.create,
   withdrawOwnPatientServiceRequestAction: serverActions.withdraw,
+  searchOwnServiceRequestOsmChoicesAction: vi.fn(),
 }));
 
 import { PatientServiceRequestForm, PatientServiceRequestHistoryItem } from "./patient-service-request-controls";
@@ -124,7 +125,7 @@ describe("Patient service request interactions", () => {
     const markup = renderToStaticMarkup(createElement(PatientServiceRequestForm, {
       relationshipId: pendingRequest.relationshipId,
       services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
-      osmChoices: [{ relationshipId: "osm-1", displayName: "สมชาย อสม.", assigned: true }],
+      assignedOsm: { relationshipId: "osm-1", displayName: "สมชาย อสม." },
       preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
     }));
 
@@ -144,7 +145,7 @@ describe("Patient service request interactions", () => {
       relationshipId: pendingRequest.relationshipId,
       services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
       openServiceCodes: ["FOLLOW_UP"],
-      osmChoices: [],
+      assignedOsm: null,
       preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
     }));
 

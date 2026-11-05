@@ -1,6 +1,8 @@
 import { PatientServiceCode, PatientServiceRequestSlot } from "@prisma/client";
 import { z } from "zod";
 
+import { pageNumberSchema } from "@/shared/pagination/page-number";
+import { assigneeSearchTermSchema } from "@/shared/search/assignee-search";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
 import {
@@ -86,3 +88,17 @@ export const hospitalServiceRequestListSchema = z.object({
 });
 
 export type HospitalServiceRequestListInput = z.infer<typeof hospitalServiceRequestListSchema>;
+
+/** SR-D2: one page of the request's Hospital อสม. for the confirm dialog. */
+export const serviceRequestOsmSearchSchema = z.object({
+  requestId: z.uuid(),
+  value: assigneeSearchTermSchema,
+  page: pageNumberSchema,
+}).strict();
+
+/** SR-D3: one page of the Hospital อสม. for the patient's own request form. */
+export const ownServiceRequestOsmSearchSchema = z.object({
+  relationshipId: z.uuid(),
+  value: assigneeSearchTermSchema,
+  page: pageNumberSchema,
+}).strict();

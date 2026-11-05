@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 
+import { AssigneeSearchPicker, type AssigneeOption } from "@/components/assignee/assignee-search-picker";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
@@ -16,6 +17,7 @@ import {
 } from "@/modules/patient-service-requests/presentation/patient-service-request-presentation";
 import type { HospitalPatientServiceRequestView } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import type { PatientServiceMutationActionState } from "@/modules/patient-service-requests/transport/action-state";
+import { searchServiceRequestOsmCandidatesAction } from "@/modules/patient-service-requests/transport/server-actions";
 
 const inputClassName = "min-h-11 w-full rounded-control border border-border bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
 const labelClassName = "block space-y-1 text-sm font-semibold text-text";
@@ -63,14 +65,19 @@ export function HospitalPatientServiceRequestReviewControls({
   onReviewOpen: () => void;
   returnFocusToFeedback: () => HTMLElement | null;
 }): React.JSX.Element | null {
-  const { requestId, status, osmChoices } = request;
+  const { requestId, status } = request;
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
-  const eligible = (userId: string | null) => osmChoices.some((osm) => osm.userId === userId);
-  const [osmUserId, setOsmUserId] = useState(
-    eligible(request.preferredOsmUserId)
-      ? request.preferredOsmUserId ?? ""
-      : eligible(request.currentOsmUserId) ? request.currentOsmUserId ?? "" : "",
+  const currentOsm: AssigneeOption | null = request.currentOsmEligible && request.currentOsmUserId
+    ? { id: request.currentOsmUserId, displayName: request.currentOsmName ?? "อสม. ผู้ดูแล" }
+    : null;
+  // The patient's preferred อสม. first, then the current one, while they are still ACTIVE อสม. of the Hospital.
+  const [selectedOsm, setSelectedOsm] = useState<AssigneeOption | null>(
+    request.preferredOsmEligible && request.preferredOsmUserId
+      ? { id: request.preferredOsmUserId, displayName: request.preferredOsmName ?? "อสม. ที่ผู้ป่วยต้องการ" }
+      : currentOsm,
   );
+  const osmUserId = selectedOsm?.id ?? "";
+  const pickerFormId = `${useId()}-osm-picker`;
   const [scheduledAtLocal, setScheduledAtLocal] = useState(
     preferredSlotDateTimeInput(request.preferredDate, request.preferredSlot),
   );
@@ -78,7 +85,6 @@ export function HospitalPatientServiceRequestReviewControls({
   const [locationDetail, setLocationDetail] = useState("");
   const [appointmentNote, setAppointmentNote] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const osmRef = useRef<HTMLSelectElement>(null);
   const dateTimeRef = useRef<HTMLInputElement>(null);
   const rejectionReasonRef = useRef<HTMLTextAreaElement>(null);
 
@@ -103,7 +109,7 @@ export function HospitalPatientServiceRequestReviewControls({
   const preferredVisit = request.preferredDate && request.preferredSlot
     ? `${formatPatientServicePreferredDate(request.preferredDate)} · ${patientServiceRequestSlotLabel(request.preferredSlot)}`
     : "ไม่ระบุ";
-  const selectedOsmName = osmChoices.find(({ userId }) => userId === osmUserId)?.displayName ?? "ยังไม่ได้เลือก";
+  const selectedOsmName = selectedOsm?.displayName ?? "ยังไม่ได้เลือก";
 
   function openDialog(mode: DialogMode): void {
     onReviewOpen();
@@ -130,12 +136,12 @@ export function HospitalPatientServiceRequestReviewControls({
               <Button disabled={disabled} form={`confirm-request-${requestId}`} onClick={() => setDialogMode(null)} size="compact" type="button" variant="secondary">
                 ยกเลิก
               </Button>
-              <Button disabled={disabled || !osmUserId || !scheduledAtLocal || osmChoices.length === 0} form={`confirm-request-${requestId}`} size="compact" type="submit">
+              <Button disabled={disabled || !osmUserId || !scheduledAtLocal} form={`confirm-request-${requestId}`} size="compact" type="submit">
                 ยืนยันนัดและสร้างนัดหมาย
               </Button>
             </div>
           )}
-          initialFocusRef={osmRef}
+          initialFocusRef={dateTimeRef}
           onRequestClose={() => setDialogMode(null)}
           returnFocusTarget={returnFocusToFeedback}
           size="fullscreen"
@@ -156,26 +162,22 @@ export function HospitalPatientServiceRequestReviewControls({
               <input name="requestId" type="hidden" value={requestId} />
               <input name="submissionNonce" type="hidden" value={submissionNonce} />
               <input name="scheduledAt" readOnly type="hidden" value={bangkokIso(scheduledAtLocal)} />
-              <label className={labelClassName} htmlFor={`confirm-osm-${requestId}`}>
-                <span>อสม. ผู้ไปเยี่ยม</span>
-                <select
-                  className={inputClassName}
-                  disabled={disabled || osmChoices.length === 0}
-                  id={`confirm-osm-${requestId}`}
-                  name="osmUserId"
-                  onChange={(event) => setOsmUserId(event.currentTarget.value)}
-                  ref={osmRef}
-                  required
-                  value={osmUserId}
-                >
-                  <option value="">เลือก อสม.</option>
-                  {osmChoices.map((osm) => (
-                    <option key={osm.userId} value={osm.userId}>
-                      {osm.userId === request.currentOsmUserId ? `${osm.displayName} (ผู้ดูแลปัจจุบัน)` : osm.displayName}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <input name="osmUserId" readOnly type="hidden" value={osmUserId} />
+              <fieldset className="min-w-0 sm:col-span-2">
+                <legend className="text-sm font-semibold text-text">อสม. ผู้ไปเยี่ยม</legend>
+                <AssigneeSearchPicker
+                  disabled={disabled}
+                  excludeUserId={currentOsm?.id ?? null}
+                  formId={pickerFormId}
+                  hospitalId={request.hospitalId}
+                  inputName={`osm-candidate-${requestId}`}
+                  onSelect={setSelectedOsm}
+                  pinned={currentOsm ? { option: currentOsm, label: "ผู้ดูแลปัจจุบัน" } : null}
+                  search={(query, page) => searchServiceRequestOsmCandidatesAction(requestId, query, page)}
+                  selected={selectedOsm}
+                  variant="osm"
+                />
+              </fieldset>
               <label className={labelClassName} htmlFor={`confirm-at-${requestId}`}>
                 <span>วันและเวลานัด (เวลาไทย)</span>
                 <input
@@ -195,7 +197,6 @@ export function HospitalPatientServiceRequestReviewControls({
                   <p className="mt-1">ผู้ดูแลปัจจุบัน{request.currentOsmName ? ` (${request.currentOsmName})` : ""} ยังคงเดิม ระบบจะไม่เปลี่ยนผู้ดูแลของผู้ป่วย</p>
                 </Alert>
               ) : null}
-              {osmChoices.length === 0 ? <p className="text-sm text-text-muted sm:col-span-2">ยังไม่มี อสม. ที่ใช้งานได้ในโรงพยาบาลนี้ จึงยังยืนยันนัดไม่ได้</p> : null}
               <dl className="grid gap-3 rounded-panel border border-border bg-surface-muted p-4 sm:col-span-2 sm:grid-cols-2">
                 <div><dt className="text-sm text-text-muted">อสม. ที่จะไปเยี่ยม</dt><dd aria-live="polite" className="mt-1 text-text">{selectedOsmName}</dd></div>
                 <div><dt className="text-sm text-text-muted">วันและเวลานัดที่เลือก</dt><dd aria-live="polite" className="mt-1 text-text">{scheduledAtLocal ? `${scheduledAtLocal.replace("T", " ")} น. (เวลาไทย)` : "ยังไม่ได้ระบุ"}</dd></div>

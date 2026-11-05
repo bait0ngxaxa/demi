@@ -12,6 +12,9 @@ vi.mock("react", async (original) => ({
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   confirmPatientServiceRequestAction: vi.fn(),
   rejectPatientServiceRequestAction: vi.fn(),
+  searchServiceRequestOsmCandidatesAction: vi.fn().mockResolvedValue({
+    status: "OK", items: [], page: 1, totalPages: 1, hasPreviousPage: false, hasNextPage: false,
+  }),
 }));
 
 import { HospitalPatientServiceRequestsWorkspace } from "./hospital-service-requests-workspace";
@@ -31,10 +34,8 @@ const request: HospitalPatientServiceRequestView = {
   preferredOsmUserId: "77777777-7777-4777-8777-777777777777",
   currentOsmUserId: "99999999-9999-4999-8999-999999999999",
   currentOsmName: "สมศรี อสม.",
-  osmChoices: [
-    { userId: "77777777-7777-4777-8777-777777777777", displayName: "สมชาย อสม." },
-    { userId: "99999999-9999-4999-8999-999999999999", displayName: "สมศรี อสม." },
-  ],
+  preferredOsmEligible: true,
+  currentOsmEligible: true,
   preferredDate: "2026-11-02",
   preferredSlot: "AFTERNOON",
   note: "สะดวกหลังบ่ายสอง",

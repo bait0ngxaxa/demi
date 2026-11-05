@@ -80,7 +80,7 @@ describe("SR-C appointment surfaces", () => {
     document.body.append(container);
     const root = createRoot(container);
     try {
-      await act(async () => root.render(<AppointmentForm mode="create" submissionNonce="nonce" relationshipId="relationship" patient={{ patientHospitalRelationshipId: "relationship", displayName: "ผู้ป่วย", hospitalNumber: null, hospital: { id: "hospital", name: "โรงพยาบาล" } }} responsibleMembers={[]} currentOsmAssignee={null} osmCandidates={[]} />));
+      await act(async () => root.render(<AppointmentForm mode="create" submissionNonce="nonce" relationshipId="relationship" patient={{ patientHospitalRelationshipId: "relationship", displayName: "ผู้ป่วย", hospitalNumber: null, hospital: { id: "hospital", name: "โรงพยาบาล" } }} selectedResponsible={null} currentOsmAssignee={null} selectedOsm={null} />));
       const service = container.querySelector<HTMLSelectElement>("#appointment-service");
       const type = container.querySelector<HTMLSelectElement>("#appointment-type");
       if (!service || !type) throw new Error("Missing booking controls");
@@ -106,7 +106,7 @@ describe("SR-C appointment surfaces", () => {
     });
     const markup = renderToStaticMarkup(<PatientServicesWorkspace preferredDateBounds={{ min: "2026-11-01", max: "2026-12-30" }} relationships={[{
       relationshipId: "relationship", hospitalName: "โรงพยาบาล", hospitalActive: true, careEnded: false,
-      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"], osmChoices: [],
+      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"], assignedOsm: null,
       requests: [request("REJECTED"), request("STARTED"), request("WITHDRAWN"), request("PENDING"), request("APPROVED")],
     }]} />);
     for (const text of ["รอโรงพยาบาลยืนยัน", "ยืนยันนัดแล้ว", "ไม่อนุมัติ", "ไม่มีเจ้าหน้าที่ว่าง", "ถอนคำขอแล้ว"]) expect(markup).toContain(text);
