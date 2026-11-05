@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { LINE_RICH_MENU_BY_KEY, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
+import { LINE_RICH_MENU_BY_KEY, LINE_RICH_MENU_CATALOG, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { createLineRichMenuPayload, LineMessagingClient } from "./line-messaging-client";
 
 describe("DEMI LINE Messaging API boundary", () => {
@@ -26,6 +26,78 @@ describe("DEMI LINE Messaging API boundary", () => {
     ]);
     expect(payload.size).toEqual({ width: 2500, height: 1686 });
     expect(payload.selected).toBe(true);
+  });
+
+  it("constructs one correctly mapped, non-overlapping LINE area per original action", () => {
+    for (const menu of LINE_RICH_MENU_CATALOG) {
+      const payload = createLineRichMenuPayload(menu);
+      expect(payload.areas, menu.key).toHaveLength(menu.actions.length);
+      expect(payload.areas.map(({ action }) => action.label), menu.key).toEqual(menu.actions.map(({ label }) => label));
+
+      const roleSet = menu.key.startsWith("CHOOSER_")
+        ? menu.key.slice("CHOOSER_".length).split("_")
+        : menu.key.split("_").slice(1);
+      for (const [index, catalogAction] of menu.actions.entries()) {
+        const area = payload.areas[index];
+        if (!area) throw new Error(`Missing constructed LINE area ${index} for ${menu.key}`);
+        const action = area.action;
+        expect(action.type, `${menu.key} action ${index}`).toBe(catalogAction.type);
+        expect(action.label, `${menu.key} action ${index}`).toBe(catalogAction.label);
+
+        if (catalogAction.type === "message") {
+          expect(action).toEqual({ type: "message", label: catalogAction.label, text: catalogAction.text });
+        } else if (catalogAction.type === "richmenuswitch") {
+          const targetKey = roleSet.length === 1
+            ? `${catalogAction.role}_DIRECT`
+            : `${catalogAction.role}_${roleSet.join("_")}`;
+          const target = LINE_RICH_MENU_BY_KEY.get(targetKey);
+          if (!target) throw new Error(`Missing workspace target ${targetKey}`);
+          expect(action).toEqual({
+            type: "richmenuswitch",
+            label: catalogAction.label,
+            richMenuAliasId: target.alias,
+            data: LINE_WORKSPACE_SWITCH_MARKER,
+          });
+        } else if (catalogAction.intent === "MANAGE_ACCOUNT") {
+          expect(action).toEqual({
+            type: "uri",
+            label: catalogAction.label,
+            uri: "https://liff.line.me/1234567890-AbCdEfGh",
+          });
+          expect(area.bounds).toEqual({ x: 80, y: 1366, width: 2340, height: 320 });
+        } else if (catalogAction.intent === "LINK_ACCOUNT") {
+          expect(action).toEqual({
+            type: "uri",
+            label: catalogAction.label,
+            uri: "https://liff.line.me/1234567890-AbCdEfGh",
+          });
+        }
+
+        const { x, y, width, height } = area.bounds;
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(width).toBeGreaterThan(0);
+        expect(height).toBeGreaterThan(0);
+        expect(x + width).toBeLessThanOrEqual(2500);
+        expect(y + height).toBeLessThanOrEqual(1686);
+        for (const previous of payload.areas.slice(0, index)) {
+          const overlaps = x < previous.bounds.x + previous.bounds.width &&
+            x + width > previous.bounds.x &&
+            y < previous.bounds.y + previous.bounds.height &&
+            y + height > previous.bounds.y;
+          expect(overlaps, `${menu.key} area ${index} overlaps an earlier LINE area`).toBe(false);
+        }
+      }
+    }
+
+    const unlinked = LINE_RICH_MENU_BY_KEY.get("UNLINKED");
+    const ineligible = LINE_RICH_MENU_BY_KEY.get("LINKED_INELIGIBLE");
+    if (!unlinked || !ineligible) throw new Error("Expected both special account variants");
+    expect(createLineRichMenuPayload(unlinked).areas).toHaveLength(1);
+    const ineligiblePayload = createLineRichMenuPayload(ineligible);
+    expect(ineligiblePayload.areas).toHaveLength(1);
+    expect(ineligiblePayload.areas[0]?.action).toMatchObject({ type: "uri", label: "จัดการบัญชี" });
+    expect(ineligiblePayload.areas[0]?.bounds).toEqual({ x: 80, y: 1366, width: 2340, height: 320 });
   });
 
   it.each(["PATIENT_DIRECT", "PATIENT_PATIENT_OSM", "PATIENT_PATIENT_HOSPITAL", "PATIENT_PATIENT_OSM_HOSPITAL"])(

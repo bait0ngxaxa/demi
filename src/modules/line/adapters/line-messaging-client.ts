@@ -7,7 +7,7 @@ import { getLineMessagingEnv, getLineMessagingPushEnv } from "@/lib/env/server";
 import { LineFailure } from "../domain/line-errors";
 import type { LineMenuDefinition } from "../rich-menu/catalog";
 import { getLineMenuDefinition, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
-import { getLineMenuAreaBounds } from "../rich-menu/layout";
+import { getLineMenuLayout } from "../rich-menu/layout";
 import { buildLineIntentUrl } from "../services/line-deep-link-builder";
 
 const richMenuSchema = z.object({ richMenuId: z.string() }).passthrough();
@@ -56,11 +56,11 @@ export function createLineRichMenuPayload(
   menu: LineMenuDefinition,
   menuName = `DEMI ${menu.key}`,
 ): LineRichMenuPayload {
-  const boxes = getLineMenuAreaBounds(menu);
+  const layout = getLineMenuLayout(menu);
   const roleSet = menu.key.startsWith("CHOOSER_")
     ? menu.key.slice("CHOOSER_".length).split("_")
     : menu.key.split("_").slice(1);
-  const areas = menu.actions.map((action, index): LineRichMenuArea => {
+  const areas = layout.actionAreas.map(({ action, bounds }): LineRichMenuArea => {
     let providerAction: LineRichMenuAction;
     if (action.type === "uri") {
       providerAction = { type: "uri", label: action.label, uri: buildLineIntentUrl(action.intent) };
@@ -71,7 +71,7 @@ export function createLineRichMenuPayload(
       const targetMenu = getLineMenuDefinition(targetKey);
       providerAction = { type: "richmenuswitch", label: action.label, richMenuAliasId: targetMenu.alias, data: LINE_WORKSPACE_SWITCH_MARKER };
     }
-    return { bounds: boxes[index], action: providerAction };
+    return { bounds, action: providerAction };
   });
   return { size: { width: 2500, height: 1686 }, selected: true, name: menuName, chatBarText: "เมนู DEMI", areas };
 }

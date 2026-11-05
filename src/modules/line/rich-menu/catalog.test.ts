@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT } from "../domain/line-reactive-marker";
 import { LINE_RICH_MENU_CATALOG, LINE_RICH_MENU_BY_KEY } from "./catalog";
-import { getLineMenuAreaBounds } from "./layout";
+import { getLineMenuLayout } from "./layout";
 
 const roleSets = [
   ["PATIENT", "OSM"],
@@ -121,6 +121,36 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(JSON.stringify(LINE_RICH_MENU_CATALOG)).not.toMatch(/userId|patientId|hospitalId|national|hn|token|session|clinical/iu);
   });
 
+  it("preserves every catalog key and keeps Manage Account as one ordinary utility action", () => {
+    expect(LINE_RICH_MENU_CATALOG.map(({ key }) => key)).toEqual([
+      "UNLINKED",
+      "LINKED_INELIGIBLE",
+      "CHOOSER_PATIENT_OSM",
+      "CHOOSER_PATIENT_HOSPITAL",
+      "CHOOSER_OSM_HOSPITAL",
+      "CHOOSER_PATIENT_OSM_HOSPITAL",
+      "PATIENT_DIRECT",
+      "OSM_DIRECT",
+      "HOSPITAL_DIRECT",
+      "PATIENT_PATIENT_OSM",
+      "OSM_PATIENT_OSM",
+      "PATIENT_PATIENT_HOSPITAL",
+      "HOSPITAL_PATIENT_HOSPITAL",
+      "OSM_OSM_HOSPITAL",
+      "HOSPITAL_OSM_HOSPITAL",
+      "PATIENT_PATIENT_OSM_HOSPITAL",
+      "OSM_PATIENT_OSM_HOSPITAL",
+      "HOSPITAL_PATIENT_OSM_HOSPITAL",
+    ]);
+
+    for (const menu of LINE_RICH_MENU_CATALOG) {
+      const accountActions = menu.actions.filter(
+        (action) => action.type === "uri" && action.intent === "MANAGE_ACCOUNT",
+      );
+      expect(accountActions, menu.key).toHaveLength(menu.key === "UNLINKED" ? 0 : 1);
+    }
+  });
+
   it("adds the exact appointment message action only to the four Patient presentation menus", () => {
     const eligibleKeys = LINE_RICH_MENU_CATALOG
       .filter((menu) => menu.actions.some((action) => action.type === "message"))
@@ -144,29 +174,37 @@ describe("DEMI shared Rich Menu catalog", () => {
     expect(LINE_RICH_MENU_CATALOG.every(({ context }) => !context.includes("พื้นที่ใช้งาน"))).toBe(true);
   });
 
-  it("keeps each visible action label in a positive region inside the Rich Menu canvas", () => {
+  it("places each catalog action once and keeps Manage Account out of the primary grid", () => {
     for (const menu of LINE_RICH_MENU_CATALOG) {
-      const bounds = getLineMenuAreaBounds(menu);
-      expect(bounds).toHaveLength(menu.actions.length);
+      const layout = getLineMenuLayout(menu);
+      expect(layout.actionAreas).toHaveLength(menu.actions.length);
+      expect(layout.actionAreas.map(({ action }) => action)).toEqual(menu.actions);
 
-      for (const [index, action] of menu.actions.entries()) {
-        const region = bounds[index];
+      const primary = layout.actionAreas.filter(({ region }) => region === "primary");
+      const utility = layout.actionAreas.filter(({ region }) => region === "utility");
+      expect(primary.some(({ action }) => action.type === "uri" && action.intent === "MANAGE_ACCOUNT")).toBe(false);
+      expect(utility.map(({ action }) => action)).toEqual(menu.actions.filter(
+        (action) => action.type === "uri" && action.intent === "MANAGE_ACCOUNT",
+      ));
+      expect(utility).toHaveLength(menu.key === "UNLINKED" ? 0 : 1);
+      expect(layout.statusRegion !== null).toBe(menu.key === "LINKED_INELIGIBLE");
+
+      for (const { action, bounds } of layout.actionAreas) {
         expect(action.label.trim().length).toBeGreaterThan(0);
-        if (!region) throw new Error(`Missing action region for ${menu.key}`);
-        expect(region.x).toBeGreaterThanOrEqual(0);
-        expect(region.y).toBeGreaterThanOrEqual(0);
-        expect(region.width).toBeGreaterThan(0);
-        expect(region.height).toBeGreaterThan(0);
-        expect(region.x + region.width).toBeLessThanOrEqual(2500);
-        expect(region.y + region.height).toBeLessThanOrEqual(1686);
+        expect(bounds.x).toBeGreaterThanOrEqual(0);
+        expect(bounds.y).toBeGreaterThanOrEqual(0);
+        expect(bounds.width).toBeGreaterThan(0);
+        expect(bounds.height).toBeGreaterThan(0);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(2500);
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(1686);
       }
     }
   });
 
-  it("keeps every menu's tappable areas non-overlapping and integral", () => {
+  it("keeps every constructed action rectangle non-overlapping, integral, and on canvas", () => {
     for (const menu of LINE_RICH_MENU_CATALOG) {
-      const bounds = getLineMenuAreaBounds(menu);
-      for (const [firstIndex, first] of bounds.entries()) {
+      const areas = getLineMenuLayout(menu).actionAreas;
+      for (const [firstIndex, { bounds: first }] of areas.entries()) {
         expect(Number.isInteger(first.x)).toBe(true);
         expect(Number.isInteger(first.y)).toBe(true);
         expect(Number.isInteger(first.width)).toBe(true);
@@ -175,7 +213,7 @@ describe("DEMI shared Rich Menu catalog", () => {
         expect(first.y).toBeGreaterThanOrEqual(0);
         expect(first.x + first.width).toBeLessThanOrEqual(2500);
         expect(first.y + first.height).toBeLessThanOrEqual(1686);
-        for (const second of bounds.slice(firstIndex + 1)) {
+        for (const { bounds: second } of areas.slice(firstIndex + 1)) {
           const overlaps = first.x < second.x + second.width &&
             first.x + first.width > second.x &&
             first.y < second.y + second.height &&
@@ -188,18 +226,21 @@ describe("DEMI shared Rich Menu catalog", () => {
 
   it.each([
     ["UNLINKED", 1, 1],
-    ["HOSPITAL_DIRECT", 2, 1],
-    ["CHOOSER_PATIENT_OSM", 3, 1],
-    ["CHOOSER_PATIENT_OSM_HOSPITAL", 2, 2],
-    ["OSM_DIRECT", 3, 2],
+    ["HOSPITAL_DIRECT", 1, 1],
+    ["CHOOSER_PATIENT_OSM", 2, 1],
+    ["CHOOSER_PATIENT_OSM_HOSPITAL", 3, 1],
+    ["OSM_DIRECT", 2, 2],
     ["OSM_PATIENT_OSM", 3, 2],
-    ["PATIENT_DIRECT", 4, 2],
+    ["PATIENT_DIRECT", 3, 2],
     ["PATIENT_PATIENT_OSM", 4, 2],
-    ["PATIENT_PATIENT_OSM_HOSPITAL", 3, 3],
-  ] as const)("centers square cards in %s using %i columns and %i rows", (key, columns, rows) => {
+    ["PATIENT_PATIENT_OSM_HOSPITAL", 4, 2],
+  ] as const)("centers square primary cards in %s using %i columns and %i rows", (key, columns, rows) => {
     const menu = LINE_RICH_MENU_BY_KEY.get(key);
     if (!menu) throw new Error(`Missing menu ${key}`);
-    const bounds = getLineMenuAreaBounds(menu);
+    const layout = getLineMenuLayout(menu);
+    const bounds = layout.actionAreas
+      .filter(({ region }) => region === "primary")
+      .map(({ bounds: area }) => area);
     expect(new Set(bounds.map(({ y }) => y)).size).toBe(rows);
     expect(bounds.filter(({ y }) => y === bounds[0]?.y)).toHaveLength(columns);
     expect(new Set(bounds.map(({ width }) => width)).size).toBe(1);
@@ -207,6 +248,13 @@ describe("DEMI shared Rich Menu catalog", () => {
       expect(region.width).toBe(region.height);
       // At the smallest preview width every card remains larger than 44px.
       expect(region.width * 360 / 2500).toBeGreaterThanOrEqual(44);
+    }
+    if (menu.actions.some((action) => action.type === "uri" && action.intent === "MANAGE_ACCOUNT")) {
+      const footer = layout.actionAreas.find(({ region }) => region === "utility");
+      if (!footer) throw new Error(`Missing utility footer for ${menu.key}`);
+      expect(footer.bounds).toEqual({ x: 80, y: 1366, width: 2340, height: 320 });
+      expect(footer.bounds.height * 360 / 2500).toBeGreaterThanOrEqual(44);
+      expect(bounds.every((region) => region.y + region.height <= 1326)).toBe(true);
     }
     for (const y of new Set(bounds.map((region) => region.y))) {
       const row = bounds.filter((region) => region.y === y);
@@ -225,11 +273,11 @@ describe("DEMI shared Rich Menu catalog", () => {
     const size = (key: string): number => {
       const menu = LINE_RICH_MENU_BY_KEY.get(key);
       if (!menu) throw new Error(`Missing menu ${key}`);
-      return getLineMenuAreaBounds(menu)[0]?.width ?? 0;
+      return getLineMenuLayout(menu).actionAreas.find(({ region }) => region === "primary")?.bounds.width ?? 0;
     };
     expect(size("UNLINKED")).toBe(size("HOSPITAL_DIRECT"));
-    expect(size("HOSPITAL_DIRECT")).toBeGreaterThan(size("CHOOSER_PATIENT_OSM"));
+    expect(size("HOSPITAL_DIRECT")).toBe(size("CHOOSER_PATIENT_OSM"));
     expect(size("CHOOSER_PATIENT_OSM")).toBeGreaterThan(size("PATIENT_DIRECT"));
-    expect(size("PATIENT_DIRECT")).toBeGreaterThan(size("PATIENT_PATIENT_OSM_HOSPITAL"));
+    expect(size("PATIENT_DIRECT")).toBe(size("PATIENT_PATIENT_OSM_HOSPITAL"));
   });
 });
