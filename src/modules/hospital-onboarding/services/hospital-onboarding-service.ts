@@ -24,6 +24,8 @@ import {
   type ProvisionPasswordAuthIdentityResult,
 } from "@/modules/auth/services/password-auth-provisioning-service";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
+import { assertPasswordNotPersonal } from "@/modules/auth/domain/password-personal-info";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import {
   assertAccountCreationLegalIsCurrent,
@@ -263,8 +265,11 @@ export async function submitHospitalOnboarding(
   const parsed = hospitalOnboardingSubmissionSchema.safeParse(input);
 
   if (!parsed.success) {
+    throwIfPasswordPolicyIssue(parsed.error.issues, ["password"]);
     throw new ValidationError("Hospital onboarding data is invalid");
   }
+  // ADR-0030: a new applicant; the only personal data known is the National ID typed in this request.
+  assertPasswordNotPersonal(parsed.data.password, { nationalIds: [parsed.data.nationalId] });
 
   const database = getDatabase(dependencies);
   const hospitalCode = parsed.data.hospitalCode;

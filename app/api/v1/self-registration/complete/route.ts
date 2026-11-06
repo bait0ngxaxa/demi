@@ -1,6 +1,8 @@
 import { revalidatePath } from "next/cache";
 
 import { ApplicationError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { PasswordPolicyRejectedError } from "@/modules/auth/domain/password-policy";
+import { passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { completePublicSelfRegistration } from "@/modules/self-registration/services/self-registration-service";
 import { publicSelfRegistrationJson, readBoundedJsonBody } from "@/modules/self-registration/transport/http-response";
 import {
@@ -36,6 +38,13 @@ export async function POST(request: Request): Promise<Response> {
     if (legalError) return publicSelfRegistrationJson({ status: "ERROR", ...legalError }, 409);
     if (isLegalAcceptanceIssue(error)) {
       return publicSelfRegistrationJson({ status: "ERROR", ...legalAcceptanceRequiredError() }, 400);
+    }
+    if (error instanceof PasswordPolicyRejectedError) {
+      return publicSelfRegistrationJson({
+        status: "ERROR",
+        code: "PASSWORD_POLICY_REJECTED",
+        message: passwordPolicyMessage(error.reason),
+      }, 400);
     }
     if (error instanceof ValidationError) {
       return publicSelfRegistrationJson({ status: "ERROR", message: "กรุณาตรวจสอบชื่อและรหัสผ่านแล้วลองใหม่" }, 400);

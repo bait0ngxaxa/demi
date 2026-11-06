@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
+import { isPasswordPolicyIssueCode, PasswordPolicyRejectedError } from "@/modules/auth/domain/password-policy";
+import { passwordIssueMessage, passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 import {
@@ -291,10 +293,11 @@ export async function completePatientActivationAction(
       const field = issue.path[0];
 
       if (field === "password" && !fieldErrors.password) {
-        fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
+        fieldErrors.password = passwordIssueMessage(issue);
       }
 
-      if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
+      // The same policy issue on the confirmation is already reported on the password.
+      if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation && !isPasswordPolicyIssueCode(issue.message)) {
         fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
       }
 
@@ -317,6 +320,14 @@ export async function completePatientActivationAction(
     const legalError = mapLegalVersionError(error);
     if (legalError?.code === "LEGAL_VERSION_CHANGED") {
       return { status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: legalError.message };
+    }
+    if (error instanceof PasswordPolicyRejectedError) {
+      return {
+        status: "ERROR",
+        code: "INVALID_INPUT",
+        message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
+        fieldErrors: { password: passwordPolicyMessage(error.reason) },
+      };
     }
     return { status: "ERROR", ...mapCompletionError(error) };
   }

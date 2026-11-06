@@ -870,6 +870,42 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ authSubject: provider.replacementSubject });
   });
 
+  it("refuses a password containing the target's own National ID before any provider call and keeps the link (ADR-0030)", async () => {
+    const hospital = await createHospital();
+    const owner = await createOwner(hospital.id);
+    const target = await createTarget("patient", hospital.id);
+    const issued = await issueMediatedPasswordReset(owner, issueInput("patient", hospital.id, target.relationshipId, "ONLINE"), { database: db, now: () => now });
+    const provider = fakeProvider();
+    const personalPassword = `id${target.nationalId}`;
+
+    await expect(completeMediatedPasswordReset({
+      token: issued.token,
+      nationalId: target.nationalId,
+      newPassword: personalPassword,
+      passwordConfirmation: personalPassword,
+    }, { database: db, now: () => now, ...provider })).rejects.toMatchObject({ name: "PasswordPolicyRejectedError", reason: "PASSWORD_PERSONAL_INFO" });
+
+    expect(provider.createReplacementIdentity).not.toHaveBeenCalled();
+    expect(await db.accountRecovery.findUniqueOrThrow({ where: { id: issued.resetId } })).toMatchObject({
+      claimedAt: null,
+      completedAt: null,
+      revokedAt: null,
+      operationState: WorkforceActivationOperationState.NOT_STARTED,
+      reconciliationRequiredAt: null,
+    });
+    expect(await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.claim_rolled_back", resourceId: target.userId } })).toMatchObject({
+      metadata: { issuerUserId: owner.userId, outcome: "PASSWORD_PERSONAL_INFO" },
+    });
+
+    await completeMediatedPasswordReset({
+      token: issued.token,
+      nationalId: target.nationalId,
+      newPassword: "lanternf",
+      passwordConfirmation: "lanternf",
+    }, { database: db, now: () => now, ...provider });
+    expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ authSubject: provider.replacementSubject });
+  });
+
   it("revokes the reset and deletes the replacement when authorization is lost between claim and switch", async () => {
     const hospital = await createHospital();
     const owner = await createOwner(hospital.id);

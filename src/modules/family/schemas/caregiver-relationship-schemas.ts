@@ -97,7 +97,7 @@ export const caregiverAccountClaimResponseSchema = z.discriminatedUnion("status"
   z.object({
     status: z.literal("ERROR"),
     /** ADR-0028: a recoverable legal outcome; the screen reloads the versions or asks for the checkbox. */
-    code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED"]).optional(),
+    code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED", "PASSWORD_POLICY_REJECTED"]).optional(),
     message: z.string().min(1).max(200),
   }).strict(),
 ]);

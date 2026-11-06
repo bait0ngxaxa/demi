@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { thaiNationalIdSchema } from "@/modules/identity/schemas/identity-schemas";
 import { legalAcceptanceInputSchema, legalChannelSchema } from "@/modules/legal/schemas/legal-schemas";
 
@@ -22,8 +23,8 @@ export const selfRegistrationLookupSchema = z.object({
 export const selfRegistrationCompletionSchema = z.object({
   token: z.string().trim().min(1).max(256),
   nationalId: thaiNationalIdSchema,
-  password: z.string().min(12).max(128),
-  passwordConfirmation: z.string().min(12).max(128),
+  password: userOwnedPasswordSchema,
+  passwordConfirmation: userOwnedPasswordSchema,
   nameConfirmed: z.boolean(),
   /** LG-D4: required Terms + Privacy acceptance. ADR-0028: /register offers no consents. */
   acceptLegal: legalAcceptanceInputSchema,

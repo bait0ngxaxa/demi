@@ -46,7 +46,14 @@ function createDatabase(initial: Partial<PasswordChangeTestState> = {}): { datab
   };
   const user = {
     findUnique: vi.fn(async (args: { select?: { person?: unknown } }) => args.select?.person
-      ? { person: { identityKeyHash: "a".repeat(64) } }
+      ? {
+        person: {
+          identityKeyHash: "a".repeat(64),
+          patientProfile: { dateOfBirth: new Date("1980-05-17T00:00:00.000Z"), phoneNumber: "0891234567", hospitalRelationships: [] },
+        },
+        memberships: [],
+        osmHospitalRelationships: [],
+      }
       : {
         passwordChangeOperationId: state.operationId,
         passwordChangeStartedAt: state.startedAt,
@@ -116,6 +123,36 @@ describe("authenticated account password change", () => {
     expect(attemptThrottle.recordFailure).not.toHaveBeenCalled();
     expect(state.operationId).toBeNull();
     expect(state.revocations).toEqual({ workforce: 1, patient: 1, line: 1 });
+  });
+
+  it.each([
+    ["password2026", "PASSWORD_BLOCKLISTED"],
+    ["short7c", "PASSWORD_TOO_SHORT"],
+    ["sky0891234567", "PASSWORD_PERSONAL_INFO"],
+    ["born17052523", "PASSWORD_PERSONAL_INFO"],
+  ])("refuses %s with %s before any provider effect", async (newPassword, reason) => {
+    const provider = vi.fn().mockResolvedValue({ otherSessionsRevoked: true });
+    const { database, state } = createDatabase();
+
+    await expect(changeAuthenticatedUserPassword(actor, { ...input, newPassword, passwordConfirmation: newPassword }, {
+      provider,
+      database,
+      attemptThrottle: createThrottle(),
+    })).rejects.toMatchObject({ name: "PasswordPolicyRejectedError", reason });
+    expect(provider).not.toHaveBeenCalled();
+    expect(state.operationId).toBeNull();
+  });
+
+  it("accepts an 8-character letters-only password", async () => {
+    const provider = vi.fn().mockResolvedValue({ otherSessionsRevoked: true });
+    const { database } = createDatabase();
+
+    await expect(changeAuthenticatedUserPassword(actor, { ...input, newPassword: "lanternf", passwordConfirmation: "lanternf" }, {
+      provider,
+      database,
+      attemptThrottle: createThrottle(),
+    })).resolves.toEqual({ otherSessionsRevoked: true });
+    expect(provider).toHaveBeenCalledWith(expect.objectContaining({ newPassword: "lanternf" }));
   });
 
   it("keeps recovery fenced when the provider password-change outcome is ambiguous", async () => {

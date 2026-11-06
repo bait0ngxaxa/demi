@@ -43,6 +43,8 @@ import { createProviderResetLoginAlias } from "@/modules/auth/services/provider-
 import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { passwordLoginIdentifierSchema } from "@/modules/auth/schemas/login-schema";
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
+import { PasswordPolicyRejectedError, throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
+import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-personal-context-service";
 import {
   deleteReplacedProviderIdentity,
   findProviderIdentityByLoginAlias,
@@ -1029,6 +1031,7 @@ export async function completeLinePasswordRecovery(
   dependencies: MediatedPasswordResetDependencies = {},
 ): Promise<void> {
   const parsed = linePasswordRecoveryCompletionSchema.safeParse(input);
+  if (!parsed.success) throwIfPasswordPolicyIssue(parsed.error.issues, ["newPassword"]);
   if (!parsed.success || !/^[a-f0-9]{64}$/u.test(lineSubjectFingerprint)) {
     throw new ValidationError("LINE password recovery data is invalid");
   }
@@ -1516,7 +1519,7 @@ async function switchIdentityAndFinalize(
 async function rollBackClaim(
   database: MediatedPasswordResetDatabase,
   record: ResetRecord,
-  reason: ProviderIdentityRejectedError["reason"],
+  reason: ProviderIdentityRejectedError["reason"] | "PASSWORD_PERSONAL_INFO" | "PASSWORD_CHECK_UNAVAILABLE",
 ): Promise<void> {
   await runSerializableTransaction(database, async (transaction) => {
     await lockFirstCredentialOperation(transaction, record.userId);
@@ -1579,6 +1582,22 @@ async function replaceClaimedPasswordAndFinalize(
   newPassword: string,
   dependencies: MediatedPasswordResetDependencies,
 ): Promise<void> {
+  // ADR-0030: checked after the claim proved identity (National ID, LINE proof or the break-glass operator) and
+  // before any provider effect; a rejection rolls the claim back so the same link can be used with another password.
+  try {
+    await assertUserPasswordNotPersonal(database, claimed.record.userId, newPassword);
+  } catch (error: unknown) {
+    const rejected = error instanceof PasswordPolicyRejectedError;
+    try {
+      await rollBackClaim(database, claimed.record, rejected ? "PASSWORD_PERSONAL_INFO" : "PASSWORD_CHECK_UNAVAILABLE");
+    } catch {
+      await markReconciliationRequired(database, claimed.record, currentTime(dependencies));
+      throw new PasswordResetReconciliationRequiredError();
+    }
+    if (rejected) throw error;
+    throw new InfrastructureError("The password could not be checked");
+  }
+
   let cleanupId: string;
   // A settled failure already left the reset in a definite, non-quarantining state.
   let settled = false;
@@ -1645,6 +1664,7 @@ export async function completeMediatedPasswordReset(
   dependencies: MediatedPasswordResetDependencies = {},
 ): Promise<void> {
   const parsed = mediatedPasswordResetCompletionSchema.safeParse(input);
+  if (!parsed.success) throwIfPasswordPolicyIssue(parsed.error.issues, ["newPassword"]);
   if (!parsed.success) throw new ValidationError("Password reset completion data is invalid");
   const identityConfirmation = parsed.data.platformAdminIdentifier !== undefined
     ? { value: parsed.data.platformAdminIdentifier, kind: "PLATFORM_ADMIN_IDENTIFIER" as const }
@@ -1696,6 +1716,7 @@ export async function recoverPlatformAdminPassword(
   dependencies: MediatedPasswordResetDependencies = {},
 ): Promise<void> {
   const parsed = breakGlassPasswordResetSchema.safeParse(input);
+  if (!parsed.success) throwIfPasswordPolicyIssue(parsed.error.issues, ["newPassword"]);
   if (!parsed.success) throw new ValidationError("Break-glass password reset data is invalid");
   const database = getDatabase(dependencies);
   const now = currentTime(dependencies);

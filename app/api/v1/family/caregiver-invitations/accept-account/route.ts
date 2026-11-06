@@ -1,5 +1,7 @@
 import { revalidatePath } from "next/cache";
 
+import { PasswordPolicyRejectedError } from "@/modules/auth/domain/password-policy";
+import { passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 import { getTrustedClientIpAddress, publicSelfRegistrationJson, readBoundedJsonBody } from "@/modules/self-registration/transport/http-response";
@@ -57,6 +59,13 @@ export async function POST(request: Request): Promise<Response> {
     if (legalError) return publicSelfRegistrationJson({ status: "ERROR", ...legalError }, 409);
     if (isLegalAcceptanceIssue(error)) {
       return publicSelfRegistrationJson({ status: "ERROR", ...legalAcceptanceRequiredError() }, 400);
+    }
+    if (error instanceof PasswordPolicyRejectedError) {
+      return publicSelfRegistrationJson({
+        status: "ERROR",
+        code: "PASSWORD_POLICY_REJECTED",
+        message: passwordPolicyMessage(error.reason),
+      }, 400);
     }
     if (error instanceof CaregiverAccountClaimRejectedError) {
       return publicSelfRegistrationJson(rejectedResponse, 400);

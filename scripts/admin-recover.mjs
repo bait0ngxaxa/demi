@@ -72,7 +72,13 @@ function readHiddenInput(prompt) {
   });
 }
 
+/** Set once the TypeScript copy module is loaded, so policy reasons come from the single source (ADR-0030). */
+let describePasswordPolicy = null;
+
 function formatFailure(error) {
+  if (describePasswordPolicy && typeof error === "object" && error !== null && "name" in error && error.name === "PasswordPolicyRejectedError" && "reason" in error && typeof error.reason === "string") {
+    return describePasswordPolicy(error.reason);
+  }
   if (typeof error === "object" && error !== null && "safeForDisplay" in error && error.safeForDisplay === true && "message" in error && typeof error.message === "string") {
     return error.message;
   }
@@ -95,6 +101,7 @@ async function main() {
     alias: { "server-only": resolve(repositoryRoot, "node_modules", "server-only", "empty.js") },
     tsconfigPaths: true,
   });
+  ({ passwordPolicyMessage: describePasswordPolicy } = await jiti.import(resolve(repositoryRoot, "src", "modules", "auth", "domain", "password-policy-copy.ts")));
   const recoveryService = await jiti.import(resolve(repositoryRoot, "src", "modules", "account-security", "services", "mediated-password-reset-service.ts"));
   if (options.action === "reconcile") {
     console.log("กำลังตรวจสอบ provider และ reconcile สถานะเดิม...");

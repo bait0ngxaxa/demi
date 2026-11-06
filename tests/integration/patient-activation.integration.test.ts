@@ -632,6 +632,55 @@ describe("Phase 5B.2 patient activation PostgreSQL workflow", () => {
     });
   });
 
+  it("refuses a password with the Patient's own HN or birthdate before the provider and keeps the link usable (ADR-0030)", async () => {
+    const hospital = await createHospital("INTEGRATION-PA-PERSONAL");
+    const { actor } = await createHospitalActor({
+      hospitalId: hospital.id,
+      hospitalStatus: hospital.status,
+    });
+    const patient = await createPatient({ hospitalId: hospital.id, hospitalNumber: "HN-778899" });
+    await prisma.patientProfile.update({
+      where: { id: patient.patientProfileId },
+      data: { dateOfBirth: new Date("1975-08-09T00:00:00.000Z") },
+    });
+    const token = "patient-activation-personal-info-token";
+    await issuePatientActivation(
+      actor,
+      { userId: patient.userId, targetHospitalId: hospital.id, reissue: false },
+      { generateCredential: credentialGenerator(token) },
+    );
+    const authSubject = "33333333-3333-4333-8333-333333333333";
+    const provisioner = vi.fn(async ({ userId }: { userId: string; password: string }) => {
+      await prisma.user.update({ where: { id: userId }, data: { authSubject } });
+      return { userId, authSubject };
+    });
+
+    for (const personalPassword of ["hn778899home", "born09082518"]) {
+      await expect(
+        completePatientActivation(
+          token,
+          { ...LEGAL, password: personalPassword, passwordConfirmation: personalPassword },
+          { provisionIdentity: provisioner },
+        ),
+      ).rejects.toMatchObject({ name: "PasswordPolicyRejectedError", reason: "PASSWORD_PERSONAL_INFO" });
+    }
+    expect(provisioner).not.toHaveBeenCalled();
+    await expect(
+      prisma.patientActivation.findFirst({
+        where: { userId: patient.userId },
+        select: { claimedAt: true, reconciliationRequiredAt: true, usedAt: true },
+      }),
+    ).resolves.toEqual({ claimedAt: null, reconciliationRequiredAt: null, usedAt: null });
+
+    // An 8-character letters-only password is accepted on the same link.
+    await completePatientActivation(
+      token,
+      { ...LEGAL, password: "lanternf", passwordConfirmation: "lanternf" },
+      { provisionIdentity: provisioner },
+    );
+    expect(provisioner).toHaveBeenCalledWith({ userId: patient.userId, password: "lanternf" });
+  });
+
   it("compensates provider success when local finalization fails", async () => {
     const hospital = await createHospital("INTEGRATION-PA-COMPENSATE");
     const { actor } = await createHospitalActor({

@@ -33,6 +33,11 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 import { ProviderIdentityRejectedError } from "@/modules/account-security/adapters/supabase-account-security-provider";
+import {
+  passwordPolicyIssueFrom,
+  PasswordPolicyRejectedError,
+  type PasswordPolicyIssueCode,
+} from "@/modules/auth/domain/password-policy";
 import { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE } from "@/modules/line/domain/line-password-recovery-copy";
 
 export { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE };
@@ -46,7 +51,11 @@ export type LinePasswordRecoveryCompletionErrorCode =
   | "OUTCOME_UNCERTAIN";
 
 export class LinePasswordRecoveryCompletionError extends Error {
-  constructor(readonly code: LinePasswordRecoveryCompletionErrorCode) {
+  constructor(
+    readonly code: LinePasswordRecoveryCompletionErrorCode,
+    /** Set when DEMI's own policy (ADR-0030) refused the password; absent for the provider's `weak_password`. */
+    readonly passwordPolicyReason?: PasswordPolicyIssueCode,
+  ) {
     super("LINE password recovery could not be completed");
     this.name = "LinePasswordRecoveryCompletionError";
   }
@@ -203,7 +212,12 @@ export async function completeLinePasswordRecoveryWithIdentityToken(
   dependencies: LinePasswordRecoveryDependencies = {},
 ): Promise<void> {
   const parsed = completeCapabilitySchema.safeParse(input);
-  if (!parsed.success) throw new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
+  if (!parsed.success) {
+    const policyReason = passwordPolicyIssueFrom(parsed.error.issues, ["newPassword"]);
+    throw policyReason
+      ? new LinePasswordRecoveryCompletionError("PASSWORD_POLICY_REJECTED", policyReason)
+      : new LinePasswordRecoveryCompletionError("LINK_UNAVAILABLE");
+  }
   const { idToken, ...completion } = parsed.data;
   let identity: VerifiedFreshLineIdentity;
   try {
@@ -216,6 +230,9 @@ export async function completeLinePasswordRecoveryWithIdentityToken(
   try {
     await completeLinePasswordRecovery(completion, fingerprint, dependencies);
   } catch (error: unknown) {
+    if (error instanceof PasswordPolicyRejectedError) {
+      throw new LinePasswordRecoveryCompletionError("PASSWORD_POLICY_REJECTED", error.reason);
+    }
     if (error instanceof ProviderIdentityRejectedError) {
       throw new LinePasswordRecoveryCompletionError(
         error.reason === "PASSWORD_POLICY" ? "PASSWORD_POLICY_REJECTED" : "PASSWORD_REJECTED",

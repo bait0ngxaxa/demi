@@ -92,7 +92,22 @@ function hasReconciliationFlag(error) {
   );
 }
 
+/** Set once the TypeScript copy module is loaded, so policy reasons come from the single source (ADR-0030). */
+let describePasswordPolicy = null;
+
 function formatFailure(error) {
+  if (
+    describePasswordPolicy &&
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    error.name === "PasswordPolicyRejectedError" &&
+    "reason" in error &&
+    typeof error.reason === "string"
+  ) {
+    return describePasswordPolicy(error.reason);
+  }
+
   if (
     typeof error === "object" &&
     error !== null &&
@@ -163,6 +178,9 @@ async function main() {
     },
     tsconfigPaths: true,
   });
+  ({ passwordPolicyMessage: describePasswordPolicy } = await jiti.import(
+    resolve(repositoryRoot, "src", "modules", "auth", "domain", "password-policy-copy.ts"),
+  ));
   const { getCurrentLegalVersions } = await jiti.import(
     resolve(repositoryRoot, "src", "modules", "legal", "services", "legal-service.ts"),
   );

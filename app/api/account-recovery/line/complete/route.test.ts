@@ -41,6 +41,16 @@ describe("LINE recovery completion response", () => {
     expect(response.status).toBe(400);
   });
 
+  it("adds DEMI's own password policy reason so the form can say why (ADR-0030)", async () => {
+    h.complete.mockRejectedValueOnce(new LinePasswordRecoveryCompletionError("PASSWORD_POLICY_REJECTED", "PASSWORD_PERSONAL_INFO"));
+    const response = await POST(new Request("https://demi.example.org/api/account-recovery/line/complete", { method: "POST" }));
+    await expect(response.json()).resolves.toEqual({
+      status: "ERROR",
+      code: "PASSWORD_POLICY_REJECTED",
+      passwordPolicyReason: "PASSWORD_PERSONAL_INFO",
+    });
+  });
+
   it("does not expose unexpected provider details and marks an attempted completion uncertain", async () => {
     h.complete.mockRejectedValueOnce(new Error("private provider subject and secret token"));
     const response = await POST(new Request("https://demi.example.org/api/account-recovery/line/complete", { method: "POST" }));

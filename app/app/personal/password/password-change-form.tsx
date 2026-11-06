@@ -10,6 +10,8 @@ import {
   type PasswordChangeActionState,
 } from "@/modules/account-security/transport/action-state";
 import { PasswordInput } from "@/components/ui/password-input";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
 
 export function PasswordChangeForm(): React.JSX.Element {
   const [state, formAction, pending, unknownOutcome] = useMutationActionState<PasswordChangeActionState, FormData>(
@@ -45,12 +47,16 @@ export function PasswordChangeForm(): React.JSX.Element {
           containerClassName="mt-2"
           className="block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           id="newPassword"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="newPassword"
           required
+          aria-invalid={Boolean(state.fieldErrors?.newPassword)}
+          aria-describedby={state.fieldErrors?.newPassword ? "newPassword-error" : "newPassword-hint"}
         />
-        <p className="mt-1 text-xs leading-5 text-text-muted">ใช้รหัสผ่านอย่างน้อย 12 ตัวอักษร</p>
+        {state.fieldErrors?.newPassword
+          ? <p className="mt-1 text-sm leading-5 text-danger" id="newPassword-error" role="alert">{state.fieldErrors.newPassword}</p>
+          : <p className="mt-1 text-xs leading-5 text-text-muted" id="newPassword-hint">{PASSWORD_POLICY_HINT}</p>}
       </div>
       <div className="min-w-0">
         <label className="block text-sm font-semibold text-text" htmlFor="passwordConfirmation">
@@ -61,8 +67,8 @@ export function PasswordChangeForm(): React.JSX.Element {
           containerClassName="mt-2"
           className="block min-h-11 w-full rounded-control border border-border-strong bg-surface px-3 py-2 text-base text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
           id="passwordConfirmation"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="passwordConfirmation"
           required
         />

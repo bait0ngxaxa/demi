@@ -26,7 +26,7 @@
 
 ## A. Product / technical — เจ้าของ: ทีม product
 
-### A.1 Operational gates (T-01..T-20)
+### A.1 Operational gates (T-01..T-21)
 
 
 | ID | รายการ | Owner | หลักฐานที่ต้องมี | สถานะ |
@@ -51,6 +51,7 @@
 | T-18 | Rotation และการเก็บ secret ตาม `DEPLOY_VPS.md` §5 ทำความเข้าใจแล้ว; `IDENTITY_HASH_SECRET` เก็บสำรองใน password manager ของทีม; Cloudflare Origin certificate มีวันหมดอายุที่บันทึกไว้ | owner | รายการ (ไม่ใส่ค่า) | เปิด |
 | T-19 | ข้อมูลตั้งต้นของ production: (1) Platform ADMIN คนแรกผ่าน `node --env-file=/etc/demi/demi.env scripts/admin-bootstrap.mjs`; (2) ข้อมูล Hospital ของ production มาจากการที่ Platform ADMIN ลงทะเบียนทีละแห่งที่ `/app/admin/hospitals` เท่านั้น (ADR-0017: ไม่มี Hospital Master, seed หรือ `npm run db:seed` แล้ว); (3) บนฐานข้อมูล demo เดิมที่ยังมี Hospital จาก Master เดิมสถานะรอขึ้นทะเบียน ADMIN ตรวจรายชื่อที่ `/app/admin/hospitals?status=pending` แล้วใช้ “ถอนออกจากรายชื่อ” แบบหลายแห่ง (ครั้งละไม่เกิน 100 แห่ง พร้อมเหตุผล) กับแห่งที่ลูกค้าจะไม่ใช้ ห้ามทำผ่าน migration หรือ SQL ตรง; (4) ลำดับงานหลัง ADR-0018: ADMIN ดาวน์โหลดไฟล์ตัวอย่างแล้วนำเข้าโรงพยาบาลแม่ข่ายจากไฟล์ CSV (คอลัมน์ `name` เดียว, UTF-8; ระบบสร้างรหัสให้) ที่ `/app/admin/hospitals` ตรวจผลพรีวิวและยืนยันรายการชื่อใกล้เคียงก่อนเพิ่ม → ผู้ดูแลคนแรกของแม่ข่ายมาจากทางใดทางหนึ่ง: ผู้รับผิดชอบสมัครผ่านหน้าขึ้นทะเบียนและ ADMIN อนุมัติ หรือ ADMIN เชิญผู้ดูแลคนแรกที่ `/app/admin/hospitals/[hospitalId]` (ADR-0024; เชิญไม่ได้ขณะมีคำขอรออนุมัติ) → OWNER แม่ข่ายสร้างลูกข่ายและเชิญผู้ดูแลคนแรกที่ `/app/hospitals/network` → ADMIN ถอนแถว PENDING จาก Master เดิมที่ไม่ใช้ตาม (3) | owner | รายชื่อ Hospital ที่ลงทะเบียน/นำเข้า, จำนวนที่ถอนพร้อมเหตุผล และ audit `hospital.retired`, `hospital.bulk_registered`, `hospital.parent_owner_invited`, `hospital.parent_onboarded`, `hospital.child_created` | เปิด |
 | T-20 | Rollback ซ้อมแล้วหนึ่งครั้ง (`DEPLOY_VPS.md` §3) ด้วย release ที่มีแต่ migration แบบ expand-only | ผู้ดูแลระบบ | เวลาและผล `/api/health` | เปิด |
+| T-21 | Supabase password settings match [ADR-0030](../adr/0030-password-policy-length-8.md) (Minimum password length = 8, Password Requirements = No required characters ตาม `SUPABASE_PRODUCTION.md` §4) และบน production รหัสผ่านตัวอักษรล้วน 8 ตัวที่ไม่อยู่ใน blocklist ตั้งได้ทั้งตอน activation และตอนเปลี่ยนรหัสผ่าน; รหัสที่อยู่ใน blocklist (เช่น `password1`) ถูกปฏิเสธพร้อมเหตุผล | owner | screenshot การตั้งค่า + ผลทดสอบ (ไม่ใส่รหัสผ่านจริงของผู้ใช้) | เปิด |
 
 ### A.2 Product feature gaps (product backlog)
 
@@ -88,7 +89,7 @@
 | สถานะ | ความหมาย / หลักฐาน |
 | --- | --- |
 | CODE VERIFIED | commit SHA, focused regression tests, lint/typecheck และ integration checks ที่รันจริง; ถ้าไม่รันให้ระบุเหตุผลและห้ามอ้างว่าผ่าน |
-| OPERATIONALLY VERIFIED | ต้องมีหลักฐานจาก target environment สำหรับ T-01–T-20 ที่เกี่ยวข้อง; repository artifacts ไม่เพียงพอ |
+| OPERATIONALLY VERIFIED | ต้องมีหลักฐานจาก target environment สำหรับ T-01–T-21 ที่เกี่ยวข้อง; repository artifacts ไม่เพียงพอ |
 | BUSINESS APPROVED | คำตัดสินของหน่วยงานพันธมิตรตาม G-01–G-06 และเนื้อหาจากลูกค้าตาม C-01–C-04; ยังเป็น `เปิด` จนมีหลักฐาน |
 
 - `deploy/pm2/ecosystem.config.cjs`, `deploy/nginx/demi.conf.example`, `deploy/systemd/demi-scheduler.{service,timer}`, `scripts/scheduler-tick.mjs`, `.env.production.example`, `npm run env:check`, `/api/health` + `/api/health/live`

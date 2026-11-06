@@ -77,7 +77,8 @@ describe("account security form presentation", () => {
     expect(markup).toContain('name="currentPassword"');
     expect(markup).toContain('name="newPassword"');
     expect(markup).toContain('name="passwordConfirmation"');
-    expect(markup).toContain('minLength="12"');
+    expect(markup).toContain('minLength="8"');
+    expect(markup).toContain("รหัสผ่านอย่างน้อย 8 ตัวอักษร ใช้ตัวอักษร ตัวเลข หรือภาษาไทยก็ได้");
     expect(markup).not.toContain("authSubject");
     expect(markup).not.toContain("providerAlias");
     expect(markup).not.toContain("targetUserId");

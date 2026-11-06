@@ -251,12 +251,12 @@ describe("Patient activation form", () => {
         status: "ERROR",
         code: "INVALID_INPUT",
         message: "กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง",
-        fieldErrors: { password: "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร" },
+        fieldErrors: { password: "รหัสผ่านต้องมีความยาว 8–128 ตัวอักษร" },
       });
 
       await submitActivation();
 
-      expect(container.querySelector("#patient-password-error")?.textContent).toContain("12–128");
+      expect(container.querySelector("#patient-password-error")?.textContent).toContain("8–128");
       expect(buttonByText("เปิดใช้งานบัญชี").disabled).toBe(false);
       expect(mocks.notifyError).not.toHaveBeenCalled();
       expect(mocks.notifySuccess).not.toHaveBeenCalled();

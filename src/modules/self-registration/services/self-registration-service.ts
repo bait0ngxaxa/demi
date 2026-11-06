@@ -20,6 +20,7 @@ import {
   hashWorkforceActivationToken,
 } from "@/modules/workforce/services/activation-token-service";
 import { completeWorkforceSelfRegistration } from "@/modules/workforce/services/workforce-service";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
 import {
   generatePatientActivationCredential,
   hashPatientActivationToken,
@@ -247,6 +248,7 @@ export async function completePublicSelfRegistration(
   const parsed = selfRegistrationCompletionSchema.safeParse(input);
   if (!parsed.success) {
     if (parsed.error.issues.some(({ path }) => path[0] === "acceptLegal")) throw new LegalAcceptanceRequiredError();
+    throwIfPasswordPolicyIssue(parsed.error.issues, ["password"]);
     throw new ValidationError("Self-registration completion data is invalid");
   }
   if (!parsed.data.nameConfirmed) throw new ValidationError("Self-registration identity confirmation is required");

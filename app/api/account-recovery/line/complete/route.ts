@@ -22,8 +22,9 @@ export async function POST(request: Request): Promise<Response> {
     await completeLinePasswordRecoveryWithIdentityToken(input);
     return Response.json({ status: "COMPLETED" }, { headers: { "cache-control": "private, no-store" } });
   } catch (error: unknown) {
+    const passwordPolicyReason = error instanceof LinePasswordRecoveryCompletionError ? error.passwordPolicyReason : undefined;
     return Response.json(
-      { status: "ERROR", code: publicErrorCode(error, completionStarted) },
+      { status: "ERROR", code: publicErrorCode(error, completionStarted), ...(passwordPolicyReason ? { passwordPolicyReason } : {}) },
       { status: 400, headers: { "cache-control": "private, no-store" } },
     );
   }

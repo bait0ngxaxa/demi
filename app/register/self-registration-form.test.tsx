@@ -221,7 +221,8 @@ describe("public self-registration form", () => {
     setInput(idInput, nationalId());
     await submitForm();
 
-    expect(container.textContent).toContain("ใช้รหัสผ่าน 12–128 ตัวอักษร");
+    expect(container.textContent).toContain("รหัสผ่านอย่างน้อย 8 ตัวอักษร ใช้ตัวอักษร ตัวเลข หรือภาษาไทยก็ได้ ไม่ต้องมีอักขระพิเศษ");
+    expect(container.querySelector("#registration-password")?.getAttribute("minLength")).toBe("8");
     const checkbox = container.querySelector<HTMLInputElement>("#registration-name-confirmed");
     const password = container.querySelector<HTMLInputElement>("#registration-password");
     const confirmation = container.querySelector<HTMLInputElement>("#registration-password-confirmation");
@@ -381,6 +382,39 @@ describe("public self-registration form", () => {
     expect(container.querySelector<HTMLInputElement>("#registration-password")?.value).toBe("a-valid-password");
     expect(container.querySelector<HTMLInputElement>("#registration-password-confirmation")?.value).toBe("a-valid-password");
     expect(container.querySelector<HTMLInputElement>("#registration-password")?.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("checks only length on the client and shows the server's password policy reason beside the field", async () => {
+    const reason = "รหัสผ่านนี้ถูกใช้บ่อยหรือเดาง่ายเกินไป กรุณาตั้งรหัสผ่านอื่น";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ outcome: "FOUND", capability: "single-use-capability", maskedName: "สม*** ใจ***" }))
+      .mockResolvedValueOnce(response({ status: "ERROR", code: "PASSWORD_POLICY_REJECTED", message: reason }, 400));
+    vi.stubGlobal("fetch", fetchMock);
+    await render();
+    const idInput = container.querySelector<HTMLInputElement>("#registration-national-id");
+    if (!idInput) throw new Error("Missing National ID input");
+    setInput(idInput, nationalId());
+    await submitForm();
+
+    const checkbox = container.querySelector<HTMLInputElement>("#registration-name-confirmed");
+    const password = container.querySelector<HTMLInputElement>("#registration-password");
+    const confirmation = container.querySelector<HTMLInputElement>("#registration-password-confirmation");
+    if (!checkbox || !password || !confirmation) throw new Error("Missing password setup fields");
+    await act(async () => checkbox.click());
+    setInput(password, "ที่นี่น");
+    setInput(confirmation, "ที่นี่น");
+    await submitForm();
+    expect(container.querySelector("#registration-password-error")?.textContent).toBe("รหัสผ่านต้องมีความยาว 8–128 ตัวอักษร");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Eight code points (Thai combining marks count) pass the client; the server then refuses with a reason.
+    setInput(password, "password");
+    setInput(confirmation, "password");
+    await submitForm();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(password.getAttribute("aria-invalid")).toBe("true");
+    expect(container.querySelector("#registration-password-error")?.textContent).toBe(reason);
+    expect(container.querySelector<HTMLInputElement>("#registration-password")?.value).toBe("password");
   });
 
   it("treats a success body paired with HTTP 400 as unconfirmed", async () => {

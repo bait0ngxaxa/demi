@@ -19,6 +19,8 @@ import {
   type PatientActivationCompletionActionState,
 } from "@/modules/patient-activation/transport/action-state";
 import { PasswordInput } from "@/components/ui/password-input";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
 import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
 import type { AccountCreationLegalView } from "@/modules/legal/domain/legal-views";
 
@@ -300,14 +302,14 @@ export function PatientActivationForm({ legal, lineAccountUrl = null }: { legal:
           รหัสผ่านใหม่
         </label>
         <PasswordInput
-          aria-describedby={fieldErrors?.password ? "patient-password-error" : undefined}
+          aria-describedby={fieldErrors?.password ? "patient-password-error" : "patient-password-hint"}
           aria-invalid={fieldErrors?.password ? true : undefined}
           autoComplete="new-password"
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
           disabled={pending}
           id="patient-password"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="password"
           required
         />
@@ -315,7 +317,11 @@ export function PatientActivationForm({ legal, lineAccountUrl = null }: { legal:
           <p className="text-sm leading-6 text-danger" id="patient-password-error">
             {fieldErrors.password}
           </p>
-        ) : null}
+        ) : (
+          <p className="text-sm leading-6 text-muted" id="patient-password-hint">
+            {PASSWORD_POLICY_HINT}
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -333,8 +339,8 @@ export function PatientActivationForm({ legal, lineAccountUrl = null }: { legal:
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft"
           disabled={pending}
           id="patient-password-confirmation"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="passwordConfirmation"
           required
         />

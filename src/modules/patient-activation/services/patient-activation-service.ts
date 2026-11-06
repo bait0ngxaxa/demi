@@ -23,6 +23,8 @@ import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospit
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
+import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-personal-context-service";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { userHasWorkforceAuthority } from "@/modules/identity/services/workforce-authority";
 import {
@@ -1472,6 +1474,7 @@ async function completePatientActivationForPurpose(
   const parsedToken = patientActivationTokenSchema.safeParse(token);
   const parsedInput = patientActivationCompletionSchema.safeParse(input);
 
+  if (!parsedInput.success) throwIfPasswordPolicyIssue(parsedInput.error.issues, ["password"]);
   if (!parsedToken.success || !parsedInput.success) {
     throw new ValidationError("Patient activation data is invalid");
   }
@@ -1503,6 +1506,10 @@ async function completePatientActivationForPurpose(
   let provisionedIdentity: ProvisionPasswordAuthIdentityResult;
 
   try {
+    // ADR-0030: checked only after the claim proved the link (and any National ID); a rejection releases the claim.
+    await assertUserPasswordNotPersonal(getDatabase(dependencies), claim.userId, parsedInput.data.password, {
+      nationalIds: parsedInput.data.nationalId ? [parsedInput.data.nationalId] : [],
+    });
     provisionedIdentity = await provisionIdentity({
       userId: claim.userId,
       password: parsedInput.data.password,

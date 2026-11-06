@@ -12,6 +12,8 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
+import { assertPasswordNotPersonal } from "@/modules/auth/domain/password-personal-info";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
 import {
   createUnpersistedPasswordAuthIdentity,
   deleteUnpersistedPasswordAuthIdentity,
@@ -208,6 +210,7 @@ export async function createCaregiverAccountFromInvitation(
   const parsed = caregiverAccountClaimInputSchema.safeParse(input);
   if (!parsed.success) {
     await recordRejectedClaim(database);
+    throwIfPasswordPolicyIssue(parsed.error.issues, ["password"]);
     throw new CaregiverAccountClaimRejectedError();
   }
 
@@ -267,6 +270,9 @@ export async function createCaregiverAccountFromInvitation(
     await recordRejectedClaim(database, invitation.id);
     throw new CaregiverAccountClaimRejectedError();
   }
+
+  // ADR-0030: checked only after the invitation matched this National ID; nothing was created yet.
+  assertPasswordNotPersonal(parsed.data.password, { nationalIds: [parsed.data.nationalId] });
 
   const userId = (dependencies.createUserId ?? randomUUID)();
   const createProviderIdentity = dependencies.createProviderIdentity ?? createUnpersistedPasswordAuthIdentity;

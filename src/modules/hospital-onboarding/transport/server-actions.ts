@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
 
+import { isPasswordPolicyIssueCode, PasswordPolicyRejectedError } from "@/modules/auth/domain/password-policy";
+import { passwordIssueMessage, passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError } from "@/shared/errors/application-error";
 import { trustedClientIpAddress } from "@/shared/http/trusted-client-ip";
@@ -38,7 +40,7 @@ import {
 } from "./action-state";
 
 function getSubmissionFieldErrors(
-  issues: readonly { path: readonly unknown[] }[],
+  issues: readonly { path: readonly unknown[]; message: string }[],
 ): HospitalOnboardingFieldErrors {
   const fieldErrors: HospitalOnboardingFieldErrors = {};
 
@@ -54,8 +56,13 @@ function getSubmissionFieldErrors(
     } else if (field === "familyName" && !fieldErrors.familyName) {
       fieldErrors.familyName = "กรุณากรอกนามสกุล";
     } else if (field === "password" && !fieldErrors.password) {
-      fieldErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
-    } else if (field === "passwordConfirmation" && !fieldErrors.passwordConfirmation) {
+      fieldErrors.password = passwordIssueMessage(issue);
+    } else if (
+      field === "passwordConfirmation" &&
+      !fieldErrors.passwordConfirmation &&
+      // The same policy issue on the confirmation is already reported on the password.
+      !isPasswordPolicyIssueCode(issue.message)
+    ) {
       fieldErrors.passwordConfirmation = "กรุณายืนยันรหัสผ่านให้ตรงกัน";
     } else if (field === "acceptLegal" && !fieldErrors.acceptLegal) {
       fieldErrors.acceptLegal = legalAcceptanceRequiredError().message;
@@ -69,6 +76,15 @@ function mapPublicSubmissionError(error: unknown): HospitalOnboardingSubmitActio
   const legalError = mapLegalVersionError(error);
   if (legalError?.code === "LEGAL_VERSION_CHANGED") {
     return { status: "ERROR", code: "LEGAL_VERSION_CHANGED", message: legalError.message };
+  }
+
+  if (error instanceof PasswordPolicyRejectedError) {
+    return {
+      status: "ERROR",
+      code: "INVALID_INPUT",
+      message: "กรุณาตรวจสอบข้อมูลที่กรอกให้ถูกต้อง",
+      fieldErrors: { password: passwordPolicyMessage(error.reason) },
+    };
   }
 
   if (error instanceof ApplicationError) {

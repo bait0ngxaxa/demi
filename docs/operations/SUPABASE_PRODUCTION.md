@@ -39,13 +39,16 @@ DEMI สร้างผู้ใช้ผ่าน admin API (`auth.admin.create
 | Authentication → Sign In / Providers → Allow new users to sign up | **Off** (admin API ยังสร้างผู้ใช้ได้) |
 | Email provider | **On** (password login ใช้ email alias) |
 | Phone, Anonymous sign-ins, OAuth providers ทั้งหมด | Off |
-| Password → Minimum length | **12** (ตรงกับ `userOwnedPasswordSchema` ใน `src/modules/auth/schemas/password-schema.ts`) |
+| Password → Minimum password length | **8** (ตรงกับ `PASSWORD_MIN_LENGTH` ใน `src/modules/auth/domain/password-policy.ts`, ADR-0030) |
+| Password → Password Requirements | **No required characters** (ADR-0030 ไม่มีกฎบังคับชนิดตัวอักษร; blocklist และการตรวจข้อมูลส่วนตัวทำใน DEMI) |
 | Password → **Leaked password protection** | **On** (มีเฉพาะ Pro) |
 | URL Configuration → Site URL | `<PROD_ORIGIN>` |
 | URL Configuration → Redirect URLs | `<PROD_ORIGIN>` เท่านั้น (ไม่มี wildcard; DEMI ไม่มี redirect flow) |
 | Attack protection / rate limits | ค่า default |
 
 ข้อควรระวัง: เมื่อเปิด leaked-password protection ถ้าผู้ใช้ตั้งรหัสที่รั่วไหล Supabase จะปฏิเสธ แต่ปัจจุบัน DEMI แสดงข้อความปฏิเสธแบบทั่วไป ไม่ได้บอกว่ารหัสรั่ว ต้องทดสอบใน UAT (`RELEASE_GATE.md` T-12)
+
+นโยบายรหัสผ่าน (ADR-0030): ถ้า Minimum password length ใน Supabase สูงกว่า 8 หรือยังตั้ง Password Requirements ไว้ Supabase จะปฏิเสธรหัสผ่าน 8–11 ตัวที่ DEMI ยอมรับแล้วด้วยข้อความทั่วไป ตั้งค่าที่ Authentication → Providers → Email (หรือ Authentication → Policies/Attack Protection ตามเมนูของ dashboard รุ่นปัจจุบัน) Supabase ปฏิเสธรหัสที่ยาวเกิน 72 bytes เสมอ ซึ่ง DEMI ตรวจและแจ้งเหตุผลก่อนแล้ว repository นี้ไม่มี `supabase/config.toml` (ไม่มี Supabase local stack) ถ้าเพิ่มในอนาคตให้ตั้ง `[auth] minimum_password_length = 8` และ `password_requirements = ""` ให้ตรงกัน ตรวจผลตาม `RELEASE_GATE.md` T-21
 
 ## 5. Storage
 

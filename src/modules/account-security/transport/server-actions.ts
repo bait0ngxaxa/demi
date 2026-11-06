@@ -6,6 +6,8 @@ import { headers } from "next/headers";
 import { createApplicationCredentialUrlBuilder } from "@/lib/env/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { signOutCurrentSession } from "@/modules/auth/services/authentication-service";
+import { PasswordPolicyRejectedError } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_PROVIDER_POLICY_MESSAGE, passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { CurrentPasswordRejectedError, PasswordChangeProviderRejectedError } from "../adapters/supabase-account-security-provider";
 import {
   PasswordChangeAttemptThrottledError,
@@ -64,6 +66,9 @@ export async function changeAuthenticatedPasswordAction(
         : "เปลี่ยนรหัสผ่านแล้ว แต่ระบบออกจากระบบในอุปกรณ์อื่นไม่สำเร็จ กรุณาออกจากระบบในอุปกรณ์เหล่านั้นด้วยตนเอง",
     };
   } catch (error: unknown) {
+    if (error instanceof PasswordPolicyRejectedError) {
+      return { status: "ERROR", message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล", fieldErrors: { newPassword: passwordPolicyMessage(error.reason) } };
+    }
     if (error instanceof CurrentPasswordRejectedError) {
       return { status: "ERROR", message: "เปลี่ยนรหัสผ่านไม่สำเร็จ กรุณาตรวจสอบข้อมูล", fieldErrors: { currentPassword: "รหัสผ่านปัจจุบันไม่ถูกต้อง" } };
     }
@@ -228,12 +233,19 @@ export async function completeMediatedPasswordResetAction(
     }, { clientIpAddress: trustedClientIpAddress(await headers()) });
     return { status: "COMPLETED", message: "รหัสผ่านบัญชี DEMI เปลี่ยนแล้ว เข้าสู่ระบบด้วยรหัสผ่านใหม่ได้" };
   } catch (error: unknown) {
+    if (error instanceof PasswordPolicyRejectedError) {
+      return {
+        status: "ERROR",
+        message: "ยังไม่ได้เปลี่ยนรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่แล้วลองอีกครั้งด้วยลิงก์เดิม",
+        fieldErrors: { newPassword: passwordPolicyMessage(error.reason) },
+      };
+    }
     if (error instanceof ProviderIdentityRejectedError) {
       return error.reason === "PASSWORD_POLICY"
         ? {
             status: "ERROR",
             message: "ยังไม่ได้เปลี่ยนรหัสผ่าน กรุณาตั้งรหัสผ่านใหม่แล้วลองอีกครั้งด้วยลิงก์เดิม",
-            fieldErrors: { newPassword: "รหัสผ่านนี้ไม่ผ่านนโยบายความปลอดภัย กรุณาตั้งรหัสผ่านที่คาดเดายากกว่านี้" },
+            fieldErrors: { newPassword: PASSWORD_PROVIDER_POLICY_MESSAGE },
           }
         : { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน กรุณาลองอีกครั้งด้วยลิงก์เดิม" };
     }

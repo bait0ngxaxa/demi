@@ -2,7 +2,7 @@ export type PasswordChangeActionState = {
   /** OUTCOME_UNCERTAIN: the provider may already have changed the password; the form must not invite a retry. */
   status: "IDLE" | "SUCCESS" | "ERROR" | "OUTCOME_UNCERTAIN";
   message?: string;
-  fieldErrors?: { currentPassword?: string };
+  fieldErrors?: { currentPassword?: string; newPassword?: string };
 };
 
 export const initialPasswordChangeActionState: PasswordChangeActionState = {

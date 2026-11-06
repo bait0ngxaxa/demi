@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { Panel } from "@/components/ui/panel";
-import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
+import { isPasswordPolicyIssueCode, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLengthIssue } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT, PASSWORD_PROVIDER_POLICY_MESSAGE, passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { accountRecoveryTokenSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import { initializeLineAccountLiff } from "../line-recovery-panel";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -22,6 +23,7 @@ const completeResponseSchema = z.object({
     "RECONCILIATION_REQUIRED",
     "OUTCOME_UNCERTAIN",
   ]).optional(),
+  passwordPolicyReason: z.string().refine(isPasswordPolicyIssueCode).optional(),
 });
 type RecoveryStatus = "LOADING" | "READY" | "EXPIRED" | "OTHER_LINE" | "INELIGIBLE" | "LINE_UNAVAILABLE" | "UNCERTAIN" | "COMPLETED";
 type RecoveryLocator = { token: string } | { capabilityId: string };
@@ -108,10 +110,11 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
     if (!locator || status !== "READY" || running.current || !liffId) return;
     const newPassword = formData.get("newPassword");
     const passwordConfirmation = formData.get("passwordConfirmation");
-    const passwordCheck = userOwnedPasswordSchema.safeParse(newPassword);
-    setNewPasswordError(passwordCheck.success ? "" : "รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษรและผ่านนโยบายความปลอดภัย");
+    // Length only on the client; the blocklist and personal-information checks run on the server (ADR-0030).
+    const passwordIssue = typeof newPassword === "string" ? passwordLengthIssue(newPassword) : "PASSWORD_TOO_SHORT";
+    setNewPasswordError(passwordIssue ? passwordPolicyMessage(passwordIssue) : "");
     setMessage("");
-    if (!passwordCheck.success || typeof passwordConfirmation !== "string" || passwordConfirmation !== newPassword) {
+    if (passwordIssue || typeof passwordConfirmation !== "string" || passwordConfirmation !== newPassword) {
       if (typeof passwordConfirmation !== "string" || passwordConfirmation !== newPassword) setMessage("รหัสผ่านใหม่และการยืนยันต้องตรงกัน");
       return;
     }
@@ -150,7 +153,8 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
         const code = result.data.code ?? "OUTCOME_UNCERTAIN";
         if (mountGeneration.current !== generation) return;
         if (code === "PASSWORD_POLICY_REJECTED") {
-          setNewPasswordError("รหัสผ่านนี้ยังไม่ผ่านข้อกำหนดด้านความปลอดภัย กรุณาเลือกรหัสผ่านใหม่");
+          const reason = result.data.passwordPolicyReason;
+          setNewPasswordError(reason && isPasswordPolicyIssueCode(reason) ? passwordPolicyMessage(reason) : PASSWORD_PROVIDER_POLICY_MESSAGE);
         } else if (code === "PASSWORD_REJECTED") {
           setNewPasswordError("ระบบไม่ยอมรับรหัสผ่านนี้ กรุณาเลือกรหัสผ่านใหม่แล้วลองอีกครั้ง");
         } else if (code === "LINK_UNAVAILABLE") {
@@ -234,20 +238,22 @@ export function LinePasswordRecoveryClient({ liffId }: { liffId: string | null }
         รหัสผ่านใหม่
         <PasswordInput
           autoComplete="new-password"
-          aria-describedby={newPasswordError ? "line-recovery-password-error" : undefined}
+          aria-describedby={newPasswordError ? "line-recovery-password-error" : "line-recovery-password-hint"}
           aria-invalid={newPasswordError ? true : undefined}
           className="min-h-12 rounded-control border border-border bg-surface px-3 text-base text-text focus-visible:outline-2 focus-visible:outline-focus-ring"
           id="line-recovery-new-password"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           name="newPassword"
           required
         />
-        {newPasswordError ? <span id="line-recovery-password-error" className="text-sm font-normal text-danger">{newPasswordError}</span> : null}
+        {newPasswordError
+          ? <span id="line-recovery-password-error" className="text-sm font-normal text-danger">{newPasswordError}</span>
+          : <span id="line-recovery-password-hint" className="text-sm font-normal text-text-muted">{PASSWORD_POLICY_HINT}</span>}
       </label>
       <label className="grid gap-1 text-sm font-medium text-text" htmlFor="line-recovery-password-confirmation">
         ยืนยันรหัสผ่านใหม่
-        <PasswordInput autoComplete="new-password" className="min-h-12 rounded-control border border-border bg-surface px-3 text-base text-text focus-visible:outline-2 focus-visible:outline-focus-ring" id="line-recovery-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required />
+        <PasswordInput autoComplete="new-password" className="min-h-12 rounded-control border border-border bg-surface px-3 text-base text-text focus-visible:outline-2 focus-visible:outline-focus-ring" id="line-recovery-password-confirmation" maxLength={PASSWORD_MAX_LENGTH} minLength={PASSWORD_MIN_LENGTH} name="passwordConfirmation" required />
       </label>
       {message ? <p className="text-sm text-danger" role="alert">{message}</p> : null}
       <button className="inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" disabled={busy} type="submit">

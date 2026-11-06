@@ -33,6 +33,8 @@ import {
   provisionPasswordAuthIdentity,
   type ProvisionPasswordAuthIdentityResult,
 } from "@/modules/auth/services/password-auth-provisioning-service";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
+import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-personal-context-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
@@ -3919,6 +3921,7 @@ async function completeWorkforceActivationForPurposes(
   const parsedToken = workforceActivationTokenSchema.safeParse(token);
   const parsedInput = workforceActivationCompletionSchema.safeParse(input);
 
+  if (!parsedInput.success) throwIfPasswordPolicyIssue(parsedInput.error.issues, ["password"]);
   if (!parsedToken.success || !parsedInput.success) {
     throw new ValidationError("Workforce activation data is invalid");
   }
@@ -3937,6 +3940,15 @@ async function completeWorkforceActivationForPurposes(
     parsedInput.data.nationalId,
     dependencies,
   );
+  try {
+    // ADR-0030: checked only after the claim verified the National ID; a rejection releases the claim for a retry.
+    await assertUserPasswordNotPersonal(getDatabase(dependencies), claim.userId, parsedInput.data.password, {
+      nationalIds: [parsedInput.data.nationalId],
+    });
+  } catch (error: unknown) {
+    await releaseWorkforceActivationClaim(claim, dependencies);
+    throw error;
+  }
   const provisionIdentity = dependencies.provisionIdentity ?? provisionPasswordAuthIdentity;
   let provisionedIdentity: ProvisionPasswordAuthIdentityResult;
   try {

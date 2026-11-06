@@ -8,6 +8,8 @@ import {
   provisionPasswordAuthIdentity,
   type ProvisionPasswordAuthIdentityResult,
 } from "@/modules/auth/services/password-auth-provisioning-service";
+import { assertPasswordNotPersonal } from "@/modules/auth/domain/password-personal-info";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
@@ -371,8 +373,11 @@ export async function bootstrapPlatformAdmin(
   const parsed = platformAdminBootstrapInputSchema.safeParse(input);
 
   if (!parsed.success) {
+    throwIfPasswordPolicyIssue(parsed.error.issues, ["password"]);
     throw new ValidationError("Platform admin bootstrap data is invalid");
   }
+  // ADR-0030: the first ADMIN is a new person; the only personal data known is the identifier typed here.
+  assertPasswordNotPersonal(parsed.data.password, { nationalIds: [parsed.data.nationalId] });
 
   const database = getDatabase(dependencies);
 

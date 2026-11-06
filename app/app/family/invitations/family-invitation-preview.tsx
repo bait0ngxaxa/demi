@@ -34,6 +34,8 @@ import {
 import { FAMILY_APPOINTMENT_ACCEPTANCE_TEXTS, FAMILY_APPOINTMENT_LATEST_READ_CONTRACT } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
 import { PasswordInput } from "@/components/ui/password-input";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
 import { LegalAcceptanceFields, LegalDocumentsUnavailable, LegalFooterLinks } from "@/components/legal/legal-acceptance-fields";
 import { LEGAL_ACCEPTANCE_REQUIRED_MESSAGE } from "@/modules/legal/domain/legal-documents";
 import { LEGAL_FORM_FIELDS } from "@/modules/legal/domain/legal-form-fields";
@@ -198,12 +200,13 @@ function CaregiverAccountClaimForm({
           </div>
         </div>
         <div className="space-y-2">
-          <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password">รหัสผ่าน (อย่างน้อย 12 ตัวอักษร)</label>
-          <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password" maxLength={128} minLength={12} name="password" required />
+          <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password">รหัสผ่าน</label>
+          <PasswordInput aria-describedby="caregiver-claim-password-hint" autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password" maxLength={PASSWORD_MAX_LENGTH} minLength={PASSWORD_MIN_LENGTH} name="password" required />
+          <p className="text-sm leading-6 text-text-muted" id="caregiver-claim-password-hint">{PASSWORD_POLICY_HINT}</p>
         </div>
         <div className="space-y-2">
           <label className="block text-sm font-semibold text-text" htmlFor="caregiver-claim-password-confirmation">ยืนยันรหัสผ่าน</label>
-          <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={128} minLength={12} name="passwordConfirmation" required />
+          <PasswordInput autoComplete="new-password" className="h-12 w-full rounded-control border border-border-strong bg-surface px-4 text-base text-text outline-none focus:border-action-primary focus:ring-4 focus:ring-focus-ring" disabled={state.status === "PENDING"} id="caregiver-claim-password-confirmation" maxLength={PASSWORD_MAX_LENGTH} minLength={PASSWORD_MIN_LENGTH} name="passwordConfirmation" required />
         </div>
         <LegalAcceptanceFields
           disabled={state.status === "PENDING"}

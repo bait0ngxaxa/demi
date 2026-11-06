@@ -9,6 +9,8 @@ import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { thaiNationalIdFormatSchema } from "@/modules/identity/schemas/identity-schemas";
 import { PasswordInput } from "@/components/ui/password-input";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, passwordLengthIssue } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT, passwordPolicyMessage } from "@/modules/auth/domain/password-policy-copy";
 import { LegalAcceptanceFields } from "@/components/legal/legal-acceptance-fields";
 import { LEGAL_ACCEPTANCE_REQUIRED_MESSAGE, LEGAL_VERSION_CHANGED_MESSAGE } from "@/modules/legal/domain/legal-documents";
 import { LEGAL_FORM_FIELDS } from "@/modules/legal/domain/legal-form-fields";
@@ -27,7 +29,7 @@ const lookupResponseSchema = z.discriminatedUnion("outcome", [
 
 const completionResponseSchema = z.object({
   status: z.enum(["SUCCESS", "ERROR"]),
-  code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED"]).optional(),
+  code: z.enum(["LEGAL_VERSION_CHANGED", "LEGAL_ACCEPTANCE_REQUIRED", "PASSWORD_POLICY_REJECTED"]).optional(),
   message: z.string().optional(),
 }).strict();
 
@@ -189,8 +191,10 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
     if (!capability || !maskedName || !nameConfirmed) {
       nextErrors.nameConfirmed = "กรุณายืนยันว่าชื่อที่แสดงเป็นชื่อของคุณ";
     }
-    if (password.length < 12 || password.length > 128) {
-      nextErrors.password = "รหัสผ่านต้องมีความยาว 12–128 ตัวอักษร";
+    // Length only on the client; the blocklist and personal-information checks run on the server (ADR-0030).
+    const passwordIssue = passwordLengthIssue(password);
+    if (passwordIssue) {
+      nextErrors.password = passwordPolicyMessage(passwordIssue);
     }
     if (password !== passwordConfirmation) {
       nextErrors.passwordConfirmation = "รหัสผ่านไม่ตรงกัน กรุณากรอกให้ตรงกัน";
@@ -252,6 +256,12 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
       }
       if (parsed.success && parsed.data.code === "LEGAL_ACCEPTANCE_REQUIRED") {
         setFieldErrors({ acceptLegal: LEGAL_ACCEPTANCE_REQUIRED_MESSAGE });
+        return;
+      }
+      // The server refused the password and said why; keep the capability so the person can choose another one.
+      if (parsed.success && parsed.data.code === "PASSWORD_POLICY_REJECTED" && parsed.data.message) {
+        focusErrorsRef.current = true;
+        setFieldErrors({ password: parsed.data.message });
         return;
       }
 
@@ -523,8 +533,8 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft aria-invalid:border-danger aria-invalid:ring-danger"
           disabled={busy}
           id="registration-password"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           onChange={(event) => {
             setPassword(event.target.value);
             setFieldErrors((errors) => ({ ...errors, password: undefined }));
@@ -539,7 +549,7 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
           </p>
         ) : (
           <p className="text-sm leading-6 text-muted" id="registration-password-hint">
-            ใช้รหัสผ่าน 12–128 ตัวอักษร
+            {PASSWORD_POLICY_HINT}
           </p>
         )}
       </div>
@@ -553,8 +563,8 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
           className="h-12 w-full rounded-[12px] border border-line bg-white px-4 text-base text-ink outline-none transition-[border-color,box-shadow] focus:border-brand focus:ring-4 focus:ring-brand-soft aria-invalid:border-danger aria-invalid:ring-danger"
           disabled={busy}
           id="registration-password-confirmation"
-          maxLength={128}
-          minLength={12}
+          maxLength={PASSWORD_MAX_LENGTH}
+          minLength={PASSWORD_MIN_LENGTH}
           onChange={(event) => {
             setPasswordConfirmation(event.target.value);
             setFieldErrors((errors) => ({ ...errors, passwordConfirmation: undefined }));

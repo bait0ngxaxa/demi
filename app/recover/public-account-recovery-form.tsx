@@ -10,6 +10,8 @@ import {
   completeMediatedPasswordResetAction,
 } from "@/modules/account-security/transport/server-actions";
 import { PasswordInput } from "@/components/ui/password-input";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/modules/auth/domain/password-policy";
+import { PASSWORD_POLICY_HINT } from "@/modules/auth/domain/password-policy-copy";
 
 type Availability = "READY" | "INVALID";
 type ConfirmationKind = "THAI_NATIONAL_ID" | "PLATFORM_ADMIN_IDENTIFIER";
@@ -146,20 +148,22 @@ export function PublicAccountRecoveryForm({ lineRecoveryAvailable }: { lineRecov
         <label className="grid gap-1 text-sm font-medium">
           รหัสผ่านใหม่
           <PasswordInput
-            aria-describedby={passwordError ? "recover-new-password-error" : undefined}
+            aria-describedby={passwordError ? "recover-new-password-error" : "recover-new-password-hint"}
             aria-invalid={passwordError ? true : undefined}
             autoComplete="new-password"
             className="min-h-11 rounded-md border border-border bg-surface px-3"
-            maxLength={128}
-            minLength={12}
+            maxLength={PASSWORD_MAX_LENGTH}
+            minLength={PASSWORD_MIN_LENGTH}
             name="newPassword"
             required
           />
-          {passwordError ? <span className="text-sm font-normal text-danger" id="recover-new-password-error">{passwordError}</span> : null}
+          {passwordError
+            ? <span className="text-sm font-normal text-danger" id="recover-new-password-error">{passwordError}</span>
+            : <span className="text-sm font-normal text-text-muted" id="recover-new-password-hint">{PASSWORD_POLICY_HINT}</span>}
         </label>
         <label className="grid gap-1 text-sm font-medium">
           ยืนยันรหัสผ่านใหม่
-          <PasswordInput autoComplete="new-password" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={128} minLength={12} name="passwordConfirmation" required />
+          <PasswordInput autoComplete="new-password" className="min-h-11 rounded-md border border-border bg-surface px-3" maxLength={PASSWORD_MAX_LENGTH} minLength={PASSWORD_MIN_LENGTH} name="passwordConfirmation" required />
         </label>
         {completion.status === "ERROR" ? <p className="text-sm text-danger" role="alert">{completion.message}</p> : null}
         <button className="min-h-11 rounded-md bg-brand px-5 font-semibold text-white disabled:opacity-60" disabled={pending} type="submit">

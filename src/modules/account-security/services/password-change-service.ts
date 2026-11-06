@@ -20,6 +20,8 @@ import { notifyPasswordChangeLineBindings } from "./password-change-notification
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { authenticatedPasswordChangeSchema } from "../schemas/account-security-schemas";
+import { throwIfPasswordPolicyIssue } from "@/modules/auth/domain/password-policy";
+import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-personal-context-service";
 import {
   CurrentPasswordRejectedError,
   PasswordChangeProviderNotStartedError,
@@ -311,6 +313,7 @@ export async function changeAuthenticatedUserPassword(
   const parsed = authenticatedPasswordChangeSchema.safeParse(input);
 
   if (!parsed.success) {
+    throwIfPasswordPolicyIssue(parsed.error.issues, ["newPassword"]);
     throw new ValidationError("Password change data is invalid");
   }
 
@@ -331,6 +334,8 @@ export async function changeAuthenticatedUserPassword(
     now,
   };
   if (await attemptThrottle.isBlocked(throttleInput)) throw new PasswordChangeAttemptThrottledError();
+  // ADR-0030: before any provider effect; a rejection can only reveal the signed-in User's own data.
+  await assertUserPasswordNotPersonal(database, actor.userId, parsed.data.newPassword);
 
   const operationId = randomUUID();
   // Fixed before the fence exists, so the deadline never ends later than the fence start plus the bound.
