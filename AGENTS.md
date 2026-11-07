@@ -181,30 +181,55 @@ A local resource-sensitive timeout, worker termination or broad-run failure is n
 
 ## 10. Git and Delivery
 
-Preferred delivery workflow:
+### Mandatory Branch and Pull Request Policy
+
+This policy is binding on every coding agent, including Codex and Claude Code. It applies to every repository change: features, bug fixes, refactoring, UI/UX changes, tests and fixtures, database migrations, documentation, CI/CD configuration, and dependency and security updates. A one-line change is not an exception.
+
+1. Never develop, commit or push normal task changes directly to `main`.
+2. Always perform repository changes on a dedicated task branch. If the current branch is `main`, create or switch to an appropriate `feature/`, `fix/`, `docs/` or `ci/` branch before making changes.
+3. If the working tree already contains uncommitted changes, preserve them while creating or switching branches. Never discard, reset, overwrite or drop user work to create a branch.
+4. Push commits only to the task branch.
+5. Deliver every completed task through a Pull Request targeting `main`. Open a Draft PR as soon as the implementation is ready for hosted verification, even before full CI has completed.
+6. Continue subsequent fixes, including CI failure fixes and review feedback, on the same task branch and PR.
+7. Never bypass the PR process by pushing directly to `main`, including when CI fails or PR creation is unavailable.
+8. Do not merge Pull Requests automatically or enable auto-merge. The repository owner approves merging after the required CI checks pass and engineering review is complete.
+9. Never claim a task is delivered when it exists only as uncommitted local changes or as a local commit without a pushed task branch and the required PR.
+10. If branch creation, pushing or PR creation is blocked by permissions or tooling, report **BLOCKED** with the exact failure. Do not silently fall back to direct-main delivery or any other route.
+11. Do not change branch protection, rulesets, bypass lists, repository permissions or merge policies without explicit owner authorization for that specific change.
+
+### Exceptional operations
+
+Direct-main changes are not permitted for routine agent work. An emergency exception may be considered only when the repository owner explicitly authorizes that specific direct-main operation and the applicable GitHub repository rules permit it. A generic request such as "fix", "implement", "commit" or "push" is not authorization to bypass PR delivery; neither are urgency, failing CI, unavailable tooling or prior approval for a different operation. Never attempt to circumvent GitHub protection rules. Report any authorized exception explicitly as an exception, never as normal compliant delivery.
+
+### Mandatory delivery workflow
 
 ```text
-Implement → Focused Local Verification → Review Diff → Commit
-→ Push Feature Branch → Open/Update Draft PR → GitHub Full CI
-→ Investigate and Fix Failures → Ready for Code Review → Owner Approval → Merge
+Implement → Focused Local Verification → Commit on Task Branch
+→ Push Task Branch → Open/Update Draft PR → GitHub Full CI
+→ Fix CI Failures on Same Branch → READY FOR REVIEW
+→ Owner Review and Approval → Merge Through PR
 ```
 
-* Inspect `git status` and `git diff` before and after changes. Keep diffs small, readable and separated by concern; preserve unrelated user work.
+Every step is required, in order. The four required technical checks defined in Section 9 (Code Quality, Unit Tests, Full PostgreSQL integration, Production Build) must succeed for the latest PR HEAD; results from an older SHA do not count. Keep pending CI and failures visible in the PR and in reports.
+
+* Inspect `git status` and `git diff` before and after changes, and review the complete diff before each commit. Keep diffs small, readable and separated by concern; preserve unrelated user work.
 * Do not modify lockfiles/generated files or format the entire repository unless the task requires it.
-* Commit and push within the task's authorization. Do not use destructive Git commands, reset user work, force-push or rewrite unrelated commits without explicit authorization.
+* Commit and push to the task branch within the task's authorization. Do not use destructive Git commands, reset user work, force-push or rewrite unrelated commits without explicit authorization.
 * Open/update the Draft PR after focused checks; do not routinely wait for complete local regression. Pending CI or explicitly documented known issues are acceptable in a Draft PR, provided they are not represented as resolved.
-* Mark work READY FOR REVIEW only after the current HEAD satisfies Section 9 and known blocking failures are resolved. Code review and owner approval remain required before merge. Do not merge automatically or bypass required checks.
-* Do not change production branch protection or rulesets without explicit approval.
+* Mark work READY FOR REVIEW only after the current HEAD satisfies Section 9 and known blocking failures are resolved. Code review and owner approval remain required before merging through the PR. Do not bypass required checks.
 
 ### Required delivery report
 
-For every completed task, report:
+For every completed implementation, report:
 
-* Branch, commit SHA and PR URL.
+* Branch name, commit SHA and PR URL.
 * Files changed, implemented behavior and important security/architecture decisions.
 * Focused local checks actually executed and results; local checks intentionally delegated to CI.
 * GitHub Actions run URL, tested SHA, all four job conclusions and relevant test totals.
-* Remaining limitations, known failures or risks and a final readiness classification.
+* Code review readiness, using a classification below.
+* Unresolved risks, remaining limitations and known failures.
+
+A task without a pushed task branch and PR URL is not delivered; report it as **BLOCKED** or as incomplete. Never represent a direct-main commit as compliant with normal task delivery.
 
 Use only these readiness classifications:
 
