@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,7 @@ import {
 import { getLineRichMenuActionLines, getLineRichMenuColors, renderLineRichMenuImage } from "../../../../scripts/line-rich-menu-renderer";
 import { LINE_RICH_MENU_CATALOG } from "./catalog";
 import { getLineMenuLayout } from "./layout";
+import linuxImageHashes from "./fixtures/assets-linux.sha256.json";
 
 const assetDirectory = join(dirname(fileURLToPath(import.meta.url)), "../../../../public/line/rich-menus");
 
@@ -123,10 +125,23 @@ describe("DEMI LINE Rich Menu PNG assets", () => {
     }
   });
 
-  it("renders every complete Thai label without overflow and reproduces committed PNG bytes", async () => {
-    for (const menu of createLineRichMenuAssetManifest()) {
+  it("renders every complete Thai label without overflow and reproduces exact platform PNG bytes", async () => {
+    const manifest = createLineRichMenuAssetManifest();
+    const hashes: Record<string, { committed: string; linux: string }> = linuxImageHashes;
+    expect(Object.keys(hashes).sort()).toEqual(manifest.map((menu) => menu.assetFile).sort());
+    for (const menu of manifest) {
       const image = await renderLineRichMenuImage(menu);
-      expect(image.equals(await readFile(join(assetDirectory, menu.assetFile))), menu.key).toBe(true);
+      const committed = await readFile(join(assetDirectory, menu.assetFile));
+      const expected = hashes[menu.assetFile];
+      if (!expected) throw new Error(`Missing PNG reference for ${menu.key}`);
+      expect(createHash("sha256").update(committed).digest("hex"), `${menu.key}: committed PNG`).toBe(expected.committed);
+      // Native Pango/librsvg rasterization differs across OS builds. Keep exact
+      // Linux references; never replace byte equality with a visual tolerance.
+      if (process.platform === "linux") {
+        expect(createHash("sha256").update(image).digest("hex"), menu.key).toBe(expected.linux);
+      } else {
+        expect(image.equals(committed), menu.key).toBe(true);
+      }
     }
   }, 30_000);
 

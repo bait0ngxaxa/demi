@@ -1713,6 +1713,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     beforeEach(() => {
       vi.stubEnv("IDENTITY_HASH_SECRET", "rec2b-test-identity-hash-secret-32-chars");
       vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+      vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     });
     afterEach(() => vi.unstubAllEnvs());
 
@@ -2219,6 +2220,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     beforeEach(() => {
       vi.stubEnv("IDENTITY_HASH_SECRET", "rec2b-test-identity-hash-secret-32-chars");
       vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+      vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     });
     afterEach(() => vi.unstubAllEnvs());
 

@@ -1,0 +1,202 @@
+name: DEMI CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Runner diagnostics
+        run: |
+          node --version
+          npm --version
+          nproc
+          free -h
+          df -h .
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Check migration order against main
+        run: npm run prisma:migrations:check -- origin/main
+
+  unit:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Runner diagnostics
+        run: |
+          node --version
+          npm --version
+          nproc
+          free -h
+          df -h .
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Run complete unit suite
+        run: npm run test
+
+  integration:
+    name: Full PostgreSQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Runner diagnostics
+        run: |
+          node --version
+          npm --version
+          nproc
+          free -h
+          df -h .
+          docker version --format 'Docker Engine: {{.Server.Version}}'
+          docker compose version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start disposable PostgreSQL
+        run: npm run test:db:up
+
+      - name: Run full integration suite
+        id: tests
+        run: |
+          start=$SECONDS
+          if npm run test:integration; then
+            status=0
+          else
+            status=$?
+          fi
+          elapsed=$((SECONDS - start))
+          {
+            echo '### Full integration command'
+            echo "Exit code: $status"
+            echo "Elapsed: ${elapsed}s (generation, migrations and tests)"
+            echo 'See the test step log for Vitest file/test totals and individual failure durations.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Stop disposable PostgreSQL
+        if: ${{ always() }}
+        run: npm run test:db:down
+
+      - name: Final resource diagnostics and result
+        if: ${{ always() }}
+        env:
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          nproc
+          free -h
+          df -h .
+          echo "Integration step outcome: $TEST_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Production Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Runner diagnostics
+        run: |
+          node --version
+          npm --version
+          nproc
+          free -h
+          df -h .
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Build production application
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build

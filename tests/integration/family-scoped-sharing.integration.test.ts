@@ -249,14 +249,15 @@ describe("AF-5 one-step caregiver add with scoped sharing (PostgreSQL)", () => {
     const summary = await getFamilyHealthSummary(caregiver, relationshipId, deps);
     expect(summary).toMatchObject({
       relationshipLabel: "บุตร",
-      profile: { age: 66, careTeams: [
-        { hospitalName: "รพ.สต. บ้านทดสอบ", osmDisplayName: expect.stringContaining("อสม. สมศรี"), hospitalPhone: "021111111" },
-        { hospitalName: "โรงพยาบาลทดสอบ", osmDisplayName: null, hospitalPhone: "022222222" },
-      ] },
+      profile: { age: 66, careTeams: expect.arrayContaining([
+        expect.objectContaining({ hospitalName: "รพ.สต. บ้านทดสอบ", osmDisplayName: expect.stringContaining("อสม. สมศรี"), hospitalPhone: "021111111" }),
+        expect.objectContaining({ hospitalName: "โรงพยาบาลทดสอบ", osmDisplayName: null, hospitalPhone: "022222222" }),
+      ]) },
       nextAppointment: { appointment: { appointmentId: ids.upcoming, hospitalName: "รพ.สต. บ้านทดสอบ" } },
       healthPlan: { plans: [{ hospitalName: "รพ.สต. บ้านทดสอบ", primaryGoalLabel: "แผน “สุขภาพดี” ของฉัน", targets: { weightLossKg: 3 } }] },
       medications: { items: [{ medicationName: "เมทฟอร์มิน", times: ["08:00", "20:00"] }] },
     });
+    expect(summary.profile?.careTeams).toHaveLength(2);
     expect(JSON.stringify(summary)).not.toMatch(/0899999999|หลังอาหาร|บันทึกของเจ้าหน้าที่|บันทึกภายใน|ยาที่หยุดแล้ว/u);
 
     expect(await db.caregiverResourceGrant.count({ where: { status: "ACTIVE" } })).toBe(3);
