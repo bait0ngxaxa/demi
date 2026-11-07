@@ -4,6 +4,22 @@ Decision Register ที่บันทึกตามที่ Product Owner �
 
 เอกสารนี้เป็น decision register ไม่ใช่ capability inventory — สถานะของแต่ละ capability อยู่ใน [BUSINESS_FLOW_GAP_CANONICAL.md](./BUSINESS_FLOW_GAP_CANONICAL.md).
 
+## EC-2026-11-07
+
+บันทึกคำยืนยัน Product Owner จากงาน Final Engineering Cleanup วันที่ 2026-11-07 (Asia/Bangkok); เป็น decision/attestation ไม่ใช่ test logs หรือ production evidence
+
+| เรื่อง | ข้อสรุปที่ใช้ปัจจุบัน / supersession |
+| --- | --- |
+| Work navigation — NAV-01/03/04 | ยอมรับ navigation และ UI ตาม role ปัจจุบัน ไม่ค้างการปรับให้ตรง Canva รุ่นเก่า; authority ยังตรวจบน server |
+| Clinical/defaults — CARE-01/02/11/12/25; §R2 Q1..Q7 | ยอมรับแนวทางที่ implement อยู่ รวม PAM/PROMs, health path และ defaults; supersedes ถ้อยคำที่ยังขอ confirmation ของ behavior เดิม แต่ไม่ใช่การรับ official source text/เกณฑ์ใหม่ CARE-01/02 และ C-03 ยังรอเนื้อหาทางการที่ไม่ได้รับมอบ ห้ามแต่ง scoring/ถ้อยคำ |
+| Health path — WB-PD-01 / C-01 / SR-D9 | Timeline และ review ปัจจุบันได้รับการยอมรับ; requirement เก่าที่ให้รอสร้างฟอร์มใหม่ไม่ใช่ implementation gap ปัจจุบัน CARE-25 มี source/tests อยู่แล้ว ไม่อ้างว่าได้รับแบบฟอร์มจากภายนอก |
+| Reporting — CARE-15 / WB-PD-02 / C-02 | “ผลลัพธ์ที่ได้” ยังรอรายการประโยค/วลี/ค่าจากลูกค้า เป็น reporting content gap ที่ยืนยันว่ายังเหลือเพียงรายการเดียว; RPT-01 มี vitals และ PAM/PROMs แล้ว |
+| Cross-role flows — NAV-03/04, STAFF-08/09, AREA-02..05 | Product Owner รายงานว่าทดสอบผ่าน ไม่เปิด redesign; คง ADR-0018/0019/0026 และกฎ Hospital OWNER/MEMBER incompatible กับ OSM เมื่อมี non-ended relationships ข้ามทุกโรงพยาบาลตาม [compatibility requirement](./HOSPITAL_OSM_COMPATIBILITY.md) |
+| Mobile / LINE — NOTIF-08, ACCOUNT-08, LINE workflows | Product Owner รายงานว่าการใช้งาน/ทดสอบจริงผ่าน ไม่ออกแบบ LINE/LIFF/Rich Menu/mobile ใหม่ ไม่มีข้อมูลรุ่นเครื่อง, LINE version, environment, เวลาแต่ละ test, screenshots หรือ logs แนบ จึงไม่ปิด T-10/11/14/15 ใน RELEASE_GATE แทนหลักฐาน |
+| Legal/consent และ network | ADR-0028 ส่งมอบ product ส่วน ACCOUNT-01/02/05/09/10 แล้วแต่ G-01 ยังเปิด; Phase A open implementation list ด้านล่างถูก superseded โดย ADR-0015/0016/0017/0018/0026 และ AREA-02..05 ไม่ย้อนกลับเป็น PARTIAL |
+
+ข้อความ pending/default และ phase scope ด้านล่างเก็บเป็นประวัติ ต้องอ่านตาม amendment นี้และ accepted ADRs ที่ใหม่กว่า CVD (WB-PD-03) ปิดแล้วโดย จ-8 ไม่ขอยืนยันซ้ำ ไม่มี governance decision ใดเป็น runtime feature gate รายละเอียดค้างแยกตามเจ้าของใน [REMAINING_GAPS.md](./REMAINING_GAPS.md) และหลักฐาน deployment ใน [RELEASE_GATE.md](../operations/RELEASE_GATE.md)
+
 ## ก. Defaults ที่ตัดสินใช้ไปก่อน (ให้ลูกค้ายืนยันภายหลัง)
 
 | ID | เรื่อง | Default ที่ใช้ | Phase |

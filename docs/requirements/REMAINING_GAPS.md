@@ -1,54 +1,50 @@
 # งานที่ยังเหลือของ DEMI
 
-- **ปรับปรุง:** 2026-10-25 (production-code-first และ REC-2B runtime alignment)
-- **ที่มา:** ตรวจซ้ำทุกแถวใน [BUSINESS_FLOW_GAP_CANONICAL.md](./BUSINESS_FLOW_GAP_CANONICAL.md) เทียบกับโค้ด, tests, เอกสาร phase และคำตอบของลูกค้า (ทุกแถวอ้างหลักฐานไว้ในเอกสารนั้น); [RELEASE_GATE.md](../operations/RELEASE_GATE.md) เป็นบันทึกปฏิบัติการ/ธรรมาภิบาล ไม่ใช่ product authority หรือ runtime gate
-- **วิธีอ่าน:** รายการแบ่งเป็นสามกลุ่มที่ไม่ซ้ำกัน กลุ่ม (ก) เป็นงานของทีม product กลุ่ม (ข) รอเนื้อหาจากลูกค้า ส่วนกลุ่ม (ค) เป็นการตัดสินของหน่วยงานพันธมิตร ซึ่งให้ไว้เป็นข้อมูลประกอบ ไม่ใช่งานค้างของ product
+- **ปรับปรุง:** 2026-11-07 — current-HEAD reconciliation หลัง engineering query cleanup
+- **หลักฐาน:** [canonical register](./BUSINESS_FLOW_GAP_CANONICAL.md), [decision register §EC-2026-11-07](./WB_ALIGNMENT_DECISIONS.md#ec-2026-11-07), source/tests ที่อ้างในแต่ละแถว และคำยืนยัน Product Owner ในงาน Final Engineering Cleanup
+- **วิธีอ่าน:** implementation, เนื้อหาภายนอก, หลักฐาน operations และ governance เป็นคนละเรื่อง คำยืนยัน Product Owner ไม่ใช่ผล automated tests หรือหลักฐาน production
 
-รายการด้านล่างระบุ requirement ที่ยังต้องตัดสินหรือ implementation ที่ยังขาด ไม่ใช่สถานะการอนุมัติ release. Recovery ตาม REC-2B implement แล้ว; เอกสาร release ไม่มีผลต่อการทำงานของระบบ. การตัดสิน governance ที่ยังเปิดเป็นความรับผิดชอบของหน่วยงาน/ผู้ดูแล deployment และไม่แทนที่ runtime authorization.
+## Product implementation / reporting content gap
 
-## เพิ่มเติม — Hospital Network Phase A (2026-10-20)
+ช่องว่าง reporting ที่ยืนยันว่ายังเหลือเพียงรายการเดียวคือ **“ผลลัพธ์ที่ได้” — รายการประโยค/วลี/ค่าจากลูกค้า** (`CARE-15`, `WB-PD-02`, `RELEASE_GATE C-02`). ยังไม่ได้รับรายการ ห้ามสร้างค่า dropdown หรือเกณฑ์ขึ้นเอง งานนี้ไม่เพิ่มหรือออกแบบ feature ดังกล่าวใหม่ รายงานยังแสดงสถานะไม่มีแหล่งข้อมูลตาม implementation ปัจจุบัน
 
-[ADR-0014](../adr/0014-operational-hospital-service-areas.md) แทน H1 บางส่วน: OWNER แม่ข่ายจัดการ operational association ผ่านบริการ attach/end ได้ โดยไม่เปลี่ยน official hierarchy หรือสิทธิ์ผู้ป่วย/บุคลากร/รายงานเดิม. AREA-02–05 จึงเป็น PARTIAL ตามขอบเขตใหม่; ไม่ใช่การปิด flow ทั้งหมด. ยังต้องยืนยันแหล่ง classification ของสถานพยาบาลและวิธีนำเข้าที่เชื่อถือได้, ฟิลด์ที่อนุญาตให้แก้, การอนุมัติ transfer ข้ามแม่ข่าย และข้อกำหนด Patient read ของ Phase B. Phase C ยังเหลือ UI จัดการ/เลือกเขตและ reporting integration ตามที่อนุมัติ. เมื่อไม่มี eligibility ที่ยืนยันแล้ว ระบบปฏิเสธ attach; ไม่เดาประเภทจากชื่อหรือรหัส. [Phase A handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) ระบุบริการและ adoption report แบบอ่านอย่างเดียว.
+Work navigation และโครงสร้าง UI ตาม role ปัจจุบันได้รับการยอมรับ ไม่ค้างงานออกแบบให้เหมือน Canva เดิม แนวทาง clinical/defaults ปัจจุบันได้รับการยอมรับเช่นกัน ไม่ค้างการออกแบบ PAM/PROMs หรือ health path ใหม่ Product Owner รายงานว่า cross-role และ mobile/LINE ผ่านการทดสอบ/ใช้งาน แต่ยังไม่มี logs, อุปกรณ์, environment หรือ artifacts รายกรณีในหลักฐานที่ส่งมาครั้งนี้
 
-## (ก) งานของทีม product ที่ยังเหลือ
+## เนื้อหาภายนอกที่ยังไม่ยืนยันว่าได้รับ
 
-ขนาด: **S** ไม่เกิน 2–3 วัน · **M** ประมาณ 1–2 สัปดาห์ · **L** มากกว่า 2 สัปดาห์ หรือต้องมีการตัดสินด้านความปลอดภัยก่อน
+| รายการ | รหัส / เจ้าของ | ขอบเขตที่ยังเหลือ |
+| --- | --- | --- |
+| ถ้อยคำ/เกณฑ์ PAM/PROMs ฉบับทางการและคำแนะนำผู้ประเมิน | CARE-01/02, C-03 · ลูกค้า/ผู้รับผิดชอบ clinical | คง CONTENT_PENDING เฉพาะ official source content ที่ยังไม่มีหลักฐานรับมอบ การยอมรับ behavior/defaults รวม Q1/Q6 ไม่ใช่การส่งมอบข้อความ/เกณฑ์ใหม่ ห้ามแต่งหรือเปลี่ยน scoring ใน cleanup นี้ |
+| รายการคำ “ผลลัพธ์ที่ได้” | CARE-15, WB-PD-02, C-02 · ลูกค้า | ช่องว่าง reporting ข้างต้น ไม่ปิดรายการนี้ |
+| Terms, Privacy และข้อความความยินยอมฉบับจริง | ACCOUNT-01/02/05/09/10, G-01 · หน่วยงาน/DPO | Software มีแล้วตาม ADR-0028; ฉบับปัจจุบันยังเป็น placeholder ที่ระบุชัด การรับ acceptance/consent ไม่ใช่การอนุมัติฐานกฎหมายหรือ disclosure |
 
-| # | งาน | แถวใน register | ขนาด | Phase ที่เสนอ | รายละเอียด |
-| --- | --- | --- | --- | --- | --- |
-| 1 | หน้าจอ ข้อกำหนดการใช้งาน / นโยบายความเป็นส่วนตัว / ความยินยอม พร้อมบันทึกการยอมรับแบบมีเวอร์ชัน | ACCOUNT-01, ACCOUNT-02, ACCOUNT-05, ACCOUNT-09, ACCOUNT-10 · RELEASE_GATE F-02 | M | Phase J | สร้างหน้าแสดงเอกสารพร้อมเลขเวอร์ชัน หน้ายินยอมแยกตามวัตถุประสงค์ (ข้อมูลสุขภาพ และการตลาดซึ่งค่าเริ่มต้นปิด) และบันทึกว่าใครยอมรับเวอร์ชันใดเมื่อไร โดยใส่ข้อความ placeholder ที่ระบุชัด แล้วค่อยแทนด้วยข้อความจริงจากหน่วยงานพันธมิตรเมื่อได้รับ |
-| 2 | รายงานราย Program แสดงสัญญาณชีพครั้งที่ 1–2 และคะแนน PAM/PROMs | RPT-01 | S | Phase K (report polish) | หน้า `/programs/[programId]/report` ยังไม่มีข้อมูลสองส่วนนี้ ทั้งที่มีอยู่ในไฟล์ Excel ของโรงพยาบาลแล้ว |
+C-01 / WB-PD-01 เดิมที่รอแบบฟอร์มเส้นทางสุขภาพถูกแทนที่สำหรับ behavior ที่ใช้อยู่ด้วย SR-D9 และ CARE-25: timeline สัญญาณชีพครั้งที่ 1–6 และการยืนยันทบทวน ไม่ได้อ้างว่าได้รับเอกสารทางการใหม่ หากลูกค้าจะส่งเอกสารเพิ่มเติมให้เก็บเป็น external input แยกจาก implementation ที่ยอมรับแล้ว ไม่สร้างฟอร์มหรือ scoring ทดแทนเอง
 
-งาน operational ก่อนเปิด production (T-01..T-20 เช่น ตั้งค่า VPS, Cloudflare, restore drill และ UAT บนเครื่องจริง) อยู่ใน RELEASE_GATE ส่วน A.1 และไม่นับซ้ำในตารางนี้
+## Operational / deployment evidence
 
-## (ข) เนื้อหาที่รอจากลูกค้า
+T-01..T-21 และหลักฐาน production/provider ใน [RELEASE_GATE.md](../operations/RELEASE_GATE.md) ยังต้องตรวจตามรายการ: configuration, scheduler/queues, backup/restore, rollback, monitoring/security, LINE provider และ device UAT ที่ระบุรายละเอียดจริง คำรายงาน Product Owner ไม่ปิด checklist เหล่านี้โดยอัตโนมัติ ผล automated checks ของ cleanup จะบันทึกใน [FINAL_ENGINEERING_CLOSURE.md](../engineering/FINAL_ENGINEERING_CLOSURE.md) เมื่อรันจริง
 
-ทุกข้อในกลุ่มนี้ product มีฟีเจอร์แล้ว และแสดง placeholder ที่ระบุชัดระหว่างรอ
+## Agency governance (ไม่ใช่ runtime feature gate)
 
-| # | เนื้อหาที่ต้องการ | รหัส | แถวใน register | สิ่งที่ระบบแสดงตอนนี้ |
-| --- | --- | --- | --- | --- |
-| 1 | แบบฟอร์ม “เส้นทางสุขภาพ” (ช่อง ตัวเลือก และการให้คะแนน) | ก-3 · WB-PD-01 · RELEASE_GATE C-01 | CARE-11, CARE-12, CARE-25 | ครั้งที่ 1 และ 6 แสดง “รอแบบฟอร์มจากหน่วยงาน” |
-| 2 | รายการคำ “ผลลัพธ์ที่ได้” | ก-9 · WB-PD-02 · RELEASE_GATE C-02 | CARE-15 | คอลัมน์ผลลัพธ์ในรายงานการจัดบริการแสดง “ไม่มีแหล่งข้อมูลในระบบ” |
-| 3 | ยืนยัน default ของแบบประเมินตามสมุด (มาตรา PROMs 1–5, การแสดง PROMs ในรายงาน) และถ้อยคำคำแนะนำผู้ประเมิน PROMs | ก-8 · RELEASE_GATE C-03 · WB_ALIGNMENT_DECISIONS §R2 Q1/Q6 | CARE-01, CARE-02 | PAM/PROMs ตามสมุดผู้ป่วย (Phase R2) ใช้ default Q1 และ Q6 ที่รอลูกค้ายืนยัน; แบบประเมินชุดเดิมยังแสดงพร้อมประกาศ “แบบประเมินนี้ยังอยู่ระหว่างยืนยันข้อกำหนด” |
-| 4 | ยืนยันว่าเรื่อง CVD risk score ปิดแล้ว (เจ้าหน้าที่กรอกเป็น %) | WB-PD-03 · RELEASE_GATE C-04 | — | เจ้าหน้าที่กรอก % ที่ Baseline และ Final Assessment |
+| รหัส | เรื่องที่ผู้รับผิดชอบภายนอกต้องตัดสิน/บันทึก |
+| --- | --- |
+| G-01 | PDPA/ฐานกฎหมาย/ผู้ควบคุมข้อมูล, Terms/Privacy/consent, self-registration disclosure และการใช้ข้อมูลจริง; ADR-0028 ส่งมอบ software แล้วแต่ไม่แทนคำตัดสินหน่วยงาน |
+| G-02 | Data residency ของฐานข้อมูล, edge/provider และ backup |
+| G-03 | Record-time disclosure ใน Parent summary ซึ่งใช้ operational association ปัจจุบัน |
+| G-04 | Small-count suppression: ยังไม่มีเกณฑ์ที่รับมอบ ห้ามตั้ง threshold เอง |
+| G-05 | ผู้รับ ชุดข้อมูลและกระบวนการส่งต่อ export; audit ไม่ใช่ blanket disclosure approval |
+| G-06 | ข้อเสนอแนะข้อความ generic LINE recovery; ไม่ใช่ activation condition |
+| WB-PD-07 / FAM-04/05 | Governance การใช้ข้อมูลญาติ; runtime ต้องมี valid relationship และ resource-specific grant ของผู้ป่วยที่ผู้ดูแลยอมรับเสมอ |
 
-## (ค) เรื่องที่หน่วยงานพันธมิตรเป็นผู้ตัดสิน (ข้อมูลประกอบ)
+## รายการเดิมที่ปิดหรือ superseded พร้อมหลักฐาน
 
-| # | เรื่อง | รหัส | สิ่งที่ product มีแล้ว |
-| --- | --- | --- | --- |
-| 1 | PDPA และฐานทางกฎหมาย (ก-25) รวมความยินยอมของค่าเฉลี่ยเวลาออกกำลังกายในรายงาน (จ-6), ข้อความ Terms/Privacy/ความยินยอม และการรับทราบความเสี่ยง self-registration ตาม ADR-0020 | RELEASE_GATE G-01 | ข้อความจะแสดงในหน้าจอของงาน (ก) ข้อ 2 เมื่อได้รับ; หน่วยงานต้องรับทราบก่อนใช้ผลการค้นพบ/ไม่พบกับข้อมูลจริง |
-| 2 | ที่ตั้งของข้อมูล (data residency) | RELEASE_GATE G-02 | เป็นการตั้งค่า infrastructure ไม่ต้องแก้ product |
-| 3 | การเปิดเผยข้อมูลตามเวลาที่บันทึก ในสรุปของโรงพยาบาลแม่ข่าย | RELEASE_GATE G-03 | ระบบใช้ hierarchy ปัจจุบัน และไม่สร้างวันที่มีผลขึ้นเอง |
-| 4 | การปกปิดจำนวนต่ำในสรุปรวม | RELEASE_GATE G-04 | ยังไม่มีเกณฑ์ปกปิดจนกว่าจะได้รับกฎ |
-| 5 | การส่งต่อไฟล์รายงานไปยังผู้รับปลายทาง | RELEASE_GATE G-05 | ทุกการส่งออกถูกบันทึก audit |
-| 6 | ผู้ดูแล (ญาติ) ดูแผนสุขภาพหรือรายการยาของผู้ป่วย | WB-PD-07 · FAM-04, FAM-05 | ทำงานผ่าน grant แยกตาม resource ที่ผู้ป่วยให้และผู้ดูแลยอมรับ; ความสัมพันธ์ครอบครัวเพียงอย่างเดียวไม่ให้สิทธิ์ และการถอน/หมดอายุ/ระงับ relationship ถูกตรวจซ้ำใน runtime. ไม่มี feature flag. การตัดสิน governance ภายนอกเป็นหน้าที่ของหน่วยงานและผู้ดูแลข้อมูล. |
+| รายการในฉบับเดิม | ข้อสรุปปัจจุบัน |
+| --- | --- |
+| หน้าจอ/บันทึก Terms, Privacy, consent (เดิม product ข้อ 1) | IMPLEMENTED โดย [ADR-0028](../adr/0028-legal-documents-and-consent-records.md), `src/modules/legal/**`, migration `20261204100000_legal_documents_and_consents`, `tests/integration/legal-consent.integration.test.ts`; G-01 ยังคงเปิด |
+| Program report สัญญาณชีพและ PAM/PROMs (เดิม product ข้อ 2) | RPT-01 VERIFIED_COMPLETE ตาม RD-1/RD-2: `program-report-projection.ts`, `program-screening-report.ts`; `tests/integration/program-reporting.integration.test.ts` และ `src/modules/reporting/transport/program-report-page.test.ts` ไม่ใช่ช่องว่างปัจจุบัน |
+| Hospital Network Phase A ที่ระบุ AREA-02..05 เป็น PARTIAL | Superseded โดย ADR-0015/0016/0017/0018/0026 และ canonical AREA-02..05 VERIFIED_COMPLETE: operational associations, ADMIN classification/transfer, Parent-led Child onboarding และ scoped Patient read; ไม่มี Hospital Master ใหม่ |
+| CVD risk score / WB-PD-03 / C-04 | ปิดแล้วตาม D7 → WB-DF-17 และคำตอบ จ-8: เจ้าหน้าที่กรอก % ไม่คำนวณ ไม่ขอ confirmation ซ้ำ |
+| P-19 ปรับแผน / WB-PD-11 เวลานัด | เก็บเป็นประวัติคำถาม: ยอมรับ behavior ปัจจุบัน แผนใหม่ยังสร้างแยกได้; WB-PD-11 ปิดโดย Phase D ก-23 (§ง/B-01 ใน decision register) ไม่ใช่งาน redesign ค้าง |
+| NOTIF-03 ค่า lateness 15 นาที | ยังเป็น provisional engineering default ตาม register การรายงาน mobile/LINE ผ่านไม่ได้ยืนยัน threshold นี้โดยเฉพาะ เก็บเป็น technical decision follow-up ไม่เปลี่ยน runtime และไม่อ้างว่า production deadline ผ่าน |
 
-## คำถามที่ยังเปิด (ไม่ใช่งานค้าง)
-
-พฤติกรรมปัจจุบันใช้งานได้และมี tests แล้ว ถ้า Owner หรือลูกค้าตัดสินต่างจากนี้ จะกลายเป็นงานใหม่
-
-APT-03 ไม่ใช่คำถามเปิดแล้ว: AF-D2 กำหนดให้ “ตอบรับนัดหมาย” ใน OSM flow คือการยืนยันรับนัดหรือขอเลื่อนของ อสม. ที่ได้รับมอบหมาย ส่วนการรับทราบของผู้ป่วยยังเป็นข้อเท็จจริงแยกกัน ดู [WB_ALIGNMENT_DECISIONS.md](./WB_ALIGNMENT_DECISIONS.md) §AF-3.
-
-- **P-19:** เมื่อการติดตามผลตอบว่า “ปรับแผน” ต้องสร้างแผนใหม่ในขั้นตอนเดียวกันหรือไม่ (ตอนนี้ยังสร้างแยกได้)
-- **WB-PD-11:** เวลานัดที่อนุมัติต้องตรงกับเวลาที่ผู้ป่วยหรือ อสม. เสนอหรือไม่ (ตอนนี้ใช้เวลาใหม่ใดก็ได้)
-- **NOTIF-03:** ระยะส่งช้าสูงสุด 15 นาทีของการเตือนกินยาเป็นค่าเริ่มต้นทางเทคนิคที่ยังรอ Product Owner ยืนยัน
+Technical query debt ที่เลื่อนพร้อมเหตุผลอยู่ใน [QUERY_HARDENING_AUDIT.md](../engineering/QUERY_HARDENING_AUDIT.md) ไม่ใช่ product redesign backlog ประวัติ phase/ADRs เดิมยังคงไว้และต้องอ่านร่วมกับ amendments ที่ใหม่กว่า

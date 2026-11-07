@@ -1,5 +1,7 @@
 # WB Round Activity Crosswalk (A-01, Phase D)
 
+> **Current amendment — 2026-11-07:** Read this historical crosswalk with ADR-0022 flexible plan-driven rounds, SR-D9 health-path timeline/review and [WB acceptance EC-2026-11-07](./WB_ALIGNMENT_DECISIONS.md#ec-2026-11-07). Current clinical/default behavior is accepted. Old U-3/U-6 “รอแบบฟอร์ม” and mandatory fixed-checklist wording are superseded for current implementation; they are not requests to restore an old UI or invent clinical content. Official PAM/PROMs source content remains separately tracked under CARE-01/02; the “ผลลัพธ์ที่ได้” list remains pending under CARE-15.
+
 แก้ A-01: รายการแนะนำของครั้งที่ 1–6 ใน `ROUND_RECOMMENDED_TOOLS` (`src/modules/patient-program-rounds/domain/round-catalog.ts`) ให้ตรงกับกล่องบน Canva Whiteboard ของ Product Owner ไม่ใช่ตามสมมติฐานของ Workbook เดิม. `source` PLANNED/EXTRA ของ ledger derive จากตารางนี้ที่ server ผ่าน `roundActivitySourceFor`.
 
 ## R1. Checklist ที่ต้องทำครบ (Phase R1, Product Owner 2026-10-21)

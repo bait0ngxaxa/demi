@@ -22,7 +22,21 @@
 
 สถานะ: `เปิด` / `ผ่าน` / `ไม่ผ่าน` / `N/A (เหตุผล)` ช่องหลักฐานให้ใส่ลิงก์หรือที่เก็บหลักฐาน (วันที่ + ผู้บันทึก) ห้ามใส่ secret, connection string หรือข้อมูลผู้ป่วย
 
-ณ วันที่ 2026-10-20 ทุก external gate ด้านล่างยังเป็น `เปิด`; ไม่มีหลักฐานจาก VPS, Cloudflare, Supabase, LINE Provider หรือ real-device UAT ใน repository นี้ สถานะ CODE VERIFIED ให้บันทึกแยกพร้อม commit SHA และผล checks ที่รันจริงเท่านั้น
+บันทึกเดิม ณ วันที่ 2026-10-20 (historical ก่อน amendments ด้านล่าง): ทุก external gate ด้านล่างยังเป็น `เปิด`; ไม่มีหลักฐานจาก VPS, Cloudflare, Supabase, LINE Provider หรือ real-device UAT ใน repository นี้ สถานะ CODE VERIFIED ให้บันทึกแยกพร้อม commit SHA และผล checks ที่รันจริงเท่านั้น
+
+## Amendment — 2026-11-07: Product Owner acceptance and evidence boundaries
+
+ที่มา: คำยืนยัน Product Owner ในงาน Final Engineering Cleanup; [WB amendment EC-2026-11-07](../requirements/WB_ALIGNMENT_DECISIONS.md#ec-2026-11-07)
+
+| เรื่อง | BUSINESS APPROVED / attestation | CODE VERIFIED | OPERATIONALLY VERIFIED |
+| --- | --- | --- | --- |
+| Work navigation / role UI | ยอมรับปัจจุบัน ไม่รอ Canva redesign | หลักฐาน NAV-01/03/04 ใน canonical; ผลที่รันจริงของ cleanup แยกใน closure report | ไม่ได้ยืนยัน deployment จากคำยอมรับ |
+| Clinical approach/defaults | ยอมรับ behavior ที่ implement อยู่ รวม R2 defaults | CARE-12/25 และ named tests; ไม่อ้างว่าได้รับ official content ใน CARE-01/02 | ไม่ได้ยืนยัน clinical source delivery หรือ provider |
+| Cross-role | Product Owner รายงานว่าทดสอบผ่าน | ไม่ใช่ผลรัน automated tests ใน session นี้ | ไม่มี logs/environment/timestamps รายกรณีแนบ ไม่ปิด operational checks อัตโนมัติ |
+| Mobile / LINE | Product Owner รายงานว่าใช้งาน/ทดสอบจริงผ่าน | Repository tests ยืนยันได้เฉพาะขอบเขตของแต่ละ test | ยังไม่มี device/LINE versions, OA/provider/environment, เวลาและ artifacts ที่ T-10/11/14/15 ต้องใช้ จึงคงสถานะเปิดเพื่อแนบหลักฐาน ไม่ใช่อ้างว่าไม่เคยทดสอบ |
+| Reporting | รับ behavior ปัจจุบัน; C-02 “ผลลัพธ์ที่ได้” ยังรอรายการคำ/ค่า | RPT-01 vitals/PAM/PROMs มีแล้ว; ไม่สร้างค่าผลลัพธ์เอง | ไม่มีหลักฐาน production เพิ่มเติม |
+
+คำยืนยันนี้ไม่ปิด T-01..T-21: production configuration, scheduler/queue progress, backup/restore, rollback, provider, monitoring และ security ยังต้องมีหลักฐานตามแถวเดิม G-01..G-06 ยังคงเป็น governance ภายนอก ไม่ใช่ runtime feature gates ข้อความ “ยังไม่มีหลักฐาน” ในเอกสารหมายถึงยังไม่มี artifacts ที่ตรวจตาม checklist ได้ ไม่ได้ปฏิเสธคำรายงานการทดสอบของ Product Owner
 
 ## A. Product / technical — เจ้าของ: ทีม product
 
@@ -77,10 +91,10 @@
 
 | ID | รายการ | Owner | Placeholder ใน product | สถานะ |
 | --- | --- | --- | --- | --- |
-| C-01 (เดิม B-04) | **WB-PD-01** แบบฟอร์ม “เส้นทางสุขภาพ” (ก-3): ช่อง ตัวเลือก และการให้คะแนน | ลูกค้า | ครั้งที่ 1 และ 6 แสดง “รอแบบฟอร์มจากหน่วยงาน” | เปิด |
+| C-01 (เดิม B-04) | **WB-PD-01** health path: requirement เก่าที่รอแบบฟอร์มถูกแทนที่สำหรับ behavior ปัจจุบันโดย SR-D9/CARE-25 | ลูกค้า | Timeline สัญญาณชีพครั้งที่ 1–6 และ review มีแล้วและ Product Owner ยอมรับ 2026-11-07; ไม่มี “รอแบบฟอร์ม” ใน src/app ไม่อ้างว่าได้รับเอกสารภายนอก | N/A (form requirement superseded; current behavior accepted) |
 | C-02 (เดิม B-05) | **WB-PD-02** รายการคำ “ผลลัพธ์ที่ได้” (ก-9 / BR-05) | ลูกค้า | คอลัมน์ผลลัพธ์ในรายงานการจัดบริการแสดง “ไม่มีแหล่งข้อมูลในระบบ” | เปิด |
-| C-03 | **ก-8** เกณฑ์การให้คะแนน PAM/PROMs ฉบับจริง | ลูกค้า | แบบประเมินใช้ชุดคำถาม/เกณฑ์จากระบบ DEMI เดิม และแสดงประกาศ “แบบประเมินนี้ยังอยู่ระหว่างยืนยันข้อกำหนด” บนฟอร์ม | เปิด |
-| C-04 (เดิม B-06) | **WB-PD-03** CVD risk score: บันทึกว่าปิดแล้ว (D7 → WB-DF-17 เจ้าหน้าที่กรอก %) ให้ลูกค้ายืนยันการปิด | ลูกค้า | เจ้าหน้าที่กรอก % ที่ Baseline/Final แล้ว | เปิด |
+| C-03 | **ก-8** official PAM/PROMs source content/คำแนะนำผู้ประเมินที่ยังไม่มีหลักฐานรับมอบ | ลูกค้า | ยอมรับ clinical approach/defaults ปัจจุบัน 2026-11-07 รวม Q1/Q6; software รองรับ booklet และ legacy instrument การยอมรับ behavior ไม่ใช่การส่ง official wording/scoring ใหม่; CARE-01/02 ยัง CONTENT_PENDING เฉพาะเนื้อหา | เปิด |
+| C-04 (เดิม B-06) | **WB-PD-03** CVD risk score ปิดแล้วโดย D7 → WB-DF-17 และคำตอบ จ-8 | ลูกค้า | ยืนยันให้เจ้าหน้าที่กรอก % ที่ Baseline/Final ไม่คำนวณ; ไม่ต้องขอยืนยันซ้ำ ไม่ใช่ผลตรวจ production | ผ่าน |
 
 ## หมายเหตุ: สิ่งที่ repository มีแล้ว (ไม่ใช่หลักฐานของ production)
 
