@@ -126,6 +126,7 @@ describe("LINE-QA.B2.3 issuance and Full Disconnection on PostgreSQL", () => {
   });
   beforeEach(() => {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1000000001");
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     vi.stubEnv("IDENTITY_HASH_SECRET", "synthetic-b2-3-identity-hash-secret-32-chars");
   });
   afterEach(async () => {
