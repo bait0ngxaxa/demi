@@ -188,6 +188,29 @@ afterEach(async () => {
 });
 
 describe("O1-A: ADMIN bulk Parent registration", () => {
+  it("finds normalised names beyond two registry batches without losing within-file duplicates", async () => {
+    const suffix = randomUUID();
+    const records = Array.from({ length: 503 }, (_, index) => ({
+      id: `80000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      hospitalCode: `BATCH-${index}`,
+      name: index === 0 || index === 250 || index === 502 ? `É โรงพยาบาล ${suffix}` : `อื่น ${index} ${suffix}`,
+      status: index === 502 ? HospitalStatus.SUSPENDED : HospitalStatus.ACTIVE,
+    }));
+    await db.hospital.createMany({ data: records });
+    hospitalIds.push(...records.map(({ id }) => id));
+    const csvText = `name\néโรงพยาบาล${suffix}\nÉ โรงพยาบาล ${suffix}\nไม่ซ้ำ ${suffix}\n`;
+    const preview = await previewHospitalBulkRegistration(admin, { csvText });
+    expect(preview.map(({ status }) => status)).toEqual(["SIMILAR_NAME", "SIMILAR_NAME", "OK"]);
+    for (const row of preview.slice(0, 2)) {
+      expect(row.similarTo.filter(({ source }) => source === "EXISTING").map(({ hospitalCode }) => hospitalCode).sort())
+        .toEqual(["BATCH-0", "BATCH-250", "BATCH-502"]);
+      expect(row.similarTo.filter(({ source }) => source === "FILE")).toHaveLength(1);
+    }
+    await expect(applyHospitalBulkRegistration(admin, { csvText, submissionNonce: randomUUID(), confirmedRowNumbers: [] }))
+      .rejects.toMatchObject({ unconfirmedRowNumbers: [2, 3] });
+    expect(await db.hospital.count({ where: { id: { in: records.map(({ id }) => id) } } })).toBe(503);
+  });
+
   it("previews and applies a 3-row file as PENDING Parents with generated codes on the public list; a replay creates nothing", async () => {
     const suffix = randomUUID().slice(0, 8).toUpperCase();
     const csvText = `﻿name\r\n"โรงพยาบาลบี, สาขา ${suffix}"\r\nโรงพยาบาลเอ ${suffix}\r\nโรงพยาบาลซี ${suffix}\r\n`;

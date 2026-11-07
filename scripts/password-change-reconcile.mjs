@@ -47,12 +47,9 @@ async function main() {
   const passwordChangeService = await jiti.import(resolve(repositoryRoot, "src", "modules", "account-security", "services", "password-change-service.ts"));
 
   if (options.action === "list") {
-    const operations = await passwordChangeService.listUnresolvedPasswordChangeOperations();
-    if (operations.length === 0) {
-      console.log("ไม่มีงานเปลี่ยนรหัสผ่านที่ค้าง");
-      return;
-    }
-    for (const operation of operations) {
+    let found = false;
+    for await (const operation of passwordChangeService.iterateUnresolvedPasswordChangeOperations()) {
+      found = true;
       console.log([
         `userId=${operation.userId}`,
         `operationId=${operation.operationId}`,
@@ -60,6 +57,7 @@ async function main() {
         `reconciliationRequiredAt=${operation.reconciliationRequiredAt?.toISOString() ?? "-"}`,
       ].join(" "));
     }
+    if (!found) console.log("ไม่มีงานเปลี่ยนรหัสผ่านที่ค้าง");
     return;
   }
 

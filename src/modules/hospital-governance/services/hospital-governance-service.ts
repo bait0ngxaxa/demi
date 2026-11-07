@@ -1033,12 +1033,28 @@ async function evaluateRegistrationRows(
   database: Pick<Prisma.TransactionClient, "hospital">,
   rows: readonly HospitalRegistrationCsvRow[],
 ): Promise<HospitalBulkPreviewRow[]> {
-  // Whole registry by design: similarity is a normalised comparison, not an indexed lookup (ADMIN-only, bounded).
-  const existing = await database.hospital.findMany({ select: { hospitalCode: true, name: true, status: true } });
+  // NFC/whitespace/Thai case normalisation is not equivalent to a raw SQL name lookup.
+  // Scan the complete SERIALIZABLE snapshot, retaining only matches for this bounded import.
+  const submittedNames = new Set(rows.filter((row) => row.valid).map((row) => normalizeHospitalName(row.name)));
   const existingByName = new Map<string, HospitalBulkSimilarMatch[]>();
-  for (const hospital of existing) {
-    const key = normalizeHospitalName(hospital.name);
-    existingByName.set(key, [...(existingByName.get(key) ?? []), { source: "EXISTING", name: hospital.name, hospitalCode: hospital.hospitalCode, status: hospital.status }]);
+  const batchSize = 250;
+  let afterId: string | undefined;
+  while (submittedNames.size > 0) {
+    const batch = await database.hospital.findMany({
+      where: afterId ? { id: { gt: afterId } } : {},
+      orderBy: { id: "asc" },
+      take: batchSize,
+      select: { id: true, hospitalCode: true, name: true, status: true },
+    });
+    for (const hospital of batch) {
+      const key = normalizeHospitalName(hospital.name);
+      if (!submittedNames.has(key)) continue;
+      const matches = existingByName.get(key) ?? [];
+      matches.push({ source: "EXISTING", name: hospital.name, hospitalCode: hospital.hospitalCode, status: hospital.status });
+      existingByName.set(key, matches);
+    }
+    if (batch.length < batchSize) break;
+    afterId = batch[batch.length - 1]?.id;
   }
   const fileByName = new Map<string, HospitalRegistrationCsvRow[]>();
   for (const row of rows) {

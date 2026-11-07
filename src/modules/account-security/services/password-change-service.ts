@@ -425,24 +425,49 @@ export type PasswordChangeReconciliationDependencies = {
   now?: () => Date;
 };
 
-/** Operator view of fenced Users; internal identifiers and timestamps only. */
-export async function listUnresolvedPasswordChangeOperations(
+type UnresolvedPasswordChangeOperation = {
+  userId: string; operationId: string; startedAt: Date; reconciliationRequiredAt: Date | null;
+};
+
+/**
+ * Read-only CLI traversal in immutable User ID order, without offset skips when fences are released.
+ * This is a live inventory, not a completion claim: operations created/changed behind the cursor
+ * require another scan. Reconciliation always revalidates the exact operation ID under its lock.
+ */
+export async function* iterateUnresolvedPasswordChangeOperations(
   dependencies: Pick<PasswordChangeReconciliationDependencies, "database"> = {},
-): Promise<{ userId: string; operationId: string; startedAt: Date; reconciliationRequiredAt: Date | null }[]> {
+): AsyncGenerator<UnresolvedPasswordChangeOperation, void, unknown> {
   const database = dependencies.database ?? getPrisma();
-  const users = await database.user.findMany({
-    where: { passwordChangeOperationId: { not: null } },
-    select: { id: true, passwordChangeOperationId: true, passwordChangeStartedAt: true, passwordChangeReconciliationRequiredAt: true },
-    orderBy: { passwordChangeStartedAt: "asc" },
-  });
-  return users.flatMap((user) => user.passwordChangeOperationId && user.passwordChangeStartedAt
-    ? [{
+  const batchSize = 100;
+  let afterId: string | undefined;
+  while (true) {
+    const users = await database.user.findMany({
+      where: { passwordChangeOperationId: { not: null }, ...(afterId ? { id: { gt: afterId } } : {}) },
+      select: { id: true, passwordChangeOperationId: true, passwordChangeStartedAt: true, passwordChangeReconciliationRequiredAt: true },
+      orderBy: { id: "asc" },
+      take: batchSize,
+    });
+    for (const user of users) {
+      if (!user.passwordChangeOperationId || !user.passwordChangeStartedAt) continue;
+      yield {
         userId: user.id,
         operationId: user.passwordChangeOperationId,
         startedAt: user.passwordChangeStartedAt,
         reconciliationRequiredAt: user.passwordChangeReconciliationRequiredAt,
-      }]
-    : []);
+      };
+    }
+    if (users.length < batchSize) return;
+    afterId = users[users.length - 1]?.id;
+  }
+}
+
+/** Complete chronological inventory for existing service consumers; the CLI streams the iterator. */
+export async function listUnresolvedPasswordChangeOperations(
+  dependencies: Pick<PasswordChangeReconciliationDependencies, "database"> = {},
+): Promise<UnresolvedPasswordChangeOperation[]> {
+  const operations: UnresolvedPasswordChangeOperation[] = [];
+  for await (const operation of iterateUnresolvedPasswordChangeOperations(dependencies)) operations.push(operation);
+  return operations.sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime() || left.userId.localeCompare(right.userId));
 }
 
 /**

@@ -52,6 +52,7 @@ import {
 import {
   changeAuthenticatedUserPassword,
   listUnresolvedPasswordChangeOperations,
+  iterateUnresolvedPasswordChangeOperations,
   PASSWORD_CHANGE_RECONCILIATION_MIN_AGE_MS,
   PasswordChangeOutcomeUncertainError,
   PasswordChangeRecoveryPendingError,
@@ -321,6 +322,33 @@ function lineRecoveryToken(sequence: number, lineUserId: string): string {
 }
 
 describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () => {
+  it("traverses every unresolved operation across batches when earlier fences are released", async () => {
+    const people = Array.from({ length: 205 }, () => ({ id: randomUUID(), identityKeyHash: randomUUID() }));
+    await db.person.createMany({ data: people });
+    const users = people.map((person) => ({
+      id: randomUUID(), personId: person.id, status: UserStatus.ACTIVE,
+      passwordChangeOperationId: randomUUID(), passwordChangeStartedAt: now,
+    }));
+    await db.user.createMany({ data: users });
+    const seen: string[] = [];
+    const operationIds: string[] = [];
+    for await (const operation of iterateUnresolvedPasswordChangeOperations({ database: db })) {
+      seen.push(operation.userId);
+      operationIds.push(operation.operationId);
+      if (seen.length % 100 === 0) {
+        // Another worker releases fences on the already-read page. Offset pagination would skip the next page.
+        await db.user.updateMany({ where: { id: { in: seen } }, data: { passwordChangeOperationId: null, passwordChangeStartedAt: null } });
+      }
+    }
+    expect(seen).toEqual(users.map(({ id }) => id).sort());
+    expect(new Set(seen).size).toBe(205);
+    expect(operationIds.sort()).toEqual(users.map(({ passwordChangeOperationId }) => passwordChangeOperationId).sort());
+    await db.user.updateMany({ where: { id: { in: seen } }, data: { passwordChangeOperationId: null, passwordChangeStartedAt: null } });
+    const empty = [];
+    for await (const operation of iterateUnresolvedPasswordChangeOperations({ database: db })) empty.push(operation);
+    expect(empty).toEqual([]);
+  });
+
   beforeAll(async () => {
     await db.$connect();
     await clearDatabase();

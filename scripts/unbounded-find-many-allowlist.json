@@ -361,21 +361,21 @@
     "function": "listQuarantinedMediatedPasswordResets",
     "target": "workforceActivation",
     "occurrence": 1,
-    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled resets; operationally small but not paged."
+    "reason": "FOLLOW-UP: DEFERRED_WITH_EVIDENCE: unbounded ADMIN quarantine inventory; preserve complete reconciliation lookup. See docs/engineering/QUERY_HARDENING_AUDIT.md (workforceActivation)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
     "target": "accountRecovery",
     "occurrence": 1,
-    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled recoveries; operationally small but not paged."
+    "reason": "FOLLOW-UP: DEFERRED_WITH_EVIDENCE: unbounded ADMIN quarantine inventory; preserve complete reconciliation lookup. See docs/engineering/QUERY_HARDENING_AUDIT.md (accountRecovery)."
   },
   {
     "file": "src/modules/account-security/services/mediated-password-reset-service.ts",
     "function": "listQuarantinedMediatedPasswordResets",
     "target": "linePasswordRecoveryCapability",
     "occurrence": 1,
-    "reason": "FOLLOW-UP: platform ADMIN quarantine queue of unreconciled LINE recoveries; operationally small but not paged."
+    "reason": "FOLLOW-UP: DEFERRED_WITH_EVIDENCE: unbounded ADMIN quarantine inventory; preserve complete reconciliation lookup. See docs/engineering/QUERY_HARDENING_AUDIT.md (linePasswordRecoveryCapability)."
   },
   {
     "file": "src/modules/account-security/services/password-change-notification.ts",
@@ -383,13 +383,6 @@
     "target": "lineAccountBinding",
     "occurrence": 1,
     "reason": "One user's linked LINE bindings."
-  },
-  {
-    "file": "src/modules/account-security/services/password-change-service.ts",
-    "function": "listUnresolvedPasswordChangeOperations",
-    "target": "user",
-    "occurrence": 1,
-    "reason": "FOLLOW-UP: reconciliation CLI over users with an unfinished password change; operationally small, not a page."
   },
   {
     "file": "src/modules/appointments/services/appointment-access-service.ts",
@@ -820,13 +813,6 @@
   },
   {
     "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
-    "function": "evaluateRegistrationRows",
-    "target": "hospital",
-    "occurrence": 1,
-    "reason": "FOLLOW-UP: ADMIN bulk import reads every Hospital name/code server-side for duplicate detection (never shipped)."
-  },
-  {
-    "file": "src/modules/hospital-governance/services/hospital-governance-service.ts",
     "function": "findReplayedBulkRegistration",
     "target": "hospital",
     "occurrence": 1,
@@ -858,7 +844,7 @@
     "function": "getHospitalHierarchyDirectory",
     "target": "hospital",
     "occurrence": 1,
-    "reason": "FOLLOW-UP: platform ADMIN global reporting directory loads every non-retired Hospital; page or search it."
+    "reason": "FOLLOW-UP: DEFERRED_WITH_EVIDENCE: full directory powers totals, exact lookup and browser search; paging needs a consumer contract change. See docs/engineering/QUERY_HARDENING_AUDIT.md."
   },
   {
     "file": "src/modules/hospital-onboarding/services/hospital-onboarding-service.ts",
@@ -935,7 +921,7 @@
     "function": "getHospitalNetworkForAdmin",
     "target": "hospital.managedServiceAreas",
     "occurrence": 1,
-    "reason": "FOLLOW-UP: one Parent's active Children listed whole on the ADMIN detail page; page them like the directory."
+    "reason": "FOLLOW-UP: DEFERRED_WITH_EVIDENCE: full active operational Children power count and role controls; adopt existing paged service with whole-scope counts and navigation. See docs/engineering/QUERY_HARDENING_AUDIT.md."
   },
   {
     "file": "src/modules/hospital-service-areas/services/hospital-network-governance-service.ts",
