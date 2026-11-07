@@ -118,100 +118,100 @@ UI → Hooks → Services → Data Layer
 
 ## 9. Testing and Verification
 
-Use staged, proportional verification. Do not automatically run every command when a narrower check is sufficient.
+GitHub-hosted CI is the authoritative full-regression verification gate. Local verification provides focused, proportional feedback; a missing local full-suite run is not a delivery failure when the current commit has verified CI coverage. For job operations, diagnostics, manual runs and owner required-check setup, consult [the CI operational guide](docs/engineering/GITHUB_ACTIONS_INTEGRATION_CI.md).
 
-### Normal iteration
+### Local development: fast feedback
 
-Run only checks proportional to the change. Typical order:
+1. Inspect relevant code, requirements and architecture.
+2. Implement the smallest correct change and add or update appropriate behavioral tests.
+3. Run directly relevant focused tests and justified static checks.
+4. Review the complete diff, including architecture boundaries, and address known defects before committing and pushing for CI. Any unresolved issues must remain explicit in the Draft PR and block readiness when material.
 
-1. relevant targeted test(s)
-2. `architecture:check` when module boundaries may be affected
-3. `lint:strict` when source/config changed
-4. `typecheck` when TypeScript/runtime contracts changed
-
-Examples:
+Use existing package scripts. For a focused unit test:
 
 ```bash
-npm run test -- path/to/changed-feature.test.ts
-npm run architecture:check
-npm run lint:strict
-npm run typecheck
+npm run test -- path/to/affected.test.ts
 ```
 
-During routine implementation, pass an explicit test path to `npm run test`. Without a path, this command runs the full repository suite.
+Without a path, `npm run test` runs the complete default Vitest suite under `src`, `app`, `scripts` and `deploy`; PostgreSQL integration uses a separate configuration. Use targeted ESLint where useful, `npm run lint` when broader lint coverage is justified, and `npm run typecheck` when TypeScript/runtime contracts change. Generate Prisma Client with `npm run prisma:generate` before checks that require it. Review architecture and module boundaries as an engineering obligation; no dedicated architecture-check script exists.
 
-### Full-suite rule
-
-If a full repository test suite is genuinely justified by broad regression risk, use:
+For PostgreSQL-backed focused tests, use only the existing disposable environment:
 
 ```bash
-npm run test
+npm run test:db:up
+npm run test:integration:focused -- tests/integration/affected.integration.test.ts
+npm run test:db:down
 ```
 
-This command uses Vitest's default file parallelism. Do not use the full suite during normal edit/fix iterations. Normally run it no more than once near task completion, only after implementation is complete, targeted tests are green, lint is green, typecheck is green, architecture checks are green where applicable, and the diff is stable.
+Preserve the runner's environment and database identity validation before migrations or destructive tests. Arrange cleanup in a shell `finally`/trap or equivalent so `npm run test:db:down` executes even after failure, and preserve the original failure. If the disposable database is unavailable locally, report that local integration verification was not performed and delegate complete integration verification to CI. Never substitute a shared or production database or bypass identity guards.
 
-### Failure handling
+### Full local verification: exceptional
 
-If the full suite exposes failures:
+Do not routinely require `npm run test`, `npm run test:integration` or `npm run build` before opening a PR. Complete unit testing, PostgreSQL integration and production build verification belong in CI. Full local verification is permissible when explicitly requested, CI is unavailable, a CI failure needs local reproduction, a critical risk warrants additional verification, or focused tests cannot reproduce an issue sufficiently. Record the reason and run only the justified scope; a local pass does not waive the CI gate below.
 
-1. identify and group the failures by root cause;
-2. reproduce each relevant failure with targeted test commands;
-3. fix the root cause;
-4. rerun only the affected targeted tests;
-5. rerun lint, typecheck, or architecture checks only when the fix affects them;
-6. do not immediately rerun the complete suite after every small edit;
-7. perform another full confirmation only when the corrective diff is stable and the additional full run is justified.
+Production builds remain expensive. Framework/bundler/configuration changes, routing conventions, build-time environment behavior and deployment/runtime compatibility require appropriate build verification through CI by default. Use a local build only under the exceptional conditions above. Run a development server only when explicitly requested, needed to reproduce an issue, or no cheaper verification can establish correctness.
 
-Do not use this loop:
+### CI authority and failure handling
 
-```text
-full suite
-→ one failure
-→ tiny edit
-→ full suite
-→ another tiny edit
-→ full suite
-→ repeat
-```
+Before classifying the current PR HEAD as READY FOR REVIEW for merge review, verify directly on GitHub that all four jobs in [the existing workflow](.github/workflows/full-integration.yml) completed successfully for that HEAD:
 
-### Flaky/resource-sensitive failures
+* Code Quality
+* Unit Tests
+* Full PostgreSQL integration
+* Production Build
 
-A timeout, worker termination, resource exhaustion, or isolated failure from a broad run must not automatically be treated as a product defect. Reproduce the affected test in isolation first, for example:
+After every new commit, verify the checks applicable to the new HEAD; this pipeline requires all four. A local pass alone, older successful SHA, in-progress/failed/cancelled workflow, skipped required job, unsupported success claim or green badge without individual job conclusions does not satisfy this gate. Preserve command failure propagation; never use `continue-on-error`, test skipping or other bypasses to force a passing result. CI unavailability permits additional local evidence, not READY FOR REVIEW without the required hosted results.
 
-```bash
-npm run test -- path/to/failing.test.ts
-```
+When CI fails:
 
-If the focused test passes consistently and there is evidence of machine or resource contention, classify the broad-run failure separately from a deterministic application regression. Do not modify production code or weaken tests merely to make a resource-sensitive broad suite pass.
+1. Read the exact failed job logs and preserve the original failure, test name and duration where applicable.
+2. Classify the evidence: infrastructure/configuration, platform portability, resource contention, test fixture defect or deterministic application defect. State unresolved uncertainty.
+3. Reproduce the specific issue where practical, fix the evidenced root cause and run useful focused local verification.
+4. Push a new commit and verify the new CI run at its HEAD. Do not rerun complete local suites after every small fix.
 
-### Other checks
+A local resource-sensitive timeout, worker termination or broad-run failure is not automatically an application regression. Reproduce the affected test in isolation where practical and inspect resource evidence. Consistent focused passes plus evidence of contention must be distinguished from deterministic defects without claiming the timing cause is proven. One successful CI run establishes evidence for that tested commit, not future stability.
 
-* Prefer scripts defined by the repository.
-* Do not build or run the development server unless explicitly requested, required to reproduce an issue, or there is no other reasonable verification method.
-* Tests must verify behavior rather than implementation details.
-* Use unit tests for business rules and pure logic.
-* Use integration tests for database interactions, authorization, and critical mutations.
-* Use E2E tests for critical user flows, including both happy paths and error paths.
-* Do not modify tests merely to make them pass without verifying that the expected behavior is still correct.
-* If a command cannot be run, state the command, the reason, and what remains unverified.
+### Testing integrity
 
-### Build policy
-
-Production builds are expensive and must only be used when justified. Run `npm run build` for framework upgrades, bundler or Next.js configuration changes, routing convention changes, build-time environment behavior, deployment/runtime compatibility, or changes where only a production build can reasonably verify correctness. Do not run a production build repeatedly during normal implementation.
+* Tests must assert meaningful behavior, business invariants, authorization, data correctness and database isolation rather than implementation details.
+* Use unit tests for business rules/pure logic, integration tests for database interactions, authorization and critical/security-sensitive mutations, and E2E tests for critical user flows, including happy paths and realistic failure paths.
+* Preserve authentication, authorization, privacy and data-integrity assertions. Do not weaken tests, add unjustified retries, raise deadlines to hide defects, add arbitrary exclusions, or change unverified production behavior merely to obtain a pass.
+* If a check cannot run, report the command, reason and remaining verification gap. Keep known failures visible.
+* CI is a technical verification gate, not security review, business acceptance, UAT or production release approval. These four jobs do not establish E2E/UAT coverage; claim such coverage only from actual corresponding execution evidence.
 
 ## 10. Git and Delivery
 
-* Inspect `git status` and `git diff` before and after making changes.
-* Do not use destructive Git commands, force pushes, or reset user work without explicit authorization.
-* Do not modify lockfiles, generated files, or format the entire repository unless required by the task.
-* Keep diffs small, readable, and clearly separated by concern.
-* Before completing the task, summarize:
+Preferred delivery workflow:
 
-  * Files changed
-  * Behavior changed
-  * Important security or architecture decisions
-  * Commands and tests executed, including results
-  * Remaining limitations, assumptions, or risks
+```text
+Implement → Focused Local Verification → Review Diff → Commit
+→ Push Feature Branch → Open/Update Draft PR → GitHub Full CI
+→ Investigate and Fix Failures → Ready for Code Review → Owner Approval → Merge
+```
+
+* Inspect `git status` and `git diff` before and after changes. Keep diffs small, readable and separated by concern; preserve unrelated user work.
+* Do not modify lockfiles/generated files or format the entire repository unless the task requires it.
+* Commit and push within the task's authorization. Do not use destructive Git commands, reset user work, force-push or rewrite unrelated commits without explicit authorization.
+* Open/update the Draft PR after focused checks; do not routinely wait for complete local regression. Pending CI or explicitly documented known issues are acceptable in a Draft PR, provided they are not represented as resolved.
+* Mark work READY FOR REVIEW only after the current HEAD satisfies Section 9 and known blocking failures are resolved. Code review and owner approval remain required before merge. Do not merge automatically or bypass required checks.
+* Do not change production branch protection or rulesets without explicit approval.
+
+### Required delivery report
+
+For every completed task, report:
+
+* Branch, commit SHA and PR URL.
+* Files changed, implemented behavior and important security/architecture decisions.
+* Focused local checks actually executed and results; local checks intentionally delegated to CI.
+* GitHub Actions run URL, tested SHA, all four job conclusions and relevant test totals.
+* Remaining limitations, known failures or risks and a final readiness classification.
+
+Use only these readiness classifications:
+
+* **READY FOR REVIEW**: current HEAD's four checks verified successful, no known blocking failure; engineering review/owner approval still required.
+* **REQUEST CHANGES**: known blocking defects or failed checks require correction.
+* **BLOCKED**: a stated dependency or unavailable capability prevents completion; disclose verification gaps.
+* **CI PENDING**: latest commit's required checks have not completed, including a run not yet started. Never substitute an older successful SHA. Identify any additional blocker explicitly.
 
 
 <!-- BEGIN:nextjs-agent-rules -->

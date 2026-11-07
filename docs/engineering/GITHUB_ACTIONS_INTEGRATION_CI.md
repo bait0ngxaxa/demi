@@ -25,11 +25,13 @@ The 20-minute initial budgets allow setup and headroom over the documented local
 
 Build runs Next.js 16.3.0 with `NODE_OPTIONS=--max-old-space-size=4096` scoped only to its build step. The previous local default-heap TypeScript worker exhausted its heap; the documented 4 GiB build passed with type checking enabled. This controls V8 heap, not total process/VM memory.
 
-Initial CI wiring supplies no application environment values. Source inspection found lazy Prisma/server configuration getters, session access after request-time APIs (`cookies`/`connection`), and no static database seeding requirement. Hosted build execution must confirm this assumption. Runtime environment validators remain strict. Public `NEXT_PUBLIC_*` values, if ever needed, are embedded/frozen at build time: use only explicitly synthetic nonproduction values and document each added value after evidence establishes necessity. Never deploy this verification output.
+CI supplies no application environment values. Source inspection found lazy Prisma/server configuration getters, session access after request-time APIs (`cookies`/`connection`), and no static database seeding requirement. The full CI baseline below confirmed this for its tested SHA; verify every new HEAD separately. Runtime environment validators remain strict. Public `NEXT_PUBLIC_*` values, if ever needed, are embedded/frozen at build time: use only explicitly synthetic nonproduction values and document each added value after evidence establishes necessity. Never deploy this verification output.
 
 No database, Supabase service key, LINE credential or production API is provisioned for build. Dependency installation and `next/font/google` (Noto Sans Thai / Geist Mono) require network downloads; compilation is isolated from production services, not offline. Build artifacts are neither uploaded nor deployed. A build pass verifies compilation/type checking/route generation, not working production provider configuration or runtime readiness.
 
 ## Historical evidence
+
+[Full CI baseline run 42357932990](https://github.com/bait0ngxaxa/demi/actions/runs/42357932990), HEAD `f348fbc7d68ab03dea3ca0fc1dbe2103c61ddc69`: all four jobs SUCCESS; unit 591/591 files and 6,613/6,613 tests, integration 76/76 files and 1,424/1,424 tests with cleanup, production compilation/type checking/static generation passed. Run 6m05s. This verifies that commit only; every newer HEAD needs its own four successful job conclusions.
 
 [Integration baseline run 42355925551](https://github.com/bait0ngxaxa/demi/actions/runs/42355925551), HEAD `8a63e49e00558c09ec03f42e71e27481f997c3e3`: SUCCESS, 76/76 files and 1,424/1,424 tests, PostgreSQL startup, Prisma generation/migrations, isolation and cleanup passed. Run 6m40s; integration command 5m08s. This is historical evidence for integration only. The expanded workflow requires a new run at its current HEAD with all four checks successful; these historical results do not establish that new jobs pass.
 
@@ -40,7 +42,7 @@ No database, Supabase service key, LINE credential or production API is provisio
 - Node.js `24.22.1`, matching the documented local baseline. Official checkout `v7.0.1` and setup-node `v7.1.0` are pinned to immutable commit SHAs. Review upstream releases before updating those pins.
 - `npm ci` installs the committed lockfile. setup-node caches npm download data, not `node_modules`.
 - `npm run test:db:up` uses `compose.integration.yaml`: PostgreSQL `17-alpine`, healthcheck/wait, localhost port `55432`, database `demi_test`, tmpfs storage and the existing read-only init SQL mount. The runner image already includes Docker Engine and Compose v2; no WSL is needed. The existing script selects its direct Docker path on Linux.
-- `npm run test:integration` generates Prisma Client for the runner platform, validates database identity, deploys migrations, then runs the full Vitest suite. The schema uses native Prisma binaries by default; no Windows-generated client is copied or cached. The lockfile includes platform-specific optional packages for Linux. Actual hosted execution is still required to establish runtime compatibility.
+- `npm run test:integration` generates Prisma Client for the runner platform, validates database identity, deploys migrations, then runs the full Vitest suite. The schema uses native Prisma binaries by default; no Windows-generated client is copied or cached. The lockfile includes platform-specific optional packages for Linux. The historical hosted baselines above establish compatibility for their tested commits; each new HEAD still requires hosted verification.
 - Existing global setup, database reset guards, `fileParallelism: false`, default 5,000 ms per-test deadline, fixtures and failure propagation remain unchanged.
 - `npm run test:db:down` runs with `always()` even after install/start/test failure, when the runner can reach it. It removes Compose containers, volumes and orphans. Cleanup failure remains a visible failed step and does not replace the original test step result. Forced VM termination can prevent cleanup; the VM and tmpfs are ephemeral regardless.
 
@@ -59,7 +61,7 @@ The existing checks require all three database URLs to match the committed loopb
 3. Open each of **Code Quality**, **Unit Tests**, **Full PostgreSQL integration**, and **Production Build** and inspect its actual steps/conclusion for the current PR HEAD. For integration, check runner diagnostics, dependency installation, PostgreSQL startup, Prisma generation/migrations, Vitest results and the cleanup step individually.
 4. Read the job summary for the integration command's exit code, elapsed seconds and step outcome. Vitest's test step log provides passed/failed file/test counts, exact failing test names and durations. The Actions run/job durations include setup and cleanup; the command duration includes generation and migrations. An interrupted test step may have no elapsed-time summary; inspect its logs and GitHub timing instead.
 
-Only the historical integration PASS above is established by this guide at implementation time; new runs must be verified separately. A local Windows pass or successful workflow lint is not hosted execution evidence. Record a run URL, tested SHA, result, duration, file/test counts and cleanup outcome when verifying this workflow. A failed run remains FAIL even if an isolated rerun later passes.
+The historical integration and full CI baselines above apply only to their recorded SHAs; new runs must be verified separately. A local Windows pass or successful workflow lint is not hosted execution evidence. Record a run URL, tested SHA, result, duration, file/test counts and cleanup outcome when verifying this workflow. A failed run remains FAIL even if an isolated rerun later passes.
 
 ## Failure diagnosis
 
@@ -87,6 +89,8 @@ The owner must allow GitHub Actions and the pinned official actions, have suitab
 To change runner size later, first collect actual run/resource evidence, obtain separate cost/security approval, then change the relevant `jobs.<id>.runs-on` to an approved runner label in a focused PR. Preserve lifecycle commands and all database guards. Larger runners, VPS/self-hosted provisioning, deployments, production access, product requirements/ADRs, test tuning and automated retries remain out of scope.
 
 ## Agent workflow and review gate
+
+[AGENTS.md Sections 9–10](../../AGENTS.md#9-testing-and-verification) define the binding verification, delivery and readiness policy; this guide provides operational details. Report READY FOR REVIEW, REQUEST CHANGES, BLOCKED or CI PENDING as defined there.
 
 Implement → focused local tests/targeted lint for fast feedback → review diff and validate workflow → commit and push → update the existing Draft PR → inspect all four hosted jobs → resolve evidence-backed failures → engineering review → merge only after owner approval. Do not routinely run full unit/integration suites or production builds locally as a PR prerequisite. Full local execution remains appropriate for explicitly justified debugging/exceptional cases in a verified disposable environment.
 
