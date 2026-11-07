@@ -9,9 +9,13 @@
 > **Owner direction — 2026-10-25:** This register and RELEASE_GATE G-01 document product evidence and external/operator governance. They are not runtime permission tokens or prerequisites for executing a confirmed business flow. Family health-plan, medication and appointment disclosure requires the permanent, exact Patient-selected and caregiver-accepted grant described in FAM-04..07; relationship alone never grants access. Any separate controller obligations remain outside application feature activation.
 
 **Program:** Business Flow Closure Program
-**Current phase:** BF-GAP-01R — Customer Whiteboard Inventory Correction
+**Current status (2026-11-07):** implementation and acceptance reconciliation; engineering regression reverified, with the historical timeout-cause investigation still open. The capability statuses in §8 and totals in §8.6 are authoritative: 125 VERIFIED_COMPLETE, 21 IMPLEMENTED, 3 CONTENT_PENDING, 5 SUPERSEDED and 1 RETIRED (155 total). This is not production release approval. See §2 and §15.
+
+### Historical phase record — 2026-10-12
+
+**Phase at that date:** BF-GAP-01R — Customer Whiteboard Inventory Correction
 **Record date:** 2026-10-12 (Asia/Bangkok)
-**Status:** BF-GAP-01R — PASS / CUSTOMER WHITEBOARD INVENTORY CANONICALIZED. BF-GAP-02 has not started.
+**Status at that date:** BF-GAP-01R — PASS / CUSTOMER WHITEBOARD INVENTORY CANONICALIZED. BF-GAP-02 had not started. This records the inventory milestone only; it is not the current implementation status or a claim that every later planned phase formally closed.
 **Update (2026-10-12):** a Product Owner–directed Workbook DoD track runs alongside this register — see [BF-GAP-WB-00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md) (plan, decisions §5.1, pending register §5.2), [BF-GAP-WB-01](../phases/BF_GAP_WB_01_WORKBOOK_S1_S2A_IMPLEMENTATION_HANDOFF.md) and [BF-GAP-WB-02](../phases/BF_GAP_WB_02_FINAL_DATE_PLAN_LINK_HANDOFF.md). This historical update preceded the partial runtime re-classification below; BF-GAP-02 remains a separate full audit.
 
 **Update (2026-10-14, Phase A):** six-round service navigator, round 1–2 vitals ledger, EXTRA/REVIEWED activities and the report gap fill (round 1–2 DTX/BW, BMI, After HbA1c, PAM/PROMs) are implemented; rows CARE-04/11/12/13, OSM-04/06/09 and RPT-02/33 are updated below. Defaults WB-DF-01..05 and pending WB-PD-01/02/03/10 are recorded in [WB_ALIGNMENT_DECISIONS.md](./WB_ALIGNMENT_DECISIONS.md); these are Owner-approved defaults pending customer confirmation, not UAT acceptance.
@@ -38,7 +42,7 @@
 
 **Partial re-classification (2026-10-12):** ตรวจเฉพาะแถวที่ระบุใน §4 ที่ `1a0c1705d24f2c67ba6816e68fd44e3e9ba8459d` (`main`); แถวอื่นทั้งหมดคง baseline `f2d2222` ไม่ใช่การเดินครบ 145 แถวหรือการปิด BF-GAP-02. Docs follow-up ที่ `56e302c`: คง CARE-22 เป็น REQUIREMENT_GATED จน P-16 ยืนยัน Health Plan identity; สถานะที่เปลี่ยนจาก baseline เดิมมีเพียง CARE-04 → PARTIAL.
 
-**Current amendment (2026-10-20, Hospital Network Phase A):** [ADR-0014](../adr/0014-operational-hospital-service-areas.md) partially supersedes H1: direct Parent OWNER operational attach/end is implemented as a separate `HospitalServiceArea`; official identity/hierarchy remain master-owned. [Phase A handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) defines fail-closed eligibility, preserved history and the Patient/UI handoff. H2–H5 and all current direct-work/report predicates remain unchanged. AREA-02/03/04/05 are PARTIAL foundation/workflow entries below; STAFF-04 and AREA-01 remain the existing Phase H navigation/report implementation, without network Patient access. No full-area or Patient-flow closure is claimed.
+**Historical amendment (2026-10-20, Hospital Network Phase A; superseded by the later AREA row evidence):** [ADR-0014](../adr/0014-operational-hospital-service-areas.md) partially supersedes H1: direct Parent OWNER operational attach/end is implemented as a separate `HospitalServiceArea`; official identity/hierarchy remain master-owned. [Phase A handoff](../phases/PHASE_A_HOSPITAL_SERVICE_AREAS.md) defines fail-closed eligibility, preserved history and the Patient/UI handoff. H2–H5 and all current direct-work/report predicates remain unchanged. AREA-02/03/04/05 are PARTIAL foundation/workflow entries below; STAFF-04 and AREA-01 remain the existing Phase H navigation/report implementation, without network Patient access. No full-area or Patient-flow closure is claimed.
 
 ## 1. Purpose
 
@@ -52,17 +56,19 @@ The register audits semantic and lifecycle equivalence. A route, page, model, te
 
 ตามทิศทาง Product Owner วันที่ 2026-10-12 workbook ใน [BF-GAP-WB-00](../phases/BF_GAP_WB_00_WORKBOOK_DOD_CLOSURE_PLAN.md) เป็น **primary DoD ของ program**; register นี้เป็น supporting capability inventory. การเติม workbook ได้ไม่เท่ากับ customer capability ครบ และไม่ใช่ UAT acceptance หรือ production readiness.
 
-- Dashboard and reporting feature expansion is paused while upstream operational flows, source data, state transitions, authorization, and readback are audited.
-- Existing reporting behavior remains in service and is preserved under §5. BF-GAP-00..10 can inspect reporting, map lineage, and record downstream requirements.
-- BF-GAP-01R corrects the whiteboard inventory using current evidence and W2 review-supplied customer facts. BF-GAP-02 has not started; it will perform the systematic route/service/schema/policy/test crosswalk. Rows not supported by sufficient direct evidence remain AUDIT_PENDING.
-- A gap found here is documented. This phase makes no product, runtime, schema, migration, authorization, report, or UI change.
+- **Current status — 2026-11-07:** implementation and acceptance reconciliation; engineering regression reverified, with the historical timeout-cause investigation still open. §8 records capability-level evidence; §8.6 records the current counts. Later implementation, ADRs and recounts supersede the 2026-10-12 inventory-phase status.
+- Current Work navigation and clinical/default behavior are accepted. Product Owner-reported cross-role and mobile/LINE success is business attestation, not automated or production evidence.
+- CARE-01/02 retain CONTENT_PENDING for official source content; CARE-15 retains CONTENT_PENDING for the customer-provided “ผลลัพธ์ที่ได้” list, the only confirmed remaining reporting content gap. ADR-0028 legal software is IMPLEMENTED while agency text/G-01 remains outstanding.
+- Existing reporting remains available under §5 and its later ADRs. No broad reporting pause or redesign backlog is imposed by the historical inventory plan.
+- Full integration passed twice consecutively with unchanged tests/deadlines in the [engineering follow-up](../engineering/FINAL_ENGINEERING_CLOSURE.md) §7; the earlier failures and unproven historical timing cause remain recorded. Production evidence T-01..T-21 and agency decisions G-01..G-06 remain separately tracked in [RELEASE_GATE](../operations/RELEASE_GATE.md). No formal closure of every historical BF-GAP phase is inferred from capability counts.
+- Historical phase plans and open questions below preserve traceability; current row statuses, accepted decisions and [REMAINING_GAPS](./REMAINING_GAPS.md) determine outstanding work. Documents do not grant runtime authority.
 
 ## 3. Source precedence
 
 For this program, use the following order:
 
 1. Explicit current customer / Product Owner requirement.
-2. Customer Canva whiteboard “ร่าง DEMI App ใหม่”. Direct access to design DAHSvdQ3gvU was attempted for BF-GAP-01R but denied by Canva permissions. W1 is the original task-supplied extract; reviewer-verified BF-GAP-01R correction facts are W2 and are identified in §8. Update 2026-10-12: the design was then read directly through the Canva connector and its layout visually verified for all four flows; findings (per-round activities, medication-bound reminder slots, OSM appointment confirmation/postponement, staff/admin download and user management) are in BF-GAP-WB-00 §3.1 and should be applied to §8 in BF-GAP-02.
+2. Customer Canva whiteboard “ร่าง DEMI App ใหม่”. Direct access to design DAHSvdQ3gvU was attempted for BF-GAP-01R but denied by Canva permissions. W1 is the original task-supplied extract; reviewer-verified BF-GAP-01R correction facts are W2 and are identified in §8. Update 2026-10-12: the design was then read directly through the Canva connector and its layout visually verified for all four flows; findings (per-round activities, medication-bound reminder slots, OSM appointment confirmation/postponement, staff/admin download and user management) are in BF-GAP-WB-00 §3.1 and were proposed as BF-GAP-02 crosswalk inputs at that date; consult later §8 dispositions for current evidence.
 3. Explicit later Owner decisions that clarify or supersede the whiteboard.
 4. Accepted architecture, security, privacy, and data-integrity invariants, including ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008, and ADR-0010.
 5. Runtime implementation and automated evidence at the analyzed HEAD.
@@ -73,7 +79,9 @@ For this program, use the following order:
 
 Where the whiteboard suggests an unsafe mechanism, preserve the underlying intent and record the accepted safer mechanism as SUPERSEDED. Do not convert customer labels into new role enums. Do not promote workbook headings, prototype semantics, or legacy behavior into upstream clinical requirements.
 
-## 4. Runtime baseline
+## 4. Historical runtime baselines
+
+The table below records the 2026-10-12 inventory review only. Current follow-up starts at `2a0db27f16b1ed77d5a3b5f849b8317f10d0436a`; later dated row evidence and §2 determine current status, not this historical HEAD.
 
 | Field | Analyzed value |
 | --- | --- |
@@ -514,9 +522,9 @@ The workbook `docs/Dashboard App Demi.xlsx` has “Dashboard ภาพรวม�
 
 Report runtime evidence to preserve: direct OWNER and Global ADMIN Dashboard/XLSX and Parent exact-Child summary remain available as defined in Reporting Access Canonical. The Parent summary exposes only approved exact-Child relationship/Program and ServiceOne record-presence values. No new report field, aggregate, export, or formula is approved here.
 
-## 12. Deep-audit sequence
+## 12. Historical deep-audit sequence
 
-The order below is an audit order only. It does not lock the eventual implementation sequence.
+The following was the BF-GAP-01R proposed audit order, not the current next-step backlog. Later row evidence and accepted ADRs supersede resolved questions; this list neither reopens accepted flows nor certifies formal phase completion.
 
 1. **BF-GAP-02 — Runtime Crosswalk & Evidence Verification:** walk each row against live routes, services, schemas, transitions, persistence, policy, tests and readback; replace AUDIT_PENDING only with direct evidence.
 2. **BF-GAP-03 — Core Care / Service Journey Deep Audit:** Screening → Baseline → Program → Service 1 → Goal/Health Plan → Round 1 → Rounds 2–6 → extra activities/follow-up → Final → history.
@@ -528,7 +536,9 @@ The order below is an audit order only. It does not lock the eventual implementa
 8. **BF-GAP-09 — Reporting Dependency Reconciliation.**
 9. **BF-GAP-10 — Consolidated Business Flow Closure Roadmap.**
 
-## 13. Open Owner decisions
+## 13. Historical Owner questions
+
+These are the inventory-stage questions preserved for traceability. They are not all currently open: consult §8, WB_ALIGNMENT_DECISIONS and REMAINING_GAPS for their later dispositions. Accepted Work, clinical/default, role and mobile behavior must not be reopened from this list. Missing official source content and agency decisions remain separate.
 
 - The exact mapping and choreography for service rounds 1–6, including which activity is required, optional, repeated, reviewed, or added.
 - Whether Health Plan, Goal Plan, healthy plan, and health-path review are one or several artifacts; each author, owner, version, visibility and lifecycle.
@@ -575,7 +585,7 @@ The initial BF-GAP-00/01 inventory introduced 82 new stable IDs. BF-GAP-01R adds
 
 ## 15. Next step
 
-The current phase is **BF-GAP-01R — Customer Whiteboard Inventory Correction**; BF-GAP-02 has **NOT STARTED**. After review accepts this corrected register, next is **BF-GAP-02 Runtime Crosswalk & Evidence Verification**, then **BF-GAP-03 Core Care / Service Journey**. No implementation sequence is established.
+Retain the engineering regression follow-up evidence: two consecutive full integration passes with unchanged tests/deadlines, while the historical timeout-cause investigation remains open. If timing failures recur, collect failing-run CPU/database/host evidence before choosing a fix. Collect the outstanding CARE-01/02 official content and CARE-15 outcome list without inventing text. Keep operational evidence and agency decisions in RELEASE_GATE separate from implementation and business acceptance. The historical BF-GAP-02/03 audit proposal in §12 is not a new instruction to restart accepted business-flow design.
 
 **SR-1 inventory addition (2026-10-22):** ACCOUNT-11 adds one new stable ID to the prior cumulative inventory of 95, for 96 new IDs in total; ACCOUNT-03..11 are now the account-row range. The existing 93 whiteboard capabilities and two reporting-preservation rows retain their classifications. See [ADR-0020](../adr/0020-self-registration-by-national-id.md); this row does not imply partner-agency approval or customer UAT.
 

@@ -58,4 +58,16 @@ describe("BUSINESS_FLOW_GAP_CANONICAL status register", () => {
     const partial = rows.filter((row) => row.tokens[0] === "PARTIAL");
     expect(partial.filter((row) => !/Concrete missing item:/u.test(row.cells[6])).map((row) => row.id)).toEqual([]);
   });
+
+  it("keeps the inventory phase historical and current next steps tied to outstanding evidence", () => {
+    expect(document).not.toContain("**Current phase:** BF-GAP-01R");
+    expect(document).toContain("### Historical phase record — 2026-10-12");
+    const current = section("## 2. Program status", "## 3. Source precedence");
+    const next = document.slice(document.indexOf("## 15. Next step"));
+    for (const text of [current, next]) {
+      expect(text).not.toMatch(/BF-GAP-02 has (?:not started|\*\*NOT STARTED\*\*)/u);
+      expect(text).toContain("CARE-15");
+      expect(text).not.toContain("AUDIT_PENDING");
+    }
+  });
 });

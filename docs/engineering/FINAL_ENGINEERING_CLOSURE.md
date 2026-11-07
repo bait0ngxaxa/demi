@@ -1,6 +1,6 @@
 # DEMI — Final Engineering Closure
 
-Recorded 2026-11-07, Asia/Bangkok. This is an engineering evidence record, not production release approval.
+Recorded 2026-11-07, Asia/Bangkok. This is an engineering evidence record, not production release approval. **Current findings follow-up: see §7; §§1–6 retain the original verification record.**
 
 ## 1. Baseline and commits
 
@@ -114,3 +114,51 @@ No reproduced business-flow or authorization defect was found. The global non-en
 The seven query exceptions have explicit evidence-backed dispositions; two are fixed with real multi-batch PostgreSQL tests and five remain visible. Current normative documents reflect the accepted product baseline without closing missing content or external operational/governance evidence. Lint, typecheck, all unit tests, focused query tests, canonical validation and the memory-adjusted production build passed.
 
 The full integration run did not pass: its two deadline failures and subsequent focused/baseline results remain disclosed. The default-heap build failure and local worktree cleanup rejection are also retained. No application/test/security rule was weakened to hide these limitations. This recommendation closes the scoped engineering/documentation assignment with those deferred risks; it does **not** authorize a production release or declare the outstanding outcome list, official content, governance or production checks complete.
+
+## 7. Findings follow-up — 2026-11-07
+
+Starting follow-up HEAD: `2a0db27f16b1ed77d5a3b5f849b8317f10d0436a`. Sections 1–6 preserve the original run, not a claim that the two integration deadline failures were resolved. P1 full-suite verification now has two consecutive unmodified passes. The historical timeout cause remains unproven and is retained as a timing risk; no application performance fix or absence of future flakiness is claimed. The original three commits were subsequently pushed at the user’s request.
+
+### Investigation ledger
+
+| Experiment | Observation | Interpretation / limit |
+| --- | --- | --- |
+| Unchanged isolated report pipeline, direct Vitest integration command | PASS; test phase 4.63s | Reproduces narrow deadline headroom, not a failure on this run. |
+| Temporary per-action timing and Prisma query events | PASS; test phase 4.52s. Around 1,830 queries by the end of the care/export sequence, about 1,013ms accumulated engine-reported query time. Many actions each cost tens to hundreds of milliseconds. | Multi-request cumulative cost; engine durations are coarse and not a full wall-time or PostgreSQL server-only profile. No SQL/parameters or patient data were logged. |
+| Inspector CPU profile around the pipeline body | PASS; test phase 4.68s; profile approximately 3,026ms idle, 66ms GC | Waiting dominates the sampled interval; no single CPU hotspot explains the entire deadline. Profiling adds overhead and is not an SLA benchmark. |
+| Change only Vitest pool from forks to threads via CLI | PASS; test phase 4.45s | Small improvement, insufficient evidence for a pool/configuration change. Default isolated forks retained. |
+| Unchanged isolated workforce 50-row replay with phase timing | PASS; test phase 4.11s; setup 28ms, first creation complete at 3,275ms, replay complete at 3,799ms | Both application calls remain under the default deadline individually in this sample. Does not prove a performance target or a general upper bound. |
+| Native Prisma 500 sequential `SELECT 1` calls | 359ms total wall time | Small baseline transport sample, not a care/import workload. |
+| 100 sequential `SELECT 1` calls while the full suite runs | p50 0.840ms, p95 1.675ms, max 4.368ms | Database round trips are measurable; this sample cannot exclude earlier/later latency spikes. |
+| Concurrent database/host snapshots | Active sessions had no wait event; idle session waited on ClientRead; database deadlocks=0, temp_files=0. Host CPU 17%, available RAM about 2.5GiB of 7.9GiB. | Snapshots do not establish the historical timeout cause or exclude intermittent pressure. |
+
+The integration config retains `fileParallelism: false` (Vitest forces one worker), isolated test files and the existing disposable-database identity checks/reset. No second destructive integration run was launched alongside the full run; diagnostic database probes were read-only. Temporary application/test profiling edits were restored before broad verification. No timeout, assertion, security rule or dependency was changed; the one-off CLI threads experiment was not persisted, and broad runs retained the original runtime configuration.
+
+### Documentation and import-risk disposition
+
+P2: the BF-GAP-01R status, proposed audit sequence, runtime baseline and old Owner questions are explicitly historical. Current status and next steps refer to capability-level evidence and the actual engineering/content/operational follow-up. No formal completion of every historical phase is invented. The canonical validator adds a regression check for the misleading current-phase wording; all five checks pass. Stable IDs and capability counts remain unchanged.
+
+P3: `QUERY_HARDENING_AUDIT.md` now explicitly requires a preview/apply latency characterization at the owner-supplied production registry size and workload before production. The target size and latency criterion are not known, so this remains pending; the 503-row correctness test is not a performance benchmark. No speculative import refactor or schema change is made.
+
+### Full-suite confirmation
+
+Exact command for both full runs: `npm run test:integration`. Both use the unchanged application, integration tests, default 5,000ms test deadline and default isolated forks; no selective exclusions, changed assertions or dropped data. The second run is specifically justified by the intermittent deadline finding, rather than routine repeated broad verification.
+
+| Run | Result | Evidence |
+| --- | --- | --- |
+| Follow-up full run 1 | PASS | 76 files / 1,424 tests, 574.34s overall, 509.46s test phase; no test retry configured. Local raw log: `%TEMP%/demi-followup-integration-before.log`. |
+| Follow-up full run 2 | PASS | 76 files / 1,424 tests, 565.38s overall, 499.97s test phase; exit 0, no test retry configured. Local raw log: `%TEMP%/demi-followup-integration-confirmation.log`. |
+
+A control workload outside the two failing paths also differs between the old failing run and follow-up run 1: the unchanged mocked-LINE scheduler benchmark took 1,352/5,926/10,728/21,000ms for 10/50/100/200 recipients in the old run versus 836/3,751/6,824/14,672ms now. Aggregate module import time was 71.32s versus 46.26s. This is evidence of broader timing variation, not proof of a particular host/database cause. Do not relabel the historical failures as passes or claim an application performance fix.
+
+Focused documentation verification: `npm run test -- scripts/business-flow-gap-canonical.test.mjs` PASS (5 tests); `npx eslint scripts/business-flow-gap-canonical.test.mjs` PASS; `git diff --check` PASS (only existing LF-to-CRLF notices for engineering Markdown). No typecheck/build/full unit rerun is needed for documentation and one MJS test; the application, schema and TypeScript files are unchanged.
+
+Original log timestamps also rule out overlap with our recorded build/full unit commands: unit logging ended at 13:22:42, integration ran 13:23:14–13:36:49, and the first build began at 13:40:21. Unrecorded host activity, transient database/OS latency, memory pressure and warm-cache effects remain unproven; current samples cannot reconstruct those conditions.
+
+### Current disposition
+
+- **P1 verification:** two consecutive full passes, each 76/76 files and 1,424/1,424 tests. No timeout increase, test splitting, retry, skipped case, fixture reduction or runtime configuration change. The individual action/query profiles and unrelated control-workload timings support cumulative work plus runtime variability as an explanation, but cannot prove the precise cause of the earlier failures. Historical root-cause investigation remains open; do not claim a diagnosed/fixed performance regression or guaranteed non-flakiness. If a failure recurs, collect per-test timings, a worker CPU profile and concurrent database/host metrics in that failing run before changing deadlines or application code.
+- **P2 FIXED:** current status, historical phase records and next steps are reconciled, with canonical validation guarding phase drift.
+- **P3 TRACKED:** production-size import measurement is explicitly pending deployment-owner workload/latency inputs; no speculative refactor is justified by current measurements.
+
+Current engineering recommendation remains **ENGINEERING CLEANUP COMPLETE WITH DOCUMENTED DEFERRED RISKS**, not production release approval. The earlier statement that broad integration did not pass is the historical run record; current full verification passes, while its historical cause, import-scale latency, five query exceptions, official content, outcome list, agency decisions and production operational evidence remain accurately bounded above. Changes in this follow-up are documentation and the canonical MJS guard only; no application/integration-test/authorization/schema change.
