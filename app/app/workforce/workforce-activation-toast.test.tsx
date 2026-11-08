@@ -125,7 +125,7 @@ describe("workforce detail activation handoff", () => {
     expect(container.textContent).toContain("เสร็จแล้ว");
     // QRCode.toDataURL is asynchronous real work (PNG encoding); wait for it instead of racing the event loop.
     await act(async () => {
-      await vi.waitFor(() => expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]')).not.toBeNull(), { timeout: 4_000 });
+      await vi.waitFor(() => expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]'), `QR status: ${container.querySelector('[aria-live]')?.textContent ?? container.textContent?.slice(0, 400)}`).not.toBeNull(), { timeout: 4_000 });
     });
     expect(container.querySelector('[data-testid="activation-link"]')).toBeNull();
     expect(container.textContent).not.toContain("ออกลิงก์ใหม่</button>");
