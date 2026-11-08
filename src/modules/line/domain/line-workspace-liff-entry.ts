@@ -23,6 +23,13 @@ export type LineWorkspaceLiffEntry =
   | { status: "LIFF"; destination: string | null }
   | { status: "NAVIGATION_INVALID" };
 
+/**
+ * The shared LIFF platform parameters plus the SDK's LINE Login error marker,
+ * so a cancelled or failed LINE Login reaches init and becomes a retryable
+ * failure instead of an invalid link. MINI keeps its own stricter set.
+ */
+const WORKSPACE_LIFF_PLATFORM_PARAMETERS: ReadonlySet<string> = new Set([...LIFF_PLATFORM_PARAMETERS, "liffOAuth2Error"]);
+
 function normalizeLiffState(value: string): string {
   return value.startsWith("/") ? value : `/${value}`;
 }
@@ -37,11 +44,11 @@ export function classifyLineWorkspaceLiffEntry(
   query: Readonly<Record<string, string | string[] | undefined>>,
 ): LineWorkspaceLiffEntry {
   const entries = Object.entries(query).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined);
-  if (!entries.some(([name]) => LIFF_PLATFORM_PARAMETERS.has(name))) return { status: "ORDINARY" };
+  if (!entries.some(([name]) => WORKSPACE_LIFF_PLATFORM_PARAMETERS.has(name))) return { status: "ORDINARY" };
 
   let destination: string | null = null;
   for (const [name, value] of entries) {
-    if (Array.isArray(value) || !LIFF_PLATFORM_PARAMETERS.has(name) || value.length > MAX_PLATFORM_PARAMETER_LENGTH) {
+    if (Array.isArray(value) || !WORKSPACE_LIFF_PLATFORM_PARAMETERS.has(name) || value.length > MAX_PLATFORM_PARAMETER_LENGTH) {
       return { status: "NAVIGATION_INVALID" };
     }
     if (name !== "liff.state" || value === "") continue;
