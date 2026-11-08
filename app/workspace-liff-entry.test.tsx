@@ -48,7 +48,8 @@ function mount(props: {
   sdk?: WorkspaceLiffSdk;
 }): { load: ReturnType<typeof vi.fn> } {
   mocks.effects.length = 0;
-  const load = vi.fn(async () => props.sdk ?? { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) });
+  const fallbackSdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+  const load = vi.fn(async () => props.sdk ?? fallbackSdk);
   WorkspaceLiffEntry({
     mode: props.mode,
     liffId: props.liffId === undefined ? "1234567890-Workspace" : props.liffId,
@@ -80,7 +81,7 @@ describe("Workspace LIFF root entry", () => {
   });
 
   it("initializes LIFF before any URL change on a deep-link primary redirect and lets the SDK redirect", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
     const { load } = mount({ mode: "LIFF", destination: "/app/personal/wellness", sdk });
     await settle();
     expect(load).toHaveBeenCalledOnce();
@@ -91,7 +92,7 @@ describe("Workspace LIFF root entry", () => {
 
   it("leaves Android and LIFF-to-LIFF platform parameters untouched until the SDK consumes them", async () => {
     stubBrowser({ search: "?liff.state=%2Fapp%2Fpersonal&lineAppVersion=14.19.1&liff.referrer=https%3A%2F%2Fliff.line.me%2Fx&liff.hback=2" });
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
     mount({ mode: "LIFF", destination: "/app/personal", sdk });
     await settle();
     expect(sdk.init).toHaveBeenCalledOnce();
@@ -103,6 +104,7 @@ describe("Workspace LIFF root entry", () => {
   it("marks the Workspace LIFF browser session before init only when the SDK reports the LIFF browser", async () => {
     const order: string[] = [];
     const sdk: WorkspaceLiffSdk = {
+      id: null,
       isInClient: vi.fn(() => { order.push("isInClient"); return true; }),
       init: vi.fn(() => { order.push(`init:${browser.sessionStorage.getItem("demi.line.liff.context")}`); return new Promise<void>(() => undefined); }),
     };
@@ -114,7 +116,7 @@ describe("Workspace LIFF root entry", () => {
     // A LIFF URL opened in Chrome/Safari: initialized, never marked.
     stubBrowser();
     resetWorkspaceLiffInitializationForTests();
-    mount({ mode: "LIFF", destination: "/app", sdk: { isInClient: () => false, init: vi.fn().mockResolvedValue(undefined) } });
+    mount({ mode: "LIFF", destination: "/app", sdk: { id: null, isInClient: () => false, init: vi.fn().mockResolvedValue(undefined) } });
     await settle();
     expect(browser.sessionStorage.getItem("demi.line.liff.context")).toBeNull();
 
@@ -127,13 +129,13 @@ describe("Workspace LIFF root entry", () => {
   });
 
   it("records the root init outcome so a failure never reads as an initialized Workspace", async () => {
-    mount({ mode: "LIFF", destination: null, sdk: { isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) } });
+    mount({ mode: "LIFF", destination: null, sdk: { id: null, isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) } });
     await settle();
     expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "FAILED" });
 
     stubBrowser({ hash: "#access_token=synthetic" });
     resetWorkspaceLiffInitializationForTests();
-    mount({ mode: "ORDINARY", fallbackHref: "/app", sdk: { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) } });
+    mount({ mode: "ORDINARY", fallbackHref: "/app", sdk: { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) } });
     await settle();
     expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
   });
@@ -146,7 +148,7 @@ describe("Workspace LIFF root entry", () => {
 
   it("consumes bare-launch credentials from the fragment, then continues to the web destination", async () => {
     stubBrowser({ hash: "#access_token=synthetic&context_token=synthetic" });
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     mount({ mode: "ORDINARY", fallbackHref: "/app", sdk });
     await settle();
     expect(sdk.init).toHaveBeenCalledOnce();
@@ -154,7 +156,7 @@ describe("Workspace LIFF root entry", () => {
   });
 
   it("shows a retryable failure when init fails and keeps the user on the same entry", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) };
     mount({ mode: "LIFF", destination: "/app/personal", sdk });
     await settle();
     expect(mocks.setState).toHaveBeenLastCalledWith("INIT_FAILED");
@@ -192,7 +194,7 @@ describe("Workspace LIFF root entry", () => {
 
   it("stops a LINE login return loop instead of initializing again", async () => {
     stubBrowser({ search: "?liff.state=%2Fapp&code=synthetic&liffClientId=1234567890" });
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
     for (let attempt = 0; attempt < 4; attempt += 1) {
       resetWorkspaceLiffInitializationForTests();
       mount({ mode: "LIFF", destination: "/app", sdk });
@@ -207,7 +209,7 @@ describe("Workspace LIFF root entry", () => {
   });
 
   it("does not count ordinary primary redirects toward the loop latch", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
     for (let attempt = 0; attempt < 6; attempt += 1) {
       resetWorkspaceLiffInitializationForTests();
       mount({ mode: "LIFF", destination: "/app/personal", sdk });

@@ -134,14 +134,21 @@ describe("LIFF browser context (presentation only)", () => {
     expect(recordWorkspaceInitResult(accountOnly, "READY")).toBe(false);
   });
 
-  it("initializes Workspace on /app documents of a Workspace session, including after the Account LIFF, but never for MINI", () => {
-    expect(shouldInitializeWorkspaceLiff(null)).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT" }))).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "MINI", mini: true }))).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", mini: true, workspace: "PENDING" }))).toBe(false);
+  it("initializes Workspace after a real Workspace entry, or on back/reload of a Workspace page after the Account LIFF", () => {
+    expect(shouldInitializeWorkspaceLiff(null, "navigate")).toBe(false);
+    expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT" }), "reload")).toBe(false);
+    expect(shouldInitializeWorkspaceLiff(context({ current: "MINI", mini: true }), "navigate")).toBe(false);
+    expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", mini: true, workspace: "PENDING" }), "navigate")).toBe(false);
     for (const workspace of ["PENDING", "READY", "FAILED"] as const) {
-      expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", workspace }))).toBe(true);
-      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }))).toBe(true);
+      for (const navigation of ["navigate", "reload", "back_forward", null] as const) {
+        expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", workspace }), navigation)).toBe(true);
+      }
+      // Back/Reload of a Workspace page after visiting the Account LIFF.
+      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "back_forward")).toBe(true);
+      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "reload")).toBe(true);
+      // A plain new navigation from the Account LIFF (e.g. its header logo before this fix) is not a Workspace entry.
+      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "navigate")).toBe(false);
+      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), null)).toBe(false);
     }
   });
 

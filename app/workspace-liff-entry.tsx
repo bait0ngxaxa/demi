@@ -124,7 +124,7 @@ export function WorkspaceLiffEntry({
       },
     }).then((result) => {
       // Recorded even after unmount: it describes this document's SDK state, never authority.
-      if (result !== "LOOP_STOPPED") recordCurrentWorkspaceInitResult(result === "READY" ? "READY" : "FAILED");
+      if (result === "READY" || result === "INIT_FAILED") recordCurrentWorkspaceInitResult(result === "READY" ? "READY" : "FAILED");
       if (!active) return;
       if (result === "READY") {
         // Reached only when the SDK did not perform the secondary redirect itself.
@@ -133,7 +133,8 @@ export function WorkspaceLiffEntry({
         return;
       }
       if (result === "LOOP_STOPPED") discardPlatformParameters();
-      setState(result);
+      // The root entry is always a fresh document, so another LIFF app cannot own it; treat it as a failure.
+      setState(result === "OTHER_LIFF_APP" ? "INIT_FAILED" : result);
     });
     // A BFCache-restored entry must not resume an earlier attempt.
     const onPageShow = (event: PageTransitionEvent): void => {

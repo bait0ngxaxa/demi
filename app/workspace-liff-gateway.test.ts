@@ -29,14 +29,14 @@ describe("Workspace LIFF initialization", () => {
   });
 
   it("initializes the Workspace LIFF ID without forcing LINE Login in external browsers", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     await expect(initializeWorkspaceLiff(async () => sdk, "1234567890-Workspace")).resolves.toBe("READY");
     expect(sdk.init).toHaveBeenCalledWith({ liffId: "1234567890-Workspace", withLoginOnExternalBrowser: false });
   });
 
   it("shares one in-flight initialization between concurrent callers", async () => {
     let resolve: () => void = () => undefined;
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>((done) => { resolve = done; })) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>((done) => { resolve = done; })) };
     const load = vi.fn(async () => sdk);
     const first = initializeWorkspaceLiff(load, "1234567890-Workspace");
     const second = initializeWorkspaceLiff(load, "1234567890-Workspace");
@@ -49,18 +49,18 @@ describe("Workspace LIFF initialization", () => {
   });
 
   it("maps SDK or loader failure to a retryable state and allows a fresh retry", async () => {
-    const failing: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) };
+    const failing: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) };
     await expect(initializeWorkspaceLiff(async () => failing, "1234567890-Workspace")).resolves.toBe("INIT_FAILED");
     await expect(initializeWorkspaceLiff(() => Promise.reject(new Error("chunk")), "1234567890-Workspace")).resolves.toBe("INIT_FAILED");
 
-    const working: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const working: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     await expect(initializeWorkspaceLiff(async () => working, "1234567890-Workspace")).resolves.toBe("READY");
     expect(working.init).toHaveBeenCalledOnce();
   });
 
   it("bounds an initialization that neither redirects nor resolves", async () => {
     vi.useFakeTimers();
-    const pending = initializeWorkspaceLiff(async () => ({ isInClient: () => true, init: () => new Promise<void>(() => undefined) }), "1234567890-Workspace", { timeoutMs: 50 });
+    const pending = initializeWorkspaceLiff(async () => ({ id: null, isInClient: () => true, init: () => new Promise<void>(() => undefined) }), "1234567890-Workspace", { timeoutMs: 50 });
     await vi.advanceTimersByTimeAsync(60);
     await expect(pending).resolves.toBe("INIT_FAILED");
   });
@@ -68,12 +68,12 @@ describe("Workspace LIFF initialization", () => {
   it("never races a second liff.init() against one that timed out but is still running", async () => {
     vi.useFakeTimers();
     let rejectStuck: (error: Error) => void = () => undefined;
-    const stuck: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>((_, reject) => { rejectStuck = reject; })) };
+    const stuck: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>((_, reject) => { rejectStuck = reject; })) };
     const first = initializeWorkspaceLiff(async () => stuck, "1234567890-Workspace", { timeoutMs: 50 });
     await vi.advanceTimersByTimeAsync(60);
     await expect(first).resolves.toBe("INIT_FAILED");
 
-    const working: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const working: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     await expect(initializeWorkspaceLiff(async () => working, "1234567890-Workspace", { timeoutMs: 50 })).resolves.toBe("INIT_FAILED");
     expect(working.init).not.toHaveBeenCalled();
 
@@ -88,7 +88,7 @@ describe("Workspace LIFF initialization", () => {
   it("lets a late success after a timeout serve later callers without rewriting the result already returned", async () => {
     vi.useFakeTimers();
     let resolveLate: () => void = () => undefined;
-    const late: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>((resolve) => { resolveLate = resolve; })) };
+    const late: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>((resolve) => { resolveLate = resolve; })) };
     const first = initializeWorkspaceLiff(async () => late, "1234567890-Workspace", { timeoutMs: 50 });
     await vi.advanceTimersByTimeAsync(60);
     await expect(first).resolves.toBe("INIT_FAILED");
@@ -100,7 +100,7 @@ describe("Workspace LIFF initialization", () => {
   });
 
   it("keeps a successful initialization for remounts and internal navigation without calling init again", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     const load = vi.fn(async () => sdk);
     await expect(initializeWorkspaceLiff(load, "1234567890-Workspace")).resolves.toBe("READY");
     await expect(initializeWorkspaceLiff(load, "1234567890-Workspace")).resolves.toBe("READY");
@@ -108,8 +108,17 @@ describe("Workspace LIFF initialization", () => {
     expect(sdk.init).toHaveBeenCalledOnce();
   });
 
+  it("refuses to initialize an SDK another LIFF app already initialized in this document (liff.id)", async () => {
+    const sdk = { id: "1234567890-Account", isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    await expect(initializeWorkspaceLiff(async () => sdk, "1234567890-Workspace")).resolves.toBe("OTHER_LIFF_APP");
+    expect(sdk.init).not.toHaveBeenCalled();
+    // An SDK already initialized with the Workspace ID is fine.
+    const own = { id: "1234567890-Workspace", isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    await expect(initializeWorkspaceLiff(async () => own, "1234567890-Workspace")).resolves.toBe("READY");
+  });
+
   it("never initializes a second LIFF identity in the same document", async () => {
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
     await initializeWorkspaceLiff(async () => sdk, "1234567890-Workspace");
     await expect(initializeWorkspaceLiff(async () => sdk, "1234567890-Account")).resolves.toBe("INIT_FAILED");
     expect(sdk.init).toHaveBeenCalledTimes(1);
@@ -118,7 +127,7 @@ describe("Workspace LIFF initialization", () => {
 
   it("runs the SDK-loaded hook before init and tolerates its failure", async () => {
     const order: string[] = [];
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(async () => { order.push("init"); }) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(async () => { order.push("init"); }) };
     await expect(initializeWorkspaceLiff(async () => sdk, "1234567890-Workspace", {
       onSdkLoaded: () => { order.push("loaded"); throw new Error("storage denied"); },
     })).resolves.toBe("READY");
@@ -127,7 +136,7 @@ describe("Workspace LIFF initialization", () => {
 
   it("counts a LINE Login return once even when the entry remounts while init is in flight", async () => {
     const store = memoryStore();
-    const sdk: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    const sdk: WorkspaceLiffSdk = { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
     void startWorkspaceLiffEntry(async () => sdk, "1234567890-Workspace", store, true);
     void startWorkspaceLiffEntry(async () => sdk, "1234567890-Workspace", store, true);
     await Promise.resolve();

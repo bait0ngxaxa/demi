@@ -79,6 +79,10 @@ function workspaceHref(
   return link?.getAttribute("href") ?? null;
 }
 
+function headerLogoHref(): string | null {
+  return container.querySelector("header a")?.getAttribute("href") ?? null;
+}
+
 function setContext(value: LiffBrowserContext | null): void {
   if (value) window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify(value));
 }
@@ -111,6 +115,33 @@ describe("Account LIFF -> Workspace LIFF navigation", () => {
   ])("opens the Workspace LIFF URL from the Account LIFF after %s", (_label, initial, state) => {
     setContext({ current: "ACCOUNT", mini: false, workspace: null });
     expect(workspaceHref(initial, { ...state, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(WORKSPACE_LIFF_URL);
+  });
+
+  it("routes the header DEMI logo through the same resolver: Workspace LIFF URL in the Account LIFF, / elsewhere", () => {
+    setContext({ current: "ACCOUNT", mini: false, workspace: "READY" });
+    workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
+    expect(headerLogoHref()).toBe(WORKSPACE_LIFF_URL);
+
+    window.sessionStorage.clear();
+    workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
+    expect(headerLogoHref()).toBe("/");
+
+    setContext({ current: "ACCOUNT", mini: true, workspace: null });
+    workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
+    expect(headerLogoHref()).toBe("/");
+
+    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    workspaceHref(linked, { workspaceLiffUrl: null });
+    expect(headerLogoHref()).toBe("/");
+  });
+
+  it("leaves no Account LIFF link into / or /app that skips the Workspace LIFF URL", () => {
+    setContext({ current: "ACCOUNT", mini: false, workspace: "READY" });
+    for (const [initial, state] of [[linked, {}], [unlinked, {}], [linked, { view: "SUCCESS" as const, successAction: "LINK" as const }]] as const) {
+      workspaceHref(initial, { ...state, workspaceLiffUrl: WORKSPACE_LIFF_URL });
+      const hrefs = [...container.querySelectorAll("a")].map((node) => node.getAttribute("href"));
+      expect(hrefs.filter((href) => href === "/" || href === "/app" || href?.startsWith("/app/"))).toEqual([]);
+    }
   });
 
   it("keeps /app in an ordinary browser, a MINI session and without Workspace configuration", () => {

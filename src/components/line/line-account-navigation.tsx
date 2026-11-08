@@ -73,15 +73,18 @@ export function LineAccountLink({ className, children }: { className?: string; c
  */
 export function LineWorkspaceLink({
   workspaceLiffUrl,
+  webHref = LINE_WORKSPACE_WEB_PATH,
   className,
   children,
 }: {
   workspaceLiffUrl: string | null;
+  /** The ordinary web entry this link keeps outside the Account LIFF. */
+  webHref?: "/" | typeof LINE_WORKSPACE_WEB_PATH;
   className?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   const href = resolveLineWorkspaceHref({ context: useLiffBrowserContext(), workspaceLiffUrl });
   return href === LINE_WORKSPACE_WEB_PATH
-    ? <Link href={href} className={className}>{children}</Link>
+    ? <Link href={webHref} className={className}>{children}</Link>
     : <a href={href} className={className}>{children}</a>;
 }

@@ -93,14 +93,26 @@ export function recordWorkspaceInitResult(store: WritableStore | null, result: "
   });
 }
 
+/** `PerformanceNavigationTiming.type` of the current document. */
+export type DocumentNavigationType = "navigate" | "reload" | "back_forward" | "prerender" | null;
+
 /**
- * Whether an `/app` or `/login` document should run Workspace `liff.init()`:
- * the session entered the Workspace LIFF (pending, ready or failed earlier)
- * and is not a MINI session. This includes returning to a Workspace page
- * from the Account LIFF. It is never consulted for authorization.
+ * Whether an `/app` or `/login` document should run Workspace `liff.init()`
+ * (never consulted for authorization):
+ *
+ * - The Workspace LIFF is current: the session entered it through the
+ *   Workspace LIFF URL (root entry) or a Workspace document initialized last.
+ * - Or the Account LIFF is current, the session had a Workspace entry, and this
+ *   document is a back/forward or reload of a page: returning to a Workspace
+ *   page from the Account LIFF. A plain new navigation from the Account LIFF
+ *   into `/` or `/app` is not a Workspace entry and does not initialize; the
+ *   Account screen links to the Workspace LIFF URL instead.
+ * - Never in a MINI session.
  */
-export function shouldInitializeWorkspaceLiff(context: LiffBrowserContext | null): boolean {
-  return context !== null && !context.mini && context.workspace !== null;
+export function shouldInitializeWorkspaceLiff(context: LiffBrowserContext | null, navigationType: DocumentNavigationType): boolean {
+  if (context === null || context.mini || context.workspace === null) return false;
+  if (context.current === "WORKSPACE") return true;
+  return context.current === "ACCOUNT" && (navigationType === "back_forward" || navigationType === "reload");
 }
 
 /** Exactly the shape `buildAccountLiffUrl()` produces; anything else is never followed as a LIFF transition. */

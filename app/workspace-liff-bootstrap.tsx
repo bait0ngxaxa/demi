@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { getLiffBrowserContextSnapshot, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
 import { Alert } from "@/components/ui/alert";
-import { shouldInitializeWorkspaceLiff } from "@/modules/line/domain/line-liff-browser";
+import { shouldInitializeWorkspaceLiff, type DocumentNavigationType } from "@/modules/line/domain/line-liff-browser";
 
 import {
   clearWorkspaceLiffEntryAttempts,
@@ -14,6 +14,15 @@ import {
   startWorkspaceLiffEntry,
   type WorkspaceLiffSdkLoader,
 } from "./workspace-liff-gateway";
+
+function documentNavigationType(): DocumentNavigationType {
+  try {
+    const [entry] = window.performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
+    return (entry?.type as DocumentNavigationType | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 type BootstrapState = "IDLE" | "READY" | "FAILED" | "LOOP_STOPPED";
 
@@ -44,7 +53,7 @@ export function WorkspaceLiffBootstrap({
   const [state, setState] = useState<BootstrapState>("IDLE");
 
   useEffect(() => {
-    if (!liffId || !shouldInitializeWorkspaceLiff(getLiffBrowserContextSnapshot())) return;
+    if (!liffId || !shouldInitializeWorkspaceLiff(getLiffBrowserContextSnapshot(), documentNavigationType())) return;
     let active = true;
     let documentReady = false;
     void startWorkspaceLiffEntry(load, liffId, sessionAttemptStore(), isLineLoginReturnSearch(window.location.search)).then((result) => {
@@ -56,7 +65,8 @@ export function WorkspaceLiffBootstrap({
       } else if (result === "INIT_FAILED") {
         recordCurrentWorkspaceInitResult("FAILED");
       }
-      if (active) setState(result === "INIT_FAILED" ? "FAILED" : result);
+      // OTHER_LIFF_APP: the Account page initialized this document (soft navigation); stay silent, record nothing.
+      if (active && result !== "OTHER_LIFF_APP") setState(result === "INIT_FAILED" ? "FAILED" : result);
     });
     // Back from the Account LIFF can restore this page from BFCache; it is the Workspace again.
     const onPageShow = (event: PageTransitionEvent): void => {

@@ -8,6 +8,8 @@ export type WorkspaceLiffSdk = {
   init(config: { liffId: string; withLoginOnExternalBrowser?: boolean }): Promise<void>;
   /** Documented as callable before `liff.init()` resolves. */
   isInClient(): boolean;
+  /** The LIFF ID passed to `liff.init()` in this document, or null before any init. */
+  readonly id: string | null;
 };
 
 export type WorkspaceLiffSdkLoader = () => Promise<WorkspaceLiffSdk>;
@@ -43,8 +45,14 @@ export type WorkspaceLiffInitOptions = {
   onSdkLoaded?: (sdk: WorkspaceLiffSdk) => void;
 };
 
+/** This document's SDK was initialized by another LIFF app; not a Workspace failure. */
+const otherLiffApp = new Error("Another LIFF app initialized this document");
+
 function startInitialization(load: WorkspaceLiffSdkLoader, liffId: string, options: WorkspaceLiffInitOptions): Initialization {
   const promise = load().then((sdk) => {
+    // The SDK is one module per document: if another LIFF app (the Account page) initialized it here,
+    // never re-initialize it with the Workspace ID.
+    if (sdk.id !== null && sdk.id !== undefined && sdk.id !== liffId) throw otherLiffApp;
     try {
       options.onSdkLoaded?.(sdk);
     } catch {
@@ -71,7 +79,7 @@ export async function initializeWorkspaceLiff(
   load: WorkspaceLiffSdkLoader,
   liffId: string,
   options: WorkspaceLiffInitOptions = {},
-): Promise<"READY" | "INIT_FAILED"> {
+): Promise<"READY" | "INIT_FAILED" | "OTHER_LIFF_APP"> {
   // Never initialize a second LIFF identity in a document that already holds one.
   if (initialization && initialization.liffId !== liffId) return "INIT_FAILED";
   if (initialization?.state === "TIMED_OUT") return "INIT_FAILED";
@@ -86,6 +94,7 @@ export async function initializeWorkspaceLiff(
     })]);
     return "READY";
   } catch (error: unknown) {
+    if (error === otherLiffApp) return "OTHER_LIFF_APP";
     // A rejected SDK attempt clears itself; only a still-running one is marked so it is never raced.
     if (error === timedOut && initialization === attempt && attempt.state === "PENDING") attempt.state = "TIMED_OUT";
     return "INIT_FAILED";
@@ -143,7 +152,7 @@ export async function startWorkspaceLiffEntry(
   store: AttemptStore | null,
   lineLoginReturn: boolean,
   options: WorkspaceLiffInitOptions = {},
-): Promise<"READY" | "INIT_FAILED" | "LOOP_STOPPED"> {
+): Promise<"READY" | "INIT_FAILED" | "LOOP_STOPPED" | "OTHER_LIFF_APP"> {
   // A remount joining this document's initialization is not a new LINE Login round trip.
   if (lineLoginReturn && !hasWorkspaceLiffInitialization(liffId) && recordWorkspaceLiffEntryAttempt(store) === "LOOP_STOPPED") {
     return "LOOP_STOPPED";

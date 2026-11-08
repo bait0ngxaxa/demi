@@ -19,7 +19,7 @@ let container: HTMLDivElement;
 let root: Root;
 
 function sdkDouble(init: () => Promise<void> = () => Promise.resolve()): WorkspaceLiffSdk & { init: ReturnType<typeof vi.fn> } {
-  return { isInClient: () => true, init: vi.fn(init) };
+  return { id: null, isInClient: () => true, init: vi.fn(init) };
 }
 
 async function mount(props: { liffId: string | null; sdk: WorkspaceLiffSdk }): Promise<ReturnType<typeof vi.fn>> {
@@ -27,6 +27,11 @@ async function mount(props: { liffId: string | null; sdk: WorkspaceLiffSdk }): P
   await act(async () => root.render(<WorkspaceLiffBootstrap liffId={props.liffId} load={load} />));
   await act(async () => { for (let index = 0; index < 6; index += 1) await Promise.resolve(); });
   return load;
+}
+
+function navigationType(type: string): void {
+  vi.spyOn(window.performance, "getEntriesByType").mockImplementation((entryType) =>
+    entryType === "navigation" ? [{ type } as unknown as PerformanceEntry] : []);
 }
 
 function workspaceSession(): void {
@@ -176,12 +181,32 @@ describe("Workspace LIFF per-document initialization", () => {
     expect(context()?.workspace).toBe("READY");
   });
 
-  it("initializes a Workspace page reached back from the Account LIFF and makes Workspace current again", async () => {
+  it.each(["back_forward", "reload"])("initializes a Workspace page reached by %s from the Account LIFF and makes Workspace current again", async (type) => {
+    navigationType(type);
     window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
     const sdk = sdkDouble();
     await mount({ liffId: WORKSPACE_ID, sdk });
     expect(sdk.init).toHaveBeenCalledWith({ liffId: WORKSPACE_ID, withLoginOnExternalBrowser: false });
     expect(context()?.current).toBe("WORKSPACE");
+  });
+
+  it("does not initialize the Workspace ID on a plain new navigation from the Account LIFF into / or /app", async () => {
+    navigationType("navigate");
+    window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    const load = await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble() });
+    expect(load).not.toHaveBeenCalled();
+    expect(context()?.current).toBe("ACCOUNT");
+  });
+
+  it("never re-initializes an SDK the Account page already initialized in this document (soft navigation)", async () => {
+    navigationType("reload");
+    window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    const accountOwned = { id: "1234567890-Account", isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    await mount({ liffId: WORKSPACE_ID, sdk: accountOwned });
+    expect(accountOwned.init).not.toHaveBeenCalled();
+    // Silent: not a Workspace failure, nothing recorded, no notice.
+    expect(context()).toEqual({ current: "ACCOUNT", mini: false, workspace: "READY" });
+    expect(container.textContent).toBe("");
   });
 
   it("re-asserts Workspace on a BFCache restore of an initialized page after an Account LIFF visit", async () => {

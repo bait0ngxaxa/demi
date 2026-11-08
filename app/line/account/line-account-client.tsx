@@ -308,9 +308,10 @@ export function LineAccountScreen({
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
       <div className="mx-auto w-full max-w-xl">
         <header className="mb-8">
-          <Link href="/" className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
+          {/* Same Account LIFF -> Workspace LIFF resolver as the web link below; ordinary browsers keep "/". */}
+          <LineWorkspaceLink workspaceLiffUrl={workspaceLiffUrl} webHref="/" className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
             DEMI
-          </Link>
+          </LineWorkspaceLink>
           <h1 className="mt-5 text-3xl">บัญชี LINE</h1>
           <p className="type-readable mt-3 text-base text-muted">จัดการการเชื่อมต่อระหว่าง LINE กับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
           <ol aria-label="ขั้นตอนใช้งานผ่าน LINE" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm leading-6 text-muted">
