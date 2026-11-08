@@ -94,6 +94,22 @@ describe("LINE HELP reply", () => {
     }
   });
 
+  it("opens every Quick Reply work entry through the Workspace LIFF once it is configured", () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    const workspace = "https://liff.line.me/1234567890-WorkSpace";
+    expect(actions(["PATIENT", "OSM", "HOSPITAL"]).filter((action) => action.type === "uri").map((action) => action.uri)).toEqual([
+      `${workspace}/app/personal/appointments`,
+      `${workspace}/app/personal/wellness`,
+      `${workspace}/app/personal/medications`,
+      `${workspace}/app/personal/care`,
+      `${workspace}/app/patients/assigned`,
+      `${workspace}/app/patients/assigned?task=screening`,
+      `${workspace}/app/services`,
+      `${workspace}/app`,
+    ]);
+    expect(actions([])).toEqual([{ type: "uri", label: "จัดการบัญชี DEMI", uri: liffUrl }]);
+  });
+
   it("fails loudly when the account management link cannot be built", () => {
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "");
 

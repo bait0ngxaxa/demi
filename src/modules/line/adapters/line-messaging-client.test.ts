@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LINE_WEB_NAVIGATION_PATHS } from "../domain/line-navigation-intents";
 import { LINE_RICH_MENU_BY_KEY, LINE_RICH_MENU_CATALOG, LINE_WORKSPACE_SWITCH_MARKER } from "../rich-menu/catalog";
 import { createLineRichMenuPayload, LineMessagingClient } from "./line-messaging-client";
 
@@ -14,6 +15,43 @@ describe("DEMI LINE Messaging API boundary", () => {
     vi.stubEnv("IDENTITY_HASH_SECRET", "line-test-identity-hash-secret-at-least-32");
   });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("routes every operational Rich Menu URI through the Workspace LIFF and keeps LINE-native and Account actions", () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    let operationalUris = 0;
+    for (const menu of LINE_RICH_MENU_CATALOG) {
+      const payload = createLineRichMenuPayload(menu);
+      for (const [index, catalogAction] of menu.actions.entries()) {
+        const action = payload.areas[index]?.action;
+        if (catalogAction.type !== "uri") {
+          expect(action?.type, `${menu.key} action ${index}`).toBe(catalogAction.type);
+          continue;
+        }
+        if (action?.type !== "uri") throw new Error(`${menu.key} action ${index} lost its URI type`);
+        if (catalogAction.intent === "LINK_ACCOUNT" || catalogAction.intent === "MANAGE_ACCOUNT") {
+          expect(action.uri, `${menu.key} ${catalogAction.intent}`).toBe("https://liff.line.me/1234567890-AbCdEfGh");
+          continue;
+        }
+        operationalUris += 1;
+        expect(action.uri, `${menu.key} ${catalogAction.intent}`).toBe(
+          `https://liff.line.me/1234567890-WorkSpace${LINE_WEB_NAVIGATION_PATHS[catalogAction.intent]}`,
+        );
+        expect(action.uri).not.toContain("demi.example.org");
+      }
+    }
+    expect(operationalUris).toBeGreaterThan(0);
+  });
+
+  it("changes the provider payload when Workspace LIFF routing changes, so reconciliation sees the revision", () => {
+    const menu = LINE_RICH_MENU_BY_KEY.get("PATIENT_DIRECT");
+    if (!menu) throw new Error("Expected the Patient menu");
+    const web = JSON.stringify(createLineRichMenuPayload(menu));
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    const workspace = JSON.stringify(createLineRichMenuPayload(menu));
+    expect(workspace).not.toBe(web);
+    expect(web).toContain("https://demi.example.org/app/personal/wellness");
+    expect(workspace).toContain("https://liff.line.me/1234567890-WorkSpace/app/personal/wellness");
+  });
 
   it("builds stable switch aliases and the static Option C marker", () => {
     const chooser = LINE_RICH_MENU_BY_KEY.get("CHOOSER_PATIENT_OSM");
