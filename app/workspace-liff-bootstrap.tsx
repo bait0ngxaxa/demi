@@ -12,7 +12,7 @@ import {
   sessionAttemptStore,
   startWorkspaceLiffEntry,
   type WorkspaceLiffSdkLoader,
-} from "../workspace-liff-gateway";
+} from "./workspace-liff-gateway";
 
 /**
  * LINE: "LIFF apps must be initialized each time a page is opened." The root

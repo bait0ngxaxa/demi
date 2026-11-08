@@ -50,7 +50,11 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({
     children: React.createElement("main"),
   }) as ReactElement<{ children: ReactNode }>;
-  const protectedShell = layoutElement.props.children as ReactElement<{ children: ReactNode }>;
+  // The layout renders the Workspace LIFF bootstrap beside (outside) the Suspense boundary of the protected shell.
+  const suspense = React.Children.toArray(layoutElement.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
+  if (!suspense) throw new Error("Expected the protected Suspense boundary");
+  const protectedShell = suspense.props.children as ReactElement<{ children: ReactNode }>;
   if (typeof protectedShell.type !== "function") {
     throw new Error("Expected the protected application shell component");
   }

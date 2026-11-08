@@ -6,7 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { LIFF_BROWSER_CONTEXT_KEY } from "@/modules/line/domain/line-liff-browser";
 
-import { resetWorkspaceLiffInitializationForTests, WORKSPACE_LIFF_MAX_ENTRY_ATTEMPTS, type WorkspaceLiffSdk } from "../workspace-liff-gateway";
+import { resetWorkspaceLiffInitializationForTests, WORKSPACE_LIFF_MAX_ENTRY_ATTEMPTS, type WorkspaceLiffSdk } from "./workspace-liff-gateway";
 import { WorkspaceLiffBootstrap } from "./workspace-liff-bootstrap";
 
 /**

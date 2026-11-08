@@ -21,13 +21,18 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mocks.getProtectedApplicationActor,
 }));
 
+import { WorkspaceLiffBootstrap } from "../workspace-liff-bootstrap";
 import ProtectedApplicationLayout from "./layout";
 
 async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{
     children: ReactNode;
   }>;
-  const protectedShell = layoutElement.props.children as ReactElement<{ children: ReactNode }>;
+  // The layout renders the Workspace LIFF bootstrap beside (outside) the Suspense boundary of the protected shell.
+  const suspense = React.Children.toArray(layoutElement.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
+  if (!suspense) throw new Error("Expected the protected Suspense boundary");
+  const protectedShell = suspense.props.children as ReactElement<{ children: ReactNode }>;
   if (typeof protectedShell.type !== "function") {
     throw new Error("Expected the protected application shell component");
   }
@@ -35,6 +40,19 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   const renderShell = protectedShell.type as unknown as (props: { children: ReactNode }) => Promise<React.JSX.Element>;
   return renderShell(protectedShell.props);
 }
+
+describe("Workspace LIFF initialization boundary ordering", () => {
+  it("renders the Workspace LIFF bootstrap outside the Suspense boundary, so it mounts before an auth redirect streams", () => {
+    const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{ children: ReactNode }>;
+    const children = React.Children.toArray(layoutElement.props.children) as ReactElement[];
+    const bootstrapIndex = children.findIndex((child) => child.type === WorkspaceLiffBootstrap);
+    const suspenseIndex = children.findIndex((child) => child.type === React.Suspense);
+    expect(bootstrapIndex).toBeGreaterThanOrEqual(0);
+    expect(bootstrapIndex).toBeLessThan(suspenseIndex);
+    // It needs no actor: nothing about the DEMI session is resolved to render it.
+    expect(mocks.getProtectedApplicationActor).not.toHaveBeenCalled();
+  });
+});
 
 describe("protected application login redirect", () => {
   beforeEach(() => {

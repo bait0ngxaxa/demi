@@ -13,8 +13,36 @@ vi.mock("@/modules/auth/services/actor-context-service", () => ({
   resolveCurrentActorAccess: mocks.resolveCurrentActorAccess,
 }));
 vi.mock("./login-form", () => ({ LoginForm: () => null }));
+vi.mock("../workspace-liff-bootstrap", () => ({
+  WorkspaceLiffBootstrap: ({ liffId }: { liffId: string | null }) => <i data-workspace-liff-bootstrap={liffId ?? "none"} />,
+}));
 
 import LoginPage from "./page";
+
+describe("Login page Workspace LIFF initialization boundary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    mocks.resolveCurrentActorAccess.mockResolvedValue({ status: "UNAUTHENTICATED" });
+  });
+
+  it("renders the Workspace LIFF bootstrap with the Workspace LIFF ID only", async () => {
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-Workspace");
+    const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({ returnTo: "/app/personal/medications" }) }));
+    expect(markup).toContain('data-workspace-liff-bootstrap="1234567890-Workspace"');
+    expect(markup).not.toContain("1234567890-Account");
+    vi.unstubAllEnvs();
+  });
+
+  it("passes no LIFF ID when the Workspace LIFF is not configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
+    const markup = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve({}) }));
+    expect(markup).toContain('data-workspace-liff-bootstrap="none"');
+    vi.unstubAllEnvs();
+  });
+});
 
 describe("Login page entry points and recovery guidance", () => {
   beforeEach(() => {
