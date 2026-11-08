@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { markWorkspaceLiffContext } from "@/modules/line/domain/line-liff-browser";
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import {
@@ -127,6 +128,8 @@ export function WorkspaceLiffEntry({
       return;
     }
     let active = true;
+    // Scopes Workspace-only navigation (Account LIFF links) to this LIFF browser session; never authority.
+    markWorkspaceLiffContext(sessionStore());
     // No URL change before init resolves: the SDK consumes liff.state and credentials first.
     void startWorkspaceLiffEntry(load, liffId, sessionStore(), isLineLoginReturn()).then((result) => {
       if (!active) return;

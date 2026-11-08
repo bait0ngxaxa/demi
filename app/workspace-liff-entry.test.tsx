@@ -100,6 +100,16 @@ describe("Workspace LIFF root entry", () => {
     expect(browser.location.search).toBe("?liff.state=%2Fapp%2Fpersonal&lineAppVersion=14.19.1&liff.referrer=https%3A%2F%2Fliff.line.me%2Fx&liff.hback=2");
   });
 
+  it("marks the Workspace LIFF browser session only on a configured LIFF entry", () => {
+    mount({ mode: "LIFF", destination: "/app" });
+    expect(browser.sessionStorage.getItem("demi.line.workspace.context")).toBe("1");
+    for (const props of [{ mode: "ORDINARY" as const }, { mode: "NAVIGATION_INVALID" as const }, { mode: "LIFF" as const, liffId: null }]) {
+      stubBrowser();
+      mount(props);
+      expect(browser.sessionStorage.getItem("demi.line.workspace.context")).toBeNull();
+    }
+  });
+
   it("continues to the allowlisted destination when init resolves without a secondary redirect", async () => {
     mount({ mode: "LIFF", destination: "/app/patients/assigned?task=screening" });
     await settle();
