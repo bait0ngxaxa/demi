@@ -7,6 +7,9 @@ import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-
 
 import {
   clearWorkspaceLiffEntryAttempts,
+  isLineLoginReturnSearch,
+  loadWorkspaceLiffSdk,
+  sessionAttemptStore,
   startWorkspaceLiffEntry,
   type WorkspaceLiffSdkLoader,
 } from "./workspace-liff-gateway";
@@ -28,22 +31,6 @@ const copy: Record<WorkspaceLiffEntryState, Copy> = {
 
 const primaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
 const secondaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-5 py-3 text-center font-semibold text-ink hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
-
-const loadLiffSdk: WorkspaceLiffSdkLoader = async () => (await import("@line/liff")).default;
-
-function sessionStore(): Storage | null {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-/** A LINE Login return is the only entry that can come back to `/` repeatedly. */
-function isLineLoginReturn(): boolean {
-  const parameters = new URLSearchParams(window.location.search);
-  return parameters.has("liffClientId") || parameters.has("code");
-}
 
 /** Removes LIFF query/fragment credentials when LIFF will not consume them. */
 function discardPlatformParameters(): void {
@@ -96,7 +83,7 @@ export function WorkspaceLiffEntry({
   liffId,
   destination,
   fallbackHref,
-  load = loadLiffSdk,
+  load = loadWorkspaceLiffSdk,
 }: {
   mode: WorkspaceLiffEntryMode;
   liffId: string | null;
@@ -128,14 +115,18 @@ export function WorkspaceLiffEntry({
       return;
     }
     let active = true;
-    // Scopes Workspace-only navigation (Account LIFF links) to this LIFF browser session; never authority.
-    markWorkspaceLiffContext(sessionStore());
     // No URL change before init resolves: the SDK consumes liff.state and credentials first.
-    void startWorkspaceLiffEntry(load, liffId, sessionStore(), isLineLoginReturn()).then((result) => {
+    void startWorkspaceLiffEntry(load, liffId, sessionAttemptStore(), isLineLoginReturnSearch(window.location.search), {
+      // Scopes Workspace-only behavior (Account LIFF links, per-page init) to a LIFF browser session the SDK
+      // itself reports (liff.isInClient() is documented as callable before init). Presentation state, never authority.
+      onSdkLoaded: (sdk) => {
+        if (sdk.isInClient()) markWorkspaceLiffContext(sessionAttemptStore());
+      },
+    }).then((result) => {
       if (!active) return;
       if (result === "READY") {
         // Reached only when the SDK did not perform the secondary redirect itself.
-        clearWorkspaceLiffEntryAttempts(sessionStore());
+        clearWorkspaceLiffEntryAttempts(sessionAttemptStore());
         window.location.replace(destination ?? fallbackHref);
         return;
       }

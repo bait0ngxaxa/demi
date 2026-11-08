@@ -6,41 +6,74 @@
 
 export type WorkspaceLiffSdk = {
   init(config: { liffId: string; withLoginOnExternalBrowser?: boolean }): Promise<void>;
+  /** Documented as callable before `liff.init()` resolves. */
+  isInClient(): boolean;
 };
 
 export type WorkspaceLiffSdkLoader = () => Promise<WorkspaceLiffSdk>;
 
+export const loadWorkspaceLiffSdk: WorkspaceLiffSdkLoader = async () => (await import("@line/liff")).default;
+
 export const WORKSPACE_LIFF_INIT_TIMEOUT_MS = 10_000;
 
-let pendingInitialization: { liffId: string; promise: Promise<void> } | null = null;
+/**
+ * The one LIFF initialization of this document. A document only ever
+ * initializes the Workspace LIFF ID it was given; a settled success is kept so
+ * remounts and internal navigation reuse it, while a failure or timeout clears
+ * it so a retry starts a fresh `liff.init()` instead of awaiting a stale one.
+ */
+let initialization: { liffId: string; promise: Promise<void> } | null = null;
+
+export function hasWorkspaceLiffInitialization(liffId: string): boolean {
+  return initialization?.liffId === liffId;
+}
+
+export type WorkspaceLiffInitOptions = {
+  timeoutMs?: number;
+  /** Runs once, after the SDK loads and before `liff.init()`; it must not change the URL. */
+  onSdkLoaded?: (sdk: WorkspaceLiffSdk) => void;
+};
 
 /**
- * Single-flight `liff.init()` with a bounded wait. With `liff.state` the SDK
- * replaces the location itself and the promise never settles, so the timeout
- * only matters when LINE does not respond. External browsers are never sent to
- * LINE Login: LINE identity is not DEMI authentication.
+ * Single-flight, bounded `liff.init()`. With `liff.state` the SDK replaces the
+ * location itself and the promise never settles, so the timeout only matters
+ * when LINE does not respond. External browsers are never sent to LINE Login:
+ * LINE identity is not DEMI authentication.
  */
 export async function initializeWorkspaceLiff(
   load: WorkspaceLiffSdkLoader,
   liffId: string,
-  timeoutMs = WORKSPACE_LIFF_INIT_TIMEOUT_MS,
+  options: WorkspaceLiffInitOptions = {},
 ): Promise<"READY" | "INIT_FAILED"> {
-  let current = pendingInitialization;
-  if (current?.liffId !== liffId) {
-    const promise = load().then((sdk) => sdk.init({ liffId, withLoginOnExternalBrowser: false }));
-    current = { liffId, promise };
-    pendingInitialization = current;
+  // Never initialize a second LIFF identity in a document that already holds one.
+  if (initialization && initialization.liffId !== liffId) return "INIT_FAILED";
+  let current = initialization;
+  if (!current) {
+    const promise = load().then((sdk) => {
+      try {
+        options.onSdkLoaded?.(sdk);
+      } catch {
+        // Presentation bookkeeping only; initialization continues.
+      }
+      return sdk.init({ liffId, withLoginOnExternalBrowser: false });
+    });
+    const created = { liffId, promise };
+    current = created;
+    initialization = created;
     void promise.catch(() => {
-      if (pendingInitialization?.promise === promise) pendingInitialization = null;
+      if (initialization === created) initialization = null;
     });
   }
+  const attempt = current;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([current.promise, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("LIFF initialization timed out")), timeoutMs);
+    await Promise.race([attempt.promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("LIFF initialization timed out")), options.timeoutMs ?? WORKSPACE_LIFF_INIT_TIMEOUT_MS);
     })]);
     return "READY";
   } catch {
+    // Timed out or rejected: do not let later attempts wait on this promise.
+    if (initialization === attempt) initialization = null;
     return "INIT_FAILED";
   } finally {
     if (timer) clearTimeout(timer);
@@ -49,7 +82,7 @@ export async function initializeWorkspaceLiff(
 
 /** Test seam only. */
 export function resetWorkspaceLiffInitializationForTests(): void {
-  pendingInitialization = null;
+  initialization = null;
 }
 
 const ENTRY_ATTEMPTS_KEY = "demi.line.workspace.entryAttempts";
@@ -95,9 +128,27 @@ export async function startWorkspaceLiffEntry(
   liffId: string,
   store: AttemptStore | null,
   lineLoginReturn: boolean,
+  options: WorkspaceLiffInitOptions = {},
 ): Promise<"READY" | "INIT_FAILED" | "LOOP_STOPPED"> {
-  if (lineLoginReturn && recordWorkspaceLiffEntryAttempt(store) === "LOOP_STOPPED") return "LOOP_STOPPED";
-  return initializeWorkspaceLiff(load, liffId);
+  // A remount joining this document's initialization is not a new LINE Login round trip.
+  if (lineLoginReturn && !hasWorkspaceLiffInitialization(liffId) && recordWorkspaceLiffEntryAttempt(store) === "LOOP_STOPPED") {
+    return "LOOP_STOPPED";
+  }
+  return initializeWorkspaceLiff(load, liffId, options);
+}
+
+/** LINE Login returns to the redirect URI LIFF built, marked by these parameters. */
+export function isLineLoginReturnSearch(search: string): boolean {
+  const parameters = new URLSearchParams(search);
+  return parameters.has("liffClientId") || parameters.has("code");
+}
+
+export function sessionAttemptStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
 }
 
 export function clearWorkspaceLiffEntryAttempts(store: AttemptStore | null): void {

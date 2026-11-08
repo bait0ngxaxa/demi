@@ -49,7 +49,7 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 9 | ผู้ใช้หลายบทบาท | สลับพื้นที่ด้วยปุ่มสลับ แล้วแตะปุ่มงาน | richmenuswitch ทำงานเดิม ปลายทางเปิดใน LIFF | | |
 | 10 | จัดการบัญชี | Rich Menu “จัดการบัญชี” | เปิด Account LIFF `/line/account` เหมือนเดิม | | |
 | 11 | MINI นัดหมาย (ถ้าเปิดใช้) | ลิงก์ MINI เดิม | เปิด MINI App เดิม ไม่ใช่ Workspace | | |
-| 12 | ยังไม่ login DEMI | ออกจากระบบใน LIFF แล้วแตะ “ยาของฉัน” | หน้า login DEMI ปกติ → login → กลับ `/app/personal/medications` ใน LIFF | | |
+| 12 | ยังไม่ login DEMI | ออกจากระบบใน LIFF แล้วแตะ “ยาของฉัน” | หน้า login DEMI ปกติ → login → กลับ `/app/personal/medications` ใน LIFF (แม้ URL จะมี `liff.hback` หรือ `lineAppVersion`) | | |
 | 13 | session หมดอายุ | เปิดหน้า LIFF ค้างไว้จน session หมด แล้วกดเมนูในแอป | ไปหน้า login ปกติ ไม่มี loop | | |
 | 14 | เปิดใน Chrome/Safari | เปิด `<ORIGIN>/` และ `<ORIGIN>/app` ตรง ๆ | ไป `/app` หรือ `/login` ทันที ไม่โหลด LIFF | | |
 | 15 | ลิงก์ LIFF ใน Chrome/Safari | เปิดลิงก์ทดสอบข้อ “เตรียม” ในเบราว์เซอร์นอก LINE | ไปหน้าเป้าหมาย/หน้า login DEMI ไม่บังคับ login LINE | | |
@@ -59,9 +59,16 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 19 | bare LIFF URL | `https://liff.line.me/<WORKSPACE_LIFF_ID>` | ไป `/app` หรือ `/login` ใน LIFF; URL bar/แชร์ลิงก์ต้องไม่มี `access_token` | | |
 | 20 | นำทางภายในหลัง login | ใช้แท็บล่าง, เมนูเพิ่มเติม, ส่งฟอร์ม, สลับ workspace | ยังอยู่ใน LIFF ไม่มี footer | | |
 | 21 | ย้อนกลับ / รีเฟรช | กด back ของ LIFF และ reload จากเมนู ⋯ | ไม่วนกลับไปหน้า “กำลังเปิด DEMI ผ่าน LINE” ไม่มี loop | | |
-| 22 | ข้าม LIFF | จาก Workspace เปิด “บัญชี LINE” ในหน้าตั้งค่า | `/line/account` โหลดสถานะได้ (ถ้าไม่ได้ ให้บันทึกตาม ADR-0031 open question) | | |
+| 22 | ข้าม LIFF ไป Account | จาก Workspace เปิด ตั้งค่า → บัญชี LINE → “จัดการการเชื่อมต่อ LINE” | เปิดผ่าน Account LIFF URL (LIFF-to-LIFF) หน้า `/line/account` โหลดสถานะได้ ไม่มี footer; ปุ่มย้อนกลับของ LIFF กลับมาหน้า Workspace เดิม | | |
 | 23 | เอกสาร `_blank` | เปิดเอกสารกฎหมาย/รูปหลักฐาน แล้วกลับ | กลับมาที่งานเดิมได้ | | |
 | 24 | LIFF ไม่ได้ตั้งค่า (staging เท่านั้น) | build โดยไม่ใส่ Workspace ID แล้วเปิดลิงก์ LIFF | หน้า “ยังเปิด DEMI ผ่าน LINE ไม่ได้” ไม่ใช้ LIFF ID อื่น | | |
+| 25 | พารามิเตอร์ของ Android | Android: แตะลิงก์ทดสอบทุกลิงก์ | ไม่เจอหน้า “ลิงก์นี้ไม่ถูกต้อง” แม้ LINE จะเติม `lineAppVersion` | | — |
+| 26 | init ทุกหน้า | ใน `/app` reload จากเมนู ⋯ แล้วเปิดหน้าอื่นด้วยลิงก์เต็มหน้า | ยังอยู่ใน LIFF ไม่มี loop; (ถ้าใช้ LIFF Inspector) `liff.id` คือ Workspace LIFF ID | | |
+| 27 | กลับจาก Account LIFF | จากข้อ 22 กดย้อนกลับ แล้วแตะเมนูงาน | หน้า Workspace ทำงานต่อได้ ไม่วนไปหน้า “กำลังเปิด DEMI ผ่าน LINE” | | |
+| 28 | MINI ออกไป `/app` (ถ้าเปิดใช้) | ใน MINI แตะ “ออกจากหน้านัดหมายใน LINE ไปยัง DEMI” แล้วเปิด บัญชี LINE | ลิงก์ยังเป็น `/line/account` แบบเดิม ไม่ init Workspace LIFF ใน MINI | | |
+| 29 | User agent ของ LIFF browser | ใน `/app` บันทึก `navigator.userAgent` (LIFF Inspector) | มีรูปแบบ `Line/x.y.z LIFF` หากไม่มี ให้บันทึกว่าข้อ 22/26 ใช้พฤติกรรมเว็บเดิม (ADR-0031 open question) | | |
+
+ผลจาก unit test ที่ mock SDK (เช่น `app/app/workspace-liff-bootstrap.test.tsx`) ไม่ใช่หลักฐานจากอุปกรณ์จริง และใช้แทนตารางนี้ไม่ได้
 
 หลักฐานวินิจฉัยเพิ่มเติม (ไม่บังคับ): ใช้ [LIFF Inspector](https://github.com/line/liff-inspector) บน build ทดสอบ แล้วเรียก `liff.isInClient()` หลัง `liff.init()` — `true` = LIFF browser; `liff.isInClient()` ไม่ใช่การยืนยันตัวตนหรือสิทธิ์
 

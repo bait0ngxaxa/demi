@@ -20,10 +20,13 @@ import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-sch
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
 import { getPublicLineAccountEntryUrl } from "@/modules/line/services/line-deep-link-builder";
+import { getLineWorkspaceLiffId } from "@/lib/env/server";
 import { PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER } from "@/lib/auth/supabase-proxy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { shouldShowLegalReacceptanceBanner } from "@/modules/legal/transport/legal-settings-context";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+import { WorkspaceLiffBootstrap } from "./workspace-liff-bootstrap";
 
 export const viewport: Viewport = {
   viewportFit: "cover",
@@ -73,6 +76,8 @@ async function ResolvedProtectedApplicationShell({
   return (
     // Canonical Account LIFF URL for Workspace LIFF -> Account LIFF transitions; null keeps the ordinary route.
     <LineAccountNavigationProvider accountLiffUrl={getPublicLineAccountEntryUrl()}>
+      {/* Per-document Workspace LIFF init, only inside a Workspace LIFF browser session. */}
+      <WorkspaceLiffBootstrap liffId={getLineWorkspaceLiffId()} />
       <AppShell
         displayName={displayName}
         legalReacceptanceNeeded={legalReacceptanceNeeded}
