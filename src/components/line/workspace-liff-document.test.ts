@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { consumeWorkspaceLiffHandoff, isWorkspaceLiffHistoryEntry, markWorkspaceLiffHistoryEntry, prepareWorkspaceLiffHandoff } from "./workspace-liff-document";
+import { clearWorkspaceLiffHandoff, consumeWorkspaceLiffHandoff, isWorkspaceLiffHistoryEntry, markWorkspaceLiffHistoryEntry, prepareWorkspaceLiffHandoff, prepareWorkspaceLiffSdkReturn } from "./workspace-liff-document";
 import { getCurrentDocumentLiffApp, recordCurrentLiffBrowserEntry } from "./liff-browser-context-store";
 
 const ID = "1234567890-Workspace";
@@ -60,6 +60,20 @@ describe("Workspace document ownership (transport only)", () => {
       expect(getCurrentDocumentLiffApp()).toBe(app);
       expect(consumeWorkspaceLiffHandoff(ID)).toBe(false);
     }
+  });
+
+  it("SDK return matches only the current app document, never supplies a destination to navigate", () => {
+    const resource = "/app/patients/11111111-1111-4111-8111-111111111111";
+    window.history.replaceState(null, "", resource);
+    prepareWorkspaceLiffSdkReturn(ID);
+    window.history.replaceState(null, "", `${resource}?code=synthetic&liffClientId=1234567890&liff.hback=2`);
+    expect(consumeWorkspaceLiffHandoff(ID)).toBe(true);
+    prepareWorkspaceLiffSdkReturn(ID);
+    clearWorkspaceLiffHandoff();
+    expect(consumeWorkspaceLiffHandoff(ID)).toBe(false);
+    window.history.replaceState(null, "", "/line/account");
+    prepareWorkspaceLiffSdkReturn(ID);
+    expect(window.sessionStorage.getItem("demi.line.workspace.handoff")).toBeNull();
   });
 
   it("unavailable history storage neither identifies Workspace nor prevents web fallback", () => {

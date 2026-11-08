@@ -30,6 +30,35 @@ afterEach(() => {
 });
 
 describe("Workspace document navigation gate", () => {
+  it("preserves ownership across an SDK-owned LINE Login round trip before init resolves", async () => {
+    vi.useFakeTimers();
+    prepareWorkspaceLiffHandoff(ID, "/app/personal/medications");
+    const firstInit = vi.fn(() => new Promise<void>(() => undefined));
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={async () => ({ id: null, isInClient: () => true, init: firstInit })} />));
+    expect(firstInit).toHaveBeenCalledOnce();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    // SDK navigated to LINE Login; the callback opens a new document, not a React remount.
+    act(() => root.unmount());
+    resetWorkspaceLiffInitializationForTests();
+    window.history.replaceState(null, "", "/app/personal/medications?liff.hback=2&code=synthetic&liffClientId=1234567890");
+    root = createRoot(container);
+    const secondInit = vi.fn(async () => undefined);
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={async () => ({ id: null, isInClient: () => true, init: secondInit })} />));
+    expect(secondInit).toHaveBeenCalledOnce();
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(window.sessionStorage.getItem("demi.line.workspace.handoff")).toBeNull();
+  });
+
+  it("clears a rejected SDK's return handoff instead of leaving historical ownership", async () => {
+    prepareWorkspaceLiffHandoff(ID, "/app/personal/medications");
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={async () => ({
+      id: null, isInClient: () => true, init: async () => { throw new Error("Provider rejected initialization"); },
+    })} />));
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem("demi.line.workspace.handoff")).toBeNull();
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
   it("keeps an unresolved SDK on an explicit recovery screen, without navigation", async () => {
     vi.useFakeTimers();
     prepareWorkspaceLiffHandoff(ID, "/app/personal/medications");
@@ -43,10 +72,21 @@ describe("Workspace document navigation gate", () => {
   });
 
   it("ordinary, Account and MINI historical contexts do not load Workspace SDK", async () => {
+    window.history.replaceState(null, "", "/app/personal/medications");
     const load = vi.fn();
     window.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
     await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={load} />));
     expect(load).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
+  it("does not discard an unowned LINE callback after handoff expiry or storage loss", async () => {
+    window.history.replaceState(null, "", "/app/personal/medications?code=synthetic&liffClientId=1234567890");
+    const load = vi.fn();
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={load} />));
+    expect(load).not.toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(window.location.search).toContain("code=synthetic");
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
   });
 });

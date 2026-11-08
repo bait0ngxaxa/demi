@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 
 import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
-import { prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
+import { clearWorkspaceLiffHandoff, prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import {
   clearWorkspaceLiffEntryAttempts,
+  hasWorkspaceLiffInitialization,
   isLineLoginReturnSearch,
   loadWorkspaceLiffSdk,
   sessionAttemptStore,
@@ -113,6 +114,7 @@ export function WorkspaceLiffEntry({
         window.location.replace(destination ?? fallbackHref);
         return;
       }
+      if (!hasWorkspaceLiffInitialization(liffId)) clearWorkspaceLiffHandoff();
       // The root entry is always a fresh document, so another LIFF app cannot own it; treat it as a failure.
       setState(result === "OTHER_LIFF_APP" ? "INIT_FAILED" : result);
     });

@@ -50,7 +50,10 @@ async function freePort() {
 
 function get(port, host, path, rsc = false) {
   return new Promise((done, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, method: "GET", headers: { host, accept: rsc ? "text/x-component" : "text/html", ...(rsc ? { rsc: "1" } : {}), "user-agent": "Mozilla/5.0 Line/14.19.0 LIFF" } }, (response) => {
+    // Next 16 requires its empty union-query cache key for an RSC fetch with
+    // no router-state headers; otherwise it redirects the fetch to add it.
+    const requestPath = rsc ? `${path}${path.includes("?") ? "&" : "?"}_rsc` : path;
+    const req = request({ host: "127.0.0.1", port, path: requestPath, method: "GET", headers: { host, accept: rsc ? "text/x-component" : "text/html", ...(rsc ? { rsc: "1" } : {}), "user-agent": "Mozilla/5.0 Line/14.19.0 LIFF" } }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {

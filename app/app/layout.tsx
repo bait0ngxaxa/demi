@@ -94,8 +94,9 @@ export default function ProtectedApplicationLayout({
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
     <>
-      <WorkspaceLiffHistory liffId={getLineWorkspaceLiffId()} />
       <Suspense fallback={<ProtectedApplicationShellSkeleton />}>
+        {/* Only history observation suspends here; SDK initialization already finished in the public shell. */}
+        <WorkspaceLiffHistory liffId={getLineWorkspaceLiffId()} />
         <ResolvedProtectedApplicationShell>{children}</ResolvedProtectedApplicationShell>
       </Suspense>
     </>

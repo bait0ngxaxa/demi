@@ -22,10 +22,10 @@ Relevant installed source (read-only):
 - `node_modules/@liff/init/lib/index.es.js`: `HandleLiffState.invoke` reads `window.location.search`, calls `location.replace`, preserves `liff.hback` and awaits a never-settling promise; credential preparation builds LINE Login return URIs from `location.href`; Android version discovery reads URL/referrer `lineAppVersion`.
 - `node_modules/@liff/core/lib/index.es.js`: `id` reads configured `liffId`; it is not native-container identity before initialization. DEMI retains it only as a negative conflict guard after another app configured the SDK.
 - `node_modules/next/dist/server/app-render/make-get-server-inserted-html.js`: streamed redirect meta tag.
-- `node_modules/next/dist/server/web/adapter.js`: Flight headers are saved/removed before Proxy, explaining why testing only `request.headers.get("rsc")` is insufficient.
+- `node_modules/next/dist/server/web/adapter.js`: default normalization removes Flight headers and reserializes rewrite destinations. The official `skipProxyUrlNormalize` option retains raw URL and headers. `NextURL` loopback hostname normalization combined with the server's raw init URL otherwise turns a local rewrite into an HTTP hop. [Official Proxy documentation](https://nextjs.org/docs/app/api-reference/file-conventions/proxy#advanced-proxy-flags) and installed `config-shared.d.ts` verify the option.
 - Installed Next docs: `01-app/03-api-reference/04-functions/{redirect,use-router}.md` and Proxy reference. `refresh()` retrieves RSC while preserving the document.
 
-**Correction:** document requests receive a public transport shell via internal rewrite, preserving their original address. The protected route is requested as RSC only after this document's required init completes. Consequently neither a client redirect, HTTP redirect from the protected tree, nor a meta-refresh exists in the initial transport document. No protected data is supplied to the shell. All real reads/actions still execute existing session/resource/role checks on the server. Calling RSC directly can skip transport UI only; it cannot skip authorization.
+**Correction:** Document requests are internally rewritten to a dedicated public transport shell, preserving the original address and excluding the protected route tree entirely. The documented Next `skipProxyUrlNormalize` setting preserves raw origins and Flight headers so the rewrite remains internal under loopback reverse proxy hosting. Only literal `_rsc` transport segments are removed from the derived RSC return-path lookup; application query bytes remain raw and ordered. This transport selection cannot authorize data. The protected route is requested as RSC only after this document's required init completes. Consequently neither a client redirect, HTTP redirect from the protected tree, nor a meta-refresh exists in the initial transport document. No protected data is supplied to the shell. All real reads/actions still execute existing session/resource/role checks on the server. Calling RSC directly can skip transport UI only; it cannot skip authorization.
 
 The shell and root entry expose no application navigation controls while SDK work may be running. A ten-second timeout does not cancel SDK work. Rejection/timeout asks the user to close and reopen from LINE, and does not silently continue, race another init or reload the document. Ordinary browsers request RSC immediately without importing the SDK. The cost is one additional RSC request and a JavaScript requirement for initial app/login document loads.
 
@@ -39,7 +39,7 @@ The shell and root entry expose no application navigation controls while SDK wor
 | 2. Primary reaches `/` | D1, Workspace entry signal | Not started; primary | `liff.state`, bookkeeping and possibly credential fragment untouched | Public transport only |
 | 3. Root starts init | D1, Workspace | SDK load then primary init pending | Exact allowlisted one-shot handoff recorded; no app URL mutation | No session creation from LINE tokens |
 | 4. SDK secondary redirect | D1 replaced by D2, Workspace | SDK owns redirect; D1 promise need not resolve | SDK consumes credentials/state and composes secondary URL, preserving its bookkeeping | No protected data |
-| 5. `/app/...` loads | D2, matched Workspace handoff | New-document init required, then pending | Proxy internally rewrites to transport shell; visible path/query/fragment unchanged | Protected tree not requested yet |
+| 5. `/app/...` loads | D2, matched Workspace handoff | New-document init required, then pending | Internal rewrite renders only the dedicated transport shell; visible path/query/fragment unchanged | Protected tree not requested yet |
 | 6. Protected actor resolution | D2, Workspace | **Only after D2 init resolves**; RSC request | History marker recorded without changing URL; same-document refresh | Existing server actor resolver runs |
 | 7. No DEMI session | D2, initialized Workspace | Ready | Allowlisted login return derived from original request | Server denies protected access |
 | 8. Next emits streamed redirect | D2, initialized Workspace | Ready, no competing init | RSC redirect can now be consumed; no pre-init HTML meta-refresh exists | Existing server decision |
@@ -48,6 +48,8 @@ The shell and root entry expose no application navigation controls while SDK wor
 | 11. Navigate `/login` | D2, initialized Workspace | Ready; ordinary SPA navigation | Next changes URL after init. Login form can then handle its own fragment | Login page reads current server access |
 | 12. DEMI authenticates | D2 | Same initialized SDK; no re-init for SPA | Actual password server action + Supabase SSR cookie semantics | Server verifies credentials and mapped active actor |
 | 13. Restore destination | D2 | Ready | Existing login allowlist restores exact approved destination; no arbitrary URL added | Destination services authorize again |
+
+If the secondary SDK itself needs LINE Login, a pre-init one-shot match for that exact document allows the SDK-owned callback to open D3 and initialize afresh before step 6. This is independent of DEMI login and never reuses D2's promise in D3.
 
 An existing session skips steps 7–12 and receives the authorized page. An expired session follows the same server reauthentication path. A full-document reload of a marked Workspace entry uses the gate again. BFCache reuses the initialized document; its context callback does not initialize again. A fresh ordinary navigation from Account/MINI is not a Workspace restoration.
 
@@ -58,13 +60,15 @@ The old `ACCOUNT + reload/back_forward` branch confused navigation mechanics wit
 | Concept | Evidence / lifetime | Use |
 | --- | --- | --- |
 | Last known LIFF app | Existing session `{ current, mini, workspace }` | Link presentation only; cannot select document initialization |
-| Current navigation origin | Root entry writes a handoff for the exact approved destination; consumed once, expires after 60 seconds; invalidated by Account/MINI entry | Primary-to-secondary transport only |
+| Current navigation origin | Root entry writes a handoff for the exact approved destination; a proven Workspace document can separately prepare its own current URL for an SDK-owned LINE Login return. Consumed once, expires after 60 seconds; invalidated by Account/MINI entry; cleared on successful init or actual rejection | Primary/secondary and SDK callback transport only; stored paths are compared, never navigated or passed as DEMI `returnTo` |
 | Current document app | In-memory observation recorded by that document's own app after `isInClient()` | Prevent history bookkeeping from another app; lost on a new document |
 | Init status | Existing single-flight gateway slot in that document | Distinguishes pending/ready/timed out; remounts cannot race another init |
 | Saved Workspace history entry | Marker written only after actual init succeeds, preserving Next-owned state and URL | Reload/non-BFCache restoration of that entry; never inferred from navigation type |
 | Ordinary same-origin entry | No matching handoff or marked history entry | No Workspace SDK load, including later reload/back-forward |
 
-Neither cookies, user IDs, LINE tokens, roles, Hospital scopes nor authorization grants are stored in these transport markers. No server authorization code reads them. Corrupted/unavailable storage and mismatched/expired handoffs fail to ordinary web behavior; they cannot create or extend sessions. LIFF feature availability when storage is lost remains a device limitation, not an inferred Workspace identity.
+The SDK-return writer reads only the proven document's current app/login URL (bounded to 4096 characters); it does not accept an arbitrary destination argument. Resource-page callback matching does not expand the separate DEMI login-return allowlist. A callback after handoff expiry or storage loss cannot imply Workspace identity. Platform-bearing URLs without ownership remain on explicit recovery without SDK initialization or navigation; clean ordinary URLs continue as web documents.
+
+Neither cookies, user IDs, LINE tokens, roles, Hospital scopes nor authorization grants are stored in these transport markers. No server authorization code reads them. Corrupted/unavailable storage and mismatched/expired handoffs cannot create or extend sessions: clean ordinary URLs continue on the web, while unowned platform-bearing URLs require close/reopen recovery without discarding SDK parameters. LIFF feature availability when storage is lost remains a device limitation, not an inferred Workspace identity.
 
 ## Executable coverage and commands
 
@@ -102,6 +106,7 @@ Executed baseline result: **FAIL as expected**. While the secondary SDK module w
 | E: no DEMI session; login; exact return | Browser B/E, real password server action and destination services |
 | F: existing session | Browser A/F, authorized medication page without login |
 | G: session expires | Browser G, provider revokes current session; server requires exact reauthentication |
+| SDK independently requires LINE Login | Additional browser scenario: SDK-owned callback creates a third document with `code`/`liffClientId`; delayed callback init finishes before protected RSC and DEMI login; LINE Login does not establish a DEMI session |
 | H: ordinary browser and refresh | Browser H, no SDK module import |
 | I: Account and MINI isolation | Browser I variants, real app endpoints with their own mocked SDK IDs |
 | Workspace → Account → Workspace URL | Browser I; root/secondary init for new entry |
@@ -112,6 +117,8 @@ Executed baseline result: **FAIL as expected**. While the secondary SDK module w
 | Corrupted/unavailable storage, expiry, mismatch, re-encoded/conflicting query | `src/components/line/workspace-liff-document.test.ts` |
 | StrictMode/remount, pending/rejection, no session identity authority | Gate/gateway unit tests |
 | Production Next document vs protected RSC login return | `npm run test:workspace-liff:next-smoke` after `npm run build` |
+
+The first hosted run at `3d043a75` passed quality, unit and integration, but failed Production Build at `/app/hospitals/settings`: `useSearchParams()` required Suspense. History observation was placed inside the existing protected Suspense boundary; initialization remains in the public gate. A local build also hit the default approximately 2 GB TypeScript heap limit; the subsequent build uses the existing CI setting `NODE_OPTIONS=--max-old-space-size=4096`, without changing repository build configuration. The production smoke also reproduced a loopback-host normalization failure of internal rewrite under the documented reverse-proxy topology: the rewrite became a canonical-host 308 before init. A same-route layout gate also failed executable smoke because Next renders child routes independently and emitted an auth redirect despite the parent omitting children. The final implementation retains the dedicated public shell and uses the documented raw-URL option; no host guard is weakened and no special internal-host bypass is added. The smoke sends Next 16's empty `_rsc` union key for its RSC requests, matching the installed fetch contract. The latest-HEAD hosted results must be checked independently of that earlier run.
 
 Other required verification: `npm run typecheck`, `npm run lint`, `npm run test`, `npm run build`, and `npm run test:integration` using the disposable lifecycle. Exact executed results and hosted job conclusions are recorded in the PR delivery report; a command listed here is not a claim it passed.
 

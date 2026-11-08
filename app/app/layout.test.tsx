@@ -32,8 +32,10 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   const suspense = React.Children.toArray(layoutElement.props.children)
     .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
   if (!suspense) throw new Error("Expected the protected Suspense boundary");
-  const protectedShell = suspense.props.children as ReactElement<{ children: ReactNode }>;
-  if (typeof protectedShell.type !== "function") {
+  const protectedShell = React.Children.toArray(suspense.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) &&
+      typeof child.type === "function" && child.type !== WorkspaceLiffHistory);
+  if (!protectedShell) {
     throw new Error("Expected the protected application shell component");
   }
 
@@ -45,10 +47,10 @@ describe("Workspace LIFF history boundary", () => {
   it("renders history bookkeeping without resolving the actor or starting SDK initialization", () => {
     const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{ children: ReactNode }>;
     const children = React.Children.toArray(layoutElement.props.children) as ReactElement[];
-    const bootstrapIndex = children.findIndex((child) => child.type === WorkspaceLiffHistory);
     const suspenseIndex = children.findIndex((child) => child.type === React.Suspense);
-    expect(bootstrapIndex).toBeGreaterThanOrEqual(0);
-    expect(bootstrapIndex).toBeLessThan(suspenseIndex);
+    expect(suspenseIndex).toBeGreaterThanOrEqual(0);
+    expect(React.Children.toArray((children[suspenseIndex] as ReactElement<{ children: ReactNode }>).props.children)
+      .some((child) => React.isValidElement(child) && child.type === WorkspaceLiffHistory)).toBe(true);
     // It needs no actor: nothing about the DEMI session is resolved to render it.
     expect(mocks.getProtectedApplicationActor).not.toHaveBeenCalled();
   });

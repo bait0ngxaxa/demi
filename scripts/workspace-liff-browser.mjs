@@ -113,7 +113,7 @@ try {
   symlinkSync(resolve(root, "node_modules"), resolve(temporary, "node_modules"), process.platform === "win32" ? "junction" : "dir");
   if (process.argv.includes("--baseline")) {
     // Red-capability check against the reviewed HEAD, in the disposable copy only.
-    for (const name of ["proxy.ts", "app/app/layout.tsx", "app/login/page.tsx", "app/workspace-liff-entry.tsx", "app/workspace-liff-bootstrap.tsx", "app/workspace-liff-gateway.ts", "src/modules/line/domain/line-liff-browser.ts", "src/components/line/liff-browser-context-store.ts"]) {
+    for (const name of ["next.config.ts", "proxy.ts", "app/app/layout.tsx", "app/login/page.tsx", "app/workspace-liff-entry.tsx", "app/workspace-liff-bootstrap.tsx", "app/workspace-liff-gateway.ts", "src/modules/line/domain/line-liff-browser.ts", "src/components/line/liff-browser-context-store.ts"]) {
       const original = spawnSync("git", ["show", `93f0ac1062425950cacff62d9b22fbbe9026b826:${name}`], { cwd: root, encoding: "utf8", windowsHide: true });
       assert.equal(original.status, 0);
       writeFileSync(resolve(temporary, name), original.stdout, "utf8");
@@ -260,6 +260,26 @@ try {
     await page.reload();
     await page.locator("#nationalId").waitFor();
     assert(!events.some((event) => event.kind === "module:start"));
+  });
+  await scenario("SDK-owned LINE Login callback initializes before DEMI login navigation", async ({ page, events }) => {
+    const callbackWait = deferred();
+    await page.route("**/__line_sdk/init", async (route) => {
+      const current = new URL(page.url());
+      if (current.pathname === "/") return route.fulfill({ json: {} });
+      if (!current.searchParams.has("code")) return route.fulfill({ json: { lineLoginReturn: true } });
+      await callbackWait.promise;
+      await route.fulfill({ json: {} });
+    });
+    await launch(page);
+    await page.waitForURL((url) => url.pathname === destination && url.searchParams.get("code") === "synthetic");
+    await page.waitForTimeout(1500);
+    assert(!events.some((event) => event.kind === "rsc" && event.path.startsWith("/app")));
+    callbackWait.release();
+    await page.waitForURL(`${base}${login}`);
+    await page.locator("#nationalId").waitFor();
+    assert.equal(events.filter((event) => event.kind === "init:start" && event.id === workspaceId).length, 3);
+    const ready = events.findIndex((event) => event.kind === "init:resolved" && event.path.includes("code=synthetic"));
+    assert(ready >= 0 && ready < events.findIndex((event) => event.kind === "rsc" && event.path.startsWith("/app")));
   });
   await scenario("I Workspace -> Account -> ordinary /app -> reload -> back/forward", async ({ page, events }) => {
     await launch(page);
