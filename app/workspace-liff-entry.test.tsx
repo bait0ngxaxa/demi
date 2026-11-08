@@ -128,6 +128,13 @@ describe("Workspace LIFF root entry", () => {
     }
   });
 
+  it("treats a Workspace LIFF URL opened in a MINI browsing session as a real Workspace entry", async () => {
+    browser.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "MINI", mini: true, workspace: null }));
+    mount({ mode: "LIFF", destination: "/app/personal", sdk: { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) } });
+    await settle();
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
+  });
+
   it("records the root init outcome so a failure never reads as an initialized Workspace", async () => {
     mount({ mode: "LIFF", destination: null, sdk: { id: null, isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) } });
     await settle();

@@ -20,7 +20,14 @@ export type WorkspaceLiffInitState = "PENDING" | "READY" | "FAILED";
 export type LiffBrowserContext = {
   /** Set by an app's own entry only after `liff.isInClient()` reported the LIFF browser. */
   current: LiffBrowserApp;
-  /** Sticky: the MINI App opened this browser session; its approved exits stay ordinary web. */
+  /**
+   * The MINI App is the origin of the current navigation chain (MINI, or the
+   * Account screen reached from it), so its approved exits stay ordinary web.
+   * Set by a MINI entry, kept by an Account entry, cleared only by a real
+   * Workspace entry through the Workspace LIFF URL. It is presentation state:
+   * the MINI scope itself is the server-side MINI workflow cookie, which this
+   * never reads, changes or removes.
+   */
   mini: boolean;
   /** Null until a Workspace entry happens in this session. */
   workspace: WorkspaceLiffInitState | null;
@@ -65,14 +72,15 @@ function write(store: WritableStore | null, context: LiffBrowserContext): boolea
 
 /**
  * Records that this LIFF browser session entered `app`. Call only after that
- * app's SDK reported `liff.isInClient()`. A Workspace entry starts a pending
- * Workspace initialization that must survive the primary-to-secondary redirect.
+ * app's SDK reported `liff.isInClient()`. A Workspace entry (root entry via the
+ * Workspace LIFF URL) starts a pending Workspace initialization that must
+ * survive the primary-to-secondary redirect, and ends a MINI navigation chain.
  */
 export function recordLiffBrowserEntry(store: WritableStore | null, app: LiffBrowserApp): boolean {
   const previous = readLiffBrowserContext(store);
   return write(store, {
     current: app,
-    mini: (previous?.mini ?? false) || app === "MINI",
+    mini: app === "MINI" ? true : app === "WORKSPACE" ? false : previous?.mini ?? false,
     workspace: app === "WORKSPACE" ? "PENDING" : previous?.workspace ?? null,
   });
 }

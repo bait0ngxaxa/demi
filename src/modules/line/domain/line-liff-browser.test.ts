@@ -42,6 +42,25 @@ describe("LIFF browser context (presentation only)", () => {
     expect(readLiffBrowserContext(mini)).toEqual({ current: "ACCOUNT", mini: true, workspace: null });
   });
 
+  it("ends a MINI navigation chain only on a real Workspace entry, and starts it again on the next MINI entry", () => {
+    const shared = store();
+    recordLiffBrowserEntry(shared, "MINI");
+    // MINI -> Workspace LIFF URL in the same browsing session.
+    recordLiffBrowserEntry(shared, "WORKSPACE");
+    expect(readLiffBrowserContext(shared)).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
+    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "navigate")).toBe(true);
+    recordWorkspaceInitResult(shared, "READY");
+    expect(resolveLineAccountHref({ context: readLiffBrowserContext(shared), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(ACCOUNT_LIFF_URL);
+    // Back into the MINI App: its exits are ordinary again and Workspace never initializes there.
+    recordLiffBrowserEntry(shared, "MINI");
+    expect(readLiffBrowserContext(shared)).toEqual({ current: "MINI", mini: true, workspace: "READY" });
+    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "reload")).toBe(false);
+    // MINI -> Account keeps the chain: the Account screen's DEMI links stay /app.
+    recordLiffBrowserEntry(shared, "ACCOUNT");
+    expect(resolveLineWorkspaceHref({ context: readLiffBrowserContext(shared), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
+    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "back_forward")).toBe(false);
+  });
+
   it.each([
     "not json",
     JSON.stringify({ current: "ADMIN", mini: false, workspace: null }),
