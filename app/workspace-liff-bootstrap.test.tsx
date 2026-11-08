@@ -33,6 +33,10 @@ function workspaceSession(): void {
   window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "WORKSPACE", mini: false, workspace: "PENDING" }));
 }
 
+function context(): { current: string; mini: boolean; workspace: string | null } | null {
+  return JSON.parse(window.sessionStorage.getItem(LIFF_BROWSER_CONTEXT_KEY) ?? "null");
+}
+
 /** A new document: module state of the previous document is gone. */
 function newDocument(): void {
   act(() => root.unmount());
@@ -118,17 +122,82 @@ describe("Workspace LIFF per-document initialization", () => {
     expect(working.init).toHaveBeenCalledOnce();
   });
 
-  it("retries after a timeout instead of awaiting the stale initialization", async () => {
+  it("after a timeout shows a Thai recovery notice, never races a second init in the same document, and retries in a new one", async () => {
     vi.useFakeTimers();
     workspaceSession();
     const stuck = sdkDouble(() => new Promise<void>(() => undefined));
     await mount({ liffId: WORKSPACE_ID, sdk: stuck });
     await act(async () => { await vi.advanceTimersByTimeAsync(10_500); });
+    expect(container.textContent).toContain("เชื่อมต่อกับ LINE ไม่สำเร็จ");
+    expect(container.querySelector("button")?.textContent).toBe("ลองเชื่อมต่ออีกครั้ง");
+    expect(context()?.workspace).toBe("FAILED");
+
+    // Same document (remount): the still-running SDK work is not raced.
     act(() => root.unmount());
     root = createRoot(container);
     const working = sdkDouble();
     await mount({ liffId: WORKSPACE_ID, sdk: working });
+    expect(working.init).not.toHaveBeenCalled();
+
+    // The reload button starts a new document, which initializes again.
+    newDocument();
+    await mount({ liffId: WORKSPACE_ID, sdk: working });
     expect(working.init).toHaveBeenCalledOnce();
+    expect(context()).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    expect(container.textContent).toBe("");
+  });
+
+  it("records success so the Workspace counts as initialized only after liff.init() resolves", async () => {
+    workspaceSession();
+    let resolve: () => void = () => undefined;
+    await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble(() => new Promise<void>((done) => { resolve = done; })) });
+    expect(context()?.workspace).toBe("PENDING");
+    await act(async () => { resolve(); for (let index = 0; index < 4; index += 1) await Promise.resolve(); });
+    expect(context()?.workspace).toBe("READY");
+  });
+
+  it("records a rejection as FAILED and offers a manual reload, without automatic retries", async () => {
+    workspaceSession();
+    const failing = sdkDouble(() => Promise.reject(new Error("INIT_FAILED")));
+    await mount({ liffId: WORKSPACE_ID, sdk: failing });
+    expect(context()?.workspace).toBe("FAILED");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("คุณยังใช้ DEMI ได้ตามปกติ");
+    await act(async () => { for (let index = 0; index < 10; index += 1) await Promise.resolve(); });
+    expect(failing.init).toHaveBeenCalledOnce();
+  });
+
+  it("still records the outcome when it unmounts during initialization (soft navigation to /login)", async () => {
+    workspaceSession();
+    let resolve: () => void = () => undefined;
+    await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble(() => new Promise<void>((done) => { resolve = done; })) });
+    act(() => root.unmount());
+    root = createRoot(container);
+    await act(async () => { resolve(); for (let index = 0; index < 4; index += 1) await Promise.resolve(); });
+    expect(context()?.workspace).toBe("READY");
+  });
+
+  it("initializes a Workspace page reached back from the Account LIFF and makes Workspace current again", async () => {
+    window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    const sdk = sdkDouble();
+    await mount({ liffId: WORKSPACE_ID, sdk });
+    expect(sdk.init).toHaveBeenCalledWith({ liffId: WORKSPACE_ID, withLoginOnExternalBrowser: false });
+    expect(context()?.current).toBe("WORKSPACE");
+  });
+
+  it("re-asserts Workspace on a BFCache restore of an initialized page after an Account LIFF visit", async () => {
+    workspaceSession();
+    await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble() });
+    window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    const restored = new Event("pageshow") as PageTransitionEvent;
+    Object.defineProperty(restored, "persisted", { value: true });
+    act(() => { window.dispatchEvent(restored); });
+    expect(context()?.current).toBe("WORKSPACE");
+  });
+
+  it("does nothing when session storage is unavailable", async () => {
+    vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => { throw new Error("denied"); });
+    const load = await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble() });
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("stops a LINE Login round trip that keeps returning to /app instead of looping", async () => {

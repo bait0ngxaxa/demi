@@ -65,17 +65,38 @@ describe("Workspace LIFF initialization", () => {
     await expect(pending).resolves.toBe("INIT_FAILED");
   });
 
-  it("does not let a timed-out initialization poison the next attempt", async () => {
+  it("never races a second liff.init() against one that timed out but is still running", async () => {
     vi.useFakeTimers();
-    const stuck: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) };
+    let rejectStuck: (error: Error) => void = () => undefined;
+    const stuck: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>((_, reject) => { rejectStuck = reject; })) };
     const first = initializeWorkspaceLiff(async () => stuck, "1234567890-Workspace", { timeoutMs: 50 });
     await vi.advanceTimersByTimeAsync(60);
     await expect(first).resolves.toBe("INIT_FAILED");
-    expect(hasWorkspaceLiffInitialization("1234567890-Workspace")).toBe(false);
 
     const working: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) };
+    await expect(initializeWorkspaceLiff(async () => working, "1234567890-Workspace", { timeoutMs: 50 })).resolves.toBe("INIT_FAILED");
+    expect(working.init).not.toHaveBeenCalled();
+
+    // Once the SDK actually gives up, a fresh retry is allowed: the timeout never poisons the document.
+    rejectStuck(new Error("INIT_FAILED"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hasWorkspaceLiffInitialization("1234567890-Workspace")).toBe(false);
     await expect(initializeWorkspaceLiff(async () => working, "1234567890-Workspace", { timeoutMs: 50 })).resolves.toBe("READY");
     expect(working.init).toHaveBeenCalledOnce();
+  });
+
+  it("lets a late success after a timeout serve later callers without rewriting the result already returned", async () => {
+    vi.useFakeTimers();
+    let resolveLate: () => void = () => undefined;
+    const late: WorkspaceLiffSdk = { isInClient: () => true, init: vi.fn(() => new Promise<void>((resolve) => { resolveLate = resolve; })) };
+    const first = initializeWorkspaceLiff(async () => late, "1234567890-Workspace", { timeoutMs: 50 });
+    await vi.advanceTimersByTimeAsync(60);
+    await expect(first).resolves.toBe("INIT_FAILED");
+    resolveLate();
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(first).resolves.toBe("INIT_FAILED");
+    await expect(initializeWorkspaceLiff(async () => late, "1234567890-Workspace")).resolves.toBe("READY");
+    expect(late.init).toHaveBeenCalledOnce();
   });
 
   it("keeps a successful initialization for remounts and internal navigation without calling init again", async () => {

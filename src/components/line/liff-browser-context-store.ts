@@ -2,6 +2,7 @@ import {
   LIFF_BROWSER_CONTEXT_KEY,
   readLiffBrowserContext,
   recordLiffBrowserEntry,
+  recordWorkspaceInitResult,
   type LiffBrowserApp,
   type LiffBrowserContext,
 } from "@/modules/line/domain/line-liff-browser";
@@ -52,4 +53,8 @@ export function notifyLiffBrowserContextChanged(): void {
 
 export function recordCurrentLiffBrowserEntry(app: LiffBrowserApp): void {
   if (recordLiffBrowserEntry(browserSessionStore(), app)) notifyLiffBrowserContextChanged();
+}
+
+export function recordCurrentWorkspaceInitResult(result: "READY" | "FAILED"): void {
+  if (recordWorkspaceInitResult(browserSessionStore(), result)) notifyLiffBrowserContextChanged();
 }

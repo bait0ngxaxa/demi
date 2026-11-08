@@ -18,11 +18,20 @@ export const WORKSPACE_LIFF_INIT_TIMEOUT_MS = 10_000;
 
 /**
  * The one LIFF initialization of this document. A document only ever
- * initializes the Workspace LIFF ID it was given; a settled success is kept so
- * remounts and internal navigation reuse it, while a failure or timeout clears
- * it so a retry starts a fresh `liff.init()` instead of awaiting a stale one.
+ * initializes the Workspace LIFF ID it was given.
+ *
+ * - PENDING: concurrent callers share it.
+ * - READY: kept, so remounts and internal navigation never call init again.
+ * - Rejected: cleared, so a retry starts a fresh `liff.init()`.
+ * - TIMED_OUT: a Promise timeout cannot cancel the SDK, which may still be
+ *   working (or redirecting). Later callers in this document get INIT_FAILED
+ *   without a second, racing `liff.init()`. If the SDK later rejects, the slot
+ *   clears and a retry is allowed; if it later resolves, the slot becomes
+ *   READY for later callers but never rewrites a result already returned.
+ *   The user-facing retry is a reload, which starts a new document.
  */
-let initialization: { liffId: string; promise: Promise<void> } | null = null;
+type Initialization = { liffId: string; promise: Promise<void>; state: "PENDING" | "READY" | "TIMED_OUT" };
+let initialization: Initialization | null = null;
 
 export function hasWorkspaceLiffInitialization(liffId: string): boolean {
   return initialization?.liffId === liffId;
@@ -33,6 +42,24 @@ export type WorkspaceLiffInitOptions = {
   /** Runs once, after the SDK loads and before `liff.init()`; it must not change the URL. */
   onSdkLoaded?: (sdk: WorkspaceLiffSdk) => void;
 };
+
+function startInitialization(load: WorkspaceLiffSdkLoader, liffId: string, options: WorkspaceLiffInitOptions): Initialization {
+  const promise = load().then((sdk) => {
+    try {
+      options.onSdkLoaded?.(sdk);
+    } catch {
+      // Presentation bookkeeping only; initialization continues.
+    }
+    return sdk.init({ liffId, withLoginOnExternalBrowser: false });
+  });
+  const created: Initialization = { liffId, promise, state: "PENDING" };
+  promise.then(() => {
+    if (initialization === created) created.state = "READY";
+  }, () => {
+    if (initialization === created) initialization = null;
+  });
+  return created;
+}
 
 /**
  * Single-flight, bounded `liff.init()`. With `liff.state` the SDK replaces the
@@ -47,33 +74,20 @@ export async function initializeWorkspaceLiff(
 ): Promise<"READY" | "INIT_FAILED"> {
   // Never initialize a second LIFF identity in a document that already holds one.
   if (initialization && initialization.liffId !== liffId) return "INIT_FAILED";
-  let current = initialization;
-  if (!current) {
-    const promise = load().then((sdk) => {
-      try {
-        options.onSdkLoaded?.(sdk);
-      } catch {
-        // Presentation bookkeeping only; initialization continues.
-      }
-      return sdk.init({ liffId, withLoginOnExternalBrowser: false });
-    });
-    const created = { liffId, promise };
-    current = created;
-    initialization = created;
-    void promise.catch(() => {
-      if (initialization === created) initialization = null;
-    });
-  }
-  const attempt = current;
+  if (initialization?.state === "TIMED_OUT") return "INIT_FAILED";
+  if (initialization?.state === "READY") return "READY";
+  const attempt = initialization ?? startInitialization(load, liffId, options);
+  initialization = attempt;
+  const timedOut = new Error("LIFF initialization timed out");
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([attempt.promise, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("LIFF initialization timed out")), options.timeoutMs ?? WORKSPACE_LIFF_INIT_TIMEOUT_MS);
+      timer = setTimeout(() => reject(timedOut), options.timeoutMs ?? WORKSPACE_LIFF_INIT_TIMEOUT_MS);
     })]);
     return "READY";
-  } catch {
-    // Timed out or rejected: do not let later attempts wait on this promise.
-    if (initialization === attempt) initialization = null;
+  } catch (error: unknown) {
+    // A rejected SDK attempt clears itself; only a still-running one is marked so it is never raced.
+    if (error === timedOut && initialization === attempt && attempt.state === "PENDING") attempt.state = "TIMED_OUT";
     return "INIT_FAILED";
   } finally {
     if (timer) clearTimeout(timer);

@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { LIFF_BROWSER_CONTEXT_KEY, type LiffBrowserContext } from "@/modules/line/domain/line-liff-browser";
 
 import { LineAccountLink, LineAccountNavigationProvider, LineWorkspaceLink, useLineAccountHrefFor } from "./line-account-navigation";
-import { recordCurrentLiffBrowserEntry } from "./liff-browser-context-store";
+import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "./liff-browser-context-store";
 
 const ACCOUNT_LIFF_URL = "https://liff.line.me/1234567890-Account";
 const WORKSPACE_LIFF_URL = "https://liff.line.me/1234567890-Workspace/app";
@@ -79,7 +79,13 @@ describe("LINE account navigation (Workspace -> Account)", () => {
   it("re-renders when an entry is recorded later in the same document", () => {
     expect(accountLink(ACCOUNT_LIFF_URL)).toBe("/line/account");
     act(() => recordCurrentLiffBrowserEntry("WORKSPACE"));
+    // A pending initialization is not an initialized Workspace.
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("/line/account");
+    act(() => recordCurrentWorkspaceInitResult("READY"));
     expect(container.querySelector("a")?.getAttribute("href")).toBe(ACCOUNT_LIFF_URL);
+    // Cross-LIFF transition: the Account LIFF is current now.
+    act(() => recordCurrentLiffBrowserEntry("ACCOUNT"));
+    expect(container.querySelector("a")?.getAttribute("href")).toBe("/line/account");
   });
 
   it("renders the ordinary routes on the server so SSR never depends on browser context", () => {

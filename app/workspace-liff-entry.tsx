@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
+import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import {
@@ -123,6 +123,8 @@ export function WorkspaceLiffEntry({
         if (sdk.isInClient()) recordCurrentLiffBrowserEntry("WORKSPACE");
       },
     }).then((result) => {
+      // Recorded even after unmount: it describes this document's SDK state, never authority.
+      if (result !== "LOOP_STOPPED") recordCurrentWorkspaceInitResult(result === "READY" ? "READY" : "FAILED");
       if (!active) return;
       if (result === "READY") {
         // Reached only when the SDK did not perform the secondary redirect itself.

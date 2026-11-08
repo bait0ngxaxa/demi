@@ -77,6 +77,32 @@ export function recordLiffBrowserEntry(store: WritableStore | null, app: LiffBro
   });
 }
 
+/**
+ * Records the Workspace `liff.init()` outcome of the current Workspace
+ * document. Only a session that already had a Workspace entry is updated; a
+ * success also makes Workspace the current app again (e.g. after returning
+ * from the Account LIFF). A failure never reads as initialized.
+ */
+export function recordWorkspaceInitResult(store: WritableStore | null, result: "READY" | "FAILED"): boolean {
+  const previous = readLiffBrowserContext(store);
+  if (!previous || previous.workspace === null) return false;
+  return write(store, {
+    current: result === "READY" ? "WORKSPACE" : previous.current,
+    mini: previous.mini,
+    workspace: result,
+  });
+}
+
+/**
+ * Whether an `/app` or `/login` document should run Workspace `liff.init()`:
+ * the session entered the Workspace LIFF (pending, ready or failed earlier)
+ * and is not a MINI session. This includes returning to a Workspace page
+ * from the Account LIFF. It is never consulted for authorization.
+ */
+export function shouldInitializeWorkspaceLiff(context: LiffBrowserContext | null): boolean {
+  return context !== null && !context.mini && context.workspace !== null;
+}
+
 /** Exactly the shape `buildAccountLiffUrl()` produces; anything else is never followed as a LIFF transition. */
 const ACCOUNT_LIFF_URL = /^https:\/\/liff\.line\.me\/\d{4,20}-[A-Za-z0-9]+$/u;
 /** Exactly `buildWorkspaceLiffUrl("OPEN_WORK_WORKSPACE")`: the Workspace LIFF URL of the work dashboard. */
@@ -90,9 +116,13 @@ export function isWorkspaceLiffUrl(value: unknown): value is string {
   return typeof value === "string" && WORKSPACE_LIFF_URL.test(value);
 }
 
-/** True when this browser session's current LIFF app is the Workspace LIFF (outside a MINI session). */
+/**
+ * True only when the current app is the Workspace LIFF and its latest
+ * initialization succeeded (outside a MINI session). A pending or failed
+ * initialization never counts as an initialized Workspace.
+ */
 export function isWorkspaceLiffContext(context: LiffBrowserContext | null): boolean {
-  return context?.current === "WORKSPACE" && !context.mini;
+  return context?.current === "WORKSPACE" && !context.mini && context.workspace === "READY";
 }
 
 /**
