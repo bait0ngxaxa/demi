@@ -39,6 +39,10 @@ export function hasWorkspaceLiffInitialization(liffId: string): boolean {
   return initialization?.liffId === liffId;
 }
 
+export function isWorkspaceLiffInitializationReady(liffId: string): boolean {
+  return initialization?.liffId === liffId && initialization.state === "READY";
+}
+
 export type WorkspaceLiffInitOptions = {
   timeoutMs?: number;
   /** Runs once, after the SDK loads and before `liff.init()`; it must not change the URL. */

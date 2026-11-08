@@ -11,7 +11,6 @@ import {
   recordWorkspaceInitResult,
   resolveLineAccountHref,
   resolveLineWorkspaceHref,
-  shouldInitializeWorkspaceLiff,
 } from "./line-liff-browser";
 import { classifyLineWorkflowEntry, getLineQuickActionReturnPathFromUrl } from "./line-navigation-intents";
 import { classifyLineWorkspaceLiffEntry } from "./line-workspace-liff-entry";
@@ -45,7 +44,6 @@ describe("Workspace LIFF lifecycle regression", () => {
     const secondary = new URL("/app/personal/medications?liff.hback=2&lineAppVersion=14.19.1", ORIGIN);
     expect(getLineQuickActionReturnPathFromUrl(secondary)).toBe("/app/personal/medications");
     expect(isLineQuickActionLoginReturnTo("/app/personal/medications")).toBe(true);
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(store), "navigate")).toBe(true);
     recordWorkspaceInitResult(store, "READY");
     expect(isWorkspaceLiffContext(readLiffBrowserContext(store))).toBe(true);
     expect(resolveLineAccountHref({ context: readLiffBrowserContext(store), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(ACCOUNT_LIFF_URL);
@@ -55,10 +53,8 @@ describe("Workspace LIFF lifecycle regression", () => {
     expect(isWorkspaceLiffContext(readLiffBrowserContext(store))).toBe(false);
     expect(resolveLineWorkspaceHref({ context: readLiffBrowserContext(store), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(WORKSPACE_LIFF_URL);
 
-    // A plain navigation from the Account LIFF into /app is not a Workspace entry.
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(store), "navigate")).toBe(false);
-    // Back to a Workspace page (back/forward or reload): it initializes again and becomes current.
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(store), "back_forward")).toBe(true);
+    // A verified Workspace document initialization updates presentation after returning.
+    // Document ownership itself is covered by workspace-liff-document and browser tests.
     recordWorkspaceInitResult(store, "READY");
     expect(readLiffBrowserContext(store)).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
   });
@@ -69,8 +65,6 @@ describe("Workspace LIFF lifecycle regression", () => {
     recordWorkspaceInitResult(store, "FAILED");
     expect(isWorkspaceLiffContext(readLiffBrowserContext(store))).toBe(false);
     expect(resolveLineAccountHref({ context: readLiffBrowserContext(store), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
-    // The next document may try again (manual reload), still with the Workspace ID only.
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(store), "reload")).toBe(true);
   });
 
   it("MINI App: Account and Workspace links keep the approved ordinary exits and Workspace never initializes", () => {
@@ -81,7 +75,6 @@ describe("Workspace LIFF lifecycle regression", () => {
     const context = readLiffBrowserContext(store);
     expect(resolveLineWorkspaceHref({ context, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
     expect(resolveLineAccountHref({ context, accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
-    expect(shouldInitializeWorkspaceLiff(context, "navigate")).toBe(false);
     expect(getLineQuickActionReturnPathFromUrl(new URL("/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&liff.hback=2", ORIGIN))).toBeNull();
   });
 
@@ -89,7 +82,6 @@ describe("Workspace LIFF lifecycle regression", () => {
     expect(classifyLineWorkspaceLiffEntry({})).toEqual({ status: "ORDINARY" });
     expect(resolveLineAccountHref({ context: null, accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
     expect(resolveLineWorkspaceHref({ context: null, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
-    expect(shouldInitializeWorkspaceLiff(null, "navigate")).toBe(false);
     expect(getLineQuickActionReturnPathFromUrl(new URL("/app/patients/assigned?task=screening", ORIGIN))).toBe("/app/patients/assigned?task=screening");
   });
 

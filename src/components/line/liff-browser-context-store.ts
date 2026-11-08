@@ -1,5 +1,6 @@
 import {
   LIFF_BROWSER_CONTEXT_KEY,
+  WORKSPACE_LIFF_HANDOFF_KEY,
   readLiffBrowserContext,
   recordLiffBrowserEntry,
   recordWorkspaceInitResult,
@@ -15,6 +16,12 @@ import {
 const listeners = new Set<() => void>();
 let cachedRaw: string | null | undefined;
 let cachedContext: LiffBrowserContext | null = null;
+// This document only; unlike sessionStorage this does not survive navigation.
+let currentDocumentApp: LiffBrowserApp | null = null;
+
+export function getCurrentDocumentLiffApp(): LiffBrowserApp | null {
+  return currentDocumentApp;
+}
 
 export function browserSessionStore(): Storage | null {
   try {
@@ -52,6 +59,14 @@ export function notifyLiffBrowserContextChanged(): void {
 }
 
 export function recordCurrentLiffBrowserEntry(app: LiffBrowserApp): void {
+  currentDocumentApp = app;
+  if (app !== "WORKSPACE") {
+    try {
+      browserSessionStore()?.removeItem(WORKSPACE_LIFF_HANDOFF_KEY);
+    } catch {
+      // No transport handoff can be recovered when storage is unavailable.
+    }
+  }
   if (recordLiffBrowserEntry(browserSessionStore(), app)) notifyLiffBrowserContextChanged();
 }
 

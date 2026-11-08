@@ -175,26 +175,26 @@ describe("Workspace LIFF root entry", () => {
     const { load } = mount({ mode: "LIFF", liffId: null, destination: "/app" });
     await settle();
     expect(load).not.toHaveBeenCalled();
-    expect(browser.history.replaceState).toHaveBeenCalledWith(null, "", "/");
+    expect(browser.history.replaceState).not.toHaveBeenCalled();
     expect(browser.location.replace).not.toHaveBeenCalled();
     expect(renderToStaticMarkup(WorkspaceLiffEntry({ mode: "LIFF", liffId: null, destination: "/app", fallbackHref: "/app" })))
       .toContain("ยังเปิด DEMI ผ่าน LINE ไม่ได้");
   });
 
-  it("drops bare-launch credentials and continues on the web when Workspace LIFF is not configured", async () => {
+  it("keeps bare-launch credentials untouched when Workspace LIFF is not configured", async () => {
     stubBrowser({ hash: "#access_token=synthetic" });
     const { load } = mount({ mode: "ORDINARY", liffId: null, fallbackHref: "/login" });
     await settle();
     expect(load).not.toHaveBeenCalled();
-    expect(browser.history.replaceState).toHaveBeenCalledWith(null, "", "/");
-    expect(browser.location.replace).toHaveBeenCalledWith("/login");
+    expect(browser.history.replaceState).not.toHaveBeenCalled();
+    expect(browser.location.replace).not.toHaveBeenCalled();
   });
 
   it("rejects invalid navigation without SDK work and drops platform parameters", async () => {
     const { load } = mount({ mode: "NAVIGATION_INVALID" });
     await settle();
     expect(load).not.toHaveBeenCalled();
-    expect(browser.history.replaceState).toHaveBeenCalledWith(null, "", "/");
+    expect(browser.history.replaceState).not.toHaveBeenCalled();
     expect(renderToStaticMarkup(WorkspaceLiffEntry({ mode: "NAVIGATION_INVALID", liffId: "1234567890-Workspace", destination: null, fallbackHref: "/app" })))
       .toContain("ลิงก์นี้ไม่ถูกต้อง");
   });
@@ -225,28 +225,29 @@ describe("Workspace LIFF root entry", () => {
     expect(sdk.init).toHaveBeenCalledTimes(6);
   });
 
-  it("reloads a BFCache-restored entry instead of resuming it", () => {
+  it("does not interrupt a BFCache-restored entry with a reload", () => {
     mount({ mode: "LIFF", destination: "/app" });
     const handler = browser.addEventListener.mock.calls.find(([name]) => name === "pageshow")?.[1] as (event: { persisted: boolean }) => void;
     handler({ persisted: false });
     expect(browser.location.reload).not.toHaveBeenCalled();
     handler({ persisted: true });
-    expect(browser.location.reload).toHaveBeenCalledOnce();
+    expect(browser.location.reload).not.toHaveBeenCalled();
+    expect(mocks.setState).toHaveBeenCalledWith("INIT_FAILED");
   });
 
-  it("renders loading, failure and invalid states in Thai with a plain continue link", () => {
-    const loading = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INITIALIZING" continueHref="/app/personal" />);
+  it("renders Thai loading and recovery states without navigation that could interrupt SDK work", () => {
+    const loading = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INITIALIZING" />);
     expect(loading).toContain("กำลังเปิด DEMI ผ่าน LINE");
     expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain('href="/app/personal"');
+    expect(loading).not.toContain("href=");
 
-    const failed = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INIT_FAILED" continueHref="/app" />);
+    const failed = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INIT_FAILED" />);
     expect(failed).toContain("เปิดผ่าน LINE ไม่สำเร็จ");
-    expect(failed).toContain("ลองอีกครั้ง");
+    expect(failed).toContain("เปิดจากเมนู DEMI");
 
-    const invalid = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="NAVIGATION_INVALID" continueHref="/app" />);
+    const invalid = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="NAVIGATION_INVALID" />);
     expect(invalid).toContain("ลิงก์นี้ไม่ถูกต้อง");
     expect(invalid).not.toContain("ลองอีกครั้ง");
-    expect(invalid).toContain('href="/app"');
+    expect(invalid).not.toContain("href=");
   });
 });

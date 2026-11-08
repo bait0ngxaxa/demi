@@ -26,7 +26,7 @@ describe("activation-link pages through Proxy (ADR-0018)", () => {
   });
 
   it("leaves other pages to the framework defaults", async () => {
-    const response = await proxy(new NextRequest("https://demi.example.org/app/hospitals/areas"));
+    const response = await proxy(new NextRequest("https://demi.example.org/app/hospitals/areas", { headers: { rsc: "1" } }));
     expect(response.headers.get("cache-control")).toBeNull();
   });
 

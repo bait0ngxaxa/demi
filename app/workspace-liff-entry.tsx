@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
+import { prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import {
@@ -23,28 +24,16 @@ type Copy = { title: string; body: string; busy?: boolean };
 const copy: Record<WorkspaceLiffEntryState, Copy> = {
   CONTINUING: { title: "กำลังเปิด DEMI", body: "กรุณารอสักครู่", busy: true },
   INITIALIZING: { title: "กำลังเปิด DEMI ผ่าน LINE", body: "กรุณารอสักครู่", busy: true },
-  INIT_FAILED: { title: "เปิดผ่าน LINE ไม่สำเร็จ", body: "กรุณาลองใหม่ หากยังไม่สำเร็จให้ปิดแล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
+  INIT_FAILED: { title: "เปิดผ่าน LINE ไม่สำเร็จ", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
   UNAVAILABLE: { title: "ยังเปิด DEMI ผ่าน LINE ไม่ได้", body: "บริการนี้ยังไม่พร้อมใช้งานใน LINE คุณยังใช้ DEMI บนเว็บได้ตามปกติ" },
   NAVIGATION_INVALID: { title: "ลิงก์นี้ไม่ถูกต้อง", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
-  LOOP_STOPPED: { title: "เปิดผ่าน LINE ซ้ำหลายครั้ง", body: "ระบบหยุดการเปิดซ้ำไว้ก่อน แตะ “ไปที่ DEMI” เพื่อไปต่อ" },
+  LOOP_STOPPED: { title: "เปิดผ่าน LINE ซ้ำหลายครั้ง", body: "ระบบหยุดการเปิดซ้ำไว้ก่อน กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
 };
-
-const primaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand px-5 py-3 text-center font-semibold text-white hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
-const secondaryButtonClass = "inline-flex min-h-12 w-full items-center justify-center rounded-control border border-line-strong bg-surface px-5 py-3 text-center font-semibold text-ink hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring";
-
-/** Removes LIFF query/fragment credentials when LIFF will not consume them. */
-function discardPlatformParameters(): void {
-  window.history.replaceState(null, "", "/");
-}
 
 export function WorkspaceLiffEntryScreen({
   state,
-  continueHref,
-  onRetry,
 }: {
   state: WorkspaceLiffEntryState;
-  continueHref: string;
-  onRetry?: () => void;
 }): React.JSX.Element {
   const current = copy[state];
   return (
@@ -57,15 +46,6 @@ export function WorkspaceLiffEntryScreen({
           <div className="space-y-4" role="status" aria-live="polite">
             <h1 id="workspace-liff-status" className="text-2xl font-semibold">{current.title}</h1>
             <p className="type-readable text-base text-muted">{current.body}</p>
-          </div>
-          <div className="mt-6 space-y-3">
-            {state === "INIT_FAILED" ? (
-              <button type="button" onClick={onRetry} className={primaryButtonClass}>ลองอีกครั้ง</button>
-            ) : null}
-            {/* A plain document link: leaves the LIFF entry without reusing platform parameters. */}
-            <a href={continueHref} className={current.busy ? "inline-flex min-h-11 items-center text-sm font-semibold text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring" : secondaryButtonClass}>
-              {current.busy ? "หากหน้าไม่เปลี่ยน แตะที่นี่เพื่อไปต่อ" : "ไปที่ DEMI"}
-            </a>
           </div>
         </section>
       </div>
@@ -95,13 +75,12 @@ export function WorkspaceLiffEntry({
   const [state, setState] = useState<WorkspaceLiffEntryState>(
     mode === "NAVIGATION_INVALID" ? "NAVIGATION_INVALID"
       : mode === "LIFF" && !liffId ? "UNAVAILABLE"
-        : mode === "LIFF" ? "INITIALIZING" : "CONTINUING",
+        : mode === "LIFF" ? "INITIALIZING" : !liffId ? "UNAVAILABLE" : "CONTINUING",
   );
 
   useEffect(() => {
     if (mode === "NAVIGATION_INVALID" || (mode === "LIFF" && !liffId)) {
-      // Never initialize another LIFF identity; drop parameters and credentials LIFF will not consume.
-      discardPlatformParameters();
+      // Never initialize another identity or edit SDK-owned parameters.
       return;
     }
     if (mode === "ORDINARY" && !hasLiffCredentialFragment(window.location.hash)) {
@@ -109,9 +88,7 @@ export function WorkspaceLiffEntry({
       return;
     }
     if (!liffId) {
-      // Bare LIFF launch without Workspace configuration: drop the credentials and continue on the web.
-      discardPlatformParameters();
-      window.location.replace(fallbackHref);
+      // Credentials exist but there is no configured SDK identity to consume them.
       return;
     }
     let active = true;
@@ -120,7 +97,10 @@ export function WorkspaceLiffEntry({
       // Scopes Workspace-only behavior (Account LIFF links, per-page init) to a LIFF browser session the SDK
       // itself reports (liff.isInClient() is documented as callable before init). Presentation state, never authority.
       onSdkLoaded: (sdk) => {
-        if (sdk.isInClient()) recordCurrentLiffBrowserEntry("WORKSPACE");
+        if (sdk.isInClient()) {
+          recordCurrentLiffBrowserEntry("WORKSPACE");
+          if (destination) prepareWorkspaceLiffHandoff(liffId, destination);
+        }
       },
     }).then((result) => {
       // Recorded even after unmount: it describes this document's SDK state, never authority.
@@ -129,16 +109,16 @@ export function WorkspaceLiffEntry({
       if (result === "READY") {
         // Reached only when the SDK did not perform the secondary redirect itself.
         clearWorkspaceLiffEntryAttempts(sessionAttemptStore());
+        prepareWorkspaceLiffHandoff(liffId, destination ?? fallbackHref);
         window.location.replace(destination ?? fallbackHref);
         return;
       }
-      if (result === "LOOP_STOPPED") discardPlatformParameters();
       // The root entry is always a fresh document, so another LIFF app cannot own it; treat it as a failure.
       setState(result === "OTHER_LIFF_APP" ? "INIT_FAILED" : result);
     });
     // A BFCache-restored entry must not resume an earlier attempt.
     const onPageShow = (event: PageTransitionEvent): void => {
-      if (event.persisted) window.location.reload();
+      if (event.persisted) setState("INIT_FAILED");
     };
     window.addEventListener("pageshow", onPageShow);
     return () => {
@@ -147,7 +127,17 @@ export function WorkspaceLiffEntry({
     };
   }, [destination, fallbackHref, liffId, load, mode]);
 
-  // Leaving through a document link keeps the same browser; it only skips LIFF SDK work.
-  const continueHref = state === "NAVIGATION_INVALID" ? fallbackHref : destination ?? fallbackHref;
-  return <WorkspaceLiffEntryScreen state={state} continueHref={continueHref} onRetry={() => window.location.reload()} />;
+  return (
+    <>
+      <WorkspaceLiffEntryScreen state={state} />
+      {/* Inert when JavaScript/SDK work can run; preserves the ordinary root's no-script exit. */}
+      {mode === "ORDINARY" ? (
+        <noscript>
+          <p className="px-4 pb-8 text-center text-ink">
+            <a className="font-semibold text-brand underline" href={fallbackHref}>ไปที่ DEMI</a>
+          </p>
+        </noscript>
+      ) : null}
+    </>
+  );
 }

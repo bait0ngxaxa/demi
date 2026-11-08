@@ -1,47 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
-import { getLiffBrowserContextSnapshot, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
-import { Alert } from "@/components/ui/alert";
-import { shouldInitializeWorkspaceLiff, type DocumentNavigationType } from "@/modules/line/domain/line-liff-browser";
+import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
+import { consumeWorkspaceLiffHandoff, isWorkspaceLiffHistoryEntry, markWorkspaceLiffHistoryEntry } from "@/components/line/workspace-liff-document";
 
-import {
-  clearWorkspaceLiffEntryAttempts,
-  isLineLoginReturnSearch,
-  loadWorkspaceLiffSdk,
-  sessionAttemptStore,
-  startWorkspaceLiffEntry,
-  type WorkspaceLiffSdkLoader,
-} from "./workspace-liff-gateway";
-
-function documentNavigationType(): DocumentNavigationType {
-  try {
-    const [entry] = window.performance.getEntriesByType("navigation") as PerformanceNavigationTiming[];
-    return (entry?.type as DocumentNavigationType | undefined) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-type BootstrapState = "IDLE" | "READY" | "FAILED" | "LOOP_STOPPED";
+import { WorkspaceLiffEntryScreen, type WorkspaceLiffEntryState } from "./workspace-liff-entry";
+import { clearWorkspaceLiffEntryAttempts, hasWorkspaceLiffInitialization, isLineLoginReturnSearch, loadWorkspaceLiffSdk, sessionAttemptStore, startWorkspaceLiffEntry, type WorkspaceLiffSdkLoader } from "./workspace-liff-gateway";
 
 /**
- * LINE: "LIFF apps must be initialized each time a page is opened." The root
- * entry initializes the primary redirect; this boundary initializes every
- * later `/app` or `/login` document (secondary redirect target, the document
- * an auth redirect is streamed into, reloads, full-document navigation,
- * returns from the Account LIFF) with the Workspace LIFF ID.
- *
- * - Runs only when this browser session entered the Workspace LIFF and is not
- *   a MINI session, so ordinary browsers never load the SDK and the MINI App is
- *   never initialized with this ID.
- * - Records the outcome in the LIFF browser context: READY makes Workspace the
- *   current app again; FAILED never reads as initialized.
- * - No automatic retries. A failure shows a Thai notice with a reload, which
- *   starts a new document; DEMI keeps working as an ordinary web app.
- * - Never changes the URL; the SDK consumes its own parameters. Its outcome is
- *   transport state, never DEMI authentication or authorization.
+ * Proxy serves this public shell for document GETs only. The protected tree
+ * (including its server redirects and meta refresh) is requested via RSC only
+ * after the document's required transport initialization has completed.
+ * Ordinary web documents request it immediately, without loading the SDK.
  */
 export function WorkspaceLiffBootstrap({
   liffId,
@@ -49,56 +21,52 @@ export function WorkspaceLiffBootstrap({
 }: {
   liffId: string | null;
   load?: WorkspaceLiffSdkLoader;
-}): React.JSX.Element | null {
-  const [state, setState] = useState<BootstrapState>("IDLE");
+}): React.JSX.Element {
+  const router = useRouter();
+  const [state, setState] = useState<WorkspaceLiffEntryState>("CONTINUING");
+  const continued = useRef(false);
 
   useEffect(() => {
-    if (!liffId || !shouldInitializeWorkspaceLiff(getLiffBrowserContextSnapshot(), documentNavigationType())) return;
+    if (window.location.pathname === "/workspace-liff-document") {
+      router.replace("/login");
+      return;
+    }
+    const handoff = liffId ? consumeWorkspaceLiffHandoff(liffId) : false;
+    if (!liffId || (!handoff && !isWorkspaceLiffHistoryEntry(liffId) && !hasWorkspaceLiffInitialization(liffId))) {
+      if (!continued.current) {
+        continued.current = true;
+        router.refresh();
+      }
+      return;
+    }
     let active = true;
-    let documentReady = false;
-    void startWorkspaceLiffEntry(load, liffId, sessionAttemptStore(), isLineLoginReturnSearch(window.location.search)).then((result) => {
-      // Recorded even after unmount (e.g. a soft navigation to /login): it describes this document.
+    void startWorkspaceLiffEntry(load, liffId, sessionAttemptStore(), isLineLoginReturnSearch(window.location.search), {
+      onSdkLoaded: (sdk) => {
+        if (sdk.isInClient()) recordCurrentLiffBrowserEntry("WORKSPACE");
+      },
+    }).then((result) => {
+      if (!active) return;
       if (result === "READY") {
-        documentReady = true;
         clearWorkspaceLiffEntryAttempts(sessionAttemptStore());
         recordCurrentWorkspaceInitResult("READY");
-      } else if (result === "INIT_FAILED") {
+        markWorkspaceLiffHistoryEntry(liffId);
+        if (!continued.current) {
+          continued.current = true;
+          router.refresh();
+        }
+      } else {
         recordCurrentWorkspaceInitResult("FAILED");
+        setState(result === "LOOP_STOPPED" ? "LOOP_STOPPED" : "INIT_FAILED");
       }
-      // OTHER_LIFF_APP: the Account page initialized this document (soft navigation); stay silent, record nothing.
-      if (active && result !== "OTHER_LIFF_APP") setState(result === "INIT_FAILED" ? "FAILED" : result);
     });
-    // Back from the Account LIFF can restore this page from BFCache; it is the Workspace again.
-    const onPageShow = (event: PageTransitionEvent): void => {
-      if (event.persisted && documentReady) recordCurrentWorkspaceInitResult("READY");
-    };
-    window.addEventListener("pageshow", onPageShow);
-    return () => {
-      active = false;
-      window.removeEventListener("pageshow", onPageShow);
-    };
-  }, [liffId, load]);
+    return () => { active = false; };
+  }, [liffId, load, router]);
 
-  if (state !== "FAILED" && state !== "LOOP_STOPPED") return null;
+  // Timeout cannot cancel the SDK: recovery uses LINE's own close/reopen UI.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-50 px-4 pt-3">
-      <Alert className="pointer-events-auto mx-auto max-w-xl shadow-surface" variant="warning">
-        <p className="font-semibold">เชื่อมต่อกับ LINE ไม่สำเร็จ</p>
-        <p className="mt-1">
-          {state === "LOOP_STOPPED"
-            ? "ระบบหยุดการเชื่อมต่อซ้ำไว้ก่อน คุณยังใช้ DEMI ได้ตามปกติ หากต้องการให้ลองใหม่ ให้ปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE"
-            : "คุณยังใช้ DEMI ได้ตามปกติ แต่บางการเปิดผ่าน LINE อาจไม่ทำงาน"}
-        </p>
-        {state === "FAILED" ? (
-          <button
-            className="mt-3 inline-flex min-h-11 items-center rounded-control border border-line-strong bg-surface px-4 py-2 font-semibold text-ink hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
-            onClick={() => window.location.reload()}
-            type="button"
-          >
-            ลองเชื่อมต่ออีกครั้ง
-          </button>
-        ) : null}
-      </Alert>
-    </div>
+    <>
+      <WorkspaceLiffEntryScreen state={state} />
+      <noscript><p className="px-4 pb-8 text-center text-ink">กรุณาเปิด JavaScript เพื่อใช้งาน DEMI</p></noscript>
+    </>
   );
 }

@@ -21,14 +21,14 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mocks.getProtectedApplicationActor,
 }));
 
-import { WorkspaceLiffBootstrap } from "../workspace-liff-bootstrap";
+import { WorkspaceLiffHistory } from "../workspace-liff-history";
 import ProtectedApplicationLayout from "./layout";
 
 async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{
     children: ReactNode;
   }>;
-  // The layout renders the Workspace LIFF bootstrap beside (outside) the Suspense boundary of the protected shell.
+  // The protected tree only records history; initialization belongs to the document gate.
   const suspense = React.Children.toArray(layoutElement.props.children)
     .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
   if (!suspense) throw new Error("Expected the protected Suspense boundary");
@@ -41,11 +41,11 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   return renderShell(protectedShell.props);
 }
 
-describe("Workspace LIFF initialization boundary ordering", () => {
-  it("renders the Workspace LIFF bootstrap outside the Suspense boundary, so it mounts before an auth redirect streams", () => {
+describe("Workspace LIFF history boundary", () => {
+  it("renders history bookkeeping without resolving the actor or starting SDK initialization", () => {
     const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{ children: ReactNode }>;
     const children = React.Children.toArray(layoutElement.props.children) as ReactElement[];
-    const bootstrapIndex = children.findIndex((child) => child.type === WorkspaceLiffBootstrap);
+    const bootstrapIndex = children.findIndex((child) => child.type === WorkspaceLiffHistory);
     const suspenseIndex = children.findIndex((child) => child.type === React.Suspense);
     expect(bootstrapIndex).toBeGreaterThanOrEqual(0);
     expect(bootstrapIndex).toBeLessThan(suspenseIndex);

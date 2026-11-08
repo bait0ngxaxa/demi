@@ -10,7 +10,6 @@ import {
   readLiffBrowserContext,
   recordLiffBrowserEntry,
   recordWorkspaceInitResult,
-  shouldInitializeWorkspaceLiff,
   resolveLineAccountHref,
   resolveLineWorkspaceHref,
   type LiffBrowserContext,
@@ -48,17 +47,14 @@ describe("LIFF browser context (presentation only)", () => {
     // MINI -> Workspace LIFF URL in the same browsing session.
     recordLiffBrowserEntry(shared, "WORKSPACE");
     expect(readLiffBrowserContext(shared)).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "navigate")).toBe(true);
     recordWorkspaceInitResult(shared, "READY");
     expect(resolveLineAccountHref({ context: readLiffBrowserContext(shared), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(ACCOUNT_LIFF_URL);
     // Back into the MINI App: its exits are ordinary again and Workspace never initializes there.
     recordLiffBrowserEntry(shared, "MINI");
     expect(readLiffBrowserContext(shared)).toEqual({ current: "MINI", mini: true, workspace: "READY" });
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "reload")).toBe(false);
     // MINI -> Account keeps the chain: the Account screen's DEMI links stay /app.
     recordLiffBrowserEntry(shared, "ACCOUNT");
     expect(resolveLineWorkspaceHref({ context: readLiffBrowserContext(shared), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
-    expect(shouldInitializeWorkspaceLiff(readLiffBrowserContext(shared), "back_forward")).toBe(false);
   });
 
   it.each([
@@ -151,24 +147,6 @@ describe("LIFF browser context (presentation only)", () => {
     const accountOnly = store();
     recordLiffBrowserEntry(accountOnly, "ACCOUNT");
     expect(recordWorkspaceInitResult(accountOnly, "READY")).toBe(false);
-  });
-
-  it("initializes Workspace after a real Workspace entry, or on back/reload of a Workspace page after the Account LIFF", () => {
-    expect(shouldInitializeWorkspaceLiff(null, "navigate")).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT" }), "reload")).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "MINI", mini: true }), "navigate")).toBe(false);
-    expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", mini: true, workspace: "PENDING" }), "navigate")).toBe(false);
-    for (const workspace of ["PENDING", "READY", "FAILED"] as const) {
-      for (const navigation of ["navigate", "reload", "back_forward", null] as const) {
-        expect(shouldInitializeWorkspaceLiff(context({ current: "WORKSPACE", workspace }), navigation)).toBe(true);
-      }
-      // Back/Reload of a Workspace page after visiting the Account LIFF.
-      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "back_forward")).toBe(true);
-      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "reload")).toBe(true);
-      // A plain new navigation from the Account LIFF (e.g. its header logo before this fix) is not a Workspace entry.
-      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), "navigate")).toBe(false);
-      expect(shouldInitializeWorkspaceLiff(context({ current: "ACCOUNT", workspace }), null)).toBe(false);
-    }
   });
 
   it("never stores anything that could read as an authentication or authorization grant", () => {

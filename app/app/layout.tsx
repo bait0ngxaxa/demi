@@ -26,7 +26,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { shouldShowLegalReacceptanceBanner } from "@/modules/legal/transport/legal-settings-context";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 
-import { WorkspaceLiffBootstrap } from "../workspace-liff-bootstrap";
+import { WorkspaceLiffHistory } from "../workspace-liff-history";
 
 export const viewport: Viewport = {
   viewportFit: "cover",
@@ -94,13 +94,7 @@ export default function ProtectedApplicationLayout({
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
     <>
-      {/*
-        Outside the Suspense boundary on purpose: for a user without a DEMI session the shell streams first and
-        redirect() then arrives as an in-document redirect (HTTP 200, router replace or a 1 s meta refresh), so a
-        bootstrap inside the resolved shell would never mount on the secondary-redirect document. It renders
-        nothing, needs no actor and runs only in a Workspace LIFF browser session; authorization stays below.
-      */}
-      <WorkspaceLiffBootstrap liffId={getLineWorkspaceLiffId()} />
+      <WorkspaceLiffHistory liffId={getLineWorkspaceLiffId()} />
       <Suspense fallback={<ProtectedApplicationShellSkeleton />}>
         <ResolvedProtectedApplicationShell>{children}</ResolvedProtectedApplicationShell>
       </Suspense>

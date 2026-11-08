@@ -26,6 +26,7 @@ describe("quick-action return path propagation through Proxy", () => {
   ])("passes the bounded path from %s to the session proxy", async (url, returnTo) => {
     const request = new NextRequest(`https://demi.example.org${url}`);
 
+    request.headers.set("rsc", "1");
     await proxy(request);
 
     expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, returnTo);
@@ -34,6 +35,7 @@ describe("quick-action return path propagation through Proxy", () => {
   it("does not pass unapproved or extra query parameters as a login return", async () => {
     const request = new NextRequest("https://demi.example.org/app/patients/assigned?task=screening&next=https://attacker.example");
 
+    request.headers.set("rsc", "1");
     await proxy(request);
 
     expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, null);
