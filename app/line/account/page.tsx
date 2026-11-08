@@ -8,6 +8,7 @@ import { getLineAccountSummary } from "@/modules/line/services/line-account-serv
 import { getLineDisconnectionStatus, getLineRecoveryHandoffScope, hasLineLifecycleHistoryForCurrentOwner, type LineDisconnectionStatus } from "@/modules/line/services/line-disconnection-service";
 import { requireLineDisconnectionReadiness } from "@/modules/line/services/line-disconnection-configuration";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
+import { getPublicLineWorkspaceEntryUrl } from "@/modules/line/services/line-deep-link-builder";
 import { UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { LineAccountClient, type LineAccountLifecycleReadiness } from "./line-account-client";
@@ -86,5 +87,5 @@ export default async function LineAccountPage(): Promise<React.JSX.Element> {
   } catch {
     // The client displays a safe configuration state when the dedicated LINE configuration is missing.
   }
-  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} linePasswordRecoveryAvailable={isLinePasswordRecoveryRequestConfigured()} disconnection={disconnection} recoveryHandoffScope={recoveryHandoffScope} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} />;
+  return <LineAccountClient key={randomUUID()} initial={initial} liffId={getLineLiffId()} publicOrigin={publicOrigin} linePasswordRecoveryAvailable={isLinePasswordRecoveryRequestConfigured()} disconnection={disconnection} recoveryHandoffScope={recoveryHandoffScope} lifecycleReadiness={lifecycleReadiness} notificationPreference={notificationPreference} workspaceLiffUrl={getPublicLineWorkspaceEntryUrl()} />;
 }

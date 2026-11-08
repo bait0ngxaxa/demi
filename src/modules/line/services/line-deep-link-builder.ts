@@ -61,3 +61,16 @@ export function getPublicLineAccountEntryUrl(): string | null {
     return null;
   }
 }
+
+/**
+ * Workspace LIFF URL of the work dashboard, for Account LIFF -> Workspace LIFF
+ * transitions. Null when the Workspace LIFF or LINE Login configuration is
+ * missing or invalid; it never substitutes the Account or MINI LIFF.
+ */
+export function getPublicLineWorkspaceEntryUrl(): string | null {
+  try {
+    return buildWorkspaceLiffUrl("OPEN_WORK_WORKSPACE");
+  } catch {
+    return null;
+  }
+}

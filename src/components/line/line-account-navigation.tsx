@@ -1,12 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { createContext, useContext, useSyncExternalStore } from "react";
 
 import {
-  isWorkspaceLiffContext,
   LINE_ACCOUNT_PATH,
+  LINE_WORKSPACE_WEB_PATH,
   resolveLineAccountHref,
+  resolveLineWorkspaceHref,
+  type LiffBrowserContext,
 } from "@/modules/line/domain/line-liff-browser";
+
+import { getLiffBrowserContextSnapshot, subscribeLiffBrowserContext } from "./liff-browser-context-store";
 
 /**
  * The Account LIFF URL built on the server by the canonical
@@ -25,32 +30,22 @@ export function LineAccountNavigationProvider({
   return <AccountLiffUrlContext.Provider value={accountLiffUrl}>{children}</AccountLiffUrlContext.Provider>;
 }
 
-function subscribe(): () => void {
-  // The browser context cannot change within a document.
-  return () => undefined;
+function serverSnapshot(): LiffBrowserContext | null {
+  return null;
 }
 
-export function readWorkspaceLiffBrowserContext(): boolean {
-  try {
-    return isWorkspaceLiffContext({ userAgent: window.navigator.userAgent, store: window.sessionStorage });
-  } catch {
-    return false;
-  }
-}
-
-function serverSnapshot(): boolean {
-  return false;
+/** Server rendering and the first hydration pass see no context (ordinary web routes). */
+export function useLiffBrowserContext(): LiffBrowserContext | null {
+  return useSyncExternalStore(subscribeLiffBrowserContext, getLiffBrowserContextSnapshot, serverSnapshot);
 }
 
 /**
- * Account destination for the current browser. Server rendering and the first
- * hydration pass use the ordinary route; only the Workspace LIFF browser
+ * Account destination for the current browser. Only the Workspace LIFF
  * switches to the Account LIFF URL. Presentation state, never authority.
  */
 export function useLineAccountHref(): string {
   const accountLiffUrl = useContext(AccountLiffUrlContext);
-  const workspaceLiffContext = useSyncExternalStore(subscribe, readWorkspaceLiffBrowserContext, serverSnapshot);
-  return resolveLineAccountHref({ workspaceLiffContext, accountLiffUrl });
+  return resolveLineAccountHref({ context: useLiffBrowserContext(), accountLiffUrl });
 }
 
 /** Resolves a caller-provided href only when it is the Account route; any other href is returned unchanged. */
@@ -67,4 +62,26 @@ export function useLineAccountHrefFor(href: string): string {
 export function LineAccountLink({ className, children }: { className?: string; children: React.ReactNode }): React.JSX.Element {
   const href = useLineAccountHref();
   return <a className={className} href={href}>{children}</a>;
+}
+
+/**
+ * Leaves the Account screen for the DEMI work dashboard. Inside the Account
+ * LIFF it opens the Workspace LIFF URL (server-built by
+ * `buildWorkspaceLiffUrl()`), so the Workspace LIFF initializes with its own
+ * ID; elsewhere it is the existing `/app` link. DEMI login and authorization
+ * still apply at `/app`.
+ */
+export function LineWorkspaceLink({
+  workspaceLiffUrl,
+  className,
+  children,
+}: {
+  workspaceLiffUrl: string | null;
+  className?: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const href = resolveLineWorkspaceHref({ context: useLiffBrowserContext(), workspaceLiffUrl });
+  return href === LINE_WORKSPACE_WEB_PATH
+    ? <Link href={href} className={className}>{children}</Link>
+    : <a href={href} className={className}>{children}</a>;
 }

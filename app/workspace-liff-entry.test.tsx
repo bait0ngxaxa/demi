@@ -104,11 +104,11 @@ describe("Workspace LIFF root entry", () => {
     const order: string[] = [];
     const sdk: WorkspaceLiffSdk = {
       isInClient: vi.fn(() => { order.push("isInClient"); return true; }),
-      init: vi.fn(() => { order.push(`init:${browser.sessionStorage.getItem("demi.line.workspace.context")}`); return new Promise<void>(() => undefined); }),
+      init: vi.fn(() => { order.push(`init:${browser.sessionStorage.getItem("demi.line.liff.context")}`); return new Promise<void>(() => undefined); }),
     };
     mount({ mode: "LIFF", destination: "/app", sdk });
     await settle();
-    expect(order).toEqual(["isInClient", "init:1"]);
+    expect(order).toEqual(["isInClient", `init:${JSON.stringify({ current: "WORKSPACE", mini: false, workspace: "PENDING" })}`]);
     expect(browser.history.replaceState).not.toHaveBeenCalled();
 
     // A LIFF URL opened in Chrome/Safari: initialized, never marked.
@@ -116,13 +116,13 @@ describe("Workspace LIFF root entry", () => {
     resetWorkspaceLiffInitializationForTests();
     mount({ mode: "LIFF", destination: "/app", sdk: { isInClient: () => false, init: vi.fn().mockResolvedValue(undefined) } });
     await settle();
-    expect(browser.sessionStorage.getItem("demi.line.workspace.context")).toBeNull();
+    expect(browser.sessionStorage.getItem("demi.line.liff.context")).toBeNull();
 
     for (const props of [{ mode: "ORDINARY" as const }, { mode: "NAVIGATION_INVALID" as const }, { mode: "LIFF" as const, liffId: null }]) {
       stubBrowser();
       mount(props);
       await settle();
-      expect(browser.sessionStorage.getItem("demi.line.workspace.context")).toBeNull();
+      expect(browser.sessionStorage.getItem("demi.line.liff.context")).toBeNull();
     }
   });
 

@@ -8,6 +8,7 @@ import {
   buildOrdinaryWebUrl,
   buildWorkspaceLiffUrl,
   getPublicLineAccountEntryUrl,
+  getPublicLineWorkspaceEntryUrl,
 } from "./line-deep-link-builder";
 
 describe("LINE intent deep links", () => {
@@ -88,6 +89,21 @@ describe("LINE intent deep links", () => {
         expect(url.hash).toBe("");
       },
     );
+
+    it("builds the Account -> Workspace transition target from the Workspace LIFF only", () => {
+      vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
+      expect(getPublicLineWorkspaceEntryUrl()).toBe("https://liff.line.me/1234567890-WorkSpace/app");
+      expect(getPublicLineWorkspaceEntryUrl()).not.toContain("AbCdEfGh");
+      expect(getPublicLineWorkspaceEntryUrl()).not.toContain("MiniDev");
+    });
+
+    it("fails safe without a valid Workspace LIFF or LINE Login origin", () => {
+      vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
+      expect(getPublicLineWorkspaceEntryUrl()).toBeNull();
+      vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+      vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://user:password@evil.example/path");
+      expect(getPublicLineWorkspaceEntryUrl()).toBeNull();
+    });
 
     it("uses the supported LIFF URL format for the workspace entries", () => {
       expect(buildWorkspaceLiffUrl("OPEN_WORK_WORKSPACE")).toBe("https://liff.line.me/1234567890-WorkSpace/app");

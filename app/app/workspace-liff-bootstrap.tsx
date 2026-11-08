@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 
-import { readWorkspaceLiffBrowserContext } from "@/components/line/line-account-navigation";
+import { getLiffBrowserContextSnapshot } from "@/components/line/liff-browser-context-store";
+import { isWorkspaceLiffContext } from "@/modules/line/domain/line-liff-browser";
 
 import {
   clearWorkspaceLiffEntryAttempts,
@@ -37,7 +38,7 @@ export function WorkspaceLiffBootstrap({
   load?: WorkspaceLiffSdkLoader;
 }): null {
   useEffect(() => {
-    if (!liffId || !readWorkspaceLiffBrowserContext()) return;
+    if (!liffId || !isWorkspaceLiffContext(getLiffBrowserContextSnapshot())) return;
     let active = true;
     void startWorkspaceLiffEntry(load, liffId, sessionAttemptStore(), isLineLoginReturnSearch(window.location.search)).then((result) => {
       if (active && result === "READY") clearWorkspaceLiffEntryAttempts(sessionAttemptStore());

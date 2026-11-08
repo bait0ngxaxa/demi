@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { markWorkspaceLiffContext } from "@/modules/line/domain/line-liff-browser";
+import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import {
@@ -120,7 +120,7 @@ export function WorkspaceLiffEntry({
       // Scopes Workspace-only behavior (Account LIFF links, per-page init) to a LIFF browser session the SDK
       // itself reports (liff.isInClient() is documented as callable before init). Presentation state, never authority.
       onSdkLoaded: (sdk) => {
-        if (sdk.isInClient()) markWorkspaceLiffContext(sessionAttemptStore());
+        if (sdk.isInClient()) recordCurrentLiffBrowserEntry("WORKSPACE");
       },
     }).then((result) => {
       if (!active) return;

@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { WORKSPACE_LIFF_CONTEXT_KEY } from "@/modules/line/domain/line-liff-browser";
+import { LIFF_BROWSER_CONTEXT_KEY } from "@/modules/line/domain/line-liff-browser";
 
 import { resetWorkspaceLiffInitializationForTests, WORKSPACE_LIFF_MAX_ENTRY_ATTEMPTS, type WorkspaceLiffSdk } from "../workspace-liff-gateway";
 import { WorkspaceLiffBootstrap } from "./workspace-liff-bootstrap";
@@ -14,8 +14,6 @@ import { WorkspaceLiffBootstrap } from "./workspace-liff-bootstrap";
  * WebView behavior; real-device evidence lives in LINE_WORKSPACE_LIFF_UAT.
  */
 const WORKSPACE_ID = "1234567890-Workspace";
-const LIFF_USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari Line/14.19.0 LIFF";
-const CHROME_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -32,8 +30,7 @@ async function mount(props: { liffId: string | null; sdk: WorkspaceLiffSdk }): P
 }
 
 function workspaceSession(): void {
-  vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(LIFF_USER_AGENT);
-  window.sessionStorage.setItem(WORKSPACE_LIFF_CONTEXT_KEY, "1");
+  window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "WORKSPACE", mini: false, workspace: "PENDING" }));
 }
 
 /** A new document: module state of the previous document is gone. */
@@ -75,15 +72,13 @@ describe("Workspace LIFF per-document initialization", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("never loads the SDK in an ordinary Chrome/Safari browser", async () => {
-    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(CHROME_USER_AGENT);
-    window.sessionStorage.setItem(WORKSPACE_LIFF_CONTEXT_KEY, "1");
+  it("never loads the SDK in an ordinary Chrome/Safari browser (no recorded LIFF entry)", async () => {
     const load = await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble() });
     expect(load).not.toHaveBeenCalled();
   });
 
-  it("never initializes the Workspace ID in a MINI App or Account LIFF browser that navigated into /app", async () => {
-    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(LIFF_USER_AGENT);
+  it("never initializes the Workspace ID in a MINI App browser that navigated into /app", async () => {
+    window.sessionStorage.setItem(LIFF_BROWSER_CONTEXT_KEY, JSON.stringify({ current: "MINI", mini: true, workspace: null }));
     const load = await mount({ liffId: WORKSPACE_ID, sdk: sdkDouble() });
     expect(load).not.toHaveBeenCalled();
   });

@@ -9,6 +9,8 @@ import { AppointmentNotificationPreference, type AppointmentNotificationPreferen
 import { LineDemiAccountSwitch } from "./line-demi-account-switch";
 import { LinePasswordRecoveryRequestForm } from "../../recover/line/line-password-recovery-request-form";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LineWorkspaceLink } from "@/components/line/line-account-navigation";
+import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -227,9 +229,12 @@ type LineAccountScreenProps = {
   menuCheckComplete?: boolean;
   statusCheckMessage?: string;
   statusRetryAfter?: number;
+  /** Server-built Workspace LIFF URL (null when not configured); used only inside the Account LIFF. */
+  workspaceLiffUrl?: string | null;
 };
 
 export function LineAccountScreen({
+  workspaceLiffUrl = null,
   lifecycleReadiness,
   notificationPreference,
   preferenceUiGeneration,
@@ -650,7 +655,8 @@ export function LineAccountScreen({
 
         <div className="mt-5 space-y-3 text-sm leading-6 text-muted">
           {!isInClient ? <p>หากเปิดแอป LINE ไม่ได้ ให้เปิดแชต DEMI แล้วเลือกเมนูบัญชี หากไม่มีแอป LINE คุณยังใช้ DEMI ผ่านเว็บไซต์ได้</p> : null}
-          <Link href="/app" className={secondaryButtonClass}>ใช้งาน DEMI ผ่านเว็บ</Link>
+          {/* Account LIFF -> Workspace LIFF transition inside LINE; the existing /app link elsewhere. */}
+          <LineWorkspaceLink workspaceLiffUrl={workspaceLiffUrl} className={secondaryButtonClass}>ใช้งาน DEMI ผ่านเว็บ</LineWorkspaceLink>
         </div>
 
         {notificationPreference ? <AppointmentNotificationPreference key={preferenceUiGeneration} initial={notificationPreference} /> : null}
@@ -670,6 +676,7 @@ export function LineAccountClient({
   recoveryHandoffScope = null,
   lifecycleReadiness,
   notificationPreference,
+  workspaceLiffUrl = null,
 }: {
   initial: InitialStatus;
   liffId: string | null;
@@ -680,6 +687,7 @@ export function LineAccountClient({
   recoveryHandoffScope?: string | null;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
+  workspaceLiffUrl?: string | null;
 }): React.JSX.Element {
   const termination = disconnection;
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -733,6 +741,8 @@ export function LineAccountClient({
       const loggedIn = liff.isLoggedIn();
       const inClient = liff.isInClient();
       setIsInClient(inClient);
+      // This LIFF browser session is now in the Account LIFF (presentation state, never authority).
+      if (inClient) recordCurrentLiffBrowserEntry("ACCOUNT");
       let supportsFriendship = false;
       try {
         supportsFriendship = inClient && liff.getContext()?.viewType === "full";
@@ -1084,6 +1094,7 @@ export function LineAccountClient({
     <LineAccountScreen
       lifecycleReadiness={lifecycleReadiness}
       notificationPreference={appointmentPreference}
+      workspaceLiffUrl={workspaceLiffUrl}
       preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
       recoveryContent={lifecycleReadiness.state === "READY" && successAction !== "UNLINK" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} handoffScope={recoveryHandoffScope} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}
