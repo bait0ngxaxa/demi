@@ -77,22 +77,26 @@ function streamedRedirectTarget(body) {
  * document that carries the redirect. Next.js puts the redirect in the head
  * (`<meta http-equiv="refresh" content="1;url=...">`) and in the RSC payload;
  * the client router replaces the route after hydration, or the meta refresh
- * loads /login as a new document after 1 s. Either way the bootstrap must be in
- * this document so it hydrates and starts liff.init() for it.
+ * loads /login as a new document after 1 s.
+ *
+ * This proves only that the boundary is delivered with that document. It does
+ * NOT prove that JavaScript hydrated or that liff.init() completed before the
+ * redirect; that ordering is covered by app/workspace-liff-redirect-ordering
+ * .test.tsx (start is ordered, completion is not guaranteed) and by device UAT.
  */
 function bootstrapPosition(body) {
-  return { bootstrapStreamed: body.includes("WorkspaceLiffBootstrap") };
+  return { bootstrapInDocument: body.includes("WorkspaceLiffBootstrap") };
 }
 
 function describe(result) {
-  if (result.status >= 300 && result.status < 400) return { kind: "HTTP_REDIRECT", status: result.status, target: result.location, bootstrapStreamed: false };
+  if (result.status >= 300 && result.status < 400) return { kind: "HTTP_REDIRECT", status: result.status, target: result.location, bootstrapInDocument: false };
   const target = streamedRedirectTarget(result.body);
   return { kind: target ? "STREAMED_REDIRECT" : "DOCUMENT", status: result.status, target, ...bootstrapPosition(result.body) };
 }
 
 const cases = [
   { label: "Workspace primary redirect (Android)", path: "/?liff.state=%2Fapp%2Fpersonal%2Fmedications&lineAppVersion=14.19.1", expect: (r) => r.kind === "DOCUMENT" && r.status === 200 },
-  { label: "login page initializes inside the Workspace LIFF", path: "/login?returnTo=%2Fapp%2Fpersonal%2Fmedications", expect: (r) => r.kind === "DOCUMENT" && r.status === 200 && r.bootstrapStreamed },
+  { label: "login page initializes inside the Workspace LIFF", path: "/login?returnTo=%2Fapp%2Fpersonal%2Fmedications", expect: (r) => r.kind === "DOCUMENT" && r.status === 200 && r.bootstrapInDocument },
   { label: "secondary redirect, Patient medication after in-LINE login", path: "/app/personal/medications?liff.hback=2&lineAppVersion=14.19.1", returnTo: "/app/personal/medications" },
   { label: "secondary redirect, Patient wellness", path: "/app/personal/wellness", returnTo: "/app/personal/wellness" },
   { label: "secondary redirect, OSM screening", path: "/app/patients/assigned?task=screening&liff.hback=2", returnTo: "/app/patients/assigned?task=screening" },
@@ -136,7 +140,7 @@ try {
       const target = observed.target ? new URL(observed.target, "https://smoke.invalid") : null;
       // The in-document redirect must reach the login allowlist, and the init boundary must be in that document.
       ok = observed.kind !== "DOCUMENT" && target !== null && `${target.pathname}${target.search}` === expected &&
-        (observed.kind === "HTTP_REDIRECT" || observed.bootstrapStreamed);
+        (observed.kind === "HTTP_REDIRECT" || observed.bootstrapInDocument);
     }
     if (!ok) failures += 1;
     console.log(JSON.stringify({ ok, case: item.label, path: item.path, ...observed, cacheControl: result.cacheControl }));
