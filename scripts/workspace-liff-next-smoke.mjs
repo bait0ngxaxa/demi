@@ -48,9 +48,9 @@ async function freePort() {
   });
 }
 
-function get(port, host, path) {
+function get(port, host, path, rsc = false) {
   return new Promise((done, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, method: "GET", headers: { host, "user-agent": "Mozilla/5.0 Line/14.19.0 LIFF" } }, (response) => {
+    const req = request({ host: "127.0.0.1", port, path, method: "GET", headers: { host, accept: rsc ? "text/x-component" : "text/html", ...(rsc ? { rsc: "1" } : {}), "user-agent": "Mozilla/5.0 Line/14.19.0 LIFF" } }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => {
@@ -72,18 +72,7 @@ function streamedRedirectTarget(body) {
   return digest ? digest[1] : null;
 }
 
-/**
- * Whether the Workspace LIFF bootstrap's client reference is part of the
- * document that carries the redirect. Next.js puts the redirect in the head
- * (`<meta http-equiv="refresh" content="1;url=...">`) and in the RSC payload;
- * the client router replaces the route after hydration, or the meta refresh
- * loads /login as a new document after 1 s.
- *
- * This proves only that the boundary is delivered with that document. It does
- * NOT prove that JavaScript hydrated or that liff.init() completed before the
- * redirect; that ordering is covered by app/workspace-liff-redirect-ordering
- * .test.tsx (start is ordered, completion is not guaranteed) and by device UAT.
- */
+/** Public transport shell reference only; browser execution is tested separately. */
 function bootstrapPosition(body) {
   return { bootstrapInDocument: body.includes("WorkspaceLiffBootstrap") };
 }
@@ -137,10 +126,15 @@ try {
     if (item.expect) ok = item.expect(observed);
     else {
       const expected = item.returnTo === null ? "/login" : `/login?returnTo=${encodeURIComponent(item.returnTo)}`;
-      const target = observed.target ? new URL(observed.target, "https://smoke.invalid") : null;
-      // The in-document redirect must reach the login allowlist, and the init boundary must be in that document.
-      ok = observed.kind !== "DOCUMENT" && target !== null && `${target.pathname}${target.search}` === expected &&
-        (observed.kind === "HTTP_REDIRECT" || observed.bootstrapInDocument);
+      // Document response must contain only the public gate: no HTTP, router,
+      // or meta-refresh auth redirect can race its SDK. A later RSC request
+      // exercises the unchanged server authorization and exact login return.
+      const authorizedTree = await get(port, host, item.path, true);
+      const redirect = describe(authorizedTree);
+      const target = redirect.target ? new URL(redirect.target, "https://smoke.invalid") : null;
+      ok = observed.kind === "DOCUMENT" && observed.bootstrapInDocument && target !== null &&
+        `${target.pathname}${target.search}` === expected;
+      observed.afterGate = { kind: redirect.kind, target: redirect.target };
     }
     if (!ok) failures += 1;
     console.log(JSON.stringify({ ok, case: item.label, path: item.path, ...observed, cacheControl: result.cacheControl }));

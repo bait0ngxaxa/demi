@@ -31,6 +31,7 @@
     "test:integration:focused": "node scripts/integration.mjs test:focused",
     "test:line-workflow:next-smoke": "node scripts/line-workflow-next-smoke.mjs",
     "test:workspace-liff:next-smoke": "node scripts/workspace-liff-next-smoke.mjs",
+    "test:workspace-liff:browser": "node scripts/workspace-liff-browser.mjs",
     "test:db:migrate:populated": "node scripts/integration.mjs migrate:populated",
     "test:db:migrate:line-populated": "node scripts/integration.mjs migrate:line-populated",
     "test:db:migrate:line-reactive-populated": "node scripts/integration.mjs migrate:line-reactive-populated",
