@@ -43,6 +43,7 @@ vi.mock("next/server", async (importOriginal) => {
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import ProtectedApplicationLayout from "../../../../app/app/layout";
+import { WorkspaceLiffHistory } from "../../../../app/workspace-liff-history";
 import { proxy } from "../../../../proxy";
 import { loginAction } from "./server-actions";
 
@@ -50,12 +51,14 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({
     children: React.createElement("main"),
   }) as ReactElement<{ children: ReactNode }>;
-  // The layout renders the Workspace LIFF bootstrap beside (outside) the Suspense boundary of the protected shell.
+  // History observation shares the boundary; invoke the protected server shell, not the observer.
   const suspense = React.Children.toArray(layoutElement.props.children)
     .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
   if (!suspense) throw new Error("Expected the protected Suspense boundary");
-  const protectedShell = suspense.props.children as ReactElement<{ children: ReactNode }>;
-  if (typeof protectedShell.type !== "function") {
+  const protectedShell = React.Children.toArray(suspense.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) &&
+      typeof child.type === "function" && child.type !== WorkspaceLiffHistory);
+  if (!protectedShell) {
     throw new Error("Expected the protected application shell component");
   }
 
