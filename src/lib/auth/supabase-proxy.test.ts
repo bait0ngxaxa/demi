@@ -30,6 +30,13 @@ describe("Supabase proxy cookie propagation", () => {
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'none'");
   });
+  it("marks the Workspace LIFF endpoint / private, uncached and referrer-free without MINI framing rules", () => {
+    const response = propagateSupabaseCookies(new NextRequest("https://demi.example.org/?liff.state=%2Fapp"), [], {});
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("content-security-policy")).toBeNull();
+    expect(propagateSupabaseCookies(new NextRequest("https://demi.example.org/app"), [], {}).headers.get("referrer-policy")).toBeNull();
+  });
   it.each(["/line/workflowx", "/app/personal/appointments", "/line/account"])("does not apply MINI workflow headers to %s", (path) => {
     const response = propagateSupabaseCookies(new NextRequest(`https://demi.example.org${path}`), [], {});
     expect(response.headers.get("referrer-policy")).toBeNull();

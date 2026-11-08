@@ -50,11 +50,11 @@ export const LINE_WORKFLOW_GATEWAY_PATH = "/line/workflow";
 export const LINE_WORKFLOW_LOGIN_RETURN_PATH = `${LINE_WORKFLOW_GATEWAY_PATH}?intent=${LINE_WORKFLOW_INTENT}` as const;
 
 /** Parameters the LIFF SDK may add on primary/secondary redirects or LINE login return. */
-const LIFF_PLATFORM_PARAMETERS = new Set([
+export const LIFF_PLATFORM_PARAMETERS: ReadonlySet<string> = new Set([
   "liff.state", "liff.referrer", "liff.hback", "liffClientId", "liffRedirectUri", "liffIsEscapedFromApp",
   "code", "state", "error", "error_description",
 ]);
-const MAX_PLATFORM_PARAMETER_LENGTH = 2048;
+export const MAX_PLATFORM_PARAMETER_LENGTH = 2048;
 
 export type LineWorkflowEntry =
   | { status: "VALID"; intent: LineWorkflowIntent }

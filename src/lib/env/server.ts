@@ -244,3 +244,40 @@ export function getLineLiffId(): string | null {
   const result = lineLiffIdEnvSchema.safeParse(process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID);
   return result.success ? result.data : null;
 }
+
+export type LineWorkspaceLiffIdIssue =
+  | "UNSET"
+  | "INVALID_FORMAT"
+  | "LOGIN_CHANNEL_UNAVAILABLE"
+  | "NOT_IN_LOGIN_CHANNEL"
+  | "SAME_AS_ACCOUNT_LIFF"
+  | "SAME_AS_MINI_APP_LIFF";
+
+export type LineWorkspaceLiffIdResult =
+  | { status: "CONFIGURED"; liffId: string }
+  | { status: "UNAVAILABLE"; issue: LineWorkspaceLiffIdIssue };
+
+/**
+ * The Workspace LIFF is a separate LIFF app inside the existing DEMI LINE Login
+ * channel. A LIFF ID is `<channelId>-<suffix>`, so its prefix must equal
+ * DEMI_LINE_LOGIN_CHANNEL_ID; it must never equal the Account or MINI LIFF ID.
+ * Any problem makes it unavailable; nothing falls back to another LIFF identity.
+ */
+export function resolveLineWorkspaceLiffId(): LineWorkspaceLiffIdResult {
+  const raw = process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID;
+  if (raw === undefined || raw.trim() === "") return { status: "UNAVAILABLE", issue: "UNSET" };
+  const parsed = lineLiffIdEnvSchema.safeParse(raw);
+  if (!parsed.success) return { status: "UNAVAILABLE", issue: "INVALID_FORMAT" };
+  const liffId = parsed.data;
+  const loginChannel = lineLoginEnvSchema.shape.DEMI_LINE_LOGIN_CHANNEL_ID.safeParse(process.env.DEMI_LINE_LOGIN_CHANNEL_ID);
+  if (!loginChannel.success) return { status: "UNAVAILABLE", issue: "LOGIN_CHANNEL_UNAVAILABLE" };
+  if (liffId.slice(0, liffId.indexOf("-")) !== loginChannel.data) return { status: "UNAVAILABLE", issue: "NOT_IN_LOGIN_CHANNEL" };
+  if (liffId === process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID?.trim()) return { status: "UNAVAILABLE", issue: "SAME_AS_ACCOUNT_LIFF" };
+  if (liffId === process.env.DEMI_LINE_MINI_APP_LIFF_ID?.trim()) return { status: "UNAVAILABLE", issue: "SAME_AS_MINI_APP_LIFF" };
+  return { status: "CONFIGURED", liffId };
+}
+
+export function getLineWorkspaceLiffId(): string | null {
+  const result = resolveLineWorkspaceLiffId();
+  return result.status === "CONFIGURED" ? result.liffId : null;
+}

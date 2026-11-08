@@ -15,6 +15,7 @@ import {
   lineLoginEnvSchema,
   lineMessagingEnvSchema,
   patientEvidenceStorageEnvSchema,
+  resolveLineWorkspaceLiffId,
   serverEnvSchema,
   supabaseAdminEnvSchema,
 } from "./server";
@@ -54,6 +55,7 @@ const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
     "DEMI_ALLOW_TEST_NATIONAL_IDS",
     "DEMI_LINE_LOGIN_CHANNEL_ID",
     "NEXT_PUBLIC_DEMI_LINE_LIFF_ID",
+    "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID",
     "DEMI_LINE_LOGIN_CHANNEL_SECRET",
     "DEMI_LINE_MESSAGING_CHANNEL_SECRET",
     "DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN",
@@ -143,6 +145,11 @@ function invalidOptional(): string[] {
     if (!lineLiffIdEnvSchema.safeParse(process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID).success) {
       invalid.push("NEXT_PUBLIC_DEMI_LINE_LIFF_ID");
     }
+  }
+  // Workspace LIFF is optional; once set it must belong to the Account Login channel and stay distinct.
+  if (read("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID") !== undefined &&
+      resolveLineWorkspaceLiffId().status !== "CONFIGURED") {
+    invalid.push("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID");
   }
   if (read("DEMI_LINE_LOGIN_CHANNEL_SECRET") !== undefined &&
       !lineChannelSecretSchema.safeParse(read("DEMI_LINE_LOGIN_CHANNEL_SECRET")).success) {

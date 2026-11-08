@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createWorkforceActivationUrlBuilder,
+  getLineLiffId,
+  getLineWorkspaceLiffId,
+  resolveLineWorkspaceLiffId,
 } from "./server";
 
 describe("workforce activation URL builder", () => {
@@ -23,5 +26,54 @@ describe("workforce activation URL builder", () => {
     expect(() => createWorkforceActivationUrlBuilder()).toThrow(
       "Application public origin is unavailable",
     );
+  });
+});
+
+describe("Workspace LIFF configuration", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function configure(values: Record<string, string | undefined>): void {
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
+    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
+    for (const [name, value] of Object.entries(values)) vi.stubEnv(name, value);
+  }
+
+  it("accepts a distinct Workspace LIFF inside the existing DEMI LINE Login channel", () => {
+    configure({ NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "1234567890-Workspace" });
+    expect(resolveLineWorkspaceLiffId()).toEqual({ status: "CONFIGURED", liffId: "1234567890-Workspace" });
+    expect(getLineWorkspaceLiffId()).toBe("1234567890-Workspace");
+    expect(getLineLiffId()).toBe("1234567890-Account");
+  });
+
+  it.each([
+    [undefined, "UNSET"],
+    ["", "UNSET"],
+    ["   ", "UNSET"],
+    ["not-a-liff-id", "INVALID_FORMAT"],
+    ["1234567890-Work?returnTo=https://evil.example", "INVALID_FORMAT"],
+    ["https://liff.line.me/1234567890-Workspace", "INVALID_FORMAT"],
+    ["9999999999-Workspace", "NOT_IN_LOGIN_CHANNEL"],
+    ["2000000001-MiniWorkspace", "NOT_IN_LOGIN_CHANNEL"],
+    ["1234567890-Account", "SAME_AS_ACCOUNT_LIFF"],
+  ] as const)("is unavailable for %j (%s) and never falls back to another LIFF identity", (value, issue) => {
+    configure({ NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: value });
+    expect(resolveLineWorkspaceLiffId()).toEqual({ status: "UNAVAILABLE", issue });
+    expect(getLineWorkspaceLiffId()).toBeNull();
+  });
+
+  it("rejects a Workspace LIFF equal to the MINI App LIFF", () => {
+    configure({ DEMI_LINE_MINI_APP_LIFF_ID: "1234567890-Shared", NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "1234567890-Shared" });
+    expect(resolveLineWorkspaceLiffId()).toEqual({ status: "UNAVAILABLE", issue: "SAME_AS_MINI_APP_LIFF" });
+  });
+
+  it("requires the Login channel to prove channel membership", () => {
+    configure({ DEMI_LINE_LOGIN_CHANNEL_ID: "", NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "1234567890-Workspace" });
+    expect(resolveLineWorkspaceLiffId()).toEqual({ status: "UNAVAILABLE", issue: "LOGIN_CHANNEL_UNAVAILABLE" });
+  });
+
+  it("does not make the Account LIFF depend on Workspace configuration", () => {
+    configure({ NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "garbage" });
+    expect(getLineLiffId()).toBe("1234567890-Account");
   });
 });
