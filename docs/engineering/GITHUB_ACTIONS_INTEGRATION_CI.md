@@ -23,7 +23,7 @@ The 20-minute initial budgets allow setup and headroom over the documented local
 
 ## Build environment
 
-Build runs Next.js 16.3.0 with `NODE_OPTIONS=--max-old-space-size=4096` scoped only to its build step. The previous local default-heap TypeScript worker exhausted its heap; the documented 4 GiB build passed with type checking enabled. This controls V8 heap, not total process/VM memory.
+Build runs Next.js 16.4.5 with `NODE_OPTIONS=--max-old-space-size=4096` scoped only to its build step. The previous local default-heap TypeScript worker exhausted its heap; the documented 4 GiB build passed with type checking enabled. This controls V8 heap, not total process/VM memory.
 
 CI supplies no application environment values. Source inspection found lazy Prisma/server configuration getters, session access after request-time APIs (`cookies`/`connection`), and no static database seeding requirement. The full CI baseline below confirmed this for its tested SHA; verify every new HEAD separately. Runtime environment validators remain strict. Public `NEXT_PUBLIC_*` values, if ever needed, are embedded/frozen at build time: use only explicitly synthetic nonproduction values and document each added value after evidence establishes necessity. Never deploy this verification output.
 
