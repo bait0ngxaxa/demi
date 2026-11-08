@@ -56,6 +56,34 @@ export const LIFF_PLATFORM_PARAMETERS: ReadonlySet<string> = new Set([
 ]);
 export const MAX_PLATFORM_PARAMETER_LENGTH = 2048;
 
+/**
+ * Query parameters owned by the LINE platform rather than by DEMI. LINE
+ * reserves the `liff.` prefix for SDK initialization and LIFF-to-LIFF
+ * transitions (`liff.state`, `liff.referrer`, `liff.hback`, and future ones)
+ * and adds `lineAppVersion` on Android. They are bookkeeping, never navigation
+ * authority, and must reach `liff.init()` untouched. Names are bounded so an
+ * unbounded attacker-chosen name cannot pass as a platform parameter.
+ */
+const LINE_PLATFORM_PARAMETER_NAME = /^(?:liff\.[A-Za-z][A-Za-z0-9_]{0,31}|lineAppVersion)$/u;
+
+export function isLinePlatformParameterName(name: string): boolean {
+  return LINE_PLATFORM_PARAMETER_NAME.test(name);
+}
+
+/**
+ * Markers LIFF adds when LINE Login returns to the redirect URI it built from
+ * the current URL. `liffClientId` identifies the return; the generic OAuth
+ * names are LINE-owned only together with it.
+ */
+export const LIFF_LOGIN_RETURN_MARKER = "liffClientId";
+export const LIFF_LOGIN_RETURN_PARAMETERS: ReadonlySet<string> = new Set([
+  LIFF_LOGIN_RETURN_MARKER, "liffRedirectUri", "liffIsEscapedFromApp", "liffOAuth2Error",
+  "code", "state", "error", "error_description",
+]);
+
+/** Upper bound on query parameters a LINE-generated entry URL is expected to carry. */
+export const MAX_PLATFORM_PARAMETER_COUNT = 24;
+
 export type LineWorkflowEntry =
   | { status: "VALID"; intent: LineWorkflowIntent }
   | { status: "NAVIGATION_INVALID" }

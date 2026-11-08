@@ -46,6 +46,16 @@ describe("GET / entry", () => {
     expect(mocks.init).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [{ "liff.state": "/app/personal/medications", lineAppVersion: "14.19.1" }, "/app/personal/medications"],
+    [{ lineAppVersion: "14.19.1" }, null],
+    [{ "liff.state": "/app", "liff.referrer": "https://liff.line.me/1234567890-Account", "liff.newParameter": "1" }, "/app"],
+  ])("hands LINE-generated platform parameters %j to LIFF initialization instead of rejecting them", async (query, destination) => {
+    const element = await render(query);
+    expect(element.props as EntryProps).toMatchObject({ mode: "LIFF", destination, liffId: "1234567890-Workspace" });
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
   it("rejects untrusted liff.state before LIFF initialization", async () => {
     const element = await render({ "liff.state": "/line/account" });
     expect(element.props as EntryProps).toMatchObject({ mode: "NAVIGATION_INVALID", destination: null });

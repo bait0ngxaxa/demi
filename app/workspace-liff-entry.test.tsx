@@ -89,6 +89,17 @@ describe("Workspace LIFF root entry", () => {
     expect(browser.location.replace).not.toHaveBeenCalled();
   });
 
+  it("leaves Android and LIFF-to-LIFF platform parameters untouched until the SDK consumes them", async () => {
+    stubBrowser({ search: "?liff.state=%2Fapp%2Fpersonal&lineAppVersion=14.19.1&liff.referrer=https%3A%2F%2Fliff.line.me%2Fx&liff.hback=2" });
+    const sdk: WorkspaceLiffSdk = { init: vi.fn(() => new Promise<void>(() => undefined)) };
+    mount({ mode: "LIFF", destination: "/app/personal", sdk });
+    await settle();
+    expect(sdk.init).toHaveBeenCalledOnce();
+    expect(browser.history.replaceState).not.toHaveBeenCalled();
+    expect(browser.location.replace).not.toHaveBeenCalled();
+    expect(browser.location.search).toBe("?liff.state=%2Fapp%2Fpersonal&lineAppVersion=14.19.1&liff.referrer=https%3A%2F%2Fliff.line.me%2Fx&liff.hback=2");
+  });
+
   it("continues to the allowlisted destination when init resolves without a secondary redirect", async () => {
     mount({ mode: "LIFF", destination: "/app/patients/assigned?task=screening" });
     await settle();

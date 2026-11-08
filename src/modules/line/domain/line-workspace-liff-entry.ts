@@ -1,6 +1,8 @@
 import {
-  LIFF_PLATFORM_PARAMETERS,
+  isLinePlatformParameterName,
+  LIFF_LOGIN_RETURN_PARAMETERS,
   LINE_WEB_NAVIGATION_PATHS,
+  MAX_PLATFORM_PARAMETER_COUNT,
   MAX_PLATFORM_PARAMETER_LENGTH,
 } from "./line-navigation-intents";
 
@@ -17,44 +19,68 @@ export const LINE_WORKSPACE_LIFF_DESTINATIONS = [
 ] as readonly string[];
 
 export type LineWorkspaceLiffEntry =
-  /** No LIFF platform parameter: an ordinary browser request for `/`. */
+  /** No LINE platform parameter: an ordinary browser request for `/`. */
   | { status: "ORDINARY" }
   /** A LIFF primary redirect or LINE login return; `destination` null means a bare LIFF URL. */
   | { status: "LIFF"; destination: string | null }
   | { status: "NAVIGATION_INVALID" };
 
-/**
- * The shared LIFF platform parameters plus the SDK's LINE Login error marker,
- * so a cancelled or failed LINE Login reaches init and becomes a retryable
- * failure instead of an invalid link. MINI keeps its own stricter set.
- */
-const WORKSPACE_LIFF_PLATFORM_PARAMETERS: ReadonlySet<string> = new Set([...LIFF_PLATFORM_PARAMETERS, "liffOAuth2Error"]);
+/** Far above the longest destination; a larger `liff.state` is never DEMI navigation. */
+const MAX_APPLICATION_NAVIGATION_LENGTH = 256;
 
-function normalizeLiffState(value: string): string {
-  return value.startsWith("/") ? value : `/${value}`;
+/**
+ * Application navigation validation. `liff.state` is the only value that can
+ * name a destination, and it must be absent/empty or exactly one allowlisted
+ * destination (the SDK may omit the leading slash). No decoding,
+ * normalization or prefix matching happens, so encoded traversal, external,
+ * protocol-relative and resource-specific values never match.
+ */
+export function resolveWorkspaceLiffDestination(liffState: string): { valid: true; destination: string | null } | { valid: false } {
+  if (liffState === "") return { valid: true, destination: null };
+  if (liffState.length > MAX_APPLICATION_NAVIGATION_LENGTH) return { valid: false };
+  const state = liffState.startsWith("/") ? liffState : `/${liffState}`;
+  return LINE_WORKSPACE_LIFF_DESTINATIONS.includes(state) ? { valid: true, destination: state } : { valid: false };
+}
+
+/** LINE-owned parameters at the Workspace Endpoint: `liff.*`, `lineAppVersion` and LINE Login return markers. */
+function isWorkspaceEntryPlatformParameter(name: string): boolean {
+  return isLinePlatformParameterName(name) || LIFF_LOGIN_RETURN_PARAMETERS.has(name);
 }
 
 /**
- * Classifies a request for `/`. Once any LIFF platform parameter is present,
- * every parameter must be a bounded LIFF platform parameter and `liff.state`
- * must be absent, empty or exactly one allowlisted destination. Anything else
- * is rejected before the SDK could follow it.
+ * Classifies a request for `/` in two separate steps.
+ *
+ * Platform parameters (any bounded `liff.*` name, Android `lineAppVersion`,
+ * LINE Login return markers) are recognized and left for `liff.init()`; they
+ * are never interpreted except `liff.state`, and never rewritten or removed
+ * here. Repeated bookkeeping parameters are tolerated because they cannot
+ * name a destination.
+ *
+ * Application navigation is then validated strictly: `liff.state` must be a
+ * single allowlisted destination, and a non-platform parameter on a LIFF entry
+ * (DEMI's builder never emits one) rejects the entry, so untrusted parameters
+ * can never add or change a destination.
  */
 export function classifyLineWorkspaceLiffEntry(
   query: Readonly<Record<string, string | string[] | undefined>>,
 ): LineWorkspaceLiffEntry {
   const entries = Object.entries(query).filter((entry): entry is [string, string | string[]] => entry[1] !== undefined);
-  if (!entries.some(([name]) => WORKSPACE_LIFF_PLATFORM_PARAMETERS.has(name))) return { status: "ORDINARY" };
+  if (!entries.some(([name]) => isWorkspaceEntryPlatformParameter(name))) return { status: "ORDINARY" };
+  if (entries.length > MAX_PLATFORM_PARAMETER_COUNT) return { status: "NAVIGATION_INVALID" };
 
   let destination: string | null = null;
   for (const [name, value] of entries) {
-    if (Array.isArray(value) || !WORKSPACE_LIFF_PLATFORM_PARAMETERS.has(name) || value.length > MAX_PLATFORM_PARAMETER_LENGTH) {
+    if (!isWorkspaceEntryPlatformParameter(name)) return { status: "NAVIGATION_INVALID" };
+    const values = Array.isArray(value) ? value : [value];
+    if (values.length > MAX_PLATFORM_PARAMETER_COUNT || values.some((item) => item.length > MAX_PLATFORM_PARAMETER_LENGTH)) {
       return { status: "NAVIGATION_INVALID" };
     }
-    if (name !== "liff.state" || value === "") continue;
-    const state = normalizeLiffState(value);
-    if (!LINE_WORKSPACE_LIFF_DESTINATIONS.includes(state)) return { status: "NAVIGATION_INVALID" };
-    destination = state;
+    if (name !== "liff.state") continue;
+    // The only navigation-bearing parameter: one value, exactly allowlisted.
+    if (Array.isArray(value)) return { status: "NAVIGATION_INVALID" };
+    const resolved = resolveWorkspaceLiffDestination(value);
+    if (!resolved.valid) return { status: "NAVIGATION_INVALID" };
+    destination = resolved.destination;
   }
   return { status: "LIFF", destination };
 }
