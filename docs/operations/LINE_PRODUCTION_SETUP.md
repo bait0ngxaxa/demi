@@ -148,7 +148,7 @@ webhook ยังรับ postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` เ�
 
 1. Deploy release ที่มี ADR-0031 **โดยยังไม่ใส่** Workspace ID ก่อนก็ได้ (ปุ่มยังเป็นเว็บปกติ ไม่มีอะไรเปลี่ยนที่ LINE)
 2. ตั้งค่า Workspace LIFF ตาม §3.1 ใส่ ID ใน `/etc/demi/demi.env` รัน `env:check --strict` แล้ว build/deploy ใหม่ (DEPLOY_VPS §2/§4)
-3. ทดสอบบนอุปกรณ์จริงด้วยลิงก์ทดสอบใน [UAT](./LINE_WORKSPACE_LIFF_UAT.md) ก่อนแตะ Rich Menu
+3. ทดสอบบนอุปกรณ์จริงด้วยลิงก์ทดสอบใน [UAT](./LINE_WORKSPACE_LIFF_UAT.md) ก่อนแตะ Rich Menu (ก่อน deploy อาจรัน `npm run build` แล้ว `npm run test:workspace-liff:next-smoke` บนเครื่องที่ไม่ใช่ production เพื่อตรวจลำดับ redirect ก่อน login; ไม่เรียก LINE และไม่ใช่หลักฐาน UAT)
 4. ดู URI ที่จะส่ง (อ่านอย่างเดียว ไม่เรียก LINE):
 
    ```sh

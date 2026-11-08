@@ -126,6 +126,18 @@ describe("Workspace LIFF root entry", () => {
     }
   });
 
+  it("records the root init outcome so a failure never reads as an initialized Workspace", async () => {
+    mount({ mode: "LIFF", destination: null, sdk: { isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) } });
+    await settle();
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "FAILED" });
+
+    stubBrowser({ hash: "#access_token=synthetic" });
+    resetWorkspaceLiffInitializationForTests();
+    mount({ mode: "ORDINARY", fallbackHref: "/app", sdk: { isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) } });
+    await settle();
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
+  });
+
   it("continues to the allowlisted destination when init resolves without a secondary redirect", async () => {
     mount({ mode: "LIFF", destination: "/app/patients/assigned?task=screening" });
     await settle();

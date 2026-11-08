@@ -66,9 +66,13 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 26 | init ทุกหน้า | ใน `/app` reload จากเมนู ⋯ แล้วเปิดหน้าอื่นด้วยลิงก์เต็มหน้า | ยังอยู่ใน LIFF ไม่มี loop; (ถ้าใช้ LIFF Inspector) `liff.id` คือ Workspace LIFF ID | | |
 | 27 | กลับจาก Account LIFF | จากข้อ 22 กดย้อนกลับ แล้วแตะเมนูงาน | หน้า Workspace ทำงานต่อได้ ไม่วนไปหน้า “กำลังเปิด DEMI ผ่าน LINE” | | |
 | 28 | MINI ออกไป `/app` (ถ้าเปิดใช้) | ใน MINI แตะ “ออกจากหน้านัดหมายใน LINE ไปยัง DEMI” แล้วเปิด บัญชี LINE | ลิงก์ยังเป็น `/line/account` แบบเดิม ไม่ init Workspace LIFF ใน MINI | | |
-| 29 | User agent ของ LIFF browser | ใน `/app` บันทึก `navigator.userAgent` (LIFF Inspector) | มีรูปแบบ `Line/x.y.z LIFF` หากไม่มี ให้บันทึกว่าข้อ 22/26 ใช้พฤติกรรมเว็บเดิม (ADR-0031 open question) | | |
+| 29 | storage ข้าม LIFF | หลังข้อ 22 และ 27 ใช้ LIFF Inspector ดู `sessionStorage["demi.line.liff.context"]` | บนหน้า Account เป็น `current: ACCOUNT` กลับมาหน้า Workspace แล้วเป็น `current: WORKSPACE, workspace: READY` หากค่าหายหลังข้ามแอป ให้บันทึกไว้ (ลิงก์จะกลับไปใช้เส้นทางเว็บเดิม) | | |
+| 30 | Account → Workspace | เปิด “จัดการบัญชี” จาก Rich Menu แล้วแตะ “ใช้งาน DEMI ผ่านเว็บ” | เปิด Workspace LIFF (`liff.line.me/<WORKSPACE_LIFF_ID>/app`) ไป `/app` ไม่มี footer; ใน Chrome/Safari ลิงก์เดิมไป `/app` | | |
+| 31 | ยังไม่ login แล้วแตะปุ่มงาน | ออกจากระบบ DEMI แล้วแตะ “ยาของฉัน”, “บันทึกสุขภาพ”, “คัดกรอง” และ “งานทั้งหมด” | ไปหน้า login ใน LIFF → login → กลับหน้าเดิม (งานทั้งหมดกลับ `/app`) ไม่มี footer ไม่มี loop | | |
+| 32 | init ไม่สำเร็จ | (staging) ทำให้ LINE ตอบช้า/ปิดเน็ตชั่วคราวระหว่างเปิดหน้า `/app` | เห็นข้อความ “เชื่อมต่อกับ LINE ไม่สำเร็จ” พร้อมปุ่ม “ลองเชื่อมต่ออีกครั้ง” DEMI ยังใช้งานได้ ไม่ลองซ้ำเอง | | |
+| 33 | MINI → บัญชี → DEMI (ถ้าเปิดใช้) | ใน MINI เปิดบัญชี LINE แล้วแตะ “ใช้งาน DEMI ผ่านเว็บ” | ยังเป็น `/app` แบบเดิม ไม่เปิด Workspace LIFF จาก MINI | | |
 
-ผลจาก unit test ที่ mock SDK (เช่น `app/app/workspace-liff-bootstrap.test.tsx`) ไม่ใช่หลักฐานจากอุปกรณ์จริง และใช้แทนตารางนี้ไม่ได้
+ผลจาก unit test ที่ mock SDK (เช่น `app/workspace-liff-bootstrap.test.tsx`) และ `npm run test:workspace-liff:next-smoke` (Next.js จริงแต่ไม่มี LINE) ไม่ใช่หลักฐานจากอุปกรณ์จริง และใช้แทนตารางนี้ไม่ได้
 
 หลักฐานวินิจฉัยเพิ่มเติม (ไม่บังคับ): ใช้ [LIFF Inspector](https://github.com/line/liff-inspector) บน build ทดสอบ แล้วเรียก `liff.isInClient()` หลัง `liff.init()` — `true` = LIFF browser; `liff.isInClient()` ไม่ใช่การยืนยันตัวตนหรือสิทธิ์
 
