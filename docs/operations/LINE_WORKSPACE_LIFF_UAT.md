@@ -1,0 +1,75 @@
+# LINE_WORKSPACE_LIFF_UAT — ตรวจ Workspace LIFF บนอุปกรณ์จริง
+
+สถานะ: **NOT EXECUTED** — ยังไม่มีหลักฐานจากอุปกรณ์จริง ห้ามรายงานว่าผ่านจนกว่าจะกรอกผลด้านล่างครบ
+อ้างอิง: [ADR-0031](../adr/0031-workspace-liff-for-operational-line-entries.md), [LINE_PRODUCTION_SETUP §3.1 และ §6.6](./LINE_PRODUCTION_SETUP.md)
+
+## เกณฑ์ผ่านหลัก
+
+ทุก workflow ที่เปิดผ่าน Workspace LIFF ต้อง**ไม่มี footer ของ in-app browser ปกติของ LINE** (แถบล่างที่มีปุ่มย้อนกลับ/ไปข้างหน้า/แชร์/เปิดในเบราว์เซอร์)
+
+ไม่ใช่ footer ที่ต้องตรวจ:
+
+- Bottom Navigation ของ DEMI เอง (แท็บล่างของแอป) — ต้องยังอยู่ตามปกติ
+- header ของ LIFF browser (ชื่อแอป, ปุ่มปิด, เมนู ⋯ ด้านบน) — เป็นของ LINE และควรมี
+
+CSS ซ่อน footer ไม่ได้ footer ขึ้นกับว่า LINE เปิด URL เป็น LIFF หรือเป็นเว็บธรรมดา
+
+## เตรียมก่อนทดสอบ
+
+- [ ] release ที่มี ADR-0031 build ด้วย `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` จริงและ deploy แล้ว
+- [ ] Workspace LIFF ตั้งค่าตาม LINE_PRODUCTION_SETUP §3.1 (Full, Endpoint `<ORIGIN>/`, `openid profile`)
+- [ ] `npm run line:rich-menu:uris` แสดง Workspace LIFF สำหรับปุ่มงานทุกปุ่ม (ก่อน apply Rich Menu ใช้ลิงก์ทดสอบด้านล่างแทน)
+- [ ] บัญชีทดสอบ: Patient, OSM, Hospital staff (MEMBER), ผู้ใช้หลายบทบาท (Patient+OSM), บัญชีที่ยังไม่เชื่อม LINE
+- [ ] อุปกรณ์: Android + LINE ล่าสุด, iOS + LINE ล่าสุด, Chrome (Android/desktop), Safari (iOS)
+
+ทดสอบก่อนเปลี่ยน Rich Menu: ส่งลิงก์ต่อไปนี้ให้ตัวเองในแชต LINE (เช่น Keep memo) แล้วแตะ — ลิงก์ `liff.line.me` จะเปิดใน LIFF browser
+
+```text
+https://liff.line.me/<WORKSPACE_LIFF_ID>/app
+https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal
+https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal/wellness
+https://liff.line.me/<WORKSPACE_LIFF_ID>/app/patients/assigned?task=screening
+https://liff.line.me/<WORKSPACE_LIFF_ID>
+```
+
+## ตารางทดสอบ (ทำทั้ง Android และ iOS)
+
+บันทึก: วันที่, อุปกรณ์/OS, เวอร์ชัน LINE, ผล (ผ่าน/ไม่ผ่าน), ภาพหน้าจอ
+
+| # | กรณี | ขั้นตอน | ผลที่คาดไว้ | Android | iOS |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Patient → บันทึกสุขภาพ | แตะปุ่มใน Rich Menu | เปิด `/app/personal/wellness` ใน LIFF ไม่มี footer | | |
+| 2 | Patient → ยาของฉัน | Rich Menu | `/app/personal/medications` ใน LIFF | | |
+| 3 | Patient → นัดหมายทั้งหมด | Rich Menu | `/app/personal/appointments` ใน LIFF | | |
+| 4 | Patient → ข้อมูลการดูแล / เพิ่มเติม | Rich Menu | `/app/personal/care`, `/app/personal` ใน LIFF | | |
+| 5 | OSM → ผู้ป่วยที่ดูแล | Rich Menu | `/app/patients/assigned` เฉพาะผู้ป่วยที่ได้รับมอบหมาย | | |
+| 6 | OSM → คัดกรอง / บันทึกติดตาม | Rich Menu | `?task=screening` และ `/app/services` ตาม scope เดิม | | |
+| 7 | Hospital → งานทั้งหมด | Rich Menu | `/app` งานโรงพยาบาลใน LIFF | | |
+| 8 | Quick Reply | พิมพ์ข้อความอื่นให้ได้ HELP แล้วแตะปุ่มงาน | เปิดใน LIFF เหมือน Rich Menu | | |
+| 9 | ผู้ใช้หลายบทบาท | สลับพื้นที่ด้วยปุ่มสลับ แล้วแตะปุ่มงาน | richmenuswitch ทำงานเดิม ปลายทางเปิดใน LIFF | | |
+| 10 | จัดการบัญชี | Rich Menu “จัดการบัญชี” | เปิด Account LIFF `/line/account` เหมือนเดิม | | |
+| 11 | MINI นัดหมาย (ถ้าเปิดใช้) | ลิงก์ MINI เดิม | เปิด MINI App เดิม ไม่ใช่ Workspace | | |
+| 12 | ยังไม่ login DEMI | ออกจากระบบใน LIFF แล้วแตะ “ยาของฉัน” | หน้า login DEMI ปกติ → login → กลับ `/app/personal/medications` ใน LIFF | | |
+| 13 | session หมดอายุ | เปิดหน้า LIFF ค้างไว้จน session หมด แล้วกดเมนูในแอป | ไปหน้า login ปกติ ไม่มี loop | | |
+| 14 | เปิดใน Chrome/Safari | เปิด `<ORIGIN>/` และ `<ORIGIN>/app` ตรง ๆ | ไป `/app` หรือ `/login` ทันที ไม่โหลด LIFF | | |
+| 15 | ลิงก์ LIFF ใน Chrome/Safari | เปิดลิงก์ทดสอบข้อ “เตรียม” ในเบราว์เซอร์นอก LINE | ไปหน้าเป้าหมาย/หน้า login DEMI ไม่บังคับ login LINE | | |
+| 16 | ทรัพยากรที่ไม่มีสิทธิ์ | ใน LIFF เปิดผู้ป่วยที่ไม่ได้รับมอบหมายด้วย URL ภายใน | server ปฏิเสธเหมือนบนเว็บ | | |
+| 17 | ลิงก์เว็บเก่าจากแชต | แตะลิงก์ `<ORIGIN>/app/...` ที่ส่งไว้ก่อน rollout | เปิดใน in-app browser ปกติ (มี footer) — เป็นพฤติกรรมที่คาดไว้ ไม่ใช่ LIFF | | |
+| 18 | ลิงก์ LIFF ที่ไม่อนุญาต | `https://liff.line.me/<WORKSPACE_LIFF_ID>/line/account` | หน้า “ลิงก์นี้ไม่ถูกต้อง” พร้อมปุ่มไปที่ DEMI | | |
+| 19 | bare LIFF URL | `https://liff.line.me/<WORKSPACE_LIFF_ID>` | ไป `/app` หรือ `/login` ใน LIFF; URL bar/แชร์ลิงก์ต้องไม่มี `access_token` | | |
+| 20 | นำทางภายในหลัง login | ใช้แท็บล่าง, เมนูเพิ่มเติม, ส่งฟอร์ม, สลับ workspace | ยังอยู่ใน LIFF ไม่มี footer | | |
+| 21 | ย้อนกลับ / รีเฟรช | กด back ของ LIFF และ reload จากเมนู ⋯ | ไม่วนกลับไปหน้า “กำลังเปิด DEMI ผ่าน LINE” ไม่มี loop | | |
+| 22 | ข้าม LIFF | จาก Workspace เปิด “บัญชี LINE” ในหน้าตั้งค่า | `/line/account` โหลดสถานะได้ (ถ้าไม่ได้ ให้บันทึกตาม ADR-0031 open question) | | |
+| 23 | เอกสาร `_blank` | เปิดเอกสารกฎหมาย/รูปหลักฐาน แล้วกลับ | กลับมาที่งานเดิมได้ | | |
+| 24 | LIFF ไม่ได้ตั้งค่า (staging เท่านั้น) | build โดยไม่ใส่ Workspace ID แล้วเปิดลิงก์ LIFF | หน้า “ยังเปิด DEMI ผ่าน LINE ไม่ได้” ไม่ใช้ LIFF ID อื่น | | |
+
+หลักฐานวินิจฉัยเพิ่มเติม (ไม่บังคับ): ใช้ [LIFF Inspector](https://github.com/line/liff-inspector) บน build ทดสอบ แล้วเรียก `liff.isInClient()` หลัง `liff.init()` — `true` = LIFF browser; `liff.isInClient()` ไม่ใช่การยืนยันตัวตนหรือสิทธิ์
+
+## ผลลัพธ์
+
+| อุปกรณ์ | LINE version | ผู้ทดสอบ | วันที่ | ผลรวม | หมายเหตุ |
+| --- | --- | --- | --- | --- | --- |
+| Android | | | | NOT EXECUTED | |
+| iOS | | | | NOT EXECUTED | |
+| Chrome | — | | | NOT EXECUTED | |
+| Safari | — | | | NOT EXECUTED | |

@@ -126,3 +126,7 @@ The legacy `DEMI_LINE_MINI_APP_DISABLED` application switch is removed. Provider
 ## REC-2B cross-reference — forgot-password recovery (2026-10-25)
 
 LINE may deliver a DEMI password-recovery link to the user's existing active LINE binding and provide a fresh ID token that DEMI verifies against the configured Account Login channel audience. The server accepts recovery only when that verified LINE subject matches the binding already attached to the target DEMI User. This is a credential-recovery proof and delivery path only: LINE does not sign the User in to DEMI, create or switch a DEMI identity, grant roles/memberships/capabilities, select data scope, or authorize access to data. Reset eligibility and credential replacement continue to follow [ADR-0012 REC-2B](0012-global-credential-recovery-proof.md) and the REC-1 state machine. ADMIN self-service is excluded.
+
+## ADR-0031 amendment — Workspace LIFF (2026-11-08)
+
+Owner-directed revision: decision 1 now has two LIFF apps in the same DEMI LINE Login channel. The Account LIFF (`/line/account`, `NEXT_PUBLIC_DEMI_LINE_LIFF_ID`) is unchanged. The new Workspace LIFF (Endpoint `/`, `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID`) only opens existing DEMI routes for operational Rich Menu and Quick Reply entries in the Full LIFF browser. It sends no LINE token to DEMI, links nothing and grants nothing; DEMI authentication and authorization are unchanged, and decision 6 still applies. See [ADR-0031](./0031-workspace-liff-for-operational-line-entries.md).

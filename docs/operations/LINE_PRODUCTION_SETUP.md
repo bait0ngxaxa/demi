@@ -64,6 +64,34 @@ read -rs LINE_TOKEN && curl -fsS -H "Authorization: Bearer $LINE_TOKEN" https://
 4. Rich Menu URI ของหน้าเชื่อมบัญชีคือ `https://liff.line.me/<LIFF_ID>` ไม่ต้องต่อ path (17J.1)
 5. เปลี่ยนสถานะ channel จาก **Developing เป็น Published** เมื่อพร้อมให้ผู้ใช้จริงใช้ (ตอน Developing จะมีแต่ admin/tester ที่เปิด LIFF ได้)
 
+### 3.1 Workspace LIFF (ADR-0031)
+
+LIFF ตัวที่สองใน **LINE Login channel เดิมของข้อ 3** ใช้เปิดงาน Patient/OSM/Hospital จาก Rich Menu และ Quick Reply ใน Full LIFF browser (ไม่มี footer ของ in-app browser) **ห้ามสร้าง Provider หรือ channel ใหม่ และห้ามแก้หรือแทน Account LIFF**
+
+1. LINE Developers Console → Provider DEMI เดิม → LINE Login channel เดิม (Channel ID เดียวกับ `DEMI_LINE_LOGIN_CHANNEL_ID`) → แท็บ **LIFF** → **Add**
+   - LIFF app name: **DEMI Workspace**
+   - Size: **Full**
+   - Endpoint URL: `<PROD_ORIGIN>/` (origin เดียวกับ `DEMI_LINE_PUBLIC_ORIGIN` ตามด้วย `/` เท่านั้น ไม่มี path/query)
+   - Scopes: **openid** และ **profile** เท่านั้น
+   - Add friend option: **Normal** (เหมือน Account LIFF)
+   - ไม่เปิด Scan QR หรือ scope อื่น
+2. คัดลอก **LIFF ID** ของแอปใหม่ → `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID`
+3. แยก identity ให้ถูก:
+
+   | สิ่งที่ดู | Account LIFF | Workspace LIFF | MINI App |
+   | --- | --- | --- | --- |
+   | channel | LINE Login (ข้อ 3) | LINE Login (ข้อ 3) ตัวเดียวกัน | LINE MINI App channel (ข้อ 4) |
+   | Endpoint URL | `<PROD_ORIGIN>/line/account` | `<PROD_ORIGIN>/` | `<PROD_ORIGIN>/line/workflow` |
+   | ตัวแปร | `NEXT_PUBLIC_DEMI_LINE_LIFF_ID` | `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` | `DEMI_LINE_MINI_APP_LIFF_ID` |
+   | ID ขึ้นต้นด้วย | `DEMI_LINE_LOGIN_CHANNEL_ID-` | `DEMI_LINE_LOGIN_CHANNEL_ID-` | MINI Channel ID |
+
+   `env:check` จะ INVALID ถ้า Workspace ID ไม่ขึ้นต้นด้วย Login Channel ID หรือซ้ำกับ Account/MINI LIFF ID
+4. ตัวแปรนี้เป็น `NEXT_PUBLIC_*` ถูกฝังตอน `next build` ต้อง build ใหม่ทุกครั้งที่เปลี่ยน และสคริปต์ Rich Menu ต้องรันด้วยไฟล์ env เดียวกับที่ใช้ build
+5. ตรวจ Endpoint: เปิด LIFF app ใน Console ดูว่า Endpoint URL ตรงกับ `<PROD_ORIGIN>/` ทุกตัวอักษร แล้วบนมือถือเปิด `https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal` จากแชตตัวเอง ต้องไปที่ `/app/personal` (หรือหน้า login DEMI) ใน LIFF browser ทดสอบได้โดย**ไม่ต้องเปลี่ยน Rich Menu** ([UAT](./LINE_WORKSPACE_LIFF_UAT.md))
+6. สถานะ channel ใช้ตัวเดียวกับ Account LIFF (Developing/Published) ไม่มีการตั้งค่าแยก
+
+ถ้าไม่ใส่ `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` ปุ่มงานยังเป็นลิงก์เว็บปกติเหมือนก่อน ADR-0031 (Account LIFF และเว็บ DEMI ใช้งานได้ตามเดิม)
+
 ## 4. MINI App (optional provider integration)
 
 สร้าง channel ประเภท LINE MINI App ใต้ provider เดียวกัน, Endpoint URL = `<PROD_ORIGIN>/line/workflow` แล้วตั้งตัวแปร `DEMI_LINE_MINI_APP_*` ตาม B2.4 §13.B (keyring สร้างใหม่สำหรับแต่ละ database environment ห้ามใช้ของ demo ร่วมกับข้อมูลจริง). ถ้าไม่ได้ provision integration นี้ ให้ค่า MINI ทั้งหมดว่าง; endpoint จะ fail closed สำหรับ MINI เท่านั้น. สถานะ DEVELOPING / REVIEW / PUBLISHED เป็นสถานะ channel ที่ LINE กำหนด ไม่ใช่ DEMI deployment stage.
@@ -113,6 +141,33 @@ sudo -u demi -H sh -c 'cd /srv/demi/current && node --env-file=/etc/demi/demi.en
 5. ตรวจในแอป LINE ด้วยบัญชี Patient จริง: แตะ “ตรวจสอบนัดหมาย” ต้องเห็นข้อความ “นัด” ของตัวเองขึ้นทันที แล้วได้คำตอบนัดหมายถัดไป (หรือข้อความว่าไม่มีนัด) ทดสอบปุ่ม Quick Reply เดียวกันหลังพิมพ์ “เมนู” ด้วย
 
 webhook ยังรับ postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` เดิมต่อไป เมนูเก่าที่ยังผูกอยู่ระหว่างทางจึงใช้งานได้ ห้ามลบ handler นี้
+
+### 6.6 ย้ายปุ่มงานไป Workspace LIFF (ADR-0031)
+
+ปุ่ม URI ของงาน Patient/OSM/Hospital ในทุกเมนูเปลี่ยนจาก `<PROD_ORIGIN>/app/...` เป็น `https://liff.line.me/<WORKSPACE_LIFF_ID>/app/...` ปุ่มจัดการ/เชื่อมบัญชี (Account LIFF), ปุ่ม message และ richmenuswitch ไม่เปลี่ยน ภาพไม่เปลี่ยน แต่ hash ของ definition เปลี่ยน ทุกขั้นต้องทำโดย operator และขั้นที่เขียนข้อมูลต้องได้รับอนุมัติก่อน
+
+1. Deploy release ที่มี ADR-0031 **โดยยังไม่ใส่** Workspace ID ก่อนก็ได้ (ปุ่มยังเป็นเว็บปกติ ไม่มีอะไรเปลี่ยนที่ LINE)
+2. ตั้งค่า Workspace LIFF ตาม §3.1 ใส่ ID ใน `/etc/demi/demi.env` รัน `env:check --strict` แล้ว build/deploy ใหม่ (DEPLOY_VPS §2/§4)
+3. ทดสอบบนอุปกรณ์จริงด้วยลิงก์ทดสอบใน [UAT](./LINE_WORKSPACE_LIFF_UAT.md) ก่อนแตะ Rich Menu
+4. ดู URI ที่จะส่ง (อ่านอย่างเดียว ไม่เรียก LINE):
+
+   ```sh
+   sudo -u demi -H sh -c 'cd /srv/demi/current && node --env-file=/etc/demi/demi.env scripts/line-rich-menu-uris.mjs'
+   ```
+
+   ต้องเห็น `ordinary web 0` และปุ่มงานทุกปุ่มเป็น `[workspaceLiff]` ปุ่มบัญชีเป็น `[otherLiff]` (Account LIFF)
+5. Dry-run ตาม §6.1 เมนูที่มีปุ่มงาน 12 แบบ (`PATIENT_*`, `OSM_*`, `HOSPITAL_*`) จะถูกสร้างใหม่ ส่วน `UNLINKED`, `LINKED_INELIGIBLE` และ `CHOOSER_*` 4 แบบไม่เปลี่ยน ผลที่คาดไว้เมื่อ LINE มีชุดล่าสุดอยู่แล้ว: `สร้าง 12, ใช้ซ้ำ 6, อัปโหลดภาพ 12, สร้าง alias 0, ปรับ alias 12, เปลี่ยนเมนูเริ่มต้น ไม่` ถ้าไม่ตรงให้หยุดตรวจก่อน
+6. ตรวจรายชื่อเมนูและ alias ที่จะเปลี่ยนจากผลข้อ 4–5 ร่วมกับผู้อนุมัติ
+7. Apply ตาม §6.2 **หลังได้รับอนุมัติเท่านั้น** แล้วรัน §6.1 ซ้ำ ต้องได้ `สร้าง 0, ใช้ซ้ำ 18, ...`
+8. ซ่อมเมนูรายคน: `--repair --limit=50` (ดูก่อน) แล้ว `--repair --apply --limit=50` ต่อด้วย `--after=<UUID>` จนครบ
+9. ตรวจว่าไม่มีผู้ใช้ค้างเมนูเก่า: รัน `--repair --limit=50` ซ้ำ ต้องไม่มีรายการ MISMATCH ค้าง และทดสอบกับบัญชีจริงแต่ละบทบาทตาม UAT
+10. ข้อความที่ส่งไปแล้วในแชต (เช่น Quick Reply เก่า) แก้ย้อนหลังไม่ได้ จะยังเปิดเว็บปกติ ซึ่งยังใช้งานได้และยังตรวจสิทธิ์ตามเดิม
+
+**Rollback** (ไม่ต้องลบทรัพยากร LINE และไม่แตะ database, binding, role หรือ membership):
+
+- เร็วที่สุด: ลบค่า `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` จาก env, build/deploy ใหม่ แล้วรัน §6.1 → §6.2 → `--repair --apply` เมนูชุดเดิม (ลิงก์เว็บปกติ) ยังอยู่ที่ LINE เพราะ reconcile ไม่ลบ ชื่อเมนูจาก hash จะตรงกับชุดเดิมจึงถูกใช้ซ้ำ
+- หรือ rollback release ตาม §6.4
+- Workspace LIFF app ใน Console ปล่อยไว้ได้ (ไม่ต้องลบ) Account LIFF และ MINI App ไม่ถูกแตะในทั้งสองทาง ลิงก์ Workspace ที่ผู้ใช้เปิดหลัง rollback จะได้หน้า “ยังเปิด DEMI ผ่าน LINE ไม่ได้” พร้อมปุ่มไปที่ DEMI
 
 ## 7. Runtime behavior and operational control
 
