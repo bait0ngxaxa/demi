@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
+import { useLineAccountHrefFor } from "@/components/line/line-account-navigation";
 import type { LineRecoveryReadiness } from "@/modules/line/domain/line-recovery-readiness";
 
 function subscribeToHydration(callback: () => void): () => void {
@@ -62,6 +63,8 @@ export function LinePasswordRecoveryNudge({
     ? `demi-hospital-owner-recovery-readiness-dismissed:${userId}:${readiness.status}`
     : `demi-line-password-recovery-nudge-dismissed:${userId}`;
   const [dismissed, setDismissed] = useState(() => readDismissed(storageKey));
+  // In the Workspace LIFF browser the Account route becomes the Account LIFF URL; other hrefs are unchanged.
+  const destination = useLineAccountHrefFor(href);
   const loaded = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydrationSnapshot);
 
   if (!loaded || dismissed) return null;
@@ -85,7 +88,7 @@ export function LinePasswordRecoveryNudge({
             ) : (
               <p className="mt-2 text-sm leading-6 text-text-muted">การผูก LINE เป็นทางเลือก หากใช้ LINE ไม่ได้ ขอแอดมินโรงพยาบาลคนอื่นหรือผู้ดูแลระบบ DEMI ช่วยกู้คืนบัญชีได้</p>
             )}
-            <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={href}>
+            <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={destination}>
               {readiness.status === "UNLINKED" ? "ดูวิธีเชื่อม LINE (ทางเลือก)" : "ตรวจสอบหรือจัดการสถานะ LINE"}
             </Link>
           </div>
@@ -111,7 +114,7 @@ export function LinePasswordRecoveryNudge({
         <div>
           <h3 id="line-recovery-nudge-title" className="font-semibold text-text">ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม</h3>
           <p className="mt-1 text-sm leading-6 text-text-muted">ใช้ LINE ที่ผูกไว้รับลิงก์ตั้งรหัสผ่านใหม่ โดยยืนยันบัญชี LINE เดิมก่อนเปลี่ยนรหัสผ่าน</p>
-          <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={href}>ไปจัดการการเชื่อมต่อ LINE</Link>
+          <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={destination}>ไปจัดการการเชื่อมต่อ LINE</Link>
         </div>
         <button
           aria-label="ปิดคำแนะนำการผูก LINE"

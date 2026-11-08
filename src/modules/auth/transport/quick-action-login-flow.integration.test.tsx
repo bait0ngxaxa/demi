@@ -43,6 +43,7 @@ vi.mock("next/server", async (importOriginal) => {
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
 import ProtectedApplicationLayout from "../../../../app/app/layout";
+import { WorkspaceLiffHistory } from "../../../../app/workspace-liff-history";
 import { proxy } from "../../../../proxy";
 import { loginAction } from "./server-actions";
 
@@ -50,8 +51,14 @@ async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({
     children: React.createElement("main"),
   }) as ReactElement<{ children: ReactNode }>;
-  const protectedShell = layoutElement.props.children as ReactElement<{ children: ReactNode }>;
-  if (typeof protectedShell.type !== "function") {
+  // History observation shares the boundary; invoke the protected server shell, not the observer.
+  const suspense = React.Children.toArray(layoutElement.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
+  if (!suspense) throw new Error("Expected the protected Suspense boundary");
+  const protectedShell = React.Children.toArray(suspense.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) &&
+      typeof child.type === "function" && child.type !== WorkspaceLiffHistory);
+  if (!protectedShell) {
     throw new Error("Expected the protected application shell component");
   }
 
@@ -121,5 +128,61 @@ describe("unauthenticated LINE quick-action login flow", () => {
       "NEXT_REDIRECT:/app/patients/assigned?task=screening",
     );
     expect(mocks.authenticateWithPassword).toHaveBeenCalledOnce();
+  });
+
+  async function loginThroughLiffEntry(url: string): Promise<{ loginLocation: string; finalDestination: string }> {
+    await proxy(new NextRequest(url));
+    const [, proxyValidatedReturnTo] = mocks.updateSupabaseSession.mock.calls.at(-1) as [NextRequest, string | null];
+    mocks.headers.mockResolvedValue(new Headers(proxyValidatedReturnTo ? { [LINE_QUICK_ACTION_RETURN_TO_HEADER]: proxyValidatedReturnTo } : {}));
+    let loginLocation = "";
+    try {
+      await renderProtectedShell();
+    } catch (error: unknown) {
+      loginLocation = getRedirectDestination(error);
+    }
+    const loginForm = new FormData();
+    loginForm.set("nationalId", "DEMI-ADMIN-ROOT");
+    loginForm.set("password", "test-password");
+    const returnTo = new URL(loginLocation, "https://demi.example.org").searchParams.get("returnTo");
+    if (returnTo !== null) loginForm.set("returnTo", returnTo);
+    let finalDestination = "";
+    try {
+      await loginAction(initialLoginActionState, loginForm);
+    } catch (error: unknown) {
+      finalDestination = getRedirectDestination(error);
+    }
+    return { loginLocation, finalDestination };
+  }
+
+  it.each([
+    ["Patient wellness", "https://demi.example.org/app/personal/wellness", "/app/personal/wellness"],
+    ["Patient medication after an in-LINE login added liff.hback", "https://demi.example.org/app/personal/medications?liff.hback=2", "/app/personal/medications"],
+    ["OSM screening on Android", "https://demi.example.org/app/patients/assigned?task=screening&lineAppVersion=14.19.1&liff.hback=2", "/app/patients/assigned?task=screening"],
+  ])("returns %s to its approved destination across LIFF redirects", async (_label, url, expected) => {
+    const { loginLocation, finalDestination } = await loginThroughLiffEntry(url);
+    expect(loginLocation).toBe(`/login?returnTo=${encodeURIComponent(expected)}`);
+    expect(finalDestination).toBe(expected);
+  });
+
+  it.each([
+    ["Hospital work dashboard", "https://demi.example.org/app?liff.hback=2"],
+    ["an injected external return", "https://demi.example.org/app/personal?liff.hback=2&returnTo=https%3A%2F%2Fevil.example"],
+    ["an unauthorized resource", "https://demi.example.org/app/hospitals/11111111-1111-4111-8111-111111111111?liff.hback=2"],
+    ["a conflicting task", "https://demi.example.org/app/patients/assigned?task=screening&task=followup&liff.hback=2"],
+    ["a MINI gateway return", "https://demi.example.org/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&liff.hback=2"],
+  ])("sends %s through plain DEMI login without a quick-action return", async (_label, url) => {
+    const { loginLocation, finalDestination } = await loginThroughLiffEntry(url);
+    expect(loginLocation).toBe("/login");
+    expect(finalDestination).not.toContain("evil.example");
+    expect(finalDestination).not.toContain("liff.");
+    expect(finalDestination).not.toContain("hospitals/");
+  });
+
+  it("keeps an authenticated session on the requested page without any login redirect", async () => {
+    mocks.getProtectedApplicationActor.mockResolvedValue({ userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    await proxy(new NextRequest("https://demi.example.org/app/personal/medications?liff.hback=2"));
+    mocks.headers.mockResolvedValue(new Headers({ [LINE_QUICK_ACTION_RETURN_TO_HEADER]: "/app/personal/medications" }));
+    await expect(renderProtectedShell()).resolves.toBeDefined();
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });

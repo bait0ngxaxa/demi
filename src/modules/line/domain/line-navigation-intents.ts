@@ -37,8 +37,59 @@ export type LineQuickActionReturnPath = (typeof LINE_QUICK_ACTION_RETURN_PATHS)[
 
 export const LINE_QUICK_ACTION_RETURN_TO_HEADER = "x-demi-line-quick-action-return-to";
 
+/** Bounds for an entry URL's query before any parsing; LINE-generated URLs are far smaller. */
+const MAX_ENTRY_QUERY_LENGTH = 4096;
+const MAX_ENTRY_QUERY_SEGMENTS = 32;
+
+function decodeQueryName(segment: string): string | null {
+  const separator = segment.indexOf("=");
+  const rawName = separator === -1 ? segment : segment.slice(0, separator);
+  try {
+    return decodeURIComponent(rawName.replaceAll("+", " "));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The application part of a LINE entry URL: pathname plus the application
+ * query segments exactly as received (raw, in order), with LINE platform
+ * bookkeeping removed. Platform segments are `liff.*` / `lineAppVersion`
+ * (added by LIFF redirects, e.g. `liff.hback` after an in-LINE login) and,
+ * only on a LINE Login return marked by `liffClientId`, the OAuth return
+ * markers. Application segments are never decoded, reordered or
+ * deduplicated, so repeated, re-encoded or extra application parameters
+ * cannot collapse into an allowlisted destination. Null for oversized or
+ * malformed queries.
+ */
+export function canonicalizeLineEntryPath(url: URL): string | null {
+  const query = url.search.startsWith("?") ? url.search.slice(1) : url.search;
+  if (query === "") return url.pathname;
+  if (query.length > MAX_ENTRY_QUERY_LENGTH) return null;
+  const segments = query.split("&");
+  if (segments.length > MAX_ENTRY_QUERY_SEGMENTS) return null;
+
+  const named: { segment: string; name: string }[] = [];
+  for (const segment of segments) {
+    const name = segment === "" ? null : decodeQueryName(segment);
+    if (name === null || name === "") return null;
+    named.push({ segment, name });
+  }
+  const lineLoginReturn = named.some(({ name }) => name === LIFF_LOGIN_RETURN_MARKER);
+  const application = named
+    .filter(({ name }) => !isLinePlatformParameterName(name) && !(lineLoginReturn && LIFF_LOGIN_RETURN_PARAMETERS.has(name)))
+    .map(({ segment }) => segment);
+  return application.length === 0 ? url.pathname : `${url.pathname}?${application.join("&")}`;
+}
+
+/**
+ * Exact allowlisted quick-action destination of a request, after removing
+ * only LINE platform bookkeeping. Proxy computes it once; the layout and login
+ * page only ever see the resulting allowlisted constant, never the raw URL.
+ */
 export function getLineQuickActionReturnPathFromUrl(url: URL): LineQuickActionReturnPath | null {
-  const requestedPath = `${url.pathname}${url.search}`;
+  const requestedPath = canonicalizeLineEntryPath(url);
+  if (requestedPath === null) return null;
   return LINE_QUICK_ACTION_RETURN_PATHS.find((path) => path === requestedPath) ?? null;
 }
 
@@ -50,11 +101,39 @@ export const LINE_WORKFLOW_GATEWAY_PATH = "/line/workflow";
 export const LINE_WORKFLOW_LOGIN_RETURN_PATH = `${LINE_WORKFLOW_GATEWAY_PATH}?intent=${LINE_WORKFLOW_INTENT}` as const;
 
 /** Parameters the LIFF SDK may add on primary/secondary redirects or LINE login return. */
-const LIFF_PLATFORM_PARAMETERS = new Set([
+export const LIFF_PLATFORM_PARAMETERS: ReadonlySet<string> = new Set([
   "liff.state", "liff.referrer", "liff.hback", "liffClientId", "liffRedirectUri", "liffIsEscapedFromApp",
   "code", "state", "error", "error_description",
 ]);
-const MAX_PLATFORM_PARAMETER_LENGTH = 2048;
+export const MAX_PLATFORM_PARAMETER_LENGTH = 2048;
+
+/**
+ * Query parameters owned by the LINE platform rather than by DEMI. LINE
+ * reserves the `liff.` prefix for SDK initialization and LIFF-to-LIFF
+ * transitions (`liff.state`, `liff.referrer`, `liff.hback`, and future ones)
+ * and adds `lineAppVersion` on Android. They are bookkeeping, never navigation
+ * authority, and must reach `liff.init()` untouched. Names are bounded so an
+ * unbounded attacker-chosen name cannot pass as a platform parameter.
+ */
+const LINE_PLATFORM_PARAMETER_NAME = /^(?:liff\.[A-Za-z][A-Za-z0-9_]{0,31}|lineAppVersion)$/u;
+
+export function isLinePlatformParameterName(name: string): boolean {
+  return LINE_PLATFORM_PARAMETER_NAME.test(name);
+}
+
+/**
+ * Markers LIFF adds when LINE Login returns to the redirect URI it built from
+ * the current URL. `liffClientId` identifies the return; the generic OAuth
+ * names are LINE-owned only together with it.
+ */
+export const LIFF_LOGIN_RETURN_MARKER = "liffClientId";
+export const LIFF_LOGIN_RETURN_PARAMETERS: ReadonlySet<string> = new Set([
+  LIFF_LOGIN_RETURN_MARKER, "liffRedirectUri", "liffIsEscapedFromApp", "liffOAuth2Error",
+  "code", "state", "error", "error_description",
+]);
+
+/** Upper bound on query parameters a LINE-generated entry URL is expected to carry. */
+export const MAX_PLATFORM_PARAMETER_COUNT = 24;
 
 export type LineWorkflowEntry =
   | { status: "VALID"; intent: LineWorkflowIntent }

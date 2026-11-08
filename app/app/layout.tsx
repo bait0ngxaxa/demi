@@ -10,6 +10,7 @@ import {
   projectApplicationNavigation,
 } from "@/components/app-shell/application-navigation";
 import { AppShell } from "@/components/app-shell/app-shell";
+import { LineAccountNavigationProvider } from "@/components/line/line-account-navigation";
 import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-shell-skeleton";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
@@ -18,10 +19,14 @@ import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointment
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
+import { getPublicLineAccountEntryUrl } from "@/modules/line/services/line-deep-link-builder";
+import { getLineWorkspaceLiffId } from "@/lib/env/server";
 import { PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER } from "@/lib/auth/supabase-proxy";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { shouldShowLegalReacceptanceBanner } from "@/modules/legal/transport/legal-settings-context";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
+
+import { WorkspaceLiffHistory } from "../workspace-liff-history";
 
 export const viewport: Viewport = {
   viewportFit: "cover",
@@ -69,15 +74,18 @@ async function ResolvedProtectedApplicationShell({
   const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
 
   return (
-    <AppShell
-      displayName={displayName}
-      legalReacceptanceNeeded={legalReacceptanceNeeded}
-      navigation={navigation}
-      passwordResetNoticeAt={passwordResetNoticeAt}
-      roleLabels={actor.roles.map((role) => roleLabels[role])}
-    >
-      {children}
-    </AppShell>
+    // Canonical Account LIFF URL for Workspace LIFF -> Account LIFF transitions; null keeps the ordinary route.
+    <LineAccountNavigationProvider accountLiffUrl={getPublicLineAccountEntryUrl()}>
+      <AppShell
+        displayName={displayName}
+        legalReacceptanceNeeded={legalReacceptanceNeeded}
+        navigation={navigation}
+        passwordResetNoticeAt={passwordResetNoticeAt}
+        roleLabels={actor.roles.map((role) => roleLabels[role])}
+      >
+        {children}
+      </AppShell>
+    </LineAccountNavigationProvider>
   );
 }
 
@@ -85,8 +93,12 @@ export default function ProtectedApplicationLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>): React.JSX.Element {
   return (
-    <Suspense fallback={<ProtectedApplicationShellSkeleton />}>
-      <ResolvedProtectedApplicationShell>{children}</ResolvedProtectedApplicationShell>
-    </Suspense>
+    <>
+      <Suspense fallback={<ProtectedApplicationShellSkeleton />}>
+        {/* Only history observation suspends here; SDK initialization already finished in the public shell. */}
+        <WorkspaceLiffHistory liffId={getLineWorkspaceLiffId()} />
+        <ResolvedProtectedApplicationShell>{children}</ResolvedProtectedApplicationShell>
+      </Suspense>
+    </>
   );
 }

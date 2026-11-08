@@ -26,6 +26,7 @@ describe("quick-action return path propagation through Proxy", () => {
   ])("passes the bounded path from %s to the session proxy", async (url, returnTo) => {
     const request = new NextRequest(`https://demi.example.org${url}`);
 
+    request.headers.set("rsc", "1");
     await proxy(request);
 
     expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, returnTo);
@@ -34,8 +35,21 @@ describe("quick-action return path propagation through Proxy", () => {
   it("does not pass unapproved or extra query parameters as a login return", async () => {
     const request = new NextRequest("https://demi.example.org/app/patients/assigned?task=screening&next=https://attacker.example");
 
+    request.headers.set("rsc", "1");
     await proxy(request);
 
     expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, null);
+  });
+
+  it.each([
+    ["task=screening&_rsc=framework-key", "/app/patients/assigned?task=screening"],
+    ["_rsc=framework-key&task=%73creening", null],
+    ["task=screening&_rsc=framework-key&task=screening", null],
+    ["task=screening&%5Frsc=caller-value", null],
+  ])("removes only literal RSC metadata without normalizing application query %s", async (query, returnTo) => {
+    const request = new NextRequest(`https://demi.example.org/app/patients/assigned?${query}`, { headers: { rsc: "1" } });
+    await proxy(request);
+    expect(mocks.updateSupabaseSession).toHaveBeenCalledWith(request, returnTo);
+    expect(new URL(request.url).search.slice(1)).toBe(query);
   });
 });

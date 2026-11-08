@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { HospitalStatus, MembershipStatus, MembershipType, Role } from "@prisma/client";
 import { connection } from "next/server";
 
+import { LineAccountLink } from "@/components/line/line-account-navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -48,12 +48,9 @@ export default async function ApplicationLineAccountPage(): Promise<React.JSX.El
               ? "บัญชี DEMI นี้ยังไม่ได้ผูกกับ LINE"
               : "ขณะนี้ตรวจสอบสถานะการเชื่อมต่อ LINE ไม่ได้"}
         </p>
-        <Link
-          className="mt-4 inline-flex min-h-11 items-center rounded-control bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring"
-          href="/line/account"
-        >
+        <LineAccountLink className="mt-4 inline-flex min-h-11 items-center rounded-control bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
           จัดการการเชื่อมต่อ LINE
-        </Link>
+        </LineAccountLink>
         {isHospitalOwner ? (
           <LinePasswordRecoveryNudge
             href="/line/account"

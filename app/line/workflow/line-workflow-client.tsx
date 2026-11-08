@@ -4,6 +4,7 @@ import liff from "@line/liff";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
 import { LINE_WORKFLOW_GATEWAY_PATH } from "@/modules/line/domain/line-navigation-intents";
 import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "@/modules/line/domain/line-workflow-routes";
 
@@ -162,7 +163,10 @@ export function LineWorkflowClient({
         // SDK parameters (primary redirect credentials, login code/state) are consumed; remove them.
         window.history.replaceState(null, "", LINE_WORKFLOW_GATEWAY_PATH);
         try {
-          setExternalBrowser(!liff.isInClient());
+          const inClient = liff.isInClient();
+          setExternalBrowser(!inClient);
+          // Keeps the MINI session's approved exits on ordinary web routes; presentation state only.
+          if (inClient) recordCurrentLiffBrowserEntry("MINI");
         } catch {
           setExternalBrowser(true);
         }

@@ -99,9 +99,32 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (isStaticAssetPath(request.nextUrl.pathname) && !isLineWorkflowPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
+  const pathname = request.nextUrl.pathname;
+  // Original URL and Flight headers are preserved by skipProxyUrlNormalize.
+  const documentRequest = request.headers.get("sec-fetch-dest") === "document" ||
+    request.headers.get("accept")?.includes("text/html");
+  if ((request.method === "GET" || request.method === "HEAD") && documentRequest && request.headers.get("rsc") !== "1" &&
+    (pathname === "/app" || pathname.startsWith("/app/") || pathname === "/login")) {
+    // Preserve the complete browser URL. Do not request the protected tree
+    // while this document's LIFF initialization may still be pending.
+    const destination = new URL("/workspace-liff-document", request.url);
+    const response = NextResponse.rewrite(destination);
+    response.headers.set("cache-control", "private, no-store");
+    response.headers.set("referrer-policy", "no-referrer");
+    response.headers.set("x-robots-tag", "noindex, nofollow");
+    return response;
+  }
+  // The framework's RSC cache key is transport metadata. Remove only its raw
+  // segments from the derived return-path lookup; never reserialize app queries
+  // or change the browser URL / LINE-managed parameters.
+  const returnUrl = new URL(request.url);
+  if (request.headers.get("rsc") === "1") {
+    const query = returnUrl.search.slice(1).split("&").filter((segment) => segment !== "_rsc" && !segment.startsWith("_rsc="));
+    returnUrl.search = query.join("&");
+  }
   const response = await updateSupabaseSession(
     request,
-    getLineQuickActionReturnPathFromUrl(request.nextUrl),
+    getLineQuickActionReturnPathFromUrl(returnUrl),
   );
   return secureActivationLinkResponse(secureLineWorkflowResponse(response, request.nextUrl.pathname), request.nextUrl.pathname);
 }

@@ -9,6 +9,8 @@ import { AppointmentNotificationPreference, type AppointmentNotificationPreferen
 import { LineDemiAccountSwitch } from "./line-demi-account-switch";
 import { LinePasswordRecoveryRequestForm } from "../../recover/line/line-password-recovery-request-form";
 import { PasswordInput } from "@/components/ui/password-input";
+import { LineWorkspaceLink } from "@/components/line/line-account-navigation";
+import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
 
 type InitialStatus = {
   status: "UNAUTHENTICATED" | "UNLINKED" | "LINKED" | "INELIGIBLE" | "UNAVAILABLE";
@@ -227,9 +229,12 @@ type LineAccountScreenProps = {
   menuCheckComplete?: boolean;
   statusCheckMessage?: string;
   statusRetryAfter?: number;
+  /** Server-built Workspace LIFF URL (null when not configured); used only inside the Account LIFF. */
+  workspaceLiffUrl?: string | null;
 };
 
 export function LineAccountScreen({
+  workspaceLiffUrl = null,
   lifecycleReadiness,
   notificationPreference,
   preferenceUiGeneration,
@@ -303,9 +308,10 @@ export function LineAccountScreen({
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
       <div className="mx-auto w-full max-w-xl">
         <header className="mb-8">
-          <Link href="/" className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
+          {/* Same Account LIFF -> Workspace LIFF resolver as the web link below; ordinary browsers keep "/". */}
+          <LineWorkspaceLink workspaceLiffUrl={workspaceLiffUrl} webHref="/" className="inline-flex min-h-11 items-center text-sm font-semibold text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">
             DEMI
-          </Link>
+          </LineWorkspaceLink>
           <h1 className="mt-5 text-3xl">บัญชี LINE</h1>
           <p className="type-readable mt-3 text-base text-muted">จัดการการเชื่อมต่อระหว่าง LINE กับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
           <ol aria-label="ขั้นตอนใช้งานผ่าน LINE" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm leading-6 text-muted">
@@ -650,7 +656,8 @@ export function LineAccountScreen({
 
         <div className="mt-5 space-y-3 text-sm leading-6 text-muted">
           {!isInClient ? <p>หากเปิดแอป LINE ไม่ได้ ให้เปิดแชต DEMI แล้วเลือกเมนูบัญชี หากไม่มีแอป LINE คุณยังใช้ DEMI ผ่านเว็บไซต์ได้</p> : null}
-          <Link href="/app" className={secondaryButtonClass}>ใช้งาน DEMI ผ่านเว็บ</Link>
+          {/* Account LIFF -> Workspace LIFF transition inside LINE; the existing /app link elsewhere. */}
+          <LineWorkspaceLink workspaceLiffUrl={workspaceLiffUrl} className={secondaryButtonClass}>ใช้งาน DEMI ผ่านเว็บ</LineWorkspaceLink>
         </div>
 
         {notificationPreference ? <AppointmentNotificationPreference key={preferenceUiGeneration} initial={notificationPreference} /> : null}
@@ -670,6 +677,7 @@ export function LineAccountClient({
   recoveryHandoffScope = null,
   lifecycleReadiness,
   notificationPreference,
+  workspaceLiffUrl = null,
 }: {
   initial: InitialStatus;
   liffId: string | null;
@@ -680,6 +688,7 @@ export function LineAccountClient({
   recoveryHandoffScope?: string | null;
   lifecycleReadiness: LineAccountLifecycleReadiness;
   notificationPreference?: AppointmentNotificationPreferenceView | null;
+  workspaceLiffUrl?: string | null;
 }): React.JSX.Element {
   const termination = disconnection;
   const [liffState, setLiffState] = useState<LiffState>(liffId ? "LOADING" : "UNAVAILABLE");
@@ -733,6 +742,8 @@ export function LineAccountClient({
       const loggedIn = liff.isLoggedIn();
       const inClient = liff.isInClient();
       setIsInClient(inClient);
+      // This LIFF browser session is now in the Account LIFF (presentation state, never authority).
+      if (inClient) recordCurrentLiffBrowserEntry("ACCOUNT");
       let supportsFriendship = false;
       try {
         supportsFriendship = inClient && liff.getContext()?.viewType === "full";
@@ -1084,6 +1095,7 @@ export function LineAccountClient({
     <LineAccountScreen
       lifecycleReadiness={lifecycleReadiness}
       notificationPreference={appointmentPreference}
+      workspaceLiffUrl={workspaceLiffUrl}
       preferenceUiGeneration={preferenceUiGeneration}
       relinkEligibility={relinkEligibility}
       recoveryContent={lifecycleReadiness.state === "READY" && successAction !== "UNLINK" && termination && termination.state !== "NONE" ? <LineRecoveryPanel status={termination} handoffScope={recoveryHandoffScope} liffId={liffId} publicOrigin={publicOrigin} onReload={reloadPage} /> : undefined}

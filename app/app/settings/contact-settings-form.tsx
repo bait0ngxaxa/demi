@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
+import { LineAccountLink } from "@/components/line/line-account-navigation";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +38,7 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
     <h2 className="text-lg font-semibold text-text" id="medication-line-reminder-heading">การแจ้งเตือนยา</h2>
     <p className="mt-2 text-sm leading-6 text-text-muted">ส่งข้อความ LINE เมื่อถึงเวลาที่คุณตั้งไว้สำหรับยาที่ยังใช้งานอยู่ ข้อความจะไม่ระบุชื่อยา และระบบจะปิดการส่งเมื่อคุณหยุดยา ปิดการแจ้งเตือน หรือบัญชี LINE ใช้งานไม่ได้</p>
     <p className="mt-2 text-sm font-medium text-text" aria-live="polite">สถานะ: {enabled ? "เปิด" : "ปิด"}</p>
-    {!canEnable && !enabled ? <p className="mt-2 text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้ <a className="font-medium text-brand-strong underline underline-offset-4" href="/line/account">จัดการบัญชี LINE</a></p> : null}
+    {!canEnable && !enabled ? <p className="mt-2 text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้ <LineAccountLink className="font-medium text-brand-strong underline underline-offset-4">จัดการบัญชี LINE</LineAccountLink></p> : null}
     {message ? <Alert className="mt-3" variant="warning">{message}</Alert> : null}
     <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />
     <Button className="mt-3" disabled={pending || unknownOutcome || (!enabled && !canEnable)} loading={pending} onClick={toggle} type="button" variant="secondary">{enabled ? "ปิดการแจ้งเตือนยา" : "เปิดการแจ้งเตือนยา"}</Button>

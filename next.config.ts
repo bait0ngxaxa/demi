@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // LIFF transport rewrites must preserve the original origin/URL and Flight headers.
+  // Next's default loopback normalization can turn an internal rewrite into an HTTP hop.
+  skipProxyUrlNormalize: true,
   experimental: {
     serverActions: {
       bodySizeLimit: "6mb",

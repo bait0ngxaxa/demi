@@ -21,20 +21,40 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: mocks.getProtectedApplicationActor,
 }));
 
+import { WorkspaceLiffHistory } from "../workspace-liff-history";
 import ProtectedApplicationLayout from "./layout";
 
 async function renderProtectedShell(): Promise<React.JSX.Element> {
   const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{
     children: ReactNode;
   }>;
-  const protectedShell = layoutElement.props.children as ReactElement<{ children: ReactNode }>;
-  if (typeof protectedShell.type !== "function") {
+  // The protected tree only records history; initialization belongs to the document gate.
+  const suspense = React.Children.toArray(layoutElement.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) && child.type === React.Suspense);
+  if (!suspense) throw new Error("Expected the protected Suspense boundary");
+  const protectedShell = React.Children.toArray(suspense.props.children)
+    .find((child): child is ReactElement<{ children: ReactNode }> => React.isValidElement(child) &&
+      typeof child.type === "function" && child.type !== WorkspaceLiffHistory);
+  if (!protectedShell) {
     throw new Error("Expected the protected application shell component");
   }
 
   const renderShell = protectedShell.type as unknown as (props: { children: ReactNode }) => Promise<React.JSX.Element>;
   return renderShell(protectedShell.props);
 }
+
+describe("Workspace LIFF history boundary", () => {
+  it("renders history bookkeeping without resolving the actor or starting SDK initialization", () => {
+    const layoutElement = ProtectedApplicationLayout({ children: React.createElement("main") }) as ReactElement<{ children: ReactNode }>;
+    const children = React.Children.toArray(layoutElement.props.children) as ReactElement[];
+    const suspenseIndex = children.findIndex((child) => child.type === React.Suspense);
+    expect(suspenseIndex).toBeGreaterThanOrEqual(0);
+    expect(React.Children.toArray((children[suspenseIndex] as ReactElement<{ children: ReactNode }>).props.children)
+      .some((child) => React.isValidElement(child) && child.type === WorkspaceLiffHistory)).toBe(true);
+    // It needs no actor: nothing about the DEMI session is resolved to render it.
+    expect(mocks.getProtectedApplicationActor).not.toHaveBeenCalled();
+  });
+});
 
 describe("protected application login redirect", () => {
   beforeEach(() => {

@@ -1,5 +1,7 @@
 # Phase LINE-QA.A — Hybrid Quick Action Rich Menu
 
+> **Superseded in part — 2026-11-08:** [ADR-0031](../adr/0031-workspace-liff-for-operational-line-entries.md) replaces the "ลิงก์เมนูงานเปิด **เว็บ DEMI ปกติ**" decision below. Operational URI areas now open the same fixed `/app/...` paths through the Workspace LIFF (`https://liff.line.me/<WORKSPACE_LIFF_ID>/app/...`) once it is configured; until then they remain ordinary web URLs. Menu catalog, Option C, aliases, Account LIFF entries, message actions and server authorization below are unchanged. The tables below are historical for the "LINE action" column.
+
 > **Current decision — 2026-10-21:** [ADR-0019](../adr/0019-owner-administration-and-import-only-roster.md) supersedes MEMBER/OSM Hospital administration, ADR-0008 2026-10-14 D1 OSM provisioning/read, delegated MEMBER report export and manual patient registration. ACTIVE direct OWNER administers the exact ACTIVE Hospital and imports strict Excel v2 (including one row). MEMBER/OSM retain resource-scoped care; personal self-service and separately authorized Platform ADMIN recovery remain. Earlier decisions below are historical where inconsistent.
 
 สถานะ: **implemented locally; no LINE Provider changes**

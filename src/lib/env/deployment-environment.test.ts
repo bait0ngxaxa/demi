@@ -90,6 +90,27 @@ describe("deployment environment check", () => {
     expect(checkDeploymentEnvironment("production").valid).toBe(true);
   });
 
+  it("treats the Workspace LIFF as optional and validates it only once set", () => {
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
+    expect(status(checkDeploymentEnvironment("production"), "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID")).toBe("UNSET");
+    expect(checkDeploymentEnvironment("production").valid).toBe(true);
+
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-Workspace");
+    expect(status(checkDeploymentEnvironment("production"), "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID")).toBe("OK");
+    expect(checkDeploymentEnvironment("runtime").variables.some(({ name }) => name === "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID")).toBe(false);
+  });
+
+  it.each(["1234567890-Account", "9999999999-OtherChannel", "not-a-liff-id"])("reports Workspace LIFF %s as invalid without exposing it", (value) => {
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", value);
+    const report = checkDeploymentEnvironment("production");
+    expect(report.valid).toBe(false);
+    expect(status(report, "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID")).toBe("INVALID");
+    expect(JSON.stringify(report)).not.toContain(value);
+  });
+
   it("rejects a partially configured LINE MINI App without requiring an unconfigured one", () => {
     vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", "2234567890");
     const report = checkDeploymentEnvironment("production");
