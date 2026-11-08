@@ -72,7 +72,7 @@ Neither cookies, user IDs, LINE tokens, roles, Hospital scopes nor authorization
 
 ## Executable coverage and commands
 
-The browser harness copies current repository source into a bounded OS temp directory, excludes `.env*`, links installed dependencies, and applies a compile-time SDK alias **only in that copy**. It runs Next dev with the actual production routes/layout/services/actions, a local synthetic Supabase provider with signed JWTs, and the existing disposable database. It does not mock the protected actor resolver, server action, route response or authorization services. The module fixture uses a deliberately delayed async module evaluation, independently delayed init and an SDK-owned simulated secondary redirect. Each scenario emits ordered events as JSON. Chrome dev tools controls are excluded when checking application recovery controls.
+The browser harness copies current repository source into a bounded OS temp directory, excludes `.env*`, links installed dependencies, and applies a compile-time SDK alias **only in that copy**. By default it runs Next dev; with `--production` it runs `next build` and `next start` (see Production browser mode). Both use the actual production routes/layout/services/actions, a local synthetic Supabase provider with signed JWTs, and the existing disposable database. It does not mock the protected actor resolver, server action, route response or authorization services. The module fixture uses a deliberately delayed async module evaluation, independently delayed init and an SDK-owned simulated secondary redirect. Each scenario emits ordered events as JSON. Chrome dev tools controls are excluded when checking application recovery controls.
 
 Install optional Playwright tooling outside the repository (no application dependency/lockfile change):
 
@@ -86,6 +86,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Migration failed' }
   npm run test:workspace-liff:browser
   if ($LASTEXITCODE -ne 0) { throw 'Browser test failed' }
+  npm run test:workspace-liff:browser -- --production
+  if ($LASTEXITCODE -ne 0) { throw 'Production browser test failed' }
 } finally {
   npm run test:db:down
 }
@@ -117,6 +119,13 @@ Executed baseline result: **FAIL as expected**. While the secondary SDK module w
 | Corrupted/unavailable storage, expiry, mismatch, re-encoded/conflicting query | `src/components/line/workspace-liff-document.test.ts` |
 | StrictMode/remount, pending/rejection, no session identity authority | Gate/gateway unit tests |
 | Production Next document vs protected RSC login return | `npm run test:workspace-liff:next-smoke` after `npm run build` |
+| Query destination (`/app/patients/assigned?task=screening`): init → protected RSC → no session → login → exact return; existing session | Browser J, including `--production` |
+| Single protected RSC network failure / 503 non-RSC response after init | Browser K: Next same-URL document fallback, one init per document, protected RSC only after recovery init, screening renders |
+| Persistent protected RSC failure (LIFF and ordinary) | Browser L: three continuations, fourth document stops without init/RSC and shows no application controls; continuation latch unit tests |
+
+### Production browser mode
+
+`npm run test:workspace-liff:browser -- --production` runs the same scenarios against `next build` (default Turbopack, as the CI Production Build job) and `next start` in the disposable copy. Only that copy receives a Turbopack `resolveAlias` for `@line/liff`. Its `turbopack.root`/`outputFileTracingRoot` is the nearest directory containing both the copy and the linked repository `node_modules`, because Turbopack rejects symlinks outside its root. The canonical-host guard stays active. Chromium maps the configured public host `demi.example.org:80` to the loopback server, so requests carry the canonical `Host` header. The existing webpack production build in an isolated copy is not used: an unrelated client import of `node:crypto` fails under webpack. Before the latch, a persistent failure observation on production produced 131 documents and 130 `liff.init()` calls in 15 seconds.
 
 The first hosted run at `3d043a75` passed quality, unit and integration, but failed Production Build at `/app/hospitals/settings`: `useSearchParams()` required Suspense. History observation was placed inside the existing protected Suspense boundary; initialization remains in the public gate. A local build also hit the default approximately 2 GB TypeScript heap limit; the subsequent build uses the existing CI setting `NODE_OPTIONS=--max-old-space-size=4096`, without changing repository build configuration. The production smoke also reproduced a loopback-host normalization failure of internal rewrite under the documented reverse-proxy topology: the rewrite became a canonical-host 308 before init. A same-route layout gate also failed executable smoke because Next renders child routes independently and emitted an auth redirect despite the parent omitting children. The final implementation retains the dedicated public shell and uses the documented raw-URL option; no host guard is weakened and no special internal-host bypass is added. The smoke sends Next 16's empty `_rsc` union key for its RSC requests, matching the installed fetch contract. The latest-HEAD hosted results must be checked independently of that earlier run.
 
