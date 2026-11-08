@@ -18,7 +18,7 @@ import {
 
 /** Decided on the server before any SDK work. */
 export type WorkspaceLiffEntryMode = "ORDINARY" | "LIFF" | "NAVIGATION_INVALID";
-export type WorkspaceLiffEntryState = "CONTINUING" | "INITIALIZING" | "INIT_FAILED" | "UNAVAILABLE" | "NAVIGATION_INVALID" | "LOOP_STOPPED";
+export type WorkspaceLiffEntryState = "CONTINUING" | "INITIALIZING" | "INIT_FAILED" | "UNAVAILABLE" | "NAVIGATION_INVALID" | "LOOP_STOPPED" | "CONTINUATION_FAILED";
 
 type Copy = { title: string; body: string; busy?: boolean };
 
@@ -29,6 +29,7 @@ const copy: Record<WorkspaceLiffEntryState, Copy> = {
   UNAVAILABLE: { title: "ยังเปิด DEMI ผ่าน LINE ไม่ได้", body: "บริการนี้ยังไม่พร้อมใช้งานใน LINE คุณยังใช้ DEMI บนเว็บได้ตามปกติ" },
   NAVIGATION_INVALID: { title: "ลิงก์นี้ไม่ถูกต้อง", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
   LOOP_STOPPED: { title: "เปิดผ่าน LINE ซ้ำหลายครั้ง", body: "ระบบหยุดการเปิดซ้ำไว้ก่อน กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
+  CONTINUATION_FAILED: { title: "เชื่อมต่อ DEMI ไม่สำเร็จ", body: "ระบบหยุดการโหลดซ้ำไว้ก่อน กรุณาตรวจสอบการเชื่อมต่อแล้วลองเปิดอีกครั้งภายหลัง หากเปิดจาก LINE ให้ปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE" },
 };
 
 export function WorkspaceLiffEntryScreen({

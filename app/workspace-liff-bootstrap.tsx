@@ -9,7 +9,7 @@ import { isLinePlatformParameterName } from "@/modules/line/domain/line-navigati
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import { WorkspaceLiffEntryScreen, type WorkspaceLiffEntryState } from "./workspace-liff-entry";
-import { clearWorkspaceLiffEntryAttempts, hasWorkspaceLiffInitialization, isLineLoginReturnSearch, loadWorkspaceLiffSdk, sessionAttemptStore, startWorkspaceLiffEntry, type WorkspaceLiffSdkLoader } from "./workspace-liff-gateway";
+import { clearWorkspaceLiffEntryAttempts, decideDocumentProtectedContinuation, hasWorkspaceLiffInitialization, isLineLoginReturnSearch, loadWorkspaceLiffSdk, sessionAttemptStore, startWorkspaceLiffEntry, type WorkspaceLiffSdkLoader } from "./workspace-liff-gateway";
 
 /**
  * Proxy rewrites document GETs to this public shell. The protected tree
@@ -34,7 +34,13 @@ export function WorkspaceLiffBootstrap({
       return;
     }
     let active = true;
-    const initializeDocument = async (): Promise<Awaited<ReturnType<typeof startWorkspaceLiffEntry>> | "ORDINARY"> => {
+    const initializeDocument = async (): Promise<Awaited<ReturnType<typeof startWorkspaceLiffEntry>> | "ORDINARY" | "CONTINUATION_FAILED"> => {
+      // A failed protected RSC request makes Next.js reload this same URL. Stop a
+      // persistent failure before another SDK init or RSC request; a rendered tree clears it.
+      // Decided once per document, so StrictMode effect re-runs are not new attempts.
+      if (decideDocumentProtectedContinuation(sessionAttemptStore(), window.location.pathname + window.location.search) === "LOOP_STOPPED") {
+        return "CONTINUATION_FAILED";
+      }
       const handoff = liffId ? consumeWorkspaceLiffHandoff(liffId) : false;
       if (!liffId || (!handoff && !isWorkspaceLiffHistoryEntry(liffId) && !hasWorkspaceLiffInitialization(liffId))) {
         // A callback with lost/expired storage cannot establish Workspace identity.
@@ -65,6 +71,9 @@ export function WorkspaceLiffBootstrap({
           continued.current = true;
           router.refresh();
         }
+      } else if (result === "CONTINUATION_FAILED") {
+        clearWorkspaceLiffHandoff();
+        setState("CONTINUATION_FAILED");
       } else {
         // A timeout cannot cancel a later SDK redirect. Actual rejection can.
         if (!liffId || !hasWorkspaceLiffInitialization(liffId)) clearWorkspaceLiffHandoff();

@@ -110,6 +110,7 @@ export async function initializeWorkspaceLiff(
 /** Test seam only. */
 export function resetWorkspaceLiffInitializationForTests(): void {
   initialization = null;
+  documentContinuation = null;
 }
 
 const ENTRY_ATTEMPTS_KEY = "demi.line.workspace.entryAttempts";
@@ -181,6 +182,56 @@ export function sessionAttemptStore(): Storage | null {
 export function clearWorkspaceLiffEntryAttempts(store: AttemptStore | null): void {
   try {
     store?.removeItem(ENTRY_ATTEMPTS_KEY);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+const CONTINUATION_ATTEMPTS_KEY = "demi.line.workspace.continuationAttempts";
+export const PROTECTED_CONTINUATION_MAX_ATTEMPTS = 3;
+export const PROTECTED_CONTINUATION_WINDOW_MS = 60_000;
+
+/**
+ * Non-authoritative reload-loop latch for the document gate. When the protected
+ * RSC request fails, Next.js falls back to a same-URL document load; a failure
+ * that persists would otherwise reload (and re-initialize LIFF) without end.
+ * Attempts count per exact path and query and are cleared once a protected or
+ * login tree renders. Clearing storage can only allow another attempt, never access.
+ */
+export function recordProtectedContinuationAttempt(store: AttemptStore | null, target: string, now = Date.now()): "PROCEED" | "LOOP_STOPPED" {
+  if (!store) return "PROCEED";
+  let attempts: number[] = [];
+  try {
+    const value: unknown = JSON.parse(store.getItem(CONTINUATION_ATTEMPTS_KEY) ?? "null");
+    if (typeof value === "object" && value !== null && (value as { target?: unknown }).target === target) {
+      const stored = (value as { attempts?: unknown }).attempts;
+      attempts = Array.isArray(stored)
+        ? stored.filter((item): item is number => typeof item === "number" && item <= now && now - item < PROTECTED_CONTINUATION_WINDOW_MS)
+        : [];
+    }
+  } catch {
+    attempts = [];
+  }
+  if (attempts.length >= PROTECTED_CONTINUATION_MAX_ATTEMPTS) return "LOOP_STOPPED";
+  try {
+    store.setItem(CONTINUATION_ATTEMPTS_KEY, JSON.stringify({ target, attempts: [...attempts, now] }));
+  } catch {
+    // Storage may be unavailable; continuation still proceeds.
+  }
+  return "PROCEED";
+}
+
+/** This document's one continuation decision; effect re-runs (StrictMode) reuse it. */
+let documentContinuation: "PROCEED" | "LOOP_STOPPED" | null = null;
+
+export function decideDocumentProtectedContinuation(store: AttemptStore | null, target: string): "PROCEED" | "LOOP_STOPPED" {
+  documentContinuation ??= recordProtectedContinuationAttempt(store, target);
+  return documentContinuation;
+}
+
+export function clearProtectedContinuationAttempts(store: AttemptStore | null): void {
+  try {
+    store?.removeItem(CONTINUATION_ATTEMPTS_KEY);
   } catch {
     // Nothing to clear.
   }

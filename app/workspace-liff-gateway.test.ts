@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  clearProtectedContinuationAttempts,
   clearWorkspaceLiffEntryAttempts,
   hasWorkspaceLiffInitialization,
   initializeWorkspaceLiff,
   isLineLoginReturnSearch,
+  PROTECTED_CONTINUATION_MAX_ATTEMPTS,
+  PROTECTED_CONTINUATION_WINDOW_MS,
+  recordProtectedContinuationAttempt,
   recordWorkspaceLiffEntryAttempt,
   resetWorkspaceLiffInitializationForTests,
   startWorkspaceLiffEntry,
@@ -173,5 +177,39 @@ describe("Workspace LIFF redirect-loop latch", () => {
     const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => { throw new Error("denied"); } };
     expect(recordWorkspaceLiffEntryAttempt(throwing)).toBe("PROCEED");
     expect(() => clearWorkspaceLiffEntryAttempts(throwing)).not.toThrow();
+  });
+});
+
+describe("protected continuation reload latch", () => {
+  const target = "/app/patients/assigned?task=screening&liff.hback=2";
+
+  it("stops a persistent same-URL reload loop and reopens after the window", () => {
+    const store = memoryStore();
+    for (let attempt = 0; attempt < PROTECTED_CONTINUATION_MAX_ATTEMPTS; attempt += 1) {
+      expect(recordProtectedContinuationAttempt(store, target, 1000 + attempt)).toBe("PROCEED");
+    }
+    expect(recordProtectedContinuationAttempt(store, target, 1010)).toBe("LOOP_STOPPED");
+    expect(recordProtectedContinuationAttempt(store, target, 1000 + PROTECTED_CONTINUATION_WINDOW_MS + 10)).toBe("PROCEED");
+  });
+
+  it("counts only the exact path and query, and a rendered tree clears it", () => {
+    const store = memoryStore();
+    for (let attempt = 0; attempt < PROTECTED_CONTINUATION_MAX_ATTEMPTS; attempt += 1) recordProtectedContinuationAttempt(store, target, 1000 + attempt);
+    expect(recordProtectedContinuationAttempt(store, "/app/patients/assigned?task=screening", 1010)).toBe("PROCEED");
+    for (let attempt = 0; attempt < PROTECTED_CONTINUATION_MAX_ATTEMPTS; attempt += 1) recordProtectedContinuationAttempt(store, target, 2000 + attempt);
+    clearProtectedContinuationAttempts(store);
+    expect(recordProtectedContinuationAttempt(store, target, 2010)).toBe("PROCEED");
+  });
+
+  it("never blocks on unavailable or corrupted storage", () => {
+    const store = memoryStore();
+    store.setItem("demi.line.workspace.continuationAttempts", "{not json");
+    expect(recordProtectedContinuationAttempt(store, target, 1000)).toBe("PROCEED");
+    store.setItem("demi.line.workspace.continuationAttempts", JSON.stringify({ target, attempts: "many" }));
+    expect(recordProtectedContinuationAttempt(store, target, 1000)).toBe("PROCEED");
+    expect(recordProtectedContinuationAttempt(null, target)).toBe("PROCEED");
+    const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => { throw new Error("denied"); } };
+    expect(recordProtectedContinuationAttempt(throwing, target)).toBe("PROCEED");
+    expect(() => clearProtectedContinuationAttempts(throwing)).not.toThrow();
   });
 });

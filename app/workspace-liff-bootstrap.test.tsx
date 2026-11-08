@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
+import { markWorkspaceLiffHistoryEntry, prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
 import { WorkspaceLiffBootstrap } from "./workspace-liff-bootstrap";
 import { resetWorkspaceLiffInitializationForTests } from "./workspace-liff-gateway";
 
@@ -88,5 +88,31 @@ describe("Workspace document navigation gate", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(window.location.search).toContain("code=synthetic");
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it("stops a persistent continuation reload before another SDK init or RSC request", async () => {
+    const url = "/app/patients/assigned?task=screening&liff.hback=2&lineAppVersion=14.19.1";
+    window.history.replaceState(null, "", url);
+    markWorkspaceLiffHistoryEntry(ID);
+    const now = Date.now();
+    window.sessionStorage.setItem("demi.line.workspace.continuationAttempts", JSON.stringify({ target: url, attempts: [now - 3, now - 2, now - 1] }));
+    prepareWorkspaceLiffHandoff(ID, "/app/patients/assigned?task=screening");
+    const load = vi.fn();
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={load} />));
+    expect(load).not.toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(container.querySelector("h1")?.textContent).toBe("เชื่อมต่อ DEMI ไม่สำเร็จ");
+    expect(container.querySelector("a,button")).toBeNull();
+    expect(window.sessionStorage.getItem("demi.line.workspace.handoff")).toBeNull();
+    expect(window.location.pathname + window.location.search).toBe(url);
+  });
+
+  it("counts one continuation attempt per document, not per StrictMode effect re-run", async () => {
+    window.history.replaceState(null, "", "/app/personal/medications");
+    await act(async () => root.render(<StrictMode><WorkspaceLiffBootstrap liffId={ID} load={vi.fn()} /></StrictMode>));
+    const stored = JSON.parse(window.sessionStorage.getItem("demi.line.workspace.continuationAttempts") ?? "null");
+    expect(stored).toMatchObject({ target: "/app/personal/medications" });
+    expect(stored.attempts).toHaveLength(1);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 });
