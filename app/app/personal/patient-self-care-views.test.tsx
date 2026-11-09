@@ -234,6 +234,185 @@ describe("Patient Personal care read views", () => {
     expect(markup).toContain("break-words");
   });
 
+  it("shows multiple Screening records with their persisted date and status, and keeps the empty state", () => {
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{
+          ...journey,
+          screenings: [
+            { submittedAt: recordedAt, status: "RECORDED" },
+            { submittedAt: recordedAt, status: "RECORDED" },
+          ],
+        }}
+      />,
+    );
+
+    expect(markup.match(/<time\b/gu)).toHaveLength(2);
+    expect(markup.match(/บันทึกแล้ว/gu)).toHaveLength(2);
+    expect(markup).not.toContain("screeningId");
+    expect(markup).not.toMatch(/href="[^"]*screenings/u);
+
+    const emptyMarkup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{
+          ...journey,
+          screenings: [],
+          historyPages: { ...journey.historyPages, screenings: { page: 1, hasMore: false } },
+        }}
+      />,
+    );
+    expect(emptyMarkup).toContain("ยังไม่มีข้อมูลการคัดกรอง");
+    expect(emptyMarkup).not.toContain("screeningPage=2");
+  });
+
+  it("keeps Baseline separate when absent and preserves every missing-value label", () => {
+    const absent = renderToStaticMarkup(
+      <PatientSelfCareJourneyView journey={{ ...journey, baseline: null }} />,
+    );
+    expect(absent).toContain("ยังไม่มีข้อมูลเริ่มต้น");
+
+    const missingValues = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{
+          ...journey,
+          baseline: {
+            recordedOn: journey.baseline!.recordedOn,
+            measurements: {
+              weight: null,
+              heightCm: null,
+              waistCircumference: null,
+              systolicBloodPressure: null,
+              diastolicBloodPressure: null,
+              bloodSugarDtx: null,
+              hba1c: null,
+            },
+          },
+        }}
+      />,
+    );
+    expect(missingValues).toContain("วันที่บันทึก");
+    expect(missingValues.match(/ไม่ระบุ/gu)).toHaveLength(6);
+    expect(missingValues).toContain("ระดับน้ำตาลในเลือด (DTX)");
+    expect(missingValues).toContain("ความดันโลหิต");
+    expect(missingValues).not.toContain("DTX / mg/dL");
+    expect(missingValues).not.toContain("mmHg");
+  });
+
+  it("gives each Program detail link a unique accessible name and preserves its destination", () => {
+    const firstProgram = {
+      programId: "77777777-7777-4777-8777-777777777777",
+      status: PatientProgramStatus.ACTIVE,
+      startedAt: new Date("2026-02-12T00:00:00.000Z"),
+      completedAt: null,
+    };
+    const secondProgram = {
+      programId: "99999999-9999-4999-8999-999999999999",
+      status: PatientProgramStatus.COMPLETED,
+      startedAt: new Date("2026-04-16T00:00:00.000Z"),
+      completedAt: new Date("2026-08-05T10:30:00.000Z"),
+    };
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView journey={{ ...journey, programs: [firstProgram, secondProgram] }} />,
+    );
+    const programLinks = [
+      ...markup.matchAll(
+        /<a\b(?=[^>]*href="([^"]*\/programs\/[^"]+)")[^>]*>([\s\S]*?)<\/a>/gu,
+      ),
+    ];
+
+    expect(
+      programLinks.map((link) =>
+        (link[2] ?? "").replace(/<[^>]*>/gu, "").replace(/\s+/gu, " ").trim(),
+      ),
+    ).toEqual([
+      "โปรแกรมการดูแล เริ่ม 12 กุมภาพันธ์ 2569",
+      "โปรแกรมการดูแล เริ่ม 16 เมษายน 2569",
+    ]);
+    expect(programLinks.map((link) => link[1] ?? "")).toEqual([
+      "/app/personal/care/" + ownRelationship.relationshipId + "/programs/" + firstProgram.programId,
+      "/app/personal/care/" + ownRelationship.relationshipId + "/programs/" + secondProgram.programId,
+    ]);
+  });
+
+  it("distinguishes ACTIVE and COMPLETED Programs with their original dates and scoped detail links", () => {
+    const activeProgram = {
+      programId: "77777777-7777-4777-8777-777777777777",
+      status: PatientProgramStatus.ACTIVE,
+      startedAt: new Date("2026-02-12T00:00:00.000Z"),
+      completedAt: null,
+    };
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView journey={{ ...journey, programs: [activeProgram, journey.programs[0]!] }} />,
+    );
+
+    expect(markup).toContain("กำลังดำเนินการ");
+    expect(markup).toContain("สิ้นสุดแล้ว");
+    expect(markup).toContain("เริ่ม 12 กุมภาพันธ์ 2569");
+    expect(markup).toContain("สิ้นสุด 5 สิงหาคม 2569");
+    expect(markup).toContain(`/app/personal/care/${ownRelationship.relationshipId}/programs/${activeProgram.programId}`);
+    expect(markup).toContain(`/app/personal/care/${ownRelationship.relationshipId}/programs/${journey.programs[0]!.programId}`);
+    expect(markup.match(/bg-surface shadow-surface/gu)).toHaveLength(2);
+    expect(markup.match(/bg-surface-muted/gu)?.length).toBeGreaterThan(0);
+    expect(markup).not.toMatch(/\b\d+%/u);
+    expect(markup).not.toContain("ความก้าวหน้า");
+  });
+
+  it("keeps Goal Plan and Follow-up history within the selected Hospital and read-only", () => {
+    const longHospitalName = "โรงพยาบาลชุมชนสำหรับการทดสอบชื่อยาว".repeat(4);
+    const longGoalLabel = "เป้าหมายสุขภาพที่บันทึกไว้".repeat(8);
+    const followupWithoutProgram = {
+      ...journey.followups[0]!,
+      followupId: "88888888-8888-4888-8888-888888888888",
+      roundNumber: 8,
+      program: null,
+    };
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{
+          ...journey,
+          relationship: { ...ownRelationship, hospitalName: longHospitalName },
+          goalPlans: [{ ...journey.goalPlans[0]!, primaryGoalLabel: longGoalLabel }],
+          followups: [journey.followups[0]!, followupWithoutProgram],
+        }}
+      />,
+    );
+
+    expect(markup).toContain(longHospitalName);
+    expect(markup).toContain("break-words");
+    expect(markup).toContain(longGoalLabel);
+    expect(markup).toContain("โปรแกรมเริ่ม 3 มกราคม 2569 · สิ้นสุดแล้ว");
+    expect(markup).toContain("ไม่ได้เชื่อมกับโปรแกรม");
+    expect(markup).toContain(`/app/personal/care/${ownRelationship.relationshipId}/goal-plans/${journey.goalPlans[0]!.goalPlanId}`);
+    expect(markup).toContain(`/app/personal/care/${ownRelationship.relationshipId}/followups/${journey.followups[0]!.followupId}`);
+    expect(markup).toContain(`/app/personal/care/${ownRelationship.relationshipId}/followups/${followupWithoutProgram.followupId}`);
+    expect(markup).not.toContain(anotherRelationship.relationshipId);
+    expect(markup).toContain(`/app/personal/appointments/${ownRelationship.relationshipId}`);
+    expect(markup).not.toMatch(/<form\b|<button\b/u);
+    expect(markup).not.toContain("ครบ 6 รอบ");
+    expect(markup).not.toContain("ความก้าวหน้า");
+  });
+
+  it("increments only the requested history page and preserves the other page positions", () => {
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView
+        journey={{
+          ...journey,
+          historyPages: {
+            screenings: { page: 2, hasMore: true },
+            programs: { page: 1, hasMore: true },
+            goalPlans: { page: 3, hasMore: true },
+            followups: { page: 4, hasMore: true },
+          },
+        }}
+      />,
+    );
+
+    expect(markup).toContain("screeningPage=3&amp;goalPlanPage=3&amp;followupPage=4");
+    expect(markup).toContain("screeningPage=2&amp;programPage=2&amp;goalPlanPage=3&amp;followupPage=4");
+    expect(markup).toContain("screeningPage=2&amp;goalPlanPage=4&amp;followupPage=4");
+    expect(markup).toContain("screeningPage=2&amp;goalPlanPage=3&amp;followupPage=5");
+  });
+
   it("lists the current health plan and previous versions read-only (D4)", () => {
     const previous = { ...journey.goalPlans[0]!, goalPlanId: "44444444-4444-4444-8444-444444444445", roundNumber: 6 };
     const markup = renderToStaticMarkup(
