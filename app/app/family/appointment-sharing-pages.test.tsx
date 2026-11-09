@@ -4,6 +4,7 @@ import { AppointmentSharingWorkspace } from "./appointment-sharing-workspace";
 import { AppointmentFields } from "./grants/[grantId]/appointments/appointment-fields";
 import { FamilyManagementWorkspace } from "./family-management-workspace";
 import type { AppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
+import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS } from "@/modules/family/domain/caregiver-sharing-contract";
 const mocks = vi.hoisted(() => ({ detail: vi.fn(), connection: vi.fn(), redirect: vi.fn() }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: mocks.redirect }));
@@ -26,8 +27,21 @@ describe("bounded appointment sharing UI", () => {
     for (const text of ["สมชาย ใจดี", "หน่วยบริการทดสอบ", "ผู้ดูแลที่คุณอนุญาต", "อ่านอย่างเดียว", "รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกข้อเสนอ", "ยอมรับสิทธิ์ดูนัดหมาย"]) expect(markup).toContain(text);
     expect(markup).toContain('name="grantId" value="grant-locator"'); expect(markup).toContain('name="grantId" value="active-locator"');
     expect(markup).toContain('/app/personal/appointments?subject=read-locator&amp;tab=upcoming');
+    expect(markup).not.toContain('/app/personal/appointments?subject=grant-locator&amp;tab=upcoming');
     for (const text of ["ชื่อหน่วยบริการ", "ประเภทนัด", "วันและเวลา", "ระยะเวลา", "รูปแบบสถานที่", "สถานะนัด", "90 วัน", "นัดใหม่", "ไม่มีวันหมดอายุอัตโนมัติ", "ผู้ป่วยสามารถยกเลิกสิทธิ์ได้", "ไม่อนุญาตให้แก้ไข ยกเลิก หรือดำเนินการแทนผู้ป่วย"]) expect(markup).toContain(text);
     expect(markup).not.toMatch(/hospitalNumber|SECRET-HN|ญาติที่ผ่านการยืนยัน|CAREgiver|ข้อมูลสุขภาพทั้งหมด/);
+  });
+  it("keeps appointment status, care-ended restriction, contract version, scope, and dates independently readable", () => {
+    const active = { ...grant, grantId: "active", status: "ACTIVE" as const, acceptedAt: now };
+    const revoked = { ...grant, grantId: "revoked", status: "REVOKED" as const, revokedAt: now };
+    const careEnded = { ...active, grantId: "care-ended", careEnded: true };
+    const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
+      management={{ patient: { ...overview.patient!, grants: [grant, active, revoked, careEnded] }, caregiver: { grants: [], nextCursor: null } }} />);
+
+    for (const text of ["รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกสิทธิ์แล้ว", "สิ้นสุดการดูแลแล้ว", "สิทธิ์ตามสัญญาเดิม", "หน่วยบริการ", "ขอบเขตที่แชร์", "เสนอเมื่อ", "ยอมรับเมื่อ", "ยกเลิกเมื่อ", "ดูนัดหมายของหน่วยบริการนี้แบบอ่านอย่างเดียว"]) expect(markup).toContain(text);
+    expect(markup).toContain("ผู้ดูแลจึงไม่เห็นนัดหมายของโรงพยาบาลนี้");
+    expect(markup.match(/<details/g)).toHaveLength(4);
+    expect(markup).toContain(`<time dateTime="${now.toISOString()}">`);
   });
   it("renders only six allowed resource fields, truthful cancelled and null source values", () => {
     const markup = renderToStaticMarkup(<AppointmentFields appointment={appointment} />);
@@ -93,8 +107,15 @@ describe("bounded appointment sharing UI", () => {
     const item = { grantId: "resource-locator", caregiverRelationshipId: "parent-locator", resource: "MEDICATION" as const, status: "ACTIVE" as const,
       proposedAt: now, acceptedAt: now, participant };
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace management={overview} relationships={[relationship]}
-      resources={{ patient: [item], caregiver: [{ ...item, grantId: "pending-locator", resource: "PROFILE_SUMMARY", status: "PENDING", acceptedAt: null }], availableResources: ["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"] }} />);
+      resources={{ patient: [item], caregiver: [
+        { ...item, grantId: "pending-locator", resource: "PROFILE_SUMMARY", status: "PENDING", acceptedAt: null },
+        { ...item, grantId: "active-plan-locator", resource: "HEALTH_PLAN" },
+      ], availableResources: ["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"] }} />);
     for (const text of ["แชร์ข้อมูลสุขภาพอื่นให้ผู้ดูแล", 'name="grantId" value="resource-locator"', "ยกเลิกสิทธิ์", "ยอมรับสิทธิ์ดูข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล", "แผนสุขภาพ", 'value="MEDICATION">ยา</option>']) expect(markup).toContain(text);
     expect(markup).toMatch(/name="resource"[\s\S]*value="HEALTH_PLAN"[\s\S]*value="MEDICATION"/u);
+    expect(markup).toContain("ข้อมูลที่อนุญาต");
+    expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.PROFILE_SUMMARY);
+    expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.HEALTH_PLAN);
+    expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.MEDICATION);
   });
 });
