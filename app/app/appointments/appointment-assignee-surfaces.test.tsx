@@ -138,6 +138,7 @@ describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
       expect(form.container.textContent).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
 
       await form.click(form.kind("เจ้าหน้าที่"));
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
       await form.click(form.container.querySelector<HTMLInputElement>('input[name="staff-candidate"][value="coordinator"]')!);
       expect(form.hidden("responsibleUserId")).toBe("coordinator");
       expect(form.hidden("assignedOsmUserId")).toBe("");
