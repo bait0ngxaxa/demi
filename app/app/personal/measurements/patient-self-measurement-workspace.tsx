@@ -82,7 +82,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
     currentSuccess && currentSubmissionId !== null && draftSignature === confirmedPayload,
   );
   useLayoutEffect(() => {
-    onAttentionChange(pending || unknownOutcome || currentError !== null);
+    onAttentionChange(pending || unknownOutcome || currentError?.recovery === "CRITICAL");
   }, [currentError, onAttentionChange, pending, unknownOutcome]);
 
   return (

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError, ValidationError } from "@/shared/errors/application-error";
 
 const mocked = vi.hoisted(() => ({
   actor: vi.fn(),
@@ -61,6 +61,21 @@ describe("Patient self-measurement Server Actions", () => {
     expect(mocked.revalidate).toHaveBeenCalledWith("/app/personal/measurements");
   });
 
+  it("marks only known input validation failures as recoverable", async () => {
+    mocked.create.mockRejectedValueOnce(new ValidationError());
+
+    const result: PatientSelfMeasurementActionState = await createOwnPatientSelfMeasurementAction(
+      { status: "IDLE" },
+      measurementForm,
+    );
+
+    expect(result).toEqual({
+      status: "ERROR",
+      message: "กรุณาตรวจสอบค่าที่บันทึกและวันเวลา หากบันทึกน้ำตาลให้ใช้หน่วย mg/dL (ไม่เป็นอนาคตและไม่เกิน 1 ปีย้อนหลัง)",
+      recovery: "RECOVERABLE",
+    });
+  });
+
   it.each([
     ["create", createOwnPatientSelfMeasurementAction, mocked.create],
     ["delete", deleteOwnPatientSelfMeasurementAction, mocked.remove],
@@ -73,6 +88,7 @@ describe("Patient self-measurement Server Actions", () => {
     expect(expired).toEqual({
       status: "ERROR",
       message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      recovery: "CRITICAL",
       loginHref: "/login",
     });
 
@@ -84,6 +100,7 @@ describe("Patient self-measurement Server Actions", () => {
     expect(forbidden).toEqual({
       status: "ERROR",
       message: "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้",
+      recovery: "CRITICAL",
     });
   });
 });

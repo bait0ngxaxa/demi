@@ -8,7 +8,7 @@ import type { OwnPatientSelfMeasurement } from "@/modules/patient-self-measureme
 type ActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS"; message: string }
-  | { status: "ERROR"; message: string; loginHref?: string };
+  | { status: "ERROR"; message: string; recovery: "RECOVERABLE" | "CRITICAL"; loginHref?: string };
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn<(previous: ActionState, formData: FormData) => Promise<ActionState>>(),
@@ -201,6 +201,8 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
 
     await act(async () => resolve({ status: "SUCCESS", message: "บันทึกแล้ว" }));
     expect(query('[role="status"]').textContent).toContain("บันทึกแล้ว");
+    act(() => query<HTMLElement>("summary").click());
+    expect(disclosure().open).toBe(false);
   });
 
   it("resends the committed request with its original nonce after the response is lost", async () => {
@@ -248,20 +250,32 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(container.querySelector('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"]')).toBeNull();
   });
 
-  it("keeps validation feedback visible and allows another explicit submission", async () => {
-    mocks.create.mockResolvedValueOnce({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด" });
+  it("allows a validation error to collapse and reopen with the same draft and feedback", async () => {
+    mocks.create.mockResolvedValueOnce({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด", recovery: "RECOVERABLE" });
     mocks.create.mockResolvedValueOnce({ status: "SUCCESS", message: "บันทึกแล้ว" });
     mocks.delete.mockResolvedValue({ status: "IDLE" });
     mount({ items: [partialMeasurement] });
+    const form = query<HTMLFormElement>("form");
+    setValue("weight", "70");
 
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
     expect(disclosure().open).toBe(true);
     expect(query('[role="alert"]').textContent).toContain("กรุณาตรวจสอบค่าวัด");
+    const error = query('[role="alert"]');
+    act(() => query<HTMLElement>("summary").click());
+    expect(disclosure().open).toBe(false);
+    expect(query<HTMLFormElement>("form")).toBe(form);
+    expect(container.querySelector('[role="alert"]')).toBe(error);
     act(() => query<HTMLElement>("summary").click());
     expect(disclosure().open).toBe(true);
+    expect(query('[role="alert"]')).toBe(error);
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("70");
+
+    setValue("weight", "71");
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
     expect(mocks.create).toHaveBeenCalledTimes(2);
     expect(query('[role="status"]').textContent).toContain("บันทึกแล้ว");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("preserves the second draft and hides the previous success while the next request is pending", async () => {
@@ -291,7 +305,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(duplicateSubmit.defaultPrevented).toBe(true);
     expect(mocks.create).toHaveBeenCalledTimes(2);
 
-    await act(async () => resolveSecond({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด" }));
+    await act(async () => resolveSecond({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด", recovery: "RECOVERABLE" }));
     expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("71");
     expect(query('[role="alert"]').textContent).toContain("กรุณาตรวจสอบค่าวัด");
     expect(container.querySelector('[role="status"]')).toBeNull();
@@ -406,21 +420,28 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     mocks.create.mockResolvedValueOnce({
       status: "ERROR",
       message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      recovery: "CRITICAL",
       loginHref: "/login",
     });
     mocks.delete.mockResolvedValue({ status: "IDLE" });
-    mount();
+    mount({ items: [partialMeasurement] });
 
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(disclosure().open).toBe(true);
     expect(query('[role="alert"]').textContent).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(query<HTMLAnchorElement>('[role="alert"] a').getAttribute("href")).toBe("/login");
+    act(() => query<HTMLElement>("summary").click());
+    expect(disclosure().open).toBe(true);
 
     mocks.create.mockResolvedValueOnce({
       status: "ERROR",
       message: "บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้",
+      recovery: "CRITICAL",
     });
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
     expect(query('[role="alert"]').textContent).toContain("บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูลนี้");
     expect(container.querySelector('[role="alert"] a')).toBeNull();
+    act(() => query<HTMLElement>("summary").click());
+    expect(disclosure().open).toBe(true);
   });
 });
