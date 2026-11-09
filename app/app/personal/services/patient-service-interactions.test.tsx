@@ -5,8 +5,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-import type { PatientServiceRequestStatusView } from "@/modules/patient-service-requests/services/patient-service-request-service";
+import type { PatientServiceRelationshipView, PatientServiceRequestStatusView } from "@/modules/patient-service-requests/services/patient-service-request-service";
 import type { PatientServiceMutationActionState } from "@/modules/patient-service-requests/transport/action-state";
+import type { AssigneeSearchResult } from "@/shared/search/assignee-search";
 
 type MutationAction = (
   previous: PatientServiceMutationActionState,
@@ -16,15 +17,17 @@ type MutationAction = (
 const serverActions = vi.hoisted(() => ({
   create: vi.fn<MutationAction>(),
   withdraw: vi.fn<MutationAction>(),
+  search: vi.fn<(relationshipId: string, value: string, page: number) => Promise<AssigneeSearchResult>>(),
 }));
 
 vi.mock("@/modules/patient-service-requests/transport/server-actions", () => ({
   createPatientServiceRequestAction: serverActions.create,
   withdrawOwnPatientServiceRequestAction: serverActions.withdraw,
-  searchOwnServiceRequestOsmChoicesAction: vi.fn(),
+  searchOwnServiceRequestOsmChoicesAction: serverActions.search,
 }));
 
 import { PatientServiceRequestForm, PatientServiceRequestHistoryItem } from "./patient-service-request-controls";
+import { PatientServicesWorkspace } from "./patient-services-workspace";
 
 const pendingRequest: PatientServiceRequestStatusView = {
   requestId: "11111111-1111-4111-8111-111111111111",
@@ -39,6 +42,10 @@ const pendingRequest: PatientServiceRequestStatusView = {
   rejectionReason: null,
   createdAt: new Date("2026-10-30T00:00:00.000Z"),
 };
+
+function serviceRequest(overrides: Partial<PatientServiceRequestStatusView>): PatientServiceRequestStatusView {
+  return { ...pendingRequest, ...overrides };
+}
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
@@ -118,9 +125,90 @@ afterEach(() => {
   container = null;
   serverActions.create.mockReset();
   serverActions.withdraw.mockReset();
+  serverActions.search.mockReset().mockResolvedValue({
+    status: "OK",
+    items: [],
+    page: 1,
+    totalPages: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
+  });
 });
 
 describe("Patient service request interactions", () => {
+  it("groups readable request records by Hospital and keeps new-request eligibility unchanged", () => {
+    const longNote = "โปรดโทรแจ้งก่อนถึงบ้าน เพราะต้องจัดเตรียมผู้ดูแล ".repeat(18);
+    const active: PatientServiceRelationshipView = {
+      relationshipId: "active-hospital-relationship",
+      hospitalName: "โรงพยาบาลที่รับคำขอได้",
+      hospitalActive: true,
+      careEnded: false,
+      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
+      assignedOsm: { relationshipId: "assigned-osm", displayName: "สมชาย อสม." },
+      requests: [
+        serviceRequest({ requestId: "rejected", status: "REJECTED", serviceCode: "EMPOWERMENT", rejectionReason: "ยังไม่มีเจ้าหน้าที่ให้บริการตามช่วงเวลาที่ระบุ" }),
+        serviceRequest({ requestId: "started", status: "STARTED", appointmentId: "appointment/selected", serviceCode: "SCREENING", preferredOsmName: null, note: longNote }),
+        serviceRequest({ requestId: "approved", status: "APPROVED", serviceCode: "FOLLOW_UP", preferredOsmName: null, preferredDate: "2026-11-04", preferredSlot: "AFTERNOON" }),
+        serviceRequest({ requestId: "pending", status: "PENDING", serviceCode: "SCREENING", preferredDate: "2026-11-05", preferredSlot: "MORNING" }),
+      ],
+    };
+    const inactive: PatientServiceRelationshipView = {
+      relationshipId: "inactive-hospital-relationship",
+      hospitalName: "โรงพยาบาลที่ยังไม่พร้อม",
+      hospitalActive: false,
+      careEnded: false,
+      services: [],
+      assignedOsm: null,
+      requests: [],
+    };
+    const careEnded: PatientServiceRelationshipView = {
+      relationshipId: "ended-hospital-relationship",
+      hospitalName: "โรงพยาบาลที่สิ้นสุดการดูแล",
+      hospitalActive: true,
+      careEnded: true,
+      services: [],
+      assignedOsm: null,
+      requests: [serviceRequest({ requestId: "ended-history", status: "WITHDRAWN" })],
+    };
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(createElement(PatientServicesWorkspace, {
+      relationships: [active, inactive, careEnded],
+      preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
+    }));
+
+    expect(host.querySelectorAll('section[aria-labelledby$="-history"]')).toHaveLength(3);
+    expect(host.querySelectorAll('select[name="serviceCode"]')).toHaveLength(1);
+    const activeHistory = host.querySelector<HTMLElement>('[aria-labelledby="patient-service-0-history"]');
+    const activeRows = Array.from(activeHistory?.querySelectorAll("ul > li") ?? []);
+    expect(activeRows.map((row) => row.querySelector("h4")?.textContent)).toEqual(["ติดตาม", "คัดกรอง", "เสริมพลังใจ", "คัดกรอง"]);
+    expect(activeRows.slice(0, 2).map((row) => row.querySelector("span")?.textContent)).toEqual([
+      "อนุมัติคำขอแล้ว รอยืนยันนัด",
+      "รอโรงพยาบาลยืนยัน",
+    ]);
+    expect(activeHistory?.textContent).toContain("สมชาย อสม.");
+    expect(activeHistory?.textContent).toContain("ให้โรงพยาบาลจัดให้");
+    expect(activeHistory?.textContent).toContain("วันที่และช่วงเวลาที่สะดวก");
+    expect(activeHistory?.textContent).toContain("เหตุผลที่ไม่อนุมัติ");
+    expect(activeHistory?.textContent).toContain("ยังไม่มีเจ้าหน้าที่ให้บริการตามช่วงเวลาที่ระบุ");
+    expect(activeHistory?.textContent).toContain(longNote);
+    expect(activeHistory?.querySelector('time[datetime="2026-11-04"]')).not.toBeNull();
+    expect(activeHistory?.querySelector('time[datetime="2026-10-30T00:00:00.000Z"]')).not.toBeNull();
+    expect(activeHistory?.querySelector('a[href="/app/personal/appointments/22222222-2222-4222-8222-222222222222/appointment%2Fselected"]')).not.toBeNull();
+    expect(host.textContent).toContain("โรงพยาบาลที่ยังไม่พร้อม");
+    expect(host.textContent).toContain("โรงพยาบาลสิ้นสุดการดูแลแล้ว จึงส่งคำขอใหม่ที่โรงพยาบาลนี้ไม่ได้");
+    expect(host.textContent).toContain("ถอนคำขอแล้ว");
+  });
+
+  it("keeps the no-Hospital empty state free of request forms", () => {
+    const markup = renderToStaticMarkup(createElement(PatientServicesWorkspace, {
+      relationships: [],
+      preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
+    }));
+    expect(markup).toContain("ยังไม่พบข้อมูลการดูแลจากโรงพยาบาลในบัญชีนี้");
+    expect(markup).not.toContain('name="serviceCode"');
+    expect(markup).not.toContain("ถอนคำขอ");
+  });
+
   it("keeps request creation on the page with the existing Bangkok date bounds and optional preferences", () => {
     const markup = renderToStaticMarkup(createElement(PatientServiceRequestForm, {
       relationshipId: pendingRequest.relationshipId,
@@ -196,6 +284,39 @@ describe("Patient service request interactions", () => {
     expect(document.activeElement).toBe(container?.querySelector('[role="status"]'));
   });
 
+  it("locks the selected request while a confirmed withdrawal is pending", async () => {
+    let resolveWithdrawal: ((state: PatientServiceMutationActionState) => void) | undefined;
+    serverActions.withdraw.mockReturnValueOnce(new Promise((resolve) => { resolveWithdrawal = resolve; }));
+    mount(createElement(PatientServiceRequestHistoryItem, { hospitalName: "โรงพยาบาล ก", request: pendingRequest }));
+    act(() => button("ถอนคำขอ").click());
+    await act(async () => button("ยืนยันถอนคำขอ", container?.querySelector("dialog") ?? document).click());
+
+    expect(serverActions.withdraw).toHaveBeenCalledOnce();
+    expect(button("กำลังถอนคำขอ...", container?.querySelector("dialog") ?? document).disabled).toBe(true);
+    expect(container?.querySelector("dialog")?.textContent).toContain("กำลังถอนคำขอ");
+
+    await act(async () => {
+      resolveWithdrawal?.({ status: "SUCCESS", message: "ถอนคำขอแล้ว" });
+    });
+    await settle();
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(container?.querySelector('[role="status"]')?.textContent).toBe("ถอนคำขอแล้ว");
+  });
+
+  it("keeps a confirmed withdrawal error attached to its request", async () => {
+    serverActions.withdraw.mockResolvedValue({ status: "ERROR", message: "คำขอนี้เปลี่ยนแปลงแล้ว กรุณาโหลดรายการล่าสุด" });
+    mount(createElement(PatientServiceRequestHistoryItem, { hospitalName: "โรงพยาบาล ก", request: pendingRequest }));
+    act(() => button("ถอนคำขอ").click());
+    await act(async () => button("ยืนยันถอนคำขอ", container?.querySelector("dialog") ?? document).click());
+    await settle();
+
+    expect(serverActions.withdraw).toHaveBeenCalledOnce();
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("โหลดรายการล่าสุด");
+    expect(container?.querySelector("li")?.textContent).toContain("คัดกรอง");
+    expect(container?.querySelector("li")?.textContent).toContain("ถอนคำขอ");
+  });
+
   it.each(["STARTED", "REJECTED", "WITHDRAWN"] as const)("does not expose withdrawal for %s requests", (status) => {
     mount(createElement(PatientServiceRequestHistoryItem, {
       hospitalName: "โรงพยาบาล ก",
@@ -223,5 +344,28 @@ describe("Patient service request interactions", () => {
     expect(container?.querySelector("dialog")).toBeNull();
     expect(container?.textContent).toContain("โหลดข้อมูลล่าสุด");
     expect(button("ถอนคำขอ").disabled).toBe(true);
+  });
+
+  it("uses review recovery for an uncertain service-request creation without resending", async () => {
+    serverActions.create.mockRejectedValue(new TypeError("Failed to fetch"));
+    mount(createElement(PatientServiceRequestForm, {
+      relationshipId: pendingRequest.relationshipId,
+      services: ["SCREENING", "FOLLOW_UP", "EMPOWERMENT"],
+      assignedOsm: null,
+      preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
+    }));
+    const form = container?.querySelector<HTMLFormElement>("form");
+    if (!form) throw new Error("Missing patient service request form");
+
+    await act(async () => {
+      form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+
+    expect(serverActions.create).toHaveBeenCalledOnce();
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("คำขอนี้อาจถูกบันทึกซ้ำหากส่งอีกครั้ง");
+    expect(button("ตรวจสอบรายการคำขอล่าสุด").type).toBe("button");
+    expect(button("ส่งคำขอรับบริการ").disabled).toBe(true);
+    expect(container?.textContent).not.toContain("ส่งคำขอเดิมซ้ำ");
   });
 });

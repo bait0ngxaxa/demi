@@ -25,6 +25,7 @@ import {
 import {
   initialPatientServiceMutationActionState,
 } from "@/modules/patient-service-requests/transport/action-state";
+import { SavedRecordActions, SavedRecordCard } from "../saved-record-card";
 import {
   createPatientServiceRequestAction,
   searchOwnServiceRequestOsmChoicesAction,
@@ -215,7 +216,7 @@ export function WithdrawPatientServiceRequestButton({
   }
 
   return (
-    <div className="mt-3">
+    <div>
       <ConfirmableActionForm
         action={action}
         confirmation={{
@@ -269,38 +270,54 @@ export function PatientServiceRequestHistoryItem({
   hospitalName: string;
 }): React.JSX.Element {
   const itemRef = useRef<HTMLLIElement>(null);
+  const appointmentHref = request.status === "STARTED" && request.appointmentId
+    ? `/app/personal/appointments/${encodeURIComponent(request.relationshipId)}/${encodeURIComponent(request.appointmentId)}`
+    : null;
+  const hasActions = appointmentHref !== null || request.status === "PENDING" || request.status === "APPROVED";
 
   return (
-    <li className="border-t border-border py-4 first:border-t-0 first:pt-0 last:pb-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" ref={itemRef} tabIndex={-1}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <p className="font-semibold text-text">{patientServiceLabel(request.serviceCode)}</p>
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            อสม. ที่ต้องการ: {request.preferredOsmName ?? "ให้โรงพยาบาลจัดให้"}
-          </p>
-          {request.preferredDate && request.preferredSlot ? (
-            <p className="mt-1 text-sm leading-6 text-text-muted">
-              วันที่สะดวก: {formatPatientServicePreferredDate(request.preferredDate)} · {patientServiceRequestSlotLabel(request.preferredSlot)}
-            </p>
-          ) : null}
-          {request.note ? <p className="mt-1 break-words text-sm leading-6 text-text-muted">หมายเหตุ: {request.note}</p> : null}
-          {request.rejectionReason ? (
-            <p className="mt-1 break-words text-sm leading-6 text-text">เหตุผลที่ไม่อนุมัติ: {request.rejectionReason}</p>
-          ) : null}
-          <p className="mt-1 text-sm leading-6 text-text-muted">
-            ส่งคำขอเมื่อ {formatPatientServiceRequestDate(request.createdAt)}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-start gap-3 sm:items-end">
+    <li className="min-w-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" ref={itemRef} tabIndex={-1}>
+      <SavedRecordCard>
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <h4 className="break-words font-semibold text-text">{patientServiceLabel(request.serviceCode)}</h4>
           <StatusBadge variant={patientServiceRequestStatusVariant(request.status)}>
             {patientServiceRequestStatusLabel(request.status)}
           </StatusBadge>
-          {request.status === "STARTED" && request.appointmentId ? (
-            <Link className="inline-flex min-h-11 items-center rounded-control font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={`/app/personal/appointments/${encodeURIComponent(request.relationshipId)}/${encodeURIComponent(request.appointmentId)}`} prefetch={false}>ดูนัดหมาย</Link>
-          ) : null}
-          <WithdrawPatientServiceRequestButton hospitalName={hospitalName} request={request} returnFocusTarget={() => itemRef.current} />
         </div>
-      </div>
+        <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">อสม. ที่ต้องการ</dt>
+            <dd className="mt-1 break-words text-text">{request.preferredOsmName ?? "ให้โรงพยาบาลจัดให้"}</dd>
+          </div>
+          {request.preferredDate && request.preferredSlot ? (
+            <div className="min-w-0">
+              <dt className="text-sm font-semibold text-text-muted">วันที่และช่วงเวลาที่สะดวก</dt>
+              <dd className="mt-1 break-words text-text">
+                <time dateTime={request.preferredDate}>{formatPatientServicePreferredDate(request.preferredDate)}</time>
+                {" · "}{patientServiceRequestSlotLabel(request.preferredSlot)}
+              </dd>
+            </div>
+          ) : null}
+          {request.note ? <div className="min-w-0 sm:col-span-2">
+            <dt className="text-sm font-semibold text-text-muted">หมายเหตุถึงโรงพยาบาล</dt>
+            <dd className="mt-1 break-words text-text">{request.note}</dd>
+          </div> : null}
+          {request.rejectionReason ? (
+            <div className="min-w-0 sm:col-span-2">
+              <dt className="text-sm font-semibold text-text-muted">เหตุผลที่ไม่อนุมัติ</dt>
+              <dd className="mt-1 break-words text-text">{request.rejectionReason}</dd>
+            </div>
+          ) : null}
+          <div className="min-w-0">
+            <dt className="text-sm font-semibold text-text-muted">ส่งคำขอเมื่อ</dt>
+            <dd className="mt-1 text-text"><time dateTime={request.createdAt.toISOString()}>{formatPatientServiceRequestDate(request.createdAt)}</time></dd>
+          </div>
+        </dl>
+        {hasActions ? <SavedRecordActions>
+          {appointmentHref ? <Link className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong px-4 text-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={appointmentHref} prefetch={false}>ดูนัดหมาย</Link> : null}
+          <WithdrawPatientServiceRequestButton hospitalName={hospitalName} request={request} returnFocusTarget={() => itemRef.current} />
+        </SavedRecordActions> : null}
+      </SavedRecordCard>
     </li>
   );
 }
