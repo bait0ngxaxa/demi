@@ -381,6 +381,13 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(query<HTMLInputElement>('input[name="submissionNonce"]').value).toBe(refreshedNonce);
     expect(container.querySelectorAll('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"] > li')).toHaveLength(1);
 
+    const startNewRecord = query<HTMLButtonElement>('button[type="button"]');
+    expect(startNewRecord.textContent).toContain("เริ่มบันทึกครั้งใหม่");
+    await act(async () => startNewRecord.click());
+    expect(query<HTMLFormElement>("form")).toBe(form);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("");
+
     setValue("weight", "71");
     expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
@@ -388,6 +395,30 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(mocks.create.mock.calls[0]?.[1].get("submissionNonce")).toBe(nonce);
     expect(mocks.create.mock.calls[1]?.[1].get("submissionNonce")).toBe(refreshedNonce);
     expect(mocks.create.mock.calls[1]?.[1].get("weight")).toBe("71");
+  });
+
+  it("blocks an independent create with a consumed nonce until the server supplies a new one", async () => {
+    mocks.create.mockResolvedValue({ status: "SUCCESS", message: "บันทึกแล้ว" });
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+    const form = query<HTMLFormElement>("form");
+
+    setValue("weight", "70");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(query<HTMLInputElement>('input[name="submissionNonce"]').value).toBe(nonce);
+
+    setValue("weight", "71");
+    const blockedSubmit = new Event("submit", { bubbles: true, cancelable: true });
+    act(() => form.dispatchEvent(blockedSubmit));
+
+    expect(blockedSubmit.defaultPrevented).toBe(true);
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(query<HTMLInputElement>('input[name="submissionNonce"]').value).toBe(nonce);
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("71");
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
+    expect(query('[role="status"]').textContent).toContain("รหัสใหม่");
+    expect(container.querySelector('button[type="button"]')).toBeNull();
   });
 
   it("shows the delete action only when allowed", async () => {

@@ -54,7 +54,9 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
   const [currentSubmissionId, setCurrentSubmissionId] = useState<number | null>(null);
   const [settledResult, setSettledResult] = useState<{ submissionId: number; result: PatientSelfMeasurementActionState } | null>(null);
   const [confirmedPayload, setConfirmedPayload] = useState<string | null>(null);
+  const [consumedNonce, setConsumedNonce] = useState<string | null>(null);
   const requestInFlight = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const [draftSignature, setDraftSignature] = useState<string | null>(null);
   const trackedAction = useCallback(async (
     previous: PatientSelfMeasurementActionState,
@@ -64,7 +66,11 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
       const result = await createOwnPatientSelfMeasurementAction(previous, formData);
       const submissionId = activeSubmissionId.current;
       if (submissionId !== null && result.status !== "IDLE") setSettledResult({ submissionId, result });
-      if (result.status === "SUCCESS") setConfirmedPayload(submissionPayloadSignature(formData));
+      if (result.status === "SUCCESS") {
+        setConfirmedPayload(submissionPayloadSignature(formData));
+        const submittedNonce = formData.get("submissionNonce");
+        if (typeof submittedNonce === "string") setConsumedNonce(submittedNonce);
+      }
       return result;
     } finally {
       requestInFlight.current = false;
@@ -78,9 +84,25 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
   const currentSuccess = state.status === "SUCCESS" && currentOutcome && (
     currentSubmissionId === null || draftSignature === confirmedPayload
   ) ? state : null;
+  const nonceConsumed = consumedNonce === nonce;
   const sameConfirmedDraft = Boolean(
     currentSuccess && currentSubmissionId !== null && draftSignature === confirmedPayload,
   );
+  const canStartNewRecord = sameConfirmedDraft && !nonceConsumed;
+  const startNewRecord = (): void => {
+    if (!canStartNewRecord || pending || unknownOutcome || requestInFlight.current) return;
+    const form = formRef.current;
+    if (!form) return;
+    const currentSignature = submissionPayloadSignature(new FormData(form));
+    if (currentSignature !== confirmedPayload) {
+      setDraftSignature(currentSignature);
+      return;
+    }
+    form.reset();
+    setDraftSignature(submissionPayloadSignature(new FormData(form)));
+    setConfirmedPayload(null);
+    setSettledResult(null);
+  };
   useLayoutEffect(() => {
     onAttentionChange(pending || unknownOutcome || currentError?.recovery === "CRITICAL");
   }, [currentError, onAttentionChange, pending, unknownOutcome]);
@@ -93,6 +115,10 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
       }
       const signature = submissionPayloadSignature(new FormData(event.currentTarget));
       setDraftSignature(signature);
+      if (nonceConsumed) {
+        event.preventDefault();
+        return;
+      }
       if (signature === confirmedPayload) {
         event.preventDefault();
         return;
@@ -106,7 +132,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
       submitPreservingInput(action)(event);
     }} onChange={(event) => {
       setDraftSignature(submissionPayloadSignature(new FormData(event.currentTarget)));
-    }}>
+    }} ref={formRef}>
       <input name="submissionNonce" type="hidden" value={nonce} />
       <input name="bloodSugarUnit" type="hidden" value={PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT} />
       <fieldset className="space-y-4" disabled={pending || unknownOutcome}>
@@ -134,8 +160,15 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
       <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
       {currentError ? currentError.loginHref ? <PatientSelfSessionExpiredAlert href={currentError.loginHref} message={currentError.message} /> : <Alert role="alert" variant="danger">{currentError.message}</Alert> : null}
       {currentSuccess ? <div role="status"><Alert variant="success">{currentSuccess.message}</Alert></div> : null}
+      {nonceConsumed ? <div role="status"><Alert variant="success">ระบบยืนยันการบันทึกล่าสุดแล้ว กำลังรอรหัสใหม่จากระบบก่อนรับรายการถัดไป</Alert></div> : null}
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
-      <Button disabled={pending || unknownOutcome || sameConfirmedDraft} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึก"}</Button>
+      {canStartNewRecord ? (
+        <Button onClick={startNewRecord} type="button" variant="ghost">เริ่มบันทึกครั้งใหม่</Button>
+      ) : (
+        <Button disabled={pending || unknownOutcome || nonceConsumed || sameConfirmedDraft} loading={pending} type="submit">
+          {pending ? "กำลังบันทึก..." : nonceConsumed ? "กำลังรอรหัสใหม่..." : "บันทึก"}
+        </Button>
+      )}
     </form>
   );
 }
