@@ -4,6 +4,7 @@ import { AppointmentSharingWorkspace } from "./appointment-sharing-workspace";
 import { AppointmentFields } from "./grants/[grantId]/appointments/appointment-fields";
 import { FamilyManagementWorkspace } from "./family-management-workspace";
 import type { AppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
+import type { FamilyManagementOverview } from "@/modules/family/services/caregiver-relationship-query-service";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS } from "@/modules/family/domain/caregiver-sharing-contract";
 const mocks = vi.hoisted(() => ({ detail: vi.fn(), connection: vi.fn(), redirect: vi.fn() }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
@@ -53,7 +54,61 @@ describe("bounded appointment sharing UI", () => {
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ patient: { invitations: [], relationships: [relationship], nextInvitationsCursor: null, nextRelationshipsCursor: null }, caregiver: { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null } }} />);
     expect(markup).toContain("สร้างลิงก์คำเชิญ"); expect(markup).toContain("ยกเลิกการเชื่อมต่อกับผู้ดูแล");
     expect(markup).not.toContain("เสนอสิทธิ์ดูนัดหมาย");
+    for (const emptyState of ["ยังไม่มีคำเชิญผู้ดูแล", "ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้", "ยังไม่มีผู้ป่วยที่คุณตอบรับคำเชิญให้ดูแล"]) expect(markup).toContain(emptyState);
     expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
+  });
+  it("groups invitation and relationship readbacks by record, with role-specific status, dates, and active-only navigation", () => {
+    const issuedAt = new Date("2026-10-01T00:00:00.000Z");
+    const expiresAt = new Date("2026-10-08T00:00:00.000Z");
+    const invitations = (["PENDING", "ACCEPTED", "REJECTED", "REVOKED", "EXPIRED"] as const).map((status) => ({
+      invitationId: `invitation-${status.toLowerCase()}`,
+      participant: { givenName: "ผู้ดูแลชื่อยาวทดสอบการตัดบรรทัด", familyName: "ครอบครัวตัวอย่าง", nameIsSelfAsserted: true },
+      status,
+      issuedAt,
+      expiresAt,
+    }));
+    const patientRelationship = {
+      participant: { givenName: "ผู้ดูแล", familyName: "ที่เชื่อมไว้", nameIsSelfAsserted: true },
+      relationshipId: "patient-relationship-active",
+      status: "ACTIVE" as const,
+      activatedAt: issuedAt,
+      revokedAt: null,
+      withdrawnAt: null,
+      relationshipLabel: "CHILD" as const,
+      relationshipLabelOther: null,
+      relationshipLabelVersion: 1,
+    };
+    const overview: FamilyManagementOverview = {
+      patient: {
+        invitations,
+        relationships: [patientRelationship, { ...patientRelationship, relationshipId: "patient-relationship-revoked", status: "REVOKED", revokedAt: expiresAt }, { ...patientRelationship, relationshipId: "patient-relationship-withdrawn", status: "WITHDRAWN", withdrawnAt: expiresAt }],
+        nextInvitationsCursor: "patient-invitations-next",
+        nextRelationshipsCursor: "patient-relationships-next",
+      },
+      caregiver: {
+        invitations,
+        relationships: [
+          { ...patientRelationship, relationshipId: "caregiver-relationship-active", participant: { givenName: "ผู้ป่วย", familyName: "ที่แชร์ให้", nameIsSelfAsserted: true } },
+          { ...patientRelationship, relationshipId: "caregiver-relationship-revoked", participant: { givenName: "ผู้ป่วย", familyName: "ที่แชร์ให้", nameIsSelfAsserted: false }, status: "REVOKED", revokedAt: expiresAt },
+          { ...patientRelationship, relationshipId: "caregiver-relationship-withdrawn", participant: { givenName: "ผู้ป่วย", familyName: "ที่แชร์ให้", nameIsSelfAsserted: false }, status: "WITHDRAWN", withdrawnAt: expiresAt },
+        ],
+        nextInvitationsCursor: "caregiver-invitations-next",
+        nextRelationshipsCursor: "caregiver-relationships-next",
+      },
+    };
+    const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={overview} />);
+
+    for (const text of ["รอการตอบรับ", "ยอมรับแล้ว", "ปฏิเสธแล้ว", "ยกเลิกแล้ว", "หมดอายุ", "สร้างเมื่อ", "หมดอายุ", "ชื่อที่ผู้ดูแลแจ้งเอง", "ชื่อที่ผู้ป่วยแจ้งเอง", "ความสัมพันธ์: บุตร", "เริ่มเมื่อ", "ยุติการเชื่อมต่อเมื่อ", "ผู้ดูแลหยุดเชื่อมต่อเมื่อ"]) expect(markup).toContain(text);
+    expect(markup).toContain(`<time dateTime="${issuedAt.toISOString()}">`);
+    expect(markup).toContain(`<time dateTime="${expiresAt.toISOString()}">`);
+    expect(markup.match(/aria-label="แสดงคิวอาร์โค้ดคำเชิญ:/g)).toHaveLength(1);
+    expect(markup).toContain('/app/family/members/caregiver-relationship-active');
+    expect(markup).not.toContain('/app/family/members/caregiver-relationship-revoked');
+    expect(markup).not.toContain('/app/family/members/caregiver-relationship-withdrawn');
+    expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
+    expect(markup).toContain("สร้างลิงก์คำเชิญ");
+    expect(markup).toContain('patientInvitationsCursor=patient-invitations-next');
+    expect(markup).toContain('caregiverRelationshipsCursor=caregiver-relationships-next');
   });
   it("legacy list deep links land on the member's hub selection; detail stays scoped and returns to the hub", async () => {
     mocks.redirect.mockImplementation(() => { throw new Error("redirected"); });

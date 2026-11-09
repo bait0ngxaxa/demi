@@ -21,8 +21,11 @@ export function SavedRecordCard({ as: Tag = "div", tone = "current", selected = 
 }
 
 /** Footer row for the actions on one saved record, so every record places them the same way. */
-export function SavedRecordActions({ children }: { children: ReactNode }): React.JSX.Element {
-  return <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4 [&>*]:flex-1 sm:[&>*]:flex-none">{children}</div>;
+export function SavedRecordActions({ children, separated = true }: { children: ReactNode; separated?: boolean }): React.JSX.Element {
+  return <div className={classNames(
+    separated ? "mt-4 border-t border-border pt-4" : "",
+    "flex flex-wrap gap-2 [&>*]:flex-1 sm:[&>*]:flex-none",
+  )}>{children}</div>;
 }
 
 /** Bounded empty state for a saved-record collection; it never offers an action the page does not already have. */
