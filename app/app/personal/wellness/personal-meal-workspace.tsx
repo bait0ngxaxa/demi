@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } from "@/modules/meals/domain/personal-meal";
@@ -23,6 +22,7 @@ export function MealReadback({ item, titleAs: Title = "p" }: { item: PersonalMea
 }
 export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalMealPage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalMealPage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
+  const [createInitiallyOpen] = useState(initialPage.items.length === 0);
   // The selected entry is the subject of the open edit or delete dialog; results then belong to it, not to create.
   const [selected, setSelected] = useState<PersonalMealDto | undefined>();
   const [mode, setMode] = useState<"EDIT" | "DELETE">("EDIT");
@@ -139,6 +139,7 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
   }
   // A running request or an outcome that needs review keeps the dialog open; its recovery is inside it.
   const entryDialogDismissible = !saving && !pending && !reviewRequired;
+  const createDisclosureLocked = !selected && (saving || pending || recoveringCreate || reviewRequired || feedback.status === "CREATE_CONSUMED" || Boolean(feedback.loginHref));
   function closeEntry(): void {
     if (!selected || !entryDialogDismissible) return;
     if (mode === "EDIT" && activity.current.write !== "CONFIRMED") editDraft.retain(`${selected.id}:${selected.updatedAt}`);
@@ -163,12 +164,21 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
       <div className="mb-3"><StatusBadge variant="success">บันทึกแล้ว</StatusBadge></div>
       <MealReadback item={feedback.result.item} />
     </SavedRecordCard></section> : null}
-    <Panel><div className="space-y-4">
+    <details open={createInitiallyOpen} className="group rounded-panel border border-border bg-surface" onToggle={(event) => {
+      if (createDisclosureLocked && !event.currentTarget.open) event.currentTarget.open = true;
+    }}>
+      <summary aria-disabled={createDisclosureLocked || undefined} onClick={(event) => { if (createDisclosureLocked) event.preventDefault(); }} className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
+        บันทึกมื้ออาหารเพิ่ม
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 5 5 5-5" /></svg>
+      </summary>
+      {/* Keep the same editor mounted: closing never discards a draft or recovery nonce. */}
+      <div className="space-y-4 border-t border-border p-5 sm:p-7">
       <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
         <p className="text-sm text-text-muted">ข้อมูลในแบบฟอร์มนี้จะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
       <MealEditor key={nonce} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
       <Button className="w-full sm:w-auto" variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button>
-    </div></Panel>
+      </div>
+    </details>
     <section aria-label="ประวัติมื้ออาหาร" className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">มื้ออาหารที่บันทึกแล้ว</h3>
