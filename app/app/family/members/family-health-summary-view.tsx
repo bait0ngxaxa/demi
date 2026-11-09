@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { MedicationSummaryItem } from "../../medication-summary-item";
 import { APPOINTMENT_TYPE_LABELS } from "@/modules/appointments/domain/appointment-definitions";
 import { formatFamilyParticipantName } from "@/modules/family/presentation/caregiver-relationship-presentation";
 import type { FamilyHealthSummary } from "@/modules/family/services/family-health-summary-query-service";
@@ -142,15 +143,14 @@ export function FamilyHealthSummaryView({ summary }: { summary: FamilyHealthSumm
         ) : null}
 
         {summary.medications ? (
-          <Block title="ยาที่ใช้อยู่">
-            {summary.medications.items.length === 0 ? <Empty>ยังไม่มีรายการยาที่ใช้อยู่</Empty> : (
-              <ul className="divide-y divide-border">
-                {summary.medications.items.map((medication) => (
-                  <li className="py-3 first:pt-0" key={medication.medicationId}>
-                    <p className="break-words font-semibold">{medication.medicationName}</p>
-                    <p className="text-text-muted">{medication.times.length > 0 ? `เวลา ${medication.times.join(", ")} น.` : "ไม่ได้ตั้งเวลา"}</p>
-                  </li>
-                ))}
+          <Block title="รายการยาที่กำลังติดตาม">
+            {summary.medications.items.length === 0 ? <Empty>ยังไม่มีรายการยาที่ผู้ป่วยบันทึกไว้เพื่อติดตามใน DEMI</Empty> : (
+              <ul aria-label="รายการยาที่กำลังติดตาม" className="divide-y divide-border">
+                {summary.medications.items.map((medication) => <MedicationSummaryItem
+                  key={medication.medicationId}
+                  medicationName={medication.medicationName}
+                  times={medication.times}
+                />)}
               </ul>
             )}
           </Block>

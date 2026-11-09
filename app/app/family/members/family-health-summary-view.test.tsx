@@ -25,23 +25,33 @@ const full: FamilyHealthSummary = {
   healthPlan: { serviceProgress: [], plans: [{ hospitalName: "รพ.สต. บ้านใหม่", roundNumber: 2, createdAt: new Date("2026-10-01T00:00:00.000Z"), primaryGoalLabel: "ลดน้ำหนัก",
     targets: { weightLossKg: 3, waistCm: null, bloodSugarMgDl: null, hba1cPercent: null },
     activities: [{ activityLabel: "เดินเร็ว", targetDays: 5, targetValue: 30, targetUnit: "นาที" }] }] },
-  medications: { items: [{ medicationId: "77777777-7777-4777-8777-777777777777", medicationName: "เมทฟอร์มิน", times: ["08:00", "20:00"] }] },
+  medications: { items: [
+    { medicationId: "77777777-7777-4777-8777-777777777777", medicationName: "เมทฟอร์มิน", times: ["08:00", "20:00"] },
+    { medicationId: "88888888-8888-4888-8888-888888888888", medicationName: "ยาที่มีชื่อยาวสำหรับทดสอบการขึ้นบรรทัดใหม่".repeat(4), times: [] },
+  ] },
 };
 
 describe("AF-5 family health summary view", () => {
   it("renders every granted block with the Hospital/รพ.สต. phone and never a private one", () => {
     const markup = renderToStaticMarkup(<FamilyHealthSummaryView summary={full} />);
     for (const text of ["แม่ ใจดี", "บุตร", "66 ปี", "นัดถัดไป", "รพ.สต. บ้านใหม่ · โรงพยาบาลแม่ข่าย", "อสม. สมศรี", 'href="tel:021234567"',
-      "แผนสุขภาพปัจจุบัน", "ลดน้ำหนัก 3 กก.", "เดินเร็ว 5 วัน/สัปดาห์ · 30 นาที", "ยาที่ใช้อยู่", "เมทฟอร์มิน", "เวลา 08:00, 20:00 น."]) {
+      "แผนสุขภาพปัจจุบัน", "ลดน้ำหนัก 3 กก.", "เดินเร็ว 5 วัน/สัปดาห์ · 30 นาที", "รายการยาที่กำลังติดตาม", "เมทฟอร์มิน",
+      "ยาที่มีชื่อยาวสำหรับทดสอบการขึ้นบรรทัดใหม่".repeat(4), "เวลาที่ต้องการติดตามใน DEMI", '<time dateTime="08:00">08:00</time>', '<time dateTime="20:00">20:00</time>', "ยังไม่ได้บันทึกเวลา"]) {
       expect(markup).toContain(text);
     }
+    expect(markup).toContain("flex-wrap");
+    expect(markup).toContain("break-words");
+    expect(markup).not.toContain("08:00, 20:00");
+    expect(markup).not.toContain("ยาที่ใช้อยู่");
+    expect(markup).not.toContain("ข้อความประกอบ");
+    expect(markup).not.toContain("วิธีรับประทาน");
     expect(markup).toContain(`/app/family/grants/${grantId}/appointments/`);
     expect(markup).not.toMatch(/<form|<button/u);
   });
 
   it("omits a block without its grant instead of showing it empty, and says when nothing is shared", () => {
     const markup = renderToStaticMarkup(<FamilyHealthSummaryView summary={base} />);
-    for (const heading of ["นัดถัดไป", "ผู้ดูแลและการติดต่อ", "แผนสุขภาพปัจจุบัน", "บริการปัจจุบัน", "ยาที่ใช้อยู่", "อายุ"]) expect(markup).not.toContain(heading);
+    for (const heading of ["นัดถัดไป", "ผู้ดูแลและการติดต่อ", "แผนสุขภาพปัจจุบัน", "บริการปัจจุบัน", "รายการยาที่กำลังติดตาม", "อายุ"]) expect(markup).not.toContain(heading);
     expect(markup).toContain("ผู้ป่วยยังไม่ได้แชร์ข้อมูลสุขภาพกับคุณ");
   });
 
@@ -50,7 +60,7 @@ describe("AF-5 family health summary view", () => {
       ...base, profile: { age: null, careTeams: [] }, nextAppointment: { appointment: null }, medications: { items: [] },
     }} />);
     expect(markup).toContain("ไม่มีนัดหมายที่จะถึงในช่วง 90 วันข้างหน้า");
-    expect(markup).toContain("ยังไม่มีรายการยาที่ใช้อยู่");
+    expect(markup).toContain("ยังไม่มีรายการยาที่ผู้ป่วยบันทึกไว้เพื่อติดตามใน DEMI");
     expect(markup).not.toContain("อายุ");
     expect(markup).not.toContain("แผนสุขภาพปัจจุบัน");
   });

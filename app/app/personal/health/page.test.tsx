@@ -52,7 +52,7 @@ describe("PH-1 patient health page", () => {
   it("renders all 13 items in Canva order with explicit empty states and the measurement route intact", async () => {
     const html = renderToStaticMarkup(await Page());
     expect([...html.matchAll(/data-health-item="(\d+)"/g)].map((match) => Number(match[1]))).toEqual(Array.from({ length: 13 }, (_, index) => index + 1));
-    for (const label of ["ชื่อ-สกุล", "อายุ", "น้ำหนัก", "ส่วนสูง", "BMI", "รอบเอว", "โรคประจำตัว", "ประวัติครอบครัว (พ่อแม่และญาติสายตรง)", "ผู้ติดต่อกรณีฉุกเฉิน", "ยาที่รับประทาน", "การนัดหมาย", "อสม.ผู้ดูแล + เบอร์ติดต่อ", "แผนสุขภาพ",
+    for (const label of ["ชื่อ-สกุล", "อายุ", "น้ำหนัก", "ส่วนสูง", "BMI", "รอบเอว", "โรคประจำตัว", "ประวัติครอบครัว (พ่อแม่และญาติสายตรง)", "ผู้ติดต่อกรณีฉุกเฉิน", "รายการยาที่กำลังติดตาม", "ยังไม่มีรายการยาที่คุณบันทึกไว้และกำลังติดตาม", "การนัดหมาย", "อสม.ผู้ดูแล + เบอร์ติดต่อ", "แผนสุขภาพ",
       "โรงพยาบาลยังไม่ได้บันทึก", "ยังไม่มีนัดหมายถัดไป", "ยังไม่มี อสม.ผู้ดูแล", "คุณยังไม่ได้บันทึกค่าที่วัดเอง", 'href="/app/personal/measurements"']) expect(html).toContain(label);
     expect(connection).toHaveBeenCalledOnce();
   });
@@ -73,7 +73,7 @@ describe("PH-1 patient health page", () => {
     vi.mocked(getOwnLatestStaffMeasurements).mockResolvedValue({ weight: { value: 70, date, source: "ติดตามผล" }, heightCm: { value: 160, date, source: "ข้อมูลตั้งต้น" }, waistCircumference: null,
       bmi: { value: 27.3, date, source: "ติดตามผล", heightDate: date, heightSource: "ข้อมูลตั้งต้น" } });
     vi.mocked(listOwnPatientSelfMeasurements).mockResolvedValue({ items: [{ measurementId: "self", measuredAt: date, createdAt: date,
-      weight: 55, bloodSugar: null, systolicBloodPressure: null, diastolicBloodPressure: null, note: null, canDelete: false }], nextCursor: null });
+      weight: 55, bloodSugar: 110, systolicBloodPressure: 120, diastolicBloodPressure: 80, note: null, canDelete: false }], nextCursor: null });
     vi.mocked(getOwnCurrentAssignedOsm).mockResolvedValue({ displayName: "สมศรี อสม.", contactPhone: "0812345678" });
     vi.mocked(listOwnActiveMedicationSummaries).mockResolvedValue({ items: [{ id: "med", medicationName: "ยาทดสอบ", instructionText: "ครั้งละ 1 เม็ด หลังอาหาร",
       status: "ACTIVE", stoppedAt: null, createdAt: date.toISOString(), updatedAt: date.toISOString(), schedules: [{ localTime: "08:00" }] }], hasMore: false });
@@ -82,10 +82,46 @@ describe("PH-1 patient health page", () => {
       goalPlanId: "plan", roundNumber: 1, createdAt: date, primaryGoalLabel: "เคลื่อนไหว", program: null, primaryGoalNote: null, weeklyNote: null,
       items: [{ activityLabel: "เดิน", targetDays: 3, targetValue: null, targetUnit: null }] });
     const html = renderToStaticMarkup(await Page());
-    for (const value of ["70 กก.", "27.3", "ข้อมูลตั้งต้น", "ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่", "55 กก.", "สมศรี อสม.", 'href="tel:0812345678"', "ครั้งละ 1 เม็ด หลังอาหาร", "08:00", `/app/personal/appointments/${id}/appt`, `/app/personal/care/${id}/goal-plans/plan`, "เดิน"]) expect(html).toContain(value);
+    for (const value of ["70 กก.", "27.3", "ข้อมูลตั้งต้น", "ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่", "ผู้ป่วยบันทึกเอง", "55 ", "ระดับน้ำตาลในเลือด", "110", "mg/dL", "ความดันโลหิต (ตัวบน / ตัวล่าง)", "120 / 80", "mmHg", "สมศรี อสม.", 'href="tel:0812345678"', "รายการยาที่กำลังติดตาม", "ข้อความประกอบที่คุณบันทึก", "ครั้งละ 1 เม็ด หลังอาหาร", 'dateTime="08:00"', `/app/personal/appointments/${id}/appt`, `/app/personal/care/${id}/goal-plans/plan`, "เดิน"]) expect(html).toContain(value);
     expect(html.indexOf("70 กก.")).toBeLessThan(html.indexOf("ค่าที่วัดเอง ·"));
-    expect(html.indexOf("55 กก.")).toBeGreaterThan(html.indexOf("ค่าที่วัดเอง ·"));
+    expect(html.indexOf("55 ")).toBeGreaterThan(html.indexOf("ค่าที่วัดเอง ·"));
+    expect(html).toContain('href="/app/personal/medications"');
+    expect(html).toContain("ไปที่ยา");
     expect(html).not.toContain("น้ำหนักเกิน");
+  });
+  it("renders multiple personal medication entries with exact wrapping times and existing hasMore navigation", async () => {
+    const longName = "ยาสำหรับติดตามความดันโลหิต".repeat(6);
+    const longText = "ข้อความประกอบที่ฉันบันทึกไว้เอง ".repeat(12);
+    vi.mocked(listOwnActiveMedicationSummaries).mockResolvedValue({ items: [
+      { id: "med-empty", medicationName: longName, instructionText: null, status: "ACTIVE", stoppedAt: null,
+        createdAt: date.toISOString(), updatedAt: date.toISOString(), schedules: [] },
+      { id: "med-times", medicationName: "ยาอีกชนิด", instructionText: longText, status: "ACTIVE", stoppedAt: null,
+        createdAt: date.toISOString(), updatedAt: date.toISOString(), schedules: [{ localTime: "08:00" }, { localTime: "12:30" }, { localTime: "20:00" }] },
+    ], hasMore: true });
+
+    const html = renderToStaticMarkup(await Page());
+
+    for (const value of [longName, longText, "ยังไม่ได้บันทึกข้อความประกอบ", "ยังไม่ได้บันทึกเวลา", "เวลาที่ต้องการติดตามใน DEMI",
+      '<time dateTime="08:00">08:00</time>', '<time dateTime="12:30">12:30</time>', '<time dateTime="20:00">20:00</time>', "ดูยาทั้งหมด"]) {
+      expect(html).toContain(value);
+    }
+    expect(html).toContain("flex-wrap");
+    expect(html).toContain("break-words");
+    expect(html).toContain('href="/app/personal/medications"');
+    expect(html).toMatch(/<ul aria-label="รายการยาที่กำลังติดตาม"[^>]*><li/u);
+    expect(html).not.toContain("08:00, 12:30");
+    expect(html).not.toContain("ยาที่รับประทาน");
+    expect(html).not.toContain("กำลังรับประทาน");
+    expect(html).not.toContain("วิธีรับประทาน");
+  });
+  it("keeps medication read failures scoped to the existing health-page retry", async () => {
+    vi.mocked(listOwnActiveMedicationSummaries).mockRejectedValue(new InfrastructureError());
+
+    const html = renderToStaticMarkup(await Page());
+
+    expect(html).toContain("โหลดข้อมูลส่วนนี้ไม่สำเร็จ");
+    expect(html).toContain(`href="/app/personal/health?relationshipId=${id}"`);
+    expect(html).not.toContain("ยังไม่มีรายการยาที่คุณบันทึกไว้และกำลังติดตาม");
   });
   it("shows hospital phone when assigned OSM has no phone", async () => {
     vi.mocked(getOwnCurrentAssignedOsm).mockResolvedValue({ displayName: "อสม. ทดสอบ", contactPhone: null });

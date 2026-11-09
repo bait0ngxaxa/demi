@@ -17,7 +17,7 @@ import {
 export type PatientSelfMeasurementActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS"; message: string }
-  | { status: "ERROR"; message: string; loginHref?: string };
+  | { status: "ERROR"; message: string; recovery: "RECOVERABLE" | "CRITICAL"; loginHref?: string };
 
 function formNumber(formData: FormData, key: string): number | null | string {
   const value = formData.get(key);
@@ -49,10 +49,11 @@ function errorMessage(error: unknown, fallback: string): string {
 
 async function errorState(error: unknown, fallback: string): Promise<PatientSelfMeasurementActionState> {
   const message = errorMessage(error, fallback);
+  const recovery = error instanceof ApplicationError && error.code === "VALIDATION" ? "RECOVERABLE" : "CRITICAL";
 
   return error instanceof ApplicationError && error.code === "UNAUTHENTICATED"
-    ? { status: "ERROR", message, loginHref: getPatientSelfLoginHref("/app/personal/measurements") }
-    : { status: "ERROR", message };
+    ? { status: "ERROR", message, recovery: "CRITICAL", loginHref: getPatientSelfLoginHref("/app/personal/measurements") }
+    : { status: "ERROR", message, recovery };
 }
 
 export async function createOwnPatientSelfMeasurementAction(
