@@ -12,6 +12,7 @@ import { HospitalContentDetailWorkspace } from "./[contentId]/hospital-content-d
 
 const hospital = { id: "11111111-1111-4111-8111-111111111111", hospitalCode: "H001", name: "โรงพยาบาลตัวอย่าง" };
 const secondHospital = { id: "44444444-4444-4444-8444-444444444444", hospitalCode: "H002", name: "โรงพยาบาลอีกแห่ง" };
+const longHospitalName = "โรงพยาบาลชุมชนสำหรับทดสอบชื่อยาว".repeat(4);
 
 function content(status: HospitalContentStatus): HospitalContentDetailProjection {
   return {
@@ -32,7 +33,7 @@ function content(status: HospitalContentStatus): HospitalContentDetailProjection
 describe("Hospital Content publisher UI output", () => {
   it("keeps list projections free of body and source and shows lifecycle badges", () => {
     const page: HospitalContentListProjection = {
-      hospital,
+      hospital: { ...hospital, name: longHospitalName },
       items: [
         {
           id: "44444444-4444-4444-8444-444444444444",
@@ -45,7 +46,7 @@ describe("Hospital Content publisher UI output", () => {
         },
         {
           id: "22222222-2222-4222-8222-222222222222",
-          title: "ฉบับร่าง",
+          title: "หัวข้อฉบับร่างที่มีชื่อยาว".repeat(8),
           category: HospitalContentCategory.NCD,
           status: HospitalContentStatus.DRAFT,
           firstPublishedAt: null,
@@ -61,16 +62,65 @@ describe("Hospital Content publisher UI output", () => {
           latestPublishedAt: null,
           expectedUpdatedAt: "2026-10-05T12:34:56.789Z",
         },
+        {
+          id: "55555555-5555-4555-8555-555555555555",
+          title: "อาหาร",
+          category: HospitalContentCategory.FOOD,
+          status: HospitalContentStatus.PUBLISHED,
+          firstPublishedAt: "2026-09-30T10:00:00.000Z",
+          latestPublishedAt: "2026-10-04T10:00:00.000Z",
+          expectedUpdatedAt: "2026-10-05T12:34:56.789Z",
+        },
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          title: "ประกาศ",
+          category: HospitalContentCategory.NEWS,
+          status: HospitalContentStatus.PUBLISHED,
+          firstPublishedAt: "2026-09-29T10:00:00.000Z",
+          latestPublishedAt: "2026-10-03T10:00:00.000Z",
+          expectedUpdatedAt: "2026-10-05T12:34:56.789Z",
+        },
       ],
       nextCursor: "hcontentcur_v1_cursor",
     };
     const markup = renderToStaticMarkup(<HospitalContentListWorkspace hospitals={[hospital]} page={page} selectedHospitalId={hospital.id} />);
-    expect(markup).toContain("ฉบับร่าง");
+    expect(markup).toContain("หัวข้อฉบับร่างที่มีชื่อยาว".repeat(8));
+    expect(markup).toContain(longHospitalName);
     expect(markup).toContain("เก็บถาวร");
+    expect(markup).toContain("เผยแพร่แล้ว");
+    expect(markup).toContain("การออกกำลังกาย");
+    expect(markup).toContain("NCD");
+    expect(markup).toContain("อาหาร");
+    expect(markup).toContain("ข่าวสาร");
+    expect(markup).toContain("อื่น ๆ");
+    expect(markup).toContain("เผยแพร่ครั้งแรก");
+    expect(markup).toContain("เผยแพร่ล่าสุด");
+    expect(markup).toContain("ปรับปรุงล่าสุด");
+    expect(markup.match(/ยังไม่เคยเผยแพร่/gu)).toHaveLength(4);
+    expect(markup.match(/dateTime="2026-10-05T12:34:56\.789Z"/gu)).toHaveLength(5);
+    expect(markup).toContain('dateTime="2026-10-01T10:00:00.000Z"');
+    expect(markup).toContain('dateTime="2026-10-02T10:00:00.000Z"');
+    expect(markup).toContain('href="/app/hospitals/knowledge/44444444-4444-4444-8444-444444444444"');
+    expect(markup).toContain('href="/app/hospitals/knowledge/22222222-2222-4222-8222-222222222222"');
+    expect(markup).toContain('href="/app/hospitals/knowledge/55555555-5555-4555-8555-555555555555"');
+    expect(markup).toContain('href="/app/hospitals/knowledge/66666666-6666-4666-8666-666666666666"');
+    expect(markup.indexOf("เผยแพร่แล้ว")).toBeLessThan(markup.indexOf("หัวข้อฉบับร่างที่มีชื่อยาว"));
     expect(markup).toContain("ดูรายการถัดไป");
+    expect(markup).toContain("cursor=hcontentcur_v1_cursor");
+    expect(markup).toContain("โหลดรายการล่าสุด");
+    expect(markup).not.toMatch(/<button\b|ถอนการเผยแพร่|เผยแพร่ฉบับร่าง|รวม\s*\d+/u);
     expect(markup).not.toContain("**ไม่แปล Markdown**");
     expect(markup).not.toContain("https://example.test");
     expect(markup).toContain(`href="/app?hospitalId=${hospital.id}"`);
+
+    const oneRecord = renderToStaticMarkup(
+      <HospitalContentListWorkspace
+        hospitals={[hospital]}
+        page={{ hospital, items: [page.items[0]!], nextCursor: null }}
+        selectedHospitalId={hospital.id}
+      />,
+    );
+    expect(oneRecord.match(/href="\/app\/hospitals\/knowledge\/44444444-4444-4444-8444-444444444444"/gu)).toHaveLength(1);
 
     const multiHospitalMarkup = renderToStaticMarkup(
       <HospitalContentListWorkspace hospitals={[hospital, secondHospital]} page={page} selectedHospitalId={hospital.id} />,

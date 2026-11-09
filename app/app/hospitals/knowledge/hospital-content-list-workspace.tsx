@@ -16,13 +16,17 @@ import type {
   HospitalContentOwnerHospital,
 } from "@/modules/hospital-content/types/hospital-content-projections";
 
-function formatPublisherTime(value: string | null): string {
-  if (!value) return "ยังไม่เคยเผยแพร่";
+function formatPublisherTime(value: string): string {
   return new Intl.DateTimeFormat("th-TH", {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "Asia/Bangkok",
   }).format(new Date(value));
+}
+
+function PublisherTimestamp({ value }: { value: string | null }): React.JSX.Element {
+  if (!value) return <>ยังไม่เคยเผยแพร่</>;
+  return <time dateTime={value}>{formatPublisherTime(value)}</time>;
 }
 
 export function HospitalContentListWorkspace({
@@ -92,44 +96,44 @@ export function HospitalContentListWorkspace({
           <p className="mt-2 text-sm leading-6 text-text-muted">ใช้ “สร้างข่าวสารและความรู้” ด้านบนเพื่อเริ่มฉบับร่างในโรงพยาบาลนี้</p>
         </Panel>
       ) : (
-        <Panel aria-labelledby="hospital-content-list-heading" className="mt-6">
+        <section aria-labelledby="hospital-content-list-heading" className="mt-6">
           <h2 className="sr-only" id="hospital-content-list-heading">รายการข่าวสารและความรู้</h2>
-          <ul className="divide-y divide-border">
+          <ul className="space-y-3">
             {page.items.map((item) => (
-              <li className="min-w-0 py-5 first:pt-0 last:pb-0" key={item.id}>
+              <li className="min-w-0" key={item.id}>
                 <Link
-                  className="block min-w-0 rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                  className="block min-w-0 rounded-panel border border-border bg-surface p-4 transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 sm:p-5"
                   href={`/app/hospitals/knowledge/${item.id}`}
                   prefetch={false}
                 >
                   <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <h3 className="break-words text-lg font-semibold text-text">{item.title}</h3>
-                      <p className="mt-1 text-sm text-text-muted">{HOSPITAL_CONTENT_CATEGORY_LABELS[item.category]}</p>
+                      <p className="mt-1 break-words text-sm text-text-muted">{HOSPITAL_CONTENT_CATEGORY_LABELS[item.category]}</p>
                     </div>
                     <StatusBadge variant={HOSPITAL_CONTENT_STATUS_VARIANTS[item.status]}>
                       {HOSPITAL_CONTENT_STATUS_LABELS[item.status]}
                     </StatusBadge>
                   </div>
-                  <dl className="mt-4 grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                  <dl className="mt-4 grid min-w-0 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     <div className="min-w-0">
                       <dt className="text-text-muted">เผยแพร่ครั้งแรก</dt>
-                      <dd className="mt-0.5 break-words text-text">{formatPublisherTime(item.firstPublishedAt)}</dd>
+                      <dd className="mt-0.5 break-words text-text"><PublisherTimestamp value={item.firstPublishedAt} /></dd>
                     </div>
                     <div className="min-w-0">
                       <dt className="text-text-muted">เผยแพร่ล่าสุด</dt>
-                      <dd className="mt-0.5 break-words text-text">{formatPublisherTime(item.latestPublishedAt)}</dd>
+                      <dd className="mt-0.5 break-words text-text"><PublisherTimestamp value={item.latestPublishedAt} /></dd>
                     </div>
                     <div className="min-w-0 sm:col-span-2">
-                      <dt className="text-text-muted">ปรับปรุงรายการ</dt>
-                      <dd className="mt-0.5 break-words text-text">{formatPublisherTime(item.expectedUpdatedAt)}</dd>
+                      <dt className="text-text-muted">ปรับปรุงล่าสุด</dt>
+                      <dd className="mt-0.5 break-words text-text"><time dateTime={item.expectedUpdatedAt}>{formatPublisherTime(item.expectedUpdatedAt)}</time></dd>
                     </div>
                   </dl>
                 </Link>
               </li>
             ))}
           </ul>
-        </Panel>
+        </section>
       )}
 
       <p className="mt-4 max-w-3xl text-sm leading-6 text-text-muted">
