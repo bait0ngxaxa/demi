@@ -110,7 +110,7 @@ describe("scoped Appointment pages — authorized", () => {
   it("shows read-only detail, read-only reschedule history and existing pending request without controls", async () => {
     const markup = await renderDetail();
     for (const content of ["รายละเอียดนัดหมาย", "อาคารสังเคราะห์", "การรับทราบนัดหมาย", "คำขอยกเลิกนัด", "รอโรงพยาบาลพิจารณา",
-      "ไม่อยู่ในสถานะเปิดใช้งาน", "คำขอเลื่อนนัด", "ปฏิเสธ", "เหตุผล: ติดธุระสังเคราะห์", "เหตุผลที่ปฏิเสธ: เต็มสังเคราะห์"]) {
+      "ไม่อยู่ในสถานะเปิดใช้งาน", "คำขอเลื่อนนัด", "ปฏิเสธ", "เหตุผลที่ขอเลื่อนนัด", "ติดธุระสังเคราะห์", "เหตุผลที่ปฏิเสธ", "เต็มสังเคราะห์"]) {
       expect(markup).toContain(content);
     }
     // Suspended Hospital and existing pending request: no interaction control; no reschedule request/review control ever.

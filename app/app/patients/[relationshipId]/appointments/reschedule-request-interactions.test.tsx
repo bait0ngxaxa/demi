@@ -2,8 +2,11 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
+import type { PatientAppointmentRescheduleRequest } from "@prisma/client";
 import type { RescheduleRequestActionState } from "@/modules/appointments/transport/reschedule-request-actions";
 import { deferred, findButton, installDialogSupport, restoreDialogSupport, settle } from "../../../workforce/[kind]/[relationshipId]/controls-test-support";
 
@@ -18,6 +21,8 @@ vi.mock("@/modules/appointments/transport/reschedule-request-actions", () => ({
 }));
 
 import { RescheduleRequestForm } from "./reschedule-request-form";
+import { RescheduleRequestHistory } from "./reschedule-request-history";
+import { RescheduleRequestSection } from "./reschedule-request-section";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const appointmentId = "22222222-2222-4222-8222-222222222222";
@@ -30,6 +35,35 @@ const requestContext = {
   reason: "ติดธุระส่วนตัว",
   preferredDatetimes: ["14 ต.ค. 2569 10:00", "15 ต.ค. 2569 13:00"],
 };
+const submittedAt = new Date("2026-10-13T03:00:00.000Z");
+const appointmentRequest = (overrides: Partial<PatientAppointmentRescheduleRequest> = {}): PatientAppointmentRescheduleRequest => ({
+  id: requestId,
+  appointmentId,
+  sourceAppointmentUpdatedAt: submittedAt,
+  submittedByUserId: "44444444-4444-4444-8444-444444444444",
+  source: "PATIENT_SELF",
+  submissionNonce: "55555555-5555-4555-8555-555555555555",
+  status: "PENDING",
+  submittedAt,
+  resolvedByUserId: null,
+  resolvedAt: null,
+  preferredDatetimes: [new Date("2026-10-14T03:00:00.000Z"), new Date("2026-10-15T06:00:00.000Z")],
+  reason: "ติดธุระส่วนตัว",
+  rejectionReason: null,
+  ...overrides,
+});
+type RescheduleHistory = Awaited<ReturnType<typeof getAppointmentRescheduleHistory>>;
+
+function rescheduleHistory(overrides: Partial<RescheduleHistory> = {}): RescheduleHistory {
+  return {
+    requests: [],
+    canRequest: false,
+    canReview: false,
+    updatedAt: submittedAt,
+    scheduled: true,
+    ...overrides,
+  };
+}
 
 let container: HTMLDivElement;
 let root: Root;
@@ -264,5 +298,91 @@ describe("RescheduleRequestForm task dialog", () => {
     expect(container.querySelector('[role="status"]')?.textContent).toBe("ปฏิเสธคำขอแล้ว");
     await settle();
     expect(document.activeElement).toBe(container.querySelector('[role="status"]'));
+  });
+});
+
+describe("reschedule request readback", () => {
+  it("shows empty history and keeps every saved status, source, date, and long request detail read-only", () => {
+    const empty = renderToStaticMarkup(<RescheduleRequestHistory requests={[]} />);
+    expect(empty).toContain("ยังไม่มีคำขอเลื่อนนัด");
+    expect(empty).not.toMatch(/<form|<button|<a\b/);
+
+    const longReason = "ต้องเลื่อนนัดเนื่องจากติดภารกิจส่วนตัว ".repeat(24);
+    const longRejection = "ไม่มีช่วงเวลาที่โรงพยาบาลจัดได้ในคำขอนี้ ".repeat(24);
+    const requests = [
+      appointmentRequest({ status: "PENDING", source: "PATIENT_SELF", reason: longReason }),
+      appointmentRequest({ id: "approved-request", status: "APPROVED", source: "OSM_PROXY", resolvedAt: submittedAt, rejectionReason: null }),
+      appointmentRequest({ id: "rejected-request", status: "REJECTED", resolvedAt: submittedAt, rejectionReason: longRejection }),
+      appointmentRequest({ id: "superseded-request", status: "SUPERSEDED", resolvedAt: submittedAt }),
+    ];
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<RescheduleRequestHistory requests={requests} />);
+
+    for (const label of ["รอพิจารณา", "อนุมัติและแก้นัดแล้ว", "ปฏิเสธ", "นัดหมายเปลี่ยนแปลงแล้ว", "ผู้ป่วย", "อสม. แทนผู้ป่วย", "เหตุผลที่ขอเลื่อนนัด", "วันและเวลาที่เสนอ", "เหตุผลที่ปฏิเสธ"]) {
+      expect(host.textContent).toContain(label);
+    }
+    expect(host.querySelectorAll("section > ul > li")).toHaveLength(4);
+    expect(host.querySelectorAll('p time[datetime="2026-10-13T03:00:00.000Z"]')).toHaveLength(4);
+    expect(host.textContent).toContain(longReason);
+    expect(host.textContent).toContain(longRejection);
+    expect(host.querySelector('time[datetime="2026-10-14T03:00:00.000Z"]')).not.toBeNull();
+    expect(host.querySelector('time[datetime="2026-10-15T06:00:00.000Z"]')).not.toBeNull();
+    expect(host.querySelector("[role=alert]")).toBeNull();
+    expect(host.querySelectorAll("form, button, a")).toHaveLength(0);
+  });
+
+  it("shows review controls only for a scheduled pending request and keeps its new-request surface separate", () => {
+    const pending = appointmentRequest();
+    const unauthorized = renderToStaticMarkup(<RescheduleRequestSection
+      appointmentId={appointmentId}
+      appointmentSummary={appointmentSummary}
+      history={rescheduleHistory({ requests: [pending], canRequest: true })}
+      relationshipId={relationshipId}
+    />);
+    expect(unauthorized).not.toContain("อนุมัติโดยแก้ไขวันเวลานัดหมาย");
+    expect(unauthorized).not.toContain("ปฏิเสธคำขอพร้อมเหตุผล");
+    expect(unauthorized).not.toContain("ส่งคำขอเลื่อนนัดใหม่");
+    expect(unauthorized).not.toContain("ขอเลื่อนนัด</button>");
+
+    const authorizedHost = document.createElement("div");
+    authorizedHost.innerHTML = renderToStaticMarkup(<RescheduleRequestSection
+      appointmentId={appointmentId}
+      appointmentSummary={appointmentSummary}
+      history={rescheduleHistory({ requests: [pending], canRequest: true, canReview: true })}
+      relationshipId={relationshipId}
+    />);
+    expect(authorizedHost.querySelector(`a[href="/app/patients/${relationshipId}/appointments/${appointmentId}/edit?requestId=${requestId}"]`)).not.toBeNull();
+    expect(authorizedHost.textContent).toContain("ปฏิเสธคำขอพร้อมเหตุผล");
+    expect(authorizedHost.textContent).not.toContain("ส่งคำขอเลื่อนนัดใหม่");
+    expect(authorizedHost.querySelectorAll('button[type="button"]')).toHaveLength(1);
+    expect(authorizedHost.querySelectorAll('button[type="button"]')[0]?.textContent).toBe("ปฏิเสธคำขอพร้อมเหตุผล");
+
+    const endedAppointment = renderToStaticMarkup(<RescheduleRequestSection
+      appointmentId={appointmentId}
+      appointmentSummary={appointmentSummary}
+      history={rescheduleHistory({ requests: [pending], canReview: true, scheduled: false })}
+      relationshipId={relationshipId}
+    />);
+    expect(endedAppointment).not.toContain("อนุมัติโดยแก้ไขวันเวลานัดหมาย");
+    expect(endedAppointment).not.toContain("ปฏิเสธคำขอพร้อมเหตุผล");
+  });
+
+  it("renders one separate new-request entry when no request is pending", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<RescheduleRequestSection
+      appointmentId={appointmentId}
+      appointmentSummary={appointmentSummary}
+      history={rescheduleHistory({
+        requests: [appointmentRequest({ status: "APPROVED", resolvedAt: submittedAt })],
+        canRequest: true,
+      })}
+      relationshipId={relationshipId}
+    />);
+
+    expect(host.querySelector("#reschedule-requests-heading-22222222-2222-4222-8222-222222222222-new")).not.toBeNull();
+    expect(host.querySelectorAll('button[type="button"]')).toHaveLength(1);
+    expect(host.querySelector('button[type="button"]')?.textContent).toBe("ขอเลื่อนนัด");
+    expect(host.querySelectorAll('a[href*="requestId="]')).toHaveLength(0);
+    expect(host.textContent).not.toContain("ปฏิเสธคำขอพร้อมเหตุผล");
   });
 });

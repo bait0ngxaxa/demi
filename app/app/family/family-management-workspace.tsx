@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { dispatchFormDataPreservingInput, submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { SavedRecordActions, SavedRecordCard } from "../personal/saved-record-card";
 import type {
   FamilyInvitationManagementItem,
   FamilyManagementOverview,
@@ -270,7 +271,7 @@ function RevokePendingInvitation({
   const participantName = formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
-    <div className="mt-3">
+    <div className="min-w-0 max-w-full">
       {invitation.status === "PENDING" && state.status !== "SUCCESS" ? (
         <ConfirmableActionForm
           action={formAction}
@@ -314,7 +315,7 @@ function ShowPendingInvitationQr({
   if (invitation.status !== "PENDING") return null;
 
   return (
-    <div className="mt-3">
+    <div className="min-w-0 max-w-full">
       <ConfirmableActionForm
         action={formAction}
         className="inline"
@@ -365,7 +366,7 @@ function RevokeRelationship({
   const participantName = formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
-    <div className="mt-3">
+    <div className="min-w-0 max-w-full">
       {relationship.status === "ACTIVE" && state.status !== "SUCCESS" ? (
         <ConfirmableActionForm
           action={formAction}
@@ -513,7 +514,7 @@ function EditRelationshipLabel({
   const participantName = formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล");
 
   return (
-    <div className="mt-3">
+    <div className="min-w-0 max-w-full">
       <Button
         aria-label={`แก้ไขความสัมพันธ์: ${participantName}`}
         onClick={() => {
@@ -568,11 +569,11 @@ function WithdrawCaregiverRelationship({
   }
 
   if (state.status === "SUCCESS") {
-    return <p className="mt-3 text-sm text-success" role="status">{state.message}</p>;
+    return <p className="min-w-0 text-sm text-success" role="status">{state.message}</p>;
   }
 
   return (
-    <div className="mt-3">
+    <div className="min-w-0 max-w-full">
       <ConfirmableActionForm
         action={formAction}
         className="inline"
@@ -615,21 +616,31 @@ function PatientPerspective({
           {overview.invitations.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีคำเชิญผู้ดูแล</p>
           ) : (
-            <ul className="mt-3 divide-y divide-border">
+            <ul className="mt-3 space-y-3">
               {overview.invitations.map((invitation) => (
-                <li className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between" key={invitation.invitationId}>
-                  <div>
-                    <p className="mb-2 break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}</p>
-                    <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
-                      {caregiverInvitationStatusLabel(invitation.status)}
-                    </StatusBadge>
-                    <p className="mt-2 text-sm text-text-muted">สร้างเมื่อ {formatFamilyManagementDate(invitation.issuedAt)}</p>
-                    <p className="mt-1 text-sm text-text-muted">หมดอายุ {formatFamilyManagementDate(invitation.expiresAt)}</p>
-                  </div>
-                  <div className="sm:max-w-md">
-                    <ShowPendingInvitationQr invitation={invitation} />
-                    <RevokePendingInvitation invitation={invitation} />
-                  </div>
+                <li className="min-w-0" key={invitation.invitationId}>
+                  <SavedRecordCard>
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <h4 className="break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ดูแล")}</h4>
+                      <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
+                        {caregiverInvitationStatusLabel(invitation.status)}
+                      </StatusBadge>
+                    </div>
+                    <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">สร้างเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={invitation.issuedAt.toISOString()}>{formatFamilyManagementDate(invitation.issuedAt)}</time></dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">หมดอายุ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={invitation.expiresAt.toISOString()}>{formatFamilyManagementDate(invitation.expiresAt)}</time></dd>
+                      </div>
+                    </dl>
+                    <SavedRecordActions separated={invitation.status === "PENDING"}>
+                      <ShowPendingInvitationQr invitation={invitation} />
+                      <RevokePendingInvitation invitation={invitation} />
+                    </SavedRecordActions>
+                  </SavedRecordCard>
                 </li>
               ))}
             </ul>
@@ -649,26 +660,39 @@ function PatientPerspective({
           {overview.relationships.length === 0 ? (
             <p className="text-sm leading-6 text-text-muted">ยังไม่มีผู้ดูแลที่ตอบรับคำเชิญและเชื่อมต่อแล้ว</p>
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="space-y-3">
               {overview.relationships.map((relationship) => (
-                <li className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between" key={relationship.relationshipId}>
-                  <div>
-                    <p className="mb-2 break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}</p>
+                <li className="min-w-0" key={relationship.relationshipId}>
+                  <SavedRecordCard>
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <h3 className="break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ดูแล")}</h3>
+                      <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
+                        {caregiverRelationshipStatusLabel(relationship.status)}
+                      </StatusBadge>
+                    </div>
                     {relationship.participant.nameIsSelfAsserted ? (
-                      <p className="mb-2 text-sm text-text-muted">ชื่อที่ผู้ดูแลแจ้งเอง</p>
+                      <p className="mt-2 text-sm text-text-muted">ชื่อที่ผู้ดูแลแจ้งเอง</p>
                     ) : null}
                     <RelationshipLabelText relationship={relationship} />
-                    <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
-                      {caregiverRelationshipStatusLabel(relationship.status)}
-                    </StatusBadge>
-                    <p className="mt-2 text-sm text-text-muted">เริ่มเมื่อ {formatFamilyManagementDate(relationship.activatedAt)}</p>
-                    {relationship.revokedAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.revokedAt)}</p> : null}
-                    {relationship.withdrawnAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.withdrawnAt)}</p> : null}
-                  </div>
-                  <div className="sm:max-w-md">
-                    <EditRelationshipLabel relationship={relationship} />
-                    <RevokeRelationship relationship={relationship} />
-                  </div>
+                    <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">เริ่มเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.activatedAt.toISOString()}>{formatFamilyManagementDate(relationship.activatedAt)}</time></dd>
+                      </div>
+                      {relationship.revokedAt ? <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">ยุติการเชื่อมต่อเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.revokedAt.toISOString()}>{formatFamilyManagementDate(relationship.revokedAt)}</time></dd>
+                      </div> : null}
+                      {relationship.withdrawnAt ? <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">ผู้ดูแลหยุดเชื่อมต่อเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.withdrawnAt.toISOString()}>{formatFamilyManagementDate(relationship.withdrawnAt)}</time></dd>
+                      </div> : null}
+                    </dl>
+                    <SavedRecordActions separated={relationship.status === "ACTIVE"}>
+                      <EditRelationshipLabel relationship={relationship} />
+                      <RevokeRelationship relationship={relationship} />
+                    </SavedRecordActions>
+                  </SavedRecordCard>
                 </li>
               ))}
             </ul>
@@ -696,23 +720,32 @@ function CaregiverPerspective({
           {overview.invitations.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้</p>
           ) : (
-            <ul className="mt-3 divide-y divide-border">
+            <ul className="mt-3 space-y-3">
               {overview.invitations.map((invitation) => (
-                <li className="py-4 first:pt-0" key={invitation.invitationId}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ป่วย")}</p>
-                      <p className="mt-1 text-sm text-text-muted">หมดอายุ {formatFamilyManagementDate(invitation.expiresAt)}</p>
+                <li className="min-w-0" key={invitation.invitationId}>
+                  <SavedRecordCard>
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <h4 className="break-words font-semibold text-text">{formatFamilyParticipantName(invitation.participant, "ไม่ระบุชื่อผู้ป่วย")}</h4>
+                      <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
+                        {caregiverInvitationStatusLabel(invitation.status)}
+                      </StatusBadge>
                     </div>
-                    <StatusBadge variant={caregiverInvitationStatusVariant(invitation.status)}>
-                      {caregiverInvitationStatusLabel(invitation.status)}
-                    </StatusBadge>
-                  </div>
-                  {invitation.status === "PENDING" ? (
-                    <p className="mt-2 text-sm leading-6 text-text-muted">
-                      เปิดลิงก์คำเชิญที่ได้รับเพื่ออ่านรายละเอียดและตอบรับหรือปฏิเสธ
-                    </p>
-                  ) : null}
+                    <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">สร้างเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={invitation.issuedAt.toISOString()}>{formatFamilyManagementDate(invitation.issuedAt)}</time></dd>
+                      </div>
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">หมดอายุ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={invitation.expiresAt.toISOString()}>{formatFamilyManagementDate(invitation.expiresAt)}</time></dd>
+                      </div>
+                    </dl>
+                    {invitation.status === "PENDING" ? (
+                      <p className="mt-3 text-sm leading-6 text-text-muted">
+                        เปิดลิงก์คำเชิญที่ได้รับเพื่ออ่านรายละเอียดและตอบรับหรือปฏิเสธ
+                      </p>
+                    ) : null}
+                  </SavedRecordCard>
                 </li>
               ))}
             </ul>
@@ -727,27 +760,41 @@ function CaregiverPerspective({
           {overview.relationships.length === 0 ? (
             <p className="mt-3 text-sm leading-6 text-text-muted">ยังไม่มีผู้ป่วยที่คุณตอบรับคำเชิญให้ดูแล</p>
           ) : (
-            <ul className="mt-3 divide-y divide-border">
+            <ul className="mt-3 space-y-3">
               {overview.relationships.map((relationship) => (
-                <li className="py-4 first:pt-0" key={relationship.relationshipId}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}</p>
-                      <RelationshipLabelText relationship={relationship} />
-                      <p className="mt-1 text-sm text-text-muted">เริ่มเมื่อ {formatFamilyManagementDate(relationship.activatedAt)}</p>
-                      {relationship.revokedAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.revokedAt)}</p> : null}
-                      {relationship.withdrawnAt ? <p className="mt-1 text-sm text-text-muted">ยุติเมื่อ {formatFamilyManagementDate(relationship.withdrawnAt)}</p> : null}
+                <li className="min-w-0" key={relationship.relationshipId}>
+                  <SavedRecordCard>
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <h4 className="break-words font-semibold text-text">{formatFamilyParticipantName(relationship.participant, "ไม่ระบุชื่อผู้ป่วย")}</h4>
+                      <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
+                        {caregiverRelationshipStatusLabel(relationship.status)}
+                      </StatusBadge>
                     </div>
-                    <StatusBadge variant={caregiverRelationshipStatusVariant(relationship.status)}>
-                      {caregiverRelationshipStatusLabel(relationship.status)}
-                    </StatusBadge>
-                  </div>
-                  {relationship.status === "ACTIVE" ? (
-                    <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={familyHealthSummaryHref(relationship.relationshipId)} prefetch={false}>
-                      ดูสรุปสุขภาพที่ได้รับแชร์
-                    </Link>
-                  ) : null}
-                  <WithdrawCaregiverRelationship relationship={relationship} />
+                    {relationship.participant.nameIsSelfAsserted ? (
+                      <p className="mt-2 text-sm text-text-muted">ชื่อที่ผู้ป่วยแจ้งเอง</p>
+                    ) : null}
+                    <RelationshipLabelText relationship={relationship} />
+                    <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
+                      <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">เริ่มเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.activatedAt.toISOString()}>{formatFamilyManagementDate(relationship.activatedAt)}</time></dd>
+                      </div>
+                      {relationship.revokedAt ? <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">ยุติการเชื่อมต่อเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.revokedAt.toISOString()}>{formatFamilyManagementDate(relationship.revokedAt)}</time></dd>
+                      </div> : null}
+                      {relationship.withdrawnAt ? <div className="min-w-0">
+                        <dt className="text-sm font-semibold text-text-muted">ผู้ดูแลหยุดเชื่อมต่อเมื่อ</dt>
+                        <dd className="mt-1 text-text"><time dateTime={relationship.withdrawnAt.toISOString()}>{formatFamilyManagementDate(relationship.withdrawnAt)}</time></dd>
+                      </div> : null}
+                    </dl>
+                    <SavedRecordActions separated={relationship.status === "ACTIVE"}>
+                      {relationship.status === "ACTIVE" ? <Link className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong px-4 text-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={familyHealthSummaryHref(relationship.relationshipId)} prefetch={false}>
+                        ดูสรุปสุขภาพที่ได้รับแชร์
+                      </Link> : null}
+                      <WithdrawCaregiverRelationship relationship={relationship} />
+                    </SavedRecordActions>
+                  </SavedRecordCard>
                 </li>
               ))}
             </ul>
