@@ -199,7 +199,7 @@ function CreateDisclosure({ initiallyOpen, nonce, defaultMeasuredAt }: {
       >
         <span className="space-y-0.5">
           <span className="block font-semibold text-brand-strong" id="measurement-create-heading">บันทึกค่าใหม่</span>
-          <span className="block text-sm text-text-muted">เพิ่มค่าที่คุณวัดเองในรายการด้านบน</span>
+          <span className="block text-sm text-text-muted">เพิ่มค่าที่คุณวัดเองในรายการที่บันทึกไว้</span>
         </span>
         <svg aria-hidden="true" className="size-5 shrink-0 text-brand-strong transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 20 20">
           <path d="m5 8 5 5 5-5" />
@@ -227,13 +227,14 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
         description="บันทึกน้ำหนัก น้ำตาลในเลือด และความดันที่คุณวัดเอง อสม. และเจ้าหน้าที่ที่ดูแลคุณเห็นรายการนี้พร้อมป้ายผู้ป่วยบันทึกเอง"
         title="ค่าที่วัดเอง"
       />
+      <CreateDisclosure defaultMeasuredAt={defaultMeasuredAt} initiallyOpen={items.length === 0} nonce={nonce} />
       <section aria-labelledby="measurement-history" className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold" id="measurement-history">รายการที่บันทึกไว้</h2>
           <p className="mt-1 text-sm text-text-muted">แสดงสูงสุด {PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE} รายการต่อหน้า</p>
         </div>
         {items.length === 0 ? (
-          <SavedRecordEmpty>ยังไม่มีรายการที่บันทึกเอง คุณสามารถเริ่มบันทึกค่าที่วัดได้ด้านล่าง</SavedRecordEmpty>
+          <SavedRecordEmpty>ยังไม่มีรายการที่บันทึกเอง คุณสามารถเริ่มบันทึกค่าใหม่ได้จากส่วนด้านบน</SavedRecordEmpty>
         ) : (
           <ul aria-label="ประวัติค่าวัดที่บันทึกเอง" className="space-y-3">
             {items.map((item) => (
@@ -263,7 +264,6 @@ export function PatientSelfMeasurementWorkspace({ items, nonce, defaultMeasuredA
           </nav>
         ) : null}
       </section>
-      <CreateDisclosure defaultMeasuredAt={defaultMeasuredAt} initiallyOpen={items.length === 0} nonce={nonce} />
     </div>
   );
 }

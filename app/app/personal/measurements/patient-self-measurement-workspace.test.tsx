@@ -113,17 +113,18 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(disclosure().open).toBe(true);
     expect(query("summary").textContent).toContain("บันทึกค่าใหม่");
     expect(query('[aria-labelledby="measurement-history"]').textContent).toContain("ยังไม่มีรายการที่บันทึกเอง");
+    expect(query('[aria-labelledby="measurement-history"]').textContent).toContain("จากส่วนด้านบน");
     expect(container.querySelector('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"]')).toBeNull();
   });
 
-  it("puts persisted records first and labels only values that were recorded", () => {
+  it("places the collapsed creation disclosure before persisted history and labels only recorded values", () => {
     mocks.create.mockResolvedValue({ status: "IDLE" });
     mocks.delete.mockResolvedValue({ status: "IDLE" });
     mount({ items: [partialMeasurement] });
 
     const history = query('[aria-labelledby="measurement-history"]');
     const details = disclosure();
-    expect(history.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(details.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(details.open).toBe(false);
     const record = query<HTMLLIElement>('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"] > li');
     expect(record.querySelector("h3")?.textContent).toContain("วัดเมื่อ");
@@ -137,6 +138,34 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(record.textContent).not.toContain("mg/dL");
     expect(record.textContent).not.toContain("-");
     expect(record.querySelector("form, button")).toBeNull();
+  });
+
+  it("keeps the create action immediately below the header with 50 saved records", () => {
+    mocks.create.mockResolvedValue({ status: "IDLE" });
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    const items = Array.from({ length: 50 }, (_, index) => ({
+      ...partialMeasurement,
+      measurementId: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    }));
+    mount({ items });
+
+    const workspace = container.firstElementChild;
+    const header = query("header");
+    const details = disclosure();
+    const creation = details.parentElement;
+    const history = query('[aria-labelledby="measurement-history"]');
+    expect(workspace?.children[0]).toBe(header);
+    expect(workspace?.children[1]).toBe(creation);
+    expect(workspace?.children[2]).toBe(history);
+    expect(details.open).toBe(false);
+    expect(container.querySelectorAll('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"] > li')).toHaveLength(50);
+
+    const summary = query<HTMLElement>("summary");
+    summary.focus();
+    expect(document.activeElement).toBe(summary);
+    act(() => summary.click());
+    expect(details.open).toBe(true);
+    expect(document.activeElement).toBe(summary);
   });
 
   it("keeps the form mounted and preserves a dirty draft and submission nonce across collapse", async () => {
