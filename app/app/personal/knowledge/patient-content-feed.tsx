@@ -3,6 +3,7 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { HOSPITAL_CONTENT_CATEGORY_LABELS } from "@/modules/hospital-content/domain/hospital-content";
 import type { HospitalContentPatientFeedContext } from "@/modules/hospital-content/transport/hospital-content-patient-page-context";
+import { SavedRecordCard } from "../saved-record-card";
 import { PatientContentLink } from "./patient-content-link";
 import { PatientContentAttribution, patientContentControlClass } from "./patient-content-presentation";
 import { HospitalContentImageList } from "../../hospitals/content/hospital-content-image-list";
@@ -68,14 +69,14 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
     {page.emptyState !== null ? <Alert variant="neutral">
       <p>{emptyCopy[page.emptyState]}</p>
       {page.emptyState === "EMPTY_C" ? <PatientContentLink href={buildFeedHref(feedBase, context.hospitalRelationshipId)} className={`${patientContentControlClass} mt-4`}>ดูรายการทั้งหมด</PatientContentLink> : null}
-    </Alert> : <ul className="space-y-4" aria-label={`รายการ${title}`}>
-      {page.items.map((content) => <li key={content.id} className="min-w-0 rounded-panel border border-border bg-surface p-5 sm:p-7">
+    </Alert> : <ul className="space-y-3" aria-label={`รายการ${title}`}>
+      {page.items.map((content) => <SavedRecordCard as="li" key={content.id}>
         <h2 className="mb-4 text-xl font-semibold leading-8 [overflow-wrap:anywhere]">
           <PatientContentLink href={`${knowledgeBase}/${content.id}`} className="block min-h-11 rounded-control text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">{content.title}</PatientContentLink>
         </h2>
         <HospitalContentImageList imageIds={content.imageIds} title={content.title} />
         <PatientContentAttribution content={content} />
-      </li>)}
+      </SavedRecordCard>)}
     </ul>}
     <nav aria-label={`หน้ารายการ${title}`} className="flex flex-wrap gap-3">
       {page.nextCursor !== null ? <PatientContentLink href={buildFeedHref(feedBase, context.hospitalRelationshipId, continuationCategory, page.nextCursor)} className={patientContentControlClass}>หน้าถัดไป</PatientContentLink> : null}
