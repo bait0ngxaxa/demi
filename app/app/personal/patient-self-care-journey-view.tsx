@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { SavedRecordCard } from "./saved-record-card";
 import type {
   PatientSelfCareJourney,
   PatientSelfFollowupHistoryItem,
@@ -44,19 +45,22 @@ function ProgramHistoryItem({
   const href = `/app/personal/care/${encodeURIComponent(relationshipId)}/programs/${encodeURIComponent(item.programId)}`;
 
   return (
-    <li className="min-w-0 py-4 first:pt-0 last:pb-0">
-      <Link className={`${linkClassName} break-words`} href={href}>
-        โปรแกรม · {formatPatientDateOnly(item.startedAt)}
-      </Link>
-      <p className="mt-1 text-sm leading-6 text-text-muted">
+    <SavedRecordCard as="li" tone={item.status === "ACTIVE" ? "current" : "history"}>
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <Link className={`${linkClassName} break-words`} href={href}>
+            โปรแกรมการดูแล
+          </Link>
+          <p className="mt-1 break-words text-sm leading-6 text-text-muted">
+            เริ่ม {formatPatientDateOnly(item.startedAt)}
+            {item.completedAt ? ` · สิ้นสุด ${formatPatientDateOnly(item.completedAt)}` : null}
+          </p>
+        </div>
         <StatusBadge variant={item.status === "ACTIVE" ? "info" : "neutral"}>
           {patientProgramStatusLabels[item.status]}
         </StatusBadge>
-        {item.completedAt ? (
-          <span className="ml-2">สิ้นสุด {formatPatientDateOnly(item.completedAt)}</span>
-        ) : null}
-      </p>
-    </li>
+      </div>
+    </SavedRecordCard>
   );
 }
 
@@ -73,7 +77,7 @@ function GoalPlanHistoryItem({
   const href = `/app/personal/care/${encodeURIComponent(relationshipId)}/goal-plans/${encodeURIComponent(item.goalPlanId)}`;
 
   return (
-    <li className="min-w-0 py-4 first:pt-0 last:pb-0">
+    <SavedRecordCard as="li" tone={current ? "current" : "history"}>
       <div className="flex flex-wrap items-center gap-2">
         <Link className={`${linkClassName} break-words`} href={href}>
           แผนสุขภาพ รอบที่ {item.roundNumber}
@@ -86,7 +90,7 @@ function GoalPlanHistoryItem({
       <p className="mt-1 break-words text-sm leading-6 text-text-muted">
         บันทึก {formatPatientDateTime(item.createdAt)} · {programContextText(item.program)}
       </p>
-    </li>
+    </SavedRecordCard>
   );
 }
 
@@ -100,19 +104,19 @@ function FollowupHistoryItem({
   const href = `/app/personal/care/${encodeURIComponent(relationshipId)}/followups/${encodeURIComponent(item.followupId)}`;
 
   return (
-    <li className="min-w-0 py-4 first:pt-0 last:pb-0">
+    <SavedRecordCard as="li" tone="history">
       <Link className={`${linkClassName} break-words`} href={href}>
         ติดตาม รอบที่ {item.roundNumber}
       </Link>
       <p className="mt-1 break-words text-sm leading-6 text-text-muted">
         บันทึก {formatPatientDateTime(item.recordedAt)} · {programContextText(item.program)}
       </p>
-    </li>
+    </SavedRecordCard>
   );
 }
 
 function HistoryList({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <ul className="mt-4 divide-y divide-border border-y border-border">{children}</ul>;
+  return <ul className="mt-4 space-y-3">{children}</ul>;
 }
 
 export function PatientSelfCareJourneyView({
@@ -159,15 +163,18 @@ export function PatientSelfCareJourneyView({
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="patient-self-screening-heading">
             การคัดกรอง
           </h2>
+          {/* The Screening projection has no persisted ID; keep the existing date/index React key. */}
           {journey.screenings.length > 0 ? (
             <HistoryList>
               {journey.screenings.map((screening, index) => (
-                <li className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={`${screening.submittedAt.toISOString()}-${index}`}>
-                  <time className="break-words font-medium text-text" dateTime={screening.submittedAt.toISOString()}>
-                    บันทึก {formatPatientDateTime(screening.submittedAt)}
-                  </time>
-                  <StatusBadge variant="neutral">บันทึกแล้ว</StatusBadge>
-                </li>
+                <SavedRecordCard as="li" key={`${screening.submittedAt.toISOString()}-${index}`} tone="history">
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <time className="break-words font-medium text-text" dateTime={screening.submittedAt.toISOString()}>
+                      บันทึก {formatPatientDateTime(screening.submittedAt)}
+                    </time>
+                    <StatusBadge variant="neutral">บันทึกแล้ว</StatusBadge>
+                  </div>
+                </SavedRecordCard>
               ))}
             </HistoryList>
           ) : (
