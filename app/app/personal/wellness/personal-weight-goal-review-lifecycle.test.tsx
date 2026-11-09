@@ -16,6 +16,7 @@ const harness = vi.hoisted(() => ({
 
 vi.mock("react", async (importOriginal) => ({
   ...await importOriginal<typeof import("react")>(),
+  useId: () => "weight-goal-heading",
   useState: (initial: unknown) => {
     const index = harness.stateCursor++;
     if (!(index in harness.states)) harness.states[index] = initial;

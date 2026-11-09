@@ -7,14 +7,12 @@ import { classNames } from "@/components/ui/class-names";
  * Drafts, pending submissions and unconfirmed outcomes must never use it: they stay in entry surfaces.
  */
 export function SavedRecordCard({ as: Tag = "div", tone = "current", selected = false, children, ...rest }: {
-  as?: "div" | "li";
   /** `history` is a flat, muted record that can no longer change (for example a stopped medication). */
   tone?: "current" | "history";
   /** Marks the record whose detail is open; pair it with `aria-current` on the record's link. */
   selected?: boolean;
   children: ReactNode;
-  "aria-label"?: string;
-}): React.JSX.Element {
+} & ({ as?: "div" | "li"; "aria-labelledby"?: never } | { as: "section"; "aria-labelledby": string })): React.JSX.Element {
   return <Tag className={classNames(
     "min-w-0 rounded-panel border p-4 sm:p-5",
     tone === "history" ? "bg-surface-muted" : "bg-surface shadow-surface",

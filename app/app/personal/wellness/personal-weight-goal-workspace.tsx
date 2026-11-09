@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
@@ -35,6 +35,7 @@ export function PersonalWeightGoalWorkspace({
   authority: WellnessPrivateAuthority;
   onLockChange?: (locked: boolean) => void;
 }): React.JSX.Element {
+  const goalHeadingId = useId();
   const [goal, setGoal] = useState(initialGoal);
   const [nonce, setNonce] = useState(initialNonce);
   const [nonceClaimed, setNonceClaimed] = useState(false);
@@ -201,9 +202,9 @@ export function PersonalWeightGoalWorkspace({
     {requiresCurrentGoalReview ? <div className="space-y-3">
       <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>
       <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
-    </div> : goal ? <SavedRecordCard aria-label="เป้าหมายที่บันทึกไว้">
+    </div> : goal ? <SavedRecordCard as="section" aria-labelledby={goalHeadingId}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-semibold text-text">เป้าหมายส่วนตัวที่คุณตั้งไว้</h3>
+        <h3 id={goalHeadingId} className="text-base font-semibold text-text">เป้าหมายส่วนตัวที่คุณตั้งไว้</h3>
         <StatusBadge variant="success">บันทึกแล้ว</StatusBadge>
       </div>
       <PersonalWeightGoalReadback goal={goal} />
