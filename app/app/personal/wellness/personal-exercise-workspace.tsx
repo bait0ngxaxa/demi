@@ -154,9 +154,11 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     return !entryRemoved.current && trigger?.isConnected && !trigger.disabled ? trigger : historyHeading.current;
   }
   return <div className="space-y-6">
-    <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
-    {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
-    <p className="max-w-prose text-text-muted">เลือกกิจกรรมที่คุณทำจริง หรือกรอกเอง</p>
+    <header className="space-y-1.5">
+      <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
+      {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
+      <p className="max-w-prose text-text-muted">เลือกกิจกรรมที่คุณทำจริง หรือกรอกเอง</p>
+    </header>
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}

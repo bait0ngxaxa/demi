@@ -137,6 +137,7 @@ describe("Personal medication UI states", () => {
     }
     expect(activeCards[1].querySelector("a")?.getAttribute("aria-current")).toBe("true");
     expect(activeCards[0].querySelector("a")?.hasAttribute("aria-current")).toBe(false);
+    expect(activeCards[1].className).toContain("border-brand"); expect(activeCards[0].className).not.toContain("border-brand");
     expect([...activeCards[1].querySelectorAll("p")].find((element) => element.textContent === long)?.className).toContain("break-words");
   });
   it("shows the selected ACTIVE detail as recorded information, recorded times and the tracking action", () => {

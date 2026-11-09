@@ -6,13 +6,20 @@ import { classNames } from "@/components/ui/class-names";
  * Read-only surface for one record the server has already returned as persisted.
  * Drafts, pending submissions and unconfirmed outcomes must never use it: they stay in entry surfaces.
  */
-export function SavedRecordCard({ as: Tag = "div", className, children, ...rest }: {
+export function SavedRecordCard({ as: Tag = "div", tone = "current", selected = false, children, ...rest }: {
   as?: "div" | "li";
-  className?: string;
+  /** `history` is a flat, muted record that can no longer change (for example a stopped medication). */
+  tone?: "current" | "history";
+  /** Marks the record whose detail is open; pair it with `aria-current` on the record's link. */
+  selected?: boolean;
   children: ReactNode;
   "aria-label"?: string;
 }): React.JSX.Element {
-  return <Tag className={classNames("min-w-0 rounded-panel border border-border bg-surface p-4 shadow-surface sm:p-5", className)} {...rest}>{children}</Tag>;
+  return <Tag className={classNames(
+    "min-w-0 rounded-panel border p-4 sm:p-5",
+    tone === "history" ? "bg-surface-muted" : "bg-surface shadow-surface",
+    selected ? "border-brand" : "border-border",
+  )} {...rest}>{children}</Tag>;
 }
 
 /** Footer row for the actions on one saved record, so every record places them the same way. */

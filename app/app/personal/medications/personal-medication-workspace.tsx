@@ -34,7 +34,8 @@ const TRACKING_LABEL = { ACTIVE: "กำลังติดตาม", STOPPED: "
 
 /** Tracking status in DEMI only; it never describes whether the medicine is actually taken. */
 function TrackingBadge({ status }: { status: "ACTIVE" | "STOPPED" }): React.JSX.Element {
-  return <StatusBadge variant={status === "ACTIVE" ? "success" : "neutral"}>{TRACKING_LABEL[status]}</StatusBadge>;
+  // STOPPED also renders on muted history cards, so its neutral pill needs its own edge to stay legible.
+  return <StatusBadge variant={status === "ACTIVE" ? "success" : "neutral"} className={status === "STOPPED" ? "ring-1 ring-inset ring-border-strong" : undefined}>{TRACKING_LABEL[status]}</StatusBadge>;
 }
 
 /** Saved daily HH:mm values exactly as recorded (Asia/Bangkok); wraps and scrolls vertically, never horizontally. */
@@ -159,7 +160,7 @@ function MedicationList({ page, status, selectedId }: { page: PersonalMedication
         const selected = item.id === selectedId;
         const recordedOn = new Date(status === "ACTIVE" ? item.createdAt : item.stoppedAt ?? item.updatedAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" });
         // Stopped records are history: flat and muted, never styled like the ACTIVE list.
-        return <SavedRecordCard as="li" key={item.id} className={`${status === "STOPPED" ? "bg-surface-muted shadow-none" : ""} ${selected ? "border-brand" : ""}`}>
+        return <SavedRecordCard as="li" key={item.id} tone={status === "STOPPED" ? "history" : "current"} selected={selected}>
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-3 gap-y-2">
             <h3 className="min-w-0 break-words text-base font-semibold text-text">{item.medicationName}</h3>
             <TrackingBadge status={status} />
