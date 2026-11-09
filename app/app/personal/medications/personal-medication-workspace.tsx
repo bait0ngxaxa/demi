@@ -181,16 +181,34 @@ function MedicationList({ page, status, selectedId }: { page: PersonalMedication
  * a pending request or an unconfirmed result is never discarded by closing it.
  */
 function MedicationCreateDisclosure({ initiallyOpen }: { initiallyOpen: boolean }): React.JSX.Element {
+  const details = useRef<HTMLDetailsElement>(null);
+  // Covers the native submit event before React commits the pending render.
+  const critical = useRef(false);
+  const [locked, setLocked] = useState(false);
+  const onSubmit = useCallback(() => {
+    critical.current = true;
+    setLocked(true);
+    if (details.current) details.current.open = true;
+  }, []);
+  const onResult = useCallback((state: PersonalMedicationActionState) => {
+    const reviewRequired = needsAttention(state) || (state.status === "ERROR" && !state.fieldErrors);
+    critical.current = reviewRequired;
+    setLocked(reviewRequired);
+    if (details.current) details.current.open = true;
+  }, []);
   return <section aria-labelledby="medication-create-heading">
-    <details open={initiallyOpen} className="group rounded-panel border border-border bg-surface">
-      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
+    <details ref={details} open={initiallyOpen} onToggle={(event) => {
+      // Toggle is not cancellable; restore visibility after other native interactions too.
+      if (critical.current && !event.currentTarget.open) event.currentTarget.open = true;
+    }} className="group rounded-panel border border-border bg-surface">
+      <summary aria-disabled={locked || undefined} onClick={(event) => { if (critical.current) event.preventDefault(); }} className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
         <span className="space-y-0.5"><span id="medication-create-heading" className="block text-lg font-semibold text-brand-strong">เพิ่มรายการยา</span>
           <span className="block text-sm text-text-muted">กรอกชื่อยา ข้อความประกอบ และเวลาที่ต้องการติดตาม</span></span>
         <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5 shrink-0 text-brand-strong transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 5 5 5-5" /></svg>
       </summary>
       <div className="space-y-4 border-t border-border px-5 pb-5 pt-5 sm:px-7 sm:pb-7">
         <p className="text-sm text-text-muted">รายการจะถูกบันทึกเมื่อคุณกดปุ่มเพิ่มรายการเท่านั้น</p>
-        <MedicationEditor />
+        <MedicationEditor coordination={{ blocked: false, onSubmit, onResult }} />
       </div>
     </details>
   </section>;
