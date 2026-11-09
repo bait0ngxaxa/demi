@@ -50,6 +50,7 @@ function ProgramHistoryItem({
         <div className="min-w-0">
           <Link className={`${linkClassName} break-words`} href={href}>
             โปรแกรมการดูแล
+            <span className="sr-only"> เริ่ม {formatPatientDateOnly(item.startedAt)}</span>
           </Link>
           <p className="mt-1 break-words text-sm leading-6 text-text-muted">
             เริ่ม {formatPatientDateOnly(item.startedAt)}

@@ -298,6 +298,42 @@ describe("Patient Personal care read views", () => {
     expect(missingValues).not.toContain("mmHg");
   });
 
+  it("gives each Program detail link a unique accessible name and preserves its destination", () => {
+    const firstProgram = {
+      programId: "77777777-7777-4777-8777-777777777777",
+      status: PatientProgramStatus.ACTIVE,
+      startedAt: new Date("2026-02-12T00:00:00.000Z"),
+      completedAt: null,
+    };
+    const secondProgram = {
+      programId: "99999999-9999-4999-8999-999999999999",
+      status: PatientProgramStatus.COMPLETED,
+      startedAt: new Date("2026-04-16T00:00:00.000Z"),
+      completedAt: new Date("2026-08-05T10:30:00.000Z"),
+    };
+    const markup = renderToStaticMarkup(
+      <PatientSelfCareJourneyView journey={{ ...journey, programs: [firstProgram, secondProgram] }} />,
+    );
+    const programLinks = [
+      ...markup.matchAll(
+        /<a\b(?=[^>]*href="([^"]*\/programs\/[^"]+)")[^>]*>([\s\S]*?)<\/a>/gu,
+      ),
+    ];
+
+    expect(
+      programLinks.map((link) =>
+        (link[2] ?? "").replace(/<[^>]*>/gu, "").replace(/\s+/gu, " ").trim(),
+      ),
+    ).toEqual([
+      "โปรแกรมการดูแล เริ่ม 12 กุมภาพันธ์ 2569",
+      "โปรแกรมการดูแล เริ่ม 16 เมษายน 2569",
+    ]);
+    expect(programLinks.map((link) => link[1] ?? "")).toEqual([
+      "/app/personal/care/" + ownRelationship.relationshipId + "/programs/" + firstProgram.programId,
+      "/app/personal/care/" + ownRelationship.relationshipId + "/programs/" + secondProgram.programId,
+    ]);
+  });
+
   it("distinguishes ACTIVE and COMPLETED Programs with their original dates and scoped detail links", () => {
     const activeProgram = {
       programId: "77777777-7777-4777-8777-777777777777",
