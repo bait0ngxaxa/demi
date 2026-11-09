@@ -3,9 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AppointmentSharingWorkspace } from "./appointment-sharing-workspace";
 import { AppointmentFields } from "./grants/[grantId]/appointments/appointment-fields";
 import { FamilyManagementWorkspace } from "./family-management-workspace";
-import type { AppointmentGrantManagement } from "@/modules/family/services/appointment-grant-management-query-service";
+import { FAMILY_APPOINTMENT_LATEST_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT, FAMILY_APPOINTMENT_READ_CONTRACT_V2, type FamilyAppointmentReadContract } from "@/modules/family/domain/appointment-grant-contract";
+import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
+import type { AppointmentGrantManagement, AppointmentGrantManagementItem } from "@/modules/family/services/appointment-grant-management-query-service";
+import type { ResourceGrantManagementItem } from "@/modules/family/services/caregiver-resource-grant-service";
 import type { FamilyManagementOverview } from "@/modules/family/services/caregiver-relationship-query-service";
-import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS } from "@/modules/family/domain/caregiver-sharing-contract";
 const mocks = vi.hoisted(() => ({ detail: vi.fn(), connection: vi.fn(), redirect: vi.fn() }));
 vi.mock("next/server", () => ({ connection: mocks.connection }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: mocks.redirect }));
@@ -21,6 +23,59 @@ const grant = { participant, grantId: "grant-locator", hospitalName: "หน่�
 const overview: AppointmentGrantManagement = { patient: { grants: [grant, { ...grant, grantId: "active-locator", status: "ACTIVE", acceptedAt: now }], nextCursor: null,
   hospitals: [{ relationshipId: "phr-locator", hospitalName: "หน่วยบริการทดสอบ" }], nextHospitalsCursor: null }, caregiver: { grants: [grant, { ...grant, grantId: "read-locator", status: "ACTIVE", acceptedAt: now }], nextCursor: null } };
 const appointment = { appointmentId: "appointment-locator", hospitalName: "หน่วยบริการทดสอบ", type: "FOLLOW_UP" as const, scheduledAt: now, durationMinutes: null, locationType: null, status: "CANCELLED" as const, extension: null };
+
+function onlyRecordCard(markup: string): string {
+  const cards = Array.from(markup.matchAll(/<li class="min-w-0">[\s\S]*?<\/li>/gu), ([card]) => card);
+  if (cards.length !== 1 || cards[0] === undefined) throw new Error(`Expected one grant card, found ${cards.length}`);
+  return cards[0];
+}
+
+function recordFieldValue(card: string, label: string): string | undefined {
+  return Array.from(card.matchAll(/<dt[^>]*>(.*?)<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/gu))
+    .find(([, fieldLabel]) => fieldLabel === label)?.[2];
+}
+
+function renderAppointmentGrantCard(grantRecord: AppointmentGrantManagementItem): string {
+  const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
+    management={{ patient: { grants: [grantRecord], nextCursor: null, hospitals: [], nextHospitalsCursor: null }, caregiver: { grants: [], nextCursor: null } }} />);
+  return onlyRecordCard(markup);
+}
+
+function renderResourceGrantCard(grantRecord: ResourceGrantManagementItem): string {
+  const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
+    management={{ patient: null, caregiver: { grants: [], nextCursor: null } }}
+    resources={{ patient: [grantRecord], caregiver: [], availableResources: [] }} />);
+  return onlyRecordCard(markup);
+}
+
+const appointmentContractReadbacks = [
+  {
+    contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT,
+    scopeSummary: "ดูเฉพาะนัดหมายที่จะถึงใน 90 วัน โดยเห็นชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ (อ่านอย่างเดียว)",
+  },
+  {
+    contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2,
+    scopeSummary: "ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ 90 วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดยไม่รวมบริการและที่มาของนัด (อ่านอย่างเดียว)",
+  },
+  {
+    contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
+    scopeSummary: "ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ 90 วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดยรวมบริการและที่มาของนัด (อ่านอย่างเดียว)",
+  },
+] as const satisfies readonly { contractVersion: FamilyAppointmentReadContract; scopeSummary: string }[];
+
+const appointmentGrantStatuses = [
+  { status: "PENDING", statusLabel: "รอผู้ดูแลยอมรับ", scopeLabel: "ขอบเขตที่เสนอให้แชร์" },
+  { status: "ACTIVE", statusLabel: "ยอมรับสิทธิ์แล้ว", scopeLabel: "ขอบเขตที่ได้รับสิทธิ์" },
+  { status: "REVOKED", statusLabel: "ยกเลิกสิทธิ์แล้ว", scopeLabel: "ขอบเขตของสิทธิ์ที่ยกเลิกแล้ว" },
+] as const;
+
+const appointmentGrantReadbackCases = appointmentGrantStatuses.flatMap((statusCase) => appointmentContractReadbacks.map((contract) => ({ ...statusCase, ...contract })));
+const resourceGrantStatuses = [
+  { status: "PENDING", statusLabel: "รอผู้ดูแลยอมรับ", scopeLabel: "ข้อมูลที่เสนอให้เข้าถึง" },
+  { status: "ACTIVE", statusLabel: "ยอมรับสิทธิ์แล้ว", scopeLabel: "ข้อมูลที่อนุญาตแล้ว" },
+] as const;
+const resources = ["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"] as const;
+const resourceGrantReadbackCases = resourceGrantStatuses.flatMap((statusCase) => resources.map((resource) => ({ ...statusCase, resource })));
 
 describe("bounded appointment sharing UI", () => {
   it("identifies exact participants/Hospital, own selection, pending/active and exact revoke/accept row", () => {
@@ -39,10 +94,23 @@ describe("bounded appointment sharing UI", () => {
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
       management={{ patient: { ...overview.patient!, grants: [grant, active, revoked, careEnded] }, caregiver: { grants: [], nextCursor: null } }} />);
 
-    for (const text of ["รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกสิทธิ์แล้ว", "สิ้นสุดการดูแลแล้ว", "สิทธิ์ตามสัญญาเดิม", "หน่วยบริการ", "ขอบเขตที่แชร์", "เสนอเมื่อ", "ยอมรับเมื่อ", "ยกเลิกเมื่อ", "ดูนัดหมายของหน่วยบริการนี้แบบอ่านอย่างเดียว"]) expect(markup).toContain(text);
+    for (const text of ["รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกสิทธิ์แล้ว", "สิ้นสุดการดูแลแล้ว", "สิทธิ์ตามสัญญาเดิม", "หน่วยบริการ", "เสนอเมื่อ", "ยอมรับเมื่อ", "ยกเลิกเมื่อ"]) expect(markup).toContain(text);
     expect(markup).toContain("ผู้ดูแลจึงไม่เห็นนัดหมายของโรงพยาบาลนี้");
     expect(markup.match(/<details/g)).toHaveLength(4);
     expect(markup).toContain(`<time dateTime="${now.toISOString()}">`);
+  });
+  it.each(appointmentGrantReadbackCases)("shows $status scope for $contractVersion on its own appointment grant card", ({ status, statusLabel, scopeLabel, contractVersion, scopeSummary }) => {
+    const card = renderAppointmentGrantCard({
+      ...grant,
+      grantId: `${status}-${contractVersion}`,
+      status,
+      acceptedAt: status === "PENDING" ? null : now,
+      revokedAt: status === "REVOKED" ? now : null,
+      contractVersion,
+    });
+
+    expect(card).toContain(statusLabel);
+    expect(recordFieldValue(card, scopeLabel)).toBe(scopeSummary);
   });
   it("renders only six allowed resource fields, truthful cancelled and null source values", () => {
     const markup = renderToStaticMarkup(<AppointmentFields appointment={appointment} />);
@@ -168,9 +236,23 @@ describe("bounded appointment sharing UI", () => {
       ], availableResources: ["PROFILE_SUMMARY", "HEALTH_PLAN", "MEDICATION"] }} />);
     for (const text of ["แชร์ข้อมูลสุขภาพอื่นให้ผู้ดูแล", 'name="grantId" value="resource-locator"', "ยกเลิกสิทธิ์", "ยอมรับสิทธิ์ดูข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล", "แผนสุขภาพ", 'value="MEDICATION">ยา</option>']) expect(markup).toContain(text);
     expect(markup).toMatch(/name="resource"[\s\S]*value="HEALTH_PLAN"[\s\S]*value="MEDICATION"/u);
-    expect(markup).toContain("ข้อมูลที่อนุญาต");
     expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.PROFILE_SUMMARY);
     expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.HEALTH_PLAN);
     expect(markup).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS.MEDICATION);
+  });
+  it.each(resourceGrantReadbackCases)("shows $status wording and the matching resource scope on its own resource grant card", ({ status, statusLabel, scopeLabel, resource }) => {
+    const card = renderResourceGrantCard({
+      grantId: `${status}-${resource}`,
+      caregiverRelationshipId: "parent-locator",
+      resource,
+      status,
+      proposedAt: now,
+      acceptedAt: status === "PENDING" ? null : now,
+      participant,
+    });
+
+    expect(card).toContain(statusLabel);
+    expect(recordFieldValue(card, scopeLabel)).toBe(CAREGIVER_RESOURCE_LABELS[resource]);
+    expect(card).toContain(CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS[resource]);
   });
 });

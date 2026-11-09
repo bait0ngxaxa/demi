@@ -15,6 +15,9 @@ import {
   FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
   FAMILY_APPOINTMENT_READ_CONTRACT,
   FAMILY_APPOINTMENT_READ_CONTRACT_V2,
+  FAMILY_APPOINTMENT_WINDOW_MS,
+  familyAppointmentContractIncludesDetail,
+  familyAppointmentContractIncludesServiceSource,
   type FamilyAppointmentReadContract,
 } from "@/modules/family/domain/appointment-grant-contract";
 import { CAREGIVER_RESOURCE_ACCEPTANCE_TEXTS, CAREGIVER_RESOURCE_LABELS } from "@/modules/family/domain/caregiver-sharing-contract";
@@ -65,6 +68,25 @@ const OLDER_CONTRACT_SCOPE_NOTES: Partial<Record<FamilyAppointmentReadContract, 
   [FAMILY_APPOINTMENT_READ_CONTRACT_V2]: "สิทธิ์แบบเดิม: ผู้ดูแลไม่เห็นว่านัดเป็นบริการใด และไม่เห็นว่าเป็นนัดที่โรงพยาบาลนัดหรือที่ผู้ป่วยขอรับบริการ จนกว่าจะยอมรับสิทธิ์แบบใหม่",
 };
 
+const FAMILY_APPOINTMENT_WINDOW_DAYS = FAMILY_APPOINTMENT_WINDOW_MS / (24 * 60 * 60 * 1000);
+
+function appointmentGrantScopeLabel(status: AppointmentGrantManagementItem["status"]): string {
+  if (status === "PENDING") return "ขอบเขตที่เสนอให้แชร์";
+  if (status === "ACTIVE") return "ขอบเขตที่ได้รับสิทธิ์";
+  return "ขอบเขตของสิทธิ์ที่ยกเลิกแล้ว";
+}
+
+function appointmentGrantScopeSummary(contractVersion: FamilyAppointmentReadContract): string {
+  if (!familyAppointmentContractIncludesDetail(contractVersion)) {
+    return `ดูเฉพาะนัดหมายที่จะถึงใน ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน โดยเห็นชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ (อ่านอย่างเดียว)`;
+  }
+
+  const serviceAndSource = familyAppointmentContractIncludesServiceSource(contractVersion)
+    ? "รวมบริการและที่มาของนัด"
+    : "ไม่รวมบริการและที่มาของนัด";
+  return `ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ ${FAMILY_APPOINTMENT_WINDOW_DAYS} วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดย${serviceAndSource} (อ่านอย่างเดียว)`;
+}
+
 function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementItem; perspective: "patient" | "caregiver" }): React.JSX.Element {
   const [state, action, pending, unknownOutcome] = useMutationActionState(perspective === "patient" ? revokeAppointmentGrantAction : acceptAppointmentGrantAction, initialFamilyMutationActionState);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -97,8 +119,8 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
           <dd className="mt-1 break-words text-text">{grant.hospitalName}</dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">ขอบเขตที่แชร์</dt>
-          <dd className="mt-1 break-words text-text">ดูนัดหมายของหน่วยบริการนี้แบบอ่านอย่างเดียว</dd>
+          <dt className="text-sm font-semibold text-text-muted">{appointmentGrantScopeLabel(grant.status)}</dt>
+          <dd className="mt-1 break-words text-text">{appointmentGrantScopeSummary(grant.contractVersion)}</dd>
         </div>
         <div className="min-w-0">
           <dt className="text-sm font-semibold text-text-muted">เสนอเมื่อ</dt>
@@ -200,6 +222,7 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
   const triggerRef = useRef<HTMLButtonElement>(null);
   const name = formatFamilyParticipantName(grant.participant, perspective === "patient" ? "ไม่ระบุชื่อผู้ดูแล" : "ไม่ระบุชื่อผู้ป่วย");
   const resourceLabel = CAREGIVER_RESOURCE_LABELS[grant.resource];
+  const scopeLabel = grant.status === "PENDING" ? "ข้อมูลที่เสนอให้เข้าถึง" : "ข้อมูลที่อนุญาตแล้ว";
   const canRevoke = perspective === "patient" && state.status !== "SUCCESS";
   const canAccept = perspective === "caregiver" && grant.status === "PENDING" && state.status !== "SUCCESS";
   return <li className="min-w-0">
@@ -212,7 +235,7 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
       </div>
       <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
         <div className="min-w-0">
-          <dt className="text-sm font-semibold text-text-muted">ข้อมูลที่อนุญาต</dt>
+          <dt className="text-sm font-semibold text-text-muted">{scopeLabel}</dt>
           <dd className="mt-1 break-words text-text">{resourceLabel}</dd>
         </div>
         <div className="min-w-0">
