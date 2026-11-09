@@ -54,6 +54,7 @@ describe("Daily Wellness interactions", () => {
     expect(footer()?.textContent).toContain("ข้อมูลสรุปล่าสุดยังไม่พร้อม");
     expect(footer()?.textContent).not.toContain("25 นาที");
     expect(host.textContent).toContain("บันทึกแล้ว");
+    expect(host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]')?.textContent).toContain("90 นาที");
   });
   it("rejects tomorrow and invalid recording dates before requesting data", async () => {
     vi.useFakeTimers();

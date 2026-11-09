@@ -68,7 +68,8 @@ describe("weight goal focused dialogs", () => {
     expect(dialog()?.querySelector<HTMLInputElement>('input[name="goalId"]')?.value).toBe(goal.id);
     expect(dialog()?.querySelector<HTMLInputElement>('input[name="expectedUpdatedAt"]')?.value).toBe(goal.updatedAt);
     expect(dialog()?.querySelector('input[name="submissionNonce"]')).toBeNull();
-    const readback = [...host.querySelectorAll("p")].find((element) => element.textContent === "72.5 กก.");
+    const readback = [...host.querySelectorAll("dd")].find((element) => element.textContent === "72.5 กก.");
+    expect(readback).toBeDefined();
     expect(readback?.closest("dialog")).toBeNull();
 
     await act(() => button("ยกเลิกการแก้ไข", dialog() ?? host).click());

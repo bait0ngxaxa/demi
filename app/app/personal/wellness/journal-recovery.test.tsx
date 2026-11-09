@@ -39,10 +39,93 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     const lock = vi.fn();
     const props = { initialPage: { items: withRecord ? [persisted, { ...persisted, id: "22222222-2222-4222-8222-222222222222" }] : [], nextCursor: null }, today: date, initialNonce: nonce, authority, date, onLockChange: lock };
     await act(() => root.render(kind === "meal" ? <PersonalMealWorkspace {...props} /> : <PersonalExerciseWorkspace {...props} />));
+    if (!host.querySelector("details")?.open) await act(() => host.querySelector("summary")?.click());
     await act(() => kind === "meal" ? host.querySelector<HTMLInputElement>('[value="SNACK"]')?.click() : button("เดิน").click());
     return { authority, lock };
   }
   const save = kind === "meal" ? "บันทึกมื้ออาหาร" : "บันทึกการออกกำลังกาย";
+  function disclosure(): HTMLDetailsElement {
+    const element = host.querySelector("details");
+    if (!element) throw new Error("Missing create disclosure");
+    return element;
+  }
+  async function toggle(): Promise<void> {
+    await act(() => disclosure().querySelector("summary")?.click());
+  }
+  it("starts empty days open and existing days collapsed, with the saved list immediately available", async () => {
+    const authority = createWellnessPrivateAuthority(vi.fn());
+    const props = { initialPage: { items: [persisted], nextCursor: null }, today: date, initialNonce: nonce, authority, date };
+    await act(() => root.render(kind === "meal" ? <PersonalMealWorkspace {...props} /> : <PersonalExerciseWorkspace {...props} />));
+    expect(disclosure().open).toBe(false);
+    expect(disclosure().querySelector("summary")?.textContent).toContain(kind === "meal" ? "บันทึกมื้ออาหารเพิ่ม" : "เพิ่มกิจกรรม");
+    const records = host.querySelector('ul[aria-label$="ที่บันทึกแล้ว"]');
+    expect(records?.closest("details")).toBeNull();
+    expect(records?.querySelectorAll("li")).toHaveLength(1);
+    expect(disclosure().querySelector("form")).not.toBeNull();
+    await toggle(); expect(disclosure().open).toBe(true);
+    await toggle(); expect(disclosure().open).toBe(false);
+  });
+  it("preserves a dirty draft, form identity and nonce across close/reopen without submitting", async () => {
+    await mount(); expect(disclosure().open).toBe(true);
+    const form = disclosure().querySelector("form");
+    const field = form?.querySelector<HTMLTextAreaElement>("textarea");
+    if (!field) throw new Error("Missing draft field");
+    await act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(field, "ร่างที่ยังไม่บันทึก");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const summary = disclosure().querySelector("summary"); summary?.focus();
+    await toggle(); expect(disclosure().open).toBe(false);
+    expect(document.activeElement).toBe(summary);
+    await toggle(); expect(disclosure().querySelector("form")).toBe(form);
+    expect(field.value).toBe("ร่างที่ยังไม่บันทึก");
+    expect(form?.querySelector<HTMLInputElement>('[name="submissionNonce"]')?.value).toBe(nonce);
+    expect(mock[kind]).not.toHaveBeenCalled();
+  });
+  it.each(["UNCONFIRMED", "CONFLICT"])("keeps pending and %s recovery visible, retries the same nonce, then permits collapse", async (status) => {
+    const { lock } = await mount();
+    let resolve: (value: unknown) => void = () => undefined;
+    mock[kind].mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(async () => button(save).click());
+    await toggle(); expect(disclosure().open).toBe(true);
+    expect(disclosure().querySelector("summary")?.getAttribute("aria-disabled")).toBe("true");
+    await act(() => resolve({ status, message: "ต้องลองคำขอเดิม" }));
+    await toggle(); expect(disclosure().open).toBe(true);
+    expect(disclosure().querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+    expect(lock.mock.lastCall).toEqual([true]);
+    const original = [...mock[kind].mock.calls[0][1].entries()];
+    mock[kind].mockResolvedValueOnce({ status: "ERROR", message: "ยังลองใหม่ไม่ได้" });
+    await act(async () => button("ลองคำขอเดิมอีกครั้ง").click());
+    await toggle(); expect(disclosure().open).toBe(true);
+    mock[kind].mockResolvedValueOnce({ status: "SUCCESS", result: { outcome: "REPLAY", item: persisted } });
+    (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValueOnce({ status: "SUCCESS", page: { items: [persisted], nextCursor: null } });
+    await act(async () => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect(mock[kind].mock.calls.map((args) => [...args[1].entries()])).toEqual([original, original, original]);
+    expect(host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]')?.textContent).toContain("บันทึกแล้ว");
+    expect(host.querySelector('ul[aria-label$="ที่บันทึกแล้ว"]')?.querySelectorAll("li")).toHaveLength(1);
+    expect(disclosure().querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("");
+    expect(document.activeElement).toBe(disclosure().querySelector("h3"));
+    expect(disclosure().open).toBe(true);
+    await toggle(); expect(disclosure().open).toBe(false);
+    expect(lock.mock.lastCall).toEqual([false]);
+  });
+  it("allows recoverable validation collapse but keeps consumed intent visible until explicit renewal", async () => {
+    await mount();
+    mock[kind].mockResolvedValueOnce({ status: "ERROR", message: "ตรวจสอบข้อมูล", fieldErrors: { occurredOn: "ตรวจสอบวันที่" } });
+    await act(async () => button(save).click());
+    await toggle(); expect(disclosure().open).toBe(false); await toggle();
+    if (kind === "meal") await act(() => host.querySelector<HTMLInputElement>('[value="SNACK"]')?.click());
+    mock[kind].mockResolvedValueOnce({ status: "CREATE_CONSUMED", message: "คำขอนี้ถูกใช้แล้ว" });
+    await act(async () => button(save).click());
+    expect(mock[kind]).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain("คำขอนี้ถูกใช้แล้ว");
+    await toggle(); expect(disclosure().open).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('[name="submissionNonce"]')?.value).toBe(nonce);
+    await act(async () => button("เริ่มบันทึกใหม่").click());
+    expect(host.querySelector<HTMLInputElement>('[name="submissionNonce"]')?.value).not.toBe(nonce);
+    await toggle(); expect(disclosure().open).toBe(false);
+    expect(mock[kind]).toHaveBeenCalledTimes(2);
+  });
   it.each([
     ["edit", "UNCONFIRMED"], ["edit", "CONFLICT"],
     ["delete", "UNCONFIRMED"], ["delete", "CONFLICT"],
@@ -182,6 +265,30 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     expect(button("เริ่มบันทึกใหม่").disabled).toBe(false);
     await act(() => button("เริ่มบันทึกใหม่").click());
     expect(host.querySelector<HTMLInputElement>('[name="submissionNonce"]')?.value).not.toBe(nonce);
+  });
+  it("shows the saved readback only for a server-confirmed create; pending, unconfirmed and failed results stay in the form", async () => {
+    await mount();
+    const saved = (): Element | null => host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]');
+    let resolve: (value: unknown) => void = () => undefined;
+    mock[kind].mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(() => button(save).click());
+    expect(saved()).toBeNull();
+    await act(() => resolve({ status: "UNCONFIRMED", message: "ผลยังไม่แน่นอน" }));
+    expect(saved()).toBeNull();
+    expect(host.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+    mock[kind].mockResolvedValueOnce({ status: "ERROR", message: "ลองใหม่" });
+    await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect(saved()).toBeNull();
+    const item = { id: nonce, occurredOn: date, createdAt: `${date}T00:00:00Z`, updatedAt: `${date}T00:00:00Z`, category: "SNACK", description: null, activityName: "เดิน", durationMinutes: null, note: null };
+    mock[kind].mockResolvedValue({ status: "SUCCESS", message: "ดำเนินการแล้ว", result: { outcome: "REPLAY", item } });
+    (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValue({ status: "SUCCESS", page: { items: [item], nextCursor: null } });
+    await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect(saved()?.textContent).toContain("บันทึกแล้ว");
+    expect(saved()?.querySelector("form, input, textarea")).toBeNull();
+    const records = host.querySelector(kind === "meal" ? '[aria-label="รายการมื้ออาหารที่บันทึกแล้ว"]' : '[aria-label="รายการกิจกรรมที่บันทึกแล้ว"]');
+    expect(records?.querySelectorAll("li")).toHaveLength(1);
+    expect(records?.querySelector("form, input, textarea")).toBeNull();
+    expect(records?.querySelector(`time[datetime="${date}"]`)).not.toBeNull();
   });
   it("ignores a late create response after authority invalidation", async () => {
     const { authority } = await mount();

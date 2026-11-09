@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
@@ -95,5 +96,39 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expired).toContain('href="/login"');
     expect(expired).toContain("เข้าสู่ระบบ DEMI");
+  });
+  it("separates the entry form from saved meal cards; each card carries its own date, wrapping text and labelled actions", () => {
+    simulation.confirming = true;
+    const long = "ข้าวมันไก่ต้มพร้อมน้ำซุปและผักลวกจิ้มน้ำพริกตาแดงรสจัดจ้านมากเป็นพิเศษ".repeat(8);
+    const items = [row, { ...row, id: "22222222-2222-4222-8222-222222222222", category: "BREAKFAST" as const, description: long }, { ...row, id: "33333333-3333-4333-8333-333333333333", category: "LUNCH" as const, description: null }];
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items, nextCursor: null }} today={row.occurredOn} date={row.occurredOn} initialNonce={row.id} authority={authority} />);
+    const list = host.querySelector('[aria-label="รายการมื้ออาหารที่บันทึกแล้ว"]');
+    const cards = [...(list?.querySelectorAll(":scope > li") ?? [])];
+    expect(cards).toHaveLength(3);
+    // Saved cards are read-only; the only create form lives outside the saved-record list.
+    expect(list?.querySelector("form, input, textarea, select")).toBeNull();
+    expect(host.querySelector('input[name="submissionNonce"]')?.closest('[aria-label="ประวัติมื้ออาหาร"]')).toBeNull();
+    expect(cards.map((card) => card.querySelector("h4")?.textContent)).toEqual(["ของว่าง", "มื้อเช้า", "มื้อกลางวัน"]);
+    for (const card of cards) {
+      expect(card.querySelector(`time[datetime="${row.occurredOn}"]`)).not.toBeNull();
+      expect([...card.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["แก้ไข", "ลบ"]);
+    }
+    expect(cards[0].querySelector("button")?.getAttribute("aria-label")).toBe(`แก้ไข ของว่าง วันที่ ${row.occurredOn}`);
+    const longText = [...cards[1].querySelectorAll("p")].find((element) => element.textContent === long);
+    expect(longText?.className).toContain("break-words"); expect(longText?.className).toContain("whitespace-pre-wrap");
+    expect(cards[2].textContent).toContain("ไม่ได้บันทึกรายละเอียด");
+    expect(list?.innerHTML).toContain("&lt;script&gt;"); expect(list?.innerHTML).not.toContain("<script>");
+    // No confirmed result yet, so no saved-state readback is claimed.
+    expect(host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]')).toBeNull();
+  });
+  it("renders an empty saved list as a bounded state tied to the selected date", () => {
+    simulation.confirming = true;
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} date={row.occurredOn} initialNonce={row.id} authority={authority} />);
+    const history = host.querySelector('[aria-label="ประวัติมื้ออาหาร"]');
+    expect(history?.querySelector("ul")).toBeNull();
+    expect(history?.textContent).toContain("ยังไม่มีบันทึกมื้ออาหาร ในวันที่ 2026-10-03");
+    expect(history?.textContent).toContain("โหลดรายการล่าสุด");
   });
 });

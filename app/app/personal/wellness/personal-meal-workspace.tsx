@@ -3,21 +3,26 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { listPersonalMealsAction } from "@/modules/meals/transport/server-actions";
 import { MealEditor, MealDeleteForm, type MealDraft } from "./personal-meal-controls";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
+import { SavedRecordActions, SavedRecordCard, SavedRecordEmpty } from "../saved-record-card";
 
-export function MealReadback({ item }: { item: PersonalMealDto }): React.JSX.Element {
+export function MealReadback({ item, titleAs: Title = "p" }: { item: PersonalMealDto; titleAs?: "p" | "h4" }): React.JSX.Element {
   // Display the civil truth directly; never format a carrier instant in browser TZ.
-  return <div className="min-w-0 space-y-2"><p className="font-semibold">{MEAL_CATEGORY_LABELS[item.category]} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
-    <p className="whitespace-pre-wrap break-words text-text-muted">{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p></div>;
+  return <div className="min-w-0 space-y-1">
+    <Title className="break-words text-base font-semibold text-text">{MEAL_CATEGORY_LABELS[item.category]}</Title>
+    <p className="text-sm text-text-muted">วันที่รับประทาน <time className="tabular-nums" dateTime={item.occurredOn}>{item.occurredOn}</time></p>
+    <p className={`max-w-prose whitespace-pre-wrap break-words pt-2 leading-relaxed ${item.description ? "text-text" : "text-text-muted"}`}>{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p>
+  </div>;
 }
 export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalMealPage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalMealPage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
+  const [createInitiallyOpen] = useState(initialPage.items.length === 0);
   // The selected entry is the subject of the open edit or delete dialog; results then belong to it, not to create.
   const [selected, setSelected] = useState<PersonalMealDto | undefined>();
   const [mode, setMode] = useState<"EDIT" | "DELETE">("EDIT");
@@ -134,6 +139,7 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
   }
   // A running request or an outcome that needs review keeps the dialog open; its recovery is inside it.
   const entryDialogDismissible = !saving && !pending && !reviewRequired;
+  const createDisclosureLocked = !selected && (saving || pending || recoveringCreate || reviewRequired || feedback.status === "CREATE_CONSUMED" || Boolean(feedback.loginHref));
   function closeEntry(): void {
     if (!selected || !entryDialogDismissible) return;
     if (mode === "EDIT" && activity.current.write !== "CONFIRMED") editDraft.retain(`${selected.id}:${selected.updatedAt}`);
@@ -144,28 +150,49 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
     return !entryRemoved.current && trigger?.isConnected && !trigger.disabled ? trigger : historyHeading.current;
   }
   return <div className="max-w-4xl space-y-6">
-    <h2 className="text-2xl font-semibold">อาหาร</h2>
-    <p className="text-text-muted">ข้อมูลที่คุณบันทึก</p>
-    {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
-    <p className="max-w-prose text-text-muted">บันทึกมื้ออาหารหรือของว่างที่คุณรับประทาน เพื่อดูรายการส่วนตัวของคุณ</p>
+    <header className="space-y-1.5">
+      <h2 className="text-2xl font-semibold">อาหาร</h2>
+      <p className="text-text-muted">ข้อมูลที่คุณบันทึก</p>
+      {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
+      <p className="max-w-prose text-text-muted">บันทึกมื้ออาหารหรือของว่างที่คุณรับประทาน เพื่อดูรายการส่วนตัวของคุณ</p>
+    </header>
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
-    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><MealReadback item={feedback.result.item} /></section> : null}
-    <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
+    {/* Only a server-returned item reaches this readback; a pending or unconfirmed create stays in the form. */}
+    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><SavedRecordCard>
+      <div className="mb-3"><StatusBadge variant="success">บันทึกแล้ว</StatusBadge></div>
+      <MealReadback item={feedback.result.item} />
+    </SavedRecordCard></section> : null}
+    <details open={createInitiallyOpen} className="group rounded-panel border border-border bg-surface" onToggle={(event) => {
+      if (createDisclosureLocked && !event.currentTarget.open) event.currentTarget.open = true;
+    }}>
+      <summary aria-disabled={createDisclosureLocked || undefined} onClick={(event) => { if (createDisclosureLocked) event.preventDefault(); }} className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
+        บันทึกมื้ออาหารเพิ่ม
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 5 5 5-5" /></svg>
+      </summary>
+      {/* Keep the same editor mounted: closing never discards a draft or recovery nonce. */}
+      <div className="space-y-4 border-t border-border p-5 sm:p-7">
+      <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
+        <p className="text-sm text-text-muted">ข้อมูลในแบบฟอร์มนี้จะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
       <MealEditor key={nonce} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        <Button variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
-    </div></Panel>
-    <section aria-label="ประวัติมื้ออาหาร" className="space-y-4"><h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหารของฉัน</h3>
-      {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกมื้ออาหาร</p> : <ul className="divide-y divide-border">{page.items.map((item) => {
+      <Button className="w-full sm:w-auto" variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button>
+      </div>
+    </details>
+    <section aria-label="ประวัติมื้ออาหาร" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">มื้ออาหารที่บันทึกแล้ว</h3>
+        <Button variant="secondary" size="compact" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
+      </div>
+      {!page.items.length ? <SavedRecordEmpty>ยังไม่มีบันทึกมื้ออาหาร{date ? <> ในวันที่ <time className="tabular-nums" dateTime={date}>{date}</time></> : null}</SavedRecordEmpty> : <ul aria-label="รายการมื้ออาหารที่บันทึกแล้ว" className="space-y-3">{page.items.map((item) => {
         const context = `${MEAL_CATEGORY_LABELS[item.category]} วันที่ ${item.occurredOn}`;
         const disabled = saving || pending || recoveringCreate || reviewRequired;
-        return <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><MealReadback item={item} />
-          <div className="flex shrink-0 flex-wrap gap-2">
+        return <SavedRecordCard as="li" key={item.id}><MealReadback item={item} titleAs="h4" />
+          <SavedRecordActions>
             <Button variant="secondary" aria-label={`แก้ไข ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "EDIT", event.currentTarget)}>แก้ไข</Button>
             <Button variant="ghost" aria-label={`ลบ ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "DELETE", event.currentTarget)}>ลบ</Button>
-          </div></li>;
+          </SavedRecordActions>
+        </SavedRecordCard>;
       })}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PersonalWeightGoalDto } from "@/modules/weight-goals/domain/personal-weight-goal";
@@ -139,5 +140,23 @@ describe("Personal Weight Goal UI", () => {
     await simulation.handler({ status: "IDLE" }, new FormData());
     expect(authority.isCurrent(generation)).toBe(false);
     expect(authority.isActive()).toBe(false);
+  });
+  it("presents a saved goal as a read-only summary with the target weight as the primary value", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalWeightGoalWorkspace initialGoal={goal} initialNonce="11111111-1111-4111-8111-111111111111" authority={createWellnessPrivateAuthority(vi.fn())} />);
+    const summary = host.querySelector("section[aria-labelledby]");
+    const heading = summary?.querySelector("h3");
+    expect(heading?.textContent).toBe("เป้าหมายส่วนตัวที่คุณตั้งไว้");
+    expect(summary?.getAttribute("aria-labelledby")).toBe(heading?.id);
+    expect(summary?.hasAttribute("aria-label")).toBe(false);
+    expect(summary?.textContent).toContain("บันทึกแล้ว");
+    expect(summary?.querySelector("dd")?.textContent).toBe("72.555 กก.");
+    expect(summary?.querySelector("dd")?.className).toContain("text-3xl");
+    expect(summary?.querySelector('time[dateTime="2026-10-01"]')).not.toBeNull();
+    expect(summary?.querySelector("form, input")).toBeNull();
+    expect([...(summary?.querySelectorAll("button") ?? [])].map((button) => button.textContent)).toEqual(["แก้ไข", "ลบเป้าหมาย"]);
+    for (const forbidden of ["BMI", "เหลืออีก", "น้ำหนักปัจจุบัน", "ความคืบหน้า", "สำเร็จแล้ว", "progress"]) expect(summary?.textContent).not.toContain(forbidden);
+    const undated = renderToStaticMarkup(<PersonalWeightGoalReadback goal={{ ...goal, targetDate: null }} />);
+    expect(undated).not.toContain("วันที่เป้าหมาย"); expect(undated).toContain("72.555 กก.");
   });
 });

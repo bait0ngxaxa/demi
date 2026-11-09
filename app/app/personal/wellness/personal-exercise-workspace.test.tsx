@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
@@ -98,5 +99,27 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expired).toContain('href="/login"');
     expect(expired).toContain("เข้าสู่ระบบ DEMI");
+  });
+  it("shows saved exercise cards with the activity as title, duration only when recorded and the day summary apart from records", () => {
+    simulation.confirming = true;
+    const longNote = "เดินเร็วรอบสวนสาธารณะใกล้บ้านพร้อมยืดเหยียดกล้ามเนื้อก่อนและหลัง".repeat(8);
+    const items = [row, { ...row, id: "22222222-2222-4222-8222-222222222222", activityName: "ปั่นจักรยาน", durationMinutes: null, note: null }, { ...row, id: "33333333-3333-4333-8333-333333333333", activityName: "โยคะ", note: longNote }];
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items, nextCursor: null, dailySummary: { occurredOn: row.occurredOn, count: 3, durationMinutes: 60, recordedDurationCount: 2 } }} today={row.occurredOn} date={row.occurredOn} initialNonce={row.id} authority={authority} />);
+    const list = host.querySelector('[aria-label="รายการกิจกรรมที่บันทึกแล้ว"]');
+    const cards = [...(list?.querySelectorAll(":scope > li") ?? [])];
+    expect(cards).toHaveLength(3);
+    expect(list?.querySelector("form, input, textarea, select")).toBeNull();
+    expect(cards.map((card) => card.querySelector("h4")?.textContent)).toEqual(["เดิน <script>literal</script>", "ปั่นจักรยาน", "โยคะ"]);
+    expect(cards[0].textContent).toContain("30 นาที");
+    expect(cards[1].textContent).toContain("ไม่ได้บันทึกระยะเวลา"); expect(cards[1].textContent).toContain("ไม่ได้บันทึกเพิ่มเติม");
+    expect([...cards[2].querySelectorAll("p")].find((element) => element.textContent === longNote)?.className).toContain("break-words");
+    for (const card of cards) expect([...card.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["แก้ไข", "ลบ"]);
+    // The confirmed day total is its own region, outside the entry form and outside any record card.
+    const summary = host.querySelector('[aria-label="สรุปกิจกรรมที่บันทึกแล้ว"]');
+    expect(summary?.textContent).toContain("3 รายการ"); expect(summary?.textContent).toContain("รวมเฉพาะเวลาที่ระบุ 60 นาที");
+    expect(summary?.closest("form, li")).toBeNull();
+    expect(host.querySelector('input[name="submissionNonce"]')?.closest('[aria-label="ประวัติการออกกำลังกาย"]')).toBeNull();
+    expect(host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]')).toBeNull();
   });
 });

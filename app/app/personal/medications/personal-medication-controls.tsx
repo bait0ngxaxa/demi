@@ -155,7 +155,7 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
   const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (state.status !== "IDLE") feedback.current?.focus(); }, [state]);
   const blocked = Boolean(coordination?.blocked || state.status === "SUCCESS" || state.status === "CONFLICT" || state.refreshRequired);
-  return <div className="space-y-3 border-t border-border pt-4">
+  return <div className="space-y-3">
     <ConfirmableActionForm
       action={action}
       aria-label="หยุดติดตามรายการนี้"

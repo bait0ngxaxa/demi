@@ -3,22 +3,27 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import type { PersonalExerciseDto, PersonalExercisePage } from "@/modules/exercises/domain/personal-exercise";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
 import { listPersonalExercisesAction } from "@/modules/exercises/transport/server-actions";
 import { ExerciseEditor, ExerciseDeleteForm, type ExerciseDraft } from "./personal-exercise-controls";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
+import { SavedRecordActions, SavedRecordCard, SavedRecordEmpty } from "../saved-record-card";
 
-export function ExerciseReadback({ item }: { item: PersonalExerciseDto }): React.JSX.Element {
+export function ExerciseReadback({ item, titleAs: Title = "p" }: { item: PersonalExerciseDto; titleAs?: "p" | "h4" }): React.JSX.Element {
   // Display the civil truth directly; never format a carrier instant in browser TZ.
-  return <div className="min-w-0 space-y-2"><p className="whitespace-pre-wrap break-words font-semibold">{item.activityName} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
-    <p className="text-text-muted">{item.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `${item.durationMinutes.toLocaleString("th-TH")} นาที`}</p>
-    <p className="whitespace-pre-wrap break-words text-text-muted">{item.note ?? "ไม่ได้บันทึกเพิ่มเติม"}</p></div>;
+  return <div className="min-w-0 space-y-1">
+    <Title className="whitespace-pre-wrap break-words text-base font-semibold text-text">{item.activityName}</Title>
+    <p className="text-sm text-text-muted">วันที่ออกกำลังกาย <time className="tabular-nums" dateTime={item.occurredOn}>{item.occurredOn}</time></p>
+    <p className={item.durationMinutes === null ? "pt-2 text-text-muted" : "pt-2 text-lg font-semibold tabular-nums text-text"}>{item.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `${item.durationMinutes.toLocaleString("th-TH")} นาที`}</p>
+    <p className={`max-w-prose whitespace-pre-wrap break-words leading-relaxed ${item.note ? "text-text" : "text-text-muted"}`}>{item.note ?? "ไม่ได้บันทึกเพิ่มเติม"}</p>
+  </div>;
 }
 export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalExercisePage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalExercisePage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
+  const [createInitiallyOpen] = useState(initialPage.items.length === 0);
   const [dailySummary, setDailySummary] = useState(initialPage.dailySummary);
   // The selected entry is the subject of the open edit or delete dialog; results then belong to it, not to create.
   const [selected, setSelected] = useState<PersonalExerciseDto | undefined>();
@@ -139,6 +144,7 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
   }
   // A running request or an outcome that needs review keeps the dialog open; its recovery is inside it.
   const entryDialogDismissible = !saving && !pending && !reviewRequired;
+  const createDisclosureLocked = !selected && (saving || pending || recoveringCreate || reviewRequired || feedback.status === "CREATE_CONSUMED" || Boolean(feedback.loginHref));
   function closeEntry(): void {
     if (!selected || !entryDialogDismissible) return;
     if (mode === "EDIT" && activity.current.write !== "CONFIRMED") editDraft.retain(`${selected.id}:${selected.updatedAt}`);
@@ -149,32 +155,52 @@ export function PersonalExerciseWorkspace({ initialPage, today, maxDate, initial
     return !entryRemoved.current && trigger?.isConnected && !trigger.disabled ? trigger : historyHeading.current;
   }
   return <div className="space-y-6">
-    <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
-    {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
-    <p className="max-w-prose text-text-muted">เลือกกิจกรรมที่คุณทำจริง หรือกรอกเอง</p>
+    <header className="space-y-1.5">
+      <h2 className="text-2xl font-semibold">การออกกำลังกาย</h2>
+      {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
+      <p className="max-w-prose text-text-muted">เลือกกิจกรรมที่คุณทำจริง หรือกรอกเอง</p>
+    </header>
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
-    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><ExerciseReadback item={feedback.result.item} /></section> : null}
-    <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกการออกกำลังกาย</h3>
+    {/* Only a server-returned item reaches this readback; a pending or unconfirmed create stays in the form. */}
+    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><SavedRecordCard>
+      <div className="mb-3"><StatusBadge variant="success">บันทึกแล้ว</StatusBadge></div>
+      <ExerciseReadback item={feedback.result.item} />
+    </SavedRecordCard></section> : null}
+    <details open={createInitiallyOpen} className="group rounded-panel border border-border bg-surface" onToggle={(event) => {
+      if (createDisclosureLocked && !event.currentTarget.open) event.currentTarget.open = true;
+    }}>
+      <summary aria-disabled={createDisclosureLocked || undefined} onClick={(event) => { if (createDisclosureLocked) event.preventDefault(); }} className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
+        เพิ่มกิจกรรม
+        <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 5 5 5-5" /></svg>
+      </summary>
+      {/* Keep the same editor mounted: closing never discards a draft or recovery nonce. */}
+      <div className="space-y-4 border-t border-border p-5 sm:p-7">
+      <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกการออกกำลังกาย</h3>
+        <p className="text-sm text-text-muted">ข้อมูลในแบบฟอร์มนี้จะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
       <ExerciseEditor key={nonce} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
-      <div aria-label="สรุปกิจกรรมที่บันทึกแล้ว" className="space-y-3 border-t border-border pt-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h4 className="font-semibold">สรุปกิจกรรมที่บันทึกแล้ว</h4>
-          <p role="status" className="text-sm text-brand-strong">{dailySummary ? dailySummary.count === 0 ? "ยังไม่มีบันทึกการออกกำลังกาย" : `${dailySummary.count.toLocaleString("th-TH")} รายการ · ${dailySummary.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `รวมเฉพาะเวลาที่ระบุ ${dailySummary.durationMinutes.toLocaleString("th-TH")} นาที`}` : "ข้อมูลสรุปล่าสุดยังไม่พร้อม"}</p></div>
-        <a href="#exercise-history" className="inline-flex min-h-12 w-full items-center justify-center rounded-control bg-brand-soft px-4 text-sm font-semibold text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">ดูรายการออกกำลังกาย</a>
+      <Button className="w-full sm:w-auto" variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button>
       </div>
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        <Button variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
-    </div></Panel>
-    <section id="exercise-history" aria-label="ประวัติการออกกำลังกาย" className="space-y-4"><h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกการออกกำลังกายของฉัน</h3>
-      {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกการออกกำลังกาย</p> : <ul className="divide-y divide-border">{page.items.map((item) => {
+    </details>
+    <section id="exercise-history" aria-label="ประวัติการออกกำลังกาย" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">กิจกรรมที่บันทึกแล้ว</h3>
+        <Button variant="secondary" size="compact" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
+      </div>
+      {/* The confirmed server total for the day, kept apart from both the form draft and the individual records. */}
+      <div aria-label="สรุปกิจกรรมที่บันทึกแล้ว" className="rounded-control bg-surface-muted px-4 py-3">
+        <p role="status" className="text-sm text-text-muted"><span className="font-medium text-text">สรุปของวัน</span> · {dailySummary ? dailySummary.count === 0 ? "ยังไม่มีบันทึกการออกกำลังกาย" : `${dailySummary.count.toLocaleString("th-TH")} รายการ · ${dailySummary.durationMinutes === null ? "ไม่ได้บันทึกระยะเวลา" : `รวมเฉพาะเวลาที่ระบุ ${dailySummary.durationMinutes.toLocaleString("th-TH")} นาที`}` : "ข้อมูลสรุปล่าสุดยังไม่พร้อม"}</p>
+      </div>
+      {!page.items.length ? <SavedRecordEmpty>ยังไม่มีบันทึกการออกกำลังกาย{date ? <> ในวันที่ <time className="tabular-nums" dateTime={date}>{date}</time></> : null}</SavedRecordEmpty> : <ul aria-label="รายการกิจกรรมที่บันทึกแล้ว" className="space-y-3">{page.items.map((item) => {
         const context = `${item.activityName} วันที่ ${item.occurredOn}`;
         const disabled = saving || pending || recoveringCreate || reviewRequired;
-        return <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><ExerciseReadback item={item} />
-          <div className="flex shrink-0 flex-wrap gap-2">
+        return <SavedRecordCard as="li" key={item.id}><ExerciseReadback item={item} titleAs="h4" />
+          <SavedRecordActions>
             <Button variant="secondary" aria-label={`แก้ไข ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "EDIT", event.currentTarget)}>แก้ไข</Button>
             <Button variant="ghost" aria-label={`ลบ ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "DELETE", event.currentTarget)}>ลบ</Button>
-          </div></li>;
+          </SavedRecordActions>
+        </SavedRecordCard>;
       })}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}

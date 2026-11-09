@@ -349,7 +349,8 @@ describe("shared Wellness privacy response matrix", () => {
 
     expect(harness.writes).toHaveLength(writesAtDenial);
     expect(authority.isActive()).toBe(false);
-    if (target === "Weight") expect(harness.states.get("Weight:0")).toBeNull();
+    // The accessible heading's useId precedes the persisted goal state.
+    if (target === "Weight") expect(harness.states.get("Weight:1")).toBeNull();
     if (target === "Meal" || target === "Exercise") {
       expect(harness.states.get(`${target}:0`)).toEqual({ items: [], nextCursor: null });
     }

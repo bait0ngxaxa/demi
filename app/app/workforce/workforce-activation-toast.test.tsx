@@ -123,10 +123,12 @@ describe("workforce detail activation handoff", () => {
     expect(container.textContent).toContain("ใช้ได้ครั้งเดียว · ห้ามส่งต่อ");
     expect(container.textContent).toContain("ลิงก์หมดอายุ:");
     expect(container.textContent).toContain("เสร็จแล้ว");
-    // QRCode.toDataURL is asynchronous real work (PNG encoding); wait for it instead of racing the event loop.
-    await act(async () => {
-      await vi.waitFor(() => expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]'), `QR status: ${container.querySelector('[aria-live]')?.textContent ?? container.textContent?.slice(0, 400)}`).not.toBeNull(), { timeout: 4_000 });
-    });
+    // PNG encoding finishes outside React. Flush each poll before asserting; keeping the
+    // entire DOM wait inside act can hold the very update the assertion is waiting for.
+    await vi.waitFor(async () => {
+      await act(async () => { await Promise.resolve(); });
+      expect(container.querySelector('img[alt="คิวอาร์โค้ดสำหรับเปิดใช้งาน DEMI"]'), `QR status: ${container.querySelector('[aria-live]')?.textContent ?? container.textContent?.slice(0, 400)}`).not.toBeNull();
+    }, { timeout: 4_000 });
     expect(container.querySelector('[data-testid="activation-link"]')).toBeNull();
     expect(container.textContent).not.toContain("ออกลิงก์ใหม่</button>");
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("ออกลิงก์เปิดใช้งานใหม่แล้ว");
