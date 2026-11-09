@@ -41,7 +41,7 @@ function TrackingBadge({ status }: { status: "ACTIVE" | "STOPPED" }): React.JSX.
 /** Saved daily HH:mm values exactly as recorded (Asia/Bangkok); wraps and scrolls vertically, never horizontally. */
 function RecordedTimes({ times, label }: { times: { localTime: string }[]; label: string }): React.JSX.Element {
   if (times.length === 0) return <p className="text-text-muted">ยังไม่ได้บันทึกเวลา</p>;
-  return <ul aria-label={label} tabIndex={times.length > 24 ? 0 : undefined} className="flex max-h-96 flex-wrap gap-2 overflow-y-auto rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
+  return <ul aria-label={label} tabIndex={0} className="flex min-w-0 max-h-96 flex-wrap gap-2 overflow-x-hidden overflow-y-auto rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring">
     {times.map(({ localTime }) => <li key={localTime} className="rounded-control border border-border bg-surface-muted px-3 py-1.5 text-base font-semibold tabular-nums text-text"><time dateTime={localTime}>{localTime}</time></li>)}
   </ul>;
 }

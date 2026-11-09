@@ -149,7 +149,7 @@ describe("Personal medication UI states", () => {
     expect(detail?.querySelector("dd")?.textContent).toBe("ยาไทย <script>");
     const chips = detail?.querySelector('[aria-label="เวลาที่บันทึกไว้"]');
     expect([...(chips?.querySelectorAll("li") ?? [])].map((chip) => chip.textContent)).toEqual(times.map(({ localTime }) => localTime));
-    expect(chips?.className).toContain("flex-wrap"); expect(chips?.className).toContain("overflow-y-auto"); expect(chips?.className).not.toContain("overflow-x");
+    expect(chips?.className).toContain("flex-wrap"); expect(chips?.className).toContain("overflow-y-auto"); expect(chips?.className).toContain("overflow-x-hidden");
     expect(chips?.getAttribute("tabindex")).toBe("0");
     expect(detail?.textContent).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(detail?.textContent).toContain("ไม่เปลี่ยนการใช้ยาของคุณ");
     host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} />);

@@ -91,4 +91,17 @@ describe("medication creation disclosure interactions", () => {
     summary?.focus(); expect(document.activeElement).toBe(summary);
     expect(summary?.getAttribute("role")).toBeNull();
   });
+  it.each([1, 5, 24, 60])("keeps a %i-time schedule keyboard focusable with native list semantics", async (count) => {
+    const schedules = Array.from({ length: count }, (_, index) => ({ localTime: `08:${String(index).padStart(2, "0")}` }));
+    const item = { id: "11111111-1111-4111-8111-111111111111", medicationName: "ยาที่จดไว้", instructionText: null, status: "STOPPED" as const, stoppedAt: "2026-10-03T00:00:00Z", createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z", schedules };
+    await act(() => root.render(<PersonalMedicationWorkspace active={empty} stopped={{ items: [item], nextCursor: null }} selected={item} />));
+    const list = host.querySelector<HTMLUListElement>('ul[aria-label="เวลาที่บันทึกไว้ก่อนหยุดติดตาม"]');
+    expect(list?.tabIndex).toBe(0);
+    expect(list?.getAttribute("role")).toBeNull();
+    expect(list?.querySelectorAll(":scope > li")).toHaveLength(count);
+    expect([...list?.querySelectorAll("time") ?? []].map((time) => time.dateTime)).toEqual(schedules.map((time) => time.localTime));
+    list?.focus(); expect(document.activeElement).toBe(list);
+    expect(list?.className).toContain("focus-visible:ring-4");
+    expect(list?.className).toContain("overflow-x-hidden");
+  });
 });
