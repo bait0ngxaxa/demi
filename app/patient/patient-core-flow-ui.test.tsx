@@ -68,9 +68,11 @@ describe("Patient service request presentation", () => {
     expect(markup).toContain("อสม. ผู้ดูแลของคุณ · สมใจ ผู้ดูแล");
     expect(markup.indexOf("ไม่ระบุ — ให้โรงพยาบาลจัดให้")).toBeLessThan(markup.indexOf("อสม. ผู้ดูแลของคุณ · สมใจ ผู้ดูแล"));
     expect(markup).not.toContain("สมหญิง อสม.");
-    expect(markup).toContain("5 ตุลาคม 2569 · บ่าย");
-    expect(markup).toContain("หมายเหตุ: สะดวกหลังบ่ายสอง");
-    expect(markup).toContain("เหตุผลที่ไม่อนุมัติ: ช่วงนี้ไม่มี อสม. ว่าง");
+    expect(markup).toContain('<time dateTime="2026-10-05">5 ตุลาคม 2569</time> · บ่าย');
+    expect(markup).toContain("หมายเหตุถึงโรงพยาบาล");
+    expect(markup).toContain("สะดวกหลังบ่ายสอง");
+    expect(markup).toContain("เหตุผลที่ไม่อนุมัติ");
+    expect(markup).toContain("ช่วงนี้ไม่มี อสม. ว่าง");
     expect(markup).toContain("รอโรงพยาบาลยืนยัน");
     expect(markup).toContain("การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม");
     // ADR-0029: all three native services are offered; the one with an open request is marked and disabled.
