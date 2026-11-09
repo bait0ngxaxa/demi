@@ -4,13 +4,14 @@ import type { PatientHospitalHealthHistory } from "@prisma/client";
 import { HomeHospitalChip } from "@/components/home/home-hospital-chip";
 import { Alert } from "@/components/ui/alert";
 import { HomeHero } from "@/components/home/home-hero";
+import { MedicationSummaryItem } from "../../medication-summary-item";
 import { ageInBangkok } from "@/modules/family/domain/family-health-summary";
 import type { PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
 import type { PatientSelfGoalPlanDetail, PatientSelfHomeNextAppointment } from "@/modules/patient-self/services/patient-self-care-query-service";
 import type { PatientHealthMeasurement, PatientHealthMeasurements, PatientSelfAssignedOsm } from "@/modules/patient-self/services/patient-self-health-query-service";
 import type { PatientSelfMeasurementDto } from "@/modules/patient-self-measurements/domain/patient-self-measurement";
 
-import { PatientSelfMeasurementValues } from "../measurements/patient-self-measurement-values";
+import { PatientSelfMeasurementRecordCard } from "../measurements/patient-self-measurement-values";
 import { formatPatientDateOnly, formatPatientDateTime } from "../patient-self-care-presentation";
 
 export type PatientHealthSummaryData = {
@@ -109,9 +110,9 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
           </HealthItem>
           <HealthItem number={6} title="รอบเอว"><Measurement fact={summary.measurements?.waistCircumference ?? null} unit="ซม." unavailable={summary.readFailures.measurements} /></HealthItem>
         </div>
-        <div className="mt-4 rounded-panel bg-surface-muted p-4 sm:p-5">
-          <h3 className="font-semibold text-text">ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่</h3>
-          {summary.readFailures.selfMeasurement ? <HealthReadFailure retryHref={retryHref} /> : summary.selfMeasurement ? <PatientSelfMeasurementValues item={summary.selfMeasurement} /> : <p className="mt-2 text-text-muted">คุณยังไม่ได้บันทึกค่าที่วัดเอง</p>}
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-text-muted">ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่</p>
+          {summary.readFailures.selfMeasurement ? <HealthReadFailure retryHref={retryHref} /> : summary.selfMeasurement ? <PatientSelfMeasurementRecordCard item={summary.selfMeasurement} /> : <p className="text-text-muted">คุณยังไม่ได้บันทึกค่าที่วัดเอง</p>}
           <Link className={linkClass} href="/app/personal/measurements">บันทึกค่าใหม่ / ดูค่าที่วัดเอง</Link>
         </div>
       </section>
@@ -137,12 +138,13 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
       </section>
       <section aria-labelledby="health-care" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="health-care">ยา นัดหมาย และแผนสุขภาพ</h2>
-        <HealthItem number={10} title="ยาที่รับประทาน">
-          {summary.readFailures.medications ? <HealthReadFailure retryHref={retryHref} /> : summary.medications?.items.length ? <ul className="space-y-3">{summary.medications.items.map((medication) => <li key={medication.id}>
-            <p className="font-semibold text-text">{medication.medicationName}</p>
-            <p className="whitespace-pre-wrap">{medication.instructionText || "ยังไม่ได้ระบุวิธีรับประทาน"}</p>
-            {medication.schedules.length ? <p>เวลา {medication.schedules.map(({ localTime }) => localTime).join(", ")}</p> : null}
-          </li>)}</ul> : <p>ยังไม่มียาที่บันทึกไว้และกำลังรับประทาน</p>}
+        <HealthItem number={10} title="รายการยาที่กำลังติดตาม">
+          {summary.readFailures.medications ? <HealthReadFailure retryHref={retryHref} /> : summary.medications?.items.length ? <ul aria-label="รายการยาที่กำลังติดตาม" className="mt-2 divide-y divide-border">{summary.medications.items.map((medication) => <MedicationSummaryItem
+            instructionText={medication.instructionText}
+            key={medication.id}
+            medicationName={medication.medicationName}
+            times={medication.schedules.map(({ localTime }) => localTime)}
+          />)}</ul> : <p>ยังไม่มีรายการยาที่คุณบันทึกไว้และกำลังติดตาม</p>}
           {!summary.readFailures.medications ? <Link className={linkClass} href="/app/personal/medications">{summary.medications?.hasMore ? "ดูยาทั้งหมด" : "ไปที่ยา"}</Link> : null}
         </HealthItem>
         <HealthItem number={11} title="การนัดหมาย">
