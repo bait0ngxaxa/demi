@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
@@ -103,5 +104,65 @@ describe("Personal medication UI states", () => {
   it("renders inaccessible and loading states safely", () => {
     expect(renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} safeError="ไม่พบรายการที่ต้องการ" />)).toContain("ไม่พบรายการที่ต้องการ");
     expect(renderToStaticMarkup(<Loading />)).toContain("กำลังโหลดรายการยาของฉัน");
+  });
+  it("puts creation behind an explicit disclosure whose form stays mounted, apart from the saved lists", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: null }} stopped={empty} selected={null} />);
+    const disclosure = host.querySelector("details");
+    expect(disclosure?.querySelector("summary")?.textContent).toContain("เพิ่มรายการยา");
+    // Collapsed by default once records exist, yet the editor is still in the document so no draft is discarded.
+    expect(disclosure?.hasAttribute("open")).toBe(false);
+    expect(disclosure?.querySelector('input[name="medicationName"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="รายการยากำลังติดตาม"] form, [aria-label="รายการยากำลังติดตาม"] input')).toBeNull();
+    simulation.confirming = true;
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} />);
+    expect(host.querySelector("details")?.hasAttribute("open")).toBe(true);
+  });
+  it("renders ACTIVE and STOPPED records as separate, individually labelled cards", () => {
+    const long = "รับประทานหลังอาหารเช้าและเย็นตามที่ฉันจดไว้เองจากฉลากยาที่บ้าน".repeat(10);
+    const second = { ...item, id: "22222222-2222-4222-8222-222222222222", medicationName: "ยาความดัน", instructionText: long };
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item, second], nextCursor: null }} stopped={{ items: [{ ...item, id: "stopped", medicationName: "ยาเดิม", status: "STOPPED", stoppedAt: item.updatedAt }], nextCursor: null }} selected={second} />);
+    const activeCards = [...host.querySelectorAll('[aria-label="รายการยากำลังติดตาม"] > li')];
+    const stoppedCards = [...host.querySelectorAll('[aria-label="รายการยาหยุดติดตามแล้ว"] > li')];
+    expect(activeCards.map((card) => card.querySelector("h3")?.textContent)).toEqual(["ยาไทย <script>", "ยาความดัน"]);
+    expect(stoppedCards.map((card) => card.querySelector("h3")?.textContent)).toEqual(["ยาเดิม"]);
+    for (const card of activeCards) { expect(card.textContent).toContain("กำลังติดตาม"); expect(card.textContent).toContain("เพิ่มรายการเมื่อ"); }
+    expect(stoppedCards[0].textContent).toContain("หยุดติดตามแล้ว"); expect(stoppedCards[0].textContent).toContain("หยุดติดตามเมื่อ");
+    // History is visually flat and muted, distinct from the ACTIVE cards.
+    expect(stoppedCards[0].className).toContain("bg-surface-muted"); expect(activeCards[0].className).not.toContain("bg-surface-muted");
+    for (const card of [...activeCards, ...stoppedCards]) {
+      expect(card.querySelector("form, input, button")).toBeNull();
+      expect(card.querySelector("a")?.getAttribute("aria-label")).toBe(`ดูรายละเอียด ${card.querySelector("h3")?.textContent}`);
+    }
+    expect(activeCards[1].querySelector("a")?.getAttribute("aria-current")).toBe("true");
+    expect(activeCards[0].querySelector("a")?.hasAttribute("aria-current")).toBe(false);
+    expect([...activeCards[1].querySelectorAll("p")].find((element) => element.textContent === long)?.className).toContain("break-words");
+  });
+  it("shows the selected ACTIVE detail as recorded information, recorded times and the tracking action", () => {
+    const times = Array.from({ length: 60 }, (_, index) => ({ localTime: `${String(Math.floor(index / 4) + 6).padStart(2, "0")}:${String((index % 4) * 15).padStart(2, "0")}` }));
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: null }} stopped={empty} selected={{ ...item, schedules: times }} />);
+    const detail = host.querySelector("#medication-detail");
+    expect([...(detail?.querySelectorAll("h3") ?? [])].map((heading) => heading.textContent)).toEqual(["ข้อมูลที่บันทึกไว้", "เวลาที่ต้องการติดตามใน DEMI", "การติดตามใน DEMI"]);
+    expect(detail?.querySelector("dd")?.textContent).toBe("ยาไทย <script>");
+    const chips = detail?.querySelector('[aria-label="เวลาที่บันทึกไว้"]');
+    expect([...(chips?.querySelectorAll("li") ?? [])].map((chip) => chip.textContent)).toEqual(times.map(({ localTime }) => localTime));
+    expect(chips?.className).toContain("flex-wrap"); expect(chips?.className).toContain("overflow-y-auto"); expect(chips?.className).not.toContain("overflow-x");
+    expect(chips?.getAttribute("tabindex")).toBe("0");
+    expect(detail?.textContent).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(detail?.textContent).toContain("ไม่เปลี่ยนการใช้ยาของคุณ");
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} />);
+    expect(host.querySelector('[aria-label="เวลาที่บันทึกไว้"]')).toBeNull();
+    expect(host.querySelector("#medication-detail")?.textContent).toContain("ยังไม่ได้บันทึกเวลา");
+  });
+  it("keeps a STOPPED detail read-only, with its recorded times and no lifecycle action", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, status: "STOPPED", stoppedAt: item.updatedAt, schedules: [{ localTime: "08:00" }, { localTime: "20:00" }] }} />);
+    const detail = host.querySelector("#medication-detail");
+    expect(detail?.querySelector("form, input, textarea, button")).toBeNull();
+    expect(detail?.textContent).toContain("หยุดติดตามแล้ว"); expect(detail?.textContent).toContain("แก้ไขไม่ได้");
+    expect([...(detail?.querySelectorAll('[aria-label="เวลาที่บันทึกไว้ก่อนหยุดติดตาม"] li') ?? [])].map((chip) => chip.textContent)).toEqual(["08:00", "20:00"]);
+    expect(detail?.textContent).toContain("ข้อความเอง");
+    for (const absent of ["เริ่มติดตามอีกครั้ง", "ลบรายการ", "หยุดรับประทานยา", "การติดตามใน DEMI"]) expect(detail?.textContent).not.toContain(absent);
   });
 });
