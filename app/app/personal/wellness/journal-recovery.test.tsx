@@ -183,6 +183,30 @@ describe.each(["meal", "exercise"] as const)("%s create recovery", (kind) => {
     await act(() => button("เริ่มบันทึกใหม่").click());
     expect(host.querySelector<HTMLInputElement>('[name="submissionNonce"]')?.value).not.toBe(nonce);
   });
+  it("shows the saved readback only for a server-confirmed create; pending, unconfirmed and failed results stay in the form", async () => {
+    await mount();
+    const saved = (): Element | null => host.querySelector('[aria-label="ข้อมูลที่บันทึกแล้ว"]');
+    let resolve: (value: unknown) => void = () => undefined;
+    mock[kind].mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+    await act(() => button(save).click());
+    expect(saved()).toBeNull();
+    await act(() => resolve({ status: "UNCONFIRMED", message: "ผลยังไม่แน่นอน" }));
+    expect(saved()).toBeNull();
+    expect(host.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+    mock[kind].mockResolvedValueOnce({ status: "ERROR", message: "ลองใหม่" });
+    await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect(saved()).toBeNull();
+    const item = { id: nonce, occurredOn: date, createdAt: `${date}T00:00:00Z`, updatedAt: `${date}T00:00:00Z`, category: "SNACK", description: null, activityName: "เดิน", durationMinutes: null, note: null };
+    mock[kind].mockResolvedValue({ status: "SUCCESS", message: "ดำเนินการแล้ว", result: { outcome: "REPLAY", item } });
+    (kind === "meal" ? mock.meals : mock.exercises).mockResolvedValue({ status: "SUCCESS", page: { items: [item], nextCursor: null } });
+    await act(() => button("ลองคำขอเดิมอีกครั้ง").click());
+    expect(saved()?.textContent).toContain("บันทึกแล้ว");
+    expect(saved()?.querySelector("form, input, textarea")).toBeNull();
+    const records = host.querySelector(kind === "meal" ? '[aria-label="รายการมื้ออาหารที่บันทึกแล้ว"]' : '[aria-label="รายการกิจกรรมที่บันทึกแล้ว"]');
+    expect(records?.querySelectorAll("li")).toHaveLength(1);
+    expect(records?.querySelector("form, input, textarea")).toBeNull();
+    expect(records?.querySelector(`time[datetime="${date}"]`)).not.toBeNull();
+  });
   it("ignores a late create response after authority invalidation", async () => {
     const { authority } = await mount();
     let resolve: (value: unknown) => void = () => undefined;

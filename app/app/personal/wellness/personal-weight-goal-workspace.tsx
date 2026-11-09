@@ -5,19 +5,23 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import type { PersonalWeightGoalDto } from "@/modules/weight-goals/domain/personal-weight-goal";
 import type { PersonalWeightGoalActionState } from "@/modules/weight-goals/transport/action-state";
 import { readPersonalWeightGoalAction } from "@/modules/weight-goals/transport/server-actions";
 import { PersonalWeightGoalEditor, PersonalWeightGoalRemoveConfirmation, type Coordination, type WeightGoalDraft } from "./personal-weight-goal-controls";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
+import { SavedRecordActions, SavedRecordCard, SavedRecordEmpty } from "../saved-record-card";
 
+/** Target-only readback: the saved target and optional date, with no observation, progress or judgement. */
 export function PersonalWeightGoalReadback({ goal }: { goal: PersonalWeightGoalDto }): React.JSX.Element {
-  return <div className="space-y-2">
-    <p className="text-text-muted">เป้าหมายส่วนตัวที่คุณตั้งไว้</p>
-    <p className="text-2xl font-semibold">{goal.targetWeightKg} กก.</p>
-    {goal.targetDate ? <p className="text-text-muted">วันที่เป้าหมาย: <time dateTime={goal.targetDate}>{goal.targetDate}</time></p> : null}
-  </div>;
+  return <dl className="flex flex-wrap gap-x-10 gap-y-4">
+    <div className="min-w-0"><dt className="text-sm text-text-muted">น้ำหนักเป้าหมายที่คุณตั้งไว้</dt>
+      <dd className="mt-1 break-words text-3xl font-semibold tabular-nums text-text">{goal.targetWeightKg} กก.</dd></div>
+    {goal.targetDate ? <div className="min-w-0"><dt className="text-sm text-text-muted">วันที่เป้าหมาย</dt>
+      <dd className="mt-1 text-lg font-semibold tabular-nums text-text"><time dateTime={goal.targetDate}>{goal.targetDate}</time></dd></div> : null}
+  </dl>;
 }
 
 export function PersonalWeightGoalWorkspace({
@@ -197,14 +201,16 @@ export function PersonalWeightGoalWorkspace({
     {requiresCurrentGoalReview ? <div className="space-y-3">
       <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>
       <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button>
-    </div> : goal ? <Panel>
-      <div className="space-y-4">
-        <PersonalWeightGoalReadback goal={goal} />
-        <div className="flex flex-wrap gap-2">
-          <Button ref={editOpener} variant="secondary" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setEditing(true); }}>แก้ไข</Button>
-          <Button ref={removeOpener} variant="danger" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setConfirmingRemove(true); }}>ลบเป้าหมาย</Button>
-        </div>
+    </div> : goal ? <SavedRecordCard aria-label="เป้าหมายที่บันทึกไว้">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-text">เป้าหมายส่วนตัวที่คุณตั้งไว้</h3>
+        <StatusBadge variant="success">บันทึกแล้ว</StatusBadge>
       </div>
+      <PersonalWeightGoalReadback goal={goal} />
+      <SavedRecordActions>
+        <Button ref={editOpener} variant="secondary" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setEditing(true); }}>แก้ไข</Button>
+        <Button ref={removeOpener} variant="ghost" disabled={saving || pending} onClick={() => { setFeedback({ status: "IDLE" }); setConfirmingRemove(true); }}>ลบเป้าหมาย</Button>
+      </SavedRecordActions>
       {editing ? <ModalDialog
         description="แก้ไขเป้าหมายส่วนตัวที่คุณตั้งไว้ วันที่เป้าหมายเดิมจะคงอยู่จนกว่าคุณจะเลือกเปลี่ยน"
         dismissible={goalDialogDismissible}
@@ -232,17 +238,19 @@ export function PersonalWeightGoalWorkspace({
           <PersonalWeightGoalRemoveConfirmation goal={goal} coordination={reviewCoordination} onCancel={closeRemove} />
         </div>
       </ModalDialog> : null}
-    </Panel> : creating ? <Panel>
+    </SavedRecordCard> : creating ? <Panel>
       <div className="space-y-4">
-        <h3 ref={editorHeading} tabIndex={-1} className="text-lg font-semibold">ตั้งเป้าหมายน้ำหนัก</h3>
-        <p className="text-text-muted">เป้าหมายส่วนตัวที่คุณตั้งไว้</p>
+        <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">ตั้งเป้าหมายน้ำหนัก</h3>
+          <p className="text-sm text-text-muted">เป้าหมายจะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
         <PersonalWeightGoalEditor key={nonce} nonce={nonce} coordination={coordination} />
         <Button type="button" variant="ghost" disabled={saving || pending || feedback.status === "UNCONFIRMED"} onClick={() => { setCreating(false); setFeedback({ status: "IDLE" }); }}>ยกเลิก</Button>
       </div>
-    </Panel> : <div className="space-y-3">
-      <p className="text-text-muted">ยังไม่ได้ตั้งเป้าหมายน้ำหนักส่วนตัว</p>
-      <Button disabled={saving || pending} onClick={startCreate}>ตั้งเป้าหมายน้ำหนัก</Button>
-    </div>}
+    </Panel> : <SavedRecordEmpty>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p>ยังไม่ได้ตั้งเป้าหมายน้ำหนักส่วนตัว</p>
+        <Button disabled={saving || pending} onClick={startCreate}>ตั้งเป้าหมายน้ำหนัก</Button>
+      </div>
+    </SavedRecordEmpty>}
 
     {lockedForReview && !editorOpen ? <Button variant="secondary" loading={pending} disabled={saving} onClick={refresh}>โหลดข้อมูลล่าสุด</Button> : null}
   </div>;

@@ -4,17 +4,22 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { Panel } from "@/components/ui/panel";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
 import { listPersonalMealsAction } from "@/modules/meals/transport/server-actions";
 import { MealEditor, MealDeleteForm, type MealDraft } from "./personal-meal-controls";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
+import { SavedRecordActions, SavedRecordCard, SavedRecordEmpty } from "../saved-record-card";
 
-export function MealReadback({ item }: { item: PersonalMealDto }): React.JSX.Element {
+export function MealReadback({ item, titleAs: Title = "p" }: { item: PersonalMealDto; titleAs?: "p" | "h4" }): React.JSX.Element {
   // Display the civil truth directly; never format a carrier instant in browser TZ.
-  return <div className="min-w-0 space-y-2"><p className="font-semibold">{MEAL_CATEGORY_LABELS[item.category]} · <time dateTime={item.occurredOn}>{item.occurredOn}</time></p>
-    <p className="whitespace-pre-wrap break-words text-text-muted">{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p></div>;
+  return <div className="min-w-0 space-y-1">
+    <Title className="break-words text-base font-semibold text-text">{MEAL_CATEGORY_LABELS[item.category]}</Title>
+    <p className="text-sm text-text-muted">วันที่รับประทาน <time className="tabular-nums" dateTime={item.occurredOn}>{item.occurredOn}</time></p>
+    <p className={`max-w-prose whitespace-pre-wrap break-words pt-2 leading-relaxed ${item.description ? "text-text" : "text-text-muted"}`}>{item.description ?? "ไม่ได้บันทึกรายละเอียด"}</p>
+  </div>;
 }
 export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonce, authority, date, onSummary, onLockChange }: { initialPage: PersonalMealPage; today: string; maxDate?: string; initialNonce: string; authority: WellnessPrivateAuthority; date?: string; onSummary?: (summary: PersonalMealPage["dailySummary"]) => void; onLockChange?: (locked: boolean) => void }): React.JSX.Element {
   const [page, setPage] = useState(initialPage);
@@ -151,21 +156,31 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
-    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><MealReadback item={feedback.result.item} /></section> : null}
-    <Panel><div className="space-y-4"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
+    {/* Only a server-returned item reaches this readback; a pending or unconfirmed create stays in the form. */}
+    {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><SavedRecordCard>
+      <div className="mb-3"><StatusBadge variant="success">บันทึกแล้ว</StatusBadge></div>
+      <MealReadback item={feedback.result.item} />
+    </SavedRecordCard></section> : null}
+    <Panel><div className="space-y-4">
+      <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
+        <p className="text-sm text-text-muted">ข้อมูลในแบบฟอร์มนี้จะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
       <MealEditor key={nonce} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
-      <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        <Button variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button></div>
+      <Button className="w-full sm:w-auto" variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button>
     </div></Panel>
-    <section aria-label="ประวัติมื้ออาหาร" className="space-y-4"><h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหารของฉัน</h3>
-      {!page.items.length ? <p className="text-text-muted">ยังไม่มีบันทึกมื้ออาหาร</p> : <ul className="divide-y divide-border">{page.items.map((item) => {
+    <section aria-label="ประวัติมื้ออาหาร" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 ref={historyHeading} tabIndex={-1} className="text-xl font-semibold">มื้ออาหารที่บันทึกแล้ว</h3>
+        <Button variant="secondary" size="compact" disabled={saving || pending} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
+      </div>
+      {!page.items.length ? <SavedRecordEmpty>ยังไม่มีบันทึกมื้ออาหาร{date ? <> ในวันที่ <time className="tabular-nums" dateTime={date}>{date}</time></> : null}</SavedRecordEmpty> : <ul aria-label="รายการมื้ออาหารที่บันทึกแล้ว" className="space-y-3">{page.items.map((item) => {
         const context = `${MEAL_CATEGORY_LABELS[item.category]} วันที่ ${item.occurredOn}`;
         const disabled = saving || pending || recoveringCreate || reviewRequired;
-        return <li key={item.id} className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between"><MealReadback item={item} />
-          <div className="flex shrink-0 flex-wrap gap-2">
+        return <SavedRecordCard as="li" key={item.id}><MealReadback item={item} titleAs="h4" />
+          <SavedRecordActions>
             <Button variant="secondary" aria-label={`แก้ไข ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "EDIT", event.currentTarget)}>แก้ไข</Button>
             <Button variant="ghost" aria-label={`ลบ ${context}`} disabled={disabled} onClick={(event) => openEntry(item, "DELETE", event.currentTarget)}>ลบ</Button>
-          </div></li>;
+          </SavedRecordActions>
+        </SavedRecordCard>;
       })}</ul>}
       {page.nextCursor ? <Button variant="secondary" loading={pending} disabled={saving} onClick={() => refresh(true)}>ดูรายการก่อนหน้า</Button> : null}
       {pending ? <p role="status">กำลังโหลดรายการ...</p> : null}
