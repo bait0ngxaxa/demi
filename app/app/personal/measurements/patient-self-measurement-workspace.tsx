@@ -34,6 +34,14 @@ const NUMBER_FIELDS = [
   { name: "diastolicBloodPressure", label: "ความดันตัวล่าง (mmHg)", step: "1" },
 ] as const;
 
+function submissionPayloadSignature(formData: FormData): string {
+  return JSON.stringify(
+    Array.from(formData.entries())
+      .filter(([name]) => name !== "submissionNonce")
+      .map(([name, value]) => [name, typeof value === "string" ? value : value.name]),
+  );
+}
+
 function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionChange }: {
   nonce: string;
   defaultMeasuredAt: string;
@@ -41,18 +49,64 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
   onAttentionChange: (requiresAttention: boolean) => void;
 }): React.JSX.Element {
   const prefix = useId();
-  const formRef = useRef<HTMLFormElement>(null);
-  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(createOwnPatientSelfMeasurementAction, idle);
+  const nextSubmissionId = useRef(0);
+  const activeSubmissionId = useRef<number | null>(null);
+  const [currentSubmissionId, setCurrentSubmissionId] = useState<number | null>(null);
+  const [settledResult, setSettledResult] = useState<{ submissionId: number; result: PatientSelfMeasurementActionState } | null>(null);
+  const [confirmedPayload, setConfirmedPayload] = useState<string | null>(null);
+  const requestInFlight = useRef(false);
+  const [draftSignature, setDraftSignature] = useState<string | null>(null);
+  const trackedAction = useCallback(async (
+    previous: PatientSelfMeasurementActionState,
+    formData: FormData,
+  ): Promise<PatientSelfMeasurementActionState> => {
+    try {
+      const result = await createOwnPatientSelfMeasurementAction(previous, formData);
+      const submissionId = activeSubmissionId.current;
+      if (submissionId !== null && result.status !== "IDLE") setSettledResult({ submissionId, result });
+      if (result.status === "SUCCESS") setConfirmedPayload(submissionPayloadSignature(formData));
+      return result;
+    } finally {
+      requestInFlight.current = false;
+    }
+  }, []);
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState(trackedAction, idle);
+  const currentOutcome = currentSubmissionId === null || (
+    settledResult?.submissionId === currentSubmissionId && settledResult.result === state
+  );
+  const currentError = state.status === "ERROR" && currentOutcome ? state : null;
+  const currentSuccess = state.status === "SUCCESS" && currentOutcome && (
+    currentSubmissionId === null || draftSignature === confirmedPayload
+  ) ? state : null;
+  const sameConfirmedDraft = Boolean(
+    currentSuccess && currentSubmissionId !== null && draftSignature === confirmedPayload,
+  );
   useLayoutEffect(() => {
-    onAttentionChange(pending || unknownOutcome || state.status === "ERROR");
-    if (state.status === "SUCCESS") formRef.current?.reset();
-  }, [onAttentionChange, pending, state, unknownOutcome]);
+    onAttentionChange(pending || unknownOutcome || currentError !== null);
+  }, [currentError, onAttentionChange, pending, unknownOutcome]);
 
   return (
     <form action={action} className="space-y-4" onSubmit={(event) => {
+      if (pending || unknownOutcome || requestInFlight.current) {
+        event.preventDefault();
+        return;
+      }
+      const signature = submissionPayloadSignature(new FormData(event.currentTarget));
+      setDraftSignature(signature);
+      if (signature === confirmedPayload) {
+        event.preventDefault();
+        return;
+      }
+      const requestId = ++nextSubmissionId.current;
+      activeSubmissionId.current = requestId;
+      setCurrentSubmissionId(requestId);
+      setSettledResult(null);
+      requestInFlight.current = true;
       onSubmissionStart();
       submitPreservingInput(action)(event);
-    }} ref={formRef}>
+    }} onChange={(event) => {
+      setDraftSignature(submissionPayloadSignature(new FormData(event.currentTarget)));
+    }}>
       <input name="submissionNonce" type="hidden" value={nonce} />
       <input name="bloodSugarUnit" type="hidden" value={PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT} />
       <fieldset className="space-y-4" disabled={pending || unknownOutcome}>
@@ -78,10 +132,10 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
         </div>
       </fieldset>
       <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
-      {state.status === "ERROR" ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert role="alert" variant="danger">{state.message}</Alert> : null}
-      {state.status === "SUCCESS" ? <Alert variant="success">{state.message}</Alert> : null}
+      {currentError ? currentError.loginHref ? <PatientSelfSessionExpiredAlert href={currentError.loginHref} message={currentError.message} /> : <Alert role="alert" variant="danger">{currentError.message}</Alert> : null}
+      {currentSuccess ? <div role="status"><Alert variant="success">{currentSuccess.message}</Alert></div> : null}
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
-      <Button disabled={unknownOutcome} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึก"}</Button>
+      <Button disabled={pending || unknownOutcome || sameConfirmedDraft} loading={pending} type="submit">{pending ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </form>
   );
 }

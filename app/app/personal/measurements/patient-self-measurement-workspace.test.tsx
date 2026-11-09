@@ -52,14 +52,30 @@ function mount(options: {
   items?: readonly OwnPatientSelfMeasurement[];
   nextCursor?: string | null;
   hasCursor?: boolean;
+  nonce?: string;
 } = {}): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
   act(() => root.render(createElement(PatientSelfMeasurementWorkspace, {
     items: options.items ?? [],
-    nonce,
+    nonce: options.nonce ?? nonce,
     defaultMeasuredAt: "2026-10-16T12:00",
+    nextCursor: options.nextCursor ?? null,
+    hasCursor: options.hasCursor ?? false,
+  })));
+}
+
+function rerender(options: {
+  items?: readonly OwnPatientSelfMeasurement[];
+  nextCursor?: string | null;
+  hasCursor?: boolean;
+  nonce?: string;
+} = {}): void {
+  act(() => root.render(createElement(PatientSelfMeasurementWorkspace, {
+    items: options.items ?? [],
+    nonce: options.nonce ?? nonce,
+    defaultMeasuredAt: "2026-10-16T13:00",
     nextCursor: options.nextCursor ?? null,
     hasCursor: options.hasCursor ?? false,
   })));
@@ -75,6 +91,17 @@ function query<T extends Element>(selector: string): T {
 
 function disclosure(): HTMLDetailsElement {
   return query<HTMLDetailsElement>("details");
+}
+
+function setValue(name: string, value: string): void {
+  const control = query<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+  const prototype = control instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  if (!setter) throw new Error(`Missing value setter for ${name}`);
+  act(() => {
+    setter.call(control, value);
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
@@ -119,7 +146,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
 
     const weight = query<HTMLInputElement>('input[name="weight"]');
     const nonceInput = query<HTMLInputElement>('input[name="submissionNonce"]');
-    weight.value = "70.2";
+    setValue("weight", "70.2");
     act(() => query<HTMLElement>("summary").click());
     expect(disclosure().open).toBe(true);
     act(() => query<HTMLElement>("summary").click());
@@ -168,17 +195,19 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     mocks.delete.mockResolvedValue({ status: "IDLE" });
     mount();
 
-    query<HTMLInputElement>('input[name="bloodSugar"]').value = "110";
+    setValue("bloodSugar", "110");
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
 
     expect(records.size).toBe(1);
     expect(disclosure().open).toBe(true);
     expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(mocks.create).toHaveBeenCalledTimes(1);
     act(() => query<HTMLElement>("summary").click());
     expect(disclosure().open).toBe(true);
 
     await act(async () => query<HTMLButtonElement>('[role="alert"] button').click());
 
+    expect(mocks.create).toHaveBeenCalledTimes(2);
     const firstPayload = mocks.create.mock.calls[0]?.[1];
     const resentPayload = mocks.create.mock.calls[1]?.[1];
     expect(firstPayload).toBeDefined();
@@ -206,22 +235,101 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(query('[role="status"]').textContent).toContain("บันทึกแล้ว");
   });
 
-  it("keeps confirmed feedback and the form mounted when the authoritative history refreshes", async () => {
+  it("preserves the second draft and hides the previous success while the next request is pending", async () => {
+    let resolveSecond: (state: ActionState) => void = () => undefined;
+    mocks.create.mockResolvedValueOnce({ status: "SUCCESS", message: "บันทึกครั้งแรกแล้ว" });
+    mocks.create.mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+
+    setValue("weight", "70");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(query('[role="status"]').textContent).toContain("บันทึกครั้งแรกแล้ว");
+
+    const refreshedNonce = "33333333-3333-4333-8333-333333333333";
+    rerender({ items: [partialMeasurement], nonce: refreshedNonce });
+    setValue("weight", "71");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("71");
+    expect(disclosure().open).toBe(true);
+    expect(query<HTMLButtonElement>('button[type="submit"]').textContent).toContain("กำลังบันทึก");
+
+    const duplicateSubmit = new Event("submit", { bubbles: true, cancelable: true });
+    act(() => query<HTMLFormElement>("form").dispatchEvent(duplicateSubmit));
+    expect(duplicateSubmit.defaultPrevented).toBe(true);
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+
+    await act(async () => resolveSecond({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด" }));
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("71");
+    expect(query('[role="alert"]').textContent).toContain("กรุณาตรวจสอบค่าวัด");
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
+
+  it("keeps a newer draft edited during a pending submission after confirmed success", async () => {
+    let resolve: (state: ActionState) => void = () => undefined;
+    mocks.create.mockReturnValue(new Promise((done) => { resolve = done; }));
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+
+    setValue("weight", "70");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    const weight = query<HTMLInputElement>('input[name="weight"]');
+    weight.value = "71";
+    await act(async () => resolve({ status: "SUCCESS", message: "บันทึกแล้ว" }));
+
+    expect(weight.value).toBe("71");
+  });
+
+  it("resends an unknown second request with its original payload and nonce, without stale success", async () => {
+    mocks.create
+      .mockResolvedValueOnce({ status: "SUCCESS", message: "บันทึกครั้งแรกแล้ว" })
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce({ status: "SUCCESS", message: "บันทึกครั้งที่สองแล้ว" });
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+
+    setValue("weight", "70");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    const secondNonce = "33333333-3333-4333-8333-333333333333";
+    rerender({ nonce: secondNonce });
+    setValue("bloodSugar", "110");
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[role="status"]')).toBeNull();
+    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    const originalPayload = mocks.create.mock.calls[1]?.[1];
+    expect(originalPayload?.get("submissionNonce")).toBe(secondNonce);
+    expect(originalPayload?.get("weight")).toBe("70");
+    expect(originalPayload?.get("bloodSugar")).toBe("110");
+
+    await act(async () => query<HTMLButtonElement>('[role="alert"] button').click());
+    expect(mocks.create).toHaveBeenCalledTimes(3);
+    const resentPayload = mocks.create.mock.calls[2]?.[1];
+    expect(resentPayload?.get("submissionNonce")).toBe(originalPayload?.get("submissionNonce"));
+    expect(resentPayload?.get("weight")).toBe(originalPayload?.get("weight"));
+    expect(resentPayload?.get("bloodSugar")).toBe(originalPayload?.get("bloodSugar"));
+    expect(query('[role="status"]').textContent).toContain("บันทึกครั้งที่สองแล้ว");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("keeps the confirmed form mounted and uses the fresh server nonce for a new payload", async () => {
     mocks.create.mockResolvedValue({ status: "SUCCESS", message: "บันทึกแล้ว" });
     mocks.delete.mockResolvedValue({ status: "IDLE" });
     mount();
     const form = query<HTMLFormElement>("form");
     const details = disclosure();
 
+    setValue("weight", "70");
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("70");
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
+
     const refreshedNonce = "33333333-3333-4333-8333-333333333333";
-    await act(async () => root.render(createElement(PatientSelfMeasurementWorkspace, {
-      items: [partialMeasurement],
-      nonce: refreshedNonce,
-      defaultMeasuredAt: "2026-10-16T13:00",
-      nextCursor: null,
-      hasCursor: false,
-    })));
+    rerender({ items: [partialMeasurement], nonce: refreshedNonce });
 
     expect(query<HTMLFormElement>("form")).toBe(form);
     expect(disclosure()).toBe(details);
@@ -229,6 +337,14 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(query('[role="status"]').textContent).toContain("บันทึกแล้ว");
     expect(query<HTMLInputElement>('input[name="submissionNonce"]').value).toBe(refreshedNonce);
     expect(container.querySelectorAll('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"] > li')).toHaveLength(1);
+
+    setValue("weight", "71");
+    expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(false);
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    expect(mocks.create.mock.calls[0]?.[1].get("submissionNonce")).toBe(nonce);
+    expect(mocks.create.mock.calls[1]?.[1].get("submissionNonce")).toBe(refreshedNonce);
+    expect(mocks.create.mock.calls[1]?.[1].get("weight")).toBe("71");
   });
 
   it("shows the delete action only when allowed", async () => {
