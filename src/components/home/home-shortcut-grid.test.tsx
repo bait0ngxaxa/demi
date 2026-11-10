@@ -24,6 +24,7 @@ const shortcuts: readonly HomeShortcut[] = [
   { href: "/app/patients", icon: "patients", label: "รายชื่อผู้ป่วย", prefetch: true },
   { href: "/app/appointments", icon: "appointments", label: "นัดหมาย", description: "ดูนัดหมายของคุณ" },
   { href: "/app/personal/measurements", icon: "measurements", label: "ข้อมูลสุขภาพ" },
+  { href: "/app/patients/assigned", icon: "care", label: "รายการดูแลสุขภาพต่อเนื่องที่โรงพยาบาลมอบหมายให้ผู้ป่วย" },
 ];
 
 function renderShortcutGrid(): string {
@@ -54,7 +55,7 @@ describe("HomeShortcutGrid", () => {
 
     expect(markup).toContain('<nav aria-labelledby="test-shortcuts-heading"');
     expect(markup).toMatch(/<nav\b[^>]*><ul\b[^>]*><li\b[^>]*><a\b/);
-    expect(markup).toContain("<ul class=\"grid min-w-0 grid-cols-4");
+    expect(markup).toContain("<ul class=\"grid min-w-0 grid-cols-4 auto-rows-fr");
     expect(markup).not.toContain("<button");
     expect(links).toHaveLength(shortcuts.length);
     expect(links.map(({ attributes }) => getAttribute(attributes, "href"))).toEqual(
@@ -72,10 +73,10 @@ describe("HomeShortcutGrid", () => {
     const markup = renderShortcutGrid();
     const links = getRenderedLinks(markup);
 
-    expect(markup).toContain("gap-2 sm:gap-3 lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]");
+    expect(markup).toContain("auto-rows-fr gap-2 sm:gap-3 lg:auto-rows-auto lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]");
     for (const { attributes } of links) {
       const className = getAttribute(attributes, "class") ?? "";
-      expect(className).toContain("min-h-24");
+      expect(className).toContain("h-full min-h-24");
       expect(className).toContain("border border-border bg-surface");
       expect(className).toContain("shadow-surface");
       expect(className).toContain("hover:border-border-strong hover:bg-surface-muted");
@@ -86,6 +87,7 @@ describe("HomeShortcutGrid", () => {
       expect(className).toContain("motion-reduce:transition-none motion-reduce:active:translate-y-0");
       expect(className).toContain("lg:flex-row");
       expect(className).toContain("lg:shadow-none");
+      expect(className).not.toContain("lg:h-full");
     }
     expect(markup).toContain(
       'class="flex size-10 shrink-0 items-center justify-center rounded-control bg-brand-soft text-brand-strong lg:bg-surface-muted"',
@@ -98,6 +100,8 @@ describe("HomeShortcutGrid", () => {
     expect(links[0].attributes).toContain('data-prefetch="true"');
     expect(links[1].attributes).toContain('data-prefetch="false"');
     expect(links[2].attributes).toContain('data-prefetch="false"');
+    expect(links[3].attributes).toContain('data-prefetch="false"');
+    expect(links[3].content).toContain("รายการดูแลสุขภาพต่อเนื่องที่โรงพยาบาลมอบหมายให้ผู้ป่วย");
     expect(links[1].content).toContain('class="hidden truncate');
     expect(links[1].content).toContain("lg:block");
     expect(links[1].content).toContain("ดูนัดหมายของคุณ");

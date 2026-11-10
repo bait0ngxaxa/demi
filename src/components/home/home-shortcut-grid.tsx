@@ -28,11 +28,11 @@ export function HomeShortcutGrid({
       </h2>
       <nav aria-labelledby={headingId} className="mt-3">
         {/* Mobile: four icon tiles per row. lg+: bordered cards that fill the workspace (UI-4.1). */}
-        <ul className="grid min-w-0 grid-cols-4 gap-2 sm:gap-3 lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
+        <ul className="grid min-w-0 grid-cols-4 auto-rows-fr gap-2 sm:gap-3 lg:auto-rows-auto lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
           {shortcuts.map(({ description, href, icon, label, prefetch }) => (
             <li className="min-w-0" key={href}>
               <Link
-                className="flex min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-control border border-border bg-surface px-1 py-3 text-center text-xs font-medium leading-5 text-text shadow-surface transition-[background-color,border-color,box-shadow,transform] hover:border-border-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:translate-y-px active:bg-surface-muted active:shadow-none lg:h-full lg:min-h-16 lg:flex-row lg:justify-start lg:gap-3 lg:border lg:border-border lg:bg-surface lg:px-4 lg:py-3 lg:text-left lg:text-sm lg:shadow-none lg:transition-colors lg:hover:border-action-primary lg:hover:bg-brand-soft lg:focus-visible:border-action-primary lg:focus-visible:ring-offset-0 lg:active:translate-y-0 lg:active:bg-brand-soft motion-reduce:transition-none motion-reduce:active:translate-y-0"
+                className="flex h-full min-h-24 min-w-0 flex-col items-center justify-center gap-2 rounded-control border border-border bg-surface px-1 py-3 text-center text-xs font-medium leading-5 text-text shadow-surface transition-[background-color,border-color,box-shadow,transform] hover:border-border-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas active:translate-y-px active:bg-surface-muted active:shadow-none lg:min-h-16 lg:flex-row lg:justify-start lg:gap-3 lg:border lg:border-border lg:bg-surface lg:px-4 lg:py-3 lg:text-left lg:text-sm lg:shadow-none lg:transition-colors lg:hover:border-action-primary lg:hover:bg-brand-soft lg:focus-visible:border-action-primary lg:focus-visible:ring-offset-0 lg:active:translate-y-0 lg:active:bg-brand-soft motion-reduce:transition-none motion-reduce:active:translate-y-0"
                 href={href}
                 prefetch={prefetch ?? false}
               >
