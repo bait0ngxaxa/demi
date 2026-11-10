@@ -204,13 +204,13 @@ describe("RescheduleRequestForm task dialog", () => {
     await submit("ส่งคำขอเลื่อนนัด");
 
     expect(container.querySelector("dialog")).not.toBeNull();
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(mocks.submit).toHaveBeenCalledTimes(1);
     expect(findButton(container, "ยกเลิก").disabled).toBe(true);
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="ปิดหน้าต่าง"]')?.disabled).toBe(true);
 
     await act(async () => {
-      const recovery = findButton(container, "ตรวจสอบผลด้วยคำขอเดิม");
+      const recovery = findButton(container, "ตรวจสอบผลของรายการ");
       recovery.click();
       recovery.click();
     });
@@ -245,7 +245,7 @@ describe("RescheduleRequestForm task dialog", () => {
     expect(mocks.reject).toHaveBeenCalledTimes(1);
     const originalPayload = mocks.reject.mock.calls[0]?.[1];
 
-    await act(async () => findButton(container, "ตรวจสอบผลด้วยคำขอเดิม").click());
+    await act(async () => findButton(container, "ตรวจสอบผลของรายการ").click());
 
     expect(mocks.reject).toHaveBeenCalledTimes(2);
     expect(mocks.reject.mock.calls[1]?.[1]).toBe(originalPayload);

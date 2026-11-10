@@ -453,7 +453,7 @@ describe("Patient activation form", () => {
       "ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้",
     );
     expect(container.querySelector('[role="alert"] button')).toBeNull();
-    expect(container.textContent).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(container.textContent).not.toContain("ตรวจสอบผลของรายการ");
     expect(container.querySelector("form")).toBeNull();
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);

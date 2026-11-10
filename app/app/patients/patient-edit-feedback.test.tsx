@@ -127,7 +127,7 @@ describe.each([
     await submit();
 
     expect(allToasts()).toBe("[[],[],[]]");
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.querySelector<HTMLButtonElement>("form button[type=submit]")!.disabled).toBe(true);
     expect(action).toHaveBeenCalledTimes(1);
   });
@@ -139,7 +139,7 @@ describe.each([
     await submit();
 
     expect(allToasts()).toBe("[[],[],[]]");
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("sends one request for two synchronous submits", async () => {

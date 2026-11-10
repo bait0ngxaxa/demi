@@ -189,7 +189,7 @@ describe("ChildOwnerInvitationForm task dialog", () => {
     expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
     expect(button("ส่งคำเชิญ", dialog).disabled).toBe(true);
 
-    await act(async () => button("ตรวจสอบผลด้วยคำขอเดิม", dialog).click());
+    await act(async () => button("ตรวจสอบผลของรายการ", dialog).click());
     expect(action).toHaveBeenCalledTimes(2);
     expect(action.mock.calls[0]?.[1].get("submissionNonce")).toBe(action.mock.calls[1]?.[1].get("submissionNonce"));
     expect(action.mock.calls[0]?.[1].get("nationalId")).toBe(action.mock.calls[1]?.[1].get("nationalId"));

@@ -165,9 +165,9 @@ describe("staff round plan controls", () => {
     click("จบบริการครั้งที่ 7");
     clickIn("dialog", "จบบริการครั้งที่ 7");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-    expect(container.querySelector("dialog")?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector("dialog")?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     clickIn("dialog", "ปิดหน้าต่าง");
-    const recovery = [...container.querySelectorAll("button")].find((button) => button.textContent === "ตรวจสอบผลด้วยคำขอเดิม");
+    const recovery = [...container.querySelectorAll("button")].find((button) => button.textContent === "ตรวจสอบผลของรายการ");
     expect(recovery).toBeDefined();
     const firstPayload = actions.completePatientProgramRoundAction.mock.calls[0]?.[1];
     expect(firstPayload).toBeInstanceOf(FormData);
@@ -194,7 +194,7 @@ describe("staff round plan controls", () => {
     const form = container.querySelector<HTMLFormElement>("dialog form");
     if (!form) throw new Error("Skip dialog form not found");
     await submit(form);
-    expect(container.querySelector("dialog")?.textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(container.querySelector("dialog")?.textContent).toContain("ตรวจสอบผลของรายการ");
     expect(container.querySelector<HTMLDialogElement>("dialog")?.open).toBe(true);
     expect(container.querySelector<HTMLButtonElement>('dialog button[aria-label="ปิดหน้าต่าง"]')?.disabled).toBe(true);
     const cancelButton = [...(container.querySelector<HTMLDialogElement>("dialog")?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "ยกเลิก");
@@ -203,7 +203,7 @@ describe("staff round plan controls", () => {
     expect(firstPayload).toBeInstanceOf(FormData);
     if (!(firstPayload instanceof FormData)) throw new Error("Skip payload was not FormData");
     expect(Object.fromEntries(firstPayload.entries())).toEqual({ patientHospitalRelationshipId: "relationship", patientProgramId: "program", roundNumber: "7", planItemId: "plan-item", reasonCode: "OTHER", note: "ผู้ป่วยขอเลื่อน" });
-    const recovery = [...container.querySelectorAll("button")].find((button) => button.textContent === "ตรวจสอบผลด้วยคำขอเดิม");
+    const recovery = [...container.querySelectorAll("button")].find((button) => button.textContent === "ตรวจสอบผลของรายการ");
     expect(recovery).toBeDefined();
     await act(async () => { recovery?.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(actions.skipPatientProgramRoundStepAction).toHaveBeenCalledTimes(2);

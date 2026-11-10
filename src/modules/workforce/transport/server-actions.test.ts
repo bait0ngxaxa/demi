@@ -541,6 +541,33 @@ describe("workforce Server Actions", () => {
     expect(result.status).toBe("ERROR");
   });
 
+  it("warns against handing off a device when assisted activation revocation is unconfirmed", async () => {
+    mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "member-1" } as never);
+    mockedRegenerateWorkforceActivation.mockResolvedValue({
+      activationId: "activation-2",
+      userId: "33333333-3333-4333-8333-333333333333",
+      hospitalId: "11111111-1111-4111-8111-111111111111",
+      kind: "OSM",
+      activationToken: "activation-token",
+      activationExpiresAt: new Date("2026-10-14T00:15:00.000Z"),
+      activationMode: "ASSISTED",
+    });
+    mockedSignOutCurrentSession.mockRejectedValue(new Error("sign out failed"));
+    mockedRevokeIssuedWorkforceActivation.mockRejectedValue(new Error("activation revoke failed"));
+    const formData = new FormData();
+    formData.set("userId", "33333333-3333-4333-8333-333333333333");
+    formData.set("targetHospitalId", "11111111-1111-4111-8111-111111111111");
+    formData.set("kind", "OSM");
+
+    const result = await startAssistedWorkforceActivationAction({ status: "IDLE" }, formData);
+
+    expect(result).toMatchObject({
+      status: "ERROR",
+      code: "UNAVAILABLE",
+      message: "ยังยืนยันการออกจากบัญชีผู้ดูแลและการยกเลิกลิงก์เปิดใช้งานไม่ได้ กรุณาอย่าส่งมอบอุปกรณ์และติดต่อผู้ดูแล DEMI",
+    });
+  });
+
   it.each(["INVALID_ROW", "ROLE_INCOMPATIBLE"] as const)("maps %s back to visible row numbers and never returns tokens", async (reason) => {
     mockedGetProtectedApplicationActor.mockResolvedValue({ userId: "owner-1" } as never);
     mockedProvisionWorkforceBulk.mockResolvedValue({

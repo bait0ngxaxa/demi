@@ -323,10 +323,10 @@ describe("follow-up recording review", () => {
     expect(confirm?.disabled).toBe(false);
     await act(async () => { confirm?.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(actions.createFollowupForProgramAction).toHaveBeenCalledTimes(1);
-    expect(container.querySelector("dialog")?.textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(container.querySelector("dialog")?.textContent).toContain("ตรวจสอบผลของรายการ");
     expect(container.querySelector("dialog")?.textContent).toContain("ส่วนสูง (cm)ไม่ได้กรอก");
     const firstPayload = formDataFor(actions.createFollowupForProgramAction);
-    const recovery = [...(container.querySelector("dialog")?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((button) => button.textContent === "ตรวจสอบผลด้วยคำขอเดิม");
+    const recovery = [...(container.querySelector("dialog")?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find((button) => button.textContent === "ตรวจสอบผลของรายการ");
     expect(recovery).toBeDefined();
     await act(async () => { recovery?.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(actions.createFollowupForProgramAction).toHaveBeenCalledTimes(2);

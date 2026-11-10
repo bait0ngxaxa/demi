@@ -90,7 +90,8 @@ describe("UserDetailPage provider reconciliation warning", () => {
     });
     const markup = renderToStaticMarkup(page);
 
-    expect(markup).toContain("ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้");
+    expect(markup).toContain("บัญชีถูกระงับ");
+    expect(markup).toContain("ยังยืนยันการระงับการเข้าสู่ระบบผ่านบริการภายนอกไม่ได้");
     expect(markup).not.toContain("ออกจากระบบทุกอุปกรณ์");
   });
 });

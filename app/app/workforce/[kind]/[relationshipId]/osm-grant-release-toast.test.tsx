@@ -171,7 +171,7 @@ describe("OSM relationship controls Toasts", () => {
 
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it.each([
@@ -210,7 +210,7 @@ describe("OSM relationship controls Toasts", () => {
     await settle();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     expect(findButton(container, "เปิดสิทธิ์ อสม. ในโรงพยาบาลนี้อีกครั้ง").disabled).toBe(true);
@@ -233,7 +233,7 @@ describe("OSM relationship controls Toasts", () => {
 
     expect(mocks.success).toHaveBeenCalledOnce();
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("พักสิทธิ์ อสม. ในโรงพยาบาลนี้ชั่วคราวแล้ว");
   });
 
@@ -449,7 +449,7 @@ describe("Workforce release control Toasts", () => {
     await submitRelease();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     expect(findButton(container, "ยืนยันนำออกจากโรงพยาบาลนี้อย่างถาวร").disabled).toBe(true);
     await submitRelease();
@@ -463,7 +463,7 @@ describe("Workforce release control Toasts", () => {
     await submitRelease();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("ข้อความทั่วไป");
   });
 
@@ -474,7 +474,7 @@ describe("Workforce release control Toasts", () => {
     await submitRelease();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("treats a thrown release as unknown with no Toast and no retry", async () => {
@@ -484,7 +484,7 @@ describe("Workforce release control Toasts", () => {
     await submitRelease();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     await submitRelease();
     expect(mocks.release).toHaveBeenCalledOnce();

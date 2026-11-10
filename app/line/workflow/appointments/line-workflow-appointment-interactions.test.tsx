@@ -139,11 +139,11 @@ describe("scoped Appointment interaction controls", () => {
     act(() => button("ส่งคำขอยกเลิกนัดหมาย").click());
     act(() => button("ส่งคำขอยกเลิก").click());
     await flush();
-    expect(text()).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(text()).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(text()).not.toContain("ส่งคำขอไปยังโรงพยาบาลแล้ว");
     expect(button("ส่งคำขอยกเลิกนัดหมาย").disabled).toBe(true);
     expect(router.refresh).not.toHaveBeenCalled();
-    act(() => button("ตรวจสอบผลด้วยคำขอเดิม").click());
+    act(() => button("ตรวจสอบผลของรายการ").click());
     await flush();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[0][1].body);

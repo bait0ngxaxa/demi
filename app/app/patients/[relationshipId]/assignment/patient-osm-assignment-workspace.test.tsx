@@ -231,7 +231,7 @@ describe("single OSM assignment feedback", () => {
       resolve({ status: "ERROR", code: "UNAVAILABLE", message: "ลองใหม่" });
     });
 
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("มอบหมายผู้ป่วยให้ อสม. เรียบร้อยแล้ว");
     expect(container.textContent).not.toContain("เรียบร้อยแล้ว");
     expect(mocks.notifySuccess).toHaveBeenCalledTimes(2);
@@ -265,7 +265,7 @@ describe("single OSM assignment feedback", () => {
 
     expect(allToasts()).toBe("[[],[],[]]");
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(assignForm().querySelector<HTMLButtonElement>("button[type=submit]")!.disabled).toBe(true);
     expect(mocks.assign).toHaveBeenCalledTimes(1);
   });

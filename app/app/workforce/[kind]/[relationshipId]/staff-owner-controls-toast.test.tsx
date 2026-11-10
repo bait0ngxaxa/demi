@@ -307,7 +307,7 @@ describe("Staff membership controls Toasts", () => {
 
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     for (const other of names) {
       expect(findButton(container, triggers[other].label).disabled).toBe(true);
@@ -325,7 +325,7 @@ describe("Staff membership controls Toasts", () => {
     await settle();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     expect(trigger.action).toHaveBeenCalledOnce();
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -340,7 +340,7 @@ describe("Staff membership controls Toasts", () => {
 
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("does not treat a suspend result that left the membership active as confirmation", async () => {
@@ -437,7 +437,7 @@ describe("Staff membership controls Toasts", () => {
     expect(mocks.warning).not.toHaveBeenCalled();
     expect(mocks.error).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("เปิดสิทธิ์เจ้าหน้าที่ในโรงพยาบาลนี้อีกครั้งแล้ว");
   });
 
@@ -578,7 +578,7 @@ describe("Hospital owner governance controls Toasts", () => {
 
     noToast();
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("Promote SUCCESS then Demote FORBIDDEN: warns with the later error only and refreshes once", async () => {
@@ -631,7 +631,7 @@ describe("Hospital owner governance controls Toasts", () => {
     await settle();
 
     noToast();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     expect(findButton(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล").disabled).toBe(true);
     await act(async () => submitForm(container, "เปลี่ยนเป็นแอดมินโรงพยาบาล"));

@@ -82,7 +82,7 @@ describe("explicit appointment notification consent", () => {
     await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: true }} />));
     await act(async () => container.querySelector("button")?.click());
     expect(container.textContent).not.toContain("เปิดการแจ้งเตือนแล้ว");
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.querySelector('button[type="submit"]')?.getAttribute("disabled")).not.toBeNull();
   });
 

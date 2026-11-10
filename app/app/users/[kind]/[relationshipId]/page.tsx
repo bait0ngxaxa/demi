@@ -105,13 +105,13 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
           <Alert variant={lockRetry ? "warning" : "danger"}>
             <p className="font-semibold">บัญชีนี้มาจากคำเชิญของญาติหรือผู้ดูแล</p>
             <p className="mt-1">บัญชีถูกระงับและต้องให้ผู้ดูแลยืนยันตัวตนก่อนใช้งาน ข้อมูลครอบครัวยังคงอยู่</p>
-            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้ กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อนกู้คืนบัญชี</p> : null}
+            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าสู่ระบบผ่านบริการภายนอกไม่ได้ กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อนกู้คืนบัญชี</p> : null}
           </Alert>
         ) : detail.takeoverLock ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
             <p className="font-semibold">ระงับการใช้งานบัญชีแล้ว</p>
             <p className="mt-1">ระงับเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} หากต้องการกู้คืน ให้ยืนยันตัวตนและตั้งรหัสผ่านใหม่ในขั้นตอนด้านล่าง</p>
-            {lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้ กรุณาตรวจสอบอีกครั้งด้านล่าง</p> : null}
+            {lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าสู่ระบบผ่านบริการภายนอกไม่ได้ กรุณาตรวจสอบอีกครั้งด้านล่าง</p> : null}
           </Alert>
         ) : null}
 

@@ -106,7 +106,7 @@ describe("Hospital patient profile edit", () => {
 
     await click(buttonByText("บันทึกข้อมูล"));
 
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(buttonByText("บันทึกข้อมูล").disabled).toBe(true);
     expect(input("phoneNumber").disabled).toBe(true);
     expect(mocks.profile).toHaveBeenCalledTimes(1);
@@ -169,7 +169,7 @@ describe("Appointment management controls", () => {
 
     await click(buttonByText("ทำเครื่องหมายว่าไม่มาตามนัด"));
 
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     for (const button of Array.from(container.querySelectorAll<HTMLButtonElement>("form button[type=submit]"))) {
       expect(button.disabled).toBe(true);
     }
@@ -204,12 +204,12 @@ describe("Program round review with a lost response", () => {
     expect(buttonByText("บันทึกการทบทวน").disabled).toBe(true);
     expect(mocks.review).toHaveBeenCalledTimes(1);
 
-    await click(buttonByText("ตรวจสอบผลด้วยคำขอเดิม"));
+    await click(buttonByText("ตรวจสอบผลของรายการ"));
 
     expect(mocks.review).toHaveBeenCalledTimes(2);
     expect((mocks.review.mock.calls[1]?.[1] as FormData).get("submissionNonce")).toBe("review-nonce-1");
     expect(saved.size).toBe(1);
     expect(container.textContent).toContain("บันทึกการทบทวนแล้ว");
-    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).not.toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 });

@@ -292,7 +292,7 @@ describe("bulk OSM assignment feedback", () => {
 
     expect(allToasts()).toBe("[[],[],[]]");
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(container.textContent).toContain("ตรวจสอบผลของรายการ");
     expect(container.textContent).not.toContain("กำหนด อสม. เรียบร้อยแล้ว");
     expect(buttonByText("ยืนยันมอบหมาย").disabled).toBe(true);
     expect(mocks.bulk).toHaveBeenCalledTimes(1);
@@ -309,7 +309,7 @@ describe("bulk OSM assignment feedback", () => {
 
     mocks.bulk.mockResolvedValueOnce(bulkResult("REPLAYED"));
     await act(async () => {
-      buttonByText("ตรวจสอบผลด้วยคำขอเดิม").click();
+      buttonByText("ตรวจสอบผลของรายการ").click();
     });
 
     expect(mocks.bulk).toHaveBeenCalledTimes(2);
@@ -330,7 +330,7 @@ describe("bulk OSM assignment feedback", () => {
 
     mocks.bulk.mockResolvedValueOnce(bulkResult("ASSIGNED"));
     await act(async () => {
-      buttonByText("ตรวจสอบผลด้วยคำขอเดิม").click();
+      buttonByText("ตรวจสอบผลของรายการ").click();
     });
 
     expect(mocks.notifySuccess).toHaveBeenCalledTimes(1);

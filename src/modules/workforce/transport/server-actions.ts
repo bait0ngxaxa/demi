@@ -744,7 +744,7 @@ export async function startAssistedWorkforceActivationAction(
         return {
           status: "ERROR",
           code: "UNAVAILABLE",
-          message: "ระบบไม่สามารถปิดเซสชันผู้ดูแลได้ จึงยกเลิกการเปิดใช้งานชั่วคราวไม่สำเร็จ",
+          message: "ยังยืนยันการออกจากบัญชีผู้ดูแลและการยกเลิกลิงก์เปิดใช้งานไม่ได้ กรุณาอย่าส่งมอบอุปกรณ์และติดต่อผู้ดูแล DEMI",
         };
       }
 

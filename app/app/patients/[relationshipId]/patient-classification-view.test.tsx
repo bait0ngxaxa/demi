@@ -248,7 +248,7 @@ describe("Patient classification feedback", () => {
     expect(toastCalls()).toBe("[[],[],[]]");
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(select().disabled).toBe(true);
     expect(container.querySelector<HTMLButtonElement>("form button[type=submit]")!.disabled).toBe(true);
     expect(mocks.set).toHaveBeenCalledTimes(1);
@@ -265,8 +265,8 @@ describe("Patient classification feedback", () => {
     expect(toastCalls()).toBe("[[],[],[]]");
     expect(mocks.refresh).not.toHaveBeenCalled();
     expect(container.querySelector("fieldset")!.disabled).toBe(true);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
-    expect(container.querySelectorAll("form > [role=\"alert\"]")).toHaveLength(1);
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(mocks.set).toHaveBeenCalledTimes(1);
   });
 
