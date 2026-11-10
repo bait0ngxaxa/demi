@@ -328,7 +328,7 @@ export function HospitalGovernanceControls({
       </p>
 
       <UnknownOutcomeAlert
-        active={unknownOutcome}
+        active={unknownOutcome && !suspendUnconfirmed}
         className="mt-4"
         recovery={{
           kind: "reload",
@@ -343,6 +343,17 @@ export function HospitalGovernanceControls({
           action={suspendAction}
           className="mt-6 border-t border-border pt-5"
           key={hospitalId}
+          recovery={
+            <UnknownOutcomeAlert
+              active={suspendUnconfirmed}
+              className="mt-4"
+              recovery={{
+                kind: "reload",
+                label: "โหลดและตรวจสอบสถานะล่าสุด",
+                message: "ระบบยังยืนยันผลการระงับการใช้งานโรงพยาบาลไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะก่อนดำเนินการต่อ",
+              }}
+            />
+          }
           confirmation={{
             title: "ระงับการใช้งานโรงพยาบาลนี้หรือไม่",
             description: "มีผลเฉพาะโรงพยาบาลนี้ ผู้ใช้งานจะไม่สามารถทำงานภายใต้โรงพยาบาลนี้ได้",

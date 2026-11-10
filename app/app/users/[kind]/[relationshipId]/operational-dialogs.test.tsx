@@ -179,6 +179,7 @@ describe("UserTakeoverControl security dialog", () => {
     expect(dialog.textContent).toContain("แต่ DEMI จะปฏิเสธบัญชีนี้");
     expect(dialog.textContent).not.toContain("ออกจากระบบทุกอุปกรณ์");
     expect(dialog.textContent).toContain("การเชื่อม LINE ที่เกิดหลังเปิดใช้งานจะถูกยกเลิก");
+    expect(dialog.textContent).toContain("การกู้คืนต้องยืนยันตัวตนและตั้งรหัสผ่านใหม่");
     expect(mocks.takeover).not.toHaveBeenCalled();
 
     act(() => findButton(dialog, "ยกเลิก").click());
@@ -203,33 +204,33 @@ describe("UserTakeoverControl security dialog", () => {
         success: true,
         outcome: "LOCKED",
         providerState: UserTakeoverProviderState.CONFIRMED,
-        message: "ระงับบัญชีใน DEMI แล้ว บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว",
+        message: "ระงับบัญชีใน DEMI แล้ว และบริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว",
       });
     renderTakeover(true);
     expect(container.querySelector("dialog")).toBeNull();
-    const retryTrigger = findButton(container, "ตรวจสอบการระงับการเข้าใช้อีกครั้ง");
+    const retryTrigger = findButton(container, "ส่งคำขอป้องกันการเข้าสู่ระบบอีกครั้ง");
     expect(mocks.takeover).not.toHaveBeenCalled();
     act(() => retryTrigger.click());
     const dialog = container.querySelector("dialog");
     if (!dialog) throw new Error("Retry mode should open its security dialog after user action");
-    expect(dialog.textContent).toContain("อีกครั้งเท่านั้น");
-    expect(dialog.textContent).toContain("จะไม่พักสิทธิ์การทำงานที่ “โรงพยาบาลชุมชน” ซ้ำ");
+    expect(dialog.textContent).toContain("จะส่งคำขอไปยังบริการภายนอกเพื่อป้องกันการเข้าสู่ระบบใหม่อีกครั้ง");
+    expect(dialog.textContent).toContain("สิทธิ์ทำงานที่ “โรงพยาบาลชุมชน” ถูกพักไว้แล้ว และจะไม่เปลี่ยนซ้ำ");
     expect(mocks.takeover).not.toHaveBeenCalled();
     const confirmation = confirmInput(dialog, "confirmation");
     confirmation.value = "สงสัยว่ามีผู้อื่นใช้บัญชีนี้";
 
     await act(async () => {
-      submitForm(dialog, "ตรวจสอบอีกครั้ง");
+      submitForm(dialog, "ส่งคำขออีกครั้ง");
       await Promise.resolve();
     });
 
-    expect(findButton(dialog, "กำลังตรวจสอบ...").disabled).toBe(true);
+    expect(findButton(dialog, "กำลังส่งคำขอ...").disabled).toBe(true);
     await act(async () => {
       retryProviderBan.resolve({
         success: true,
         outcome: "LOCKED",
         providerState: UserTakeoverProviderState.RECONCILIATION_REQUIRED,
-        message: "ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้",
+        message: "ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการป้องกันการเข้าสู่ระบบใหม่กับบริการภายนอกไม่ได้",
       });
       await retryProviderBan.promise;
     });
@@ -240,23 +241,27 @@ describe("UserTakeoverControl security dialog", () => {
     expect(mocks.takeover.mock.calls[0]?.[1].get("expectedUpdatedAt")).toBe(V1);
     expect(mocks.takeover.mock.calls[0]?.[1].get("confirmation")).toBe("สงสัยว่ามีผู้อื่นใช้บัญชีนี้");
     expect(mocks.takeover.mock.calls[0]?.[1].has("retry")).toBe(false);
-    expect(dialog.textContent).toContain("ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้");
-    expect(dialog.textContent).toContain("ตรวจสอบการระงับการเข้าใช้กับบริการภายนอกอีกครั้งเท่านั้น");
-    expect(dialog.textContent).toContain("อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ");
+    expect(dialog.textContent).toContain("ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการป้องกันการเข้าสู่ระบบใหม่กับบริการภายนอกไม่ได้");
+    expect(dialog.textContent).toContain("ส่งคำขอไปยังบริการภายนอกเพื่อป้องกันการเข้าสู่ระบบใหม่อีกครั้ง");
+    expect(dialog.textContent).toContain("อุปกรณ์ที่เข้าสู่ระบบไว้ก่อนหน้านี้อาจยังแสดงว่าเข้าสู่ระบบอยู่");
     expect(dialog.textContent).not.toContain("ออกจากระบบทุกอุปกรณ์");
-    expect(findButton(dialog, "ตรวจสอบอีกครั้ง").disabled).toBe(false);
+    expect(findButton(dialog, "ส่งคำขออีกครั้ง").disabled).toBe(false);
 
-    await act(async () => submitForm(dialog, "ตรวจสอบอีกครั้ง"));
+    await act(async () => submitForm(dialog, "ส่งคำขออีกครั้ง"));
     await settle();
 
     expect(mocks.takeover).toHaveBeenCalledTimes(2);
     expect(mocks.takeover.mock.calls[1]?.[1].get("expectedUpdatedAt")).toBe(V1);
     expect(container.querySelector("dialog")).toBeNull();
-    expect(container.textContent).toContain("บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว");
-    expect(container.textContent).toContain("อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ");
+    expect(container.textContent).toContain("บริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว");
+    expect(container.querySelector("details > summary")?.textContent).toBe("เกี่ยวกับอุปกรณ์ที่เข้าสู่ระบบอยู่");
+    expect(container.querySelector("details")?.textContent).toContain("อุปกรณ์ที่เข้าสู่ระบบไว้ก่อนหน้านี้อาจยังแสดงว่าเข้าสู่ระบบอยู่");
+    expect(container.querySelector("details")?.textContent).toContain("DEMI จะไม่อนุญาตให้บัญชีที่ถูกระงับใช้งานระบบ");
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(mocks.success).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain("ออกจากระบบทุกอุปกรณ์");
+    expect(container.textContent).not.toContain("ทุกอุปกรณ์");
+    expect(container.textContent).not.toContain("JWT");
     expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.includes("แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"))).toBe(false);
   });
 

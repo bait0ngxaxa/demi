@@ -23,6 +23,19 @@ describe("Exercise Server Action boundary", () => {
     const retryable = await createPersonalExerciseAction({ status: "IDLE" }, form(createInput));
     expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toBe("ยังยืนยันผลการบันทึกไม่ได้");
   });
+  it("preserves distinct CONFLICT and UNCONFIRMED create outcomes despite matching copy", async () => {
+    mock.create.mockRejectedValueOnce(new ConflictError()).mockRejectedValueOnce(new InfrastructureError("uncertain commit"));
+
+    const conflict = await createPersonalExerciseAction({ status: "IDLE" }, form(createInput));
+    const unconfirmed = await createPersonalExerciseAction({ status: "IDLE" }, form(createInput));
+
+    expect(conflict).toMatchObject({ status: "CONFLICT", message: "ยังยืนยันผลการบันทึกไม่ได้" });
+    expect(unconfirmed).toMatchObject({ status: "UNCONFIRMED", message: "ยังยืนยันผลการบันทึกไม่ได้" });
+    expect(conflict.status).not.toBe(unconfirmed.status);
+    expect(conflict.result).toBeUndefined();
+    expect(unconfirmed.result).toBeUndefined();
+    expect(mock.revalidate).not.toHaveBeenCalled();
+  });
   beforeEach(() => { vi.clearAllMocks(); mock.actor.mockResolvedValue({ userId: "actor" }); });
   it("bounds unknown/duplicate/File/oversize before actor/service, never drops owner fields", async () => {
     const bad = [form({ ...createInput, patientProfileId: row.id }), form({ ...createInput, note: "ก".repeat(17000) })];

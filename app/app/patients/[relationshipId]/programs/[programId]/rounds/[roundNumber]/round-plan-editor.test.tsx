@@ -97,6 +97,49 @@ describe("staff round plan controls", () => {
     expect(container.querySelector('input[name="planItemId"]')?.getAttribute("value")).toBe("custom-1");
     expect(container.querySelector('textarea[name="note"]')?.getAttribute("maxlength")).toBe("500");
   });
+  it("keeps removal recovery on the original nonce and payload after an unknown confirmation", async () => {
+    actions.removeRoundPlanItemAction.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce(success);
+    mount(<><h2 id="program-round-current-step-heading" tabIndex={-1}>Current step</h2><PlanItemControl step={item("custom-recover")} target={target} submissionNonce="remove-recovery-nonce" /></>);
+
+    click("ตัดออก");
+    const dialog = container.querySelector<HTMLDialogElement>("dialog");
+    if (!dialog) throw new Error("Removal confirmation was not opened");
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "ตัดออก");
+    if (!confirm) throw new Error("Missing removal confirmation action");
+    await act(async () => { confirm.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(actions.removeRoundPlanItemAction).toHaveBeenCalledOnce();
+    expect(dialog.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(dialog.textContent).not.toContain("ดูข้อมูลล่าสุด");
+    expect(confirm.disabled).toBe(true);
+    const firstPayload = actions.removeRoundPlanItemAction.mock.calls[0]?.[1];
+    expect(firstPayload).toBeInstanceOf(FormData);
+    if (!(firstPayload instanceof FormData)) throw new Error("Initial removal payload was not FormData");
+
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    act(() => window.dispatchEvent(beforeUnload));
+    expect(beforeUnload.defaultPrevented).toBe(true);
+    clickIn("dialog", "ปิดหน้าต่าง");
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector("#program-round-current-step-heading"));
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+    expect(actions.removeRoundPlanItemAction).toHaveBeenCalledOnce();
+
+    click("ตรวจสอบผลของรายการ");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(actions.removeRoundPlanItemAction).toHaveBeenCalledTimes(2);
+    const resentPayload = actions.removeRoundPlanItemAction.mock.calls[1]?.[1];
+    expect(resentPayload).toBe(firstPayload);
+    expect(Object.fromEntries(resentPayload.entries())).toEqual({
+      patientProgramId: "program",
+      roundNumber: "7",
+      submissionNonce: "remove-recovery-nonce",
+      planItemId: "custom-recover",
+    });
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBeNull();
+  });
   it("returns focus to the current step heading after a TODO item is removed", async () => {
     actions.removeRoundPlanItemAction.mockResolvedValueOnce(success);
     mount(<><h2 id="program-round-current-step-heading" tabIndex={-1}>Current step</h2><PlanItemControl step={item("custom-remove")} target={target} submissionNonce="remove-nonce" /></>);

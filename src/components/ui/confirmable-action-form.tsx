@@ -57,6 +57,7 @@ export function ConfirmableActionForm({
   ...formProps
 }: ConfirmableActionFormProps): React.JSX.Element {
   const formRef = useRef<HTMLFormElement>(null);
+  const recoveryRef = useRef<HTMLDivElement>(null);
   const submitterRef = useRef<HTMLButtonElement | HTMLInputElement | null>(null);
   const bypassConfirmationRef = useRef(false);
   const waitingForResultRef = useRef(false);
@@ -191,14 +192,33 @@ export function ConfirmableActionForm({
 
   const dialogPending = pending || awaitingResult;
 
+  function restoreFocusTarget(): HTMLElement | null {
+    const requestedTarget = returnFocusTarget?.() ?? null;
+    if (requestedTarget?.isConnected && !requestedTarget.matches(":disabled")) {
+      return requestedTarget;
+    }
+
+    if (unknownOutcome) {
+      return recoveryRef.current?.querySelector<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled)") ?? recoveryRef.current;
+    }
+
+    return submitterRef.current;
+  }
+
   return (
     <form {...formProps} action={action} className={className} onSubmit={handleSubmit} ref={formRef}>
       <fieldset className="m-0 min-w-0 border-0 p-0" disabled={dialogPending || unknownOutcome}>
         {children}
       </fieldset>
-      {recovery}
-      {!dialogOpen && !recovery && unknownOutcome ? (
-        <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
+      {recovery ? (
+        <div aria-hidden={dialogOpen || undefined} ref={recoveryRef} tabIndex={unknownOutcome && !dialogOpen ? -1 : undefined}>
+          {recovery}
+        </div>
+      ) : null}
+      {!recovery && unknownOutcome ? (
+        <div aria-hidden={dialogOpen || undefined} ref={recoveryRef} tabIndex={unknownOutcome && !dialogOpen ? -1 : undefined}>
+          <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
+        </div>
       ) : null}
       {submissionDispatchError ? (
         <Alert className="mt-4" role="alert" variant="warning">
@@ -211,18 +231,20 @@ export function ConfirmableActionForm({
         confirmLabel={confirmation.confirmLabel}
         pendingLabel={confirmation.pendingLabel}
         confirmVariant={confirmation.confirmVariant}
-        description={confirmation.description}
+        description={unknownOutcome && recovery
+          ? "ปิดหน้าต่างนี้เพื่อดำเนินการตรวจสอบผลด้วยวิธีที่ระบบเตรียมไว้"
+          : confirmation.description}
         details={
           unknownOutcome ? (
-            <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
+            recovery ? null : <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
           ) : confirmation.details
         }
         onCancel={cancelSubmission}
         onConfirm={confirmSubmission}
         open={dialogOpen}
         pending={dialogPending}
-        returnFocusTarget={returnFocusTarget}
-        title={confirmation.title}
+        returnFocusTarget={restoreFocusTarget}
+        title={unknownOutcome && recovery ? "ยังยืนยันผลรายการนี้ไม่ได้" : confirmation.title}
       />
     </form>
   );

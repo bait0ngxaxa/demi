@@ -118,27 +118,27 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
         <div ref={statusRef} role="status" tabIndex={-1}>
           <Alert role="presentation" variant="success">
             <p className="font-semibold">ระงับการใช้งานบัญชีแล้ว</p>
-            <p className="mt-1">บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว</p>
+            <p className="mt-1">บริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว</p>
             <details className="mt-2">
               <summary className="flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">เกี่ยวกับอุปกรณ์ที่เข้าสู่ระบบอยู่</summary>
-              <p className="mt-1">อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ แต่ DEMI จะปฏิเสธการใช้งานบัญชีที่ถูกระงับ</p>
+              <p className="mt-1">อุปกรณ์ที่เข้าสู่ระบบไว้ก่อนหน้านี้อาจยังแสดงว่าเข้าสู่ระบบอยู่ แต่ DEMI จะไม่อนุญาตให้บัญชีที่ถูกระงับใช้งานระบบ</p>
             </details>
           </Alert>
         </div>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
-          {retryMode ? "ตรวจสอบการระงับการเข้าใช้อีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
+          {retryMode ? "ส่งคำขอป้องกันการเข้าสู่ระบบอีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
         </Button>
       )}
       {visibleDialogOpen ? (
         <ModalDialog
           description={retryMode ? (
             <>
-              <p>บัญชี {resourceName} ถูกระงับใน DEMI แล้ว ครั้งนี้จะตรวจสอบการระงับการเข้าใช้กับบริการภายนอกอีกครั้งเท่านั้น</p>
+              <p>บัญชี {resourceName} ถูกระงับใน DEMI แล้ว การดำเนินการนี้จะส่งคำขอไปยังบริการภายนอกเพื่อป้องกันการเข้าสู่ระบบใหม่อีกครั้ง</p>
               <p className="mt-2">{kind === "patient"
                 ? `จะไม่เปลี่ยนข้อมูลการดูแลผู้ป่วยของ “${hospitalName}”`
-                : `จะไม่พักสิทธิ์การทำงานที่ “${hospitalName}” ซ้ำ`}</p>
-              <p className="mt-2">อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ แต่บัญชีนี้ใช้ DEMI ไม่ได้</p>
+                : `สิทธิ์ทำงานที่ “${hospitalName}” ถูกพักไว้แล้ว และจะไม่เปลี่ยนซ้ำ`}</p>
+              <p className="mt-2">อุปกรณ์ที่เข้าสู่ระบบไว้ก่อนหน้านี้อาจยังแสดงว่าเข้าสู่ระบบอยู่ แต่บัญชีนี้ใช้ DEMI ไม่ได้</p>
             </>
           ) : (
             <>
@@ -157,7 +157,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
                 ยกเลิก
               </Button>
               <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? retryMode ? "กำลังตรวจสอบ..." : "กำลังระงับบัญชี..." : retryMode ? "ตรวจสอบอีกครั้ง" : "ยืนยันระงับบัญชี"}
+                {pending ? retryMode ? "กำลังส่งคำขอ..." : "กำลังระงับบัญชี..." : retryMode ? "ส่งคำขออีกครั้ง" : "ยืนยันระงับบัญชี"}
               </Button>
             </div>
           }
@@ -165,7 +165,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
           onRequestClose={closeDialog}
           returnFocusTarget={() => providerConfirmed ? statusRef.current : triggerRef.current ?? headingTarget()}
           size="default"
-          title={retryMode ? `ตรวจสอบการระงับการเข้าสู่ระบบของ ${resourceName} อีกครั้ง` : `ระงับบัญชี ${resourceName}`}
+          title={retryMode ? `ส่งคำขอป้องกันการเข้าสู่ระบบของ ${resourceName} อีกครั้ง` : `ระงับบัญชี ${resourceName}`}
         >
           <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
             <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />

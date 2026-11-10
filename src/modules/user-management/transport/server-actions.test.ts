@@ -61,7 +61,7 @@ describe("lockSuspectedTakeoverAction", () => {
     mocks.lock.mockResolvedValue({ providerState: UserTakeoverProviderState.RECONCILIATION_REQUIRED, alreadyLocked: false });
     const state = await lockSuspectedTakeoverAction(initialUserTakeoverActionState, new FormData());
     expect(state).toMatchObject({ success: true, outcome: "LOCKED", providerState: "RECONCILIATION_REQUIRED" });
-    expect(state.message).toContain("ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้");
+    expect(state.message).toContain("ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการป้องกันการเข้าสู่ระบบใหม่กับบริการภายนอกไม่ได้");
     expect(state.message).not.toContain("ยืนยันแล้ว");
     expect(state.message).not.toContain("ออกจากระบบทุกอุปกรณ์");
     expect(state.message).not.toContain("กดซ้ำ");
@@ -73,7 +73,7 @@ describe("lockSuspectedTakeoverAction", () => {
     const state = await lockSuspectedTakeoverAction(initialUserTakeoverActionState, new FormData());
 
     expect(state).toMatchObject({ success: true, outcome: "LOCKED", providerState: "CONFIRMED" });
-    expect(state.message).toContain("บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว");
+    expect(state.message).toContain("บริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว");
     expect(state.message).not.toContain("อุปกรณ์");
     expect(state.message).not.toContain("ยังไม่ยืนยัน");
     expect(state.message).not.toContain("ออกจากระบบทุกอุปกรณ์");

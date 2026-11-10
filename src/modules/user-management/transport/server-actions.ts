@@ -80,8 +80,8 @@ export async function lockSuspectedTakeoverAction(
       outcome: "LOCKED",
       providerState: result.providerState,
       message: confirmed
-        ? "ระงับบัญชีใน DEMI แล้ว บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว"
-        : "ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้",
+        ? "ระงับบัญชีใน DEMI แล้ว และบริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว"
+        : "ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการป้องกันการเข้าสู่ระบบใหม่กับบริการภายนอกไม่ได้",
     };
   } catch (error: unknown) {
     const refused = (outcome: UserTakeoverActionState["outcome"], message: string): UserTakeoverActionState =>
