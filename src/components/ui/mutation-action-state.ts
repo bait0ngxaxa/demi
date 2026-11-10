@@ -5,7 +5,7 @@ import { startTransition, useActionState, useRef, useState, type FormEvent } fro
 
 /** For updates and terminal transitions whose current state is shown on the page after a reload. */
 export const unknownOutcomeMessage =
-  "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการซ้ำ";
+  "ดูข้อมูลล่าสุดก่อนทำรายการใหม่";
 
 export const connectionFailureMessage = "เชื่อมต่อระบบไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง";
 

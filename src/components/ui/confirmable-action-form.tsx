@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from
 import { Alert } from "./alert";
 import { ConfirmDialog } from "./confirm-dialog";
 import { unknownOutcomeMessage } from "./mutation-action-state";
+import { UnknownOutcomeAlert } from "./unknown-outcome-alert";
 
 export type ConfirmableActionOutcome = "idle" | "success" | "error" | "unknown";
 
@@ -196,10 +197,8 @@ export function ConfirmableActionForm({
         {children}
       </fieldset>
       {recovery}
-      {!recovery && unknownOutcome ? (
-        <Alert className="mt-4" role="alert" variant="warning">
-          {unknownOutcomeMessage}
-        </Alert>
+      {!dialogOpen && !recovery && unknownOutcome ? (
+        <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
       ) : null}
       {submissionDispatchError ? (
         <Alert className="mt-4" role="alert" variant="warning">
@@ -215,9 +214,7 @@ export function ConfirmableActionForm({
         description={confirmation.description}
         details={
           unknownOutcome ? (
-            <Alert role="alert" variant="warning">
-              {unknownOutcomeMessage}
-            </Alert>
+            <UnknownOutcomeAlert active recovery={{ kind: "reload", message: unknownOutcomeMessage }} />
           ) : confirmation.details
         }
         onCancel={cancelSubmission}

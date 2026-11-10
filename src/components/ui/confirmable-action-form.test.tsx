@@ -372,8 +372,16 @@ describe("ConfirmableActionForm", () => {
     expect(runAction).toHaveBeenCalledOnce();
     expect(container?.querySelector("dialog")).not.toBeNull();
     expect(getConfirmationButton().disabled).toBe(true);
-    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(container?.querySelectorAll('[role="alert"]')).toHaveLength(1);
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
+
+    const closeButton = Array.from(container?.querySelectorAll<HTMLButtonElement>("dialog button") ?? [])
+      .find((button) => button.textContent?.includes("ปิดหน้าต่าง"));
+    if (!closeButton) throw new Error("Missing unknown-outcome close action");
+    clickButton(closeButton);
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(container?.querySelectorAll('[role="alert"]')).toHaveLength(1);
   });
 
   it("treats a request that fails before the server answers as an uncertain outcome", async () => {
@@ -392,7 +400,7 @@ describe("ConfirmableActionForm", () => {
 
     expect(runAction).toHaveBeenCalledOnce();
     expect(getConfirmationButton().disabled).toBe(true);
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
   });
 
