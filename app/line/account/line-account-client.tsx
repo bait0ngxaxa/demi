@@ -583,12 +583,11 @@ export function LineAccountScreen({
               {view === "UNLINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-danger/40 bg-danger-soft p-4" aria-labelledby="unlink-confirm-title">
                   <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อ LINE?</h3>
-                  <p className="mt-2 text-sm text-ink">{lifecycleReadiness.state === "READY"
-                    ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มดำเนินการถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้"
-                    : "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">หลังยืนยัน ระบบจะออกจากบัญชี DEMI ของคุณ ข้อมูลเดิมจะไม่ถูกลบ</p>
+                  <p className="mt-2 text-sm text-ink">หลังยืนยัน LINE จะใช้เข้าถึง DEMI ผ่านการเชื่อมต่อนี้ไม่ได้ และระบบจะออกจากบัญชี DEMI ของคุณ ข้อมูลเดิมจะไม่ถูกลบ</p>
+                  <p className="mt-2 text-sm text-muted">DEMI จะดำเนินการถอนสิทธิ์ที่เกี่ยวข้องจาก LINE ด้วย</p>
+                  {lifecycleReadiness.state !== "READY" ? <p className="mt-2 text-sm text-warning">ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้</p> : null}
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
+                    <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิก</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
                   </div>
                 </div>

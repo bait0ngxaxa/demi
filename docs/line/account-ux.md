@@ -28,13 +28,15 @@ This presentation refactor leaves server authorization, lifecycle and notificati
 2. Require every REMOVED / NOT_LISTED / UNDETERMINED decision and explicit acknowledgement that delayed old deauthorization may temporarily disrupt the new connection. Returning to app review retains selections.
 3. Explicitly request fresh LINE identity, preserve the existing LIFF cross-webview handoff, then explicitly submit recovery. Resume directly at identity confirmation only for the exact session scope, unexpired intent and unchanged outstanding set. Completion reloads authoritative status; it never creates a binding.
 
-Focus moves to the heading on step or intent change, not on each field change. Local expiry stops identity/submission and offers a restart. Server checks remain authoritative, including expiry during network I/O. Other failures use safe generic copy and retain a restart action without automatic retries.
+Ordinary lifecycle-panel mount never moves focus. Explicit recovery start, forward/backward wizard transitions and valid LIFF handoff resumption focus the heading once per intent/step transition, including under React Strict Mode; unrelated rerenders and field edits preserve focus. Before identity handoff, Step 3 offers “กลับไปแก้ผลการตรวจสอบ”: it retains the same intent, challenge, expiry, selections and risk consent without preparing again or invoking LIFF. The action is disabled while busy and removed after handoff starts or a valid handoff resumes. Editing after that boundary requires an explicit new preparation. Local expiry stops identity/submission and offers a restart. Expiry is checked again after LIFF initialization, before redirect or recovery submission; stale handoff storage is cleared and new preparation is required. Server checks remain authoritative. Other failures use safe generic copy and retain a restart action without automatic retries.
 
 ## Historical obligations and retained safeguards
 
-The service still evaluates all historical bindings and generations. The overview uses its aggregate state and canRelink; no newest-generation filtering occurs. All historical rows remain available under “รายละเอียดการถอนสิทธิ์”, without raw identifiers. Active recovery uses only prepare's exact review set. Settled records, released-but-unverified records and unresolved historical blockers retain their distinct server statuses.
+The service still evaluates all historical bindings and generations. The overview uses its aggregate state and canRelink; no newest-generation filtering occurs. All historical rows remain available under collapsed “รายละเอียดการถอนสิทธิ์”, without raw identifiers. Accessible headings group rows as unconfirmed (PENDING/OBSERVED/REMOTE_UNCONFIRMED), settled (REMOTE_CONFIRMED/PROVEN_ABSENT, retaining their distinct row labels), and recovery-released but remotely unverified (RECOVERY_RELEASED_UNVERIFIED). Repeated app names across bindings/generations remain separate records, each rendered once. Group membership does not imply current relink blocking; aggregate server state and canRelink still control actions. Active recovery uses only prepare's exact review set. Settled records, released-but-unverified records and unresolved historical blockers retain their distinct server statuses.
 
 Retained: current-password verification; explicit link/unlink consent; account switching; server authentication and resource authorization; binding uniqueness/ownership; exact live session and LINE subject checks; single-use intent and five-minute recovery expiry; reviewed-set digest/integrity; all manual decisions and risk consent; relink fences; audit events; local revocation independent of LINE; per-channel deauthorization evidence; duplicate/replay protection; session-scoped expiring storage handoff without identity/access tokens or secrets in URLs. No schema, migration, notification recipients/events/types/content policy or provider configuration changes.
+
+Unlink confirmation states local access revocation, DEMI logout and data retention once, followed by a short LINE withdrawal explanation. Unavailable lifecycle readiness adds an honest visible uncertainty warning. The destructive action is “ยืนยันยกเลิก”; post-unlink logout/session exceptions remain visible.
 
 Notification preferences show persisted state and success only after confirmed mutation. Secondary details retain recipient, privacy, delivery and friendship prerequisites. Pending and unknown outcomes block resubmission.
 
@@ -56,7 +58,20 @@ Notification preferences show persisted state and success only after confirmed m
 - `npm run build`: passed, including compilation, TypeScript and 61 static pages. A subsequent change updated only test assertions and does not invalidate that build.
 - `git diff --check`: passed. No backend service/domain/adapter, schema, migration, lockfile or provider configuration changes.
 - PostgreSQL integration not executed: `docker info --format '{{.ServerVersion}}'` failed because Docker is not installed/available as a command. No shared database substituted.
-- Hosted CI not executed: user requested local commits only, with no push. No PR/run URL or hosted job conclusions exist for this branch.
+- Hosted CI not executed: user requested local commits only, with no push. This was the initial local-only verification record, before PR #8 was opened.
+
+## PR #8 review remediation verification
+
+Starting HEAD: `f2ed37389d7ec276edb0f696ed50fd44dcc4976f`. One local fix-up commit is requested; the original three commits remain unchanged. No push is authorized for this remediation.
+
+- Reproduction before the fix: focused flow/panel/accessibility tests produced four failures (missing back action, focus stolen on PENDING/REMOTE_CONFIRMED mount, missing history groups), with 22 passing tests. Source tracing confirmed missing controls, an unconditional initial focus effect and flat history rendering; no server change was needed.
+- Focused Account + lifecycle/history regression: 17 files / 179 tests passed. Subsequent added expiry/back and concise-copy tests: 2 files / 57 tests passed.
+- `npm run typecheck`, `npm run lint`, subsequent targeted ESLint and `git diff --check`: passed.
+- Complete `npm run test`: 609 files / 6,984 tests passed in 241.45 seconds. This full local run was explicitly requested for the remediation. JSDOM emits its existing unsupported-navigation diagnostic; all assertions passed.
+- Integration runner accepts one path per invocation. The first command supplied four paths but executed only `line-account-linking.integration.test.ts`: 27 tests passed; database cleanup passed. The three remaining files were then invoked individually through `npm run test:integration:focused -- <path>`: `line-authorization-lifecycle.integration.test.ts` (32 passed), `line-disconnection-orchestration.integration.test.ts` (40 passed), and `line-account-status.integration.test.ts` (9 passed). Total isolated PostgreSQL coverage: 108 tests across four files; guards/migrations ran through the existing runner and both database lifecycles ended with successful cleanup. No real LINE operations were used.
+
+- `npm run build`: passed, including compilation, TypeScript and static-page generation. Only documentation was updated afterward.
+- All three findings have regression coverage; no server authorization/lifecycle code or schema/migration files changed. Real-device/screen-reader UAT remains unexecuted. Hosted CI for the fix-up is pending because this remediation remains local and unpushed by explicit user instruction. PR #8 was verified open and Draft, not merged.
 
 ## Verification limitations and manual device UAT
 
@@ -65,11 +80,11 @@ DOM tests cover wizard focus/control visibility, required decisions, handoff, ex
 Manual checklist (not executed by these tests):
 
 - On iOS and Android LINE WebView and an external browser, test 320/360/390px widths, Thai wrapping, zoom and absence of horizontal overflow.
-- Verify keyboard tab order, visible focus, heading focus after wizard transitions and screen-reader labels/announcements; open/close disclosures using keyboard.
+- Verify keyboard tab order, visible focus, heading focus after wizard transitions and screen-reader labels/announcements; open/close disclosures using keyboard. Opening ordinary PENDING/REMOTE_CONFIRMED panels must preserve existing focus.
 - Check contrast using computed theme colors, 48px action targets and reduced-motion settings.
 - Test link confirmation, wrong password and switching DEMI accounts on a shared device.
 - Test friend/missing-friend/menu-pending states and return navigation in LINE versus browser.
 - In an isolated test account, test unlink, pending Account/MINI removal, logout failure, changed session and expired logout proof. Never use production deauthorization for automated verification.
-- Review each required app, all decision choices and risk acknowledgement; navigate to LINE and resume in a new WebView.
+- Review each required app, all decision choices and risk acknowledgement. Before LINE handoff, go from Step 3 back to Step 2, correct a decision and confirm consent/expiry remain unchanged without another preparation request. During identity initialization the back action must be disabled; after handoff it must be absent. Navigate to LINE and resume in a new WebView.
 - Reject stale/expired/other-session handoff; recover multiple old bindings in server-selected order; verify recovery completion requires a separate ordinary link.
 - Enable/disable notifications; simulate validation failure, lost response and repeated clicks; confirm no unverified success.

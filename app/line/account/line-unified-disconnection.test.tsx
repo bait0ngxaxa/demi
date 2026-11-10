@@ -60,7 +60,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" }),
     });
     await mount(); await openConfirmation();
-    const confirm = button("ยืนยันยกเลิกการเชื่อมต่อ");
+    const confirm = button("ยืนยันยกเลิก");
     await act(async () => { confirm.click(); confirm.click(); });
     expect(calls("/api/line/account/unlink")).toBe(1);
     expect(calls("/api/line/account/sign-out")).toBe(1);
@@ -69,7 +69,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     // Sign-out carries only the UNLINK proof; the server derives User and session itself.
     expect(JSON.parse(String(fetcher.mock.calls.find(([url]) => url === "/api/line/account/sign-out")?.[1]?.body))).toEqual(intent);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
-    expect(container.textContent).toContain("DEMI MINI App: ยังไม่ยืนยันถอนสิทธิ์");
+    expect(container.textContent).toContain("DEMI MINI App");
     expect(container.textContent).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
     // The previous owner's Recovery is never offered on the way out.
     expect(container.textContent).not.toContain("ตรวจสอบเพื่อเชื่อมใหม่");
@@ -86,7 +86,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
         : Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" })),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว แต่ยังออกจากระบบ DEMI ไม่สำเร็จ");
     const retry = button("ลองออกจากระบบอีกครั้ง");
     await act(async () => { retry.click(); retry.click(); });
@@ -103,7 +103,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ status: "SIGNED_OUT", redirectTo: "https://attacker.example/login" }),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).toContain("ยังออกจากระบบ DEMI ไม่สำเร็จ");
     expect(container.querySelector('a[href^="https://attacker"]')).toBeNull();
     // No readable disconnection status: remote settlement stays unconfirmed.
@@ -117,7 +117,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_CHANGED", error: "changed" }, { status: 409 }),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว แต่บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว");
     expect(container.querySelector('a[href^="/login"]')).toBeNull();
     expect(() => button("ลองออกจากระบบอีกครั้ง")).toThrow();
@@ -131,7 +131,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" }),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(calls("/api/line/account/unlink")).toBe(1);
     expect(calls("/api/line/account/sign-out")).toBe(1);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
@@ -147,7 +147,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_ABSENT", error: "x", redirectTo: "/login?returnTo=%2Fline%2Faccount" }, { status: 401 }),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).not.toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     expect(container.textContent).not.toContain("บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว");
     expect(container.textContent).toContain("ระบบจึงยืนยันผลการยกเลิกการเชื่อมต่อ LINE ไม่ได้");
@@ -161,7 +161,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => Response.json({ code: "SESSION_ABSENT", error: "x", redirectTo: "/login?returnTo=%2Fline%2Faccount" }, { status: 401 }),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).toContain("ออกจากระบบ DEMI แล้ว กำลังไปหน้าเข้าสู่ระบบ");
   });
 
@@ -176,7 +176,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
       "/api/line/account/sign-out": async () => (attempts++ === 0 ? Response.json({ error: "x" }, { status: 503 }) : expired()),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     await act(async () => button("ลองออกจากระบบอีกครั้ง").click());
     expect(container.textContent).toContain("หลักฐานการยกเลิกครั้งนี้หมดอายุ");
     expect(container.textContent).not.toContain("บัญชีที่เข้าสู่ระบบในเครื่องนี้เปลี่ยนไปแล้ว");
@@ -194,7 +194,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
         : Response.json({ status: "SIGNED_OUT", redirectTo: "/login?returnTo=%2Fline%2Faccount" })),
     });
     await mount(); await openConfirmation();
-    await act(async () => button("ยืนยันยกเลิกการเชื่อมต่อ").click());
+    await act(async () => button("ยืนยันยกเลิก").click());
     expect(container.textContent).not.toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     expect(container.querySelector('[role="alert"]')).not.toBeNull();
     // The commit became visible later (for example a slow provider call): retry completes it.

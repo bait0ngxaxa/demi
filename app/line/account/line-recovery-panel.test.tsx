@@ -21,7 +21,7 @@ describe("Thai bounded Recovery/status UX", () => {
   it("labels confirmed removal only for actually confirmed obligations", () => {
     const selected = status("RECOVERY_REQUIRED", "REMOTE_UNCONFIRMED"); selected.obligations.push({ id: "e3333333-3333-4333-a333-333333333333", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI อีกแอป", status: "REMOTE_CONFIRMED" });
     const html = renderToStaticMarkup(<LineDisconnectionNotice status={selected} />);
-    expect(html).toContain("DEMI ทดสอบ: ยังไม่ยืนยันถอนสิทธิ์"); expect(html).toContain("DEMI อีกแอป: LINE ยืนยันถอนสิทธิ์แล้ว");
+    expect(html).toContain("<li>DEMI ทดสอบ</li>"); expect(html).toContain("DEMI อีกแอป: LINE ยืนยันถอนสิทธิ์แล้ว");
     expect(html).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
   });
   it("preserves the distinction between release and provider confirmation", () => {
@@ -32,6 +32,26 @@ describe("Thai bounded Recovery/status UX", () => {
   it("full confirmation does not conflate Rich Menu cleanup and LINE removal", () => {
     const html = renderToStaticMarkup(<LineDisconnectionNotice status={status("REMOTE_CONFIRMED", "REMOTE_CONFIRMED")} />);
     expect(html).toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว"); expect(html).not.toContain("เมนู");
+  });
+  it("groups mixed historical outcomes without treating recovery release as confirmation", () => {
+    const selected = status("RECOVERY_REQUIRED", "PENDING");
+    selected.obligations.push({ ...selected.obligations[0], id: "old", status: "RECOVERY_RELEASED_UNVERIFIED" });
+    const html = renderToStaticMarkup(<LineDisconnectionNotice status={selected} />);
+    expect(html).toContain("ยังไม่ยืนยันการถอนสิทธิ์");
+    expect(html).toContain("ผ่านการตรวจสอบเพื่อเชื่อมใหม่ แต่ยังไม่ยืนยันการถอนสิทธิ์");
+    expect(html).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
+  });
+  it("omits an empty history disclosure", () => {
+    const html = renderToStaticMarkup(<LineDisconnectionNotice status={{ state: "NONE", canRelink: true, obligations: [] }} />);
+    expect(html).not.toContain("<details"); expect(html).toContain("ยังไม่มีรายการถอนสิทธิ์ LINE");
+  });
+  it.each(["PENDING", "OBSERVED", "REMOTE_UNCONFIRMED", "REMOTE_CONFIRMED", "PROVEN_ABSENT", "RECOVERY_RELEASED_UNVERIFIED"] as const)("retains a single %s record under its descriptive group", (outcome) => {
+    const html = renderToStaticMarkup(<LineDisconnectionNotice status={status("RECOVERY_REQUIRED", outcome)} />);
+    expect(html.match(/<li>/gu)).toHaveLength(1);
+    expect(html.match(/<h3 /gu)).toHaveLength(1);
+    expect(html).toContain("DEMI ทดสอบ"); expect(html).not.toContain("<details open");
+    expect(html).not.toContain("f3333333"); expect(html).not.toContain("b0000000");
+    if (outcome !== "REMOTE_CONFIRMED") expect(html).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
   });
   it("bounds a stalled SDK initialization without authorizing anything", async () => {
     vi.useFakeTimers(); h.init.mockReturnValue(new Promise(() => undefined));

@@ -81,9 +81,21 @@ async function post(path: string, body: unknown): Promise<unknown> {
 }
 
 export function LineDisconnectionNotice({ status }: { status: LineDisconnectionStatus }): React.JSX.Element {
+  // Remote outcome groups are descriptive only; state/canRelink remain server authority.
+  const groups = [
+    { key: "unconfirmed", title: "ยังไม่ยืนยันการถอนสิทธิ์", rows: status.obligations.filter((row) => !settledStatuses.has(row.status)) },
+    { key: "settled", title: "ถอนสิทธิ์แล้วหรือไม่ต้องถอนสิทธิ์", rows: status.obligations.filter((row) => row.status === "REMOTE_CONFIRMED" || row.status === "PROVEN_ABSENT") },
+    { key: "released", title: "ผ่านการตรวจสอบเพื่อเชื่อมใหม่ แต่ยังไม่ยืนยันการถอนสิทธิ์", rows: status.obligations.filter((row) => row.status === "RECOVERY_RELEASED_UNVERIFIED") },
+  ];
   return <div className="space-y-3">
     <p className="type-readable text-ink">{statusCopy[status.state]}</p>
-    {status.obligations.length ? <details><summary className="min-h-12 cursor-pointer py-3 text-sm text-brand">รายละเอียดการถอนสิทธิ์</summary><ul className="space-y-2 text-sm text-muted">{status.obligations.map((row) => <li key={row.id}>{row.appName}: {row.status === "REMOTE_CONFIRMED" ? "LINE ยืนยันถอนสิทธิ์แล้ว" : row.status === "PROVEN_ABSENT" ? "ไม่ต้องถอนสิทธิ์" : row.status === "RECOVERY_RELEASED_UNVERIFIED" ? "ผ่านการตรวจสอบเพื่อเชื่อมใหม่ · ยังไม่ยืนยันถอนสิทธิ์" : "ยังไม่ยืนยันถอนสิทธิ์"}</li>)}</ul></details> : null}
+    {status.obligations.length ? <details>
+      <summary className="min-h-12 cursor-pointer py-3 text-sm text-brand">รายละเอียดการถอนสิทธิ์</summary>
+      <div className="space-y-4 text-sm text-muted">{groups.filter((group) => group.rows.length > 0).map((group) => <section key={group.key} aria-label={group.title}>
+        <h3 className="font-semibold text-ink">{group.title}</h3>
+        <ul className="mt-2 space-y-2">{group.rows.map((row) => <li key={row.id}>{row.appName}{row.status === "REMOTE_CONFIRMED" ? ": LINE ยืนยันถอนสิทธิ์แล้ว" : row.status === "PROVEN_ABSENT" ? ": ไม่ต้องถอนสิทธิ์" : null}</li>)}</ul>
+      </section>)}</div>
+    </details> : null}
   </div>;
 }
 
@@ -109,8 +121,17 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   const heading = useRef<HTMLHeadingElement>(null);
   const running = useRef(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [handoffStarted, setHandoffStarted] = useState(false);
   const currentStep = identityReady ? 3 : step;
-  useEffect(() => { heading.current?.focus(); }, [currentStep, prepared?.intentId]);
+  const preparedIntentId = prepared?.intentId;
+  const focusedTransition = useRef<string | null>(null);
+  useEffect(() => {
+    const transition = preparedIntentId ? `${preparedIntentId}:${currentStep}` : null;
+    if (transition !== focusedTransition.current) {
+      focusedTransition.current = transition;
+      if (transition) heading.current?.focus();
+    }
+  }, [currentStep, preparedIntentId]);
 
   function requireUnexpiredIntent(): boolean {
     if (prepared && Date.parse(prepared.expiresAt) > Date.now()) return true;
@@ -125,8 +146,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
     try {
       removeHandoff();
       const result = preparedSchema.parse(await post("/api/line/account/recovery/prepare", {}));
-      setPrepared(result); setReviews({}); setAcknowledged(false); setStep(1);
-      heading.current?.focus();
+      setPrepared(result); setReviews({}); setAcknowledged(false); setStep(1); setHandoffStarted(false);
     } catch { setError(failure); } finally { running.current = false; setBusy(false); }
   }
 
@@ -139,6 +159,8 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
       localStorage.setItem(storageKey, JSON.stringify({ ...prepared, scope: handoffScope, manualReviews: reviews, riskAcknowledged: true }));
       // Explicit recovery-only restart; no binding is created by this step.
       await initializeLineAccountLiff(liffId);
+      if (!requireUnexpiredIntent()) return;
+      setHandoffStarted(true);
       if (liff.isInClient()) {
         window.location.assign(`https://liff.line.me/${liffId}?recovery=1`);
       } else {
@@ -154,6 +176,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
     running.current = true; setBusy(true); setError("");
     try {
       await initializeLineAccountLiff(liffId);
+      if (!requireUnexpiredIntent()) return;
       const idToken = liff.getIDToken();
       if (!idToken) throw new Error();
       await post("/api/line/account/recovery", { intentId: prepared.intentId, challenge: prepared.challenge, idToken, riskAcknowledged: true, manualReviews: reviews });
@@ -163,7 +186,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   }
 
   return <section className="mt-6 space-y-4 border-t border-line pt-5" aria-labelledby="recovery-title" aria-busy={busy}>
-    <h2 id="recovery-title" ref={heading} tabIndex={-1} className="text-xl">{prepared ? currentStep === 1 ? "ตรวจสอบแอปใน LINE" : currentStep === 2 ? "ยืนยันผลการตรวจสอบ" : "ยืนยันบัญชี LINE" : "ตรวจสอบสิทธิ์ LINE"}</h2>
+    <h2 id="recovery-title" ref={heading} tabIndex={-1} className="text-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">{prepared ? currentStep === 1 ? "ตรวจสอบแอปใน LINE" : currentStep === 2 ? "ยืนยันผลการตรวจสอบ" : "ยืนยันบัญชี LINE" : "ตรวจสอบสิทธิ์ LINE"}</h2>
     <LineDisconnectionNotice status={status} />
     {status.state === "PENDING" ? <><p className="text-sm text-muted">หากยังไม่มีผล ให้ตรวจสอบสถานะอีกครั้ง แล้วดำเนินการต่อได้</p><button type="button" onClick={onReload} className={buttonClass}>ตรวจสอบสถานะอีกครั้ง</button></> : null}
     {status.state === "RECOVERY_REQUIRED" && !prepared ? <button type="button" disabled={busy} onClick={() => void begin()} className={buttonClass}>ตรวจสอบเพื่อเชื่อมใหม่</button> : null}
@@ -190,6 +213,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
       {currentStep === 3 ? <>
       <p className="type-readable text-sm text-ink">ยืนยันบัญชี LINE เดิมอีกครั้ง การตรวจสอบนี้ยังไม่เชื่อมบัญชีกับ DEMI เมื่อสำเร็จคุณต้องเลือกเชื่อมบัญชีด้วยตนเอง</p>
       <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id]) || !liffId || (!identityReady && !handoffScope)} onClick={() => void (identityReady ? complete() : verifyIdentity())}>{identityReady ? "ยืนยันผลการตรวจสอบ" : "ยืนยันตัวตนกับ LINE ใหม่"}</button>
+      {!identityReady && !handoffStarted ? <button type="button" disabled={busy} onClick={() => { if (!running.current && requireUnexpiredIntent()) setStep(2); }} className="min-h-12 w-full text-brand underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">กลับไปแก้ผลการตรวจสอบ</button> : null}
       </> : null}
       <button type="button" disabled={busy} onClick={() => void begin()} className="min-h-12 w-full text-brand underline focus-visible:outline-2">เริ่มการตรวจสอบใหม่</button>
     </> : null}

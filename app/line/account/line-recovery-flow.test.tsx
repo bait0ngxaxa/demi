@@ -68,6 +68,29 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     const appLink = render().find((control) => control.kind === "a");
     expect(appLink?.props.children).toBe("เปิดแอปที่ได้รับอนุญาตใน LINE");
   });
+  it("returns from identity step without preparing another intent or losing review consent", async () => {
+    const original = prepared();
+    h.fetch.mockResolvedValueOnce(Response.json(original));
+    await prepareAndReview();
+    click("กลับไปแก้ผลการตรวจสอบ");
+    expect(render().find((control) => control.kind === "select")?.props.value).toBe("NOT_LISTED");
+    expect(render().find((control) => control.props.children === "ดำเนินการยืนยันบัญชี")?.props.disabled).toBe(false);
+    expect(h.fetch).toHaveBeenCalledOnce(); expect(h.init).not.toHaveBeenCalled();
+    click("ดำเนินการยืนยันบัญชี"); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+    expect(JSON.parse([...h.saved.values()][0])).toMatchObject({ intentId: original.intentId, challenge: original.challenge, expiresAt: original.expiresAt, riskAcknowledged: true });
+    expect(h.fetch).toHaveBeenCalledOnce();
+  });
+  it("requires a fresh preparation when the user goes back after expiry", async () => {
+    await prepareAndReview();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 301000);
+    try {
+      click("กลับไปแก้ผลการตรวจสอบ");
+      expect(render().find((control) => control.kind === "select")).toBeUndefined();
+      expect(render().find((control) => control.props.children === "ตรวจสอบเพื่อเชื่อมใหม่")).toBeDefined();
+      expect(h.fetch).toHaveBeenCalledOnce(); expect(h.init).not.toHaveBeenCalled();
+      expect(h.saved.size).toBe(0);
+    } finally { clock.mockRestore(); }
+  });
   it("restarts an expired local intent before requesting LINE identity", async () => {
     await prepareAndReview();
     const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 301000);
