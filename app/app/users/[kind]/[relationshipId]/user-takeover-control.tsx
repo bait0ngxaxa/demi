@@ -23,7 +23,6 @@ import {
 } from "../../../workforce/scoped-mutation";
 
 const takeoverNotice = standardNotice({
-  success: "ล็อกบัญชีใน DEMI แล้ว",
   conflict: "ล็อกบัญชีนี้ไม่ได้ กรุณาตรวจสอบข้อความที่แสดง",
   forbidden: "ไม่มีสิทธิ์ล็อกบัญชีนี้",
 });
@@ -79,7 +78,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
   const formId = useId();
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const statusRef = useRef<HTMLParagraphElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
   const [submissionBaselineId, setSubmissionBaselineId] = useState(0);
   const currentSubmission = latest && latest.id > submissionBaselineId ? latest : null;
   const confirmedCurrentTakeover = currentSubmission?.status === "SUCCESS" && currentSubmission.state?.providerState === "CONFIRMED";
@@ -116,34 +115,39 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
   return (
     <div className="rounded-panel border border-border bg-surface p-5">
       {providerConfirmed ? (
-        <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
-          {latest?.state?.message ?? "ล็อกบัญชีใน DEMI แล้ว"}
-        </p>
+        <div ref={statusRef} role="status" tabIndex={-1}>
+          <Alert role="presentation" variant="success">
+            <p className="font-semibold">ระงับการใช้งานบัญชีแล้ว</p>
+            <p className="mt-1">บริการภายนอกยืนยันการระงับการเข้าใช้บัญชีนี้แล้ว</p>
+            <details className="mt-2">
+              <summary className="flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">เกี่ยวกับอุปกรณ์ที่เข้าสู่ระบบอยู่</summary>
+              <p className="mt-1">อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ แต่ DEMI จะปฏิเสธการใช้งานบัญชีที่ถูกระงับ</p>
+            </details>
+          </Alert>
+        </div>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
-          {retryMode ? "ลองยืนยันการระงับการเข้าสู่ระบบกับผู้ให้บริการอีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
+          {retryMode ? "ตรวจสอบการระงับการเข้าใช้อีกครั้ง" : "แจ้งสงสัยว่ามีผู้อื่นใช้บัญชีนี้"}
         </Button>
       )}
       {visibleDialogOpen ? (
         <ModalDialog
           description={retryMode ? (
             <>
-              บัญชี {resourceName} ถูกล็อกใน DEMI แล้ว การกดครั้งนี้จะลองส่งคำขอให้ผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมอีกครั้งเท่านั้น
-              {kind === "patient"
-                ? ` จะไม่ล็อกบัญชีซ้ำหรือเปลี่ยนข้อมูลการดูแลผู้ป่วยของ “${hospitalName}”`
-                : ` จะไม่ล็อกบัญชีหรือพักสิทธิ์การทำงานที่ “${hospitalName}” ซ้ำ`}
-              {" "}อุปกรณ์ที่มีเซสชันเดิมอาจยังแสดงว่าล็อกอินอยู่ แต่เข้าใช้ DEMI ไม่ได้
+              <p>บัญชี {resourceName} ถูกระงับใน DEMI แล้ว ครั้งนี้จะตรวจสอบการระงับการเข้าใช้กับบริการภายนอกอีกครั้งเท่านั้น</p>
+              <p className="mt-2">{kind === "patient"
+                ? `จะไม่เปลี่ยนข้อมูลการดูแลผู้ป่วยของ “${hospitalName}”`
+                : `จะไม่พักสิทธิ์การทำงานที่ “${hospitalName}” ซ้ำ`}</p>
+              <p className="mt-2">อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้านี้อาจยังแสดงว่ากำลังเข้าสู่ระบบ แต่บัญชีนี้ใช้ DEMI ไม่ได้</p>
             </>
           ) : (
             <>
-              ใช้เมื่อสงสัยว่ามีผู้อื่นลงทะเบียนหรือใช้บัญชี {resourceName}{" "}
-              {kind === "patient" ? (
-                <>ระบบจะล็อกบัญชีใน DEMI ทำให้บัญชีนี้เข้าใช้ DEMI ไม่ได้ และข้อมูลการดูแลผู้ป่วยของ “{hospitalName}” จะยังคงเดิม</>
-              ) : (
-                <>ระบบจะล็อกบัญชีใน DEMI ทำให้บัญชีนี้เข้าใช้ DEMI ไม่ได้ และพักสิทธิ์การทำงานที่ “{hospitalName}”</>
-              )}
-              {" "}ระบบจะขอให้ผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิม อุปกรณ์ที่มีเซสชันเดิมอาจยังแสดงว่าล็อกอินอยู่ แต่ระบบ DEMI จะปฏิเสธการใช้งานของบัญชีที่ถูกล็อก
-              การเชื่อม LINE ที่เกิดหลังเปิดใช้งานจะถูกยกเลิกและบันทึกประวัติไว้ การกู้คืนบัญชีต้องยืนยันตัวตนและตั้งรหัสผ่านใหม่ตามขั้นตอน
+              <p>ใช้เมื่อสงสัยว่ามีผู้อื่นใช้บัญชี {resourceName} บัญชีนี้จะเข้าใช้ DEMI ไม่ได้ทันที</p>
+              <p className="mt-2">{kind === "patient"
+                ? `ข้อมูลการดูแลผู้ป่วยของ “${hospitalName}” จะยังคงอยู่`
+                : `สิทธิ์ทำงานที่ “${hospitalName}” จะถูกพัก`}</p>
+              <p className="mt-2">ระบบจะขอให้บริการภายนอกระงับการเข้าใช้ แต่อาจยังไม่ได้รับการยืนยัน อุปกรณ์ที่เปิดบัญชีไว้ก่อนหน้าอาจยังแสดงว่ากำลังเข้าสู่ระบบ แต่ DEMI จะปฏิเสธบัญชีนี้</p>
+              <p className="mt-2">การเชื่อม LINE ที่เกิดหลังเปิดใช้งานจะถูกยกเลิกและเก็บประวัติไว้ การกู้คืนต้องยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>
             </>
           )}
           dismissible={!pending}
@@ -153,7 +157,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
                 ยกเลิก
               </Button>
               <Button className="w-full sm:w-auto" disabled={locked} form={formId} loading={pending} size="compact" type="submit" variant="danger">
-                {pending ? retryMode ? "กำลังยืนยันกับผู้ให้บริการ..." : "กำลังล็อกบัญชี..." : retryMode ? "ลองยืนยันการระงับการเข้าสู่ระบบอีกครั้ง" : "ยืนยันล็อกบัญชี"}
+                {pending ? retryMode ? "กำลังตรวจสอบ..." : "กำลังระงับบัญชี..." : retryMode ? "ตรวจสอบอีกครั้ง" : "ยืนยันระงับบัญชี"}
               </Button>
             </div>
           }
@@ -161,7 +165,7 @@ export function UserTakeoverControl({ kind, relationshipId, hospitalId, updatedA
           onRequestClose={closeDialog}
           returnFocusTarget={() => providerConfirmed ? statusRef.current : triggerRef.current ?? headingTarget()}
           size="default"
-          title={retryMode ? `ยืนยันการระงับการเข้าสู่ระบบของ ${resourceName} กับผู้ให้บริการอีกครั้ง` : `ล็อกบัญชี ${resourceName} ที่สงสัยว่ามีผู้อื่นใช้`}
+          title={retryMode ? `ตรวจสอบการระงับการเข้าสู่ระบบของ ${resourceName} อีกครั้ง` : `ระงับบัญชี ${resourceName}`}
         >
           <form action={action} id={formId} onSubmit={handleSubmit} ref={formRef}>
             <input name="kind" type="hidden" value={dialogPayload?.kind ?? kind} />

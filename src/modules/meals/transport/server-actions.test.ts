@@ -58,7 +58,7 @@ describe("Meal Server Action boundary", () => {
     const expired = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
     expect(expired).toMatchObject({
       status: "DENIED",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fwellness",
     });
 

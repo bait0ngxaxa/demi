@@ -9,7 +9,7 @@ describe("Patient appointment interaction errors", () => {
     const expired: AppointmentInteractionActionState = {
       status: "ERROR",
       code: "UNAUTHENTICATED",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fappointments",
     };
     const forbidden: AppointmentInteractionActionState = {
@@ -19,7 +19,7 @@ describe("Patient appointment interaction errors", () => {
     };
 
     const expiredHtml = renderToStaticMarkup(<PatientAppointmentActionError state={expired} />);
-    expect(expiredHtml).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expiredHtml).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expiredHtml).toContain('href="/login?returnTo=%2Fapp%2Fpersonal%2Fappointments"');
 
     const forbiddenHtml = renderToStaticMarkup(<PatientAppointmentActionError state={forbidden} />);

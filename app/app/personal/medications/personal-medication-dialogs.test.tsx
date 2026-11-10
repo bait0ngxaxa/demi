@@ -223,7 +223,7 @@ describe("personal medication focused dialogs", () => {
   });
 
   it("keeps the session expiry sign-in path after the dialog closes", async () => {
-    mocks.update.mockResolvedValue({ status: "ERROR", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login?next=%2Fapp%2Fpersonal%2Fmedications" });
+    mocks.update.mockResolvedValue({ status: "ERROR", message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login?next=%2Fapp%2Fpersonal%2Fmedications" });
     await click(button("แก้ไขชื่อยาและข้อความประกอบ"));
     await click(button("บันทึกการแก้ไข", dialog() ?? container));
     await escape();
@@ -314,7 +314,8 @@ describe("personal medication focused dialogs", () => {
     await click(button("ยืนยันหยุดติดตาม", dialog() ?? container));
 
     expect(dialog()?.hasAttribute("open")).toBe(true);
-    expect(dialog()?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog()?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(dialog()?.textContent).toContain("ดูข้อมูลล่าสุด");
     expect(button("ยืนยันหยุดติดตาม", dialog() ?? container).disabled).toBe(true);
     expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
     expect(mocks.stop).toHaveBeenCalledTimes(1);

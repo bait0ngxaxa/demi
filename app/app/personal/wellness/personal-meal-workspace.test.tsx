@@ -91,9 +91,9 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     expect(forbidden).toContain("บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้");
     expect(forbidden).not.toContain("เข้าสู่ระบบ DEMI");
 
-    simulation.state = { status: "DENIED", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
+    simulation.state = { status: "DENIED", message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
     const expired = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
-    expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expired).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expired).toContain('href="/login"');
     expect(expired).toContain("เข้าสู่ระบบ DEMI");
   });

@@ -43,7 +43,7 @@ describe("medication actions", () => {
     const expired = await create({ status: "IDLE" }, form({ medicationName: "ยา", times: "[]" }));
     expect(expired).toMatchObject({
       status: "ERROR",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fmedications",
     });
 

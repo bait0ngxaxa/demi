@@ -378,7 +378,7 @@ describe("Appointment Server Actions", () => {
     expect(expired).toMatchObject({
       status: "ERROR",
       code: "UNAUTHENTICATED",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fappointments",
     });
 
@@ -401,7 +401,7 @@ describe("Appointment Server Actions", () => {
     expect(expiredCancellation).toMatchObject({
       status: "ERROR",
       code: "UNAUTHENTICATED",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fappointments",
     });
 

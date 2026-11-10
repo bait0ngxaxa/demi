@@ -246,7 +246,7 @@ export function mapPatientProgramRoundError(error: unknown): {
     if (error.code === "UNAUTHENTICATED") {
       return {
         code: "UNAUTHENTICATED",
-        message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ก่อนบันทึกข้อมูล",
+        message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้งก่อนบันทึกข้อมูล",
       };
     }
 

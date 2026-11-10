@@ -107,7 +107,18 @@ describe("mediated password reset actions", () => {
     const result = await issueMediatedPasswordResetAction({ ...input, mode: "IN_PERSON" });
 
     expect(mocks.revoke).toHaveBeenCalledWith(actor, { resetId: "44444444-4444-4444-8444-444444444444" });
-    expect(result).toEqual({ status: "ERROR", message: expect.any(String) });
+    expect(result).toEqual({ status: "ERROR", message: "ระบบไม่สามารถส่งต่ออุปกรณ์ให้เจ้าของบัญชีได้ กรุณาลองใหม่อีกครั้ง" });
+    expect(JSON.stringify(result)).not.toContain("one-time-token");
+  });
+
+  it("reports the expiry when sign-out and reset revocation are both unconfirmed", async () => {
+    mocks.issue.mockResolvedValue(issued("IN_PERSON"));
+    mocks.signOut.mockRejectedValue(new Error("sign out failed"));
+    mocks.revoke.mockRejectedValue(new Error("revocation unconfirmed"));
+
+    const result = await issueMediatedPasswordResetAction({ ...input, mode: "IN_PERSON" });
+
+    expect(result).toEqual({ status: "ERROR", message: "ยังออกจากระบบนี้ไม่ได้ จึงยกเลิกลิงก์รีเซ็ตไม่สำเร็จ ลิงก์หมดอายุใน 15 นาที" });
     expect(JSON.stringify(result)).not.toContain("one-time-token");
   });
 
@@ -207,7 +218,7 @@ describe("authenticated password change action outcomes", () => {
     const result = await changePassword();
 
     expect(result).toMatchObject({ status: "ERROR", message: expect.stringContaining("กรุณาอย่าทำรายการซ้ำ") });
-    expect(result.message).toContain("รอผู้ดูแลระบบ DEMI ตรวจสอบ");
+    expect(result.message).toContain("หากยังเปลี่ยนไม่ได้ ให้ติดต่อผู้ดูแลระบบ DEMI");
     expect(result.message).not.toContain("ลองอีกครั้ง");
     expect(result.message).not.toMatch(sensitive);
   });

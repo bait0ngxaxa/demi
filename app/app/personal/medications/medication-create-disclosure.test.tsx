@@ -54,7 +54,7 @@ describe("medication creation disclosure interactions", () => {
   it.each([
     { status: "CONFLICT", message: "รายการเปลี่ยนแล้ว" },
     { status: "ERROR", refreshRequired: true, message: "ยังยืนยันไม่ได้" },
-    { status: "ERROR", loginHref: "/login", message: "เซสชันหมดอายุ" },
+    { status: "ERROR", loginHref: "/login", message: "หมดเวลาเข้าสู่ระบบ" },
     { status: "ERROR", message: "บัญชีนี้ไม่สามารถเข้าถึงรายการได้" },
   ] satisfies PersonalMedicationActionState[])("keeps pending and review-required $message visible without retry", async (result) => {
     let resolve: (value: PersonalMedicationActionState) => void = () => undefined;

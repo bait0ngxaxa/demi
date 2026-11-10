@@ -90,7 +90,7 @@ describe("UserDetailPage provider reconciliation warning", () => {
     });
     const markup = renderToStaticMarkup(page);
 
-    expect(markup).toContain("บัญชีถูกล็อกใน DEMI แล้ว แต่ยังยืนยันไม่ได้ว่าผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมแล้ว");
+    expect(markup).toContain("ยังยืนยันการระงับการเข้าใช้กับบริการภายนอกไม่ได้");
     expect(markup).not.toContain("ออกจากระบบทุกอุปกรณ์");
   });
 });

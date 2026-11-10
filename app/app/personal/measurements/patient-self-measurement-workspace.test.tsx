@@ -231,7 +231,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
 
     expect(records.size).toBe(1);
     expect(disclosure().open).toBe(true);
-    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลของรายการ");
     expect(mocks.create).toHaveBeenCalledTimes(1);
     act(() => query<HTMLElement>("summary").click());
     expect(disclosure().open).toBe(true);
@@ -343,7 +343,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
 
     expect(mocks.create).toHaveBeenCalledTimes(2);
     expect(container.querySelector('[role="status"]')).toBeNull();
-    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบผลของรายการ");
     const originalPayload = mocks.create.mock.calls[1]?.[1];
     expect(originalPayload?.get("submissionNonce")).toBe(secondNonce);
     expect(originalPayload?.get("weight")).toBe("70");
@@ -450,7 +450,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
   it("renders session expiry with sign-in and keeps forbidden access copy", async () => {
     mocks.create.mockResolvedValueOnce({
       status: "ERROR",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       recovery: "CRITICAL",
       loginHref: "/login",
     });
@@ -459,7 +459,7 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
 
     await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
     expect(disclosure().open).toBe(true);
-    expect(query('[role="alert"]').textContent).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(query('[role="alert"]').textContent).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(query<HTMLAnchorElement>('[role="alert"] a').getAttribute("href")).toBe("/login");
     act(() => query<HTMLElement>("summary").click());
     expect(disclosure().open).toBe(true);
