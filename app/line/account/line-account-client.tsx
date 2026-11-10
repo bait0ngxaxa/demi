@@ -467,7 +467,7 @@ export function LineAccountScreen({
                 </div>
               ) : (
                 <>
-                  <h2 id="line-account-status" tabIndex={-1} className="text-xl">บัญชี LINE</h2>
+                  <h2 id="line-account-status" tabIndex={-1} className="text-xl">{accountStatus === "UNLINKED" ? relinkEligibility === "BLOCKED" ? "ตรวจสอบ LINE ก่อนเชื่อมใหม่" : "ยังไม่ได้เชื่อม LINE" : "บัญชี LINE"}</h2>
                   <p className="mt-2 text-base text-muted" aria-live="polite">
                     {accountStatus === "UNAUTHENTICATED" && "กรุณาเข้าสู่ระบบ DEMI เพื่อยืนยันว่าคุณเป็นเจ้าของบัญชี ก่อนเชื่อม LINE"}
                     {accountStatus === "UNLINKED" && "ยังไม่ได้เชื่อมบัญชี LINE กับ DEMI"}
@@ -611,11 +611,12 @@ export function LineAccountScreen({
             {reachabilityBusy ? <p>กำลังตรวจสอบสถานะ LINE และเมนู…</p> : null}
             {friendshipWarning ? <p>{statusCheckMessage || "ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง"} คุณยังใช้ DEMI ผ่านเว็บได้</p> : null}
             {statusRetryAfter > 0 ? <p>กรุณารอประมาณ {statusRetryAfter} วินาทีก่อนตรวจสอบอีกครั้ง</p> : null}
+            {menuCheckComplete && !menuReady ? <details><summary className="min-h-12 cursor-pointer py-3">รายละเอียดการตรวจสอบ</summary>
             {menuCheckPending && !reachabilityBusy ? <p>ระบบยังตรวจสอบเมนูไม่เสร็จ กรุณารอสักครู่แล้วลองอีกครั้ง</p> : null}
             {menuCheckComplete && !menuCheckPending && !menuReady && !friendshipWarning && !reachabilityBusy ? <p>ตรวจสอบแล้ว ยังไม่ยืนยันความพร้อมใช้งาน LINE คุณตรวจสอบอีกครั้งภายหลังหรือใช้เว็บได้</p> : null}
+            </details> : null}
             {menuPending ? (
               <>
-                <p>ตรวจสอบอีกครั้งเพื่อดูสถานะล่าสุด หรือใช้งานผ่านเว็บได้</p>
                 {canRefreshReachability ? (
                   <button type="button" onClick={onRefreshReachability} disabled={statusCheckDisabled} aria-busy={reachabilityBusy} className={secondaryButtonClass}>
                     {reachabilityBusy ? "กำลังตรวจสอบ…" : "ตรวจสอบสถานะเมนูอีกครั้ง"}

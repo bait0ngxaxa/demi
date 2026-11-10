@@ -57,6 +57,35 @@ describe("explicit appointment notification consent", () => {
     expect(container.textContent).toContain("ปิดการแจ้งเตือนแล้ว");
   });
 
+  it("keeps secondary privacy explanations collapsed and avoids duplicate announcements", async () => {
+    await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: true }} />));
+    const details = container.querySelector("details");
+    expect(details?.open).toBe(false);
+    expect(details?.querySelector("summary")?.textContent).toBe("รายละเอียดการแจ้งเตือน");
+    expect(details?.textContent).toContain("ไม่รับประกัน");
+    expect(container.querySelectorAll('[aria-live="polite"]').length).toBe(0);
+  });
+
+  it("blocks repeated submissions while a save is pending", async () => {
+    let finish: ((value: { status: "SUCCESS"; enabled: boolean; canEnable: boolean }) => void) | undefined;
+    mocks.save.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: true }} />));
+    await act(async () => container.querySelector("button")?.click());
+    expect(container.querySelector("button")?.disabled).toBe(true);
+    await act(async () => container.querySelector("button")?.click());
+    expect(mocks.save).toHaveBeenCalledOnce();
+    await act(async () => finish?.({ status: "SUCCESS", enabled: true, canEnable: true }));
+  });
+
+  it("does not claim success or allow a resend after an unknown outcome", async () => {
+    mocks.save.mockRejectedValue(new Error("connection lost"));
+    await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: true }} />));
+    await act(async () => container.querySelector("button")?.click());
+    expect(container.textContent).not.toContain("เปิดการแจ้งเตือนแล้ว");
+    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('button[type="submit"]')?.getAttribute("disabled")).not.toBeNull();
+  });
+
   it("does not allow enabling without an eligible binding", async () => {
     await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: false }} />));
     expect(container.querySelector("button")?.disabled).toBe(true);

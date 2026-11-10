@@ -110,7 +110,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   const running = useRef(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const currentStep = identityReady ? 3 : step;
-  useEffect(() => { heading.current?.focus(); }, [currentStep, prepared]);
+  useEffect(() => { heading.current?.focus(); }, [currentStep, prepared?.intentId]);
 
   function requireUnexpiredIntent(): boolean {
     if (prepared && Date.parse(prepared.expiresAt) > Date.now()) return true;
@@ -185,7 +185,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
       <p className="type-readable text-sm text-ink">ขั้นต่อไปจะยืนยันบัญชี LINE เดิมอีกครั้ง และอาจขอสิทธิ์ LINE ใหม่ การยืนยันนี้ยังไม่เชื่อมบัญชี DEMI</p>
       <label className="flex items-start gap-3 text-sm text-ink"><input className="mt-1 size-5 shrink-0 accent-brand" type="checkbox" checked={acknowledged} disabled={busy || identityReady} onChange={(event) => setAcknowledged(event.target.checked)} /><span>ฉันยอมรับว่าคำขอถอนสิทธิ์เดิมอาจเสร็จภายหลัง และทำให้การเชื่อมต่อ LINE ใหม่หยุดชั่วคราว หากเกิดขึ้น ฉันจะยืนยันตัวตนและเชื่อมใหม่ด้วยตนเอง</span></label>
       <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id])} onClick={() => setStep(3)}>ดำเนินการยืนยันบัญชี</button>
-      <button type="button" className={buttonClass} disabled={busy} onClick={() => setStep(1)}>กลับไปตรวจสอบแอป</button>
+      <button type="button" className="min-h-12 w-full text-brand underline focus-visible:outline-2" disabled={busy} onClick={() => setStep(1)}>กลับไปตรวจสอบแอป</button>
       </> : null}
       {currentStep === 3 ? <>
       <p className="type-readable text-sm text-ink">ยืนยันบัญชี LINE เดิมอีกครั้ง การตรวจสอบนี้ยังไม่เชื่อมบัญชีกับ DEMI เมื่อสำเร็จคุณต้องเลือกเชื่อมบัญชีด้วยตนเอง</p>

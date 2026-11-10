@@ -94,7 +94,7 @@ describe("LINE account user experience", () => {
     expect(markup).toContain("เข้าสู่ระบบ LINE เพื่อระบุบัญชี LINE");
     expect(markup).toContain("คุณยังต้องยืนยันการเชื่อมด้วยตนเอง");
     expect(markup).toContain('href="/app"');
-    expect(markup).not.toContain("รับแจ้งเตือนนัดหมายผ่าน LINE");
+    expect(markup).not.toContain("แจ้งเตือนนัดหมายผ่าน LINE");
   });
 
   it("keeps privacy-safe conflicts actionable without claiming a binding", () => {
@@ -208,10 +208,10 @@ describe("LINE account user experience", () => {
       notificationPreference: { enabled: false, canEnable: true },
     });
 
-    expect(markup).toContain("รับแจ้งเตือนนัดหมายผ่าน LINE");
+    expect(markup).toContain("แจ้งเตือนนัดหมายผ่าน LINE");
     expect(markup).toContain("ใช้แจ้งเมื่อมีการสร้าง เปลี่ยนแปลง หรือยกเลิกนัดหมายของคุณ หรือของผู้ป่วยที่คุณดูแลหรือได้รับสิทธิ์ดูนัด ข้อความระบุเฉพาะประเภทนัด ไม่มีข้อมูลระบุตัวผู้ป่วยหรือรายละเอียดสุขภาพ");
     expect(markup).toContain("สถานะ: ปิด");
-    expect(markup).toContain("มีนัดหมายประเภท ติดตาม / ประเมิน / ให้ความรู้ อัปเดตแล้ว กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(markup).toContain("รายละเอียดการแจ้งเตือน");
     expect(markup).toContain(">เปิดการแจ้งเตือน</button>");
     expect(markup).toContain("ไม่รับประกันว่าข้อความจะถึงหรือแสดงบนอุปกรณ์");
   });
