@@ -33,7 +33,7 @@ async function mount(): Promise<void> {
 }
 async function openConfirmation(): Promise<void> {
   await act(async () => button("ยกเลิกการเชื่อมต่อ LINE").click());
-  expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อบัญชี LINE?");
+  expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE?");
 }
 function route(responses: Partial<Record<string, () => Promise<Response>>>): void {
   fetcher.mockImplementation(async (url) => {

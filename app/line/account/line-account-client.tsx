@@ -233,6 +233,18 @@ type LineAccountScreenProps = {
   workspaceLiffUrl?: string | null;
 };
 
+export function selectLineReadinessMessage(input: { friendshipWarning: boolean; notFriend: boolean; menuReady: boolean; menuPending: boolean; menuState: InitialStatus["menuState"]; menuCheckPending: boolean }): string {
+  return input.friendshipWarning ? "ยังยืนยันสถานะ LINE ปัจจุบันไม่ได้" : input.notFriend
+    ? "เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน"
+    : input.menuReady
+      ? "พร้อมใช้งานผ่าน LINE แล้ว"
+      : input.menuPending
+        ? input.menuState === "UNKNOWN" || input.menuState === null || input.menuCheckPending
+          ? "เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE"
+          : "เชื่อมบัญชีแล้ว แต่เมนู LINE ยังไม่พร้อมใช้งาน"
+        : "เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้";
+}
+
 export function LineAccountScreen({
   workspaceLiffUrl = null,
   lifecycleReadiness,
@@ -294,15 +306,7 @@ export function LineAccountScreen({
     (initial.reachability === "UNKNOWN" || initial.reachability === "NOT_FRIEND" || initial.reachability === null);
 
   const menuPending = accountStatus === "LINKED" && initial.reachability === "FRIEND" && !menuReady;
-  const readinessMessage = friendshipWarning ? "ยังยืนยันสถานะ LINE ปัจจุบันไม่ได้" : notFriend
-    ? "เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน"
-    : menuReady
-      ? "พร้อมใช้งานผ่าน LINE แล้ว"
-      : menuPending
-        ? initial.menuState === "UNKNOWN" || initial.menuState === null || menuCheckPending
-          ? "เชื่อมบัญชีแล้ว กำลังตรวจสอบเมนู LINE"
-          : "เชื่อมบัญชีแล้ว แต่เมนู LINE ยังไม่พร้อมใช้งาน"
-        : "เชื่อมบัญชีแล้ว แต่ยังยืนยันสถานะ LINE ไม่ได้";
+  const readinessMessage = selectLineReadinessMessage({ friendshipWarning, notFriend, menuReady, menuPending, menuState: initial.menuState, menuCheckPending });
 
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
@@ -314,12 +318,7 @@ export function LineAccountScreen({
           </LineWorkspaceLink>
           <h1 className="mt-5 text-3xl">บัญชี LINE</h1>
           <p className="type-readable mt-3 text-base text-muted">จัดการการเชื่อมต่อระหว่าง LINE กับบัญชี DEMI ที่คุณลงชื่อเข้าใช้</p>
-          <ol aria-label="ขั้นตอนใช้งานผ่าน LINE" className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm leading-6 text-muted">
-            <li aria-current={accountStatus === "UNAUTHENTICATED" ? "step" : undefined}>1. เข้าสู่ระบบ DEMI</li>
-            <li aria-current={accountStatus === "UNLINKED" ? "step" : undefined}>2. ยืนยันเชื่อม LINE</li>
-            <li aria-current={notFriend ? "step" : undefined}>3. เพิ่มเพื่อน</li>
-            <li aria-current={menuReady ? "step" : undefined}>4. พร้อมใช้งาน</li>
-          </ol>
+
         </header>
 
         <section className="rounded-panel border border-line bg-surface p-5 shadow-surface sm:p-7" aria-labelledby="line-account-status">
@@ -350,7 +349,7 @@ export function LineAccountScreen({
                 </>
               ) : (
                 <>
-                  <p className="text-base text-ink">บัญชี LINE นี้ไม่ได้เชื่อมกับบัญชี DEMI แล้ว</p>
+                  <p className="text-base text-ink">LINE ไม่สามารถใช้เข้าถึง DEMI ผ่านการเชื่อมต่อเดิมได้อีก ข้อมูลของคุณยังอยู่ครบ</p>
                   {unlinkDisconnection ? <LineDisconnectionNotice status={unlinkDisconnection} /> : (
                     <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-warning">
                       หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ขณะนี้ยังยืนยันการถอนสิทธิ์จาก LINE ไม่ได้
@@ -410,28 +409,10 @@ export function LineAccountScreen({
                         <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
                         <path d="m7.5 12.5 3 3 6-7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
                       </svg>
-                      {friendshipWarning ? "สถานะล่าสุดที่ตรวจสอบได้" : "เชื่อมต่อแล้ว"}
+                      {friendshipWarning ? "สถานะล่าสุดที่ตรวจสอบได้" : "เชื่อมต่อ LINE แล้ว"}
                     </h2>
-                    <p className="mt-2 text-base text-ink">{friendshipWarning ? "ข้อมูลก่อนตรวจสอบครั้งนี้: บัญชี LINE เชื่อมกับ DEMI" : "บัญชี LINE ของคุณเชื่อมกับ DEMI แล้ว"}</p>
+                    <p className="mt-2 text-base text-ink">{accountStatus === "INELIGIBLE" ? "บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้" : readinessMessage}</p>
                   </div>
-                  {accountStatus === "INELIGIBLE" ? (
-                    <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
-                      บัญชี DEMI นี้ยังไม่มีเมนู LINE ให้ใช้งานในขณะนี้
-                    </p>
-                  ) : menuReady ? (
-                    <p className="rounded-control bg-success-soft px-4 py-3 text-base font-semibold text-success">
-                      พร้อมใช้งานผ่าน LINE แล้ว
-                    </p>
-                  ) : notFriend ? (
-                    <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-ink">
-                      เชื่อมบัญชีสำเร็จแล้ว แต่ยังต้องเพิ่ม DEMI เป็นเพื่อน
-                    </p>
-                  ) : (
-                    <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-muted">
-                      {readinessMessage}
-                    </p>
-                  )}
-
                   {notFriend && friendshipSupported && liffState === "READY" ? (
                     <button type="button" disabled={statusCheckDisabled} onClick={onRequestFriendship} className={primaryButtonClass}>
                       {friendshipBusy ? "กำลังเปิดหน้าเพิ่มเพื่อน..." : "เพิ่ม DEMI เป็นเพื่อน"}
@@ -568,8 +549,8 @@ export function LineAccountScreen({
 
               {view === "LINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-line bg-surface-muted p-4" aria-labelledby="link-confirm-title">
-                  <h3 id="link-confirm-title" tabIndex={-1} className="text-lg">ตรวจสอบบัญชีก่อนเชื่อม LINE</h3>
-                  <p className="mt-2 text-sm text-muted">คุณกำลังเชื่อม LINE ที่ใช้อยู่กับบัญชี DEMI ที่เข้าสู่ระบบในเบราว์เซอร์นี้ กรุณายืนยันว่าเป็นบัญชีที่ต้องการเชื่อมด้วยรหัสผ่านของบัญชีนั้น</p>
+                  <h3 id="link-confirm-title" tabIndex={-1} className="text-lg">ยืนยันการเชื่อมบัญชี</h3>
+                  <p className="mt-2 text-sm text-muted">กรุณายืนยันรหัสผ่าน DEMI เพื่อเชื่อมกับบัญชี LINE นี้</p>
                   <p className="mt-2 text-sm text-muted">หากใช้เครื่องร่วมกับผู้อื่นหรือไม่แน่ใจ ให้เลือกใช้บัญชี DEMI อื่น การออกจากระบบจะยกเลิกการยืนยันครั้งนี้</p>
                   <label htmlFor="line-link-current-password" className="mt-4 grid gap-1 text-sm font-medium text-ink">
                     รหัสผ่านบัญชี DEMI ปัจจุบัน
@@ -601,11 +582,11 @@ export function LineAccountScreen({
 
               {view === "UNLINK_CONFIRM" ? (
                 <div className="mt-6 rounded-control border border-danger/40 bg-danger-soft p-4" aria-labelledby="unlink-confirm-title">
-                  <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อบัญชี LINE?</h3>
+                  <h3 id="unlink-confirm-title" className="text-base">ยกเลิกการเชื่อมต่อ LINE?</h3>
                   <p className="mt-2 text-sm text-ink">{lifecycleReadiness.state === "READY"
                     ? "การเชื่อมต่อ LINE กับ DEMI จะหยุดทันที และระบบจะเริ่มดำเนินการถอนสิทธิ์ LINE ที่เกี่ยวข้อง บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ หาก LINE ยังไม่ยืนยันผล คุณตรวจสอบเพื่อเชื่อมใหม่ได้"
                     : "การเชื่อมต่อเดิมจะหยุดและไม่สามารถใช้เข้าถึง DEMI ได้ทันที บัญชี DEMI และข้อมูลผู้ป่วยยังอยู่ครบ ขณะนี้ระบบตรวจสอบหรือยืนยันการถอนสิทธิ์จาก LINE ไม่ได้"}</p>
-                  <p className="mt-2 text-sm font-semibold text-ink">จากนั้นระบบจะออกจากบัญชี DEMI นี้ และพาไปหน้าเข้าสู่ระบบ</p>
+                  <p className="mt-2 text-sm font-semibold text-ink">หลังยืนยัน ระบบจะออกจากบัญชี DEMI ของคุณ ข้อมูลเดิมจะไม่ถูกลบ</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
                     <button ref={confirmationRef} type="button" disabled={busy} onClick={onConfirmUnlink} className="min-h-12 rounded-control bg-danger px-4 py-3 font-semibold text-white disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">ยืนยันยกเลิกการเชื่อมต่อ</button>
                     <button type="button" disabled={busy} onClick={onCancel} className={secondaryButtonClass}>กลับ</button>
@@ -626,8 +607,7 @@ export function LineAccountScreen({
         </section>
 
         {accountStatus === "LINKED" && view !== "BUSY" ? (
-          <div className="mt-5 space-y-3 text-sm leading-6 text-muted" role="status" aria-live="polite">
-            <p>เมนูที่ใช้งานได้ขึ้นอยู่กับบทบาทและสิทธิ์ปัจจุบันใน DEMI การเชื่อมบัญชีไม่ได้เพิ่มสิทธิ์ให้คุณ</p>
+          <div className="mt-5 space-y-3 text-sm leading-6 text-muted">
             {reachabilityBusy ? <p>กำลังตรวจสอบสถานะ LINE และเมนู…</p> : null}
             {friendshipWarning ? <p>{statusCheckMessage || "ยังตรวจสอบสถานะ LINE ไม่สำเร็จ กรุณาลองใหม่ภายหลัง"} คุณยังใช้ DEMI ผ่านเว็บได้</p> : null}
             {statusRetryAfter > 0 ? <p>กรุณารอประมาณ {statusRetryAfter} วินาทีก่อนตรวจสอบอีกครั้ง</p> : null}
@@ -662,7 +642,7 @@ export function LineAccountScreen({
 
         {notificationPreference ? <AppointmentNotificationPreference key={preferenceUiGeneration} initial={notificationPreference} /> : null}
 
-        <p className="type-readable mt-5 text-sm text-muted">DEMI ใช้การยืนยันบัญชี LINE เพื่อเชื่อมบัญชีเท่านั้น การเชื่อมนี้ไม่เปลี่ยนสิทธิ์หรือพื้นที่ใช้งานใน DEMI</p>
+        <details className="mt-5 text-sm text-muted"><summary className="min-h-12 cursor-pointer py-3">รายละเอียดเพิ่มเติม</summary><p className="type-readable">DEMI ใช้การยืนยันบัญชี LINE เพื่อเชื่อมบัญชีเท่านั้น การเชื่อมนี้ไม่เปลี่ยนสิทธิ์หรือพื้นที่ใช้งานใน DEMI</p></details>
       </div>
     </main>
   );
