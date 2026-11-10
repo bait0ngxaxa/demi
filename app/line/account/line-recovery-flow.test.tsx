@@ -42,9 +42,11 @@ function click(label: string): void {
 async function settle(): Promise<void> { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 async function prepareAndReview(): Promise<void> {
   click("ตรวจสอบเพื่อเชื่อมใหม่"); await settle();
+  click("ตรวจสอบแล้ว ดำเนินการต่อ");
   const selected = render().find((control) => control.kind === "select");
   selected?.props.onChange?.({ target: { value: "NOT_LISTED" } });
   render().find((control) => control.kind === "input")?.props.onChange?.({ target: { checked: true } });
+  click("ดำเนินการยืนยันบัญชี");
 }
 describe("Recovery-only LIFF interaction and transient proof transport", () => {
   beforeEach(() => {
@@ -59,10 +61,22 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
   afterEach(() => vi.unstubAllGlobals());
   it("requires complete reviews/risk decision before requesting fresh proof, without authorizing unused MINI", async () => {
     click("ตรวจสอบเพื่อเชื่อมใหม่"); await settle();
-    expect(render().find((control) => control.props.children === "ยืนยันตัวตนกับ LINE ใหม่")?.props.disabled).toBe(true);
+    click("ตรวจสอบแล้ว ดำเนินการต่อ");
+    expect(render().find((control) => control.props.children === "ดำเนินการยืนยันบัญชี")?.props.disabled).toBe(true);
     expect(h.init).not.toHaveBeenCalled(); expect(h.login).not.toHaveBeenCalled();
+    click("กลับไปตรวจสอบแอป");
     const appLink = render().find((control) => control.kind === "a");
     expect(appLink?.props.children).toBe("เปิดแอปที่ได้รับอนุญาตใน LINE");
+  });
+  it("restarts an expired local intent before requesting LINE identity", async () => {
+    await prepareAndReview();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 301000);
+    try {
+      click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();
+      expect(h.init).not.toHaveBeenCalled();
+      expect(h.saved.size).toBe(0);
+      expect(render().find((control) => control.props.children === "ตรวจสอบเพื่อเชื่อมใหม่")).toBeDefined();
+    } finally { clock.mockRestore(); }
   });
   it("restarts Account login only after acknowledgement; stores intent decisions, never tokens", async () => {
     await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();

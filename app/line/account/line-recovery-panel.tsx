@@ -81,9 +81,9 @@ async function post(path: string, body: unknown): Promise<unknown> {
 }
 
 export function LineDisconnectionNotice({ status }: { status: LineDisconnectionStatus }): React.JSX.Element {
-  return <div className="space-y-3" role="status" aria-live="polite">
+  return <div className="space-y-3">
     <p className="type-readable text-ink">{statusCopy[status.state]}</p>
-    {status.obligations.length ? <ul className="space-y-2 text-sm text-muted">{status.obligations.map((row) => <li key={row.id}>{row.appName}: {row.status === "REMOTE_CONFIRMED" ? "LINE ยืนยันถอนสิทธิ์แล้ว" : row.status === "PROVEN_ABSENT" ? "ไม่ต้องถอนสิทธิ์" : row.status === "RECOVERY_RELEASED_UNVERIFIED" ? "ผ่านการตรวจสอบเพื่อเชื่อมใหม่ · ยังไม่ยืนยันถอนสิทธิ์" : "ยังไม่ยืนยันถอนสิทธิ์"}</li>)}</ul> : null}
+    {status.obligations.length ? <details><summary className="min-h-12 cursor-pointer py-3 text-sm text-brand">รายละเอียดการถอนสิทธิ์</summary><ul className="space-y-2 text-sm text-muted">{status.obligations.map((row) => <li key={row.id}>{row.appName}: {row.status === "REMOTE_CONFIRMED" ? "LINE ยืนยันถอนสิทธิ์แล้ว" : row.status === "PROVEN_ABSENT" ? "ไม่ต้องถอนสิทธิ์" : row.status === "RECOVERY_RELEASED_UNVERIFIED" ? "ผ่านการตรวจสอบเพื่อเชื่อมใหม่ · ยังไม่ยืนยันถอนสิทธิ์" : "ยังไม่ยืนยันถอนสิทธิ์"}</li>)}</ul></details> : null}
   </div>;
 }
 
@@ -108,6 +108,16 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   const [error, setError] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   const running = useRef(false);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const currentStep = identityReady ? 3 : step;
+  useEffect(() => { heading.current?.focus(); }, [currentStep, prepared]);
+
+  function requireUnexpiredIntent(): boolean {
+    if (prepared && Date.parse(prepared.expiresAt) > Date.now()) return true;
+    removeHandoff(); setPrepared(null); setStep(1);
+    setError("การตรวจสอบหมดอายุ กรุณาเริ่มการตรวจสอบใหม่");
+    return false;
+  }
 
   async function begin(): Promise<void> {
     if (running.current) return;
@@ -115,7 +125,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
     try {
       removeHandoff();
       const result = preparedSchema.parse(await post("/api/line/account/recovery/prepare", {}));
-      setPrepared(result); setReviews({}); setAcknowledged(false);
+      setPrepared(result); setReviews({}); setAcknowledged(false); setStep(1);
       heading.current?.focus();
     } catch { setError(failure); } finally { running.current = false; setBusy(false); }
   }
@@ -123,6 +133,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   async function verifyIdentity(): Promise<void> {
     if (!prepared || !acknowledged || !liffId || !publicOrigin || !handoffScope || running.current) return;
     if (!prepared.reviews.every((row) => reviews[row.id])) return;
+    if (!requireUnexpiredIntent()) return;
     running.current = true; setBusy(true); setError("");
     try {
       localStorage.setItem(storageKey, JSON.stringify({ ...prepared, scope: handoffScope, manualReviews: reviews, riskAcknowledged: true }));
@@ -139,6 +150,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
 
   async function complete(): Promise<void> {
     if (!prepared || !acknowledged || !liffId || running.current) return;
+    if (!requireUnexpiredIntent()) return;
     running.current = true; setBusy(true); setError("");
     try {
       await initializeLineAccountLiff(liffId);
@@ -151,13 +163,19 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   }
 
   return <section className="mt-6 space-y-4 border-t border-line pt-5" aria-labelledby="recovery-title" aria-busy={busy}>
-    <h2 id="recovery-title" ref={heading} tabIndex={-1} className="text-xl">ตรวจสอบสิทธิ์ LINE</h2>
+    <h2 id="recovery-title" ref={heading} tabIndex={-1} className="text-xl">{prepared ? currentStep === 1 ? "ตรวจสอบแอปใน LINE" : currentStep === 2 ? "ยืนยันผลการตรวจสอบ" : "ยืนยันบัญชี LINE" : "ตรวจสอบสิทธิ์ LINE"}</h2>
     <LineDisconnectionNotice status={status} />
     {status.state === "PENDING" ? <><p className="text-sm text-muted">หากยังไม่มีผล ให้ตรวจสอบสถานะอีกครั้ง แล้วดำเนินการต่อได้</p><button type="button" onClick={onReload} className={buttonClass}>ตรวจสอบสถานะอีกครั้ง</button></> : null}
     {status.state === "RECOVERY_REQUIRED" && !prepared ? <button type="button" disabled={busy} onClick={() => void begin()} className={buttonClass}>ตรวจสอบเพื่อเชื่อมใหม่</button> : null}
     {prepared ? <>
+      <p className="text-sm text-muted">ขั้นตอน {currentStep} จาก 3</p>
+      {currentStep === 1 ? <>
       <p className="type-readable text-sm text-ink">เปิด LINE → ตั้งค่า → บัญชี → แอปที่ได้รับอนุญาต ตรวจสอบแอปด้านล่างและถอนสิทธิ์หากมี ไม่ต้องเปิดหรืออนุญาตแอปที่ไม่เคยใช้</p>
+      <ul className="space-y-2 text-sm">{prepared.reviews.map((row) => <li key={row.id}>{row.appName}</li>)}</ul>
       <a className="inline-flex min-h-12 items-center text-brand underline focus-visible:outline-2" href="https://line.me/R/nv/connectedApps" target="_blank" rel="noreferrer">เปิดแอปที่ได้รับอนุญาตใน LINE</a>
+      <button type="button" className={buttonClass} disabled={busy} onClick={() => setStep(2)}>ตรวจสอบแล้ว ดำเนินการต่อ</button>
+      </> : null}
+      {currentStep === 2 ? <>
       {prepared.reviews.map((row) => <label className="block space-y-2" key={row.id}>
         <span className="font-semibold">{row.appName}</span>
         <select value={reviews[row.id] ?? ""} disabled={busy || identityReady} onChange={(event) => { const value = reviewSchema.safeParse(event.target.value); if (value.success) setReviews((current) => ({ ...current, [row.id]: value.data })); }} className="min-h-12 w-full rounded-control border border-line-strong bg-surface px-3 text-ink focus-visible:outline-2 focus-visible:outline-focus-ring">
@@ -166,7 +184,13 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
       </label>)}
       <p className="type-readable text-sm text-ink">ขั้นต่อไปจะยืนยันบัญชี LINE เดิมอีกครั้ง และอาจขอสิทธิ์ LINE ใหม่ การยืนยันนี้ยังไม่เชื่อมบัญชี DEMI</p>
       <label className="flex items-start gap-3 text-sm text-ink"><input className="mt-1 size-5 shrink-0 accent-brand" type="checkbox" checked={acknowledged} disabled={busy || identityReady} onChange={(event) => setAcknowledged(event.target.checked)} /><span>ฉันยอมรับว่าคำขอถอนสิทธิ์เดิมอาจเสร็จภายหลัง และทำให้การเชื่อมต่อ LINE ใหม่หยุดชั่วคราว หากเกิดขึ้น ฉันจะยืนยันตัวตนและเชื่อมใหม่ด้วยตนเอง</span></label>
+      <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id])} onClick={() => setStep(3)}>ดำเนินการยืนยันบัญชี</button>
+      <button type="button" className={buttonClass} disabled={busy} onClick={() => setStep(1)}>กลับไปตรวจสอบแอป</button>
+      </> : null}
+      {currentStep === 3 ? <>
+      <p className="type-readable text-sm text-ink">ยืนยันบัญชี LINE เดิมอีกครั้ง การตรวจสอบนี้ยังไม่เชื่อมบัญชีกับ DEMI เมื่อสำเร็จคุณต้องเลือกเชื่อมบัญชีด้วยตนเอง</p>
       <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id]) || !liffId || (!identityReady && !handoffScope)} onClick={() => void (identityReady ? complete() : verifyIdentity())}>{identityReady ? "ยืนยันผลการตรวจสอบ" : "ยืนยันตัวตนกับ LINE ใหม่"}</button>
+      </> : null}
       <button type="button" disabled={busy} onClick={() => void begin()} className="min-h-12 w-full text-brand underline focus-visible:outline-2">เริ่มการตรวจสอบใหม่</button>
     </> : null}
     {busy ? <p role="status" className="text-sm text-muted">กำลังตรวจสอบ…</p> : null}

@@ -12,7 +12,7 @@ describe("Thai bounded Recovery/status UX", () => {
     const html = renderToStaticMarkup(<LineRecoveryPanel status={status("RECOVERY_REQUIRED", "REMOTE_UNCONFIRMED")} liffId="1234567890-test" publicOrigin="https://demi.example.org" onReload={() => undefined} />);
     expect(html).toContain("หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว"); expect(html).toContain("ยังยืนยันการถอนสิทธิ์ LINE ไม่ได้");
     expect(html).toContain("ตรวจสอบเพื่อเชื่อมใหม่"); expect(html).not.toContain("LINE ยืนยันถอนสิทธิ์แล้ว");
-    expect(html).toContain('aria-live="polite"'); expect(html).toContain('aria-busy="false"');
+    expect(html).toContain('<details>'); expect(html).toContain('aria-busy="false"');
   });
   it("pending status has an explicit refresh and no permanent spinner", () => {
     const html = renderToStaticMarkup(<LineRecoveryPanel status={status("PENDING", "REMOTE_UNCONFIRMED")} liffId={null} publicOrigin="" onReload={() => undefined} />);
