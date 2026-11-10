@@ -176,7 +176,7 @@ describe("mobile LINE onboarding continuity interactions", () => {
     h.switchAccount.mockResolvedValue({ status: "ERROR", message: "ทดสอบการออกจากระบบ" });
     await mount({ ...linked, status: "UNLINKED", canUnlink: false, reachability: null, menuState: null });
     await act(async () => button("เชื่อมบัญชี LINE นี้").click());
-    expect(container.textContent).toContain("ตรวจสอบบัญชีก่อนเชื่อม LINE");
+    expect(container.textContent).toContain("ยืนยันการเชื่อมบัญชี");
     expect(document.activeElement?.id).toBe("link-confirm-title");
     expect(container.textContent).toContain("การออกจากระบบจะยกเลิกการยืนยันครั้งนี้");
     expect(button("ยืนยันเชื่อมบัญชี").disabled).toBe(true);
