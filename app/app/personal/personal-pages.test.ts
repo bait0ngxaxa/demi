@@ -337,7 +337,7 @@ describe("Patient Personal pages", () => {
     expect(markup).toContain(hospitalName.replace("<script>", "&lt;script&gt;"));
     expect(markup).not.toContain("<script>");
     expect(markup).not.toContain('name="hospital"');
-    expect(markup).toContain("min-h-20");
+    expect(markup).toContain("min-h-24");
     expect(markup).toContain("grid-cols-4");
   });
 

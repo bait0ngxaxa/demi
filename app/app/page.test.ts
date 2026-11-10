@@ -408,7 +408,7 @@ describe("application home workspace routing", () => {
 
       expect(html).toContain('<label class="mb-1 block text-xs font-medium text-white/80" for="work-home-hospital">');
       expect(section(html, "work-home-menu-heading")).toContain("grid min-w-0 grid-cols-4");
-      expect(section(html, "work-home-menu-heading")).toContain("min-h-20");
+      expect(section(html, "work-home-menu-heading")).toContain("min-h-24");
       expect(html).toContain('class="content-workspace min-w-0 break-words"');
       expect(html).not.toMatch(/\bw-\[\d+px\]|min-w-\[\d+px\]/u);
     });
