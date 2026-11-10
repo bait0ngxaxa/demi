@@ -13,6 +13,7 @@ import { Alert } from "./alert";
 import { Button } from "./button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "./confirmable-action-form";
 import { useMutationActionState } from "./mutation-action-state";
+import { UnknownOutcomeAlert, type UnknownOutcomeRecovery } from "./unknown-outcome-alert";
 
 type ActionState =
   | { status: "IDLE" }
@@ -78,18 +79,61 @@ function GuardedHarness({ runAction }: { runAction: ActionRunner }): React.JSX.E
       <ConfirmableActionForm
         action={action}
         confirmation={{ title: "ยืนยันการเปลี่ยนแปลง", confirmLabel: "ยืนยันรายการ" }}
+        recovery={
+          <UnknownOutcomeAlert
+            active={unknownOutcome}
+            recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }}
+          />
+        }
         outcome={unknownOutcome ? "unknown" : outcomeFor(state)}
         pending={pending}
         resultKey={state}
       >
+        <input name="requestId" type="hidden" value="original-request" />
+        <input name="submissionNonce" type="hidden" value="original-nonce" />
+        <input name="description" type="hidden" value="original payload" />
         <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
       </ConfirmableActionForm>
-      {unknownOutcome ? (
-        <Button data-testid="resend-unconfirmed" disabled={pending} onClick={resendUnconfirmed} type="button">
-          ส่งคำขอเดิมอีกครั้ง
-        </Button>
-      ) : null}
     </>
+  );
+}
+
+function RecoveryStrategyHarness({
+  kind,
+  onVerify,
+  runAction,
+}: {
+  kind: UnknownOutcomeRecovery["kind"];
+  onVerify: (verificationId: string) => void;
+  runAction: ActionRunner;
+}): React.JSX.Element {
+  const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<ActionState, FormData>(
+    async (_previous, formData) => runAction(formData),
+    initialState,
+  );
+  const recovery: UnknownOutcomeRecovery = kind === "resend"
+    ? { kind, onResend: resendUnconfirmed, resending: pending }
+    : kind === "reload"
+      ? { kind, label: "ดูข้อมูลล่าสุด", message: "ตรวจสอบสถานะล่าสุดก่อนทำรายการใหม่" }
+      : kind === "verify"
+        ? { kind, label: "ตรวจสอบสถานะ", message: "ตรวจสอบรายการด้วยหมายเลขเดิม", onVerify: () => onVerify("original-verification-identity"), verifying: false }
+        : kind === "review"
+          ? { kind, label: "ตรวจสอบรายการก่อนทำรายการใหม่" }
+          : { kind, message: "ยังยืนยันผลไม่ได้", note: "ตรวจสอบกับผู้ดูแลก่อนทำรายการใหม่" };
+
+  return (
+    <ConfirmableActionForm
+      action={action}
+      confirmation={{ title: "ยืนยันการเปลี่ยนแปลง", confirmLabel: "ยืนยันรายการ" }}
+      outcome={unknownOutcome ? "unknown" : outcomeFor(state)}
+      pending={pending}
+      recovery={<UnknownOutcomeAlert active={unknownOutcome} recovery={recovery} />}
+      resultKey={state}
+    >
+      <input name="requestId" type="hidden" value="original-request" />
+      <input name="submissionNonce" type="hidden" value="original-nonce" />
+      <Button data-testid="submit-action" type="submit">ดำเนินการ</Button>
+    </ConfirmableActionForm>
   );
 }
 
@@ -370,10 +414,24 @@ describe("ConfirmableActionForm", () => {
     await settleAction();
 
     expect(runAction).toHaveBeenCalledOnce();
-    expect(container?.querySelector("dialog")).not.toBeNull();
+    const dialog = container?.querySelector<HTMLDialogElement>("dialog");
+    if (!dialog) throw new Error("Expected the generic reload fallback dialog to remain open");
     expect(getConfirmationButton().disabled).toBe(true);
-    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(Array.from(dialog.querySelectorAll<HTMLButtonElement>("button")).some((button) => button.textContent?.includes("ดูข้อมูลล่าสุด"))).toBe(true);
+    expect(dialog.querySelectorAll('[role="alert"]')).toHaveLength(1);
+    expect(container?.querySelectorAll("[aria-hidden='true'] [role='alert']")).toHaveLength(1);
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
+
+    const fallbackAction = container?.querySelector<HTMLButtonElement>("[aria-hidden='true'] button");
+    if (!fallbackAction) throw new Error("Missing mounted fallback recovery action");
+    const closeButton = Array.from(container?.querySelectorAll<HTMLButtonElement>("dialog button") ?? [])
+      .find((button) => button.textContent?.includes("ปิดหน้าต่าง"));
+    if (!closeButton) throw new Error("Missing unknown-outcome close action");
+    clickButton(closeButton);
+    expect(container?.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(fallbackAction);
+    expect(container?.querySelectorAll('[role="alert"]')).toHaveLength(1);
   });
 
   it("treats a request that fails before the server answers as an uncertain outcome", async () => {
@@ -392,7 +450,7 @@ describe("ConfirmableActionForm", () => {
 
     expect(runAction).toHaveBeenCalledOnce();
     expect(getConfirmationButton().disabled).toBe(true);
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
   });
 
@@ -422,7 +480,10 @@ describe("ConfirmableActionForm", () => {
     clickButton(closeButton);
     expect(container.querySelector("dialog")).toBeNull();
 
-    clickButton(getButton("[data-testid='resend-unconfirmed']"));
+    const resend = Array.from(container.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.includes("ตรวจสอบผลของรายการ"));
+    if (!resend) throw new Error("The caller's resend action should remain available after closing");
+    clickButton(resend);
     await settleAction();
 
     expect(runAction).toHaveBeenCalledTimes(2);
@@ -432,6 +493,120 @@ describe("ConfirmableActionForm", () => {
     submit(submitButton);
     expect(getConfirmationButton().disabled).toBe(false);
     expect(runAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses only the caller resend after an uncertain confirmation and preserves its original payload", async () => {
+    const runAction = vi.fn<ActionRunner>()
+      .mockRejectedValueOnce(new TypeError("connection lost"))
+      .mockResolvedValueOnce({ status: "ERROR", code: "CONFLICT", message: "สถานะเปลี่ยนแล้ว" });
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => root?.render(createElement(GuardedHarness, { runAction })));
+
+    const submitButton = getButton("[data-testid='submit-action']");
+    submitButton.focus();
+    submit(submitButton);
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    const dialog = container.querySelector<HTMLDialogElement>("dialog");
+    if (!dialog) throw new Error("Expected the uncertain confirmation dialog to remain open");
+    expect(dialog.querySelector("h2")?.textContent).toBe("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(dialog.textContent).toContain("ปิดหน้าต่างนี้เพื่อดำเนินการตรวจสอบผลด้วยวิธีที่ระบบเตรียมไว้");
+    expect(dialog.querySelector("[role='alert'], [role='status']")).toBeNull();
+    expect([...dialog.querySelectorAll("button")].some((button) => button.textContent?.includes("ดูข้อมูลล่าสุด"))).toBe(false);
+    expect(getConfirmationButton().disabled).toBe(true);
+    expect(submitButton.matches(":disabled")).toBe(true);
+    expect(runAction).toHaveBeenCalledOnce();
+    const resendAlert = container.querySelector<HTMLElement>("[data-navigation-guard='unknown-outcome']");
+    expect(resendAlert?.closest("[aria-hidden='true']")).not.toBeNull();
+    const beforeUnload = new Event("beforeunload", { cancelable: true });
+    act(() => window.dispatchEvent(beforeUnload));
+    expect(beforeUnload.defaultPrevented).toBe(true);
+
+    const closeButton = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("ปิดหน้าต่าง"));
+    if (!closeButton) throw new Error("Missing safe close action");
+    clickButton(closeButton);
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(document.activeElement).toBe(resendAlert?.querySelector("button"));
+    expect(resendAlert?.closest("[aria-hidden='true']")).toBeNull();
+    expect(submitButton.matches(":disabled")).toBe(true);
+    expect(runAction).toHaveBeenCalledOnce();
+
+    const resend = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("ตรวจสอบผลของรายการ"));
+    if (!resend) throw new Error("The caller's resend action should remain available after closing");
+    clickButton(resend);
+    await settleAction();
+
+    expect(runAction).toHaveBeenCalledTimes(2);
+    const originalPayload = runAction.mock.calls[0]?.[0];
+    const resentPayload = runAction.mock.calls[1]?.[0];
+    expect(originalPayload).toBe(resentPayload);
+    expect(originalPayload).toBeInstanceOf(FormData);
+    if (!(originalPayload instanceof FormData)) throw new Error("The request payload was not FormData");
+    expect(Object.fromEntries(originalPayload.entries())).toEqual({
+      requestId: "original-request",
+      submissionNonce: "original-nonce",
+      description: "original payload",
+    });
+    expect(submitButton.matches(":disabled")).toBe(false);
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBeNull();
+    expect(container.querySelector("dialog")).toBeNull();
+  });
+
+  it.each(["reload", "verify", "review", "note"] as const)("keeps explicit %s recovery distinct from reload and resend", async (kind) => {
+    const runAction = vi.fn<ActionRunner>(async () => { throw new TypeError("connection lost"); });
+    const onVerify = vi.fn();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    act(() => root?.render(createElement(RecoveryStrategyHarness, { kind, onVerify, runAction })));
+
+    submit(getButton("[data-testid='submit-action']"));
+    act(() => getConfirmationButton().click());
+    await settleAction();
+
+    const dialog = container.querySelector<HTMLDialogElement>("dialog");
+    if (!dialog) throw new Error("Expected the unknown outcome to stay in the confirmation dialog");
+    expect(getConfirmationButton().disabled).toBe(true);
+    expect([...dialog.querySelectorAll("button")].some((button) => button.textContent?.includes("ดูข้อมูลล่าสุด"))).toBe(false);
+    expect([...dialog.querySelectorAll("button")].some((button) => button.textContent?.includes("ตรวจสอบผลของรายการ"))).toBe(false);
+    if (kind === "verify") {
+      expect(container.querySelector("[data-navigation-guard='unknown-outcome']")?.closest("[aria-hidden='true']")).not.toBeNull();
+    } else {
+      expect(container.querySelector("[data-navigation-guard='unknown-outcome']")).toBeNull();
+    }
+
+    const closeButton = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.includes("ปิดหน้าต่าง"));
+    if (!closeButton) throw new Error("Missing safe close action");
+    clickButton(closeButton);
+    expect(container.querySelector("dialog")).toBeNull();
+    expect(runAction).toHaveBeenCalledOnce();
+    expect(getButton("[data-testid='submit-action']").matches(":disabled")).toBe(true);
+
+    if (kind === "note") {
+      const recoveryAlert = container.querySelector<HTMLElement>("[role='alert']");
+      expect(document.activeElement).toBe(recoveryAlert?.parentElement);
+    }
+
+    if (kind === "verify") {
+      const verify = [...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "ตรวจสอบสถานะ");
+      if (!verify) throw new Error("The caller's verify action should remain available");
+      clickButton(verify);
+      expect(onVerify).toHaveBeenCalledExactlyOnceWith("original-verification-identity");
+      expect(runAction).toHaveBeenCalledOnce();
+    } else if (kind === "review") {
+      expect([...container.querySelectorAll("button")].some((button) => button.textContent === "ตรวจสอบรายการก่อนทำรายการใหม่")).toBe(true);
+      expect(runAction).toHaveBeenCalledOnce();
+    } else if (kind === "note") {
+      expect(container.textContent).toContain("ตรวจสอบกับผู้ดูแลก่อนทำรายการใหม่");
+      expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("ดูข้อมูลล่าสุด"))).toBe(false);
+      expect(runAction).toHaveBeenCalledOnce();
+    } else {
+      expect([...container.querySelectorAll("button")].some((button) => button.textContent === "ดูข้อมูลล่าสุด")).toBe(true);
+      expect(runAction).toHaveBeenCalledOnce();
+    }
   });
 
   it("reports a dispatched confirmation synchronously, never on open, cancel or a rejected submit", async () => {

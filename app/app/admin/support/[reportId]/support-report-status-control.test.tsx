@@ -207,7 +207,7 @@ describe("SupportReportStatusControl Toasts", () => {
     await click();
 
     expect(toastCalls()).toHaveLength(0);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("ผลลัพธ์ UNAVAILABLE จากระบบ");
     expect(button().disabled).toBe(true);
     expect(mocks.refresh).not.toHaveBeenCalled();
@@ -222,7 +222,7 @@ describe("SupportReportStatusControl Toasts", () => {
     await click();
 
     expect(toastCalls()).toHaveLength(0);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("treats a thrown request as unknown with no Toast and no retry", async () => {
@@ -233,7 +233,7 @@ describe("SupportReportStatusControl Toasts", () => {
     await click();
 
     expect(toastCalls()).toHaveLength(0);
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container.textContent).not.toContain("private server failure");
     expect(mocks.update).toHaveBeenCalledOnce();
   });
@@ -246,7 +246,7 @@ describe("SupportReportStatusControl Toasts", () => {
 
     expect(toastCalls()).toHaveLength(0);
     expect(mocks.refresh).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it("drops a rapid duplicate click before it reaches the Server Action", async () => {
@@ -308,7 +308,7 @@ describe("SupportReportStatusControl Toasts", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).not.toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(button().disabled).toBe(false);
     expect(toastCalls()).toHaveLength(0);
     mocks.update.mockResolvedValueOnce(ok(OTHER_REPORT_ID));
@@ -317,7 +317,7 @@ describe("SupportReportStatusControl Toasts", () => {
     expect(mocks.success).toHaveBeenCalledOnce();
 
     render({ reportId: REPORT_ID, updatedAt: V1 });
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 
   it.each([
@@ -327,11 +327,11 @@ describe("SupportReportStatusControl Toasts", () => {
     arrange();
     render();
     await click();
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(button().disabled).toBe(true);
 
     render({ reportId: OTHER_REPORT_ID, updatedAt: V2 });
-    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).not.toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(button().disabled).toBe(false);
     mocks.update.mockResolvedValueOnce(ok(OTHER_REPORT_ID));
     await click();
@@ -341,7 +341,7 @@ describe("SupportReportStatusControl Toasts", () => {
     expect(mocks.success).toHaveBeenCalledExactlyOnceWith("รับทราบรายงานแล้ว");
 
     render({ reportId: REPORT_ID, updatedAt: V1 });
-    expect(container.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(button().disabled).toBe(true);
     await click();
     expect(mocks.update).toHaveBeenCalledTimes(2);

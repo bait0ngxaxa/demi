@@ -29,16 +29,16 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
   });
   it("consumed create blocks same-nonce submission and offers explicit new intent", () => {
     simulation.workspace = true;
-    simulation.state = { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
+    simulation.state = { status: "CREATE_CONSUMED", message: "รายการนี้ทำซ้ำไม่ได้ กรุณาเริ่มบันทึกรายการใหม่" };
     const html = renderToStaticMarkup(<PersonalMealWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
-    expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ตรวจสอบผลการบันทึก");
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?=[^>]*\sdisabled="")[^>]*>/u);
     expect(html).toMatch(/<button(?![^>]*\sdisabled=")[^>]*>เริ่มบันทึกใหม่<\/button>/u);
   });
   it("transient create conflict retains enabled same-nonce retry", () => {
     simulation.state = { status: "CONFLICT" };
     const html = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
-    expect(html).toContain(row.id); expect(html).toContain("ลองคำขอเดิมอีกครั้ง"); expect(html).toContain('<fieldset disabled=""');
+    expect(html).toContain(row.id); expect(html).toContain("ตรวจสอบผลการบันทึก"); expect(html).toContain('<fieldset disabled=""');
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?![^>]*\sdisabled=")[^>]*>/u);
   });
   beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; simulation.workspace = false; });
@@ -73,7 +73,7 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     const html = renderToStaticMarkup(<MealEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />);
     expect(html).toContain("อาหารไทย"); expect(html).toContain('aria-invalid="true"'); expect(html).toContain("aria-describedby"); expect(html).toContain("ยาวเกินไป"); expect(html).not.toContain("<fieldset disabled");
     simulation.state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" };
-    const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).toContain("<fieldset disabled");
+    const create = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ตรวจสอบผลการบันทึก"); expect(create).toContain(row.id); expect(create).toContain("<fieldset disabled");
     expect(renderToStaticMarkup(<MealEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />)).toContain("<fieldset disabled");
   });
   it("guards mobile navigation only while a meal outcome is unconfirmed and separates session expiry from denial", () => {
@@ -91,9 +91,9 @@ describe("Meal UI contract states (server-rendered evidence)", () => {
     expect(forbidden).toContain("บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้");
     expect(forbidden).not.toContain("เข้าสู่ระบบ DEMI");
 
-    simulation.state = { status: "DENIED", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
+    simulation.state = { status: "DENIED", message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
     const expired = renderToStaticMarkup(<MealEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
-    expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expired).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expired).toContain('href="/login"');
     expect(expired).toContain("เข้าสู่ระบบ DEMI");
   });

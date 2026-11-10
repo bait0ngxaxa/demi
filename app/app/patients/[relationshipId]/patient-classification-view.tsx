@@ -139,19 +139,15 @@ export function PatientClassificationView({
   const requiresConfirmation = Boolean(
     context.current && selectedClassification && selectedClassification !== context.current.classification,
   );
-  // ConfirmableActionForm reports an unconfirmed result itself, but only for a submission it
-  // confirmed; the create path has no confirmation, so it needs its own recovery message.
-  const [confirmedSubmission, setConfirmedSubmission] = useState(false);
   const action = useCallback(
     (formData: FormData): void => {
       if (inFlight.current) {
         return;
       }
       inFlight.current = true;
-      setConfirmedSubmission(requiresConfirmation);
       dispatchClassification(formData);
     },
-    [dispatchClassification, requiresConfirmation],
+    [dispatchClassification],
   );
 
   return (
@@ -173,6 +169,7 @@ export function PatientClassificationView({
           <ConfirmableActionForm
             action={action}
             className="mt-5 border-t border-border pt-5"
+            recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-4" recovery={{ kind: "reload" }} />}
             confirmation={{
               title: "ยืนยันการเปลี่ยนสถานะผู้ป่วย",
               description: context.current && selectedClassification
@@ -221,7 +218,6 @@ export function PatientClassificationView({
                   : "บันทึกสถานะ"}
             </Button>
             <ActionFeedback state={state} />
-            <UnknownOutcomeAlert active={unknownOutcome && !confirmedSubmission} className="mt-4" recovery={{ kind: "reload" }} />
           </ConfirmableActionForm>
         ) : null}
 

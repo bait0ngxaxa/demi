@@ -79,7 +79,7 @@ export async function changeAuthenticatedPasswordAction(
       return { status: "ERROR", message: "ยังไม่ได้เปลี่ยนรหัสผ่าน ระบบไม่รับรหัสผ่านใหม่นี้ กรุณาตั้งรหัสผ่านใหม่ที่ต่างจากรหัสเดิมและคาดเดายาก แล้วลองอีกครั้ง" };
     }
     if (error instanceof PasswordChangeRecoveryPendingError) {
-      return { status: "ERROR", message: "ยังเปลี่ยนรหัสผ่านไม่ได้ในขณะนี้ เนื่องจากบัญชีมีการเปลี่ยนหรือกู้คืนรหัสผ่านที่ยังดำเนินการอยู่หรือรอผู้ดูแลระบบ DEMI ตรวจสอบ กรุณาอย่าทำรายการซ้ำ หากยังเป็นเช่นนี้ให้ติดต่อผู้ดูแลระบบ DEMI" };
+      return { status: "ERROR", message: "ยังเปลี่ยนรหัสผ่านไม่ได้ บัญชีกำลังเปลี่ยนหรือกู้คืนอยู่ กรุณาอย่าทำรายการซ้ำ หากยังเปลี่ยนไม่ได้ ให้ติดต่อผู้ดูแลระบบ DEMI" };
     }
     if (error instanceof PasswordChangeOutcomeUncertainError) {
       return { status: "OUTCOME_UNCERTAIN", message: "ยังยืนยันผลการเปลี่ยนรหัสผ่านไม่ได้ กรุณาอย่าทำรายการซ้ำ และติดต่อผู้ดูแลระบบ DEMI เพื่อตรวจสอบสถานะบัญชี" };
@@ -165,7 +165,7 @@ export async function issueMediatedPasswordResetAction(
         try {
           await revokeIssuedMediatedPasswordReset(actor, { resetId: result.resetId });
         } catch {
-          return { status: "ERROR", message: "ระบบไม่สามารถปิดเซสชันของคุณได้ จึงยกเลิกลิงก์รีเซ็ตไม่สำเร็จ ลิงก์จะหมดอายุภายใน 15 นาที" };
+          return { status: "ERROR", message: "ยังออกจากระบบนี้ไม่ได้ จึงยกเลิกลิงก์รีเซ็ตไม่สำเร็จ ลิงก์หมดอายุใน 15 นาที" };
         }
         return { status: "ERROR", message: "ระบบไม่สามารถส่งต่ออุปกรณ์ให้เจ้าของบัญชีได้ กรุณาลองใหม่อีกครั้ง" };
       }

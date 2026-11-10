@@ -35,7 +35,7 @@ function useExerciseAction(action: (previous: ExerciseActionState, form: FormDat
     const snapshot = new FormData();
     for (const [key, value] of submitted) snapshot.append(key, value);
     try { state = await action(previous, snapshot); }
-    catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" }; }
+    catch { state = { status: "UNCONFIRMED", message: "ยังยืนยันผลการทำรายการไม่ได้" }; }
     if (!coordination.isActive() || !coordination.authority.isCurrent(authorityGeneration)) return { status: "IDLE" } as const;
     if (create) {
       // A read or failed retry cannot prove that the original write rolled back.
@@ -112,10 +112,17 @@ export function ExerciseEditor({ item, today, maxDate, nonce, coordination, init
         <p id={`${prefix}-note-help`} className="text-sm text-text-muted">{state.fieldErrors?.note ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
       </div>
     </fieldset>
-    <div ref={feedback} tabIndex={-1} role="status">{state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}</div>
-    {recovering ? <p data-navigation-guard="unknown-outcome" className="text-sm text-text-muted">ยังไม่ทราบผลคำขอเดิม กรุณาลองคำขอเดิมอีกครั้ง ข้อมูลและรหัสคำขอจะคงเดิมจนกว่าจะยืนยันผลได้</p> : null}
+    <div ref={feedback} tabIndex={-1}>
+      {recovering ? (
+        <Alert data-navigation-guard="unknown-outcome" variant="warning">
+          <p className="font-semibold">ยังยืนยันผลการบันทึกไม่ได้</p>
+          <p className="mt-1">การตรวจสอบจะส่งข้อมูลเดิมอีกครั้งและป้องกันการบันทึกซ้ำ</p>
+        </Alert>
+      ) : state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
+    </div>
+
     <div className="flex flex-col gap-3 sm:flex-row">
-      <Button type="submit" hidden={!editorOpen} className="w-full sm:w-auto" loading={pending} disabled={blocked}>{pending ? "กำลังบันทึก..." : !item && recovering ? "ลองคำขอเดิมอีกครั้ง" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
+      <Button type="submit" hidden={!editorOpen} className="w-full sm:w-auto" loading={pending} disabled={blocked}>{pending ? (!item && recovering ? "กำลังตรวจสอบผล..." : "กำลังบันทึก...") : !item && recovering ? "ตรวจสอบผลการบันทึก" : item ? "บันทึกการแก้ไข" : "บันทึกการออกกำลังกาย"}</Button>
       {onCancel ? <Button className="w-full sm:w-auto" variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
     </div>
     </form>

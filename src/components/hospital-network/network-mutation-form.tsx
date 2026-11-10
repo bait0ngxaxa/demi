@@ -213,6 +213,7 @@ export function NetworkMutationForm({
       {confirmation ? (
         <ConfirmableActionForm
           action={dispatch}
+          recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />}
           confirmation={{
             title: confirmation.title,
             description: confirmation.description,
@@ -235,7 +236,7 @@ export function NetworkMutationForm({
           {state.message}
         </Alert>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />
+      {confirmation ? null : <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />}
     </div>
   );
 }

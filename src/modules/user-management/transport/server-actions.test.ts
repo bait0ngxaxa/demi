@@ -61,10 +61,10 @@ describe("lockSuspectedTakeoverAction", () => {
     mocks.lock.mockResolvedValue({ providerState: UserTakeoverProviderState.RECONCILIATION_REQUIRED, alreadyLocked: false });
     const state = await lockSuspectedTakeoverAction(initialUserTakeoverActionState, new FormData());
     expect(state).toMatchObject({ success: true, outcome: "LOCKED", providerState: "RECONCILIATION_REQUIRED" });
-    expect(state.message).toContain("ล็อกบัญชีใน DEMI แล้ว แต่ยังยืนยันไม่ได้");
-    expect(state.message).toContain("กดซ้ำเพื่อลองยืนยันกับผู้ให้บริการอีกครั้ง");
+    expect(state.message).toContain("ระงับบัญชีใน DEMI แล้ว แต่ยังยืนยันการป้องกันการเข้าสู่ระบบใหม่กับบริการภายนอกไม่ได้");
+    expect(state.message).not.toContain("ยืนยันแล้ว");
     expect(state.message).not.toContain("ออกจากระบบทุกอุปกรณ์");
-    expect(state.message).toContain("กดซ้ำ");
+    expect(state.message).not.toContain("กดซ้ำ");
   });
 
   it("describes a confirmed provider ban without claiming immediate sign-out on every device", async () => {
@@ -73,9 +73,9 @@ describe("lockSuspectedTakeoverAction", () => {
     const state = await lockSuspectedTakeoverAction(initialUserTakeoverActionState, new FormData());
 
     expect(state).toMatchObject({ success: true, outcome: "LOCKED", providerState: "CONFIRMED" });
-    expect(state.message).toContain("ผู้ให้บริการยืนยันการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมแล้ว");
-    expect(state.message).toContain("อุปกรณ์ที่มีเซสชันเดิมอาจยังแสดงว่าล็อกอินอยู่");
-    expect(state.message).toContain("ระบบ DEMI จะปฏิเสธการใช้งานของบัญชีนี้");
+    expect(state.message).toContain("บริการภายนอกยืนยันการป้องกันการเข้าสู่ระบบใหม่แล้ว");
+    expect(state.message).not.toContain("อุปกรณ์");
+    expect(state.message).not.toContain("ยังไม่ยืนยัน");
     expect(state.message).not.toContain("ออกจากระบบทุกอุปกรณ์");
   });
 

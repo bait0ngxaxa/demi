@@ -113,7 +113,7 @@ it("checks invitation status after a lost accept response without replaying the 
   expect(mocks.accept).toHaveBeenCalledOnce();
   expect(container.querySelector('[role="alert"]')?.textContent).toContain("ระบบอาจบันทึกคำตอบแล้ว");
   expect(container.querySelector('[role="alert"] button')?.textContent).toBe("ตรวจสอบสถานะคำเชิญ");
-  expect(container.textContent).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+  expect(container.textContent).not.toContain("ตรวจสอบผลของรายการ");
   const unloadWhileUnverified = new Event("beforeunload", { cancelable: true });
   window.dispatchEvent(unloadWhileUnverified);
   expect(unloadWhileUnverified.defaultPrevented).toBe(true);

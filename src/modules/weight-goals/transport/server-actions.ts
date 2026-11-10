@@ -46,10 +46,10 @@ async function perform(formData: FormData, operation: WeightGoalOperation): Prom
         : await removePersonalWeightGoal(actor, input);
 
     if (result.outcome === "CREATE_CONSUMED") {
-      return { status: "CREATE_CONSUMED", message: "คำขอตั้งเป้าหมายนี้ถูกดำเนินการแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนดำเนินการต่อ" };
+      return { status: "CREATE_CONSUMED", message: "เป้าหมายนี้ทำซ้ำไม่ได้ กรุณาโหลดข้อมูลล่าสุด" };
     }
     if (result.outcome === "UNCONFIRMED") {
-      return { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" };
+      return { status: "UNCONFIRMED", message: operation === "create" ? "ยังยืนยันผลการบันทึกเป้าหมายไม่ได้" : operation === "update" ? "ยังยืนยันผลการแก้ไขเป้าหมายไม่ได้" : operation === "remove" ? "ยังยืนยันผลการลบเป้าหมายไม่ได้" : "ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่" };
     }
 
     if (result.outcome === "CREATED" || result.outcome === "UPDATED" || result.outcome === "DELETED") {
@@ -81,7 +81,7 @@ async function perform(formData: FormData, operation: WeightGoalOperation): Prom
         };
       }
     }
-    return { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" };
+    return { status: "UNCONFIRMED", message: operation === "create" ? "ยังยืนยันผลการบันทึกเป้าหมายไม่ได้" : operation === "update" ? "ยังยืนยันผลการแก้ไขเป้าหมายไม่ได้" : operation === "remove" ? "ยังยืนยันผลการลบเป้าหมายไม่ได้" : "ยังโหลดข้อมูลไม่ได้ กรุณาลองใหม่" };
   }
 }
 

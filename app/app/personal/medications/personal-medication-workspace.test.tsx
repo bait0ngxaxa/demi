@@ -94,9 +94,9 @@ describe("Personal medication UI states", () => {
     expect(forbidden).toContain("บัญชีนี้ไม่สามารถเข้าถึงรายการได้");
     expect(forbidden).not.toContain("เข้าสู่ระบบ DEMI");
 
-    simulation.state = { status: "ERROR", message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
+    simulation.state = { status: "ERROR", message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง", loginHref: "/login" };
     const expired = renderToStaticMarkup(<MedicationEditor />);
-    expect(expired).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(expired).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(expired).toContain('href="/login"');
     expect(expired).toContain("เข้าสู่ระบบ DEMI");
     expect(expired).not.toContain("โหลดรายการล่าสุด</a>");

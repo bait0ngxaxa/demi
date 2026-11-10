@@ -52,7 +52,7 @@ describe("Weight Goal Server Actions", () => {
     const uncertain = await createPersonalWeightGoalAction({ status: "IDLE" }, form({ submissionNonce: "11111111-1111-4111-8111-111111111111", targetWeightKg: "72.5" }));
     expect(consumed).toMatchObject({ status: "CREATE_CONSUMED" });
     expect(consumed.message).toContain("โหลดข้อมูลล่าสุด");
-    expect(uncertain).toMatchObject({ status: "UNCONFIRMED" });
+    expect(uncertain).toMatchObject({ status: "UNCONFIRMED", message: "ยังยืนยันผลการบันทึกเป้าหมายไม่ได้" });
     expect(mocks.revalidate).not.toHaveBeenCalled();
   });
 

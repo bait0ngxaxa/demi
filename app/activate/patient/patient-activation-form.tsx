@@ -181,9 +181,9 @@ export function PatientActivationForm({ legal, lineAccountUrl = null }: { legal:
           active
           recovery={{
             kind: "note",
-            message: "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+            message: "ยังยืนยันผลการเปิดใช้งานไม่ได้",
             note:
-              "หากตั้งรหัสผ่านสำเร็จ ให้ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
+              "ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้ หากเข้าไม่ได้ กรุณาติดต่อโรงพยาบาลเพื่อขอลิงก์ใหม่",
           }}
         />
         <Link className={buttonClassName({ variant: "secondary", className: "w-full" })} href="/login">

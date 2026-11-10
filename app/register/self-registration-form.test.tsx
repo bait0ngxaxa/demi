@@ -344,7 +344,8 @@ describe("public self-registration form", () => {
     await submitForm();
 
     expect(container.textContent).toContain("ยังยืนยันผลการลงทะเบียนไม่ได้");
-    expect(container.textContent).toContain("กรุณาอย่าส่งคำขอเดิมซ้ำ");
+    expect(container.textContent).toContain("กรุณาอย่าส่งข้อมูลซ้ำ");
+    expect(container.textContent).toContain("หากตั้งรหัสผ่านแล้วให้ลองเข้าสู่ระบบ");
     expect(container.textContent).not.toContain("ลงทะเบียนสำเร็จ");
     expect(container.querySelector("form")).toBeNull();
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();

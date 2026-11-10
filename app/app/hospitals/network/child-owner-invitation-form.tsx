@@ -354,6 +354,13 @@ export function ChildOwnerInvitationForm({
       {confirmation ? (
         <ConfirmableActionForm
           action={dispatch}
+          recovery={
+            <UnknownOutcomeAlert
+              active={unknownOutcome}
+              className="mt-3"
+              recovery={idempotent ? { kind: "resend", onResend: resendUnconfirmed, resending: pending } : { kind: "reload" }}
+            />
+          }
           confirmation={{
             title: confirmation.title,
             description: confirmation.description,
@@ -376,11 +383,13 @@ export function ChildOwnerInvitationForm({
           {state.message}
         </Alert>
       ) : null}
-      <UnknownOutcomeAlert
-        active={unknownOutcome}
-        className="mt-3"
-        recovery={idempotent ? { kind: "resend", onResend: resendUnconfirmed, resending: pending } : { kind: "reload" }}
-      />
+      {confirmation ? null : (
+        <UnknownOutcomeAlert
+          active={unknownOutcome}
+          className="mt-3"
+          recovery={idempotent ? { kind: "resend", onResend: resendUnconfirmed, resending: pending } : { kind: "reload" }}
+        />
+      )}
     </div>
   );
 }

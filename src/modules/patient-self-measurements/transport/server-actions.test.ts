@@ -87,7 +87,7 @@ describe("Patient self-measurement Server Actions", () => {
     );
     expect(expired).toEqual({
       status: "ERROR",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       recovery: "CRITICAL",
       loginHref: "/login",
     });

@@ -197,7 +197,7 @@ export function PersonalWeightGoalWorkspace({
 
   return <div className="space-y-5">
     <h2 ref={sectionHeading} tabIndex={-1} className="text-2xl font-semibold focus-visible:outline-none">เป้าหมายน้ำหนัก</h2>
-    {!editorOpen && feedback.message ? <div role="status" aria-live="polite"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
+    {!editorOpen && feedback.message ? <div><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
 
     {requiresCurrentGoalReview ? <div className="space-y-3">
       <p className="text-text-muted">โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่</p>

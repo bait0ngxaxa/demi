@@ -219,6 +219,7 @@ export function WithdrawPatientServiceRequestButton({
     <div>
       <ConfirmableActionForm
         action={action}
+        recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
         confirmation={{
           title: "ถอนคำขอบริการนี้หรือไม่",
           description: `ตรวจสอบคำขอรับบริการประเภท${patientServiceLabel(request.serviceCode)} จาก ${hospitalName} ก่อนยืนยัน`,
@@ -257,7 +258,6 @@ export function WithdrawPatientServiceRequestButton({
       {state.status === "ERROR" ? (
         <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p>
       ) : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }

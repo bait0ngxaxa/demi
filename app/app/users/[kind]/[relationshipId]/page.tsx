@@ -103,15 +103,15 @@ function UserDetailView({ detail, workforce, recoveryEligibility }: { detail: Us
       <div className="space-y-6 pt-8">
         {detail.identityAssurance === "CAREGIVER_INVITATION" ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
-            <p className="font-semibold">บัญชีนี้สร้างผ่านคำเชิญจากญาติหรือผู้ดูแล</p>
-            <p className="mt-1">ต้องยืนยันตัวตนผ่านการรีเซ็ตรหัสผ่านแบบมีผู้ดูแลก่อนใช้งาน บัญชีถูกระงับและข้อมูลครอบครัวเดิมยังคงอยู่</p>
-            {detail.takeoverLock && lockRetry ? <p className="mt-1">บัญชีถูกล็อกใน DEMI แล้ว แต่ยังยืนยันไม่ได้ว่าผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมแล้ว กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อนกู้คืนบัญชี</p> : null}
+            <p className="font-semibold">บัญชีนี้มาจากคำเชิญของญาติหรือผู้ดูแล</p>
+            <p className="mt-1">บัญชีถูกระงับและต้องให้ผู้ดูแลยืนยันตัวตนก่อนใช้งาน ข้อมูลครอบครัวยังคงอยู่</p>
+            {detail.takeoverLock && lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าสู่ระบบผ่านบริการภายนอกไม่ได้ กรุณาให้ผู้ดูแลระบบ DEMI ตรวจสอบก่อนกู้คืนบัญชี</p> : null}
           </Alert>
         ) : detail.takeoverLock ? (
           <Alert variant={lockRetry ? "warning" : "danger"}>
-            <p className="font-semibold">บัญชีถูกล็อก: สงสัยว่ามีผู้อื่นใช้บัญชีนี้</p>
-            <p className="mt-1">ล็อกเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} ใช้ขั้นตอนกู้คืนบัญชีด้านล่างเพื่อยืนยันตัวตนและตั้งรหัสผ่านใหม่</p>
-            {lockRetry ? <p className="mt-1">บัญชีถูกล็อกใน DEMI แล้ว แต่ยังยืนยันไม่ได้ว่าผู้ให้บริการระงับการเข้าสู่ระบบใหม่และการต่ออายุเซสชันเดิมแล้ว กรุณากดยืนยันอีกครั้งด้านล่าง</p> : null}
+            <p className="font-semibold">ระงับการใช้งานบัญชีแล้ว</p>
+            <p className="mt-1">ระงับเมื่อ {dateTime.format(detail.takeoverLock.lockedAt)} หากต้องการกู้คืน ให้ยืนยันตัวตนและตั้งรหัสผ่านใหม่ในขั้นตอนด้านล่าง</p>
+            {lockRetry ? <p className="mt-1">ยังยืนยันการระงับการเข้าสู่ระบบผ่านบริการภายนอกไม่ได้ กรุณาตรวจสอบอีกครั้งด้านล่าง</p> : null}
           </Alert>
         ) : null}
 

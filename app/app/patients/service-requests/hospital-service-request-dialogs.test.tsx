@@ -296,7 +296,7 @@ describe("Hospital service request decision dialogs", () => {
     });
 
     expect(container?.querySelector("dialog")?.open).toBe(true);
-    expect(container?.querySelector("dialog")?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container?.querySelector("dialog")?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(container?.querySelector<HTMLButtonElement>('dialog button[aria-label="ปิดหน้าต่าง"]')?.disabled).toBe(true);
     expect(button("ยืนยันนัด", container ?? document).disabled).toBe(true);
     expect(serverActions.confirm).toHaveBeenCalledOnce();

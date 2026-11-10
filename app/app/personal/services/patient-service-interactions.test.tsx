@@ -335,14 +335,14 @@ describe("Patient service request interactions", () => {
 
     const dialog = container?.querySelector<HTMLDialogElement>("dialog");
     expect(dialog?.open).toBe(true);
-    expect(dialog?.textContent).toContain("ยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(button("ยืนยันถอนคำขอ", dialog ?? document).disabled).toBe(true);
     expect(button("ถอนคำขอ").disabled).toBe(true);
     expect(serverActions.withdraw).toHaveBeenCalledOnce();
 
     act(() => button("ปิดหน้าต่าง", dialog ?? document).click());
     expect(container?.querySelector("dialog")).toBeNull();
-    expect(container?.textContent).toContain("โหลดข้อมูลล่าสุด");
+    expect(container?.textContent).toContain("ดูข้อมูลล่าสุด");
     expect(button("ถอนคำขอ").disabled).toBe(true);
   });
 
@@ -363,7 +363,7 @@ describe("Patient service request interactions", () => {
     await settle();
 
     expect(serverActions.create).toHaveBeenCalledOnce();
-    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("คำขอนี้อาจถูกบันทึกซ้ำหากส่งอีกครั้ง");
+    expect(container?.querySelector('[role="alert"]')?.textContent).toContain("กรุณาตรวจสอบรายการล่าสุดก่อนทำรายการใหม่");
     expect(button("ตรวจสอบรายการคำขอล่าสุด").type).toBe("button");
     expect(button("ส่งคำขอรับบริการ").disabled).toBe(true);
     expect(container?.textContent).not.toContain("ส่งคำขอเดิมซ้ำ");

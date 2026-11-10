@@ -158,7 +158,7 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
     </header>
     {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
-    {feedback.message ? <div role="status"><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
+    {feedback.message && !recoveringCreate && !reviewRequired ? <div><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
     {/* Only a server-returned item reaches this readback; a pending or unconfirmed create stays in the form. */}
     {feedback.result && "item" in feedback.result ? <section aria-label="ข้อมูลที่บันทึกแล้ว"><SavedRecordCard>
       <div className="mb-3"><StatusBadge variant="success">บันทึกแล้ว</StatusBadge></div>

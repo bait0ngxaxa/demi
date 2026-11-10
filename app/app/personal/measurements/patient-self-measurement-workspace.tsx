@@ -159,14 +159,20 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
       </fieldset>
       <p className="text-sm text-text-muted">กรอกอย่างน้อยหนึ่งค่า ข้อมูลนี้ไม่แทนการวัดโดย อสม. หรือเจ้าหน้าที่</p>
       {currentError ? currentError.loginHref ? <PatientSelfSessionExpiredAlert href={currentError.loginHref} message={currentError.message} /> : <Alert role="alert" variant="danger">{currentError.message}</Alert> : null}
-      {currentSuccess ? <div role="status"><Alert variant="success">{currentSuccess.message}</Alert></div> : null}
-      {nonceConsumed ? <div role="status"><Alert variant="success">ระบบยืนยันการบันทึกล่าสุดแล้ว กำลังรอรหัสใหม่จากระบบก่อนรับรายการถัดไป</Alert></div> : null}
+      {currentSuccess || nonceConsumed ? (
+        <div role="status">
+          <Alert role="none" variant="success">
+            <p>{currentSuccess?.message ?? "บันทึกข้อมูลที่ส่งก่อนหน้าแล้ว"}</p>
+            {nonceConsumed ? <p className="mt-1">กำลังเตรียมรายการถัดไป</p> : null}
+          </Alert>
+        </div>
+      ) : null}
       <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
       {canStartNewRecord ? (
         <Button onClick={startNewRecord} type="button" variant="ghost">เริ่มบันทึกครั้งใหม่</Button>
       ) : (
         <Button disabled={pending || unknownOutcome || nonceConsumed || sameConfirmedDraft} loading={pending} type="submit">
-          {pending ? "กำลังบันทึก..." : nonceConsumed ? "กำลังรอรหัสใหม่..." : "บันทึก"}
+          {pending ? "กำลังบันทึก..." : nonceConsumed ? "กำลังเตรียมรายการถัดไป..." : "บันทึก"}
         </Button>
       )}
     </form>
@@ -239,7 +245,7 @@ function CreateDisclosure({ initiallyOpen, nonce, defaultMeasuredAt }: {
         </svg>
       </summary>
       <div className="space-y-4 border-t border-border px-5 pb-5 pt-5 sm:px-7 sm:pb-7">
-        <p className="text-sm text-text-muted">รายการจะแสดงในประวัติเมื่อระบบยืนยันการบันทึกแล้ว</p>
+        <p className="text-sm text-text-muted">รายการจะแสดงในประวัติหลังบันทึกสำเร็จ</p>
         <CreateForm defaultMeasuredAt={defaultMeasuredAt} nonce={nonce} onAttentionChange={onAttentionChange} onSubmissionStart={onSubmissionStart} />
       </div>
     </details>

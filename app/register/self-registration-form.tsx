@@ -333,10 +333,7 @@ export function SelfRegistrationForm({ legal }: { legal: AccountCreationLegalVie
         <Alert role="alert" variant="warning">
           <h3 className="font-semibold">ยังยืนยันผลการลงทะเบียนไม่ได้</h3>
           <p className="mt-1">
-            คำขออาจดำเนินการแล้วหรือยังไม่เสร็จ กรุณาอย่าส่งคำขอเดิมซ้ำ หากคิดว่าตั้งรหัสผ่านสำเร็จ ให้ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้
-          </p>
-          <p className="mt-1">
-            หากเข้าสู่ระบบไม่ได้ กรุณาติดต่อโรงพยาบาลที่ดูแลเพื่อยืนยันตัวตนและขอคำแนะนำ
+            กรุณาอย่าส่งข้อมูลซ้ำ หากตั้งรหัสผ่านแล้วให้ลองเข้าสู่ระบบ หากเข้าไม่ได้ให้ติดต่อโรงพยาบาลที่ดูแล
           </p>
         </Alert>
         <Link className={buttonClassName({ className: "w-full" })} href="/login">

@@ -338,7 +338,7 @@ describe("Patient import review dialog interactions", () => {
     });
 
     const dialog = currentDialog(mounted);
-    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toContain("ยังยืนยันผลการนำเข้าผู้ป่วยไม่ได้");
     expect(dialog.textContent).not.toContain("นำเข้าผู้ป่วยใหม่แล้ว");
     const confirmButton = button(mounted, "ยืนยันนำเข้า 1 รายการ");
     expect(confirmButton.disabled).toBe(true);
@@ -385,7 +385,7 @@ function allNotifications(): number {
   );
 }
 
-const unconfirmedText = "ระบบยังยืนยันผลการดำเนินการไม่ได้";
+const unconfirmedText = "ยังยืนยันผลการนำเข้าผู้ป่วยไม่ได้";
 
 function importPreview(
   classifications: readonly PatientImportPreviewRow["classification"][],

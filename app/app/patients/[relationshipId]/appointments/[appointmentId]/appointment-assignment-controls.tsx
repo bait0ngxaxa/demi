@@ -76,6 +76,7 @@ export function AppointmentAssignmentControls({
             <p className="text-sm leading-6 text-text-muted">ยืนยันนัดหมายนี้เพื่อรับงานเยี่ยมบ้าน กำหนดการเปลี่ยนภายหลังจะต้องตอบรับใหม่</p>
             <ConfirmableActionForm
               action={action}
+              recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />}
               confirmation={{
                 title: "ยืนยันตอบรับนัดหมายนี้หรือไม่",
                 description: "ระบบจะบันทึกว่าคุณรับงานเยี่ยมบ้านตามวันและเวลาปัจจุบัน",
@@ -95,7 +96,6 @@ export function AppointmentAssignmentControls({
             </ConfirmableActionForm>
             {state.status === "ERROR" ? <Alert className="mt-3" variant={state.code === "CONFLICT" ? "warning" : "danger"}>{state.message}</Alert> : null}
             {state.status === "SUCCESS" ? <Alert className="mt-3" variant="success">บันทึกการตอบรับนัดหมายแล้ว</Alert> : null}
-            <UnknownOutcomeAlert active={unknownOutcome} className="mt-3" recovery={{ kind: "reload" }} />
           </>
         ) : (
           <p className="text-sm text-text-muted">ยังไม่มีการตอบรับนัดหมายสำหรับกำหนดการปัจจุบัน</p>

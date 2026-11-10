@@ -6,10 +6,10 @@ import { PatientSelfSessionExpiredAlert } from "./patient-self-session-expired-a
 describe("Patient self-service session expiry prompt", () => {
   it("explains the expired session and links to the server-built login destination", () => {
     const html = renderToStaticMarkup(
-      <PatientSelfSessionExpiredAlert href="/login?returnTo=%2Fapp%2Fpersonal%2Fwellness" message="เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง" />,
+      <PatientSelfSessionExpiredAlert href="/login?returnTo=%2Fapp%2Fpersonal%2Fwellness" message="หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง" />,
     );
 
-    expect(html).toContain("เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง");
+    expect(html).toContain("หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง");
     expect(html).toContain('href="/login?returnTo=%2Fapp%2Fpersonal%2Fwellness"');
     expect(html).toContain("เข้าสู่ระบบ DEMI");
     expect(html).toContain('min-h-11');

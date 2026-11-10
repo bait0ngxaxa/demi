@@ -256,12 +256,12 @@ describe("Caregiver invitation lost-response recovery", () => {
     expect(mocks.revokeInvitation).toHaveBeenCalledOnce();
     const confirm = dialogButtonByText("ยกเลิกคำเชิญ");
     expect(confirm.disabled).toBe(true);
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     await act(async () => confirm.click());
     expect(mocks.revokeInvitation).toHaveBeenCalledOnce();
     await act(async () => dialogButtonByText("ปิดหน้าต่าง").click());
     expect(container.querySelector("dialog[open]")).toBeNull();
-    await act(async () => buttonByText("โหลดข้อมูลล่าสุด").click());
+    await act(async () => buttonByText("ดูข้อมูลล่าสุด").click());
     expect(reload).toHaveBeenCalledOnce();
     expect(mocks.revokeInvitation).toHaveBeenCalledOnce();
   });

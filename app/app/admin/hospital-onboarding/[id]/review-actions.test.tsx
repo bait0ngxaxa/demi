@@ -244,7 +244,7 @@ describe("ReviewActions approval feedback", () => {
       "ระบบยังยืนยันผลการตรวจสอบคำขอไม่ได้ กรุณาโหลดสถานะล่าสุดก่อนดำเนินการต่อ",
     );
     expect(container.textContent).not.toContain("รายละเอียดประกอบ UNAVAILABLE");
-    expect(findButton("โหลดข้อมูลล่าสุด")).toBeTruthy();
+    expect(findButton("ดูข้อมูลล่าสุด")).toBeTruthy();
     expect(findButton("อนุมัติคำขอ").disabled).toBe(true);
     expect(findButton("ปฏิเสธคำขอ").disabled).toBe(true);
     expect(query<HTMLTextAreaElement>("#rejectionReason").disabled).toBe(true);
@@ -264,7 +264,7 @@ describe("ReviewActions approval feedback", () => {
 
     expect(container.textContent).toContain("โหลดสถานะล่าสุดก่อนดำเนินการต่อ");
     expect(container.textContent).not.toContain("private infrastructure detail");
-    expect(findButton("โหลดข้อมูลล่าสุด")).toBeTruthy();
+    expect(findButton("ดูข้อมูลล่าสุด")).toBeTruthy();
     expect(findButton("อนุมัติคำขอ").disabled).toBe(true);
     expect(findButton("ปฏิเสธคำขอ").disabled).toBe(true);
     expect(mocks.approve).toHaveBeenCalledTimes(1);
@@ -277,7 +277,7 @@ describe("ReviewActions approval feedback", () => {
 
     submit("อนุมัติคำขอ");
     await settleAction();
-    expect(findButton("โหลดข้อมูลล่าสุด")).toBeTruthy();
+    expect(findButton("ดูข้อมูลล่าสุด")).toBeTruthy();
     expectNoToast();
     expect(mocks.approve).toHaveBeenCalledTimes(1);
 
@@ -286,7 +286,7 @@ describe("ReviewActions approval feedback", () => {
     submit("อนุมัติคำขอ");
     await settleAction();
 
-    expect(findButton("โหลดข้อมูลล่าสุด")).toBeTruthy();
+    expect(findButton("ดูข้อมูลล่าสุด")).toBeTruthy();
     expectNoToast();
     expect(mocks.router.refresh).not.toHaveBeenCalled();
   });
@@ -404,7 +404,7 @@ describe("ReviewActions rejection feedback", () => {
 
     submit("ปฏิเสธคำขอ");
     await settleAction();
-    expect(findButton("โหลดข้อมูลล่าสุด")).toBeTruthy();
+    expect(findButton("ดูข้อมูลล่าสุด")).toBeTruthy();
     expect(container.querySelectorAll("form button").item(0)?.hasAttribute("disabled")).toBe(true);
     expect(container.querySelectorAll("form button").item(1)?.hasAttribute("disabled")).toBe(true);
     expectNoToast();

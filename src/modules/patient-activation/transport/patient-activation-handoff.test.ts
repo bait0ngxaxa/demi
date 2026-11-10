@@ -130,10 +130,10 @@ describe("Patient activation handoff presentation", () => {
 
     const markup = render(baseCandidate);
 
-    expect(markup).toContain("ระบบอาจออกลิงก์แล้ว");
-    expect(markup).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
-    expect(markup).toContain("โหลดสถานะล่าสุด");
-    expect(markup).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(markup).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(markup).toContain("ลิงก์อาจออกแล้ว แต่แสดงลิงก์เดิมซ้ำไม่ได้");
+    expect(markup).toContain("ดูข้อมูลล่าสุด");
+    expect(markup).not.toContain("ตรวจสอบผลของรายการ");
     expect(markup).not.toContain("<form");
   });
 });

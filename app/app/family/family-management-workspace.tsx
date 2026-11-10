@@ -276,6 +276,7 @@ function RevokePendingInvitation({
         <ConfirmableActionForm
           action={formAction}
           className="inline"
+          recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `ยกเลิกคำเชิญของ ${participantName} หรือไม่`,
             description: "คำเชิญที่รอตอบรับนี้จะใช้ไม่ได้ทันที ประวัติคำเชิญยังคงอยู่ หากต้องการเชื่อมต่อภายหลังต้องสร้างคำเชิญใหม่",
@@ -295,7 +296,6 @@ function RevokePendingInvitation({
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -319,6 +319,7 @@ function ShowPendingInvitationQr({
       <ConfirmableActionForm
         action={formAction}
         className="inline"
+        recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "review", label: "ตรวจสอบคำเชิญก่อนสร้างลิงก์ใหม่" }} />}
         confirmation={{
           title: `สร้างลิงก์คำเชิญใหม่ให้ ${participantName} หรือไม่`,
           description: "ลิงก์และ QR เดิมจะใช้ไม่ได้ทันที คำเชิญเดิมยังคงรอตอบรับ และระบบจะแสดงลิงก์ใหม่ด้านล่างหลังสร้างสำเร็จ",
@@ -348,7 +349,6 @@ function ShowPendingInvitationQr({
         />
       ) : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -371,6 +371,7 @@ function RevokeRelationship({
         <ConfirmableActionForm
           action={formAction}
           className="inline"
+          recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `ยกเลิกการเชื่อมต่อกับ ${participantName} หรือไม่`,
             description: "การเชื่อมต่อกับผู้ดูแลรายนี้จะสิ้นสุดทันที สิทธิ์ดูนัดหมายและข้อมูลสุขภาพที่แชร์ให้จะถูกยกเลิก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้งต้องส่งคำเชิญใหม่",
@@ -390,7 +391,6 @@ function RevokeRelationship({
       ) : null}
       {state.status === "SUCCESS" ? <p className="mt-2 text-sm text-success" role="status">{state.message}</p> : null}
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }
@@ -577,6 +577,7 @@ function WithdrawCaregiverRelationship({
       <ConfirmableActionForm
         action={formAction}
         className="inline"
+        recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
         confirmation={{
           title: `หยุดดูแล ${participantName} หรือไม่`,
           description: `การเชื่อมต่อกับผู้ป่วยรายนี้จะสิ้นสุดทันที คุณจะดูข้อมูลที่ผู้ป่วยแชร์ไว้ไม่ได้อีก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้ง ผู้ป่วยต้องส่งคำเชิญใหม่`,
@@ -594,7 +595,6 @@ function WithdrawCaregiverRelationship({
         </Button>
       </ConfirmableActionForm>
       {state.status === "ERROR" ? <p className="mt-2 text-sm text-danger" role="alert">{state.message}</p> : null}
-      <UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />
     </div>
   );
 }

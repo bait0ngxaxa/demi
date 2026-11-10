@@ -116,7 +116,7 @@ describe("useMutationActionState", () => {
     await submit("ข้อมูลเดิม");
 
     expect(query("[data-testid=status]").textContent).toBe("IDLE");
-    expect(query('[role="alert"]').textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(query('[role="alert"]').textContent).toContain("ยังยืนยันผลรายการนี้ไม่ได้");
     expect(query<HTMLButtonElement>("[data-testid=submit]").disabled).toBe(true);
     expect(query<HTMLInputElement>("[data-testid=note]").value).toBe("ข้อมูลเดิม");
   });
@@ -226,7 +226,7 @@ describe("useMutationActionState", () => {
     }
 
     expect(errors.some((error) => String((error as { digest?: string }).digest).startsWith("NEXT_REDIRECT"))).toBe(true);
-    expect(container.textContent).not.toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(container.textContent).not.toContain("ยังยืนยันผลรายการนี้ไม่ได้");
   });
 });
 
@@ -246,7 +246,8 @@ describe("UnknownOutcomeAlert recovery contracts", () => {
     const unload = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(false);
-    expect(query('[role="alert"]').textContent).toContain("โหลดข้อมูลล่าสุด");
+    expect(query('[role="alert"]').textContent).toContain("ดูข้อมูลล่าสุด");
+    expect(query('[role="alert"]').textContent).toContain("ไม่ยืนยันว่าคำขอนี้เป็นผู้เปลี่ยนข้อมูล");
     act(() => query<HTMLButtonElement>('[role="alert"] button').click());
     expect(reload).toHaveBeenCalledTimes(1);
   });
@@ -269,8 +270,12 @@ describe("UnknownOutcomeAlert recovery contracts", () => {
   it("states the duplicate risk for creates without server deduplication", () => {
     renderAlert({ kind: "review", label: "ตรวจสอบรายการคำขอล่าสุด" });
 
-    expect(query('[role="alert"]').textContent).toContain("อาจถูกบันทึกซ้ำหากส่งอีกครั้ง");
+    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบรายการล่าสุดก่อนทำรายการใหม่");
     expect(query('[role="alert"] button').textContent).toBe("ตรวจสอบรายการคำขอล่าสุด");
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    act(() => query<HTMLButtonElement>('[role="alert"] button').click());
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it("shows the workflow note when no in-page verification exists", () => {
@@ -290,5 +295,58 @@ describe("UnknownOutcomeAlert recovery contracts", () => {
     });
 
     expect(query('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+  });
+
+  it("guards navigation while a resend needs its original request identity", () => {
+    renderAlert({ kind: "resend", onResend: vi.fn(), resending: false });
+
+    expect(query('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
+  });
+
+  it("disables resend while the original request is being checked", () => {
+    const onResend = vi.fn();
+    renderAlert({ kind: "resend", onResend, resending: true });
+
+    const button = query<HTMLButtonElement>('[role="alert"] button');
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe("กำลังตรวจสอบผล...");
+    act(() => button.click());
+    expect(onResend).not.toHaveBeenCalled();
+  });
+
+  it("shows safe-resend details only in a disclosure and waits for the user's action", () => {
+    const onResend = vi.fn();
+    renderAlert({ kind: "resend", onResend, resending: false });
+
+    expect(query('[role="alert"] p').textContent).toBe("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(query('[role="alert"]').textContent).toContain("โดยไม่สร้างรายการซ้ำ");
+    expect(query<HTMLDetailsElement>("details").open).toBe(false);
+    expect(query('[role="alert"] button').textContent).toBe("ตรวจสอบผลของรายการ");
+    expect(onResend).not.toHaveBeenCalled();
+    act(() => query<HTMLButtonElement>('[role="alert"] button').click());
+    expect(onResend).toHaveBeenCalledOnce();
+  });
+
+  it("keeps verification attached to the existing identifier", () => {
+    const verify = vi.fn((identifier: string) => identifier);
+    const verificationId = "invitation-status-7";
+    renderAlert({
+      kind: "verify",
+      label: "ตรวจสอบสถานะ",
+      message: "ตรวจสอบสถานะคำเชิญก่อนตอบอีกครั้ง",
+      onVerify: () => { verify(verificationId); },
+      verifying: false,
+    });
+
+    act(() => query<HTMLButtonElement>('[role="alert"] button').click());
+    expect(verify).toHaveBeenCalledWith(verificationId);
+    expect(query('[role="alert"]').textContent).toContain("ตรวจสอบสถานะคำเชิญก่อนตอบอีกครั้ง");
+  });
+
+  it("keeps a note recovery action-free", () => {
+    renderAlert({ kind: "note", note: "ออกจากระบบแล้วเข้าสู่ระบบด้วยรหัสผ่านใหม่เพื่อตรวจสอบ" });
+
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.textContent).not.toContain("ทำรายการใหม่");
   });
 });

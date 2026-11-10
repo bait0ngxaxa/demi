@@ -150,6 +150,7 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
         {canRevoke ? <ConfirmableActionForm
           action={action}
           className="inline"
+          recovery={<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `${grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์ดูนัดหมาย"}ของ ${participantName} หรือไม่`,
             description: `${careEnded ? "การดูแลของหน่วยบริการนี้สิ้นสุดแล้ว " : ""}${grant.status === "PENDING" ? `ผู้ดูแล ${participantName} จะยอมรับข้อเสนอนี้ไม่ได้อีก หากต้องการแชร์นัดหมายภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ` : `ผู้ดูแล ${participantName} จะเข้าถึงนัดหมายของ ${grant.hospitalName} ผ่านสิทธิ์นี้ไม่ได้อีก หากต้องการแชร์ภายหลัง ต้องเสนอสิทธิ์ใหม่และให้ผู้ดูแลยอมรับ`}`,
@@ -176,7 +177,6 @@ function GrantRow({ grant, perspective }: { grant: AppointmentGrantManagementIte
         {canOpenAppointments ? <Link prefetch={false} className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong px-4 text-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href={personalAppointmentHubHref({ subject: grant.grantId, tab: "upcoming" })}>ดูนัดหมายที่ได้รับสิทธิ์</Link> : null}
       </SavedRecordActions> : null}
       <Feedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     </SavedRecordCard>
   </li>;
 }
@@ -260,6 +260,7 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
         {canRevoke ? <ConfirmableActionForm
           action={action}
           className="inline"
+          recovery={<UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `${grant.status === "PENDING" ? "ยกเลิกข้อเสนอ" : "ยกเลิกสิทธิ์"} ${resourceLabel} ให้ ${name} หรือไม่`,
             description: grant.status === "PENDING"
@@ -286,7 +287,6 @@ function ResourceGrantRow({ grant, perspective }: { grant: ResourceGrantManageme
         </form> : null}
       </SavedRecordActions> : null}
       <Feedback state={state} />
-      <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
     </SavedRecordCard>
   </li>;
 }

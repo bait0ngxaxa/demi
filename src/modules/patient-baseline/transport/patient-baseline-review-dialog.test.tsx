@@ -259,7 +259,7 @@ describe("Patient Baseline review dialog", () => {
     await confirm();
 
     expect(dialog()?.hasAttribute("open")).toBe(true);
-    expect(dialog()?.textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(dialog()?.textContent).toContain("ตรวจสอบผลของรายการ");
     expect(button("ยืนยันบันทึกข้อมูลตั้งต้น", dialog() ?? container).disabled).toBe(true);
     expect(button("กลับไปแก้ไข", dialog() ?? container).disabled).toBe(true);
     await act(async () => {
@@ -275,7 +275,7 @@ describe("Patient Baseline review dialog", () => {
     expect(mocks.create).toHaveBeenCalledTimes(1);
 
     mocks.create.mockResolvedValueOnce(success);
-    await act(async () => button("ตรวจสอบผลด้วยคำขอเดิม", dialog() ?? container).click());
+    await act(async () => button("ตรวจสอบผลของรายการ", dialog() ?? container).click());
 
     expect(mocks.create).toHaveBeenCalledTimes(2);
     expect(mocks.create.mock.calls[1][1]).toBe(mocks.create.mock.calls[0][1]);
@@ -286,11 +286,11 @@ describe("Patient Baseline review dialog", () => {
     mocks.create.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await openReview();
     await confirm();
-    await act(async () => button("ตรวจสอบผลด้วยคำขอเดิม", dialog() ?? container).click());
+    await act(async () => button("ตรวจสอบผลของรายการ", dialog() ?? container).click());
 
     expect(mocks.create).toHaveBeenCalledTimes(2);
     expect(mocks.create.mock.calls[1][1]).toBe(mocks.create.mock.calls[0][1]);
-    expect(dialog()?.textContent).toContain("ตรวจสอบผลด้วยคำขอเดิม");
-    expect(button("ตรวจสอบผลด้วยคำขอเดิม", dialog() ?? container).disabled).toBe(false);
+    expect(dialog()?.textContent).toContain("ตรวจสอบผลของรายการ");
+    expect(button("ตรวจสอบผลของรายการ", dialog() ?? container).disabled).toBe(false);
   });
 });

@@ -38,7 +38,7 @@ async function perform(form: FormData, operation: ExerciseOperation): Promise<Ex
       NOOP: "ข้อมูลตรงกับรายการปัจจุบันแล้ว ไม่มีการเปลี่ยนแปลง", REPLAY: "รายการนี้ดำเนินการแล้ว แสดงข้อมูลปัจจุบัน หากต้องการเปลี่ยนข้อมูลให้เลือกแก้ไข หรือเริ่มบันทึกใหม่" };
     return { status: "SUCCESS", result, message: messages[result.outcome] };
   } catch (error: unknown) {
-    if (error instanceof ExerciseCreateConsumedError) return { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
+    if (error instanceof ExerciseCreateConsumedError) return { status: "CREATE_CONSUMED", message: "รายการนี้ทำซ้ำไม่ได้ กรุณาเริ่มบันทึกรายการใหม่" };
     if (error instanceof ApplicationError) {
       if (error.code === "UNAUTHENTICATED") {
         return {
@@ -49,10 +49,10 @@ async function perform(form: FormData, operation: ExerciseOperation): Promise<Ex
       }
       if (error.code === "FORBIDDEN") return { status: "DENIED", message: "บัญชีนี้ไม่สามารถเข้าถึงบันทึกได้" };
       if (error.code === "NOT_FOUND") return { status: "CONFLICT", message: "ไม่พบรายการที่ต้องการ กรุณาโหลดรายการล่าสุด" };
-      if (error.code === "CONFLICT") return { status: "CONFLICT", message: "รายการหรือคำขอนี้เปลี่ยนไปแล้ว กรุณาโหลดรายการล่าสุดก่อนดำเนินการต่อ หากกำลังเพิ่มรายการให้ลองคำขอเดิมอีกครั้ง" };
+      if (error.code === "CONFLICT") return { status: "CONFLICT", message: operation === "create" ? "ยังยืนยันผลการบันทึกไม่ได้" : "ข้อมูลเปลี่ยนไปแล้ว กรุณาโหลดรายการล่าสุดก่อนดำเนินการต่อ" };
       if (error.code === "VALIDATION") return { status: "ERROR", message: "กรุณาตรวจสอบกิจกรรม วันที่ ระยะเวลา และบันทึกเพิ่มเติม วันที่ต้องเป็นวันนี้หรือวันที่ผ่านมาแล้ว" };
     }
-    return { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ หากกำลังเพิ่มรายการให้ลองคำขอเดิมอีกครั้งเพื่อตรวจสอบผล" };
+    return { status: "UNCONFIRMED", message: operation === "create" ? "ยังยืนยันผลการบันทึกไม่ได้" : operation === "update" ? "ยังยืนยันผลการแก้ไขไม่ได้" : operation === "delete" ? "ยังยืนยันผลการลบไม่ได้" : "ยังโหลดรายการไม่ได้ กรุณาลองใหม่" };
   }
 }
 export async function createPersonalExerciseAction(_previous: ExerciseActionState, form: FormData): Promise<ExerciseActionState> { return perform(form, "create"); }

@@ -16,12 +16,25 @@ describe("Meal Server Action boundary", () => {
     mock.create.mockRejectedValue(new MealCreateConsumedError());
     const consumed = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
     expect(consumed.status).toBe("CREATE_CONSUMED");
-    expect(consumed.message).toContain("เริ่มบันทึกใหม่");
+    expect(consumed.message).toContain("เริ่มบันทึกรายการใหม่");
     for (const text of ["ลองคำขอเดิม", "ลบ", "receipt", row.id, "patientProfileId"]) expect(consumed.message).not.toContain(text);
     expect(consumed.result).toBeUndefined(); expect(mock.revalidate).not.toHaveBeenCalled();
     mock.create.mockRejectedValue(new ConflictError());
     const retryable = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
-    expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toBe("ยังยืนยันผลการบันทึกไม่ได้");
+  });
+  it("preserves distinct CONFLICT and UNCONFIRMED create outcomes despite matching copy", async () => {
+    mock.create.mockRejectedValueOnce(new ConflictError()).mockRejectedValueOnce(new InfrastructureError("uncertain commit"));
+
+    const conflict = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+    const unconfirmed = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
+
+    expect(conflict).toMatchObject({ status: "CONFLICT", message: "ยังยืนยันผลการบันทึกไม่ได้" });
+    expect(unconfirmed).toMatchObject({ status: "UNCONFIRMED", message: "ยังยืนยันผลการบันทึกไม่ได้" });
+    expect(conflict.status).not.toBe(unconfirmed.status);
+    expect(conflict.result).toBeUndefined();
+    expect(unconfirmed.result).toBeUndefined();
+    expect(mock.revalidate).not.toHaveBeenCalled();
   });
   beforeEach(() => { vi.clearAllMocks(); mock.actor.mockResolvedValue({ userId: "actor" }); });
   it("bounds unknown/duplicate/File/oversize before actor/service, never drops owner fields", async () => {
@@ -58,7 +71,7 @@ describe("Meal Server Action boundary", () => {
     const expired = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
     expect(expired).toMatchObject({
       status: "DENIED",
-      message: "เซสชันหมดอายุ กรุณาเข้าสู่ระบบอีกครั้ง",
+      message: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบอีกครั้ง",
       loginHref: "/login?returnTo=%2Fapp%2Fpersonal%2Fwellness",
     });
 

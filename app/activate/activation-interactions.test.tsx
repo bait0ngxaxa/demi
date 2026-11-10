@@ -198,9 +198,9 @@ describe("Patient activation form", () => {
     });
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+      "ยังยืนยันผลการเปิดใช้งานไม่ได้",
     );
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain("หากตั้งรหัสผ่านสำเร็จ");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้");
     expect(container.querySelector('[role="alert"] button')).toBeNull();
     expect(container.querySelector("form")).toBeNull();
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();
@@ -237,7 +237,7 @@ describe("Patient activation form", () => {
       await submitActivation();
 
       const alert = container.querySelector('[role="alert"]')?.textContent;
-      expect(alert).toContain("ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่");
+      expect(alert).toContain("ยังยืนยันผลการเปิดใช้งานไม่ได้");
       expect(container.textContent).not.toContain("กรุณาลองใหม่หรือติดต่อโรงพยาบาล");
       expect(container.querySelector("form")).toBeNull();
       expect(container.querySelector('a[href="/login"]')).not.toBeNull();
@@ -447,13 +447,13 @@ describe("Patient activation form", () => {
     await act(async () => buttonByText("เปิดใช้งานบัญชี").click());
 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "ระบบยังยืนยันไม่ได้ว่าการเปิดใช้งานสำเร็จหรือไม่",
+      "ยังยืนยันผลการเปิดใช้งานไม่ได้",
     );
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       "ลองเข้าสู่ระบบด้วยรหัสผ่านที่ตั้งไว้",
     );
     expect(container.querySelector('[role="alert"] button')).toBeNull();
-    expect(container.textContent).not.toContain("ตรวจสอบผลด้วยคำขอเดิม");
+    expect(container.textContent).not.toContain("ตรวจสอบผลของรายการ");
     expect(container.querySelector("form")).toBeNull();
     expect(container.querySelector('a[href="/login"]')).not.toBeNull();
     expect(mocks.completeWorkforce).toHaveBeenCalledTimes(1);

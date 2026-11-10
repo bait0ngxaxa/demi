@@ -4,7 +4,6 @@ import { useEffect } from "react";
 
 import { Alert } from "./alert";
 import { Button } from "./button";
-import { unknownOutcomeMessage } from "./mutation-action-state";
 
 /**
  * How a workflow lets the user find out whether an unconfirmed request was saved.
@@ -27,11 +26,10 @@ export type UnknownOutcomeRecovery =
   | { kind: "review"; label: string }
   | { kind: "note"; message?: string; note: string };
 
-const resendMessage =
-  "ระบบยังยืนยันผลการดำเนินการไม่ได้ กรุณากด “ตรวจสอบผลด้วยคำขอเดิม” ระบบจะส่งข้อมูลชุดเดิมอีกครั้งเพื่อยืนยันผล หากบันทึกไปแล้วจะไม่ถูกบันทึกซ้ำ ไม่ควรโหลดหน้าใหม่ก่อนตรวจสอบ";
+const unknownOutcomeHeading = "ยังยืนยันผลรายการนี้ไม่ได้";
+const resendDetails = "ระบบจะส่งคำขอและข้อมูลเดิมอีกครั้งเพื่อค้นหาผลที่ทำไว้แล้ว โดยไม่สร้างรายการซ้ำ";
 const reviewMessage =
-  "ระบบยังยืนยันไม่ได้ว่าบันทึกแล้วหรือไม่ และคำขอนี้อาจถูกบันทึกซ้ำหากส่งอีกครั้ง กรุณาตรวจสอบรายการล่าสุดก่อนส่งใหม่";
-const noteMessage = "ระบบยังยืนยันไม่ได้ว่าบันทึกแล้วหรือไม่";
+  "กรุณาตรวจสอบรายการล่าสุดก่อนทำรายการใหม่ เพื่อป้องกันรายการซ้ำ";
 
 export function UnknownOutcomeAlert({
   active,
@@ -69,7 +67,12 @@ export function UnknownOutcomeAlert({
         role="alert"
         variant="warning"
       >
-        <p>{resendMessage}</p>
+        <p className="font-semibold">{unknownOutcomeHeading}</p>
+        <p className="mt-1">กรุณาตรวจสอบผลก่อนทำรายการใหม่</p>
+        <details className="mt-2">
+          <summary className="cursor-pointer underline underline-offset-4">วิธีตรวจสอบผล</summary>
+          <p className="mt-1">{resendDetails}</p>
+        </details>
         <Button
           className="mt-3"
           loading={recovery.resending}
@@ -78,7 +81,7 @@ export function UnknownOutcomeAlert({
           type="button"
           variant="secondary"
         >
-          {recovery.resending ? "กำลังตรวจสอบผล..." : "ตรวจสอบผลด้วยคำขอเดิม"}
+          {recovery.resending ? "กำลังตรวจสอบผล..." : "ตรวจสอบผลของรายการ"}
         </Button>
       </Alert>
     );
@@ -87,7 +90,7 @@ export function UnknownOutcomeAlert({
   if (recovery.kind === "note") {
     return (
       <Alert className={className} role="alert" variant="warning">
-        <p>{recovery.message ?? noteMessage}</p>
+        <p className="font-semibold">{recovery.message ?? unknownOutcomeHeading}</p>
         <p className="mt-1">{recovery.note}</p>
       </Alert>
     );
@@ -101,7 +104,8 @@ export function UnknownOutcomeAlert({
         role="alert"
         variant="warning"
       >
-        <p>{recovery.message}</p>
+        <p className="font-semibold">{unknownOutcomeHeading}</p>
+        <p className="mt-1">{recovery.message}</p>
         <Button
           className="mt-3"
           loading={recovery.verifying}
@@ -118,13 +122,18 @@ export function UnknownOutcomeAlert({
 
   return (
     <Alert className={className} role="alert" variant="warning">
-      <p>
-        {recovery.kind === "review"
-          ? reviewMessage
-          : recovery.message ?? unknownOutcomeMessage}
+      <p className="font-semibold">{unknownOutcomeHeading}</p>
+      <p className="mt-1">
+        {recovery.kind === "review" ? reviewMessage : recovery.message ?? "ดูข้อมูลล่าสุดก่อนทำรายการใหม่"}
       </p>
+      {recovery.kind === "reload" ? (
+        <details className="mt-2">
+          <summary className="cursor-pointer underline underline-offset-4">ข้อมูลที่ตรวจสอบได้</summary>
+          <p className="mt-1">การโหลดจะแสดงสถานะปัจจุบัน แต่ไม่ยืนยันว่าคำขอนี้เป็นผู้เปลี่ยนข้อมูล</p>
+        </details>
+      ) : null}
       <Button className="mt-3" onClick={() => window.location.reload()} size="compact" type="button" variant="secondary">
-        {recovery.kind === "review" ? recovery.label : recovery.label ?? "โหลดข้อมูลล่าสุด"}
+        {recovery.kind === "review" ? recovery.label : recovery.label ?? "ดูข้อมูลล่าสุด"}
       </Button>
     </Alert>
   );

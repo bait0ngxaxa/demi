@@ -8,10 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModalDialog } from "@/components/ui/modal-dialog";
-import {
-  connectionFailureMessage,
-  unknownOutcomeMessage,
-} from "@/components/ui/mutation-action-state";
+import { connectionFailureMessage } from "@/components/ui/mutation-action-state";
 import { notify } from "@/components/ui/notify";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -74,6 +71,7 @@ type PatientProvisioningWorkspaceProps = {
 
 const importUnconfirmedGuidance =
   "กด “ตรวจสอบและแสดงตัวอย่าง” กับไฟล์เดิมอีกครั้ง ระบบจะแสดงรายการที่บันทึกไปแล้วเป็น “มีอยู่แล้ว” ก่อนให้ยืนยันนำเข้าใหม่";
+const importUnconfirmedHeading = "ยังยืนยันผลการนำเข้าผู้ป่วยไม่ได้";
 const importForbiddenHeading = "ไม่มีสิทธิ์นำเข้าผู้ป่วยของโรงพยาบาลนี้";
 
 /** Where focus returns when the import review dialog closes. */
@@ -1456,7 +1454,7 @@ export function PatientProvisioningWorkspace({
 
                 {importUnconfirmed && !showReviewDialog ? (
                   <Alert className="mt-2" variant="warning">
-                    <p className="font-semibold">{unknownOutcomeMessage}</p>
+                    <p className="font-semibold">{importUnconfirmedHeading}</p>
                     <p className="mt-1">บางรายการอาจถูกบันทึกไปแล้ว {importUnconfirmedGuidance}</p>
                   </Alert>
                 ) : null}
@@ -1547,7 +1545,7 @@ export function PatientProvisioningWorkspace({
               ) : null}
               {importUnconfirmed ? (
                 <Alert role="alert" variant="warning">
-                  <p className="font-semibold">{unknownOutcomeMessage}</p>
+                  <p className="font-semibold">{importUnconfirmedHeading}</p>
                   <p className="mt-1">บางรายการอาจถูกบันทึกไปแล้ว ปิดหน้าต่างนี้แล้ว{importUnconfirmedGuidance}</p>
                 </Alert>
               ) : null}

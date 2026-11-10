@@ -252,7 +252,9 @@ describe("HospitalGovernanceControls notifications", () => {
     await settleAction();
 
     expect(mocks.suspend).toHaveBeenCalledTimes(1);
-    expect(dialog.querySelector("[role='alert']")?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog.querySelector("h2")?.textContent).toBe("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(dialog.textContent).toContain("ปิดหน้าต่างนี้เพื่อดำเนินการตรวจสอบผลด้วยวิธีที่ระบบเตรียมไว้");
+    expect(dialog.textContent).not.toContain("โหลดข้อมูลล่าสุด");
     expect(findButton("ปิดหน้าต่าง", dialog)).toBeTruthy();
     expect(findButton("ระงับการใช้งานโรงพยาบาล", dialog).disabled).toBe(true);
     expect(container.textContent).toContain("โหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะ");
@@ -275,7 +277,9 @@ describe("HospitalGovernanceControls notifications", () => {
     await settleAction();
 
     expect(mocks.suspend).toHaveBeenCalledTimes(1);
-    expect(dialog.querySelector("[role='alert']")?.textContent).toContain("ระบบยังยืนยันผลการดำเนินการไม่ได้");
+    expect(dialog.querySelector("h2")?.textContent).toBe("ยังยืนยันผลรายการนี้ไม่ได้");
+    expect(dialog.textContent).toContain("ปิดหน้าต่างนี้เพื่อดำเนินการตรวจสอบผลด้วยวิธีที่ระบบเตรียมไว้");
+    expect(dialog.textContent).not.toContain("โหลดข้อมูลล่าสุด");
     expect(container.textContent).toContain("โหลดข้อมูลล่าสุดเพื่อตรวจสอบสถานะ");
     expect(container.textContent).not.toContain("private server failure");
     expectNoToast();
