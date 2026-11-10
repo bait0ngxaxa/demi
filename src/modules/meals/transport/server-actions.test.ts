@@ -16,12 +16,12 @@ describe("Meal Server Action boundary", () => {
     mock.create.mockRejectedValue(new MealCreateConsumedError());
     const consumed = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
     expect(consumed.status).toBe("CREATE_CONSUMED");
-    expect(consumed.message).toContain("เริ่มบันทึกใหม่");
+    expect(consumed.message).toContain("เริ่มบันทึกรายการใหม่");
     for (const text of ["ลองคำขอเดิม", "ลบ", "receipt", row.id, "patientProfileId"]) expect(consumed.message).not.toContain(text);
     expect(consumed.result).toBeUndefined(); expect(mock.revalidate).not.toHaveBeenCalled();
     mock.create.mockRejectedValue(new ConflictError());
     const retryable = await createPersonalMealAction({ status: "IDLE" }, form(createInput));
-    expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(retryable.status).toBe("CONFLICT"); expect(retryable.message).toBe("ยังยืนยันผลการบันทึกไม่ได้");
   });
   beforeEach(() => { vi.clearAllMocks(); mock.actor.mockResolvedValue({ userId: "actor" }); });
   it("bounds unknown/duplicate/File/oversize before actor/service, never drops owner fields", async () => {

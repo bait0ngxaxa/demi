@@ -130,8 +130,8 @@ describe("Patient activation search and link issuance", () => {
     });
 
     const article = container.querySelector("article")!;
-    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ระบบอาจออกลิงก์แล้ว");
-    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ลิงก์เดิมแสดงซ้ำไม่ได้");
+    expect(article.querySelector('[role="alert"]')?.textContent).toContain("ลิงก์อาจออกแล้ว");
+    expect(article.querySelector('[role="alert"]')?.textContent).toContain("แสดงลิงก์เดิมซ้ำไม่ได้");
     expect(article.querySelector("form")).toBeNull();
     expect(mocks.issue).toHaveBeenCalledTimes(1);
   });
@@ -272,7 +272,7 @@ describe("Patient activation search and link issuance", () => {
       await searchAndIssue();
 
       const article = container.querySelector("article")!;
-      expect(article.querySelector('[role="alert"]')?.textContent).toContain("ระบบอาจออกลิงก์แล้ว");
+      expect(article.querySelector('[role="alert"]')?.textContent).toContain("ลิงก์อาจออกแล้ว");
       expect(article.querySelector("form")).toBeNull();
       expect(mocks.issue).toHaveBeenCalledTimes(1);
       expect(allNotifyText()).toBe("[[],[],[],[]]");

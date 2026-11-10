@@ -55,7 +55,7 @@ function useWeightGoalAction(
     try {
       state = await action(previous, formData);
     } catch {
-      state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้ กรุณาลองคำขอเดิมอีกครั้ง" };
+      state = { status: "UNCONFIRMED", message: "ยังยืนยันผลการทำรายการไม่ได้" };
     }
     if (!isCurrent()) return { status: "IDLE" } as const;
     coordination.onPending(false);
@@ -151,11 +151,19 @@ export function PersonalWeightGoalEditor({
       <input type="hidden" name="targetWeightKg" value={targetWeightKg} />
       <input type="hidden" name="targetDate" value={targetDate} />
     </> : null}
-    <div ref={feedback} tabIndex={-1} role="status" aria-live="polite">
-      {state.message ? <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
+    <div ref={feedback} tabIndex={-1}>
+      {uncertain && !goal ? (
+        <Alert variant="warning">
+          <p className="font-semibold">ยังยืนยันผลการบันทึกเป้าหมายไม่ได้</p>
+          <details className="mt-2">
+            <summary className="cursor-pointer underline underline-offset-4">วิธีตรวจสอบผล</summary>
+            <p className="mt-1">การตรวจสอบจะส่งข้อมูลเดิมอีกครั้งและป้องกันการบันทึกซ้ำ</p>
+          </details>
+        </Alert>
+      ) : state.message ? <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
     </div>
     <Button type="submit" loading={pending} disabled={coordination.blocked || pending || state.status === "SUCCESS" || state.status === "DENIED" || state.status === "CREATE_CONSUMED" || (uncertain && Boolean(goal))}>
-      {pending ? "กำลังบันทึก..." : uncertain && !goal ? "ลองคำขอเดิมอีกครั้ง" : goal ? "บันทึกการแก้ไข" : "บันทึกเป้าหมาย"}
+      {pending ? (uncertain && !goal ? "กำลังตรวจสอบผล..." : "กำลังบันทึก...") : uncertain && !goal ? "ตรวจสอบผลการบันทึก" : goal ? "บันทึกการแก้ไข" : "บันทึกเป้าหมาย"}
     </Button>
   </form>;
 }

@@ -29,16 +29,16 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
   });
   it("consumed create blocks same-nonce submission and offers explicit new intent", () => {
     simulation.workspace = true;
-    simulation.state = { status: "CREATE_CONSUMED", message: "คำขอบันทึกนี้เคยถูกใช้แล้วและไม่สามารถทำซ้ำได้ กรุณาเริ่มบันทึกใหม่" };
+    simulation.state = { status: "CREATE_CONSUMED", message: "รายการนี้ทำซ้ำไม่ได้ กรุณาเริ่มบันทึกรายการใหม่" };
     const html = renderToStaticMarkup(<PersonalExerciseWorkspace initialPage={{ items: [], nextCursor: null }} today={row.occurredOn} initialNonce={row.id} authority={authority} />);
-    expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(html).toContain('<fieldset disabled=""'); expect(html).not.toContain("ตรวจสอบผลการบันทึก");
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?=[^>]*\sdisabled="")[^>]*>/u);
     expect(html).toMatch(/<button(?![^>]*\sdisabled=")[^>]*>เริ่มบันทึกใหม่<\/button>/u);
   });
   it("transient create conflict retains enabled same-nonce retry", () => {
     simulation.state = { status: "CONFLICT" };
     const html = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />);
-    expect(html).toContain(row.id); expect(html).toContain("ลองคำขอเดิมอีกครั้ง"); expect(html).toContain('<fieldset disabled=""');
+    expect(html).toContain(row.id); expect(html).toContain("ตรวจสอบผลการบันทึก"); expect(html).toContain('<fieldset disabled=""');
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?![^>]*\sdisabled=")[^>]*>/u);
   });
   beforeEach(() => { simulation.state = { status: "IDLE" }; simulation.pending = false; simulation.confirming = false; simulation.workspace = false; });
@@ -76,7 +76,7 @@ describe("Exercise UI contract states (server-rendered evidence)", () => {
     const html = renderToStaticMarkup(<ExerciseEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />);
     expect(html).toContain("อาหารไทย"); expect(html).toContain('aria-invalid="true"'); expect(html).toContain("aria-describedby"); expect(html).toContain("ยาวเกินไป"); expect(html).not.toContain("<fieldset disabled");
     simulation.state = { status: "UNCONFIRMED", message: "ยังยืนยันผลไม่ได้" };
-    const create = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ลองคำขอเดิมอีกครั้ง"); expect(create).toContain(row.id); expect(create).toContain("<fieldset disabled");
+    const create = renderToStaticMarkup(<ExerciseEditor today={row.occurredOn} nonce={row.id} coordination={coordination} />); expect(create).toContain("ตรวจสอบผลการบันทึก"); expect(create).toContain(row.id); expect(create).toContain("<fieldset disabled");
     expect(renderToStaticMarkup(<ExerciseEditor item={row} today={row.occurredOn} nonce={row.id} coordination={coordination} />)).toContain("<fieldset disabled");
   });
   it("guards mobile navigation only while an exercise outcome is unconfirmed and separates session expiry from denial", () => {

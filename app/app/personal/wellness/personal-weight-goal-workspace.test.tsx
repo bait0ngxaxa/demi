@@ -94,7 +94,9 @@ describe("Personal Weight Goal UI", () => {
     expect(html).toContain('<fieldset disabled=""');
     expect(html).toContain('name="targetWeightKg" value=""');
     expect(html).toContain('name="targetDate" value=""');
-    expect(html).toContain("ลองคำขอเดิมอีกครั้ง");
+    expect(html).toContain("ตรวจสอบผลการบันทึก");
+    expect(html).toContain("วิธีตรวจสอบผล");
+    expect(html).toContain("การตรวจสอบจะส่งข้อมูลเดิมอีกครั้ง");
     expect(html).toMatch(/<button(?=[^>]*type="submit")(?!(?:[^>]*\sdisabled=""))[^>]*>/u);
   });
 

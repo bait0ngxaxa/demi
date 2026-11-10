@@ -417,7 +417,10 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(query<HTMLInputElement>('input[name="submissionNonce"]').value).toBe(nonce);
     expect(query<HTMLInputElement>('input[name="weight"]').value).toBe("71");
     expect(query<HTMLButtonElement>('button[type="submit"]').disabled).toBe(true);
-    expect(query('[role="status"]').textContent).toContain("รหัสใหม่");
+    expect(query('[role="status"]').textContent).toContain("บันทึกข้อมูลที่ส่งก่อนหน้าแล้ว");
+    expect(query('[role="status"]').textContent).toContain("กำลังเตรียมรายการถัดไป");
+    expect(query('[role="status"]').textContent).not.toMatch(/nonce|รหัสใหม่/u);
+    expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(container.querySelector('button[type="button"]')).toBeNull();
   });
 
