@@ -16,10 +16,10 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { AuditEventInput } from "@/modules/audit/schemas/audit-schemas";
 import {
   ForbiddenError,
-  ConflictError,
   NotFoundError,
 } from "@/shared/errors/application-error";
 import { createAppointmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
+import { transferFutureAppointmentAssignee } from "@/modules/appointments/services/appointment-assignee-transfer";
 
 import {
   assertPatientOsmAssignmentPolicy,
@@ -121,58 +121,29 @@ async function handoffFutureAppointments(
     now: Date;
   },
 ): Promise<void> {
-  const appointments = await transaction.patientAppointment.findMany({
-    where: {
-      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-      assignedOsmUserId: input.previousOsmUserId,
-      status: "SCHEDULED",
-      scheduledAt: { gt: input.now },
-    },
-    orderBy: { id: "asc" },
-    select: { id: true, updatedAt: true },
+  const transferred = await transferFutureAppointmentAssignee(transaction, {
+    actorUserId: input.actorUserId,
+    hospitalId: input.hospitalId,
+    field: "assignedOsmUserId",
+    previousUserId: input.previousOsmUserId,
+    nextUserId: input.nextOsmUserId,
+    patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+    now: input.now,
+    conflictMessage: "The Appointment changed during OSM reassignment",
   });
-  for (const appointment of appointments) {
-    const updatedAt = new Date(Math.max(appointment.updatedAt.getTime() + 1, input.now.getTime()));
-    const changed = await transaction.patientAppointment.updateMany({
-      where: {
-        id: appointment.id,
-        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-        assignedOsmUserId: input.previousOsmUserId,
-        status: "SCHEDULED",
-        scheduledAt: { gt: input.now },
-        updatedAt: appointment.updatedAt,
-      },
-      data: { assignedOsmUserId: input.nextOsmUserId, updatedAt },
-    });
 
-    if (changed.count !== 1) {
-      throw new ConflictError("The Appointment changed during OSM reassignment");
-    }
+  if (!input.nextOsmUserId) {
+    return;
+  }
 
-    await recordAuditEvent({
-      actorUserId: input.actorUserId,
-      action: input.nextOsmUserId
-        ? "appointment.assignee_handed_over"
-        : "appointment.assignee_unassigned",
-      resourceType: "PatientAppointment",
-      resourceId: appointment.id,
-      metadata: {
-        hospitalId: input.hospitalId,
-        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-        previousOsmUserId: input.previousOsmUserId,
-        nextOsmUserId: input.nextOsmUserId,
-      },
-    }, transaction);
-
-    if (input.nextOsmUserId) {
-      await createAppointmentLineNotificationIntent(transaction, {
-        appointmentId: appointment.id,
-        patientHospitalRelationshipId: input.patientHospitalRelationshipId,
-        sourceUpdatedAt: updatedAt,
-        eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
-        patientUserId: input.patientUserId,
-      }, input.now, { onlyOsmUserId: input.nextOsmUserId });
-    }
+  for (const appointment of transferred) {
+    await createAppointmentLineNotificationIntent(transaction, {
+      appointmentId: appointment.id,
+      patientHospitalRelationshipId: input.patientHospitalRelationshipId,
+      sourceUpdatedAt: appointment.updatedAt,
+      eventKind: AppointmentLineNotificationEventKind.OSM_APPOINTMENT_ASSIGNED,
+      patientUserId: input.patientUserId,
+    }, input.now, { onlyOsmUserId: input.nextOsmUserId });
   }
 }
 

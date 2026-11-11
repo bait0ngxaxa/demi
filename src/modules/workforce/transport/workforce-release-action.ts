@@ -9,10 +9,18 @@ import type { WorkforceReleaseActionState } from "./action-state";
 export async function releaseWorkforceAction(_state: WorkforceReleaseActionState, form: FormData): Promise<WorkforceReleaseActionState> {
   try {
     const actor = await getProtectedApplicationActor();
-    await releaseWorkforceRelationship(actor, Object.fromEntries(form.entries()));
+    const { unassignedAppointmentCount } = await releaseWorkforceRelationship(actor, Object.fromEntries(form.entries()));
     revalidatePath("/app/workforce", "layout");
     revalidatePath("/app/patients", "layout");
-    return { success: true, outcome: "RELEASED", message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่" };
+    revalidatePath("/app/appointments", "layout");
+    return {
+      success: true,
+      outcome: "RELEASED",
+      message: unassignedAppointmentCount > 0
+        ? `สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่ นัดหมายที่จะถึง ${unassignedAppointmentCount} นัดยังไม่มีผู้รับผิดชอบ กรุณามอบหมายผู้รับผิดชอบใหม่`
+        : "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่",
+      unassignedAppointmentCount,
+    };
   } catch (error: unknown) {
     if (error instanceof ConflictError) {
       return { success: false, outcome: "CONFLICT", message: "ไม่สามารถดำเนินการได้ ข้อมูลอาจเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่" };

@@ -38,6 +38,7 @@ import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { transferFutureAppointmentAssignee } from "@/modules/appointments/services/appointment-assignee-transfer";
 import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE, WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
@@ -4535,9 +4536,16 @@ async function assertEligibleOwnerRemains(transaction: Prisma.TransactionClient,
   }
 }
 
+export type WorkforceReleaseResult = {
+  relationshipId: string;
+  hospitalId: string;
+  /** Future SCHEDULED Appointments of this Hospital that lost the released user as their assignee. */
+  unassignedAppointmentCount: number;
+};
+
 export async function releaseWorkforceRelationship(
   actor: ActorContext | null | undefined, input: unknown, dependencies: WorkforceServiceDependencies = {},
-): Promise<{ relationshipId: string; hospitalId: string }> {
+): Promise<WorkforceReleaseResult> {
   const parsed = workforceReleaseSchema.safeParse(input);
   if (!actor) throw new ForbiddenError();
   if (!parsed.success) throw new ValidationError("Workforce release data is invalid");
@@ -4567,13 +4575,25 @@ export async function releaseWorkforceRelationship(
           data: { endedAt: now, endedByUserId: actor.userId },
         })
         : { count: 0 };
+      // A released user can no longer act on this Hospital's appointments: its future SCHEDULED ones
+      // (including one-off visits) become unassigned so the Hospital can choose a new assignee.
+      const unassigned = await transferFutureAppointmentAssignee(tx, {
+        actorUserId: actor.userId,
+        hospitalId: data.targetHospitalId,
+        field: data.kind === "osm" ? "assignedOsmUserId" : "responsibleUserId",
+        previousUserId: current.userId,
+        nextUserId: null,
+        now,
+        conflictMessage: "An Appointment changed during the workforce release",
+        auditMetadata: { cause: "workforce_release", workforceRelationshipId: current.id },
+      });
       // Tokens are global credential capabilities. Revoke all outstanding workforce tokens of this user.
       const revoked = await tx.workforceActivation.updateMany({ where: { userId: current.userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
       await recordAuditEvent({ actorUserId: actor.userId, action: "workforce.permanently_released",
         resourceType: data.kind === "osm" ? "OsmHospitalRelationship" : "HospitalMembership", resourceId: current.id,
         metadata: { hospitalId: data.targetHospitalId, targetUserId: current.userId, fromStatus: current.status, toStatus: MembershipStatus.ENDED,
-          endedAssignmentCount: ended.count, revokedActivationCount: revoked.count } }, tx);
-      return { relationshipId: current.id, hospitalId: data.targetHospitalId };
+          endedAssignmentCount: ended.count, revokedActivationCount: revoked.count, unassignedAppointmentCount: unassigned.length } }, tx);
+      return { relationshipId: current.id, hospitalId: data.targetHospitalId, unassignedAppointmentCount: unassigned.length };
     }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
   } catch (error: unknown) { throw normalizeDatabaseError(error, "Workforce release could not be completed"); }
 }
