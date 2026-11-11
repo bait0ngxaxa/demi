@@ -227,13 +227,12 @@ describe("ADR-0032: a platform ADMIN reopens an ended care relationship (Postgre
 
   it("answers the same not-found for an unknown person, another Hospital's relationship and a relationship that is not ended", async () => {
     const f = await fixture();
-    const unknown = reopenPatientHospitalRelationship(f.admin, reopenInput(f, { nationalId: nationalId() }), dependencies);
-    const otherHospital = reopenPatientHospitalRelationship(f.admin, reopenInput(f, { hospitalId: f.otherHospitalId }), dependencies);
     const elsewhere = await hospital();
-    const noRelationship = reopenPatientHospitalRelationship(f.admin, reopenInput(f, { hospitalId: elsewhere }), dependencies);
-    for (const attempt of [unknown, otherHospital, noRelationship]) {
-      await expect(attempt).rejects.toBeInstanceOf(NotFoundError);
-      await expect(attempt).rejects.toMatchObject({ message: new NotFoundError().message });
+    // Each attempt runs and is awaited on its own, so no rejection is left without a handler while another is awaited.
+    for (const overrides of [{ nationalId: nationalId() }, { hospitalId: f.otherHospitalId }, { hospitalId: elsewhere }]) {
+      const error: unknown = await reopenPatientHospitalRelationship(f.admin, reopenInput(f, overrides), dependencies).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(NotFoundError);
+      expect(error).toMatchObject({ message: new NotFoundError().message });
     }
     await expect(previewPatientHospitalRelationshipReopen(f.admin, { hospitalId: f.otherHospitalId, nationalId: f.nationalId }, { database: db })).rejects.toBeInstanceOf(NotFoundError);
   });
