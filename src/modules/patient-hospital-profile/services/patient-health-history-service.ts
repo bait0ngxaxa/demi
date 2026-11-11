@@ -8,13 +8,14 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { APPOINTMENT_READ_CAPABILITY } from "@/modules/appointments/policies/appointment-policy";
 import { resolveOwnPatientRelationshipContext } from "@/modules/patient-self/services/patient-self-query-service";
 import { resolveAppointmentAccessContext } from "@/modules/appointments/services/appointment-access-service";
-import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   importedPatientHealthHistorySchema,
   patientHealthHistorySchema,
   type ImportedPatientHealthHistory,
 } from "../schemas/patient-health-history-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 async function authorizeHealthRead(actor: ActorContext, relationshipId: string, database: PrismaClient): Promise<void> {
   // The patient SELF path and the care path re-read current authority from the database.
@@ -76,7 +77,7 @@ export async function updatePatientHealthHistory(
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) throw new ConflictError("Health history changed");
-    throw new InfrastructureError("Health history could not be saved");
+    throw toInfrastructureError("patient-hospital-profile.updatePatientHealthHistory", error, "Health history could not be saved");
   }
 }
 

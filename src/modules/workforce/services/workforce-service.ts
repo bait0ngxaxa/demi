@@ -138,6 +138,7 @@ import {
   selfRegistrationRelationshipsSchema,
   type SelfRegistrationRelationship,
 } from "@/modules/self-registration/domain/self-registration-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type WorkforceDatabase = PrismaClient;
 
@@ -459,7 +460,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("The workforce operation conflicted with another request");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("workforce.workforce-service", error, fallbackMessage);
 }
 
 async function runSerializable<T>(
@@ -1432,7 +1433,7 @@ export async function listWorkforceHospitals(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce Hospital scope could not be loaded");
+    throw toInfrastructureError("workforce.listWorkforceHospitals", error, "Workforce Hospital scope could not be loaded");
   }
 }
 
@@ -1755,7 +1756,7 @@ export async function getWorkforceDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce relationship detail could not be loaded");
+    throw toInfrastructureError("workforce.getWorkforceDetail", error, "Workforce relationship detail could not be loaded");
   }
 }
 
@@ -2001,7 +2002,7 @@ export async function listWorkforce(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce data could not be loaded");
+    throw toInfrastructureError("workforce.listWorkforce", error, "Workforce data could not be loaded");
   }
 }
 
@@ -3420,7 +3421,7 @@ export async function previewWorkforceActivation(
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
 
-    throw new InfrastructureError("Workforce activation could not be previewed");
+    throw toInfrastructureError("workforce.previewWorkforceActivation", error, "Workforce activation could not be previewed");
   }
 }
 
@@ -3987,7 +3988,7 @@ async function completeWorkforceActivationForPurposes(
       return requireWorkforceActivationReconciliation(claim, dependencies);
     }
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Workforce activation could not be finalized");
+    throw toInfrastructureError("workforce.completeWorkforceActivationForPurposes", error, "Workforce activation could not be finalized");
   }
 
   return { userId: claim.userId };
@@ -4512,7 +4513,7 @@ export async function listHospitalOwnersForPasswordReset(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital Owners could not be loaded");
+    throw toInfrastructureError("workforce.listHospitalOwnersForPasswordReset", error, "Hospital Owners could not be loaded");
   }
 }
 

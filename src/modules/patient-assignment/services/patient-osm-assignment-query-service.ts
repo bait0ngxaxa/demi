@@ -38,13 +38,8 @@ import {
   toPatientDirectoryItem,
   type PatientDirectoryItem,
 } from "@/modules/patient-directory/services/patient-directory-query-service";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientOsmAssignmentQueryDatabase = PrismaClient;
 
@@ -250,7 +245,7 @@ export async function getPatientOsmAssignmentManagementView(
       throw error;
     }
 
-    throw new InfrastructureError("Patient assignment could not be loaded");
+    throw toInfrastructureError("patient-assignment.getPatientOsmAssignmentManagementView", error, "Patient assignment could not be loaded");
   }
 }
 
@@ -381,7 +376,7 @@ export async function listPatientOsmCandidates(
       throw error;
     }
 
-    throw new InfrastructureError("OSM candidates could not be loaded");
+    throw toInfrastructureError("patient-assignment.listPatientOsmCandidates", error, "OSM candidates could not be loaded");
   }
 }
 
@@ -412,7 +407,7 @@ export async function listPatientOsmAssignmentScopes(
   } catch (error: unknown) {
     throw error instanceof ApplicationError
       ? error
-      : new InfrastructureError("Patient assignment scopes could not be loaded");
+      : toInfrastructureError("patient-assignment.listPatientOsmAssignmentScopes", error, "Patient assignment scopes could not be loaded");
   }
 }
 
@@ -494,7 +489,7 @@ export async function getPatientOsmBulkAssignmentView(
       throw error;
     }
 
-    throw new InfrastructureError("Bulk patient assignment could not be loaded");
+    throw toInfrastructureError("patient-assignment.getPatientOsmBulkAssignmentView", error, "Bulk patient assignment could not be loaded");
   }
 }
 
@@ -549,7 +544,7 @@ export async function listPatientOsmBulkCandidates(
       throw error;
     }
 
-    throw new InfrastructureError("OSM candidates could not be loaded");
+    throw toInfrastructureError("patient-assignment.listPatientOsmBulkCandidates", error, "OSM candidates could not be loaded");
   }
 }
 

@@ -52,11 +52,7 @@ import {
   type ProgramRoundRecord,
   type RoundReadOptions,
 } from "@/modules/patient-program-rounds/services/round-query-service";
-import {
-  ForbiddenError,
-  InfrastructureError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import { resolvePatientCareNextStep, type PatientCareNextStep } from "../domain/care-next-step";
 import {
@@ -75,6 +71,7 @@ import {
   careTrackingQuerySchema,
   type CareTrackingQueryInput,
 } from "../schemas/care-tracking-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type CareTrackingDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -779,8 +776,8 @@ export async function listCareTrackingScopes(
       })));
 
     return [...direct, ...network];
-  } catch {
-    throw new InfrastructureError("Care tracking scopes could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("care-tracking.listCareTrackingScopes", error, "Care tracking scopes could not be loaded");
   }
 }
 
@@ -830,7 +827,7 @@ export async function getCareTrackingPage(
       throw error;
     }
 
-    throw new InfrastructureError("Care tracking could not be loaded");
+    throw toInfrastructureError("care-tracking.getCareTrackingPage", error, "Care tracking could not be loaded");
   }
 }
 

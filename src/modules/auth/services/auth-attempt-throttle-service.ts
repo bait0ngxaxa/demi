@@ -8,6 +8,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/lib/env/server";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { InfrastructureError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const AUTH_ATTEMPT_THROTTLE = {
   maxFailures: 5,
@@ -75,8 +76,8 @@ export function createAuthAttemptThrottle(
           select: { keyHash: true },
         });
         return rows.length > 0;
-      } catch {
-        throw new InfrastructureError("Authentication attempt throttle is unavailable");
+      } catch (error: unknown) {
+        throw toInfrastructureError("auth.isBlocked", error, "Authentication attempt throttle is unavailable");
       }
     },
 
@@ -140,7 +141,7 @@ export function createAuthAttemptThrottle(
         });
       } catch (error: unknown) {
         if (error instanceof InfrastructureError) throw error;
-        throw new InfrastructureError("Authentication attempt throttle is unavailable");
+        throw toInfrastructureError("auth.recordFailure", error, "Authentication attempt throttle is unavailable");
       }
     },
   };

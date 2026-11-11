@@ -21,17 +21,11 @@ import { lockFirstCredentialOperation } from "@/modules/identity/services/first-
 import { unlinkLineBindingForSuspectedTakeover } from "@/modules/line/services/line-account-service";
 import { personHospitalIds } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 import { assertOwnerInDatabase } from "@/modules/workforce/services/workforce-service";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { credentialEstablishedAt, type UsedActivation, type UserKind } from "../domain/user-management-values";
 import { suspectedTakeoverLockSchema } from "../schemas/user-management-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type UserTakeoverDependencies = {
   database?: PrismaClient;
@@ -220,7 +214,7 @@ export async function lockSuspectedTakeover(
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) {
       throw new ConflictError("The account changed");
     }
-    throw new InfrastructureError("The account could not be locked");
+    throw toInfrastructureError("user-management.lockSuspectedTakeover", error, "The account could not be locked");
   }
 
   if (locked.providerState === UserTakeoverProviderState.CONFIRMED || !locked.authSubject) {

@@ -19,13 +19,7 @@ import { buildNameWhere } from "@/modules/patient-directory/services/patient-dir
 import { personHospitalIds } from "@/modules/patient-hospital-profile/services/patient-name-correction-service";
 import { decideWorkforcePolicy, WORKFORCE_CAPABILITIES } from "@/modules/workforce/policies/workforce-policy";
 import { assertOwnerInDatabase } from "@/modules/workforce/services/workforce-service";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   activationMethodWhere,
@@ -43,6 +37,7 @@ import {
   type UserKind,
 } from "../domain/user-management-values";
 import { assessUserRecordDeletion, type UserRecordDeletionBlocker } from "./user-record-deletion-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type UserDirectoryRow = {
   kind: UserKind;
@@ -266,7 +261,7 @@ export async function listHospitalUsers(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("User directory could not be loaded");
+    throw toInfrastructureError("user-management.listHospitalUsers", error, "User directory could not be loaded");
   }
 }
 
@@ -481,6 +476,6 @@ export async function getHospitalUserDetail(
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("User detail could not be loaded");
+    throw toInfrastructureError("user-management.getHospitalUserDetail", error, "User detail could not be loaded");
   }
 }

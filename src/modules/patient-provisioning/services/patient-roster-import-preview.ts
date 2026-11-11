@@ -61,6 +61,7 @@ import type {
   PatientRosterImportDatabase,
   PatientRosterImportServiceDependencies,
 } from "./patient-roster-import-types";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PreviewPerson = {
   id: string;
@@ -723,7 +724,7 @@ export async function preparePatientRosterImportPreview(
       throw error;
     }
 
-    throw new InfrastructureError("Patient import preview could not be prepared");
+    throw toInfrastructureError("patient-provisioning.preparePatientRosterImportPreview", error, "Patient import preview could not be prepared");
   }
 }
 

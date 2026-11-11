@@ -15,17 +15,14 @@ import {
   hospitalOperatorMembershipWhere,
   type HospitalAccessBasis,
 } from "@/modules/identity/services/hospital-authority";
-import {
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   decideHospitalReportPolicy,
   type HospitalReportCapability,
 } from "../policies/hospital-report-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalReportAccessDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -78,7 +75,7 @@ export async function listHospitalReportingHospitals(
     return memberships.map(({ hospital }) => hospital);
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital reporting access could not be loaded");
+    throw toInfrastructureError("reporting.listHospitalReportingHospitals", error, "Hospital reporting access could not be loaded");
   }
 }
 
@@ -136,7 +133,7 @@ export async function resolveHospitalReportingAccessContext(
     return { actor, hospital: membership.hospital, accessBasis };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital reporting access could not be verified");
+    throw toInfrastructureError("reporting.resolveHospitalReportingAccessContext", error, "Hospital reporting access could not be verified");
   }
 }
 

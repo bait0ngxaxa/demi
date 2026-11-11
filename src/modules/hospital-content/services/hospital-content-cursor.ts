@@ -5,7 +5,8 @@ import { z } from "zod";
 
 import { getServerEnv } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const PREFIX = "hcontentcur_v1_";
 const MAX_CURSOR_LENGTH = 2_048;
@@ -37,8 +38,8 @@ function canonical(cursor: HospitalContentCursor): Buffer {
 function getCursorSecret(): string {
   try {
     return getServerEnv().IDENTITY_HASH_SECRET;
-  } catch {
-    throw new InfrastructureError("Hospital Content cursor could not be secured");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-content.getCursorSecret", error, "Hospital Content cursor could not be secured");
   }
 }
 

@@ -3,9 +3,10 @@ import "server-only";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 
 import { auditEventInputSchema, type AuditEventInput } from "../schemas/audit-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type AuditDatabase = Pick<PrismaClient, "auditEvent"> | Prisma.TransactionClient;
 
@@ -42,7 +43,7 @@ function toAuditPersistenceError(error: unknown): unknown {
   // conflicts instead of converting them into a terminal infrastructure error.
   return isRetryableTransactionError(error)
     ? error
-    : new InfrastructureError("Audit event could not be persisted");
+    : toInfrastructureError("audit.audit-service", error, "Audit event could not be persisted");
 }
 
 export async function recordAuditEvent(

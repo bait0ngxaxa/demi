@@ -6,11 +6,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/lib/env/server";
-import {
-  ConflictError,
-  InfrastructureError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ConflictError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   createPersonInputSchema,
@@ -18,6 +14,7 @@ import {
   type CreatePersonInput,
   type IdentityReference,
 } from "../schemas/identity-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PersonRecord = {
   id: string;
@@ -78,7 +75,7 @@ export function createIdentityStore(database: IdentityDatabase): IdentityStore {
           throw error;
         }
 
-        throw new InfrastructureError();
+        throw toInfrastructureError("identity.findPersonByIdentityHash", error);
       }
     },
 
@@ -96,7 +93,7 @@ export function createIdentityStore(database: IdentityDatabase): IdentityStore {
           throw new ConflictError("A person with this identity already exists");
         }
 
-        throw new InfrastructureError();
+        throw toInfrastructureError("identity.createPerson", error);
       }
     },
   };

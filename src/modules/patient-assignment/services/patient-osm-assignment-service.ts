@@ -12,13 +12,7 @@ import {
   runSerializableTransaction,
 } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   patientOsmAssignmentRequestSchema,
@@ -35,6 +29,7 @@ import {
   unassignOsmFromPatientInTransaction,
   type PatientOsmAssignmentMutationResult,
 } from "./patient-osm-assignment-transaction";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type {
   PatientOsmAssignmentMutationResult,
@@ -88,7 +83,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("The patient assignment conflicted with another request");
   }
 
-  return new InfrastructureError("Patient assignment could not be completed");
+  return toInfrastructureError("patient-assignment.patient-osm-assignment-service", error, "Patient assignment could not be completed");
 }
 
 export async function assignOsmToPatient(

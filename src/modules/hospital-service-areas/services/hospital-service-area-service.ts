@@ -9,6 +9,7 @@ import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, N
 import { hasServiceAreaEligibility, isEligibleServiceAreaPair, type ServiceAreaFacility } from "../domain/service-area-eligibility";
 import { assertHospitalServiceAreaPolicy, HOSPITAL_SERVICE_AREA_CAPABILITIES, type HospitalServiceAreaCapability } from "../policies/hospital-service-area-policy";
 import { serviceAreaAttachSchema, serviceAreaCandidatePageSchema, serviceAreaEndSchema, serviceAreaPageSchema } from "../schemas/hospital-service-area-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const facilitySelect = {
   id: true, hospitalCode: true, name: true, status: true,
@@ -64,7 +65,7 @@ export async function operation<T>(database: PrismaClient, work: (tx: Prisma.Tra
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError("Service area changed concurrently; reload before retrying");
     if (isNetworkRoleCheckViolation(error)) throw new ConflictError("Network roles changed concurrently; reload before retrying");
-    throw new InfrastructureError("Hospital service area operation could not be completed");
+    throw toInfrastructureError("hospital-service-areas.operation", error, "Hospital service area operation could not be completed");
   }
 }
 

@@ -31,7 +31,7 @@ import {
   type HospitalOwnerInvitationView,
 } from "@/modules/workforce/services/hospital-owner-invitation";
 import { issueHospitalOwnerActivation, revokeHospitalOwnerActivation } from "@/modules/workforce/services/workforce-service";
-import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { assertHospitalOnboardingCapability, HOSPITAL_ONBOARDING_CAPABILITIES } from "../policies/hospital-onboarding-policy";
 import {
@@ -43,6 +43,7 @@ import {
   type ParentOwnerInviteeInput,
 } from "../schemas/parent-owner-invitation-schemas";
 import { openOwnerInvitationWhere, parentOwnerInvitableHospitalWhere } from "./parent-owner-invitation-context";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ParentOwnerInvitationDependencies = {
   database?: PrismaClient;
@@ -80,7 +81,7 @@ async function operation<T>(database: PrismaClient, work: (tx: Prisma.Transactio
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError("The owner invitation changed concurrently; reload before retrying");
-    throw new InfrastructureError("Parent owner invitation could not be completed");
+    throw toInfrastructureError("hospital-onboarding.operation", error, "Parent owner invitation could not be completed");
   }
 }
 
@@ -93,7 +94,7 @@ async function read<T>(database: PrismaClient, work: (client: Prisma.Transaction
     return await work(database);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Parent owner invitation could not be loaded");
+    throw toInfrastructureError("hospital-onboarding.read", error, "Parent owner invitation could not be loaded");
   }
 }
 
@@ -283,7 +284,7 @@ async function invite(
     if (error instanceof ConflictError) {
       const replayed = await findReplayedInvitation(database, data).catch((replayError: unknown) => {
         if (replayError instanceof ConflictError) throw replayError;
-        throw new InfrastructureError("Parent owner invitation could not be completed");
+        throw toInfrastructureError("hospital-onboarding.invite", replayError, "Parent owner invitation could not be completed");
       });
       if (replayed) return replayed;
     }

@@ -9,8 +9,8 @@ export type ApplicationErrorCode =
 export class ApplicationError extends Error {
   readonly code: ApplicationErrorCode;
 
-  constructor(code: ApplicationErrorCode, message: string) {
-    super(message);
+  constructor(code: ApplicationErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ApplicationError";
     this.code = code;
   }
@@ -51,9 +51,14 @@ export class NotFoundError extends ApplicationError {
   }
 }
 
+export type InfrastructureErrorOptions = {
+  /** The original unexpected error; kept on the server only and never part of a client response. */
+  cause?: unknown;
+};
+
 export class InfrastructureError extends ApplicationError {
-  constructor(message = "A dependent service is unavailable") {
-    super("INFRASTRUCTURE", message);
+  constructor(message = "A dependent service is unavailable", options?: InfrastructureErrorOptions) {
+    super("INFRASTRUCTURE", message, options?.cause === undefined ? undefined : { cause: options.cause });
     this.name = "InfrastructureError";
   }
 }

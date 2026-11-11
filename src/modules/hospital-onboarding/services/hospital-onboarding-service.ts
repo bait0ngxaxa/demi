@@ -48,6 +48,7 @@ import {
 } from "../schemas/hospital-onboarding-schemas";
 
 import { publicOnboardableHospitalWhere } from "./onboarding-hospital-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalOnboardingDatabase = PrismaClient;
 
@@ -131,7 +132,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("The requested onboarding state already exists");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("hospital-onboarding.hospital-onboarding-service", error, fallbackMessage);
 }
 
 async function createApplicantIdentity(
@@ -190,8 +191,8 @@ async function deleteApplicantIdentity(
         throw new Error("Applicant person changed during compensation");
       }
     });
-  } catch {
-    throw new InfrastructureError("Hospital onboarding requires identity reconciliation");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-onboarding.deleteApplicantIdentity", error, "Hospital onboarding requires identity reconciliation");
   }
 }
 
@@ -202,8 +203,8 @@ async function deleteProviderIdentityByDefault(authSubject: string): Promise<voi
     if (error) {
       throw error;
     }
-  } catch {
-    throw new InfrastructureError("Hospital onboarding requires provider reconciliation");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-onboarding.deleteProviderIdentityByDefault", error, "Hospital onboarding requires provider reconciliation");
   }
 }
 
@@ -218,8 +219,8 @@ async function compensateProvisionedApplicant(
 
   try {
     await deleteProviderIdentity(authSubject);
-  } catch {
-    throw new InfrastructureError("Hospital onboarding requires provider reconciliation");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-onboarding.compensateProvisionedApplicant", error, "Hospital onboarding requires provider reconciliation");
   }
 
   await deleteApplicantIdentity(database, identity, authSubject);
@@ -380,14 +381,14 @@ export async function submitHospitalOnboarding(
       where: { id: identity.userId },
       select: { authSubject: true, status: true },
     });
-  } catch {
+  } catch (error: unknown) {
     await compensateProvisionedApplicant(
       database,
       identity,
       provisionedIdentity.authSubject,
       dependencies,
     );
-    throw new InfrastructureError("Applicant authentication mapping could not be verified");
+    throw toInfrastructureError("hospital-onboarding.submitHospitalOnboarding", error, "Applicant authentication mapping could not be verified");
   }
 
   if (
@@ -510,8 +511,8 @@ export async function listPendingHospitalOnboardingApplications(
       applicantGivenName: application.applicantUser.person.givenName,
       applicantFamilyName: application.applicantUser.person.familyName,
     })) };
-  } catch {
-    throw new InfrastructureError("Hospital onboarding applications could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-onboarding.listPendingHospitalOnboardingApplications", error, "Hospital onboarding applications could not be loaded");
   }
 }
 
@@ -556,7 +557,7 @@ export async function getHospitalOnboardingApplication(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital onboarding application could not be loaded");
+    throw toInfrastructureError("hospital-onboarding.getHospitalOnboardingApplication", error, "Hospital onboarding application could not be loaded");
   }
 }
 

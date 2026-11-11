@@ -46,6 +46,7 @@ import {
   resolveGoalAccessContext,
   type GoalAccessContext,
 } from "./goal-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type GoalDatabase = PrismaClient;
 
@@ -178,7 +179,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("The Goal Plan submission conflicted with another request");
   }
 
-  return new InfrastructureError("Goal Plan could not be submitted");
+  return toInfrastructureError("goals.goal-service", error, "Goal Plan could not be submitted");
 }
 
 async function runSerializable<T>(

@@ -80,6 +80,7 @@ import {
 } from "./parent-child-hospital-report-audit-service";
 import { resolveHospitalReportingAccessContext } from "./hospital-report-access-service";
 import { resolveGlobalReportingAccessContext } from "./global-reporting-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const HOSPITAL_REPORT_DEFAULT_PAGE_SIZE = 20;
 export const HOSPITAL_REPORT_MAX_PAGE_SIZE = 50;
@@ -1179,7 +1180,7 @@ async function getHospitalReportingPageForOperation(
     ) {
       throw error;
     }
-    throw new InfrastructureError("Hospital reporting data could not be loaded");
+    throw toInfrastructureError("reporting.getHospitalReportingPageForOperation", error, "Hospital reporting data could not be loaded");
   }
 }
 
@@ -1263,8 +1264,8 @@ export async function getParentChildHospitalReportingPage(
         outcome: denied ? "denied" : "failed",
         reason: parentChildHospitalReportingAuditReasonForError(error),
       }, database);
-    } catch {
-      throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+    } catch (error: unknown) {
+      throw toInfrastructureError("reporting.getParentChildHospitalReportingPage", error, "Parent-to-Child Hospital report could not be loaded");
     }
 
     if (
@@ -1274,7 +1275,7 @@ export async function getParentChildHospitalReportingPage(
     ) {
       throw error;
     }
-    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+    throw toInfrastructureError("reporting.getParentChildHospitalReportingPage", error, "Parent-to-Child Hospital report could not be loaded");
   }
 
   try {
@@ -1284,8 +1285,8 @@ export async function getParentChildHospitalReportingPage(
       hospitalId: parsed.data.hospitalId,
       outcome: "read",
     }, database);
-  } catch {
-    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("reporting.getParentChildHospitalReportingPage", error, "Parent-to-Child Hospital report could not be loaded");
   }
 
   return projection;
@@ -1320,7 +1321,7 @@ export async function getParentChildHospitalReportingSummaryForExport(
     ) {
       throw error;
     }
-    throw new InfrastructureError("Parent-to-Child Hospital report could not be loaded");
+    throw toInfrastructureError("reporting.getParentChildHospitalReportingSummaryForExport", error, "Parent-to-Child Hospital report could not be loaded");
   }
 }
 
@@ -1477,7 +1478,7 @@ async function getHospitalReportingDatasetForOperation(
     ) {
       throw error;
     }
-    throw new InfrastructureError("Hospital report source data could not be collected");
+    throw toInfrastructureError("reporting.getHospitalReportingDatasetForOperation", error, "Hospital report source data could not be collected");
   }
 }
 
@@ -1541,7 +1542,7 @@ export async function getHospitalReportExportPreview(
     });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital report export preview could not be loaded");
+    throw toInfrastructureError("reporting.getHospitalReportExportPreview", error, "Hospital report export preview could not be loaded");
   }
 }
 
@@ -1624,7 +1625,7 @@ export async function getNetworkReportingDatasetForExport(
     );
   } catch (error: unknown) {
     if (error instanceof ApplicationError && error.code !== "INFRASTRUCTURE") throw error;
-    throw new InfrastructureError("Network report source data could not be collected");
+    throw toInfrastructureError("reporting.getNetworkReportingDatasetForExport", error, "Network report source data could not be collected");
   }
 }
 
@@ -1683,7 +1684,7 @@ export async function getNetworkReportExportPreview(
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError && error.code !== "INFRASTRUCTURE") throw error;
-    throw new InfrastructureError("Network report export preview could not be loaded");
+    throw toInfrastructureError("reporting.getNetworkReportExportPreview", error, "Network report export preview could not be loaded");
   }
 }
 

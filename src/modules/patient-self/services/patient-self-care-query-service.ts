@@ -70,6 +70,7 @@ import {
   type PatientSelfQueryDatabase,
   type PatientSelfRelationshipContext,
 } from "./patient-self-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientSelfCareQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -768,7 +769,7 @@ export async function getOwnPatientCareJourney(
       throw error;
     }
 
-    throw new InfrastructureError("Patient care history could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientCareJourney", error, "Patient care history could not be loaded");
   }
 }
 
@@ -865,7 +866,7 @@ export async function getOwnPatientProgramDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Patient Program history could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientProgramDetail", error, "Patient Program history could not be loaded");
   }
 }
 
@@ -922,7 +923,7 @@ export async function getOwnPatientProgramRounds(
       throw error;
     }
 
-    throw new InfrastructureError("Patient Program rounds could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientProgramRounds", error, "Patient Program rounds could not be loaded");
   }
 }
 
@@ -942,7 +943,7 @@ export async function getOwnLatestPatientGoalPlan(
     return plan ? await getOwnPatientGoalPlanDetail(actor, relationship.relationshipId, plan.id, { database }) : null;
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("ไม่สามารถโหลดแผนสุขภาพล่าสุดได้");
+    throw toInfrastructureError("patient-self.getOwnLatestPatientGoalPlan", error, "ไม่สามารถโหลดแผนสุขภาพล่าสุดได้");
   }
 }
 
@@ -1016,7 +1017,7 @@ export async function getOwnPatientGoalPlanDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Patient Goal Plan could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientGoalPlanDetail", error, "Patient Goal Plan could not be loaded");
   }
 }
 
@@ -1096,7 +1097,7 @@ export async function getOwnPatientFollowupDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Patient Follow-up could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientFollowupDetail", error, "Patient Follow-up could not be loaded");
   }
 }
 
@@ -1170,7 +1171,7 @@ export async function getOwnNextAppointment(
     if (error instanceof InfrastructureError) {
       throw error;
     }
-    throw new InfrastructureError("Next Patient appointment could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnNextAppointment", error, "Next Patient appointment could not be loaded");
   }
 }
 
@@ -1217,7 +1218,7 @@ export async function getOwnNextAppointmentForRelationship(
       throw error;
     }
 
-    throw new InfrastructureError("Next Patient appointment could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnNextAppointmentForRelationship", error, "Next Patient appointment could not be loaded");
   }
 }
 
@@ -1262,7 +1263,7 @@ export async function getOwnPatientAppointmentHistory(
       throw error;
     }
 
-    throw new InfrastructureError("Patient appointments could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientAppointmentHistory", error, "Patient appointments could not be loaded");
   }
 }
 
@@ -1319,7 +1320,7 @@ export async function getOwnPatientAppointmentDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Patient appointment could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnPatientAppointmentDetail", error, "Patient appointment could not be loaded");
   }
 }
 
@@ -1456,7 +1457,7 @@ export async function listOwnPatientAppointmentHub(
       throw error;
     }
 
-    throw new InfrastructureError("Patient appointments could not be loaded");
+    throw toInfrastructureError("patient-self.listOwnPatientAppointmentHub", error, "Patient appointments could not be loaded");
   }
 }
 

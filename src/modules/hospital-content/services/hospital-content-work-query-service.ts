@@ -9,6 +9,7 @@ import type { HospitalContentPatientDetail, HospitalContentPatientListItem } fro
 import { hospitalContentLocatorSchema } from "../schemas/hospital-content-schemas";
 import { HOSPITAL_CONTENT_PAGE_SIZE } from "../domain/hospital-content";
 import { decodeHospitalContentWorkCursor, encodeHospitalContentWorkCursor } from "./hospital-content-work-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Database = PrismaClient;
 
@@ -82,7 +83,7 @@ export async function listHospitalWorkContent(actor: ActorContext | null | undef
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) throw error;
-    throw new InfrastructureError("Hospital work content could not be loaded");
+    throw toInfrastructureError("hospital-content.listHospitalWorkContent", error, "Hospital work content could not be loaded");
   }
 }
 
@@ -96,7 +97,7 @@ export async function getHospitalWorkContent(actor: ActorContext | null | undefi
     return { ...toListItem(row), body: row.body, sourceText: row.sourceText };
   } catch (error: unknown) {
     if (error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital work content could not be loaded");
+    throw toInfrastructureError("hospital-content.getHospitalWorkContent", error, "Hospital work content could not be loaded");
   }
 }
 

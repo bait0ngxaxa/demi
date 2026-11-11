@@ -22,6 +22,7 @@ import {
   patientFinalAssessmentCreateRequestSchema,
   type PatientFinalAssessmentCreateRequest,
 } from "../schemas/patient-final-assessment-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientFinalAssessmentDatabase = PrismaClient;
 
@@ -111,7 +112,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("Final Assessment ownership is inconsistent");
   }
 
-  return new InfrastructureError("Final Assessment could not be saved");
+  return toInfrastructureError("patient-final-assessment.patient-final-assessment-service", error, "Final Assessment could not be saved");
 }
 
 async function runSerializable<T>(

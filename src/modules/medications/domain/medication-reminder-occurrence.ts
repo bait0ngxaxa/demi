@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 import { MEDICATION_LOCAL_TIME_PATTERN, MEDICATION_SCHEDULE_MAX_TIMES } from "./personal-medication-definitions";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const MAX_WINDOW_DAYS = 7;
 export const MAX_WINDOW_MS = 604_800_000;
@@ -88,7 +89,7 @@ export function createReminderSourceKey(scheduleId: string, localDate: string): 
   if (!isReminderLocalDate(localDate)) throw new ValidationError();
   try {
     return `medsrc_v1_${createHash("sha256").update(`demi.personal-medication-reminder-source.v1\u0000${id}\u0000${localDate}`, "utf8").digest("base64url")}`;
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("medications.createReminderSourceKey", error); }
 }
 
 // Independently testable guard; no hash override or secret participates in source identity.
@@ -103,7 +104,7 @@ function bangkokFormatter(): Intl.DateTimeFormat {
       timeZone: "Asia/Bangkok", calendar: "gregory", numberingSystem: "latn", hourCycle: "h23",
       year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
     });
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("medications.bangkokFormatter", error); }
 }
 
 function verifyBangkok(formatter: Intl.DateTimeFormat, epoch: number, localCarrier: string): void {
@@ -111,7 +112,7 @@ function verifyBangkok(formatter: Intl.DateTimeFormat, epoch: number, localCarri
     const parts = new Map(formatter.formatToParts(new Date(epoch)).map((part) => [part.type, part.value]));
     const date = `${parts.get("year")?.padStart(4, "0")}-${parts.get("month")}-${parts.get("day")}`;
     if (date !== localCarrier.slice(0, 10) || parts.get("hour") !== localCarrier.slice(11, 13) || parts.get("minute") !== localCarrier.slice(14, 16) || parts.get("second") !== localCarrier.slice(17, 19)) throw new InfrastructureError();
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("medications.verifyBangkok", error); }
 }
 
 export function reminderBangkokToUtc(localDate: string, localTime: string, formatter = bangkokFormatter()): string {

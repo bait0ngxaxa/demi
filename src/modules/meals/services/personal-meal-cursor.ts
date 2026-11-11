@@ -2,9 +2,10 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getServerEnv } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 import { MEAL_CURSOR_MAX_BYTES, MEAL_CURSOR_MAX_LENGTH } from "../domain/personal-meal";
 import { mealCursorSchema, type MealCursor } from "../schemas/personal-meal-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const PREFIX = "mealcur_v1_";
 function canonical(value: MealCursor): Buffer {
@@ -16,7 +17,7 @@ function tag(actor: ActorContext, bytes: Buffer): Buffer {
     return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
       .update(`demi.personal-meal.cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000occurredOn-createdAt-id-desc:50:no-filter\u0000`, "utf8")
       .update(bytes).digest();
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("meals.tag", error); }
 }
 export function encodeMealCursor(actor: ActorContext, input: MealCursor): string {
   const parsed = mealCursorSchema.safeParse(input);

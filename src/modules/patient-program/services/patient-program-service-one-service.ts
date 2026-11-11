@@ -52,6 +52,7 @@ import {
   patientProgramLifecycleSelect,
   type ActivePatientProgramMutationContext,
 } from "./patient-program-lifecycle-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientProgramServiceOneDatabase = PrismaClient;
 
@@ -195,7 +196,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("ข้อมูลความสัมพันธ์ของกิจกรรม Service 1 ไม่สอดคล้องกัน");
   }
 
-  return new InfrastructureError("Service 1 could not be saved");
+  return toInfrastructureError("patient-program.patient-program-service-one-service", error, "Service 1 could not be saved");
 }
 
 async function runSerializable<T>(

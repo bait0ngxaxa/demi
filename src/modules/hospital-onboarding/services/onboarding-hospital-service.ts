@@ -14,9 +14,10 @@ import {
   HOSPITAL_SEARCH_RESULT_LIMIT,
   ONBOARDING_HOSPITAL_SEARCH_MIN_LENGTH,
 } from "@/shared/search/hospital-search";
-import { InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { hospitalCodeSchema } from "../schemas/hospital-onboarding-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type OnboardingHospitalOption = {
   id: string;
@@ -125,8 +126,8 @@ export async function searchOnboardingHospitals(
     });
 
     return hospitals.map(toOnboardingHospitalOption);
-  } catch {
-    throw new InfrastructureError("Hospital list could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-onboarding.searchOnboardingHospitals", error, "Hospital list could not be loaded");
   }
 }
 
@@ -156,6 +157,6 @@ export async function findOnboardingHospitalByCode(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital list could not be loaded");
+    throw toInfrastructureError("hospital-onboarding.findOnboardingHospitalByCode", error, "Hospital list could not be loaded");
   }
 }

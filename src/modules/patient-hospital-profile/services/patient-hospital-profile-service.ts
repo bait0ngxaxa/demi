@@ -8,13 +8,7 @@ import { resolveAppointmentAccessContext } from "@/modules/appointments/services
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import {
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { PATIENT_HOSPITAL_ADDRESS_FIELDS, patientHospitalAddressSelect, formatPatientHospitalAddress } from "../domain/patient-hospital-address";
 
@@ -34,6 +28,7 @@ import {
   patientHospitalProfileUpdateSchema,
   staffPatientHospitalProfileUpdateSchema,
 } from "../schemas/patient-hospital-profile-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientHospitalProfileDatabase = PrismaClient;
 
@@ -188,7 +183,7 @@ export async function getOwnPatientHospitalProfile(
       throw error;
     }
 
-    throw new InfrastructureError("Patient profile could not be loaded");
+    throw toInfrastructureError("patient-hospital-profile.getOwnPatientHospitalProfile", error, "Patient profile could not be loaded");
   }
 }
 
@@ -354,7 +349,7 @@ export async function updateOwnPatientHospitalProfile(
       throw new ConflictError("Patient profile changed after it was loaded");
     }
 
-    throw new InfrastructureError("Patient profile could not be updated");
+    throw toInfrastructureError("patient-hospital-profile.updateOwnPatientHospitalProfile", error, "Patient profile could not be updated");
   }
 }
 
@@ -404,6 +399,6 @@ export async function updateStaffPatientHospitalProfile(
   } catch (error: unknown) {
     if (error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
     if (isPrismaCode(error, "P2002") || isPrismaCode(error, "P2034")) throw new ConflictError("Patient profile changed");
-    throw new InfrastructureError("Patient profile could not be updated");
+    throw toInfrastructureError("patient-hospital-profile.updateStaffPatientHospitalProfile", error, "Patient profile could not be updated");
   }
 }

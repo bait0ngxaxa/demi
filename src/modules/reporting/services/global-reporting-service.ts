@@ -9,10 +9,7 @@ import {
   type HospitalHierarchyDirectory,
   type HospitalHierarchyUnit,
 } from "@/modules/hospital-hierarchy/services/hospital-hierarchy-service";
-import {
-  ApplicationError,
-  InfrastructureError,
-} from "@/shared/errors/application-error";
+import { ApplicationError } from "@/shared/errors/application-error";
 
 import { GLOBAL_REPORTING_CAPABILITIES } from "../policies/global-reporting-policy";
 import type { GlobalReportingDirectory } from "../projections/global-reporting-projection";
@@ -21,6 +18,7 @@ import {
   recordGlobalReportingAudit,
   resolveGlobalReportingAccessContext,
 } from "./global-reporting-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 function getUnits(directory: HospitalHierarchyDirectory): HospitalHierarchyUnit[] {
   const units = new Map<string, HospitalHierarchyUnit>();
@@ -75,7 +73,7 @@ export async function getGlobalReportingDirectory(
       reason: globalReportingAuditReasonForError(error),
     });
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Global reporting directory could not be loaded");
+    throw toInfrastructureError("reporting.getGlobalReportingDirectory", error, "Global reporting directory could not be loaded");
   }
 }
 

@@ -15,6 +15,7 @@ import {
 } from "@/shared/errors/application-error";
 
 import { createProviderLoginAlias } from "./provider-login-alias";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type SupabaseAdminCreateUserInput = Parameters<
   SupabaseClient["auth"]["admin"]["createUser"]
@@ -110,8 +111,8 @@ const prismaPasswordAuthProvisioningStore: PasswordAuthProvisioningStore = {
           authSubject: true,
         },
       });
-    } catch {
-      throw new InfrastructureError("DEMI User could not be loaded for auth provisioning");
+    } catch (error: unknown) {
+      throw toInfrastructureError("auth.findUserById", error, "DEMI User could not be loaded for auth provisioning");
     }
   },
 
@@ -134,7 +135,7 @@ const prismaPasswordAuthProvisioningStore: PasswordAuthProvisioningStore = {
         throw new ConflictError("Provider subject is already mapped to another DEMI User");
       }
 
-      throw new InfrastructureError("Provider subject could not be persisted");
+      throw toInfrastructureError("auth.setAuthSubject", error, "Provider subject could not be persisted");
     }
   },
 };
@@ -171,8 +172,8 @@ function classifyProviderFailure(error: unknown): never {
 function getPasswordAuthAdminProvider(): PasswordAuthAdminProvider {
   try {
     return getSupabaseAdminClient().auth.admin;
-  } catch {
-    throw new InfrastructureError("Password authentication administration is unavailable");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.getPasswordAuthAdminProvider", error, "Password authentication administration is unavailable");
   }
 }
 
@@ -181,7 +182,7 @@ function normalizePersistenceError(error: unknown): ApplicationError {
     return error;
   }
 
-  return new InfrastructureError("Provider subject could not be persisted");
+  return toInfrastructureError("auth.password-auth-provisioning-service", error, "Provider subject could not be persisted");
 }
 
 async function compensateProviderAccount(

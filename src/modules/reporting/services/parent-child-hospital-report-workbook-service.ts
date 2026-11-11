@@ -21,6 +21,7 @@ import {
   parentChildHospitalReportingAuditReasonForError,
   recordParentChildHospitalReportingAudit,
 } from "./parent-child-hospital-report-audit-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const SHEET_NAME = "สรุปรายลูกข่าย";
 const workbookSummaryLabels: Record<ParentChildSummaryField["key"], string> = {
@@ -138,12 +139,12 @@ export async function exportParentChildHospitalReportWorkbook(
         outcome: denied ? "denied" : "failed",
         reason: parentChildHospitalReportingAuditReasonForError(error),
       }, database);
-    } catch {
-      throw new InfrastructureError("Parent-to-Child Hospital report export could not be prepared");
+    } catch (error: unknown) {
+      throw toInfrastructureError("reporting.exportParentChildHospitalReportWorkbook", error, "Parent-to-Child Hospital report export could not be prepared");
     }
 
     if (denied || error instanceof InfrastructureError) throw error;
-    throw new InfrastructureError("Parent-to-Child Hospital report export could not be prepared");
+    throw toInfrastructureError("reporting.exportParentChildHospitalReportWorkbook", error, "Parent-to-Child Hospital report export could not be prepared");
   }
 
   try {
@@ -154,9 +155,9 @@ export async function exportParentChildHospitalReportWorkbook(
       operation: "export",
       outcome: "prepared",
     }, database);
-  } catch {
+  } catch (error: unknown) {
     // No audit, no file: an unaudited disclosure must not reach the browser.
-    throw new InfrastructureError("Parent-to-Child Hospital report export could not be prepared");
+    throw toInfrastructureError("reporting.exportParentChildHospitalReportWorkbook", error, "Parent-to-Child Hospital report export could not be prepared");
   }
 
   return { buffer, generatedAt, summary };

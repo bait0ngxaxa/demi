@@ -4,11 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError } from "@/shared/errors/application-error";
 
 import {
   PATIENT_BASELINE_CREATE_CAPABILITY,
@@ -19,6 +15,7 @@ import {
   type PatientBaselineAccessDatabase,
   type PatientBaselinePatientSummary,
 } from "./patient-baseline-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type { PatientBaselinePatientSummary } from "./patient-baseline-access-service";
 
@@ -211,7 +208,7 @@ export async function getPatientBaseline(
       throw error;
     }
 
-    throw new InfrastructureError("Baseline could not be loaded");
+    throw toInfrastructureError("patient-baseline.getPatientBaseline", error, "Baseline could not be loaded");
   }
 }
 
@@ -250,7 +247,7 @@ export async function getPatientBaselinePageContext(
       throw error;
     }
 
-    throw new InfrastructureError("Baseline page could not be loaded");
+    throw toInfrastructureError("patient-baseline.getPatientBaselinePageContext", error, "Baseline page could not be loaded");
   }
 }
 
@@ -287,7 +284,7 @@ export async function getPatientBaselineNavigationState(
       throw error;
     }
 
-    throw new InfrastructureError("Baseline navigation state could not be loaded");
+    throw toInfrastructureError("patient-baseline.getPatientBaselineNavigationState", error, "Baseline navigation state could not be loaded");
   }
 }
 

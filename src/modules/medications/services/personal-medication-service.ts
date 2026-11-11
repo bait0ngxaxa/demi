@@ -11,6 +11,7 @@ import { assertPersonalMedicationSelf } from "../policies/personal-medication-po
 import { personalMedicationCreateSchema, personalMedicationUpdateSchema, personalMedicationStopSchema, personalMedicationScheduleSchema } from "../schemas/personal-medication-schemas";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
 import { personalMedicationSelect, toPersonalMedicationDto, personalMedicationDetailSelect, toPersonalMedicationDetailDto } from "./personal-medication-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PersonalMedicationServiceDependencies = { database?: PrismaClient; now?: () => Date };
 
@@ -84,7 +85,7 @@ async function mutate(
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError();
-    throw new InfrastructureError("Personal medication could not be saved");
+    throw toInfrastructureError("medications.mutate", error, "Personal medication could not be saved");
   }
 }
 
@@ -143,6 +144,6 @@ export async function replacePersonalMedicationSchedules(
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
     if (isRetryableSerializableTransactionError(error)) throw new ConflictError();
-    throw new InfrastructureError("Personal medication could not be saved");
+    throw toInfrastructureError("medications.replacePersonalMedicationSchedules", error, "Personal medication could not be saved");
   }
 }

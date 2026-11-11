@@ -10,20 +10,14 @@ import {
   type HospitalNetworkDatabase,
   type HospitalNetworkFacility,
 } from "@/modules/hospital-service-areas/services/hospital-network-access";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import type { NetworkReportingHospital } from "../projections/hospital-report-projection";
 import {
   networkReportExportRequestSchema,
   type HospitalReportCohort,
 } from "../schemas/hospital-report-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type NetworkReportExportContext = {
   actor: ActorContext;
@@ -102,7 +96,7 @@ export async function resolveNetworkReportExportContext(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Network report export access could not be verified");
+    throw toInfrastructureError("reporting.resolveNetworkReportExportContext", error, "Network report export access could not be verified");
   }
 }
 
@@ -116,7 +110,7 @@ export async function listNetworkReportExportParents(
 
   try {
     return await listNetworkScopes(database, actor.userId, "REPORT");
-  } catch {
-    throw new InfrastructureError("Network report export access could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("reporting.listNetworkReportExportParents", error, "Network report export access could not be loaded");
   }
 }

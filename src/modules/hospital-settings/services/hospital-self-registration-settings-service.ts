@@ -5,9 +5,10 @@ import { HospitalStatus, MembershipStatus, MembershipType, Role, UserStatus, Pri
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { ApplicationError, ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import { hospitalSelfRegistrationSettingSchema, type HospitalSelfRegistrationSettingInput } from "../schemas/hospital-self-registration-settings-schema";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalSelfRegistrationSetting = {
   hospitalId: string;
@@ -76,7 +77,7 @@ export async function listOwnedHospitalSelfRegistrationSettings(
     }));
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Hospital self-registration settings could not be loaded");
+    throw toInfrastructureError("hospital-settings.listOwnedHospitalSelfRegistrationSettings", error, "Hospital self-registration settings could not be loaded");
   }
 }
 
@@ -141,6 +142,6 @@ export async function setHospitalSelfRegistrationEnabled(
     );
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Hospital self-registration setting could not be saved");
+    throw toInfrastructureError("hospital-settings.setHospitalSelfRegistrationEnabled", error, "Hospital self-registration setting could not be saved");
   }
 }

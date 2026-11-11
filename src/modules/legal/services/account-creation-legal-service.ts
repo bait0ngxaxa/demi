@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { ConsentDecision, Role, type LegalChannel, type Prisma } from "@prisma/client";
 
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 
 import type { AccountCreationLegalSource } from "../domain/legal-documents";
 import {
@@ -21,6 +21,7 @@ import {
   LegalVersionConflictError,
   type LegalReadDatabase,
 } from "./legal-version-reader";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const LEGAL_TERMS_ACCEPTED_ACTION = "legal.terms_accepted";
 export const LEGAL_CONSENT_GIVEN_ACTION = "legal.consent_given";
@@ -50,8 +51,8 @@ export async function assertAccountCreationLegalIsCurrent(
   let current: Awaited<ReturnType<typeof findCurrentLegalVersions>>;
   try {
     current = await findCurrentLegalVersions(database);
-  } catch {
-    throw new InfrastructureError("Legal documents could not be checked");
+  } catch (error: unknown) {
+    throw toInfrastructureError("legal.assertAccountCreationLegalIsCurrent", error, "Legal documents could not be checked");
   }
   assertCurrentTermsPair(current, acceptLegal.data);
   for (const consent of consents.data) {

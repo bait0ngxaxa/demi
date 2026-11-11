@@ -2,9 +2,10 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getServerEnv } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 import { EXERCISE_CURSOR_MAX_BYTES, EXERCISE_CURSOR_MAX_LENGTH } from "../domain/personal-exercise";
 import { exerciseCursorSchema, type ExerciseCursor } from "../schemas/personal-exercise-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const PREFIX = "exercisecur_v1_";
 function canonical(value: ExerciseCursor): Buffer {
@@ -16,7 +17,7 @@ function tag(actor: ActorContext, bytes: Buffer): Buffer {
     return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
       .update(`demi.personal-exercise.cursor.v1\u0000${actor.userId.toLowerCase()}\u0000${actor.personId.toLowerCase()}\u0000occurredOn-createdAt-id-desc:50:no-filter\u0000`, "utf8")
       .update(bytes).digest();
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("exercises.tag", error); }
 }
 export function encodeExerciseCursor(actor: ActorContext, input: ExerciseCursor): string {
   const parsed = exerciseCursorSchema.safeParse(input);

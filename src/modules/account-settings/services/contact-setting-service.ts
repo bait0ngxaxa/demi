@@ -6,6 +6,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 import { updateContactEmailSchema } from "../schemas/contact-setting-schema";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type OwnContactSetting = { email: string | null; version: number };
 
@@ -44,6 +45,6 @@ export async function updateOwnContactEmail(actor: ActorContext | null | undefin
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ConflictError || error instanceof ValidationError || error instanceof InfrastructureError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) throw new ConflictError("Contact settings changed");
-    throw new InfrastructureError("Contact settings could not be saved");
+    throw toInfrastructureError("account-settings.updateOwnContactEmail", error, "Contact settings could not be saved");
   }
 }

@@ -56,6 +56,7 @@ import {
 } from "@/modules/hospital-onboarding/services/parent-owner-invitation-context";
 import { activatePendingChildOwner, assertChildOwnerInvitationContext } from "./child-owner-invitation-context";
 import { authorize, operation } from "./hospital-service-area-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ChildFacilityDependencies = {
   database?: PrismaClient;
@@ -329,7 +330,7 @@ export async function createChildFacility(
     if (error instanceof ConflictError) {
       const replayed = await findReplayedChild(database, data, actor.userId).catch((replayError: unknown) => {
         if (replayError instanceof ConflictError) throw replayError;
-        throw new InfrastructureError("Child facility registration could not be completed");
+        throw toInfrastructureError("hospital-service-areas.createChildFacility", replayError, "Child facility registration could not be completed");
       });
       if (replayed) return replayed;
     }

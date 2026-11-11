@@ -23,6 +23,7 @@ import {
   type GlobalReportingCapability,
 } from "../policies/global-reporting-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type GlobalReportingDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -102,7 +103,7 @@ export async function resolveGlobalReportingAccessContext(
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof NotFoundError) throw error;
     if (error instanceof InfrastructureError) throw error;
-    throw new InfrastructureError("Global reporting access could not be verified");
+    throw toInfrastructureError("reporting.resolveGlobalReportingAccessContext", error, "Global reporting access could not be verified");
   }
 }
 

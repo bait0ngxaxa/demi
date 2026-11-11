@@ -66,6 +66,7 @@ import {
   recordAccountCreationLegal,
   type AccountCreationLegalInput,
 } from "@/modules/legal/services/account-creation-legal-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientActivationDatabase = PrismaClient;
 export type PatientActivationAuthorizationDatabase =
@@ -169,7 +170,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("The patient activation operation conflicted with another request");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("patient-activation.patient-activation-service", error, fallbackMessage);
 }
 
 async function runSerializable<T>(
@@ -934,7 +935,7 @@ export async function getPatientActivationDetails(
       throw error;
     }
 
-    throw new InfrastructureError("Patient activation details could not be loaded");
+    throw toInfrastructureError("patient-activation.getPatientActivationDetails", error, "Patient activation details could not be loaded");
   }
 }
 
@@ -1530,7 +1531,7 @@ async function completePatientActivationForPurpose(
       throw error;
     }
 
-    throw new InfrastructureError("Authentication provider could not establish the account");
+    throw toInfrastructureError("patient-activation.completePatientActivationForPurpose", error, "Authentication provider could not establish the account");
   }
 
   if (
@@ -1578,7 +1579,7 @@ async function completePatientActivationForPurpose(
       throw error;
     }
 
-    throw new InfrastructureError("Patient activation could not be finalized");
+    throw toInfrastructureError("patient-activation.completePatientActivationForPurpose", error, "Patient activation could not be finalized");
   }
 
   return { userId: claim.userId, hospitalId: claim.hospitalId };

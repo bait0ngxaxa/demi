@@ -56,6 +56,7 @@ import type {
   PatientRosterImportDatabase,
   PatientRosterImportServiceDependencies,
 } from "./patient-roster-import-types";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type {
   PatientImportBaselineStatus,
@@ -94,7 +95,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     );
   }
 
-  return new InfrastructureError("Patient provisioning could not be completed");
+  return toInfrastructureError("patient-provisioning.patient-roster-import-service", error, "Patient provisioning could not be completed");
 }
 
 function toImportResultRow(

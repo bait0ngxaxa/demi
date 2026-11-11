@@ -30,6 +30,7 @@ import {
   resolveScreeningAccessContext,
   type ScreeningPatientSummary,
 } from "./screening-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ScreeningQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -255,7 +256,7 @@ export async function getLatestAccessibleScreeningSummary(
       throw error;
     }
 
-    throw new InfrastructureError("Latest Screening summary could not be loaded");
+    throw toInfrastructureError("screening.getLatestAccessibleScreeningSummary", error, "Latest Screening summary could not be loaded");
   }
 }
 
@@ -297,7 +298,7 @@ export async function getAccessibleScreeningSummary(
       throw error;
     }
 
-    throw new InfrastructureError("Screening summary could not be loaded");
+    throw toInfrastructureError("screening.getAccessibleScreeningSummary", error, "Screening summary could not be loaded");
   }
 }
 
@@ -351,7 +352,7 @@ export async function getAccessibleScreeningSummaries(
       throw error;
     }
 
-    throw new InfrastructureError("Screening summaries could not be loaded");
+    throw toInfrastructureError("screening.getAccessibleScreeningSummaries", error, "Screening summaries could not be loaded");
   }
 }
 
@@ -384,7 +385,7 @@ export async function getScreeningHistory(
       throw error;
     }
 
-    throw new InfrastructureError("Screening history could not be loaded");
+    throw toInfrastructureError("screening.getScreeningHistory", error, "Screening history could not be loaded");
   }
 }
 
@@ -407,7 +408,7 @@ export async function getScreeningPatientForSubmission(
       throw error;
     }
 
-    throw new InfrastructureError("Screening patient could not be loaded");
+    throw toInfrastructureError("screening.getScreeningPatientForSubmission", error, "Screening patient could not be loaded");
   }
 }
 
@@ -450,7 +451,7 @@ export async function getScreeningDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Screening detail could not be loaded");
+    throw toInfrastructureError("screening.getScreeningDetail", error, "Screening detail could not be loaded");
   }
 }
 

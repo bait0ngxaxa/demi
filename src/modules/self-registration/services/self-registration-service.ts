@@ -41,6 +41,7 @@ import {
   createPublicSelfRegistrationRateLimiter,
   type PublicSelfRegistrationRateLimiter,
 } from "./public-self-registration-rate-limit";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const SELF_REGISTRATION_NOT_FOUND_MESSAGE =
   "ไม่พบข้อมูลในระบบ กรุณาติดต่อโรงพยาบาลที่ดูแลคุณ";
@@ -237,7 +238,7 @@ export async function lookupPublicSelfRegistration(
     if (error instanceof ValidationError || error instanceof ConflictError || error instanceof InfrastructureError) {
       throw error;
     }
-    throw new InfrastructureError("Self-registration lookup could not be completed");
+    throw toInfrastructureError("self-registration.lookupPublicSelfRegistration", error, "Self-registration lookup could not be completed");
   }
 }
 
@@ -292,6 +293,6 @@ export async function completePublicSelfRegistration(
     if (error instanceof ValidationError || error instanceof ConflictError || error instanceof InfrastructureError) {
       throw error;
     }
-    throw new InfrastructureError("Self-registration could not be completed");
+    throw toInfrastructureError("self-registration.completePublicSelfRegistration", error, "Self-registration could not be completed");
   }
 }

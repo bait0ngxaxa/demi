@@ -49,6 +49,7 @@ import {
   hashCaregiverInvitationToken,
   type CaregiverInvitationCredential,
 } from "./caregiver-invitation-token-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const CAREGIVER_INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
 export const FAMILY_DELEGATION_ACCEPTANCE_CONTRACT_VERSION = "family-delegation-v1";
@@ -111,7 +112,7 @@ function rethrowServiceError(error: unknown, message: string): never {
     throw new ConflictError("The caregiver relationship changed concurrently");
   }
 
-  throw new InfrastructureError(message);
+  throw toInfrastructureError("family.caregiver-relationship-service", error, message);
 }
 
 async function assertActiveUser(

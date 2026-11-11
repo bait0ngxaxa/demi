@@ -20,6 +20,7 @@ import {
   setPatientClassificationInTransaction,
   type PatientClassificationMutationResult,
 } from "./patient-classification-transaction";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientClassificationServiceDependencies = {
   database?: PrismaClient;
@@ -55,7 +56,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("Patient classification conflicted with another request");
   }
 
-  return new InfrastructureError("Patient classification could not be saved");
+  return toInfrastructureError("patient-classification.patient-classification-service", error, "Patient classification could not be saved");
 }
 
 export async function setPatientClassification(

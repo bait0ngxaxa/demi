@@ -26,6 +26,7 @@ import {
   PatientEvidenceStorageError,
   type PatientEvidenceStorage,
 } from "../storage/patient-evidence-storage";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientEvidenceDatabase = PrismaClient;
 
@@ -88,7 +89,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("หลักฐานรูปภาพนี้ไม่สามารถบันทึกซ้ำได้");
   }
 
-  return new InfrastructureError("Patient evidence metadata could not be persisted");
+  return toInfrastructureError("patient-evidence.patient-evidence-service", error, "Patient evidence metadata could not be persisted");
 }
 
 function getStorage(dependencies: PatientEvidenceServiceDependencies): PatientEvidenceStorage {

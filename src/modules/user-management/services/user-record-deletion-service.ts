@@ -17,17 +17,11 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { assertOwnerInDatabase } from "@/modules/workforce/services/workforce-service";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import type { UserKind } from "../domain/user-management-values";
 import { userRecordDeletionSchema } from "../schemas/user-management-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 /**
  * UM-1 (UM-D2a) "ลบรายการ": only a record that was never activated, holds no data, and whose Person has no other
@@ -589,6 +583,6 @@ export async function deleteUnusedUserRecord(
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
       throw new ConflictError("The record changed");
     }
-    throw new InfrastructureError("The record could not be deleted");
+    throw toInfrastructureError("user-management.deleteUnusedUserRecord", error, "The record could not be deleted");
   }
 }

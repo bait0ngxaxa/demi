@@ -2,16 +2,13 @@ import "server-only";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError } from "@/shared/errors/application-error";
 
 import type { PatientImportTemplateTarget } from "../import/patient-import-template-validation";
 import { assertPatientProvisioningActorInDatabase } from "./patient-provisioning-transaction";
 import { validateRosterImportTarget } from "./patient-roster-import-preview";
 import type { PatientRosterImportDatabase } from "./patient-roster-import-types";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 /**
  * Resolves the Hospital a template, preview, commit or failed-rows export is bound
@@ -51,6 +48,6 @@ export async function resolvePatientImportTemplateTarget(
       throw error;
     }
 
-    throw new InfrastructureError("Patient import Hospital could not be resolved");
+    throw toInfrastructureError("patient-provisioning.resolvePatientImportTemplateTarget", error, "Patient import Hospital could not be resolved");
   }
 }

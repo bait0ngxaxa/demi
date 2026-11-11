@@ -22,6 +22,7 @@ import {
   recordNetworkReportExportPrepared,
   recordNetworkReportExportRefusal,
 } from "./network-report-audit-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 /**
  * ADR-0025: an ACTIVE OWNER or MEMBER of an ACTIVE Parent downloads one workbook for the Parent and all or
@@ -57,12 +58,12 @@ export async function exportNetworkReportWorkbook(
         outcome: failed ? "failed" : "denied",
         reason: networkReportExportAuditReasonForError(error),
       }, database);
-    } catch {
-      throw new InfrastructureError("Network report export could not be prepared");
+    } catch (error: unknown) {
+      throw toInfrastructureError("reporting.exportNetworkReportWorkbook", error, "Network report export could not be prepared");
     }
 
     if (!failed) throw error;
-    throw error instanceof InfrastructureError ? error : new InfrastructureError("Network report export could not be prepared");
+    throw error instanceof InfrastructureError ? error : toInfrastructureError("reporting.exportNetworkReportWorkbook", error, "Network report export could not be prepared");
   }
 
   try {
@@ -73,9 +74,9 @@ export async function exportNetworkReportWorkbook(
       generatedAt,
       exportReference: randomUUID(),
     }, database);
-  } catch {
+  } catch (error: unknown) {
     // No audit, no file: an unaudited disclosure must not reach the browser.
-    throw new InfrastructureError("Network report export could not be prepared");
+    throw toInfrastructureError("reporting.exportNetworkReportWorkbook", error, "Network report export could not be prepared");
   }
 
   return { buffer, generatedAt, parent: dataset.parent };

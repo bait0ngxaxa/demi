@@ -25,12 +25,7 @@ import {
   listNetworkScopes,
   recordNetworkPatientRead,
 } from "@/modules/hospital-service-areas/services/hospital-network-access";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   type AppointmentLocationValue,
@@ -53,6 +48,7 @@ import {
   type WorkAppointmentCursorPosition,
 } from "./work-appointment-cursor";
 import { searchResponsibleMembers, type AppointmentAssigneePage } from "./appointment-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type WorkAppointmentDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -324,7 +320,7 @@ export async function listWorkAppointmentScopes(
     return scopes.map(toPublicScope);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Appointment work scopes could not be loaded");
+    throw toInfrastructureError("appointments.listWorkAppointmentScopes", error, "Appointment work scopes could not be loaded");
   }
 }
 
@@ -890,7 +886,7 @@ export async function searchWorkAppointmentResponsibleFilter(
     return await searchResponsibleMembers(database, { hospitalId: scope.hospitalId, value: parsed.data.value, page: parsed.data.page });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Responsible Hospital members could not be loaded");
+    throw toInfrastructureError("appointments.searchWorkAppointmentResponsibleFilter", error, "Responsible Hospital members could not be loaded");
   }
 }
 
@@ -1165,7 +1161,7 @@ export async function listWorkAppointments(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Work appointments could not be loaded");
+    throw toInfrastructureError("appointments.listWorkAppointments", error, "Work appointments could not be loaded");
   }
 }
 

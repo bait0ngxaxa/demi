@@ -2,7 +2,8 @@ import { HospitalStatus, MembershipStatus, MembershipType, Prisma, Role } from "
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { UNEXPECTED_ERROR_EVENT } from "@/shared/errors/unexpected-error-report";
 
 const mockedAudit = vi.hoisted(() => vi.fn());
 const mockedLock = vi.hoisted(() => vi.fn());
@@ -257,6 +258,38 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedAudit.mockResolvedValue(undefined);
   mockedLock.mockResolvedValue(locked);
+});
+
+describe("unexpected database errors", () => {
+  it("reports an unknown database error to the server log and still answers with the same safe InfrastructureError", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { database, transaction } = createDatabase();
+      const databaseError = new Prisma.PrismaClientKnownRequestError(
+        "new row violates check constraint; Failing row contains (สมศรี, 120/80)",
+        { code: "P2010", clientVersion: "6.19.2", meta: { code: "23514" } },
+      );
+      transaction.patientProgramRoundVitals.create.mockRejectedValueOnce(databaseError);
+
+      const failure = await recordPatientProgramRoundVitals(actor, vitalsInput(), deps(database)).catch(
+        (error: unknown) => error,
+      );
+
+      expect(failure).toBeInstanceOf(InfrastructureError);
+      expect((failure as InfrastructureError).message).toBe("Program round could not be saved");
+      expect((failure as InfrastructureError).cause).toBe(databaseError);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalledWith(UNEXPECTED_ERROR_EVENT, expect.objectContaining({
+        scope: "patient-program-rounds.round-service",
+        errorClass: "PrismaClientKnownRequestError",
+        prismaCode: "P2010",
+        sqlState: "23514",
+      }));
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("สมศรี");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
 });
 
 describe("round vitals and the round 1 profile fields", () => {

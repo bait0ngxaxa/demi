@@ -9,10 +9,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
-import {
-  ForbiddenError,
-  InfrastructureError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError } from "@/shared/errors/application-error";
 
 import {
   hasDirectHospitalProvisioningScope,
@@ -34,6 +31,7 @@ import type {
   PatientImportPreview,
   PatientImportResultSummary,
 } from "./patient-roster-import-types";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 export type { PatientProvisioningImportCandidate } from "../import/patient-import-contract";
@@ -150,7 +148,7 @@ export async function listPatientProvisioningScopes(
       throw error;
     }
 
-    throw new InfrastructureError("Patient provisioning scope could not be loaded");
+    throw toInfrastructureError("patient-provisioning.listPatientProvisioningScopes", error, "Patient provisioning scope could not be loaded");
   }
 }
 
