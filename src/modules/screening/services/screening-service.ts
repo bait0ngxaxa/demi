@@ -31,6 +31,7 @@ import {
 import {
   resolveScreeningAccessContext,
 } from "./screening-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ScreeningDatabase = PrismaClient;
 
@@ -80,7 +81,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("The Screening submission conflicted with another request");
   }
 
-  return new InfrastructureError("Screening could not be submitted");
+  return toInfrastructureError("screening.screening-service", error, "Screening could not be submitted");
 }
 
 async function runSerializable<T>(

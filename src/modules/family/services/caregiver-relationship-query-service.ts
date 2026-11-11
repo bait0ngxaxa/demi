@@ -12,10 +12,11 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError } from "@/shared/errors/application-error";
 
 import { assertFamilyAuthenticatedActor } from "../policies/caregiver-relationship-policy";
 import { familyManagementCursorSchema } from "../schemas/caregiver-relationship-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const FAMILY_MANAGEMENT_PAGE_SIZE = 30;
 
@@ -287,7 +288,7 @@ export async function getFamilyManagementOverview(
       throw error;
     }
 
-    throw new InfrastructureError("Family relationship management could not be loaded");
+    throw toInfrastructureError("family.getFamilyManagementOverview", error, "Family relationship management could not be loaded");
   }
 }
 

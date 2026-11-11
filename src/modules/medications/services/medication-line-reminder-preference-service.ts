@@ -5,6 +5,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type OwnMedicationLineReminderPreference = { enabled: boolean; canEnable: boolean };
 
@@ -68,7 +69,7 @@ export async function setOwnMedicationLineReminderPreference(actor: ActorContext
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof InfrastructureError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") throw error;
-    throw new InfrastructureError("Medication reminder preference could not be saved");
+    throw toInfrastructureError("medications.setOwnMedicationLineReminderPreference", error, "Medication reminder preference could not be saved");
   }
 }
 

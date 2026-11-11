@@ -84,6 +84,34 @@ async function cleanup(): Promise<void> {
   hospitals.length = 0; users.length = 0; people.length = 0;
 }
 
+async function seedAppointment(input: {
+  relationshipId: string;
+  createdByUserId: string;
+  assignedOsmUserId?: string;
+  responsibleUserId?: string;
+  offsetMs: number;
+  status?: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+}): Promise<{ id: string; updatedAt: Date }> {
+  return db.patientAppointment.create({
+    data: {
+      patientHospitalRelationshipId: input.relationshipId,
+      createdByUserId: input.createdByUserId,
+      assignedOsmUserId: input.assignedOsmUserId ?? null,
+      responsibleUserId: input.responsibleUserId ?? null,
+      type: "FOLLOW_UP",
+      locationType: "HOME_VISIT",
+      scheduledAt: new Date(now.getTime() + input.offsetMs),
+      status: input.status ?? "SCHEDULED",
+      submissionNonce: randomUUID(),
+      updatedAt: new Date("2026-10-01T00:00:00Z"),
+    },
+    select: { id: true, updatedAt: true },
+  });
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const releaseConfirmation = "นำออกจากโรงพยาบาลนี้อย่างถาวร";
+
 describe("Phase B hospital operations", () => {
   beforeAll(async () => { await db.$connect(); });
   afterEach(cleanup);
@@ -295,6 +323,74 @@ describe("Phase B hospital operations", () => {
     expect((await getOwnPatientAppointmentDetail(f.patient, f.relationshipId, a.appointmentId)).appointmentId).toBe(a.appointmentId);
     expect(await getPatientHealthHistory(f.patient, f.relationshipId, db)).toMatchObject({ diabetes: "YES" });
     expect(await getAppointmentRescheduleHistory(f.patient, f.relationshipId, a.appointmentId)).toMatchObject({ canRequest: false, canReview: false });
+  });
+
+  it("an OSM release unassigns that Hospital's future scheduled appointments, one-off visits included, and reports the count", async () => {
+    const f = await fixture();
+    const other = await fixture();
+    await db.osmHospitalRelationship.create({ data: { userId: f.osm.userId, hospitalId: other.hospitalId, status: MembershipStatus.ACTIVE } });
+    const oneOff = await provisionPatient(f.owner, { identity: { namespace: "phase-b", value: randomUUID() }, targetHospitalId: f.hospitalId, givenName: "ผู้ป่วย", familyName: "นัดครั้งเดียว" });
+    users.push(oneOff.userId); people.push(oneOff.personId);
+    const osm = f.osm.userId;
+    const assignedVisit = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: osm, offsetMs: 2 * DAY_MS });
+    const oneOffVisit = await seedAppointment({ relationshipId: oneOff.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: osm, offsetMs: 3 * DAY_MS });
+    const past = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: osm, offsetMs: -DAY_MS });
+    const completed = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: osm, offsetMs: 4 * DAY_MS, status: "COMPLETED" });
+    const cancelled = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: osm, offsetMs: 5 * DAY_MS, status: "CANCELLED" });
+    const otherHospital = await seedAppointment({ relationshipId: other.relationshipId, createdByUserId: other.owner.userId, assignedOsmUserId: osm, offsetMs: 2 * DAY_MS });
+    const rel = await db.osmHospitalRelationship.findFirstOrThrow({ where: { userId: osm, hospitalId: f.hospitalId } });
+
+    const result = await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: rel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: rel.updatedAt.toISOString(), confirmation: releaseConfirmation }, dependencies);
+
+    expect(result).toEqual({ relationshipId: rel.id, hospitalId: f.hospitalId, unassignedAppointmentCount: 2 });
+    for (const appointment of [assignedVisit, oneOffVisit]) {
+      const row = await db.patientAppointment.findUniqueOrThrow({ where: { id: appointment.id } });
+      expect(row).toMatchObject({ assignedOsmUserId: null, responsibleUserId: null, status: "SCHEDULED" });
+      expect(row.updatedAt).toEqual(now);
+    }
+    for (const appointment of [past, completed, cancelled, otherHospital]) {
+      expect(await db.patientAppointment.findUniqueOrThrow({ where: { id: appointment.id } })).toMatchObject({ assignedOsmUserId: osm, updatedAt: appointment.updatedAt });
+    }
+    const audits = await db.auditEvent.findMany({ where: { action: "appointment.assignee_unassigned", resourceId: { in: [assignedVisit.id, oneOffVisit.id, past.id, completed.id, cancelled.id, otherHospital.id] } } });
+    expect(audits.map((audit) => audit.resourceId).sort()).toEqual([assignedVisit.id, oneOffVisit.id].sort());
+    expect(audits.find((audit) => audit.resourceId === oneOffVisit.id)?.metadata).toEqual({
+      hospitalId: f.hospitalId,
+      patientHospitalRelationshipId: oneOff.relationshipId,
+      previousOsmUserId: osm,
+      nextOsmUserId: null,
+      cause: "workforce_release",
+      workforceRelationshipId: rel.id,
+    });
+    expect(audits.every((audit) => audit.actorUserId === f.owner.userId)).toBe(true);
+    const releaseAudit = await db.auditEvent.findFirstOrThrow({ where: { action: "workforce.permanently_released", resourceId: rel.id } });
+    expect(releaseAudit.metadata).toMatchObject({ unassignedAppointmentCount: 2, endedAssignmentCount: 1 });
+    expect(await db.appointmentLineNotification.count({ where: { appointmentId: { in: [assignedVisit.id, oneOffVisit.id] } } })).toBe(0);
+  });
+
+  it("a staff release clears that member as responsibleUserId of the Hospital's future scheduled appointments only", async () => {
+    const f = await fixture();
+    const staff = f.staff.userId;
+    const future = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, responsibleUserId: staff, offsetMs: 2 * DAY_MS });
+    const past = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, responsibleUserId: staff, offsetMs: -DAY_MS });
+    const osmVisit = await seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: f.osm.userId, offsetMs: 2 * DAY_MS });
+    const staffRel = await db.hospitalMembership.findFirstOrThrow({ where: { userId: staff, hospitalId: f.hospitalId } });
+
+    const result = await releaseWorkforceRelationship(f.owner, { kind: "staff", relationshipId: staffRel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: staffRel.updatedAt.toISOString(), confirmation: releaseConfirmation }, dependencies);
+
+    expect(result.unassignedAppointmentCount).toBe(1);
+    expect(await db.patientAppointment.findUniqueOrThrow({ where: { id: future.id } })).toMatchObject({ responsibleUserId: null, assignedOsmUserId: null, status: "SCHEDULED", updatedAt: now });
+    expect(await db.patientAppointment.findUniqueOrThrow({ where: { id: past.id } })).toMatchObject({ responsibleUserId: staff, updatedAt: past.updatedAt });
+    expect(await db.patientAppointment.findUniqueOrThrow({ where: { id: osmVisit.id } })).toMatchObject({ assignedOsmUserId: f.osm.userId, updatedAt: osmVisit.updatedAt });
+    const audit = await db.auditEvent.findFirstOrThrow({ where: { action: "appointment.assignee_unassigned", resourceId: future.id } });
+    expect(audit.metadata).toEqual({
+      hospitalId: f.hospitalId,
+      patientHospitalRelationshipId: f.relationshipId,
+      previousResponsibleUserId: staff,
+      nextResponsibleUserId: null,
+      cause: "workforce_release",
+      workforceRelationshipId: staffRel.id,
+    });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "workforce.permanently_released", resourceId: staffRel.id } })).metadata).toMatchObject({ unassignedAppointmentCount: 1 });
   });
 
 });

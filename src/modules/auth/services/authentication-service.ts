@@ -21,6 +21,7 @@ import {
   resolvePasswordLoginIdentity,
   type ResolvedPasswordLoginIdentity,
 } from "./password-login-identity-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type SupabaseSignOutOptions = Parameters<SupabaseClient["auth"]["signOut"]>[0];
 
@@ -72,8 +73,8 @@ function isInvalidCredentialsError(error: unknown): boolean {
 async function getPasswordAuthenticationProvider(): Promise<PasswordAuthenticationProvider> {
   try {
     return (await getServerSupabaseClient({ requireWritableCookies: true })).auth;
-  } catch {
-    throw new InfrastructureError("Authentication service could not be reached");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.getPasswordAuthenticationProvider", error, "Authentication service could not be reached");
   }
 }
 
@@ -97,7 +98,7 @@ export async function signOutCurrentSession(
       return;
     }
 
-    throw new InfrastructureError("Authentication session could not be invalidated");
+    throw toInfrastructureError("auth.signOutCurrentSession", error, "Authentication session could not be invalidated");
   }
 }
 
@@ -136,7 +137,7 @@ export async function authenticateWithPassword(
       return { status: "INVALID_CREDENTIALS" };
     }
 
-    throw new InfrastructureError("Authentication service could not be reached");
+    throw toInfrastructureError("auth.authenticateWithPassword", error, "Authentication service could not be reached");
   }
 
   if (response.error) {

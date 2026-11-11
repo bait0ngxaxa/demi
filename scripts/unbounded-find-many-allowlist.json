@@ -1232,11 +1232,11 @@
     "reason": "A user's roles: one row per Role value (primary key userId, role)."
   },
   {
-    "file": "src/modules/patient-assignment/services/patient-osm-assignment-transaction.ts",
-    "function": "handoffFutureAppointments",
+    "file": "src/modules/appointments/services/appointment-assignee-transfer.ts",
+    "function": "transferFutureAppointmentAssignee",
     "target": "patientAppointment",
     "occurrence": 1,
-    "reason": "Future appointments of one relationship handed to the new อสม."
+    "reason": "Future SCHEDULED appointments of one assignee (one relationship on reassignment, one Hospital on workforce release), all transferred in the same transaction."
   },
   {
     "file": "src/modules/patient-assignment/services/patient-osm-bulk-assignment-transaction.ts",
@@ -2439,6 +2439,13 @@
     "file": "src/modules/workforce/services/workforce-service.ts",
     "function": "listHospitalOwnersForPasswordReset",
     "target": "hospitalMembership.user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-hospital-relationship/services/patient-hospital-relationship-reopen-service.ts",
+    "function": "assertPlatformAdminInDatabase",
+    "target": "user.roles",
     "occurrence": 1,
     "reason": "A user's roles: one row per Role value (primary key userId, role)."
   }

@@ -2,9 +2,10 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getServerEnv } from "@/lib/env/server";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 import { MAX_CURSOR_JSON_BYTES, MAX_CURSOR_LENGTH, canonicalReminderUuid, isCanonicalReminderBase64url } from "../domain/medication-reminder-occurrence";
 import { medicationReminderOccurrenceCursorSchema, type MedicationReminderOccurrenceCursorPayload } from "../schemas/medication-reminder-occurrence-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const PREFIX = "medcur_v1_";
 
@@ -21,7 +22,7 @@ function tag(actor: ActorContext, bytes: Buffer): Buffer {
     return createHmac("sha256", getServerEnv().IDENTITY_HASH_SECRET)
       .update(`demi.personal-medication-reminder-cursor.v1\u0000${canonicalReminderUuid(actor.userId)}\u0000${canonicalReminderUuid(actor.personId)}\u0000`, "utf8")
       .update(bytes).digest();
-  } catch { throw new InfrastructureError(); }
+  } catch (error: unknown) { throw toInfrastructureError("medications.tag", error); }
 }
 
 export function encodeMedicationReminderOccurrenceCursor(actor: ActorContext, input: MedicationReminderOccurrenceCursorPayload): string {
@@ -54,7 +55,7 @@ export function decodeMedicationReminderOccurrenceCursor(actor: ActorContext, cu
     if (expectedTag.length !== 32 || !timingSafeEqual(expectedTag, suppliedTag)) throw new ValidationError();
   } catch (error: unknown) {
     if (error instanceof ValidationError) throw error;
-    throw new InfrastructureError();
+    throw toInfrastructureError("medications.decodeMedicationReminderOccurrenceCursor", error);
   }
   return parsed.data;
 }

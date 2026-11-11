@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { Alert } from "@/components/ui/alert";
@@ -43,7 +44,17 @@ function classifyRelease(state: WorkforceReleaseActionState): MutationVerdict {
   }
 }
 
-type ReleasePayload = { relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
+/**
+ * The Hospital's upcoming appointments; after an อสม. release, opened on the existing "ไม่มี อสม. รับผิดชอบ" filter.
+ * A staff release keeps the unfiltered list: there is no filter for appointments without a staff assignee.
+ */
+function releasedAppointmentsHref(hospitalId: string, kind: "osm" | "staff"): string {
+  const params = new URLSearchParams({ hospitalId, tab: "UPCOMING" });
+  if (kind === "osm") params.set("unassignedOsm", "true");
+  return `/app/appointments?${params.toString()}`;
+}
+
+type ReleasePayload ={ relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
 
 export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, updatedAt, resourceName, hospitalName }: {
   relationshipId: string;
@@ -111,9 +122,20 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
   return (
     <div className="rounded-panel border border-border bg-surface p-5">
       {released ? (
-        <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
-          {latest.state?.message ?? "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่"}
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm leading-6 text-text" ref={statusRef} role="status" tabIndex={-1}>
+            {latest.state?.message ?? "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่"}
+          </p>
+          {(latest.state?.unassignedAppointmentCount ?? 0) > 0 ? (
+            <Link
+              className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
+              href={releasedAppointmentsHref(hospitalId, kind)}
+              prefetch={false}
+            >
+              ดูนัดหมายที่จะถึงของโรงพยาบาลนี้
+            </Link>
+          ) : null}
+        </div>
       ) : (
         <Button disabled={locked} onClick={openDialog} ref={triggerRef} type="button" variant="danger">
           นำ{subjectLabel}ออกจากโรงพยาบาลนี้อย่างถาวร
@@ -125,6 +147,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
             <>
               สิทธิ์การทำงานของ {subjectLabel} {resourceName} ใน {hospitalName} จะสิ้นสุดถาวรและเปิดสิทธิ์เดิมกลับไม่ได้ หากต้องการให้ทำงานอีกครั้ง ต้องเพิ่มผ่านขั้นตอนเดิม ประวัติการทำงานยังคงอยู่
               {kind === "osm" ? " การมอบหมายผู้ป่วยที่ค้างอยู่จะสิ้นสุดด้วย" : ""}
+              {` นัดหมายที่จะถึงในโรงพยาบาลนี้ซึ่ง${subjectLabel}คนนี้รับผิดชอบจะไม่มีผู้รับผิดชอบ และต้องมอบหมายผู้รับผิดชอบใหม่ นัดหมายยังคงอยู่และไม่มีการแจ้งเตือนผู้ป่วย`}
               {" "}บัญชีผู้ใช้และสิทธิ์ที่มีอยู่ในโรงพยาบาลอื่นจะคงเดิม แต่ลิงก์เปิดใช้งานที่ยังไม่ได้ใช้ของบัญชีนี้ในทุกโรงพยาบาลจะถูกเพิกถอน
             </>
           }

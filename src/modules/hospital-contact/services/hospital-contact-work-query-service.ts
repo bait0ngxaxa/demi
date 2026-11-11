@@ -12,13 +12,14 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError } from "@/shared/errors/application-error";
 
 import {
   assertHospitalContactPolicy,
   HOSPITAL_CONTACT_CAPABILITIES,
 } from "../policies/hospital-contact-policy";
 import type { HospitalWorkContactProjection } from "../types/hospital-contact-projections";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Database = PrismaClient;
 
@@ -129,7 +130,7 @@ export async function listWorkHospitalContacts(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital work contacts could not be loaded");
+    throw toInfrastructureError("hospital-contact.listWorkHospitalContacts", error, "Hospital work contacts could not be loaded");
   }
 }
 

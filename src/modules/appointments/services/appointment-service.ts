@@ -68,6 +68,7 @@ import {
   createAppointmentLineNotificationIntent,
   createOsmRescheduleRequestLineNotificationIntent,
 } from "./appointment-line-notification-outbox-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type AppointmentDatabase = PrismaClient;
 
@@ -207,7 +208,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("The Appointment operation conflicted with another request");
   }
 
-  return new InfrastructureError("Appointment could not be saved");
+  return toInfrastructureError("appointments.appointment-service", error, "Appointment could not be saved");
 }
 
 async function runSerializable<T>(

@@ -4,12 +4,13 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference, identityKeyHashesMatch } from "@/modules/identity/services/identity-service";
-import { InfrastructureError } from "@/shared/errors/application-error";
+
 
 import {
   assertPasswordNotPersonal,
   type PasswordPersonalContext,
 } from "../domain/password-personal-info";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PasswordPersonalContextDatabase = Pick<PrismaClient, "user"> | Prisma.TransactionClient;
 
@@ -57,8 +58,8 @@ export async function loadPasswordPersonalContext(
   let user: Prisma.UserGetPayload<{ select: typeof passwordPersonalContextSelect }> | null;
   try {
     user = await database.user.findUnique({ where: { id: userId }, select: passwordPersonalContextSelect });
-  } catch {
-    throw new InfrastructureError("Password personal information could not be checked");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.loadPasswordPersonalContext", error, "Password personal information could not be checked");
   }
 
   const profile = user?.person.patientProfile ?? null;

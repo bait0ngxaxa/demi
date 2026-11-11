@@ -29,6 +29,7 @@ import {
   type PatientEvidencePolicyTarget,
 } from "../policies/patient-evidence-policy";
 import { patientEvidenceRelationshipIdSchema } from "../schemas/patient-evidence-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientEvidenceAccessDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -279,7 +280,7 @@ export async function resolvePatientEvidenceAccessContext(
       throw error;
     }
 
-    throw new InfrastructureError("Patient evidence access could not be resolved");
+    throw toInfrastructureError("patient-evidence.resolvePatientEvidenceAccessContext", error, "Patient evidence access could not be resolved");
   }
 }
 

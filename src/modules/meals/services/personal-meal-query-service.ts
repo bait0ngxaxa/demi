@@ -3,12 +3,13 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction, isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ApplicationError, ConflictError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { fromMealDateCarrier, toMealDateCarrier, MEAL_PAGE_SIZE, type PersonalMealDto, type PersonalMealPage } from "../domain/personal-meal";
 import { mealIdSchema, mealListSchema } from "../schemas/personal-meal-schemas";
 import { assertPersonalMealSelf } from "../policies/personal-meal-policy";
 import { resolvePersonalMealOwner } from "./personal-meal-access-service";
 import { decodeMealCursor, encodeMealCursor } from "./personal-meal-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const personalMealSelect = { id: true, category: true, occurredOn: true, description: true, createdAt: true, updatedAt: true } satisfies Prisma.PersonalMealEntrySelect;
 export function toPersonalMealDto(row: Prisma.PersonalMealEntryGetPayload<{ select: typeof personalMealSelect }>): PersonalMealDto {
@@ -18,7 +19,7 @@ export function toPersonalMealDto(row: Prisma.PersonalMealEntryGetPayload<{ sele
 export function normalizeMealError(error: unknown): ApplicationError {
   if (error instanceof ApplicationError) return error;
   if (isRetryableSerializableTransactionError(error)) return new ConflictError();
-  return new InfrastructureError();
+  return toInfrastructureError("meals.personal-meal-query-service", error);
 }
 export async function listOwnPersonalMeals(actor: ActorContext | null | undefined, input: unknown, database: PrismaClient = getPrisma()): Promise<PersonalMealPage> {
   assertPersonalMealSelf(actor);

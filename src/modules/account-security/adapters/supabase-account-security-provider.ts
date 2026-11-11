@@ -10,6 +10,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
 
 import { createProviderLoginAlias, createProviderResetLoginAlias } from "@/modules/auth/services/provider-login-alias";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 function createIsolatedAuthClient(signal?: AbortSignal): SupabaseClient {
   const env = getServerEnv();
@@ -145,7 +146,7 @@ export async function updateAuthenticatedPassword(input: {
     if (passwordUpdateOutcome === "NOT_STARTED") {
       throw new PasswordChangeProviderNotStartedError();
     }
-    throw new InfrastructureError("Account password could not be changed");
+    throw toInfrastructureError("account-security.updateAuthenticatedPassword", error, "Account password could not be changed");
   }
 }
 
@@ -181,7 +182,7 @@ export async function verifyAuthenticatedCurrentPassword(input: {
     }
   } catch (error: unknown) {
     if (error instanceof CurrentPasswordRejectedError || error instanceof InfrastructureError) throw error;
-    throw new InfrastructureError("Current password could not be verified");
+    throw toInfrastructureError("account-security.verifyAuthenticatedCurrentPassword", error, "Current password could not be verified");
   } finally {
     if (verificationSession) {
       try {
@@ -286,9 +287,9 @@ export async function replacePasswordAndRevokeRecoverySessions(input: {
     }
 
     return { authSubject: replacementSubject.data, providerLoginAlias };
-  } catch {
+  } catch (error: unknown) {
     if (rejection) throw new ProviderIdentityRejectedError(rejection);
-    throw new InfrastructureError("Replacement provider identity requires reconciliation");
+    throw toInfrastructureError("account-security.replacePasswordAndRevokeRecoverySessions", error, "Replacement provider identity requires reconciliation");
   }
 }
 
@@ -297,8 +298,8 @@ export async function deleteReplacedProviderIdentity(authSubject: string): Promi
   try {
     const { error } = await getSupabaseAdminClient().auth.admin.deleteUser(authSubject);
     if (error && !isProviderUserNotFound(error)) throw error;
-  } catch {
-    throw new InfrastructureError("Previous provider identity requires reconciliation");
+  } catch (error: unknown) {
+    throw toInfrastructureError("account-security.deleteReplacedProviderIdentity", error, "Previous provider identity requires reconciliation");
   }
 }
 

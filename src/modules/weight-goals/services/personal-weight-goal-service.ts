@@ -16,6 +16,7 @@ import { assertPersonalWeightGoalSelf } from "../policies/personal-weight-goal-p
 import { personalWeightGoalCreateSchema, personalWeightGoalRemoveSchema, personalWeightGoalUpdateSchema } from "../schemas/personal-weight-goal-schemas";
 import { resolvePersonalWeightGoalOwner } from "./personal-weight-goal-access-service";
 import { personalWeightGoalSelect, toPersonalWeightGoalDto } from "./personal-weight-goal-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Dependencies = { database?: PrismaClient; now?: () => Date };
 
@@ -173,7 +174,7 @@ export async function updatePersonalWeightGoal(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError();
+    throw toInfrastructureError("weight-goals.updatePersonalWeightGoal", error);
   }
 }
 
@@ -209,6 +210,6 @@ export async function removePersonalWeightGoal(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError();
+    throw toInfrastructureError("weight-goals.removePersonalWeightGoal", error);
   }
 }

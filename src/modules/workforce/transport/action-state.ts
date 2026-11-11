@@ -202,6 +202,8 @@ export type WorkforceReleaseActionState = {
   message: string;
   success: boolean;
   outcome: WorkforceReleaseOutcome | null;
+  /** Set on RELEASED: the Hospital's future appointments that now need a new assignee. */
+  unassignedAppointmentCount?: number;
 };
 
 export const initialWorkforceReleaseActionState: WorkforceReleaseActionState = {

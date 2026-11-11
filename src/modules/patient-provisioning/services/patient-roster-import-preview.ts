@@ -61,6 +61,7 @@ import type {
   PatientRosterImportDatabase,
   PatientRosterImportServiceDependencies,
 } from "./patient-roster-import-types";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PreviewPerson = {
   id: string;
@@ -421,7 +422,8 @@ export function classifyExistingPatient(
     return { classification: "READY", reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
   }
 
-  // Phase F: an ended care relationship is never reactivated by import; a platform ADMIN decides.
+  // Phase F: an ended care relationship is never reactivated by import; only a platform ADMIN reopens it
+  // (reopenPatientHospitalRelationship, ADR-0032).
   if (relationship.endedAt !== null) {
     return {
       classification: "CONFLICT",
@@ -723,7 +725,7 @@ export async function preparePatientRosterImportPreview(
       throw error;
     }
 
-    throw new InfrastructureError("Patient import preview could not be prepared");
+    throw toInfrastructureError("patient-provisioning.preparePatientRosterImportPreview", error, "Patient import preview could not be prepared");
   }
 }
 

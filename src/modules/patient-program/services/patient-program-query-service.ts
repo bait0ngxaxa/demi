@@ -9,11 +9,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   decidePatientProgramPolicy,
@@ -31,6 +27,7 @@ import {
   withoutPatientProgramServiceOneRecorders,
   type PatientProgramServiceOneRoundProjection,
 } from "./patient-program-service-one-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const PATIENT_PROGRAM_HISTORY_LIMIT = 50;
 
@@ -216,7 +213,7 @@ export async function getPatientProgramPageContext(
       throw error;
     }
 
-    throw new InfrastructureError("Program history could not be loaded");
+    throw toInfrastructureError("patient-program.getPatientProgramPageContext", error, "Program history could not be loaded");
   }
 }
 
@@ -267,7 +264,7 @@ export async function getPatientProgramDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Program detail could not be loaded");
+    throw toInfrastructureError("patient-program.getPatientProgramDetail", error, "Program detail could not be loaded");
   }
 }
 

@@ -5,9 +5,10 @@ import { PatientProgramStatus, Prisma, type PrismaClient } from "@prisma/client"
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { PATIENT_PROGRAM_READ_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
-import { ApplicationError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError } from "@/shared/errors/application-error";
 
 import { resolvePatientFinalAssessmentAccessContext } from "./patient-final-assessment-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientFinalAssessmentQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -170,7 +171,7 @@ export async function getPatientFinalAssessmentForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Final Assessment could not be loaded");
+    throw toInfrastructureError("patient-final-assessment.getPatientFinalAssessmentForProgram", error, "Final Assessment could not be loaded");
   }
 }
 

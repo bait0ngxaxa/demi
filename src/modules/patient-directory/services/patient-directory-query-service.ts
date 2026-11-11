@@ -44,16 +44,12 @@ import {
   workforceOsmPatientListQuerySchema,
   type WorkforceOsmPatientListQueryInput,
 } from "@/modules/patient-directory/schemas/patient-directory-schemas";
-import {
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import {
   decidePatientOsmAssignmentPolicy,
   PATIENT_ASSIGN_OSM_CAPABILITY,
 } from "@/modules/patient-assignment/policies/patient-osm-assignment-policy";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientDirectoryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -686,7 +682,7 @@ export async function listPatientDirectoryScopes(
       throw error;
     }
 
-    throw new InfrastructureError("Patient directory Hospitals could not be loaded");
+    throw toInfrastructureError("patient-directory.listPatientDirectoryScopes", error, "Patient directory Hospitals could not be loaded");
   }
 }
 
@@ -762,7 +758,7 @@ export async function findPatientDirectory(
       throw error;
     }
 
-    throw new InfrastructureError("Patient directory could not be loaded");
+    throw toInfrastructureError("patient-directory.findPatientDirectory", error, "Patient directory could not be loaded");
   }
 }
 
@@ -866,7 +862,7 @@ export async function getPatientDirectoryDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Patient detail could not be loaded");
+    throw toInfrastructureError("patient-directory.getPatientDirectoryDetail", error, "Patient detail could not be loaded");
   }
 }
 
@@ -911,7 +907,7 @@ export async function getPatientResponsibleOsm(
       throw error;
     }
 
-    throw new InfrastructureError("Patient responsible OSM could not be loaded");
+    throw toInfrastructureError("patient-directory.getPatientResponsibleOsm", error, "Patient responsible OSM could not be loaded");
   }
 }
 
@@ -987,7 +983,7 @@ export async function findPatientsAssignedToOsmInHospital(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce OSM Patients could not be loaded");
+    throw toInfrastructureError("patient-directory.findPatientsAssignedToOsmInHospital", error, "Workforce OSM Patients could not be loaded");
   }
 }
 
@@ -1059,7 +1055,7 @@ export async function findAssignedPatientDirectory(
       throw error;
     }
 
-    throw new InfrastructureError("Assigned Patient directory could not be loaded");
+    throw toInfrastructureError("patient-directory.findAssignedPatientDirectory", error, "Assigned Patient directory could not be loaded");
   }
 }
 

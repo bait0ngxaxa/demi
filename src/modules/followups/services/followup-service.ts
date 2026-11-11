@@ -38,6 +38,7 @@ import {
   type FollowupCreateRequest,
 } from "../schemas/followup-schemas";
 import { resolveFollowupAccessContext } from "./followup-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type FollowupDatabase = PrismaClient;
 
@@ -152,7 +153,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("The Follow-up operation conflicted with another request");
   }
 
-  return new InfrastructureError("Follow-up could not be saved");
+  return toInfrastructureError("followups.followup-service", error, "Follow-up could not be saved");
 }
 
 async function runSerializable<T>(

@@ -19,13 +19,7 @@ import {
 import { PATIENT_PROGRAM_READ_CAPABILITY } from "@/modules/patient-program/policies/patient-program-policy";
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
 import type { AppointmentTypeValue } from "@/modules/appointments/domain/appointment-definitions";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   FOLLOWUP_HISTORY_LIMIT,
@@ -46,6 +40,7 @@ import {
   type FollowupAccessDatabase,
   type FollowupPatientSummary,
 } from "./followup-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type FollowupQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -527,7 +522,7 @@ export async function getFollowupHistory(
       throw error;
     }
 
-    throw new InfrastructureError("Follow-up history could not be loaded");
+    throw toInfrastructureError("followups.getFollowupHistory", error, "Follow-up history could not be loaded");
   }
 }
 
@@ -581,7 +576,7 @@ export async function getFollowupHistoryForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Follow-up history could not be loaded");
+    throw toInfrastructureError("followups.getFollowupHistoryForProgram", error, "Program Follow-up history could not be loaded");
   }
 }
 
@@ -652,7 +647,7 @@ export async function getFollowupCreateContext(
       throw error;
     }
 
-    throw new InfrastructureError("Follow-up setup could not be loaded");
+    throw toInfrastructureError("followups.getFollowupCreateContext", error, "Follow-up setup could not be loaded");
   }
 }
 
@@ -774,7 +769,7 @@ export async function getFollowupCreateContextForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Follow-up setup could not be loaded");
+    throw toInfrastructureError("followups.getFollowupCreateContextForProgram", error, "Program Follow-up setup could not be loaded");
   }
 }
 
@@ -826,7 +821,7 @@ export async function getFollowupDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Follow-up detail could not be loaded");
+    throw toInfrastructureError("followups.getFollowupDetail", error, "Follow-up detail could not be loaded");
   }
 }
 
@@ -879,7 +874,7 @@ export async function getFollowupDetailForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Follow-up detail could not be loaded");
+    throw toInfrastructureError("followups.getFollowupDetailForProgram", error, "Program Follow-up detail could not be loaded");
   }
 }
 

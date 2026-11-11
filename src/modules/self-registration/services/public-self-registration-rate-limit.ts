@@ -6,6 +6,7 @@ import type { PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { getServerEnv } from "@/lib/env/server";
 import { InfrastructureError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const CLEANUP_BATCH_SIZE = 100;
 const PURPOSE = "DEMI_PUBLIC_SELF_REGISTRATION_RATE_LIMIT_V1";
@@ -77,7 +78,7 @@ export function createPublicSelfRegistrationRateLimiter(
         return hitCount <= limit;
       } catch (error: unknown) {
         if (error instanceof InfrastructureError) throw error;
-        throw new InfrastructureError("Self-registration rate limit is unavailable");
+        throw toInfrastructureError("self-registration.consume", error, "Self-registration rate limit is unavailable");
       }
     },
   };

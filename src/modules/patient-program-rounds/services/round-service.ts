@@ -58,6 +58,7 @@ import { findRoundRecordingReceipt, recordRoundRecordingReceipt } from "./round-
 import { assertActivePlanItem, classifyRoundActivity, openGuidelineRound } from "./round-plan-service";
 import { buildProgramRoundFacts, loadProgramRoundRecord } from "./round-query-service";
 import { assertRoundWritable } from "./round-sequencing";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientProgramRoundDatabase = PrismaClient;
 
@@ -145,7 +146,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("ข้อมูลความสัมพันธ์ของครั้งนี้ไม่สอดคล้องกัน");
   }
 
-  return new InfrastructureError("Program round could not be saved");
+  return toInfrastructureError("patient-program-rounds.round-service", error, "Program round could not be saved");
 }
 
 async function runSerializable<T>(

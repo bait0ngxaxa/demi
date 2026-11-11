@@ -50,6 +50,7 @@ import {
   activatableInvitationSelect,
   activateCaregiverRelationship,
 } from "./caregiver-scope-activation";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export class CaregiverAccountClaimRejectedError extends Error {
   constructor() {
@@ -234,8 +235,8 @@ export async function createCaregiverAccountFromInvitation(
         recipientIdentityKeyHash: true,
       },
     });
-  } catch {
-    throw new InfrastructureError("Caregiver invitation could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("family.createCaregiverAccountFromInvitation", error, "Caregiver invitation could not be loaded");
   }
 
   if (!invitation) {
@@ -263,8 +264,8 @@ export async function createCaregiverAccountFromInvitation(
       where: { identityKeyHash: personHash },
       select: { id: true },
     });
-  } catch {
-    throw new InfrastructureError("Caregiver identity could not be checked");
+  } catch (error: unknown) {
+    throw toInfrastructureError("family.createCaregiverAccountFromInvitation", error, "Caregiver identity could not be checked");
   }
   if (existingPerson) {
     await recordRejectedClaim(database, invitation.id);
@@ -441,8 +442,8 @@ export async function createCaregiverAccountFromInvitation(
           personHash,
           invitationId: invitation.id,
         });
-      } catch {
-        throw new InfrastructureError("Caregiver account claim outcome requires reconciliation");
+      } catch (error: unknown) {
+        throw toInfrastructureError("family.createCaregiverAccountFromInvitation", error, "Caregiver account claim outcome requires reconciliation");
       }
       if (committedClaim) return committedClaim;
     }
@@ -451,8 +452,8 @@ export async function createCaregiverAccountFromInvitation(
       try {
         await deleteProviderIdentity(providerIdentity.authSubject);
         providerCompensated = true;
-      } catch {
-        throw new InfrastructureError("Caregiver account claim requires provider reconciliation");
+      } catch (error: unknown) {
+        throw toInfrastructureError("family.createCaregiverAccountFromInvitation", error, "Caregiver account claim requires provider reconciliation");
       }
     }
 
@@ -462,6 +463,6 @@ export async function createCaregiverAccountFromInvitation(
     }
     // A version published while the claim was in flight; the person re-accepts and retries the same invitation.
     if (error instanceof LegalVersionConflictError) throw error;
-    throw new InfrastructureError("Caregiver account could not be created");
+    throw toInfrastructureError("family.createCaregiverAccountFromInvitation", error, "Caregiver account could not be created");
   }
 }

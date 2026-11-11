@@ -16,11 +16,7 @@ import {
   patientProgramServiceOneSelect,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
 import { roundReadOptionsFor } from "@/modules/patient-program-rounds/services/round-query-service";
-import {
-  ApplicationError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError } from "@/shared/errors/application-error";
 
 import {
   resolveProgramReportAccessContext,
@@ -40,6 +36,7 @@ import {
   programScreeningReportSelect,
   type ProgramScreeningReportSource,
 } from "../projections/program-screening-report";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const PROGRAM_REPORT_DEFAULT_PAGE_SIZE = 20;
 export const PROGRAM_REPORT_MAX_PAGE_SIZE = 50;
@@ -507,7 +504,7 @@ export async function getProgramReportingProjection(
       throw error;
     }
 
-    throw new InfrastructureError("Program reporting projection could not be loaded");
+    throw toInfrastructureError("reporting.getProgramReportingProjection", error, "Program reporting projection could not be loaded");
   }
 }
 

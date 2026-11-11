@@ -23,6 +23,7 @@ import {
 } from "../schemas/patient-evidence-schemas";
 import { getPatientEvidenceStorage } from "../storage/supabase-patient-evidence-storage";
 import type { PatientEvidenceStorage } from "../storage/patient-evidence-storage";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const patientEvidenceArtifactListSelect = {
   id: true,
@@ -145,7 +146,7 @@ export async function listPatientEvidenceArtifacts(
       throw error;
     }
 
-    throw new InfrastructureError("Patient evidence could not be loaded");
+    throw toInfrastructureError("patient-evidence.listPatientEvidenceArtifacts", error, "Patient evidence could not be loaded");
   }
 }
 
@@ -182,7 +183,7 @@ export async function getPatientEvidencePageContext(
       throw error;
     }
 
-    throw new InfrastructureError("Patient evidence page could not be loaded");
+    throw toInfrastructureError("patient-evidence.getPatientEvidencePageContext", error, "Patient evidence page could not be loaded");
   }
 }
 

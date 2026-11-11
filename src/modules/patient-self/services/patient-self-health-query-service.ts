@@ -6,9 +6,10 @@ import { z } from "zod";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
-import { ApplicationError, InfrastructureError, NotFoundError } from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError } from "@/shared/errors/application-error";
 
 import { resolveOwnPatientRelationshipContext, type PatientSelfQueryDependencies } from "./patient-self-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const factSchema = z.object({
   field: z.enum(["weight", "heightCm", "waistCircumference"]),
@@ -70,7 +71,7 @@ export async function getOwnLatestStaffMeasurements(
     return result;
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("ไม่สามารถโหลดค่าร่างกายล่าสุดได้");
+    throw toInfrastructureError("patient-self.getOwnLatestStaffMeasurements", error, "ไม่สามารถโหลดค่าร่างกายล่าสุดได้");
   }
 }
 
@@ -100,6 +101,6 @@ export async function getOwnCurrentAssignedOsm(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("ไม่สามารถโหลดข้อมูล อสม.ผู้ดูแลได้");
+    throw toInfrastructureError("patient-self.getOwnCurrentAssignedOsm", error, "ไม่สามารถโหลดข้อมูล อสม.ผู้ดูแลได้");
   }
 }

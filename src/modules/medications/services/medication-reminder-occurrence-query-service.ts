@@ -10,6 +10,7 @@ import { assertPersonalMedicationSelf } from "../policies/personal-medication-po
 import { medicationReminderOccurrenceQuerySchema, medicationReminderOccurrenceSourceSchema } from "../schemas/medication-reminder-occurrence-schemas";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
 import { decodeMedicationReminderOccurrenceCursor, encodeMedicationReminderOccurrenceCursor } from "./medication-reminder-occurrence-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type MedicationReminderOccurrenceDependencies = { database?: PrismaClient; now?: () => Date };
 
@@ -42,7 +43,7 @@ async function ownRecord(actor: ActorContext, medicationId: string, transaction:
 function readError(error: unknown): never {
   if (error instanceof ApplicationError) throw error;
   if (isRetryableSerializableTransactionError(error)) throw new ConflictError();
-  throw new InfrastructureError("Personal medication reminder source could not be loaded");
+  throw toInfrastructureError("medications.medication-reminder-occurrence-query-service", error, "Personal medication reminder source could not be loaded");
 }
 
 export async function listOwnPersonalMedicationReminderOccurrences(

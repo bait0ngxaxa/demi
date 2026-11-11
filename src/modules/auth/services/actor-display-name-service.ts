@@ -2,7 +2,8 @@ import "server-only";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+
 
 export async function getActorDisplayName(actor: ActorContext): Promise<string> {
   try {
@@ -16,7 +17,7 @@ export async function getActorDisplayName(actor: ActorContext): Promise<string> 
       .join(" ");
 
     return displayName || "ผู้ใช้งาน DEMI";
-  } catch {
-    throw new InfrastructureError("Actor display name could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.getActorDisplayName", error, "Actor display name could not be loaded");
   }
 }

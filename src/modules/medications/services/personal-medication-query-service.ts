@@ -3,11 +3,12 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ApplicationError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { PERSONAL_MEDICATION_PAGE_SIZE, type PersonalMedicationDto, type PersonalMedicationDetailDto, type PersonalMedicationPage } from "../domain/personal-medication-definitions";
 import { fromMedicationTimeCarrier } from "../domain/medication-local-time";
 import { personalMedicationIdSchema, personalMedicationListSchema } from "../schemas/personal-medication-schemas";
 import { resolvePersonalMedicationOwner } from "./personal-medication-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const personalMedicationSelect = {
   id: true, medicationName: true, instructionText: true, status: true,
@@ -60,7 +61,7 @@ export async function listOwnPersonalMedications(
     return { items: items.map(toPersonalMedicationDto), nextCursor: rows.length > PERSONAL_MEDICATION_PAGE_SIZE ? items.at(-1)?.id ?? null : null };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Personal medication list could not be loaded");
+    throw toInfrastructureError("medications.listOwnPersonalMedications", error, "Personal medication list could not be loaded");
   }
 }
 
@@ -78,7 +79,7 @@ export async function listOwnActiveMedicationSummaries(
       hasMore: rows.length > PERSONAL_MEDICATION_PAGE_SIZE };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("ไม่สามารถโหลดรายการยาได้");
+    throw toInfrastructureError("medications.listOwnActiveMedicationSummaries", error, "ไม่สามารถโหลดรายการยาได้");
   }
 }
 
@@ -97,6 +98,6 @@ export async function getOwnPersonalMedication(
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Personal medication could not be loaded");
+    throw toInfrastructureError("medications.getOwnPersonalMedication", error, "Personal medication could not be loaded");
   }
 }

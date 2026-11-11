@@ -37,6 +37,7 @@ import type {
   HospitalContactOwnerHospital,
   PatientHospitalContactRead,
 } from "../types/hospital-contact-projections";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalContactDatabase = PrismaClient;
 export type {
@@ -100,6 +101,12 @@ function isKnownPrismaError(error: unknown, code: string): boolean {
 }
 
 function getPostgresSqlState(error: unknown, visited = new Set<object>()): string | null {
+  // An InfrastructureError keeps its original error as `cause` for server logs only; it was
+  // already classified by a lower layer and must not become retryable through that cause.
+  if (error instanceof InfrastructureError) {
+    return null;
+  }
+
   if (typeof error !== "object" || error === null || visited.has(error)) {
     return null;
   }
@@ -180,8 +187,8 @@ export async function listEligibleHospitalContactOwnerHospitals(
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }, { id: "asc" }],
       select: { id: true, hospitalCode: true, name: true },
     });
-  } catch {
-    throw new InfrastructureError("Hospital Contact directory could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-contact.listEligibleHospitalContactOwnerHospitals", error, "Hospital Contact directory could not be loaded");
   }
 }
 
@@ -249,7 +256,7 @@ export async function readHospitalContactForOwner(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital Contact could not be loaded");
+    throw toInfrastructureError("hospital-contact.readHospitalContactForOwner", error, "Hospital Contact could not be loaded");
   }
 }
 
@@ -486,8 +493,8 @@ async function updateHospitalContactInTransaction(
 
   try {
     updatedAt = nextHospitalContactVersion(now, current.updatedAt);
-  } catch {
-    throw new InfrastructureError("Hospital Contact clock is invalid");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-contact.updateHospitalContactInTransaction", error, "Hospital Contact clock is invalid");
   }
 
   const changed = await transaction.hospitalContact.updateMany({
@@ -588,7 +595,7 @@ export async function updateHospitalContact(
       );
     } catch (error: unknown) {
       if (error instanceof HospitalContactAuditFailure) {
-        throw new InfrastructureError("Hospital Contact could not be saved");
+        throw toInfrastructureError("hospital-contact.updateHospitalContact", error, "Hospital Contact could not be saved");
       }
 
       if (isKnownPrismaError(error, "P2002")) {
@@ -622,7 +629,7 @@ export async function updateHospitalContact(
         throw error;
       }
 
-      throw new InfrastructureError("Hospital Contact could not be saved");
+      throw toInfrastructureError("hospital-contact.updateHospitalContact", error, "Hospital Contact could not be saved");
     }
   }
 
@@ -761,7 +768,7 @@ export async function readOwnPatientHospitalContact(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital Contact could not be loaded");
+    throw toInfrastructureError("hospital-contact.readOwnPatientHospitalContact", error, "Hospital Contact could not be loaded");
   }
 }
 
@@ -794,7 +801,7 @@ export async function listOwnPatientHospitalContacts(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital Contact could not be loaded");
+    throw toInfrastructureError("hospital-contact.listOwnPatientHospitalContacts", error, "Hospital Contact could not be loaded");
   }
 }
 

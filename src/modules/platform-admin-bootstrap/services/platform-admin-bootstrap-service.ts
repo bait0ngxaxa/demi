@@ -29,6 +29,7 @@ import {
   platformAdminBootstrapInputSchema,
   type PlatformAdminBootstrapInput,
 } from "../schemas/platform-admin-bootstrap-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PlatformAdminBootstrapDatabase = PrismaClient;
 
@@ -83,7 +84,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("Platform admin bootstrap conflicted with another bootstrap");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("platform-admin-bootstrap.platform-admin-bootstrap-service", error, fallbackMessage);
 }
 
 function requiresReconciliation(error: unknown): boolean {
@@ -102,8 +103,8 @@ async function hasPlatformAdmin(database: PlatformAdminBootstrapDatabase): Promi
     });
 
     return existingAdmin !== null;
-  } catch {
-    throw new InfrastructureError("Platform admin bootstrap could not verify existing admins");
+  } catch (error: unknown) {
+    throw toInfrastructureError("platform-admin-bootstrap.hasPlatformAdmin", error, "Platform admin bootstrap could not verify existing admins");
   }
 }
 
@@ -119,8 +120,8 @@ function createIdentityKeyHash(nationalId: string): string {
       namespace: THAI_NATIONAL_IDENTITY_NAMESPACE,
       value: nationalId,
     });
-  } catch {
-    throw new InfrastructureError("Platform admin identity resolution is unavailable");
+  } catch (error: unknown) {
+    throw toInfrastructureError("platform-admin-bootstrap.createIdentityKeyHash", error, "Platform admin identity resolution is unavailable");
   }
 }
 
@@ -254,8 +255,8 @@ async function verifyProvisionedMapping(
         status: true,
       },
     });
-  } catch {
-    throw new InfrastructureError("Platform admin authentication mapping could not be verified");
+  } catch (error: unknown) {
+    throw toInfrastructureError("platform-admin-bootstrap.verifyProvisionedMapping", error, "Platform admin authentication mapping could not be verified");
   }
 
   if (!user || user.personId !== identity.personId || user.authSubject !== authSubject) {
@@ -395,8 +396,8 @@ export async function bootstrapPlatformAdmin(
       where: { identityKeyHash },
       select: { id: true },
     });
-  } catch {
-    throw new InfrastructureError("Platform admin identity could not be resolved");
+  } catch (error: unknown) {
+    throw toInfrastructureError("platform-admin-bootstrap.bootstrapPlatformAdmin", error, "Platform admin identity could not be resolved");
   }
 
   if (existingPerson) {

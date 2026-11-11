@@ -6,10 +6,11 @@ import {
   type IdentityReference,
 } from "@/modules/identity/schemas/identity-schemas";
 import { findPersonByIdentity } from "@/modules/identity/services/identity-service";
-import { InfrastructureError, ValidationError } from "@/shared/errors/application-error";
+import { ValidationError } from "@/shared/errors/application-error";
 
 import { passwordLoginIdentifierSchema } from "../schemas/login-schema";
 import { createProviderLoginAlias } from "./provider-login-alias";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ResolvedPasswordLoginIdentity = {
   authSubject: string;
@@ -46,8 +47,8 @@ const prismaPasswordLoginIdentityStore: PasswordLoginIdentityStore = {
           providerLoginAlias: true,
         },
       });
-    } catch {
-      throw new InfrastructureError("Password login identity could not be loaded");
+    } catch (error: unknown) {
+      throw toInfrastructureError("auth.findUserByPersonId", error, "Password login identity could not be loaded");
     }
   },
 };

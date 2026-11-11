@@ -4,7 +4,8 @@ import { HospitalStatus, type HospitalServiceAreaFacilityKind } from "@prisma/cl
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { InfrastructureError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
+
 
 export type ActorHospitalWorkspace = {
   hospitalId: string;
@@ -71,7 +72,7 @@ export async function listActorHospitalWorkspaces(
         hasActiveDirectChildren: networkRole === "PARENT" && hospital._count.managedServiceAreas > 0,
       };
     });
-  } catch {
-    throw new InfrastructureError("Actor Hospital workspace could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.listActorHospitalWorkspaces", error, "Actor Hospital workspace could not be loaded");
   }
 }

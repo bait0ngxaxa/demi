@@ -6,6 +6,7 @@ import { ApplicationError, InfrastructureError } from "@/shared/errors/applicati
 import { fromWeightGoalDateCarrier, normalizeTargetWeightKg, type PersonalWeightGoalDto } from "../domain/personal-weight-goal";
 import { assertPersonalWeightGoalSelf } from "../policies/personal-weight-goal-policy";
 import { resolvePersonalWeightGoalOwner } from "./personal-weight-goal-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const personalWeightGoalSelect = {
   id: true,
@@ -43,6 +44,6 @@ export async function getOwnPersonalWeightGoal(
     return row === null ? null : toPersonalWeightGoalDto(row);
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError();
+    throw toInfrastructureError("weight-goals.getOwnPersonalWeightGoal", error);
   }
 }

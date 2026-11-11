@@ -20,12 +20,8 @@ import {
   hospitalOperatorMembershipWhere,
   isActiveHospitalOperator,
 } from "@/modules/identity/services/hospital-authority";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 /**
  * Read-only Hospital network structure for reporting and governance screens (ADR-0015/0016). The ADMIN-set
@@ -200,7 +196,7 @@ export async function getHospitalHierarchyDirectory(
     })));
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Hospital hierarchy directory could not be loaded");
+    throw toInfrastructureError("hospital-hierarchy.getHospitalHierarchyDirectory", error, "Hospital hierarchy directory could not be loaded");
   }
 }
 
@@ -219,6 +215,6 @@ export async function getHospitalHierarchyContext(
     throw new ForbiddenError();
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Hospital hierarchy context could not be loaded");
+    throw toInfrastructureError("hospital-hierarchy.getHospitalHierarchyContext", error, "Hospital hierarchy context could not be loaded");
   }
 }

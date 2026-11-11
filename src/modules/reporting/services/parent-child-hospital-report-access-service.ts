@@ -22,6 +22,7 @@ import {
   type HospitalNetworkChildReportCapability,
 } from "../policies/hospital-network-child-report-policy";
 import { hospitalReportHospitalIdSchema } from "../schemas/hospital-report-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ParentChildHospitalReportAccessDatabase = HospitalNetworkDatabase;
 
@@ -132,7 +133,7 @@ export async function resolveParentChildHospitalReportAccessContext(
     ) {
       throw error;
     }
-    throw new InfrastructureError("Parent-to-Child Hospital report access could not be verified");
+    throw toInfrastructureError("reporting.resolveParentChildHospitalReportAccessContext", error, "Parent-to-Child Hospital report access could not be verified");
   }
 }
 
@@ -161,6 +162,6 @@ export async function listParentChildHospitalReportTargetGroups(
       }));
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Parent-to-Child Hospital report targets could not be loaded");
+    throw toInfrastructureError("reporting.listParentChildHospitalReportTargetGroups", error, "Parent-to-Child Hospital report targets could not be loaded");
   }
 }

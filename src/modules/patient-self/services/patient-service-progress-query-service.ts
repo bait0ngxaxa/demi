@@ -17,6 +17,7 @@ import { ApplicationError, InfrastructureError } from "@/shared/errors/applicati
 
 import { assertPatientSelfReadPolicy } from "../policies/patient-self-policy";
 import { patientSelfQueryInternals, type PatientSelfQueryDependencies, type PatientSelfRelationshipContext } from "./patient-self-query-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ServiceProgressItem = {
   planItemId: string | null;
@@ -179,6 +180,6 @@ export async function getOwnServiceProgress(
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Patient service progress could not be loaded");
+    throw toInfrastructureError("patient-self.getOwnServiceProgress", error, "Patient service progress could not be loaded");
   }
 }

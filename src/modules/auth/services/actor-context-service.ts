@@ -17,6 +17,7 @@ import type {
   ActorHospitalMembership,
   ActorOsmHospitalRelationship,
 } from "../types/actor-context";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type ActorUserRecord = {
   id: string;
@@ -153,8 +154,8 @@ async function readActorUser(
       select: actorContextUserSelect,
     });
     return user ? toActorUserRecord(user) : null;
-  } catch {
-    throw new InfrastructureError("Actor context could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("auth.readActorUser", error, "Actor context could not be loaded");
   }
 }
 
@@ -242,7 +243,7 @@ export async function resolveCurrentActorAccess(
       return { status: "UNAUTHENTICATED" };
     }
 
-    throw new InfrastructureError("Authentication service could not be reached");
+    throw toInfrastructureError("auth.resolveCurrentActorAccess", error, "Authentication service could not be reached");
   }
 
   const {

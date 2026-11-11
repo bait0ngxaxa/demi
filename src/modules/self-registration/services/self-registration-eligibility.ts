@@ -99,6 +99,29 @@ function isRecent(createdAt: Date, now: Date): boolean {
   return age >= 0 && age <= SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS;
 }
 
+export type PatientSelfRegistrationRelationshipState = {
+  createdAt: Date;
+  endedAt: Date | null;
+  selfRegisteredAt: Date | null;
+  hospital: { status: HospitalStatus; selfRegistrationEnabled: boolean };
+};
+
+/**
+ * The relationship-level rule for Patient self-registration: an open care relationship, created within
+ * SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS, not yet self-registered, at an ACTIVE Hospital with self-registration on.
+ * The account-level rules (PROVISIONED user, PATIENT role, no first-credential operation in progress) are separate.
+ */
+export function isPatientRelationshipOpenForSelfRegistration(
+  relationship: PatientSelfRegistrationRelationshipState,
+  now: Date,
+): boolean {
+  return relationship.endedAt === null &&
+    relationship.selfRegisteredAt === null &&
+    relationship.hospital.status === HospitalStatus.ACTIVE &&
+    relationship.hospital.selfRegistrationEnabled &&
+    isRecent(relationship.createdAt, now);
+}
+
 type SelfRegistrationEligibilityOptions = {
   expectedAuthSubject?: string;
   ignoreActivation?: { kind: "WORKFORCE" | "PATIENT"; id: string };
@@ -161,13 +184,7 @@ function eligibleRelationships(user: SelfRegistrationUser, now: Date): SelfRegis
   const patientProfile = user.person.patientProfile;
   if (patientProfile && hasPatientRole) {
     for (const relationship of patientProfile.hospitalRelationships) {
-      if (
-        relationship.endedAt === null &&
-        relationship.selfRegisteredAt === null &&
-        relationship.hospital.status === HospitalStatus.ACTIVE &&
-        relationship.hospital.selfRegistrationEnabled &&
-        isRecent(relationship.createdAt, now)
-      ) {
+      if (isPatientRelationshipOpenForSelfRegistration(relationship, now)) {
         relationships.push({ kind: "PATIENT", id: relationship.id, hospitalId: relationship.hospitalId });
       }
     }

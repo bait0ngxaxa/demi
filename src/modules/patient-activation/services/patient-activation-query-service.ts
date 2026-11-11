@@ -19,12 +19,7 @@ import {
 } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { workforceAuthorityUserWhere } from "@/modules/identity/services/workforce-authority";
-import {
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   assertPatientActivationActorInDatabase,
@@ -42,6 +37,7 @@ import {
   type PatientActivationLookupInput,
   type PatientActivationRelationshipLookupInput,
 } from "../schemas/patient-activation-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientActivationQueryDatabase =
   | PrismaClient
@@ -238,7 +234,7 @@ export async function listPatientActivationScopes(
       throw error;
     }
 
-    throw new InfrastructureError("Patient activation actor could not be verified");
+    throw toInfrastructureError("patient-activation.listPatientActivationScopes", error, "Patient activation actor could not be verified");
   }
 
   try {
@@ -262,8 +258,8 @@ export async function listPatientActivationScopes(
       hospitalCode: scope.hospitalCode,
       hospitalName: scope.name,
     }));
-  } catch {
-    throw new InfrastructureError("Patient activation Hospitals could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("patient-activation.listPatientActivationScopes", error, "Patient activation Hospitals could not be loaded");
   }
 }
 
@@ -299,7 +295,7 @@ export async function findPatientActivationCandidates(
       throw error;
     }
 
-    throw new InfrastructureError("Patient activation actor could not be verified");
+    throw toInfrastructureError("patient-activation.findPatientActivationCandidates", error, "Patient activation actor could not be verified");
   }
 
   if (!hasPatientActivationHospitalScope(actor, parsed.data.targetHospitalId)) {
@@ -448,7 +444,7 @@ export async function findPatientActivationCandidates(
       throw error;
     }
 
-    throw new InfrastructureError("Patient activation candidates could not be loaded");
+    throw toInfrastructureError("patient-activation.findPatientActivationCandidates", error, "Patient activation candidates could not be loaded");
   }
 }
 
@@ -472,7 +468,7 @@ export async function getPatientActivationCandidateForRelationship(
     await assertPatientActivationActorInDatabase(db, actor.userId, parsed.data.targetHospitalId);
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) throw error;
-    throw new InfrastructureError("Patient activation actor could not be verified");
+    throw toInfrastructureError("patient-activation.getPatientActivationCandidateForRelationship", error, "Patient activation actor could not be verified");
   }
   if (!hasPatientActivationHospitalScope(actor, parsed.data.targetHospitalId)) throw new ForbiddenError();
 
@@ -539,7 +535,7 @@ export async function getPatientActivationCandidateForRelationship(
     };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ValidationError) throw error;
-    throw new InfrastructureError("Patient activation candidate could not be loaded");
+    throw toInfrastructureError("patient-activation.getPatientActivationCandidateForRelationship", error, "Patient activation candidate could not be loaded");
   }
 }
 

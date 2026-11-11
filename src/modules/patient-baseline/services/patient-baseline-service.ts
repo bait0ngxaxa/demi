@@ -25,6 +25,7 @@ import {
   patientBaselineTransactionInternals,
   type PatientBaselineCreateResult,
 } from "./patient-baseline-transaction";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type { PatientBaselineCreateResult } from "./patient-baseline-transaction";
 
@@ -72,7 +73,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("ข้อมูลความสัมพันธ์ของข้อมูลตั้งต้นไม่สอดคล้องกัน");
   }
 
-  return new InfrastructureError("Baseline could not be saved");
+  return toInfrastructureError("patient-baseline.patient-baseline-service", error, "Baseline could not be saved");
 }
 
 export async function createPatientBaseline(

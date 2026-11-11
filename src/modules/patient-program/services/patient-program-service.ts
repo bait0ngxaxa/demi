@@ -32,6 +32,7 @@ import {
   resolvePatientProgramAccessContext,
   resolvePatientProgramByIdAccessContext,
 } from "./patient-program-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientProgramDatabase = PrismaClient;
 
@@ -105,7 +106,7 @@ function normalizeDatabaseError(error: unknown): ApplicationError {
     return new ConflictError("ข้อมูลความสัมพันธ์ของโปรแกรมไม่สอดคล้องกัน");
   }
 
-  return new InfrastructureError("Program could not be saved");
+  return toInfrastructureError("patient-program.patient-program-service", error, "Program could not be saved");
 }
 
 async function runSerializable<T>(

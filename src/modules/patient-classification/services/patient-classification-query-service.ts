@@ -13,11 +13,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import {
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 import { buildNetworkReadableChildHospitalWhere } from "@/modules/hospital-service-areas/services/hospital-network-access";
 
 import {
@@ -34,6 +30,7 @@ import {
   resolvePatientClassificationAccessContext,
   type PatientClassificationAccessDatabase,
 } from "./patient-classification-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const PATIENT_CLASSIFICATION_HISTORY_LIMIT = 50;
 
@@ -198,7 +195,7 @@ export async function getPatientClassificationPageContext(
       throw error;
     }
 
-    throw new InfrastructureError("Patient classification could not be loaded");
+    throw toInfrastructureError("patient-classification.getPatientClassificationPageContext", error, "Patient classification could not be loaded");
   }
 }
 
@@ -298,7 +295,7 @@ export async function getPatientClassificationCounts(
       throw error;
     }
 
-    throw new InfrastructureError("Patient classification counts could not be loaded");
+    throw toInfrastructureError("patient-classification.getPatientClassificationCounts", error, "Patient classification counts could not be loaded");
   }
 }
 

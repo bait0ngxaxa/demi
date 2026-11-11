@@ -62,6 +62,7 @@ import {
   normalizeHospitalContentSourceText,
   normalizeHospitalContentTitle,
 } from "../schemas/hospital-content-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalContentDatabase = PrismaClient;
 
@@ -190,6 +191,12 @@ function isKnownPrismaError(error: unknown, code: string): boolean {
 }
 
 function getPostgresSqlState(error: unknown, visited = new Set<object>()): string | null {
+  // An InfrastructureError keeps its original error as `cause` for server logs only; it was
+  // already classified by a lower layer and must not become retryable through that cause.
+  if (error instanceof InfrastructureError) {
+    return null;
+  }
+
   if (typeof error !== "object" || error === null || visited.has(error)) return null;
   visited.add(error);
   const record = error as Record<string, unknown>;
@@ -322,8 +329,8 @@ function validateStoredContentForPublish(current: LockedContentRow): void {
     if (!Object.values(HospitalContentCategory).includes(current.category)) {
       throw new Error("Stored Hospital Content category is invalid");
     }
-  } catch {
-    throw new InfrastructureError("Hospital Content cannot be published safely");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-content.validateStoredContentForPublish", error, "Hospital Content cannot be published safely");
   }
 }
 
@@ -350,8 +357,8 @@ export async function listEligibleHospitalContentOwnerHospitals(
       orderBy: [{ name: "asc" }, { hospitalCode: "asc" }, { id: "asc" }],
       select: hospitalProjectionSelect,
     });
-  } catch {
-    throw new InfrastructureError("Hospital Content Hospitals could not be loaded");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-content.listEligibleHospitalContentOwnerHospitals", error, "Hospital Content Hospitals could not be loaded");
   }
 }
 
@@ -375,7 +382,7 @@ export async function readHospitalContentForOwner(
     return toDetailProjection(record);
   } catch (error: unknown) {
     if (error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital Content could not be loaded");
+    throw toInfrastructureError("hospital-content.readHospitalContentForOwner", error, "Hospital Content could not be loaded");
   }
 }
 
@@ -442,7 +449,7 @@ export async function listHospitalContentForOwner(
     };
   } catch (error: unknown) {
     if (error instanceof NotFoundError || error instanceof ValidationError) throw error;
-    throw new InfrastructureError("Hospital Content list could not be loaded");
+    throw toInfrastructureError("hospital-content.listHospitalContentForOwner", error, "Hospital Content list could not be loaded");
   }
 }
 
@@ -474,7 +481,7 @@ export async function reconcileHospitalContentCreate(
     return { status: "ABSENT" };
   } catch (error: unknown) {
     if (error instanceof NotFoundError) throw error;
-    throw new InfrastructureError("Hospital Content reconciliation could not be completed");
+    throw toInfrastructureError("hospital-content.reconcileHospitalContentCreate", error, "Hospital Content reconciliation could not be completed");
   }
 }
 
@@ -546,7 +553,7 @@ export async function createHospitalContent(
         timeout: 10_000,
       });
     } catch (error: unknown) {
-      if (error instanceof HospitalContentAuditFailure) throw new InfrastructureError("Hospital Content could not be saved");
+      if (error instanceof HospitalContentAuditFailure) throw toInfrastructureError("hospital-content.createHospitalContent", error, "Hospital Content could not be saved");
       if (isRetryableTransactionFailure(error)) {
         if (attempt + 1 >= MAX_TRANSACTION_ATTEMPTS) throw new ConflictError("Hospital Content changed during the operation");
         await retryDelay(attempt, dependencies);
@@ -554,7 +561,7 @@ export async function createHospitalContent(
       }
       if (callbackCompleted) return { outcome: "UNCONFIRMED" };
       if (error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ValidationError || error instanceof InfrastructureError) throw error;
-      throw new InfrastructureError("Hospital Content could not be saved");
+      throw toInfrastructureError("hospital-content.createHospitalContent", error, "Hospital Content could not be saved");
     }
   }
   throw new ConflictError("Hospital Content changed during the operation");
@@ -594,8 +601,8 @@ async function mutateInTransaction(
   let updatedAt: Date;
   try {
     updatedAt = nextHospitalContentVersion(now, current.updatedAt);
-  } catch {
-    throw new InfrastructureError("Hospital Content clock is invalid");
+  } catch (error: unknown) {
+    throw toInfrastructureError("hospital-content.mutateInTransaction", error, "Hospital Content clock is invalid");
   }
 
   let data: Prisma.HospitalContentUpdateManyMutationInput;
@@ -612,8 +619,8 @@ async function mutateInTransaction(
     let publicationTimes: ReturnType<typeof hospitalContentPublicationTimes>;
     try {
       publicationTimes = hospitalContentPublicationTimes(current.firstPublishedAt, current.latestPublishedAt, now);
-    } catch {
-      throw new InfrastructureError("Hospital Content publication clock is invalid");
+    } catch (error: unknown) {
+      throw toInfrastructureError("hospital-content.mutateInTransaction", error, "Hospital Content publication clock is invalid");
     }
     data = { status: HospitalContentStatus.PUBLISHED, ...publicationTimes, updatedAt };
     action = "hospital_content.published";
@@ -693,7 +700,7 @@ async function mutateHospitalContent(
         timeout: 10_000,
       });
     } catch (error: unknown) {
-      if (error instanceof HospitalContentAuditFailure) throw new InfrastructureError("Hospital Content could not be saved");
+      if (error instanceof HospitalContentAuditFailure) throw toInfrastructureError("hospital-content.mutateHospitalContent", error, "Hospital Content could not be saved");
       if (isRetryableTransactionFailure(error)) {
         if (attempt + 1 >= MAX_TRANSACTION_ATTEMPTS) throw new ConflictError("Hospital Content changed during the operation");
         await retryDelay(attempt, dependencies);
@@ -701,7 +708,7 @@ async function mutateHospitalContent(
       }
       if (callbackCompleted) return { outcome: "UNCONFIRMED" };
       if (error instanceof ConflictError || error instanceof ForbiddenError || error instanceof NotFoundError || error instanceof ValidationError || error instanceof InfrastructureError) throw error;
-      throw new InfrastructureError("Hospital Content could not be saved");
+      throw toInfrastructureError("hospital-content.mutateHospitalContent", error, "Hospital Content could not be saved");
     }
   }
   throw new ConflictError("Hospital Content changed during the operation");

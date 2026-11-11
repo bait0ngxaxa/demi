@@ -52,6 +52,7 @@ import {
   hospitalGovernanceRetirementSchema,
   type HospitalGovernanceMutationInput,
 } from "../schemas/hospital-governance-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type HospitalGovernanceDatabase = PrismaClient;
 
@@ -119,7 +120,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("The Hospital governance operation conflicted with another request");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("hospital-governance.hospital-governance-service", error, fallbackMessage);
 }
 
 async function runSerializable<T>(

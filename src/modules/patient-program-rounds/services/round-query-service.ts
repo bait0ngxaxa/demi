@@ -26,11 +26,7 @@ import {
   withoutPatientProgramServiceOneRecorders,
   type PatientProgramServiceOneProjection,
 } from "@/modules/patient-program/services/patient-program-service-one-query-service";
-import {
-  ApplicationError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, NotFoundError } from "@/shared/errors/application-error";
 
 import { screeningAnswersInstrument } from "@/modules/screening/domain/screening-outcome";
 
@@ -67,6 +63,7 @@ import {
   type RoundVitalsFact,
   VITALS_MEASUREMENTS,
 } from "../domain/round-steps";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientProgramRoundQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -1029,7 +1026,7 @@ export async function getProgramRoundsOverview(
       throw error;
     }
 
-    throw new InfrastructureError("Program rounds could not be loaded");
+    throw toInfrastructureError("patient-program-rounds.getProgramRoundsOverview", error, "Program rounds could not be loaded");
   }
 }
 
@@ -1086,7 +1083,7 @@ export async function getProgramRoundDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Program round could not be loaded");
+    throw toInfrastructureError("patient-program-rounds.getProgramRoundDetail", error, "Program round could not be loaded");
   }
 }
 

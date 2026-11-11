@@ -12,6 +12,7 @@ import { parseHospitalContentPatientRequest } from "../schemas/hospital-content-
 import type { HospitalContentPatientDetail, HospitalContentPatientEmptyState, HospitalContentPatientPage } from "../types/hospital-content-patient-projections";
 import { decodeHospitalContentPatientCursor, encodeHospitalContentPatientCursor } from "./hospital-content-patient-cursor";
 import { hospitalContentPatientPersonWhere, resolveHospitalContentPatientSelf } from "./hospital-content-patient-self";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export function hospitalContentPatientWhere(actor: ActorContext, patientProfileId: string): Prisma.HospitalContentWhereInput {
   return {
@@ -128,7 +129,7 @@ export async function listPatientHospitalContent(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Patient Content could not be loaded");
+    throw toInfrastructureError("hospital-content.listPatientHospitalContent", error, "Patient Content could not be loaded");
   }
 }
 
@@ -158,6 +159,6 @@ export async function getPatientHospitalContent(
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Patient Content could not be loaded");
+    throw toInfrastructureError("hospital-content.getPatientHospitalContent", error, "Patient Content could not be loaded");
   }
 }

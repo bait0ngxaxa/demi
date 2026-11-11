@@ -19,13 +19,7 @@ import { buildNameWhere } from "@/modules/patient-directory/services/patient-dir
 import { resolvePagePosition, type PageNumberPosition } from "@/shared/pagination/page-number";
 import { ASSIGNEE_SEARCH_PAGE_SIZE } from "@/shared/search/assignee-search";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   APPOINTMENT_HISTORY_LIMIT,
@@ -48,6 +42,7 @@ import {
 } from "./appointment-access-service";
 import { loadAppointmentContactPhones } from "./appointment-contact-phone-service";
 import type { AppointmentContactAudience, AppointmentContactPhones } from "../domain/appointment-contact-phones";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type AppointmentQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -646,7 +641,7 @@ export async function getAppointmentHistory(
       throw error;
     }
 
-    throw new InfrastructureError("Appointment history could not be loaded");
+    throw toInfrastructureError("appointments.getAppointmentHistory", error, "Appointment history could not be loaded");
   }
 }
 
@@ -717,7 +712,7 @@ export async function getAppointmentDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Appointment detail could not be loaded");
+    throw toInfrastructureError("appointments.getAppointmentDetail", error, "Appointment detail could not be loaded");
   }
 }
 
@@ -770,7 +765,7 @@ export async function getAppointmentCreateContext(
       throw error;
     }
 
-    throw new InfrastructureError("Appointment setup could not be loaded");
+    throw toInfrastructureError("appointments.getAppointmentCreateContext", error, "Appointment setup could not be loaded");
   }
 }
 
@@ -835,7 +830,7 @@ export async function getAppointmentRescheduleContext(
       throw error;
     }
 
-    throw new InfrastructureError("Appointment reschedule setup could not be loaded");
+    throw toInfrastructureError("appointments.getAppointmentRescheduleContext", error, "Appointment reschedule setup could not be loaded");
   }
 }
 
@@ -879,7 +874,7 @@ export async function searchAppointmentResponsibleMembers(
       throw error;
     }
 
-    throw new InfrastructureError("Responsible Hospital members could not be loaded");
+    throw toInfrastructureError("appointments.searchAppointmentResponsibleMembers", error, "Responsible Hospital members could not be loaded");
   }
 }
 
@@ -903,7 +898,7 @@ export async function searchAppointmentOsmCandidates(
       throw error;
     }
 
-    throw new InfrastructureError("OSM candidates could not be loaded");
+    throw toInfrastructureError("appointments.searchAppointmentOsmCandidates", error, "OSM candidates could not be loaded");
   }
 }
 

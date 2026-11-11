@@ -3,12 +3,13 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction, isRetryableSerializableTransactionError } from "@/lib/db/serializable-transaction";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ApplicationError, ConflictError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { fromExerciseDateCarrier, toExerciseDateCarrier, EXERCISE_PAGE_SIZE, type PersonalExerciseDto, type PersonalExercisePage } from "../domain/personal-exercise";
 import { exerciseIdSchema, exerciseListSchema } from "../schemas/personal-exercise-schemas";
 import { assertPersonalExerciseSelf } from "../policies/personal-exercise-policy";
 import { resolvePersonalExerciseOwner } from "./personal-exercise-access-service";
 import { decodeExerciseCursor, encodeExerciseCursor } from "./personal-exercise-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const personalExerciseSelect = { id: true, activityName: true, durationMinutes: true, occurredOn: true, note: true, createdAt: true, updatedAt: true } satisfies Prisma.PersonalExerciseEntrySelect;
 export function toPersonalExerciseDto(row: Prisma.PersonalExerciseEntryGetPayload<{ select: typeof personalExerciseSelect }>): PersonalExerciseDto {
@@ -18,7 +19,7 @@ export function toPersonalExerciseDto(row: Prisma.PersonalExerciseEntryGetPayloa
 export function normalizeExerciseError(error: unknown): ApplicationError {
   if (error instanceof ApplicationError) return error;
   if (isRetryableSerializableTransactionError(error)) return new ConflictError();
-  return new InfrastructureError();
+  return toInfrastructureError("exercises.personal-exercise-query-service", error);
 }
 export async function listOwnPersonalExercises(actor: ActorContext | null | undefined, input: unknown, database: PrismaClient = getPrisma()): Promise<PersonalExercisePage> {
   assertPersonalExerciseSelf(actor);

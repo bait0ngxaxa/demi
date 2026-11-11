@@ -34,6 +34,7 @@ import {
   patientSelfMeasurementListSchema,
 } from "../schemas/patient-self-measurement-schemas";
 import { decodePatientSelfMeasurementCursor, encodePatientSelfMeasurementCursor } from "./patient-self-measurement-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Dependencies = { database?: PrismaClient; now?: () => Date };
 
@@ -77,7 +78,7 @@ function normalizeError(error: unknown, message: string): Error {
   if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
     return new ConflictError();
   }
-  return new InfrastructureError(message);
+  return toInfrastructureError("patient-self-measurements.patient-self-measurement-service", error, message);
 }
 
 /** Patient SELF create; a replayed submission nonce returns the first entry (idempotent). */

@@ -28,7 +28,7 @@ form.set("confirmation", "นำออกจากโรงพยาบาลน
 
 beforeEach(() => {
   vi.mocked(getProtectedApplicationActor).mockReset().mockResolvedValue({ userId: "actor-1" } as never);
-  vi.mocked(releaseWorkforceRelationship).mockReset().mockResolvedValue({ relationshipId: "relationship-1", hospitalId: "hospital-1" });
+  vi.mocked(releaseWorkforceRelationship).mockReset().mockResolvedValue({ relationshipId: "relationship-1", hospitalId: "hospital-1", unassignedAppointmentCount: 0 });
   mockedRevalidatePath.mockReset();
 });
 
@@ -36,8 +36,31 @@ describe("releaseWorkforceAction outcome classification", () => {
   it("returns RELEASED only after the service committed and revalidates the roster", async () => {
     const result = await releaseWorkforceAction(initialWorkforceReleaseActionState, form);
 
-    expect(result).toEqual({ success: true, outcome: "RELEASED", message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่" });
+    expect(result).toEqual({
+      success: true,
+      outcome: "RELEASED",
+      message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่",
+      unassignedAppointmentCount: 0,
+    });
     expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/workforce", "layout");
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/appointments", "layout");
+  });
+
+  it("tells the owner how many future appointments need a new assignee", async () => {
+    vi.mocked(releaseWorkforceRelationship).mockResolvedValueOnce({
+      relationshipId: "relationship-1",
+      hospitalId: "hospital-1",
+      unassignedAppointmentCount: 3,
+    });
+
+    const result = await releaseWorkforceAction(initialWorkforceReleaseActionState, form);
+
+    expect(result).toEqual({
+      success: true,
+      outcome: "RELEASED",
+      message: "สิทธิ์การทำงานกับโรงพยาบาลนี้สิ้นสุดแล้ว ประวัติยังคงอยู่ นัดหมายที่จะถึง 3 นัดยังไม่มีผู้รับผิดชอบ กรุณามอบหมายผู้รับผิดชอบใหม่",
+      unassignedAppointmentCount: 3,
+    });
   });
 
   it("classifies a confirmed conflict, including the last eligible Owner guard, as CONFLICT", async () => {

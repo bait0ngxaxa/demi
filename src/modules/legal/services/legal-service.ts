@@ -52,6 +52,7 @@ import {
   type CurrentLegalVersions,
   type LegalVersionSummary,
 } from "./legal-version-reader";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const LEGAL_VERSION_PUBLISHED_ACTION = "legal.version_published";
 export const LEGAL_DRAFT_CREATED_ACTION = "legal.draft_created";
@@ -139,7 +140,7 @@ function rethrowSafe(error: unknown, fallback: string): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     throw new ConflictError("Legal record conflicts with existing data");
   }
-  throw new InfrastructureError(fallback);
+  throw toInfrastructureError("legal.legal-service", error, fallback);
 }
 
 const acceptanceSelect = {

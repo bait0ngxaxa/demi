@@ -23,14 +23,7 @@ import {
   activePatientHospitalRelationshipWhere,
   isPatientHospitalRelationshipEnded,
 } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import { decidePatientNameCorrectionPolicy } from "../policies/patient-name-correction-policy";
 import {
@@ -39,6 +32,7 @@ import {
   patientNameCorrectionSchema,
   workforceNameCorrectionTargetSchema,
 } from "../schemas/patient-hospital-profile-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientNameCorrectionDatabase = PrismaClient;
 
@@ -301,7 +295,7 @@ function normalizeNameCorrectionError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
     throw new ConflictError("Person name changed");
   }
-  throw new InfrastructureError("Person name could not be corrected");
+  throw toInfrastructureError("patient-hospital-profile.patient-name-correction-service", error, "Person name could not be corrected");
 }
 
 /** E3 ADMIN entry: locate a Patient by exact Hospital and HN (as reported by the OWNER). */
@@ -337,6 +331,6 @@ export async function findPatientsForNameCorrection(
     }));
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Patient lookup could not be completed");
+    throw toInfrastructureError("patient-hospital-profile.findPatientsForNameCorrection", error, "Patient lookup could not be completed");
   }
 }

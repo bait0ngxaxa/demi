@@ -7,6 +7,7 @@ import { getServerEnv } from "@/lib/env/server";
 import { getPrisma } from "@/lib/db/prisma";
 import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { unreconciledAccountRecoveryWhere, unreconciledWorkforceResetWhere } from "./credential-recovery-state";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const claimsSchema = z.object({
   sub: z.string().uuid(), session_id: z.string().uuid(),
@@ -16,7 +17,7 @@ const claimsSchema = z.object({
 
 function denyProviderError(error: unknown): never {
   if (isAuthError(error) && (error.name === "AuthRetryableFetchError" || error.status === 0 || (error.status ?? 0) >= 500)) {
-    throw new InfrastructureError();
+    throw toInfrastructureError("auth.exact-session-service", error);
   }
   throw new UnauthenticatedError();
 }
@@ -59,6 +60,6 @@ export async function getLiveExactSession(
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof UnauthenticatedError || error instanceof InfrastructureError) throw error;
     // No provider payload, token, or replacement JWT escapes this boundary.
-    throw new InfrastructureError();
+    throw toInfrastructureError("auth.getLiveExactSession", error);
   }
 }

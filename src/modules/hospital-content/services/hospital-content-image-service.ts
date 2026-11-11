@@ -13,6 +13,7 @@ import { validatePatientEvidenceFile, type ValidatedPatientEvidenceFile } from "
 import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { hospitalContentLocatorSchema } from "../schemas/hospital-content-schemas";
 import { HOSPITAL_CONTENT_IMAGE_LIMIT, HOSPITAL_CONTENT_IMAGE_LIMIT_MESSAGE, HOSPITAL_CONTENT_IMAGE_MAX_SORT_ORDER, HOSPITAL_CONTENT_IMAGE_URL_TTL_SECONDS, planHospitalContentImageReorder } from "../domain/hospital-content";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Database = PrismaClient;
 function assertOwner(actor: ActorContext | null | undefined): asserts actor is ActorContext {
@@ -83,7 +84,7 @@ export async function uploadHospitalContentImage(actor: ActorContext | null | un
     try { await storage.removeObject({ objectKey }); } catch { console.error("hospital_content_image_upload_compensation_failed", { imageId }); }
     if (error instanceof ForbiddenError || error instanceof ConflictError || error instanceof ValidationError || error instanceof NotFoundError) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") throw new ConflictError();
-    throw new InfrastructureError("Hospital content image could not be saved");
+    throw toInfrastructureError("hospital-content.uploadHospitalContentImage", error, "Hospital content image could not be saved");
   }
 }
 
@@ -91,7 +92,7 @@ const imageMutationErrors = [ForbiddenError, ConflictError, ValidationError, Not
 
 function rethrowImageMutationError(error: unknown): never {
   if (imageMutationErrors.some((known) => error instanceof known)) throw error;
-  throw new InfrastructureError("Hospital content images could not be saved");
+  throw toInfrastructureError("hospital-content.hospital-content-image-service", error, "Hospital content images could not be saved");
 }
 
 async function readOrderedImages(tx: Prisma.TransactionClient, contentId: string): Promise<Array<{ id: string; sortOrder: number; storageObjectKey: string }>> {

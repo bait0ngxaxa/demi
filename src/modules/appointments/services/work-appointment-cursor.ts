@@ -11,6 +11,7 @@ import type {
   WorkAppointmentTab,
 } from "../schemas/work-appointment-schemas";
 import { appointmentTypeSchema } from "../schemas/appointment-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 const CURSOR_PREFIX = "workappt_cur_v1_";
 const CURSOR_MAX_LENGTH = 1024;
@@ -61,8 +62,8 @@ type CursorPayload = z.infer<typeof cursorPayloadSchema>;
 function cursorSigningSecret(): string {
   try {
     return getServerEnv().IDENTITY_HASH_SECRET;
-  } catch {
-    throw new InfrastructureError("Appointment cursor signing is not configured");
+  } catch (error: unknown) {
+    throw toInfrastructureError("appointments.cursorSigningSecret", error, "Appointment cursor signing is not configured");
   }
 }
 

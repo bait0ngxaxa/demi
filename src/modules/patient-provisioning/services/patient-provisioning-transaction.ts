@@ -53,7 +53,7 @@ export type PatientProvisioningConflictKind =
   | "IDENTITY_CONFLICT"
   | "RELATIONSHIP_CONFLICT"
   | "RECONCILIATION_REQUIRED"
-  /** Phase F: care with this Hospital ended; never reactivated, a platform ADMIN decides. */
+  /** Phase F: care with this Hospital ended; never reactivated here, only a platform ADMIN reopens it (reopenPatientHospitalRelationship, ADR-0032). */
   | "ENDED_RELATIONSHIP";
 
 export class PatientProvisioningConflictError extends ConflictError {

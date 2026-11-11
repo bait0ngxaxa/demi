@@ -11,6 +11,7 @@ import { ConflictError, ForbiddenError, InfrastructureError, NotFoundError, Vali
 import { canSubmitSupportReport, SUPPORT_REPORT_INBOX_ALL_STATUSES, SUPPORT_REPORT_SUBMITTER_ROLES, type SupportReportInboxStatus } from "../domain/support-report";
 import { supportReportAdminInboxQuerySchema, supportReportCreateSchema, supportReportLocatorSchema, supportReportReporterHistoryQuerySchema, supportReportStatusSchema } from "../schemas/support-report-schemas";
 import { decodeSupportReportCursor, encodeSupportReportCursor, type SupportReportCursor } from "./support-report-cursor";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 type Database = PrismaClient;
 export const SUPPORT_REPORTS_PER_BANGKOK_DAY = 5;
@@ -112,7 +113,7 @@ export async function createSupportReport(actor: ActorContext | null | undefined
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ConflictError || error instanceof ValidationError || error instanceof InfrastructureError) throw error;
-    throw new InfrastructureError("Support report could not be saved");
+    throw toInfrastructureError("support.createSupportReport", error, "Support report could not be saved");
   }
 }
 
@@ -250,7 +251,7 @@ export async function updateAdminSupportReportStatus(actor: ActorContext | null 
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error: unknown) {
     if (error instanceof ForbiddenError || error instanceof ConflictError || error instanceof NotFoundError || error instanceof ValidationError || error instanceof InfrastructureError) throw error;
-    throw new InfrastructureError("Support report status could not be updated");
+    throw toInfrastructureError("support.updateAdminSupportReportStatus", error, "Support report status could not be updated");
   }
 }
 

@@ -11,6 +11,7 @@ import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospit
 import { appointmentGrantCaregiverWhere, appointmentGrantOwnerWhere } from "../policies/appointment-grant-policy";
 import { assertFamilyAuthenticatedActor, assertFamilyPatientSelf } from "../policies/caregiver-relationship-policy";
 import { appointmentGrantIdSchema, proposeAppointmentGrantSchema } from "../schemas/appointment-grant-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type AppointmentGrantDependencies = {
   database?: PrismaClient;
@@ -28,7 +29,7 @@ export function rethrowAppointmentGrantError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2002", "P2034"].includes(error.code)) {
     throw new ConflictError("The appointment sharing state changed concurrently");
   }
-  throw new InfrastructureError("Appointment sharing could not be processed");
+  throw toInfrastructureError("family.appointment-grant-service", error, "Appointment sharing could not be processed");
 }
 
 async function patientSelf(transaction: Prisma.TransactionClient, actor: ActorContext): Promise<{ id: string; personId: string }> {

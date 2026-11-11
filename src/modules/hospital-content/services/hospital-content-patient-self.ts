@@ -3,7 +3,8 @@ import "server-only";
 import { HospitalStatus, Prisma, Role, UserStatus, type PrismaClient } from "@prisma/client";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
+import { ForbiddenError } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export function hospitalContentPatientPersonWhere(actor: ActorContext): Prisma.PersonWhereInput {
   return {
@@ -53,6 +54,6 @@ export async function resolveHospitalContentPatientSelf(
     return { patientProfileId: recheckedProfile.id, hasEligibleHospital: false };
   } catch (error: unknown) {
     if (error instanceof ForbiddenError) throw error;
-    throw new InfrastructureError("Patient Content authority could not be resolved");
+    throw toInfrastructureError("hospital-content.resolveHospitalContentPatientSelf", error, "Patient Content authority could not be resolved");
   }
 }

@@ -8,12 +8,9 @@ import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { PATIENT_READ_CAPABILITY } from "@/modules/patient-directory/policies/patient-directory-policy";
 import { assertPatientSelfReadPolicy } from "@/modules/patient-self/policies/patient-self-policy";
-import {
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-} from "@/shared/errors/application-error";
+import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 import { z } from "zod";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientSelfQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -189,8 +186,8 @@ export async function hasOwnPatientAppointmentIdentity(
     return Boolean(
       person?.patientProfile && person.patientProfile.hospitalRelationships.length > 0,
     );
-  } catch {
-    throw new InfrastructureError("Patient self identity could not be verified");
+  } catch (error: unknown) {
+    throw toInfrastructureError("patient-self.hasOwnPatientAppointmentIdentity", error, "Patient self identity could not be verified");
   }
 }
 
@@ -216,7 +213,7 @@ export async function resolveOwnPatientContext(
       throw error;
     }
 
-    throw new InfrastructureError("Patient self context could not be loaded");
+    throw toInfrastructureError("patient-self.resolveOwnPatientContext", error, "Patient self context could not be loaded");
   }
 }
 
@@ -244,7 +241,7 @@ export async function listOwnPatientRelationshipNavigation(
       throw error;
     }
 
-    throw new InfrastructureError("Patient relationship navigation could not be loaded");
+    throw toInfrastructureError("patient-self.listOwnPatientRelationshipNavigation", error, "Patient relationship navigation could not be loaded");
   }
 }
 
@@ -289,7 +286,7 @@ export async function resolveOwnPatientRelationshipContext(
       throw error;
     }
 
-    throw new InfrastructureError("Patient relationship could not be resolved");
+    throw toInfrastructureError("patient-self.resolveOwnPatientRelationshipContext", error, "Patient relationship could not be resolved");
   }
 }
 
@@ -302,8 +299,8 @@ export async function getPatientSelfAssignedOsmPhone(
   const relationship = await resolveOwnPatientRelationshipContext(actor, relationshipId, dependencies);
   try {
     return await loadAssignedOsmPhone(getDatabase(dependencies.database), relationship.relationshipId);
-  } catch {
-    throw new InfrastructureError("ไม่สามารถโหลดเบอร์ติดต่อ อสม. ได้");
+  } catch (error: unknown) {
+    throw toInfrastructureError("patient-self.getPatientSelfAssignedOsmPhone", error, "ไม่สามารถโหลดเบอร์ติดต่อ อสม. ได้");
   }
 }
 

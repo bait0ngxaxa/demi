@@ -38,6 +38,7 @@ import { assertUserPasswordNotPersonal } from "@/modules/auth/services/password-
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { unreconciledWorkforceResetWhere } from "@/modules/auth/services/credential-recovery-state";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
+import { transferFutureAppointmentAssignee } from "@/modules/appointments/services/appointment-assignee-transfer";
 import { assertWorkforceRelationshipsCompatible, hasConflictingWorkforceRelationships, WORKFORCE_COMPATIBILITY_UNAVAILABLE_MESSAGE, WorkforceRelationshipConflictError } from "@/modules/identity/services/workforce-relationship-compatibility";
 import { lockFirstCredentialOperation } from "@/modules/identity/services/first-credential-serialization";
 import { countCurrentAssignmentsForOsmInHospital } from "@/modules/patient-assignment/services/patient-osm-assignment-query-service";
@@ -138,6 +139,7 @@ import {
   selfRegistrationRelationshipsSchema,
   type SelfRegistrationRelationship,
 } from "@/modules/self-registration/domain/self-registration-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type WorkforceDatabase = PrismaClient;
 
@@ -459,7 +461,7 @@ function normalizeDatabaseError(error: unknown, fallbackMessage: string): Applic
     return new ConflictError("The workforce operation conflicted with another request");
   }
 
-  return new InfrastructureError(fallbackMessage);
+  return toInfrastructureError("workforce.workforce-service", error, fallbackMessage);
 }
 
 async function runSerializable<T>(
@@ -1432,7 +1434,7 @@ export async function listWorkforceHospitals(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce Hospital scope could not be loaded");
+    throw toInfrastructureError("workforce.listWorkforceHospitals", error, "Workforce Hospital scope could not be loaded");
   }
 }
 
@@ -1755,7 +1757,7 @@ export async function getWorkforceDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce relationship detail could not be loaded");
+    throw toInfrastructureError("workforce.getWorkforceDetail", error, "Workforce relationship detail could not be loaded");
   }
 }
 
@@ -2001,7 +2003,7 @@ export async function listWorkforce(
       throw error;
     }
 
-    throw new InfrastructureError("Workforce data could not be loaded");
+    throw toInfrastructureError("workforce.listWorkforce", error, "Workforce data could not be loaded");
   }
 }
 
@@ -3420,7 +3422,7 @@ export async function previewWorkforceActivation(
       throw new ConflictError(ACTIVATION_UNAVAILABLE_MESSAGE);
     }
 
-    throw new InfrastructureError("Workforce activation could not be previewed");
+    throw toInfrastructureError("workforce.previewWorkforceActivation", error, "Workforce activation could not be previewed");
   }
 }
 
@@ -3987,7 +3989,7 @@ async function completeWorkforceActivationForPurposes(
       return requireWorkforceActivationReconciliation(claim, dependencies);
     }
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Workforce activation could not be finalized");
+    throw toInfrastructureError("workforce.completeWorkforceActivationForPurposes", error, "Workforce activation could not be finalized");
   }
 
   return { userId: claim.userId };
@@ -4512,7 +4514,7 @@ export async function listHospitalOwnersForPasswordReset(
       throw error;
     }
 
-    throw new InfrastructureError("Hospital Owners could not be loaded");
+    throw toInfrastructureError("workforce.listHospitalOwnersForPasswordReset", error, "Hospital Owners could not be loaded");
   }
 }
 
@@ -4534,9 +4536,16 @@ async function assertEligibleOwnerRemains(transaction: Prisma.TransactionClient,
   }
 }
 
+export type WorkforceReleaseResult = {
+  relationshipId: string;
+  hospitalId: string;
+  /** Future SCHEDULED Appointments of this Hospital that lost the released user as their assignee. */
+  unassignedAppointmentCount: number;
+};
+
 export async function releaseWorkforceRelationship(
   actor: ActorContext | null | undefined, input: unknown, dependencies: WorkforceServiceDependencies = {},
-): Promise<{ relationshipId: string; hospitalId: string }> {
+): Promise<WorkforceReleaseResult> {
   const parsed = workforceReleaseSchema.safeParse(input);
   if (!actor) throw new ForbiddenError();
   if (!parsed.success) throw new ValidationError("Workforce release data is invalid");
@@ -4566,13 +4575,25 @@ export async function releaseWorkforceRelationship(
           data: { endedAt: now, endedByUserId: actor.userId },
         })
         : { count: 0 };
+      // A released user can no longer act on this Hospital's appointments: its future SCHEDULED ones
+      // (including one-off visits) become unassigned so the Hospital can choose a new assignee.
+      const unassigned = await transferFutureAppointmentAssignee(tx, {
+        actorUserId: actor.userId,
+        hospitalId: data.targetHospitalId,
+        field: data.kind === "osm" ? "assignedOsmUserId" : "responsibleUserId",
+        previousUserId: current.userId,
+        nextUserId: null,
+        now,
+        conflictMessage: "An Appointment changed during the workforce release",
+        auditMetadata: { cause: "workforce_release", workforceRelationshipId: current.id },
+      });
       // Tokens are global credential capabilities. Revoke all outstanding workforce tokens of this user.
       const revoked = await tx.workforceActivation.updateMany({ where: { userId: current.userId, usedAt: null, revokedAt: null }, data: { revokedAt: now } });
       await recordAuditEvent({ actorUserId: actor.userId, action: "workforce.permanently_released",
         resourceType: data.kind === "osm" ? "OsmHospitalRelationship" : "HospitalMembership", resourceId: current.id,
         metadata: { hospitalId: data.targetHospitalId, targetUserId: current.userId, fromStatus: current.status, toStatus: MembershipStatus.ENDED,
-          endedAssignmentCount: ended.count, revokedActivationCount: revoked.count } }, tx);
-      return { relationshipId: current.id, hospitalId: data.targetHospitalId };
+          endedAssignmentCount: ended.count, revokedActivationCount: revoked.count, unassignedAppointmentCount: unassigned.length } }, tx);
+      return { relationshipId: current.id, hospitalId: data.targetHospitalId, unassignedAppointmentCount: unassigned.length };
     }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
   } catch (error: unknown) { throw normalizeDatabaseError(error, "Workforce release could not be completed"); }
 }

@@ -8,7 +8,11 @@ import {
 } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
-import { selfRegistrationEligibilityInternals } from "./self-registration-eligibility";
+import { SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS } from "../domain/self-registration-schemas";
+import {
+  isPatientRelationshipOpenForSelfRegistration,
+  selfRegistrationEligibilityInternals,
+} from "./self-registration-eligibility";
 
 type UserState = NonNullable<Parameters<typeof selfRegistrationEligibilityInternals.readEligibility>[0]>;
 type Membership = UserState["memberships"][number];
@@ -81,6 +85,27 @@ function evaluate(value: UserState | null, identityKeyHash: string | null = "ide
     now,
   );
 }
+
+describe("isPatientRelationshipOpenForSelfRegistration", () => {
+  it("admits an open, not yet self-registered relationship created within the window at an ACTIVE Hospital", () => {
+    expect(isPatientRelationshipOpenForSelfRegistration(patientRelationship(), now)).toBe(true);
+    expect(isPatientRelationshipOpenForSelfRegistration(
+      patientRelationship({ createdAt: new Date(now.getTime() - SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS) }),
+      now,
+    )).toBe(true);
+  });
+
+  it.each([
+    ["created outside the window", { createdAt: new Date(now.getTime() - SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS - 1) }],
+    ["created after now", { createdAt: new Date(now.getTime() + 1) }],
+    ["ended", { endedAt: now }],
+    ["already self-registered", { selfRegisteredAt: createdAt }],
+    ["at a Hospital with self-registration off", { hospital: { ...hospital, selfRegistrationEnabled: false } }],
+    ["at a Hospital that is not ACTIVE", { hospital: { ...hospital, status: HospitalStatus.SUSPENDED } }],
+  ] as const)("refuses a relationship %s", (_label, change) => {
+    expect(isPatientRelationshipOpenForSelfRegistration(patientRelationship(change), now)).toBe(false);
+  });
+});
 
 describe("self-registration eligibility", () => {
   it.each([

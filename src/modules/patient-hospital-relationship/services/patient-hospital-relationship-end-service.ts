@@ -17,14 +17,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import {
-  ApplicationError,
-  ConflictError,
-  ForbiddenError,
-  InfrastructureError,
-  NotFoundError,
-  ValidationError,
-} from "@/shared/errors/application-error";
+import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 import {
   activePatientHospitalRelationshipWhere,
@@ -34,6 +27,7 @@ import {
   patientHospitalRelationshipEndSchema,
   patientHospitalRelationshipIdSchema,
 } from "../schemas/patient-hospital-relationship-end-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientHospitalRelationshipEndDependencies = {
   database?: PrismaClient;
@@ -104,7 +98,7 @@ export async function getPatientHospitalRelationshipEndStatus(
     });
   } catch (error: unknown) {
     if (error instanceof ApplicationError) throw error;
-    throw new InfrastructureError("Patient care relationship status could not be verified");
+    throw toInfrastructureError("patient-hospital-relationship.getPatientHospitalRelationshipEndStatus", error, "Patient care relationship status could not be verified");
   }
 }
 
@@ -113,7 +107,8 @@ export async function getPatientHospitalRelationshipEndStatus(
  * that Hospital. Nothing is deleted: programs, rounds, follow-ups, appointments, evidence and audit stay attributable
  * to the relationship. In one transaction the relationship is marked ended, the current OSM assignment ends, future
  * appointments are cancelled (no LINE message), open appointment/service requests close and this Hospital's pending
- * activation is revoked. The Patient account and other Hospital relationships are untouched; ending is terminal.
+ * activation is revoked. The Patient account and other Hospital relationships are untouched. The OWNER cannot undo
+ * an end; only a platform ADMIN reopens it (reopenPatientHospitalRelationship, ADR-0032).
  */
 export async function endPatientHospitalRelationship(
   actor: ActorContext | null | undefined,
@@ -266,6 +261,6 @@ export async function endPatientHospitalRelationship(
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
       throw new ConflictError("Patient care relationship changed");
     }
-    throw new InfrastructureError("Patient care relationship could not be ended");
+    throw toInfrastructureError("patient-hospital-relationship.endPatientHospitalRelationship", error, "Patient care relationship could not be ended");
   }
 }

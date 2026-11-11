@@ -73,6 +73,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/shared/errors/application-error";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export const MEDIATED_RESET_IN_PERSON_TTL_MS = 15 * 60 * 1000;
 export const MEDIATED_RESET_ONLINE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -691,7 +692,7 @@ function currentTime(dependencies: MediatedPasswordResetDependencies): Date {
 
 function asApplicationError(error: unknown): never {
   if (error instanceof ApplicationError) throw error;
-  throw new InfrastructureError("Mediated password reset could not be completed");
+  throw toInfrastructureError("account-security.mediated-password-reset-service", error, "Mediated password reset could not be completed");
 }
 
 export async function issueMediatedPasswordReset(
@@ -1595,7 +1596,7 @@ async function replaceClaimedPasswordAndFinalize(
       throw new PasswordResetReconciliationRequiredError();
     }
     if (rejected) throw error;
-    throw new InfrastructureError("The password could not be checked");
+    throw toInfrastructureError("account-security.replaceClaimedPasswordAndFinalize", error, "The password could not be checked");
   }
 
   let cleanupId: string;
@@ -2236,9 +2237,9 @@ export async function reconcileMediatedPasswordReset(
       const exists = dependencies.providerIdentityExists ?? providerIdentityExists;
       replacement = await findByAlias(createProviderResetLoginAlias(record.userId, record.id));
       previousExists = record.previousAuthSubject ? await exists(record.previousAuthSubject) : false;
-    } catch {
+    } catch (error: unknown) {
       await recordReconcileAudit(database, reconcileAuditActorUserId, record, "PROVIDER_UNCONFIRMED", operatorNoteText);
-      throw new InfrastructureError("The provider outcome could not be confirmed");
+      throw toInfrastructureError("account-security.reconcileMediatedPasswordReset", error, "The provider outcome could not be confirmed");
     }
 
     const replacementConsistent = !record.replacementAuthSubject || !replacement || replacement.authSubject === record.replacementAuthSubject;

@@ -49,6 +49,7 @@ import {
   serviceRequestOsmSearchSchema,
   type HospitalServiceRequestListInput,
 } from "../schemas/patient-service-request-schemas";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientServiceRequestDatabase = PrismaClient;
 
@@ -165,7 +166,7 @@ function normalizeDatabaseError(error: unknown): Error {
     }
   }
 
-  return new InfrastructureError("Patient service requests could not be saved");
+  return toInfrastructureError("patient-service-requests.patient-service-request-service", error, "Patient service requests could not be saved");
 }
 
 function assertPolicy(

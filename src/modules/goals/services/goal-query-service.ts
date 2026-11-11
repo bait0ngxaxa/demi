@@ -46,6 +46,7 @@ import {
   resolveGoalAccessContext,
   type GoalPatientSummary,
 } from "./goal-access-service";
+import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type GoalQueryDatabase = PrismaClient | Prisma.TransactionClient;
 
@@ -606,7 +607,7 @@ export async function getGoalPlanOverview(
       throw error;
     }
 
-    throw new InfrastructureError("Goal Plan history could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanOverview", error, "Goal Plan history could not be loaded");
   }
 }
 
@@ -663,7 +664,7 @@ export async function getGoalPlanOverviewForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Goal Plan history could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanOverviewForProgram", error, "Program Goal Plan history could not be loaded");
   }
 }
 
@@ -708,7 +709,7 @@ export async function getGoalPlanCreateContext(
       throw error;
     }
 
-    throw new InfrastructureError("Goal Plan setup could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanCreateContext", error, "Goal Plan setup could not be loaded");
   }
 }
 
@@ -768,7 +769,7 @@ export async function getGoalPlanDetail(
       throw error;
     }
 
-    throw new InfrastructureError("Goal Plan detail could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanDetail", error, "Goal Plan detail could not be loaded");
   }
 }
 
@@ -831,7 +832,7 @@ export async function getGoalPlanCreateContextForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Goal Plan setup could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanCreateContextForProgram", error, "Program Goal Plan setup could not be loaded");
   }
 }
 
@@ -892,7 +893,7 @@ export async function getGoalPlanDetailForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Goal Plan detail could not be loaded");
+    throw toInfrastructureError("goals.getGoalPlanDetailForProgram", error, "Program Goal Plan detail could not be loaded");
   }
 }
 
@@ -922,7 +923,7 @@ export async function getAccessibleGoalPlanOptions(
       throw error;
     }
 
-    throw new InfrastructureError("Accessible Goal Plan references could not be loaded");
+    throw toInfrastructureError("goals.getAccessibleGoalPlanOptions", error, "Accessible Goal Plan references could not be loaded");
   }
 }
 
@@ -955,7 +956,7 @@ export async function getAccessiblePreProgramGoalPlanOptions(
       throw error;
     }
 
-    throw new InfrastructureError("Pre-Program Goal Plan references could not be loaded");
+    throw toInfrastructureError("goals.getAccessiblePreProgramGoalPlanOptions", error, "Pre-Program Goal Plan references could not be loaded");
   }
 }
 
@@ -989,7 +990,7 @@ export async function getAccessibleGoalPlanOptionsForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Goal Plan references could not be loaded");
+    throw toInfrastructureError("goals.getAccessibleGoalPlanOptionsForProgram", error, "Program Goal Plan references could not be loaded");
   }
 }
 
@@ -1032,7 +1033,7 @@ export async function getAccessibleGoalPlanActivityContext(
       throw error;
     }
 
-    throw new InfrastructureError("Goal Plan context could not be loaded");
+    throw toInfrastructureError("goals.getAccessibleGoalPlanActivityContext", error, "Goal Plan context could not be loaded");
   }
 }
 
@@ -1076,7 +1077,7 @@ export async function getAccessiblePreProgramGoalPlanActivityContext(
       throw error;
     }
 
-    throw new InfrastructureError("Pre-Program Goal Plan context could not be loaded");
+    throw toInfrastructureError("goals.getAccessiblePreProgramGoalPlanActivityContext", error, "Pre-Program Goal Plan context could not be loaded");
   }
 }
 
@@ -1115,7 +1116,7 @@ export async function getAccessibleGoalPlanActivityContextForProgram(
       throw error;
     }
 
-    throw new InfrastructureError("Program Goal Plan context could not be loaded");
+    throw toInfrastructureError("goals.getAccessibleGoalPlanActivityContextForProgram", error, "Program Goal Plan context could not be loaded");
   }
 }
 
