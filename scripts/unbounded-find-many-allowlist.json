@@ -2441,5 +2441,12 @@
     "target": "hospitalMembership.user.roles",
     "occurrence": 1,
     "reason": "A user's roles: one row per Role value (primary key userId, role)."
+  },
+  {
+    "file": "src/modules/patient-hospital-relationship/services/patient-hospital-relationship-reopen-service.ts",
+    "function": "assertPlatformAdminInDatabase",
+    "target": "user.roles",
+    "occurrence": 1,
+    "reason": "A user's roles: one row per Role value (primary key userId, role)."
   }
 ]

@@ -107,7 +107,8 @@ export async function getPatientHospitalRelationshipEndStatus(
  * that Hospital. Nothing is deleted: programs, rounds, follow-ups, appointments, evidence and audit stay attributable
  * to the relationship. In one transaction the relationship is marked ended, the current OSM assignment ends, future
  * appointments are cancelled (no LINE message), open appointment/service requests close and this Hospital's pending
- * activation is revoked. The Patient account and other Hospital relationships are untouched; ending is terminal.
+ * activation is revoked. The Patient account and other Hospital relationships are untouched. The OWNER cannot undo
+ * an end; only a platform ADMIN reopens it (reopenPatientHospitalRelationship, ADR-0032).
  */
 export async function endPatientHospitalRelationship(
   actor: ActorContext | null | undefined,

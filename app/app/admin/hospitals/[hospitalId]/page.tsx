@@ -47,6 +47,7 @@ import { HospitalGovernanceControls } from "./hospital-governance-controls";
 import { HospitalNetworkSection } from "./hospital-network-section";
 import { ParentOwnerInvitationSection } from "./parent-owner-invitation-section";
 import { HospitalRetirementSection } from "./hospital-retirement-section";
+import { PatientCareReopenSection } from "./patient-care-reopen-section";
 
 export const metadata: Metadata = {
   title: "รายละเอียดการกำกับดูแลโรงพยาบาล",
@@ -246,7 +247,7 @@ export default async function HospitalGovernanceDetailPage({
           { href: "/app/admin/hospitals", label: "การกำกับดูแลโรงพยาบาล" },
           { label: "รายละเอียดโรงพยาบาล" },
         ]}
-        description="ตรวจสอบและเปลี่ยนสถานะโรงพยาบาล แก้ชื่อและประเภทในเครือข่าย โอนย้ายลูกข่าย และแก้ชื่อ-สกุลผู้ป่วยตามที่แอดมินโรงพยาบาลแจ้ง หน้านี้ไม่มีข้อมูลผู้ป่วย"
+        description="ตรวจสอบและเปลี่ยนสถานะโรงพยาบาล แก้ชื่อและประเภทในเครือข่าย โอนย้ายลูกข่าย แก้ชื่อ-สกุลผู้ป่วยตามที่แอดมินโรงพยาบาลแจ้ง และเปิดการดูแลผู้ป่วยที่สิ้นสุดแล้วกลับมา หน้านี้ไม่มีรายชื่อผู้ป่วย"
         title={hospital.name}
       />
 
@@ -318,6 +319,8 @@ export default async function HospitalGovernanceDetailPage({
         ) : null}
 
         <PatientNameCorrectionSection actor={actor} hospitalId={hospital.id} hospitalNumber={hn} />
+
+        {hospital.status === HospitalStatus.ACTIVE ? <PatientCareReopenSection hospitalId={hospital.id} /> : null}
       </div>
     </div>
   );

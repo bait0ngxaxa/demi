@@ -422,7 +422,8 @@ export function classifyExistingPatient(
     return { classification: "READY", reason: "พร้อมบันทึกข้อมูลผู้ป่วย" };
   }
 
-  // Phase F: an ended care relationship is never reactivated by import; a platform ADMIN decides.
+  // Phase F: an ended care relationship is never reactivated by import; only a platform ADMIN reopens it
+  // (reopenPatientHospitalRelationship, ADR-0032).
   if (relationship.endedAt !== null) {
     return {
       classification: "CONFLICT",

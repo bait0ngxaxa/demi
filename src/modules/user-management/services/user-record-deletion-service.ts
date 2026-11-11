@@ -76,6 +76,8 @@ export const userRelationRules = {
   patientOsmAssignmentsCreated: "EMPTY",
   patientOsmAssignmentsEnded: "EMPTY",
   patientHospitalRelationshipsEnded: "EMPTY",
+  patientHospitalRelationshipReopenings: "EMPTY",
+  patientHospitalRelationshipReopenedEnds: "EMPTY",
   screeningAssessmentsConducted: "EMPTY",
   goalPlansCreated: "EMPTY",
   appointmentsResponsible: "EMPTY",
@@ -180,6 +182,7 @@ export const patientRelationshipRelationRules = {
   evidenceArtifacts: "EMPTY",
   serviceRequests: "EMPTY",
   patientAccessRequestsResolved: "EMPTY",
+  reopenings: "EMPTY",
 } as const satisfies Record<Relations<Prisma.PatientHospitalRelationshipInclude>, RelationRule>;
 
 /** Grant and invitation links are CHECKED: their foreign-key columns must be null on a deletable membership. */

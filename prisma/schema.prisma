@@ -579,6 +579,8 @@ model User {
   patientOsmAssignmentsCreated PatientOsmAssignment[] @relation("PatientOsmAssignmentsCreated")
   patientOsmAssignmentsEnded PatientOsmAssignment[] @relation("PatientOsmAssignmentsEnded")
   patientHospitalRelationshipsEnded PatientHospitalRelationship[] @relation("PatientHospitalRelationshipsEnded")
+  patientHospitalRelationshipReopenings PatientHospitalRelationshipReopening[] @relation("PatientHospitalRelationshipReopenedBy")
+  patientHospitalRelationshipReopenedEnds PatientHospitalRelationshipReopening[] @relation("PatientHospitalRelationshipReopeningPreviousEnd")
   screeningAssessmentsConducted ScreeningAssessment[] @relation("ScreeningAssessmentConductedBy")
   goalPlansCreated PatientGoalPlan[] @relation("PatientGoalPlanCreatedBy")
   appointmentsResponsible PatientAppointment[] @relation("PatientAppointmentResponsible")
@@ -1085,7 +1087,8 @@ model PatientHospitalRelationship {
   patientProfileId String   @db.Uuid
   hospitalId       String   @db.Uuid
   hospitalNumber   String?  @db.VarChar(64)
-  /// Phase F (ก-18): care with this Hospital ended; terminal, history retained. See activePatientHospitalRelationshipWhere.
+  /// Phase F (ก-18): care with this Hospital ended, history retained. See activePatientHospitalRelationshipWhere.
+  /// ADR-0032: only a platform ADMIN reopens it; each reopen keeps the cleared end in PatientHospitalRelationshipReopening.
   endedAt          DateTime?
   selfRegisteredAt DateTime? @db.Timestamptz(3)
   endedByUserId    String?  @db.Uuid
@@ -1112,6 +1115,7 @@ model PatientHospitalRelationship {
   serviceRequests      PatientServiceRequest[]
   lineNotificationIntents AppointmentLineNotification[]
   patientAccessRequestsResolved PatientAccessRequest[] @relation("PatientAccessRequestResolvedRelationship")
+  reopenings PatientHospitalRelationshipReopening[]
 
   @@unique([patientProfileId, hospitalId])
   @@unique([id, hospitalId])
@@ -1119,6 +1123,29 @@ model PatientHospitalRelationship {
   @@index([hospitalId])
   @@index([hospitalId, hospitalNumber])
   @@index([endedByUserId])
+}
+
+/// ADR-0032: append-only history of a platform ADMIN reopening an ended care relationship. The cleared end
+/// (when, by whom, why) and the reopen (when, by whom, why) stay retrievable; free text never goes to audit metadata.
+model PatientHospitalRelationshipReopening {
+  id                            String   @id @default(uuid()) @db.Uuid
+  patientHospitalRelationshipId String   @db.Uuid
+  hospitalId                    String   @db.Uuid
+  previousEndedAt               DateTime
+  previousEndedByUserId         String   @db.Uuid
+  previousEndReason             String   @db.VarChar(500)
+  reopenedAt                    DateTime @db.Timestamptz(3)
+  reopenedByUserId              String   @db.Uuid
+  reopenReason                  String   @db.VarChar(500)
+
+  relationship        PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId, hospitalId], references: [id, hospitalId], onDelete: Restrict)
+  previousEndedByUser User                        @relation("PatientHospitalRelationshipReopeningPreviousEnd", fields: [previousEndedByUserId], references: [id], onDelete: Restrict)
+  reopenedByUser      User                        @relation("PatientHospitalRelationshipReopenedBy", fields: [reopenedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([patientHospitalRelationshipId, previousEndedAt])
+  @@index([hospitalId, reopenedAt])
+  @@index([previousEndedByUserId])
+  @@index([reopenedByUserId])
 }
 
 model PatientHospitalProfile {
