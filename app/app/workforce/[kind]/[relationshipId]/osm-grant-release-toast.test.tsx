@@ -388,6 +388,29 @@ describe("Workforce release control Toasts", () => {
     expect(formData?.get("kind")).toBe("osm");
   });
 
+  it.each([
+    ["osm", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassignedOsm=true`],
+    ["staff", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING`],
+  ] as const)("links a %s release with unassigned appointments to the matching appointment list", async (kind, href) => {
+    mocks.release.mockResolvedValueOnce({ ...released, unassignedAppointmentCount: 2 });
+    render(RELATIONSHIP_ID, kind);
+
+    await submitRelease();
+
+    const links = Array.from(container.querySelectorAll<HTMLAnchorElement>("a"));
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([href]);
+    expect(links[0]?.textContent).toBe("ดูนัดหมายที่จะถึงของโรงพยาบาลนี้");
+  });
+
+  it("shows no appointment link when the release unassigned nothing", async () => {
+    mocks.release.mockResolvedValueOnce({ ...released, unassignedAppointmentCount: 0 });
+    render();
+
+    await submitRelease();
+
+    expect(container.querySelectorAll("a")).toHaveLength(0);
+  });
+
   it("does not replay the Toast after a rerender and refuses a second release", async () => {
     mocks.release.mockResolvedValueOnce(released);
     render();
