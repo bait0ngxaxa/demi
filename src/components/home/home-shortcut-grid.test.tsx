@@ -48,6 +48,10 @@ function getAttribute(attributes: string, name: string): string | undefined {
   return new RegExp(`${name}="([^"]*)"`).exec(attributes)?.[1];
 }
 
+function decodeAttribute(value: string): string {
+  return value.replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
+}
+
 describe("HomeShortcutGrid", () => {
   it("keeps shortcuts as one accessible link each with their original destination and order", () => {
     const markup = renderShortcutGrid();
@@ -55,7 +59,7 @@ describe("HomeShortcutGrid", () => {
 
     expect(markup).toContain('<nav aria-labelledby="test-shortcuts-heading"');
     expect(markup).toMatch(/<nav\b[^>]*><ul\b[^>]*><li\b[^>]*><a\b/);
-    expect(markup).toContain("<ul class=\"grid min-w-0 grid-cols-4 auto-rows-fr");
+    expect(markup).toContain("<ul class=\"grid min-w-0 grid-cols-4 ");
     expect(markup).not.toContain("<button");
     expect(links).toHaveLength(shortcuts.length);
     expect(links.map(({ attributes }) => getAttribute(attributes, "href"))).toEqual(
@@ -69,29 +73,82 @@ describe("HomeShortcutGrid", () => {
     }
   });
 
-  it("uses elevated mobile tiles while retaining the desktop grid and card layout", () => {
+  it("renders card-less mobile icon buttons on an unstretched grid while retaining the desktop card layout", () => {
     const markup = renderShortcutGrid();
     const links = getRenderedLinks(markup);
+    const listClass = /<ul class="([^"]*)"/.exec(markup)?.[1]?.split(" ") ?? [];
 
-    expect(markup).toContain("auto-rows-fr gap-2 sm:gap-3 lg:auto-rows-auto lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]");
-    for (const { attributes } of links) {
-      const className = getAttribute(attributes, "class") ?? "";
-      expect(className).toContain("h-full min-h-24");
-      expect(className).toContain("border border-border bg-surface");
-      expect(className).toContain("shadow-surface");
-      expect(className).toContain("hover:border-border-strong hover:bg-surface-muted");
-      expect(className).toContain("active:translate-y-px");
-      expect(className).toContain("focus-visible:ring-4 focus-visible:ring-focus-ring");
-      expect(className).toContain("focus-visible:ring-offset-2 focus-visible:ring-offset-canvas");
-      expect(className).toContain("lg:active:translate-y-0");
-      expect(className).toContain("motion-reduce:transition-none motion-reduce:active:translate-y-0");
-      expect(className).toContain("lg:flex-row");
-      expect(className).toContain("lg:shadow-none");
-      expect(className).not.toContain("lg:h-full");
+    expect(listClass).toEqual(expect.arrayContaining(["grid-cols-4", "gap-x-2", "gap-y-3", "sm:gap-x-3", "text-sm"]));
+    expect(listClass).toEqual(expect.arrayContaining(["lg:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]", "lg:gap-3"]));
+    expect(listClass).not.toContain("auto-rows-fr");
+    expect(listClass).not.toContain("lg:auto-rows-auto");
+
+    for (const { attributes, content } of links) {
+      const linkClass = (getAttribute(attributes, "class") ?? "").split(" ");
+      // Below lg the whole column is the hit area: no card surface, no row stretch, content starts at the top.
+      expect(linkClass).toEqual(expect.arrayContaining(["group", "flex-col", "items-center", "justify-start", "text-sm"]));
+      for (const removed of ["border", "border-border", "bg-surface", "shadow-surface", "h-full", "min-h-24", "justify-center"]) {
+        expect(linkClass).not.toContain(removed);
+      }
+      expect(linkClass).toEqual(
+        expect.arrayContaining([
+          "focus-visible:outline-none",
+          "focus-visible:ring-4",
+          "focus-visible:ring-focus-ring",
+          "focus-visible:ring-offset-2",
+          "focus-visible:ring-offset-canvas",
+        ]),
+      );
+      // lg+: the existing desktop card is restored explicitly.
+      expect(linkClass).toEqual(
+        expect.arrayContaining([
+          "lg:min-h-16",
+          "lg:flex-row",
+          "lg:justify-start",
+          "lg:gap-3",
+          "lg:rounded-control",
+          "lg:border",
+          "lg:border-border",
+          "lg:bg-surface",
+          "lg:px-4",
+          "lg:py-3",
+          "lg:text-left",
+          "lg:text-sm",
+          "lg:hover:border-action-primary",
+          "lg:hover:bg-brand-soft",
+          "lg:focus-visible:border-action-primary",
+        ]),
+      );
+      expect(linkClass).not.toContain("lg:h-full");
+
+      const iconClass = decodeAttribute(/<span class="([^"]*)"><svg aria-hidden="true"/.exec(content)?.[1] ?? "").split(" ");
+      expect(iconClass).toEqual(
+        expect.arrayContaining([
+          "size-15",
+          "bg-brand-soft",
+          "text-brand-strong",
+          "group-active:translate-y-px",
+          "group-active:bg-brand-pale",
+          "motion-reduce:group-active:translate-y-0",
+          "[&>svg]:size-7",
+        ]),
+      );
+      expect(iconClass).toEqual(
+        expect.arrayContaining([
+          "lg:size-10",
+          "lg:rounded-control",
+          "lg:bg-surface-muted",
+          "lg:shadow-none",
+          "lg:group-active:translate-y-0",
+          "lg:[&>svg]:size-5",
+        ]),
+      );
+
+      const labelClass = (/<span class="([^"]*)">[^<]+<\/span>/.exec(content)?.[1] ?? "").split(" ");
+      expect(labelClass).toEqual(
+        expect.arrayContaining(["min-h-[2lh]", "line-clamp-2", "[overflow-wrap:anywhere]", "lg:min-h-0", "lg:line-clamp-none"]),
+      );
     }
-    expect(markup).toContain(
-      'class="flex size-10 shrink-0 items-center justify-center rounded-control bg-brand-soft text-brand-strong lg:bg-surface-muted"',
-    );
   });
 
   it("keeps descriptions desktop-only and preserves the existing prefetch setting", () => {
