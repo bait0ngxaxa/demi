@@ -14,6 +14,7 @@ import {
   reopenPatientHospitalRelationship,
 } from "@/modules/patient-hospital-relationship/services/patient-hospital-relationship-reopen-service";
 import { PatientProvisioningConflictError } from "@/modules/patient-provisioning/services/patient-provisioning-transaction";
+import { SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS } from "@/modules/self-registration/domain/self-registration-schemas";
 import { ApplicationError, ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
@@ -129,7 +130,7 @@ describe("ADR-0032: a platform ADMIN reopens an ended care relationship (Postgre
       .toEqual({ maskedName: expect.any(String), endedAt });
     const result = await reopenPatientHospitalRelationship(f.admin, reopenInput(f), dependencies);
 
-    expect(result).toMatchObject({ relationshipId: f.relationshipId, hospitalId: f.hospitalId, reopenedAt, activationLinkRequired: true });
+    expect(result).toMatchObject({ relationshipId: f.relationshipId, hospitalId: f.hospitalId, reopenedAt, patientAccount: "ACTIVATION_LINK_REQUIRED" });
     expect(result.maskedName).not.toContain("สมหญิง");
     expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId } }))
       .toMatchObject({ endedAt: null, endedByUserId: null, endReason: null });
@@ -159,6 +160,48 @@ describe("ADR-0032: a platform ADMIN reopens an ended care relationship (Postgre
     expect(readded.relationshipId).toBe(f.relationshipId);
     // The other Hospital's relationship is untouched.
     expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.otherRelationshipId } })).toMatchObject({ endedAt: null });
+  });
+
+  it("tells the admin the Patient can still self-register when the relationship is inside the self-registration window", async () => {
+    const f = await fixture();
+    const { createdAt } = await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId }, select: { createdAt: true } });
+    const insideWindow = new Date(createdAt.getTime() + 24 * 60 * 60 * 1000);
+
+    const result = await reopenPatientHospitalRelationship(f.admin, reopenInput(f), { database: db, now: () => insideWindow });
+
+    expect(result).toMatchObject({ relationshipId: f.relationshipId, reopenedAt: insideWindow, patientAccount: "SELF_REGISTRATION_OPEN" });
+    // The window and the eligibility rule are unchanged: the reopen only reports them.
+    expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId } }))
+      .toMatchObject({ createdAt, selfRegisteredAt: null, endedAt: null });
+  });
+
+  it.each([
+    ["outside the self-registration window", false, SELF_REGISTRATION_ELIGIBILITY_WINDOW_MS + 24 * 60 * 60 * 1000],
+    ["at a Hospital with self-registration off", true, 24 * 60 * 60 * 1000],
+  ] as const)("tells the admin an activation link is needed for a relationship %s", async (_label, disableSelfRegistration, age) => {
+    const f = await fixture();
+    if (disableSelfRegistration) await db.hospital.update({ where: { id: f.hospitalId }, data: { selfRegistrationEnabled: false } });
+    const { createdAt } = await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId }, select: { createdAt: true } });
+    const now = new Date(createdAt.getTime() + age);
+
+    const result = await reopenPatientHospitalRelationship(f.admin, reopenInput(f), { database: db, now: () => now });
+
+    expect(result).toMatchObject({ relationshipId: f.relationshipId, patientAccount: "ACTIVATION_LINK_REQUIRED" });
+  });
+
+  it("reports an ACTIVE account as ACTIVE", async () => {
+    const f = await fixture();
+    const relationship = await db.patientHospitalRelationship.findUniqueOrThrow({
+      where: { id: f.relationshipId },
+      select: { createdAt: true, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } },
+    });
+    const userId = relationship.patientProfile.person.user?.id;
+    if (!userId) throw new Error("Missing Patient user");
+    await db.user.update({ where: { id: userId }, data: { status: UserStatus.ACTIVE, authSubject: randomUUID() } });
+
+    const result = await reopenPatientHospitalRelationship(f.admin, reopenInput(f), { database: db, now: () => new Date(relationship.createdAt.getTime() + 60_000) });
+
+    expect(result).toMatchObject({ patientAccount: "ACTIVE" });
   });
 
   it("before a reopen, the same national ID answers ENDED_RELATIONSHIP and a direct database clear is still refused", async () => {

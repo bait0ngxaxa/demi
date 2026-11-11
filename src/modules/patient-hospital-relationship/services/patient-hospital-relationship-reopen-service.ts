@@ -8,6 +8,7 @@ import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
+import { evaluateSelfRegistrationByUserId } from "@/modules/self-registration/services/self-registration-eligibility";
 import { maskPersonName } from "@/modules/workforce/services/activation-identity";
 import { ApplicationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
@@ -35,13 +36,20 @@ export type PatientHospitalRelationshipReopenPreview = {
   endedAt: Date;
 };
 
+/**
+ * How the Patient reaches their account after the reopen:
+ * - ACTIVE: the Patient already has an ACTIVE account.
+ * - SELF_REGISTRATION_OPEN: the self-registration rule still admits this relationship (created within the window).
+ * - ACTIVATION_LINK_REQUIRED: neither; the Hospital must issue an activation link.
+ */
+export type PatientHospitalRelationshipReopenPatientAccount = "ACTIVE" | "SELF_REGISTRATION_OPEN" | "ACTIVATION_LINK_REQUIRED";
+
 export type PatientHospitalRelationshipReopenResult = {
   relationshipId: string;
   hospitalId: string;
   reopenedAt: Date;
   maskedName: string;
-  /** The Patient has no active account: the Hospital must issue an activation link (no self-registration window). */
-  activationLinkRequired: boolean;
+  patientAccount: PatientHospitalRelationshipReopenPatientAccount;
 };
 
 type EndedRelationship = {
@@ -51,7 +59,8 @@ type EndedRelationship = {
   endedByUserId: string;
   endReason: string;
   maskedName: string;
-  activationLinkRequired: boolean;
+  userId: string | null;
+  accountActive: boolean;
 };
 
 /** Same persisted-role proof as other platform ADMIN operations: an ACTIVE User holding the ADMIN role. */
@@ -84,7 +93,7 @@ async function findEndedRelationship(
     select: {
       givenName: true,
       familyName: true,
-      user: { select: { status: true, authSubject: true } },
+      user: { select: { id: true, status: true, authSubject: true } },
       patientProfile: {
         select: {
           hospitalRelationships: {
@@ -109,8 +118,27 @@ async function findEndedRelationship(
     endedByUserId: relationship.endedByUserId,
     endReason: relationship.endReason,
     maskedName: maskPersonName(person.givenName, person.familyName),
-    activationLinkRequired: !(person.user?.status === UserStatus.ACTIVE && person.user.authSubject !== null),
+    userId: person.user?.id ?? null,
+    accountActive: person.user?.status === UserStatus.ACTIVE && person.user.authSubject !== null,
   };
+}
+
+/**
+ * Decided after the end is cleared, inside the reopen transaction, by the self-registration eligibility rule itself
+ * (account-level checks and isPatientRelationshipOpenForSelfRegistration for this relationship); nothing is changed.
+ */
+async function readPatientAccount(
+  transaction: Prisma.TransactionClient,
+  relationship: EndedRelationship,
+  now: Date,
+): Promise<PatientHospitalRelationshipReopenPatientAccount> {
+  if (relationship.accountActive) return "ACTIVE";
+  if (relationship.userId === null) return "ACTIVATION_LINK_REQUIRED";
+
+  const eligibility = await evaluateSelfRegistrationByUserId(transaction, relationship.userId, now);
+  const open = eligibility.outcome === "ELIGIBLE" &&
+    eligibility.relationships.some(({ kind, id }) => kind === "PATIENT" && id === relationship.id);
+  return open ? "SELF_REGISTRATION_OPEN" : "ACTIVATION_LINK_REQUIRED";
 }
 
 function rethrow(error: unknown, scope: string, message: string): never {
@@ -192,6 +220,7 @@ export async function reopenPatientHospitalRelationship(
         data: { endedAt: null, endedByUserId: null, endReason: null },
       });
       if (reopened.count !== 1) throw new ConflictError("Patient care relationship changed");
+      const patientAccount = await readPatientAccount(transaction, relationship, now);
 
       // Free-text reasons stay in the history table, never in audit metadata.
       await recordAuditEvent({
@@ -214,7 +243,7 @@ export async function reopenPatientHospitalRelationship(
         hospitalId: relationship.hospitalId,
         reopenedAt: now,
         maskedName: relationship.maskedName,
-        activationLinkRequired: relationship.activationLinkRequired,
+        patientAccount,
       };
     });
   } catch (error: unknown) {

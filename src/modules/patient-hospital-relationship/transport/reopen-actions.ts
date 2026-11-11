@@ -15,6 +15,7 @@ import {
   PatientHospitalRelationshipReopenHospitalInactiveError,
   previewPatientHospitalRelationshipReopen,
   reopenPatientHospitalRelationship,
+  type PatientHospitalRelationshipReopenPatientAccount,
 } from "../services/patient-hospital-relationship-reopen-service";
 
 /**
@@ -36,8 +37,20 @@ export type PatientCareReopenPreviewState =
 
 export type PatientCareReopenState =
   | { status: "IDLE" }
-  | { status: "REOPENED"; message: string; activationLinkRequired: boolean }
+  | { status: "REOPENED"; message: string; patientAccount: PatientHospitalRelationshipReopenPatientAccount }
   | { status: "ERROR"; code: PatientCareReopenErrorCode; message: string };
+
+function reopenedMessage(maskedName: string, patientAccount: PatientHospitalRelationshipReopenPatientAccount): string {
+  const reopened = `เปิดการดูแลผู้ป่วย ${maskedName} กับโรงพยาบาลนี้อีกครั้งแล้ว`;
+  switch (patientAccount) {
+    case "ACTIVE":
+      return reopened;
+    case "SELF_REGISTRATION_OPEN":
+      return `${reopened} ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้ แต่ยังลงทะเบียนเองด้วยเลขบัตรประชาชนได้`;
+    case "ACTIVATION_LINK_REQUIRED":
+      return `${reopened} ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้และลงทะเบียนเองไม่ได้ โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้`;
+  }
+}
 
 function toErrorState(error: unknown, unavailableMessage: string): { status: "ERROR"; code: PatientCareReopenErrorCode; message: string } {
   if (error instanceof ValidationError) {
@@ -93,10 +106,8 @@ export async function reopenPatientCareAction(
     revalidatePath(`/app/admin/hospitals/${result.hospitalId}`);
     return {
       status: "REOPENED",
-      activationLinkRequired: result.activationLinkRequired,
-      message: result.activationLinkRequired
-        ? `เปิดการดูแลผู้ป่วย ${result.maskedName} กับโรงพยาบาลนี้อีกครั้งแล้ว ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้และลงทะเบียนเองไม่ได้ โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้`
-        : `เปิดการดูแลผู้ป่วย ${result.maskedName} กับโรงพยาบาลนี้อีกครั้งแล้ว`,
+      patientAccount: result.patientAccount,
+      message: reopenedMessage(result.maskedName, result.patientAccount),
     };
   } catch (error: unknown) {
     return toErrorState(error, "ยังยืนยันผลไม่ได้ กรุณาค้นหาผู้ป่วยอีกครั้งเพื่อตรวจสอบสถานะก่อนลองใหม่");

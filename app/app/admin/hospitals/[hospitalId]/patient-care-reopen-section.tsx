@@ -117,7 +117,7 @@ export function PatientCareReopenSection({ hospitalId }: { hospitalId: string })
             <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-text-muted">
               <li>ผู้ป่วยจะกลับมาอยู่ในรายชื่อผู้ป่วยของโรงพยาบาลนี้ และโปรแกรมที่ยังดำเนินอยู่จะดำเนินต่อ</li>
               <li>ระบบไม่คืนสิ่งอื่น: การมอบหมาย อสม. นัดหมายที่ถูกยกเลิก คำขอบริการที่ถูกปฏิเสธ และลิงก์เปิดใช้งานที่ถูกเพิกถอนยังคงเดิม</li>
-              <li>หากผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้ ผู้ป่วยลงทะเบียนเองไม่ได้ โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้</li>
+              <li>หากผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้และพ้นช่วงที่ลงทะเบียนเองได้แล้ว โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้</li>
               <li>ประวัติการสิ้นสุดการดูแลครั้งก่อนและเหตุผลที่เปิดกลับจะถูกเก็บไว้</li>
             </ul>
             {result.status === "ERROR" ? <Alert role="alert" variant="warning">{result.message}</Alert> : null}
@@ -132,7 +132,7 @@ export function PatientCareReopenSection({ hospitalId }: { hospitalId: string })
           </form>
         ) : null}
 
-        {reopened ? <Alert className="mt-4" role="status" variant={result.activationLinkRequired ? "warning" : "success"}>{result.message}</Alert> : null}
+        {reopened ? <Alert className="mt-4" role="status" variant={result.patientAccount === "ACTIVATION_LINK_REQUIRED" ? "warning" : "success"}>{result.message}</Alert> : null}
       </Panel>
     </section>
   );

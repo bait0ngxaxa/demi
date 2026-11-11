@@ -44,7 +44,7 @@ beforeEach(() => {
   vi.mocked(getProtectedApplicationActor).mockReset().mockResolvedValue({ userId: "admin-1" } as never);
   vi.mocked(previewPatientHospitalRelationshipReopen).mockReset().mockResolvedValue({ maskedName: "ส*** ใ***", endedAt });
   vi.mocked(reopenPatientHospitalRelationship).mockReset().mockResolvedValue({
-    relationshipId: "relationship-1", hospitalId, reopenedAt: endedAt, maskedName: "ส*** ใ***", activationLinkRequired: true,
+    relationshipId: "relationship-1", hospitalId, reopenedAt: endedAt, maskedName: "ส*** ใ***", patientAccount: "ACTIVATION_LINK_REQUIRED",
   });
   mockedRevalidatePath.mockReset();
 });
@@ -56,15 +56,28 @@ describe("patient care reopen actions", () => {
     expect(previewPatientHospitalRelationshipReopen).toHaveBeenCalledWith({ userId: "admin-1" }, { hospitalId, nationalId: "1101700203450" });
   });
 
-  it("passes the confirmed end to the service and tells the admin an activation link is needed", async () => {
+  it("passes the confirmed end to the service and revalidates the Patient and admin pages", async () => {
     const result = await reopenPatientCareAction(hospitalId, { status: "IDLE" }, form());
 
     expect(reopenPatientHospitalRelationship).toHaveBeenCalledWith({ userId: "admin-1" }, {
       hospitalId, nationalId: "1101700203450", reopenReason: "สิ้นสุดผิดราย", expectedEndedAt: endedAt.toISOString(),
     });
-    expect(result).toMatchObject({ status: "REOPENED", activationLinkRequired: true });
-    expect(result.status === "REOPENED" ? result.message : "").toContain("โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้");
+    expect(result).toMatchObject({ status: "REOPENED", patientAccount: "ACTIVATION_LINK_REQUIRED" });
+    expect(mockedRevalidatePath).toHaveBeenCalledWith("/app/patients", "layout");
     expect(mockedRevalidatePath).toHaveBeenCalledWith(`/app/admin/hospitals/${hospitalId}`);
+  });
+
+  it.each([
+    ["ACTIVE", "เปิดการดูแลผู้ป่วย ส*** ใ*** กับโรงพยาบาลนี้อีกครั้งแล้ว"],
+    ["SELF_REGISTRATION_OPEN", "เปิดการดูแลผู้ป่วย ส*** ใ*** กับโรงพยาบาลนี้อีกครั้งแล้ว ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้ แต่ยังลงทะเบียนเองด้วยเลขบัตรประชาชนได้"],
+    ["ACTIVATION_LINK_REQUIRED", "เปิดการดูแลผู้ป่วย ส*** ใ*** กับโรงพยาบาลนี้อีกครั้งแล้ว ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้และลงทะเบียนเองไม่ได้ โรงพยาบาลต้องออกลิงก์เปิดใช้งานให้"],
+  ] as const)("tells the admin how a Patient with account state %s gets access", async (patientAccount, message) => {
+    vi.mocked(reopenPatientHospitalRelationship).mockResolvedValueOnce({
+      relationshipId: "relationship-1", hospitalId, reopenedAt: endedAt, maskedName: "ส*** ใ***", patientAccount,
+    });
+
+    expect(await reopenPatientCareAction(hospitalId, { status: "IDLE" }, form()))
+      .toEqual({ status: "REOPENED", patientAccount, message });
   });
 
   it.each([
