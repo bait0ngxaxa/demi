@@ -10,6 +10,14 @@ import {
 
 const sensitiveMessage = "Failing row contains (สมชาย ใจดี, 1103700012345, 0812345678)";
 
+function unknownRequestError(message: string): Prisma.PrismaClientUnknownRequestError {
+  return new Prisma.PrismaClientUnknownRequestError(message, { clientVersion: "6.19.2" });
+}
+
+function loggedReport(): Record<string, unknown> {
+  return (consoleError.mock.calls[0]?.[1] ?? {}) as Record<string, unknown>;
+}
+
 function prismaError(code: string, meta?: Record<string, unknown>): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError(sensitiveMessage, { code, clientVersion: "6.19.2", meta });
 }
@@ -36,6 +44,7 @@ describe("reportUnexpectedError", () => {
       errorClass: "PrismaClientKnownRequestError",
       prismaCode: "P2010",
       sqlState: "23514",
+      constraint: null,
       stack: expect.any(Array),
     });
     expect((report as { stack: string[] }).stack.length).toBeGreaterThan(0);
@@ -64,6 +73,7 @@ describe("reportUnexpectedError", () => {
       errorClass: "string",
       prismaCode: null,
       sqlState: null,
+      constraint: null,
       stack: [],
     });
   });
@@ -81,6 +91,62 @@ describe("reportUnexpectedError", () => {
     reportUnexpectedError("outer", error);
 
     expect(consoleError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("reportUnexpectedError for Prisma unknown request errors", () => {
+  const triggerMessage = "Ended patient hospital relationship cannot be reopened or changed";
+
+  it("reads the SQLSTATE of a trigger RAISE from the engine message without logging the message", () => {
+    reportUnexpectedError("scope", unknownRequestError(
+      "Invalid `prisma.patientHospitalRelationship.updateMany()` invocation:\n\n\nError occurred during query execution:\n" +
+        `ConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { code: "23514", message: "${triggerMessage}", severity: "ERROR", detail: None, column: None, hint: None }), transient: false })`,
+    ));
+
+    expect(loggedReport()).toMatchObject({
+      errorClass: "PrismaClientUnknownRequestError",
+      prismaCode: null,
+      sqlState: "23514",
+      constraint: null,
+    });
+    const serialized = JSON.stringify(consoleError.mock.calls);
+    expect(serialized).not.toContain(triggerMessage);
+    expect(serialized).not.toContain("ConnectorError");
+  });
+
+  it("reads the constraint name of a CHECK violation and not the failing row", () => {
+    reportUnexpectedError("scope", unknownRequestError(
+      "Error occurred during query execution:\nConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { " +
+        'code: "23514", message: "new row for relation \\"PatientAppointment\\" violates check constraint \\"PatientAppointment_assigned_osm_home_visit_check\\"", ' +
+        'severity: "ERROR", detail: Some("Failing row contains (สมศรี มีสุข, 1103700012345, HOSPITAL)."), column: None, hint: None }), transient: false })',
+    ));
+
+    expect(loggedReport()).toMatchObject({ sqlState: "23514", constraint: "PatientAppointment_assigned_osm_home_visit_check" });
+    const serialized = JSON.stringify(consoleError.mock.calls);
+    expect(serialized).not.toContain("สมศรี");
+    expect(serialized).not.toContain("1103700012345");
+    expect(serialized).not.toContain("Failing row");
+  });
+
+  it("logs null SQLSTATE and constraint when the message carries neither", () => {
+    reportUnexpectedError("scope", unknownRequestError("Engine returned an unexpected response for สมศรี"));
+
+    expect(loggedReport()).toMatchObject({ sqlState: null, constraint: null });
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("สมศรี");
+  });
+
+  it("reads the constraint from a known request error's meta only when it is an identifier", () => {
+    reportUnexpectedError("scope", prismaError("P2002", { target: "PatientProfile_personId_key" }));
+    reportUnexpectedError("scope", prismaError("P2002", { target: ["nationalIdHash"], constraint: "not an identifier; DROP" }));
+
+    expect(consoleError.mock.calls[0]?.[1]).toMatchObject({ prismaCode: "P2002", constraint: "PatientProfile_personId_key" });
+    expect(consoleError.mock.calls[1]?.[1]).toMatchObject({ prismaCode: "P2002", constraint: null });
+  });
+
+  it("does not read tokens from the message of an error that is not a Prisma request error", () => {
+    reportUnexpectedError("scope", new Error('code: "23514" violates check constraint "Some_check"'));
+
+    expect(loggedReport()).toMatchObject({ sqlState: null, constraint: null });
   });
 });
 
