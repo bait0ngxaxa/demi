@@ -408,6 +408,27 @@ describe("Phase B hospital operations", () => {
     expect((await db.auditEvent.findFirstOrThrow({ where: { action: "workforce.permanently_released", resourceId: staffRel.id } })).metadata).toMatchObject({ unassignedAppointmentCount: 1 });
   });
 
+  it("releases an OSM with 40 upcoming appointments in one transaction and unassigns every one of them", async () => {
+    const f = await fixture();
+    const count = 40;
+    await db.patientAppointment.createMany({
+      data: Array.from({ length: count }, (_, index) => ({
+        patientHospitalRelationshipId: f.relationshipId, createdByUserId: f.owner.userId, assignedOsmUserId: f.osm.userId,
+        type: "FOLLOW_UP" as const, locationType: "HOME_VISIT" as const, status: "SCHEDULED" as const, submissionNonce: randomUUID(),
+        scheduledAt: new Date(now.getTime() + (index + 1) * 60 * 60 * 1000), updatedAt: new Date("2026-10-01T00:00:00Z"),
+      })),
+    });
+    const rel = await db.osmHospitalRelationship.findFirstOrThrow({ where: { userId: f.osm.userId, hospitalId: f.hospitalId } });
+
+    const result = await releaseWorkforceRelationship(f.owner, { kind: "osm", relationshipId: rel.id, targetHospitalId: f.hospitalId, expectedUpdatedAt: rel.updatedAt.toISOString(), confirmation: releaseConfirmation }, dependencies);
+
+    expect(result.unassignedAppointmentCount).toBe(count);
+    expect(await db.patientAppointment.count({ where: { patientHospitalRelationshipId: f.relationshipId, assignedOsmUserId: f.osm.userId } })).toBe(0);
+    expect(await db.patientAppointment.count({ where: { patientHospitalRelationshipId: f.relationshipId, assignedOsmUserId: null, status: "SCHEDULED", updatedAt: now } })).toBe(count);
+    expect(await db.auditEvent.count({ where: { action: "appointment.assignee_unassigned", actorUserId: f.owner.userId, metadata: { path: ["workforceRelationshipId"], equals: rel.id } } })).toBe(count);
+    expect((await db.osmHospitalRelationship.findUniqueOrThrow({ where: { id: rel.id } })).status).toBe(MembershipStatus.ENDED);
+  });
+
   it("the unassigned filter lists the Hospital's future scheduled appointments with neither assignee, at any location", async () => {
     const f = await fixture();
     const other = await fixture();
