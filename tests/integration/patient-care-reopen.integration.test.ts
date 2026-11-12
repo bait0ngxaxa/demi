@@ -204,6 +204,23 @@ describe("ADR-0032: a platform ADMIN reopens an ended care relationship (Postgre
     expect(result).toMatchObject({ patientAccount: "ACTIVE" });
   });
 
+  it("reports a SUSPENDED account as ACCOUNT_SUSPENDED, inside the self-registration window too, and restores nothing", async () => {
+    const f = await fixture();
+    const relationship = await db.patientHospitalRelationship.findUniqueOrThrow({
+      where: { id: f.relationshipId },
+      select: { createdAt: true, patientProfile: { select: { person: { select: { user: { select: { id: true } } } } } } },
+    });
+    const userId = relationship.patientProfile.person.user?.id;
+    if (!userId) throw new Error("Missing Patient user");
+    await db.user.update({ where: { id: userId }, data: { status: UserStatus.SUSPENDED, authSubject: randomUUID() } });
+
+    const result = await reopenPatientHospitalRelationship(f.admin, reopenInput(f), { database: db, now: () => new Date(relationship.createdAt.getTime() + 60_000) });
+
+    expect(result).toMatchObject({ relationshipId: f.relationshipId, patientAccount: "ACCOUNT_SUSPENDED" });
+    expect(await db.user.findUniqueOrThrow({ where: { id: userId }, select: { status: true } })).toEqual({ status: UserStatus.SUSPENDED });
+    expect(await db.patientHospitalRelationship.findUniqueOrThrow({ where: { id: f.relationshipId } })).toMatchObject({ endedAt: null });
+  });
+
   it("before a reopen, the same national ID answers ENDED_RELATIONSHIP and a direct database clear is still refused", async () => {
     const f = await fixture();
     await expect(provision(f.owner, f.hospitalId, f.nationalId)).rejects.toMatchObject({ kind: "ENDED_RELATIONSHIP" });

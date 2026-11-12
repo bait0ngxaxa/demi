@@ -39,10 +39,16 @@ export type PatientHospitalRelationshipReopenPreview = {
 /**
  * How the Patient reaches their account after the reopen:
  * - ACTIVE: the Patient already has an ACTIVE account.
+ * - ACCOUNT_SUSPENDED: the Patient's User exists but is SUSPENDED; it must be restored through the existing account
+ *   process (the reopen restores no account and offers no self-registration or activation link for it).
  * - SELF_REGISTRATION_OPEN: the self-registration rule still admits this relationship (created within the window).
  * - ACTIVATION_LINK_REQUIRED: neither; the Hospital must issue an activation link.
  */
-export type PatientHospitalRelationshipReopenPatientAccount = "ACTIVE" | "SELF_REGISTRATION_OPEN" | "ACTIVATION_LINK_REQUIRED";
+export type PatientHospitalRelationshipReopenPatientAccount =
+  | "ACTIVE"
+  | "ACCOUNT_SUSPENDED"
+  | "SELF_REGISTRATION_OPEN"
+  | "ACTIVATION_LINK_REQUIRED";
 
 export type PatientHospitalRelationshipReopenResult = {
   relationshipId: string;
@@ -61,6 +67,7 @@ type EndedRelationship = {
   maskedName: string;
   userId: string | null;
   accountActive: boolean;
+  accountSuspended: boolean;
 };
 
 /** Same persisted-role proof as other platform ADMIN operations: an ACTIVE User holding the ADMIN role. */
@@ -120,6 +127,7 @@ async function findEndedRelationship(
     maskedName: maskPersonName(person.givenName, person.familyName),
     userId: person.user?.id ?? null,
     accountActive: person.user?.status === UserStatus.ACTIVE && person.user.authSubject !== null,
+    accountSuspended: person.user?.status === UserStatus.SUSPENDED,
   };
 }
 
@@ -133,6 +141,7 @@ async function readPatientAccount(
   now: Date,
 ): Promise<PatientHospitalRelationshipReopenPatientAccount> {
   if (relationship.accountActive) return "ACTIVE";
+  if (relationship.accountSuspended) return "ACCOUNT_SUSPENDED";
   if (relationship.userId === null) return "ACTIVATION_LINK_REQUIRED";
 
   const eligibility = await evaluateSelfRegistrationByUserId(transaction, relationship.userId, now);

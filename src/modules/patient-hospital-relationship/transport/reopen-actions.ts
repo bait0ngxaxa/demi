@@ -45,6 +45,8 @@ function reopenedMessage(maskedName: string, patientAccount: PatientHospitalRela
   switch (patientAccount) {
     case "ACTIVE":
       return reopened;
+    case "ACCOUNT_SUSPENDED":
+      return `${reopened} แต่บัญชีของผู้ป่วยถูกระงับอยู่ ต้องคืนสถานะบัญชีผ่านขั้นตอนจัดการบัญชีที่มีอยู่ก่อน ผู้ป่วยจึงจะเข้าใช้งานได้`;
     case "SELF_REGISTRATION_OPEN":
       return `${reopened} ผู้ป่วยยังไม่มีบัญชีที่ใช้งานได้ แต่ยังลงทะเบียนเองด้วยเลขบัตรประชาชนได้`;
     case "ACTIVATION_LINK_REQUIRED":

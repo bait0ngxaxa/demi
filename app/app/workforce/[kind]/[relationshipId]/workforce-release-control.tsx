@@ -54,7 +54,7 @@ function releasedAppointmentsHref(hospitalId: string, kind: "osm" | "staff"): st
   return `/app/appointments?${params.toString()}`;
 }
 
-type ReleasePayload ={ relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
+type ReleasePayload = { relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
 
 export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, updatedAt, resourceName, hospitalName }: {
   relationshipId: string;
@@ -132,7 +132,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
               href={releasedAppointmentsHref(hospitalId, kind)}
               prefetch={false}
             >
-              ดูนัดหมายที่จะถึงของโรงพยาบาลนี้
+              {kind === "osm" ? "ดูนัดหมายที่ไม่มี อสม. รับผิดชอบ" : "ดูนัดหมายที่ไม่มีผู้รับผิดชอบ"}
             </Link>
           ) : null}
         </div>
