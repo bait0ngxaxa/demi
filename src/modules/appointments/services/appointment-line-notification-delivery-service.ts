@@ -532,6 +532,7 @@ async function patientServiceRequestEligibility(
     // ADR-0033 D1: a pending request gives a preferred อสม. no access to the Patient; only the
     // Patient's current assigned อสม. sees the name.
     patientDisplayName: recipientIsAssignedOsm ? appointmentPatientDisplayName(request.relationship.patientProfile.person) : null,
+    recipientIsAssignedOsm,
   });
 }
 

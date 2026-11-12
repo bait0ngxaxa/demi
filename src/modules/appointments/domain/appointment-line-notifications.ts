@@ -78,16 +78,24 @@ export type AppointmentLineNotificationContent =
       readonly preferredSlot: PatientServiceRequestSlot | null;
       readonly hospitalName: string;
       readonly patientDisplayName: string | null;
+      /**
+       * The recipient is the Patient's current assigned อสม. (they read the Patient and have them in their
+       * list); otherwise they are a preferred อสม., whom a PENDING request gives no access to the Patient.
+       */
+      readonly recipientIsAssignedOsm: boolean;
     };
 
-/** Card copy without the button URL, which the delivery resolves from `destination` (ADR-0033 D2). */
+/**
+ * Card copy without the button URL, which the delivery resolves from `destination` (ADR-0033 D2). A card
+ * without `destination` has no button: there is no page where the recipient can act on it.
+ */
 export type AppointmentLineNotificationCardCopy = {
   readonly tone: NotificationCardTone;
   readonly title: string;
   readonly fields: readonly NotificationCardField[];
   readonly note?: string;
-  readonly actionLabel: string;
-  readonly destination: LineWebNavigationIntent;
+  readonly actionLabel?: string;
+  readonly destination?: LineWebNavigationIntent;
   readonly altText: string;
 };
 
@@ -228,6 +236,9 @@ export function patientServiceRequestLineNotificationCopy(
   const preferred = content.preferredDate && content.preferredSlot
     ? { date: CALENDAR_DATE.format(content.preferredDate), slot: PATIENT_SERVICE_REQUEST_SLOT_LABELS[content.preferredSlot] }
     : null;
+  // A PENDING request has no appointment, and the request list is staff-only. Only the assigned อสม. has a
+  // page to act on: their assigned Patients. A preferred อสม. gets no button and never the Patient's name.
+  const patientDisplayName = content.recipientIsAssignedOsm ? content.patientDisplayName : null;
   return {
     text: patientServiceRequestLineNotificationText(content),
     card: {
@@ -238,11 +249,12 @@ export function patientServiceRequestLineNotificationCopy(
         ...(preferred ? [{ label: "วันที่สะดวก", value: `${preferred.date} (${preferred.slot})` }] : []),
         { label: "สถานที่", value: APPOINTMENT_LOCATION_LABELS.HOME_VISIT },
         { label: "หน่วยบริการ", value: boundedValue(content.hospitalName) },
-        ...(content.patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedValue(content.patientDisplayName) }] : []),
+        ...(patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedValue(patientDisplayName) }] : []),
       ],
       note: "โรงพยาบาลจะยืนยันวันเวลานัดอีกครั้ง",
-      destination: "OPEN_WORK_APPOINTMENTS",
-      actionLabel: "ดูนัดหมาย",
+      ...(content.recipientIsAssignedOsm
+        ? { destination: "OPEN_OSM_ASSIGNED_PATIENTS" as const, actionLabel: "ดูผู้ป่วยที่ดูแล" }
+        : {}),
       altText: preferred ? `${title}: ${service} ${preferred.date}` : `${title}: ${service}`,
     },
   };

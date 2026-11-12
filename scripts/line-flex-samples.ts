@@ -38,12 +38,24 @@ const APPOINTMENT_SAMPLES: readonly AppointmentLineNotificationContent[] = [
     preferredSlot: "MORNING",
     hospitalName: SAMPLE_FACTS.hospitalName,
     patientDisplayName: SAMPLE_FACTS.patientDisplayName,
+    recipientIsAssignedOsm: true,
+  },
+  {
+    eventKind: "OSM_SERVICE_REQUESTED",
+    serviceCode: "SCREENING",
+    preferredDate: new Date("2026-11-20T00:00:00.000Z"),
+    preferredSlot: "MORNING",
+    hospitalName: SAMPLE_FACTS.hospitalName,
+    patientDisplayName: null,
+    recipientIsAssignedOsm: false,
   },
 ];
 
 export const LINE_FLEX_SAMPLES: readonly LineFlexSample[] = [
   ...APPOINTMENT_SAMPLES.map((content): LineFlexSample => ({
-    name: `appointment:${content.eventKind}${"recipientKind" in content ? `:${content.recipientKind}` : ""}`,
+    name: `appointment:${content.eventKind}${"recipientKind" in content
+      ? `:${content.recipientKind}`
+      : content.eventKind === "OSM_SERVICE_REQUESTED" ? `:${content.recipientIsAssignedOsm ? "ASSIGNED_OSM" : "PREFERRED_OSM"}` : ""}`,
     build: () => buildLineNotificationCard(appointmentLineNotificationCopy(content).card),
   })),
   {

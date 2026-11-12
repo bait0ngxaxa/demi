@@ -38,11 +38,23 @@ const EVERY_CONTENT: readonly AppointmentLineNotificationContent[] = [
     preferredSlot: "MORNING",
     hospitalName: FACTS.hospitalName,
     patientDisplayName: PATIENT_NAME,
+    recipientIsAssignedOsm: true,
+  },
+  {
+    eventKind: "OSM_SERVICE_REQUESTED",
+    serviceCode: "SCREENING",
+    preferredDate: new Date("2026-11-20T00:00:00.000Z"),
+    preferredSlot: "MORNING",
+    hospitalName: FACTS.hospitalName,
+    patientDisplayName: PATIENT_NAME,
+    recipientIsAssignedOsm: false,
   },
 ];
 
 function label(content: AppointmentLineNotificationContent): string {
-  return "recipientKind" in content ? `${content.eventKind}/${content.recipientKind}` : content.eventKind;
+  if ("recipientKind" in content) return `${content.eventKind}/${content.recipientKind}`;
+  if (content.eventKind === "OSM_SERVICE_REQUESTED") return `${content.eventKind}/${content.recipientIsAssignedOsm ? "assigned" : "preferred"}`;
+  return content.eventKind;
 }
 
 describe("ADR-0033 appointment notification copy", () => {
@@ -54,7 +66,10 @@ describe("ADR-0033 appointment notification copy", () => {
     expect(card.altText).not.toContain(FACTS.hospitalName);
     expect(card.altText).not.toMatch(/\d{2}:\d{2}/u);
     // A valid card: the builder enforces every structural limit.
-    expect(() => notificationCard({ ...card, action: { label: card.actionLabel, uri: "https://liff.line.me/1-x/app" } })).not.toThrow();
+    expect(() => notificationCard({
+      ...card,
+      ...(card.actionLabel ? { action: { label: card.actionLabel, uri: "https://liff.line.me/1-x/app" } } : {}),
+    })).not.toThrow();
   });
 
   it("keeps today's text for every family byte for byte", () => {
@@ -69,8 +84,9 @@ describe("ADR-0033 appointment notification copy", () => {
     expect(texts.OSM_APPOINTMENT_ASSIGNED).toBe(OSM_APPOINTMENT_ASSIGNED_LINE_NOTIFICATION_TEXT);
     expect(texts.OSM_RESCHEDULE_REQUESTED).toBe("มีคำขอเลื่อนนัดรอทบทวน กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
     expect(texts.OSM_RESCHEDULE_REQUESTED).toBe(OSM_RESCHEDULE_REQUESTED_LINE_NOTIFICATION_TEXT);
-    expect(texts.OSM_SERVICE_REQUESTED).toBe("มีคำขอรับบริการคัดกรอง วันที่ 20 พฤศจิกายน 2569 เช้า กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
-    expect(texts.OSM_SERVICE_REQUESTED).toBe(patientServiceRequestLineNotificationText({
+    expect(texts["OSM_SERVICE_REQUESTED/preferred"]).toBe(texts["OSM_SERVICE_REQUESTED/assigned"]);
+    expect(texts["OSM_SERVICE_REQUESTED/assigned"]).toBe("มีคำขอรับบริการคัดกรอง วันที่ 20 พฤศจิกายน 2569 เช้า กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+    expect(texts["OSM_SERVICE_REQUESTED/assigned"]).toBe(patientServiceRequestLineNotificationText({
       serviceCode: "SCREENING",
       preferredDate: new Date("2026-11-20T00:00:00.000Z"),
       preferredSlot: "MORNING",
@@ -131,8 +147,9 @@ describe("ADR-0033 appointment notification copy", () => {
       preferredSlot: "AFTERNOON",
       hospitalName: FACTS.hospitalName,
       patientDisplayName: null,
+      recipientIsAssignedOsm: false,
     });
-    expect(card).toMatchObject({ title: "มีคำขอรับบริการ", tone: "warning", destination: "OPEN_WORK_APPOINTMENTS", altText: "มีคำขอรับบริการ: ติดตาม 20 พ.ย. 2569" });
+    expect(card).toMatchObject({ title: "มีคำขอรับบริการ", tone: "warning", altText: "มีคำขอรับบริการ: ติดตาม 20 พ.ย. 2569" });
     expect(card.fields).toEqual([
       { label: "บริการ", value: "ติดตาม" },
       { label: "วันที่สะดวก", value: "20 พ.ย. 2569 (บ่าย)" },
@@ -141,10 +158,27 @@ describe("ADR-0033 appointment notification copy", () => {
     ]);
   });
 
+  it("F2: gives the assigned อสม. a button to their assigned Patients, with the Patient's name", () => {
+    const content = EVERY_CONTENT.find((item) => label(item) === "OSM_SERVICE_REQUESTED/assigned") ?? EVERY_CONTENT[0];
+    const { card } = appointmentLineNotificationCopy(content);
+    expect(card).toMatchObject({ destination: "OPEN_OSM_ASSIGNED_PATIENTS", actionLabel: "ดูผู้ป่วยที่ดูแล", note: "โรงพยาบาลจะยืนยันวันเวลานัดอีกครั้ง" });
+    expect(card.fields.find(({ label: fieldLabel }) => fieldLabel === "ผู้ป่วย")?.value).toBe(PATIENT_NAME);
+  });
+
+  it("F2: gives a preferred อสม. no button and no Patient name, even if one is passed", () => {
+    const content = EVERY_CONTENT.find((item) => label(item) === "OSM_SERVICE_REQUESTED/preferred") ?? EVERY_CONTENT[0];
+    const { card, text } = appointmentLineNotificationCopy(content);
+    expect(card.destination).toBeUndefined();
+    expect(card.actionLabel).toBeUndefined();
+    expect(card.note).toBe("โรงพยาบาลจะยืนยันวันเวลานัดอีกครั้ง");
+    expect(JSON.stringify(card)).not.toContain(PATIENT_NAME);
+    expect(text).toBe(appointmentLineNotificationCopy({ ...content, recipientIsAssignedOsm: true } as AppointmentLineNotificationContent).text);
+  });
+
   it("omits a service request date that the Patient did not give", () => {
     const { card } = appointmentLineNotificationCopy({
       eventKind: "OSM_SERVICE_REQUESTED", serviceCode: "EMPOWERMENT", preferredDate: null, preferredSlot: null,
-      hospitalName: FACTS.hospitalName, patientDisplayName: null,
+      hospitalName: FACTS.hospitalName, patientDisplayName: null, recipientIsAssignedOsm: false,
     });
     expect(card.altText).toBe("มีคำขอรับบริการ: เสริมพลังใจ");
     expect(card.fields.map(({ label: fieldLabel }) => fieldLabel)).toEqual(["บริการ", "สถานที่", "หน่วยบริการ"]);
@@ -178,6 +212,16 @@ describe("ADR-0033 notification card destinations", () => {
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
     const message = buildLineNotificationCard(appointmentLineNotificationCopy({ eventKind: "CREATED", recipientKind, ...FACTS }).card);
     expect(message.contents.footer?.contents[0]).toMatchObject({ type: "button", action: { type: "uri", uri } });
+  });
+
+  it("F2: builds the preferred อสม.'s service request card without a footer", () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    const content = EVERY_CONTENT.find((item) => label(item) === "OSM_SERVICE_REQUESTED/preferred") ?? EVERY_CONTENT[0];
+    expect(buildLineNotificationCard(appointmentLineNotificationCopy(content).card).contents.footer).toBeUndefined();
+    const assigned = EVERY_CONTENT.find((item) => label(item) === "OSM_SERVICE_REQUESTED/assigned") ?? EVERY_CONTENT[0];
+    expect(buildLineNotificationCard(appointmentLineNotificationCopy(assigned).card).contents.footer?.contents[0]).toMatchObject({
+      action: { type: "uri", uri: "https://liff.line.me/1234567890-WorkSpace/app/patients/assigned" },
+    });
   });
 
   it("refuses to build a card without the Workspace LIFF instead of linking the ordinary web", () => {

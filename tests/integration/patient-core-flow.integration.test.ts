@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { LineFlexMessage } from "@/modules/line/adapters/line-messaging-client";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import {
@@ -1209,6 +1210,98 @@ describe("Service request appointments (ADR-0023, SR-B)", () => {
     expect(await prisma.patientServiceRequest.findUniqueOrThrow({ where: { id: request.requestId }, select: { status: true } }))
       .toEqual({ status: PatientServiceRequestStatus.STARTED });
     expect(await prisma.patientAppointment.count({ where: { id: appointmentId, sourceServiceRequestId: request.requestId } })).toBe(1);
+  });
+
+  async function withFlexLineEnvironment<T>(run: () => Promise<T>): Promise<T> {
+    const names = ["DEMI_LINE_LOGIN_CHANNEL_ID", "DEMI_LINE_PUBLIC_ORIGIN", "IDENTITY_HASH_SECRET", "NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID"] as const;
+    const previous = new Map(names.map((name) => [name, process.env[name]]));
+    process.env.DEMI_LINE_LOGIN_CHANNEL_ID = "1234567890";
+    process.env.DEMI_LINE_PUBLIC_ORIGIN = "https://demi.example.org";
+    process.env.IDENTITY_HASH_SECRET ??= "line-test-identity-hash-secret-at-least-32";
+    process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID = "1234567890-AbCdEfGh";
+    process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID = "1234567890-WorkSpace";
+    try {
+      return await run();
+    } finally {
+      for (const [name, value] of previous) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }
+
+  async function bindLineForNotifications(osm: { userId: string; actor: ActorContext }): Promise<string> {
+    const lineUserId = `U${randomUUID().replace(/-/gu, "")}`;
+    await prisma.lineAccountBinding.create({
+      data: {
+        userId: osm.userId,
+        lineUserId,
+        lineSubjectFingerprint: createHash("sha256").update(lineUserId).digest("hex"),
+        lineSubjectFingerprintKeyId: "srb-integration-v1",
+        reachability: LineReachability.FRIEND,
+        reachabilityObservedAt: new Date(),
+      },
+    });
+    await setOwnAppointmentLineNotificationPreference(osm.actor, true, { database: prisma });
+    return lineUserId;
+  }
+
+  async function drainFlex(): Promise<Array<{ lineUserId: string; message: LineFlexMessage }>> {
+    const sent: Array<{ lineUserId: string; message: LineFlexMessage }> = [];
+    await drainAppointmentLineNotificationOutbox({
+      database: prisma,
+      flexMessages: true,
+      push: async () => { throw new Error("text path must not be used while Flex is enabled"); },
+      pushFlex: async (lineUserId: string, message: LineFlexMessage) => {
+        sent.push({ lineUserId, message });
+        return { kind: "ACCEPTED" as const };
+      },
+      batchSize: 10,
+      logSummary: () => undefined,
+    });
+    return sent;
+  }
+
+  it("F2: with Flex on, the assigned อสม.'s service request card opens their assigned Patients", async () => {
+    await withFlexLineEnvironment(async () => {
+      const { assignedOsm, patient, patientActor, service } = await setupVisit("SRB-FLEX-A");
+      const lineUserId = await bindLineForNotifications(assignedOsm);
+      await createPatientServiceRequest(patientActor, requestInput({ relationshipId: patient.relationshipId, serviceCode: service }));
+      const person = await prisma.person.findUniqueOrThrow({ where: { id: patient.personId }, select: { givenName: true, familyName: true } });
+
+      const sent = await drainFlex();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.lineUserId).toBe(lineUserId);
+      expect(sent[0]?.message.contents.footer?.contents[0]).toMatchObject({
+        type: "button",
+        action: { type: "uri", label: "ดูผู้ป่วยที่ดูแล", uri: "https://liff.line.me/1234567890-WorkSpace/app/patients/assigned" },
+      });
+      expect(JSON.stringify(sent[0]?.message)).toContain([person.givenName, person.familyName].filter(Boolean).join(" "));
+      expect(sent[0]?.message.altText).not.toContain(person.givenName ?? "missing-name");
+    });
+  });
+
+  it("F2: with Flex on, a preferred อสม. who is not assigned gets a card with no button and no Patient name", async () => {
+    await withFlexLineEnvironment(async () => {
+      const { visitOsm, patient, patientActor, service } = await setupVisit("SRB-FLEX-P");
+      const lineUserId = await bindLineForNotifications(visitOsm);
+      await createPatientServiceRequest(patientActor, requestInput({
+        relationshipId: patient.relationshipId,
+        serviceCode: service,
+        preferredOsmRelationshipId: visitOsm.relationshipId,
+      }));
+      const person = await prisma.person.findUniqueOrThrow({ where: { id: patient.personId }, select: { givenName: true, familyName: true } });
+
+      const sent = await drainFlex();
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.lineUserId).toBe(lineUserId);
+      expect(sent[0]?.message.contents.footer).toBeUndefined();
+      const json = JSON.stringify(sent[0]?.message);
+      expect(json).toContain("โรงพยาบาลจะยืนยันวันเวลานัดอีกครั้ง");
+      expect(json).not.toContain("liff.line.me");
+      expect(json).not.toContain([person.givenName, person.familyName].filter(Boolean).join(" "));
+      if (person.givenName) expect(json).not.toContain(person.givenName);
+    });
   });
 
   it("sends the request and visit notifications to the visiting อสม. over LINE, and nothing for a closed request", async () => {
