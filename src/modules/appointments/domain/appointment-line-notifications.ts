@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   AppointmentLineNotificationEventKind,
-  AppointmentLineNotificationRecipientKind,
   LineReachability,
   type AppointmentLocationType,
   type PatientServiceCode,
@@ -62,7 +61,12 @@ export type AppointmentEventRecipientKind = "PATIENT" | "OSM" | "CAREGIVER";
 export type AppointmentLineNotificationContent =
   | ({
       readonly eventKind: "CREATED" | "RESCHEDULED" | "CANCELLED";
-      readonly recipientKind: AppointmentEventRecipientKind;
+      /**
+       * The authority that authorized this send, which picks the destination and the fields. Rows are
+       * deduplicated by User (E6), so it can differ from the row's recipientKind: a row recorded for an อสม.
+       * may pass only through a caregiver grant, and the reverse. Assigned อสม. wins when both pass.
+       */
+      readonly matchedRecipient: AppointmentEventRecipientKind;
     } & AppointmentCardFacts)
   | ({ readonly eventKind: "OSM_APPOINTMENT_ASSIGNED" } & AppointmentCardFacts)
   | ({ readonly eventKind: "OSM_RESCHEDULE_REQUESTED" } & AppointmentCardFacts)
@@ -159,7 +163,7 @@ export function appointmentEventLineNotificationCopy(
   const title = APPOINTMENT_EVENT_TITLES[content.eventKind];
   const facts: AppointmentCardFacts = {
     ...content,
-    patientDisplayName: content.recipientKind === "PATIENT" ? null : content.patientDisplayName,
+    patientDisplayName: content.matchedRecipient === "PATIENT" ? null : content.patientDisplayName,
   };
   return {
     text: appointmentLineNotificationText(content.appointmentType),
@@ -167,7 +171,7 @@ export function appointmentEventLineNotificationCopy(
       tone: content.eventKind === "CANCELLED" ? "danger" : content.eventKind === "RESCHEDULED" ? "warning" : "info",
       title,
       fields: appointmentFields(facts),
-      ...APPOINTMENT_EVENT_DESTINATIONS[content.recipientKind],
+      ...APPOINTMENT_EVENT_DESTINATIONS[content.matchedRecipient],
       altText: appointmentAltText(title, facts),
     },
   };
@@ -275,13 +279,6 @@ export function appointmentLineNotificationCopy(content: AppointmentLineNotifica
     case "OSM_SERVICE_REQUESTED":
       return patientServiceRequestLineNotificationCopy(content);
   }
-}
-
-/** The recipient kinds a CREATED/RESCHEDULED/CANCELLED row can carry. */
-export function isAppointmentEventRecipientKind(kind: AppointmentLineNotificationRecipientKind): kind is AppointmentEventRecipientKind {
-  return kind === AppointmentLineNotificationRecipientKind.PATIENT ||
-    kind === AppointmentLineNotificationRecipientKind.OSM ||
-    kind === AppointmentLineNotificationRecipientKind.CAREGIVER;
 }
 
 export const APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS = 3;

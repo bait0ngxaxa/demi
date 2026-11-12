@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { LineFlexMessage } from "@/modules/line/adapters/line-messaging-client";
 import { getAppointmentDetail } from "@/modules/appointments/services/appointment-query-service";
 import { createAppointment } from "@/modules/appointments/services/appointment-service";
 import { drainAppointmentLineNotificationOutbox } from "@/modules/appointments/services/appointment-line-notification-delivery-service";
@@ -481,6 +482,97 @@ describe("Phase E access decisions (PostgreSQL)", () => {
       where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
       select: { state: true, safeOutcome: true },
     })).toEqual({ state: "PROVIDER_ACCEPTED", safeOutcome: "ACCEPTED" });
+  });
+
+  async function withFlexLineEnvironment<T>(run: () => Promise<T>): Promise<T> {
+    const names = ["DEMI_LINE_LOGIN_CHANNEL_ID", "DEMI_LINE_PUBLIC_ORIGIN", "IDENTITY_HASH_SECRET", "NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID"] as const;
+    const previous = new Map(names.map((name) => [name, process.env[name]]));
+    process.env.DEMI_LINE_LOGIN_CHANNEL_ID = "1234567890";
+    process.env.DEMI_LINE_PUBLIC_ORIGIN = "https://demi.example.org";
+    process.env.IDENTITY_HASH_SECRET ??= "line-test-identity-hash-secret-at-least-32";
+    process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID = "1234567890-AbCdEfGh";
+    process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID = "1234567890-WorkSpace";
+    try {
+      return await run();
+    } finally {
+      for (const [name, value] of previous) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  }
+
+  async function drainFlexFor(lineUserId: string, appointmentId: string): Promise<LineFlexMessage[]> {
+    const sent: LineFlexMessage[] = [];
+    await drainAppointmentLineNotificationOutbox({
+      database: db,
+      now: () => now,
+      flexMessages: true,
+      logSummary: () => undefined,
+      push: async () => { throw new Error("text path must not be used while Flex is enabled"); },
+      pushFlex: async (to: string, message: LineFlexMessage) => {
+        if (to === lineUserId) sent.push(message);
+        return { kind: "ACCEPTED" as const };
+      },
+    });
+    expect(await db.appointmentLineNotification.count({ where: { appointmentId, state: "PROVIDER_ACCEPTED" } })).toBeGreaterThan(0);
+    return sent;
+  }
+
+  function buttonUri(message: LineFlexMessage | undefined): unknown {
+    const button = message?.contents.footer?.contents[0];
+    return button?.type === "button" ? button.action.uri : undefined;
+  }
+
+  it("F3: an OSM row that passes only through the same User's caregiver grant opens the family page", async () => {
+    await withFlexLineEnvironment(async () => {
+      const f = await fixture();
+      await caregiverWithGrant(f, f.osm);
+      const sharedLine = await bindLine(f.osm);
+      const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
+      expect(await db.appointmentLineNotification.findMany({
+        where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
+        select: { recipientKind: true },
+      })).toEqual([{ recipientKind: "OSM" }]);
+      await db.patientOsmAssignment.updateMany({
+        where: { patientHospitalRelationshipId: f.relationshipId, endedAt: null },
+        data: { endedAt: now, endedByUserId: f.owner.userId },
+      });
+
+      const sent = await drainFlexFor(sharedLine, appointment.appointmentId);
+      expect(sent).toHaveLength(1);
+      expect(buttonUri(sent[0])).toBe("https://liff.line.me/1234567890-WorkSpace/app/family");
+      expect(await db.appointmentLineNotification.findFirstOrThrow({
+        where: { appointmentId: appointment.appointmentId, recipientUserId: f.osm.userId },
+        select: { recipientKind: true, state: true },
+      })).toEqual({ recipientKind: "OSM", state: "PROVIDER_ACCEPTED" });
+    });
+  });
+
+  it("F3: a CAREGIVER row that passes only as the assigned อสม. opens the work appointment list", async () => {
+    await withFlexLineEnvironment(async () => {
+      const f = await fixture();
+      const caregiverOsm = await osm(f.hospitalId);
+      const { grantId } = await caregiverWithGrant(f, caregiverOsm);
+      const caregiverLine = await bindLine(caregiverOsm);
+      const appointment = await createAppointment(f.owner, appointmentInput(f.relationshipId), dependencies);
+      expect(await db.appointmentLineNotification.findMany({
+        where: { appointmentId: appointment.appointmentId, recipientUserId: caregiverOsm.userId },
+        select: { recipientKind: true },
+      })).toEqual([{ recipientKind: "CAREGIVER" }]);
+      // After the event: the caregiver becomes the Patient's assigned อสม. and the grant is revoked.
+      await assignOsmToPatient(f.owner, { patientHospitalRelationshipId: f.relationshipId, osmUserId: caregiverOsm.userId });
+      await revokeAppointmentGrant(f.patient, grantId, familyDeps);
+
+      const sent = (await drainFlexFor(caregiverLine, appointment.appointmentId))
+        .filter((message) => buttonUri(message) !== "https://liff.line.me/1234567890-WorkSpace/app/patients/assigned");
+      expect(sent).toHaveLength(1);
+      expect(buttonUri(sent[0])).toBe("https://liff.line.me/1234567890-WorkSpace/app/appointments");
+      expect(await db.appointmentLineNotification.findFirstOrThrow({
+        where: { appointmentId: appointment.appointmentId, recipientUserId: caregiverOsm.userId },
+        select: { recipientKind: true, state: true },
+      })).toEqual({ recipientKind: "CAREGIVER", state: "PROVIDER_ACCEPTED" });
+    });
   });
 
   it("E6: an unassigned OSM, a revoked grant and an opted-out user get nothing", async () => {

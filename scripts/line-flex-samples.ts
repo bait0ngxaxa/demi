@@ -27,7 +27,7 @@ const SAMPLE_FACTS = {
 
 const APPOINTMENT_SAMPLES: readonly AppointmentLineNotificationContent[] = [
   ...(["CREATED", "RESCHEDULED", "CANCELLED"] as const).flatMap((eventKind) =>
-    (["PATIENT", "OSM", "CAREGIVER"] as const).map((recipientKind) => ({ eventKind, recipientKind, ...SAMPLE_FACTS }))),
+    (["PATIENT", "OSM", "CAREGIVER"] as const).map((matchedRecipient) => ({ eventKind, matchedRecipient, ...SAMPLE_FACTS }))),
   { eventKind: "OSM_APPOINTMENT_ASSIGNED", ...SAMPLE_FACTS },
   { eventKind: "OSM_RESCHEDULE_REQUESTED", ...SAMPLE_FACTS },
   { eventKind: "OSM_PATIENT_ASSIGNED", hospitalName: SAMPLE_FACTS.hospitalName, patientDisplayName: SAMPLE_FACTS.patientDisplayName },
@@ -53,8 +53,8 @@ const APPOINTMENT_SAMPLES: readonly AppointmentLineNotificationContent[] = [
 
 export const LINE_FLEX_SAMPLES: readonly LineFlexSample[] = [
   ...APPOINTMENT_SAMPLES.map((content): LineFlexSample => ({
-    name: `appointment:${content.eventKind}${"recipientKind" in content
-      ? `:${content.recipientKind}`
+    name: `appointment:${content.eventKind}${"matchedRecipient" in content
+      ? `:${content.matchedRecipient}`
       : content.eventKind === "OSM_SERVICE_REQUESTED" ? `:${content.recipientIsAssignedOsm ? "ASSIGNED_OSM" : "PREFERRED_OSM"}` : ""}`,
     build: () => buildLineNotificationCard(appointmentLineNotificationCopy(content).card),
   })),

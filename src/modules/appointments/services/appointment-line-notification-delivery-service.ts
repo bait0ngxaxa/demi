@@ -32,7 +32,6 @@ import {
   appointmentLineNotificationRetryDelayMs,
   appointmentPatientDisplayName,
   expectedAppointmentStatusForNotification,
-  isAppointmentEventRecipientKind,
   type AppointmentLineNotificationContent,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
@@ -428,41 +427,45 @@ async function currentEligibility(
     }
 
     // E6: a row is deduplicated by User, so OSM and caregiver eligibility must be re-resolved with OR semantics.
-    let recipientStillAuthorized = false;
+    // F3: the check that passed (not the row's recipientKind) picks the card's destination and fields; the
+    // assigned อสม. check runs first, so it wins when both pass.
+    let matchedRecipient: "PATIENT" | "OSM" | "CAREGIVER" | null = null;
     if (notification.recipientKind === AppointmentLineNotificationRecipientKind.PATIENT) {
-      recipientStillAuthorized = Boolean(
+      if (
         patientUser && patientUser.id === recipientUserId &&
         patientUser.status === UserStatus.ACTIVE &&
-        patientUser.roles.some(({ role }) => role === Role.PATIENT),
-      );
+        patientUser.roles.some(({ role }) => role === Role.PATIENT)
+      ) {
+        matchedRecipient = "PATIENT";
+      }
     } else if (
       notification.recipientKind === AppointmentLineNotificationRecipientKind.OSM ||
       notification.recipientKind === AppointmentLineNotificationRecipientKind.CAREGIVER
     ) {
-      recipientStillAuthorized = await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId;
-      if (!recipientStillAuthorized) {
-        recipientStillAuthorized = await hasActiveCaregiverAppointmentGrant(transaction, {
-          caregiverUserId: recipientUserId,
-          patientHospitalRelationshipId: relationship.id,
-        });
+      if (await currentAssignedOsmRecipient(transaction, relationship.id) === recipientUserId) {
+        matchedRecipient = "OSM";
+      } else if (await hasActiveCaregiverAppointmentGrant(transaction, {
+        caregiverUserId: recipientUserId,
+        patientHospitalRelationshipId: relationship.id,
+      })) {
+        matchedRecipient = "CAREGIVER";
       }
     }
-    if (!recipientStillAuthorized) {
+    if (matchedRecipient === null) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
     const eventKind = notification.eventKind;
     if (
-      (eventKind !== AppointmentLineNotificationEventKind.CREATED &&
-        eventKind !== AppointmentLineNotificationEventKind.RESCHEDULED &&
-        eventKind !== AppointmentLineNotificationEventKind.CANCELLED) ||
-      !isAppointmentEventRecipientKind(notification.recipientKind)
+      eventKind !== AppointmentLineNotificationEventKind.CREATED &&
+      eventKind !== AppointmentLineNotificationEventKind.RESCHEDULED &&
+      eventKind !== AppointmentLineNotificationEventKind.CANCELLED
     ) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
     return resolveLineEligibility(transaction, notification, recipientUserId, now, {
       eventKind,
-      recipientKind: notification.recipientKind,
+      matchedRecipient,
       ...facts,
     });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
