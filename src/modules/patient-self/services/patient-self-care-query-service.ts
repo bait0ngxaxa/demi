@@ -85,6 +85,9 @@ export type PatientSelfHomeNextAppointmentDependencies = PatientSelfCareQueryDep
 export type PatientSelfNextAppointmentProjection = {
   scheduledAt: Date;
   hospitalName: string;
+  /** ADR-0033 D1: shown to the Patient on the LINE reply card; nothing else (no notes, no assignee). */
+  type: AppointmentType;
+  locationType: AppointmentLocationType | null;
 };
 
 export type PatientSelfHomeNextAppointment = {
@@ -1103,6 +1106,8 @@ export async function getOwnPatientFollowupDetail(
 
 const patientSelfNextAppointmentSelect = {
   scheduledAt: true,
+  type: true,
+  locationType: true,
   patientHospitalRelationship: {
     select: {
       hospital: {
@@ -1164,6 +1169,8 @@ export async function getOwnNextAppointment(
         ? {
             scheduledAt: appointment.scheduledAt,
             hospitalName: appointment.patientHospitalRelationship.hospital.name,
+            type: appointment.type,
+            locationType: appointment.locationType,
           }
         : null,
     };

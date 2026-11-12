@@ -4,6 +4,7 @@ import {
   type AppointmentLineNotificationContent,
 } from "@/modules/appointments/domain/appointment-line-notifications";
 import type { LineMessage } from "@/modules/line/adapters/line-messaging-client";
+import { formatLineAppointmentReply } from "@/modules/line/presentation/line-appointment-reply";
 import { linePasswordRecoveryCard } from "@/modules/line/presentation/line-password-recovery-message";
 import { buildAccountLiffUrl } from "@/modules/line/services/line-deep-link-builder";
 import { buildLineNotificationCard } from "@/modules/line/services/line-notification-card";
@@ -58,6 +59,19 @@ export const LINE_FLEX_SAMPLES: readonly LineFlexSample[] = [
       : content.eventKind === "OSM_SERVICE_REQUESTED" ? `:${content.recipientIsAssignedOsm ? "ASSIGNED_OSM" : "PREFERRED_OSM"}` : ""}`,
     build: () => buildLineNotificationCard(appointmentLineNotificationCopy(content).card),
   })),
+  {
+    name: "reply:next-appointment",
+    build: () => {
+      const reply = formatLineAppointmentReply({
+        scheduledAt: SAMPLE_FACTS.scheduledAt,
+        hospitalName: SAMPLE_FACTS.hospitalName,
+        type: SAMPLE_FACTS.appointmentType,
+        locationType: SAMPLE_FACTS.locationType,
+      });
+      if (reply.kind !== "APPOINTMENT") throw new Error("Sample reply is not an appointment");
+      return buildLineNotificationCard(reply.card);
+    },
+  },
   {
     name: "medication:reminder",
     build: () => buildLineNotificationCard(medicationLineReminderCopy({ localTime: "08:00", medicationName: "ยาตัวอย่าง 5 mg" }).card),
