@@ -1,5 +1,9 @@
 # Phase 17J.4A — Proactive Notification Decision Pack and Implementation Readiness
 
+## Current-status addendum — notification content superseded (2026-11-12)
+
+J4A-OD06 (one generic text, no appointment detail, no deep link) is superseded by [ADR-0033](../adr/0033-line-flex-notification-cards.md) (Product Owner, 2026-11-12): Flex cards may show the event kind, appointment type, date and time, location and, for recipients other than the Patient, the Patient's display name; `altText` stays lock-screen safe; buttons open fixed Workspace LIFF pages.
+
 ## Current-status addendum — owner decisions closed (2026-10-09)
 
 [Owner Decision Closeout](./PHASE_17J4A_OWNER_DECISION_CLOSEOUT.md) records J4A-OD01–OD10, Cutover Safety, and Honest Idempotency **APPROVED for isolated synthetic/demo implementation**. Its approved bounded scope supersedes the OPEN recommendation state below. This pack remains historical evidence of the pre-approval proposal and implementation-readiness review.

@@ -85,7 +85,7 @@ Local fences cannot protect new external permission from an accepted old request
 - Provider/channel provisioning and administrator ownership must be correct before production use; channel movement is unavailable later.
 - LINE event delivery/order and Push receipt are not exactly-once guarantees; future runtime needs durable deduplication and bounded retries.
 - Rich Menu state can become stale after an authorization change; every action must recheck server policy.
-- Sending detailed patient information in chat is intentionally constrained and requires explicit content/privacy approval.
+- Sending detailed patient information in chat is intentionally constrained and requires explicit content/privacy approval. That approval for proactive notification cards is [ADR-0033](./0033-line-flex-notification-cards.md) (Product Owner, 2026-11-12): appointment details in the Flex card body, a lock-screen-safe `altText`, and LIFF-only buttons.
 - At ADR acceptance, a single user-specific Rich Menu could represent only one effective menu at a time and multi-role presentation remained an owner decision; Phase 17J.0B later selected Option C, with current eligible-set projection defined by Phase 17J.1.
 
 ## Owner decision — LINE identity transfer after explicit Unlink (2026-10-19)
