@@ -1,9 +1,13 @@
+import { passwordChangeLineNotificationMessages } from "@/modules/account-security/services/password-change-notification";
 import {
   appointmentLineNotificationCopy,
   type AppointmentLineNotificationContent,
 } from "@/modules/appointments/domain/appointment-line-notifications";
 import type { LineMessage } from "@/modules/line/adapters/line-messaging-client";
+import { linePasswordRecoveryCard } from "@/modules/line/presentation/line-password-recovery-message";
+import { buildAccountLiffUrl } from "@/modules/line/services/line-deep-link-builder";
 import { buildLineNotificationCard } from "@/modules/line/services/line-notification-card";
+import { medicationLineReminderCopy } from "@/modules/medications/domain/medication-line-reminders";
 
 /**
  * ADR-0033: one synthetic sample of every Flex notification type, for
@@ -42,4 +46,14 @@ export const LINE_FLEX_SAMPLES: readonly LineFlexSample[] = [
     name: `appointment:${content.eventKind}${"recipientKind" in content ? `:${content.recipientKind}` : ""}`,
     build: () => buildLineNotificationCard(appointmentLineNotificationCopy(content).card),
   })),
+  {
+    name: "medication:reminder",
+    build: () => buildLineNotificationCard(medicationLineReminderCopy({ localTime: "08:00", medicationName: "ยาตัวอย่าง 5 mg" }).card),
+  },
+  { name: "password:changed", build: () => passwordChangeLineNotificationMessages(new Date("2026-11-12T02:30:00.000Z")).card },
+  {
+    name: "password:recovery",
+    // Synthetic capability: never issued, so the URL opens nothing.
+    build: () => linePasswordRecoveryCard(`${buildAccountLiffUrl()}/recover?capability=00000000-0000-4000-8000-000000000000`),
+  },
 ];

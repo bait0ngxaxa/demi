@@ -4,9 +4,11 @@ import { randomUUID } from "node:crypto";
 import { MedicationLineReminderOutcome, MedicationLineReminderState, PersonalMedicationStatus, Prisma, Role, UserStatus, type MedicationLineReminderNotification, type PrismaClient } from "@prisma/client";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { isLineFlexMessagesEnabled } from "@/lib/env/server";
+import { LineMessagingClient, type LineFlexMessage, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { buildLineNotificationCard } from "@/modules/line/services/line-notification-card";
 import { resolveEligibleLineRoles } from "@/modules/line/services/line-eligibility-service";
-import { isFreshMedicationReminderFriend, isMedicationLineReminderOccurrenceExpired, MEDICATION_LINE_REMINDER_BATCH_SIZE, MEDICATION_LINE_REMINDER_LEASE_MS, MEDICATION_LINE_REMINDER_MAX_ATTEMPTS, MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT, MEDICATION_LINE_REMINDER_MAX_LATENESS_MS, MEDICATION_LINE_REMINDER_RETRY_WINDOW_MS, MEDICATION_LINE_REMINDER_TERMINAL_RETENTION_MS, MEDICATION_LINE_REMINDER_TEXT, medicationLineReminderRetryDelayMs } from "../domain/medication-line-reminders";
+import { isFreshMedicationReminderFriend, isMedicationLineReminderOccurrenceExpired, MEDICATION_LINE_REMINDER_BATCH_SIZE, MEDICATION_LINE_REMINDER_LEASE_MS, MEDICATION_LINE_REMINDER_MAX_ATTEMPTS, MEDICATION_LINE_REMINDER_MATERIALIZE_LIMIT, MEDICATION_LINE_REMINDER_MAX_LATENESS_MS, MEDICATION_LINE_REMINDER_RETRY_WINDOW_MS, MEDICATION_LINE_REMINDER_TERMINAL_RETENTION_MS, medicationLineReminderCopy, medicationLineReminderRetryDelayMs } from "../domain/medication-line-reminders";
 import { fromMedicationTimeCarrier } from "../domain/medication-local-time";
 import { createReminderSourceKey, reminderBangkokToUtc } from "../domain/medication-reminder-occurrence";
 import { revalidateOwnPersonalMedicationReminderOccurrence } from "./medication-reminder-occurrence-query-service";
@@ -14,10 +16,10 @@ import { revalidateOwnPersonalMedicationReminderOccurrence } from "./medication-
 type Database = PrismaClient;
 type Claim = MedicationLineReminderNotification;
 type SafeSuppression = "STALE_SOURCE" | "AUTHORITY_CHANGED" | "OPT_IN_REVOKED" | "LINE_INELIGIBLE";
-type Eligibility = { eligible: true; lineUserId: string } | { eligible: false; outcome: SafeSuppression };
+type Eligibility = { eligible: true; lineUserId: string; localTime: string; medicationName: string } | { eligible: false; outcome: SafeSuppression };
 
 export type MedicationLineReminderDrainResult = { materialized: number; claimed: number; providerAccepted: number; retryScheduled: number; suppressed: number; permanentFailure: number; unknownOutcome: number; remainingDue: number; deliveryWindowExpired: number };
-export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; random?: () => number; batchSize?: number; prepare?: boolean; materialize?: boolean; shouldContinue?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
+export type MedicationLineReminderDependencies = { database?: Database; now?: () => Date; push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>; /** ADR-0033: Flex Push while Flex cards are enabled. */ pushFlex?: (lineUserId: string, message: LineFlexMessage, retryKey: string) => Promise<LinePushResult>; /** Overrides DEMI_LINE_FLEX_MESSAGES_ENABLED for one drain (tests). */ flexMessages?: boolean; random?: () => number; batchSize?: number; prepare?: boolean; materialize?: boolean; shouldContinue?: () => boolean; logSummary?: (result: MedicationLineReminderDrainResult) => void };
 
 function nowOf(input: MedicationLineReminderDependencies): Date {
   const now = new Date((input.now?.() ?? new Date()).getTime());
@@ -103,10 +105,10 @@ async function eligibility(database: Database, notification: Claim, now: Date): 
   const dueAt = occurrenceDueAt(notification);
   if (!dueAt) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
   type PreliminaryEligibility =
-    | { eligible: true; lineUserId: string; actor: ActorContext; localTime: string }
+    | { eligible: true; lineUserId: string; actor: ActorContext; localTime: string; medicationName: string }
     | { eligible: false; outcome: SafeSuppression };
   const preliminary = await database.$transaction(async (transaction): Promise<PreliminaryEligibility> => {
-    const schedule = await transaction.medicationSchedule.findUnique({ where: { id: notification.scheduleId }, select: { id: true, localTime: true, personalMedication: { select: { id: true, status: true, updatedAt: true, patientProfileId: true } } } });
+    const schedule = await transaction.medicationSchedule.findUnique({ where: { id: notification.scheduleId }, select: { id: true, localTime: true, personalMedication: { select: { id: true, status: true, updatedAt: true, patientProfileId: true, medicationName: true } } } });
     if (!schedule || schedule.personalMedication.id !== notification.personalMedicationId || schedule.personalMedication.status !== PersonalMedicationStatus.ACTIVE || schedule.personalMedication.updatedAt.getTime() !== notification.sourceUpdatedAt.getTime()) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
     let localTime: string;
     try { localTime = fromMedicationTimeCarrier(schedule.localTime); } catch { return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE }; }
@@ -136,7 +138,8 @@ async function eligibility(database: Database, notification: Claim, now: Date): 
     if (allBindings.length !== 1 || binding?.id !== notification.bindingId || binding.lifecycleVersion !== notification.bindingLifecycleVersion || !binding.lineUserId) return { eligible: false, outcome: MedicationLineReminderOutcome.LINE_INELIGIBLE };
     if (!preference?.enabled || preference.bindingId !== notification.bindingId || preference.bindingLifecycleVersion !== notification.bindingLifecycleVersion || preference.preferenceVersion !== notification.preferenceVersion) return { eligible: false, outcome: MedicationLineReminderOutcome.OPT_IN_REVOKED };
     if (!isFreshMedicationReminderFriend({ reachability: binding.reachability, observedAt: binding.reachabilityObservedAt, now })) return { eligible: false, outcome: MedicationLineReminderOutcome.LINE_INELIGIBLE };
-    return { eligible: true, lineUserId: binding.lineUserId, actor: patientActor, localTime };
+    // ADR-0033: the name is part of the medication's version (updatedAt), so a rename makes this row stale.
+    return { eligible: true, lineUserId: binding.lineUserId, actor: patientActor, localTime, medicationName: schedule.personalMedication.medicationName };
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   if (!preliminary.eligible) return preliminary;
 
@@ -152,7 +155,7 @@ async function eligibility(database: Database, notification: Claim, now: Date): 
     aggregateVersion: notification.sourceUpdatedAt.toISOString(),
   }, { database });
   if (source.status !== "CURRENT" || source.aggregateVersion !== notification.sourceUpdatedAt.toISOString()) return { eligible: false, outcome: MedicationLineReminderOutcome.STALE_SOURCE };
-  return { eligible: true, lineUserId: preliminary.lineUserId };
+  return { eligible: true, lineUserId: preliminary.lineUserId, localTime: preliminary.localTime, medicationName: preliminary.medicationName };
 }
 
 async function settle(database: Database, notification: Claim, input: { state: MedicationLineReminderState; outcome: MedicationLineReminderOutcome | null; now: Date; dueAt?: Date; terminal: boolean }): Promise<boolean> {
@@ -182,6 +185,22 @@ async function cancelReservedAttempt(database: Database, notification: Claim, ou
   return result.count === 1;
 }
 
+/**
+ * ADR-0033: renders the claimed occurrence at send time. Its time is the row's immutable key and a medication
+ * edit makes the row stale, so every attempt sends one payload with one retry key. A card that cannot be built
+ * (no Workspace LIFF) is a permanent failure without a provider call, never a degraded link.
+ */
+async function dispatchReminder(final: Extract<Eligibility, { eligible: true }>, retryKey: string, flexMessages: boolean, dependencies: MedicationLineReminderDependencies): Promise<LinePushResult> {
+  const copy = medicationLineReminderCopy({ localTime: final.localTime, medicationName: final.medicationName });
+  if (!flexMessages) return (dependencies.push ?? ((lineUserId, text, key) => new LineMessagingClient().pushText(lineUserId, text, key)))(final.lineUserId, copy.text, retryKey);
+  let message: LineFlexMessage;
+  try { message = buildLineNotificationCard(copy.card); }
+  catch (error: unknown) {
+    console.error("medication_line_reminder_card_unavailable", { cause: error instanceof Error ? error.name : "unknown" });
+    return { kind: "PERMANENT_FAILURE" };
+  }
+  return (dependencies.pushFlex ?? ((lineUserId, flex, key) => new LineMessagingClient().pushMessages(lineUserId, [flex], key)))(final.lineUserId, message, retryKey);
+}
 function countOutcome(result: MedicationLineReminderDrainResult, state: MedicationLineReminderState | null): void {
   if (state === MedicationLineReminderState.PROVIDER_ACCEPTED) result.providerAccepted += 1;
   else if (state === MedicationLineReminderState.RETRY_SCHEDULED) result.retryScheduled += 1;
@@ -233,6 +252,7 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
   const materialized = dependencies.materialize === false ? 0 : await materializeDueOccurrences(database, nowOf(dependencies));
   const expired = dependencies.prepare === false ? 0 : await expireLateFirstAttempts(database, nowOf(dependencies));
   const result: MedicationLineReminderDrainResult = { materialized, claimed: 0, providerAccepted: 0, retryScheduled: 0, suppressed: expired, deliveryWindowExpired: expired, remainingDue: 0, permanentFailure: 0, unknownOutcome: dependencies.prepare === false ? 0 : await closeExhausted(database, nowOf(dependencies)) };
+  const flexMessages = dependencies.flexMessages ?? isLineFlexMessagesEnabled();
   for (let index = 0; index < batchSize; index += 1) {
     if (dependencies.shouldContinue && !dependencies.shouldContinue()) break;
     const notification = await claim(database, nowOf(dependencies));
@@ -290,7 +310,7 @@ export async function drainMedicationLineReminderOutbox(dependencies: Medication
       break;
     }
     let provider: LinePushResult;
-    try { provider = await (dependencies.push ?? ((lineUserId, text, retryKey) => new LineMessagingClient().pushText(lineUserId, text, retryKey)))(final.lineUserId, MEDICATION_LINE_REMINDER_TEXT, notification.retryKey); }
+    try { provider = await dispatchReminder(final, notification.retryKey, flexMessages, dependencies); }
     catch { provider = { kind: "AMBIGUOUS_TRANSPORT_FAILURE" }; }
     countOutcome(result, await finish(database, notification, attempt, provider, dependencies));
   }

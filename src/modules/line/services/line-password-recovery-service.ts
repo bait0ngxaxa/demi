@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { getLineLiffId } from "@/lib/env/server";
+import { getLineLiffId, isLineFlexMessagesEnabled } from "@/lib/env/server";
 import { accountRecoveryTokenSchema, linePasswordRecoveryRequestSchema } from "@/modules/account-security/schemas/account-security-schemas";
 import {
   completeLinePasswordRecovery,
@@ -22,7 +22,7 @@ import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/a
 import { userOwnedPasswordSchema } from "@/modules/auth/schemas/password-schema";
 import { THAI_NATIONAL_IDENTITY_NAMESPACE } from "@/modules/identity/schemas/identity-schemas";
 import { hashIdentityReference } from "@/modules/identity/services/identity-service";
-import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { LineMessagingClient, type LineFlexMessage, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { verifyFreshLineIdToken, type VerifiedFreshLineIdentity } from "@/modules/line/adapters/line-login-client";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
 import {
@@ -39,6 +39,7 @@ import {
   type PasswordPolicyIssueCode,
 } from "@/modules/auth/domain/password-policy";
 import { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE } from "@/modules/line/domain/line-password-recovery-copy";
+import { linePasswordRecoveryCard, linePasswordRecoveryText } from "@/modules/line/presentation/line-password-recovery-message";
 
 export { LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE };
 
@@ -70,6 +71,10 @@ export type LinePasswordRecoveryDependencies = Pick<
   clientIpAddress?: string | null;
   verifyIdentity?: typeof verifyFreshLineIdToken;
   sendPush?: (lineUserId: string, message: string, retryKey: string) => Promise<LinePushResult>;
+  /** ADR-0033: Flex Push while Flex cards are enabled. */
+  sendFlexPush?: (lineUserId: string, message: LineFlexMessage, retryKey: string) => Promise<LinePushResult>;
+  /** Overrides DEMI_LINE_FLEX_MESSAGES_ENABLED (tests). */
+  flexMessages?: boolean;
 };
 
 function databaseOf(dependencies: LinePasswordRecoveryDependencies): PrismaClient {
@@ -145,11 +150,16 @@ export async function requestLinePasswordRecovery(
     resetId = issued.resetId;
 
     const recoveryUrl = `https://liff.line.me/${lineLiffId}/recover?capability=${encodeURIComponent(issued.resetId)}`;
-    const deliveryMessage = `ตั้งรหัสผ่าน DEMI ใหม่ได้จากลิงก์นี้ ลิงก์ใช้ได้ 15 นาทีและใช้ได้ครั้งเดียว\n${recoveryUrl}\nหากคุณไม่ได้ขอ กรุณาติดต่อโรงพยาบาล`;
+    const flexMessages = dependencies.flexMessages ?? isLineFlexMessagesEnabled();
     const sendPush: (lineUserId: string, message: string, retryKey: string) => Promise<{ kind: string }> =
       dependencies.sendPush ?? dependencies.sendLineMessage ??
       ((lineUserId: string, message: string, retryKey: string) => new LineMessagingClient().pushText(lineUserId, message, retryKey));
-    const pushResult = await sendPush(issued.lineUserId, deliveryMessage, issued.resetId).catch(() => ({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" as const }));
+    const sendFlexPush = dependencies.sendFlexPush ??
+      ((lineUserId: string, message: LineFlexMessage, retryKey: string) => new LineMessagingClient().pushMessages(lineUserId, [message], retryKey));
+    // The retry key stays the reset ID; the card is built once, before the Push.
+    const pushResult = await (flexMessages
+      ? sendFlexPush(issued.lineUserId, linePasswordRecoveryCard(recoveryUrl), issued.resetId)
+      : sendPush(issued.lineUserId, linePasswordRecoveryText(recoveryUrl), issued.resetId)).catch(() => ({ kind: "AMBIGUOUS_TRANSPORT_FAILURE" as const }));
     if (pushResult.kind !== "ACCEPTED" && pushResult.kind !== "DUPLICATE_ACCEPTED") {
       await revokeLinePasswordRecoveryCapability(issued.resetId, "PUSH_FAILED", dependencies).catch(() => undefined);
       await attemptThrottle.recordFailure(throttleInput).catch(() => undefined);
