@@ -1,8 +1,24 @@
 import "server-only";
 
+import type { AppointmentLocationType } from "@prisma/client";
+
+import {
+  appointmentCardAltText,
+  appointmentCardFields,
+} from "@/modules/appointments/domain/appointment-card-fields";
+import {
+  APPOINTMENT_LOCATION_VALUES,
+  APPOINTMENT_TYPE_VALUES,
+  type AppointmentTypeValue,
+} from "@/modules/appointments/domain/appointment-definitions";
+
+import type { LineNotificationCardCopy } from "../services/line-notification-card";
+
 export type LineAppointmentReplyData = {
   scheduledAt: Date;
   hospitalName: string;
+  type: AppointmentTypeValue;
+  locationType: AppointmentLocationType | null;
 };
 
 export type LineAppointmentReplyInput =
@@ -11,6 +27,15 @@ export type LineAppointmentReplyInput =
   | "INELIGIBLE"
   | "INFRASTRUCTURE_FAILURE";
 
+/**
+ * The reply and its explicit kind; callers classify on `kind`, never on text.
+ * A found appointment carries both today's text and the ADR-0033 card copy, so
+ * the caller can fall back to the text when the card cannot be built.
+ */
+export type LineAppointmentReply =
+  | { kind: "APPOINTMENT"; text: string; card: LineNotificationCardCopy }
+  | { kind: "EMPTY" | "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"; text: string };
+
 export const LINE_APPOINTMENT_REPLY_COPY = {
   EMPTY: "ไม่พบนัดหมายที่กำลังจะมาถึง",
   INELIGIBLE:
@@ -18,6 +43,8 @@ export const LINE_APPOINTMENT_REPLY_COPY = {
   INFRASTRUCTURE_FAILURE:
     "ขณะนี้ยังตรวจสอบนัดหมายไม่ได้ กรุณาลองใหม่ภายหลัง",
 } as const;
+
+const LINE_APPOINTMENT_REPLY_TITLE = "นัดหมายถัดไปของคุณ";
 
 const appointmentDateTimeFormatter = new Intl.DateTimeFormat(
   "th-TH-u-ca-buddhist-nu-latn",
@@ -40,14 +67,23 @@ function normalizeHospitalName(value: string): string | null {
   return normalized || null;
 }
 
-export function formatLineAppointmentReply(input: LineAppointmentReplyInput): string {
+function categoryReply(kind: "EMPTY" | "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"): LineAppointmentReply {
+  return { kind, text: LINE_APPOINTMENT_REPLY_COPY[kind] };
+}
+
+export function formatLineAppointmentReply(input: LineAppointmentReplyInput): LineAppointmentReply {
   if (typeof input === "string") {
-    return LINE_APPOINTMENT_REPLY_COPY[input];
+    return categoryReply(input);
   }
 
   const hospitalName = normalizeHospitalName(input.hospitalName);
-  if (!hospitalName || !(input.scheduledAt instanceof Date) || Number.isNaN(input.scheduledAt.getTime())) {
-    return LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE;
+  if (
+    !hospitalName ||
+    !(input.scheduledAt instanceof Date) || Number.isNaN(input.scheduledAt.getTime()) ||
+    !(APPOINTMENT_TYPE_VALUES as readonly string[]).includes(input.type) ||
+    (input.locationType !== null && !(APPOINTMENT_LOCATION_VALUES as readonly string[]).includes(input.locationType))
+  ) {
+    return categoryReply("INFRASTRUCTURE_FAILURE");
   }
 
   const parts = new Map(
@@ -62,12 +98,31 @@ export function formatLineAppointmentReply(input: LineAppointmentReplyInput): st
   const minute = parts.get("minute");
 
   if (!day || !month || !year || !hour || !minute) {
-    return LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE;
+    return categoryReply("INFRASTRUCTURE_FAILURE");
   }
 
-  return [
-    "นัดหมายถัดไปของคุณ",
-    `วันที่ ${day} ${month} ${year} เวลา ${hour}:${minute} น.`,
-    `โรงพยาบาล ${hospitalName}`,
-  ].join("\n");
+  const facts = {
+    appointmentType: input.type,
+    scheduledAt: input.scheduledAt,
+    locationType: input.locationType,
+    hospitalName,
+    // The Patient's own reply: never their name, notes or the assignee.
+    patientDisplayName: null,
+  };
+  return {
+    kind: "APPOINTMENT",
+    text: [
+      LINE_APPOINTMENT_REPLY_TITLE,
+      `วันที่ ${day} ${month} ${year} เวลา ${hour}:${minute} น.`,
+      `โรงพยาบาล ${hospitalName}`,
+    ].join("\n"),
+    card: {
+      tone: "info",
+      title: LINE_APPOINTMENT_REPLY_TITLE,
+      fields: appointmentCardFields(facts),
+      destination: "OPEN_PATIENT_APPOINTMENTS",
+      actionLabel: "ดูนัดหมายทั้งหมด",
+      altText: appointmentCardAltText(LINE_APPOINTMENT_REPLY_TITLE, facts),
+    },
+  };
 }

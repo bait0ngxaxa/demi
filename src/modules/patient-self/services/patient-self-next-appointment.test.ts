@@ -23,6 +23,8 @@ const relationshipId = "44444444-4444-4444-8444-444444444444";
 const appointmentId = "55555555-5555-4555-8555-555555555555";
 const appointment = {
   scheduledAt: asOf,
+  type: "FOLLOW_UP",
+  locationType: "HOME_VISIT",
   patientHospitalRelationship: { hospital: { name: "โรงพยาบาลตัวอย่าง" } },
 };
 
@@ -70,7 +72,7 @@ describe("Patient SELF next appointment query", () => {
 
     expect(result).toEqual({
       status: "AUTHORIZED",
-      appointment: { scheduledAt: asOf, hospitalName: "โรงพยาบาลตัวอย่าง" },
+      appointment: { scheduledAt: asOf, hospitalName: "โรงพยาบาลตัวอย่าง", type: "FOLLOW_UP", locationType: "HOME_VISIT" },
     });
     expect(personFindFirst).toHaveBeenCalledWith({
       where: {
@@ -101,13 +103,17 @@ describe("Patient SELF next appointment query", () => {
       take: 1,
       select: {
         scheduledAt: true,
+        type: true,
+        locationType: true,
         patientHospitalRelationship: {
           select: { hospital: { select: { name: true } } },
         },
       },
     });
     const projection = JSON.stringify(result);
-    expect(projection).not.toMatch(/appointmentId|relationshipId|patientId|duration|location|staff|osm|acknowledgement|cancellation/i);
+    // ADR-0033 D1: type and location type only; never notes, location detail or any person on the appointment.
+    expect(Object.keys((result as { appointment: object }).appointment).sort()).toEqual(["hospitalName", "locationType", "scheduledAt", "type"]);
+    expect(projection).not.toMatch(/appointmentId|relationshipId|patientId|duration|locationDetail|note|staff|osm|responsible|assigned|acknowledgement|cancellation/i);
   });
 
   it.each([

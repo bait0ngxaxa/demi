@@ -2,9 +2,7 @@ import "server-only";
 
 import {
   AppointmentLineNotificationEventKind,
-  AppointmentLineNotificationRecipientKind,
   LineReachability,
-  type AppointmentLocationType,
   type PatientServiceCode,
   type PatientServiceRequestSlot,
 } from "@prisma/client";
@@ -16,6 +14,12 @@ import {
   PATIENT_SERVICE_REQUEST_SLOT_LABELS,
 } from "@/modules/patient-service-requests/domain/patient-service-definitions";
 
+import {
+  appointmentCardAltText,
+  appointmentCardFields,
+  boundedCardValue,
+  type AppointmentCardFacts,
+} from "./appointment-card-fields";
 import {
   APPOINTMENT_LOCATION_LABELS,
   APPOINTMENT_TYPE_LABELS,
@@ -42,27 +46,23 @@ export const OSM_PATIENT_ASSIGNED_LINE_NOTIFICATION_TEXT = "มีผู้ป�
 export const OSM_APPOINTMENT_ASSIGNED_LINE_NOTIFICATION_TEXT = "มีนัดเยี่ยมบ้านที่ได้รับมอบหมายให้คุณ กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ";
 export const OSM_RESCHEDULE_REQUESTED_LINE_NOTIFICATION_TEXT = "มีคำขอเลื่อนนัดรอทบทวน กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ";
 
-/**
- * ADR-0033: what a notification card may show, loaded from the current source
- * inside the eligibility transaction. Only data the recipient's DEMI access
- * already shows them; never a national ID, phone, note, location detail or
- * free-text reason. `patientDisplayName` is null whenever the recipient has no
- * access to the Patient; the copy drops it for the Patient recipient.
+/*
+ * ADR-0033: a card shows only what the recipient's DEMI access already shows them, loaded from the current
+ * source inside the eligibility transaction (AppointmentCardFacts); never a national ID, phone, note, location
+ * detail or free-text reason. The copy drops the Patient's name for the Patient recipient.
  */
-type AppointmentCardFacts = {
-  readonly appointmentType: AppointmentTypeValue;
-  readonly scheduledAt: Date;
-  readonly locationType: AppointmentLocationType | null;
-  readonly hospitalName: string;
-  readonly patientDisplayName: string | null;
-};
 
 export type AppointmentEventRecipientKind = "PATIENT" | "OSM" | "CAREGIVER";
 
 export type AppointmentLineNotificationContent =
   | ({
       readonly eventKind: "CREATED" | "RESCHEDULED" | "CANCELLED";
-      readonly recipientKind: AppointmentEventRecipientKind;
+      /**
+       * The authority that authorized this send, which picks the destination and the fields. Rows are
+       * deduplicated by User (E6), so it can differ from the row's recipientKind: a row recorded for an อสม.
+       * may pass only through a caregiver grant, and the reverse. Assigned อสม. wins when both pass.
+       */
+      readonly matchedRecipient: AppointmentEventRecipientKind;
     } & AppointmentCardFacts)
   | ({ readonly eventKind: "OSM_APPOINTMENT_ASSIGNED" } & AppointmentCardFacts)
   | ({ readonly eventKind: "OSM_RESCHEDULE_REQUESTED" } & AppointmentCardFacts)
@@ -78,16 +78,24 @@ export type AppointmentLineNotificationContent =
       readonly preferredSlot: PatientServiceRequestSlot | null;
       readonly hospitalName: string;
       readonly patientDisplayName: string | null;
+      /**
+       * The recipient is the Patient's current assigned อสม. (they read the Patient and have them in their
+       * list); otherwise they are a preferred อสม., whom a PENDING request gives no access to the Patient.
+       */
+      readonly recipientIsAssignedOsm: boolean;
     };
 
-/** Card copy without the button URL, which the delivery resolves from `destination` (ADR-0033 D2). */
+/**
+ * Card copy without the button URL, which the delivery resolves from `destination` (ADR-0033 D2). A card
+ * without `destination` has no button: there is no page where the recipient can act on it.
+ */
 export type AppointmentLineNotificationCardCopy = {
   readonly tone: NotificationCardTone;
   readonly title: string;
   readonly fields: readonly NotificationCardField[];
   readonly note?: string;
-  readonly actionLabel: string;
-  readonly destination: LineWebNavigationIntent;
+  readonly actionLabel?: string;
+  readonly destination?: LineWebNavigationIntent;
   readonly altText: string;
 };
 
@@ -97,39 +105,12 @@ export type AppointmentLineNotificationCopy = {
   readonly card: AppointmentLineNotificationCardCopy;
 };
 
-const BANGKOK_DATE = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Bangkok" });
-const BANGKOK_TIME = new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Bangkok" });
 /** A service request's preferred date is a calendar date: formatted in UTC, never shifted to another day. */
 const CALENDAR_DATE = new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-
-function bangkokDateTime(instant: Date): string {
-  return `${BANGKOK_DATE.format(instant)} เวลา ${BANGKOK_TIME.format(instant)} น.`;
-}
-
-/** Bounded to the card's field limit; cut at a code point, never inside a character. */
-function boundedValue(value: string, max = 120): string {
-  const characters = [...value.trim()];
-  return characters.length <= max ? characters.join("") : `${characters.slice(0, max - 1).join("")}…`;
-}
 
 export function appointmentPatientDisplayName(person: { givenName: string | null; familyName: string | null }): string | null {
   const name = [person.givenName, person.familyName].map((part) => part?.trim()).filter(Boolean).join(" ");
   return name === "" ? null : name;
-}
-
-function appointmentFields(facts: AppointmentCardFacts): NotificationCardField[] {
-  return [
-    { label: "ประเภท", value: APPOINTMENT_TYPE_LABELS[facts.appointmentType] },
-    { label: "วันเวลา", value: bangkokDateTime(facts.scheduledAt) },
-    ...(facts.locationType ? [{ label: "สถานที่", value: APPOINTMENT_LOCATION_LABELS[facts.locationType] }] : []),
-    { label: "หน่วยบริการ", value: boundedValue(facts.hospitalName) },
-    ...(facts.patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedValue(facts.patientDisplayName) }] : []),
-  ];
-}
-
-/** Lock-screen rule (ADR-0033): event kind, appointment type and date only. */
-function appointmentAltText(title: string, facts: AppointmentCardFacts): string {
-  return `${title}: ${APPOINTMENT_TYPE_LABELS[facts.appointmentType]} ${BANGKOK_DATE.format(facts.scheduledAt)}`;
 }
 
 const APPOINTMENT_EVENT_TITLES = {
@@ -151,16 +132,16 @@ export function appointmentEventLineNotificationCopy(
   const title = APPOINTMENT_EVENT_TITLES[content.eventKind];
   const facts: AppointmentCardFacts = {
     ...content,
-    patientDisplayName: content.recipientKind === "PATIENT" ? null : content.patientDisplayName,
+    patientDisplayName: content.matchedRecipient === "PATIENT" ? null : content.patientDisplayName,
   };
   return {
     text: appointmentLineNotificationText(content.appointmentType),
     card: {
       tone: content.eventKind === "CANCELLED" ? "danger" : content.eventKind === "RESCHEDULED" ? "warning" : "info",
       title,
-      fields: appointmentFields(facts),
-      ...APPOINTMENT_EVENT_DESTINATIONS[content.recipientKind],
-      altText: appointmentAltText(title, facts),
+      fields: appointmentCardFields(facts),
+      ...APPOINTMENT_EVENT_DESTINATIONS[content.matchedRecipient],
+      altText: appointmentCardAltText(title, facts),
     },
   };
 }
@@ -174,10 +155,10 @@ export function osmAppointmentAssignedLineNotificationCopy(
     card: {
       tone: "info",
       title,
-      fields: appointmentFields(content),
+      fields: appointmentCardFields(content),
       destination: "OPEN_WORK_APPOINTMENTS",
       actionLabel: "ดูนัดหมาย",
-      altText: appointmentAltText(title, content),
+      altText: appointmentCardAltText(title, content),
     },
   };
 }
@@ -191,11 +172,11 @@ export function osmRescheduleRequestedLineNotificationCopy(
     card: {
       tone: "warning",
       title,
-      fields: appointmentFields(content),
+      fields: appointmentCardFields(content),
       note: "อสม. ขอเลื่อนนัดนี้ กรุณาทบทวนคำขอใน DEMI",
       destination: "OPEN_WORK_APPOINTMENTS",
       actionLabel: "ทบทวนคำขอ",
-      altText: appointmentAltText(title, content),
+      altText: appointmentCardAltText(title, content),
     },
   };
 }
@@ -210,8 +191,8 @@ export function osmPatientAssignedLineNotificationCopy(
       tone: "info",
       title,
       fields: [
-        ...(content.patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedValue(content.patientDisplayName) }] : []),
-        { label: "หน่วยบริการ", value: boundedValue(content.hospitalName) },
+        ...(content.patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedCardValue(content.patientDisplayName) }] : []),
+        { label: "หน่วยบริการ", value: boundedCardValue(content.hospitalName) },
       ],
       destination: "OPEN_OSM_ASSIGNED_PATIENTS",
       actionLabel: "ดูผู้ป่วยที่ดูแล",
@@ -228,6 +209,9 @@ export function patientServiceRequestLineNotificationCopy(
   const preferred = content.preferredDate && content.preferredSlot
     ? { date: CALENDAR_DATE.format(content.preferredDate), slot: PATIENT_SERVICE_REQUEST_SLOT_LABELS[content.preferredSlot] }
     : null;
+  // A PENDING request has no appointment, and the request list is staff-only. Only the assigned อสม. has a
+  // page to act on: their assigned Patients. A preferred อสม. gets no button and never the Patient's name.
+  const patientDisplayName = content.recipientIsAssignedOsm ? content.patientDisplayName : null;
   return {
     text: patientServiceRequestLineNotificationText(content),
     card: {
@@ -237,12 +221,13 @@ export function patientServiceRequestLineNotificationCopy(
         { label: "บริการ", value: service },
         ...(preferred ? [{ label: "วันที่สะดวก", value: `${preferred.date} (${preferred.slot})` }] : []),
         { label: "สถานที่", value: APPOINTMENT_LOCATION_LABELS.HOME_VISIT },
-        { label: "หน่วยบริการ", value: boundedValue(content.hospitalName) },
-        ...(content.patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedValue(content.patientDisplayName) }] : []),
+        { label: "หน่วยบริการ", value: boundedCardValue(content.hospitalName) },
+        ...(patientDisplayName ? [{ label: "ผู้ป่วย", value: boundedCardValue(patientDisplayName) }] : []),
       ],
       note: "โรงพยาบาลจะยืนยันวันเวลานัดอีกครั้ง",
-      destination: "OPEN_WORK_APPOINTMENTS",
-      actionLabel: "ดูนัดหมาย",
+      ...(content.recipientIsAssignedOsm
+        ? { destination: "OPEN_OSM_ASSIGNED_PATIENTS" as const, actionLabel: "ดูผู้ป่วยที่ดูแล" }
+        : {}),
       altText: preferred ? `${title}: ${service} ${preferred.date}` : `${title}: ${service}`,
     },
   };
@@ -263,13 +248,6 @@ export function appointmentLineNotificationCopy(content: AppointmentLineNotifica
     case "OSM_SERVICE_REQUESTED":
       return patientServiceRequestLineNotificationCopy(content);
   }
-}
-
-/** The recipient kinds a CREATED/RESCHEDULED/CANCELLED row can carry. */
-export function isAppointmentEventRecipientKind(kind: AppointmentLineNotificationRecipientKind): kind is AppointmentEventRecipientKind {
-  return kind === AppointmentLineNotificationRecipientKind.PATIENT ||
-    kind === AppointmentLineNotificationRecipientKind.OSM ||
-    kind === AppointmentLineNotificationRecipientKind.CAREGIVER;
 }
 
 export const APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS = 3;

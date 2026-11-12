@@ -495,7 +495,11 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
         database: prisma,
         monotonicNow: () => 1_000,
         captureAsOf,
-        replyText: async (_replyToken, text) => { reply = text; },
+        flexMessages: false,
+        replyMessages: async (_replyToken, messages) => {
+          expect(messages).toHaveLength(1);
+          reply = messages[0]?.type === "text" ? messages[0].text : "";
+        },
       });
 
       expect(outcome).toBe("COMPLETED_WITH_APPOINTMENT");
@@ -505,6 +509,48 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       expect(reply).not.toContain("ผู้ป่วยทดสอบ");
       expect(reply).not.toContain(hospitalNumber);
       expect(reply).not.toContain(created.appointmentId);
+
+      // ADR-0033: with Flex on, the same read answers with one card from the extended projection.
+      const previousEnvironment = new Map(["DEMI_LINE_LOGIN_CHANNEL_ID", "DEMI_LINE_PUBLIC_ORIGIN", "IDENTITY_HASH_SECRET", "NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID"]
+        .map((name) => [name, process.env[name]] as const));
+      process.env.DEMI_LINE_LOGIN_CHANNEL_ID = "1234567890";
+      process.env.DEMI_LINE_PUBLIC_ORIGIN = "https://demi.example.org";
+      process.env.IDENTITY_HASH_SECRET ??= "line-test-identity-hash-secret-at-least-32";
+      process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID = "1234567890-AbCdEfGh";
+      process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID = "1234567890-WorkSpace";
+      try {
+        let card = "";
+        const flexOutcome = await executeLineReactiveAppointment({
+          intent: "PATIENT_NEXT_APPOINTMENT",
+          webhookEventId: "01ARZ3NDEKTSV4RRFFQ69G5FAW",
+          eventOccurredAt: new Date("2000-01-01T00:00:00.000Z"),
+          localExecutionDeadline: 45_000,
+          lineUserId,
+          replyToken: "integration-only-reply-token-flex",
+          isRedelivery: false,
+        }, {
+          database: prisma,
+          monotonicNow: () => 1_000,
+          captureAsOf,
+          flexMessages: true,
+          replyMessages: async (_replyToken, messages) => {
+            expect(messages).toHaveLength(1);
+            expect(messages[0]?.type).toBe("flex");
+            card = JSON.stringify(messages[0]);
+          },
+        });
+        expect(flexOutcome).toBe("COMPLETED_WITH_APPOINTMENT");
+        expect(card).toContain(currentHospitalName);
+        expect(card).toContain("https://liff.line.me/1234567890-WorkSpace/app/personal/appointments");
+        for (const forbidden of ["ผู้ป่วยทดสอบ", hospitalNumber, created.appointmentId, "demi.example.org"]) {
+          expect(card).not.toContain(forbidden);
+        }
+      } finally {
+        for (const [name, value] of previousEnvironment) {
+          if (value === undefined) delete process.env[name];
+          else process.env[name] = value;
+        }
+      }
     } finally {
       await prisma.lineAccountBinding.deleteMany({ where: { id: binding.id } });
     }
@@ -1957,7 +2003,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     }, {
       database: prisma,
       monotonicNow: () => 0,
-      replyText: async (_replyToken, text) => { reactiveReplies.push(text); },
+      replyMessages: async (_replyToken, messages) => {
+        for (const message of messages) reactiveReplies.push(message.type === "text" ? message.text : JSON.stringify(message));
+      },
     });
 
     let providerCalls = 0;

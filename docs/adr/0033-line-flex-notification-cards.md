@@ -4,7 +4,7 @@
 - Date: 2026-11-12
 - Supersedes: the generic-copy rule J4A-OD06 of the [17J.4A proactive notification decision pack](../phases/PHASE_17J4A_PROACTIVE_NOTIFICATION_DECISION_PACK.md) and the "no patient detail" sentence of [ADR-0023](./0023-service-request-appointments.md) "Notifications (SR-B)" for the card body only.
 - Provides: the explicit content/privacy approval that [ADR-0009](./0009-demi-line-oa-liff-identity-and-messaging.md) "Trade-offs / Risks" requires before detailed patient information is sent in chat.
-- Does not change: who is notified, when, eligibility and staleness checks, opt-in, retry/idempotency semantics, the outbox schema, reactive replies, the Rich Menu, DEMI authentication or authorization.
+- Does not change: who is notified, when, eligibility and staleness checks, opt-in, retry/idempotency semantics, the outbox schema, the Rich Menu, DEMI authentication or authorization. Reactive replies are unchanged except the next-appointment reply (amendment below).
 
 ## Context
 
@@ -49,6 +49,12 @@ The builder enforces: non-empty `altText` of at most 400 characters (LINE allows
 `DEMI_LINE_FLEX_MESSAGES_ENABLED` (server-only, default off; only exact `true` enables) selects Flex cards over the existing text, which stays byte-for-byte unchanged. It is read in one place (`isLineFlexMessagesEnabled`). With it on, `npm run env:check` fails unless a valid `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` is configured.
 
 This is a narrow, Product-Owner-directed provider-format switch for rollback while the cards are checked on real LINE clients. It changes only the shape of the message sent to LINE: the same people are notified about the same events with the same access. It is not a rollout framework and does not grant or remove business authority, so it is consistent with the production-code-first rule of AGENTS.md and ADR-0010. Remove it once the cards are accepted on real devices.
+
+## Amendment — follow-ups (2026-11-12)
+
+- **Service request button.** A PENDING request has no appointment and its list is staff-only, so only the Patient's assigned อสม. gets a button ("ดูผู้ป่วยที่ดูแล" → `/app/patients/assigned`). A preferred อสม. who is not assigned gets the card without a button and without the Patient's name.
+- **Destination follows the matched authority.** Appointment event rows re-resolve อสม. and caregiver recipients with OR semantics (E6), so the card's destination and fields come from the check that passed at send time (assigned อสม. first, then an active caregiver appointment grant), not from the row's `recipientKind`.
+- **Next-appointment reply.** With the flag on, the Patient's "ตรวจสอบนัดหมาย" reply for a found appointment is one card (type, date and time, location, Hospital; button "ดูนัดหมายทั้งหมด" → `/app/personal/appointments`; `altText` title, type and date only). EMPTY, INELIGIBLE and INFRASTRUCTURE_FAILURE stay text. Unlike Push, a Reply token is single-use and short-lived and the user asked for the answer, so a card that cannot be built falls back to the text reply; this is the only text fallback. The field formatting is shared through the leaf `appointments/domain/appointment-card-fields.ts`.
 
 ## Consequences
 

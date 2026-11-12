@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createActorContextStore: vi.fn(),
@@ -18,15 +18,13 @@ vi.mock("@/modules/patient-self/services/patient-self-care-query-service", () =>
 vi.mock("./line-eligibility-service", () => ({
   resolveEligibleLineRoles: mocks.resolveEligibleLineRoles,
 }));
-vi.mock("./line-deep-link-builder", () => ({
-  buildLineIntentUrl: (intent: string) => `https://liff.line.me/2000000000-test?intent=${intent}`,
-}));
 
+import type { LineMessage } from "../adapters/line-messaging-client";
 import { LineFailure } from "../domain/line-errors";
 import type { LineReactiveWorkItem } from "../domain/line-reactive-types";
-import { LINE_APPOINTMENT_REPLY_COPY } from "../presentation/line-appointment-reply";
+import { formatLineAppointmentReply, LINE_APPOINTMENT_REPLY_COPY } from "../presentation/line-appointment-reply";
 import { LINE_HELP_REPLY_COPY } from "../presentation/line-help-reply";
-import { executeLineReactiveAppointment } from "./line-reactive-appointment-service";
+import { executeLineReactiveAppointment, outcomeForAppointmentReply } from "./line-reactive-appointment-service";
 
 const actor = {
   userId: "demi-user-id",
@@ -35,6 +33,8 @@ const actor = {
   hospitalMemberships: [],
   osmHospitalRelationships: [],
 };
+
+const APPOINTMENT_TEXT = "นัดหมายถัดไปของคุณ\nวันที่ 15 ตุลาคม 2569 เวลา 09:00 น.\nโรงพยาบาล โรงพยาบาลตัวอย่าง";
 
 function workItem(localExecutionDeadline = 45_000): LineReactiveWorkItem {
   return {
@@ -68,6 +68,26 @@ function createHarness(bindingRows: readonly { userId: string }[] = [{ userId: "
   return { database, transaction, isTransactionActive: () => transactionActive };
 }
 
+function replySpy() {
+  return vi.fn<(replyToken: string, messages: readonly LineMessage[]) => Promise<void>>(async () => undefined);
+}
+
+function onlyMessage(reply: ReturnType<typeof replySpy>): LineMessage | undefined {
+  expect(reply).toHaveBeenCalledOnce();
+  const [token, messages] = reply.mock.calls[0] ?? [];
+  expect(token).toBe("transient-reply-token");
+  expect(messages).toHaveLength(1);
+  return messages?.[0];
+}
+
+function stubWorkspaceLiff(): void {
+  vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+  vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
+  vi.stubEnv("IDENTITY_HASH_SECRET", "line-test-identity-hash-secret-at-least-32");
+  vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+  vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+}
+
 describe("LINE reactive Patient appointment execution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,13 +98,16 @@ describe("LINE reactive Patient appointment execution", () => {
       appointment: {
         scheduledAt: new Date("2026-10-15T02:00:00.000Z"),
         hospitalName: "โรงพยาบาลตัวอย่าง",
+        type: "FOLLOW_UP",
+        locationType: "CLINIC",
       },
     });
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("uses one RepeatableRead transaction and replies only after it closes", async () => {
     const harness = createHarness();
-    const replyText = vi.fn(async () => {
+    const replyMessages = vi.fn<(replyToken: string, messages: readonly LineMessage[]) => Promise<void>>(async () => {
       expect(harness.isTransactionActive()).toBe(false);
     });
 
@@ -92,7 +115,8 @@ describe("LINE reactive Patient appointment execution", () => {
       database: harness.database,
       monotonicNow: () => 1_000,
       captureAsOf: () => new Date("2026-10-15T02:00:00.000Z"),
-      replyText,
+      flexMessages: false,
+      replyMessages,
     });
 
     expect(result).toBe("COMPLETED_WITH_APPOINTMENT");
@@ -122,28 +146,119 @@ describe("LINE reactive Patient appointment execution", () => {
       expect.any(Function),
       { database: harness.transaction },
     );
-    expect(replyText).toHaveBeenCalledOnce();
-    expect(replyText).toHaveBeenCalledWith(
-      "transient-reply-token",
-      "นัดหมายถัดไปของคุณ\nวันที่ 15 ตุลาคม 2569 เวลา 09:00 น.\nโรงพยาบาล โรงพยาบาลตัวอย่าง",
-    );
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: APPOINTMENT_TEXT });
   });
 
-  it("refuses when there is no unique current ACTIVE binding", async () => {
-    const harness = createHarness([]);
-    const replyText = vi.fn().mockResolvedValue(undefined);
+  it("ADR-0033: replies with one card opening all appointments while Flex is enabled", async () => {
+    stubWorkspaceLiff();
+    const harness = createHarness();
+    const replyMessages = replySpy();
 
     await expect(executeLineReactiveAppointment(workItem(), {
       database: harness.database,
+      monotonicNow: () => 0,
+      flexMessages: true,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_WITH_APPOINTMENT");
+
+    const message = onlyMessage(replyMessages);
+    if (message?.type !== "flex") throw new Error("Expected a Flex reply");
+    expect(message.altText).toBe("นัดหมายถัดไปของคุณ: ติดตาม 15 ต.ค. 2569");
+    expect(message.contents.footer?.contents[0]).toMatchObject({
+      type: "button",
+      action: { type: "uri", label: "ดูนัดหมายทั้งหมด", uri: "https://liff.line.me/1234567890-WorkSpace/app/personal/appointments" },
+    });
+    expect(JSON.stringify(message)).not.toContain("demi.example.org");
+  });
+
+  it("ADR-0033: falls back to today's text when the card cannot be built, and logs by name only", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const harness = createHarness();
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: harness.database,
+      monotonicNow: () => 0,
+      flexMessages: true,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_WITH_APPOINTMENT");
+
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: APPOINTMENT_TEXT });
+    expect(errors).toHaveBeenCalledWith("line_reactive_appointment_card_fallback", { cause: "LineFailure" });
+    expect(JSON.stringify(errors.mock.calls)).not.toContain("โรงพยาบาลตัวอย่าง");
+    errors.mockRestore();
+  });
+
+  it.each([true, false])("keeps EMPTY as plain text with Flex %s", async (flexMessages) => {
+    stubWorkspaceLiff();
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "AUTHORIZED", appointment: null });
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: createHarness().database,
+      monotonicNow: () => 0,
+      flexMessages,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_EMPTY");
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.EMPTY });
+  });
+
+  it.each([true, false])("keeps INELIGIBLE as plain text with Flex %s", async (flexMessages) => {
+    stubWorkspaceLiff();
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: createHarness([]).database,
       monotonicNow: () => 1_000,
-      replyText,
+      flexMessages,
+      replyMessages,
     })).resolves.toBe("REFUSED_INELIGIBLE");
     expect(mocks.resolveActorAccessByUserId).not.toHaveBeenCalled();
     expect(mocks.getOwnNextAppointment).not.toHaveBeenCalled();
-    expect(replyText).toHaveBeenCalledWith(
-      "transient-reply-token",
-      LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE,
-    );
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE });
+  });
+
+  it.each([true, false])("sends infrastructure copy as plain text on transaction failure with Flex %s", async (flexMessages) => {
+    stubWorkspaceLiff();
+    const database = {
+      $transaction: vi.fn().mockRejectedValue(new Error("private database error")),
+    } as unknown as PrismaClient;
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database,
+      monotonicNow: () => 0,
+      flexMessages,
+      replyMessages,
+    })).resolves.toBe("INFRASTRUCTURE_FAILURE");
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE });
+  });
+
+  it("classifies an unusable appointment as INFRASTRUCTURE_FAILURE from its kind, flag on", async () => {
+    stubWorkspaceLiff();
+    mocks.getOwnNextAppointment.mockResolvedValue({
+      status: "AUTHORIZED",
+      appointment: { scheduledAt: new Date(Number.NaN), hospitalName: "โรงพยาบาลตัวอย่าง", type: "FOLLOW_UP", locationType: null },
+    });
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: createHarness().database,
+      monotonicNow: () => 0,
+      flexMessages: true,
+      replyMessages,
+    })).resolves.toBe("INFRASTRUCTURE_FAILURE");
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE });
+  });
+
+  it("maps every reply kind to its outcome", () => {
+    expect(outcomeForAppointmentReply(formatLineAppointmentReply("INELIGIBLE"))).toBe("REFUSED_INELIGIBLE");
+    expect(outcomeForAppointmentReply(formatLineAppointmentReply("EMPTY"))).toBe("COMPLETED_EMPTY");
+    expect(outcomeForAppointmentReply(formatLineAppointmentReply("INFRASTRUCTURE_FAILURE"))).toBe("INFRASTRUCTURE_FAILURE");
+    expect(outcomeForAppointmentReply(formatLineAppointmentReply({
+      scheduledAt: new Date("2026-10-15T02:00:00.000Z"), hospitalName: "โรงพยาบาล", type: "ASSESSMENT", locationType: null,
+    }))).toBe("COMPLETED_WITH_APPOINTMENT");
   });
 
   it("fails closed for conflicting active binding rows", async () => {
@@ -151,60 +266,58 @@ describe("LINE reactive Patient appointment execution", () => {
       { userId: "demi-user-id" },
       { userId: "another-user-id" },
     ]);
-    const replyText = vi.fn().mockResolvedValue(undefined);
+    const replyMessages = replySpy();
 
     await executeLineReactiveAppointment(workItem(), {
       database: harness.database,
       monotonicNow: () => 1_000,
-      replyText,
+      replyMessages,
     });
 
     expect(mocks.resolveActorAccessByUserId).not.toHaveBeenCalled();
     expect(mocks.getOwnNextAppointment).not.toHaveBeenCalled();
-    expect(replyText).toHaveBeenCalledWith(
-      "transient-reply-token",
-      LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE,
-    );
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE });
   });
 
   it("does not query or reply when the local execution deadline has passed", async () => {
     const harness = createHarness();
-    const replyText = vi.fn();
+    const replyMessages = replySpy();
 
     await expect(executeLineReactiveAppointment(workItem(1_000), {
       database: harness.database,
       monotonicNow: () => 1_000,
-      replyText,
+      replyMessages,
     })).resolves.toBe("EXPIRED_BEFORE_QUERY");
 
     expect(harness.database.$transaction).not.toHaveBeenCalled();
-    expect(replyText).not.toHaveBeenCalled();
+    expect(replyMessages).not.toHaveBeenCalled();
   });
 
-  it("discards a query result if the deadline expires while the transaction runs", async () => {
+  it.each([true, false])("discards a query result if the deadline expires while the transaction runs (Flex %s)", async (flexMessages) => {
+    stubWorkspaceLiff();
     const harness = createHarness();
     const monotonicNow = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(45_000);
-    const replyText = vi.fn();
+    const replyMessages = replySpy();
 
     await expect(executeLineReactiveAppointment(workItem(45_000), {
       database: harness.database,
       monotonicNow,
-      replyText,
+      flexMessages,
+      replyMessages,
     })).resolves.toBe("EXPIRED_BEFORE_REPLY");
 
     expect(harness.database.$transaction).toHaveBeenCalledOnce();
     expect(mocks.getOwnNextAppointment).toHaveBeenCalledOnce();
-    expect(replyText).not.toHaveBeenCalled();
+    expect(replyMessages).not.toHaveBeenCalled();
   });
 
   it("does not compare provider event time or lastLinkedAt to current authority", async () => {
     const harness = createHarness();
-    const replyText = vi.fn().mockResolvedValue(undefined);
 
     await executeLineReactiveAppointment(workItem(), {
       database: harness.database,
       monotonicNow: () => 0,
-      replyText,
+      replyMessages: replySpy(),
     });
 
     expect(harness.transaction.lineAccountBinding.findMany).toHaveBeenCalledWith({
@@ -213,53 +326,32 @@ describe("LINE reactive Patient appointment execution", () => {
     });
   });
 
-  it("sends infrastructure copy on transaction failure and makes one Reply attempt", async () => {
-    const database = {
-      $transaction: vi.fn().mockRejectedValue(new Error("private database error")),
-    } as unknown as PrismaClient;
-    const replyText = vi.fn().mockResolvedValue(undefined);
-
-    await expect(executeLineReactiveAppointment(workItem(), {
-      database,
-      monotonicNow: () => 0,
-      replyText,
-    })).resolves.toBe("INFRASTRUCTURE_FAILURE");
-    expect(replyText).toHaveBeenCalledOnce();
-    expect(replyText).toHaveBeenCalledWith(
-      "transient-reply-token",
-      LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE,
-    );
-  });
-
   it.each([
     [["OSM"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม"]],
     [["HOSPITAL"], ["งานโรงพยาบาล"]],
     [["OSM", "HOSPITAL"], ["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]],
   ])("replies with the role-aware HELP menu to a workforce-only %j account", async (roles, labels) => {
+    stubWorkspaceLiff();
     const harness = createHarness();
     mocks.resolveActorAccessByUserId.mockResolvedValue({ status: "AUTHORIZED", actor: { ...actor, roles } });
     mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
     mocks.resolveEligibleLineRoles.mockResolvedValue(roles);
-    const replyText = vi.fn();
-    const replyMessages = vi.fn(async () => {
+    const replyMessages = vi.fn<(replyToken: string, messages: readonly LineMessage[]) => Promise<void>>(async () => {
       expect(harness.isTransactionActive()).toBe(false);
     });
 
     await expect(executeLineReactiveAppointment(workItem(), {
       database: harness.database,
       monotonicNow: () => 0,
-      replyText,
+      flexMessages: true,
       replyMessages,
     })).resolves.toBe("COMPLETED_HELP");
 
     expect(mocks.resolveEligibleLineRoles).toHaveBeenCalledWith("demi-user-id", harness.transaction);
-    expect(replyText).not.toHaveBeenCalled();
-    expect(replyMessages).toHaveBeenCalledOnce();
-    const [token, messages] = replyMessages.mock.calls[0] as unknown as [string, Array<{ text: string; quickReply: { items: Array<{ action: { label: string } }> } }>];
-    expect(token).toBe("transient-reply-token");
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
-    expect(messages[0]?.quickReply.items.map(({ action }) => action.label)).toEqual(labels);
+    const message = onlyMessage(replyMessages);
+    if (message?.type !== "text") throw new Error("Expected the HELP text reply");
+    expect(message.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
+    expect(message.quickReply?.items.map(({ action }) => action.label)).toEqual(labels);
   });
 
   it.each([
@@ -271,17 +363,14 @@ describe("LINE reactive Patient appointment execution", () => {
     mocks.resolveActorAccessByUserId.mockResolvedValue(access);
     mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
     mocks.resolveEligibleLineRoles.mockResolvedValue(roles);
-    const replyText = vi.fn().mockResolvedValue(undefined);
-    const replyMessages = vi.fn();
+    const replyMessages = replySpy();
 
     await expect(executeLineReactiveAppointment(workItem(), {
       database: harness.database,
       monotonicNow: () => 0,
-      replyText,
       replyMessages,
     })).resolves.toBe("REFUSED_INELIGIBLE");
-    expect(replyMessages).not.toHaveBeenCalled();
-    expect(replyText).toHaveBeenCalledWith("transient-reply-token", LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE);
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE });
   });
 
   it("does not resolve workforce roles when the Patient read succeeds", async () => {
@@ -289,7 +378,7 @@ describe("LINE reactive Patient appointment execution", () => {
     await executeLineReactiveAppointment(workItem(), {
       database: harness.database,
       monotonicNow: () => 0,
-      replyText: vi.fn().mockResolvedValue(undefined),
+      replyMessages: replySpy(),
     });
     expect(mocks.resolveEligibleLineRoles).not.toHaveBeenCalled();
   });
@@ -299,26 +388,30 @@ describe("LINE reactive Patient appointment execution", () => {
     mocks.getOwnNextAppointment.mockResolvedValue({ status: "INELIGIBLE" });
     mocks.resolveEligibleLineRoles.mockResolvedValue(["OSM"]);
     const monotonicNow = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(45_000);
-    const replyMessages = vi.fn();
+    const replyMessages = replySpy();
 
     await expect(executeLineReactiveAppointment(workItem(45_000), {
       database: harness.database,
       monotonicNow,
-      replyText: vi.fn(),
       replyMessages,
     })).resolves.toBe("EXPIRED_BEFORE_REPLY");
     expect(replyMessages).not.toHaveBeenCalled();
   });
 
-  it("does not send a second message after a failed data Reply", async () => {
-    const harness = createHarness();
-    const replyText = vi.fn().mockRejectedValue(new LineFailure("LINE_PROVIDER_PERMANENT"));
+  it.each([
+    [new LineFailure("LINE_PROVIDER_PERMANENT"), "LINE_PROVIDER_PERMANENT"],
+    [new LineFailure("LINE_PROVIDER_TRANSIENT"), "LINE_PROVIDER_TRANSIENT"],
+    [new Error("network"), "LINE_PROVIDER_TRANSIENT"],
+  ] as const)("maps a failed Reply without sending a second message (%s)", async (error, outcome) => {
+    stubWorkspaceLiff();
+    const replyMessages = vi.fn<(replyToken: string, messages: readonly LineMessage[]) => Promise<void>>().mockRejectedValue(error);
 
     await expect(executeLineReactiveAppointment(workItem(), {
-      database: harness.database,
+      database: createHarness().database,
       monotonicNow: () => 0,
-      replyText,
-    })).resolves.toBe("LINE_PROVIDER_PERMANENT");
-    expect(replyText).toHaveBeenCalledOnce();
+      flexMessages: true,
+      replyMessages,
+    })).resolves.toBe(outcome);
+    expect(replyMessages).toHaveBeenCalledOnce();
   });
 });

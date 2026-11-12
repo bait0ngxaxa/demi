@@ -15,7 +15,7 @@ import {
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
-import type { LineReplyMessage } from "@/modules/line/adapters/line-messaging-client";
+import type { LineMessage, LineReplyMessage } from "@/modules/line/adapters/line-messaging-client";
 import type { LineHelpWorkItem, LineReactiveOperationalOutcome } from "@/modules/line/domain/line-reactive-types";
 import { LINE_APPOINTMENT_REPLY_COPY } from "@/modules/line/presentation/line-appointment-reply";
 import { LINE_HELP_REPLY_COPY } from "@/modules/line/presentation/line-help-reply";
@@ -354,25 +354,23 @@ describe("Phase LINE-QA.C3 conversational replies on PostgreSQL", () => {
     expect(result.reactiveWorkItems.map(({ intent }) => intent)).toEqual(["PATIENT_NEXT_APPOINTMENT", "PATIENT_NEXT_APPOINTMENT", "PATIENT_NEXT_APPOINTMENT"]);
 
     const outcomes = new Map<string, LineReactiveOperationalOutcome>();
-    const messageReplies = new Map<string, readonly LineReplyMessage[]>();
-    const textReplies = new Map<string, string>();
+    const messageReplies = new Map<string, readonly LineMessage[]>();
     for (const item of result.reactiveWorkItems) {
       outcomes.set(item.lineUserId, await executeLineReactiveAppointment(item, {
         database,
         replyMessages: async (_token, messages) => { messageReplies.set(item.lineUserId, messages); },
-        replyText: async (_token, text) => { textReplies.set(item.lineUserId, text); },
       }));
     }
 
     expect(outcomes.get(workforceLineUserId)).toBe("COMPLETED_HELP");
-    expect(textReplies.has(workforceLineUserId)).toBe(false);
     const help = messageReplies.get(workforceLineUserId)?.[0];
-    expect(help?.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
+    if (help?.type !== "text") throw new Error("Expected the HELP text reply");
+    expect(help.text).toBe(LINE_HELP_REPLY_COPY.WORKFORCE);
     expect(help?.quickReply?.items.map(({ action }) => action.label)).toEqual(["ผู้ป่วยที่ดูแล", "คัดกรองผู้ป่วย", "บันทึกติดตาม", "งานโรงพยาบาล"]);
     for (const ineligible of [suspendedLineUserId, unboundLineUserId]) {
       expect(outcomes.get(ineligible)).toBe("REFUSED_INELIGIBLE");
-      expect(messageReplies.has(ineligible)).toBe(false);
-      expect(textReplies.get(ineligible)).toBe(LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE);
+      // INELIGIBLE stays plain text without a Quick Reply, flag on or off.
+      expect(messageReplies.get(ineligible)).toEqual([{ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE }]);
     }
   });
 });
