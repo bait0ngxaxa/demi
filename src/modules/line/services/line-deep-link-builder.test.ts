@@ -5,6 +5,7 @@ import { LineFailure } from "../domain/line-errors";
 import {
   buildAccountLiffUrl,
   buildLineIntentUrl,
+  buildNotificationLiffUrl,
   buildOrdinaryWebUrl,
   buildWorkspaceLiffUrl,
   getPublicLineAccountEntryUrl,
@@ -70,7 +71,31 @@ describe("LINE intent deep links", () => {
     expect(getPublicLineAccountEntryUrl()).toBeNull();
   });
 
+  it.each(Object.keys(LINE_WEB_NAVIGATION_PATHS))(
+    "never falls back to an ordinary web URL for a notification to %s without the Workspace LIFF",
+    (intent) => {
+      vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+      vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
+      expect(() => buildNotificationLiffUrl(intent as keyof typeof LINE_WEB_NAVIGATION_PATHS))
+        .toThrowError(expect.objectContaining({ code: "LINE_CONFIGURATION_MISSING" }));
+      // An invalid Workspace ID (here, equal to the Account LIFF) is not configured either.
+      vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-AbCdEfGh");
+      expect(() => buildNotificationLiffUrl(intent as keyof typeof LINE_WEB_NAVIGATION_PATHS))
+        .toThrowError(LineFailure);
+    },
+  );
+
   describe("with the Workspace LIFF configured", () => {
+    it.each(Object.entries(LINE_WEB_NAVIGATION_PATHS))(
+      "opens a notification for %s through the Workspace LIFF with exactly the fixed path",
+      (intent, path) => {
+        const value = buildNotificationLiffUrl(intent as keyof typeof LINE_WEB_NAVIGATION_PATHS);
+        expect(value).toBe(`https://liff.line.me/1234567890-WorkSpace${path}`);
+        expect(value).not.toContain("demi.example.org");
+      },
+    );
+
+
     beforeEach(() => {
       vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
       vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");

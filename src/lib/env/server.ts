@@ -281,3 +281,13 @@ export function getLineWorkspaceLiffId(): string | null {
   const result = resolveLineWorkspaceLiffId();
   return result.status === "CONFIGURED" ? result.liffId : null;
 }
+
+/**
+ * ADR-0033: server-only rollback switch for the format of proactive LINE Push
+ * notifications. Only exact "true" sends Flex cards; anything else keeps the
+ * existing text messages. It changes presentation only, never who is notified
+ * or what they may open. The only place this variable is read.
+ */
+export function isLineFlexMessagesEnabled(): boolean {
+  return process.env.DEMI_LINE_FLEX_MESSAGES_ENABLED === "true";
+}

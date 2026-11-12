@@ -4,6 +4,7 @@ import {
   createWorkforceActivationUrlBuilder,
   getLineLiffId,
   getLineWorkspaceLiffId,
+  isLineFlexMessagesEnabled,
   resolveLineWorkspaceLiffId,
 } from "./server";
 
@@ -75,5 +76,22 @@ describe("Workspace LIFF configuration", () => {
   it("does not make the Account LIFF depend on Workspace configuration", () => {
     configure({ NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "garbage" });
     expect(getLineLiffId()).toBe("1234567890-Account");
+  });
+});
+
+describe("LINE Flex notification flag", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    [" true", false],
+    ["true", true],
+  ] as const)("reads %s as %s", (value, expected) => {
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", value);
+    expect(isLineFlexMessagesEnabled()).toBe(expected);
   });
 });

@@ -111,6 +111,35 @@ describe("deployment environment check", () => {
     expect(JSON.stringify(report)).not.toContain(value);
   });
 
+  it("keeps Flex notifications off by default and requires a valid Workspace LIFF once enabled", () => {
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
+    expect(status(checkDeploymentEnvironment("production"), "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("UNSET");
+    expect(checkDeploymentEnvironment("production").valid).toBe(true);
+
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+    expect(checkDeploymentEnvironment("production").valid).toBe(true);
+
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "true");
+    const withoutWorkspace = checkDeploymentEnvironment("production");
+    expect(withoutWorkspace.valid).toBe(false);
+    expect(status(withoutWorkspace, "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("INVALID");
+    expect(status(withoutWorkspace, "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID")).toBe("INVALID");
+
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-Account");
+    expect(checkDeploymentEnvironment("production").valid).toBe(false);
+
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-Workspace");
+    const enabled = checkDeploymentEnvironment("production");
+    expect(enabled.valid).toBe(true);
+    expect(status(enabled, "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("OK");
+  });
+
+  it.each(["TRUE", "1", "yes"])("rejects the non-boolean Flex flag value %s", (value) => {
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", value);
+    expect(status(checkDeploymentEnvironment("production"), "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("INVALID");
+  });
+
   it("rejects a partially configured LINE MINI App without requiring an unconfigured one", () => {
     vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", "2234567890");
     const report = checkDeploymentEnvironment("production");

@@ -10,6 +10,9 @@ export const LINE_WEB_NAVIGATION_PATHS = {
   OPEN_PATIENT_WELLNESS: "/app/personal/wellness",
   OPEN_PATIENT_MEDICATIONS: "/app/personal/medications",
   OPEN_PATIENT_CARE: "/app/personal/care",
+  // ADR-0033: Flex notification destinations for อสม./staff and caregivers. Fixed lists, never a record.
+  OPEN_WORK_APPOINTMENTS: "/app/appointments",
+  OPEN_FAMILY: "/app/family",
 } as const;
 
 export type LineWebNavigationIntent = keyof typeof LINE_WEB_NAVIGATION_PATHS;
@@ -31,6 +34,8 @@ export const LINE_QUICK_ACTION_RETURN_PATHS = [
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_WELLNESS,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_MEDICATIONS,
   LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_CARE,
+  LINE_WEB_NAVIGATION_PATHS.OPEN_WORK_APPOINTMENTS,
+  LINE_WEB_NAVIGATION_PATHS.OPEN_FAMILY,
 ] as const;
 
 export type LineQuickActionReturnPath = (typeof LINE_QUICK_ACTION_RETURN_PATHS)[number];

@@ -380,4 +380,67 @@ describe("DEMI LINE Messaging API boundary", () => {
       .resolves.toEqual({ kind: "PERMANENT_FAILURE" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it("sends Flex messages through the same Push contract as text", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const client = new LineMessagingClient(fetcher);
+    const flex = {
+      type: "flex" as const,
+      altText: "นัดหมายใหม่",
+      contents: {
+        type: "bubble" as const,
+        size: "mega" as const,
+        body: { type: "box" as const, layout: "vertical" as const, contents: [{ type: "text" as const, text: "ทดสอบ" }] },
+      },
+    };
+    const retryKey = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    await expect(client.pushMessages(`U${"d".repeat(32)}`, [flex], retryKey)).resolves.toEqual({ kind: "ACCEPTED" });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.line.me/v2/bot/message/push");
+    const request = fetcher.mock.calls[0]?.[1];
+    const headers = new Headers(request?.headers);
+    expect(headers.get("x-line-retry-key")).toBe(retryKey);
+    expect(headers.get("authorization")).toBe("Bearer dedicated-demi-line-access-token");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(JSON.parse(String(request?.body)) as unknown).toEqual({ to: `U${"d".repeat(32)}`, messages: [flex] });
+    expect(request?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it.each([
+    [409, "DUPLICATE_ACCEPTED"],
+    [400, "PERMANENT_FAILURE"],
+    [429, "RETRYABLE_HTTP_FAILURE"],
+    [502, "RETRYABLE_HTTP_FAILURE"],
+  ] as const)("maps a Flex Push HTTP %i to %s", async (status, expected) => {
+    const client = new LineMessagingClient(vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status })));
+    await expect(client.pushMessages(`U${"a".repeat(32)}`, [{ type: "text", text: "x" }], "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+      .resolves.toEqual({ kind: expected });
+  });
+
+  it.each([0, 6])("does not send a Push with %i messages", async (count) => {
+    const fetcher = vi.fn<typeof fetch>();
+    const client = new LineMessagingClient(fetcher);
+    const messages = Array.from({ length: count }, () => ({ type: "text" as const, text: "x" }));
+    await expect(client.pushMessages(`U${"a".repeat(32)}`, messages, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+      .resolves.toEqual({ kind: "PERMANENT_FAILURE" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [200, "VALID"],
+    [400, "INVALID"],
+    [401, "UNAVAILABLE"],
+    [500, "UNAVAILABLE"],
+  ] as const)("validates message objects without sending them (HTTP %i -> %s)", async (status, expected) => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("{\"message\":\"provider detail\"}", { status }));
+    const client = new LineMessagingClient(fetcher);
+    const messages = [{ type: "text" as const, text: "x" }];
+
+    await expect(client.validatePushMessages(messages)).resolves.toEqual({ kind: expected });
+    expect(fetcher.mock.calls[0]?.[0]).toBe("https://api.line.me/v2/bot/message/validate/push");
+    const request = fetcher.mock.calls[0]?.[1];
+    expect(new Headers(request?.headers).get("x-line-retry-key")).toBeNull();
+    expect(JSON.parse(String(request?.body)) as unknown).toEqual({ messages });
+  });
 });

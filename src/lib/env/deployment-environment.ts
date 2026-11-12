@@ -56,6 +56,7 @@ const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
     "DEMI_LINE_LOGIN_CHANNEL_ID",
     "NEXT_PUBLIC_DEMI_LINE_LIFF_ID",
     "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID",
+    "DEMI_LINE_FLEX_MESSAGES_ENABLED",
     "DEMI_LINE_LOGIN_CHANNEL_SECRET",
     "DEMI_LINE_MESSAGING_CHANNEL_SECRET",
     "DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN",
@@ -150,6 +151,13 @@ function invalidOptional(): string[] {
   if (read("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID") !== undefined &&
       resolveLineWorkspaceLiffId().status !== "CONFIGURED") {
     invalid.push("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID");
+  }
+  // ADR-0033 D2: Flex buttons open only the Workspace LIFF, so the flag needs a valid one.
+  const flexMessages = read("DEMI_LINE_FLEX_MESSAGES_ENABLED");
+  if (!optionalBooleanSchema.safeParse(flexMessages).success) {
+    invalid.push("DEMI_LINE_FLEX_MESSAGES_ENABLED");
+  } else if (flexMessages === "true" && resolveLineWorkspaceLiffId().status !== "CONFIGURED") {
+    invalid.push("DEMI_LINE_FLEX_MESSAGES_ENABLED", "NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID");
   }
   if (read("DEMI_LINE_LOGIN_CHANNEL_SECRET") !== undefined &&
       !lineChannelSecretSchema.safeParse(read("DEMI_LINE_LOGIN_CHANNEL_SECRET")).success) {

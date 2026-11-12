@@ -92,6 +92,14 @@ LIFF ตัวที่สองใน **LINE Login channel เดิมขอ�
 
 ถ้าไม่ใส่ `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` ปุ่มงานยังเป็นลิงก์เว็บปกติเหมือนก่อน ADR-0031 (Account LIFF และเว็บ DEMI ใช้งานได้ตามเดิม)
 
+### 3.2 Flex notification cards (ADR-0033)
+
+`DEMI_LINE_FLEX_MESSAGES_ENABLED` (server-only, ค่าเริ่มต้นปิด) — ใส่ `true` ตรงตัวเท่านั้นจึงส่งการแจ้งเตือนเชิงรุก (นัดหมาย คำขอรับบริการ เตือนยา รหัสผ่าน) เป็น Flex card ที่มีปุ่มเปิดหน้า DEMI ผ่าน Workspace LIFF; ว่างหรือ `false` ส่งข้อความตัวอักษรแบบเดิมทุกตัวอักษร (ใช้ย้อนกลับได้ทันทีโดยไม่ต้อง build ใหม่ แค่ restart server)
+
+1. ต้องตั้ง `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` ให้ถูกต้องก่อน (ข้อ 3.1) — `env:check` จะ INVALID ถ้าเปิด flag แต่ไม่มี Workspace LIFF ที่ใช้ได้ ปุ่มของการ์ดไม่ย้อนไปเป็นลิงก์เว็บปกติ
+2. `npm run line:flex:validate` (รันด้วยมือ ไม่อยู่ใน CI) สร้างตัวอย่างการ์ดทุกประเภทด้วยข้อมูลสังเคราะห์แล้วส่งให้ LINE ตรวจที่ validate endpoint โดยไม่ส่งถึงผู้ใช้ พิมพ์เฉพาะ pass/fail ต่อประเภท ใช้ env ของ channel staging
+3. ตรวจบน LINE จริง (iOS, Android, PC): layout, การตัดคำภาษาไทย, ปุ่มเปิด Workspace LIFF, ผู้ใช้ที่ยังไม่มี session DEMI เห็นหน้า login หนึ่งครั้งแล้วกลับไปหน้าที่ปุ่มระบุ, ข้อความบน lock screen/รายการแชต (altText) ไม่มีชื่อผู้ป่วย ชื่อยา หรือ URL
+
 ## 4. MINI App (optional provider integration)
 
 สร้าง channel ประเภท LINE MINI App ใต้ provider เดียวกัน, Endpoint URL = `<PROD_ORIGIN>/line/workflow` แล้วตั้งตัวแปร `DEMI_LINE_MINI_APP_*` ตาม B2.4 §13.B (keyring สร้างใหม่สำหรับแต่ละ database environment ห้ามใช้ของ demo ร่วมกับข้อมูลจริง). ถ้าไม่ได้ provision integration นี้ ให้ค่า MINI ทั้งหมดว่าง; endpoint จะ fail closed สำหรับ MINI เท่านั้น. สถานะ DEVELOPING / REVIEW / PUBLISHED เป็นสถานะ channel ที่ LINE กำหนด ไม่ใช่ DEMI deployment stage.

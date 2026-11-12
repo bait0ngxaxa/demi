@@ -61,7 +61,7 @@ import {
 import { createAuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 import { lockSuspectedTakeover } from "@/modules/user-management/services/user-takeover-service";
 import { createLineSubjectFingerprint } from "@/modules/line/services/line-identity-fingerprint";
-import type { LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import type { LineFlexMessage, LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import {
   completeLinePasswordRecoveryWithIdentityToken,
   LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE,
@@ -1972,6 +1972,28 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       expect((await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: eligible.userId } })).tokenHash).toBeNull();
       expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(noBinding.nationalId);
       expect(JSON.stringify(dependencies.sendPush.mock.calls)).not.toContain(admin.nationalId);
+    });
+
+    it("ADR-0033: with Flex enabled, sends the recovery card keyed by the reset ID with the URL only in the button", async () => {
+      const target = await createLineRecoveryTarget(Role.PATIENT);
+      const dependencies = lineRecoveryDependencies(target.lineUserId);
+      const sendFlexPush = vi.fn<(lineUserId: string, message: LineFlexMessage, retryKey: string) => Promise<LinePushResult>>(async () => ({ kind: "ACCEPTED" }));
+      const response = await requestLinePasswordRecovery({ nationalId: target.nationalId }, { ...dependencies, flexMessages: true, sendFlexPush });
+
+      expect(response.message).toBe(LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE);
+      expect(dependencies.sendPush).not.toHaveBeenCalled();
+      expect(sendFlexPush).toHaveBeenCalledOnce();
+      const [lineUserId, message, retryKey] = sendFlexPush.mock.calls[0] ?? [];
+      const capability = await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: target.userId }, select: { id: true } });
+      expect(lineUserId).toBe(target.lineUserId);
+      expect(retryKey).toBe(capability.id);
+      expect(message?.contents.footer?.contents[0]).toMatchObject({
+        type: "button",
+        action: { type: "uri", uri: `https://liff.line.me/1234567890-AbCdEf/recover?capability=${capability.id}` },
+      });
+      expect(message?.altText).not.toContain(capability.id);
+      expect(JSON.stringify(message).split(capability.id)).toHaveLength(2);
+      expect(JSON.stringify(message)).not.toContain(target.nationalId);
     });
 
     it("verifies the bound LINE subject, replaces the canonical credential once, records the audit and consumes the next-sign-in notice", async () => {

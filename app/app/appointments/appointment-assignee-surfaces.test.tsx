@@ -81,7 +81,17 @@ async function renderForm(props: Partial<AppointmentFormProps> = {}) {
     await act(async () => root.unmount());
     container.remove();
   };
-  return { container, select, hidden, kind, click, change, cleanup };
+  // Candidates arrive from the mocked search action asynchronously; flush macrotasks until they render instead of
+  // assuming one tick is enough (it is not on a loaded CI runner).
+  const candidate = async (name: "osm-candidate" | "staff-candidate", value: string) => {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const element = container.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+      if (element) return element;
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    }
+    throw new Error(`Missing ${name} ${value}`);
+  };
+  return { container, select, hidden, kind, click, change, candidate, cleanup };
 }
 
 describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
@@ -121,7 +131,7 @@ describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
       const location = form.select("appointment-location-type");
       await form.change(location, "CLINIC");
       await form.click(form.kind("อสม. คนอื่น"));
-      await form.click(form.container.querySelector<HTMLInputElement>('input[name="osm-candidate"][value="osm-1"]')!);
+      await form.click(await form.candidate("osm-candidate", "osm-1"));
       expect(location.value).toBe("CLINIC");
       expect(form.hidden("locationType")).toBe("CLINIC");
       expect(form.hidden("assignedOsmUserId")).toBe("osm-1");
@@ -138,8 +148,7 @@ describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
       expect(form.container.textContent).not.toContain("เยี่ยมครั้งนี้เท่านั้น");
 
       await form.click(form.kind("เจ้าหน้าที่"));
-      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-      await form.click(form.container.querySelector<HTMLInputElement>('input[name="staff-candidate"][value="coordinator"]')!);
+      await form.click(await form.candidate("staff-candidate", "coordinator"));
       expect(form.hidden("responsibleUserId")).toBe("coordinator");
       expect(form.hidden("assignedOsmUserId")).toBe("");
 
@@ -155,7 +164,7 @@ describe("Appointment assignee picker (ADR-0027, AP-1, AP-2)", () => {
     const form = await renderForm();
     try {
       await form.click(form.kind("อสม. คนอื่น"));
-      await form.click(form.container.querySelector<HTMLInputElement>('input[name="osm-candidate"][value="osm-0"]')!);
+      await form.click(await form.candidate("osm-candidate", "osm-0"));
       const fields = [...new FormData(form.container.querySelector("form")!).keys()];
       expect(fields).not.toContain("osm-candidate");
       expect(fields).not.toContain("appointment-assignee-kind");

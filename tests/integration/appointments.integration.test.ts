@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { APPOINTMENT_TYPE_VALUES } from "@/modules/appointments/domain/appointment-definitions";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import type { LineFlexMessage } from "@/modules/line/adapters/line-messaging-client";
 import { assignOsmToPatient } from "@/modules/patient-assignment/services/patient-osm-assignment-service";
 import { createPatientOsmAssignmentLineNotificationIntent } from "@/modules/appointments/services/appointment-line-notification-outbox-service";
 import { provisionPatientFixture as provisionPatient } from "./support/patient-provisioning";
@@ -1537,6 +1538,106 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     });
     expect(await purgeTerminalAppointmentLineNotifications({ database: prisma, now: new Date(now.getTime() + 1), batchSize: 1 })).toBe(1);
     expect(await prisma.appointmentLineNotification.findUnique({ where: { id: completed.id } })).toBeNull();
+  });
+
+  it("ADR-0033: with Flex enabled, sends one identical card per row across retries and opens the Workspace LIFF", async () => {
+    const previous = {
+      liff: process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID,
+      workspace: process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID,
+      channel: process.env.DEMI_LINE_LOGIN_CHANNEL_ID,
+      origin: process.env.DEMI_LINE_PUBLIC_ORIGIN,
+      identity: process.env.IDENTITY_HASH_SECRET,
+    };
+    process.env.IDENTITY_HASH_SECRET ??= "line-test-identity-hash-secret-at-least-32";
+    process.env.DEMI_LINE_LOGIN_CHANNEL_ID = "1234567890";
+    process.env.DEMI_LINE_PUBLIC_ORIGIN = "https://demi.example.org";
+    process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID = "1234567890-AbCdEfGh";
+    process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID = "1234567890-WorkSpace";
+    try {
+      const subject = await createAppointmentNotificationSubject("FLEX");
+      let now = new Date();
+      const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), {
+        database: prisma,
+        now: () => now,
+      });
+      const flexCalls: Array<{ lineUserId: string; json: string; retryKey: string }> = [];
+      const textCalls: string[] = [];
+      const dependencies = {
+        database: prisma,
+        now: () => now,
+        flexMessages: true,
+        push: async (_lineUserId: string, text: string) => {
+          textCalls.push(text);
+          return { kind: "ACCEPTED" as const };
+        },
+        pushFlex: async (lineUserId: string, message: LineFlexMessage, retryKey: string) => {
+          flexCalls.push({ lineUserId, json: JSON.stringify(message), retryKey });
+          return flexCalls.length === 1 ? { kind: "AMBIGUOUS_TRANSPORT_FAILURE" as const } : { kind: "ACCEPTED" as const };
+        },
+        random: () => 0.5,
+        batchSize: 1,
+        logSummary: () => undefined,
+      };
+
+      expect((await drainAppointmentLineNotificationOutbox(dependencies)).retryScheduled).toBe(1);
+      const retry = await prisma.appointmentLineNotification.findFirstOrThrow({ where: { appointmentId: created.appointmentId } });
+      now = retry.dueAt;
+      expect((await drainAppointmentLineNotificationOutbox(dependencies)).providerAccepted).toBe(1);
+
+      expect(textCalls).toEqual([]);
+      expect(flexCalls).toHaveLength(2);
+      expect(flexCalls[0]).toEqual(flexCalls[1]);
+      expect(flexCalls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: retry.retryKey });
+      const message = JSON.parse(flexCalls[0]?.json ?? "{}") as LineFlexMessage;
+      expect(message.type).toBe("flex");
+      expect(message.altText).toMatch(/^นัดหมายใหม่: ให้ความรู้ /u);
+      expect(message.contents.footer?.contents[0]).toMatchObject({
+        type: "button",
+        action: { type: "uri", uri: "https://liff.line.me/1234567890-WorkSpace/app/personal/appointments" },
+      });
+      // The Patient's own card: no name, no free text, no location detail, no ordinary web link.
+      for (const forbidden of ["ผู้ป่วยทดสอบสังเคราะห์", "ห้องตรวจต้นแบบ", "หมายเหตุสำหรับการตรวจ", "demi.example.org"]) {
+        expect(flexCalls[0]?.json).not.toContain(forbidden);
+      }
+    } finally {
+      for (const [name, value] of [
+        ["NEXT_PUBLIC_DEMI_LINE_LIFF_ID", previous.liff],
+        ["NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", previous.workspace],
+        ["DEMI_LINE_LOGIN_CHANNEL_ID", previous.channel],
+        ["DEMI_LINE_PUBLIC_ORIGIN", previous.origin],
+        ["IDENTITY_HASH_SECRET", previous.identity],
+      ] as const) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it("ADR-0033: with Flex enabled but no Workspace LIFF, records a permanent failure without calling LINE", async () => {
+    const previousWorkspace = process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID;
+    delete process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID;
+    try {
+      const subject = await createAppointmentNotificationSubject("FLEX-NO-LIFF");
+      const created = await createAppointment(subject.owner, appointmentInput(subject.patient.relationshipId), { database: prisma });
+      let providerCalls = 0;
+      const result = await drainAppointmentLineNotificationOutbox({
+        database: prisma,
+        flexMessages: true,
+        push: async () => { providerCalls += 1; return { kind: "ACCEPTED" as const }; },
+        pushFlex: async () => { providerCalls += 1; return { kind: "ACCEPTED" as const }; },
+        batchSize: 1,
+        logSummary: () => undefined,
+      });
+      expect(result.permanentFailure).toBe(1);
+      expect(providerCalls).toBe(0);
+      await expect(prisma.appointmentLineNotification.findFirstOrThrow({
+        where: { appointmentId: created.appointmentId },
+        select: { state: true, safeOutcome: true },
+      })).resolves.toEqual({ state: AppointmentLineNotificationState.PERMANENT_FAILURE, safeOutcome: "PERMANENT_HTTP_FAILURE" });
+    } finally {
+      if (previousWorkspace === undefined) delete process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID;
+      else process.env.NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID = previousWorkspace;
+    }
   });
 
   it("purges only terminal notification rows older than 30 days, oldest first, in batches of at most 100", async () => {

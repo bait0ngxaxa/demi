@@ -18,7 +18,9 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
-import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { isLineFlexMessagesEnabled } from "@/lib/env/server";
+import { LineMessagingClient, type LineFlexMessage, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { buildLineNotificationCard } from "@/modules/line/services/line-notification-card";
 import { isPatientHospitalRelationshipEnded } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 
 import {
@@ -26,10 +28,12 @@ import {
   APPOINTMENT_LINE_NOTIFICATION_LEASE_MS,
   APPOINTMENT_LINE_NOTIFICATION_MAX_ATTEMPTS,
   APPOINTMENT_LINE_NOTIFICATION_TERMINAL_RETENTION_MS,
-  appointmentLineNotificationText,
+  appointmentLineNotificationCopy,
   appointmentLineNotificationRetryDelayMs,
-  patientServiceRequestLineNotificationText,
+  appointmentPatientDisplayName,
   expectedAppointmentStatusForNotification,
+  isAppointmentEventRecipientKind,
+  type AppointmentLineNotificationContent,
   isFreshLineFriendObservation,
   isInsideLineRetryKeyWindow,
 } from "../domain/appointment-line-notifications";
@@ -48,7 +52,7 @@ type SafeSuppressionOutcome =
   | "LINE_INELIGIBLE";
 
 type CurrentEligibility =
-  | { eligible: true; lineUserId: string; text: string }
+  | { eligible: true; lineUserId: string; content: AppointmentLineNotificationContent }
   | { eligible: false; outcome: SafeSuppressionOutcome };
 
 export type AppointmentLineNotificationDrainResult = {
@@ -65,6 +69,10 @@ export type AppointmentLineNotificationDeliveryDependencies = {
   database?: DeliveryDatabase;
   now?: () => Date;
   push?: (lineUserId: string, text: string, retryKey: string) => Promise<LinePushResult>;
+  /** ADR-0033: Flex Push; used instead of `push` while Flex cards are enabled. */
+  pushFlex?: (lineUserId: string, message: LineFlexMessage, retryKey: string) => Promise<LinePushResult>;
+  /** Overrides DEMI_LINE_FLEX_MESSAGES_ENABLED for one drain (tests). */
+  flexMessages?: boolean;
   random?: () => number;
   batchSize?: number;
   shouldContinue?: () => boolean;
@@ -89,12 +97,45 @@ function pushWithLine(
   return new LineMessagingClient().pushText(lineUserId, text, retryKey);
 }
 
+function pushFlexWithLine(
+  lineUserId: string,
+  message: LineFlexMessage,
+  retryKey: string,
+): Promise<LinePushResult> {
+  return new LineMessagingClient().pushMessages(lineUserId, [message], retryKey);
+}
+
+/**
+ * ADR-0033: renders the claimed row's current content at send time. Content
+ * that would change the card makes the row stale first, so every attempt of
+ * one row sends the same payload with its one retry key. A card that cannot be
+ * built (no Workspace LIFF, invalid copy) is never sent and never degraded to
+ * an ordinary web link: it is a permanent failure without a provider call.
+ */
+async function dispatchNotification(
+  eligibility: Extract<CurrentEligibility, { eligible: true }>,
+  retryKey: string,
+  flexMessages: boolean,
+  dependencies: AppointmentLineNotificationDeliveryDependencies,
+): Promise<LinePushResult> {
+  const copy = appointmentLineNotificationCopy(eligibility.content);
+  if (!flexMessages) return (dependencies.push ?? pushWithLine)(eligibility.lineUserId, copy.text, retryKey);
+  let message: LineFlexMessage;
+  try {
+    message = buildLineNotificationCard(copy.card);
+  } catch (error: unknown) {
+    console.error("appointment_line_notification_card_unavailable", { cause: error instanceof Error ? error.name : "unknown" });
+    return { kind: "PERMANENT_FAILURE" };
+  }
+  return (dependencies.pushFlex ?? pushFlexWithLine)(eligibility.lineUserId, message, retryKey);
+}
+
 async function resolveLineEligibility(
   transaction: Prisma.TransactionClient,
   notification: Claim,
   recipientUserId: string,
   now: Date,
-  text: string,
+  content: AppointmentLineNotificationContent,
 ): Promise<CurrentEligibility> {
   const [bindings, preference] = await Promise.all([
     transaction.lineAccountBinding.findMany({
@@ -143,7 +184,7 @@ async function resolveLineEligibility(
   })) {
     return { eligible: false, outcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE };
   }
-  return { eligible: true, lineUserId: bindings[0].lineUserId, text };
+  return { eligible: true, lineUserId: bindings[0].lineUserId, content };
 }
 
 async function closeExhaustedLeases(database: DeliveryDatabase, now: Date): Promise<number> {
@@ -230,7 +271,8 @@ async function currentEligibility(
                 take: 1,
                 select: { id: true, osmUserId: true },
               },
-              hospital: { select: { status: true } },
+              hospital: { select: { status: true, name: true } },
+              patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
             },
           },
         },
@@ -253,7 +295,12 @@ async function currentEligibility(
       ) {
         return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
       }
-      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีผู้ป่วยที่ได้รับมอบหมายให้คุณดูแล กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, {
+        eventKind: "OSM_PATIENT_ASSIGNED",
+        hospitalName: assignment.patientHospitalRelationship.hospital.name,
+        // The recipient is the Patient's current assigned อสม., who reads this Patient's record.
+        patientDisplayName: appointmentPatientDisplayName(assignment.patientHospitalRelationship.patientProfile.person),
+      });
     }
 
     if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_SERVICE_REQUESTED) {
@@ -274,15 +321,19 @@ async function currentEligibility(
         updatedAt: true,
         status: true,
         type: true,
+        scheduledAt: true,
+        locationType: true,
         patientHospitalRelationship: {
           select: {
             id: true,
             endedAt: true,
-            hospital: { select: { id: true, status: true } },
+            hospital: { select: { id: true, status: true, name: true } },
             patientProfile: {
               select: {
                 person: {
                   select: {
+                    givenName: true,
+                    familyName: true,
                     user: {
                       select: {
                         id: true,
@@ -311,6 +362,14 @@ async function currentEligibility(
 
     const relationship = appointment.patientHospitalRelationship;
     const patientUser = relationship.patientProfile.person.user;
+    // ADR-0033 D1: every recipient below already reads this appointment, including the Patient's name.
+    const facts = {
+      appointmentType: appointment.type,
+      scheduledAt: appointment.scheduledAt,
+      locationType: appointment.locationType,
+      hospitalName: relationship.hospital.name,
+      patientDisplayName: appointmentPatientDisplayName(relationship.patientProfile.person),
+    };
     // Phase F: nothing is sent for a relationship whose care has ended.
     if (relationship.hospital.status !== HospitalStatus.ACTIVE || isPatientHospitalRelationshipEnded(relationship)) {
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
@@ -326,7 +385,7 @@ async function currentEligibility(
       ) {
         return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
       }
-      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีนัดเยี่ยมบ้านที่ได้รับมอบหมายให้คุณ กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, { eventKind: "OSM_APPOINTMENT_ASSIGNED", ...facts });
     }
 
     if (notification.eventKind === AppointmentLineNotificationEventKind.OSM_RESCHEDULE_REQUESTED) {
@@ -365,7 +424,7 @@ async function currentEligibility(
         }),
       ]);
       if (!request || !creator) return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
-      return resolveLineEligibility(transaction, notification, recipientUserId, now, "มีคำขอเลื่อนนัดรอทบทวน กรุณาเข้าสู่ระบบ DEMI เพื่อตรวจสอบ");
+      return resolveLineEligibility(transaction, notification, recipientUserId, now, { eventKind: "OSM_RESCHEDULE_REQUESTED", ...facts });
     }
 
     // E6: a row is deduplicated by User, so OSM and caregiver eligibility must be re-resolved with OR semantics.
@@ -392,7 +451,20 @@ async function currentEligibility(
       return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
     }
 
-    return resolveLineEligibility(transaction, notification, recipientUserId, now, appointmentLineNotificationText(appointment.type));
+    const eventKind = notification.eventKind;
+    if (
+      (eventKind !== AppointmentLineNotificationEventKind.CREATED &&
+        eventKind !== AppointmentLineNotificationEventKind.RESCHEDULED &&
+        eventKind !== AppointmentLineNotificationEventKind.CANCELLED) ||
+      !isAppointmentEventRecipientKind(notification.recipientKind)
+    ) {
+      return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+    }
+    return resolveLineEligibility(transaction, notification, recipientUserId, now, {
+      eventKind,
+      recipientKind: notification.recipientKind,
+      ...facts,
+    });
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
 }
 
@@ -417,7 +489,13 @@ async function patientServiceRequestEligibility(
       preferredDate: true,
       preferredSlot: true,
       serviceCode: true,
-      relationship: { select: { endedAt: true, hospital: { select: { status: true } } } },
+      relationship: {
+        select: {
+          endedAt: true,
+          hospital: { select: { status: true, name: true } },
+          patientProfile: { select: { person: { select: { givenName: true, familyName: true } } } },
+        },
+      },
     },
   });
   if (
@@ -431,19 +509,30 @@ async function patientServiceRequestEligibility(
   if (
     notification.recipientKind !== AppointmentLineNotificationRecipientKind.OSM ||
     isPatientHospitalRelationshipEnded(request.relationship) ||
-    request.relationship.hospital.status !== HospitalStatus.ACTIVE ||
-    !(request.preferredOsmUserId
-      ? request.preferredOsmUserId === recipientUserId &&
-        await isActiveHospitalOsm(transaction, recipientUserId, request.hospitalId)
-      : await currentAssignedOsmRecipient(transaction, request.patientHospitalRelationshipId) === recipientUserId)
+    request.relationship.hospital.status !== HospitalStatus.ACTIVE
   ) {
     return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
   }
-  return resolveLineEligibility(transaction, notification, recipientUserId, now, patientServiceRequestLineNotificationText({
+  const recipientIsAssignedOsm =
+    await currentAssignedOsmRecipient(transaction, request.patientHospitalRelationshipId) === recipientUserId;
+  if (
+    !(request.preferredOsmUserId
+      ? request.preferredOsmUserId === recipientUserId &&
+        await isActiveHospitalOsm(transaction, recipientUserId, request.hospitalId)
+      : recipientIsAssignedOsm)
+  ) {
+    return { eligible: false, outcome: AppointmentLineNotificationOutcome.AUTHORITY_CHANGED };
+  }
+  return resolveLineEligibility(transaction, notification, recipientUserId, now, {
+    eventKind: "OSM_SERVICE_REQUESTED",
     serviceCode: request.serviceCode,
     preferredDate: request.preferredDate,
     preferredSlot: request.preferredSlot,
-  }));
+    hospitalName: request.relationship.hospital.name,
+    // ADR-0033 D1: a pending request gives a preferred อสม. no access to the Patient; only the
+    // Patient's current assigned อสม. sees the name.
+    patientDisplayName: recipientIsAssignedOsm ? appointmentPatientDisplayName(request.relationship.patientProfile.person) : null,
+  });
 }
 
 async function settleClaim(
@@ -622,6 +711,7 @@ export async function drainAppointmentLineNotificationOutbox(
     unknownOutcome: await closeExhaustedLeases(database, nowOf(dependencies)),
   };
 
+  const flexMessages = dependencies.flexMessages ?? isLineFlexMessagesEnabled();
   for (let index = 0; index < batchSize; index += 1) {
     if (dependencies.shouldContinue && !dependencies.shouldContinue()) break;
     const notification = await claimDueNotification(database, nowOf(dependencies));
@@ -689,11 +779,7 @@ export async function drainAppointmentLineNotificationOutbox(
     }
     let providerOutcome: LinePushResult;
     try {
-      providerOutcome = await (dependencies.push ?? pushWithLine)(
-        finalEligibility.lineUserId,
-        finalEligibility.text,
-        notification.retryKey,
-      );
+      providerOutcome = await dispatchNotification(finalEligibility, notification.retryKey, flexMessages, dependencies);
     } catch {
       providerOutcome = { kind: "AMBIGUOUS_TRANSPORT_FAILURE" };
     }

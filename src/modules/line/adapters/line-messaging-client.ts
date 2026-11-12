@@ -26,11 +26,75 @@ export type LineQuickReplyAction =
   | { type: "uri"; label: string; uri: string }
   | { type: "message"; label: string; text: string };
 
-export type LineReplyMessage = {
+export type LineQuickReply = { items: { type: "action"; action: LineQuickReplyAction }[] };
+
+export type LineTextMessage = {
   type: "text";
   text: string;
-  quickReply?: { items: { type: "action"; action: LineQuickReplyAction }[] };
+  quickReply?: LineQuickReply;
 };
+
+/** Reactive replies send text with an optional Quick Reply. */
+export type LineReplyMessage = LineTextMessage;
+
+/**
+ * Minimal local Flex types: only the components DEMI's notification card emits
+ * (ADR-0033 D3). Newer-version properties (deca/hecto, scaling, maxWidth,
+ * maxHeight, lineSpacing, video) are deliberately not representable.
+ */
+export type LineFlexUriAction = { type: "uri"; label: string; uri: string };
+
+export type LineFlexText = {
+  type: "text";
+  text: string;
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  weight?: "regular" | "bold";
+  color?: string;
+  wrap?: boolean;
+  flex?: number;
+  margin?: "none" | "xs" | "sm" | "md" | "lg" | "xl";
+};
+
+export type LineFlexSeparator = { type: "separator"; margin?: "none" | "xs" | "sm" | "md" | "lg" | "xl"; color?: string };
+
+export type LineFlexButton = {
+  type: "button";
+  action: LineFlexUriAction;
+  style?: "primary" | "secondary" | "link";
+  color?: string;
+  height?: "sm" | "md";
+};
+
+export type LineFlexBox = {
+  type: "box";
+  layout: "vertical" | "horizontal" | "baseline";
+  contents: LineFlexComponent[];
+  spacing?: "none" | "xs" | "sm" | "md" | "lg" | "xl";
+  margin?: "none" | "xs" | "sm" | "md" | "lg" | "xl";
+  paddingAll?: string;
+  backgroundColor?: string;
+};
+
+export type LineFlexComponent = LineFlexBox | LineFlexText | LineFlexSeparator | LineFlexButton;
+
+export type LineFlexBubble = {
+  type: "bubble";
+  size: "kilo" | "mega";
+  header?: LineFlexBox;
+  body?: LineFlexBox;
+  footer?: LineFlexBox;
+};
+
+export type LineFlexMessage = {
+  type: "flex";
+  altText: string;
+  contents: LineFlexBubble;
+  quickReply?: LineQuickReply;
+};
+
+export type LineMessage = LineTextMessage | LineFlexMessage;
+
+export type LineMessageValidationResult = { kind: "VALID" } | { kind: "INVALID" } | { kind: "UNAVAILABLE" };
 
 export type LinePushResult =
   | { kind: "ACCEPTED" }
@@ -105,7 +169,7 @@ export class LineMessagingClient {
     await this.replyMessages(replyToken, [{ type: "text", text }]);
   }
 
-  async replyMessages(replyToken: string, messages: readonly LineReplyMessage[]): Promise<void> {
+  async replyMessages(replyToken: string, messages: readonly LineMessage[]): Promise<void> {
     const response = await this.request("/v2/bot/message/reply", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -121,7 +185,19 @@ export class LineMessagingClient {
   }
 
   async pushText(lineUserId: string, text: string, retryKey: string): Promise<LinePushResult> {
-    if (!/^U[0-9a-f]{32}$/iu.test(lineUserId) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(retryKey)) {
+    return this.pushMessages(lineUserId, [{ type: "text", text }], retryKey);
+  }
+
+  /**
+   * One Push request. `retryKey` is sent as X-Line-Retry-Key, so a caller that
+   * retries must send byte-identical `messages` with the same key.
+   */
+  async pushMessages(lineUserId: string, messages: readonly LineMessage[], retryKey: string): Promise<LinePushResult> {
+    if (
+      !/^U[0-9a-f]{32}$/iu.test(lineUserId) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(retryKey) ||
+      messages.length < 1 || messages.length > 5
+    ) {
       return { kind: "PERMANENT_FAILURE" };
     }
 
@@ -140,10 +216,7 @@ export class LineMessagingClient {
           "content-type": "application/json",
           "x-line-retry-key": retryKey,
         },
-        body: JSON.stringify({
-          to: lineUserId,
-          messages: [{ type: "text", text }],
-        }),
+        body: JSON.stringify({ to: lineUserId, messages }),
         signal: AbortSignal.timeout(8_000),
         cache: "no-store",
       });
@@ -154,6 +227,34 @@ export class LineMessagingClient {
       return { kind: "PERMANENT_FAILURE" };
     } catch {
       return { kind: "AMBIGUOUS_TRANSPORT_FAILURE" };
+    }
+  }
+
+  /**
+   * Operator check only (`npm run line:flex:validate`): LINE validates the
+   * message objects without sending anything. The provider's error detail is
+   * not returned, so nothing from the response can reach a log.
+   */
+  async validatePushMessages(messages: readonly LineMessage[]): Promise<LineMessageValidationResult> {
+    if (messages.length < 1 || messages.length > 5) return { kind: "INVALID" };
+    let accessToken: string;
+    try {
+      accessToken = getLineMessagingPushEnv().DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+    } catch {
+      return { kind: "UNAVAILABLE" };
+    }
+    try {
+      const response = await this.fetcher("https://api.line.me/v2/bot/message/validate/push", {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ messages }),
+        signal: AbortSignal.timeout(8_000),
+        cache: "no-store",
+      });
+      if (response.ok) return { kind: "VALID" };
+      return response.status === 400 ? { kind: "INVALID" } : { kind: "UNAVAILABLE" };
+    } catch {
+      return { kind: "UNAVAILABLE" };
     }
   }
 

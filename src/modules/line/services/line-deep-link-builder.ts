@@ -41,6 +41,17 @@ export function buildWorkspaceLiffUrl(intent: LineWebNavigationIntent): string |
 }
 
 /**
+ * ADR-0033 D2: the button URL of a proactive Flex notification. Always the
+ * Workspace LIFF; without one it throws LINE_CONFIGURATION_MISSING and never
+ * substitutes an ordinary web URL or another LIFF.
+ */
+export function buildNotificationLiffUrl(intent: LineWebNavigationIntent): string {
+  const url = buildWorkspaceLiffUrl(intent);
+  if (url === null) throw new LineFailure("LINE_CONFIGURATION_MISSING");
+  return url;
+}
+
+/**
  * The URL a LINE surface (Rich Menu, Quick Reply) opens for an intent:
  * Account intents use the Account LIFF; operational intents use the Workspace
  * LIFF, or the ordinary web URL until a Workspace LIFF is configured.
