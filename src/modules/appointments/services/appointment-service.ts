@@ -1857,12 +1857,25 @@ async function resolvePendingRescheduleRequests(
     await recordAuditEvent({ actorUserId, action: "appointment.reschedule_request.approved", resourceType: "PatientAppointmentRescheduleRequest", resourceId: request.id,
       metadata: { appointmentId, sourceAppointmentUpdatedAt: sourceUpdatedAt.toISOString() } }, tx);
   }
+  await supersedePendingRescheduleRequests(tx, { appointmentId, actorUserId, now });
+}
+
+/**
+ * Closes every PENDING reschedule request of one Appointment as SUPERSEDED, because the Appointment
+ * version it was bound to is gone. Writes one `appointment.reschedule_request.superseded` audit event
+ * when at least one request was closed. Sends no LINE notification.
+ */
+export async function supersedePendingRescheduleRequests(
+  tx: Prisma.TransactionClient,
+  input: { appointmentId: string; actorUserId: string; now: Date; auditMetadata?: Record<string, string> },
+): Promise<number> {
   const superseded = await tx.patientAppointmentRescheduleRequest.updateMany({
-    where: { appointmentId, status: AppointmentCancellationRequestStatus.PENDING },
-    data: { status: AppointmentCancellationRequestStatus.SUPERSEDED, resolvedByUserId: actorUserId, resolvedAt: now },
+    where: { appointmentId: input.appointmentId, status: AppointmentCancellationRequestStatus.PENDING },
+    data: { status: AppointmentCancellationRequestStatus.SUPERSEDED, resolvedByUserId: input.actorUserId, resolvedAt: input.now },
   });
-  if (superseded.count) await recordAuditEvent({ actorUserId, action: "appointment.reschedule_request.superseded", resourceType: "PatientAppointment", resourceId: appointmentId,
-    metadata: { appointmentId, count: superseded.count } }, tx);
+  if (superseded.count) await recordAuditEvent({ actorUserId: input.actorUserId, action: "appointment.reschedule_request.superseded", resourceType: "PatientAppointment", resourceId: input.appointmentId,
+    metadata: { appointmentId: input.appointmentId, count: superseded.count, ...input.auditMetadata } }, tx);
+  return superseded.count;
 }
 
 export type AppointmentRescheduleSubmissionResult = { requestId: string; appointmentId: string; patientHospitalRelationshipId: string };
