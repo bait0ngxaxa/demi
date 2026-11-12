@@ -271,7 +271,7 @@ describe("ผู้นัดหมาย and the assignee (ADR-0027, AP-5)", () 
     expect(container.querySelector('select[name="responsibleUserId"]')).toBeNull();
     expect(mocks.searchFilter).toHaveBeenCalledWith("hospital-a", "", 1);
     // The picker's own radios and search box are not fields of the list form.
-    expect([...new FormData(form).keys()].sort()).toEqual(["responsibleUserId", "tab", "dateFrom", "dateTo", "status", "type", "locationType", "awaitingOsmAcceptance", "unassignedOsm"].sort());
+    expect([...new FormData(form).keys()].sort()).toEqual(["responsibleUserId", "tab", "dateFrom", "dateTo", "status", "type", "locationType", "awaitingOsmAcceptance", "unassignedOsm", "unassigned"].sort());
 
     const radio = (label: string) => [...container.querySelectorAll<HTMLInputElement>('input[name="responsible-filter"]')]
       .find((input) => input.closest("label")?.textContent?.startsWith(label))!;

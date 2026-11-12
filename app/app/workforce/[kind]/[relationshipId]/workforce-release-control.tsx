@@ -45,16 +45,16 @@ function classifyRelease(state: WorkforceReleaseActionState): MutationVerdict {
 }
 
 /**
- * The Hospital's upcoming appointments; after an อสม. release, opened on the existing "ไม่มี อสม. รับผิดชอบ" filter.
- * A staff release keeps the unfiltered list: there is no filter for appointments without a staff assignee.
+ * The Hospital's upcoming appointments left without the released assignee: after an อสม. release, the
+ * "ไม่มี อสม. รับผิดชอบ" filter; after a staff release, the "ไม่มีผู้รับผิดชอบ" filter (neither assignee set).
  */
 function releasedAppointmentsHref(hospitalId: string, kind: "osm" | "staff"): string {
   const params = new URLSearchParams({ hospitalId, tab: "UPCOMING" });
-  if (kind === "osm") params.set("unassignedOsm", "true");
+  params.set(kind === "osm" ? "unassignedOsm" : "unassigned", "true");
   return `/app/appointments?${params.toString()}`;
 }
 
-type ReleasePayload ={ relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
+type ReleasePayload = { relationshipId: string; hospitalId: string; kind: "osm" | "staff"; updatedAt: string };
 
 export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, updatedAt, resourceName, hospitalName }: {
   relationshipId: string;
@@ -132,7 +132,7 @@ export function WorkforceReleaseControl({ relationshipId, hospitalId, kind, upda
               href={releasedAppointmentsHref(hospitalId, kind)}
               prefetch={false}
             >
-              ดูนัดหมายที่จะถึงของโรงพยาบาลนี้
+              {kind === "osm" ? "ดูนัดหมายที่ไม่มี อสม. รับผิดชอบ" : "ดูนัดหมายที่ไม่มีผู้รับผิดชอบ"}
             </Link>
           ) : null}
         </div>

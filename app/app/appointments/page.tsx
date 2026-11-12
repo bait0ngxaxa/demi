@@ -69,6 +69,8 @@ export default async function WorkAppointmentPage({
     locationType: firstSearchParam(params.locationType),
     responsibleUserId: firstSearchParam(params.responsibleUserId),
     awaitingOsmAcceptance: firstSearchParam(params.awaitingOsmAcceptance),
+    unassignedOsm: firstSearchParam(params.unassignedOsm),
+    unassigned: firstSearchParam(params.unassigned),
     cursor: firstSearchParam(params.cursor),
   };
   const parsed = workAppointmentQuerySchema.safeParse(rawQuery);

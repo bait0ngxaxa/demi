@@ -5,6 +5,8 @@ import { AppointmentStatus, type Prisma } from "@prisma/client";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
 import { ConflictError } from "@/shared/errors/application-error";
 
+import { supersedePendingRescheduleRequests } from "./appointment-service";
+
 /** The two single-assignee columns of an Appointment (ADR-0027: at most one is set). */
 export type AppointmentAssigneeField = "assignedOsmUserId" | "responsibleUserId";
 
@@ -34,6 +36,11 @@ const AUDIT_KEYS: Record<AppointmentAssigneeField, { previous: string; next: str
  * guarded by its previous version, so a concurrent change fails the transaction with a conflict.
  * One `appointment.assignee_handed_over` / `appointment.assignee_unassigned` audit event is written
  * per Appointment. LINE notifications are the caller's decision.
+ *
+ * A PENDING reschedule request is bound to the Appointment version this transfer replaces, so it could
+ * no longer be approved or rejected and would block new requests: it is closed as SUPERSEDED in the
+ * same transaction (audited, no LINE message). Cancellation requests need no such step because their
+ * submit and review paths already supersede a request whose version is stale.
  *
  * Scope: one care relationship when `patientHospitalRelationshipId` is given, otherwise every care
  * relationship of `hospitalId` (including one-off visits outside the assignee's patient assignments).
@@ -85,6 +92,13 @@ export async function transferFutureAppointmentAssignee(
     if (changed.count !== 1) {
       throw new ConflictError(input.conflictMessage);
     }
+
+    await supersedePendingRescheduleRequests(transaction, {
+      appointmentId: appointment.id,
+      actorUserId: input.actorUserId,
+      now: input.now,
+      auditMetadata: { cause: "assignee_transfer" },
+    });
 
     await recordAuditEvent({
       actorUserId: input.actorUserId,

@@ -389,9 +389,9 @@ describe("Workforce release control Toasts", () => {
   });
 
   it.each([
-    ["osm", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassignedOsm=true`],
-    ["staff", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING`],
-  ] as const)("links a %s release with unassigned appointments to the matching appointment list", async (kind, href) => {
+    ["osm", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassignedOsm=true`, "ดูนัดหมายที่ไม่มี อสม. รับผิดชอบ"],
+    ["staff", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassigned=true`, "ดูนัดหมายที่ไม่มีผู้รับผิดชอบ"],
+  ] as const)("links a %s release with unassigned appointments to the matching appointment list", async (kind, href, text) => {
     mocks.release.mockResolvedValueOnce({ ...released, unassignedAppointmentCount: 2 });
     render(RELATIONSHIP_ID, kind);
 
@@ -399,7 +399,7 @@ describe("Workforce release control Toasts", () => {
 
     const links = Array.from(container.querySelectorAll<HTMLAnchorElement>("a"));
     expect(links.map((link) => link.getAttribute("href"))).toEqual([href]);
-    expect(links[0]?.textContent).toBe("ดูนัดหมายที่จะถึงของโรงพยาบาลนี้");
+    expect(links[0]?.textContent).toBe(text);
   });
 
   it("shows no appointment link when the release unassigned nothing", async () => {

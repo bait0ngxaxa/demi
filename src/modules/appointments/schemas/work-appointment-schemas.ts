@@ -34,6 +34,8 @@ export const workAppointmentFiltersSchema = z
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     awaitingOsmAcceptance: z.literal("true").optional(),
     unassignedOsm: z.literal("true").optional(),
+    /** Future SCHEDULED appointments with neither a responsible staff member nor an assigned อสม. */
+    unassigned: z.literal("true").optional(),
   })
   .strict()
   .superRefine((filters, context) => {
@@ -58,6 +60,7 @@ export const workAppointmentQuerySchema = z
     responsibleUserId: z.uuid().transform((value) => value.toLowerCase()).optional(),
     awaitingOsmAcceptance: z.literal("true").optional(),
     unassignedOsm: z.literal("true").optional(),
+    unassigned: z.literal("true").optional(),
     cursor: z.string().optional(),
   })
   .strict()

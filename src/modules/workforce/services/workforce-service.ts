@@ -21,6 +21,7 @@ import { fingerprintWorkforceBulkSubmission, workforceBulkReceiptSchema, workfor
 
 import { getSupabaseAdminClient } from "@/lib/auth/supabase-admin";
 import { getPrisma } from "@/lib/db/prisma";
+import type { SerializableTransactionOptions } from "@/lib/db/serializable-transaction";
 import type { ProviderSessionRevocationOutcome } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import {
   lockCaregiverInvitationIdentityInTransaction,
@@ -336,6 +337,14 @@ type ActivationClaim = {
 };
 
 const DEFAULT_TRANSACTION_RETRIES = 2;
+/**
+ * Interactive transaction budget for a workforce release. The release versions and audits every future
+ * Appointment of the released user one by one (the per-Appointment evidence model), so its duration grows
+ * with that user's upcoming workload; Prisma's 5 s default can be exceeded by a long-serving อสม. The value
+ * is 4x the default to absorb that growth while still bounding how long the Serializable transaction holds
+ * its snapshot. It is an operational baseline, not a measured optimum.
+ */
+export const WORKFORCE_RELEASE_TRANSACTION_TIMEOUT_MS = 20_000;
 /** First-credential purposes: both set the User's first password and complete exactly one Hospital scope. */
 const INITIAL_ACTIVATION_PURPOSES: readonly WorkforceActivationPurpose[] = [
   WorkforceActivationPurpose.ACTIVATION,
@@ -468,6 +477,7 @@ async function runSerializable<T>(
   database: WorkforceDatabase,
   operation: (transaction: Prisma.TransactionClient) => Promise<T>,
   retryLimit: number,
+  options: SerializableTransactionOptions = {},
 ): Promise<T> {
   let retryCount = 0;
 
@@ -475,6 +485,7 @@ async function runSerializable<T>(
     try {
       return await database.$transaction(operation, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
       });
     } catch (error: unknown) {
       if (!isRetryableTransactionError(error) || retryCount >= retryLimit) {
@@ -4594,6 +4605,6 @@ export async function releaseWorkforceRelationship(
         metadata: { hospitalId: data.targetHospitalId, targetUserId: current.userId, fromStatus: current.status, toStatus: MembershipStatus.ENDED,
           endedAssignmentCount: ended.count, revokedActivationCount: revoked.count, unassignedAppointmentCount: unassigned.length } }, tx);
       return { relationshipId: current.id, hospitalId: data.targetHospitalId, unassignedAppointmentCount: unassigned.length };
-    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES);
+    }, dependencies.transactionRetries ?? DEFAULT_TRANSACTION_RETRIES, { timeout: WORKFORCE_RELEASE_TRANSACTION_TIMEOUT_MS });
   } catch (error: unknown) { throw normalizeDatabaseError(error, "Workforce release could not be completed"); }
 }

@@ -132,7 +132,7 @@ export function PatientCareReopenSection({ hospitalId }: { hospitalId: string })
           </form>
         ) : null}
 
-        {reopened ? <Alert className="mt-4" role="status" variant={result.patientAccount === "ACTIVATION_LINK_REQUIRED" ? "warning" : "success"}>{result.message}</Alert> : null}
+        {reopened ? <Alert className="mt-4" role="status" variant={result.patientAccount === "ACTIVATION_LINK_REQUIRED" || result.patientAccount === "ACCOUNT_SUSPENDED" ? "warning" : "success"}>{result.message}</Alert> : null}
       </Panel>
     </section>
   );
