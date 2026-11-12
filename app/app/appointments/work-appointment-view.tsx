@@ -52,6 +52,7 @@ function buildHref(
   if (filters.responsibleUserId) params.set("responsibleUserId", filters.responsibleUserId);
   if (filters.awaitingOsmAcceptance) params.set("awaitingOsmAcceptance", filters.awaitingOsmAcceptance);
   if (filters.unassignedOsm) params.set("unassignedOsm", filters.unassignedOsm);
+  if (filters.unassigned) params.set("unassigned", filters.unassigned);
   if (overrides.cursor) params.set("cursor", overrides.cursor);
   return `/app/appointments?${params.toString()}`;
 }
@@ -210,6 +211,13 @@ export function WorkAppointmentView({
                 <Select defaultValue={page.filters.unassignedOsm ?? ""} name="unassignedOsm">
                   <option value="">ทุกนัดหมาย</option>
                   <option value="true">ไม่มี อสม. รับผิดชอบ</option>
+                </Select>
+              </label>
+              <label className="block space-y-2 text-sm font-semibold text-text">
+                การมอบหมายผู้รับผิดชอบ
+                <Select defaultValue={page.filters.unassigned ?? ""} name="unassigned">
+                  <option value="">ทุกนัดหมาย</option>
+                  <option value="true">ไม่มีผู้รับผิดชอบ</option>
                 </Select>
               </label>
             </>

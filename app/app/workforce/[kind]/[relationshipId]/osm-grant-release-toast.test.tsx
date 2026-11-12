@@ -390,7 +390,7 @@ describe("Workforce release control Toasts", () => {
 
   it.each([
     ["osm", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassignedOsm=true`],
-    ["staff", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING`],
+    ["staff", `/app/appointments?hospitalId=${HOSPITAL_ID}&tab=UPCOMING&unassigned=true`],
   ] as const)("links a %s release with unassigned appointments to the matching appointment list", async (kind, href) => {
     mocks.release.mockResolvedValueOnce({ ...released, unassignedAppointmentCount: 2 });
     render(RELATIONSHIP_ID, kind);

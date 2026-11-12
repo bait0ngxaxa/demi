@@ -462,7 +462,7 @@ function buildAppointmentWhere(
   const scheduledAt: Prisma.DateTimeFilter<"PatientAppointment"> = {};
   if (filters.dateFrom) scheduledAt.gte = bangkokDayStart(filters.dateFrom);
   if (filters.dateTo) scheduledAt.lt = bangkokDayAfter(filters.dateTo);
-  if (filters.unassignedOsm) scheduledAt.gt = now;
+  if (filters.unassignedOsm || filters.unassigned) scheduledAt.gt = now;
 
   const relationshipRead: Prisma.PatientAppointmentWhereInput = {
     patientHospitalRelationship: {
@@ -477,6 +477,9 @@ function buildAppointmentWhere(
         : relationshipRead,
       ...(filters.unassignedOsm
         ? [{ assignedOsmUserId: null, locationType: "HOME_VISIT" as const, status: "SCHEDULED" as const }]
+        : []),
+      ...(filters.unassigned
+        ? [{ assignedOsmUserId: null, responsibleUserId: null, status: "SCHEDULED" as const }]
         : []),
     ],
     ...(Object.keys(scheduledAt).length === 0 ? {} : { scheduledAt }),
@@ -994,7 +997,7 @@ export async function listWorkAppointments(
     if (filters.awaitingOsmAcceptance && (!resolvedScope.directRead || tab !== "UPCOMING")) {
       throw new ForbiddenError();
     }
-    if (filters.unassignedOsm && (!resolvedScope.directRead || tab !== "UPCOMING")) {
+    if ((filters.unassignedOsm || filters.unassigned) && (!resolvedScope.directRead || tab !== "UPCOMING")) {
       throw new ForbiddenError();
     }
 

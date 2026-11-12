@@ -18,6 +18,7 @@ import { setOwnAppointmentLineNotificationPreference } from "@/modules/appointme
 import { getOwnPatientAppointmentDetail } from "@/modules/patient-self/services/patient-self-care-query-service";
 import { getAppointmentRescheduleHistory } from "@/modules/appointments/services/appointment-reschedule-history-service";
 import { getAppointmentDetail } from "@/modules/appointments/services/appointment-query-service";
+import { listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
 import { provisionOsm, releaseWorkforceRelationship, restoreOsmRelationship, restoreHospitalMembership } from "@/modules/workforce/services/workforce-service";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
@@ -91,6 +92,7 @@ async function seedAppointment(input: {
   responsibleUserId?: string;
   offsetMs: number;
   status?: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
+  locationType?: "CLINIC" | "HOME_VISIT";
 }): Promise<{ id: string; updatedAt: Date }> {
   return db.patientAppointment.create({
     data: {
@@ -99,7 +101,7 @@ async function seedAppointment(input: {
       assignedOsmUserId: input.assignedOsmUserId ?? null,
       responsibleUserId: input.responsibleUserId ?? null,
       type: "FOLLOW_UP",
-      locationType: "HOME_VISIT",
+      locationType: input.locationType ?? "HOME_VISIT",
       scheduledAt: new Date(now.getTime() + input.offsetMs),
       status: input.status ?? "SCHEDULED",
       submissionNonce: randomUUID(),
@@ -404,6 +406,29 @@ describe("Phase B hospital operations", () => {
       workforceRelationshipId: staffRel.id,
     });
     expect((await db.auditEvent.findFirstOrThrow({ where: { action: "workforce.permanently_released", resourceId: staffRel.id } })).metadata).toMatchObject({ unassignedAppointmentCount: 1 });
+  });
+
+  it("the unassigned filter lists the Hospital's future scheduled appointments with neither assignee, at any location", async () => {
+    const f = await fixture();
+    const other = await fixture();
+    const seed = (input: Partial<Parameters<typeof seedAppointment>[0]>) =>
+      seedAppointment({ relationshipId: f.relationshipId, createdByUserId: f.owner.userId, offsetMs: 2 * DAY_MS, ...input });
+    const clinic = await seed({ locationType: "CLINIC" });
+    const homeVisit = await seed({ locationType: "HOME_VISIT", offsetMs: 3 * DAY_MS });
+    const withStaff = await seed({ responsibleUserId: f.staff.userId });
+    const withOsm = await seed({ assignedOsmUserId: f.osm.userId });
+    await seed({ offsetMs: -DAY_MS });
+    await seed({ status: "CANCELLED" });
+    await seedAppointment({ relationshipId: other.relationshipId, createdByUserId: other.owner.userId, offsetMs: 2 * DAY_MS });
+    const ids = async (filters: Record<string, string>): Promise<string[]> =>
+      (await listWorkAppointments(f.owner, { hospitalId: f.hospitalId, tab: "UPCOMING", ...filters }, dependencies)).items.map((item) => item.appointmentId).sort();
+
+    expect(await ids({ unassigned: "true" })).toEqual([clinic.id, homeVisit.id].sort());
+    // unassignedOsm keeps its meaning: home visits without an อสม., whoever the staff assignee is.
+    expect(await ids({ unassignedOsm: "true" })).toEqual([homeVisit.id, withStaff.id].sort());
+    expect(await ids({})).toEqual(expect.arrayContaining([withOsm.id, withStaff.id, clinic.id]));
+    await expect(listWorkAppointments(f.owner, { hospitalId: f.hospitalId, tab: "HISTORY", unassigned: "true" }, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(listWorkAppointments(f.osm, { hospitalId: f.hospitalId, tab: "UPCOMING", unassigned: "true" }, dependencies)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it("an OSM reassignment supersedes the moved appointment's open reschedule request, so a new request can be submitted", async () => {
