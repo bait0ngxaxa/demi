@@ -355,7 +355,7 @@ export const HOSPITAL_REPORT_UNAVAILABLE_FIELDS = {
     source:
       "PatientProgramRoundAchieveScore.score per opened round (AS-D1); without one, rounds 3-6 use the BR-04 rate of the round's Program Follow-up",
     limitation:
-      "Staff-entered % 0-100, one decimal, by the patient's Hospital OWNER/MEMBER (AS-1). Rounds 1-2 have no computed score (AS-D2). A completed round without a Follow-up shows ครั้งนี้ไม่ได้ติดตามผล in its Follow-up cells (AS-D3).",
+      "Staff-entered % 0-100, one decimal, by the patient's Hospital OWNER/MEMBER (AS-1). Rounds 1-2 have no computed score (AS-D2). A completed round without a Follow-up shows ครั้งนี้ไม่ได้ติดตามผล on screen and leaves its workbook Follow-up cells empty (AS-D3).",
   },
   planAdjustmentObstacle: {
     coverage: "SOURCE_BACKED_NEW_RECORDS",

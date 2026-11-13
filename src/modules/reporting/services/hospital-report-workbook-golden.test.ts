@@ -23,12 +23,13 @@ type DodStatus = "SOURCE_READY" | "DECISION_OPEN" | "SOURCE_MISSING";
 type CellValue = string | number | null;
 type ColumnContract = readonly [column: string, expected: CellValue, status: DodStatus];
 
-const SOURCE_MISSING = "ไม่มีแหล่งข้อมูลในระบบ";
-const SEMANTICS_UNAPPROVED = "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง";
-const NOT_PROGRAM_SCOPED = "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้";
-const DERIVATION_UNAPPROVED = "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง";
-const NO_MORE_FOLLOWUPS = "ไม่มี Follow-up ในช่องที่เหลือ";
-const UNAVAILABLE_LABELS = new Set([SOURCE_MISSING, SEMANTICS_UNAPPROVED, NOT_PROGRAM_SCOPED, DERIVATION_UNAPPROVED]);
+// The former unavailable reasons; the workbook now leaves every unavailable value empty.
+const UNAVAILABLE_LABELS = new Set([
+  "ไม่มีแหล่งข้อมูลในระบบ",
+  "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง",
+  "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้",
+  "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง",
+]);
 
 const programId = "33333333-3333-4333-8333-333333333333";
 const STARTED_AT = "2026-07-01T03:00:00.000Z";
@@ -73,10 +74,8 @@ function followupAt(index: number): HospitalReportFollowup {
   };
 }
 
-const NO_ACHIEVEMENT = "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
-
 function rateCell(followup: HospitalReportFollowup): CellValue {
-  return followup.achievement === null ? NO_ACHIEVEMENT : followup.achievement.ratePercent / 100;
+  return followup.achievement === null ? null : followup.achievement.ratePercent / 100;
 }
 
 function roundVitals(
@@ -245,15 +244,12 @@ function dashboardRoundColumns(row: 9 | 10): ColumnContract[] {
     if (round <= 2) {
       if (row === 10) return [column, null, "SOURCE_MISSING"];
       // Phase A: rounds 1-2 DTX/BW come from PatientProgramRoundVitals; AS-D2: the score is staff-entered only.
-      if (field === 2) return [column, "ยังไม่บันทึก", "SOURCE_READY"];
+      if (field === 2) return [column, null, "SOURCE_READY"];
       const vitals = round === 1 ? [118, 74] : [112, 73];
       return [column, vitals[field] ?? null, "SOURCE_READY"];
     }
     const followup = followups[round - 3];
-    if (!followup) {
-      const isFirstEmptySlot = row === 9 && round - 3 === followups.length && field === 0;
-      return [column, isFirstEmptySlot ? NO_MORE_FOLLOWUPS : null, "SOURCE_READY"];
-    }
+    if (!followup) return [column, null, "SOURCE_READY"];
     if (field === 0) return [column, followup.measurements.bloodSugar.state === "RECORDED" ? followup.measurements.bloodSugar.value : null, "SOURCE_READY"];
     if (field === 1) return [column, followup.measurements.weight.state === "RECORDED" ? followup.measurements.weight.value : null, "SOURCE_READY"];
     return [column, rateCell(followup), "SOURCE_READY"];
@@ -266,7 +262,7 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
   ["E", 9, "SOURCE_READY"],
-  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
+  ["F", "อสม. สมศรี", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   // D7/D8: staff-entered CVD risk % and HbA1c %.
   ["H", 12.5, "SOURCE_READY"],
@@ -291,7 +287,6 @@ const DASHBOARD_ROW_9: readonly ColumnContract[] = [
 ];
 
 function followupServiceColumns(row: 9 | 10): ColumnContract[] {
-  const starts = ["AH", "AP", "AX", "BF"];
   const blocks = [
     ["AH", "AI", "AJ", "AK", "AL", "AM", "AN", "AO"],
     ["AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW"],
@@ -304,19 +299,19 @@ function followupServiceColumns(row: 9 | 10): ColumnContract[] {
     if (!followup) {
       return block.map((column): ColumnContract => [
         column,
-        row === 9 && column === starts[followups.length] ? NO_MORE_FOLLOWUPS : null,
+        null,
         column === block[3] ? "SOURCE_MISSING" : "SOURCE_READY",
       ]);
     }
     const answer = (value: boolean | null, labels: readonly [string, string]): [CellValue, CellValue] =>
-      value === null ? ["ไม่ได้บันทึก", null] : value ? [labels[0], null] : [null, labels[1]];
+      value === null ? [null, null] : value ? [labels[0], null] : [null, labels[1]];
     const [adjusted, notAdjusted] = answer(followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
     const [obstacle, noObstacle] = answer(followup.hasObstacle, ["มี", "ไม่มี"]);
     return [
       [block[0], dateToken(followup.serviceDate === null ? followup.recordedAt : `${followup.serviceDate}T00:00:00.000Z`), "SOURCE_READY"],
-      [block[1], followup.achievement?.achievedDays ?? NO_ACHIEVEMENT, "SOURCE_READY"],
+      [block[1], followup.achievement?.achievedDays ?? null, "SOURCE_READY"],
       [block[2], rateCell(followup), "SOURCE_READY"],
-      [block[3], SOURCE_MISSING, "SOURCE_MISSING"],
+      [block[3], null, "SOURCE_MISSING"],
       [block[4], adjusted, "SOURCE_READY"],
       [block[5], notAdjusted, "SOURCE_READY"],
       [block[6], obstacle, "SOURCE_READY"],
@@ -331,7 +326,7 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["C", "รักษ์สุขภาพ", "SOURCE_READY"],
   ["D", "HN-0001", "SOURCE_READY"],
   ["E", 9, "SOURCE_READY"],
-  ["F", "อสม. สมศรี (มอบหมายปัจจุบัน)", "SOURCE_READY"],
+  ["F", "อสม. สมศรี", "SOURCE_READY"],
   ["G", dateToken(STARTED_AT), "SOURCE_READY"],
   ["H", dateToken(COMPLETED_AT), "SOURCE_READY"],
   ["I", 128, "SOURCE_READY"],
@@ -443,10 +438,12 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     expect(normalizedCell(service, "D10")).toBe("HN-0001");
   });
 
-  it("never shows an unavailable label in a SOURCE_READY column", () => {
-    for (const [column, expected, status] of [...DASHBOARD_ROW_9, ...SERVICE_ROW_9]) {
-      if (status !== "SOURCE_READY") continue;
+  it("never shows an unavailable label in any customer column", () => {
+    for (const [column, expected] of [...DASHBOARD_ROW_9, ...SERVICE_ROW_9]) {
       expect(typeof expected === "string" && UNAVAILABLE_LABELS.has(expected), column).toBe(false);
+    }
+    for (const [column, , status] of SERVICE_ROW_9) {
+      if (status === "SOURCE_MISSING") expect(normalizedCell(service, `${column}9`), column).toBeNull();
     }
   });
 
@@ -556,13 +553,11 @@ describe("customer workbook golden columns for the booklet forms (R2)", () => {
 });
 
 /**
- * AS-1 golden case: the staff-entered Achieve score (AS-D1/AS-D2) and the "ครั้งนี้ไม่ได้ติดตามผล" label of a
+ * AS-1 golden case: the staff-entered Achieve score (AS-D1/AS-D2) and the empty Follow-up cells of a
  * completed round without its Follow-up (AS-D3). Rounds 3–4 have Follow-ups 1–2, round 5 ended without
  * Follow-up 3, round 6 is still open without one, and round 7 is an extra round with a staff score.
  */
 describe("customer workbook golden columns for the staff-entered Achieve score (AS-1)", () => {
-  const NO_FOLLOWUP = "ครั้งนี้ไม่ได้ติดตามผล";
-
   function round(
     roundNumber: number,
     completed: boolean,
@@ -615,11 +610,11 @@ describe("customer workbook golden columns for the staff-entered Achieve score (
     service = sheetOrThrow(generated, "รายงานการจัดบริการ");
   });
 
-  it("fills rounds 1–2 with the staff score and the not-recorded label otherwise", () => {
+  it("fills rounds 1–2 with the staff score and leaves the cell empty otherwise", () => {
     expect(normalizedCell(dashboard, "Q9")).toBe(118);
     expect(dashboard.getCell("S9").value).toBeCloseTo(0.555, 10);
     expect(dashboard.getCell("S9").numFmt).toBe("0.0%");
-    expect(normalizedCell(dashboard, "V9")).toBe("ยังไม่บันทึก");
+    expect(dashboard.getCell("V9").value ?? null).toBeNull();
   });
 
   it("lets the staff score override the computed rate and falls back to the computed rate", () => {
@@ -631,15 +626,12 @@ describe("customer workbook golden columns for the staff-entered Achieve score (
     expect(normalizedCell(service, "AJ9")).toEqual(followupOne ? rateCell(followupOne) : null);
   });
 
-  it("labels every Follow-up cell of a completed round without its Follow-up", () => {
+  it("leaves every Follow-up cell of a completed round without its Follow-up empty", () => {
     for (const column of ["AC", "AD", "AE"]) {
-      expect(normalizedCell(dashboard, `${column}9`), `Dashboard ภาพรวม!${column}9`).toBe(NO_FOLLOWUP);
+      expect(dashboard.getCell(`${column}9`).value ?? null, `Dashboard ภาพรวม!${column}9`).toBeNull();
     }
-    for (const column of ["AX", "AY", "AZ", "BB", "BD"]) {
-      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toBe(NO_FOLLOWUP);
-    }
-    for (const column of ["BA", "BC", "BE"]) {
-      expect(normalizedCell(service, `${column}9`), `รายงานการจัดบริการ!${column}9`).toBeNull();
+    for (const column of ["AX", "AY", "AZ", "BA", "BB", "BC", "BD", "BE"]) {
+      expect(service.getCell(`${column}9`).value ?? null, `รายงานการจัดบริการ!${column}9`).toBeNull();
     }
   });
 

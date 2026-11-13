@@ -457,16 +457,16 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const programRecord = await prisma.patientProgram.findUniqueOrThrow({ where: { id: programId }, select: { startedAt: true, completedAt: true } });
     const startedOn = programRecord.startedAt.toISOString().slice(0, 10);
     const completedOn = programRecord.completedAt!.toISOString().slice(0, 10);
-    // AS-D2: rounds 1-2 have no computed score; without a staff-entered one the cell is not recorded.
-    const roundAchieveScoreNotRecorded = "ยังไม่บันทึก";
+    // AS-D2: rounds 1-2 have no computed score; without a staff-entered one the cell is empty.
+    const roundAchieveScoreNotRecorded = null;
 
     // Header counts: both relationships are counted, only the Program becomes a row.
     for (const [sheet, countRow] of [[dashboard, 2], [service, 3]] as const) {
-      expect(cells(sheet, countRow, 1, 6)).toEqual(["จำนวนเคส", 2, "เบาหวาน (DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ทั้งหมด", 1]);
-      expect(cells(sheet, countRow + 1, 1, 6)).toEqual(["ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program", 1, "กลุ่มเสี่ยง (Pre-DM)", "ยังไม่มีนิยามและตัวหารที่ได้รับรอง", "Program ACTIVE / COMPLETED", "0 / 1"]);
+      expect(cells(sheet, countRow, 1, 6)).toEqual(["จำนวนเคส", 2, "เบาหวาน (DM)", null, "Program ทั้งหมด", 1]);
+      expect(cells(sheet, countRow + 1, 1, 6)).toEqual(["ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program", 1, "กลุ่มเสี่ยง (Pre-DM)", null, "Program ACTIVE / COMPLETED", "0 / 1"]);
     }
 
-    const identity = ["ทดสอบสมชาย", `รายงาน${suffix}`, `HN-${suffix}`, 4, `ทดสอบอสม ทดสอบ${suffix} (มอบหมายปัจจุบัน)`, startedOn];
+    const identity = ["ทดสอบสมชาย", `รายงาน${suffix}`, `HN-${suffix}`, 4, `ทดสอบอสม ทดสอบ${suffix}`, startedOn];
     expect(dashboard.columnCount).toBe(52);
     expect(service.columnCount).toBe(74);
     expect(dashboard.getCell("AR8").text).toBe("ครั้งเพิ่มเติม (จำนวน)");
@@ -493,16 +493,16 @@ describe("report pipeline end to end (P1 Part D)", () => {
       1, ...identity, completedOn,
       // Before DTX/BW, PAM, PROMs, confidence ruler, exercise before; After DTX/BW, exercise after; follow-ups > 70%.
       // R2: PAM score = the PAM total; PROMs = มีปัญหา/ไม่มีปัญหา (Q6).
-      180, 80, 15, "ไม่มีปัญหา", 5, "ไม่มีบันทึก", 118, 72, "ไม่มีบันทึก", 2,
+      180, 80, 15, "ไม่มีปัญหา", 5, null, 118, 72, null, 2,
       // Service 1 marks: floating chart and routine of round 1, dream card of round 3.
-      "ทำ", "", "ทำ", "", "ทำ", "",
+      "ทำ", null, "ทำ", null, "ทำ", null,
       // Round 2 first Goal Plan: reduce meal, food change, food days, exercise, exercise days, weekly minutes.
-      "มี", "", "", "ไม่มี", 5, "มี", "", 3, 90,
-      // Follow-ups 1–4: date, achieved days, rate, outcome, plan adjusted pair, obstacle pair.
-      today, 4, 0.5, "ไม่มีแหล่งข้อมูลในระบบ", "", "ไม่ปรับ", "มี", "",
-      today, 7, 0.88, "ไม่มีแหล่งข้อมูลในระบบ", "ปรับ", "", "", "ไม่มี",
-      today, 9, 1, "ไม่มีแหล่งข้อมูลในระบบ", "", "ไม่ปรับ", "", "ไม่มี",
-      today, 4, 0.44, "ไม่มีแหล่งข้อมูลในระบบ", "", "ไม่ปรับ", "", "ไม่มี",
+      "มี", null, null, "ไม่มี", 5, "มี", null, 3, 90,
+      // Follow-ups 1–4: date, achieved days, rate, outcome (no source: empty), plan adjusted pair, obstacle pair.
+      today, 4, 0.5, null, null, "ไม่ปรับ", "มี", null,
+      today, 7, 0.88, null, "ปรับ", null, null, "ไม่มี",
+      today, 9, 1, null, null, "ไม่ปรับ", null, "ไม่มี",
+      today, 4, 0.44, null, null, "ไม่ปรับ", null, "ไม่มี",
     ]);
 
     // Exactly one Program row: the rest of the template's data-entry grid stays empty (Dashboard rows 10–29,
