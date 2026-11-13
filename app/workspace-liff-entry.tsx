@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { SLOW_LOADING_HINT, useSlowLoadingHint } from "@/components/line/use-slow-loading-hint";
 
 import { recordCurrentLiffBrowserEntry, recordCurrentWorkspaceInitResult } from "@/components/line/liff-browser-context-store";
 import { clearWorkspaceLiffHandoff, prepareWorkspaceLiffHandoff } from "@/components/line/workspace-liff-document";
@@ -18,13 +22,14 @@ import {
 
 /** Decided on the server before any SDK work. */
 export type WorkspaceLiffEntryMode = "ORDINARY" | "LIFF" | "NAVIGATION_INVALID";
-export type WorkspaceLiffEntryState = "CONTINUING" | "INITIALIZING" | "INIT_FAILED" | "UNAVAILABLE" | "NAVIGATION_INVALID" | "LOOP_STOPPED" | "CONTINUATION_FAILED";
+export type WorkspaceLiffEntryState = "CONTINUING" | "REDIRECTING" | "INITIALIZING" | "INIT_FAILED" | "UNAVAILABLE" | "NAVIGATION_INVALID" | "LOOP_STOPPED" | "CONTINUATION_FAILED";
 
 type Copy = { title: string; body: string; busy?: boolean };
 
 const copy: Record<WorkspaceLiffEntryState, Copy> = {
   CONTINUING: { title: "กำลังเปิด DEMI", body: "กรุณารอสักครู่", busy: true },
-  INITIALIZING: { title: "กำลังเปิด DEMI ผ่าน LINE", body: "กรุณารอสักครู่", busy: true },
+  INITIALIZING: { title: "กำลังเชื่อมต่อกับ LINE", body: "กรุณารอสักครู่", busy: true },
+  REDIRECTING: { title: "กำลังเปิดหน้า DEMI", body: "กรุณารอสักครู่", busy: true },
   INIT_FAILED: { title: "เปิดผ่าน LINE ไม่สำเร็จ", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
   UNAVAILABLE: { title: "ยังเปิด DEMI ผ่าน LINE ไม่ได้", body: "บริการนี้ยังไม่พร้อมใช้งานใน LINE คุณยังใช้ DEMI บนเว็บได้ตามปกติ" },
   NAVIGATION_INVALID: { title: "ลิงก์นี้ไม่ถูกต้อง", body: "กรุณาปิดหน้านี้แล้วเปิดจากเมนู DEMI ใน LINE อีกครั้ง" },
@@ -38,6 +43,7 @@ export function WorkspaceLiffEntryScreen({
   state: WorkspaceLiffEntryState;
 }): React.JSX.Element {
   const current = copy[state];
+  const showSlowHint = useSlowLoadingHint(state, Boolean(current.busy));
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
       <div className="mx-auto w-full max-w-xl">
@@ -46,8 +52,10 @@ export function WorkspaceLiffEntryScreen({
         </header>
         <section aria-labelledby="workspace-liff-status" aria-busy={current.busy ? true : undefined} className="rounded-panel border border-line bg-surface p-5 shadow-surface sm:p-7">
           <div className="space-y-4" role="status" aria-live="polite">
+            {current.busy ? <LoadingIndicator size="md" /> : null}
             <h1 id="workspace-liff-status" className="text-2xl font-semibold">{current.title}</h1>
             <p className="type-readable text-base text-muted">{current.body}</p>
+            {showSlowHint ? <p className="text-sm text-muted">{SLOW_LOADING_HINT}</p> : null}
           </div>
         </section>
       </div>
@@ -86,7 +94,10 @@ export function WorkspaceLiffEntry({
       return;
     }
     if (mode === "ORDINARY" && !hasLiffCredentialFragment(window.location.hash)) {
-      window.location.replace(fallbackHref);
+      queueMicrotask(() => {
+        flushSync(() => setState("REDIRECTING"));
+        window.location.replace(fallbackHref);
+      });
       return;
     }
     if (!liffId) {
@@ -112,6 +123,8 @@ export function WorkspaceLiffEntry({
         // Reached only when the SDK did not perform the secondary redirect itself.
         clearWorkspaceLiffEntryAttempts(sessionAttemptStore());
         prepareWorkspaceLiffHandoff(liffId, destination ?? fallbackHref);
+        // Commit the progress copy before handing this document to the browser.
+        flushSync(() => setState("REDIRECTING"));
         window.location.replace(destination ?? fallbackHref);
         return;
       }

@@ -8,6 +8,7 @@ import { disconnectionStatusSchema, initializeLineAccountLiff, LineDisconnection
 import { AppointmentNotificationPreference, type AppointmentNotificationPreferenceView } from "./appointment-notification-preference";
 import { LineDemiAccountSwitch } from "./line-demi-account-switch";
 import { LinePasswordRecoveryRequestForm } from "../../recover/line/line-password-recovery-request-form";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { PasswordInput } from "@/components/ui/password-input";
 import { LineWorkspaceLink } from "@/components/line/line-account-navigation";
 import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
@@ -593,7 +594,7 @@ export function LineAccountScreen({
                 </div>
               ) : null}
 
-              {busy ? <p className="mt-5 text-sm text-muted" role="status">{busyMessage}</p> : null}
+              {busy ? <p className="mt-5 flex items-center gap-2 text-sm text-muted" role="status"><LoadingIndicator size="sm" />{busyMessage}</p> : null}
               {view === "FAILURE" ? (
                 <div className="mt-5 space-y-3">
                   <p className="rounded-control bg-danger-soft px-4 py-3 text-sm text-danger" role="alert">{message || safeFailure}</p>

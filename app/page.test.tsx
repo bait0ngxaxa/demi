@@ -41,7 +41,9 @@ describe("GET / entry", () => {
     const element = await render({ "liff.state": "/app/personal/medications" });
     expect(element.props as EntryProps).toMatchObject({ mode: "LIFF", destination: "/app/personal/medications", liffId: "1234567890-Workspace" });
     const markup = renderToStaticMarkup(element);
-    expect(markup).toContain("กำลังเปิด DEMI ผ่าน LINE");
+    expect(markup).toContain("กำลังเชื่อมต่อกับ LINE");
+    expect(markup).toContain("motion-safe:animate-spin");
+    expect(markup).toContain('aria-busy="true"');
     expect(markup).not.toContain("1234567890-Account");
     expect(mocks.init).not.toHaveBeenCalled();
   });

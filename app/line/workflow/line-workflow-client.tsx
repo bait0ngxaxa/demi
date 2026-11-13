@@ -4,6 +4,9 @@ import liff from "@line/liff";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
+import { SLOW_LOADING_HINT, useSlowLoadingHint } from "@/components/line/use-slow-loading-hint";
+
 import { recordCurrentLiffBrowserEntry } from "@/components/line/liff-browser-context-store";
 import { LINE_WORKFLOW_GATEWAY_PATH } from "@/modules/line/domain/line-navigation-intents";
 import { LINE_WORKFLOW_APPOINTMENTS_PATH } from "@/modules/line/domain/line-workflow-routes";
@@ -64,6 +67,7 @@ export function LineWorkflowScreen({
   onDemiLogin?: () => void;
 }): React.JSX.Element {
   const current = copy[state];
+  const showSlowHint = useSlowLoadingHint(state, Boolean(current.busy));
   return (
     <main className="min-h-dvh bg-canvas px-4 py-8 text-ink sm:py-12">
       <div className="mx-auto w-full max-w-xl">
@@ -73,8 +77,10 @@ export function LineWorkflowScreen({
         </header>
         <section aria-labelledby="line-workflow-status" aria-busy={current.busy ? true : undefined} className="rounded-panel border border-line bg-surface p-5 shadow-surface sm:p-7">
           <div className="space-y-4" role="status" aria-live="polite">
+            {current.busy ? <LoadingIndicator size="md" /> : null}
             <h2 id="line-workflow-status" className="text-2xl font-semibold">{current.title}</h2>
             <p className="type-readable text-base text-muted">{current.body}</p>
+            {showSlowHint ? <p className="text-sm text-muted">{SLOW_LOADING_HINT}</p> : null}
             {state === "LOGIN_REQUIRED" && repeatedLogin ? (
               <p className="rounded-control bg-warning-soft px-4 py-3 text-sm text-warning">
                 หากเข้าสู่ระบบแล้วยังกลับมาที่หน้านี้ เบราว์เซอร์นี้อาจไม่เก็บการเข้าสู่ระบบไว้ กรุณาเข้าสู่ระบบในเบราว์เซอร์เดียวกับที่เปิดหน้านี้ แล้วลองใหม่
