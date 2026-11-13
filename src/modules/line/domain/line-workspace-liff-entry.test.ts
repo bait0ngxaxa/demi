@@ -128,6 +128,8 @@ describe("Workspace LIFF root entry classification", () => {
       expect(resolveWorkspaceLiffDestination("/app/patients/assigned?task=screening"))
         .toEqual({ valid: true, destination: "/app/patients/assigned?task=screening" });
       expect(resolveWorkspaceLiffDestination("/app/personal/")).toEqual({ valid: false });
+      expect(resolveWorkspaceLiffDestination("/app/personal/services")).toEqual({ valid: true, destination: "/app/personal/services" });
+      expect(resolveWorkspaceLiffDestination("/app/personal/services?relationshipId=1")).toEqual({ valid: false });
     });
 
     it("does not change the input query object it classifies", () => {

@@ -73,6 +73,14 @@ export const LINE_FLEX_SAMPLES: readonly LineFlexSample[] = [
     },
   },
   {
+    name: "reply:no-upcoming-appointment",
+    build: () => {
+      const reply = formatLineAppointmentReply("EMPTY");
+      if (reply.kind !== "EMPTY") throw new Error("Sample reply is not the empty reply");
+      return buildLineNotificationCard(reply.card);
+    },
+  },
+  {
     name: "medication:reminder",
     build: () => buildLineNotificationCard(medicationLineReminderCopy({ localTime: "08:00", medicationName: "ยาตัวอย่าง 5 mg" }).card),
   },

@@ -82,14 +82,14 @@ export function outcomeForAppointmentReply(reply: LineAppointmentReply): LineRea
 }
 
 /**
- * ADR-0033: a found appointment is one Flex card while Flex is enabled. A
- * reply token is single-use and short-lived and the user asked for this
- * answer, so a card that cannot be built (no Workspace LIFF, contract error)
- * falls back to today's text; this is the one place where that is correct.
- * Every other reply stays text.
+ * ADR-0033: a found appointment and an empty result are each one Flex card
+ * while Flex is enabled. A reply token is single-use and short-lived and the
+ * user asked for this answer, so a card that cannot be built (no Workspace
+ * LIFF, contract error) falls back to today's text; this is the one place
+ * where that is correct. INELIGIBLE and INFRASTRUCTURE_FAILURE stay text.
  */
 function appointmentReplyMessage(reply: LineAppointmentReply, flexMessages: boolean): LineMessage {
-  if (reply.kind !== "APPOINTMENT" || !flexMessages) return { type: "text", text: reply.text };
+  if (!("card" in reply) || !flexMessages) return { type: "text", text: reply.text };
   try {
     return buildLineNotificationCard(reply.card);
   } catch (error: unknown) {
