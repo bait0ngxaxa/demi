@@ -815,7 +815,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
       const workbook = new ExcelJS.Workbook();
       type ExcelJsInputBuffer = Parameters<typeof workbook.xlsx.load>[0];
       await workbook.xlsx.load(generated.buffer as unknown as ExcelJsInputBuffer);
-      expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
+      expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ", "คำอธิบาย"]);
       const workbookText = workbook.worksheets.flatMap((sheet) => {
         const values: string[] = [];
         sheet.eachRow((row) => row.eachCell({ includeEmpty: false }, (cell) => values.push(String(cell.value ?? ""))));

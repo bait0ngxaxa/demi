@@ -111,10 +111,10 @@ function sheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet {
 }
 
 describe("ADR-0025 network report workbook", () => {
-  it("adds the summary sheet after the two template sheets", async () => {
+  it("adds the summary sheet after the two template sheets and the explanation sheet last", async () => {
     const workbook = await load(await generateNetworkReportWorkbook(networkDataset()));
 
-    expect(workbook.worksheets.map(({ name }) => name)).toEqual([DASHBOARD, SERVICE, SUMMARY]);
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual([DASHBOARD, SERVICE, SUMMARY, "คำอธิบาย"]);
   });
 
   it("appends หน่วยบริการ after the round report columns without moving any existing column", async () => {
@@ -170,7 +170,7 @@ describe("ADR-0025 network report workbook", () => {
     expect(dashboard.getCell("B2").value).toBe(4);
     expect(dashboard.getCell("F2").value).toBe(3);
     expect(dashboard.getCell("B3").value).toBe(1);
-    expect(dashboard.getCell("D2").value).toBe("ยังไม่มีนิยามและตัวหารที่ได้รับรอง");
+    expect(dashboard.getCell("D2").value ?? null).toBeNull();
     expect(service.getCell("B3").value).toBe(4);
     expect(service.getCell("F4").value).toBe("3 / 0");
   });

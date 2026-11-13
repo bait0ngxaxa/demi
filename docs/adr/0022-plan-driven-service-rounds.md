@@ -65,6 +65,7 @@ A round's plan is stored when the round opens, not computed from the guideline w
 - **AS-D2 — Rounds 1-2.** These rounds have no computed score; only the staff-entered value fills them, otherwise "ยังไม่บันทึก".
 - **AS-D3 — A round without a Follow-up.** A completed round 3-6 that ended without its Program Follow-up shows "ครั้งนี้ไม่ได้ติดตามผล" in every Follow-up-derived cell of that round on both sheets (Dashboard DTX/BW/Achieve score, service sheet date, achieved days, rate, plan adjusted and obstacle). DTX/BW keep the round vitals when present. An open round is unchanged.
 - "ผลลัพธ์ที่ได้" (BR-05) stays out of scope. The CVD risk score needs no change (D7, already staff-entered in the Baseline and Final Assessment forms).
+- **Workbook export (2026-11-13).** In the exported workbook every missing value is an empty cell, so the AS-D2 "ยังไม่บันทึก" and AS-D3 "ครั้งนี้ไม่ได้ติดตามผล" cells are left empty there; the explanation sheet คำอธิบาย says what an empty cell means. Which cells AS-D2/AS-D3 cover is unchanged, and the on-screen reports keep both labels.
 
 ### Defaults taken (the Owner may revise)
 

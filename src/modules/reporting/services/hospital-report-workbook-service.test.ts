@@ -163,6 +163,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(workbook.worksheets.map(({ name }) => name)).toEqual([
       "Dashboard ภาพรวม",
       "รายงานการจัดบริการ",
+      "คำอธิบาย",
     ]);
 
     const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
@@ -174,15 +175,16 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("A1").value).toContain("โรงพยาบาลทดสอบ");
     expect(dashboard.getCell("A1").value).not.toContain("DEMO-A");
     expect(dashboard.getCell("B2").value).toBe(1);
-    expect(dashboard.getCell("D2").value).toContain("นิยาม");
+    expect(dashboard.getCell("C2").value).toBe("เบาหวาน (DM)");
+    expect(dashboard.getCell("D2").value ?? null).toBeNull();
     expect(dashboard.columnCount).toBe(52);
     expect(dashboard.getCell("B9").value).toBe("สมชาย");
     expect(dashboard.getCell("C9").value).toBe("ใจดี");
     expect(dashboard.getCell("D9").value).toBe("LOCAL-001");
-    expect(dashboard.getCell("J9").value).toBe("ยังไม่บันทึก");
+    expect(dashboard.getCell("J9").value).toBeNull();
     expect(dashboard.getCell("K9").value).toBe(0);
     // No round vitals recorded for rounds 1-2 in this fixture.
-    expect(dashboard.getCell("Q9").value).toBe("ยังไม่บันทึกสัญญาณชีพครั้งนี้");
+    expect(dashboard.getCell("Q9").value).toBeNull();
     expect(dashboard.getCell("Q10").value).toBeNull();
     expect(dashboard.getCell("W9").value).toBe(1);
     expect(dashboard.getCell("W10").value).toBeNull();
@@ -194,13 +196,13 @@ describe("Hospital reporting customer workbook export", () => {
     expect(dashboard.getCell("B10").value).toBe("สมชาย");
     expect(dashboard.getCell("D10").value).toBe("LOCAL-001");
     expect(dashboard.getCell("A11").value).toBe(2);
-    expect(dashboard.getCell("AI9").value).toBe("ยังดำเนิน Program");
+    expect(dashboard.getCell("AI9").value).toBeNull();
     expect(dashboard.getCell("AI11").value).toBeInstanceOf(Date);
     // D7/D8: CVD not recorded on this Baseline; HbA1c is approved and reported as recorded.
-    expect(dashboard.getCell("H9").value).toBe("ยังไม่บันทึก");
+    expect(dashboard.getCell("H9").value).toBeNull();
     expect(dashboard.getCell("I9").value).toBe(7.1);
-    expect(dashboard.getCell("AJ9").value).toBe("ไม่มี Final Assessment");
-    expect(dashboard.getCell("W11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
+    expect(dashboard.getCell("AJ9").value).toBeNull();
+    expect(dashboard.getCell("W11").value).toBeNull();
 
     expect(service.getCell("A1").value).toBe("Service Process record");
     expect(service.getCell("A2").value).toContain("โรงพยาบาลทดสอบ");
@@ -210,26 +212,27 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
     expect(service.getCell("S8").value).toBe("ทำ");
-    expect(service.getCell("T9").value).toBe("ไม่ทำ");
-    expect(service.getCell("W9").value).toBe("ทำ");
-    expect(service.getCell("AD9").value).toBe("มี");
+    expect(service.getCell("T9").value).toBe("\u2713");
+    expect(service.getCell("W9").value).toBe("\u2713");
+    expect(service.getCell("AD9").value).toBe("\u2713");
     expect(service.getCell("AF9").value).toBe(3);
-    expect(service.getCell("AG9").value).toBe("ยังไม่บันทึกเวลาครบทุกกิจกรรม");
+    // The exercise target is in "นาที", not the "minutes" unit, so the weekly total cannot be computed.
+    expect(service.getCell("AG9").value).toBeNull();
     expect(service.getCell("AH9").value).toBeInstanceOf(Date);
     expect(service.getCell("AH10").value).toBeNull();
     expect(service.getCell("BV9").text).toContain("ครั้งที่ 7");
-    expect(service.getCell("AH11").value).toBe("ไม่มี Follow-up ในช่องที่เหลือ");
+    expect(service.getCell("AH11").value).toBeNull();
     expect(service.getCell("A10").value).toBe("");
     expect(service.getCell("B10").value).toBe("สมชาย");
     expect(service.getCell("D10").value).toBe("LOCAL-001");
     expect(service.getCell("A11").value).toBe(2);
     // D8/D9: confidence ruler 0-10 from the Baseline; self-reported exercise with no entries.
     expect(service.getCell("M9").value).toBe(6);
-    expect(service.getCell("N9").value).toBe("ไม่มีบันทึก");
-    expect(service.getCell("Q9").value).toBe("ไม่มี Final Assessment");
+    expect(service.getCell("N9").value).toBeNull();
+    expect(service.getCell("Q9").value).toBeNull();
 
     const serialized = JSON.stringify({ dashboard: dashboard.getSheetValues(), service: service.getSheetValues() });
-    expect(serialized).toContain("ไม่มีแหล่งข้อมูลในระบบ");
+    expect(serialized).not.toContain("ไม่มีแหล่งข้อมูลในระบบ");
     expect(serialized).not.toContain("รายละเอียดเป้าหมายและความคืบหน้าที่บันทึก");
     expect(serialized).not.toContain("generatedAt");
   });
@@ -282,10 +285,239 @@ describe("Hospital reporting customer workbook export", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 
-    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ", "คำอธิบาย"]);
     expect(workbook.getWorksheet("Dashboard ภาพรวม")?.columnCount).toBe(52);
     expect(workbook.getWorksheet("รายงานการจัดบริการ")?.columnCount).toBe(74);
     expect(workbook.getWorksheet("Dashboard ภาพรวม")?.getCell("A9").value ?? null).toBeNull();
     expect(workbook.getWorksheet("รายงานการจัดบริการ")?.getCell("A9").value ?? null).toBeNull();
+  });
+});
+
+// Every explanatory text the workbook used to write for a missing, not-recorded or unavailable value.
+const REMOVED_PLACEHOLDERS = [
+  "ยังไม่บันทึก",
+  "ไม่ได้บันทึก",
+  "ไม่มีบันทึก",
+  "ไม่มี Baseline ที่เชื่อมกับ Program",
+  "ไม่มี Final Assessment",
+  "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1",
+  "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้",
+  "ไม่มีข้อมูล",
+  "ครั้งนี้ไม่ได้ติดตามผล",
+  "ไม่มีแหล่งข้อมูลในระบบ",
+  "ยังไม่พร้อมใช้งาน",
+  "ไม่ระบุชื่อ",
+  "ไม่ระบุนามสกุล",
+  "ไม่ทราบปีวินิจฉัย",
+  "มอบหมายปัจจุบัน",
+  "ยังไม่เปิดครั้งบริการ",
+  "ไม่มีครั้งเพิ่มเติม",
+  "ไม่มีการติดตาม",
+  "ไม่มี Follow-up ในช่องที่เหลือ",
+  "ไม่มี Goal Plan ที่ผูกกับ Program นี้",
+  "ยังดำเนิน Program",
+  "ยังไม่มีนิยามและตัวหารที่ได้รับรอง",
+] as const;
+
+async function loadSheets(input: HospitalReportingDataset): Promise<{ dashboard: ExcelJS.Worksheet; service: ExcelJS.Worksheet }> {
+  const bytes = await generateHospitalReportWorkbook(input, new Date("2026-10-11T05:00:00.000Z"));
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+  const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
+  const service = workbook.getWorksheet("รายงานการจัดบริการ");
+  if (!dashboard || !service) throw new Error("Expected report sheets to exist");
+  return { dashboard, service };
+}
+
+function dataRowTexts(sheet: ExcelJS.Worksheet, rows: readonly number[]): string[] {
+  return rows.flatMap((rowNumber) => {
+    const texts: string[] = [];
+    sheet.getRow(rowNumber).eachCell({ includeEmpty: false }, (cell) => texts.push(cell.text));
+    return texts;
+  });
+}
+
+function emptyValue(sheet: ExcelJS.Worksheet, address: string): unknown {
+  return sheet.getCell(address).value ?? null;
+}
+
+describe("Hospital reporting workbook blanks", () => {
+  function missingEverything(): HospitalReportProgramRow {
+    const record = program({ id: activeProgramId, status: PatientProgramStatus.ACTIVE, followups: 6 });
+    return {
+      ...record,
+      patient: { displayName: "ไม่ทราบ", givenName: null, familyName: null, hospitalNumber: { state: "NOT_RECORDED" } },
+      currentRelationshipOsmAssignment: { state: "MISSING" },
+      baseline: { state: "MISSING" },
+      finalAssessment: { state: "MISSING" },
+      serviceOne: { ...record.serviceOne, confidence: { state: "MISSING" } },
+      goalPlans: { totalCount: 0, hasMore: false, items: [] },
+      rounds: [
+        { roundNumber: 5, title: "ครั้งที่ 5", completed: true, vitals: null, doneItems: 0, plannedItems: 0, skippedItems: 0, notDoneAtCloseItems: 0, patientRecordedItems: 0, achieveScore: null, followup: null },
+        { roundNumber: 7, title: "ครั้งที่ 7", completed: false, vitals: null, doneItems: 0, plannedItems: 1, skippedItems: 0, notDoneAtCloseItems: 0, patientRecordedItems: 0, achieveScore: null, followup: null },
+      ],
+    };
+  }
+
+  it("leaves every missing, not-recorded and unavailable value empty and writes no placeholder text", async () => {
+    const { dashboard, service } = await loadSheets({ ...dataset(), programs: [missingEverything()] });
+
+    // Identity: name, family name, HN, illness duration, current อสม. assignment.
+    for (const sheet of [dashboard, service]) {
+      for (const column of ["B", "C", "D", "E", "F"]) expect(emptyValue(sheet, `${column}9`), `${sheet.name}!${column}9`).toBeNull();
+      expect(emptyValue(sheet, "D2")).toBeNull();
+    }
+    expect(emptyValue(service, "D3")).toBeNull();
+    expect(emptyValue(service, "D4")).toBeNull();
+    // Dashboard: Baseline H–P, rounds 1–2 vitals and score, round 5 ended without Follow-up, end date, Final Assessment AJ–AQ.
+    for (const column of ["H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "AC", "AD", "AE", "AI", "AJ", "AK", "AL", "AM", "AN", "AO", "AP", "AQ"]) {
+      expect(emptyValue(dashboard, `${column}9`), `Dashboard!${column}9`).toBeNull();
+    }
+    // Service: end date, Baseline, PAM/PROMs, ruler, exercise, Final Assessment, >70% count, Goal Plan, Follow-up gaps.
+    for (const column of ["H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "Y", "Z", "AC", "AD", "AE", "AF", "AG", "AI", "AJ", "AK", "AL", "AM", "AN", "AO", "AX", "AY", "AZ", "BA", "BB", "BC", "BD", "BE"]) {
+      expect(emptyValue(service, `${column}9`), `Service!${column}9`).toBeNull();
+    }
+    // Rounds never opened, and the Follow-up list after round 4 has two items but no measurements beyond DTX.
+    expect(emptyValue(dashboard, "AS9")).toBeNull();
+    expect(dashboard.getCell("AY9").text).toBe("ครั้งที่ 7 (ยังไม่จบบริการ): ทำแล้ว 0/1 รายการในแผน; ข้าม 0; ยังไม่ได้ทำเมื่อจบบริการ 0; ผู้ป่วยบันทึกเอง 0");
+    expect(dashboard.getCell("AZ9").text).toBe([
+      "ครั้งที่ 7: 2026-08-21T05:00:00.000Z; น้ำตาล 5",
+      "ครั้งที่ 8: 2026-08-22T05:00:00.000Z; น้ำตาล 6",
+    ].join("\n"));
+
+    const texts = [...dataRowTexts(dashboard, [9, 10]), ...dataRowTexts(service, [9, 10])];
+    for (const placeholder of REMOVED_PLACEHOLDERS) {
+      expect(texts.filter((text) => text.includes(placeholder)), placeholder).toEqual([]);
+    }
+  });
+
+  it("leaves the multi-record cells empty when there is nothing to list", async () => {
+    const { dashboard, service } = await loadSheets({ ...dataset(), programs: [program({ id: completedProgramId, status: PatientProgramStatus.COMPLETED })] });
+    for (const [sheet, extraRounds, extraFollowups] of [[dashboard, "AY", "AZ"], [service, "BU", "BV"]] as const) {
+      expect(emptyValue(sheet, `${extraRounds}9`)).toBeNull();
+      expect(emptyValue(sheet, `${extraFollowups}9`)).toBeNull();
+    }
+  });
+
+  it("keeps recorded zeros as 0", async () => {
+    const record = program({ id: completedProgramId, status: PatientProgramStatus.COMPLETED, followups: 1 });
+    const [followup] = record.followups.items;
+    if (!followup) throw new Error("Expected a Follow-up");
+    record.followups = {
+      ...record.followups,
+      items: [{ ...followup, achievement: { achievedDays: 0, targetDays: 3, ratePercent: 0, aboveThreshold: false }, measurements: { ...followup.measurements, bloodSugar: { state: "RECORDED", value: 0 } } }],
+    };
+    record.illnessDuration = { state: "RECORDED", value: 0 };
+    record.weeklyExercise = { before: { state: "RECORDED", value: 0 }, after: { state: "NOT_RECORDED" } };
+    const { dashboard, service } = await loadSheets({ ...dataset(), programs: [record] });
+
+    expect(dashboard.getCell("E9").value).toBe(0);
+    expect(dashboard.getCell("K9").value).toBe(0);
+    expect(dashboard.getCell("M9").value).toBe(0);
+    expect(dashboard.getCell("W9").value).toBe(0);
+    expect(dashboard.getCell("Y9").value).toBe(0);
+    expect(service.getCell("N9").value).toBe(0);
+    expect(service.getCell("R9").value).toBe(0);
+    expect(service.getCell("AI9").value).toBe(0);
+    expect(service.getCell("AJ9").value).toBe(0);
+  });
+});
+
+describe("Hospital reporting workbook check marks and explanation sheet", () => {
+  const CHECK = "\u2713";
+
+  async function loadWorkbook(input: HospitalReportingDataset): Promise<ExcelJS.Workbook> {
+    const bytes = await generateHospitalReportWorkbook(input, new Date("2026-10-11T05:00:00.000Z"));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+    return workbook;
+  }
+
+  function pairs(record: HospitalReportProgramRow): HospitalReportProgramRow {
+    const [first] = record.followups.items;
+    if (!first) throw new Error("Expected Follow-ups");
+    const followups = [
+      { ...first, roundNumber: 1, planAdjusted: true, hasObstacle: false },
+      { ...first, roundNumber: 2, planAdjusted: false, hasObstacle: true },
+      { ...first, roundNumber: 3, planAdjusted: null, hasObstacle: null },
+      { ...first, roundNumber: 5, planAdjusted: true, hasObstacle: null },
+    ];
+    return { ...record, followups: { totalCount: followups.length, hasMore: false, items: followups } };
+  }
+
+  it("marks the applicable pair column with a centered ✓ and leaves unknown answers empty", async () => {
+    const workbook = await loadWorkbook({ ...dataset(), programs: [pairs(program({ id: activeProgramId, status: PatientProgramStatus.ACTIVE, followups: 1 }))] });
+    const service = workbook.getWorksheet("รายงานการจัดบริการ");
+    if (!service) throw new Error("Expected the service sheet");
+    const pair = (left: string): [unknown, unknown] => {
+      const right = service.getColumn(service.getColumn(left).number + 1).letter;
+      return [service.getCell(`${left}9`).value ?? null, service.getCell(`${right}9`).value ?? null];
+    };
+
+    // Service 1 presence (BR-02): routine recorded; floating chart and dream card not recorded -> ไม่ทำ.
+    expect(pair("S")).toEqual([null, CHECK]);
+    expect(pair("U")).toEqual([null, CHECK]);
+    expect(pair("W")).toEqual([CHECK, null]);
+    // Goal Plan (BR-03): no food items -> ไม่มี both; exercise item -> มี.
+    expect(pair("Y")).toEqual([null, CHECK]);
+    expect(pair("AA")).toEqual([null, CHECK]);
+    expect(pair("AD")).toEqual([CHECK, null]);
+    // Follow-ups 1-3: true, false, null for ปรับแผน / อุปสรรค.
+    expect(pair("AL")).toEqual([CHECK, null]);
+    expect(pair("AN")).toEqual([null, CHECK]);
+    expect(pair("AT")).toEqual([null, CHECK]);
+    expect(pair("AV")).toEqual([CHECK, null]);
+    expect(pair("BB")).toEqual([null, null]);
+    expect(pair("BD")).toEqual([null, null]);
+
+    for (const column of ["S", "T", "W", "X", "AL", "AM", "BB", "BC"]) {
+      expect(service.getCell(`${column}9`).alignment, column).toMatchObject({ horizontal: "center", vertical: "middle" });
+    }
+    // Other cells keep their style: the data cell next to the pairs and the unused template grid rows.
+    expect(service.getCell("AH9").alignment).toEqual(service.getCell("AH12").alignment);
+    expect(service.getCell("AK9").alignment).toEqual(service.getCell("AK12").alignment);
+    expect(service.getCell("S12").alignment?.horizontal).toBeUndefined();
+    expect(service.getCell("AL12").alignment?.horizontal).toBeUndefined();
+
+    // Free text keeps the words and drops the unknown answer.
+    const extraFollowups = service.getCell("BV9").text;
+    expect(extraFollowups).toContain("ปรับแผน ปรับ");
+    expect(extraFollowups).not.toContain("อุปสรรค");
+    expect(extraFollowups).not.toContain(CHECK);
+  });
+
+  it("appends the explanation sheet last and lists exactly the never-filled cells", async () => {
+    const workbook = await loadWorkbook(dataset());
+    const names = workbook.worksheets.map(({ name }) => name);
+    expect(names.at(-1)).toBe("คำอธิบาย");
+    const sheet = workbook.getWorksheet("คำอธิบาย");
+    if (!sheet) throw new Error("Expected the explanation sheet");
+
+    const rows = Array.from({ length: sheet.rowCount }, (_, index) => (sheet.getRow(index + 1).values as unknown[]).slice(1));
+    expect(rows[2]?.[0]).toBe("ช่องว่าง");
+    expect(rows[3]?.[0]).toBe(CHECK);
+    const listStart = rows.findIndex((row) => row[0] === "แผ่นงาน") + 1;
+    expect(listStart).toBeGreaterThan(0);
+    expect(rows.slice(listStart)).toEqual([
+      ["Dashboard ภาพรวม", "D2", "เบาหวาน (DM)"],
+      ["Dashboard ภาพรวม", "D3", "กลุ่มเสี่ยง (Pre-DM)"],
+      ["รายงานการจัดบริการ", "D3", "เบาหวาน (DM)"],
+      ["รายงานการจัดบริการ", "D4", "กลุ่มเสี่ยง (Pre-DM)"],
+      ["รายงานการจัดบริการ", "AK", "บริการครั้งที่ 3 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "AS", "บริการครั้งที่ 4 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "BA", "บริการครั้งที่ 5 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "BI", "บริการครั้งที่ 6 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+    ]);
+
+    // Every listed cell is empty in the data the workbook exported.
+    const service = workbook.getWorksheet("รายงานการจัดบริการ");
+    const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
+    if (!service || !dashboard) throw new Error("Expected report sheets to exist");
+    for (const column of ["AK", "AS", "BA", "BI"]) {
+      for (const rowNumber of [9, 10, 11]) expect(service.getCell(`${column}${rowNumber}`).value ?? null, `${column}${rowNumber}`).toBeNull();
+    }
+    for (const [target, address] of [[dashboard, "D2"], [dashboard, "D3"], [service, "D3"], [service, "D4"]] as const) {
+      expect(target.getCell(address).value ?? null, `${target.name}!${address}`).toBeNull();
+    }
   });
 });

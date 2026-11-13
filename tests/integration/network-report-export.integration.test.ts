@@ -177,7 +177,7 @@ async function cleanup(): Promise<void> {
 async function summaryRows(buffer: Buffer): Promise<unknown[][]> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(Uint8Array.from(buffer).buffer);
-  expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ", "สรุปรายหน่วยบริการ"]);
+  expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ", "สรุปรายหน่วยบริการ", "คำอธิบาย"]);
   const sheet = workbook.getWorksheet("สรุปรายหน่วยบริการ");
   if (!sheet) throw new Error("Missing summary sheet");
   return Array.from({ length: sheet.rowCount }, (_, index) => (sheet.getRow(index + 1).values as unknown[]).slice(1));

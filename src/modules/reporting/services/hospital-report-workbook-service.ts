@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  NO_FOLLOWUP_LABEL,
   roundAchieveScore,
   roundAchieveScoreText,
   roundEndedWithoutFollowup,
@@ -24,6 +23,7 @@ import type {
   HospitalReportFollowup,
   HospitalReportGoalPlan,
   HospitalReportProgramRow,
+  HospitalReportUnavailableReason,
   HospitalReportingDataset,
   HospitalReportingSummary,
   NetworkReportingDataset,
@@ -48,6 +48,7 @@ const WORKBOOK_TEMPLATE_PATH = join(process.cwd(), "docs", "Dashboard App Demi.x
 const DASHBOARD_SHEET_NAME = "Dashboard ภาพรวม";
 const SERVICE_SHEET_NAME = "รายงานการจัดบริการ";
 const NETWORK_SUMMARY_SHEET_NAME = "สรุปรายหน่วยบริการ";
+const EXPLANATION_SHEET_NAME = "คำอธิบาย";
 const SERVICE_UNIT_HEADER = "หน่วยบริการ";
 const DATA_START_ROW = 9;
 // Dashboard rounds 1–6 (R24A-D11): round 1 = Service 1, round 2 = Goal Plan, rounds 3–6 = Follow-ups.
@@ -58,12 +59,13 @@ const EXCEL_CELL_TEXT_LIMIT = 32_767;
 const REDUCE_MEAL_ACTIVITY_CODE = "reduce_rice";
 const GOAL_TARGET_MINUTES_UNIT = "minutes";
 
-const unavailableLabels = {
-  SOURCE_MISSING: "ไม่มีแหล่งข้อมูลในระบบ",
-  CLINICAL_SEMANTICS_UNAPPROVED: "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง",
-  NOT_PROGRAM_SCOPED: "ยังไม่พร้อมใช้งาน: ไม่มีข้อมูลที่ผูกกับ Program นี้",
-  DERIVATION_UNAPPROVED: "ยังไม่พร้อมใช้งาน: ยังไม่มีสูตรที่ได้รับรอง",
-} as const;
+/**
+ * The workbook's single representation of "no value": an empty cell, whatever the reason (not recorded,
+ * missing record, or no source in DEMI). A recorded 0 is a value and stays 0.
+ */
+const NO_VALUE = null;
+type NoValue = typeof NO_VALUE;
+type WorkbookCellValue = number | string | NoValue;
 
 function assertCellText(value: string): string {
   if (value.length > EXCEL_CELL_TEXT_LIMIT) {
@@ -78,10 +80,16 @@ function excelArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy;
 }
 
-function factCell<T extends number | string>(fact: HospitalReportFact<T>): number | string {
+/** Every unavailable value, whatever its HospitalReportUnavailableReason, is written as no value. */
+function unavailableCell(reason: HospitalReportUnavailableReason): NoValue {
+  void reason;
+  return NO_VALUE;
+}
+
+function factCell<T extends number | string>(fact: HospitalReportFact<T>): T | NoValue {
   if (fact.state === "RECORDED") return fact.value;
-  if (fact.state === "NOT_RECORDED") return "ยังไม่บันทึก";
-  return unavailableLabels[fact.reason];
+  if (fact.state === "NOT_RECORDED") return NO_VALUE;
+  return unavailableCell(fact.reason);
 }
 
 function toExcelDate(isoDate: string): Date {
@@ -112,32 +120,33 @@ function roundReport(program: HospitalReportProgramRow, roundNumber: number): Ro
   return program.rounds.find((round) => round.roundNumber === roundNumber);
 }
 
-const NO_ACHIEVEMENT_LABEL = "ไม่มีข้อมูลจำนวนวันที่ทำได้ที่คำนวณได้";
-const NOT_RECORDED_LEGACY_LABEL = "ไม่ได้บันทึก";
-
-// Owner decision BR-04: the Follow-up achievement rate as a percentage cell, or why it is missing.
+// Owner decision BR-04: the Follow-up achievement rate as a percentage cell; empty when it cannot be computed.
 function writeAchievementRateCell(row: ExcelJS.Row, column: number, followup: HospitalReportFollowup): void {
   if (followup.achievement === null) {
-    row.getCell(column).value = NO_ACHIEVEMENT_LABEL;
+    row.getCell(column).value = NO_VALUE;
     return;
   }
   setExcelPercent(row, column, followup.achievement.ratePercent);
 }
 
-// Yes/no pair columns (e.g. ปรับ/ไม่ปรับ); Follow-ups recorded before the answer existed say so.
-function setAnswerCells(
-  row: ExcelJS.Row,
-  column: number,
-  answer: boolean | null,
-  labels: readonly [string, string],
-): void {
-  if (answer === null) {
-    row.getCell(column).value = NOT_RECORDED_LEGACY_LABEL;
-    row.getCell(column + 1).value = "";
-    return;
+const CHECK_MARK = "\u2713";
+
+/**
+ * A pair column (ทำ/ไม่ทำ, มี/ไม่มี, ปรับ/ไม่ปรับ): ✓ in the column that applies, the other empty; an unknown
+ * answer leaves both empty. The mark is centered by copying the style, because template cells share one
+ * style object (see setExcelDate).
+ */
+function setPairCells(row: ExcelJS.Row, column: number, answer: boolean | null): void {
+  for (const [offset, applies] of [[0, answer === true], [1, answer === false]] as const) {
+    const cell = row.getCell(column + offset);
+    cell.value = applies ? CHECK_MARK : NO_VALUE;
+    cell.style = { ...cell.style, alignment: { ...cell.style.alignment, horizontal: "center", vertical: "middle" } };
   }
-  row.getCell(column).value = answer ? labels[0] : "";
-  row.getCell(column + 1).value = answer ? "" : labels[1];
+}
+
+// Yes/no answers (BR-06/BR-07); Follow-ups recorded before the answer existed have none (null).
+function setAnswerCells(row: ExcelJS.Row, column: number, answer: boolean | null): void {
+  setPairCells(row, column, answer);
 }
 
 // Owner decision BR-01: report the service date; older Follow-ups fall back to the recorded date.
@@ -148,62 +157,53 @@ function followupDate(followup: HospitalReportFollowup): Date {
 }
 
 // Owner decision BR-04: number of scorable Follow-ups with an achievement rate strictly above 70%.
-function achievementOver70Cell(program: HospitalReportProgramRow): number | string {
-  if (program.followups.items.length === 0) return "ไม่มีการติดตาม";
+function achievementOver70Cell(program: HospitalReportProgramRow): WorkbookCellValue {
+  if (program.followups.items.length === 0) return NO_VALUE;
   const summary = summarizeFollowupAchievements(program.followups.items.map((followup) => followup.achievement));
-  return summary.scoredCount === 0 ? "ไม่มีการติดตามที่คำนวณได้" : summary.aboveThresholdCount;
+  return summary.scoredCount === 0 ? NO_VALUE : summary.aboveThresholdCount;
 }
 
-function unavailable(reason: keyof typeof unavailableLabels): string {
-  return unavailableLabels[reason];
-}
-
-function assignmentCell(program: HospitalReportProgramRow): string {
+function assignmentCell(program: HospitalReportProgramRow): WorkbookCellValue {
   return program.currentRelationshipOsmAssignment.state === "PRESENT"
-    ? `${program.currentRelationshipOsmAssignment.value.displayName} (มอบหมายปัจจุบัน)`
-    : "ไม่มีการมอบหมายปัจจุบัน";
+    ? program.currentRelationshipOsmAssignment.value.displayName
+    : NO_VALUE;
 }
 
 function finalMeasurementCell(
   program: HospitalReportProgramRow,
   key: "bloodSugar" | "weight" | "waistCircumference" | "systolicBloodPressure" | "diastolicBloodPressure",
-): number | string {
-  if (program.finalAssessment.state === "MISSING") return "ไม่มี Final Assessment";
+): WorkbookCellValue {
+  if (program.finalAssessment.state === "MISSING") return NO_VALUE;
   return factCell(program.finalAssessment.value.measurements[key]);
 }
 
 function baselineMeasurementCell(
   program: HospitalReportProgramRow,
   key: "bloodSugar" | "weight" | "waistCircumference" | "systolicBloodPressure" | "diastolicBloodPressure",
-): number | string {
-  if (program.baseline.state === "MISSING") return "ไม่มี Baseline ที่เชื่อมกับ Program";
+): WorkbookCellValue {
+  if (program.baseline.state === "MISSING") return NO_VALUE;
   return factCell(program.baseline.value.measurements[key]);
 }
-
-const NO_BASELINE_LABEL = "ไม่มี Baseline ที่เชื่อมกับ Program";
-const NO_FINAL_ASSESSMENT_LABEL = "ไม่มี Final Assessment";
-const NO_ROUND_VITALS_LABEL = "ยังไม่บันทึกสัญญาณชีพครั้งนี้";
-const NO_PROGRAM_SCREENING_LABEL = "ไม่มีแบบประเมินที่บันทึกในครั้งที่ 1";
 
 // Phase A: Dashboard rounds 1-2 DTX/BW come from PatientProgramRoundVitals (WB-DF-01).
 function roundVitalsCell(
   record: HospitalReportProgramRow["roundVitals"]["round1"],
   key: "bloodSugar" | "weight",
-): number | string {
-  return record.state === "MISSING" ? NO_ROUND_VITALS_LABEL : factCell(record.value.measurements[key]);
+): WorkbookCellValue {
+  return record.state === "MISSING" ? NO_VALUE : factCell(record.value.measurements[key]);
 }
 
-function baselineBmiCell(program: HospitalReportProgramRow): number | string {
-  return program.baseline.state === "MISSING" ? NO_BASELINE_LABEL : factCell(program.bmi.baseline);
+function baselineBmiCell(program: HospitalReportProgramRow): WorkbookCellValue {
+  return program.baseline.state === "MISSING" ? NO_VALUE : factCell(program.bmi.baseline);
 }
 
-function afterBmiCell(program: HospitalReportProgramRow): number | string {
-  return program.finalAssessment.state === "MISSING" ? NO_FINAL_ASSESSMENT_LABEL : factCell(program.bmi.after);
+function afterBmiCell(program: HospitalReportProgramRow): WorkbookCellValue {
+  return program.finalAssessment.state === "MISSING" ? NO_VALUE : factCell(program.bmi.after);
 }
 
-function afterHba1cCell(program: HospitalReportProgramRow): number | string {
+function afterHba1cCell(program: HospitalReportProgramRow): WorkbookCellValue {
   return program.finalAssessment.state === "MISSING"
-    ? NO_FINAL_ASSESSMENT_LABEL
+    ? NO_VALUE
     : factCell(program.finalAssessment.value.hba1c);
 }
 
@@ -211,42 +211,39 @@ function afterHba1cCell(program: HospitalReportProgramRow): number | string {
 function baselineFactCell(
   program: HospitalReportProgramRow,
   key: "hba1c" | "cvdRiskScore",
-): number | string {
-  return program.baseline.state === "MISSING" ? NO_BASELINE_LABEL : factCell(program.baseline.value[key]);
+): WorkbookCellValue {
+  return program.baseline.state === "MISSING" ? NO_VALUE : factCell(program.baseline.value[key]);
 }
 
 // D8 + R1-E: the Before ruler is the round-1 ไม้บรรทัดวัดใจ (0-10); skipped or missing = not recorded.
-function roundOneConfidenceCell(program: HospitalReportProgramRow): number | string {
+function roundOneConfidenceCell(program: HospitalReportProgramRow): WorkbookCellValue {
   const confidence = program.serviceOne.confidence;
-  return factCell(confidence.state === "PRESENT" ? { state: "RECORDED", value: confidence.value.score } : { state: "NOT_RECORDED" });
+  return confidence.state === "PRESENT" ? confidence.value.score : NO_VALUE;
 }
 
-function afterCvdRiskCell(program: HospitalReportProgramRow): number | string {
+function afterCvdRiskCell(program: HospitalReportProgramRow): WorkbookCellValue {
   return program.finalAssessment.state === "MISSING"
-    ? NO_FINAL_ASSESSMENT_LABEL
+    ? NO_VALUE
     : factCell(program.finalAssessment.value.cvdRiskScore);
 }
 
-const NO_EXERCISE_RECORD_LABEL = "ไม่มีบันทึก";
-
 // D9: Patient self-reported minutes per week; After needs the Final Assessment service date.
-function weeklyExerciseCell(program: HospitalReportProgramRow, stage: "before" | "after"): number | string {
-  if (stage === "after" && program.finalAssessment.state === "MISSING") return NO_FINAL_ASSESSMENT_LABEL;
-  const fact = program.weeklyExercise[stage];
-  return fact.state === "RECORDED" ? fact.value : NO_EXERCISE_RECORD_LABEL;
+function weeklyExerciseCell(program: HospitalReportProgramRow, stage: "before" | "after"): WorkbookCellValue {
+  if (stage === "after" && program.finalAssessment.state === "MISSING") return NO_VALUE;
+  return factCell(program.weeklyExercise[stage]);
 }
 
 /** "PAM score" = the PAM total (R2-C). */
-function pamScoreCell(program: HospitalReportProgramRow): number | string {
+function pamScoreCell(program: HospitalReportProgramRow): WorkbookCellValue {
   const pam = program.screening.pam;
-  return pam.state === "MISSING" ? NO_PROGRAM_SCREENING_LABEL : pam.value.score;
+  return pam.state === "MISSING" ? NO_VALUE : pam.value.score;
 }
 
 /** Q6: PROMs is reported as มีปัญหา/ไม่มีปัญหา, never a total; a legacy combined screening keeps its total. */
-function promsCell(program: HospitalReportProgramRow): number | string {
+function promsCell(program: HospitalReportProgramRow): WorkbookCellValue {
   const proms = program.screening.proms;
 
-  if (proms.state === "MISSING") return NO_PROGRAM_SCREENING_LABEL;
+  if (proms.state === "MISSING") return NO_VALUE;
   if ("legacyTotal" in proms.value) return proms.value.legacyTotal;
   return proms.value.hasProblem ? PROMS_RESULT_LABELS.problem : PROMS_RESULT_LABELS.noProblem;
 }
@@ -335,24 +332,39 @@ function clearReportBody(sheet: ExcelJS.Worksheet, endRow: number): void {
   }
 }
 
+/** Header facts DEMI has no approved definition for (DM / Pre-DM): always empty, listed on คำอธิบาย. */
+const CLASSIFICATION_FACT_CELLS: Readonly<Record<string, readonly { labelAddress: string; valueAddress: string; label: string }[]>> = {
+  [DASHBOARD_SHEET_NAME]: [
+    { labelAddress: "C2", valueAddress: "D2", label: "เบาหวาน (DM)" },
+    { labelAddress: "C3", valueAddress: "D3", label: "กลุ่มเสี่ยง (Pre-DM)" },
+  ],
+  [SERVICE_SHEET_NAME]: [
+    { labelAddress: "C3", valueAddress: "D3", label: "เบาหวาน (DM)" },
+    { labelAddress: "C4", valueAddress: "D4", label: "กลุ่มเสี่ยง (Pre-DM)" },
+  ],
+};
+
+function setClassificationFacts(sheet: ExcelJS.Worksheet): void {
+  for (const { labelAddress, valueAddress, label } of CLASSIFICATION_FACT_CELLS[sheet.name] ?? []) {
+    sheet.getCell(labelAddress).value = label;
+    sheet.getCell(valueAddress).value = unavailableCell("DERIVATION_UNAPPROVED");
+  }
+}
+
 function setHeaderFacts(
   sheet: ExcelJS.Worksheet,
   dataset: Pick<HospitalReportingDataset, "hospital" | "counts">,
   hospitalLabel = `โรงพยาบาล: ${assertCellText(dataset.hospital.name)}`,
 ): void {
-  const classificationUnavailable = "ยังไม่มีนิยามและตัวหารที่ได้รับรอง";
+  setClassificationFacts(sheet);
   if (sheet.name === SERVICE_SHEET_NAME) {
     sheet.getCell("A2").value = hospitalLabel;
     sheet.getCell("A3").value = "จำนวนเคส";
     sheet.getCell("B3").value = dataset.counts.patientHospitalRelationships.value;
-    sheet.getCell("C3").value = "เบาหวาน (DM)";
-    sheet.getCell("D3").value = classificationUnavailable;
     sheet.getCell("E3").value = "Program ทั้งหมด";
     sheet.getCell("F3").value = dataset.counts.programs.total;
     sheet.getCell("A4").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
     sheet.getCell("B4").value = dataset.counts.relationshipsWithoutProgram.value;
-    sheet.getCell("C4").value = "กลุ่มเสี่ยง (Pre-DM)";
-    sheet.getCell("D4").value = classificationUnavailable;
     sheet.getCell("E4").value = "Program ACTIVE / COMPLETED";
     sheet.getCell("F4").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
     return;
@@ -361,32 +373,31 @@ function setHeaderFacts(
   sheet.getCell("A1").value = hospitalLabel;
   sheet.getCell("A2").value = "จำนวนเคส";
   sheet.getCell("B2").value = dataset.counts.patientHospitalRelationships.value;
-  sheet.getCell("C2").value = "เบาหวาน (DM)";
-  sheet.getCell("D2").value = classificationUnavailable;
   sheet.getCell("E2").value = "Program ทั้งหมด";
   sheet.getCell("F2").value = dataset.counts.programs.total;
   sheet.getCell("A3").value = "ความสัมพันธ์ผู้ป่วยที่ยังไม่มี Program";
   sheet.getCell("B3").value = dataset.counts.relationshipsWithoutProgram.value;
-  sheet.getCell("C3").value = "กลุ่มเสี่ยง (Pre-DM)";
-  sheet.getCell("D3").value = classificationUnavailable;
   sheet.getCell("E3").value = "Program ACTIVE / COMPLETED";
   sheet.getCell("F3").value = `${dataset.counts.programs.active} / ${dataset.counts.programs.completed}`;
 }
 
-function programIdentity(program: HospitalReportProgramRow): readonly (string | number | Date)[] {
+function programIdentity(program: HospitalReportProgramRow): readonly (WorkbookCellValue | Date)[] {
   return [
     "",
-    program.patient.givenName ?? "ไม่ระบุชื่อ",
-    program.patient.familyName ?? "ไม่ระบุนามสกุล",
-    program.patient.hospitalNumber.state === "RECORDED"
-      ? program.patient.hospitalNumber.value
-      : program.patient.hospitalNumber.state === "NOT_RECORDED"
-        ? "ยังไม่บันทึก"
-        : unavailable(program.patient.hospitalNumber.reason),
-    program.illnessDuration.state === "RECORDED" ? program.illnessDuration.value : "ไม่ทราบปีวินิจฉัย",
+    program.patient.givenName ?? NO_VALUE,
+    program.patient.familyName ?? NO_VALUE,
+    factCell(program.patient.hospitalNumber),
+    factCell(program.illnessDuration),
     assignmentCell(program),
     toExcelDate(program.lifecycle.startedAt),
   ];
+}
+
+/** An active Program or a missing completion date leaves the end date empty. */
+function programEndDateCell(program: HospitalReportProgramRow): Date | NoValue {
+  return program.lifecycle.completedAt.state === "RECORDED"
+    ? toExcelDate(program.lifecycle.completedAt.value)
+    : NO_VALUE;
 }
 
 function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
@@ -415,7 +426,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
     row.getCell(10).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(11).value = baselineMeasurementCell(program, "weight");
     row.getCell(12).value = baselineBmiCell(program);
-    row.getCell(13).value = program.baseline.state === "PRESENT" ? factCell(program.baseline.value.heightCm) : "ไม่มี Baseline ที่เชื่อมกับ Program";
+    row.getCell(13).value = program.baseline.state === "PRESENT" ? factCell(program.baseline.value.heightCm) : NO_VALUE;
     row.getCell(14).value = baselineMeasurementCell(program, "waistCircumference");
     row.getCell(15).value = baselineMeasurementCell(program, "systolicBloodPressure");
     row.getCell(16).value = baselineMeasurementCell(program, "diastolicBloodPressure");
@@ -429,7 +440,7 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
         row.getCell(roundColumn + 1).value = roundVitalsCell(roundVitals, "weight");
         // AS-D2: rounds 1-2 have no computed score; only the staff-entered one fills them.
         if (!setStaffAchieveScore(row, roundColumn + 2, roundReport(program, roundNumber))) {
-          row.getCell(roundColumn + 2).value = "ยังไม่บันทึก";
+          row.getCell(roundColumn + 2).value = NO_VALUE;
         }
       }
     }
@@ -444,36 +455,29 @@ function writeDashboardRows(sheet: ExcelJS.Worksheet, programs: readonly Hospita
       for (const round of program.rounds) {
         if (round.roundNumber < 3 || round.roundNumber > 6 || !round.vitals) continue;
         const column = followupStartColumn + (round.roundNumber - 3) * 3;
-        row.getCell(column).value = round.vitals.bloodSugar ?? "ยังไม่บันทึก";
-        row.getCell(column + 1).value = round.vitals.weight ?? "ยังไม่บันทึก";
+        row.getCell(column).value = round.vitals.bloodSugar ?? NO_VALUE;
+        row.getCell(column + 1).value = round.vitals.weight ?? NO_VALUE;
       }
-    }
-    if (followups.length === 0 && !program.rounds.some((round) => round.roundNumber === 3 && round.vitals)) {
-      const nextFollowupColumn = followupStartColumn;
-      row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
     }
     if (continuation === 1) {
       for (let roundNumber = 3; roundNumber <= 6; roundNumber += 1) {
         const round = roundReport(program, roundNumber);
         const column = followupStartColumn + (roundNumber - 3) * 3;
-        // AS-D3: DTX/BW stay from the round vitals when present.
+        // AS-D3: the Follow-up cells of a round that ended without its Follow-up are empty; DTX/BW stay
+        // from the round vitals when present.
         if (roundEndedWithoutFollowup(round)) {
           if (!round?.vitals) {
-            row.getCell(column).value = NO_FOLLOWUP_LABEL;
-            row.getCell(column + 1).value = NO_FOLLOWUP_LABEL;
+            row.getCell(column).value = NO_VALUE;
+            row.getCell(column + 1).value = NO_VALUE;
           }
-          row.getCell(column + 2).value = NO_FOLLOWUP_LABEL;
+          row.getCell(column + 2).value = NO_VALUE;
         }
         // AS-D1: a staff-entered score overrides the computed Follow-up rate.
         setStaffAchieveScore(row, column + 2, round);
       }
     }
 
-    row.getCell(35).value = program.lifecycle.completedAt.state === "RECORDED"
-      ? toExcelDate(program.lifecycle.completedAt.value)
-      : program.lifecycle.status === "ACTIVE"
-        ? "ยังดำเนิน Program"
-        : "ยังไม่บันทึกวันที่สิ้นสุด";
+    row.getCell(35).value = programEndDateCell(program);
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 35);
     row.getCell(36).value = afterCvdRiskCell(program);
     row.getCell(37).value = afterHba1cCell(program);
@@ -500,17 +504,17 @@ function firstGoalPlan(program: HospitalReportProgramRow): HospitalReportGoalPla
   );
 }
 
-function setPresenceCells(row: ExcelJS.Row, column: number, present: boolean, labels: readonly [string, string]): void {
-  row.getCell(column).value = present ? labels[0] : "";
-  row.getCell(column + 1).value = present ? "" : labels[1];
+// มี/ไม่มี or ทำ/ไม่ทำ from record presence: no record marks the ไม่มี / ไม่ทำ column (BR-02, BR-03).
+function setPresenceCells(row: ExcelJS.Row, column: number, present: boolean): void {
+  setPairCells(row, column, present);
 }
 
-function maxTargetDays(items: HospitalReportGoalPlan["items"]): number | string {
-  return items.length === 0 ? "" : Math.max(...items.map((item) => item.targetDays));
+function maxTargetDays(items: HospitalReportGoalPlan["items"]): WorkbookCellValue {
+  return items.length === 0 ? NO_VALUE : Math.max(...items.map((item) => item.targetDays));
 }
 
-function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): number | string {
-  if (items.length === 0) return "";
+function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): WorkbookCellValue {
+  if (items.length === 0) return NO_VALUE;
   let total = 0;
   for (const item of items) {
     if (
@@ -518,7 +522,7 @@ function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): number |
       item.targetUnit.state !== "RECORDED" ||
       item.targetUnit.value !== GOAL_TARGET_MINUTES_UNIT
     ) {
-      return "ยังไม่บันทึกเวลาครบทุกกิจกรรม";
+      return NO_VALUE;
     }
     total += item.targetDays * item.targetValue.value;
   }
@@ -528,23 +532,27 @@ function weeklyExerciseMinutes(items: HospitalReportGoalPlan["items"]): number |
 // Round 2 (Goal Plan) cells Y–AG from the Program's first Goal Plan, per Owner decision BR-03.
 function writeRoundTwoGoalCells(row: ExcelJS.Row, program: HospitalReportProgramRow): void {
   const plan = firstGoalPlan(program);
-  if (plan === null) {
-    row.getCell(25).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
-    row.getCell(30).value = "ไม่มี Goal Plan ที่ผูกกับ Program นี้";
-    return;
-  }
+  if (plan === null) return;
   const foodItems = plan.items.filter((item) => item.category === "FOOD");
   const exerciseItems = plan.items.filter((item) => item.category === "EXERCISE");
   const hasReduceMeal = foodItems.some((item) => item.activityCode === REDUCE_MEAL_ACTIVITY_CODE);
   const hasFoodChange = foodItems.some((item) => item.activityCode !== REDUCE_MEAL_ACTIVITY_CODE);
 
-  setPresenceCells(row, 25, hasReduceMeal, ["มี", "ไม่มี"]);
-  setPresenceCells(row, 27, hasFoodChange, ["มี", "ไม่มี"]);
+  setPresenceCells(row, 25, hasReduceMeal);
+  setPresenceCells(row, 27, hasFoodChange);
   row.getCell(29).value = maxTargetDays(foodItems);
-  setPresenceCells(row, 30, exerciseItems.length > 0, ["มี", "ไม่มี"]);
+  setPresenceCells(row, 30, exerciseItems.length > 0);
   row.getCell(32).value = maxTargetDays(exerciseItems);
   row.getCell(33).value = weeklyExerciseMinutes(exerciseItems);
 }
+
+/** First column of the service sheet block of Follow-up 1-4 (rounds 3-6). */
+function serviceFollowupBaseColumn(followupNumber: number): number {
+  return 34 + (followupNumber - 1) * 8;
+}
+
+// "ผลลัพธ์ที่ได้" (BR-05): no outcome vocabulary exists, so the column is always empty and listed on คำอธิบาย.
+const SERVICE_FOLLOWUP_OUTCOME_OFFSET = 3;
 
 function writeServiceFollowupCells(
   row: ExcelJS.Row,
@@ -553,19 +561,15 @@ function writeServiceFollowupCells(
 ): void {
   followups.forEach((followup) => {
     if (followup.roundNumber > 4) return;
-    const baseColumn = 34 + (followup.roundNumber - 1) * 8;
+    const baseColumn = serviceFollowupBaseColumn(followup.roundNumber);
     row.getCell(baseColumn).value = followupDate(followup);
     setExcelDate(row, baseColumn);
-    row.getCell(baseColumn + 1).value = followup.achievement?.achievedDays ?? NO_ACHIEVEMENT_LABEL;
+    row.getCell(baseColumn + 1).value = followup.achievement?.achievedDays ?? NO_VALUE;
     writeAchievementRateCell(row, baseColumn + 2, followup);
-    row.getCell(baseColumn + 3).value = unavailable(program.unavailable.outcome);
-    setAnswerCells(row, baseColumn + 4, followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
-    setAnswerCells(row, baseColumn + 6, followup.hasObstacle, ["มี", "ไม่มี"]);
+    row.getCell(baseColumn + SERVICE_FOLLOWUP_OUTCOME_OFFSET).value = unavailableCell(program.unavailable.outcome);
+    setAnswerCells(row, baseColumn + 4, followup.planAdjusted);
+    setAnswerCells(row, baseColumn + 6, followup.hasObstacle);
   });
-  if (followups.length === 0) {
-    const nextFollowupColumn = 34;
-    row.getCell(nextFollowupColumn).value = "ไม่มี Follow-up ในช่องที่เหลือ";
-  }
 }
 
 function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalReportProgramRow[]): void {
@@ -588,11 +592,7 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(6).value = identity[5];
     row.getCell(7).value = identity[6];
     setExcelDate(row, 7);
-    row.getCell(8).value = program.lifecycle.completedAt.state === "RECORDED"
-      ? toExcelDate(program.lifecycle.completedAt.value)
-      : program.lifecycle.status === "ACTIVE"
-        ? "ยังดำเนิน Program"
-        : "ยังไม่บันทึกวันที่สิ้นสุด";
+    row.getCell(8).value = programEndDateCell(program);
     if (program.lifecycle.completedAt.state === "RECORDED") setExcelDate(row, 8);
     row.getCell(9).value = baselineMeasurementCell(program, "bloodSugar");
     row.getCell(10).value = baselineMeasurementCell(program, "weight");
@@ -606,9 +606,9 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
     row.getCell(18).value = achievementOver70Cell(program);
     if (continuation === 1) {
       // Owner decision BR-02: "ทำ" means the Service 1 activity has a record in DEMI.
-      setPresenceCells(row, 19, serviceOnePresence(program, "floatingChart"), ["ทำ", "ไม่ทำ"]);
-      setPresenceCells(row, 21, serviceOnePresence(program, "dreamCard"), ["ทำ", "ไม่ทำ"]);
-      setPresenceCells(row, 23, serviceOnePresence(program, "routine"), ["ทำ", "ไม่ทำ"]);
+      setPresenceCells(row, 19, serviceOnePresence(program, "floatingChart"));
+      setPresenceCells(row, 21, serviceOnePresence(program, "dreamCard"));
+      setPresenceCells(row, 23, serviceOnePresence(program, "routine"));
       writeRoundTwoGoalCells(row, program);
     }
     writeServiceFollowupCells(row, program, followups);
@@ -616,19 +616,75 @@ function writeServiceRows(sheet: ExcelJS.Worksheet, programs: readonly HospitalR
   });
 }
 
-// AS-D3: every Follow-up-derived cell of a completed round 3-6 that ended without its Follow-up.
+// AS-D3: every Follow-up-derived cell of a completed round 3-6 that ended without its Follow-up is empty.
 function writeServiceNoFollowupCells(row: ExcelJS.Row, program: HospitalReportProgramRow): void {
   for (let roundNumber = 3; roundNumber <= 6; roundNumber += 1) {
     if (!roundEndedWithoutFollowup(roundReport(program, roundNumber))) continue;
-    const baseColumn = 34 + (roundNumber - 3) * 8;
-    for (const offset of [0, 1, 2, 4, 6]) row.getCell(baseColumn + offset).value = NO_FOLLOWUP_LABEL;
-    row.getCell(baseColumn + 5).value = "";
-    row.getCell(baseColumn + 7).value = "";
+    const baseColumn = serviceFollowupBaseColumn(roundNumber - 2);
+    for (const offset of [0, 1, 2, 4, 5, 6, 7]) row.getCell(baseColumn + offset).value = NO_VALUE;
   }
 }
 
-function roundReportCell(round: RoundReport | undefined): string {
-  return round ? `ทำแล้ว ${round.doneItems}/${round.plannedItems} รายการในแผน; ข้าม ${round.skippedItems}; ยังไม่ได้ทำเมื่อจบบริการ ${round.notDoneAtCloseItems}; ผู้ป่วยบันทึกเอง ${round.patientRecordedItems}` : "ยังไม่เปิดครั้งบริการ";
+function roundReportText(round: RoundReport): string {
+  return `ทำแล้ว ${round.doneItems}/${round.plannedItems} รายการในแผน; ข้าม ${round.skippedItems}; ยังไม่ได้ทำเมื่อจบบริการ ${round.notDoneAtCloseItems}; ผู้ป่วยบันทึกเอง ${round.patientRecordedItems}`;
+}
+
+/** A round that was never opened has no value. */
+function roundReportCell(round: RoundReport | undefined): WorkbookCellValue {
+  return round ? roundReportText(round) : NO_VALUE;
+}
+
+/** "label value" when the value exists; a missing value drops the whole segment. */
+function textSegment(label: string, value: number | string | NoValue): string | NoValue {
+  return value === NO_VALUE ? NO_VALUE : `${label} ${value}`;
+}
+
+/** Joins the present segments of one listed item; missing segments are left out. */
+function joinSegments(segments: readonly (string | NoValue)[]): string {
+  return segments.filter((segment): segment is string => segment !== NO_VALUE).join("; ");
+}
+
+/** One line per listed item; an empty list has no value. */
+function multiRecordCell(lines: readonly string[]): WorkbookCellValue {
+  return lines.length === 0 ? NO_VALUE : assertCellText(lines.join("\n"));
+}
+
+/** Only an actual score is listed; not recorded, no Follow-up or not scorable leave the segment out. */
+function achieveScoreSegment(round: RoundReport): string | NoValue {
+  const score = roundAchieveScore(round);
+  return score.kind === "STAFF" || score.kind === "FOLLOWUP"
+    ? `Achieve score ${roundAchieveScoreText(score)}`
+    : NO_VALUE;
+}
+
+function extraRoundLine(round: RoundReport): string {
+  const status = round.completed ? "จบบริการแล้ว" : "ยังไม่จบบริการ";
+  return `${round.title} (${status}): ${joinSegments([roundReportText(round), achieveScoreSegment(round)])}`;
+}
+
+function bloodPressureSegment(measurements: HospitalReportFollowup["measurements"]): string | NoValue {
+  const systolic = factCell(measurements.systolicBloodPressure);
+  const diastolic = factCell(measurements.diastolicBloodPressure);
+  if (systolic !== NO_VALUE && diastolic !== NO_VALUE) return `ความดัน ${systolic}/${diastolic}`;
+  return textSegment("ความดันตัวบน", systolic) ?? textSegment("ความดันตัวล่าง", diastolic);
+}
+
+function answerSegment(label: string, answer: boolean | null, words: readonly [string, string]): string | NoValue {
+  return answer === null ? NO_VALUE : `${label} ${answer ? words[0] : words[1]}`;
+}
+
+function extraFollowupLine(followup: HospitalReportFollowup): string {
+  return `ครั้งที่ ${followup.roundNumber + 2}: ${joinSegments([
+    followup.serviceDate ?? followup.recordedAt,
+    textSegment("น้ำตาล", factCell(followup.measurements.bloodSugar)),
+    textSegment("น้ำหนัก", factCell(followup.measurements.weight)),
+    textSegment("รอบเอว", factCell(followup.measurements.waistCircumference)),
+    bloodPressureSegment(followup.measurements),
+    textSegment("จำนวนวันที่ทำได้", followup.achievement?.achievedDays ?? NO_VALUE),
+    textSegment("ผลสำเร็จ", followup.achievement ? `${followup.achievement.ratePercent}%` : NO_VALUE),
+    answerSegment("ปรับแผน", followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]),
+    answerSegment("อุปสรรค", followup.hasObstacle, ["มี", "ไม่มี"]),
+  ])}`;
 }
 
 const ROUND_REPORT_HEADER_ROW = 8;
@@ -653,8 +709,8 @@ function writeRoundReportColumns(sheet: ExcelJS.Worksheet, programs: readonly Ho
     const row = sheet.getRow(rowNumber);
     row.getCell(start).value = program.extraRoundsCompleted;
     for (let round = 1; round <= 6; round += 1) row.getCell(start + round).value = roundReportCell(program.rounds.find((item) => item.roundNumber === round));
-    row.getCell(start + 7).value = assertCellText(program.rounds.filter((round) => round.roundNumber >= 7).map((round) => `${round.title} (${round.completed ? "จบบริการแล้ว" : "ยังไม่จบบริการ"}): ${roundReportCell(round)}; Achieve score ${roundAchieveScoreText(roundAchieveScore(round))}`).join("\n") || "ไม่มีครั้งเพิ่มเติม");
-    row.getCell(start + 8).value = assertCellText(program.followups.items.filter((followup) => followup.roundNumber >= 5).map((followup) => `ครั้งที่ ${followup.roundNumber + 2}: ${followup.serviceDate ?? followup.recordedAt}; น้ำตาล ${factCell(followup.measurements.bloodSugar)}; น้ำหนัก ${factCell(followup.measurements.weight)}; รอบเอว ${factCell(followup.measurements.waistCircumference)}; ความดัน ${factCell(followup.measurements.systolicBloodPressure)}/${factCell(followup.measurements.diastolicBloodPressure)}; จำนวนวันที่ทำได้ ${followup.achievement?.achievedDays ?? "ไม่มีข้อมูล"}; ผลสำเร็จ ${followup.achievement ? `${followup.achievement.ratePercent}%` : "ไม่มีข้อมูล"}; ปรับแผน ${followup.planAdjusted === null ? "ไม่มีข้อมูล" : followup.planAdjusted ? "ปรับ" : "ไม่ปรับ"}; อุปสรรค ${followup.hasObstacle === null ? "ไม่มีข้อมูล" : followup.hasObstacle ? "มี" : "ไม่มี"}`).join("\n") || "ไม่มีการติดตามครั้งเพิ่มเติม");
+    row.getCell(start + 7).value = multiRecordCell(program.rounds.filter((round) => round.roundNumber >= 7).map(extraRoundLine));
+    row.getCell(start + 8).value = multiRecordCell(program.followups.items.filter((followup) => followup.roundNumber >= 5).map(extraFollowupLine));
     for (let column = start; column <= start + 8; column += 1) row.getCell(column).alignment = { vertical: "top", wrapText: true };
     rowNumber += rowsPerProgram(program, DASHBOARD_FOLLOWUPS_PER_ROW);
   }
@@ -714,12 +770,63 @@ function writeTemplateSheets(
   writeRoundReportColumns(serviceSheet, dataset.programs);
 }
 
+type NeverFilledCell = { sheetName: string; address: string; header: string };
+
+/** Distinct header texts of one column, top to bottom (merged header cells repeat their value). */
+function columnHeaderText(sheet: ExcelJS.Worksheet, column: number, headerRows: readonly number[]): string {
+  const texts = headerRows
+    .map((rowNumber) => sheet.getCell(rowNumber, column).text.trim())
+    .filter((text) => text.length > 0);
+  return texts.filter((text, index) => texts.indexOf(text) === index).join(" · ");
+}
+
+/** Every cell written from unavailableCell for every Program: the classification facts and the outcome columns. */
+function neverFilledCells({ dashboardSheet, serviceSheet }: TemplateWorkbook): NeverFilledCell[] {
+  const classification = [dashboardSheet, serviceSheet].flatMap((sheet) =>
+    (CLASSIFICATION_FACT_CELLS[sheet.name] ?? []).map(({ valueAddress, label }) => ({
+      sheetName: sheet.name,
+      address: valueAddress,
+      header: label,
+    })),
+  );
+  const outcome = Array.from({ length: SERVICE_FOLLOWUPS_PER_ROW }, (_, index) => {
+    const column = serviceFollowupBaseColumn(index + 1) + SERVICE_FOLLOWUP_OUTCOME_OFFSET;
+    return {
+      sheetName: serviceSheet.name,
+      address: serviceSheet.getColumn(column).letter,
+      header: columnHeaderText(serviceSheet, column, [5, 6, 7, 8]),
+    };
+  });
+  return [...classification, ...outcome];
+}
+
+/** Appended last; the template sheets keep their layout. */
+function writeExplanationSheet(template: TemplateWorkbook): void {
+  const sheet = template.workbook.addWorksheet(EXPLANATION_SHEET_NAME);
+  sheet.columns = [{ width: 24 }, { width: 12 }, { width: 70 }];
+  sheet.addRow(["คำอธิบายรายงาน"]).font = { bold: true };
+  sheet.addRow([]);
+  sheet.addRow(["ช่องว่าง", "", "ไม่มีการบันทึกข้อมูล หรือระบบคำนวณค่านั้นไม่ได้ (ค่า 0 คือค่าที่บันทึกเป็น 0)"]);
+  const markRow = sheet.addRow([CHECK_MARK, "", "ตัวเลือกที่ตรงกับข้อมูลในคอลัมน์คู่ (ทำ/ไม่ทำ, มี/ไม่มี, ปรับ/ไม่ปรับ); ถ้าไม่ทราบคำตอบ ทั้งสองช่องว่าง"]);
+  markRow.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+  sheet.addRow([]);
+  sheet.addRow(["ช่องที่ระบบยังไม่มีแหล่งข้อมูล จึงว่างเสมอ (ไม่ใช่การลืมบันทึกของเจ้าหน้าที่)"]).font = { bold: true };
+  sheet.addRow(["แผ่นงาน", "ช่อง", "หัวข้อ"]).font = { bold: true };
+  for (const { sheetName, address, header } of neverFilledCells(template)) {
+    sheet.addRow([sheetName, address, assertCellText(header)]);
+  }
+  sheet.eachRow((row) => {
+    row.getCell(3).alignment = { vertical: "top", wrapText: true };
+  });
+}
+
 export async function generateHospitalReportWorkbook(
   dataset: HospitalReportingDataset,
   generatedAt: Date = new Date(),
 ): Promise<Buffer> {
   const template = await loadTemplateWorkbook(generatedAt);
   writeTemplateSheets(template, dataset);
+  writeExplanationSheet(template);
 
   return Buffer.from(await template.workbook.xlsx.writeBuffer());
 }
@@ -814,6 +921,7 @@ export async function generateNetworkReportWorkbook(
   writeServiceUnitColumn(template.dashboardSheet, dataset.hospitals);
   writeServiceUnitColumn(template.serviceSheet, dataset.hospitals);
   writeNetworkSummarySheet(template.workbook, dataset);
+  writeExplanationSheet(template);
 
   return Buffer.from(await template.workbook.xlsx.writeBuffer());
 }
