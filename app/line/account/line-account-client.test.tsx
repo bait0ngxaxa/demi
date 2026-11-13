@@ -72,6 +72,11 @@ function renderScreen(
 }
 
 describe("LINE account user experience", () => {
+  it("shows an inline spinner only during the busy operation", () => {
+    const initial = { ...emptyStatus, status: "LINKED" as const, canUnlink: true };
+    expect(renderScreen(initial, { view: "BUSY" })).toContain("motion-safe:animate-spin size-4");
+    expect(renderScreen(initial, { view: "FAILURE" })).not.toContain("motion-safe:animate-spin");
+  });
   it.each(["READY", "DEGRADED"] as const)("shows concise unlink consequences with honest readiness %s", (state) => {
     const markup = renderScreen({ ...emptyStatus, status: "LINKED", canUnlink: true }, {
       view: "UNLINK_CONFIRM", lifecycleReadiness: state === "READY" ? { state } : { state, history: "PRESENT" },

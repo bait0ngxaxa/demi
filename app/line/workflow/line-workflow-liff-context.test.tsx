@@ -19,6 +19,10 @@ vi.mock("./line-workflow-gateway", async (importOriginal) => ({
   verifyLineWorkflow: mocks.verify,
 }));
 
+import { WorkspaceLiffEntryScreen } from "../../workspace-liff-entry";
+import { LineWorkflowScreen } from "./line-workflow-client";
+import { SLOW_LOADING_HINT } from "@/components/line/use-slow-loading-hint";
+
 import { LineWorkflowClient } from "./line-workflow-client";
 
 /** MINI isolation of the LIFF browser context (mocked SDK). MINI verification itself is unchanged. */
@@ -62,5 +66,41 @@ describe("MINI App LIFF browser context", () => {
     mocks.isInClient.mockReturnValue(false);
     await mount();
     expect(window.sessionStorage.getItem(LIFF_BROWSER_CONTEXT_KEY)).toBeNull();
+  });
+});
+
+
+describe("LINE waiting screen progress", () => {
+  it.each(["workspace", "workflow"])("resets the %s slow hint on stage changes and cleans up on unmount", (screen) => {
+    vi.useFakeTimers();
+    const render = (stage: "initial" | "next" | "error"): void => {
+      act(() => root.render(screen === "workspace"
+        ? <WorkspaceLiffEntryScreen state={stage === "initial" ? "INITIALIZING" : stage === "next" ? "REDIRECTING" : "INIT_FAILED"} />
+        : <LineWorkflowScreen state={stage === "initial" ? "INITIALIZING" : stage === "next" ? "VERIFYING" : "INIT_FAILED"} loginHref="/login" />));
+    };
+    try {
+      render("initial");
+      expect(container.querySelector(".motion-safe\\:animate-spin")).not.toBeNull();
+      act(() => vi.advanceTimersByTime(4999));
+      expect(container.textContent).not.toContain(SLOW_LOADING_HINT);
+      act(() => vi.advanceTimersByTime(1));
+      expect(container.textContent).toContain(SLOW_LOADING_HINT);
+      render("next");
+      expect(container.textContent).not.toContain(SLOW_LOADING_HINT);
+      act(() => vi.advanceTimersByTime(5000));
+      expect(container.textContent).toContain(SLOW_LOADING_HINT);
+      render("error");
+      expect(container.textContent).not.toContain(SLOW_LOADING_HINT);
+      expect(container.querySelector(".motion-safe\\:animate-spin")).toBeNull();
+      render("initial");
+      act(() => root.render(null));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("renders the granted-scope waiting spinner", () => {
+    act(() => root.render(<LineWorkflowScreen state="SCOPE_GRANTED" loginHref="/login" />));
+    expect(container.querySelector("[aria-hidden=true]")).not.toBeNull();
   });
 });

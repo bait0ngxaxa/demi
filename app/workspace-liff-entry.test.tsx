@@ -73,8 +73,9 @@ describe("Workspace LIFF root entry", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("continues an ordinary browser to the server-decided web destination without loading LIFF", () => {
+  it("continues an ordinary browser to the server-decided web destination without loading LIFF", async () => {
     const { load } = mount({ mode: "ORDINARY", fallbackHref: "/login" });
+    await settle();
     expect(browser.location.replace).toHaveBeenCalledWith("/login");
     expect(load).not.toHaveBeenCalled();
     expect(browser.history.replaceState).not.toHaveBeenCalled();
@@ -151,6 +152,9 @@ describe("Workspace LIFF root entry", () => {
     mount({ mode: "LIFF", destination: "/app/patients/assigned?task=screening" });
     await settle();
     expect(browser.location.replace).toHaveBeenCalledWith("/app/patients/assigned?task=screening");
+    const index = mocks.setState.mock.calls.findIndex(([state]) => state === "REDIRECTING");
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(mocks.setState.mock.invocationCallOrder[index]).toBeLessThan(browser.location.replace.mock.invocationCallOrder[0]);
   });
 
   it("consumes bare-launch credentials from the fragment, then continues to the web destination", async () => {
@@ -237,12 +241,14 @@ describe("Workspace LIFF root entry", () => {
 
   it("renders Thai loading and recovery states without navigation that could interrupt SDK work", () => {
     const loading = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INITIALIZING" />);
-    expect(loading).toContain("กำลังเปิด DEMI ผ่าน LINE");
+    expect(loading).toContain("กำลังเชื่อมต่อกับ LINE");
     expect(loading).toContain('aria-busy="true"');
+    expect(loading).toContain("motion-safe:animate-spin");
     expect(loading).not.toContain("href=");
 
     const failed = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="INIT_FAILED" />);
     expect(failed).toContain("เปิดผ่าน LINE ไม่สำเร็จ");
+    expect(failed).not.toContain("motion-safe:animate-spin");
     expect(failed).toContain("เปิดจากเมนู DEMI");
 
     const invalid = renderToStaticMarkup(<WorkspaceLiffEntryScreen state="NAVIGATION_INVALID" />);
