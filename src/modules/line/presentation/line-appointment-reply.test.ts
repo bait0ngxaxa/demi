@@ -38,7 +38,6 @@ describe("LINE Patient appointment reply presentation", () => {
   });
 
   it.each([
-    ["EMPTY", LINE_APPOINTMENT_REPLY_COPY.EMPTY],
     ["INELIGIBLE", LINE_APPOINTMENT_REPLY_COPY.INELIGIBLE],
     ["INFRASTRUCTURE_FAILURE", LINE_APPOINTMENT_REPLY_COPY.INFRASTRUCTURE_FAILURE],
   ] as const)("uses the exact %s copy with an explicit kind and no card", (category, copy) => {
@@ -61,6 +60,25 @@ describe("LINE Patient appointment reply presentation", () => {
     const reply = textOf();
     expect(reply.split("\n")).toHaveLength(3);
     expect(reply).not.toMatch(/SCHEDULED|CANCELLED|appointment|relationship|patient|https?:|\/app\//iu);
+  });
+});
+
+describe("ADR-0033 no-upcoming-appointment reply card", () => {
+  it("keeps today's EMPTY text and carries a field-less card that opens the service request page", () => {
+    expect(formatLineAppointmentReply("EMPTY")).toEqual({
+      kind: "EMPTY",
+      text: "ไม่พบนัดหมายที่กำลังจะมาถึง",
+      card: {
+        tone: "info",
+        title: "ยังไม่มีนัดหมาย",
+        fields: [],
+        note: "หากต้องการให้ อสม. มาเยี่ยมบ้าน ขอรับบริการได้จากปุ่มด้านล่าง",
+        destination: "OPEN_PATIENT_SERVICES",
+        actionLabel: "ขอรับบริการ",
+        altText: "ยังไม่มีนัดหมายที่กำลังจะมาถึง",
+      },
+    });
+    expect(LINE_APPOINTMENT_REPLY_COPY.EMPTY).toBe("ไม่พบนัดหมายที่กำลังจะมาถึง");
   });
 });
 

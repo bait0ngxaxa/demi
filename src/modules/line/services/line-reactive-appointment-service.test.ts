@@ -190,7 +190,7 @@ describe("LINE reactive Patient appointment execution", () => {
     errors.mockRestore();
   });
 
-  it.each([true, false])("keeps EMPTY as plain text with Flex %s", async (flexMessages) => {
+  it("ADR-0033: replies to EMPTY with one card opening the service request page while Flex is enabled", async () => {
     stubWorkspaceLiff();
     mocks.getOwnNextAppointment.mockResolvedValue({ status: "AUTHORIZED", appointment: null });
     const replyMessages = replySpy();
@@ -198,10 +198,48 @@ describe("LINE reactive Patient appointment execution", () => {
     await expect(executeLineReactiveAppointment(workItem(), {
       database: createHarness().database,
       monotonicNow: () => 0,
-      flexMessages,
+      flexMessages: true,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_EMPTY");
+
+    const message = onlyMessage(replyMessages);
+    if (message?.type !== "flex") throw new Error("Expected a Flex reply");
+    expect(message.altText).toBe("ยังไม่มีนัดหมายที่กำลังจะมาถึง");
+    expect(message.contents.footer?.contents[0]).toMatchObject({
+      type: "button",
+      action: { type: "uri", label: "ขอรับบริการ", uri: "https://liff.line.me/1234567890-WorkSpace/app/personal/services" },
+    });
+  });
+
+  it("keeps EMPTY as today's plain text with Flex disabled", async () => {
+    stubWorkspaceLiff();
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "AUTHORIZED", appointment: null });
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: createHarness().database,
+      monotonicNow: () => 0,
+      flexMessages: false,
+      replyMessages,
+    })).resolves.toBe("COMPLETED_EMPTY");
+    expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: "ไม่พบนัดหมายที่กำลังจะมาถึง" });
+  });
+
+  it("ADR-0033: falls back to EMPTY text when its card cannot be built", async () => {
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.getOwnNextAppointment.mockResolvedValue({ status: "AUTHORIZED", appointment: null });
+    const replyMessages = replySpy();
+
+    await expect(executeLineReactiveAppointment(workItem(), {
+      database: createHarness().database,
+      monotonicNow: () => 0,
+      flexMessages: true,
       replyMessages,
     })).resolves.toBe("COMPLETED_EMPTY");
     expect(onlyMessage(replyMessages)).toEqual({ type: "text", text: LINE_APPOINTMENT_REPLY_COPY.EMPTY });
+    expect(errors).toHaveBeenCalledWith("line_reactive_appointment_card_fallback", { cause: "LineFailure" });
+    errors.mockRestore();
   });
 
   it.each([true, false])("keeps INELIGIBLE as plain text with Flex %s", async (flexMessages) => {

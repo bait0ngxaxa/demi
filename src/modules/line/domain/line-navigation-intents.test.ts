@@ -122,6 +122,15 @@ describe("MINI workflow gateway entry classification", () => {
     expect(classifyLineWorkflowEntry({ "liff.state": state })).toEqual({ status: "PLATFORM_STATE_INVALID" });
   });
 
+  it("ADR-0033: allowlists the Patient service request page for the no-upcoming-appointment reply", () => {
+    expect(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_SERVICES).toBe("/app/personal/services");
+    expect(LINE_QUICK_ACTION_RETURN_PATHS).toContain("/app/personal/services");
+    const resolve = (url: string): string | null => getLineQuickActionReturnPathFromUrl(new URL(url, "https://demi.example.org"));
+    expect(resolve("/app/personal/services?liff.hback=2")).toBe("/app/personal/services");
+    expect(resolve("/app/personal/services?relationshipId=1")).toBeNull();
+    expect(resolve("/app/personal/services/")).toBeNull();
+  });
+
   it("keeps the Phase A ordinary appointment quick action unchanged", () => {
     expect(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_APPOINTMENTS).toBe("/app/personal/appointments");
     expect(LINE_QUICK_ACTION_RETURN_PATHS).not.toContain(LINE_WORKFLOW_LOGIN_RETURN_PATH);

@@ -29,12 +29,15 @@ export type LineAppointmentReplyInput =
 
 /**
  * The reply and its explicit kind; callers classify on `kind`, never on text.
- * A found appointment carries both today's text and the ADR-0033 card copy, so
- * the caller can fall back to the text when the card cannot be built.
+ * A found appointment and an empty result carry both today's text and the
+ * ADR-0033 card copy, so the caller can fall back to the text when the card
+ * cannot be built. INELIGIBLE and INFRASTRUCTURE_FAILURE are text only: an
+ * ineligible account cannot use any card destination, and a failure reply
+ * must not depend on the card builder.
  */
 export type LineAppointmentReply =
-  | { kind: "APPOINTMENT"; text: string; card: LineNotificationCardCopy }
-  | { kind: "EMPTY" | "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"; text: string };
+  | { kind: "APPOINTMENT" | "EMPTY"; text: string; card: LineNotificationCardCopy }
+  | { kind: "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"; text: string };
 
 export const LINE_APPOINTMENT_REPLY_COPY = {
   EMPTY: "ไม่พบนัดหมายที่กำลังจะมาถึง",
@@ -45,6 +48,17 @@ export const LINE_APPOINTMENT_REPLY_COPY = {
 } as const;
 
 const LINE_APPOINTMENT_REPLY_TITLE = "นัดหมายถัดไปของคุณ";
+
+/** No fields: there is no appointment fact to show, only the way to ask for a home visit. */
+const LINE_EMPTY_APPOINTMENT_REPLY_CARD: LineNotificationCardCopy = {
+  tone: "info",
+  title: "ยังไม่มีนัดหมาย",
+  fields: [],
+  note: "หากต้องการให้ อสม. มาเยี่ยมบ้าน ขอรับบริการได้จากปุ่มด้านล่าง",
+  destination: "OPEN_PATIENT_SERVICES",
+  actionLabel: "ขอรับบริการ",
+  altText: "ยังไม่มีนัดหมายที่กำลังจะมาถึง",
+};
 
 const appointmentDateTimeFormatter = new Intl.DateTimeFormat(
   "th-TH-u-ca-buddhist-nu-latn",
@@ -67,11 +81,14 @@ function normalizeHospitalName(value: string): string | null {
   return normalized || null;
 }
 
-function categoryReply(kind: "EMPTY" | "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"): LineAppointmentReply {
+function categoryReply(kind: "INELIGIBLE" | "INFRASTRUCTURE_FAILURE"): LineAppointmentReply {
   return { kind, text: LINE_APPOINTMENT_REPLY_COPY[kind] };
 }
 
 export function formatLineAppointmentReply(input: LineAppointmentReplyInput): LineAppointmentReply {
+  if (input === "EMPTY") {
+    return { kind: "EMPTY", text: LINE_APPOINTMENT_REPLY_COPY.EMPTY, card: LINE_EMPTY_APPOINTMENT_REPLY_CARD };
+  }
   if (typeof input === "string") {
     return categoryReply(input);
   }
