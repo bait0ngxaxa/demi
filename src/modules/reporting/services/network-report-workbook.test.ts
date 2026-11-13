@@ -111,10 +111,10 @@ function sheet(workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet {
 }
 
 describe("ADR-0025 network report workbook", () => {
-  it("adds the summary sheet after the two template sheets", async () => {
+  it("adds the summary sheet after the two template sheets and the explanation sheet last", async () => {
     const workbook = await load(await generateNetworkReportWorkbook(networkDataset()));
 
-    expect(workbook.worksheets.map(({ name }) => name)).toEqual([DASHBOARD, SERVICE, SUMMARY]);
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual([DASHBOARD, SERVICE, SUMMARY, "คำอธิบาย"]);
   });
 
   it("appends หน่วยบริการ after the round report columns without moving any existing column", async () => {

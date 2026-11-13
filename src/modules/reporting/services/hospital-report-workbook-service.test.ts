@@ -163,6 +163,7 @@ describe("Hospital reporting customer workbook export", () => {
     expect(workbook.worksheets.map(({ name }) => name)).toEqual([
       "Dashboard ภาพรวม",
       "รายงานการจัดบริการ",
+      "คำอธิบาย",
     ]);
 
     const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
@@ -211,9 +212,9 @@ describe("Hospital reporting customer workbook export", () => {
     expect(service.getCell("B9").value).toBe("สมชาย");
     expect(service.getCell("D9").value).toBe("LOCAL-001");
     expect(service.getCell("S8").value).toBe("ทำ");
-    expect(service.getCell("T9").value).toBe("ไม่ทำ");
-    expect(service.getCell("W9").value).toBe("ทำ");
-    expect(service.getCell("AD9").value).toBe("มี");
+    expect(service.getCell("T9").value).toBe("\u2713");
+    expect(service.getCell("W9").value).toBe("\u2713");
+    expect(service.getCell("AD9").value).toBe("\u2713");
     expect(service.getCell("AF9").value).toBe(3);
     // The exercise target is in "นาที", not the "minutes" unit, so the weekly total cannot be computed.
     expect(service.getCell("AG9").value).toBeNull();
@@ -284,7 +285,7 @@ describe("Hospital reporting customer workbook export", () => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
 
-    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ"]);
+    expect(workbook.worksheets.map(({ name }) => name)).toEqual(["Dashboard ภาพรวม", "รายงานการจัดบริการ", "คำอธิบาย"]);
     expect(workbook.getWorksheet("Dashboard ภาพรวม")?.columnCount).toBe(52);
     expect(workbook.getWorksheet("รายงานการจัดบริการ")?.columnCount).toBe(74);
     expect(workbook.getWorksheet("Dashboard ภาพรวม")?.getCell("A9").value ?? null).toBeNull();
@@ -419,5 +420,104 @@ describe("Hospital reporting workbook blanks", () => {
     expect(service.getCell("R9").value).toBe(0);
     expect(service.getCell("AI9").value).toBe(0);
     expect(service.getCell("AJ9").value).toBe(0);
+  });
+});
+
+describe("Hospital reporting workbook check marks and explanation sheet", () => {
+  const CHECK = "\u2713";
+
+  async function loadWorkbook(input: HospitalReportingDataset): Promise<ExcelJS.Workbook> {
+    const bytes = await generateHospitalReportWorkbook(input, new Date("2026-10-11T05:00:00.000Z"));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Uint8Array.from(bytes).buffer);
+    return workbook;
+  }
+
+  function pairs(record: HospitalReportProgramRow): HospitalReportProgramRow {
+    const [first] = record.followups.items;
+    if (!first) throw new Error("Expected Follow-ups");
+    const followups = [
+      { ...first, roundNumber: 1, planAdjusted: true, hasObstacle: false },
+      { ...first, roundNumber: 2, planAdjusted: false, hasObstacle: true },
+      { ...first, roundNumber: 3, planAdjusted: null, hasObstacle: null },
+      { ...first, roundNumber: 5, planAdjusted: true, hasObstacle: null },
+    ];
+    return { ...record, followups: { totalCount: followups.length, hasMore: false, items: followups } };
+  }
+
+  it("marks the applicable pair column with a centered ✓ and leaves unknown answers empty", async () => {
+    const workbook = await loadWorkbook({ ...dataset(), programs: [pairs(program({ id: activeProgramId, status: PatientProgramStatus.ACTIVE, followups: 1 }))] });
+    const service = workbook.getWorksheet("รายงานการจัดบริการ");
+    if (!service) throw new Error("Expected the service sheet");
+    const pair = (left: string): [unknown, unknown] => {
+      const right = service.getColumn(service.getColumn(left).number + 1).letter;
+      return [service.getCell(`${left}9`).value ?? null, service.getCell(`${right}9`).value ?? null];
+    };
+
+    // Service 1 presence (BR-02): routine recorded; floating chart and dream card not recorded -> ไม่ทำ.
+    expect(pair("S")).toEqual([null, CHECK]);
+    expect(pair("U")).toEqual([null, CHECK]);
+    expect(pair("W")).toEqual([CHECK, null]);
+    // Goal Plan (BR-03): no food items -> ไม่มี both; exercise item -> มี.
+    expect(pair("Y")).toEqual([null, CHECK]);
+    expect(pair("AA")).toEqual([null, CHECK]);
+    expect(pair("AD")).toEqual([CHECK, null]);
+    // Follow-ups 1-3: true, false, null for ปรับแผน / อุปสรรค.
+    expect(pair("AL")).toEqual([CHECK, null]);
+    expect(pair("AN")).toEqual([null, CHECK]);
+    expect(pair("AT")).toEqual([null, CHECK]);
+    expect(pair("AV")).toEqual([CHECK, null]);
+    expect(pair("BB")).toEqual([null, null]);
+    expect(pair("BD")).toEqual([null, null]);
+
+    for (const column of ["S", "T", "W", "X", "AL", "AM", "BB", "BC"]) {
+      expect(service.getCell(`${column}9`).alignment, column).toMatchObject({ horizontal: "center", vertical: "middle" });
+    }
+    // Other cells keep their style: the data cell next to the pairs and the unused template grid rows.
+    expect(service.getCell("AH9").alignment).toEqual(service.getCell("AH12").alignment);
+    expect(service.getCell("AK9").alignment).toEqual(service.getCell("AK12").alignment);
+    expect(service.getCell("S12").alignment?.horizontal).toBeUndefined();
+    expect(service.getCell("AL12").alignment?.horizontal).toBeUndefined();
+
+    // Free text keeps the words and drops the unknown answer.
+    const extraFollowups = service.getCell("BV9").text;
+    expect(extraFollowups).toContain("ปรับแผน ปรับ");
+    expect(extraFollowups).not.toContain("อุปสรรค");
+    expect(extraFollowups).not.toContain(CHECK);
+  });
+
+  it("appends the explanation sheet last and lists exactly the never-filled cells", async () => {
+    const workbook = await loadWorkbook(dataset());
+    const names = workbook.worksheets.map(({ name }) => name);
+    expect(names.at(-1)).toBe("คำอธิบาย");
+    const sheet = workbook.getWorksheet("คำอธิบาย");
+    if (!sheet) throw new Error("Expected the explanation sheet");
+
+    const rows = Array.from({ length: sheet.rowCount }, (_, index) => (sheet.getRow(index + 1).values as unknown[]).slice(1));
+    expect(rows[2]?.[0]).toBe("ช่องว่าง");
+    expect(rows[3]?.[0]).toBe(CHECK);
+    const listStart = rows.findIndex((row) => row[0] === "แผ่นงาน") + 1;
+    expect(listStart).toBeGreaterThan(0);
+    expect(rows.slice(listStart)).toEqual([
+      ["Dashboard ภาพรวม", "D2", "เบาหวาน (DM)"],
+      ["Dashboard ภาพรวม", "D3", "กลุ่มเสี่ยง (Pre-DM)"],
+      ["รายงานการจัดบริการ", "D3", "เบาหวาน (DM)"],
+      ["รายงานการจัดบริการ", "D4", "กลุ่มเสี่ยง (Pre-DM)"],
+      ["รายงานการจัดบริการ", "AK", "บริการครั้งที่ 3 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "AS", "บริการครั้งที่ 4 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "BA", "บริการครั้งที่ 5 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+      ["รายงานการจัดบริการ", "BI", "บริการครั้งที่ 6 : ติดตามการฝึกซ้อมพฤติกรรม · ผลลัพธ์ที่ได้"],
+    ]);
+
+    // Every listed cell is empty in the data the workbook exported.
+    const service = workbook.getWorksheet("รายงานการจัดบริการ");
+    const dashboard = workbook.getWorksheet("Dashboard ภาพรวม");
+    if (!service || !dashboard) throw new Error("Expected report sheets to exist");
+    for (const column of ["AK", "AS", "BA", "BI"]) {
+      for (const rowNumber of [9, 10, 11]) expect(service.getCell(`${column}${rowNumber}`).value ?? null, `${column}${rowNumber}`).toBeNull();
+    }
+    for (const [target, address] of [[dashboard, "D2"], [dashboard, "D3"], [service, "D3"], [service, "D4"]] as const) {
+      expect(target.getCell(address).value ?? null, `${target.name}!${address}`).toBeNull();
+    }
   });
 });

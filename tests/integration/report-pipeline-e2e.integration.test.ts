@@ -459,6 +459,7 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const completedOn = programRecord.completedAt!.toISOString().slice(0, 10);
     // AS-D2: rounds 1-2 have no computed score; without a staff-entered one the cell is empty.
     const roundAchieveScoreNotRecorded = null;
+    const check = "\u2713";
 
     // Header counts: both relationships are counted, only the Program becomes a row.
     for (const [sheet, countRow] of [[dashboard, 2], [service, 3]] as const) {
@@ -494,15 +495,15 @@ describe("report pipeline end to end (P1 Part D)", () => {
       // Before DTX/BW, PAM, PROMs, confidence ruler, exercise before; After DTX/BW, exercise after; follow-ups > 70%.
       // R2: PAM score = the PAM total; PROMs = มีปัญหา/ไม่มีปัญหา (Q6).
       180, 80, 15, "ไม่มีปัญหา", 5, null, 118, 72, null, 2,
-      // Service 1 marks: floating chart and routine of round 1, dream card of round 3.
-      "ทำ", null, "ทำ", null, "ทำ", null,
-      // Round 2 first Goal Plan: reduce meal, food change, food days, exercise, exercise days, weekly minutes.
-      "มี", null, null, "ไม่มี", 5, "มี", null, 3, 90,
-      // Follow-ups 1–4: date, achieved days, rate, outcome (no source: empty), plan adjusted pair, obstacle pair.
-      today, 4, 0.5, null, null, "ไม่ปรับ", "มี", null,
-      today, 7, 0.88, null, "ปรับ", null, null, "ไม่มี",
-      today, 9, 1, null, null, "ไม่ปรับ", null, "ไม่มี",
-      today, 4, 0.44, null, null, "ไม่ปรับ", null, "ไม่มี",
+      // Service 1 marks (✓ = ทำ): floating chart and routine of round 1, dream card of round 3.
+      check, null, check, null, check, null,
+      // Round 2 first Goal Plan: reduce meal (มี), food change (ไม่มี), food days, exercise (มี), exercise days, weekly minutes.
+      check, null, null, check, 5, check, null, 3, 90,
+      // Follow-ups 1–4: date, achieved days, rate, outcome (no source: empty), ปรับ/ไม่ปรับ pair, มี/ไม่มี obstacle pair.
+      today, 4, 0.5, null, null, check, check, null,
+      today, 7, 0.88, null, check, null, null, check,
+      today, 9, 1, null, null, check, null, check,
+      today, 4, 0.44, null, null, check, null, check,
     ]);
 
     // Exactly one Program row: the rest of the template's data-entry grid stays empty (Dashboard rows 10–29,

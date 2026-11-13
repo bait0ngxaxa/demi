@@ -24,6 +24,7 @@ type CellValue = string | number | null;
 type ColumnContract = readonly [column: string, expected: CellValue, status: DodStatus];
 
 // The former unavailable reasons; the workbook now leaves every unavailable value empty.
+const CHECK = "\u2713";
 const UNAVAILABLE_LABELS = new Set([
   "ไม่มีแหล่งข้อมูลในระบบ",
   "ยังไม่พร้อมใช้งาน: หน่วยหรือความหมายยังไม่ได้รับรอง",
@@ -303,10 +304,10 @@ function followupServiceColumns(row: 9 | 10): ColumnContract[] {
         column === block[3] ? "SOURCE_MISSING" : "SOURCE_READY",
       ]);
     }
-    const answer = (value: boolean | null, labels: readonly [string, string]): [CellValue, CellValue] =>
-      value === null ? [null, null] : value ? [labels[0], null] : [null, labels[1]];
-    const [adjusted, notAdjusted] = answer(followup.planAdjusted, ["ปรับ", "ไม่ปรับ"]);
-    const [obstacle, noObstacle] = answer(followup.hasObstacle, ["มี", "ไม่มี"]);
+    const answer = (value: boolean | null): [CellValue, CellValue] =>
+      value === null ? [null, null] : value ? [CHECK, null] : [null, CHECK];
+    const [adjusted, notAdjusted] = answer(followup.planAdjusted);
+    const [obstacle, noObstacle] = answer(followup.hasObstacle);
     return [
       [block[0], dateToken(followup.serviceDate === null ? followup.recordedAt : `${followup.serviceDate}T00:00:00.000Z`), "SOURCE_READY"],
       [block[1], followup.achievement?.achievedDays ?? null, "SOURCE_READY"],
@@ -340,18 +341,18 @@ const SERVICE_ROW_9: readonly ColumnContract[] = [
   ["P", 69, "SOURCE_READY"],
   ["Q", 150, "SOURCE_READY"],
   ["R", 2, "SOURCE_READY"],
-  ["S", "ทำ", "SOURCE_READY"],
+  ["S", CHECK, "SOURCE_READY"],
   ["T", null, "SOURCE_READY"],
   ["U", null, "SOURCE_READY"],
-  ["V", "ไม่ทำ", "SOURCE_READY"],
-  ["W", "ทำ", "SOURCE_READY"],
+  ["V", CHECK, "SOURCE_READY"],
+  ["W", CHECK, "SOURCE_READY"],
   ["X", null, "SOURCE_READY"],
   ["Y", null, "SOURCE_READY"],
-  ["Z", "ไม่มี", "SOURCE_READY"],
-  ["AA", "มี", "SOURCE_READY"],
+  ["Z", CHECK, "SOURCE_READY"],
+  ["AA", CHECK, "SOURCE_READY"],
   ["AB", null, "SOURCE_READY"],
   ["AC", 4, "SOURCE_READY"],
-  ["AD", "มี", "SOURCE_READY"],
+  ["AD", CHECK, "SOURCE_READY"],
   ["AE", null, "SOURCE_READY"],
   ["AF", 3, "SOURCE_READY"],
   ["AG", 90, "SOURCE_READY"],
@@ -406,6 +407,7 @@ describe("customer workbook golden column contract (BF-GAP-WB-00)", () => {
     expect(generated.worksheets.map(({ name }) => name)).toEqual([
       "Dashboard ภาพรวม",
       "รายงานการจัดบริการ",
+      "คำอธิบาย",
     ]);
     expect(dashboard.columnCount).toBe(52);
     expect(service.columnCount).toBe(74);
