@@ -66,19 +66,23 @@ Successful appointment, reschedule-request, patient-service-request, onboarding-
 
 ## Refresh lifecycle semantics
 
-Verified against the bundled Next.js 16 docs: shared layouts are not re-rendered on client navigation (partial rendering); `router.refresh()` re-renders all Server Components for the current route; a Server Action that revalidates `/app` as a layout returns the re-rendered layout with its response. React `cache` is request-local only.
+Verified against the installed Next.js 16.4.5 bundled docs and official [`usePathname`](https://nextjs.org/docs/app/api-reference/functions/use-pathname), [`useSearchParams`](https://nextjs.org/docs/app/api-reference/functions/use-search-params) and [`useRouter`](https://nextjs.org/docs/app/api-reference/functions/use-router) references: shared layouts are not re-rendered on client navigation (partial rendering); `router.refresh()` re-renders Server Components for the current route; a Server Action that revalidates `/app` as a layout returns the re-rendered layout with its response. React `cache` is request-local only. The protected layout already awaits `connection()` inside its existing Suspense boundary, so `useSearchParams()` is available during dynamic server rendering; adding URL observation does not turn the protected shell into client-only rendering or require a new boundary.
 
 The layout passes the result's `checkedAt` to `PendingActionRefresh`. Every server render of the shell — initial load, `router.refresh()`, Server Action revalidation — delivers a new value, which marks the indicators fresh on receipt. Client signals call `router.refresh()` only when the indicators are at least 30 seconds old (`PENDING_ACTION_REFRESH_INTERVAL_MS`):
 
 | Signal | Behavior |
 | --- | --- |
 | Window focus / `visibilitychange` to visible | Refresh if stale; the two events for one return coalesce into one refresh |
-| Client pathname change (search-param-only changes excluded) | Refresh if stale; recent data suppresses it |
+| Client URL change: pathname + serialized search parameters | Refresh if stale, including same-pathname tab, Hospital selector, pagination and filter navigation; recent data suppresses it |
 | Successful relevant mutation | Its existing `/app` layout revalidation already delivers fresh data and resets the timer, so no extra refresh follows |
 
-Guards: a ref-based in-flight flag and the freshness stamp (also set when a refresh starts, bounding retries if one fails) prevent duplicate or concurrent refreshes. A refresh cannot loop: it does not change the pathname and its result is fresh. Effects order freshness before pathname evaluation, so a revalidation and redirect in the same commit do not trigger a second request. Refresh is skipped while `#application-main-content` contains an unknown-outcome navigation guard or a disabled `aria-busy` submit button. Listeners are removed on unmount; Strict Mode effect replay does not issue extra refreshes. There is no `setInterval`, polling, WebSocket, Realtime, worker or local optimistic decrement.
+URL identity combines `usePathname()` with `useSearchParams().toString()`, so a new search-params object with the same contents is not a navigation. The previous-URL ref starts with the current URL: initial mount does not request another refresh. Navigation only checks freshness; it does not reset the freshness stamp.
+
+Guards: the document must be visible. A ref-based in-flight flag and the freshness stamp (also set when a refresh starts, bounding retries if one fails) prevent duplicate or concurrent refreshes and throttle requests to a minimum 30-second interval. A refresh cannot loop: it does not change the URL, and a new `checkedAt` alone does not run the URL-change check. Effects order freshness before URL evaluation, so Server Action revalidation and a pathname or query change in the same commit do not trigger a second request. Refresh is skipped while `#application-main-content` contains an unknown-outcome navigation guard or a disabled `aria-busy` submit button. Listeners are removed on unmount; Strict Mode effect replay does not issue extra refreshes. There is no `setInterval`, polling, WebSocket, Realtime, worker or local optimistic decrement.
 
 Known limitation: an idle, continuously focused screen without navigation does not receive changes made in another user's session until the next eligible signal. This is not realtime delivery.
+
+Search-navigation regression coverage in `pending-action-refresh.test.tsx` includes stale tab/Hospital/filter/pagination changes, fresh data, unchanged serialized URLs, duplicate browser events, hidden documents, unsafe mutation/recovery guards, simultaneous Server Action freshness, refresh-loop prevention, Strict Mode, listener cleanup and the 30-second threshold. These are component lifecycle tests, not browser-level verification.
 
 ## Verification
 

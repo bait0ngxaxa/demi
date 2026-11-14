@@ -3,9 +3,14 @@ import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), pathname: "/app" }));
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), pathname: "/app", search: "" }));
 const router = { refresh: mocks.refresh };
-vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => mocks.pathname }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => router,
+  usePathname: () => mocks.pathname,
+  // A new object on each render also verifies that detection uses the serialized query.
+  useSearchParams: () => new URLSearchParams(mocks.search),
+}));
 import { PENDING_ACTION_REFRESH_INTERVAL_MS, PendingActionRefresh } from "./pending-action-refresh";
 
 const STALE = PENDING_ACTION_REFRESH_INTERVAL_MS;
@@ -27,6 +32,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   mocks.pathname = "/app";
+  mocks.search = "";
   container = document.createElement("div");
   container.id = "application-main-content";
   document.body.append(container);
@@ -42,6 +48,124 @@ afterEach(() => {
 });
 
 describe("pending indicator refresh lifecycle", () => {
+  it.each([
+    ["tab", "tab=UPCOMING", "tab=PENDING_REQUESTS"],
+    ["Hospital", "hospitalId=A", "hospitalId=B"],
+    ["filter", "tab=PENDING_REQUESTS", "tab=PENDING_REQUESTS&status=SCHEDULED"],
+    ["pagination", "page=1", "page=2"],
+  ])("refreshes once for stale same-pathname %s navigation", (_name, initial, next) => {
+    mocks.search = initial;
+    render(1, "/app/appointments");
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(STALE);
+    mocks.search = next;
+    render(1);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    focus();
+    visible();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    render(2);
+    vi.advanceTimersByTime(STALE);
+    render(2);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refresh an unchanged URL even with a new search-params object and stale data", () => {
+    mocks.search = "tab=UPCOMING";
+    render(1, "/app/appointments");
+    vi.advanceTimersByTime(STALE);
+    render(1);
+    render(1);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("checks freshness without resetting it on query navigation and throttles subsequent changes", () => {
+    render(1, "/app/appointments");
+    vi.advanceTimersByTime(STALE - 1);
+    mocks.search = "tab=UPCOMING";
+    render(1);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    mocks.search = "tab=PENDING_REQUESTS";
+    render(1);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    for (let page = 1; page <= 3; page++) {
+      vi.advanceTimersByTime(1_000);
+      mocks.search = `tab=PENDING_REQUESTS&page=${page}`;
+      render(1);
+    }
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(STALE - 3_000);
+    mocks.search = "tab=PENDING_REQUESTS&page=4";
+    render(1);
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses fresh Server Action data before evaluating a simultaneous query change", () => {
+    mocks.search = "tab=UPCOMING";
+    render(1, "/app/appointments");
+    vi.advanceTimersByTime(STALE);
+    mocks.search = "tab=PENDING_REQUESTS";
+    render(2);
+    mocks.search = "hospitalId=B";
+    render(2);
+    focus();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(STALE);
+    mocks.search = "hospitalId=C";
+    render(2);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["unknown-outcome", "busy"])("guards query navigation during %s workflows without resetting freshness", (kind) => {
+    render(1, "/app/appointments");
+    vi.advanceTimersByTime(STALE);
+    const guard = document.createElement("button");
+    if (kind === "unknown-outcome") guard.dataset.navigationGuard = "unknown-outcome";
+    else {
+      guard.disabled = true;
+      guard.setAttribute("aria-busy", "true");
+    }
+    container.append(guard);
+    mocks.search = "tab=PENDING_REQUESTS";
+    render(1);
+    focus();
+    visible();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    guard.remove();
+    mocks.search = "hospitalId=B";
+    render(1);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for visibility after a hidden query navigation", () => {
+    render(1, "/app/appointments");
+    vi.advanceTimersByTime(STALE);
+    visibility.mockReturnValue("hidden");
+    mocks.search = "tab=PENDING_REQUESTS";
+    render(1);
+    focus();
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    visibility.mockReturnValue("visible");
+    visible();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not duplicate query-triggered refreshes in Strict Mode", () => {
+    mocks.search = "tab=UPCOMING";
+    render(1, "/app/appointments", true);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(STALE);
+    mocks.search = "tab=PENDING_REQUESTS";
+    render(1, mocks.pathname, true);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    focus();
+    visible();
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    render(2, mocks.pathname, true);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes on focus or visibility restoration only once indicators are stale, without polling", () => {
     render(1);
     focus();

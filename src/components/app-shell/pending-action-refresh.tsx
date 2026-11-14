@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 /** Minimum age of the shell's server-rendered indicators before a client signal re-requests them. */
 export const PENDING_ACTION_REFRESH_INTERVAL_MS = 30_000;
@@ -11,22 +11,24 @@ const UNSAFE_REFRESH_SELECTOR = '[data-navigation-guard="unknown-outcome"], butt
 /**
  * Shared layouts are not re-rendered on App Router navigation, so the shell's indicators age while the user moves
  * between pages. This re-requests server authorization and business queues via `router.refresh()` when a client signal
- * (focus, visibility, pathname change) finds them older than the interval. No timer, polling or local counter.
+ * (focus, visibility, pathname or search-parameter change) finds them older than the interval. No timer, polling or local counter.
  *
  * `checkedAt` changes on every server render of the shell — initial load, `router.refresh()` and Server Action
  * revalidation of `/app` — which marks the indicators fresh, so a mutation's revalidation suppresses a redundant
- * refresh and a refresh cannot trigger another (the pathname does not change and the new data is fresh).
+ * refresh and a refresh cannot trigger another (the URL does not change and the new data is fresh).
  */
 export function PendingActionRefresh({ checkedAt }: { checkedAt: number }): null {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const url = `${pathname}?${searchParams.toString()}`;
   const [pending, startTransition] = useTransition();
   const freshAt = useRef(0);
   const refreshing = useRef(false);
-  const previousPathname = useRef(pathname);
+  const previousUrl = useRef(url);
 
-  // Declared first: on a commit that delivers both new server data and a new pathname, freshness is recorded before
-  // the pathname effect evaluates it.
+  // Declared first: on a commit that delivers both new server data and a new URL, freshness is recorded before
+  // the URL effect evaluates it.
   useEffect(() => {
     freshAt.current = Date.now();
     refreshing.current = false;
@@ -48,10 +50,10 @@ export function PendingActionRefresh({ checkedAt }: { checkedAt: number }): null
   }, [router]);
 
   useEffect(() => {
-    if (previousPathname.current === pathname) return;
-    previousPathname.current = pathname;
+    if (previousUrl.current === url) return;
+    previousUrl.current = url;
     refreshIfStale();
-  }, [pathname, refreshIfStale]);
+  }, [url, refreshIfStale]);
 
   useEffect(() => {
     window.addEventListener("focus", refreshIfStale);
