@@ -82,7 +82,8 @@ describe("Personal medication UI states", () => {
     simulation.state = { status: "ERROR", message: "ยังยืนยันการบันทึกไม่ได้ กรุณาโหลดรายการล่าสุดเพื่อตรวจสอบก่อนส่งอีกครั้ง", refreshRequired: true };
     const unknown = renderToStaticMarkup(<MedicationEditor />);
     expect(unknown).toContain('data-navigation-guard="unknown-outcome"');
-    expect(unknown).toContain('href="/app/personal/medications"');
+    expect(unknown).toContain("โหลดรายการล่าสุด</button>");
+    expect(unknown).not.toContain('href="/app/personal/medications"');
 
     simulation.state = { status: "SUCCESS", message: "บันทึกรายการแล้ว" };
     expect(renderToStaticMarkup(<MedicationEditor />)).not.toContain("data-navigation-guard");
@@ -167,3 +168,5 @@ describe("Personal medication UI states", () => {
     for (const absent of ["เริ่มติดตามอีกครั้ง", "ลบรายการ", "หยุดรับประทานยา", "การติดตามใน DEMI"]) expect(detail?.textContent).not.toContain(absent);
   });
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
+import { InPlaceRefreshButton } from "@/components/ui/in-place-refresh";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
@@ -62,7 +63,7 @@ export function MedicationFeedback({ state }: { state: PersonalMedicationActionS
   if (!state.message) return null;
   if (state.loginHref) return <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} />;
   return <Alert data-navigation-guard={state.refreshRequired ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}
-    {state.status === "CONFLICT" || state.refreshRequired ? <a className="ml-2 underline" href="/app/personal/medications">โหลดรายการล่าสุด</a> : null}
+    {state.status === "CONFLICT" || state.refreshRequired ? <InPlaceRefreshButton className="ml-2 underline" variant="ghost" size="compact">โหลดรายการล่าสุด</InPlaceRefreshButton> : null}
   </Alert>;
 }
 
@@ -136,14 +137,14 @@ export function MedicationEditor({ item, coordination, initialDraft, draftRef, o
     <div className="flex flex-wrap items-center gap-3">
       <Button type="submit" loading={pending} disabled={Boolean(blocked)}>{pending ? "กำลังบันทึก..." : item ? "บันทึกการแก้ไข" : "เพิ่มรายการ"}</Button>
       {onCancel ? <Button variant="secondary" disabled={pending} onClick={onCancel}>ยกเลิก</Button> : null}
-      {state.status === "SUCCESS" ? <a className="text-brand-strong underline" href="/app/personal/medications">กลับไปดูรายการล่าสุด</a> : null}
+      {state.status === "SUCCESS" ? <InPlaceRefreshButton className="underline" variant="ghost" size="compact">กลับไปดูรายการล่าสุด</InPlaceRefreshButton> : null}
     </div>
   </form>;
 }
 
 function confirmableOutcome(state: PersonalMedicationActionState): ConfirmableActionOutcome {
   if (state.status === "SUCCESS") return "success";
-  // A thrown request cannot be replayed safely; the reload-based recovery keeps the dialog in its unknown state.
+  // A thrown request cannot be replayed safely; the fresh-data recovery keeps the dialog in its unknown state.
   if (state.refreshRequired) return "unknown";
   return state.status === "IDLE" ? "idle" : "error";
 }
@@ -179,7 +180,7 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
       <Button ref={trigger} type="submit" variant="secondary" disabled={blocked}>หยุดติดตามรายการนี้ใน DEMI</Button>
     </ConfirmableActionForm>
     <div ref={feedback} tabIndex={-1}><MedicationFeedback state={state} /></div>
-    {state.status === "SUCCESS" ? <a className="text-brand-strong underline" href="/app/personal/medications">ดูประวัติหยุดติดตาม</a> : null}
+    {state.status === "SUCCESS" ? <InPlaceRefreshButton className="underline" variant="ghost" size="compact">ดูประวัติหยุดติดตาม</InPlaceRefreshButton> : null}
   </div>;
 }
 

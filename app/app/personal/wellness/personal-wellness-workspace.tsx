@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { InPlaceRefreshButton } from "@/components/ui/in-place-refresh";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
@@ -89,7 +90,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
 
   if (session === null) return <div className="max-w-4xl space-y-6">
     <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "สุขภาพ" }]} title="สุขภาพ" description="ข้อมูลที่คุณบันทึก" />
-    <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <a className="underline" href="/app/personal/wellness">เปิดหน้าสุขภาพ</a></Alert>
+    <Alert variant="warning">กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์ <InPlaceRefreshButton className="underline" variant="ghost" size="compact">เปิดหน้าสุขภาพ</InPlaceRefreshButton></Alert>
   </div>;
 
   const linkClassName = "inline-flex min-h-12 items-center justify-center rounded-control border border-border bg-surface px-4 text-sm font-semibold text-brand-strong hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";

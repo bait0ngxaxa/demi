@@ -117,3 +117,5 @@ describe("daily schedule editor interactions", () => {
     expect(replacePersonalMedicationSchedulesAction).toHaveBeenCalledOnce(); expect(onResult).toHaveBeenCalledWith(result);
   });
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));

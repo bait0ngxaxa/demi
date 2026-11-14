@@ -5,6 +5,7 @@ import { PersonalExerciseWorkspace } from "./personal-exercise-workspace";
 import { PersonalMealWorkspace } from "./personal-meal-workspace";
 import { PersonalWeightGoalWorkspace } from "./personal-weight-goal-workspace";
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
+import { InPlaceRefreshButton } from "@/components/ui/in-place-refresh";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
 
 type TestElementProps = { children?: unknown; href?: unknown };
@@ -114,7 +115,7 @@ describe("Wellness shared private authority lifetime", () => {
     const deniedElements = elements(deniedTree);
     expect(deniedElements.some((element) => element.type === PersonalMealWorkspace || element.type === PersonalExerciseWorkspace || element.type === PersonalWeightGoalWorkspace || element.type === "form")).toBe(false);
     expect(textContent(deniedTree)).toContain("กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์");
-    expect(deniedElements.some((element) => element.type === "a" && element.props.href === "/app/personal/wellness")).toBe(true);
+    expect(deniedElements.some((element) => element.type === InPlaceRefreshButton)).toBe(true);
     expect(textContent(deniedTree)).not.toContain("private meal marker");
     expect(textContent(deniedTree)).not.toContain("private exercise marker");
     expect(textContent(deniedTree)).not.toContain("72.555");
@@ -158,3 +159,5 @@ describe("Wellness shared private authority lifetime", () => {
     expect(harness.session).not.toBeNull();
   });
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
