@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import type { WorkforceOsmPatientPage } from "@/modules/patient-directory/services/patient-directory-query-service";
 
@@ -77,35 +78,13 @@ export function WorkforceOsmAssignedPatientsSection({
                 </li>
               ))}
             </ul>
-            {state.page.totalPages > 1 ? (
-              <nav aria-label="แบ่งหน้ารายชื่อผู้ป่วย" className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <p aria-live="polite" className="text-sm text-text-muted">
-                  หน้า {state.page.page} จาก {state.page.totalPages}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {state.page.hasPreviousPage ? (
-                    <Link
-                      className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 text-sm font-semibold text-text hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                      href={patientPageHref(relationshipId, state.page.page - 1)}
-                      rel="prev"
-                      prefetch={false}
-                    >
-                      หน้าก่อน
-                    </Link>
-                  ) : null}
-                  {state.page.hasNextPage ? (
-                    <Link
-                      className="inline-flex min-h-11 items-center rounded-control border border-border-strong bg-surface px-4 text-sm font-semibold text-text hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring"
-                      href={patientPageHref(relationshipId, state.page.page + 1)}
-                      rel="next"
-                      prefetch={false}
-                    >
-                      หน้าถัดไป
-                    </Link>
-                  ) : null}
-                </div>
-              </nav>
-            ) : null}
+            <PageNumberPagination
+              className="mt-4"
+              label="แบ่งหน้ารายชื่อผู้ป่วย"
+              page={state.page.page}
+              totalPages={state.page.totalPages}
+              getPageTarget={(page) => ({ href: patientPageHref(relationshipId, page) })}
+            />
           </>
         )}
       </Panel>

@@ -199,6 +199,7 @@ export function AssigneeSearchPicker({
               </Alert>
             ) : null}
             <PageNumberPagination
+              getPageTarget={(page) => ({ onSelect: () => state.setPage(page), disabled: disabled || !answered })}
               className="mt-3"
               label={copy.paginationLabel}
               next={shown.hasNextPage ? { onSelect: () => state.setPage(shown.page + 1), disabled: disabled || !answered } : null}

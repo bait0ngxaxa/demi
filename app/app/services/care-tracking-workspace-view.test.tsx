@@ -14,7 +14,7 @@ import type {
 import { roundGuideline, type RoundStepState } from "@/modules/patient-program-rounds/domain/round-steps";
 
 import { careNextStepAction, CareTrackingWorkspaceView } from "./care-tracking-workspace-view";
-import type { ServicesUrlState } from "./services-url";
+import { servicesHref, type ServicesUrlState } from "./services-url";
 
 const hospitalId = "11111111-1111-4111-8111-111111111111";
 const relationshipId = "22222222-2222-4222-8222-222222222222";
@@ -88,6 +88,15 @@ const baseState: ServicesUrlState = {
   includeEnded: false,
   page: 2,
 };
+
+describe("care tracking numeric pagination", () => {
+  it("retains network scope, stages, signals, ended and search on page 5", () => {
+    const state = { ...baseState, childHospitalId, includeEnded: true };
+    const container = render({ state, scopes: [networkScope], selectedScope: networkScope, result: page({ totalPages: 20 }) });
+    const link = container.querySelector('nav[aria-label="หน้ารายการจัดบริการ"] a[aria-label="ไปหน้าที่ 5"]');
+    expect(link?.getAttribute("href")).toBe(servicesHref({ ...state, page: 5 }));
+  });
+});
 
 function render(options: {
   state?: Partial<ServicesUrlState>;
@@ -189,7 +198,8 @@ describe("CT-2 จัดบริการ workspace view", () => {
   it("paginates with every param preserved", () => {
     const view = render({ state: { includeEnded: true } });
     const nav = view.querySelector('nav[aria-label="หน้ารายการจัดบริการ"]');
-    const [previous, next] = [...(nav?.querySelectorAll("a") ?? [])];
+    const previous = nav?.querySelector('a[rel="prev"]');
+    const next = nav?.querySelector('a[rel="next"]');
 
     expect(nav?.textContent).toContain("หน้า 2 จาก 3");
     for (const [link, expectedPage] of [[previous, null], [next, "3"]] as const) {

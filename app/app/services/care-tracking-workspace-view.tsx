@@ -5,6 +5,7 @@ import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Select } from "@/components/ui/select";
@@ -79,12 +80,6 @@ const dateFormatter = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", ti
 
 const linkClassName =
   "inline-flex min-h-11 items-center font-semibold text-brand-strong underline decoration-brand-soft underline-offset-4 hover:text-brand focus-visible:rounded-control focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring";
-
-const pageLinkClassName =
-  "inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2";
-
-const pageLinkDisabledClassName =
-  "inline-flex min-h-11 items-center justify-center rounded-control border border-border bg-surface-muted px-4 py-2 text-sm font-semibold text-text-subtle";
 
 function formatDate(value: Date): string {
   return dateFormatter.format(value);
@@ -373,27 +368,13 @@ function CareTrackingRow({ item, readOnly }: { item: CareTrackingItem; readOnly:
 }
 
 function CareTrackingPagination({ state, result }: { state: ServicesUrlState; result: CareTrackingPage }): React.JSX.Element | null {
-  if (result.totalPages <= 1) return null;
-
   return (
-    <nav
-      aria-label="หน้ารายการจัดบริการ"
-      className="flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <p className="text-sm text-text-muted">หน้า {result.page} จาก {result.totalPages}</p>
-      <div className="flex gap-3">
-        {result.page > 1 ? (
-          <Link className={pageLinkClassName} href={servicesHref({ ...state, page: result.page - 1 })}>ก่อนหน้า</Link>
-        ) : (
-          <span className={pageLinkDisabledClassName}>ก่อนหน้า</span>
-        )}
-        {result.page < result.totalPages ? (
-          <Link className={pageLinkClassName} href={servicesHref({ ...state, page: result.page + 1 })}>ถัดไป</Link>
-        ) : (
-          <span className={pageLinkDisabledClassName}>ถัดไป</span>
-        )}
-      </div>
-    </nav>
+    <PageNumberPagination
+      label="หน้ารายการจัดบริการ"
+      page={result.page}
+      totalPages={result.totalPages}
+      getPageTarget={(page) => ({ href: servicesHref({ ...state, page }) })}
+    />
   );
 }
 

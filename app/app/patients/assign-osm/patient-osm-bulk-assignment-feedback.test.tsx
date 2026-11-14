@@ -227,6 +227,14 @@ function allToasts(): string {
 }
 
 describe("bulk OSM assignment feedback", () => {
+  it("preserves Hospital and search on a direct page 5 target", async () => {
+    await render(scope, patientPage(3, [1, 2], 20), "สมชาย");
+    const link = container.querySelector('nav[aria-label="หน้ารายชื่อผู้ป่วยที่ยังไม่มี อสม."] a[aria-label="ไปหน้าที่ 5"]');
+    const target = new URL(link?.getAttribute("href") ?? "", "http://localhost");
+    expect(target.searchParams.get("hospitalId")).toBe(hospitalId);
+    expect(target.searchParams.get("value")).toBe("สมชาย");
+    expect(target.searchParams.get("page")).toBe("5");
+  });
   it("shows one success Toast for a newly applied batch, refreshes once, and never replays", async () => {
     mocks.bulk.mockResolvedValue(bulkResult("ASSIGNED"));
     await reachConfirmation();

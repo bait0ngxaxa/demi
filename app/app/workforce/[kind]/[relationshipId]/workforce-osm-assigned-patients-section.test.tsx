@@ -25,6 +25,11 @@ const patientPage: WorkforceOsmPatientPage = {
 };
 
 describe("OSM assigned patient detail section", () => {
+  it("targets arbitrary patient pages within the same OSM relationship", () => {
+    const html = renderToStaticMarkup(<WorkforceOsmAssignedPatientsSection currentAssignmentCount={500} relationshipId={osmRelationshipId} state={{ status: "READY", page: { ...patientPage, page: 3, totalPages: 20, total: 500, hasNextPage: true } }} />);
+    expect(html).toContain('aria-label="ไปหน้าที่ 5"');
+    expect(html).toContain(`href="/app/workforce/osm/${osmRelationshipId}?patientsPage=5"`);
+  });
   it("shows bounded patient identities with exact detail links and pagination", () => {
     const html = renderToStaticMarkup(
       <WorkforceOsmAssignedPatientsSection currentAssignmentCount={30} relationshipId={osmRelationshipId} state={{ status: "READY", page: patientPage }} />,

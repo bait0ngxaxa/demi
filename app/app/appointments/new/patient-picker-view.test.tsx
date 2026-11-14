@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createFormSubmitDestinationUrl } from "next/dist/client/form-shared";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -36,6 +37,14 @@ async function renderForm(value: string): Promise<HTMLFormElement> {
 }
 
 describe("appointment patient picker search form", () => {
+  it("jumps to page 5 with Hospital and HN search preserved", () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToStaticMarkup(<AppointmentPatientPicker currentPage={3} errorMessage={null}
+      items={[{ patientProfileId: "patient-1", patientHospitalRelationshipId: "relationship-1", displayName: "สมชาย", hospital: { id: "hospital-b", name: "โรงพยาบาล ข" }, hospitalNumber: "HN-001", classification: null, selfRegisteredAt: null }]}
+      lookupType="HOSPITAL_NUMBER" scopes={scopes} selectedScope={scopes[1]} total={500} totalPages={20} value="HN-001" />);
+    expect(container.querySelector('a[aria-label="ไปหน้าที่ 5"]')?.getAttribute("href")).toBe("/app/appointments/new?hospitalId=hospital-b&lookupType=HOSPITAL_NUMBER&page=5&value=HN-001");
+    expect(container.querySelector('form input[name="page"]')).toBeNull();
+  });
   it("is a next/form with the same action, fields and defaults and no native GET method", async () => {
     const form = await renderForm("HN-001");
 
