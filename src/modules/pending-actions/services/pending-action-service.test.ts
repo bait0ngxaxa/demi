@@ -5,7 +5,7 @@ import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/applicatio
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), onboarding: vi.fn(), support: vi.fn(), services: vi.fn(), appointments: vi.fn(), acceptances: vi.fn() }));
 vi.mock("@/modules/auth/services/actor-context-service", () => ({ createActorContextStore: vi.fn(), resolveActorAccessByUserId: mocks.actor }));
 vi.mock("@/modules/appointments/services/work-appointment-query-service", () => ({
-  countWorkAppointmentRequests: mocks.appointments, countWorkAppointmentAcceptanceByHospital: mocks.acceptances,
+  countWorkAppointmentRequestsByHospital: mocks.appointments, countWorkAppointmentAcceptanceByHospital: mocks.acceptances,
 }));
 vi.mock("@/lib/db/prisma", () => ({ getPrisma: () => ({
   hospitalOnboardingApplication: { count: mocks.onboarding }, supportReport: { count: mocks.support },
@@ -23,7 +23,7 @@ beforeEach(() => {
   mocks.onboarding.mockResolvedValue(2);
   mocks.support.mockResolvedValue(3);
   mocks.services.mockResolvedValue(4);
-  mocks.appointments.mockResolvedValue(5);
+  mocks.appointments.mockImplementation(async (_actor: unknown, hospitalIds: string[]) => hospitalIds.map((hospitalId) => ({ hospitalId, count: 5 })));
   mocks.acceptances.mockResolvedValue([]);
 });
 
@@ -43,11 +43,20 @@ describe("pending action sources", () => {
     authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership, membership, { ...membership, hospitalId: "suspended", hospitalStatus: "SUSPENDED" }] });
     const indicators = await calculatePendingActions(actor.userId);
     expect(indicators.map(({ count }) => count)).toEqual([4, 5]);
-    expect(mocks.appointments).toHaveBeenCalledTimes(1);
+    expect(mocks.appointments).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ userId: "user" }), ["hospital"], expect.anything());
     expect(mocks.services).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
       status: "PENDING", hospitalId: { in: ["hospital"] }, relationship: { is: expect.objectContaining({ endedAt: null }) },
     }) }));
     expect(indicators[1]?.href).toContain("hospitalId=hospital");
+  });
+
+  it("counts every authorized Hospital in one grouped call and opens the first with pending work", async () => {
+    const membership = (hospitalId: string, membershipType: "OWNER" | "MEMBER") => ({ hospitalId, membershipType, profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }) as const;
+    authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership("a", "OWNER"), membership("b", "MEMBER"), membership("c", "MEMBER")] });
+    mocks.appointments.mockResolvedValue([{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }]);
+    const indicators = await calculatePendingActions(actor.userId);
+    expect(mocks.appointments).toHaveBeenCalledOnce();
+    expect(indicators[1]).toMatchObject({ count: 6, href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=b" });
   });
 
   it("sends OSM to their acceptance queue, including a Hospital that has pending work", async () => {

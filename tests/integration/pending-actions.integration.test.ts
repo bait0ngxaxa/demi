@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { type Prisma, type Role } from "@prisma/client";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import { calculatePendingActions } from "@/modules/pending-actions/services/pending-action-service";
-import { countWorkAppointmentsAwaitingMyAcceptance, listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
+import { countWorkAppointmentRequestsByHospital, countWorkAppointmentsAwaitingMyAcceptance, listWorkAppointments } from "@/modules/appointments/services/work-appointment-query-service";
+import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
 
 const db = getPrisma();
@@ -123,4 +124,98 @@ describe("pending actions against authoritative PostgreSQL tables", () => {
     await tx.hospitalOnboardingApplication.update({ where: { id: application.id }, data: { status: "REJECTED", reviewedAt: now, reviewedByUserId: f.staff.id, rejectionReason: "ข้อมูลไม่ครบ" } });
     expect((await calculatePendingActions(f.staff.id, tx, now))[0]?.count).toBe(baseline[0]?.count);
   }));
+
+  describe("grouped Hospital appointment-request counts", () => {
+    type Staff = { id: string; personId: string };
+    async function operatedHospital(tx: Prisma.TransactionClient, staff: Staff, membershipType: "OWNER" | "MEMBER") {
+      const hospital = await tx.hospital.create({ data: { hospitalCode: randomUUID().slice(0, 30), name: `โรงพยาบาล ${randomUUID().slice(0, 6)}`, status: "ACTIVE" } });
+      await tx.hospitalMembership.create({ data: { userId: staff.id, hospitalId: hospital.id, membershipType, status: "ACTIVE" } });
+      return hospital;
+    }
+    /** One appointment for a new PATIENT; `requests` picks which PENDING request types it carries. */
+    async function appointmentWith(tx: Prisma.TransactionClient, staff: Staff, hospitalId: string, requests: { reschedule?: boolean; cancellation?: boolean; ended?: boolean }) {
+      const patient = await account(tx, ["PATIENT"]);
+      const profile = await tx.patientProfile.create({ data: { personId: patient.personId } });
+      const relationship = await tx.patientHospitalRelationship.create({ data: { patientProfileId: profile.id, hospitalId } });
+      const appointment = await tx.patientAppointment.create({ data: {
+        patientHospitalRelationshipId: relationship.id, createdByUserId: staff.id, scheduledAt: future, updatedAt: now,
+        type: "FOLLOW_UP", locationType: "CLINIC", submissionNonce: randomUUID(),
+      } });
+      const source = { appointmentId: appointment.id, sourceAppointmentUpdatedAt: now, submittedByUserId: patient.id, source: "PATIENT_SELF" as const };
+      if (requests.reschedule) await tx.patientAppointmentRescheduleRequest.create({ data: { ...source, submissionNonce: randomUUID(), preferredDatetimes: [future], reason: "ขอเลื่อน" } });
+      if (requests.cancellation) await tx.patientAppointmentCancellationRequest.create({ data: { ...source, submissionNonce: randomUUID() } });
+      if (requests.ended) await tx.patientHospitalRelationship.update({ where: { id: relationship.id }, data: { endedAt: now, endedByUserId: staff.id, endReason: "สิ้นสุดการดูแล" } });
+      return appointment;
+    }
+    async function actorOf(tx: Prisma.TransactionClient, userId: string): Promise<ActorContext> {
+      const access = await resolveActorAccessByUserId(userId, createActorContextStore(tx));
+      if (access.status !== "AUTHORIZED") throw new Error("fixture actor missing");
+      return access.actor;
+    }
+    /** Pages through the destination queue, so parity covers queues larger than one page. */
+    async function destinationQueue(tx: Prisma.TransactionClient, actor: ActorContext, hospitalId: string): Promise<string[]> {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await listWorkAppointments(actor, { hospitalId, tab: "PENDING_REQUESTS", cursor }, { database: tx, now: () => now });
+        ids.push(...page.items.map(({ appointmentId }) => appointmentId));
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return ids;
+    }
+
+    it("matches each destination queue across mixed OWNER/MEMBER Hospitals with one aggregate", async () => isolated(async (tx) => {
+      const staff = await account(tx, ["HOSPITAL"]);
+      const owned = await operatedHospital(tx, staff, "OWNER");
+      const member = await operatedHospital(tx, staff, "MEMBER");
+      const idle = await operatedHospital(tx, staff, "MEMBER");
+      const both = await appointmentWith(tx, staff, owned.id, { reschedule: true, cancellation: true });
+      await appointmentWith(tx, staff, owned.id, { cancellation: true });
+      await appointmentWith(tx, staff, owned.id, {});
+      await appointmentWith(tx, staff, owned.id, { reschedule: true, ended: true });
+      for (let index = 0; index < 27; index += 1) await appointmentWith(tx, staff, member.id, { reschedule: true });
+      // A second membership row for the same Hospital is rejected by the database (unique userId+hospitalId), so
+      // duplicates can only arrive as repeated scope IDs, which are deduplicated below.
+      const foreignStaff = await account(tx, ["HOSPITAL"]);
+      const foreign = await operatedHospital(tx, foreignStaff, "OWNER");
+      await appointmentWith(tx, foreignStaff, foreign.id, { reschedule: true });
+
+      const actor = await actorOf(tx, staff.id);
+      const query = vi.spyOn(tx, "$queryRaw");
+      const counts = await countWorkAppointmentRequestsByHospital(actor, [owned.id, member.id, idle.id, member.id], { database: tx, now: () => now });
+      expect(query).toHaveBeenCalledTimes(1);
+      query.mockRestore();
+      expect(counts).toEqual([{ hospitalId: owned.id, count: 2 }, { hospitalId: member.id, count: 27 }, { hospitalId: idle.id, count: 0 }]);
+      for (const { hospitalId, count } of counts) {
+        const queue = await destinationQueue(tx, actor, hospitalId);
+        expect(new Set(queue).size).toBe(queue.length);
+        expect(queue).toHaveLength(count);
+      }
+      expect(await destinationQueue(tx, actor, owned.id)).toContain(both.id);
+      const indicators = await calculatePendingActions(staff.id, tx, now);
+      expect(indicators[1]?.count).toBe(29);
+      expect(JSON.stringify(indicators)).not.toContain(foreign.id);
+      await expect(countWorkAppointmentRequestsByHospital(actor, [owned.id, foreign.id], { database: tx, now: () => now })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }));
+
+    it("drops a revoked membership and a suspended Hospital from the aggregate", async () => isolated(async (tx) => {
+      const staff = await account(tx, ["HOSPITAL"]);
+      const kept = await operatedHospital(tx, staff, "MEMBER");
+      const revoked = await operatedHospital(tx, staff, "OWNER");
+      const suspended = await operatedHospital(tx, staff, "MEMBER");
+      for (const hospital of [kept, revoked, suspended]) await appointmentWith(tx, staff, hospital.id, { reschedule: true });
+      expect((await calculatePendingActions(staff.id, tx, now))[1]?.count).toBe(3);
+      const before = await actorOf(tx, staff.id);
+      await tx.hospitalMembership.updateMany({ where: { userId: staff.id, hospitalId: revoked.id }, data: { status: "ENDED" } });
+      await tx.hospital.update({ where: { id: suspended.id }, data: { status: "SUSPENDED" } });
+      // A stale session context still cannot count through a revoked membership or suspended Hospital.
+      expect(await countWorkAppointmentRequestsByHospital(before, [kept.id, revoked.id, suspended.id], { database: tx, now: () => now }))
+        .toEqual([{ hospitalId: kept.id, count: 1 }, { hospitalId: revoked.id, count: 0 }, { hospitalId: suspended.id, count: 0 }]);
+      const indicators = await calculatePendingActions(staff.id, tx, now);
+      expect(indicators[1]?.count).toBe(1);
+      expect(indicators[1]?.href).toContain(kept.id);
+      expect(JSON.stringify(indicators)).not.toContain(revoked.id);
+      expect(JSON.stringify(indicators)).not.toContain(suspended.id);
+    }));
+  });
 });

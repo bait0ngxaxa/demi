@@ -7,7 +7,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
 import {
   countWorkAppointmentAcceptanceByHospital,
-  countWorkAppointmentRequests,
+  countWorkAppointmentRequestsByHospital,
 } from "@/modules/appointments/services/work-appointment-query-service";
 import { decidePatientServiceRequestPolicy, PATIENT_SERVICE_REQUEST_CAPABILITIES } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
@@ -57,9 +57,7 @@ export async function calculatePendingActions(
           hospital: { is: hospitalOperatedByWhere(actor.userId) },
         } },
       } }),
-      Promise.all(hospitalIds.map(async (hospitalId) => ({
-        hospitalId, count: await countWorkAppointmentRequests(actor, hospitalId, dependencies),
-      }))),
+      hospitalIds.length === 0 ? [] : countWorkAppointmentRequestsByHospital(actor, hospitalIds, dependencies),
       countWorkAppointmentAcceptanceByHospital(actor, dependencies),
     ]);
     const appointmentCounts = actor.roles.includes(Role.OSM) ? acceptances : appointmentRequests;

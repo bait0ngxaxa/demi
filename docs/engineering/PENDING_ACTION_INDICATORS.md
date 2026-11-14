@@ -20,7 +20,7 @@ The Hospital appointment queue retains its existing stale-request semantics. It 
 
 Counts cover every authorized direct Hospital. The service-request list already covers those Hospitals together. Appointment lists are Hospital-specific: the navigation's accessible label describes the aggregate scope, the link selects a Hospital with pending work, and the existing Hospital selector reaches the other authorized queues. The count is not the current page size. Rows receive a dot only for the viewer's action, including an OSM's own assignment rather than another OSM's appointment they can read.
 
-The request-local React cache deduplicates the layout and More page for the same user; no results persist between requests. One actor read is followed by independent aggregates: two for ADMIN; one service-request count plus one appointment count per authorized direct Hospital for Hospital operators; one SQL aggregate grouped by Hospital for OSM. Queue size does not determine the number of queries or returned IDs. The OSM counter no longer loads all appointment IDs. The existing destination-list implementation itself is otherwise unchanged.
+The request-local React cache deduplicates the layout and More page for the same user; no results persist between requests. One actor read is followed by independent aggregates: two for ADMIN; one service-request count plus one appointment-request SQL aggregate grouped by Hospital for Hospital operators; one SQL aggregate grouped by Hospital for OSM. Queue size does not determine the number of queries or returned IDs. The OSM counter no longer loads all appointment IDs. The existing destination-list implementation itself is otherwise unchanged.
 
 ## Failure isolation contract
 
@@ -32,6 +32,20 @@ Indicators are optional UX and are not an availability dependency of the protect
 | `UNAVAILABLE` | `InfrastructureError` while re-reading the actor or counting (e.g. a temporary query failure) | No dots; one quiet `role="status"` note in the shell: “ไม่สามารถตรวจสอบงานที่รอดำเนินการได้ในขณะนี้ …”. Never rendered as zero |
 
 Only `InfrastructureError` is isolated. `UnauthenticatedError` and `ForbiddenError` — a missing session, or an actor revoked/suspended between the shell's session check and the indicator re-read — propagate; the layout and More page route them through the same protected-access redirect as the actor check, so a revoked role never sees stale or empty indicators. Any other unexpected error still propagates to the existing error boundary. There is no unscoped fallback query and no cross-request cache, so nothing stale can leak across users or Hospitals. The original failure is logged once per error object through the existing sanitized reporter (`toInfrastructureError`); request-local `cache` means the layout and More page share one evaluation and one log line per request. No cross-request log throttling exists in the codebase, so a persistent outage logs once per request that renders the shell.
+
+## Count query performance evidence
+
+`countWorkAppointmentRequestsByHospital` replaces one Prisma `count` per authorized Hospital. Prisma `groupBy` cannot group appointments by their relationship's Hospital, so it is a parameterized `Prisma.sql` aggregate (`pendingRequestCountByHospitalQuery`) that expresses the same predicate as the direct-read `PENDING_REQUESTS` queue (`buildAppointmentWhere` with a direct scope and no filters): ACTIVE Hospital in the requested IDs, non-ended relationship, a PATIENT-role patient, an ACTIVE OWNER/MEMBER membership of an ACTIVE `HOSPITAL` user (the actor), and any PENDING reschedule or cancellation request. Rows are appointments and the membership, patient and request conditions are `EXISTS`, so an appointment with both request types counts once. Hospital IDs and the actor ID are bound parameters; no identifier is interpolated. The function still rejects ADMIN and any Hospital not in the actor's ACTIVE direct operator scope (`ForbiddenError`), returns `0` for scopes with no row, deduplicates repeated scope IDs, and returns at most one row per Hospital — never appointment IDs. The database already rejects a second membership row for the same user and Hospital (unique `userId, hospitalId`). Count/list parity is asserted by `tests/integration/pending-actions.integration.test.ts`, which pages through the destination queue (including a 27-item queue larger than one page), covers mixed OWNER/MEMBER, an idle Hospital, an ended relationship, a no-request appointment, both request types on one appointment, a foreign Hospital, a revoked membership and a suspended Hospital under a stale session context. No index or migration was added.
+
+Local measurement on the disposable PostgreSQL container (temporary benchmark, not committed; one interactive transaction, so the previous `Promise.all` counts were serialized on one connection; 30 appointments per Hospital, 20 with a PENDING request; median of 25 runs after `ANALYZE`):
+
+| Authorized Hospitals | Round trips before → after | Median latency before → after |
+| --- | --- | --- |
+| 1 | 1 → 1 | 3.90 ms → 1.61 ms |
+| 5 | 5 → 1 | 17.69 ms → 2.15 ms |
+| 10 | 10 → 1 | 35.93 ms → 2.39 ms |
+
+`EXPLAIN (ANALYZE, BUFFERS)` for 10 Hospitals: `GroupAggregate` over a sort of 200 rows (25 kB in memory), hash semi-joins for the membership and patient-role conditions, `Hospital_pkey` index scans memoized by Hospital, hashed sub-plan for pending reschedules; 59 shared buffer hits, 1.28 ms execution. With this small fixture the planner prefers sequential scans on the small tables. Production-scale plans depend on table sizes and are not claimed here; the existing `PatientAppointmentRescheduleRequest/CancellationRequest(status, submittedAt)` and `(appointmentId, submittedAt)` indexes are available to the planner.
 
 ## Presentation and consistency
 
