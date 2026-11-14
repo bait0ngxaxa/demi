@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
+import { isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import {
@@ -492,15 +493,15 @@ function buildAppointmentWhere(
   };
 }
 
-async function findAppointmentsAwaitingOsmAcceptance(
-  database: WorkAppointmentDatabase,
+function awaitingOsmAcceptanceQuery(
   input: {
     hospitalId?: string;
     actorUserId?: string;
     now: Date;
     filters: WorkAppointmentFilters;
   },
-): Promise<string[]> {
+  aggregate = false,
+): Prisma.Sql {
   const dateFrom = input.filters.dateFrom
     ? Prisma.sql`AND appointment."scheduledAt" >= ${bangkokDayStart(input.filters.dateFrom)}`
     : Prisma.empty;
@@ -525,8 +526,8 @@ async function findAppointmentsAwaitingOsmAcceptance(
   const hospital = input.hospitalId
     ? Prisma.sql`AND hospital."id" = ${input.hospitalId}::uuid`
     : Prisma.empty;
-  const rows = await database.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-    SELECT appointment."id"
+  return Prisma.sql`
+    SELECT ${aggregate ? Prisma.sql`hospital."id" AS "hospitalId", COUNT(*)::int AS "count"` : Prisma.sql`appointment."id"`}
     FROM "PatientAppointment" AS appointment
     JOIN "PatientHospitalRelationship" AS relationship
       ON relationship."id" = appointment."patientHospitalRelationshipId"
@@ -576,9 +577,53 @@ async function findAppointmentsAwaitingOsmAcceptance(
       ${type}
       ${location}
       ${responsible}
-    ORDER BY appointment."scheduledAt" ASC, appointment."id" ASC
-  `);
+    ${aggregate ? Prisma.sql`GROUP BY hospital."id"` : Prisma.sql`ORDER BY appointment."scheduledAt" ASC, appointment."id" ASC`}
+  `;
+}
+
+async function findAppointmentsAwaitingOsmAcceptance(
+  database: WorkAppointmentDatabase,
+  input: Parameters<typeof awaitingOsmAcceptanceQuery>[0],
+): Promise<string[]> {
+  const rows = await database.$queryRaw<Array<{ id: string }>>(awaitingOsmAcceptanceQuery(input));
   return rows.map(({ id }) => id);
+}
+
+/** Same predicate as the acceptance queue, one aggregate row per Hospital, never appointment IDs. */
+export async function countWorkAppointmentAcceptanceByHospital(
+  actor: ActorContext,
+  dependencies: WorkAppointmentQueryDependencies = {},
+): Promise<Array<{ hospitalId: string; count: number }>> {
+  if (!actor.roles.includes(Role.OSM) || actor.roles.includes(Role.ADMIN)) return [];
+  try {
+    return await getDatabase(dependencies.database).$queryRaw<Array<{ hospitalId: string; count: number }>>(
+      awaitingOsmAcceptanceQuery({ actorUserId: actor.userId, now: dependencies.now?.() ?? new Date(), filters: {} }, true),
+    );
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) throw error;
+    throw toInfrastructureError("appointments.countAcceptance", error, "Pending appointments could not be counted");
+  }
+}
+
+/** Counts distinct appointments, matching the deduplicated PENDING_REQUESTS list. */
+export async function countWorkAppointmentRequests(
+  actor: ActorContext,
+  hospitalId: string,
+  dependencies: WorkAppointmentQueryDependencies = {},
+): Promise<number> {
+  if (actor.roles.includes(Role.ADMIN) || !isActiveHospitalOperator(actor, hospitalId)) throw new ForbiddenError();
+  const scope: ResolvedHospitalScope = {
+    hospitalId, hospitalName: "", directRead: true, osmRead: false, networkRead: false, osmCanCreate: false,
+  };
+  return getDatabase(dependencies.database).patientAppointment.count({ where: {
+    AND: [
+      buildAppointmentWhere(actor.userId, scope, {}, dependencies.now?.() ?? new Date()),
+      { OR: [
+        { rescheduleRequests: { some: { status: "PENDING" } } },
+        { cancellationRequests: { some: { status: "PENDING" } } },
+      ] },
+    ],
+  } });
 }
 
 export async function countWorkAppointmentsAwaitingMyAcceptance(
@@ -587,16 +632,8 @@ export async function countWorkAppointmentsAwaitingMyAcceptance(
 ): Promise<number> {
   const actor = ensureActor(actorInput);
   if (!actor.roles.includes(Role.OSM)) return 0;
-  const database = getDatabase(dependencies.database);
-  const scopes = (await resolveWorkScopes(actor, database)).filter(({ osmRead }) => osmRead);
-  if (scopes.length === 0) return 0;
-  const idsByHospital = await Promise.all(scopes.map(async (scope) => findAppointmentsAwaitingOsmAcceptance(database, {
-    hospitalId: scope.hospitalId,
-    actorUserId: actor.userId,
-    now: dependencies.now?.() ?? new Date(),
-    filters: {},
-  })));
-  return idsByHospital.reduce((total, ids) => total + ids.length, 0);
+  const counts = await countWorkAppointmentAcceptanceByHospital(actor, dependencies);
+  return counts.reduce((total, row) => total + row.count, 0);
 }
 
 function workAppointmentSelect(hospitalId: string) {
