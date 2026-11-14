@@ -57,6 +57,7 @@ import {
   openProgramRound,
 } from "./support/program-rounds";
 import { bookletGoalPayload, bookletPlan, dreamCard, routineTable, withDefaults } from "./support/booklet-forms";
+import { withProgramGoalPlan } from "./support/program-followups";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@/shared/errors/application-error";
 
 /*
@@ -90,7 +91,8 @@ const associatePatientProgramServiceOneArtifact = inRound(
   (input) => (input.activity === "DREAM_CARD" ? 3 : 1),
 );
 const createGoalPlanForProgram = afterOpening(createGoalPlanForProgramService, openGoalPlanRound);
-const createFollowupForProgram = afterOpening(createFollowupForProgramService, openFollowupRound);
+// D1/D2: Follow-ups without a named plan report every activity of the Program's latest Goal Plan.
+const createFollowupForProgram = afterOpening(withProgramGoalPlan(createFollowupForProgramService), openFollowupRound);
 const createPatientFinalAssessment = afterOpening(createPatientFinalAssessmentService, openFinalAssessmentRound);
 
 function roundResults<T extends { roundNumber: number }>(detail: { serviceOne: readonly T[] }, roundNumber: number): T | undefined {
@@ -540,7 +542,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
       createGoalPlanForProgram(osm.actor, goalProgramInput(opened.patientProgramId)),
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(
-      createFollowupForProgram(osm.actor, followupProgramInput(opened.patientProgramId)),
+      createFollowupForProgram(osm.actor, followupProgramInput(opened.patientProgramId, { sourceGoalPlanId: randomUUID() })),
     ).rejects.toBeInstanceOf(NotFoundError);
     await expect(
       getPatientProgramDetail(osm.actor, patient.relationshipId, opened.patientProgramId),
@@ -1385,6 +1387,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     const programA = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
     });
+    await createGoalPlanForProgram(owner.actor, goalProgramInput(programA.patientProgramId));
     const adjusted = await createFollowupForProgram(
       owner.actor,
       followupProgramInput(programA.patientProgramId, { planAdjusted: true }),
@@ -1518,7 +1521,10 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         serviceDate: "2026-08-01",
         planAdjusted: false,
         hasObstacle: false,
-        activityProgress: [{ goalActivityCode: "stop_sweet", status: "DONE", achievedDays: 2 }],
+        activityProgress: [
+          { goalActivityCode: "stop_sweet", status: "DONE", achievedDays: 2 },
+          { goalActivityCode: "cardio", status: "NOT_APPLICABLE", achievedDays: null },
+        ],
       }),
     );
 
@@ -1647,7 +1653,8 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     await expect(
       createFollowupForProgram(
         owner.actor,
-        followupProgramInput(programB.patientProgramId, { submissionNonce: followupNonce }),
+        // Program B has no Goal Plan; the reused nonce is refused before the plan is looked up.
+        followupProgramInput(programB.patientProgramId, { submissionNonce: followupNonce, sourceGoalPlanId: randomUUID() }),
       ),
     ).rejects.toBeInstanceOf(ConflictError);
     await expect(
@@ -1845,8 +1852,8 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     // exactly one is allocated (number 1) and the other is refused without a duplicate number.
     await openProgramRound(program.patientProgramId, 3);
     const followupOutcomes = await Promise.allSettled([
-      createFollowupForProgramService(owner.actor, followupProgramInput(program.patientProgramId)),
-      createFollowupForProgramService(owner.actor, followupProgramInput(program.patientProgramId)),
+      withProgramGoalPlan(createFollowupForProgramService)(owner.actor, followupProgramInput(program.patientProgramId)),
+      withProgramGoalPlan(createFollowupForProgramService)(owner.actor, followupProgramInput(program.patientProgramId)),
     ]);
     const followupRounds = followupOutcomes.flatMap((outcome) =>
       outcome.status === "fulfilled" ? [outcome.value.roundNumber] : [],
@@ -1894,6 +1901,7 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
     const followupProgram = await openPatientProgram(owner.actor, {
       patientHospitalRelationshipId: patient.relationshipId,
     });
+    await createGoalPlanForProgram(owner.actor, goalProgramInput(followupProgram.patientProgramId));
     const followupOutcomes = await Promise.allSettled([
       createFollowupForProgram(owner.actor, followupProgramInput(followupProgram.patientProgramId)),
       completePatientProgram(owner.actor, { patientProgramId: followupProgram.patientProgramId }),

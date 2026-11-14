@@ -30,6 +30,11 @@ import {
 import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import type { FollowupProgressStatus } from "../domain/followup-definitions";
+import {
+  FollowupProgressIncompleteError,
+  followupProgressCoverage,
+  isFollowupProgressComplete,
+} from "../domain/followup-progress-coverage";
 import { FOLLOWUP_RECORD_CAPABILITY } from "../policies/followup-policy";
 import {
   followupCreateRequestSchema,
@@ -315,6 +320,11 @@ async function assertGoalActivityProgress(
   input: NormalizedFollowupRequest,
 ): Promise<void> {
   if (!input.sourceGoalPlanId) {
+    // D2: the schema already requires the plan of a Program Follow-up; refuse here too.
+    if (input.patientProgramId) {
+      throw new ValidationError("A Program Follow-up requires its source Goal Plan");
+    }
+
     if (input.activityProgress.length > 0) {
       throw new ValidationError("Goal activity progress requires a selected Goal Plan");
     }
@@ -335,12 +345,18 @@ async function assertGoalActivityProgress(
         input.sourceGoalPlanId,
         { database: transaction },
       );
-  const allowedActivityCodes = new Set(goalPlan.items.map((item) => item.activityCode));
+  const coverage = followupProgressCoverage(
+    goalPlan.items.map((item) => item.activityCode),
+    input.activityProgress,
+  );
 
-  for (const progress of input.activityProgress) {
-    if (!allowedActivityCodes.has(progress.goalActivityCode)) {
-      throw new ValidationError("Follow-up progress contains an activity outside the selected Goal Plan");
-    }
+  if (coverage.unknownActivityCodes.length > 0) {
+    throw new ValidationError("Follow-up progress contains an activity outside the selected Goal Plan");
+  }
+
+  // D1: a Program Follow-up reports every activity of its plan exactly once; pre-Program ones may report a subset.
+  if (input.patientProgramId && !isFollowupProgressComplete(coverage)) {
+    throw new FollowupProgressIncompleteError();
   }
 }
 
@@ -414,8 +430,6 @@ async function createInTransaction(
     );
   }
 
-  await assertGoalActivityProgress(transaction, authoritativeActor, normalized);
-
   if (normalized.patientProgramId) {
     const locked = await lockActivePatientProgram(
       transaction,
@@ -452,6 +466,9 @@ async function createInTransaction(
       throw new RoundConflictError("ครั้งนี้บันทึกติดตามผลแล้ว");
     }
   }
+
+  // After round sequencing, so a refused round reports its own reason; still before any write.
+  await assertGoalActivityProgress(transaction, authoritativeActor, normalized);
 
   const followup = await transaction.patientFollowup.create({
     data: {

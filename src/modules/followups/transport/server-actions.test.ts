@@ -17,6 +17,7 @@ vi.mock("../services/followup-service", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mockedRevalidatePath }));
 
+import { FollowupProgressIncompleteError } from "../domain/followup-progress-coverage";
 import { followupTransportInternals } from "./server-action-helpers";
 import * as followupServerActions from "./server-actions";
 import { createFollowupForProgramAction } from "./server-actions";
@@ -51,6 +52,7 @@ function validProgramFormData(): FormData {
   formData.delete("confidenceScore");
   formData.delete("confidencePlan");
   formData.set("patientProgramId", "33333333-3333-4333-8333-333333333333");
+  formData.set("sourceGoalPlanId", "66666666-6666-4666-8666-666666666666");
   formData.set("followedPlan", "false");
   formData.set("heightCm", "158");
   formData.set("expertAdvice", "เดินในบ้านแทน");
@@ -135,6 +137,17 @@ describe("Follow-up transport", () => {
     expect(followupTransportInternals.buildSubmissionInput(authority)).toBeNull();
   });
 
+  it("refuses a Program Follow-up without a source Goal Plan before calling the service", async () => {
+    const formData = validProgramFormData();
+    formData.set("sourceGoalPlanId", "");
+
+    await expect(createFollowupForProgramAction(initialFollowupActionState, formData)).resolves.toMatchObject({
+      status: "ERROR",
+      code: "INVALID_INPUT",
+    });
+    expect(mockedCreateForProgram).not.toHaveBeenCalled();
+  });
+
   it("uses Program follow-up creation and revalidates Program history", async () => {
     const result = await createFollowupForProgramAction(
       initialFollowupActionState,
@@ -165,6 +178,10 @@ describe("Follow-up transport", () => {
   it("maps application failures to safe Thai messages without exposing internals", () => {
     expect(followupTransportInternals.mapFollowupError(new ValidationError("internal"))).toMatchObject({
       code: "INVALID_INPUT",
+    });
+    expect(followupTransportInternals.mapFollowupError(new FollowupProgressIncompleteError())).toEqual({
+      code: "INVALID_INPUT",
+      message: "กรุณาบันทึกความคืบหน้าให้ครบทุกกิจกรรมในแผนสุขภาพ",
     });
     expect(followupTransportInternals.mapFollowupError(new ForbiddenError("internal"))).toMatchObject({
       code: "FORBIDDEN",

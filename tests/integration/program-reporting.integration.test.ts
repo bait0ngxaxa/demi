@@ -35,6 +35,7 @@ import {
   openProgramRound,
 } from "./support/program-rounds";
 import { bookletPlan, dreamCard, routineTable, withDefaults } from "./support/booklet-forms";
+import { withProgramGoalPlan } from "./support/program-followups";
 import { getProgramReportingProjection } from "@/modules/reporting/services/program-report-query-service";
 import { ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
@@ -48,7 +49,8 @@ const recordPatientProgramServiceOneDreamCard = inRound(
   () => 3,
 );
 const createGoalPlanForProgram = afterOpening(createGoalPlanForProgramService, openGoalPlanRound);
-const createFollowupForProgram = afterOpening(createFollowupForProgramService, openFollowupRound);
+// D1/D2: Follow-ups report every activity of the Program's latest Goal Plan.
+const createFollowupForProgram = afterOpening(withProgramGoalPlan(createFollowupForProgramService), openFollowupRound);
 const createPatientFinalAssessment = afterOpening(createPatientFinalAssessmentService, openFinalAssessmentRound);
 
 async function clearDatabase(): Promise<void> {
@@ -558,6 +560,7 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     // Round 2: vitals with a new height. Round 3: a Follow-up measurement and no round vitals.
     await openProgramRound(programId, 2);
     await recordPatientProgramRoundVitals(owner.actor, vitals(2, { serviceDate: "2026-08-24", weight: 73, heightCm: 160, bloodSugar: 110 }));
+    await createGoalPlanForProgram(owner.actor, goalInput(programId));
     await createFollowupForProgram(owner.actor, followupInput(programId, 71));
     // Rounds 4-6 stay without vitals; round 7 is an extra round with vitals and no height of its own.
     await openProgramRound(programId, GUIDELINE_ROUND_COUNT + 1);

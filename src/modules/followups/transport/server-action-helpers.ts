@@ -1,6 +1,8 @@
 import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
+import { FollowupProgressIncompleteError } from "../domain/followup-progress-coverage";
+
 const FOLLOWUP_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "submissionNonce",
@@ -193,6 +195,10 @@ export function mapFollowupError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
   message: string;
 } {
+  if (error instanceof FollowupProgressIncompleteError) {
+    return { code: "INVALID_INPUT", message: error.message };
+  }
+
   if (error instanceof ApplicationError) {
     if (error.code === "VALIDATION") {
       return {

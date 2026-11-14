@@ -40,6 +40,14 @@ describe("Follow-up schemas", () => {
     expect(followupCreateRequestSchema.safeParse(validInput()).success).toBe(true);
   });
 
+  it("keeps the source Goal Plan optional for relationship-only Follow-ups", () => {
+    for (const sourceGoalPlanId of [undefined, null]) {
+      expect(
+        followupCreateRequestSchema.safeParse({ ...validInput(), sourceGoalPlanId, activityProgress: [] }).success,
+      ).toBe(true);
+    }
+  });
+
   it("accepts Program scope without accepting a browser-supplied relationship scope", () => {
     const programInput: Record<string, unknown> = { ...validInput(), patientProgramId: programId, followedPlan: true };
     delete programInput.patientHospitalRelationshipId;
@@ -47,6 +55,10 @@ describe("Follow-up schemas", () => {
     delete programInput.confidencePlan;
 
     expect(followupProgramCreateRequestSchema.safeParse(programInput).success).toBe(true);
+    // D2: a Program Follow-up requires its source Goal Plan.
+    for (const sourceGoalPlanId of [undefined, null, ""]) {
+      expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, sourceGoalPlanId }).success).toBe(false);
+    }
     // R2-F: ทำตามแผนได้/ไม่ได้ is required for Program Follow-ups; height and expert advice are optional.
     expect(followupProgramCreateRequestSchema.safeParse({ ...programInput, followedPlan: undefined }).success).toBe(false);
     expect(
