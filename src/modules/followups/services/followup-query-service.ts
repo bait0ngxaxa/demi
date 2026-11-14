@@ -21,6 +21,7 @@ import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patien
 import type { AppointmentTypeValue } from "@/modules/appointments/domain/appointment-definitions";
 import { ApplicationError, ConflictError, ForbiddenError, NotFoundError } from "@/shared/errors/application-error";
 
+import { computeFollowupAchievement, type FollowupAchievement } from "../domain/followup-achievement";
 import {
   FOLLOWUP_HISTORY_LIMIT,
   type FollowupProgressStatus,
@@ -132,6 +133,8 @@ export type FollowupDetail = {
   confidencePlan: string | null;
   generalNote: string | null;
   activityProgress: FollowupActivityProgressDetail[];
+  /** BR-04 against the source Goal Plan's targets; null without a plan or when it cannot be scored. */
+  achievement: FollowupAchievement | null;
 };
 
 export type FollowupProgramDetail = Omit<FollowupDetail, "patientProgramId"> & {
@@ -482,6 +485,7 @@ function toDetail(
     confidencePlan: record.confidencePlan,
     generalNote: record.generalNote,
     activityProgress: toActivityProgress(record.activityProgress, sourceGoalPlan),
+    achievement: sourceGoalPlan ? computeFollowupAchievement(record.activityProgress, sourceGoalPlan.items) : null,
   };
 }
 

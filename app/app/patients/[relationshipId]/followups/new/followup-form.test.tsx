@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -54,7 +54,17 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mountProgram(overrides: { selectedAppointmentId?: string | null; selectedGoalPlanId?: string | null; latestHeightCm?: number | null; planReturnTo?: string | null } = {}): void {
+const twoActivityPlan = {
+  ...goalPlans[0],
+  goalPlanId: "goal-plan-2",
+  roundNumber: 3,
+  items: [
+    { goalPlanItemId: "item-walk", activityCode: "exercise_walk", activityLabel: "เดินออกกำลังกาย", targetDays: 4, targetValue: 30, targetUnit: "นาที", sortOrder: 1 },
+    { goalPlanItemId: "item-sweet", activityCode: "stop_sweet", activityLabel: "งดน้ำหวาน", targetDays: 3, targetValue: null, targetUnit: null, sortOrder: 2 },
+  ],
+};
+
+function mountProgram(overrides: { selectedAppointmentId?: string | null; selectedGoalPlanId?: string | null; latestHeightCm?: number | null; planReturnTo?: string | null; goalPlans?: ComponentProps<typeof FollowupForm>["goalPlans"] } = {}): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -62,7 +72,7 @@ function mountProgram(overrides: { selectedAppointmentId?: string | null; select
     <FollowupForm
       programRoundNumber={3}
       appointments={appointments}
-      goalPlans={goalPlans}
+      goalPlans={overrides.goalPlans ?? goalPlans}
       patient={patient}
       scope={{ kind: "program", patientProgramId: "program", relationshipId: "relationship", returnTo: overrides.planReturnTo ?? null, latestHeightCm: overrides.latestHeightCm === undefined ? 165 : overrides.latestHeightCm }}
       selectedAppointmentId={overrides.selectedAppointmentId === undefined ? "appointment" : overrides.selectedAppointmentId}
@@ -131,6 +141,9 @@ async function settle(): Promise<void> {
 }
 
 function fillProgramRequiredFields(): void {
+  // D1: every activity of the plan is recorded.
+  setValue("#progress-status-exercise_walk", "DONE");
+  setValue("#progress-achieved-days-exercise_walk", "4");
   chooseRadio("followedPlanChoice", "true");
   setValue("#followup-reflection", "เดินได้ต่อเนื่อง");
   chooseRadio("planAdjustedChoice", "false");
@@ -149,6 +162,82 @@ function formDataFor(action: { mock: { calls: unknown[][] } }, callIndex = 0): F
   if (!(payload instanceof FormData)) throw new Error("Follow-up payload was not FormData");
   return payload;
 }
+
+function summaryText(): string {
+  return container.querySelector("#followup-achievement-summary")?.textContent ?? "";
+}
+
+describe("Program follow-up progress and success rate (D1/D2)", () => {
+  it("requires every plan activity, shows the live BR-04 rate and blocks review while incomplete", () => {
+    mountProgram({ goalPlans: [twoActivityPlan], selectedGoalPlanId: null });
+    // The Program's latest plan is preselected and cannot be unlinked.
+    const planSelect = container.querySelector<HTMLSelectElement>("#followup-goal-plan");
+    expect(planSelect?.value).toBe("goal-plan-2");
+    expect(planSelect?.required).toBe(true);
+    expect([...(planSelect?.options ?? [])].map((option) => option.value)).toEqual(["goal-plan-2"]);
+    expect(container.textContent).toContain("ต้องบันทึกให้ครบทุกกิจกรรมในแผน");
+    expect(container.textContent).not.toContain("เลือกบันทึกเฉพาะกิจกรรม");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อคำนวณอัตราความสำเร็จ");
+
+    chooseRadio("followedPlanChoice", "true");
+    setValue("#followup-reflection", "เดินได้ต่อเนื่อง");
+    chooseRadio("planAdjustedChoice", "false");
+    chooseRadio("hasObstacleChoice", "false");
+    setValue("#progress-status-exercise_walk", "DONE");
+    setValue("#progress-achieved-days-exercise_walk", "3");
+    openReview();
+
+    expect(container.querySelector("dialog")).toBeNull();
+    const sweetStatus = container.querySelector<HTMLSelectElement>("#progress-status-stop_sweet");
+    expect(sweetStatus?.getAttribute("aria-invalid")).toBe("true");
+    expect(container.textContent).toContain("กรุณาเลือกสถานะของกิจกรรมนี้");
+    expect(document.activeElement).toBe(sweetStatus);
+    expect(container.querySelector("#progress-status-exercise_walk")?.getAttribute("aria-invalid")).toBeNull();
+    expect(actions.createFollowupForProgramAction).not.toHaveBeenCalled();
+
+    // An applicable activity without achieved days stays incomplete.
+    setValue("#progress-status-stop_sweet", "PARTIAL");
+    expect(summaryText()).toBe("กรอกให้ครบทุกกิจกรรมเพื่อคำนวณอัตราความสำเร็จ");
+    setValue("#progress-achieved-days-stop_sweet", "2");
+    // (3 + 2) / (4 + 3) = 71%, strictly above 70%.
+    expect(summaryText()).toBe("ทำได้ 5 จาก 7 วัน · อัตราความสำเร็จ 71%เกิน 70%");
+    setValue("#progress-achieved-days-stop_sweet", "1");
+    expect(summaryText()).toBe("ทำได้ 4 จาก 7 วัน · อัตราความสำเร็จ 57%ไม่เกิน 70%");
+    // NOT_APPLICABLE leaves both sums and needs no days.
+    setValue("#progress-status-stop_sweet", "NOT_APPLICABLE");
+    expect(summaryText()).toBe("ทำได้ 3 จาก 4 วัน · อัตราความสำเร็จ 75%เกิน 70%");
+
+    setValue("#followup-weight", "70");
+    setValue("#followup-waist", "80");
+    setValue("#followup-systolic", "120");
+    setValue("#followup-diastolic", "80");
+    setValue("#followup-blood-sugar", "90");
+    openReview();
+    const dialog = container.querySelector("dialog");
+    expect(dialog?.textContent).toContain("วันที่ติดตาม");
+    expect(dialog?.textContent).toContain("อัตราความสำเร็จตามเป้าทำได้ 3 จาก 4 วัน · อัตราความสำเร็จ 75%เกิน 70%");
+  });
+
+  it("labels the date วันที่ติดตาม for Program Follow-ups only", () => {
+    mountProgram();
+    expect(container.querySelector('label[for="followup-service-date"]')?.textContent).toBe("วันที่ติดตาม");
+    act(() => root?.unmount());
+    container.remove();
+    mountRelationship();
+    expect(container.querySelector('label[for="followup-service-date"]')?.textContent).toBe("วันที่ให้บริการ");
+    expect(container.querySelector("#followup-achievement-summary")).toBeNull();
+  });
+
+  it("explains instead of offering a save when the Program has no Goal Plan", () => {
+    mountProgram({ goalPlans: [], selectedGoalPlanId: null, planReturnTo: returnTo });
+    expect(container.querySelector("form")).toBeNull();
+    expect(container.textContent).toContain("ต้องมีแผนสุขภาพก่อนบันทึกการติดตามผล");
+    expect(container.textContent).toContain("โปรแกรมนี้ยังไม่มีแผนสุขภาพ");
+    const back = [...container.querySelectorAll("a")].find((link) => link.textContent === "กลับไปหน้าครั้งบริการ");
+    expect(back?.getAttribute("href")).toBe(returnTo);
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent === "บันทึกการติดตามผล")).toBe(false);
+  });
+});
 
 describe("follow-up recording review", () => {
   it("runs native required-field validation before opening review", () => {

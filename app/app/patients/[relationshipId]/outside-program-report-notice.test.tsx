@@ -40,7 +40,14 @@ function screening(withProgram: boolean): string {
 function followup(withProgram: boolean): string {
   return renderToStaticMarkup(createElement(FollowupForm, {
     appointments: [],
-    goalPlans: [],
+    // D2: a Program Follow-up form needs a Goal Plan to render the form at all.
+    goalPlans: [{
+      goalPlanId: "66666666-6666-4666-8666-666666666666",
+      roundNumber: 1,
+      createdAt: "2026-10-01T03:00:00.000Z",
+      primaryGoalLabel: "แผนสุขภาพดีของฉัน",
+      items: [{ goalPlanItemId: "item", activityCode: "stop_sweet", activityLabel: "งดน้ำหวาน", targetDays: 4, targetValue: null, targetUnit: null, sortOrder: 0 }],
+    }],
     patient,
     scope: withProgram ? { kind: "program", relationshipId, patientProgramId: programId } : { kind: "relationship", relationshipId },
     selectedAppointmentId: null,

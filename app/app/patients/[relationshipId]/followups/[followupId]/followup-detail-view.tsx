@@ -16,6 +16,7 @@ import type {
   FollowupDetail,
   FollowupProgramDetail,
 } from "@/modules/followups/services/followup-query-service";
+import { FollowupAchievementSummary } from "@/modules/followups/presentation/followup-achievement-summary";
 import { LINE_WEB_NAVIGATION_PATHS } from "@/modules/line/domain/line-navigation-intents";
 
 export type FollowupDetailViewScope =
@@ -92,6 +93,11 @@ export function FollowupDetailView({
   const activityLabels = new Map(
     detail.sourceGoalPlan?.items.map((item) => [item.activityCode, item.activityLabel]) ?? [],
   );
+  const targetDays = new Map(
+    detail.sourceGoalPlan?.items.map((item) => [item.activityCode, item.targetDays]) ?? [],
+  );
+  // The workbook names a Program Follow-up's date วันที่ติดตาม; the stored field is still serviceDate.
+  const serviceDateLabel = linkedProgramId ? "วันที่ติดตาม" : "วันที่ให้บริการ";
 
   return (
     <div className="max-w-5xl">
@@ -145,7 +151,7 @@ export function FollowupDetailView({
           </div>
           <dl className="mt-6 grid gap-4 border-t border-border pt-5 sm:grid-cols-2">
             <div>
-              <dt className="text-sm text-text-muted">วันที่ให้บริการ</dt>
+              <dt className="text-sm text-text-muted">{serviceDateLabel}</dt>
               <dd className="mt-1 font-semibold text-text">{formatServiceDate(detail.serviceDate)}</dd>
             </div>
             <div>
@@ -269,7 +275,9 @@ export function FollowupDetailView({
                         ? progress.status === "NOT_APPLICABLE"
                           ? "ไม่เกี่ยวข้อง"
                           : "ไม่ได้บันทึก"
-                        : `${progress.achievedDays} วัน`}
+                        : targetDays.has(progress.goalActivityCode)
+                          ? `${progress.achievedDays} จาก ${targetDays.get(progress.goalActivityCode)} วัน`
+                          : `${progress.achievedDays} วัน`}
                     </span>
                   </p>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-text">
@@ -280,6 +288,14 @@ export function FollowupDetailView({
             </ul>
             {detail.activityProgress.length === 0 ? (
               <p className="mt-5 text-sm leading-6 text-text-muted">รอบนี้ไม่มีรายการความคืบหน้าที่บันทึกไว้</p>
+            ) : null}
+            {detail.achievement ? (
+              <div className="mt-6 border-t border-border pt-5">
+                <h3 className="text-sm font-semibold text-text-muted">อัตราความสำเร็จตามเป้า</h3>
+                <div className="mt-2">
+                  <FollowupAchievementSummary achievement={detail.achievement} />
+                </div>
+              </div>
             ) : null}
           </Panel>
         ) : null}
