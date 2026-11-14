@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { useInPlaceRefresh } from "./in-place-refresh";
 import { Alert } from "./alert";
 import { Button } from "./button";
 
@@ -40,6 +41,7 @@ export function UnknownOutcomeAlert({
   className?: string;
   recovery: UnknownOutcomeRecovery;
 }): React.JSX.Element | null {
+  const refresh = useInPlaceRefresh();
   const guardsUnload = active && (recovery.kind === "resend" || recovery.kind === "verify");
 
   useEffect(() => {
@@ -132,7 +134,7 @@ export function UnknownOutcomeAlert({
           <p className="mt-1">การโหลดจะแสดงสถานะปัจจุบัน แต่ไม่ยืนยันว่าคำขอนี้เป็นผู้เปลี่ยนข้อมูล</p>
         </details>
       ) : null}
-      <Button className="mt-3" onClick={() => window.location.reload()} size="compact" type="button" variant="secondary">
+      <Button className="mt-3" onClick={refresh ?? (() => window.location.reload())} size="compact" type="button" variant="secondary">
         {recovery.kind === "review" ? recovery.label : recovery.label ?? "ดูข้อมูลล่าสุด"}
       </Button>
     </Alert>

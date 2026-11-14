@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
 
 const mocks = vi.hoisted(() => ({
+  refresh: vi.fn(),
   update: vi.fn<(previous: unknown, formData: FormData) => Promise<unknown>>(),
   stop: vi.fn<(previous: unknown, formData: FormData) => Promise<unknown>>(),
   schedules: vi.fn<(previous: unknown, formData: FormData) => Promise<unknown>>(),
@@ -18,6 +19,7 @@ vi.mock("@/modules/medications/transport/server-actions", () => ({
   replacePersonalMedicationSchedulesAction: mocks.schedules,
 }));
 
+import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
 import { PersonalMedicationWorkspace } from "./personal-medication-workspace";
 
 const item: PersonalMedicationDetailDto = {
@@ -65,7 +67,7 @@ beforeEach(async () => {
   document.body.append(container);
   root = createRoot(container);
   await act(async () => {
-    root.render(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} />);
+    root.render(<InPlaceRefreshBoundary requestId="initial"><PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} /></InPlaceRefreshBoundary>);
   });
 });
 
@@ -220,6 +222,17 @@ describe("personal medication focused dialogs", () => {
     }
     expect(document.activeElement?.id).toBe("medication-detail-heading");
     expect(mocks.update).toHaveBeenCalledTimes(1);
+    const guardBefore = container.querySelector('[data-navigation-guard="unknown-outcome"]');
+    expect(Boolean(guardBefore)).toBe(!result);
+    await click(button("โหลดรายการล่าสุด"));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBe(guardBefore);
+    expect(button("แก้ไขเวลา").disabled).toBe(true);
+    // A successful fresh read may be identical when the original write never committed.
+    await act(() => root.render(<InPlaceRefreshBoundary requestId="fresh"><PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} /></InPlaceRefreshBoundary>));
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBeNull();
+    expect(button("แก้ไขเวลา").disabled).toBe(false);
+    expect(mocks.update).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the session expiry sign-in path after the dialog closes", async () => {
@@ -306,6 +319,9 @@ describe("personal medication focused dialogs", () => {
     await act(async () => request.resolve({ status: "SUCCESS", message: "หยุดติดตามแล้ว", item: { ...item, status: "STOPPED" } }));
     expect(dialog()).toBeNull();
     expect(container.textContent).toContain("หยุดติดตามแล้ว");
+    await click(button("ดูประวัติหยุดติดตาม"));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(mocks.stop).toHaveBeenCalledTimes(1);
   });
 
   it("keeps an unconfirmed stop in its dialog with reload guidance and no replay", async () => {
@@ -319,6 +335,15 @@ describe("personal medication focused dialogs", () => {
     expect(button("ยืนยันหยุดติดตาม", dialog() ?? container).disabled).toBe(true);
     expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).not.toBeNull();
     expect(mocks.stop).toHaveBeenCalledTimes(1);
+    const guard = container.querySelector('[data-navigation-guard="unknown-outcome"]');
+    await click(button("ดูข้อมูลล่าสุด", dialog() ?? container));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBe(guard);
+    expect(mocks.stop).toHaveBeenCalledTimes(1);
+    await act(() => root.render(<InPlaceRefreshBoundary requestId="fresh"><PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} /></InPlaceRefreshBoundary>));
+    expect(dialog()).toBeNull();
+    expect(container.querySelector('[data-navigation-guard="unknown-outcome"]')).toBeNull();
+    expect(button("แก้ไขเวลา").disabled).toBe(false);
   });
 
   it("blocks text and stop after a schedule conflict until the latest list is loaded", async () => {
@@ -329,7 +354,8 @@ describe("personal medication focused dialogs", () => {
 
     expect(button("แก้ไขชื่อยาและข้อความประกอบ").disabled).toBe(true);
     expect(button("หยุดติดตามรายการนี้ใน DEMI").disabled).toBe(true);
-    expect(container.querySelector<HTMLAnchorElement>('a[href="/app/personal/medications"]')).not.toBeNull();
+    expect(button("โหลดรายการล่าสุด")).toBeTruthy();
+    expect(button("โหลดรายการล่าสุด").tagName).toBe("BUTTON");
   });
 
   it("drops a retained draft when fresh detail arrives with a new version", async () => {
@@ -338,10 +364,12 @@ describe("personal medication focused dialogs", () => {
     await escape();
 
     await act(async () => {
-      root.render(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, medicationName: "ชื่อจากเซิร์ฟเวอร์", updatedAt: "2026-10-03T00:00:01.000Z" }} />);
+      root.render(<InPlaceRefreshBoundary requestId="changed"><PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, medicationName: "ชื่อจากเซิร์ฟเวอร์", updatedAt: "2026-10-03T00:00:01.000Z" }} /></InPlaceRefreshBoundary>);
     });
     await click(button("แก้ไขชื่อยาและข้อความประกอบ"));
     expect(nameField().value).toBe("ชื่อจากเซิร์ฟเวอร์");
     expect(dialog()?.querySelector<HTMLInputElement>('input[name="expectedUpdatedAt"]')?.value).toBe("2026-10-03T00:00:01.000Z");
   });
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));

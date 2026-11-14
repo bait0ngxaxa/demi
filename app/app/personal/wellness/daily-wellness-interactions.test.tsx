@@ -3,11 +3,13 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DailyWellnessRead } from "./daily-wellness-action";
-const mock = vi.hoisted(() => ({ daily: vi.fn(), create: vi.fn(), list: vi.fn(), exerciseCreate: vi.fn(), exerciseList: vi.fn() }));
+const mock = vi.hoisted(() => ({ refresh: vi.fn(), daily: vi.fn(), create: vi.fn(), list: vi.fn(), exerciseCreate: vi.fn(), exerciseList: vi.fn() }));
 vi.mock("./daily-wellness-action", () => ({ readDailyWellnessAction: mock.daily }));
 vi.mock("@/modules/meals/transport/server-actions", () => ({ createPersonalMealAction: mock.create, updatePersonalMealAction: vi.fn(), deletePersonalMealAction: vi.fn(), listPersonalMealsAction: mock.list }));
 vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalExerciseAction: mock.exerciseCreate, updatePersonalExerciseAction: vi.fn(), deletePersonalExerciseAction: vi.fn(), listPersonalExercisesAction: mock.exerciseList }));
 vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mock.refresh }) }));
+import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let host: HTMLDivElement;
@@ -30,7 +32,7 @@ async function chooseDate(value: string): Promise<void> {
   });
   await act(() => button("ดูบันทึกตามวันที่").click());
 }
-beforeEach(async () => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(() => root.render(<PersonalWellnessWorkspace {...props} />)); });
+beforeEach(async () => { vi.resetAllMocks(); host = document.createElement("div"); document.body.append(host); root = createRoot(host); await act(() => root.render(<InPlaceRefreshBoundary requestId="initial"><PersonalWellnessWorkspace {...props} /></InPlaceRefreshBoundary>)); });
 afterEach(async () => { await act(() => root.unmount()); host.remove(); });
 describe("Daily Wellness interactions", () => {
   it("puts daily overview first and uses confirmed server totals in the activity footer, never draft duration", async () => {
@@ -135,6 +137,17 @@ describe("Daily Wellness interactions", () => {
     await act(() => window.dispatchEvent(new Event("pagehide")));
     await act(() => resolve({ status: "SUCCESS", mealPage: props.mealPage, exercisePage: props.exercisePage }));
     expect(host.textContent).toContain("ยืนยันสิทธิ์"); expect(host.textContent).not.toContain("61 รายการ"); expect(host.querySelector("form")).toBeNull();
+  });
+  it("reopens invalidated wellness only after refreshed server data arrives", async () => {
+    await act(() => window.dispatchEvent(new Event("pagehide")));
+    expect(host.querySelector("#wellness-date")).toBeNull();
+    expect(host.querySelector('a[href="/app/personal/wellness"]')).toBeNull();
+    await act(() => button("เปิดหน้าสุขภาพ").click());
+    expect(mock.refresh).toHaveBeenCalledOnce();
+    expect(host.querySelector("#wellness-date")).toBeNull();
+    await act(() => root.render(<InPlaceRefreshBoundary requestId="fresh"><PersonalWellnessWorkspace {...props} /></InPlaceRefreshBoundary>));
+    expect(host.querySelector("#wellness-date")).not.toBeNull();
+    expect(host.textContent).not.toContain("กรุณาเปิดหน้าสุขภาพใหม่เพื่อยืนยันสิทธิ์");
   });
   it("fails closed for a denied daily response", async () => {
     mock.daily.mockResolvedValue({ status: "DENIED", message: "ยืนยันสิทธิ์" });

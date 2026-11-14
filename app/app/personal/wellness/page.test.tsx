@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 const mock = vi.hoisted(() => ({ actor: vi.fn(), list: vi.fn(), exercises: vi.fn(), weightGoal: vi.fn(), connection: vi.fn(), redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
 vi.mock("next/server", () => ({ connection: mock.connection }));
-vi.mock("next/navigation", () => ({ redirect: mock.redirect }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: mock.redirect }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: mock.actor }));
 vi.mock("@/modules/meals/services/personal-meal-query-service", () => ({ listOwnPersonalMeals: mock.list }));
 vi.mock("@/modules/exercises/services/personal-exercise-query-service", () => ({ listOwnPersonalExercises: mock.exercises }));
@@ -19,8 +19,8 @@ describe("private Wellness page", () => {
   it("uses opaque actor remount key and independent fresh create nonces", async () => {
     const first = await Page(); mock.actor.mockResolvedValue({ userId: "second", personId: "other" }); const second = await Page();
     expect(first.key).not.toBe(second.key); expect(first.key).toMatch(/^[a-f0-9]{64}$/u);
-    expect(first.props.mealNonce).not.toBe(first.props.exerciseNonce); expect(first.props.weightGoalNonce).not.toBe(first.props.mealNonce); expect(first.props.weightGoalNonce).not.toBe(first.props.exerciseNonce);
-    expect(second.props.mealNonce).not.toBe(first.props.mealNonce);
+    expect(first.props.children.props.mealNonce).not.toBe(first.props.children.props.exerciseNonce); expect(first.props.children.props.weightGoalNonce).not.toBe(first.props.children.props.mealNonce); expect(first.props.children.props.weightGoalNonce).not.toBe(first.props.children.props.exerciseNonce);
+    expect(second.props.children.props.mealNonce).not.toBe(first.props.children.props.mealNonce);
     expect(JSON.stringify(first.props)).not.toMatch(/userId|personId|patientProfileId/u);
   });
   it.each(["list", "exercises", "weightGoal"] as const)("renders neither private section when %s denies, explaining instead of redirecting", async (service) => {

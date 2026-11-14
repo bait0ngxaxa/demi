@@ -8,7 +8,7 @@ import { getOwnMedicationLineReminderPreference } from "@/modules/medications/se
 import Page from "./page";
 
 vi.mock("next/server", () => ({ connection: vi.fn() }));
-vi.mock("next/navigation", () => ({ redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }), redirect: vi.fn((path: string) => { throw new Error(`redirect:${path}`); }) }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({ getProtectedApplicationActor: vi.fn() }));
 vi.mock("@/modules/medications/services/personal-medication-query-service", () => ({ listOwnPersonalMedications: vi.fn(), getOwnPersonalMedication: vi.fn() }));
 vi.mock("@/modules/medications/services/medication-line-reminder-preference-service", () => ({ getOwnMedicationLineReminderPreference: vi.fn() }));
@@ -21,6 +21,12 @@ describe("request-time protected medication page", () => {
     expect(connection).toHaveBeenCalledOnce(); expect(vi.mocked(connection).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(getProtectedApplicationActor).mock.invocationCallOrder[0]);
     expect(listOwnPersonalMedications).toHaveBeenCalledWith(actor, { status: "ACTIVE", cursor: undefined });
     expect(listOwnPersonalMedications).toHaveBeenCalledWith(actor, { status: "STOPPED", cursor: undefined });
+  });
+  it("provides a fresh recovery response identity even when the saved data is unchanged", async () => {
+    const first = await Page({ searchParams: Promise.resolve({}) });
+    const second = await Page({ searchParams: Promise.resolve({}) });
+    expect(first.key).toBe(second.key);
+    expect(first.props.requestId).not.toBe(second.props.requestId);
   });
   it.each([[new UnauthenticatedError(), "/login"], [new ForbiddenError(), "/app"]] as const)("redirects safe auth errors", async (error, path) => {
     vi.mocked(getProtectedApplicationActor).mockRejectedValue(error);

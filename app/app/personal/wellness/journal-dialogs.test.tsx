@@ -12,6 +12,7 @@ vi.mock("@/modules/exercises/transport/server-actions", () => ({ createPersonalE
 vi.mock("@/modules/weight-goals/transport/server-actions", () => ({ createPersonalWeightGoalAction: vi.fn(), updatePersonalWeightGoalAction: vi.fn(), removePersonalWeightGoalAction: vi.fn(), readPersonalWeightGoalAction: vi.fn() }));
 import { PersonalMealWorkspace } from "./personal-meal-workspace";
 import { PersonalExerciseWorkspace } from "./personal-exercise-workspace";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import { PersonalWellnessWorkspace } from "./personal-wellness-workspace";
 import { createWellnessPrivateAuthority, type WellnessPrivateAuthority } from "./wellness-private-authority";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn() }));
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), create: vi.fn() }));
 vi.mock("@/modules/medications/transport/server-actions", () => ({
   createPersonalMedicationAction: mocks.create, updatePersonalMedicationAction: vi.fn(),
   stopPersonalMedicationAction: vi.fn(), replacePersonalMedicationSchedulesAction: vi.fn(),
@@ -83,6 +83,11 @@ describe("medication creation disclosure interactions", () => {
     expect(host.textContent).toContain("บันทึกรายการแล้ว");
     await toggle(); expect(disclosure().open).toBe(false);
     expect(mocks.create).toHaveBeenCalledTimes(2);
+    const refresh = [...host.querySelectorAll("button")].find((button) => button.textContent === "กลับไปดูรายการล่าสุด");
+    expect(refresh).toBeDefined();
+    await act(() => refresh?.click());
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(mocks.create).toHaveBeenCalledTimes(2);
   });
   it("uses a native summary with a visible focus style and accessible name", () => {
     const summary = disclosure().querySelector("summary");
@@ -105,3 +110,5 @@ describe("medication creation disclosure interactions", () => {
     expect(list?.className).toContain("overflow-x-hidden");
   });
 });
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));

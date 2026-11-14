@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
 import { createHash, randomUUID } from "node:crypto";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
@@ -51,5 +52,5 @@ export default async function PersonalWellnessPage(): Promise<React.JSX.Element>
     if (error instanceof ForbiddenError) return <PatientAccessUnavailableState title="สุขภาพ" />;
     throw error;
   }
-  return <PersonalWellnessWorkspace key={actorKey} {...workspace} />;
+  return <InPlaceRefreshBoundary key={actorKey} requestId={workspace.mealNonce}><PersonalWellnessWorkspace {...workspace} /></InPlaceRefreshBoundary>;
 }

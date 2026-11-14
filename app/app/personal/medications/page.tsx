@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { createHash } from "node:crypto";
+import { InPlaceRefreshBoundary } from "@/components/ui/in-place-refresh";
+import { createHash, randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
@@ -58,5 +59,5 @@ export default async function PersonalMedicationsPage({ searchParams }: {
       throw error;
     }
   }
-  return <PersonalMedicationWorkspace key={presentationKey} {...workspace} />;
+  return <InPlaceRefreshBoundary key={presentationKey} requestId={randomUUID()}><PersonalMedicationWorkspace {...workspace} /></InPlaceRefreshBoundary>;
 }
