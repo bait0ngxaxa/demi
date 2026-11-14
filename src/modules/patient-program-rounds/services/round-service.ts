@@ -942,6 +942,10 @@ async function completeRoundInTransaction(
   // SR-D1 re-computed inside the transaction from the same rule the views use.
   const status = await loadRoundStatus(transaction, context, roundNumber);
 
+  if (status.completionBlockedReason) {
+    throw new RoundConflictError(status.completionBlockedReason);
+  }
+
   if (!status.canComplete) {
     throw new RoundConflictError("ต้องทำอย่างน้อย 1 รายการในแผนก่อนจบบริการ");
   }

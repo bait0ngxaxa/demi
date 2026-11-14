@@ -10,6 +10,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { FollowupProgressIncompleteError } from "@/modules/followups/domain/followup-progress-coverage";
 import {
   ConflictError,
   ForbiddenError,
@@ -20,6 +21,7 @@ import {
 const mockedAudit = vi.hoisted(() => vi.fn());
 const mockedGoalContext = vi.hoisted(() => vi.fn());
 const mockedPreProgramGoalContext = vi.hoisted(() => vi.fn());
+const mockedProgramGoalContext = vi.hoisted(() => vi.fn());
 const mockedFollowupAccessState = vi.hoisted(() => ({ denyRecord: false }));
 
 vi.mock("@/modules/audit/services/audit-service", () => ({
@@ -29,6 +31,7 @@ vi.mock("@/modules/audit/services/audit-service", () => ({
 vi.mock("@/modules/goals/services/goal-query-service", () => ({
   getAccessibleGoalPlanActivityContext: mockedGoalContext,
   getAccessiblePreProgramGoalPlanActivityContext: mockedPreProgramGoalContext,
+  getAccessibleGoalPlanActivityContextForProgram: mockedProgramGoalContext,
 }));
 
 vi.mock("./followup-access-service", async (importOriginal) => {
@@ -248,6 +251,7 @@ describe("Follow-up service", () => {
     mockedAudit.mockResolvedValue(undefined);
     mockedGoalContext.mockResolvedValue(goalPlanContext);
     mockedPreProgramGoalContext.mockResolvedValue(goalPlanContext);
+    mockedProgramGoalContext.mockResolvedValue(goalPlanContext);
   });
 
   it("derives creator and round, persists a standalone immutable round, and audits it", async () => {
@@ -471,6 +475,63 @@ describe("Follow-up service", () => {
         },
       }),
       select: expect.anything(),
+    });
+  });
+
+  describe("Program Follow-up progress (D1/D2)", () => {
+    const programId = "99999999-9999-4999-8999-999999999999";
+    const transaction = {} as Prisma.TransactionClient;
+
+    function programRequest(activityProgress: unknown[], sourceGoalPlanId: string | null = goalPlanId) {
+      return followupServiceInternals.normalizeFollowupInput(
+        validInput({ sourceGoalPlanId, activityProgress }) as Parameters<typeof followupServiceInternals.normalizeFollowupInput>[0],
+        programId,
+      );
+    }
+
+    it("accepts one row per plan activity, NOT_APPLICABLE without days included", async () => {
+      await expect(
+        followupServiceInternals.assertGoalActivityProgress(
+          transaction,
+          hospitalActor,
+          programRequest([
+            { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 },
+            { goalActivityCode: "stop_sweet", status: "NOT_APPLICABLE", achievedDays: null },
+          ]),
+        ),
+      ).resolves.toBeUndefined();
+      expect(mockedProgramGoalContext).toHaveBeenCalledWith(hospitalActor, programId, goalPlanId, { database: transaction });
+    });
+
+    it("refuses a missing plan activity with the user-safe Thai message", async () => {
+      await expect(
+        followupServiceInternals.assertGoalActivityProgress(
+          transaction,
+          hospitalActor,
+          programRequest([{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 }]),
+        ),
+      ).rejects.toThrow(new FollowupProgressIncompleteError());
+      await expect(
+        followupServiceInternals.assertGoalActivityProgress(transaction, hospitalActor, programRequest([])),
+      ).rejects.toBeInstanceOf(FollowupProgressIncompleteError);
+    });
+
+    it("refuses an activity outside the plan and a Program Follow-up without a plan", async () => {
+      await expect(
+        followupServiceInternals.assertGoalActivityProgress(
+          transaction,
+          hospitalActor,
+          programRequest([
+            { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 },
+            { goalActivityCode: "stop_sweet", status: "DONE", achievedDays: 4 },
+            { goalActivityCode: "injected_activity", status: "DONE", achievedDays: 1 },
+          ]),
+        ),
+      ).rejects.toBeInstanceOf(ValidationError);
+      await expect(
+        followupServiceInternals.assertGoalActivityProgress(transaction, hospitalActor, programRequest([], null)),
+      ).rejects.toBeInstanceOf(ValidationError);
+      expect(mockedProgramGoalContext).toHaveBeenCalledTimes(1);
     });
   });
 

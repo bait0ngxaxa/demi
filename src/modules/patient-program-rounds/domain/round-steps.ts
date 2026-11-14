@@ -1,4 +1,4 @@
-import { MIN_HEALTH_PATH_REVIEW_ROUND } from "./round-catalog";
+import { GOAL_PLAN_ROUND, MIN_HEALTH_PATH_REVIEW_ROUND } from "./round-catalog";
 import type {
   PatientProgramRoundSkipReason,
   PatientProgramRoundStepCode,
@@ -295,9 +295,22 @@ export type RoundStatus = {
   completion: RoundCompletionFact | null;
   /** Writes are accepted (SR-D5): Program active, round opened and open, previous round completed. */
   writable: boolean;
-  /** FR-D1: at least one active plan item DONE while the round is writable. */
+  /** FR-D1: at least one active plan item DONE while the round is writable, and no completion blocker. */
   canComplete: boolean;
+  /** Why this round cannot be ended yet whatever its items say (Thai, shown as-is); null when nothing blocks it. */
+  completionBlockedReason: string | null;
 };
+
+/**
+ * Owner decision (2026-11-14, with D2): the first Goal Plan can only be made in round 2,
+ * and every Program Follow-up (rounds 3+) reports on a Goal Plan, so round 2 cannot end without one.
+ */
+export const ROUND_GOAL_PLAN_REQUIRED_MESSAGE =
+  "ต้องสร้างแผนสุขภาพก่อนจบบริการครั้งที่ 2 เพราะการติดตามผลตั้งแต่ครั้งที่ 3 ต้องบันทึกตามแผนนี้";
+
+function roundCompletionBlockedReason(facts: ProgramRoundFacts, roundNumber: number): string | null {
+  return roundNumber === GOAL_PLAN_ROUND && !facts.firstGoalPlan ? ROUND_GOAL_PLAN_REQUIRED_MESSAGE : null;
+}
 
 /** SR-D5: round 1, or the previous round completed; never a completed round. */
 export function isRoundOpenForWrites(
@@ -450,6 +463,7 @@ export function computeRoundStatus(
     return { ...definition, planItemId: item.id, origin: item.origin, doneNote: item.doneNote, status, evidence, skip, missingMeasurements };
   });
   const resolved = steps.filter((state) => state.status === "DONE" || state.status === "SKIPPED");
+  const completionBlockedReason = completion ? null : roundCompletionBlockedReason(facts, roundNumber);
   const resolvedItems = resolved.reduce((total, state) => total + state.items.length, 0);
   const totalItems = steps.reduce((total, state) => total + state.items.length, 0);
   const writable =
@@ -470,7 +484,8 @@ export function computeRoundStatus(
     totalItems,
     completion,
     writable,
-    canComplete: writable && steps.some((step) => step.status === "DONE"),
+    canComplete: writable && steps.some((step) => step.status === "DONE") && !completionBlockedReason,
+    completionBlockedReason,
   };
 }
 

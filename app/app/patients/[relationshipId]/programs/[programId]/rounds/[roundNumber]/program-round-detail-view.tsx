@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { randomUUID } from "node:crypto";
+import { followupAchievementThresholdLabel } from "@/modules/followups/presentation/followup-achievement-summary";
+import { isFollowupRound } from "@/modules/patient-program-rounds/domain/round-catalog";
 import { roundStepKey } from "@/modules/patient-program-rounds/domain/round-steps";
 import { RoundPlanEditor, PlanItemControl } from "./round-plan-editor";
 
@@ -150,21 +152,99 @@ function FollowupEntry({ context }: { context: StepContext }): React.JSX.Element
     return <p className="text-sm text-text-muted">ครั้งนี้ต้องมีรายการสัญญาณชีพหรือทบทวนแผนสุขภาพในแผนที่เปิดอยู่</p>;
   }
 
-  const query = [
-    detail.goalPlan.currentGoalPlanId ? `sourceGoalPlanId=${encodeURIComponent(detail.goalPlan.currentGoalPlanId)}` : null,
-    buildRoundReturnQuery(context.nextHref),
-  ].filter(Boolean).join("&");
-
   return (
     <div className="space-y-2">
       <p className="text-sm leading-6 text-text-muted">
         สัญญาณชีพ ความคืบหน้าตามแผน และคำตอบ “ปรับแผนหรือไม่” ของครั้งนี้บันทึกในแบบบันทึกการติดตามผลชุดเดียว
         บันทึกเสร็จแล้วระบบจะพากลับมาที่ขั้นตอนถัดไป
       </p>
-      <Link className={buttonClassName({ variant: "primary" })} href={`${programPath}/followups/new?${query}`}>
+      <Link className={buttonClassName({ variant: "primary" })} href={newFollowupHref(context, context.nextHref)}>
         บันทึกการติดตามผลของครั้งนี้
       </Link>
     </div>
+  );
+}
+
+function newFollowupHref(context: StepContext, returnTo: string): string {
+  const { detail, programPath } = context;
+  const query = [
+    detail.goalPlan.currentGoalPlanId ? `sourceGoalPlanId=${encodeURIComponent(detail.goalPlan.currentGoalPlanId)}` : null,
+    buildRoundReturnQuery(returnTo),
+  ].filter(Boolean).join("&");
+
+  return `${programPath}/followups/new${query ? `?${query}` : ""}`;
+}
+
+function formatFollowupDate(value: Date | null): string {
+  return value === null
+    ? "ไม่ได้บันทึก"
+    : new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeZone: "UTC" }).format(value);
+}
+
+function SummaryValue({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="min-w-0">
+      <dt className="text-sm text-text-muted">{label}</dt>
+      <dd className="mt-1 font-semibold text-text">{children}</dd>
+    </div>
+  );
+}
+
+/** Rounds 3+: the round's Follow-up is its main record (workbook "ติดตามการฝึกซ้อมพฤติกรรม"); the steps keep their own actions. */
+function FollowupSummaryCard({ context }: { context: StepContext }): React.JSX.Element {
+  const { detail, editable, programPath, roundPath } = context;
+  const summary = detail.followupSummary;
+
+  return (
+    <Panel>
+      <h2 className="text-lg font-semibold text-text">การติดตาม</h2>
+      {summary ? (
+        <>
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+            <SummaryValue label="วันที่ติดตาม">{formatFollowupDate(summary.serviceDate)}</SummaryValue>
+            {summary.achievement ? (
+              <>
+                <SummaryValue label="จำนวนวันที่ทำได้">
+                  <span className="tabular-nums">{summary.achievement.achievedDays} จาก {summary.achievement.targetDays} วัน</span>
+                </SummaryValue>
+                <SummaryValue label="อัตราความสำเร็จตามเป้า">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="tabular-nums">{summary.achievement.ratePercent}%</span>
+                    <StatusBadge variant={summary.achievement.aboveThreshold ? "success" : "neutral"}>
+                      {followupAchievementThresholdLabel(summary.achievement)}
+                    </StatusBadge>
+                  </span>
+                </SummaryValue>
+              </>
+            ) : null}
+            <SummaryValue label="ปรับแผนใหม่">
+              {summary.planAdjusted === null ? "ไม่ได้บันทึก" : summary.planAdjusted ? "ปรับแผน" : "ไม่ปรับแผน"}
+            </SummaryValue>
+            <SummaryValue label="มีอุปสรรค">
+              {summary.hasObstacle === null ? "ไม่ได้บันทึก" : summary.hasObstacle ? "มีอุปสรรค" : "ไม่มีอุปสรรค"}
+            </SummaryValue>
+          </dl>
+          <Link className={`mt-4 inline-block ${linkClassName}`} href={`${programPath}/followups/${encodeURIComponent(summary.followupId)}`}>
+            ดูแบบบันทึกการติดตามผล
+          </Link>
+        </>
+      ) : (
+        <div className="mt-2 space-y-3">
+          <p className="text-sm leading-6 text-text-muted">
+            ครั้งนี้บันทึกการติดตามการฝึกซ้อมพฤติกรรม: วันที่ติดตาม จำนวนวันที่ทำได้ตามแผน อัตราความสำเร็จ การปรับแผน และอุปสรรค
+          </p>
+          {!editable ? (
+            <p className="text-sm text-text-muted">ยังไม่มีการบันทึกการติดตามผลของครั้งนี้</p>
+          ) : detail.canStartFollowup ? (
+            <Link className={buttonClassName({ variant: "primary" })} href={newFollowupHref(context, roundPath)}>
+              บันทึกการติดตามผลของครั้งนี้
+            </Link>
+          ) : (
+            <p className="text-sm text-text-muted">ครั้งนี้ต้องมีรายการสัญญาณชีพหรือทบทวนแผนสุขภาพในแผนที่เปิดอยู่</p>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -483,6 +563,13 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
             roundNumber: detail.roundNumber,
           }}
         />
+      ) : status.completionBlockedReason && context.editable ? (
+        <Alert variant="warning">
+          {status.completionBlockedReason}{" "}
+          <Link className={linkClassName} href={`${context.programPath}/goals/new?${buildRoundReturnQuery(context.roundPath)}`}>
+            สร้างแผนสุขภาพ
+          </Link>
+        </Alert>
       ) : (
         <p className="text-sm leading-6 text-text-muted">
           {unresolved.length > 0
@@ -614,6 +701,7 @@ export function ProgramRoundDetailView({
           <Alert variant="info">บัญชีนี้อ่านข้อมูลครั้งนี้ได้ แต่ไม่มีสิทธิ์บันทึก ข้าม หรือจบบริการ</Alert>
         ) : null}
 
+        {isFollowupRound(detail.roundNumber) ? <FollowupSummaryCard context={context} /> : null}
         {editable ? <RoundPlanEditor choices={detail.planChoices ?? []} submissionNonce={randomUUID()} target={target} /> : null}
         {total === 0 ? <Panel><p className="text-sm text-text-muted">ยังไม่มีรายการ เพิ่มรายการที่จะทำในครั้งนี้</p></Panel> : null}
         <div className="space-y-3">

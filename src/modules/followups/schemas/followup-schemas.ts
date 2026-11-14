@@ -122,6 +122,8 @@ export const followupProgramCreateRequestSchema = followupPayloadSchema
   .omit({ confidenceScore: true, confidencePlan: true })
   .extend({
     patientProgramId: patientProgramIdSchema,
+    // D1/D2: a Program Follow-up reports on a Goal Plan of its Program (every activity, checked by the service).
+    sourceGoalPlanId: followupGoalPlanIdSchema,
     followedPlan: z.boolean(),
     // R2-F: "เกิดอะไรขึ้นบ้าง?" is required, otherwise the round's plan review can never be done
     // (Follow-ups are immutable).

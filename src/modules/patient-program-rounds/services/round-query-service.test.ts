@@ -16,6 +16,7 @@ import {
   buildProgramRoundsOverview,
   getProgramRoundDetail,
   getProgramRoundsOverview,
+  roundFollowupAchievementRate,
   type PatientProgramRoundQueryDatabase,
   type ProgramRoundRecord,
 } from "./round-query-service";
@@ -166,6 +167,7 @@ function followup(roundNumber: number, overrides: Record<string, unknown> = {}):
     systolicBloodPressure: 118,
     diastolicBloodPressure: 78,
     bloodSugar: 95,
+    hasObstacle: false,
     createdByUser: recorder,
     activityProgress: [{ goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 }],
     ...overrides,
@@ -491,6 +493,47 @@ describe("plan follow-up (D6)", () => {
         staff,
       ).planFollowUp,
     ).toBeNull();
+  });
+});
+
+describe("round Follow-up summary (rounds 3+)", () => {
+  it("projects date, achieved/target days, BR-04 rate and threshold, plan adjustment and obstacle", () => {
+    const record = program({
+      goalPlans: [goalPlan(1, planId)],
+      followups: [
+        followup(1, {
+          planAdjusted: true,
+          hasObstacle: true,
+          activityProgress: [
+            { goalActivityCode: "exercise_walk", status: "DONE", achievedDays: 3 },
+            { goalActivityCode: "stop_sweet", status: "PARTIAL", achievedDays: 1 },
+          ],
+        }),
+      ],
+    });
+
+    expect(buildProgramRoundDetail(record, 3, patient, staff).followupSummary).toEqual({
+      followupId: "dddddddd-dddd-4ddd-8ddd-000000000001",
+      serviceDate: new Date("2026-10-20T00:00:00.000Z"),
+      // (3 + 1) / (3 + 4) = 57%.
+      achievement: { achievedDays: 4, targetDays: 7, ratePercent: 57, aboveThreshold: false },
+      planAdjusted: true,
+      hasObstacle: true,
+    });
+    // The report reads the same rate.
+    expect(roundFollowupAchievementRate(record, 3)).toEqual({ ratePercent: 57 });
+  });
+
+  it("keeps the summary with a null rate when the Follow-up cannot be scored, and none before it is recorded", () => {
+    const unscorable = program({
+      goalPlans: [goalPlan(1, planId)],
+      followups: [followup(1, { sourceGoalPlanId: null, hasObstacle: false })],
+    });
+
+    expect(buildProgramRoundDetail(unscorable, 3, patient, staff).followupSummary).toMatchObject({ achievement: null, hasObstacle: false });
+    expect(roundFollowupAchievementRate(unscorable, 3)).toEqual({ ratePercent: null });
+    expect(buildProgramRoundDetail(program({ goalPlans: [goalPlan(1, planId)] }), 3, patient, staff).followupSummary).toBeNull();
+    expect(buildProgramRoundDetail(program(), 2, patient, staff).followupSummary).toBeNull();
   });
 });
 
