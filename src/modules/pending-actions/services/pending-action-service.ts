@@ -15,12 +15,20 @@ import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospit
 import { ApplicationError, ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
+export type PendingActionHospitalCount = { hospitalId: string; count: number };
+
 export type PendingActionIndicator = {
   /** Existing navigation destination; no new navigation entries are created. */
   navigationHref: string;
   href: string;
   count: number;
   label: string;
+  /**
+   * Appointment queues are Hospital-specific while `count` spans every authorized Hospital. The breakdown holds only
+   * Hospitals already in the actor's authorized scope, so the destination can separate the selected Hospital's queue
+   * from the aggregate.
+   */
+  hospitalQueue?: { tab: "PENDING_REQUESTS" | "AWAITING_MY_ACCEPTANCE"; hospitals: readonly PendingActionHospitalCount[] };
 };
 
 /** Only a server-authenticated user ID enters here. Roles and scopes are resolved again from persistence. */
@@ -63,7 +71,7 @@ export async function calculatePendingActions(
     const appointmentCounts = actor.roles.includes(Role.OSM) ? acceptances : appointmentRequests;
     const firstPending = appointmentCounts.find(({ count }) => count > 0);
     const appointmentCount = appointmentCounts.reduce((total, { count }) => total + count, 0);
-    const tab = actor.roles.includes(Role.OSM) ? "AWAITING_MY_ACCEPTANCE" : "PENDING_REQUESTS";
+    const tab = actor.roles.includes(Role.OSM) ? "AWAITING_MY_ACCEPTANCE" as const : "PENDING_REQUESTS" as const;
     return [
       ...(hospitalIds.length === 0 ? [] : [{
         navigationHref: "/app/patients/service-requests", href: "/app/patients/service-requests?group=PENDING",
@@ -73,7 +81,8 @@ export async function calculatePendingActions(
         navigationHref: "/app/appointments",
         href: firstPending ? `/app/appointments?${new URLSearchParams({ tab, hospitalId: firstPending.hospitalId })}` : "/app/appointments",
         count: appointmentCount,
-        label: actor.roles.includes(Role.OSM) ? "นัดหมายรอคุณตอบรับในโรงพยาบาลที่คุณมีสิทธิ์" : "คำขอนัดหมายรอพิจารณาในโรงพยาบาลที่คุณมีสิทธิ์",
+        label: actor.roles.includes(Role.OSM) ? "นัดหมายรอคุณตอบรับ" : "คำขอนัดหมายรอพิจารณา",
+        hospitalQueue: { tab, hospitals: appointmentCounts },
       }]),
     ];
   } catch (error: unknown) {

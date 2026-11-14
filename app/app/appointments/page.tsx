@@ -9,6 +9,7 @@ import {
   type WorkAppointmentPage,
 } from "@/modules/appointments/services/work-appointment-query-service";
 import type { WorkAppointmentQueryInput } from "@/modules/appointments/schemas/work-appointment-schemas";
+import { getPendingActions, type PendingActionIndicator } from "@/modules/pending-actions/services/pending-action-service";
 import {
   ForbiddenError,
   NotFoundError,
@@ -16,7 +17,7 @@ import {
   ValidationError,
 } from "@/shared/errors/application-error";
 
-import { WorkAppointmentView } from "./work-appointment-view";
+import { WorkAppointmentView, type WorkAppointmentPendingScope } from "./work-appointment-view";
 
 export const metadata: Metadata = {
   title: "รายการนัดหมาย",
@@ -51,6 +52,34 @@ async function loadPage(
     if (error instanceof ForbiddenError) redirect("/app");
     throw error;
   }
+}
+
+/**
+ * The navigation indicator aggregates every authorized Hospital; this reuses the same request-cached evaluation so the
+ * page can show which Hospitals contribute. Only Hospitals also in this page's authorized scopes are named. UNAVAILABLE
+ * shows nothing here (the shell states it); a denial keeps this page's protected handling, never an empty scope.
+ */
+async function loadPendingScope(
+  actor: Awaited<ReturnType<typeof getProtectedApplicationActor>>,
+  page: WorkAppointmentPage,
+): Promise<WorkAppointmentPendingScope | null> {
+  let indicator: PendingActionIndicator | undefined;
+  try {
+    const result = await getPendingActions(actor.userId);
+    if (result.status !== "READY") return null;
+    indicator = result.indicators.find(({ navigationHref }) => navigationHref === "/app/appointments");
+  } catch (error: unknown) {
+    if (error instanceof UnauthenticatedError) redirect("/login");
+    if (error instanceof ForbiddenError) redirect("/app");
+    throw error;
+  }
+  const queue = indicator?.hospitalQueue;
+  if (!indicator || !queue || queue.tab !== page.tab) return null;
+  const counts = new Map(queue.hospitals.map(({ hospitalId, count }) => [hospitalId, count]));
+  const hospitals = page.hospitals
+    .map(({ hospitalId, hospitalName }) => ({ hospitalId, hospitalName, count: counts.get(hospitalId) ?? 0 }))
+    .filter(({ hospitalId, count }) => counts.has(hospitalId) && count > 0);
+  return { tab: queue.tab, totalCount: hospitals.reduce((total, { count }) => total + count, 0), hospitals };
 }
 
 export default async function WorkAppointmentPage({
@@ -99,5 +128,5 @@ export default async function WorkAppointmentPage({
     }
   }
 
-  return <WorkAppointmentView page={page} queryError={queryError} />;
+  return <WorkAppointmentView page={page} pendingScope={await loadPendingScope(actor, page)} queryError={queryError} />;
 }

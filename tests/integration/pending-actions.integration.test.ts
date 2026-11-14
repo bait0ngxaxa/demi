@@ -194,6 +194,8 @@ describe("pending actions against authoritative PostgreSQL tables", () => {
       expect(await destinationQueue(tx, actor, owned.id)).toContain(both.id);
       const indicators = await calculatePendingActions(staff.id, tx, now);
       expect(indicators[1]?.count).toBe(29);
+      expect(indicators[1]?.hospitalQueue?.hospitals).toEqual(expect.arrayContaining(counts));
+      expect(indicators[1]?.hospitalQueue?.hospitals).toHaveLength(3);
       expect(JSON.stringify(indicators)).not.toContain(foreign.id);
       await expect(countWorkAppointmentRequestsByHospital(actor, [owned.id, foreign.id], { database: tx, now: () => now })).rejects.toMatchObject({ code: "FORBIDDEN" });
     }));

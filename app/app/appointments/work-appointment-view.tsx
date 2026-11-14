@@ -113,6 +113,50 @@ function AppointmentRow({ item, page }: { item: WorkAppointmentListItem; page: W
   );
 }
 
+export type WorkAppointmentPendingScope = {
+  tab: WorkAppointmentTab;
+  totalCount: number;
+  /** Authorized Hospitals with pending work in this queue, already intersected with the page's Hospital scopes. */
+  hospitals: readonly { hospitalId: string; hospitalName: string; count: number }[];
+};
+
+/**
+ * Separates the selected Hospital's list from the navigation's all-Hospital aggregate and offers one-tap switching.
+ * Shown only when another authorized Hospital has pending work in this queue.
+ */
+function PendingScopeSummary({ page, scope }: { page: WorkAppointmentPage; scope: WorkAppointmentPendingScope }): React.JSX.Element | null {
+  if (scope.tab !== page.tab || !scope.hospitals.some(({ hospitalId }) => hospitalId !== page.hospital.hospitalId)) return null;
+  const queueLabel = page.tab === "AWAITING_MY_ACCEPTANCE" ? "นัดหมายรอคุณตอบรับ" : "คำขอนัดหมายรอพิจารณา";
+  return (
+    <section aria-labelledby="pending-scope-heading" className="rounded-panel border border-border bg-surface px-5 py-4 sm:px-7">
+      <h2 className="text-sm font-semibold text-text" id="pending-scope-heading">
+        {queueLabel} รวม {scope.totalCount} รายการ จาก {scope.hospitals.length} โรงพยาบาล
+      </h2>
+      <p className="mt-1 text-sm leading-6 text-text-muted">
+        รายการด้านล่างแสดงเฉพาะ {page.hospital.hospitalName} เลือกโรงพยาบาลเพื่อดูงานที่รอดำเนินการของแต่ละแห่ง
+      </p>
+      <ul className="m-0 mt-3 flex list-none flex-wrap gap-2 p-0">
+        {scope.hospitals.map(({ hospitalId, hospitalName, count }) => {
+          const current = hospitalId === page.hospital.hospitalId;
+          return (
+            <li className="min-w-0" key={hospitalId}>
+              <Link
+                aria-current={current ? "page" : undefined}
+                className={`inline-flex min-h-11 max-w-full items-center gap-2 rounded-control border px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring motion-reduce:transition-none ${current ? "border-action-primary bg-brand-soft text-brand-deep" : "border-border text-text hover:bg-surface-muted"}`}
+                href={`/app/appointments?${new URLSearchParams({ hospitalId, tab: page.tab })}`}
+                prefetch={false}
+              >
+                <span className="min-w-0 truncate">{hospitalName}</span>
+                <span className="shrink-0 tabular-nums text-text-muted">{count} รายการ</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 const tabs: readonly { id: WorkAppointmentTab; label: string }[] = [
   { id: "UPCOMING", label: "นัดหมาย" },
   { id: "HISTORY", label: "ประวัติการนัดหมาย" },
@@ -122,9 +166,11 @@ const tabs: readonly { id: WorkAppointmentTab; label: string }[] = [
 
 export function WorkAppointmentView({
   page,
+  pendingScope = null,
   queryError,
 }: {
   page: WorkAppointmentPage;
+  pendingScope?: WorkAppointmentPendingScope | null;
   queryError: string | null;
 }): React.JSX.Element {
   const visibleTabs = tabs.filter(({ id }) =>
@@ -263,6 +309,8 @@ export function WorkAppointmentView({
           ))}
         </ul>
       </nav>
+
+      {pendingScope ? <PendingScopeSummary page={page} scope={pendingScope} /> : null}
 
       <section aria-label={visibleTabs.find(({ id }) => id === page.tab)?.label ?? "รายการนัดหมาย"}>
         {page.items.length > 0 ? (

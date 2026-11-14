@@ -2,6 +2,8 @@
 
 Indicators are a projection of current business queues, not notifications. Opening a page is read-only and does not clear an indicator. No notification storage, read state, history, subscription, worker, migration or external service is added.
 
+Architecture after the PR #22 review corrections: `calculatePendingActions` (authoritative counts) → `loadPendingActions` (READY/UNAVAILABLE result, request-cached as `getPendingActions`) → layout/More/appointments page (denials keep protected-access handling) → `withNavigationPendingActions` (decorates admitted items only) → shared `ActionRequiredDot`/`pendingActionLabel` on every navigation surface, with `PendingActionRefresh` re-requesting the server render on stale client signals. Sections below give each contract.
+
 ## Verified action-source matrix
 
 | Actor / authority | Business predicate | Existing destination | Authority / query evidence |
@@ -18,7 +20,7 @@ The Hospital appointment queue retains its existing stale-request semantics. It 
 
 `calculatePendingActions` accepts only the server-authenticated user ID. It re-resolves the persisted active actor through the existing recovery-aware actor store and applies existing capability and relationship predicates. Counts carry no Patient identity or medical details. Navigation decorates only items already admitted by the existing policies; destination pages and mutations retain authoritative authorization.
 
-Counts cover every authorized direct Hospital. The service-request list already covers those Hospitals together. Appointment lists are Hospital-specific: the navigation's accessible label describes the aggregate scope, the link selects a Hospital with pending work, and the existing Hospital selector reaches the other authorized queues. The count is not the current page size. Rows receive a dot only for the viewer's action, including an OSM's own assignment rather than another OSM's appointment they can read.
+Counts cover every authorized direct Hospital. The service-request list already covers those Hospitals together. Appointment lists are Hospital-specific; see Multi-Hospital behavior below. The count is not the current page size. Rows receive a dot only for the viewer's action, including an OSM's own assignment rather than another OSM's appointment they can read.
 
 The request-local React cache deduplicates the layout and More page for the same user; no results persist between requests. One actor read is followed by independent aggregates: two for ADMIN; one service-request count plus one appointment-request SQL aggregate grouped by Hospital for Hospital operators; one SQL aggregate grouped by Hospital for OSM. Queue size does not determine the number of queries or returned IDs. The OSM counter no longer loads all appointment IDs. The existing destination-list implementation itself is otherwise unchanged.
 
@@ -47,11 +49,22 @@ Local measurement on the disposable PostgreSQL container (temporary benchmark, n
 
 `EXPLAIN (ANALYZE, BUFFERS)` for 10 Hospitals: `GroupAggregate` over a sort of 200 rows (25 kB in memory), hash semi-joins for the membership and patient-role conditions, `Hospital_pkey` index scans memoized by Hospital, hashed sub-plan for pending reschedules; 59 shared buffer hits, 1.28 ms execution. With this small fixture the planner prefers sequential scans on the small tables. Production-scale plans depend on table sizes and are not claimed here; the existing `PatientAppointmentRescheduleRequest/CancellationRequest(status, submittedAt)` and `(appointmentId, submittedAt)` indexes are available to the planner.
 
+## Multi-Hospital behavior
+
+The appointment indicator keeps one aggregate count across every authorized Hospital and carries a per-Hospital breakdown (`hospitalQueue: { tab, hospitals }`) computed by the same grouped aggregate, so it contains only Hospitals already in the actor's authorized scope. Navigation:
+
+- When more than one Hospital has pending work, every surface (desktop expanded and collapsed, mobile tab, More) uses the shared `pendingActionLabel`: “คำขอนัดหมายรอพิจารณา รวม 8 รายการ จาก 3 โรงพยาบาล” (OSM: “นัดหมายรอคุณตอบรับ …”). With one contributing Hospital it reads “คำขอนัดหมายรอพิจารณา 2 รายการ”. Zero-count Hospitals are not counted or named.
+- The link still opens the first Hospital with pending work (the existing, least disruptive default).
+
+Destination (`/app/appointments`): the page reuses the request-cached evaluation (no extra queries) and, on the matching queue tab, shows a compact bordered section when another authorized Hospital has pending work: the aggregate heading, “รายการด้านล่างแสดงเฉพาะ <selected Hospital>”, and one link per contributing Hospital with its own count (`aria-current` on the selected one; 44 px touch targets; wraps on mobile). Names come from the page's own authorized Hospital scopes, and the breakdown is intersected with them, so no unauthorized Hospital is named or counted. Links drop Hospital-specific filters. The existing Hospital selector, tabs and list are unchanged. The breakdown is unfiltered; the list below still applies the page filters. UNAVAILABLE indicators show no section (the shell note applies); an indicator access denial follows the page's existing redirect handling. No new global listing, modal, notification center or navigation level is added.
+
 ## Presentation and consistency
 
 Desktop expanded/collapsed navigation, mobile tabs, More and review rows share `ActionRequiredDot`. Zero counts produce no dot or zero badge. Thai accessible labels describe the action. The solid token-based dot uses a decorative pulse only under `prefers-reduced-motion: no-preference`; reduced motion disables animation. The generic legacy `badgeCount` adapter has neutral action wording and remains supported; production OSM navigation now leads directly to the actionable appointment queue.
 
-Successful appointment, reschedule-request, patient-service-request, onboarding-review and support-report Server Actions revalidate `/app` as a layout alongside existing destination paths. Existing mutation conflict/idempotency/transaction rules are unchanged. Service-request conflicts also revalidate current data. ## Refresh lifecycle semantics
+Successful appointment, reschedule-request, patient-service-request, onboarding-review and support-report Server Actions revalidate `/app` as a layout alongside existing destination paths. Existing mutation conflict/idempotency/transaction rules are unchanged. Service-request conflicts also revalidate current data.
+
+## Refresh lifecycle semantics
 
 Verified against the bundled Next.js 16 docs: shared layouts are not re-rendered on client navigation (partial rendering); `router.refresh()` re-renders all Server Components for the current route; a Server Action that revalidates `/app` as a layout returns the re-rendered layout with its response. React `cache` is request-local only.
 
@@ -68,6 +81,33 @@ Guards: a ref-based in-flight flag and the freshness stamp (also set when a refr
 Known limitation: an idle, continuously focused screen without navigation does not receive changes made in another user's session until the next eligible signal. This is not realtime delivery.
 
 ## Verification
+
+Focused tests cover source selection, OWNER/MEMBER authority, duplicate Hospital scopes, ADMIN separation, errors, aggregate-only OSM counts, navigation/More parity, zero hiding, reduced-motion classes, mutation revalidation, PostgreSQL cross-Hospital isolation, membership revocation, Hospital suspension, viewing without clearing, persisted completion and versioned OSM acceptance. The PR #22 corrective commits add: READY/UNAVAILABLE isolation and fail-closed denial handling (service, layout, More, AppShell); the refresh lifecycle (focus, visibility, route change, Server Action freshness, guards, coalescing, Strict Mode, unmount); grouped Hospital counts with paged destination parity; and multi-Hospital labels, destination scope and authorized intersection.
+
+Local execution on the corrective HEAD (Windows, disposable PostgreSQL via `npm run test:db:up`):
+
+- `npm run typecheck`: passed. Targeted ESLint over every changed TypeScript/TSX file: passed. `npm run lint:find-many`: passed, no new unbounded reads.
+- Focused unit/component command below: **56 files, 575 tests passed**.
+
+```powershell
+npm run test -- app/app/appointments src/components/app-shell src/components/ui src/modules/pending-actions src/modules/appointments/services app/app/more app/app/layout.test.tsx src/modules/auth/transport/quick-action-login-flow.integration.test.tsx src/modules/appointments/transport src/modules/patient-service-requests/transport/server-actions.test.ts src/modules/hospital-onboarding/transport/server-actions.test.ts src/modules/support/transport/server-actions.test.ts app/app/admin/support app/app/admin/hospital-onboarding app/app/patients/service-requests
+```
+
+- `npm run test:integration:focused -- tests/integration/pending-actions.integration.test.ts`: **7 passed**.
+- `DEMI_LINE_FLEX_MESSAGES_ENABLED=false npm run test:integration:focused -- tests/integration/appointments.integration.test.ts`: **38 passed** (process-only setting matching the existing text-push mocks and CI default, as in the original PR).
+- Full unit, full PostgreSQL integration and production build are delegated to hosted CI.
+
+Browser visual QA, screen-reader and E2E execution were not performed for the corrective commits; markup tests assert labels, roles and links only.
+
+## Known limitations
+
+- No realtime: an idle, continuously focused screen without navigation does not show another session's changes until the next eligible focus, visibility, route or mutation signal (at most one refresh per 30 seconds).
+- A persistent indicator outage logs one sanitized line per request that renders the shell; there is no cross-request log throttle.
+- The grouped SQL aggregate restates the direct-read Prisma predicate; the integration parity tests are the guard against drift, so a future change to `buildAppointmentWhere`'s direct path must update both.
+- The destination breakdown counts the unfiltered queue; a filtered list can be shorter than its Hospital's count.
+- Query plans were measured only on small local fixtures.
+
+## Original PR verification (before the corrective commits)
 
 Focused tests cover source selection, OWNER/MEMBER authority, duplicate Hospital scopes, ADMIN separation, errors, aggregate-only OSM counts, navigation/More parity, zero hiding, reduced-motion classes, return-to-window refresh, mutation revalidation, PostgreSQL cross-Hospital isolation, membership revocation, Hospital suspension, viewing without clearing, persisted completion and versioned OSM acceptance. Existing appointment and mutation tests remain regression coverage. Full unit, full PostgreSQL integration and production build are delegated to hosted CI.
 

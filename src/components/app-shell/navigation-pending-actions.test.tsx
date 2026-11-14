@@ -16,6 +16,7 @@ import { MobileBottomNavigation } from "./mobile-bottom-navigation";
 import { projectMobileNavigation, projectMoreNavigation } from "./mobile-tab-projection";
 import { withNavigationPendingActions } from "./navigation-pending-actions";
 import type { ApplicationNavigationGroup } from "./navigation-types";
+import type { PendingActionIndicator } from "@/modules/pending-actions/services/pending-action-service";
 
 const navigation: ApplicationNavigationGroup[] = [{ id: "care", label: "งาน", workspace: "work", items: [
   { href: "/app", label: "หน้าหลัก", match: "exact" },
@@ -26,7 +27,7 @@ const indicators = [
   { navigationHref: "/app/appointments", href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=mine", count: 7, label: "คำขอนัดหมายรอพิจารณา" },
   { navigationHref: "/app/patients/service-requests", href: "/app/patients/service-requests?group=PENDING", count: 2, label: "คำขอรับบริการรอพิจารณา" },
 ];
-const ready = (items: typeof indicators) => ({ status: "READY" as const, checkedAt: 0, indicators: items });
+const ready = (items: readonly PendingActionIndicator[]) => ({ status: "READY" as const, checkedAt: 0, indicators: items });
 
 describe("shared pending action presentation", () => {
   it("hides zero and negative counts and enables pulse only with safe motion", () => {
@@ -81,5 +82,26 @@ describe("shared pending action presentation", () => {
     const projection = projectMobileNavigation(groups);
     expect(projection.tabsByWorkspace.work.some(({ pendingAction }) => pendingAction !== undefined)).toBe(false);
     expect(renderToStaticMarkup(<NavigationList groups={groups} />)).not.toContain("sr-only");
+  });
+
+  it("names the multi-Hospital aggregate identically on every navigation surface", () => {
+    const multi = [{ ...indicators[0], count: 8, hospitalQueue: { tab: "PENDING_REQUESTS" as const, hospitals: [
+      { hospitalId: "a", count: 2 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }, { hospitalId: "idle", count: 0 },
+    ] } }, indicators[1]];
+    const groups = withNavigationPendingActions(navigation, ready(multi));
+    const projection = projectMobileNavigation(groups);
+    const surfaces = [
+      renderToStaticMarkup(<NavigationList groups={groups} />),
+      renderToStaticMarkup(<NavigationList collapsed groups={groups} />),
+      renderToStaticMarkup(<MobileBottomNavigation projection={projection} />),
+      renderToStaticMarkup(<MoreMenuNavigation groups={projectMoreNavigation(groups, projection.tabsByWorkspace.work)} selectedWorkspace="work" />),
+    ];
+    for (const html of surfaces) {
+      expect(html).toContain("คำขอนัดหมายรอพิจารณา รวม 8 รายการ จาก 3 โรงพยาบาล");
+      expect(html).not.toContain("idle");
+    }
+    const single = withNavigationPendingActions(navigation, ready([{ ...indicators[0], count: 2, hospitalQueue: { tab: "PENDING_REQUESTS" as const, hospitals: [{ hospitalId: "a", count: 2 }, { hospitalId: "b", count: 0 }] } }]));
+    expect(renderToStaticMarkup(<NavigationList groups={single} />)).toContain("คำขอนัดหมายรอพิจารณา 2 รายการ");
+    expect(renderToStaticMarkup(<NavigationList groups={single} />)).not.toContain("จาก");
   });
 });

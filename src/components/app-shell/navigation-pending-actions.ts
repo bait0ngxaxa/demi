@@ -19,7 +19,12 @@ export function withNavigationPendingActions(
   return navigation.map((group) => ({ ...group, items: group.items.map((item) => {
     const indicator = byHref.get(item.href);
     return indicator && indicator.count > 0
-      ? { ...item, pendingAction: { count: indicator.count, label: indicator.label, href: indicator.href } }
+      ? { ...item, pendingAction: {
+        count: indicator.count, label: indicator.label, href: indicator.href,
+        ...(indicator.hospitalQueue
+          ? { hospitalCount: indicator.hospitalQueue.hospitals.filter(({ count }) => count > 0).length }
+          : {}),
+      } }
       : item;
   }) }));
 }

@@ -56,7 +56,8 @@ describe("pending action sources", () => {
     mocks.appointments.mockResolvedValue([{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }]);
     const indicators = await calculatePendingActions(actor.userId);
     expect(mocks.appointments).toHaveBeenCalledOnce();
-    expect(indicators[1]).toMatchObject({ count: 6, href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=b" });
+    expect(indicators[1]).toMatchObject({ count: 6, href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=b", label: "คำขอนัดหมายรอพิจารณา" });
+    expect(indicators[1]?.hospitalQueue).toEqual({ tab: "PENDING_REQUESTS", hospitals: [{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }] });
   });
 
   it("sends OSM to their acceptance queue, including a Hospital that has pending work", async () => {
@@ -64,6 +65,7 @@ describe("pending action sources", () => {
     mocks.acceptances.mockResolvedValue([{ hospitalId: "other", count: 0 }, { hospitalId: "mine", count: 10000 }]);
     expect(await calculatePendingActions(actor.userId)).toEqual([expect.objectContaining({
       count: 10000, navigationHref: "/app/appointments", href: "/app/appointments?tab=AWAITING_MY_ACCEPTANCE&hospitalId=mine",
+      label: "นัดหมายรอคุณตอบรับ", hospitalQueue: { tab: "AWAITING_MY_ACCEPTANCE", hospitals: [{ hospitalId: "other", count: 0 }, { hospitalId: "mine", count: 10000 }] },
     })]);
     expect(mocks.services).not.toHaveBeenCalled();
     expect(mocks.appointments).not.toHaveBeenCalled();

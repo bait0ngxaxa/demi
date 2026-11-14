@@ -1,9 +1,13 @@
 import { classNames } from "./class-names";
 
-export type PendingAction = { count: number; label: string; href?: string };
+/** `hospitalCount`: Hospitals contributing to an aggregate `count`; above one, the label names the aggregate scope. */
+export type PendingAction = { count: number; label: string; href?: string; hospitalCount?: number };
 
 export function pendingActionLabel(action: PendingAction | undefined): string {
-  return action && action.count > 0 ? `${action.label} ${action.count} รายการ` : "";
+  if (!action || action.count <= 0) return "";
+  return action.hospitalCount !== undefined && action.hospitalCount > 1
+    ? `${action.label} รวม ${action.count} รายการ จาก ${action.hospitalCount} โรงพยาบาล`
+    : `${action.label} ${action.count} รายการ`;
 }
 
 export function ActionRequiredDot({ action, className, tone }: {
