@@ -44,6 +44,11 @@ function render(
 }
 
 describe("assigned patient operational directory", () => {
+  it("preserves task, Hospital and filters when jumping to page 5", () => {
+    const html = render({ ...result, value: "HN-001", lookupType: "HOSPITAL_NUMBER", classificationFilter: "RISK", totalPages: 20, hospitalFilter: { hospitalId: "hospital-1", hospitalName: "โรงพยาบาล ก" } }, null, "screening");
+    expect(html).toContain('aria-label="ไปหน้าที่ 5"');
+    expect(html).toContain('href="/app/patients/assigned?lookupType=HOSPITAL_NUMBER&amp;task=screening&amp;hospitalId=hospital-1&amp;value=HN-001&amp;page=5&amp;classification=RISK"');
+  });
   it("identifies the current assigned scope and offers one care entry per relationship", () => {
     const html = render();
     expect(html).toContain("แสดงเฉพาะผู้ป่วยที่คุณรับผิดชอบในขณะนี้");

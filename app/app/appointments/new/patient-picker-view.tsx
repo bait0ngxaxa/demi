@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
+import { PageNumberPagination } from "@/components/ui/page-number-pagination";
 import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import type { PatientDirectoryLookupType } from "@/modules/patient-directory/schemas/patient-directory-schemas";
@@ -116,11 +117,13 @@ export function AppointmentPatientPicker({
                   </li>
                 ))}
               </ul>
-              <nav aria-label="เปลี่ยนหน้าผลการค้นหา" className="flex flex-wrap justify-center gap-3 pt-2">
-                {currentPage > 1 ? <Link className={buttonClassName({ variant: "secondary" })} href={pickerHref({ hospitalId: selectedScope.hospitalId, lookupType, value, page: currentPage - 1 })}>หน้าก่อนหน้า</Link> : null}
-                <span className="flex min-h-12 items-center text-sm text-text-muted">หน้า {currentPage.toLocaleString("th-TH")} จาก {totalPages.toLocaleString("th-TH")}</span>
-                {currentPage < totalPages ? <Link className={buttonClassName({ variant: "secondary" })} href={pickerHref({ hospitalId: selectedScope.hospitalId, lookupType, value, page: currentPage + 1 })}>หน้าถัดไป</Link> : null}
-              </nav>
+              <PageNumberPagination
+                className="pt-2"
+                label="เปลี่ยนหน้าผลการค้นหา"
+                page={currentPage}
+                totalPages={totalPages}
+                getPageTarget={(page) => ({ href: pickerHref({ hospitalId: selectedScope.hospitalId, lookupType, value, page }) })}
+              />
             </section>
           ) : (
             <div className="rounded-panel border border-dashed border-border bg-surface px-5 py-9 text-center sm:px-7">
