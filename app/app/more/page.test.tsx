@@ -24,8 +24,8 @@ vi.mock("next/link", () => ({
 vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
   listActorHospitalWorkspaces: () => Promise.resolve([]),
 }));
-vi.mock("@/modules/appointments/services/work-appointment-query-service", () => ({
-  countWorkAppointmentsAwaitingMyAcceptance: () => Promise.resolve(0),
+vi.mock("@/modules/pending-actions/services/pending-action-service", () => ({
+  getPendingActions: () => Promise.resolve([]),
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: () => dependencies.actor(),

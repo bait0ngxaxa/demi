@@ -96,8 +96,9 @@ describe("UI-4 task sections and icon rail", () => {
       expect(html).toContain(`data-navigation-tooltip="${label}"`);
     }
     expect(html).toContain('data-navigation-tooltip="ผู้ป่วยที่ดูแล"');
-    expect(html).toContain('aria-label="ผู้ป่วยที่ดูแล · รอรับนัด 4 รายการ"');
-    expect(html).toContain(">4</span>");
+    expect(html).toContain('aria-label="ผู้ป่วยที่ดูแล · งานรอดำเนินการ 4 รายการ"');
+    expect(html).toContain("งานรอดำเนินการ 4 รายการ</span>");
+    expect(html).not.toContain(">4</span>");
     // Headings stay for screen readers only; nothing in the rail is inert, hidden or removed from the tab order.
     expect(html).toContain('class="sr-only text-white/55" id="navigation-section-desktop-care"');
     expect(html).not.toMatch(/inert|aria-hidden="true"[^>]*href|tabindex="-1"/u);

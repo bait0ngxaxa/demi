@@ -15,7 +15,8 @@ import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-sh
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
+import { getPendingActions } from "@/modules/pending-actions/services/pending-action-service";
+import { withNavigationPendingActions } from "@/components/app-shell/navigation-pending-actions";
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
@@ -59,9 +60,9 @@ async function ResolvedProtectedApplicationShell({
   const actor = await resolveProtectedActor(
     requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
   );
-  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
+  const [hospitalWorkspaces, pendingActions, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
-    countWorkAppointmentsAwaitingMyAcceptance(actor),
+    getPendingActions(actor.userId),
     getActorDisplayName(actor).catch((error: unknown) =>
       error instanceof InfrastructureError ? "ผู้ใช้งาน DEMI" : Promise.reject(error),
     ),
@@ -71,7 +72,7 @@ async function ResolvedProtectedApplicationShell({
     }),
     shouldShowLegalReacceptanceBanner(actor),
   ]);
-  const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
+  const navigation = withNavigationPendingActions(projectApplicationNavigation(actor, hospitalWorkspaces), pendingActions);
 
   return (
     // Canonical Account LIFF URL for Workspace LIFF -> Account LIFF transitions; null keeps the ordinary route.

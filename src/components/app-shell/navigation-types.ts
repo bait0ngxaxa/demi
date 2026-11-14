@@ -1,4 +1,5 @@
 import type { CustomerMenuId } from "./customer-navigation";
+import type { PendingAction } from "@/components/ui/action-required-dot";
 
 export type ApplicationWorkspaceContext = "personal" | "work";
 
@@ -24,6 +25,7 @@ export type ApplicationNavigationItem = {
   match: "exact" | "prefix";
   prefetch?: boolean;
   badgeCount?: number;
+  pendingAction?: PendingAction;
   /** UI-01: set on customer menu items only; their icon and mobile tab follow the menu entry, not the href. */
   menuId?: CustomerMenuId;
 };

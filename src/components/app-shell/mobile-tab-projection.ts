@@ -1,3 +1,6 @@
+import { navigationPendingAction } from "./navigation-pending-actions";
+import type { PendingAction } from "@/components/ui/action-required-dot";
+
 import { CUSTOMER_PRIMARY_MENU, getCustomerMenuIcon } from "./customer-navigation";
 import type {
   ApplicationNavigationGroup,
@@ -53,6 +56,7 @@ export type MobileNavigationTab = {
     | "patient-detail"
     | "more";
   badgeCount?: number;
+  pendingAction?: PendingAction;
 };
 
 export type MobileNavigationProjection = {
@@ -121,6 +125,7 @@ function tabFromItem(
     match: options.match ?? item.match,
     activeRoute: options.activeRoute,
     ...(item.badgeCount === undefined ? {} : { badgeCount: item.badgeCount }),
+    pendingAction: navigationPendingAction(item),
   };
 }
 
@@ -216,9 +221,7 @@ function projectWorkTabs(
       tabFromItem(patientDirectory, {
         id: "patients",
         label: "ผู้ป่วย",
-        accessibleLabel: patientDirectory.badgeCount === undefined
-          ? patientDirectory.label
-          : `${patientDirectory.label} · รอรับนัด ${patientDirectory.badgeCount} รายการ`,
+        accessibleLabel: patientDirectory.label,
         icon: "patients",
         match: "exact",
         activeRoute: assignedPatients ? "assigned-patients" : "patient-detail",
@@ -228,7 +231,7 @@ function projectWorkTabs(
 
   if (assignedPatients) {
     tabs.push(
-      tabFromItem(assignedPatients, {
+      tabFromItem({ ...assignedPatients, badgeCount: undefined, pendingAction: undefined }, {
         id: "screening",
         href: `${assignedPatients.href}?task=screening`,
         label: "คัดกรอง",
@@ -359,6 +362,21 @@ function projectCustomerTabs(
   });
 }
 
+function withMorePendingActions(
+  navigation: readonly ApplicationNavigationGroup[],
+  tabs: readonly MobileNavigationTab[],
+  workspace: ApplicationWorkspaceContext,
+): readonly MobileNavigationTab[] {
+  const primaryHrefs = new Set(tabs.filter(({ id }) => id !== "more").map(({ href }) => href));
+  const count = navigation.filter((group) => isGroupAvailableInWorkspace(group, workspace))
+    .flatMap(({ items }) => items)
+    .filter(({ href }) => !primaryHrefs.has(href))
+    .reduce((total, item) => total + Math.max(0, navigationPendingAction(item)?.count ?? 0), 0);
+  return tabs.map((tab) => tab.id === "more" && count > 0
+    ? { ...tab, pendingAction: { count, label: "งานรอดำเนินการในเมนูเพิ่มเติม" } }
+    : tab);
+}
+
 export function projectMobileNavigation(
   navigation: readonly ApplicationNavigationGroup[],
 ): MobileNavigationProjection {
@@ -375,8 +393,8 @@ export function projectMobileNavigation(
   return {
     availableWorkspaces,
     tabsByWorkspace: {
-      personal: personalTabs,
-      work: workTabs,
+      personal: withMorePendingActions(navigation, personalTabs, "personal"),
+      work: withMorePendingActions(navigation, workTabs, "work"),
     },
   };
 }
