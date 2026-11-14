@@ -10,7 +10,7 @@ import {
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { computeFollowupAchievement } from "@/modules/followups/domain/followup-achievement";
+import { computeFollowupAchievement, type FollowupAchievement } from "@/modules/followups/domain/followup-achievement";
 import { getGoalTemplate } from "@/modules/goals/domain/goal-templates";
 import {
   decidePatientProgramPolicy,
@@ -152,6 +152,15 @@ export type RoundExtraActivity = {
   recordedByDisplayName: string | null;
 };
 
+export type RoundFollowupSummary = {
+  followupId: string;
+  /** วันที่ติดตาม (PatientFollowup.serviceDate). */
+  serviceDate: Date | null;
+  achievement: FollowupAchievement | null;
+  planAdjusted: boolean | null;
+  hasObstacle: boolean | null;
+};
+
 export type ProgramRoundDetail = {
   patientHospitalRelationshipId: string;
   patientProgramId: string;
@@ -188,6 +197,11 @@ export type ProgramRoundDetail = {
   followupId: string | null;
   /** Rounds 3-12: the round is writable and its Follow-up is the next one to record. */
   canStartFollowup: boolean;
+  /**
+   * Rounds 3-12: overview of the round's recorded Follow-up (the round's main record, workbook AH-BM);
+   * null when none is recorded yet. `achievement` is null when the Follow-up cannot be scored (BR-04).
+   */
+  followupSummary: RoundFollowupSummary | null;
   serviceOne: PatientProgramServiceOneProjection;
   /** R2-C: the Program screening answering each step; a legacy combined screening answers both. */
   screenings: Readonly<Record<"PAM" | "PROMS", { id: string; combined: boolean } | null>>;
@@ -348,6 +362,7 @@ export const programRoundSelect = {
       recordedAt: true,
       sourceGoalPlanId: true,
       planAdjusted: true,
+      hasObstacle: true,
       followedPlan: true,
       reflectionNote: true,
       expertAdvice: true,
@@ -418,6 +433,13 @@ export function roundFollowupAchievementRate(
   program: ProgramRoundRecord,
   roundNumber: number,
 ): { ratePercent: number | null } | null {
+  const summary = roundFollowupSummary(program, roundNumber);
+
+  return summary ? { ratePercent: summary.achievement?.ratePercent ?? null } : null;
+}
+
+/** Rounds 3-12: the round's Follow-up with its BR-04 achievement against its source plan; null without one. */
+export function roundFollowupSummary(program: ProgramRoundRecord, roundNumber: number): RoundFollowupSummary | null {
   const followup = findFollowupForRound(program, roundNumber);
 
   if (!followup) {
@@ -425,9 +447,14 @@ export function roundFollowupAchievementRate(
   }
 
   const plan = program.goalPlans.find((candidate) => candidate.id === followup.sourceGoalPlanId);
-  const achievement = plan ? computeFollowupAchievement(followup.activityProgress, plan.items) : null;
 
-  return { ratePercent: achievement?.ratePercent ?? null };
+  return {
+    followupId: followup.id,
+    serviceDate: followup.serviceDate,
+    achievement: plan ? computeFollowupAchievement(followup.activityProgress, plan.items) : null,
+    planAdjusted: followup.planAdjusted,
+    hasObstacle: followup.hasObstacle,
+  };
 }
 
 function adjustedPlanFor(program: ProgramRoundRecord, followupId: string) {
@@ -896,6 +923,7 @@ export function buildProgramRoundDetail(
       latestHeightCm: latestHeightCm(program, roundNumber),
     },
     followupId: followup?.id ?? null,
+    followupSummary: roundFollowupSummary(program, roundNumber),
     canStartFollowup:
       isFollowupRound(roundNumber) &&
       status.writable &&
