@@ -1,3 +1,5 @@
+import Form from "next/form";
+
 export type HomeHospitalOption = {
   relationshipId: string;
   hospitalName: string;
@@ -41,7 +43,7 @@ export function HomeHospitalChip({
   }
 
   return (
-    <form action={action} className="mt-3 flex max-w-full flex-wrap items-end gap-2 lg:mt-0 lg:w-full lg:max-w-md" method="get">
+    <Form action={action} className="mt-3 flex max-w-full flex-wrap items-end gap-2 lg:mt-0 lg:w-full lg:max-w-md">
       <div className="min-w-0 flex-1">
         <label className="mb-1 block text-xs font-medium text-white/80" htmlFor={selectId}>
           โรงพยาบาลปัจจุบัน
@@ -73,6 +75,6 @@ export function HomeHospitalChip({
       >
         เปลี่ยน
       </button>
-    </form>
+    </Form>
   );
 }

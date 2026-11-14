@@ -1,4 +1,5 @@
 import { HospitalContentCategory } from "@prisma/client";
+import Form from "next/form";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { HOSPITAL_CONTENT_CATEGORY_LABELS } from "@/modules/hospital-content/domain/hospital-content";
@@ -58,12 +59,14 @@ export function PatientContentFeed({ context, kind = "KNOWLEDGE" }: {
     {kind === "NEWS" ? <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} className={patientContentControlClass}>ไปที่สื่อความรู้</PatientContentLink> : (
       <nav aria-label="เลือกหมวดหมู่สื่อความรู้" className="flex flex-wrap gap-2">
         <PatientContentLink href={buildFeedHref(knowledgeBase, context.hospitalRelationshipId)} current={page.category === null} className={patientContentControlClass}>{page.category === null ? "ทุกหมวดหมู่ (เลือกอยู่)" : "ทุกหมวดหมู่"}</PatientContentLink>
-        {knowledgeCategories.map((category) => <form action={knowledgeBase} method="get" key={category}>
+        {knowledgeCategories.map((category) => <Form action={knowledgeBase} key={category}>
           {context.hospitalRelationshipId !== null ? <input name="hospital" type="hidden" value={context.hospitalRelationshipId} /> : null}
-          <button type="submit" name="category" value={category} aria-pressed={page.category === category} className={patientContentControlClass}>
+          {/* next/form serializes the form without its submitter, so the category travels as a hidden field (same URL as before). */}
+          <input name="category" type="hidden" value={category} />
+          <button type="submit" aria-pressed={page.category === category} className={patientContentControlClass}>
             {HOSPITAL_CONTENT_CATEGORY_LABELS[category]}{page.category === category ? " (เลือกอยู่)" : ""}
           </button>
-        </form>)}
+        </Form>)}
       </nav>
     )}
     {page.emptyState !== null ? <Alert variant="neutral">
