@@ -37,7 +37,21 @@ Only `InfrastructureError` is isolated. `UnauthenticatedError` and `ForbiddenErr
 
 Desktop expanded/collapsed navigation, mobile tabs, More and review rows share `ActionRequiredDot`. Zero counts produce no dot or zero badge. Thai accessible labels describe the action. The solid token-based dot uses a decorative pulse only under `prefers-reduced-motion: no-preference`; reduced motion disables animation. The generic legacy `badgeCount` adapter has neutral action wording and remains supported; production OSM navigation now leads directly to the actionable appointment queue.
 
-Successful appointment, reschedule-request, patient-service-request, onboarding-review and support-report Server Actions revalidate `/app` as a layout alongside existing destination paths. Existing mutation conflict/idempotency/transaction rules are unchanged. Service-request conflicts also revalidate current data. A client return-to-window listener calls `router.refresh()` on focus/visibility restoration, at most once per 30 seconds, skipping in-flight/unknown-outcome form guards. It has no timer, polling, WebSocket or local optimistic decrement. An idle, continuously focused screen may remain unchanged until a mutation, navigation that reloads server data, or a later focus refresh; this is intentional without mandatory realtime.
+Successful appointment, reschedule-request, patient-service-request, onboarding-review and support-report Server Actions revalidate `/app` as a layout alongside existing destination paths. Existing mutation conflict/idempotency/transaction rules are unchanged. Service-request conflicts also revalidate current data. ## Refresh lifecycle semantics
+
+Verified against the bundled Next.js 16 docs: shared layouts are not re-rendered on client navigation (partial rendering); `router.refresh()` re-renders all Server Components for the current route; a Server Action that revalidates `/app` as a layout returns the re-rendered layout with its response. React `cache` is request-local only.
+
+The layout passes the result's `checkedAt` to `PendingActionRefresh`. Every server render of the shell — initial load, `router.refresh()`, Server Action revalidation — delivers a new value, which marks the indicators fresh on receipt. Client signals call `router.refresh()` only when the indicators are at least 30 seconds old (`PENDING_ACTION_REFRESH_INTERVAL_MS`):
+
+| Signal | Behavior |
+| --- | --- |
+| Window focus / `visibilitychange` to visible | Refresh if stale; the two events for one return coalesce into one refresh |
+| Client pathname change (search-param-only changes excluded) | Refresh if stale; recent data suppresses it |
+| Successful relevant mutation | Its existing `/app` layout revalidation already delivers fresh data and resets the timer, so no extra refresh follows |
+
+Guards: a ref-based in-flight flag and the freshness stamp (also set when a refresh starts, bounding retries if one fails) prevent duplicate or concurrent refreshes. A refresh cannot loop: it does not change the pathname and its result is fresh. Effects order freshness before pathname evaluation, so a revalidation and redirect in the same commit do not trigger a second request. Refresh is skipped while `#application-main-content` contains an unknown-outcome navigation guard or a disabled `aria-busy` submit button. Listeners are removed on unmount; Strict Mode effect replay does not issue extra refreshes. There is no `setInterval`, polling, WebSocket, Realtime, worker or local optimistic decrement.
+
+Known limitation: an idle, continuously focused screen without navigation does not receive changes made in another user's session until the next eligible signal. This is not realtime delivery.
 
 ## Verification
 

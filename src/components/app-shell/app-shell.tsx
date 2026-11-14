@@ -22,6 +22,8 @@ type AppShellProps = {
   legalReacceptanceNeeded?: boolean;
   /** UNAVAILABLE: indicators could not be calculated; a quiet note replaces any implied zero. */
   pendingActionsStatus?: "READY" | "UNAVAILABLE";
+  /** Server evaluation time of the indicators; a new value marks them fresh for the refresh lifecycle. */
+  pendingActionsCheckedAt?: number;
 };
 
 export function AppShell({
@@ -32,12 +34,13 @@ export function AppShell({
   passwordResetNoticeAt = null,
   legalReacceptanceNeeded = false,
   pendingActionsStatus = "READY",
+  pendingActionsCheckedAt = 0,
 }: AppShellProps): React.JSX.Element {
   const mobileNavigation = projectMobileNavigation(navigation);
 
   return (
     <NavigationWorkspaceProvider availableWorkspaces={mobileNavigation.availableWorkspaces}>
-      <PendingActionRefresh />
+      <PendingActionRefresh checkedAt={pendingActionsCheckedAt} />
       <div className="min-h-svh bg-canvas text-text lg:flex">
         <a
           className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform motion-reduce:transition-none focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"

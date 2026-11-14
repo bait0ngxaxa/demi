@@ -97,6 +97,7 @@ async function ResolvedProtectedApplicationShell({
         legalReacceptanceNeeded={legalReacceptanceNeeded}
         navigation={navigation}
         passwordResetNoticeAt={passwordResetNoticeAt}
+        pendingActionsCheckedAt={pendingActions.checkedAt}
         pendingActionsStatus={pendingActions.status}
         roleLabels={actor.roles.map((role) => roleLabels[role])}
       >
