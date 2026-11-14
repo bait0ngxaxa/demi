@@ -22,7 +22,16 @@ Counts cover every authorized direct Hospital. The service-request list already 
 
 The request-local React cache deduplicates the layout and More page for the same user; no results persist between requests. One actor read is followed by independent aggregates: two for ADMIN; one service-request count plus one appointment count per authorized direct Hospital for Hospital operators; one SQL aggregate grouped by Hospital for OSM. Queue size does not determine the number of queries or returned IDs. The OSM counter no longer loads all appointment IDs. The existing destination-list implementation itself is otherwise unchanged.
 
-Authorization errors propagate. Unexpected database failures are logged through the existing sanitized error reporter and propagate as InfrastructureError to the existing error boundary; they are never presented as a successful empty queue.
+## Failure isolation contract
+
+Indicators are optional UX and are not an availability dependency of the protected shell. `loadPendingActions` (request-cached as `getPendingActions`) returns an explicit result:
+
+| Result | Meaning | Presentation |
+| --- | --- | --- |
+| `READY` + `indicators` | Counts calculated from the authoritative queues for the re-resolved actor | Dots and Thai accessible labels for nonzero counts only |
+| `UNAVAILABLE` | `InfrastructureError` while re-reading the actor or counting (e.g. a temporary query failure) | No dots; one quiet `role="status"` note in the shell: “ไม่สามารถตรวจสอบงานที่รอดำเนินการได้ในขณะนี้ …”. Never rendered as zero |
+
+Only `InfrastructureError` is isolated. `UnauthenticatedError` and `ForbiddenError` — a missing session, or an actor revoked/suspended between the shell's session check and the indicator re-read — propagate; the layout and More page route them through the same protected-access redirect as the actor check, so a revoked role never sees stale or empty indicators. Any other unexpected error still propagates to the existing error boundary. There is no unscoped fallback query and no cross-request cache, so nothing stale can leak across users or Hospitals. The original failure is logged once per error object through the existing sanitized reporter (`toInfrastructureError`); request-local `cache` means the layout and More page share one evaluation and one log line per request. No cross-request log throttling exists in the codebase, so a persistent outage logs once per request that renders the shell.
 
 ## Presentation and consistency
 

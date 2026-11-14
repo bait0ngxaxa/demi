@@ -26,6 +26,7 @@ const indicators = [
   { navigationHref: "/app/appointments", href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=mine", count: 7, label: "คำขอนัดหมายรอพิจารณา" },
   { navigationHref: "/app/patients/service-requests", href: "/app/patients/service-requests?group=PENDING", count: 2, label: "คำขอรับบริการรอพิจารณา" },
 ];
+const ready = (items: typeof indicators) => ({ status: "READY" as const, checkedAt: 0, indicators: items });
 
 describe("shared pending action presentation", () => {
   it("hides zero and negative counts and enables pulse only with safe motion", () => {
@@ -37,7 +38,7 @@ describe("shared pending action presentation", () => {
   });
 
   it("preserves hierarchy and exposes no unauthorized destination", () => {
-    const groups = withNavigationPendingActions(navigation, [...indicators, { ...indicators[0], navigationHref: "/forbidden" }]);
+    const groups = withNavigationPendingActions(navigation, ready([...indicators, { ...indicators[0], navigationHref: "/forbidden" }]));
     expect(groups.flatMap(({ items }) => items.map(({ href, label }) => ({ href, label })))).toEqual(
       navigation.flatMap(({ items }) => items.map(({ href, label }) => ({ href, label }))),
     );
@@ -45,7 +46,7 @@ describe("shared pending action presentation", () => {
   });
 
   it("keeps desktop expanded, collapsed, bottom navigation and More consistent", () => {
-    const groups = withNavigationPendingActions(navigation, indicators);
+    const groups = withNavigationPendingActions(navigation, ready(indicators));
     const projection = projectMobileNavigation(groups);
     const tabs = projection.tabsByWorkspace.work;
     expect(tabs.find(({ id }) => id === "appointments")?.pendingAction?.count).toBe(7);
@@ -67,10 +68,18 @@ describe("shared pending action presentation", () => {
   });
 
   it("removes indicators only when a subsequent server calculation reports zero", () => {
-    const first = withNavigationPendingActions(navigation, indicators);
+    const first = withNavigationPendingActions(navigation, ready(indicators));
     expect(renderToStaticMarkup(<NavigationList groups={first} />)).toContain("คำขอนัดหมายรอพิจารณา 7 รายการ");
     expect(renderToStaticMarkup(<NavigationList groups={first} />)).toContain("คำขอนัดหมายรอพิจารณา 7 รายการ");
-    const completed = withNavigationPendingActions(navigation, indicators.map((indicator) => ({ ...indicator, count: 0 })));
+    const completed = withNavigationPendingActions(navigation, ready(indicators.map((indicator) => ({ ...indicator, count: 0 }))));
     expect(renderToStaticMarkup(<NavigationList groups={completed} />)).not.toContain("animate-pulse");
+  });
+
+  it("adds no synthetic indicator when the calculation is unavailable", () => {
+    const groups = withNavigationPendingActions(navigation, { status: "UNAVAILABLE", checkedAt: 0 });
+    expect(groups).toBe(navigation);
+    const projection = projectMobileNavigation(groups);
+    expect(projection.tabsByWorkspace.work.some(({ pendingAction }) => pendingAction !== undefined)).toBe(false);
+    expect(renderToStaticMarkup(<NavigationList groups={groups} />)).not.toContain("sr-only");
   });
 });

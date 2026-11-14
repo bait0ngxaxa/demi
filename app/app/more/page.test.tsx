@@ -4,10 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
+import { ForbiddenError } from "@/shared/errors/application-error";
 
 const dependencies = vi.hoisted(() => ({
   actor: vi.fn(),
   displayName: vi.fn(),
+  pendingActions: vi.fn(),
 }));
 
 vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
@@ -25,7 +27,7 @@ vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
   listActorHospitalWorkspaces: () => Promise.resolve([]),
 }));
 vi.mock("@/modules/pending-actions/services/pending-action-service", () => ({
-  getPendingActions: () => Promise.resolve([]),
+  getPendingActions: (userId: string) => dependencies.pendingActions(userId),
 }));
 vi.mock("@/modules/auth/services/application-access-service", () => ({
   getProtectedApplicationActor: () => dependencies.actor(),
@@ -76,6 +78,21 @@ describe("/app/more page", () => {
   beforeEach(() => {
     dependencies.actor.mockReset();
     dependencies.displayName.mockReset();
+    dependencies.pendingActions.mockReset();
+    dependencies.pendingActions.mockResolvedValue({ status: "READY", checkedAt: 0, indicators: [] });
+  });
+
+  it("stays usable without dots when indicators are UNAVAILABLE", async () => {
+    dependencies.pendingActions.mockResolvedValue({ status: "UNAVAILABLE", checkedAt: 0 });
+    const html = await renderPage(actor([Role.HOSPITAL]), "work");
+    expect(html).toContain("/app/patients/service-requests");
+    expect(html).not.toContain("animate-pulse");
+    expect(html).not.toContain("sr-only");
+  });
+
+  it("does not treat an indicator access denial as an empty queue", async () => {
+    dependencies.pendingActions.mockRejectedValue(new ForbiddenError());
+    await expect(renderPage(actor([Role.HOSPITAL]), "work")).rejects.toThrow("REDIRECT:/login");
   });
 
   it("renders the profile, role labels, projected work menu, and full-width logout", async () => {

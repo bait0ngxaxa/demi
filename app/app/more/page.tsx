@@ -16,7 +16,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { getPendingActions } from "@/modules/pending-actions/services/pending-action-service";
+import { getPendingActions, type PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
 import { withNavigationPendingActions } from "@/components/app-shell/navigation-pending-actions";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
@@ -41,6 +41,19 @@ async function resolveProtectedActor(): Promise<ActorContext> {
   }
 }
 
+/** UNAVAILABLE shows no dots here; the shared shell carries the unavailable note. Denials keep protected handling. */
+async function resolvePendingActions(userId: string): Promise<PendingActionsResult> {
+  try {
+    return await getPendingActions(userId);
+  } catch (error: unknown) {
+    if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
+      redirect("/login");
+    }
+
+    throw error;
+  }
+}
+
 function parseRequestedWorkspace(value: string | string[] | undefined): ApplicationWorkspaceContext | null {
   if (value === "personal" || value === "work") {
     return value;
@@ -54,7 +67,7 @@ export default async function MorePage({ searchParams }: MorePageProps): Promise
   const [actor, query] = await Promise.all([resolveProtectedActor(), searchParams]);
   const [hospitalWorkspaces, pendingActions] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
-    getPendingActions(actor.userId),
+    resolvePendingActions(actor.userId),
   ]);
   const navigation = withNavigationPendingActions(projectApplicationNavigation(actor, hospitalWorkspaces), pendingActions);
   const mobileNavigation = projectMobileNavigation(navigation);

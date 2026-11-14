@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 const mocks = vi.hoisted(() => ({ actor: vi.fn(), onboarding: vi.fn(), support: vi.fn(), services: vi.fn(), appointments: vi.fn(), acceptances: vi.fn() }));
 vi.mock("@/modules/auth/services/actor-context-service", () => ({ createActorContextStore: vi.fn(), resolveActorAccessByUserId: mocks.actor }));
@@ -11,7 +11,7 @@ vi.mock("@/lib/db/prisma", () => ({ getPrisma: () => ({
   hospitalOnboardingApplication: { count: mocks.onboarding }, supportReport: { count: mocks.support },
   patientServiceRequest: { count: mocks.services },
 }) }));
-import { calculatePendingActions } from "./pending-action-service";
+import { calculatePendingActions, loadPendingActions } from "./pending-action-service";
 
 const actor: ActorContext = { userId: "user", personId: "person", roles: ["PATIENT"], hospitalMemberships: [], osmHospitalRelationships: [] };
 function authorize(overrides: Partial<ActorContext>): void {
@@ -78,5 +78,44 @@ describe("pending action sources", () => {
     authorize({ roles: ["ADMIN"] });
     mocks.support.mockRejectedValue(new Error("database offline"));
     await expect(calculatePendingActions(actor.userId)).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+  });
+});
+
+describe("indicator fault isolation", () => {
+  const now = new Date("2026-11-14T00:00:00Z");
+
+  it("keeps successful loading unchanged and stamps the evaluation", async () => {
+    authorize({ roles: ["ADMIN"] });
+    expect(await loadPendingActions(actor.userId, undefined, now)).toEqual({
+      status: "READY", checkedAt: now.getTime(), indicators: await calculatePendingActions(actor.userId, undefined, now),
+    });
+  });
+
+  it("degrades an indicator database failure to UNAVAILABLE without a synthetic zero count", async () => {
+    authorize({ roles: ["HOSPITAL"], hospitalMemberships: [{ hospitalId: "hospital", membershipType: "MEMBER", profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }] });
+    mocks.services.mockRejectedValue(new Error("connection reset"));
+    const result = await loadPendingActions(actor.userId, undefined, now);
+    expect(result).toEqual({ status: "UNAVAILABLE", checkedAt: now.getTime() });
+    expect(result).not.toHaveProperty("indicators");
+  });
+
+  it("degrades an actor-store infrastructure failure, which grants nothing", async () => {
+    mocks.actor.mockRejectedValue(new Error("pool exhausted"));
+    expect(await loadPendingActions(actor.userId, undefined, now)).toEqual({ status: "UNAVAILABLE", checkedAt: now.getTime() });
+  });
+
+  it.each([
+    ["a suspended account", () => mocks.actor.mockResolvedValue({ status: "ACCOUNT_NOT_ACTIVE", accountStatus: "SUSPENDED" })],
+    ["a revoked actor", () => mocks.actor.mockRejectedValue(new ForbiddenError())],
+    ["a missing session", () => mocks.actor.mockRejectedValue(new UnauthenticatedError())],
+  ])("keeps %s fail-closed instead of degrading it", async (_label, arrange) => {
+    arrange();
+    await expect(loadPendingActions(actor.userId, undefined, now)).rejects.toMatchObject({ code: expect.stringMatching(/^(FORBIDDEN|UNAUTHENTICATED)$/) });
+  });
+
+  it("calculates each user independently, so no count crosses users", async () => {
+    mocks.actor.mockImplementation(async (userId: string) => ({ status: "AUTHORIZED", actor: { ...actor, userId, roles: userId === "admin" ? ["ADMIN"] : ["PATIENT"] } }));
+    expect(await loadPendingActions("admin", undefined, now)).toMatchObject({ status: "READY", indicators: [{ count: 2 }, { count: 3 }] });
+    expect(await loadPendingActions("patient", undefined, now)).toEqual({ status: "READY", checkedAt: now.getTime(), indicators: [] });
   });
 });

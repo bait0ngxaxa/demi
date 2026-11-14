@@ -12,7 +12,7 @@ import {
 import { decidePatientServiceRequestPolicy, PATIENT_SERVICE_REQUEST_CAPABILITIES } from "@/modules/patient-service-requests/policies/patient-service-request-policy";
 import { hospitalOperatedByWhere } from "@/modules/identity/services/hospital-authority";
 import { activePatientHospitalRelationshipWhere } from "@/modules/patient-hospital-relationship/domain/patient-hospital-relationship-lifecycle";
-import { ApplicationError, ForbiddenError } from "@/shared/errors/application-error";
+import { ApplicationError, ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PendingActionIndicator = {
@@ -84,7 +84,32 @@ export async function calculatePendingActions(
   }
 }
 
+/**
+ * Indicators are optional UX: READY carries verified counts; UNAVAILABLE means they could not be calculated and must
+ * never be presented as zero. `checkedAt` identifies this server evaluation for the client refresh lifecycle.
+ */
+export type PendingActionsResult =
+  | { status: "READY"; checkedAt: number; indicators: readonly PendingActionIndicator[] }
+  | { status: "UNAVAILABLE"; checkedAt: number };
+
+/**
+ * Isolates only InfrastructureError (already reported, sanitized, by `toInfrastructureError`). Authentication and
+ * authorization errors, including a revoked or suspended actor, propagate to the caller's protected-access handling.
+ */
+export async function loadPendingActions(
+  userId: string,
+  database: PrismaClient | Prisma.TransactionClient = getPrisma(),
+  now: Date = new Date(),
+): Promise<PendingActionsResult> {
+  try {
+    return { status: "READY", checkedAt: now.getTime(), indicators: await calculatePendingActions(userId, database, now) };
+  } catch (error: unknown) {
+    if (error instanceof InfrastructureError) return { status: "UNAVAILABLE", checkedAt: now.getTime() };
+    throw error;
+  }
+}
+
 /** Request-local deduplication for the layout and More page; never a cross-user or persistent cache. */
-export const getPendingActions = cache(async (userId: string): Promise<readonly PendingActionIndicator[]> =>
-  calculatePendingActions(userId),
+export const getPendingActions = cache(async (userId: string): Promise<PendingActionsResult> =>
+  loadPendingActions(userId),
 );

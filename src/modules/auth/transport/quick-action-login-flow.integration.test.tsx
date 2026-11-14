@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
-import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { initialLoginActionState } from "./action-state";
 
 const mocks = vi.hoisted(() => ({
@@ -81,7 +81,7 @@ describe("unauthenticated LINE quick-action login flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.connection.mockResolvedValue(undefined);
-    mocks.pendingActions.mockResolvedValue([]);
+    mocks.pendingActions.mockResolvedValue({ status: "READY", checkedAt: 0, indicators: [] });
     mocks.headers.mockResolvedValue(new Headers());
     mocks.getProtectedApplicationActor.mockRejectedValue(new UnauthenticatedError());
     mocks.authenticateWithPassword.mockResolvedValue({
@@ -193,7 +193,23 @@ describe("unauthenticated LINE quick-action login flow", () => {
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
-  it.each([new ForbiddenError(), new InfrastructureError()])("preserves indicator failures rather than rendering an empty queue (%s)", async (error) => {
+  it.each([new ForbiddenError(), new UnauthenticatedError()])("routes an indicator access denial through protected login handling (%s)", async (error) => {
+    mocks.getProtectedApplicationActor.mockResolvedValue({ userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    mocks.headers.mockResolvedValue(new Headers({ [LINE_QUICK_ACTION_RETURN_TO_HEADER]: "/app/personal/medications" }));
+    mocks.pendingActions.mockRejectedValue(error);
+    await expect(renderProtectedShell()).rejects.toThrow("NEXT_REDIRECT:/login?returnTo=%2Fapp%2Fpersonal%2Fmedications");
+  });
+
+  it("keeps the authorized shell available when indicators are UNAVAILABLE", async () => {
+    mocks.getProtectedApplicationActor.mockResolvedValue({ userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    mocks.pendingActions.mockResolvedValue({ status: "UNAVAILABLE", checkedAt: 0 });
+    const shell = await renderProtectedShell() as ReactElement<{ children: ReactElement<{ pendingActionsStatus: string }> }>;
+    expect(shell.props.children.props.pendingActionsStatus).toBe("UNAVAILABLE");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("does not convert an unexpected failure outside the isolated contract into an empty queue", async () => {
+    const error = new Error("unexpected indicator defect");
     mocks.getProtectedApplicationActor.mockResolvedValue({ userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
     mocks.pendingActions.mockRejectedValue(error);
     await expect(renderProtectedShell()).rejects.toBe(error);
