@@ -351,6 +351,7 @@ function toSuccessState(result: AppointmentMutationResult): AppointmentActionSta
 }
 
 function revalidateAppointmentPaths(relationshipId: string, appointmentId?: string): void {
+  revalidatePath("/app", "layout");
   revalidatePath("/app/appointments");
   revalidatePath(`/app/patients/${relationshipId}`);
   revalidatePath(`/app/patients/${relationshipId}/appointments`);
@@ -362,6 +363,7 @@ function revalidateAppointmentPaths(relationshipId: string, appointmentId?: stri
 }
 
 function revalidatePatientAppointmentPaths(relationshipId: string, appointmentId: string): void {
+  revalidatePath("/app", "layout");
   revalidatePath("/app/personal");
   revalidatePath("/app/personal/appointments");
   revalidatePath(`/app/personal/appointments/${relationshipId}`);

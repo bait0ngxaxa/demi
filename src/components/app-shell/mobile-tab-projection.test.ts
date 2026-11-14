@@ -146,7 +146,8 @@ describe("server-projected mobile navigation", () => {
 
     expect(patients).toMatchObject({
       label: "ผู้ป่วย",
-      accessibleLabel: "ผู้ป่วยที่ดูแล · รอรับนัด 4 รายการ",
+      accessibleLabel: "ผู้ป่วยที่ดูแล",
+      pendingAction: { count: 4, label: "งานรอดำเนินการ" },
       badgeCount: 4,
     });
   });

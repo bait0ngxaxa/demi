@@ -27,6 +27,7 @@ vi.mock("@/modules/support/services/support-report-service", () => ({
 }));
 
 import { renderToStaticMarkup } from "react-dom/server";
+import { SupportReportList } from "@/components/support/support-report-list";
 import SupportPage from "../../support/page";
 import SupportReportHistoryDetailPage from "../../support/reports/[reportId]/page";
 import SupportReportHistoryPage from "../../support/reports/page";
@@ -53,6 +54,13 @@ const detailPage = () => AdminSupportReportDetailPage({ params: Promise.resolve(
 
 // WB-DF-14 (Product Owner 2026-10-26): only the platform ADMIN reads and manages usage-problem reports.
 describe("Platform ADMIN support inbox routes", () => {
+  it("marks NEW reports only for reviewers and removes the dot after acknowledgment", () => {
+    const row = { id: reportId, category: "BUG" as const, status: "NEW" as const, createdAt: "2026-11-14T00:00:00Z", hospitalName: null };
+    const props = { detailHref: (id: string): string => `/app/admin/support/${id}`, emptyText: "ไม่มีรายงาน" };
+    expect(renderToStaticMarkup(<SupportReportList {...props} canReview items={[row]} />)).toContain("รายงานปัญหารอดำเนินการ 1 รายการ");
+    expect(renderToStaticMarkup(<SupportReportList {...props} items={[row]} />)).not.toContain("animate-pulse");
+    expect(renderToStaticMarkup(<SupportReportList {...props} canReview items={[{ ...row, status: "ACKNOWLEDGED" }]} />)).not.toContain("animate-pulse");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.connection.mockResolvedValue(undefined);

@@ -4,6 +4,8 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { LoadingSpinner } from "@/components/ui/button";
+import { ActionRequiredDot, pendingActionLabel } from "@/components/ui/action-required-dot";
+
 import { classNames } from "@/components/ui/class-names";
 
 import {
@@ -33,11 +35,7 @@ function MobileTabLinkContent({ tab }: { tab: MobileNavigationTab }): React.JSX.
       ) : (
         <span className="relative inline-flex">
           <MobileNavigationGlyph icon={tab.icon} />
-          {tab.badgeCount && tab.badgeCount > 0 ? (
-            <span aria-hidden="true" className="absolute -right-2 -top-2 min-w-4 rounded-full bg-action-primary px-1 text-center text-xs font-bold leading-4 text-white">
-              {tab.badgeCount > 99 ? "99+" : tab.badgeCount}
-            </span>
-          ) : null}
+          <ActionRequiredDot action={tab.pendingAction} className="absolute -right-2 -top-1" />
         </span>
       )}
       <span className="max-w-full truncate text-xs leading-4">{tab.label}</span>
@@ -81,14 +79,14 @@ export function MobileBottomNavigation({
         {tabs.map((tab) => {
           const href = tab.href && tab.id === "more" && projection.availableWorkspaces.length > 1
             ? `${tab.href}?workspace=${selectedWorkspace}`
-            : tab.href;
+            : tab.pendingAction?.href ?? tab.href;
 
           return (
             <li className="min-w-0" key={`${selectedWorkspace}:${tab.id}`}>
               {href ? (
                 <Link
                   aria-current={activeTabId === tab.id ? "page" : undefined}
-                  aria-label={tab.accessibleLabel}
+                  aria-label={[tab.accessibleLabel, pendingActionLabel(tab.pendingAction)].filter(Boolean).join(" · ")}
                   className={classNames(
                     "flex h-full min-h-11 min-w-0 flex-col items-center justify-center rounded-control px-1 text-text-muted transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-inset motion-reduce:transition-none",
                     activeTabId === tab.id

@@ -244,7 +244,7 @@ describe("ผู้นัดหมาย and the assignee (ADR-0027, AP-5)", () 
     responsibleDisplayName: null, responsibleProfession: null, osmAtCreationDisplayName: "อสม. ผู้ดูแล ง",
     assignedOsmDisplayName: "อสม. คนที่ 2", appointer: { displayName: "หมอ ก", role: "DOCTOR" },
     pendingRequestBadges: { reschedule: false, staleReschedule: false, cancellation: false }, hasUnassignedOsm: false,
-    osmAcceptanceStatus: "WAITING", serviceCode: null, source: "HOSPITAL", isOneOffVisit: true,
+    osmAcceptanceStatus: "WAITING", serviceCode: null, source: "HOSPITAL", isOneOffVisit: true, canAcceptAssignment: true,
   };
 
   it.each(["DIRECT", "OSM"] as const)("shows the appointer and the อสม. assignee in the %s work list row", (access) => {
@@ -257,6 +257,7 @@ describe("ผู้นัดหมาย and the assignee (ADR-0027, AP-5)", () 
     expect(markup).toContain("ผู้นัดหมาย: หมอ ก · แพทย์");
     expect(markup).toContain("อสม. ผู้รับผิดชอบนัด: อสม. คนที่ 2");
     expect(markup).toContain("break-words");
+    expect(markup.includes("นัดหมายรอคุณตอบรับ 1 รายการ")).toBe(access === "OSM");
   });
 
   it("searches the work Hospital's operators for the responsible filter and names the chosen one from the URL", async () => {

@@ -212,6 +212,7 @@ describe("hospital onboarding review Server Actions", () => {
       2,
       "/app/admin/hospital-onboarding/" + APPLICATION_ID,
     );
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/app", "layout");
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
@@ -229,7 +230,7 @@ describe("hospital onboarding review Server Actions", () => {
     ).rejects.toThrow("redirect:/app/admin/hospital-onboarding/" + APPLICATION_ID);
 
     expect(mocks.approve).toHaveBeenCalledTimes(1);
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
     expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith(
       "/app/admin/hospital-onboarding/" + APPLICATION_ID,
     );
@@ -252,7 +253,7 @@ describe("hospital onboarding review Server Actions", () => {
     expect(mocks.reject.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.revalidatePath.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
@@ -274,7 +275,7 @@ describe("hospital onboarding review Server Actions", () => {
       reviewerUserId: ADMIN_ACTOR.userId,
       rejectionReason: "เหตุผลที่ส่งแบบฟอร์ม",
     });
-    expect(mocks.revalidatePath).toHaveBeenCalledTimes(2);
+    expect(mocks.revalidatePath).toHaveBeenCalledTimes(3);
   });
 
   it.each([

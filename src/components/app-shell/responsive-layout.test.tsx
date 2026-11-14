@@ -18,6 +18,18 @@ function source(path: string): string {
 }
 
 describe("responsive shell contract", () => {
+  it("states unavailable indicators quietly while keeping navigation and content", () => {
+    const navigation = [{ id: "care" as const, label: "งาน", workspace: "work" as const, items: [{ href: "/app/appointments", label: "รายการนัดหมาย", match: "prefix" as const }] }];
+    const unavailable = renderToStaticMarkup(<AppShell displayName="สมชาย" navigation={navigation} pendingActionsStatus="UNAVAILABLE" roleLabels={[]}>เนื้อหา</AppShell>);
+    expect(unavailable).toContain('role="status"');
+    expect(unavailable).toContain("ไม่สามารถตรวจสอบงานที่รอดำเนินการได้");
+    expect(unavailable).toContain('href="/app/appointments"');
+    expect(unavailable).toContain("เนื้อหา");
+    expect(unavailable).not.toContain("0 รายการ");
+    const ready = renderToStaticMarkup(<AppShell displayName="สมชาย" navigation={navigation} roleLabels={[]}>เนื้อหา</AppShell>);
+    expect(ready).not.toContain("ไม่สามารถตรวจสอบงานที่รอดำเนินการได้");
+  });
+
   it("provides one focusable main landmark and a skip destination without a stale sidebar offset", () => {
     const html = renderToStaticMarkup(<AppShell displayName="สมชาย ใจดี" navigation={[]} roleLabels={[]}><h1>พื้นที่ทำงาน</h1></AppShell>);
     expect(html.match(/<main\s/g)).toHaveLength(1);

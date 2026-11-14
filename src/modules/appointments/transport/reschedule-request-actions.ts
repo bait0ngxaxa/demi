@@ -24,6 +24,7 @@ async function run(form: FormData, reject: boolean): Promise<RescheduleRequestAc
         preferredDatetimes: form.getAll("preferredDatetimes").filter((value) => typeof value === "string" && value).map((value) => `${value}:00+07:00`) });
     revalidatePath(`/app/patients/${result.patientHospitalRelationshipId}/appointments`, "layout");
     revalidatePath("/app/personal/appointments", "layout");
+    revalidatePath("/app", "layout");
     return { status: "SUCCESS", message: reject ? "ปฏิเสธคำขอแล้ว" : "ส่งคำขอเลื่อนนัดแล้ว รอเจ้าหน้าที่พิจารณา" };
   } catch (error: unknown) {
     return { status: "ERROR", message: error instanceof ConflictError ? "นัดหมายเปลี่ยนแปลงหรือมีคำขอค้างอยู่แล้ว กรุณาโหลดหน้าใหม่"

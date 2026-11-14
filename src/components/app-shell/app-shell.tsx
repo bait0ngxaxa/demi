@@ -4,6 +4,8 @@ import type { ApplicationNavigationGroup } from "./navigation-types";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
+import { PendingActionRefresh } from "./pending-action-refresh";
+import { PendingActionsUnavailableNotice } from "./pending-actions-unavailable-notice";
 import { NavigationWorkspaceProvider } from "./navigation-workspace-provider";
 import { projectMobileNavigation } from "./mobile-tab-projection";
 import Link from "next/link";
@@ -18,6 +20,10 @@ type AppShellProps = {
   passwordResetNoticeAt?: Date | null;
   /** LG-D7: a newer TERMS or PRIVACY_POLICY version awaits acceptance; informational, never blocks use. */
   legalReacceptanceNeeded?: boolean;
+  /** UNAVAILABLE: indicators could not be calculated; a quiet note replaces any implied zero. */
+  pendingActionsStatus?: "READY" | "UNAVAILABLE";
+  /** Server evaluation time of the indicators; a new value marks them fresh for the refresh lifecycle. */
+  pendingActionsCheckedAt?: number;
 };
 
 export function AppShell({
@@ -27,11 +33,14 @@ export function AppShell({
   roleLabels,
   passwordResetNoticeAt = null,
   legalReacceptanceNeeded = false,
+  pendingActionsStatus = "READY",
+  pendingActionsCheckedAt = 0,
 }: AppShellProps): React.JSX.Element {
   const mobileNavigation = projectMobileNavigation(navigation);
 
   return (
     <NavigationWorkspaceProvider availableWorkspaces={mobileNavigation.availableWorkspaces}>
+      <PendingActionRefresh checkedAt={pendingActionsCheckedAt} />
       <div className="min-h-svh bg-canvas text-text lg:flex">
         <a
           className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform motion-reduce:transition-none focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"
@@ -52,6 +61,7 @@ export function AppShell({
             id="application-main-content"
             tabIndex={-1}
           >
+            {pendingActionsStatus === "UNAVAILABLE" ? <PendingActionsUnavailableNotice /> : null}
             {passwordResetNoticeAt ? (
               <Alert className="mb-6" variant="warning">
                 รหัสผ่านบัญชี DEMI ของคุณถูกเปลี่ยนเมื่อ {new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(passwordResetNoticeAt)} หากไม่ใช่คุณ ติดต่อโรงพยาบาล

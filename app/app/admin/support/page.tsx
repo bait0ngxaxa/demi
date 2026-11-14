@@ -88,7 +88,7 @@ export default async function AdminSupportInboxPage({ searchParams }: { searchPa
         <h2 className="text-lg font-semibold text-text" id="support-inbox-heading">รายงานที่ส่งเข้ามา</h2>
         {filters.hospitalId ? <p className="text-sm text-text-muted">เฉพาะโรงพยาบาลที่เลือก · <Link className={textLinkClassName} href={inboxHref({ ...filters, hospitalId: undefined })}>แสดงทุกโรงพยาบาล</Link></p> : null}
       </div>
-      <SupportReportList detailHref={(id) => `/app/admin/support/${id}`} emptyText="ไม่มีรายงานปัญหาตามตัวกรองนี้" items={page.items} />
+      <SupportReportList canReview detailHref={(id) => `/app/admin/support/${id}`} emptyText="ไม่มีรายงานปัญหาตามตัวกรองนี้" items={page.items} />
       {page.nextCursor ? <nav aria-label="หน้ารายการรายงานปัญหา"><Link className={textLinkClassName} href={inboxHref(filters, page.nextCursor)}>ดูรายงานเก่ากว่า</Link></nav> : null}
     </section>
   </div>;

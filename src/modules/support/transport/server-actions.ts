@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { ApplicationError, ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
 import { SUPPORT_REPORT_SUBMIT_FORBIDDEN_MESSAGE } from "../domain/support-report-messages";
@@ -12,6 +14,7 @@ export async function createSupportReportAction(input: unknown): Promise<Support
   try {
     const actor = await getProtectedApplicationActor();
     const report = await createSupportReport(actor, input);
+    revalidatePath("/app", "layout");
     return { status: "SUCCESS", reportId: report.id };
   } catch (error: unknown) {
     if (error instanceof ValidationError) return { status: "ERROR", code: "VALIDATION", message: "กรุณาเลือกหมวดหมู่และระบุข้อความไม่เกิน 1,000 ตัวอักษร" };
@@ -27,6 +30,7 @@ export async function updateSupportReportStatusAction(input: unknown): Promise<S
     const actor = await getProtectedApplicationActor();
     await updateAdminSupportReportStatus(actor, input);
     const reportId = typeof input === "object" && input !== null && "reportId" in input && typeof input.reportId === "string" ? input.reportId : "";
+    revalidatePath("/app", "layout");
     return { status: "SUCCESS", reportId };
   } catch (error: unknown) {
     if (error instanceof ValidationError) return { status: "ERROR", code: "VALIDATION", message: "คำขอเปลี่ยนสถานะไม่ถูกต้อง" };

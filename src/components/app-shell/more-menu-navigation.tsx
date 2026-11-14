@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { ActionRequiredDot } from "@/components/ui/action-required-dot";
+import { navigationPendingAction } from "./navigation-pending-actions";
+
 import { classNames } from "@/components/ui/class-names";
 
 import { useMobileNavigationGuard } from "./mobile-navigation-guard";
@@ -45,6 +48,7 @@ export function MoreMenuNavigation({
             <ul className="m-0 list-none divide-y divide-border border-y border-border p-0">
               {group.items.map((item) => {
                 const active = activeHrefs.has(item.href);
+                const action = navigationPendingAction(item);
 
                 return (
                   <li key={item.href}>
@@ -56,8 +60,8 @@ export function MoreMenuNavigation({
                           ? "bg-brand-soft text-brand-deep"
                           : "text-text hover:bg-surface-muted hover:text-brand-strong",
                       )}
-                      href={item.href}
-                      onNavigate={(event) => navigationGuard.onNavigate(item.href, event)}
+                      href={action?.href ?? item.href}
+                      onNavigate={(event) => navigationGuard.onNavigate(action?.href ?? item.href, event)}
                       prefetch={item.prefetch}
                     >
                       <span
@@ -69,11 +73,7 @@ export function MoreMenuNavigation({
                         <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       </span>
                       <span className="min-w-0 flex-1">{item.label}</span>
-                      {item.badgeCount !== undefined ? (
-                        <span className="shrink-0 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-semibold tabular-nums text-brand-strong">
-                          {item.badgeCount}
-                        </span>
-                      ) : null}
+                      <ActionRequiredDot action={action} />
                       <svg
                         aria-hidden="true"
                         className="size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"

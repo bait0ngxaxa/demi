@@ -4,6 +4,9 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import { LoadingSpinner } from "@/components/ui/button";
+import { ActionRequiredDot, pendingActionLabel } from "@/components/ui/action-required-dot";
+import { navigationPendingAction } from "./navigation-pending-actions";
+
 import { classNames } from "@/components/ui/class-names";
 
 import { getNavigationItemIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
@@ -97,13 +100,14 @@ export function NavigationList({
             <ul aria-labelledby={group.label ? headingId : undefined} className={density === "compact" ? "space-y-0.5" : "space-y-1"}>
               {group.items.map((item) => {
                 const active = activeHrefs.has(item.href);
+                const action = navigationPendingAction(item);
 
                 return (
                   <li key={item.href}>
                     <Link
                       aria-current={active ? "page" : undefined}
                       aria-label={collapsed
-                        ? item.badgeCount === undefined ? item.label : `${item.label} · รอรับนัด ${item.badgeCount} รายการ`
+                        ? [item.label, pendingActionLabel(action)].filter(Boolean).join(" · ")
                         : undefined}
                       className={classNames(
                         "flex min-w-0 items-center gap-3 rounded-control text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-4",
@@ -118,20 +122,13 @@ export function NavigationList({
                             : "text-text hover:bg-surface-muted focus-visible:ring-focus-ring",
                       )}
                       data-navigation-tooltip={collapsed ? item.label : undefined}
-                      href={item.href}
+                      href={action?.href ?? item.href}
                       prefetch={item.prefetch}
-                      onNavigate={onNavigate ? (event) => onNavigate(event, item.href) : undefined}
+                      onNavigate={onNavigate ? (event) => onNavigate(event, action?.href ?? item.href) : undefined}
                     >
                       <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       {collapsed ? null : <span className="min-w-0 flex-1">{item.label}</span>}
-                      {item.badgeCount !== undefined ? (
-                        <span className={classNames(
-                          "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums",
-                          tone === "desktop" ? "bg-white/15 text-white" : "bg-brand-soft text-brand-strong",
-                        )}>
-                          {item.badgeCount}
-                        </span>
-                      ) : null}
+                      <ActionRequiredDot action={action} tone={tone === "desktop" && !active ? "desktop" : "mobile"} />
                       <NavigationPendingHint />
                     </Link>
                   </li>

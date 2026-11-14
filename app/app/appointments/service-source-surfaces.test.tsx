@@ -33,7 +33,7 @@ const page: WorkAppointmentPage = {
   canCreate: true, canResolveRequests: true, canAcceptAssignments: false, responsibleFilter: { mode: "VISIBLE", options: [] },
   items: [{ ...appointment, relationshipId: "relationship", patientDisplayName: "ผู้ป่วย", hospitalName: "โรงพยาบาล",
     pendingRequestBadges: { reschedule: false, staleReschedule: false, cancellation: false }, hasUnassignedOsm: false,
-    osmAcceptanceStatus: "WAITING", isOneOffVisit: true }],
+    osmAcceptanceStatus: "WAITING", isOneOffVisit: true, canAcceptAssignment: false }],
 };
 
 describe("SR-C appointment surfaces", () => {

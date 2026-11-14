@@ -15,7 +15,8 @@ import { ProtectedApplicationShellSkeleton } from "@/components/app-shell/app-sh
 import { getActorDisplayName } from "@/modules/auth/services/actor-display-name-service";
 import { consumePasswordResetNotice } from "@/modules/account-security/services/password-reset-notice-service";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
-import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
+import { getPendingActions, type PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
+import { withNavigationPendingActions } from "@/components/app-shell/navigation-pending-actions";
 import { isLineQuickActionLoginReturnTo } from "@/modules/auth/schemas/login-schema";
 import { buildLoginReturnHref } from "@/modules/auth/transport/login-return";
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
@@ -32,18 +33,34 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+function redirectDeniedAccess(error: unknown, lineQuickActionReturnTo: string | null): void {
+  if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
+    redirect(
+      isLineQuickActionLoginReturnTo(lineQuickActionReturnTo)
+        ? buildLoginReturnHref(lineQuickActionReturnTo)
+        : "/login",
+    );
+  }
+}
+
 async function resolveProtectedActor(lineQuickActionReturnTo: string | null): Promise<ActorContext> {
   try {
     return await getProtectedApplicationActor();
   } catch (error: unknown) {
-    if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
-      redirect(
-        isLineQuickActionLoginReturnTo(lineQuickActionReturnTo)
-          ? buildLoginReturnHref(lineQuickActionReturnTo)
-          : "/login",
-      );
-    }
+    redirectDeniedAccess(error, lineQuickActionReturnTo);
+    throw error;
+  }
+}
 
+/**
+ * Indicator infrastructure failures arrive as UNAVAILABLE and never block the shell. An actor revoked between the
+ * session check and the indicator re-read is denied through the same protected-access handling as the shell.
+ */
+async function resolvePendingActions(userId: string, lineQuickActionReturnTo: string | null): Promise<PendingActionsResult> {
+  try {
+    return await getPendingActions(userId);
+  } catch (error: unknown) {
+    redirectDeniedAccess(error, lineQuickActionReturnTo);
     throw error;
   }
 }
@@ -56,12 +73,11 @@ async function ResolvedProtectedApplicationShell({
   if (requestHeaders.get(PUBLIC_CAREGIVER_INVITATION_PAGE_HEADER) === "1") {
     return <>{children}</>;
   }
-  const actor = await resolveProtectedActor(
-    requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER),
-  );
-  const [hospitalWorkspaces, awaitingOsmAcceptanceCount, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
+  const lineQuickActionReturnTo = requestHeaders.get(LINE_QUICK_ACTION_RETURN_TO_HEADER);
+  const actor = await resolveProtectedActor(lineQuickActionReturnTo);
+  const [hospitalWorkspaces, pendingActions, displayName, passwordResetNoticeAt, legalReacceptanceNeeded] = await Promise.all([
     listNavigationHospitalWorkspaces(actor),
-    countWorkAppointmentsAwaitingMyAcceptance(actor),
+    resolvePendingActions(actor.userId, lineQuickActionReturnTo),
     getActorDisplayName(actor).catch((error: unknown) =>
       error instanceof InfrastructureError ? "ผู้ใช้งาน DEMI" : Promise.reject(error),
     ),
@@ -71,7 +87,7 @@ async function ResolvedProtectedApplicationShell({
     }),
     shouldShowLegalReacceptanceBanner(actor),
   ]);
-  const navigation = projectApplicationNavigation(actor, hospitalWorkspaces, awaitingOsmAcceptanceCount);
+  const navigation = withNavigationPendingActions(projectApplicationNavigation(actor, hospitalWorkspaces), pendingActions);
 
   return (
     // Canonical Account LIFF URL for Workspace LIFF -> Account LIFF transitions; null keeps the ordinary route.
@@ -81,6 +97,8 @@ async function ResolvedProtectedApplicationShell({
         legalReacceptanceNeeded={legalReacceptanceNeeded}
         navigation={navigation}
         passwordResetNoticeAt={passwordResetNoticeAt}
+        pendingActionsCheckedAt={pendingActions.checkedAt}
+        pendingActionsStatus={pendingActions.status}
         roleLabels={actor.roles.map((role) => roleLabels[role])}
       >
         {children}
