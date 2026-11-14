@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LINE_QUICK_ACTION_RETURN_TO_HEADER } from "@/modules/line/domain/line-navigation-intents";
-import { UnauthenticatedError } from "@/shared/errors/application-error";
+import { ForbiddenError, InfrastructureError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { initialLoginActionState } from "./action-state";
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   }),
   authenticateWithPassword: vi.fn(),
   revalidatePath: vi.fn(),
+  pendingActions: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/supabase-proxy", () => ({
@@ -33,6 +34,9 @@ vi.mock("@/modules/auth/services/authentication-service", () => ({
 vi.mock("@/modules/auth/services/actor-context-service", () => ({
   resolveCurrentActorContext: vi.fn(),
   resolveCurrentActorAccess: vi.fn(),
+}));
+vi.mock("@/modules/pending-actions/services/pending-action-service", () => ({
+  getPendingActions: mocks.pendingActions,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/headers", () => ({ headers: mocks.headers }));
@@ -77,6 +81,7 @@ describe("unauthenticated LINE quick-action login flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.connection.mockResolvedValue(undefined);
+    mocks.pendingActions.mockResolvedValue([]);
     mocks.headers.mockResolvedValue(new Headers());
     mocks.getProtectedApplicationActor.mockRejectedValue(new UnauthenticatedError());
     mocks.authenticateWithPassword.mockResolvedValue({
@@ -118,6 +123,7 @@ describe("unauthenticated LINE quick-action login flow", () => {
     expect(loginLocation).toBe(
       "/login?returnTo=%2Fapp%2Fpatients%2Fassigned%3Ftask%3Dscreening",
     );
+    expect(mocks.pendingActions).not.toHaveBeenCalled();
 
     const loginForm = new FormData();
     loginForm.set("nationalId", "DEMI-ADMIN-ROOT");
@@ -183,6 +189,14 @@ describe("unauthenticated LINE quick-action login flow", () => {
     await proxy(new NextRequest("https://demi.example.org/app/personal/medications?liff.hback=2"));
     mocks.headers.mockResolvedValue(new Headers({ [LINE_QUICK_ACTION_RETURN_TO_HEADER]: "/app/personal/medications" }));
     await expect(renderProtectedShell()).resolves.toBeDefined();
+    expect(mocks.pendingActions).toHaveBeenCalledExactlyOnceWith("u");
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it.each([new ForbiddenError(), new InfrastructureError()])("preserves indicator failures rather than rendering an empty queue (%s)", async (error) => {
+    mocks.getProtectedApplicationActor.mockResolvedValue({ userId: "u", personId: "p", roles: [], hospitalMemberships: [], osmHospitalRelationships: [] });
+    mocks.pendingActions.mockRejectedValue(error);
+    await expect(renderProtectedShell()).rejects.toBe(error);
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 });
