@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { Role, type PrismaClient } from "@prisma/client";
+import { Role, type Prisma, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { createActorContextStore, resolveActorAccessByUserId } from "@/modules/auth/services/actor-context-service";
@@ -26,7 +26,7 @@ export type PendingActionIndicator = {
 /** Only a server-authenticated user ID enters here. Roles and scopes are resolved again from persistence. */
 export async function calculatePendingActions(
   userId: string,
-  database: PrismaClient = getPrisma(),
+  database: PrismaClient | Prisma.TransactionClient = getPrisma(),
   now: Date = new Date(),
 ): Promise<readonly PendingActionIndicator[]> {
   try {

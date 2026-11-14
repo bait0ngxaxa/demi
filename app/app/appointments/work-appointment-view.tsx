@@ -3,6 +3,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { appointerLabel, appointmentAssigneePresentation, staffProfessionLabel } from "@/modules/appointments/domain/appointment-people";
 
+import { ActionRequiredDot } from "@/components/ui/action-required-dot";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -58,7 +59,7 @@ function buildHref(
   return `/app/appointments?${params.toString()}`;
 }
 
-function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.Element {
+function AppointmentRow({ item, page }: { item: WorkAppointmentListItem; page: WorkAppointmentPage }): React.JSX.Element {
   const responsible = appointmentAssigneePresentation(item);
   return (
     <li>
@@ -90,6 +91,11 @@ function AppointmentRow({ item }: { item: WorkAppointmentListItem }): React.JSX.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <ActionRequiredDot action={
+              (page.canResolveRequests && (item.pendingRequestBadges.reschedule || item.pendingRequestBadges.cancellation)) ||
+              (page.canAcceptAssignments && item.canAcceptAssignment)
+                ? { count: 1, label: page.canResolveRequests ? "คำขอนัดหมายรอพิจารณา" : "นัดหมายรอคุณตอบรับ" } : undefined
+            } />
             <StatusBadge variant={statusVariant(item.status)}>{APPOINTMENT_STATUS_LABELS[item.status]}</StatusBadge>
             {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">{item.pendingRequestBadges.staleReschedule ? "คำขอก่อนแก้ไขนัด" : "รอเลื่อนนัด"}</StatusBadge> : null}
             {item.pendingRequestBadges.cancellation ? <StatusBadge variant="warning">รอยกเลิก</StatusBadge> : null}
@@ -261,7 +267,7 @@ export function WorkAppointmentView({
       <section aria-label={visibleTabs.find(({ id }) => id === page.tab)?.label ?? "รายการนัดหมาย"}>
         {page.items.length > 0 ? (
           <ul className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
-            {page.items.map((item) => <AppointmentRow item={item} key={item.appointmentId} />)}
+            {page.items.map((item) => <AppointmentRow page={page} item={item} key={item.appointmentId} />)}
           </ul>
         ) : (
           <div className="rounded-panel border border-dashed border-border bg-surface px-5 py-9 text-center sm:px-7">

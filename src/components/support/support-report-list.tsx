@@ -1,5 +1,6 @@
 import type { SupportReportCategory, SupportReportStatus } from "@prisma/client";
 import Link from "next/link";
+import { ActionRequiredDot } from "@/components/ui/action-required-dot";
 
 import { SUPPORT_REPORT_CATEGORY_LABELS } from "@/modules/support/domain/support-report";
 
@@ -16,7 +17,7 @@ export type SupportReportListRow = {
 const dateTime = new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" });
 
 /** One bordered panel of report rows: category as the row title, date and Hospital as metadata, status as a badge. */
-export function SupportReportList({ items, detailHref, emptyText }: { items: readonly SupportReportListRow[]; detailHref: (id: string) => string; emptyText: string }): React.JSX.Element {
+export function SupportReportList({ items, detailHref, emptyText, canReview = false }: { items: readonly SupportReportListRow[]; detailHref: (id: string) => string; emptyText: string; canReview?: boolean }): React.JSX.Element {
   if (items.length === 0) {
     return <p className="rounded-panel border border-dashed border-border bg-surface px-5 py-10 text-center text-text-muted">{emptyText}</p>;
   }
@@ -27,7 +28,10 @@ export function SupportReportList({ items, detailHref, emptyText }: { items: rea
           <p className="font-semibold text-text">{SUPPORT_REPORT_CATEGORY_LABELS[item.category]}</p>
           <p className="mt-1 break-words text-sm leading-6 text-text-muted"><time dateTime={item.createdAt}>{dateTime.format(new Date(item.createdAt))}</time> · {item.hospitalName ?? "ไม่เจาะจงโรงพยาบาล"}</p>
         </div>
-        <SupportReportStatusBadge status={item.status} />
+        <div className="flex items-center gap-2">
+          <ActionRequiredDot action={canReview && item.status === "NEW" ? { count: 1, label: "รายงานปัญหารอดำเนินการ" } : undefined} />
+          <SupportReportStatusBadge status={item.status} />
+        </div>
       </Link>
     </li>)}
   </ul>;

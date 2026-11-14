@@ -223,6 +223,7 @@ export async function approveHospitalOnboardingAction(
 
   revalidatePath("/app/admin/hospital-onboarding");
   revalidatePath(`/app/admin/hospital-onboarding/${applicationId}`);
+  revalidatePath("/app", "layout");
   const result = getSuccessfulReviewResult(formData, "APPROVED");
   if (result) {
     return result;
@@ -253,6 +254,7 @@ export async function rejectHospitalOnboardingAction(
 
   revalidatePath("/app/admin/hospital-onboarding");
   revalidatePath(`/app/admin/hospital-onboarding/${applicationId}`);
+  revalidatePath("/app", "layout");
   const result = getSuccessfulReviewResult(formData, "REJECTED");
   if (result) {
     return result;

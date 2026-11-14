@@ -128,7 +128,7 @@ export function NavigationList({
                     >
                       <MobileNavigationGlyph icon={getNavigationItemIcon(item)} />
                       {collapsed ? null : <span className="min-w-0 flex-1">{item.label}</span>}
-                      <ActionRequiredDot action={action} tone={tone} />
+                      <ActionRequiredDot action={action} tone={tone === "desktop" && !active ? "desktop" : "mobile"} />
                       <NavigationPendingHint />
                     </Link>
                   </li>

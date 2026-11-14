@@ -4,6 +4,7 @@ import type { ApplicationNavigationGroup } from "./navigation-types";
 import { AppHeader } from "./app-header";
 import { AppSidebar } from "./app-sidebar";
 import { MobileBottomNavigation } from "./mobile-bottom-navigation";
+import { PendingActionRefresh } from "./pending-action-refresh";
 import { NavigationWorkspaceProvider } from "./navigation-workspace-provider";
 import { projectMobileNavigation } from "./mobile-tab-projection";
 import Link from "next/link";
@@ -32,6 +33,7 @@ export function AppShell({
 
   return (
     <NavigationWorkspaceProvider availableWorkspaces={mobileNavigation.availableWorkspaces}>
+      <PendingActionRefresh />
       <div className="min-h-svh bg-canvas text-text lg:flex">
         <a
           className="type-action fixed left-4 top-4 z-50 -translate-y-24 rounded-control bg-brand-deep px-4 py-3 text-white shadow-floating transition-transform motion-reduce:transition-none focus:translate-y-0 focus:outline-none focus:ring-4 focus:ring-focus-ring focus:ring-offset-2"

@@ -98,6 +98,7 @@ export type WorkAppointmentListItem = {
     cancellation: boolean;
   };
   hasUnassignedOsm: boolean;
+  canAcceptAssignment: boolean;
   osmAcceptanceStatus: "WAITING" | "ACCEPTED" | "RESCHEDULE_REQUESTED" | "NONE";
 };
 
@@ -761,6 +762,7 @@ function toWorkAppointmentItem(record: WorkAppointmentRecord, now: Date, audienc
       record.status === "SCHEDULED" &&
       record.scheduledAt.getTime() > now.getTime(),
     ),
+    canAcceptAssignment: Boolean(isWaiting && audience?.osmRead && record.assignedOsmUserId === audience.actorUserId),
     osmAcceptanceStatus: hasCurrentAcceptance
       ? "ACCEPTED"
       : hasCurrentReschedule && hasCurrentAssignment

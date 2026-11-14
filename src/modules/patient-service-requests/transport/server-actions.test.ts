@@ -55,7 +55,7 @@ describe("Hospital confirm action (ADR-0023 SR-D1)", () => {
       durationMinutes: 30, locationDetail: null, note: null,
     });
     expect(mocks.revalidate.mock.calls).toEqual([
-      ["/app/patients/service-requests"], ["/app/personal/services"], ["/app/appointments"],
+      ["/app/patients/service-requests"], ["/app", "layout"], ["/app/personal/services"], ["/app/appointments"],
       [`/app/patients/${relationshipId}/appointments`],
     ]);
   });

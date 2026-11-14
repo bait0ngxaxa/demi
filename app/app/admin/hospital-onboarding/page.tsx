@@ -5,6 +5,7 @@ import { connection } from "next/server";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { PageNumberPagination } from "@/components/ui/page-number-pagination";
+import { ActionRequiredDot } from "@/components/ui/action-required-dot";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
@@ -55,7 +56,7 @@ export default async function HospitalOnboardingReviewPage({
   return (
     <div>
       <PageHeader
-        actions={<StatusBadge variant="info">รอตรวจสอบ {pending.total.toLocaleString("th-TH")} รายการ</StatusBadge>}
+        actions={pending.total > 0 ? <StatusBadge variant="info">รอตรวจสอบ {pending.total.toLocaleString("th-TH")} รายการ</StatusBadge> : undefined}
         breadcrumbs={[{ label: "ผู้ดูแลระบบ DEMI" }, { label: "คำขอขึ้นทะเบียนโรงพยาบาล" }]}
         description="ตรวจสอบข้อมูลที่ผู้สมัครส่งมา แล้วเลือกอนุมัติหรือปฏิเสธคำขอจากฝั่ง DEMI"
         title="คำขอขึ้นทะเบียนโรงพยาบาล"
@@ -99,6 +100,7 @@ export default async function HospitalOnboardingReviewPage({
                         </p>
                       </div>
                       <div className="flex items-center gap-4 text-sm text-muted">
+                        <ActionRequiredDot action={{ count: 1, label: "คำขอขึ้นทะเบียนโรงพยาบาลรอพิจารณา" }} />
                         <time dateTime={application.createdAt.toISOString()}>
                           {application.createdAt.toLocaleDateString("th-TH", {
                             dateStyle: "medium",

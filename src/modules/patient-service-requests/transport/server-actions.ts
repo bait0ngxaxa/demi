@@ -85,6 +85,7 @@ export async function createPatientServiceRequestAction(
     revalidatePath("/app/personal/services");
     revalidatePath("/app/personal");
     revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app", "layout");
     return { status: "SUCCESS" };
   } catch (error: unknown) {
     return mapMutationError(error);
@@ -108,6 +109,7 @@ export async function withdrawOwnPatientServiceRequestAction(
     await withdrawOwnPatientServiceRequest(actor, parsed.data);
     revalidatePath("/app/personal/services");
     revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app", "layout");
     return { status: "SUCCESS" };
   } catch (error: unknown) {
     return mapMutationError(error);
@@ -118,6 +120,7 @@ function conflictState(error: unknown): PatientServiceMutationActionState {
   const state = mapMutationError(error);
   if (state.status === "ERROR" && error instanceof ApplicationError && error.code === "CONFLICT") {
     revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app", "layout");
     return { ...state, conflict: true };
   }
   return state;
@@ -150,6 +153,7 @@ export async function confirmPatientServiceRequestAction(
     const actor = await getProtectedApplicationActor();
     const result = await confirmPatientServiceRequest(actor, parsed.data);
     revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app", "layout");
     revalidatePath("/app/personal/services");
     revalidatePath("/app/appointments");
     revalidatePath(`/app/patients/${result.patientHospitalRelationshipId}/appointments`);
@@ -176,6 +180,7 @@ export async function rejectPatientServiceRequestAction(
     const actor = await getProtectedApplicationActor();
     await rejectPatientServiceRequest(actor, parsed.data);
     revalidatePath("/app/patients/service-requests");
+    revalidatePath("/app", "layout");
     revalidatePath("/app/personal/services");
     return { status: "SUCCESS", message: "บันทึกผลไม่อนุมัติแล้ว ผู้ป่วยจะเห็นเหตุผลนี้" };
   } catch (error: unknown) {

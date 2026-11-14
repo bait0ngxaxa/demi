@@ -22,7 +22,7 @@ describe("SR-C work projection", () => {
   ])("shows one-off only to Hospital staff or visiting OSM (%s/%s/%s)", (hospitalRead, osmRead, actorUserId, expected) => {
     const item = workAppointmentQueryInternals.toWorkAppointmentItem(record, now, { hospitalRead, osmRead, actorUserId });
     expect(item).toMatchObject({ serviceCode: "EMPOWERMENT", source: "PATIENT_REQUEST", isOneOffVisit: expected });
-    expect(Object.keys(item).sort()).toEqual(["appointmentId", "relationshipId", "scheduledAt", "durationMinutes", "type", "locationType", "status", "patientDisplayName", "hospitalName", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "assignedOsmDisplayName", "appointer", "pendingRequestBadges", "hasUnassignedOsm", "osmAcceptanceStatus", "serviceCode", "source", "isOneOffVisit"].sort());
+    expect(Object.keys(item).sort()).toEqual(["appointmentId", "relationshipId", "scheduledAt", "durationMinutes", "type", "locationType", "status", "patientDisplayName", "hospitalName", "responsibleDisplayName", "responsibleProfession", "osmAtCreationDisplayName", "assignedOsmDisplayName", "appointer", "pendingRequestBadges", "hasUnassignedOsm", "osmAcceptanceStatus", "serviceCode", "source", "isOneOffVisit", "canAcceptAssignment"].sort());
   });
 
   it("keeps hospital bookings hospital-sourced even when a service is selected", () => {
@@ -36,6 +36,8 @@ describe("SR-C work projection", () => {
   it("awaits the assigned อสม.'s acceptance at any location (ADR-0027)", () => {
     const future = new Date(now.getTime() + 60 * 60 * 1000);
     expect(workAppointmentQueryInternals.toWorkAppointmentItem({ ...record, locationType: "CLINIC", scheduledAt: future }, now, { hospitalRead: false, osmRead: true, actorUserId: "visiting" }))
-      .toMatchObject({ osmAcceptanceStatus: "WAITING", hasUnassignedOsm: false });
+      .toMatchObject({ osmAcceptanceStatus: "WAITING", hasUnassignedOsm: false, canAcceptAssignment: true });
+    expect(workAppointmentQueryInternals.toWorkAppointmentItem({ ...record, scheduledAt: future }, now, { hospitalRead: false, osmRead: true, actorUserId: "current" }))
+      .toMatchObject({ canAcceptAssignment: false });
   });
 });

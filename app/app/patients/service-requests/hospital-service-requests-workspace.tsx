@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { ActionRequiredDot } from "@/components/ui/action-required-dot";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
@@ -188,9 +189,12 @@ export function HospitalPatientServiceRequestsWorkspace({
                     </h3>
                     <p className="mt-1 text-sm leading-6 text-text-muted">ผู้ป่วยของ {request.hospitalName}</p>
                   </div>
-                  <StatusBadge variant={request.status === "STARTED" ? "neutral" : patientServiceRequestStatusVariant(request.status)}>
-                    {patientServiceRequestStatusLabel(request.status)}
-                  </StatusBadge>
+                  <div className="flex items-center gap-2">
+                    <ActionRequiredDot action={request.status === "PENDING" ? { count: 1, label: "คำขอรับบริการรอพิจารณา" } : undefined} />
+                    <StatusBadge variant={request.status === "STARTED" ? "neutral" : patientServiceRequestStatusVariant(request.status)}>
+                      {patientServiceRequestStatusLabel(request.status)}
+                    </StatusBadge>
+                  </div>
                 </div>
 
                 <dl className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">

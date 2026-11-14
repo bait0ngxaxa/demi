@@ -73,6 +73,11 @@ beforeEach(() => {
 });
 
 describe("Hospital request review workspace", () => {
+  it("marks pending review rows and clears the dot when the record leaves PENDING", () => {
+    expect(render([request])).toContain("คำขอรับบริการรอพิจารณา 1 รายการ");
+    expect(render([{ ...request, status: "APPROVED" }], { group: "APPROVED" })).not.toContain("animate-pulse");
+    expect(render([])).not.toContain("animate-pulse");
+  });
   it("prioritizes reviewable navigation and keeps empty groups discoverable without false totals", () => {
     const markup = render([]);
     expect(markup.indexOf('group=PENDING')).toBeLessThan(markup.indexOf('group=APPROVED'));
