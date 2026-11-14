@@ -103,6 +103,14 @@ Malformed detail UUID is NotFound. For no detail row, recheck SELF: lost SELF is
 
 ## Routes, UI and private lifetime
 
+### Navigation amendment — 2026-11-14
+
+Owner UX direction supersedes the document-GET Link override below: forward navigation uses plain Next `Link` with `prefetch={false}` and a fresh server page request. Next 16.4.5 defaults `experimental.staleTimes.dynamic` to 0; this repository does not override it or enable Cache Components. Both knowledge pages await `connection()` and do not use `use cache`. Shared layouts/loading UI may be reused, but dynamic page payloads are not reused on forward Link navigation. The category filter now uses `next/form` (PR #20); its prefetch covers shared UI, with the same request-time page rendering on submission.
+
+Back/forward/BFCache and return-to-visible forced reloads, synchronous hidden/inert DOM invalidation, and request-generation retirement remain unchanged. These protect the cases where previously delivered private bytes can reappear.
+
+References: Next 16.4.5 [staleTimes](https://github.com/vercel/next.js/blob/v16.4.5/docs/01-app/03-api-reference/05-config/01-next-config-js/staleTimes.mdx), [Link prefetching](https://github.com/vercel/next.js/blob/v16.4.5/docs/01-app/02-guides/prefetching.mdx), and installed `node_modules/next/dist/docs/01-app/03-api-reference/02-components/form.md` / `04-functions/connection.md`; repository `next.config.ts`.
+
 Exact routes: /app/personal/knowledge and /app/personal/knowledge/[contentId]. Both await connection() before request-specific actor/query work. No API/public/Work/preview/edit route and no read Server Action.
 
 Personal navigation: สุขภาพ → ข่าวสารและความรู้ → นัดหมาย; href /app/personal/knowledge, prefix match, prefetch false. Optional navigation prefetch is passed through only for this item; existing defaults remain. Work Publisher stays separate. All internal protected Next Links use prefetch false. The route-local Link additionally uses onNavigate to make ordinary content transitions authoritative document GETs; native GET category forms work without JavaScript.

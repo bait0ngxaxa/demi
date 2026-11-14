@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { HospitalContentCategory } from "@prisma/client";
@@ -143,11 +144,12 @@ describe("Patient Content read presentation", () => {
     expect(newsHtml).toContain("ข่าวสารจากโรงพยาบาล"); expect(newsHtml).toContain('href="/app/personal/news"');
     expect(renderToStaticMarkup(<PatientContentDetail content={{ ...content, sourceText: null }} />)).not.toContain("แหล่งที่มา / เอกสารอ้างอิง");
   });
-  it("protected Link disables prefetch and forces an authoritative document GET", () => {
-    const element = PatientContentLink({ href: "/app/personal/knowledge", className: "control", children: "latest" }) as ReactElement<{ prefetch: boolean; onNavigate: (event: { preventDefault: () => void }) => void }>;
+  it("uses a Next Link without prefetch or a document-navigation override", () => {
+    const element = PatientContentLink({ href: "/app/personal/knowledge", className: "control", children: "latest" }) as ReactElement<{ prefetch: boolean; onNavigate?: unknown; href: string }>;
+    expect(element.type).toBe(Link);
+    expect(element.props.href).toBe("/app/personal/knowledge");
     expect(element.props.prefetch).toBe(false);
-    const assign = vi.fn(); vi.stubGlobal("window", { location: { assign } });
-    const preventDefault = vi.fn(); element.props.onNavigate({ preventDefault });
-    expect(preventDefault).toHaveBeenCalledOnce(); expect(assign).toHaveBeenCalledWith("/app/personal/knowledge"); vi.unstubAllGlobals();
+    expect(element.props).not.toHaveProperty("onNavigate");
+    expect(element.props).not.toHaveProperty("onClick");
   });
 });
