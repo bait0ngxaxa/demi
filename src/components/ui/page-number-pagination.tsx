@@ -32,12 +32,29 @@ function PaginationControl({
   target,
   accessibleLabel = label,
   rel,
+  current = false,
 }: {
   label: string;
   accessibleLabel?: string;
   rel?: "prev" | "next";
+  current?: boolean;
   target: PageNumberPaginationTarget | null;
 }): React.JSX.Element {
+  if (current) {
+    const CurrentControl = target && "onSelect" in target ? "button" : "span";
+    return (
+      <CurrentControl
+        type={CurrentControl === "button" ? "button" : undefined}
+        aria-disabled={CurrentControl === "button" ? true : undefined}
+        aria-current="page"
+        aria-label={accessibleLabel}
+        className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-control border border-action-primary bg-brand-soft px-4 py-2 text-sm font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+      >
+        {label}
+      </CurrentControl>
+    );
+  }
+
   if (target === null || ("href" in target && target.disabled)) {
     return <span aria-disabled="true" aria-label={accessibleLabel} className={classNames(inactiveControlClassName, "min-w-11")}>{label}</span>;
   }
@@ -77,21 +94,18 @@ export function PageNumberPagination({
   if (position.totalPages <= 1) {
     return null;
   }
+  const previousTarget = position.page <= 1 ? null : previous === undefined ? getPageTarget?.(position.page - 1) ?? null : previous;
+  const nextTarget = position.page >= position.totalPages ? null : next === undefined ? getPageTarget?.(position.page + 1) ?? null : next;
 
   function numbers(compact: boolean): React.JSX.Element {
-    const currentTarget = getPageTarget?.(position.page);
-    const CurrentControl = currentTarget && "onSelect" in currentTarget ? "button" : "span";
     return (
       <ul className={classNames("flex flex-wrap items-center justify-center gap-1", compact ? "sm:hidden" : "hidden sm:flex")}>
         {getPageNumberTokens(position.page, position.totalPages, compact).map((token) => (
           <li key={token}>
-            {typeof token !== "number" ? <span aria-hidden="true" className="px-1 text-text-muted">…</span> : token === position.page ? (
-              <CurrentControl type={CurrentControl === "button" ? "button" : undefined} aria-disabled={CurrentControl === "button" ? true : undefined} aria-current="page" aria-label={`หน้าปัจจุบัน ${token}`} className={classNames(activeControlClassName, "min-w-11 border-action-primary bg-brand-soft text-brand-strong underline underline-offset-4")}>
-                {token}
-              </CurrentControl>
-            ) : (
+            {typeof token !== "number" ? <span aria-hidden="true" className="px-1 text-text-muted">…</span> : (
               <PaginationControl
-                accessibleLabel={token === 1 ? "ไปหน้าแรก" : token === position.totalPages ? "ไปหน้าสุดท้าย" : `ไปหน้าที่ ${token}`}
+                accessibleLabel={token === position.page ? `หน้าปัจจุบัน ${token}` : token === 1 ? "ไปหน้าแรก" : token === position.totalPages ? "ไปหน้าสุดท้าย" : `ไปหน้าที่ ${token}`}
+                current={token === position.page}
                 label={String(token)}
                 target={getPageTarget?.(token) ?? null}
               />
@@ -111,9 +125,9 @@ export function PageNumberPagination({
         หน้า {position.page} จาก {position.totalPages}
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <div className="order-2 sm:order-none"><PaginationControl label="ก่อนหน้า" rel="prev" target={position.page > 1 ? previous ?? getPageTarget?.(position.page - 1) ?? null : null} /></div>
+        <div className="order-2 sm:order-none"><PaginationControl label="ก่อนหน้า" rel="prev" target={previousTarget} /></div>
         {getPageTarget ? <div className="w-full min-w-0 sm:w-auto">{numbers(true)}{numbers(false)}</div> : null}
-        <div className="order-2 sm:order-none"><PaginationControl label="ถัดไป" rel="next" target={position.page < position.totalPages ? next ?? getPageTarget?.(position.page + 1) ?? null : null} /></div>
+        <div className="order-2 sm:order-none"><PaginationControl label="ถัดไป" rel="next" target={nextTarget} /></div>
       </div>
     </nav>
   );

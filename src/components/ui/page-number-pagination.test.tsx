@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -87,5 +87,30 @@ describe("PageNumberPagination", () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button[aria-current="page"]')?.click());
     expect(select).toHaveBeenCalledTimes(1);
     await act(async () => root.unmount());
+  });
+
+  it("keeps focus on the selected number after a local page change", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    function LocalPages(): React.JSX.Element {
+      const [page, setPage] = useState(2);
+      return <PageNumberPagination label="เลือกหน้า" page={page} totalPages={5} getPageTarget={(value) => ({ onSelect: () => setPage(value) })} />;
+    }
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<LocalPages />));
+    const target = container.querySelector<HTMLButtonElement>('[aria-label="ไปหน้าที่ 3"]');
+    target?.focus();
+    await act(async () => target?.click());
+    expect(document.activeElement).toBe(target);
+    expect(target?.getAttribute("aria-current")).toBe("page");
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it("honours explicit disabled targets even when a resolver is supplied", () => {
+    const html = renderToStaticMarkup(<PageNumberPagination label="ทดสอบ" page={2} totalPages={5} previous={null} next={{ href: "/blocked", disabled: true }} getPageTarget={(page) => ({ href: `/page/${page}` })} />);
+    expect(html).not.toContain('href="/blocked"');
+    expect(html).toContain('aria-disabled="true" aria-label="ก่อนหน้า"');
   });
 });
