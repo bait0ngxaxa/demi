@@ -2462,6 +2462,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       .toMatchObject({ canAcceptAssignment: true, assignedOsmUserId: osm.userId });
     const waiting = await listWorkAppointments(osm.actor, { hospitalId: hospital.id, tab: "AWAITING_MY_ACCEPTANCE" });
     expect(waiting.items.map(({ appointmentId }) => appointmentId)).toEqual([appointment.appointmentId]);
+    expect(waiting.items[0]?.canAcceptAssignment).toBe(true);
     expect(await countWorkAppointmentsAwaitingMyAcceptance(osm.actor)).toBe(1);
     const staffWaiting = await listWorkAppointments(owner.actor, {
       hospitalId: hospital.id,
@@ -2470,6 +2471,7 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
     });
     expect(staffWaiting.items.map(({ appointmentId }) => appointmentId)).toEqual([appointment.appointmentId]);
     expect(staffWaiting.items[0]?.osmAcceptanceStatus).toBe("WAITING");
+    expect(staffWaiting.items[0]?.canAcceptAssignment).toBe(false);
     await expect(listWorkAppointments(osm.actor, {
       hospitalId: hospital.id,
       tab: "UPCOMING",
@@ -2682,7 +2684,9 @@ describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
       appointmentA.appointmentId,
     ]);
     expect(pending.items[1]?.pendingRequestBadges).toEqual({ reschedule: true, staleReschedule: true, cancellation: true });
+    expect(pending.items[1]?.canAcceptAssignment).toBe(false);
     expect(Object.keys(pending.items[1] ?? {}).sort()).toEqual([
+      "canAcceptAssignment",
       "serviceCode",
       "source",
       "isOneOffVisit",
