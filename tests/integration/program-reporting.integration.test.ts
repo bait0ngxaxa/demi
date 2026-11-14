@@ -352,6 +352,8 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
       const done = await addRoundPlanItem(owner.actor, { ...request(), stepCode: "CUSTOM", customTitle: "ทำแล้ว" });
       await addRoundPlanItem(owner.actor, { ...request(), stepCode: "CUSTOM", customTitle: "ยังไม่ได้ทำ" });
       await markCustomItemDone(owner.actor, { ...request(), planItemId: done.planItemId });
+      // D2: round 2 ends only with the Program's Goal Plan, which also answers its plan step.
+      if (roundNumber === 2) await createGoalPlanForProgram(owner.actor, goalInput(program.patientProgramId));
       await completePatientProgramRound(owner.actor, request());
     }
     const detail = await getProgramReportingProjection(owner.actor, patient.relationshipId, program.patientProgramId);
@@ -360,7 +362,9 @@ describe("Phase 15E.1 Program reporting projection PostgreSQL boundary", () => {
     expect(detail.extraRoundsCompleted).toBe(count - 6);
     expect(dataset.programs[0].rounds).toEqual(detail.rounds);
     expect(dataset.programs[0].extraRoundsCompleted).toBe(count - 6);
-    for (const round of detail.rounds) expect(round).toMatchObject({ completed: true, doneItems: 1, patientRecordedItems: 0 });
+    for (const round of detail.rounds) {
+      expect(round).toMatchObject({ completed: true, doneItems: round.roundNumber === 2 ? 2 : 1, patientRecordedItems: 0 });
+    }
     expect(detail.rounds.every((round) => round.notDoneAtCloseItems >= 1)).toBe(true);
     if (count > 6) expect(detail.rounds[6]).toMatchObject({ plannedItems: 2, doneItems: 1, notDoneAtCloseItems: 1 });
   }, 20_000);

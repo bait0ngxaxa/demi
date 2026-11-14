@@ -483,6 +483,13 @@ function RoundSummary({ context }: { context: StepContext }): React.JSX.Element 
             roundNumber: detail.roundNumber,
           }}
         />
+      ) : status.completionBlockedReason && context.editable ? (
+        <Alert variant="warning">
+          {status.completionBlockedReason}{" "}
+          <Link className={linkClassName} href={`${context.programPath}/goals/new?${buildRoundReturnQuery(context.roundPath)}`}>
+            สร้างแผนสุขภาพ
+          </Link>
+        </Alert>
       ) : (
         <p className="text-sm leading-6 text-text-muted">
           {unresolved.length > 0

@@ -53,7 +53,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 
 import { bookletGoalPayload, dreamCard, routineTable } from "./support/booklet-forms";
 import { RoundConflictError } from "@/modules/patient-program-rounds/domain/round-conflict-error";
-import { ROUND_ITEM_CATALOG, roundGuideline, type RoundStepCode } from "@/modules/patient-program-rounds/domain/round-steps";
+import { ROUND_GOAL_PLAN_REQUIRED_MESSAGE, ROUND_ITEM_CATALOG, roundGuideline, type RoundStepCode } from "@/modules/patient-program-rounds/domain/round-steps";
 
 import { clearProgramRoundCompletions, openProgramRound } from "./support/program-rounds";
 import { withProgramGoalPlan } from "./support/program-followups";
@@ -357,6 +357,11 @@ function completion(programId: string, roundNumber: number, submissionNonce = ra
 
 /** Ensures one DONE fixture activity, then closes the round through FR-D1 (remaining TODOs are system-skipped). */
 async function skipRestAndComplete(fixture: Fixture, roundNumber: number): Promise<void> {
+  // D2: round 2 cannot end without the Program's Goal Plan; tests of other concerns get one here.
+  if (roundNumber === 2 && (await prisma.patientGoalPlan.count({ where: { patientProgramId: fixture.programId } })) === 0) {
+    await createGoalPlanForProgram(fixture.osm.actor, goalInput(fixture.programId));
+  }
+
   const detail = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, String(roundNumber));
 
   if (!detail.status.steps.some((step) => step.status === "DONE")) {
@@ -475,6 +480,23 @@ describe("Flexible service round writes (FR-2)", () => {
       { goalActivityCode: "cardio", status: "NOT_APPLICABLE", achievedDays: null },
     ]));
     expect(await written()).toEqual({ followups: 1, progress: 2 });
+  });
+
+  it("D2: refuses to end round 2 without the Program's Goal Plan and writes nothing", async () => {
+    const fixture = await createFixture("round2-plan");
+    await openProgramRound(fixture.programId, 2);
+    const done = await addRoundPlanItem(fixture.osm.actor, { ...request(fixture, 2), stepCode: "CUSTOM", customTitle: "ทำแล้ว" });
+    await markCustomItemDone(fixture.osm.actor, { ...request(fixture, 2), planItemId: done.planItemId });
+    const detail = await getProgramRoundDetail(fixture.osm.actor, fixture.relationshipId, fixture.programId, "2");
+    expect(detail.status).toMatchObject({ canComplete: false, completionBlockedReason: ROUND_GOAL_PLAN_REQUIRED_MESSAGE });
+
+    await expect(completePatientProgramRound(fixture.osm.actor, request(fixture, 2)))
+      .rejects.toMatchObject({ name: "RoundConflictError", message: ROUND_GOAL_PLAN_REQUIRED_MESSAGE });
+    expect(await prisma.patientProgramRoundCompletion.count({ where: { patientProgramId: fixture.programId, roundNumber: 2 } })).toBe(0);
+    expect(await prisma.patientProgramRoundStepSkip.count({ where: { patientProgramId: fixture.programId, roundNumber: 2 } })).toBe(0);
+
+    await createGoalPlanForProgram(fixture.osm.actor, goalInput(fixture.programId));
+    await expect(completePatientProgramRound(fixture.osm.actor, request(fixture, 2))).resolves.toMatchObject({ operation: "RECORDED", done: 2 });
   });
 
   it("derives Follow-up from the current round despite an earlier missing Follow-up and refuses duplicates", async () => {
@@ -1958,7 +1980,9 @@ describe("Patient self-recording in the current active round (FR-4)", () => {
     for (let roundNumber = 1; roundNumber <= 6; roundNumber += 1) {
       const done = await addRoundPlanItem(fixture.osm.actor, { ...request(fixture, roundNumber), stepCode: "CUSTOM", customTitle: `ทำแล้วครั้งที่ ${roundNumber}` });
       await markCustomItemDone(fixture.osm.actor, { ...request(fixture, roundNumber), planItemId: done.planItemId });
-      expect(await completePatientProgramRound(fixture.osm.actor, request(fixture, roundNumber))).toMatchObject({ done: 1 });
+      // D2: round 2 ends only with the Program's Goal Plan, which also answers its plan step.
+      if (roundNumber === 2) await createGoalPlanForProgram(fixture.osm.actor, goalInput(fixture.programId));
+      expect(await completePatientProgramRound(fixture.osm.actor, request(fixture, roundNumber))).toMatchObject({ done: roundNumber === 2 ? 2 : 1 });
     }
     expect(await prisma.patientProgramRoundStepSkip.findUniqueOrThrow({ where: { planItemId: restored.planItemId } })).toMatchObject({ reasonCode: "NOT_DONE_AT_CLOSE", skippedByUserId: fixture.osm.userId });
     await addProgramRound(fixture.osm.actor, { patientProgramId: fixture.programId, submissionNonce: randomUUID() });

@@ -18,6 +18,7 @@ import {
   toProgramRoundNumber,
 } from "./round-catalog";
 import {
+  ROUND_GOAL_PLAN_REQUIRED_MESSAGE,
   computeRoundStatus as computeRoundStatusOverPlan,
   isRoundOpenForWrites,
   nextRoundStep,
@@ -200,6 +201,19 @@ describe("round status (SR-D1, SR-D5)", () => {
     expect(allSkipped).toMatchObject({ state: "IN_PROGRESS", resolvedItems: 9, canComplete: false });
 
     expect(computeRoundStatus(facts({ programActive: false, skips: { 1: [] } }), 1).writable).toBe(false);
+  });
+
+  it("D2: round 2 cannot end without the Program's Goal Plan, whatever its items say", () => {
+    const round2 = { completions: { 1: completed }, tools: { CONFIDENCE_RULER: { 2: evidence }, ROUTINE: {}, FLOATING_CHART: {}, DREAM_CARD: {} } };
+    expect(computeRoundStatus(facts(round2), 2)).toMatchObject({
+      writable: true,
+      canComplete: false,
+      completionBlockedReason: ROUND_GOAL_PLAN_REQUIRED_MESSAGE,
+    });
+    expect(computeRoundStatus(facts({ ...round2, firstGoalPlan: evidence }), 2)).toMatchObject({ canComplete: true, completionBlockedReason: null });
+    // Other rounds and an already completed round 2 are never blocked by it.
+    expect(computeRoundStatus(facts({ tools: { CONFIDENCE_RULER: { 1: evidence }, ROUTINE: {}, FLOATING_CHART: {}, DREAM_CARD: {} } }), 1)).toMatchObject({ canComplete: true, completionBlockedReason: null });
+    expect(computeRoundStatus(facts({ completions: { 1: completed, 2: completed } }), 2).completionBlockedReason).toBeNull();
   });
 
   it("locks later rounds and shows completion with its date", () => {
