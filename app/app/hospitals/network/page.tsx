@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Metadata } from "next";
+import Form from "next/form";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
@@ -67,7 +68,7 @@ export default async function HospitalNetworkPage({
       ) : (
         <>
           {context.parents.length > 1 ? (
-            <form className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end" method="get">
+            <Form action="/app/hospitals/network" className="mt-6 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">
                 <label className="text-sm font-semibold text-text" htmlFor="network-parent">โรงพยาบาลแม่ข่าย</label>
                 <Select className="mt-2" defaultValue={selected.parent.id} id="network-parent" name="hospitalId">
@@ -75,7 +76,7 @@ export default async function HospitalNetworkPage({
                 </Select>
               </div>
               <Button size="compact" type="submit" variant="secondary">เปลี่ยน</Button>
-            </form>
+            </Form>
           ) : null}
 
           <section aria-labelledby="network-children-heading" className="mt-8 min-w-0">
@@ -140,14 +141,14 @@ export default async function HospitalNetworkPage({
             <p className="mt-2 text-sm leading-6 text-text-muted">
               แสดงเฉพาะหน่วยบริการประเภทลูกข่ายที่ผู้ดูแลระบบ DEMI เพิ่มไว้ ขึ้นทะเบียนแล้ว และยังไม่มีแม่ข่าย หากหน่วยบริการที่ต้องการมีแม่ข่ายอื่นอยู่แล้ว กรุณาติดต่อผู้ดูแลระบบ DEMI เพื่อโอนย้าย
             </p>
-            <form className="mt-4 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end" method="get">
+            <Form action="/app/hospitals/network" className="mt-4 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
               {context.parents.length > 1 ? <input name="hospitalId" type="hidden" value={selected.parent.id} /> : null}
               <div className="min-w-0 flex-1">
                 <label className="text-sm font-semibold text-text" htmlFor="network-candidate-query">ค้นหาชื่อหรือรหัส</label>
                 <Input className="mt-2" defaultValue={selected.query} id="network-candidate-query" maxLength={100} name="q" />
               </div>
               <Button size="compact" type="submit" variant="secondary">ค้นหา</Button>
-            </form>
+            </Form>
             {selected.candidates.length === 0 ? (
               <p className="mt-4 text-sm leading-6 text-text-muted">
                 {selected.query ? "ไม่พบหน่วยบริการที่ตรงกับคำค้นหาและเพิ่มได้" : "ยังไม่มีหน่วยบริการที่เพิ่มเป็นลูกข่ายได้"}

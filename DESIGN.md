@@ -274,6 +274,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Do** รักษา control touch target อย่างน้อย 44px บน mobile (desktop sidebar ใช้ข้อยกเว้น density ที่ระบุใน Navigation) และ focus-visible ที่มี contrast ชัดเจน
 - **Do** ใช้ PageHeader, Panel, Alert และ StatusBadge เพื่อทำให้ hierarchy และ state สม่ำเสมอ
 - **Do** ใช้ native form semantics, label association, `aria-current` และ navigation links ที่เข้าถึงได้ด้วย keyboard
+- **Do** ใช้ `Form` จาก `next/form` (action เป็น string path) สำหรับฟอร์มค้นหา/ตัวกรองแบบ GET แทน `<form method="get">` เพื่อให้เปลี่ยนหน้าฝั่ง client ไม่โหลด document ใหม่ (ใน LINE จะขึ้นหน้า “กำลังเปิด DEMI”); `Form` ไม่ส่ง `name`/`value` ของปุ่ม submit ให้ใช้ hidden input แทน (`app/get-form-navigation.test.ts`)
 - **Do** ใช้ border + whitespace + status text ก่อนเพิ่ม elevation
 
 ### Don't:

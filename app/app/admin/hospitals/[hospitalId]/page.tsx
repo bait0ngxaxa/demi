@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { HospitalStatus } from "@prisma/client";
 import type { Metadata } from "next";
+import Form from "next/form";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -88,7 +89,7 @@ async function PatientNameCorrectionSection({
         <p className="mt-2 text-sm leading-6 text-text-muted">
           ใช้เมื่อแอดมินโรงพยาบาลแจ้งว่าชื่อ-สกุลของผู้ป่วยไม่ถูกต้อง ชื่อที่แก้จะแสดงในทุกโรงพยาบาลที่ดูแลผู้ป่วยรายนี้
         </p>
-        <form className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end" method="get">
+        <Form action={`/app/admin/hospitals/${encodeURIComponent(hospitalId)}`} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1">
             <label className="text-sm font-semibold text-text" htmlFor="patient-name-correction-hn">HN ของผู้ป่วยในโรงพยาบาลนี้</label>
             <input
@@ -101,7 +102,7 @@ async function PatientNameCorrectionSection({
             />
           </div>
           <Button size="compact" type="submit" variant="secondary">ค้นหา</Button>
-        </form>
+        </Form>
         {lookupError ? <Alert className="mt-4" role="alert" variant="warning">{lookupError}</Alert> : null}
         {matches?.length === 0 ? <p className="mt-4 text-sm text-text-muted">ไม่พบผู้ป่วยที่มี HN นี้ในโรงพยาบาลนี้</p> : null}
         {matches?.map((match) => (

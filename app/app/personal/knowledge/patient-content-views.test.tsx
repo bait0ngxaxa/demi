@@ -49,7 +49,8 @@ describe("Patient Content read presentation", () => {
   });
   it("uses GET category buttons, all via base URL, and never carries an old cursor on filter change", () => {
     const html = feed({ category: "FOOD", nextCursor: "opaque-position" });
-    expect(html).toContain('method="get"'); expect(html).toMatch(/<button(?=[^>]*name="category")(?=[^>]*value="FOOD")[^>]*>/u);
+    // next/form drops the submitter from the URL, so each category form carries its value as a hidden field.
+    expect(html).not.toContain('method="get"'); expect(html).toMatch(/<form[^>]*action="\/app\/personal\/knowledge"[^>]*><input(?=[^>]*name="category")(?=[^>]*type="hidden")(?=[^>]*value="FOOD")[^>]*\/><button(?![^>]*name=)[^>]*type="submit"[^>]*>/u);
     expect(html).toContain('aria-pressed="true"'); expect(html).toContain("อาหาร (เลือกอยู่)");
     expect(html).not.toContain('value=""'); expect(html).not.toContain('value="ALL"');
     expect(html).not.toContain('name="cursor"'); expect(html).toContain("category=FOOD&amp;cursor=opaque-position");

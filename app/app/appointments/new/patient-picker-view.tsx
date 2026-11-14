@@ -1,3 +1,4 @@
+import Form from "next/form";
 import Link from "next/link";
 
 import { Alert } from "@/components/ui/alert";
@@ -61,7 +62,7 @@ export function AppointmentPatientPicker({
       ) : (
         <>
           <Panel>
-            <form action="/app/appointments/new" className="grid gap-4 sm:grid-cols-2" method="get">
+            <Form action="/app/appointments/new" className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-2 text-sm font-semibold text-text">
                 โรงพยาบาล
                 <Select defaultValue={selectedScope.hospitalId} name="hospitalId">
@@ -90,7 +91,7 @@ export function AppointmentPatientPicker({
                 <Button type="submit">ค้นหาผู้ป่วย</Button>
                 <Link className="inline-flex min-h-11 items-center px-2 text-sm font-semibold text-brand-strong underline" href={pickerHref({ hospitalId: selectedScope.hospitalId, lookupType: "NAME", value: "", page: 1 })}>ล้างการค้นหา</Link>
               </div>
-            </form>
+            </Form>
           </Panel>
 
           {errorMessage ? <Alert role="alert" variant="warning">{errorMessage}</Alert> : null}

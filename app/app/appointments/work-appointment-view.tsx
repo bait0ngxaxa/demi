@@ -1,4 +1,5 @@
 import { AppointmentServiceSource, OneOffVisitNote } from "../appointment-service-source";
+import Form from "next/form";
 import Link from "next/link";
 import { appointerLabel, appointmentAssigneePresentation, staffProfessionLabel } from "@/modules/appointments/domain/appointment-people";
 
@@ -149,7 +150,7 @@ export function WorkAppointmentView({
       {queryError ? <Alert role="alert" variant="warning">{queryError}</Alert> : null}
 
       <Panel>
-        <form action="/app/appointments" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" method="get">
+        <Form action="/app/appointments" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <input name="tab" type="hidden" value={page.tab} />
           <label className="block space-y-2 text-sm font-semibold text-text">
             โรงพยาบาล
@@ -237,7 +238,7 @@ export function WorkAppointmentView({
             <Button type="submit">ค้นหา</Button>
             <Link className="inline-flex min-h-11 items-center px-2 text-sm font-semibold text-brand-strong underline" href={buildHref(page, page.tab)}>ล้างตัวกรอง</Link>
           </div>
-        </form>
+        </Form>
       </Panel>
 
       <nav aria-label="ส่วนของรายการนัดหมาย" className="overflow-x-auto border-b border-border">
