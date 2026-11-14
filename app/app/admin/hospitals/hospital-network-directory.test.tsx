@@ -165,6 +165,14 @@ describe("Hospital governance directory views", () => {
     expect(markup).toContain('<input type="hidden" name="placement" value="child_unplaced"/>');
   });
 
+  it("keeps placement and search on direct numeric page targets", () => {
+    const markup = render("network", [entry("free", "ACTIVE", "CHILD")], {
+      placement: "child_unplaced", value: "ก", page: 3, totalPages: 20, total: 400,
+    });
+    expect(markup).toContain('aria-label="ไปหน้าที่ 5"');
+    expect(markup).toContain(`href="${hospitalDirectoryHref("network", "ก", 5, "child_unplaced").replaceAll("&", "&amp;")}"`);
+  });
+
   it("drops the placement outside the network view", () => {
     expect(hospitalDirectoryHref("pending", "x", 2, "parent")).toBe("/app/admin/hospitals?status=pending&value=x&page=2");
     expect(hospitalDirectoryHref("network", "", 1, "unclassified")).toBe("/app/admin/hospitals?placement=unclassified");

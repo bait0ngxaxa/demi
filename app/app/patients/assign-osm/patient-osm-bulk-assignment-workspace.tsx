@@ -466,6 +466,7 @@ export function PatientOsmBulkAssignmentWorkspace({
                 )}
 
                 <PageNumberPagination
+                  getPageTarget={(page) => ({ href: bulkAssignmentPageHref(selectedScope.hospitalId, search, page) })}
                   className="mt-5 border-t border-border pt-5"
                   label="หน้ารายชื่อผู้ป่วยที่ยังไม่มี อสม."
                   next={

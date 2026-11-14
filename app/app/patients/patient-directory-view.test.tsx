@@ -36,13 +36,13 @@ const result: PatientDirectoryPage = {
   selfRegistrationFilter: "SELF_REGISTERED",
 };
 
-function render(): string {
+function render(pageResult: PatientDirectoryPage = result): string {
   return renderToStaticMarkup(<PatientDirectoryView
     scopes={[directScope, { ...directScope, hospitalId: "44444444-4444-4444-8444-444444444444", hospitalName: "โรงพยาบาล ข" }]}
     selectedScope={directScope}
     lookupType={result.lookupType}
     value={result.value}
-    result={result}
+    result={pageResult}
     errorMessage={null}
     classificationFilter={result.classificationFilter}
     selfRegistrationFilter={result.selfRegistrationFilter}
@@ -51,6 +51,13 @@ function render(): string {
 }
 
 describe("Hospital patient directory", () => {
+  it("targets page 5 with the complete search and Hospital context", () => {
+    const html = render({ ...result, totalPages: 20, total: 500 });
+    expect(html).toContain('aria-label="ไปหน้าที่ 5"');
+    expect(html).toContain('href="/app/patients?hospitalId=11111111-1111-4111-8111-111111111111&amp;lookupType=HOSPITAL_NUMBER&amp;value=HN-001&amp;page=5&amp;classification=RISK&amp;selfRegistration=SELF_REGISTERED"');
+    const forms = html.match(/<form[^>]*>[\s\S]*?<\/form>/gu) ?? [];
+    for (const form of forms) expect(form).not.toContain('name="page"');
+  });
   it("links each Patient to the Patient page", () => {
     const html = render();
 

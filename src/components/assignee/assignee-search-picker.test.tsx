@@ -90,6 +90,30 @@ function click(label: string): void {
 }
 
 describe("AssigneeSearchPicker", () => {
+  it("jumps directly to page 5, blocks duplicate paging while pending and keeps selection through a new search", async () => {
+    let resolvePage: ((result: AssigneeSearchResult) => void) | undefined;
+    const search = vi.fn<AssigneeSearch>((_query, number) => number === 5
+      ? new Promise((resolve) => { resolvePage = resolve; })
+      : Promise.resolve(page(number, 20, [option(1)])));
+    act(() => root.render(<Harness initial={option(9)} search={search} />));
+    await flush();
+    const target = container.querySelector<HTMLButtonElement>('button[aria-label="ไปหน้าที่ 5"]');
+    if (!target) throw new Error("Missing numeric target");
+    act(() => target.click());
+    await flush();
+    expect(search).toHaveBeenLastCalledWith("", 5, null);
+    expect(target.disabled).toBe(true);
+    act(() => target.click());
+    await flush();
+    expect(search).toHaveBeenCalledTimes(2);
+    type("สมใจ");
+    await flush(300);
+    expect(search).toHaveBeenLastCalledWith("สมใจ", 1, null);
+    await act(async () => resolvePage?.(page(5, 20, [option(5)])));
+    expect(radios()).toEqual(["อสม. คนที่ 1"]);
+    expect(container.querySelector('[data-testid="selected"]')?.textContent).toBe("osm-9");
+    expect(container.textContent).toContain("อสม. ที่เลือก: อสม. คนที่ 9");
+  });
   it("asks for the first page at once and debounces typing into one request", async () => {
     const search = vi.fn<AssigneeSearch>(async (query) => page(1, 1, query ? [option(9)] : [option(1)]));
     act(() => root.render(<Harness search={search} />));

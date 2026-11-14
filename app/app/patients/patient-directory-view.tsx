@@ -140,6 +140,7 @@ function PatientDirectoryPagination({
 
   return (
     <PageNumberPagination
+      getPageTarget={(page) => ({ href: pageHref(page) })}
       label="หน้ารายชื่อผู้ป่วย"
       next={result.hasNextPage ? { href: pageHref(result.page + 1) } : null}
       page={result.page}

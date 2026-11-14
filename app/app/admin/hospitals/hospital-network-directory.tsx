@@ -188,6 +188,7 @@ function DirectoryPagination({
 }): React.JSX.Element | null {
   return (
     <PageNumberPagination
+      getPageTarget={(page) => ({ href: hospitalDirectoryHref(filter, value, page, placement) })}
       className="mt-4 border-t border-border pt-4"
       label="หน้ารายชื่อโรงพยาบาล"
       next={directory.hasNextPage ? { href: hospitalDirectoryHref(filter, value, directory.page + 1, placement) } : null}

@@ -116,6 +116,7 @@ export default async function HospitalOnboardingReviewPage({
           </div>
         )}
         <PageNumberPagination
+          getPageTarget={(page) => ({ href: pendingApplicationsHref(page) })}
           className="mt-5 border-t border-border pt-5"
           label="หน้ารายการคำขอที่รอตรวจสอบ"
           next={pending.hasNextPage ? { href: pendingApplicationsHref(pending.page + 1) } : null}
