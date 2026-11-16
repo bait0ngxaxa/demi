@@ -117,6 +117,7 @@ enum CredentialRecoveryVerificationMethod {
   VIDEO_CALL_FACE_AND_ID_CARD
   CALLBACK_PHONE_ON_HOSPITAL_RECORD
   BREAK_GLASS_CLI
+  NOT_RECORDED
 }
 
 enum HospitalStatus {
