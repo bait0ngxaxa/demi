@@ -53,6 +53,26 @@ describe("notification scheduler readiness", () => {
     expect(await getNotificationSchedulerReadiness({ database: db, now })).toMatchObject({ healthy: false, terminalDeliveryFailuresLast10Minutes: 1 });
   });
 
+  it("reports LINE_INELIGIBLE suppressions of the last 24 hours per outbox without affecting health", async () => {
+    const now = new Date(lastSuccess.getTime() + 60_000);
+    const db = readinessDatabase(lastSuccess);
+    const ineligible = (where: { safeOutcome?: string }, count: number): number => where.safeOutcome === "LINE_INELIGIBLE" ? count : 0;
+    vi.mocked(db.appointmentLineNotification.count).mockImplementation((async ({ where }: { where: { safeOutcome?: string } }) => ineligible(where, 2)) as never);
+    vi.mocked(db.medicationLineReminderNotification.count).mockImplementation((async ({ where }: { where: { safeOutcome?: string } }) => ineligible(where, 5)) as never);
+    const readiness = await getNotificationSchedulerReadiness({ database: db, now });
+    expect(readiness).toMatchObject({
+      healthy: true,
+      outboxes: {
+        appointmentLineNotifications: { lineIneligibleSuppressedLast24Hours: 2 },
+        medicationLineReminders: { lineIneligibleSuppressedLast24Hours: 5 },
+      },
+    });
+    const since = new Date(now.getTime() - 24 * 60 * 60_000);
+    for (const count of [db.appointmentLineNotification.count, db.medicationLineReminderNotification.count]) {
+      expect(count).toHaveBeenCalledWith({ where: { state: "SUPPRESSED", safeOutcome: "LINE_INELIGIBLE", terminalAt: { gte: since, lte: now } } });
+    }
+  });
+
   it("repeated failed ticks cannot advance readiness success time", async () => {
     const state: { lastTickCompletedAt: Date | null; lastTickStatus: NotificationSchedulerTickStatus | null } = {
       lastTickCompletedAt: new Date(lastSuccess.getTime() - 120_000),

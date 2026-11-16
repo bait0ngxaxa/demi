@@ -15,7 +15,7 @@ import {
 import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { recordAuditEvent } from "@/modules/audit/services/audit-service";
-import { ForbiddenError } from "@/shared/errors/application-error";
+import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 import { CurrentPasswordRejectedError, verifyAuthenticatedCurrentPassword } from "@/modules/account-security/adapters/supabase-account-security-provider";
 import { createAuthAttemptThrottle, type AuthAttemptThrottle } from "@/modules/auth/services/auth-attempt-throttle-service";
 
@@ -27,6 +27,7 @@ import { recordLineFriendshipObservation, type ReachabilityEventState } from "./
 import { resolveEligibleLineRoles } from "./line-eligibility-service";
 import { evaluateLineRelinkEligibility, initializeLineTermination, observeLineAuthorization } from "./line-authorization-lifecycle-service";
 import { lineChannelTupleKey, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
+import { createLineWorkflowRateLimiter, type LineWorkflowRateLimiter } from "./line-workflow-rate-limit";
 
 const INTENT_TTL_MS = 5 * 60 * 1000;
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -553,6 +554,28 @@ export async function getLineAccountSummary(dependencies: LineAccountDependencie
   };
 }
 
+/** Verifies that the LIFF ID token belongs to the binding's LINE user, then records
+ * a provider-verified friendship observation. Returns whether the observation applied
+ * to the exact binding lifecycle version that was checked.
+ */
+async function verifyAndRecordLineFriendship(
+  binding: { id: string; lineUserId: string; lifecycleVersion: number },
+  input: { idToken: string; accessToken: string },
+  dependencies: LineAccountDependencies,
+  database: PrismaClient,
+  allowUnlinkedCleanup: boolean,
+): Promise<boolean> {
+  const verified = await (dependencies.verifyIdentity ?? verifyLineIdToken)(input.idToken);
+  if (verified.subject !== binding.lineUserId) throw new ForbiddenError();
+  const checkStartedAt = nowOf(dependencies);
+  const friendship = await (dependencies.verifyFriendship ?? verifyLineFriendship)(input.accessToken, verified.subject);
+  return recordLineFriendshipObservation(
+    binding.id, binding.lifecycleVersion,
+    friendship.friend ? LineReachability.FRIEND : LineReachability.NOT_FRIEND,
+    checkStartedAt, database, allowUnlinkedCleanup,
+  );
+}
+
 export async function refreshLineAccountReachability(
   input: { idToken: string; accessToken: string },
   dependencies: LineAccountDependencies = {},
@@ -572,17 +595,67 @@ export async function refreshLineAccountReachability(
     orderBy: [{ unlinkedAt: "desc" }, { id: "desc" }], select,
   });
   if (!binding?.lineUserId) throw new ForbiddenError();
-  const verified = await (dependencies.verifyIdentity ?? verifyLineIdToken)(input.idToken);
-  if (verified.subject !== binding.lineUserId) throw new ForbiddenError();
-  const checkStartedAt = nowOf(dependencies);
-  const friendship = await (dependencies.verifyFriendship ?? verifyLineFriendship)(input.accessToken, verified.subject);
-  const accepted = await recordLineFriendshipObservation(
-    binding.id, binding.lifecycleVersion,
-    friendship.friend ? LineReachability.FRIEND : LineReachability.NOT_FRIEND,
-    checkStartedAt, database, true,
-  );
+  const accepted = await verifyAndRecordLineFriendship({ ...binding, lineUserId: binding.lineUserId }, input, dependencies, database, true);
   if (!accepted) throw new ForbiddenError();
   return { bindingId: binding.id };
+}
+
+/**
+ * A FRIEND observation younger than this is not re-checked by the background
+ * refresh. Well inside the 30-day delivery ceiling, so a user who opens DEMI in
+ * LINE at least once a month keeps a fresh observation; an explicit check on the
+ * LINE account page is never skipped.
+ */
+export const LINE_REACHABILITY_BACKGROUND_REFRESH_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** SIGNED_OUT is reported to the transport, which answers 401; nothing is thrown for it. */
+export type LineReachabilityBackgroundRefreshStatus = "REFRESHED" | "FRESH" | "NO_BINDING" | "SIGNED_OUT";
+
+function isFreshFriendObservation(binding: { reachability: LineReachability; reachabilityObservedAt: Date | null }, now: Date): boolean {
+  if (binding.reachability !== LineReachability.FRIEND || !binding.reachabilityObservedAt) return false;
+  const age = now.getTime() - binding.reachabilityObservedAt.getTime();
+  return age >= 0 && age < LINE_REACHABILITY_BACKGROUND_REFRESH_MIN_AGE_MS;
+}
+
+/**
+ * Background refresh from the Workspace LIFF entry. Same verified identity and
+ * friendship check as `refreshLineAccountReachability`, for the ACTIVE binding
+ * only. It never reconciles the Rich Menu or builds the account summary. A fresh
+ * FRIEND observation skips the provider; NOT_FRIEND is recorded like FRIEND.
+ * The per-user and global limits are consumed only before a provider call.
+ */
+export async function refreshLineAccountReachabilityIfStale(
+  input: { idToken: string; accessToken: string },
+  dependencies: LineAccountDependencies & { rateLimiter?: LineWorkflowRateLimiter } = {},
+): Promise<LineReachabilityBackgroundRefreshStatus> {
+  let session: CurrentLineSession;
+  try {
+    session = await (dependencies.currentSession ?? getCurrentLineSession)();
+  } catch (error: unknown) {
+    if (error instanceof UnauthenticatedError) return "SIGNED_OUT";
+    throw error;
+  }
+  const database = databaseOf(dependencies);
+  const user = await database.user.findUnique({ where: { id: session.userId }, select: { status: true } });
+  if (!user || user.status !== UserStatus.ACTIVE) return "NO_BINDING";
+  const binding = await database.lineAccountBinding.findFirst({
+    where: { userId: session.userId, unlinkedAt: null },
+    select: { id: true, lineUserId: true, lifecycleVersion: true, reachability: true, reachabilityObservedAt: true },
+  });
+  if (!binding?.lineUserId) return "NO_BINDING";
+  const now = nowOf(dependencies);
+  if (isFreshFriendObservation(binding, now)) return "FRESH";
+  const limiter = dependencies.rateLimiter ?? createLineWorkflowRateLimiter(database);
+  if (!await limiter.consume("REACHABILITY_REFRESH_USER", session.userId, now) ||
+      !await limiter.consume("REACHABILITY_REFRESH_GLOBAL", "GLOBAL", now)) {
+    throw new LineFailure("LINE_RATE_LIMITED");
+  }
+  const accepted = await verifyAndRecordLineFriendship(
+    { id: binding.id, lineUserId: binding.lineUserId, lifecycleVersion: binding.lifecycleVersion },
+    input, dependencies, database, false,
+  );
+  // A concurrent Unlink or Relink changed the binding; that lifecycle owns its own observation.
+  return accepted ? "REFRESHED" : "NO_BINDING";
 }
 
 export const lineAccountInternals = { sha256, secureDigestMatch, randomChallenge, INTENT_TTL_MS };

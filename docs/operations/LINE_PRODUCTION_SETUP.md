@@ -185,6 +185,21 @@ webhook ยังรับ postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` เ�
 
 หากต้องหยุด MINI ให้ถอน route `/line/workflow` ผ่าน hosting/routing ของ operator หรือปรับ provider channel availability ใน LINE Console. การเอา provider credentials ออกจาก configuration จะทำให้ MINI ปฏิเสธการทำงานอย่างปลอดภัย แต่ไม่เปลี่ยน authority ของ Account Login หรือระบบส่วนอื่น.
 
+### 7.1 ความสดของสถานะเพื่อน LINE (J4A-OD05, 2026-11-16)
+
+การแจ้งเตือนนัดหมายและเตือนยาจะส่งเฉพาะเมื่อ binding มีผลตรวจว่าเป็นเพื่อน (FRIEND) ที่อายุไม่เกิน 30 วัน ผลที่เก่ากว่า, UNKNOWN หรือ NOT_FRIEND ทำให้รายการถูก suppress เป็น `LINE_INELIGIBLE` เสมอ (fail closed) และการที่ LINE ตอบรับ Push (`ACCEPTED`) ไม่ถือเป็นหลักฐานว่าเป็นเพื่อน
+
+`reachabilityObservedAt` ถูกปรับเมื่อ:
+
+1. เชื่อมบัญชี LINE
+2. ได้ follow/unfollow webhook ที่ลายเซ็นถูกต้อง
+3. ผู้ใช้เปิดหน้าบัญชี LINE (`/api/line/account/reachability` หรือ `/api/line/account/status`)
+4. ผู้ใช้เปิด DEMI ผ่าน Workspace LIFF **ภายในแอป LINE** แล้ว entry พร้อม (`READY`): browser ส่ง `/api/line/account/reachability/refresh` แบบ fire-and-forget ไม่เกินครั้งละหนึ่งต่อ browser session ฝั่ง server ตรวจ session DEMI, ID token ต้องเป็น LINE user ของ binding ที่ active แล้วถาม LINE friendship status เหมือนหน้าบัญชี ถ้าผล FRIEND ล่าสุดอายุน้อยกว่า 24 ชั่วโมงจะไม่เรียก LINE (`LINE_REACHABILITY_BACKGROUND_REFRESH_MIN_AGE_MS`) จำกัด 3 ครั้งต่อผู้ใช้และ 600 ครั้งรวมต่อ 5 นาที (`REACHABILITY_REFRESH_USER` / `REACHABILITY_REFRESH_GLOBAL` ใน `LineWorkflowRateLimitBucket`) และไม่ reconcile Rich Menu
+
+ข้อความ `message`/`postback` จาก webhook **ไม่ได้** ใช้เป็นหลักฐานความเป็นเพื่อน เพราะเอกสาร LINE ไม่ระบุว่าผู้ใช้ที่ block OA ส่ง event เหล่านี้ไม่ได้
+
+ผลที่ตามมา: ผู้ใช้ที่ไม่เปิด DEMI ใน LINE (Workspace LIFF หรือหน้าบัญชี LINE) และไม่มี follow event ใหม่ภายใน 30 วัน จะหยุดได้รับการแจ้งเตือนจนกว่าจะเปิด DEMI ใน LINE อีกครั้ง ผู้ใช้ที่เปิด DEMI ใน browser ภายนอกเท่านั้นจะไม่ได้รับการต่ออายุจากข้อ 4 scheduler readiness ยังคง `healthy` ในกรณีนี้ ให้ดู `outboxes.*.lineIneligibleSuppressedLast24Hours` (จำนวนอย่างเดียว ไม่มีผลต่อ `healthy` เพราะการ block OA เป็นเรื่องปกติ)
+
 ใช้ `/api/health`, scheduler readiness และ queue depth/age เพื่อการปฏิบัติการ; หลักฐานในเอกสารนี้ไม่ใช่เงื่อนไขที่ application ตรวจเพื่ออนุญาต feature.
 
 ## 8. ประเมิน quota ข้อความ

@@ -116,3 +116,87 @@ describe("Workspace document navigation gate", () => {
     expect(mocks.refresh).toHaveBeenCalledOnce();
   });
 });
+
+describe("Workspace LIFF background reachability refresh", () => {
+  const tokens = { getIDToken: () => "synthetic-id-token-0000000000", getAccessToken: () => "synthetic-access-token-0000000000" };
+  let fetchMock: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function enter(sdk: Record<string, unknown>): Promise<void> {
+    prepareWorkspaceLiffHandoff(ID, "/app/personal/medications");
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={async () => ({ id: null, isInClient: () => true, init: async () => undefined, ...sdk })} />));
+  }
+
+  function remountNewDocument(): void {
+    act(() => root.unmount());
+    resetWorkspaceLiffInitializationForTests();
+    root = createRoot(container);
+  }
+
+  it("sends one refresh after READY inside the LINE client, once per browser session", async () => {
+    await enter(tokens);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/line/account/reachability/refresh");
+    expect(init).toMatchObject({ method: "POST", credentials: "same-origin", cache: "no-store" });
+    expect(JSON.parse(String(init.body))).toEqual({ idToken: "synthetic-id-token-0000000000", accessToken: "synthetic-access-token-0000000000" });
+    remountNewDocument();
+    await enter(tokens);
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("sends once for a StrictMode effect re-run joining the same initialization", async () => {
+    prepareWorkspaceLiffHandoff(ID, "/app/personal/medications");
+    await act(async () => root.render(<StrictMode><WorkspaceLiffBootstrap liffId={ID} load={async () => ({ id: null, isInClient: () => true, init: async () => undefined, ...tokens })} /></StrictMode>));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("does not send for an ordinary web document", async () => {
+    window.history.replaceState(null, "", "/app/personal/medications");
+    await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={vi.fn()} />));
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not send outside the LINE client", async () => {
+    await enter({ ...tokens, isInClient: () => false });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ID token", { ...tokens, getIDToken: () => null }],
+    ["access token", { ...tokens, getAccessToken: () => null }],
+    ["token accessor", { getIDToken: () => { throw new Error("not initialized"); }, getAccessToken: tokens.getAccessToken }],
+  ])("does not send without an %s", async (_label, sdk) => {
+    await enter(sdk);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a rejected or signed-out refresh without changing the rendered state", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("network down"));
+    await enter(tokens);
+    const rendered = container.innerHTML;
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(container.innerHTML).toBe(rendered);
+    expect(container.querySelector("h1")?.textContent ?? "").not.toBe("เชื่อมต่อ DEMI ไม่สำเร็จ");
+  });
+
+  it("requests navigation before the refresh fetch settles", async () => {
+    fetchMock.mockImplementation(() => new Promise<Response>(() => undefined));
+    await enter(tokens);
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(fetchMock.mock.invocationCallOrder[0] ?? 0);
+  });
+});

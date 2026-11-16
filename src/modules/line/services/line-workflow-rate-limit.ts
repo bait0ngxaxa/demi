@@ -18,6 +18,9 @@ export const LINE_WORKFLOW_RATE_LIMITS = {
   CANCELLATION_REQUEST: 20,
   ACCOUNT_STATUS_USER: 6,
   ACCOUNT_STATUS_GLOBAL: 600,
+  /** Background LINE friendship refresh from the Workspace LIFF entry; counted only before a provider call. */
+  REACHABILITY_REFRESH_USER: 3,
+  REACHABILITY_REFRESH_GLOBAL: 600,
 } as const;
 
 export type LineWorkflowRateLimitCategory = keyof typeof LINE_WORKFLOW_RATE_LIMITS;
