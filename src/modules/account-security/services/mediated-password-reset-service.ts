@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import {
   AccountRecoveryDeliveryChannel,
+  CredentialRecoveryVerificationMethod,
   HospitalServiceAreaFacilityKind,
   HospitalStatus,
   IdentityAssurance,
@@ -748,7 +749,7 @@ export async function issueMediatedPasswordReset(
             issuedByUserId: actor.userId,
             tokenHash,
             deliveryChannel: parsed.data.mode === "IN_PERSON" ? AccountRecoveryDeliveryChannel.ASSISTED : AccountRecoveryDeliveryChannel.ONLINE,
-            verificationMethod: parsed.data.verificationMethod,
+            verificationMethod: CredentialRecoveryVerificationMethod.NOT_RECORDED,
             expiresAt,
           },
           select: { id: true },
@@ -765,7 +766,7 @@ export async function issueMediatedPasswordReset(
             tokenHash,
             mode: parsed.data.mode === "IN_PERSON" ? WorkforceActivationMode.ASSISTED : WorkforceActivationMode.REMOTE,
             purpose: WorkforceActivationPurpose.RESET,
-            verificationMethod: parsed.data.verificationMethod,
+            verificationMethod: CredentialRecoveryVerificationMethod.NOT_RECORDED,
             expiresAt,
           },
           select: { id: true },
@@ -780,7 +781,7 @@ export async function issueMediatedPasswordReset(
         metadata: {
           hospitalId: parsed.data.hospitalId,
           mode: parsed.data.mode,
-          verificationMethod: parsed.data.verificationMethod,
+          verificationMethod: CredentialRecoveryVerificationMethod.NOT_RECORDED,
           outcome: "ISSUED",
         },
       }, transaction);
