@@ -12,7 +12,7 @@ import {
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -327,6 +327,13 @@ function confirmInput(requestId: string, osmUserId: string, overrides: Record<st
     ...overrides,
   };
 }
+
+// Pin plain-text LINE Push so a developer .env cannot switch delivery to Flex cards; Flex delivery is covered by
+// tests that pass flexMessages: true explicitly.
+beforeEach(() => {
+  vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+});
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Patient service requests PostgreSQL workflow", () => {
   beforeAll(async () => {

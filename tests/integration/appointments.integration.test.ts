@@ -13,7 +13,7 @@ import {
   UserStatus,
 } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { APPOINTMENT_TYPE_VALUES } from "@/modules/appointments/domain/appointment-definitions";
@@ -331,6 +331,13 @@ async function createAppointmentNotificationSubject(label: string): Promise<{
   await setOwnAppointmentLineNotificationPreference(patientActor, true, { database: prisma });
   return { hospitalId: hospital.id, owner: owner.actor, patient, patientActor, lineUserId, bindingId: binding.id };
 }
+
+// Pin plain-text LINE Push so a developer .env cannot switch delivery to Flex cards; Flex delivery is covered by the
+// tests that pass flexMessages: true explicitly.
+beforeEach(() => {
+  vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+});
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Phase 9B.0 Appointment PostgreSQL workflow", () => {
   beforeAll(async () => {

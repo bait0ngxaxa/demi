@@ -1,5 +1,5 @@
 import { Role, type PrismaClient } from "@prisma/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, ValidationError } from "@/shared/errors/application-error";
@@ -98,6 +98,8 @@ function createThrottle(blocked = false) {
 }
 
 describe("authenticated account password change", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("changes the one authenticated User credential for a multi-role account", async () => {
     const provider = vi.fn().mockResolvedValue({ otherSessionsRevoked: true });
     const audit = vi.fn().mockResolvedValue(undefined);
@@ -237,6 +239,8 @@ describe("authenticated account password change", () => {
   });
 
   it("sends the existing password-change notice to linked LINE accounts", async () => {
+    // Plain-text delivery; Flex cards are covered in password-change-notification.test.ts.
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
     const { database } = createDatabase();
     vi.mocked(database.lineAccountBinding.findMany).mockResolvedValue([{ lineUserId: "LINE-USER" }] as never);
     const provider = vi.fn().mockResolvedValue({ otherSessionsRevoked: true });
