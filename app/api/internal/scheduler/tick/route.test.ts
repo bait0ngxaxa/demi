@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ tick: vi.fn() }));
+const mocks = vi.hoisted(() => ({ tick: vi.fn(), report: vi.fn() }));
+vi.mock("@/shared/errors/unexpected-error-report", () => ({ reportUnexpectedError: mocks.report }));
 vi.mock("@/modules/notification-scheduler/services/notification-scheduler-tick-service", () => ({
   runNotificationSchedulerTick: mocks.tick,
 }));
@@ -73,6 +74,8 @@ describe("GET /api/internal/scheduler/tick", () => {
     const response = await GET(request(`Bearer ${secret}`));
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain("private");
+    expect(mocks.report).toHaveBeenCalledOnce();
+    expect(mocks.report).toHaveBeenCalledWith("api.internal.scheduler.tick", expect.objectContaining({ message: "private database error" }));
   });
 
   it("bounds the function duration", () => {

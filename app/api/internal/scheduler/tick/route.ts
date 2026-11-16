@@ -1,5 +1,6 @@
 import { isAuthorizedNotificationSchedulerRequest } from "@/modules/notification-scheduler/services/notification-scheduler-auth";
 import { runNotificationSchedulerTick } from "@/modules/notification-scheduler/services/notification-scheduler-tick-service";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,9 @@ export async function GET(request: Request): Promise<Response> {
   }
   try {
     return Response.json(await runNotificationSchedulerTick(), { headers: NO_STORE });
-  } catch {
+  } catch (error: unknown) {
+    // A tick failure is already reported under its tick scope; each error object is reported once.
+    reportUnexpectedError("api.internal.scheduler.tick", error);
     return Response.json({ error: "บริการไม่พร้อมใช้งาน" }, { status: 503, headers: NO_STORE });
   }
 }

@@ -15,6 +15,7 @@ import {
   purgeTerminalMedicationLineReminderNotifications,
 } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { InfrastructureError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
 /** Ticks closer than this to the last completed tick are skipped. */
 export const NOTIFICATION_SCHEDULER_MIN_INTERVAL_MS = 60_000;
@@ -59,7 +60,14 @@ export type NotificationSchedulerTickDependencies = {
   purgeAppointment?: () => Promise<number>;
   purgeMedication?: () => Promise<number>;
   logSummary?: (summary: NotificationSchedulerTickResult | { status: "FAILED" }) => void;
+  /** Records the cause of a failed step or tick: scope, class, codes and stack frames only. */
+  reportError?: (scope: string, error: unknown) => void;
 };
+
+/** Scope of a failure in the unexpected-error log, e.g. `notification-scheduler.medicationDrain`. */
+export function notificationSchedulerErrorScope(step: NotificationSchedulerStepName | "tick"): string {
+  return `notification-scheduler.${step}`;
+}
 
 type Drain = { name: NotificationSchedulerStepName; batchSize: number; run: (batchSize: number) => Promise<DrainCounts> };
 
@@ -80,6 +88,7 @@ async function runSteps(
   database: PrismaClient,
   withinBudget: () => boolean,
 ): Promise<Record<NotificationSchedulerStepName, NotificationSchedulerStepReport>> {
+  const reportError = dependencies.reportError ?? reportUnexpectedError;
   const steps: Record<NotificationSchedulerStepName, NotificationSchedulerStepReport> = {
     medicationDrain: emptyReport(),
     appointmentDrain: emptyReport(),
@@ -141,7 +150,8 @@ async function runSteps(
           delete report.deferredReason;
           active.delete(drain);
         }
-      } catch {
+      } catch (error: unknown) {
+        reportError(notificationSchedulerErrorScope(drain.name), error);
         report.status = "FAILED";
         delete report.deferredReason;
         active.delete(drain);
@@ -165,7 +175,8 @@ async function runSteps(
       report.status = "COMPLETED";
       report.batches = 1;
       addCounts(report, { deleted });
-    } catch {
+    } catch (error: unknown) {
+      reportError(notificationSchedulerErrorScope(purge.name), error);
       report.status = "FAILED";
     }
   }
@@ -230,6 +241,7 @@ export async function runNotificationSchedulerTick(
       timeout: LOCK_TRANSACTION_TIMEOUT_MS,
     });
   } catch (error: unknown) {
+    (dependencies.reportError ?? reportUnexpectedError)(notificationSchedulerErrorScope("tick"), error);
     log({ status: "FAILED" });
     throw error;
   }

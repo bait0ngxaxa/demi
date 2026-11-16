@@ -1,6 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { describe, expect, it, vi } from "vitest";
 
+import { UNEXPECTED_ERROR_EVENT } from "@/shared/errors/unexpected-error-report";
+
 import {
   NOTIFICATION_SCHEDULER_DRAIN_BATCH_SIZE,
   NOTIFICATION_SCHEDULER_MAX_BATCHES_PER_QUEUE,
@@ -31,6 +33,7 @@ function steps(overrides: Partial<NotificationSchedulerTickDependencies> = {}): 
     purgeAppointment: vi.fn(async () => 3),
     purgeMedication: vi.fn(async () => 4),
     logSummary: vi.fn(),
+    reportError: vi.fn(),
     ...overrides,
   };
 }
@@ -219,6 +222,70 @@ describe("notification scheduler tick", () => {
     });
     expect(harness.executeRaw).toHaveBeenCalledOnce();
     expect(harness.executeRaw.mock.calls[0]?.[1]).toBe("DEFERRED");
+  });
+
+  it.each(["medicationDrain", "appointmentDrain"] as const)("reports a throwing %s under its step scope while the other queue and both purges still run", async (failing) => {
+    const failure = new Error("private drain detail");
+    const dependencies = steps(failing === "medicationDrain"
+      ? { drainMedication: vi.fn().mockRejectedValue(failure) }
+      : { drainAppointment: vi.fn().mockRejectedValue(failure) });
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: fakeDatabase().database });
+    expect(result).toMatchObject({ status: "FAILED", steps: { [failing]: { status: "FAILED" } } });
+    expect(dependencies.reportError).toHaveBeenCalledOnce();
+    expect(dependencies.reportError).toHaveBeenCalledWith(`notification-scheduler.${failing}`, failure);
+    expect(dependencies.drainMedication).toHaveBeenCalledOnce();
+    expect(dependencies.drainAppointment).toHaveBeenCalledOnce();
+    expect(dependencies.purgeAppointment).toHaveBeenCalledOnce();
+    expect(dependencies.purgeMedication).toHaveBeenCalledOnce();
+  });
+
+  it.each(["appointmentPurge", "medicationPurge"] as const)("reports a throwing %s under its step scope while the other steps still run", async (failing) => {
+    const failure = new Error("private purge detail");
+    const dependencies = steps(failing === "appointmentPurge"
+      ? { purgeAppointment: vi.fn().mockRejectedValue(failure) }
+      : { purgeMedication: vi.fn().mockRejectedValue(failure) });
+    const result = await runNotificationSchedulerTick({ ...dependencies, database: fakeDatabase().database });
+    expect(result).toMatchObject({ status: "FAILED", steps: { [failing]: { status: "FAILED" } } });
+    expect(dependencies.reportError).toHaveBeenCalledOnce();
+    expect(dependencies.reportError).toHaveBeenCalledWith(`notification-scheduler.${failing}`, failure);
+    expect(dependencies.drainMedication).toHaveBeenCalledOnce();
+    expect(dependencies.drainAppointment).toHaveBeenCalledOnce();
+    expect(dependencies.purgeAppointment).toHaveBeenCalledOnce();
+    expect(dependencies.purgeMedication).toHaveBeenCalledOnce();
+  });
+
+  it("reports a lock or state query failure once under the tick scope and rethrows it", async () => {
+    const harness = fakeDatabase();
+    const failure = new Error("private lock failure");
+    harness.queryRaw.mockReset().mockRejectedValue(failure);
+    const dependencies = steps();
+    await expect(runNotificationSchedulerTick({ ...dependencies, database: harness.database })).rejects.toBe(failure);
+    expect(dependencies.reportError).toHaveBeenCalledOnce();
+    expect(dependencies.reportError).toHaveBeenCalledWith("notification-scheduler.tick", failure);
+    expect(dependencies.drainMedication).not.toHaveBeenCalled();
+    expect(dependencies.logSummary).toHaveBeenCalledWith({ status: "FAILED" });
+  });
+
+  it("logs the step cause through the default reporter without messages or identifiers", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const userId = "83da3ab8-2895-4cab-bb63-19f807246288";
+      const failure = new Prisma.PrismaClientKnownRequestError(`row for binding ${userId} failed`, {
+        code: "P2002", clientVersion: "6", meta: { target: "MedicationLineReminder_occurrence_key", lineUserId: `U${"a".repeat(32)}` },
+      });
+      const dependencies = { ...steps({ drainMedication: vi.fn().mockRejectedValue(failure) }), reportError: undefined };
+      await runNotificationSchedulerTick({ ...dependencies, database: fakeDatabase().database });
+      expect(consoleError).toHaveBeenCalledOnce();
+      const [event, report] = consoleError.mock.calls[0] as [string, Record<string, unknown>];
+      expect(event).toBe(UNEXPECTED_ERROR_EVENT);
+      expect(report).toMatchObject({ scope: "notification-scheduler.medicationDrain", errorClass: "PrismaClientKnownRequestError", prismaCode: "P2002", constraint: "MedicationLineReminder_occurrence_key" });
+      expect(Object.keys(report).sort()).toEqual(["constraint", "errorClass", "prismaCode", "scope", "sqlState", "stack"]);
+      expect(JSON.stringify(report)).not.toContain(userId);
+      expect(JSON.stringify(report)).not.toContain("a".repeat(32));
+      expect(JSON.stringify(report)).not.toContain("row for binding");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("logs a bare failure and rethrows when the lock transaction fails", async () => {

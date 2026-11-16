@@ -1,6 +1,7 @@
 import { drainMedicationLineReminderOutbox } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { verifyAndConsumeMedicationLineReminderInvocation } from "@/modules/medications/services/medication-line-reminder-invocation-service";
 import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     if (error instanceof ConflictError) return Response.json({ error: "คำขอนี้ถูกใช้แล้ว" }, { status: 409, headers: { "cache-control": "no-store" } });
     if (error instanceof ForbiddenError) return Response.json({ error: "ไม่พบปลายทางนี้" }, { status: 404, headers: { "cache-control": "no-store" } });
+    reportUnexpectedError("api.internal.line.medicationRemindersDrain", error);
     return Response.json({ error: "บริการไม่พร้อมใช้งาน" }, { status: 503, headers: { "cache-control": "no-store" } });
   }
 }

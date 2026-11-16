@@ -1,6 +1,7 @@
 import { drainAppointmentLineNotificationOutbox } from "@/modules/appointments/services/appointment-line-notification-delivery-service";
 import { verifyAndConsumeAppointmentLineNotificationInvocation } from "@/modules/appointments/services/appointment-line-notification-invocation-service";
 import { ConflictError, ForbiddenError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export async function POST(request: Request): Promise<Response> {
     if (error instanceof ForbiddenError) {
       return Response.json({ error: "ไม่พบปลายทางนี้" }, { status: 404, headers: { "cache-control": "no-store" } });
     }
+    reportUnexpectedError("api.internal.line.appointmentNotificationsDrain", error);
     return Response.json({ error: "บริการไม่พร้อมใช้งาน" }, { status: 503, headers: { "cache-control": "no-store" } });
   }
 }
