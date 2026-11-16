@@ -125,6 +125,7 @@ export async function initializeWorkspaceLiff(
 export function resetWorkspaceLiffInitializationForTests(): void {
   initialization = null;
   documentContinuation = null;
+  reachabilityRefreshAttempted = false;
 }
 
 const ENTRY_ATTEMPTS_KEY = "demi.line.workspace.entryAttempts";
@@ -264,12 +265,25 @@ function readLiffToken(read: (() => string | null) | undefined): string | null {
   }
 }
 
+/** One attempt per document: set when a request starts and never cleared, so a failure retries on the next document load. */
+let reachabilityRefreshAttempted = false;
+
+function markReachabilityRefreshDone(store: AttemptStore): void {
+  try {
+    store.setItem(REACHABILITY_REFRESH_KEY, "1");
+  } catch {
+    // Storage unavailable: the next document may send once more; the server bounds repeats.
+  }
+}
+
 /**
  * Fire-and-forget LINE friendship refresh for a READY Workspace entry inside the
- * LINE client, at most once per browser session. It never changes entry state or
- * navigation: the server re-verifies the DEMI session and the LINE identity, and
- * every failure (including 401 for a signed-out user) is ignored. Without session
- * storage nothing is sent, so the once-per-session bound always holds.
+ * LINE client. At most one request per document; the session flag is written only
+ * after a 2xx response (REFRESHED, FRESH or NO_BINDING), so a failed attempt
+ * (401, 429, 503, network, timeout) is retried by the next document in the same
+ * session, never by a timer or loop. It never changes entry state or navigation:
+ * the server re-verifies the DEMI session and the LINE identity, and every failure
+ * is ignored. Without session storage nothing is sent.
  */
 export function sendWorkspaceLiffReachabilityRefresh(
   sdk: WorkspaceLiffSdk,
@@ -277,12 +291,12 @@ export function sendWorkspaceLiffReachabilityRefresh(
   fetcher: typeof fetch = fetch,
 ): void {
   try {
-    if (!store || !sdk.isInClient()) return;
+    if (reachabilityRefreshAttempted || !store || !sdk.isInClient()) return;
     const idToken = readLiffToken(sdk.getIDToken?.bind(sdk));
     const accessToken = readLiffToken(sdk.getAccessToken?.bind(sdk));
     if (!idToken || !accessToken) return;
     if (store.getItem(REACHABILITY_REFRESH_KEY) !== null) return;
-    store.setItem(REACHABILITY_REFRESH_KEY, "1");
+    reachabilityRefreshAttempted = true;
     void fetcher(WORKSPACE_LIFF_REACHABILITY_REFRESH_PATH, {
       method: "POST",
       credentials: "same-origin",
@@ -290,6 +304,8 @@ export function sendWorkspaceLiffReachabilityRefresh(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ idToken, accessToken }),
       ...(typeof AbortSignal.timeout === "function" ? { signal: AbortSignal.timeout(REACHABILITY_REFRESH_TIMEOUT_MS) } : {}),
+    }).then((response) => {
+      if (response.ok) markReachabilityRefreshDone(store);
     }).catch(() => undefined);
   } catch {
     // Storage or SDK unavailable: the refresh is best effort and never affects entry.

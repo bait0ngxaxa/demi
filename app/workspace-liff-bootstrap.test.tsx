@@ -137,10 +137,15 @@ describe("Workspace LIFF background reachability refresh", () => {
     root = createRoot(container);
   }
 
-  it("sends one refresh after READY inside the LINE client, once per browser session", async () => {
+  const FLAG = "demi.line.workspace.reachabilityRefreshSent";
+  const settle = async (): Promise<void> => { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); };
+
+  it("sends one refresh after READY inside the LINE client and, after a 2xx, not again in the same session", async () => {
     await enter(tokens);
     expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledOnce();
+    await settle();
+    expect(window.sessionStorage.getItem(FLAG)).toBe("1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/line/account/reachability/refresh");
     expect(init).toMatchObject({ method: "POST", credentials: "same-origin", cache: "no-store" });
@@ -149,6 +154,26 @@ describe("Workspace LIFF background reachability refresh", () => {
     await enter(tokens);
     expect(mocks.refresh).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["401 (signed out)", () => Promise.resolve(new Response(null, { status: 401 }))],
+    ["429 (rate limited)", () => Promise.resolve(new Response(null, { status: 429 }))],
+    ["503 (LINE unavailable)", () => Promise.resolve(new Response(null, { status: 503 }))],
+    ["a rejected fetch", () => Promise.reject(new TypeError("network down"))],
+    ["a timeout", () => Promise.reject(new DOMException("The operation timed out.", "TimeoutError"))],
+  ])("does not mark the session done after %s, so the next document in the session sends again", async (_label, fail) => {
+    fetchMock.mockImplementationOnce(fail);
+    await enter(tokens);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(window.sessionStorage.getItem(FLAG)).toBeNull();
+    expect(container.querySelector("h1")?.textContent ?? "").not.toBe("เชื่อมต่อ DEMI ไม่สำเร็จ");
+    remountNewDocument();
+    await enter(tokens);
+    await settle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(window.sessionStorage.getItem(FLAG)).toBe("1");
   });
 
   it("sends once for a StrictMode effect re-run joining the same initialization", async () => {
