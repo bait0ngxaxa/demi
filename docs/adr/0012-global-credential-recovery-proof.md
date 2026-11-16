@@ -244,3 +244,7 @@ Every UI-issued reset stores `CredentialRecoveryVerificationMethod.NOT_RECORDED`
 Claim-time ownership proof is unchanged: the account owner still confirms their Thai National ID (or the registered login identifier for a platform ADMIN), together with OWNER/ADMIN authority and scope checks, the 15-minute in-person and 24-hour online expiry, issuer sign-out before an in-person handoff, single use, quarantine and reconciliation.
 
 Accepted consequence: the audit log no longer shows which verification method the issuer used. It still records the issuer, delivery mode, target and outcome. Statements earlier in this ADR that the issuer records one of the approved methods are superseded by this amendment for resets issued from 2026-11-16.
+
+## Clarification — NULL-safe reset context check (2026-11-16)
+
+`WorkforceActivation_context_check` is now NULL-safe: its whole expression is wrapped in `COALESCE(..., FALSE)`, so a branch that evaluates to NULL (for example `"relationshipKind" = 'platform_admin'` on a null `relationshipKind`) rejects the row instead of passing it. RESET rows can no longer carry a null context: every RESET must match the platform ADMIN, break-glass or Hospital-scoped branch. The earlier statement that legacy null-context RESET rows "remain stored for compatibility" no longer applies; the system has no production data, so no such rows exist, and a claimed row of that shape would have quarantined its user while staying invisible to ADMIN reconciliation.
