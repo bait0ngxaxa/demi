@@ -232,6 +232,17 @@ describe("UM-1 owner user management (PostgreSQL)", () => {
         .toEqual([expect.objectContaining({ relationshipId: assisted.relationshipId, method: "ASSISTED", status: "ACTIVE" })]);
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff" }, db)).rows.find(({ relationshipId }) => relationshipId === assisted.relationshipId))
         .toMatchObject({ latestPasswordReset: { completedAt: new Date(now.getTime() + 1), verificationMethod: "LINE_ID_TOKEN", path: "ออนไลน์ · ลิงก์ยืนยันทาง LINE" } });
+      await db.auditEvent.create({
+        data: {
+          action: "account.password_reset.completed",
+          resourceType: "User",
+          resourceId: assisted.userId,
+          metadata: { mode: "IN_PERSON", verificationMethod: "NOT_RECORDED" },
+          createdAt: new Date(now.getTime() + 2),
+        },
+      });
+      expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff" }, db)).rows.find(({ relationshipId }) => relationshipId === assisted.relationshipId))
+        .toMatchObject({ latestPasswordReset: { completedAt: new Date(now.getTime() + 2), verificationMethod: "NOT_RECORDED", path: "ต่อหน้า · ไม่ได้ระบุวิธียืนยัน" } });
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "staff", method: "NOT_ACTIVATED" }, db)).rows.map(({ relationshipId }) => relationshipId))
         .toEqual([pending.relationshipId]);
       expect((await listHospitalUsers(owner, { targetHospitalId: h.id, kind: "osm", method: "SELF_REGISTERED" }, db)).rows)

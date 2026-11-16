@@ -275,11 +275,15 @@ describe("PO-1: ADMIN invites the first OWNER of a Parent Hospital", () => {
         error.ineligible.some(({ reason }) => reason === "HELD_OWNER_INVITATION"));
 
     const resetInput = {
-      targetKind: "staff" as const, hospitalId: parent.id, relationshipId: membership.id, mode: "IN_PERSON" as const, verificationMethod: "IN_PERSON_ID_CARD" as const,
+      targetKind: "staff" as const, hospitalId: parent.id, relationshipId: membership.id, mode: "IN_PERSON" as const,
     };
     expect(await searchMediatedPasswordResetTargets(admin, { nationalId: targetNationalId }, db))
       .toEqual(expect.arrayContaining([expect.objectContaining({ targetKind: "staff", hospitalId: parent.id, relationshipId: membership.id })]));
     const reset = await issueMediatedPasswordReset(admin, resetInput, { database: db });
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: reset.resetId }, select: { verificationMethod: true } }))
+      .toEqual({ verificationMethod: "NOT_RECORDED" });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.issued", resourceId: invitee.userId } })).metadata)
+      .toMatchObject({ verificationMethod: "NOT_RECORDED", outcome: "ISSUED" });
     const replacementSubject = randomUUID();
     await completeMediatedPasswordReset({
       token: reset.token, nationalId: targetNationalId,

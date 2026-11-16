@@ -508,13 +508,16 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
       hospitalId: created.child.id,
       relationshipId: membership.id,
       mode,
-      verificationMethod: "IN_PERSON_ID_CARD" as const,
     };
     await expect(issueMediatedPasswordReset(parentOwner, resetInput, { database: db }))
       .rejects.toMatchObject({ code: "FORBIDDEN" });
     const [candidate] = await searchMediatedPasswordResetTargets(admin, { nationalId: targetNationalId }, db);
     expect(candidate).toMatchObject({ targetKind: "staff", hospitalId: created.child.id, relationshipId: membership.id, relationshipStatus: MembershipStatus.PROVISIONED });
     const issued = await issueMediatedPasswordReset(admin, resetInput, { database: db });
+    expect(await db.workforceActivation.findUniqueOrThrow({ where: { id: issued.resetId }, select: { verificationMethod: true } }))
+      .toEqual({ verificationMethod: "NOT_RECORDED" });
+    expect((await db.auditEvent.findFirstOrThrow({ where: { action: "account.password_reset.issued", resourceId: membership.userId } })).metadata)
+      .toMatchObject({ verificationMethod: "NOT_RECORDED", outcome: "ISSUED" });
     const replacementSubject = randomUUID();
     const createReplacementIdentity = async ({ userId, resetId }: { userId: string; resetId: string; newPassword: string }) => ({
       authSubject: replacementSubject,
@@ -598,7 +601,6 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
       hospitalId: created.child.id,
       relationshipId: membership.id,
       mode: "IN_PERSON" as const,
-      verificationMethod: "IN_PERSON_ID_CARD" as const,
     };
     await expect(issueMediatedPasswordReset(parentOwner, resetInput, { database: db })).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(await searchMediatedPasswordResetTargets(admin, { nationalId: targetNationalId }, db))
@@ -651,7 +653,6 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
       hospitalId: created.child.id,
       relationshipId: held.id,
       mode: "ONLINE" as const,
-      verificationMethod: "IN_PERSON_ID_CARD" as const,
     };
     const [candidate] = await searchMediatedPasswordResetTargets(admin, { nationalId: targetNationalId }, db);
     expect(candidate).toMatchObject({ relationshipId: held.id, hospitalId: created.child.id, relationshipStatus: MembershipStatus.ENDED });
@@ -702,7 +703,6 @@ describe("O1-C: Parent creates a Child and invites its first OWNER", () => {
       hospitalId: created.child.id,
       relationshipId: membership.id,
       mode: "ONLINE",
-      verificationMethod: "IN_PERSON_ID_CARD",
     }, { database: db })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
