@@ -44,16 +44,12 @@ export const accountRecoveryTokenSchema = z
   .regex(/^[A-Za-z0-9_-]{43}$/u);
 
 export const mediatedPasswordResetModeSchema = z.enum(["IN_PERSON", "ONLINE"]);
-export const credentialRecoveryVerificationMethodSchema = z.enum([
-  "IN_PERSON_ID_CARD",
-  "VIDEO_CALL_FACE_AND_ID_CARD",
-  "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
-]);
 export const storedCredentialRecoveryVerificationMethodSchema = z.enum([
   "IN_PERSON_ID_CARD",
   "VIDEO_CALL_FACE_AND_ID_CARD",
   "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
   "BREAK_GLASS_CLI",
+  "NOT_RECORDED",
   "LINE_ID_TOKEN",
 ]);
 export const mediatedPasswordResetTargetKindSchema = z.enum(["staff", "osm", "patient", "caregiver", "platform_admin"]);
@@ -65,7 +61,6 @@ export const mediatedPasswordResetIssueSchema = z.discriminatedUnion("targetKind
     targetUserId: z.uuid(),
     targetKind: z.literal("platform_admin"),
     mode: mediatedPasswordResetModeSchema,
-    verificationMethod: credentialRecoveryVerificationMethodSchema,
   }).strict(),
   z.object({
     hospitalId: z.uuid(),
@@ -73,14 +68,12 @@ export const mediatedPasswordResetIssueSchema = z.discriminatedUnion("targetKind
     targetUserId: z.uuid(),
     targetKind: z.literal("caregiver"),
     mode: mediatedPasswordResetModeSchema,
-    verificationMethod: credentialRecoveryVerificationMethodSchema,
   }).strict(),
   z.object({
     hospitalId: z.uuid(),
     relationshipId: z.uuid(),
     targetKind: z.enum(["staff", "osm", "patient"]),
     mode: mediatedPasswordResetModeSchema,
-    verificationMethod: credentialRecoveryVerificationMethodSchema,
   }).strict(),
 ]);
 
@@ -144,10 +137,9 @@ export type AccountRecoveryCompletionInput = z.infer<
   typeof accountRecoveryCompletionSchema
 >;
 export type MediatedPasswordResetIssueInput = z.infer<typeof mediatedPasswordResetIssueSchema>;
-type WithoutResetDelivery<T> = T extends unknown ? Omit<T, "mode" | "verificationMethod"> : never;
+type WithoutResetDelivery<T> = T extends unknown ? Omit<T, "mode"> : never;
 export type MediatedPasswordResetTargetContext = WithoutResetDelivery<MediatedPasswordResetIssueInput>;
 export type MediatedPasswordResetMode = z.infer<typeof mediatedPasswordResetModeSchema>;
-export type CredentialRecoveryVerificationMethod = z.infer<typeof credentialRecoveryVerificationMethodSchema>;
 export type StoredCredentialRecoveryVerificationMethod = z.infer<typeof storedCredentialRecoveryVerificationMethodSchema>;
 export type MediatedPasswordResetTargetKind = z.infer<typeof mediatedPasswordResetTargetKindSchema>;
 export type MediatedPasswordResetCompletionInput = z.infer<typeof mediatedPasswordResetCompletionSchema>;

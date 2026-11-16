@@ -71,27 +71,29 @@ async function submitForm(): Promise<void> {
 }
 
 describe("OWNER/ADMIN-mediated password reset handoff", () => {
-  it("requires a recorded verification method and shows the online single-use QR and link", async () => {
+  it("issues without choosing a verification method, reminds the issuer to verify identity, and shows the online single-use QR and link", async () => {
     mocks.issue.mockResolvedValue({ status: "ISSUED", mode: "ONLINE", handoffUrl: `https://demi.example/recover#${"x".repeat(43)}`, expiresAt: "2026-10-23T03:00:00.000Z" });
     await renderControl();
 
     click("button");
     const issueButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "ออกลิงก์รีเซ็ต");
-    expect(issueButton?.disabled).toBe(true);
-    expect(container.textContent).toContain("ห้ามใช้หมายเลขที่ผู้ขอแจ้ง");
-
-    click('input[name="verificationMethod"][value="CALLBACK_PHONE_ON_HOSPITAL_RECORD"]');
-    click('input[name="mode"][value="ONLINE"]');
     expect(issueButton?.disabled).toBe(false);
+    expect(container.querySelector('input[name="verificationMethod"]')).toBeNull();
+    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(2);
+    expect(container.textContent).toContain("ตรวจสอบตัวตนเจ้าของบัญชีก่อนออกลิงก์ หากโทรยืนยัน ให้โทรเบอร์ในเวชระเบียนของโรงพยาบาลเท่านั้น");
+    expect(container.textContent).not.toContain("ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน");
+
+    click('input[name="mode"][value="ONLINE"]');
     await submitForm();
 
+    expect(mocks.issue).toHaveBeenCalledOnce();
     expect(mocks.issue).toHaveBeenCalledWith({
       hospitalId: "11111111-1111-4111-8111-111111111111",
       relationshipId: "22222222-2222-4222-8222-222222222222",
       targetKind: "patient",
       mode: "ONLINE",
-      verificationMethod: "CALLBACK_PHONE_ON_HOSPITAL_RECORD",
     });
+    expect(mocks.issue.mock.calls[0]?.[0]).not.toHaveProperty("verificationMethod");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(mocks.qr).toHaveBeenCalledWith(expect.stringContaining("/recover#"), expect.any(Object));
     expect(container.textContent).toContain("ลิงก์ใช้ได้ครั้งเดียว");
@@ -102,7 +104,7 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     expect(mocks.locationReplace).not.toHaveBeenCalled();
   });
 
-  it("keeps the ADMIN identifier as account confirmation and requires an independent recorded identity check", async () => {
+  it("keeps the ADMIN identifier as account confirmation and requires an independent identity check", async () => {
     mocks.issue.mockResolvedValue({
       status: "ISSUED",
       mode: "ONLINE",
@@ -113,20 +115,21 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     click("button");
 
     expect(container.textContent).toContain("ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน");
-    expect(container.textContent).toContain("ห้ามใช้หมายเลขที่ผู้ขอแจ้ง");
+    expect(container.textContent).not.toContain("เวชระเบียนของโรงพยาบาล");
+    expect(container.querySelector('input[name="verificationMethod"]')).toBeNull();
 
-    click('input[name="verificationMethod"][value="VIDEO_CALL_FACE_AND_ID_CARD"]');
     click('input[name="mode"][value="ONLINE"]');
     await submitForm();
 
     expect(container.textContent).toContain("รหัสเข้าสู่ระบบของผู้ดูแลระบบ DEMI ที่ลงทะเบียนไว้");
     expect(container.textContent).toContain("ห้ามส่งต่อให้ผู้อื่น");
-    expect(mocks.issue).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mocks.issue).toHaveBeenCalledWith({
       targetKind: "platform_admin",
       hospitalId: null,
       relationshipId: null,
       targetUserId: "33333333-3333-4333-8333-333333333333",
-    }));
+      mode: "ONLINE",
+    });
     expect(container.textContent).not.toContain("โรงพยาบาลตัวอย่าง");
   });
 
@@ -134,7 +137,6 @@ describe("OWNER/ADMIN-mediated password reset handoff", () => {
     mocks.issue.mockResolvedValue({ status: "ISSUED", mode: "IN_PERSON", handoffUrl: `https://demi.example/recover#${"y".repeat(43)}`, expiresAt: "2026-10-22T03:15:00.000Z" });
     await renderControl();
     click("button");
-    click('input[name="verificationMethod"][value="IN_PERSON_ID_CARD"]');
     await submitForm();
 
     expect(mocks.locationReplace).toHaveBeenCalledOnce();
