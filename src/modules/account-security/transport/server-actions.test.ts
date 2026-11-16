@@ -74,7 +74,6 @@ const input = {
   hospitalId: "22222222-2222-4222-8222-222222222222",
   relationshipId: "33333333-3333-4333-8333-333333333333",
   targetKind: "staff" as const,
-  verificationMethod: "IN_PERSON_ID_CARD" as const,
 };
 
 function issued(mode: "IN_PERSON" | "ONLINE") {

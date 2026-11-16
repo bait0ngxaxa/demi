@@ -111,7 +111,7 @@ describe("account security schemas", () => {
     const userId = "11111111-1111-4111-8111-111111111111";
     const hospitalId = "22222222-2222-4222-8222-222222222222";
     const relationshipId = "33333333-3333-4333-8333-333333333333";
-    const base = { mode: "ONLINE" as const, verificationMethod: "IN_PERSON_ID_CARD" as const };
+    const base = { mode: "ONLINE" as const };
 
     expect(mediatedPasswordResetIssueSchema.safeParse({
       ...base,
@@ -139,5 +139,25 @@ describe("account security schemas", () => {
       hospitalId,
       relationshipId,
     }).success).toBe(true);
+  });
+
+  it("issues resets without a verification method and rejects any supplied method", () => {
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const hospitalId = "22222222-2222-4222-8222-222222222222";
+    const relationshipId = "33333333-3333-4333-8333-333333333333";
+    const contexts = [
+      { targetKind: "platform_admin", targetUserId: userId, hospitalId: null, relationshipId: null },
+      { targetKind: "caregiver", targetUserId: userId, hospitalId, relationshipId: null },
+      { targetKind: "staff", hospitalId, relationshipId },
+      { targetKind: "osm", hospitalId, relationshipId },
+      { targetKind: "patient", hospitalId, relationshipId },
+    ] as const;
+
+    for (const context of contexts) {
+      expect(mediatedPasswordResetIssueSchema.safeParse({ ...context, mode: "IN_PERSON" }).success).toBe(true);
+      for (const verificationMethod of ["IN_PERSON_ID_CARD", "NOT_RECORDED", "BREAK_GLASS_CLI"]) {
+        expect(mediatedPasswordResetIssueSchema.safeParse({ ...context, mode: "IN_PERSON", verificationMethod }).success).toBe(false);
+      }
+    }
   });
 });
