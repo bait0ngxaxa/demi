@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { HospitalStatus, LineReachability, MembershipStatus, MembershipType, Role, UserStatus } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
@@ -149,6 +149,13 @@ async function cleanup(): Promise<void> {
   await db.hospital.deleteMany({ where: { id: { in: hospitals } } });
   hospitals.length = 0; users.length = 0; people.length = 0;
 }
+
+// Pin plain-text LINE Push so a developer .env cannot switch delivery to Flex cards; Flex delivery is covered by
+// tests that pass flexMessages: true explicitly.
+beforeEach(() => {
+  vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+});
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Phase E access decisions (PostgreSQL)", () => {
   beforeAll(async () => { await db.$connect(); });

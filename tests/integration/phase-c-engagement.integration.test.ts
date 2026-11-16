@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { HospitalStatus, LineReachability, MembershipStatus, MembershipType, Profession, Role, SupportReportStatus, UserStatus } from "@prisma/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "@/lib/db/prisma";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { createPersonalMedication, stopPersonalMedication } from "@/modules/medications/services/personal-medication-service";
 import { setOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
-import { LineMessagingClient, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
+import { LineMessagingClient, type LineFlexMessage, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryInternals } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { MEDICATION_LINE_REMINDER_TEXT } from "@/modules/medications/domain/medication-line-reminders";
 import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
@@ -150,6 +150,13 @@ function barrier(): { entered: Promise<void>; release: () => void; wait: () => P
   return { entered, release, wait: async () => { signalEntered(); await gate; } };
 }
 
+// Pin plain-text LINE Push so a developer .env cannot switch delivery to Flex cards; Flex delivery is covered by
+// tests that pass flexMessages: true explicitly.
+beforeEach(() => {
+  vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+});
+afterEach(() => vi.unstubAllEnvs());
+
 describe("Phase C engagement PostgreSQL workflow", () => {
   beforeAll(async () => {
     const url = process.env.DEMI_TEST_DATABASE_URL;
@@ -184,6 +191,33 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(calls[0]?.text).not.toContain("ชื่อยาที่ห้ามอยู่ในข้อความ");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ localDate: new Date("2026-10-14T00:00:00.000Z"), localTime: new Date("1970-01-01T07:00:00.000Z"), state: "PROVIDER_ACCEPTED", attemptCount: 1 });
+  });
+
+  it("sends one generic Flex card instead of text when Flex messages are enabled", async () => {
+    // The card's action needs a Workspace LIFF and a valid LINE Login configuration; set them here so the test never
+    // depends on a developer .env.
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "");
+    const subject = await setupReminderSubject();
+    const push = vi.fn(async (): Promise<LinePushResult> => ({ kind: "ACCEPTED" }));
+    const flexCalls: Array<{ lineUserId: string; message: LineFlexMessage; retryKey: string }> = [];
+    const result = await drainMedicationLineReminderOutbox({
+      database: prisma, now: () => reminderNow, random: () => 0.5, logSummary: () => undefined, flexMessages: true, push,
+      pushFlex: async (lineUserId, message, retryKey) => { flexCalls.push({ lineUserId, message, retryKey }); return { kind: "ACCEPTED" }; },
+    });
+    const rows = await reminderRows([subject.medicationId]);
+    expect(result).toMatchObject({ providerAccepted: 1 });
+    expect(push).not.toHaveBeenCalled();
+    expect(flexCalls).toHaveLength(1);
+    expect(flexCalls[0]).toMatchObject({ lineUserId: subject.lineUserId, retryKey: rows[0]?.retryKey, message: { type: "flex" } });
+    // ADR-0033: the card body names the medication; the lock-screen altText carries the time only.
+    expect(flexCalls[0]?.message.altText).toBe("ยาถึงเวลาแล้ว: 07:00 น.");
+    expect(JSON.stringify(flexCalls[0]?.message.contents)).toContain("ชื่อยาที่ห้ามอยู่ในข้อความ");
+    expect(JSON.stringify(flexCalls[0]?.message.contents)).toContain("https://liff.line.me/1234567890-WorkSpace/");
+    expect(rows).toMatchObject([{ state: "PROVIDER_ACCEPTED", attemptCount: 1 }]);
   });
 
   it.each([10, 50, 100, 200])("drains %i synchronized eligible patients across repeated scheduler batches without duplicates", async (size) => {
