@@ -6,18 +6,11 @@ import QRCode from "qrcode";
 
 import { buttonClassName } from "@/components/ui/button";
 import type {
-  CredentialRecoveryVerificationMethod,
   MediatedPasswordResetIssueInput,
   MediatedPasswordResetMode,
   MediatedPasswordResetTargetKind,
 } from "@/modules/account-security/schemas/account-security-schemas";
 import { issueMediatedPasswordResetAction, type MediatedPasswordResetIssueActionResult } from "@/modules/account-security/transport/server-actions";
-
-const VERIFICATION_METHODS: readonly { value: CredentialRecoveryVerificationMethod; label: string }[] = [
-  { value: "IN_PERSON_ID_CARD", label: "ตรวจบัตรประชาชนต่อหน้า" },
-  { value: "VIDEO_CALL_FACE_AND_ID_CARD", label: "วิดีโอคอล ตรวจใบหน้าและบัตรประชาชน" },
-  { value: "CALLBACK_PHONE_ON_HOSPITAL_RECORD", label: "โทรกลับหมายเลขในเวชระเบียนของโรงพยาบาล" },
-];
 
 type Props = {
   targetName: string;
@@ -39,7 +32,6 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
     : "เลขบัตรประชาชนของเจ้าของบัญชี";
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [mode, setMode] = useState<MediatedPasswordResetMode>("IN_PERSON");
-  const [verificationMethod, setVerificationMethod] = useState<CredentialRecoveryVerificationMethod | "">("");
   const [result, setResult] = useState<MediatedPasswordResetIssueActionResult | null>(null);
   const [handoffUrl, setHandoffUrl] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
@@ -64,13 +56,13 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
 
   async function issueReset(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (!verificationMethod || busy) return;
+    if (busy) return;
     setBusy(true);
     const input: MediatedPasswordResetIssueInput = props.targetKind === "platform_admin"
-      ? { targetKind: "platform_admin", targetUserId: props.targetUserId, hospitalId: null, relationshipId: null, mode, verificationMethod }
+      ? { targetKind: "platform_admin", targetUserId: props.targetUserId, hospitalId: null, relationshipId: null, mode }
       : props.targetKind === "caregiver"
-        ? { targetKind: "caregiver", targetUserId: props.targetUserId, hospitalId: props.hospitalId, relationshipId: null, mode, verificationMethod }
-        : { targetKind: props.targetKind, hospitalId: props.hospitalId, relationshipId: props.relationshipId, mode, verificationMethod };
+        ? { targetKind: "caregiver", targetUserId: props.targetUserId, hospitalId: props.hospitalId, relationshipId: null, mode }
+        : { targetKind: props.targetKind, hospitalId: props.hospitalId, relationshipId: props.relationshipId, mode };
     try {
       const response = await issueMediatedPasswordResetAction(input);
       setResult(response);
@@ -157,19 +149,11 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
             </div>
           ) : (
             <form className="space-y-5" onSubmit={(event) => void issueReset(event)}>
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold">เลือกวิธีที่ใช้ยืนยันตัวตนแล้ว</legend>
-                {VERIFICATION_METHODS.map((method) => (
-                  <label className="flex min-h-11 items-center gap-3 rounded-md border border-border px-3 py-2 text-sm" key={method.value}>
-                    <input checked={verificationMethod === method.value} name="verificationMethod" onChange={() => setVerificationMethod(method.value)} required type="radio" value={method.value} />
-                    {method.label}
-                  </label>
-                ))}
-                <p className="text-sm leading-6 text-text-muted">หากโทรกลับ ให้ใช้เฉพาะหมายเลขในเวชระเบียนของโรงพยาบาล ห้ามใช้หมายเลขที่ผู้ขอแจ้ง</p>
-                {props.targetKind === "platform_admin" ? (
-                  <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน การกรอกรหัสเข้าสู่ระบบและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
-                ) : null}
-              </fieldset>
+              {props.targetKind === "platform_admin" ? (
+                <p className="text-sm leading-6 text-text-muted">ผู้ดูแลระบบ DEMI ที่ออกลิงก์ต้องตรวจสอบตัวตนของผู้ดูแลระบบ DEMI ผู้รับอย่างเป็นอิสระก่อน การกรอกรหัสเข้าสู่ระบบและการได้รับลิงก์ไม่ใช้แทนการตรวจสอบดังกล่าว</p>
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">ตรวจสอบตัวตนเจ้าของบัญชีก่อนออกลิงก์ หากโทรยืนยัน ให้โทรเบอร์ในเวชระเบียนของโรงพยาบาลเท่านั้น</p>
+              )}
 
               <fieldset className="space-y-2">
                 <legend className="text-sm font-semibold">เลือกรูปแบบส่งมอบ</legend>
@@ -186,7 +170,7 @@ export function MediatedPasswordResetControl(props: Props): React.JSX.Element {
               {result?.status === "ERROR" ? <p className="text-sm text-danger" role="alert">{result.message}</p> : null}
               <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
                 <button className={buttonClassName({ variant: "secondary", size: "compact" })} onClick={() => dialogRef.current?.close()} type="button">ปิด</button>
-                <button className={buttonClassName({ variant: "primary", size: "compact" })} disabled={!verificationMethod || busy} type="submit">{busy ? "กำลังออกลิงก์…" : "ออกลิงก์รีเซ็ต"}</button>
+                <button className={buttonClassName({ variant: "primary", size: "compact" })} disabled={busy} type="submit">{busy ? "กำลังออกลิงก์…" : "ออกลิงก์รีเซ็ต"}</button>
               </div>
             </form>
           )}
