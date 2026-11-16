@@ -280,8 +280,10 @@ describe("LINE-QA.B2.2 scoped Appointment mutations on PostgreSQL", () => {
       expect(await failure(acknowledge(selfless))).toBe("WORKFLOW_INELIGIBLE");
 
       const quarantined = await patient();
+      const quarantinedRelationship = await database.patientHospitalRelationship.findUniqueOrThrow({ where: { id: quarantined.relationshipId } });
       await database.accountRecovery.create({ data: {
         targetUserId: quarantined.userId, patientHospitalRelationshipId: quarantined.relationshipId, issuedByUserId: quarantined.userId,
+        hospitalId: quarantinedRelationship.hospitalId, verificationMethod: "NOT_RECORDED",
         tokenHash: hex(), expiresAt: new Date(Date.now() + 60_000), claimedAt: new Date(),
       } });
       expect(await failure(acknowledge(quarantined))).toBe("WORKFLOW_INELIGIBLE");

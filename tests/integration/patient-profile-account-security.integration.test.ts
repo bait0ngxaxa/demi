@@ -294,7 +294,7 @@ describe("Phase 17E.1 Patient profile and account security PostgreSQL workflows"
     expect(rejection?.status === "rejected" ? rejection.reason : null).toBeInstanceOf(ConflictError);
   });
 
-  it.each([null, Role.HOSPITAL, Role.OSM, Role.ADMIN])("blocks legacy assisted recovery for PATIENT plus %s without mutating identity", async (role) => {
+  it.each([null, Role.HOSPITAL, Role.OSM, Role.ADMIN])("blocks legacy assisted recovery for PATIENT plus %s, and PostgreSQL refuses a legacy recovery row", async (role) => {
     const hospital = await createHospital("โรงพยาบาล กู้คืนหลายบทบาท");
     const owner = await createHospitalOwner(hospital.id);
     const patient = await createPatient([hospital.id]);
@@ -302,10 +302,11 @@ describe("Phase 17E.1 Patient profile and account security PostgreSQL workflows"
     const token = "T".repeat(43);
     const relationshipId = patient.relationshipIds[0];
     if (!relationshipId) throw new Error("Missing test relationship");
-    const legacy = await prisma.accountRecovery.create({ data: {
+    // A recovery row without a Hospital and verification method can no longer be stored (2026-11-16).
+    await expect(prisma.accountRecovery.create({ data: {
       targetUserId: patient.userId, patientHospitalRelationshipId: relationshipId, issuedByUserId: owner.userId,
       tokenHash: createHash("sha256").update(token).digest("hex"), expiresAt: new Date(Date.now() + ACCOUNT_RECOVERY_TTL_MS),
-    } });
+    } })).rejects.toThrow("AccountRecovery_mediated_context_check");
     const userBefore = await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } });
     const replacePasswordAndRevokeSessions = vi.fn();
     const dependencies = { database: prisma, replacePasswordAndRevokeSessions };
@@ -314,8 +315,7 @@ describe("Phase 17E.1 Patient profile and account security PostgreSQL workflows"
     const results = await Promise.allSettled(Array.from({ length: 2 }, () => completePatientAccountRecovery({ token, newPassword: "new-patient-password", passwordConfirmation: "new-patient-password" }, dependencies)));
     expect(results.every((result) => result.status === "rejected")).toBe(true);
     expect(replacePasswordAndRevokeSessions).not.toHaveBeenCalled();
-    expect(await prisma.accountRecovery.findUniqueOrThrow({ where: { id: legacy.id } })).toEqual(legacy);
-    expect(await prisma.accountRecovery.count()).toBe(1);
+    expect(await prisma.accountRecovery.count()).toBe(0);
     expect(await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } })).toEqual(userBefore);
     expect(await prisma.auditEvent.count()).toBe(0);
   });
@@ -329,6 +329,7 @@ describe("Phase 17E.1 Patient profile and account security PostgreSQL workflows"
     const store = createActorContextStore(prisma);
     await expect(store.findUserById(patient.userId)).resolves.not.toBeNull();
     await prisma.accountRecovery.create({ data: { targetUserId: patient.userId, patientHospitalRelationshipId: relationshipId, issuedByUserId: owner.userId,
+      hospitalId: hospital.id, verificationMethod: "NOT_RECORDED",
       tokenHash: "f".repeat(64), claimedAt: new Date(), revokedAt: new Date(), expiresAt: new Date(0) } });
     await expect(store.findUserById(patient.userId)).resolves.toBeNull();
     const user = await prisma.user.findUniqueOrThrow({ where: { id: patient.userId } });

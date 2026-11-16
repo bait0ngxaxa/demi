@@ -642,7 +642,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
 
   describe("global workforce recovery is fail-closed", () => {
     it.each(["MEMBER_AND_OWNER", "HOSPITAL_OSM", "PATIENT_WORKFORCE", "ADMIN", "SUSPENDED"])(
-      "rejects a malicious issuer for %s, including legacy bearer token plus national ID", async (scenario) => {
+      "rejects a malicious issuer for %s, and PostgreSQL refuses a legacy global reset bearer token", async (scenario) => {
         const hospital = await createHospital("RECOVERY-A");
         const other = await createHospital("RECOVERY-B");
         const owner = await createMember(hospital.id, MembershipType.OWNER, 1);
@@ -659,32 +659,29 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
           userId: target.userId, targetHospitalId: hospital.id,
         })).rejects.toMatchObject({ code: "FORBIDDEN" });
         const token = "issuer-visible-legacy-reset";
-        const legacy = await prisma.workforceActivation.create({ data: {
+        // A null-context RESET can no longer be stored (WorkforceActivation_context_check, 2026-11-16).
+        await expect(prisma.workforceActivation.create({ data: {
           userId: target.userId, createdByUserId: owner.userId, tokenHash: hashWorkforceActivationToken(token),
           purpose: WorkforceActivationPurpose.RESET, mode: "ASSISTED", expiresAt: new Date(Date.now() + 900_000),
-        } });
-        const completion = { nationalId: nationalIdFor(2), password: NEW_PASSWORD, passwordConfirmation: NEW_PASSWORD };
-        await expect(completeWorkforcePasswordReset(token, completion)).rejects.toMatchObject({ code: "FORBIDDEN" });
-        await expect(previewWorkforceActivation(token)).rejects.toMatchObject({ code: "CONFLICT" });
-        await expect(completeWorkforceActivation(token, { ...completion, ...LEGAL })).rejects.toMatchObject({ code: "CONFLICT" });
+        } })).rejects.toThrow("WorkforceActivation_context_check");
+        expect(await prisma.workforceActivation.count({ where: { userId: target.userId, purpose: WorkforceActivationPurpose.RESET } })).toBe(0);
         expect(mockedReplacePassword).not.toHaveBeenCalled();
-        expect(await prisma.workforceActivation.findUniqueOrThrow({ where: { id: legacy.id } })).toMatchObject({ claimedAt: null, usedAt: null });
         expect(await auditCount("workforce_password_reset.completed")).toBe(0);
       },
     );
 
-    it.each(["expired", "revoked", "claimed", "consumed"])("never retries provider effects from a %s RESET", async (state) => {
+    it.each(["expired", "revoked", "claimed", "consumed"])("refuses to store a %s legacy global RESET, so no provider effect can be retried", async (state) => {
       const hospital = await createHospital("LEGACY-RESET");
       const owner = await createMember(hospital.id, MembershipType.OWNER, 1);
       const target = await createActiveOsm(hospital.id, 2);
       const now = new Date();
       const token = "legacy-ambiguous-reset";
-      await prisma.workforceActivation.create({ data: {
+      await expect(prisma.workforceActivation.create({ data: {
         userId: target.userId, createdByUserId: owner.userId, tokenHash: hashWorkforceActivationToken(token), purpose: "RESET",
         expiresAt: state === "expired" ? new Date(now.getTime() - 1) : new Date(now.getTime() + 900_000),
         operationState: state === "claimed" ? "CLAIMED" : state === "consumed" ? "FINALIZED" : "NOT_STARTED",
         revokedAt: state === "revoked" ? now : null, claimedAt: state === "claimed" ? now : null, usedAt: state === "consumed" ? now : null,
-      } });
+      } })).rejects.toThrow("WorkforceActivation_context_check");
       const replacePassword = vi.fn().mockRejectedValue(new Error("Ambiguous provider outcome"));
       const completion = { nationalId: target.nationalId, password: NEW_PASSWORD, passwordConfirmation: NEW_PASSWORD };
       const attempts = await Promise.allSettled([completeWorkforcePasswordReset(token, completion, { replacePassword }),
@@ -693,7 +690,7 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       expect(replacePassword).not.toHaveBeenCalled();
     });
 
-    it("quarantines application access for an ambiguous legacy global reset, even after token revocation", async () => {
+    it("refuses to store an ambiguous legacy global reset that would silently quarantine the user", async () => {
       const hospital = await createHospital("QUARANTINE-RESET");
       const issuer = await createMember(hospital.id, MembershipType.OWNER, 1);
       const target = await createMember(hospital.id, MembershipType.MEMBER, 2);
@@ -701,13 +698,13 @@ describe("workforce onboarding v2 PostgreSQL workflow", () => {
       const mapped = await prisma.user.findUniqueOrThrow({ where: { id: target.userId } });
       if (!mapped.authSubject) throw new Error("Fixture auth subject is missing");
       expect(await store.findUserByAuthSubject(mapped.authSubject)).not.toBeNull();
-      await prisma.workforceActivation.create({ data: {
+      await expect(prisma.workforceActivation.create({ data: {
         userId: target.userId, createdByUserId: issuer.userId, purpose: "RESET", tokenHash: hashWorkforceActivationToken("possibly-applied-legacy-reset"),
         expiresAt: new Date(Date.now() - 1), claimedAt: new Date(), revokedAt: new Date(),
         reconciliationRequiredAt: new Date(), operationState: "RECONCILIATION_REQUIRED",
-      } });
-      expect(await store.findUserByAuthSubject(mapped.authSubject)).toBeNull();
-      expect(await store.findUserById(target.userId)).toBeNull();
+      } })).rejects.toThrow("WorkforceActivation_context_check");
+      expect(await store.findUserByAuthSubject(mapped.authSubject)).not.toBeNull();
+      expect(await store.findUserById(target.userId)).not.toBeNull();
       expect(await store.findUserById(issuer.userId)).not.toBeNull();
       expect(await prisma.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ authSubject: mapped.authSubject, status: UserStatus.ACTIVE });
     });

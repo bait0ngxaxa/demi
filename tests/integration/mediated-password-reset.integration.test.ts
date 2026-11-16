@@ -1623,39 +1623,86 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     expect(await db.user.findUniqueOrThrow({ where: { id: target.userId } })).toMatchObject({ authSubject: provider.replacementSubject });
   });
 
-  it("enforces reset contexts in PostgreSQL while preserving inert legacy null-context reset rows", async () => {
+  it("enforces reset contexts in PostgreSQL with a NULL-safe check that rejects every null-context reset", async () => {
     const issuer = await createAdmin();
-    const target = await createIdentity({ role: Role.HOSPITAL, name: "ผู้ใช้ทดสอบ context" });
-    const common = {
-      userId: target.userId,
-      createdByUserId: issuer.userId,
-      mode: WorkforceActivationMode.REMOTE,
-      purpose: WorkforceActivationPurpose.RESET,
-      expiresAt: new Date(now.getTime() + 60_000),
+    const hospital = await createHospital();
+    let tokenSequence = 0;
+    const nextTokenHash = (): string => createHash("sha256").update(`context-check-${tokenSequence++}`, "utf8").digest("hex");
+    const activation = async (data: Omit<Prisma.WorkforceActivationUncheckedCreateInput, "userId" | "createdByUserId" | "tokenHash" | "expiresAt">) => {
+      const target = await createIdentity({ role: Role.HOSPITAL, name: "ผู้ใช้ทดสอบ context" });
+      return db.workforceActivation.create({
+        data: {
+          userId: target.userId,
+          createdByUserId: issuer.userId,
+          tokenHash: nextTokenHash(),
+          mode: WorkforceActivationMode.REMOTE,
+          expiresAt: new Date(now.getTime() + 60_000),
+          ...data,
+        },
+      });
+    };
+    const nullContext = { hospitalId: null, relationshipId: null, relationshipKind: null } as const;
+    const platformContext = { hospitalId: null, relationshipId: null, relationshipKind: "platform_admin" } as const;
+
+    for (const verificationMethod of ["NOT_RECORDED", "BREAK_GLASS_CLI", null] as const) {
+      await expect(activation({ ...nullContext, purpose: WorkforceActivationPurpose.RESET, verificationMethod }))
+        .rejects.toThrow("WorkforceActivation_context_check");
+    }
+    await expect(activation({ ...platformContext, relationshipKind: "staff", purpose: WorkforceActivationPurpose.RESET, verificationMethod: "IN_PERSON_ID_CARD" }))
+      .rejects.toThrow("WorkforceActivation_context_check");
+
+    const staff = await createTarget("staff", hospital.id);
+    const accepted = [
+      { ...platformContext, purpose: WorkforceActivationPurpose.RESET, verificationMethod: "NOT_RECORDED" },
+      { ...platformContext, purpose: WorkforceActivationPurpose.RESET, verificationMethod: "BREAK_GLASS_CLI" },
+      { hospitalId: hospital.id, relationshipId: staff.relationshipId, relationshipKind: "staff", purpose: WorkforceActivationPurpose.RESET, verificationMethod: "NOT_RECORDED" },
+      { ...nullContext, purpose: WorkforceActivationPurpose.SELF_REGISTRATION, verificationMethod: null, selfRegistrationRelationships: [{ kind: "HOSPITAL_MEMBER", hospitalId: hospital.id }] },
+      { hospitalId: hospital.id, relationshipId: staff.relationshipId, relationshipKind: "HOSPITAL_MEMBER", purpose: WorkforceActivationPurpose.ACTIVATION, verificationMethod: null },
+      { hospitalId: hospital.id, relationshipId: staff.relationshipId, relationshipKind: "CHILD_OWNER", purpose: WorkforceActivationPurpose.CHILD_OWNER_ONBOARDING, verificationMethod: null },
+      { hospitalId: hospital.id, relationshipId: staff.relationshipId, relationshipKind: "PARENT_OWNER", purpose: WorkforceActivationPurpose.PARENT_OWNER_ONBOARDING, verificationMethod: null },
+    ] as const satisfies readonly Omit<Prisma.WorkforceActivationUncheckedCreateInput, "userId" | "createdByUserId" | "tokenHash" | "expiresAt">[];
+    for (const data of accepted) {
+      await expect(activation(data)).resolves.toMatchObject({
+        purpose: data.purpose,
+        hospitalId: data.hospitalId,
+        relationshipKind: data.relationshipKind,
+        verificationMethod: data.verificationMethod,
+      });
+    }
+  });
+
+  it("requires every AccountRecovery row to be a mediated Hospital reset with a UI verification method", async () => {
+    const hospital = await createHospital();
+    const issuer = await createOwner(hospital.id);
+    let tokenSequence = 0;
+    const recovery = async (data: Pick<Prisma.AccountRecoveryUncheckedCreateInput, "hospitalId" | "verificationMethod">) => {
+      const target = await createTarget("patient", hospital.id);
+      return db.accountRecovery.create({
+        data: {
+          targetUserId: target.userId,
+          patientHospitalRelationshipId: target.relationshipId,
+          issuedByUserId: issuer.userId,
+          tokenHash: createHash("sha256").update(`account-recovery-context-${tokenSequence++}`, "utf8").digest("hex"),
+          expiresAt: new Date(now.getTime() + 60_000),
+          ...data,
+        },
+      });
     };
 
-    await expect(db.workforceActivation.create({
-      data: {
-        ...common,
-        tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "0"),
-        hospitalId: null,
-        relationshipId: null,
-        relationshipKind: "staff",
-        verificationMethod: "IN_PERSON_ID_CARD",
-      },
-    })).rejects.toThrow("WorkforceActivation_context_check");
+    for (const data of [
+      { hospitalId: hospital.id, verificationMethod: null },
+      { hospitalId: null, verificationMethod: "NOT_RECORDED" },
+      { hospitalId: hospital.id, verificationMethod: "BREAK_GLASS_CLI" },
+    ] as const) {
+      await expect(recovery(data)).rejects.toThrow("AccountRecovery_mediated_context_check");
+    }
+    await expect(recovery({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" }))
+      .resolves.toMatchObject({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" });
 
-    const legacyReset = await db.workforceActivation.create({
-      data: {
-        ...common,
-        tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "1"),
-        hospitalId: null,
-        relationshipId: null,
-        relationshipKind: null,
-        verificationMethod: null,
-      },
-    });
-    expect(legacyReset).toMatchObject({ purpose: WorkforceActivationPurpose.RESET, hospitalId: null, relationshipKind: null, verificationMethod: null });
+    const patient = await createTarget("patient", hospital.id);
+    const issued = await issueMediatedPasswordReset(issuer, issueInput("patient", hospital.id, patient.relationshipId), { database: db, now: () => now });
+    expect(await db.accountRecovery.findUniqueOrThrow({ where: { id: issued.resetId } }))
+      .toMatchObject({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" });
   });
 
   it("reconciles a quarantined last-ADMIN break-glass reset through REC-1 and audits the operator note", async () => {
@@ -1783,6 +1830,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
           targetUserId: target.userId,
           patientHospitalRelationshipId: relationship.id,
           hospitalId: hospital.id,
+          verificationMethod: "NOT_RECORDED",
           issuedByUserId: owner.userId,
           tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "2"),
           expiresAt: new Date(now.getTime() + 60 * 60_000),
