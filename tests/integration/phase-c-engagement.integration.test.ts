@@ -194,8 +194,10 @@ describe("Phase C engagement PostgreSQL workflow", () => {
   });
 
   it("sends one generic Flex card instead of text when Flex messages are enabled", async () => {
-    // The card's action needs a Workspace LIFF; set it here so the test never depends on a developer .env.
+    // The card's action needs a Workspace LIFF and a valid LINE Login configuration; set them here so the test never
+    // depends on a developer .env.
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
     vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "");
