@@ -1671,6 +1671,40 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     }
   });
 
+  it("requires every AccountRecovery row to be a mediated Hospital reset with a UI verification method", async () => {
+    const hospital = await createHospital();
+    const issuer = await createOwner(hospital.id);
+    let tokenSequence = 0;
+    const recovery = async (data: Pick<Prisma.AccountRecoveryUncheckedCreateInput, "hospitalId" | "verificationMethod">) => {
+      const target = await createTarget("patient", hospital.id);
+      return db.accountRecovery.create({
+        data: {
+          targetUserId: target.userId,
+          patientHospitalRelationshipId: target.relationshipId,
+          issuedByUserId: issuer.userId,
+          tokenHash: createHash("sha256").update(`account-recovery-context-${tokenSequence++}`, "utf8").digest("hex"),
+          expiresAt: new Date(now.getTime() + 60_000),
+          ...data,
+        },
+      });
+    };
+
+    for (const data of [
+      { hospitalId: hospital.id, verificationMethod: null },
+      { hospitalId: null, verificationMethod: "NOT_RECORDED" },
+      { hospitalId: hospital.id, verificationMethod: "BREAK_GLASS_CLI" },
+    ] as const) {
+      await expect(recovery(data)).rejects.toThrow("AccountRecovery_mediated_context_check");
+    }
+    await expect(recovery({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" }))
+      .resolves.toMatchObject({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" });
+
+    const patient = await createTarget("patient", hospital.id);
+    const issued = await issueMediatedPasswordReset(issuer, issueInput("patient", hospital.id, patient.relationshipId), { database: db, now: () => now });
+    expect(await db.accountRecovery.findUniqueOrThrow({ where: { id: issued.resetId } }))
+      .toMatchObject({ hospitalId: hospital.id, verificationMethod: "NOT_RECORDED" });
+  });
+
   it("reconciles a quarantined last-ADMIN break-glass reset through REC-1 and audits the operator note", async () => {
     const admin = await createIdentity({ role: Role.ADMIN, name: "ผู้ดูแลฉุกเฉิน" });
     const operatorNote = "INC-REC2A-RECON: provider outcome checked";
@@ -1796,6 +1830,7 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
           targetUserId: target.userId,
           patientHospitalRelationshipId: relationship.id,
           hospitalId: hospital.id,
+          verificationMethod: "NOT_RECORDED",
           issuedByUserId: owner.userId,
           tokenHash: randomUUID().replaceAll("-", "").padEnd(64, "2"),
           expiresAt: new Date(now.getTime() + 60 * 60_000),
