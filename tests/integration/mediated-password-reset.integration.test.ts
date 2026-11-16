@@ -307,6 +307,7 @@ function lineRecoveryDependencies(lineUserId: string) {
     attemptThrottle,
     verifyIdentity,
     sendPush,
+    flexMessages: false,
   };
 }
 
@@ -353,6 +354,12 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
     await db.$connect();
     await clearDatabase();
   });
+  // Pin plain-text LINE messages so a developer .env cannot switch these workflows to Flex cards; Flex delivery is
+  // covered explicitly below.
+  beforeEach(() => {
+    vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", "false");
+  });
+  afterEach(() => vi.unstubAllEnvs());
   afterEach(clearDatabase);
   afterAll(async () => { await db.$disconnect(); });
 
@@ -2081,6 +2088,28 @@ describe("REC-1 owner/admin-mediated password reset PostgreSQL workflows", () =>
       expect(message?.altText).not.toContain(capability.id);
       expect(JSON.stringify(message).split(capability.id)).toHaveLength(2);
       expect(JSON.stringify(message)).not.toContain(target.nationalId);
+    });
+
+    it("sends the recovery capability as a Flex card when Flex messages are enabled", async () => {
+      const target = await createLineRecoveryTarget(Role.PATIENT);
+      const sendFlexPush = vi.fn(async (lineUserId: string, message: LineFlexMessage, retryKey: string): Promise<LinePushResult> => {
+        void lineUserId;
+        void message;
+        void retryKey;
+        return { kind: "ACCEPTED" };
+      });
+      const dependencies = { ...lineRecoveryDependencies(target.lineUserId), flexMessages: true, sendFlexPush };
+
+      await expect(requestLinePasswordRecovery({ nationalId: target.nationalId }, dependencies))
+        .resolves.toEqual({ message: LINE_PASSWORD_RECOVERY_REQUEST_RESPONSE });
+
+      const capability = await db.linePasswordRecoveryCapability.findFirstOrThrow({ where: { targetUserId: target.userId } });
+      expect(dependencies.sendPush).not.toHaveBeenCalled();
+      expect(sendFlexPush).toHaveBeenCalledOnce();
+      expect(sendFlexPush).toHaveBeenCalledWith(target.lineUserId, expect.objectContaining({ type: "flex" }), capability.id);
+      expect(JSON.stringify(sendFlexPush.mock.calls[0]?.[1])).toContain(`?capability=${capability.id}`);
+      await expect(openLinePasswordRecovery({ capabilityId: capability.id, idToken: "fresh-line-id-token-for-recovery" }, dependencies))
+        .resolves.toEqual({ status: "READY" });
     });
 
     it("verifies the bound LINE subject, replaces the canonical credential once, records the audit and consumes the next-sign-in notice", async () => {
