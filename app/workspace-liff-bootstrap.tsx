@@ -9,7 +9,7 @@ import { isLinePlatformParameterName } from "@/modules/line/domain/line-navigati
 import { hasLiffCredentialFragment } from "@/modules/line/domain/line-workspace-liff-entry";
 
 import { WorkspaceLiffEntryScreen, type WorkspaceLiffEntryState } from "./workspace-liff-entry";
-import { clearWorkspaceLiffEntryAttempts, decideDocumentProtectedContinuation, hasWorkspaceLiffInitialization, isLineLoginReturnSearch, loadWorkspaceLiffSdk, sessionAttemptStore, startWorkspaceLiffEntry, type WorkspaceLiffSdkLoader } from "./workspace-liff-gateway";
+import { clearWorkspaceLiffEntryAttempts, decideDocumentProtectedContinuation, hasWorkspaceLiffInitialization, isLineLoginReturnSearch, loadWorkspaceLiffSdk, readyWorkspaceLiffSdk, sendWorkspaceLiffReachabilityRefresh, sessionAttemptStore, startWorkspaceLiffEntry, type WorkspaceLiffSdkLoader } from "./workspace-liff-gateway";
 
 /**
  * Proxy rewrites document GETs to this public shell. The protected tree
@@ -71,6 +71,9 @@ export function WorkspaceLiffBootstrap({
           continued.current = true;
           router.refresh();
         }
+        // After navigation is requested, so it can never delay or change entry.
+        const sdk = result === "READY" && liffId ? readyWorkspaceLiffSdk(liffId) : null;
+        if (sdk) sendWorkspaceLiffReachabilityRefresh(sdk, sessionAttemptStore());
       } else if (result === "CONTINUATION_FAILED") {
         clearWorkspaceLiffHandoff();
         setState("CONTINUATION_FAILED");

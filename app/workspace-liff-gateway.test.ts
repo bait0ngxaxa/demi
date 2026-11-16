@@ -11,6 +11,7 @@ import {
   recordProtectedContinuationAttempt,
   recordWorkspaceLiffEntryAttempt,
   resetWorkspaceLiffInitializationForTests,
+  sendWorkspaceLiffReachabilityRefresh,
   startWorkspaceLiffEntry,
   WORKSPACE_LIFF_ENTRY_WINDOW_MS,
   WORKSPACE_LIFF_MAX_ENTRY_ATTEMPTS,
@@ -211,5 +212,69 @@ describe("protected continuation reload latch", () => {
     const throwing = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => { throw new Error("denied"); } };
     expect(recordProtectedContinuationAttempt(throwing, target)).toBe("PROCEED");
     expect(() => clearProtectedContinuationAttempts(throwing)).not.toThrow();
+  });
+});
+
+describe("Workspace LIFF reachability refresh request", () => {
+  const FLAG = "demi.line.workspace.reachabilityRefreshSent";
+  const sdk = {
+    id: "1234567890-Workspace", init: async () => undefined, isInClient: () => true,
+    getIDToken: () => "synthetic-id-token-0000000000", getAccessToken: () => "synthetic-access-token-0000000000",
+  };
+  const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+  function refreshStore(setItem: (key: string, value: string) => void = () => undefined) {
+    const values = new Map<string, string>();
+    return {
+      values,
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => { setItem(key, value); values.set(key, value); }),
+      removeItem: vi.fn((key: string) => { values.delete(key); }),
+    };
+  }
+  afterEach(() => resetWorkspaceLiffInitializationForTests());
+
+  it("does not start a second request in the same document while one is in flight", async () => {
+    const store = refreshStore();
+    let respond: (response: Response) => void = () => undefined;
+    const fetcher = vi.fn(() => new Promise<Response>((resolve) => { respond = resolve; }));
+    sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher);
+    sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(store.values.has(FLAG)).toBe(false);
+    respond(new Response(null, { status: 200 }));
+    await settle();
+    expect(store.values.get(FLAG)).toBe("1");
+  });
+
+  it("does not retry in the same document after a failed attempt", async () => {
+    const store = refreshStore();
+    const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
+    sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher);
+    await settle();
+    sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher);
+    await settle();
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(store.values.has(FLAG)).toBe(false);
+  });
+
+  it("swallows a throwing sessionStorage write after a 2xx response", async () => {
+    const store = refreshStore(() => { throw new DOMException("quota", "QuotaExceededError"); });
+    const fetcher = vi.fn(async () => new Response(null, { status: 200 }));
+    expect(() => sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher)).not.toThrow();
+    await settle();
+    expect(store.setItem).toHaveBeenCalledOnce();
+    expect(store.values.has(FLAG)).toBe(false);
+    sendWorkspaceLiffReachabilityRefresh(sdk, store, fetcher);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it("does not consume the document's attempt when nothing can be sent", async () => {
+    const fetcher = vi.fn(async () => new Response(null, { status: 200 }));
+    sendWorkspaceLiffReachabilityRefresh(sdk, null, fetcher);
+    sendWorkspaceLiffReachabilityRefresh({ ...sdk, isInClient: () => false }, refreshStore(), fetcher);
+    sendWorkspaceLiffReachabilityRefresh({ ...sdk, getAccessToken: () => null }, refreshStore(), fetcher);
+    expect(fetcher).not.toHaveBeenCalled();
+    sendWorkspaceLiffReachabilityRefresh(sdk, refreshStore(), fetcher);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });

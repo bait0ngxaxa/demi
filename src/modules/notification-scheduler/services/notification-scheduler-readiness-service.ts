@@ -1,6 +1,6 @@
 import "server-only";
 
-import { AppointmentLineNotificationState, MedicationLineReminderOutcome, MedicationLineReminderState, NotificationSchedulerTickStatus, type PrismaClient } from "@prisma/client";
+import { AppointmentLineNotificationOutcome, AppointmentLineNotificationState, MedicationLineReminderOutcome, MedicationLineReminderState, NotificationSchedulerTickStatus, type PrismaClient } from "@prisma/client";
 
 import { getPrisma } from "@/lib/db/prisma";
 import { InfrastructureError } from "@/shared/errors/application-error";
@@ -11,10 +11,17 @@ export type NotificationOutboxReadiness = {
   oldestDueAgeSeconds: number | null;
   /** Age of the oldest pending row since it was created; null when nothing is pending. */
   oldestPendingAgeSeconds: number | null;
+  /**
+   * Rows suppressed with LINE_INELIGIBLE (no fresh FRIEND observation, or the
+   * binding changed) in the last 24 hours. Informational only: a user blocking the
+   * Official Account is normal, so this never affects `healthy`.
+   */
+  lineIneligibleSuppressedLast24Hours: number;
 };
 
 /** Persistent deferral becomes stale even when individual delivery batches continue running. */
 export const NOTIFICATION_SCHEDULER_HEALTHY_MAX_AGE_MS = 10 * 60_000;
+export const NOTIFICATION_LINE_INELIGIBLE_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Operator view: timestamps and aggregate counts only. */
 export type NotificationSchedulerReadiness = {
@@ -32,9 +39,14 @@ export type NotificationSchedulerReadiness = {
   };
 };
 
-function outboxReadiness(aggregate: { _count: { _all: number }; _min: { createdAt: Date | null; dueAt?: Date | null } }, now: Date): NotificationOutboxReadiness {
+function outboxReadiness(
+  aggregate: { _count: { _all: number }; _min: { createdAt: Date | null; dueAt?: Date | null } },
+  lineIneligibleSuppressedLast24Hours: number,
+  now: Date,
+): NotificationOutboxReadiness {
   const oldest = aggregate._min.createdAt;
   return {
+    lineIneligibleSuppressedLast24Hours,
     pending: aggregate._count._all,
     oldestDueAgeSeconds: aggregate._min.dueAt && aggregate._min.dueAt <= now
       ? Math.max(0, Math.floor((now.getTime() - aggregate._min.dueAt.getTime()) / 1000)) : null,
@@ -48,7 +60,8 @@ export async function getNotificationSchedulerReadiness(
   const database = input.database ?? getPrisma();
   const now = input.now ?? new Date();
   const since = new Date(now.getTime() - NOTIFICATION_SCHEDULER_HEALTHY_MAX_AGE_MS);
-  const [state, appointments, medications, expired, medicationFailures, appointmentFailures] = await Promise.all([
+  const ineligibleSince = new Date(now.getTime() - NOTIFICATION_LINE_INELIGIBLE_WINDOW_MS);
+  const [state, appointments, medications, expired, medicationFailures, appointmentFailures, appointmentIneligible, medicationIneligible] = await Promise.all([
     database.notificationSchedulerState.findUnique({ where: { id: 1 }, select: { lastTickCompletedAt: true, lastTickStatus: true } }),
     database.appointmentLineNotification.aggregate({
       where: { state: { in: [AppointmentLineNotificationState.PENDING, AppointmentLineNotificationState.RETRY_SCHEDULED, AppointmentLineNotificationState.CLAIMED] } },
@@ -69,14 +82,20 @@ export async function getNotificationSchedulerReadiness(
     database.appointmentLineNotification.count({ where: {
       state: { in: [AppointmentLineNotificationState.PERMANENT_FAILURE, AppointmentLineNotificationState.OUTCOME_UNKNOWN] }, terminalAt: { gte: since, lte: now },
     } }),
+    database.appointmentLineNotification.count({ where: {
+      state: AppointmentLineNotificationState.SUPPRESSED, safeOutcome: AppointmentLineNotificationOutcome.LINE_INELIGIBLE, terminalAt: { gte: ineligibleSince, lte: now },
+    } }),
+    database.medicationLineReminderNotification.count({ where: {
+      state: MedicationLineReminderState.SUPPRESSED, safeOutcome: MedicationLineReminderOutcome.LINE_INELIGIBLE, terminalAt: { gte: ineligibleSince, lte: now },
+    } }),
   ]);
   if (!state) throw new InfrastructureError("Notification scheduler state is unavailable");
   const lastTickCompletedAt = state.lastTickCompletedAt;
   const lastTickStatus = state.lastTickStatus;
   const lastTickAgeMs = lastTickCompletedAt ? now.getTime() - lastTickCompletedAt.getTime() : null;
   const lastTickAgeSeconds = lastTickAgeMs === null ? null : Math.max(0, Math.floor(lastTickAgeMs / 1000));
-  const appointmentHealth = outboxReadiness(appointments, now);
-  const medicationHealth = outboxReadiness(medications, now);
+  const appointmentHealth = outboxReadiness(appointments, appointmentIneligible, now);
+  const medicationHealth = outboxReadiness(medications, medicationIneligible, now);
   // A short burst may defer. Staleness, overdue work, missed windows or terminal delivery
   // failures invalidate health even if a tick recently completed. No new persistence is needed.
   const acceptableStatus = lastTickStatus === NotificationSchedulerTickStatus.COMPLETED || lastTickStatus === NotificationSchedulerTickStatus.DEFERRED;

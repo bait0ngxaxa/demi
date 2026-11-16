@@ -148,7 +148,7 @@ describe("notification scheduler tick on PostgreSQL", () => {
     const readiness = await getNotificationSchedulerReadiness({ database, now });
     expect(readiness).toMatchObject({ healthy: true, lastTickAgeSeconds: 0, lastTickStatus: NotificationSchedulerTickStatus.COMPLETED, lastTickCompletedAt: now.toISOString() });
     for (const outbox of Object.values(readiness.outboxes)) {
-      expect(Object.keys(outbox).sort()).toEqual(["oldestDueAgeSeconds", "oldestPendingAgeSeconds", "pending"]);
+      expect(Object.keys(outbox).sort()).toEqual(["lineIneligibleSuppressedLast24Hours", "oldestDueAgeSeconds", "oldestPendingAgeSeconds", "pending"]);
       expect(Number.isInteger(outbox.pending)).toBe(true);
       expect(outbox.pending === 0 ? outbox.oldestPendingAgeSeconds === null : (outbox.oldestPendingAgeSeconds ?? -1) >= 0).toBe(true);
     }

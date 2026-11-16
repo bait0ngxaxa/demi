@@ -210,6 +210,24 @@ readiness อาจยัง healthy ในช่วง defer สั้น ๆ �
 
 release นี้เปลี่ยน timer artifact: ขณะ timer หยุดและ service เดิมจบแล้ว ต้องติดตั้งไฟล์ `.service`/`.timer` จาก release ใหม่ตาม §1.11 แล้ว `daemon-reload` ก่อนเปิด timer; rollback ต้องใช้ unit ของ release ที่ย้อนกลับด้วย การสลับ symlink อย่างเดียวไม่อัปเดต `/etc/systemd/system`
 
+### 1.12 แจ้งเตือนเมื่อ scheduler ไม่ healthy (ตัวอย่าง)
+
+ผลตรวจ readiness ข้างบนเป็นการตรวจด้วยมือ ถ้าต้องการให้ระบบแจ้งเตือนเอง ให้ตั้ง systemd timer ตัวที่สองที่เรียก `/api/internal/scheduler/readiness` แล้วทำให้ unit ล้มเหลวเมื่อไม่ได้ HTTP `200` + `healthy: true` (รวมกรณีเรียกไม่ถึง) และใช้ `OnFailure=` ชี้ไปที่ unit แจ้งเตือนของ operator เอง (อีเมล, chat webhook ฯลฯ) repository มีเพียงไฟล์ตัวอย่าง ไม่มีขั้นตอน deploy ใดติดตั้งให้ และไม่มี unit แจ้งเตือนให้
+
+- [`deploy/systemd/demi-scheduler-readiness.service.example`](../../deploy/systemd/demi-scheduler-readiness.service.example): `Type=oneshot` เรียกผ่าน `127.0.0.1:3000` ด้วย `DEMI_SCHEDULER_SECRET` จาก `/etc/demi/demi.env` เหมือนการตรวจด้วยมือ พิมพ์ status และ JSON (aggregate counts เท่านั้น) ลง journald และ `exit 1` เมื่อไม่ healthy ให้แทน `<OPERATOR_NOTIFY_UNIT>` ด้วยชื่อ template unit แจ้งเตือนของ operator (`%n` ส่งชื่อ unit ที่ล้มเหลวเป็น instance)
+- [`deploy/systemd/demi-scheduler-readiness.timer.example`](../../deploy/systemd/demi-scheduler-readiness.timer.example): ทุก 5 นาที (วินาทีที่ 30 เพื่อไม่ชนรอบ tick) ไม่ใช้ `Persistent=true` เพราะการตรวจย้อนหลังไม่มีประโยชน์
+
+```sh
+sudo install -m 0644 /srv/demi/current/deploy/systemd/demi-scheduler-readiness.service.example /etc/systemd/system/demi-scheduler-readiness.service
+sudo install -m 0644 /srv/demi/current/deploy/systemd/demi-scheduler-readiness.timer.example /etc/systemd/system/demi-scheduler-readiness.timer
+sudoedit /etc/systemd/system/demi-scheduler-readiness.service   # แทน <OPERATOR_NOTIFY_UNIT>
+sudo systemctl daemon-reload
+sudo systemctl enable --now demi-scheduler-readiness.timer
+sudo systemctl start demi-scheduler-readiness.service && journalctl -u demi-scheduler-readiness.service -n 5 --no-pager
+```
+
+เมื่อได้รับแจ้งเตือน ให้ดู `journalctl -u demi-scheduler.service` และหา event `demi.unexpected_error` ใน log ของ app (`/var/log/demi/app-error.log`): ทุก step ที่ `FAILED` (`notification-scheduler.medicationDrain`, `.appointmentDrain`, `.appointmentPurge`, `.medicationPurge`) และความล้มเหลวก่อนเริ่ม step (`notification-scheduler.tick`) จะบันทึก scope, error class, Prisma code, SQLSTATE, ชื่อ constraint และ stack frames เท่านั้น ไม่มีข้อความ error, ค่า query หรือ identifier ของผู้ใช้/binding/นัดหมาย/ยา ความล้มเหลวที่เป็น `ApplicationError` (เช่น `InfrastructureError` เมื่อไม่มีแถว `NotificationSchedulerState`) ไม่ถูกบันทึกโดย reporter นี้ตามการออกแบบ `outboxes.*.lineIneligibleSuppressedLast24Hours` เป็นข้อมูลประกอบเท่านั้นและไม่ทำให้ unhealthy (ดู [LINE_PRODUCTION_SETUP](./LINE_PRODUCTION_SETUP.md) §7.1)
+
 ## 2. Deploy (ทุก release)
 
 ลำดับ: build ใน release ใหม่ → migrate deploy → หยุด timer → สลับ symlink → `pm2 startOrReload` (drain 30 วินาที) → ตรวจ → เปิด timer ทุกคำสั่งรันจาก shell ของผู้ดูแล (`sudo`) โดยงานของแอปรันในฐานะ `demi` ผ่าน `sudo -u demi -H` (`-H` ให้ PM2 และ npm ใช้ home `/srv/demi`)

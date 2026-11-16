@@ -8,6 +8,7 @@ import { setOwnMedicationLineReminderPreference } from "@/modules/medications/se
 import { LineMessagingClient, type LineFlexMessage, type LinePushResult } from "@/modules/line/adapters/line-messaging-client";
 import { drainMedicationLineReminderOutbox, medicationLineReminderDeliveryInternals } from "@/modules/medications/services/medication-line-reminder-delivery-service";
 import { MEDICATION_LINE_REMINDER_TEXT } from "@/modules/medications/domain/medication-line-reminders";
+import { refreshLineAccountReachabilityIfStale } from "@/modules/line/services/line-account-service";
 import { getNotificationSchedulerReadiness } from "@/modules/notification-scheduler/services/notification-scheduler-readiness-service";
 import { runNotificationSchedulerTick } from "@/modules/notification-scheduler/services/notification-scheduler-tick-service";
 import { createSupportReport, getAdminSupportReport, getOwnSupportReport, listAdminSupportReports, listOwnSupportReports, SupportReportRateLimitError, updateAdminSupportReportStatus } from "@/modules/support/services/support-report-service";
@@ -448,11 +449,46 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     expect(await prisma.lineMedicationReminderPreference.findUniqueOrThrow({ where: { userId: subject.patient.userId } })).toMatchObject({ enabled: true });
   });
 
+  it("suppresses a reminder for a 31-day-old friendship observation and delivers the next one after a verified refresh", async () => {
+    const subject = await setupReminderSubject({ times: ["07:00", "08:00"] });
+    await prisma.lineAccountBinding.updateMany({
+      where: { userId: subject.patient.userId },
+      data: { reachabilityObservedAt: new Date(reminderNow.getTime() - 31 * 24 * 60 * 60 * 1000) },
+    });
+    const calls: PushCall[] = [];
+    expect(await drainAt(reminderNow, calls)).toMatchObject({ claimed: 1, providerAccepted: 0, suppressed: 1 });
+    expect(calls).toHaveLength(0);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([{ state: "SUPPRESSED", safeOutcome: "LINE_INELIGIBLE" }]);
+    const readiness = await getNotificationSchedulerReadiness({ database: prisma, now: reminderNow });
+    expect(readiness.outboxes.medicationLineReminders.lineIneligibleSuppressedLast24Hours).toBe(1);
+    expect(readiness.outboxes.appointmentLineNotifications.lineIneligibleSuppressedLast24Hours).toBe(0);
+
+    const refreshedAt = bangkok("2026-10-14T07:20:00.000");
+    const verifyFriendship = vi.fn(async () => ({ friend: true }));
+    await expect(refreshLineAccountReachabilityIfStale({ idToken: "synthetic-id-token", accessToken: "synthetic-access-token" }, {
+      database: prisma, now: () => refreshedAt,
+      currentSession: async () => ({ userId: subject.patient.userId, sessionHash: "a".repeat(64) }),
+      verifyIdentity: async () => ({ subject: subject.lineUserId }),
+      verifyFriendship,
+      rateLimiter: { consume: async () => true },
+    })).resolves.toBe("REFRESHED");
+    expect(verifyFriendship).toHaveBeenCalledOnce();
+    expect(await prisma.lineAccountBinding.findFirstOrThrow({ where: { userId: subject.patient.userId }, select: { reachability: true, reachabilityObservedAt: true } }))
+      .toEqual({ reachability: LineReachability.FRIEND, reachabilityObservedAt: refreshedAt });
+
+    expect(await drainAt(bangkok("2026-10-14T08:05:00.000"), calls)).toMatchObject({ claimed: 1, providerAccepted: 1, suppressed: 0 });
+    expect(calls).toHaveLength(1);
+    expect(await reminderRows([subject.medicationId])).toMatchObject([
+      { state: "SUPPRESSED", safeOutcome: "LINE_INELIGIBLE" },
+      { state: "PROVIDER_ACCEPTED" },
+    ]);
+  });
+
   it("reports pending medication reminders and the oldest pending age for operators", async () => {
     const subject = await setupReminderSubject();
     expect(await medicationLineReminderDeliveryInternals.materializeDueOccurrences(prisma, bangkok("2026-10-14T07:01:00.000"))).toBe(1);
     const readiness = await getNotificationSchedulerReadiness({ database: prisma, now: bangkok("2026-10-14T07:03:00.000") });
-    expect(readiness.outboxes.medicationLineReminders).toEqual({ pending: 1, oldestPendingAgeSeconds: 120, oldestDueAgeSeconds: 180 });
+    expect(readiness.outboxes.medicationLineReminders).toEqual({ pending: 1, oldestPendingAgeSeconds: 120, oldestDueAgeSeconds: 180, lineIneligibleSuppressedLast24Hours: 0 });
     expect(JSON.stringify(readiness)).not.toContain(subject.medicationId);
     expect(JSON.stringify(readiness)).not.toContain(subject.patient.userId);
   });

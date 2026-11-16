@@ -1,0 +1,22 @@
+# EXAMPLE ONLY (docs/operations/DEPLOY_VPS.md §1.12). Not installed by any deploy step.
+# Install as /etc/systemd/system/demi-scheduler-readiness.service, started by demi-scheduler-readiness.timer.
+# Fails (exit 1) unless /api/internal/scheduler/readiness answers HTTP 200 with healthy=true;
+# OnFailure= then starts the operator's own notification unit (placeholder name below).
+
+[Unit]
+Description=DEMI notification scheduler readiness check
+After=network-online.target
+Wants=network-online.target
+# Replace with the operator's notification unit; %n passes this unit's name as the instance.
+OnFailure=<OPERATOR_NOTIFY_UNIT>@%n.service
+
+[Service]
+Type=oneshot
+User=demi
+Group=demi
+ExecStart=/usr/bin/node --env-file=/etc/demi/demi.env -e "fetch('http://127.0.0.1:3000/api/internal/scheduler/readiness',{headers:{authorization:'Bearer '+process.env.DEMI_SCHEDULER_SECRET},signal:AbortSignal.timeout(20000)}).then(async(r)=>{const b=await r.json().catch(()=>null);console.log(r.status,JSON.stringify(b));if(r.status!==200||!b||b.healthy!==true)process.exit(1)}).catch(()=>{console.error('scheduler readiness unreachable');process.exit(1)})"
+TimeoutStartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

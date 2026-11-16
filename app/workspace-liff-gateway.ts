@@ -10,6 +10,10 @@ export type WorkspaceLiffSdk = {
   isInClient(): boolean;
   /** The LIFF ID passed to `liff.init()` in this document, or null before any init. */
   readonly id: string | null;
+  /** Available after `liff.init()` resolves; null without the `openid` scope or grant. */
+  getIDToken?(): string | null;
+  /** Available after `liff.init()` resolves in the LIFF browser. */
+  getAccessToken?(): string | null;
 };
 
 export type WorkspaceLiffSdkLoader = () => Promise<WorkspaceLiffSdk>;
@@ -32,7 +36,7 @@ export const WORKSPACE_LIFF_INIT_TIMEOUT_MS = 10_000;
  *   READY for later callers but never rewrites a result already returned.
  *   The user-facing retry is a reload, which starts a new document.
  */
-type Initialization = { liffId: string; promise: Promise<void>; state: "PENDING" | "READY" | "TIMED_OUT" };
+type Initialization = { liffId: string; promise: Promise<void>; state: "PENDING" | "READY" | "TIMED_OUT"; sdk: WorkspaceLiffSdk | null };
 let initialization: Initialization | null = null;
 
 export function hasWorkspaceLiffInitialization(liffId: string): boolean {
@@ -41,6 +45,11 @@ export function hasWorkspaceLiffInitialization(liffId: string): boolean {
 
 export function isWorkspaceLiffInitializationReady(liffId: string): boolean {
   return initialization?.liffId === liffId && initialization.state === "READY";
+}
+
+/** The SDK this document initialized for `liffId`, only once that initialization is READY. */
+export function readyWorkspaceLiffSdk(liffId: string): WorkspaceLiffSdk | null {
+  return initialization?.liffId === liffId && initialization.state === "READY" ? initialization.sdk : null;
 }
 
 export type WorkspaceLiffInitOptions = {
@@ -53,6 +62,7 @@ export type WorkspaceLiffInitOptions = {
 const otherLiffApp = new Error("Another LIFF app initialized this document");
 
 function startInitialization(load: WorkspaceLiffSdkLoader, liffId: string, options: WorkspaceLiffInitOptions): Initialization {
+  let loaded: WorkspaceLiffSdk | null = null;
   const promise = load().then((sdk) => {
     // The SDK is one module per document: if another LIFF app (the Account page) initialized it here,
     // never re-initialize it with the Workspace ID.
@@ -62,11 +72,15 @@ function startInitialization(load: WorkspaceLiffSdkLoader, liffId: string, optio
     } catch {
       // Presentation bookkeeping only; initialization continues.
     }
+    loaded = sdk;
     return sdk.init({ liffId, withLoginOnExternalBrowser: false });
   });
-  const created: Initialization = { liffId, promise, state: "PENDING" };
+  const created: Initialization = { liffId, promise, state: "PENDING", sdk: null };
   promise.then(() => {
-    if (initialization === created) created.state = "READY";
+    if (initialization === created) {
+      created.sdk = loaded;
+      created.state = "READY";
+    }
   }, () => {
     if (initialization === created) initialization = null;
   });
@@ -111,6 +125,7 @@ export async function initializeWorkspaceLiff(
 export function resetWorkspaceLiffInitializationForTests(): void {
   initialization = null;
   documentContinuation = null;
+  reachabilityRefreshAttempted = false;
 }
 
 const ENTRY_ATTEMPTS_KEY = "demi.line.workspace.entryAttempts";
@@ -234,5 +249,65 @@ export function clearProtectedContinuationAttempts(store: AttemptStore | null): 
     store?.removeItem(CONTINUATION_ATTEMPTS_KEY);
   } catch {
     // Nothing to clear.
+  }
+}
+
+const REACHABILITY_REFRESH_KEY = "demi.line.workspace.reachabilityRefreshSent";
+export const WORKSPACE_LIFF_REACHABILITY_REFRESH_PATH = "/api/line/account/reachability/refresh";
+const REACHABILITY_REFRESH_TIMEOUT_MS = 25_000;
+
+function readLiffToken(read: (() => string | null) | undefined): string | null {
+  try {
+    const token = read?.();
+    return typeof token === "string" && token.length > 0 ? token : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One attempt per document: set when a request starts and never cleared, so a failure retries on the next document load. */
+let reachabilityRefreshAttempted = false;
+
+function markReachabilityRefreshDone(store: AttemptStore): void {
+  try {
+    store.setItem(REACHABILITY_REFRESH_KEY, "1");
+  } catch {
+    // Storage unavailable: the next document may send once more; the server bounds repeats.
+  }
+}
+
+/**
+ * Fire-and-forget LINE friendship refresh for a READY Workspace entry inside the
+ * LINE client. At most one request per document; the session flag is written only
+ * after a 2xx response (REFRESHED, FRESH or NO_BINDING), so a failed attempt
+ * (401, 429, 503, network, timeout) is retried by the next document in the same
+ * session, never by a timer or loop. It never changes entry state or navigation:
+ * the server re-verifies the DEMI session and the LINE identity, and every failure
+ * is ignored. Without session storage nothing is sent.
+ */
+export function sendWorkspaceLiffReachabilityRefresh(
+  sdk: WorkspaceLiffSdk,
+  store: AttemptStore | null,
+  fetcher: typeof fetch = fetch,
+): void {
+  try {
+    if (reachabilityRefreshAttempted || !store || !sdk.isInClient()) return;
+    const idToken = readLiffToken(sdk.getIDToken?.bind(sdk));
+    const accessToken = readLiffToken(sdk.getAccessToken?.bind(sdk));
+    if (!idToken || !accessToken) return;
+    if (store.getItem(REACHABILITY_REFRESH_KEY) !== null) return;
+    reachabilityRefreshAttempted = true;
+    void fetcher(WORKSPACE_LIFF_REACHABILITY_REFRESH_PATH, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idToken, accessToken }),
+      ...(typeof AbortSignal.timeout === "function" ? { signal: AbortSignal.timeout(REACHABILITY_REFRESH_TIMEOUT_MS) } : {}),
+    }).then((response) => {
+      if (response.ok) markReachabilityRefreshDone(store);
+    }).catch(() => undefined);
+  } catch {
+    // Storage or SDK unavailable: the refresh is best effort and never affects entry.
   }
 }
