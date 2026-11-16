@@ -194,6 +194,11 @@ describe("Phase C engagement PostgreSQL workflow", () => {
   });
 
   it("sends one generic Flex card instead of text when Flex messages are enabled", async () => {
+    // The card's action needs a Workspace LIFF; set it here so the test never depends on a developer .env.
+    vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
+    vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
+    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "");
     const subject = await setupReminderSubject();
     const push = vi.fn(async (): Promise<LinePushResult> => ({ kind: "ACCEPTED" }));
     const flexCalls: Array<{ lineUserId: string; message: LineFlexMessage; retryKey: string }> = [];
@@ -209,6 +214,7 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     // ADR-0033: the card body names the medication; the lock-screen altText carries the time only.
     expect(flexCalls[0]?.message.altText).toBe("ยาถึงเวลาแล้ว: 07:00 น.");
     expect(JSON.stringify(flexCalls[0]?.message.contents)).toContain("ชื่อยาที่ห้ามอยู่ในข้อความ");
+    expect(JSON.stringify(flexCalls[0]?.message.contents)).toContain("https://liff.line.me/1234567890-WorkSpace/");
     expect(rows).toMatchObject([{ state: "PROVIDER_ACCEPTED", attemptCount: 1 }]);
   });
 
