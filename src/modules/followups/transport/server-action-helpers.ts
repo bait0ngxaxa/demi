@@ -3,7 +3,7 @@ import { ApplicationError } from "@/shared/errors/application-error";
 
 import { FollowupProgressIncompleteError } from "../domain/followup-progress-coverage";
 
-const FOLLOWUP_FORM_FIELDS = new Set([
+export const FOLLOWUP_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "submissionNonce",
   "appointmentId",
@@ -24,7 +24,7 @@ const FOLLOWUP_FORM_FIELDS = new Set([
   "activityProgress",
 ]);
 
-const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
+export const FOLLOWUP_PROGRAM_FORM_FIELDS = new Set([
   "patientProgramId",
   "submissionNonce",
   "appointmentId",

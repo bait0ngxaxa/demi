@@ -10,7 +10,11 @@ import {
 import {
   buildProgramSubmissionInput,
   buildSubmissionInput,
+  FOLLOWUP_FORM_FIELDS,
+  FOLLOWUP_PROGRAM_FORM_FIELDS,
 } from "@/modules/followups/transport/server-action-helpers";
+
+import { captureSubmittedFormData, expectFormContract } from "../../../../../../tests/support/form-contract";
 
 import { FollowupForm } from "./followup-form";
 
@@ -516,24 +520,19 @@ describe("Follow-up form ↔ server action contract", () => {
   };
   const contractAppointments = [{ ...appointments[0], appointmentId: ids.appointment }];
   const contractGoalPlans = [{ ...goalPlans[0], goalPlanId: ids.goalPlan }];
-  const programContractFields = [
-    "patientProgramId", "submissionNonce", "appointmentId", "sourceGoalPlanId", "serviceDate",
-    "planAdjusted", "hasObstacle", "obstacleNote", "weight", "waistCircumference",
-    "systolicBloodPressure", "diastolicBloodPressure", "bloodSugar", "heightCm", "followedPlan",
-    "expertAdvice", "reflectionNote", "generalNote", "activityProgress",
-  ];
-  const relationshipContractFields = [
-    "patientHospitalRelationshipId", "submissionNonce", "appointmentId", "sourceGoalPlanId", "serviceDate",
-    "planAdjusted", "hasObstacle", "obstacleNote", "weight", "waistCircumference",
-    "systolicBloodPressure", "diastolicBloodPressure", "bloodSugar", "confidenceScore", "reflectionNote",
-    "confidencePlan", "generalNote", "activityProgress",
-  ];
+  const programContract = {
+    fields: FOLLOWUP_PROGRAM_FORM_FIELDS,
+    parse: buildProgramSubmissionInput,
+    schema: followupProgramCreateRequestSchema,
+  };
+  const relationshipContract = {
+    fields: FOLLOWUP_FORM_FIELDS,
+    parse: buildSubmissionInput,
+    schema: followupCreateRequestSchema,
+  };
 
-  function mountContract(kind: "program" | "relationship"): void {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    act(() => root?.render(
+  function renderContract(kind: "program" | "relationship") {
+    return (
       <FollowupForm
         programRoundNumber={kind === "program" ? 3 : undefined}
         appointments={contractAppointments}
@@ -546,43 +545,39 @@ describe("Follow-up form ↔ server action contract", () => {
         selectedGoalPlanId={ids.goalPlan}
         submissionNonce={kind === "program" ? ids.programNonce : ids.relationshipNonce}
         todayServiceDate="2026-11-02"
-      />,
-    ));
-  }
-
-  function postedKeys(payload: FormData): string[] {
-    return [...payload.keys()].sort();
+      />
+    );
   }
 
   it("accepts a Program Follow-up with every field filled in", async () => {
     actions.createFollowupForProgramAction.mockResolvedValueOnce(success);
-    mountContract("program");
-    fillProgramRequiredFields();
-    chooseRadio("hasObstacleChoice", "true");
-    setValue("#followup-obstacle-note", "เวลาน้อยในช่วงเช้า");
-    setValue("#followup-weight", "65");
-    setValue("#followup-waist", "80");
-    setValue("#followup-systolic", "120");
-    setValue("#followup-diastolic", "80");
-    setValue("#followup-blood-sugar", "90");
-    setValue("#followup-height", "165");
-    setValue("#followup-expert-advice", "เพิ่มเวลาตามความพร้อม");
-    setValue("#followup-general-note", "ติดตามอีกหนึ่งสัปดาห์");
-    setValue("#progress-note-exercise_walk", "เดินตามเส้นทาง");
-    openReview();
-    const dialog = container.querySelector<HTMLDialogElement>("dialog");
-    expect(dialog?.querySelector('input[type="checkbox"]')).toBeNull();
-    click("บันทึกต่อ", dialog ?? container);
-    await settle();
+    const payload = await captureSubmittedFormData({
+      render: () => renderContract("program"),
+      action: actions.createFollowupForProgramAction,
+      interact: async (form) => {
+        container = form as HTMLDivElement;
+        fillProgramRequiredFields();
+        chooseRadio("hasObstacleChoice", "true");
+        setValue("#followup-obstacle-note", "เวลาน้อยในช่วงเช้า");
+        setValue("#followup-weight", "65");
+        setValue("#followup-waist", "80");
+        setValue("#followup-systolic", "120");
+        setValue("#followup-diastolic", "80");
+        setValue("#followup-blood-sugar", "90");
+        setValue("#followup-height", "165");
+        setValue("#followup-expert-advice", "เพิ่มเวลาตามความพร้อม");
+        setValue("#followup-general-note", "ติดตามอีกหนึ่งสัปดาห์");
+        setValue("#progress-note-exercise_walk", "เดินตามเส้นทาง");
+        openReview();
+        const dialog = container.querySelector<HTMLDialogElement>("dialog");
+        expect(dialog?.querySelector('input[type="checkbox"]')).toBeNull();
+        click("บันทึกต่อ", dialog ?? container);
+        await settle();
+      },
+    });
 
     expect(actions.createFollowupForProgramAction).toHaveBeenCalledTimes(1);
-    const payload = formDataFor(actions.createFollowupForProgramAction);
-    expect(postedKeys(payload)).toEqual([...programContractFields].sort());
-    const input = buildProgramSubmissionInput(payload);
-    expect(input).not.toBeNull();
-    const parsed = followupProgramCreateRequestSchema.safeParse(input);
-    expect(parsed.error?.issues).toBeUndefined();
-    expect(parsed.data).toMatchObject({
+    expect(expectFormContract(payload, programContract)).toMatchObject({
       patientProgramId: ids.program,
       sourceGoalPlanId: ids.goalPlan,
       hasObstacle: true,
@@ -595,38 +590,42 @@ describe("Follow-up form ↔ server action contract", () => {
 
   it("accepts a Program Follow-up with no vitals after the missing-vitals acknowledgement", async () => {
     actions.createFollowupForProgramAction.mockResolvedValueOnce(success);
-    mountContract("program");
-    fillProgramRequiredFields();
-    openReview();
-    const dialog = container.querySelector<HTMLDialogElement>("dialog");
-    act(() => dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click());
-    click("บันทึกต่อ", dialog ?? container);
-    await settle();
+    const payload = await captureSubmittedFormData({
+      render: () => renderContract("program"),
+      action: actions.createFollowupForProgramAction,
+      interact: async (form) => {
+        container = form as HTMLDivElement;
+        fillProgramRequiredFields();
+        openReview();
+        const dialog = container.querySelector<HTMLDialogElement>("dialog");
+        act(() => dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click());
+        click("บันทึกต่อ", dialog ?? container);
+        await settle();
+      },
+    });
 
     expect(actions.createFollowupForProgramAction).toHaveBeenCalledTimes(1);
-    const payload = formDataFor(actions.createFollowupForProgramAction);
-    expect(postedKeys(payload)).toEqual([...programContractFields].sort());
-    const parsed = followupProgramCreateRequestSchema.safeParse(buildProgramSubmissionInput(payload));
-    expect(parsed.error?.issues).toBeUndefined();
-    expect(parsed.data).toMatchObject({ weight: null, heightCm: null, bloodSugar: null, hasObstacle: false, planAdjusted: false });
+    expect(expectFormContract(payload, programContract))
+      .toMatchObject({ weight: null, heightCm: null, bloodSugar: null, hasObstacle: false, planAdjusted: false });
   });
 
   it("accepts a non-Program Follow-up through buildSubmissionInput", async () => {
     actions.createFollowupAction.mockResolvedValueOnce(success);
-    mountContract("relationship");
-    fillRelationshipRequiredFields();
-    setValue("#followup-weight", "70");
-    openReview();
-    click("บันทึกต่อ", container.querySelector("dialog") ?? container);
-    await settle();
+    const payload = await captureSubmittedFormData({
+      render: () => renderContract("relationship"),
+      action: actions.createFollowupAction,
+      interact: async (form) => {
+        container = form as HTMLDivElement;
+        fillRelationshipRequiredFields();
+        setValue("#followup-weight", "70");
+        openReview();
+        click("บันทึกต่อ", container.querySelector("dialog") ?? container);
+        await settle();
+      },
+    });
 
     expect(actions.createFollowupAction).toHaveBeenCalledTimes(1);
-    const payload = formDataFor(actions.createFollowupAction);
-    expect(postedKeys(payload)).toEqual([...relationshipContractFields].sort());
-    const input = buildSubmissionInput(payload);
-    expect(input).not.toBeNull();
-    const parsed = followupCreateRequestSchema.safeParse(input);
-    expect(parsed.error?.issues).toBeUndefined();
-    expect(parsed.data).toMatchObject({ patientHospitalRelationshipId: ids.relationship, weight: 70, planAdjusted: false, hasObstacle: false });
+    expect(expectFormContract(payload, relationshipContract))
+      .toMatchObject({ patientHospitalRelationshipId: ids.relationship, weight: 70, planAdjusted: false, hasObstacle: false });
   });
 });
