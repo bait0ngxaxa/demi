@@ -39,6 +39,17 @@ describe("Global Admin report export endpoint", () => {
     });
   });
 
+  it("uses the Bangkok generation date in the download filename before 07:00", async () => {
+    const generatedAt = new Date("2026-11-16T18:30:00.000Z");
+    mockedExport.mockResolvedValue({ buffer: Buffer.from("synthetic-xlsx-bytes"), generatedAt, hospitalCode: "DEMO-A" });
+
+    const response = await GET(new Request(`https://demi.example.test/api/v1/admin/reporting/export?hospitalId=${hospitalId}`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toContain("-2026-11-17.xlsx");
+    expect(response.headers.get("X-Report-Generated-At")).toBe(generatedAt.toISOString());
+  });
+
   it("returns a private, non-cacheable Hospital-specific XLSX", async () => {
     const response = await GET(new Request(`https://demi.example.test/api/v1/admin/reporting/export?hospitalId=${hospitalId}`));
 

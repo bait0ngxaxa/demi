@@ -10,6 +10,8 @@ import {
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
+import { toServiceDateOnly } from "@/shared/time/service-date";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -59,7 +61,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const actor = await getProtectedApplicationActor();
     const { buffer, generatedAt } = await exportHospitalReportingWorkbook(actor, parsed.data);
-    const filename = `demi-hospital-report-${safeReportFilenamePart(parsed.data.hospitalId)}-${generatedAt.toISOString().slice(0, 10)}.xlsx`;
+    const filename = `demi-hospital-report-${safeReportFilenamePart(parsed.data.hospitalId)}-${toServiceDateOnly(generatedAt)}.xlsx`;
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {

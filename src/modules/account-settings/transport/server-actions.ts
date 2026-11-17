@@ -4,6 +4,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { setOwnAppointmentLineNotificationPreference } from "@/modules/appointments/services/appointment-line-notification-preference-service";
 import { setOwnMedicationLineReminderPreference } from "@/modules/medications/services/medication-line-reminder-preference-service";
 import { ApplicationError, ConflictError, ForbiddenError, ValidationError } from "@/shared/errors/application-error";
+import { reportUnexpectedError } from "@/shared/errors/unexpected-error-report";
 import { updateOwnContactEmail } from "../services/contact-setting-service";
 
 export type ContactEmailActionState = { status: "IDLE" } | { status: "SUCCESS"; email: string | null; version: number } | { status: "ERROR"; message: string; code: "VALIDATION" | "CONFLICT" | "FORBIDDEN" | "UNAVAILABLE" };
@@ -24,11 +25,21 @@ export async function saveOwnContactEmailAction(input: unknown): Promise<Contact
 export async function setAppointmentLineNotificationsAction(enabled: boolean): Promise<{ status: "SUCCESS"; enabled: boolean } | { status: "ERROR"; message: string }> {
   if (typeof enabled !== "boolean") return { status: "ERROR", message: "ข้อมูลการแจ้งเตือนไม่ถูกต้อง" };
   try { const actor = await getProtectedApplicationActor(); const preference = await setOwnAppointmentLineNotificationPreference(actor, enabled); return { status: "SUCCESS", enabled: preference.enabled }; }
-  catch { return { status: "ERROR", message: "บันทึกการแจ้งเตือนนัดหมายไม่สำเร็จ กรุณาตรวจสอบการเชื่อม LINE" }; }
+  catch (error: unknown) {
+    if (error instanceof ApplicationError && error.code === "UNAUTHENTICATED") return { status: "ERROR", message: "บัญชีนี้ไม่มีสิทธิ์แก้ไขการตั้งค่า" };
+    if (error instanceof ForbiddenError) return { status: "ERROR", message: "บันทึกการแจ้งเตือนนัดหมายไม่สำเร็จ กรุณาตรวจสอบการเชื่อม LINE" };
+    reportUnexpectedError("account-settings.setAppointmentLineNotificationsAction", error);
+    return { status: "ERROR", message: "บันทึกการตั้งค่าไม่สำเร็จ กรุณาลองใหม่" };
+  }
 }
 
 export async function setMedicationLineRemindersAction(enabled: boolean): Promise<{ status: "SUCCESS"; enabled: boolean } | { status: "ERROR"; message: string }> {
   if (typeof enabled !== "boolean") return { status: "ERROR", message: "ข้อมูลการแจ้งเตือนไม่ถูกต้อง" };
   try { const actor = await getProtectedApplicationActor(); const preference = await setOwnMedicationLineReminderPreference(actor, enabled); return { status: "SUCCESS", enabled: preference.enabled }; }
-  catch { return { status: "ERROR", message: "บันทึกการแจ้งเตือนยาไม่สำเร็จ กรุณาตรวจสอบการเชื่อม LINE" }; }
+  catch (error: unknown) {
+    if (error instanceof ApplicationError && error.code === "UNAUTHENTICATED") return { status: "ERROR", message: "บัญชีนี้ไม่มีสิทธิ์แก้ไขการตั้งค่า" };
+    if (error instanceof ForbiddenError) return { status: "ERROR", message: "บันทึกการแจ้งเตือนยาไม่สำเร็จ กรุณาตรวจสอบการเชื่อม LINE" };
+    reportUnexpectedError("account-settings.setMedicationLineRemindersAction", error);
+    return { status: "ERROR", message: "บันทึกการตั้งค่าไม่สำเร็จ กรุณาลองใหม่" };
+  }
 }

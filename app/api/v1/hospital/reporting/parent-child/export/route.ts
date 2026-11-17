@@ -11,6 +11,8 @@ import {
   UnauthenticatedError,
 } from "@/shared/errors/application-error";
 
+import { toServiceDateOnly } from "@/shared/time/service-date";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -76,7 +78,7 @@ export async function GET(request: Request): Promise<Response> {
       parentHospitalId: url.searchParams.get("parentHospitalId"),
       hospitalId: url.searchParams.get("hospitalId"),
     });
-    const filename = `demi-child-summary-${safeReportFilenamePart(summary.hospital.id)}-${generatedAt.toISOString().slice(0, 10)}.xlsx`;
+    const filename = `demi-child-summary-${safeReportFilenamePart(summary.hospital.id)}-${toServiceDateOnly(generatedAt)}.xlsx`;
     return new Response(new Uint8Array(buffer), {
       status: 200,
       headers: {
