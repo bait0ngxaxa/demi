@@ -248,10 +248,31 @@ describe("follow-up recording review", () => {
     expect(actions.createFollowupForProgramAction).not.toHaveBeenCalled();
   });
 
+  it("N3: shows a Thai field-level error for an out-of-range value and does not open the review", () => {
+    mountProgram();
+    fillProgramRequiredFields();
+    setValue("#followup-weight", "650");
+    openReview();
+
+    const weight = container.querySelector<HTMLInputElement>("#followup-weight");
+    const errorId = weight?.getAttribute("aria-describedby");
+    expect(weight?.min).toBe("1");
+    expect(weight?.max).toBe("500");
+    expect(weight?.getAttribute("aria-invalid")).toBe("true");
+    expect(errorId ? document.getElementById(errorId)?.textContent : null).toBe("น้ำหนักต้องอยู่ระหว่าง 1–500 กก.");
+    expect(document.activeElement).toBe(weight);
+    expect(container.querySelector("dialog")).toBeNull();
+
+    setValue("#followup-weight", "65");
+    expect(weight?.hasAttribute("aria-invalid")).toBe(false);
+    expect(container.textContent).not.toContain("น้ำหนักต้องอยู่ระหว่าง");
+    expect(actions.createFollowupForProgramAction).not.toHaveBeenCalled();
+  });
+
   it("reviews patient, Program/Round, appointment, goal plan, recorded zero and missing values without mutation", () => {
     mountProgram();
     fillProgramRequiredFields();
-    setValue("#followup-weight", "0");
+    setValue("#followup-weight", "65");
     setValue("#followup-blood-sugar", "88.5");
     setValue("#followup-expert-advice", "เพิ่มเวลาตามความพร้อม");
     setValue("#followup-general-note", "ติดตามอีกหนึ่งสัปดาห์");
@@ -272,7 +293,7 @@ describe("follow-up recording review", () => {
     expect(dialog?.querySelector("form")).toBeNull();
     expect(dialog?.textContent).toContain("ติดตาม ·");
     expect(dialog?.textContent).toContain("เดินได้สม่ำเสมอ");
-    expect(dialog?.textContent).toContain("น้ำหนัก (kg)0");
+    expect(dialog?.textContent).toContain("น้ำหนัก (kg)65");
     expect(dialog?.textContent).toContain("รอบเอว (cm)ไม่ได้กรอก");
     expect(dialog?.textContent).toContain("ค่าสุขภาพของรอบนี้ยังขาด");
     expect(dialog?.textContent).toContain("รอบเอว · ความดันตัวบน · ความดันตัวล่าง");
@@ -348,7 +369,7 @@ describe("follow-up recording review", () => {
     chooseRadio("hasObstacleChoice", "true");
     setValue("#followup-obstacle-note", "เวลาน้อยในช่วงเช้า");
     chooseRadio("planAdjustedChoice", "true");
-    setValue("#followup-weight", "0");
+    setValue("#followup-weight", "65");
     setValue("#followup-blood-sugar", "88.5");
     setValue("#followup-expert-advice", "เพิ่มเวลาตามความพร้อม");
     setValue("#followup-general-note", "ติดตามอีกหนึ่งสัปดาห์");
@@ -376,7 +397,7 @@ describe("follow-up recording review", () => {
       planAdjusted: "true",
       hasObstacle: "true",
       obstacleNote: "เวลาน้อยในช่วงเช้า",
-      weight: "0",
+      weight: "65",
       waistCircumference: "",
       systolicBloodPressure: "",
       diastolicBloodPressure: "",
@@ -401,7 +422,7 @@ describe("follow-up recording review", () => {
     actions.createFollowupForProgramAction.mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce(success);
     mountProgram({ latestHeightCm: null });
     fillProgramRequiredFields();
-    setValue("#followup-weight", "0");
+    setValue("#followup-weight", "65");
     setValue("#followup-waist", "80");
     setValue("#followup-systolic", "120");
     setValue("#followup-diastolic", "80");

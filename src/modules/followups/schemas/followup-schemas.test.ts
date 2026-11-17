@@ -4,6 +4,12 @@ import {
   followupCreateRequestSchema,
   followupProgramCreateRequestSchema,
 } from "./followup-schemas";
+import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
+  CLINICAL_VALUE_LIMITS,
+  clinicalValueRangeMessage,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
 const programId = "55555555-5555-4555-8555-555555555555";
@@ -211,5 +217,57 @@ describe("Follow-up schemas", () => {
         obstacleNote: "ไม่มีเวลา",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("Follow-up clinical value limits (N3)", () => {
+  function programInput(overrides: Record<string, unknown>): Record<string, unknown> {
+    const input: Record<string, unknown> = { ...validInput(), patientProgramId: programId, followedPlan: true };
+    delete input.patientHospitalRelationshipId;
+    delete input.confidenceScore;
+    delete input.confidencePlan;
+
+    return { ...input, ...overrides };
+  }
+
+  const fields = [
+    ["weight", "weight"],
+    ["waistCircumference", "waistCircumference"],
+    ["systolicBloodPressure", "systolicBloodPressure"],
+    ["diastolicBloodPressure", "diastolicBloodPressure"],
+    ["bloodSugar", "bloodSugar"],
+    ["heightCm", "height"],
+  ] as const satisfies readonly (readonly [string, ClinicalMeasurementKind])[];
+
+  it.each(fields)("accepts %s inside its limits and rejects it outside, naming the field", (field, kind) => {
+    const { min, max } = CLINICAL_VALUE_LIMITS[kind];
+    const inRange = field === "systolicBloodPressure" ? max : min;
+
+    expect(followupProgramCreateRequestSchema.safeParse(programInput({ [field]: inRange })).success).toBe(true);
+
+    const parsed = followupProgramCreateRequestSchema.safeParse(programInput({ [field]: max + 1 }));
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(
+      expect.objectContaining({ path: [field], message: clinicalValueRangeMessage(kind) }),
+    );
+  });
+
+  it("rejects the typo values a structural maximum let through", () => {
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), bloodSugar: 1_200 }).success).toBe(false);
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), weight: 650 }).success).toBe(false);
+    expect(followupCreateRequestSchema.safeParse({ ...validInput(), bloodSugar: 0 }).success).toBe(false);
+  });
+
+  it("requires systolic above diastolic when both are recorded", () => {
+    for (const schema of [followupCreateRequestSchema, followupProgramCreateRequestSchema]) {
+      const input = schema === followupCreateRequestSchema ? validInput() : programInput({});
+      const parsed = schema.safeParse({ ...input, systolicBloodPressure: 80, diastolicBloodPressure: 80 });
+
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues).toContainEqual(
+        expect.objectContaining({ path: ["systolicBloodPressure"], message: BLOOD_PRESSURE_ORDER_MESSAGE }),
+      );
+      expect(schema.safeParse({ ...input, systolicBloodPressure: 120, diastolicBloodPressure: null }).success).toBe(true);
+    }
   });
 });

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
+  CLINICAL_VALUE_LIMITS,
+  clinicalValueRangeMessage,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
+
 import { roundReviewRequestSchema, roundVitalsRequestSchema } from "./round-schemas";
 
 const programId = "33333333-3333-4333-8333-333333333333";
@@ -21,7 +28,7 @@ describe("round vitals request schema", () => {
     expect(roundVitalsRequestSchema.safeParse(vitals()).success).toBe(true);
     for (let roundNumber = 1; roundNumber <= 12; roundNumber += 1) expect(roundVitalsRequestSchema.safeParse(vitals({ roundNumber })).success).toBe(true);
     expect(
-      roundVitalsRequestSchema.safeParse(vitals({ weight: null, bloodSugar: 0 })).success,
+      roundVitalsRequestSchema.safeParse(vitals({ weight: null, bloodSugar: 10 })).success,
     ).toBe(true);
   });
 
@@ -47,6 +54,39 @@ describe("round vitals request schema", () => {
 
   it("rejects unknown keys", () => {
     expect(roundVitalsRequestSchema.safeParse(vitals({ recordedByUserId: nonce })).success).toBe(false);
+  });
+});
+
+describe("round vitals clinical value limits (N3)", () => {
+  const fields = [
+    ["weight", "weight"],
+    ["heightCm", "height"],
+    ["waistCircumference", "waistCircumference"],
+    ["systolicBloodPressure", "systolicBloodPressure"],
+    ["diastolicBloodPressure", "diastolicBloodPressure"],
+    ["bloodSugar", "bloodSugar"],
+  ] as const satisfies readonly (readonly [string, ClinicalMeasurementKind])[];
+
+  it.each(fields)("accepts %s inside its limits and rejects it outside, naming the field", (field, kind) => {
+    const { min, max } = CLINICAL_VALUE_LIMITS[kind];
+
+    expect(roundVitalsRequestSchema.safeParse(vitals({ [field]: min })).success).toBe(true);
+
+    const parsed = roundVitalsRequestSchema.safeParse(vitals({ [field]: max + 1 }));
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(
+      expect.objectContaining({ path: [field], message: clinicalValueRangeMessage(kind) }),
+    );
+  });
+
+  it("requires systolic above diastolic when both are recorded", () => {
+    const parsed = roundVitalsRequestSchema.safeParse(vitals({ systolicBloodPressure: 80, diastolicBloodPressure: 90 }));
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(
+      expect.objectContaining({ path: ["systolicBloodPressure"], message: BLOOD_PRESSURE_ORDER_MESSAGE }),
+    );
+    expect(roundVitalsRequestSchema.safeParse(vitals({ systolicBloodPressure: 120, diastolicBloodPressure: 80 })).success).toBe(true);
   });
 });
 

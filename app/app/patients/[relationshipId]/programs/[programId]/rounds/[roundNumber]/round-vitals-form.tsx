@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { inputClassName } from "@/components/ui/input";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { calculateBodyMassIndex } from "@/modules/patient-program-rounds/domain/body-mass-index";
 import type { VitalsMeasurement } from "@/modules/patient-program-rounds/domain/round-steps";
@@ -15,22 +16,22 @@ import {
   type PatientProgramRoundActionState,
 } from "@/modules/patient-program-rounds/transport/action-state";
 import { recordPatientProgramRoundVitalsAction } from "@/modules/patient-program-rounds/transport/server-actions";
-
-const STRUCTURAL_MAXIMUM = 1_000_000;
+import type { ClinicalMeasurementKind } from "@/shared/clinical/clinical-value-limits";
 
 type FieldDefinition = {
   name: VitalsMeasurement;
+  kind: ClinicalMeasurementKind;
   label: string;
   unit: string;
 };
 
 const fieldDefinitions: readonly FieldDefinition[] = [
-  { name: "weight", label: "น้ำหนัก", unit: "kg" },
-  { name: "heightCm", label: "ส่วนสูง", unit: "cm" },
-  { name: "waistCircumference", label: "รอบเอว", unit: "cm" },
-  { name: "bloodSugar", label: "น้ำตาลในเลือด / DTX", unit: "mg/dL" },
-  { name: "systolicBloodPressure", label: "ความดันตัวบน", unit: "mmHg" },
-  { name: "diastolicBloodPressure", label: "ความดันตัวล่าง", unit: "mmHg" },
+  { name: "weight", kind: "weight", label: "น้ำหนัก", unit: "kg" },
+  { name: "heightCm", kind: "height", label: "ส่วนสูง", unit: "cm" },
+  { name: "waistCircumference", kind: "waistCircumference", label: "รอบเอว", unit: "cm" },
+  { name: "bloodSugar", kind: "bloodSugar", label: "น้ำตาลในเลือด / DTX", unit: "mg/dL" },
+  { name: "systolicBloodPressure", kind: "systolicBloodPressure", label: "ความดันตัวบน", unit: "mmHg" },
+  { name: "diastolicBloodPressure", kind: "diastolicBloodPressure", label: "ความดันตัวล่าง", unit: "mmHg" },
 ];
 
 function parseOptionalNumber(value: string): number | null {
@@ -100,6 +101,7 @@ export function RoundVitalsForm({
   const [weight, setWeight] = useState(initialValues?.weight == null ? "" : String(initialValues.weight));
   const [height, setHeight] = useState(initialValues?.heightCm != null ? String(initialValues.heightCm) : latestHeightCm === null ? "" : String(latestHeightCm));
   const bmi = calculateBodyMassIndex(parseOptionalNumber(weight), parseOptionalNumber(height));
+  const rangeErrors = useClinicalRangeErrors();
 
   const formRef = useRef<HTMLFormElement>(null);
   const fields = supplement
@@ -200,14 +202,14 @@ export function RoundVitalsForm({
                   className={inputClassName}
                   id={inputId}
                   inputMode="decimal"
-                  max={STRUCTURAL_MAXIMUM}
-                  min="0"
                   name={field.name}
                   readOnly={isHeight && !heightEditable}
                   step="any"
                   type="number"
+                  {...rangeErrors.inputProps(field.name, field.kind)}
                   {...controlled}
                 />
+                {rangeErrors.renderError(field.name)}
                 {isHeight ? (
                   <span className="block text-xs font-normal leading-5 text-text-subtle">
                     {heightEditable

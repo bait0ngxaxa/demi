@@ -133,7 +133,7 @@ describe("Patient Baseline review dialog", () => {
   it("summarizes the entered values exactly and distinguishes blank fields from recorded ones", async () => {
     await type("baseline-recorded-on", "2026-10-30");
     await type("baseline-weight", "72.50");
-    await type("baseline-blood-pressure-systolic", "0.01");
+    await type("baseline-blood-pressure-systolic", "120.50");
     await type("baseline-confidence-score", "0");
     await type("baseline-summary", "บรรทัดแรก\nบรรทัดสอง");
     await openReview();
@@ -141,7 +141,7 @@ describe("Patient Baseline review dialog", () => {
     expect(dialog()?.querySelector("time")?.getAttribute("dateTime")).toBe("2026-10-30");
     expect(reviewValue("น้ำหนัก (kg)").textContent).toBe("72.50");
     expect(reviewValue("น้ำหนัก (kg)").dataset.recorded).toBe("true");
-    expect(reviewValue("ความดันตัวบน (mmHg)").textContent).toBe("0.01");
+    expect(reviewValue("ความดันตัวบน (mmHg)").textContent).toBe("120.50");
     expect(reviewValue("คะแนนความมั่นใจ (0–10)").textContent).toBe("0");
     expect(reviewValue("สรุปข้อมูลตั้งต้น").textContent).toBe("บรรทัดแรก\nบรรทัดสอง");
     for (const blank of ["ส่วนสูง (cm)", "HbA1c (%)", "CVD risk score (%)", "อุปสรรค", "คำแนะนำ"]) {
@@ -153,6 +153,24 @@ describe("Patient Baseline review dialog", () => {
     }
     // No derived measurement (for example BMI) or interpretation is added to the review.
     expect(dialog()?.textContent).not.toMatch(/BMI|ดัชนีมวลกาย|ความเสี่ยงสูง|ปกติ/u);
+  });
+
+  it("N3: shows a Thai field-level error for an out-of-range value and does not open the review", async () => {
+    await type("baseline-recorded-on", "2026-10-30");
+    await type("baseline-hba1c", "25");
+    await openReview();
+
+    const hba1c = field("baseline-hba1c");
+    const errorId = hba1c.getAttribute("aria-describedby");
+    expect(hba1c.getAttribute("aria-invalid")).toBe("true");
+    expect(errorId ? document.getElementById(errorId)?.textContent : null).toBe("HbA1c ต้องอยู่ระหว่าง 2–20%");
+    expect(dialog()).toBeNull();
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    await type("baseline-hba1c", "6.5");
+    expect(hba1c.hasAttribute("aria-invalid")).toBe(false);
+    await openReview();
+    expect(dialog()?.hasAttribute("open")).toBe(true);
   });
 
   it("returns to editing with the draft intact and focus on the review trigger", async () => {

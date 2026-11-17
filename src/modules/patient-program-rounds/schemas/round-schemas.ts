@@ -1,12 +1,16 @@
 import { z } from "zod";
 
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import {
+  clinicalMeasurementSchema,
+  refineBloodPressureOrder,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 import { oneDecimalPercentSchema } from "@/shared/clinical/cvd-risk-score";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
 import { MAX_PROGRAM_ROUNDS, REVIEWABLE_TOOL_CODES } from "../domain/round-catalog";
 
-export const ROUND_VITALS_STRUCTURAL_NUMBER_MAX = 1_000_000;
 export const ROUND_PREFERRED_NAME_MAX_LENGTH = 100;
 export const ROUND_OCCUPATION_MAX_LENGTH = 200;
 export const ROUND_SKIP_NOTE_MAX_LENGTH = 500;
@@ -16,21 +20,9 @@ export const roundSubmissionNonceSchema = z.string().uuid();
 export const roundNumberSchema = z.number().int().min(1).max(MAX_PROGRAM_ROUNDS);
 export const roundVitalsRoundNumberSchema = roundNumberSchema;
 
-const positiveMeasurementSchema = z
-  .number()
-  .finite()
-  .positive()
-  .max(ROUND_VITALS_STRUCTURAL_NUMBER_MAX)
-  .nullable()
-  .optional();
-
-const bloodSugarSchema = z
-  .number()
-  .finite()
-  .nonnegative()
-  .max(ROUND_VITALS_STRUCTURAL_NUMBER_MAX)
-  .nullable()
-  .optional();
+function optionalMeasurementSchema(kind: ClinicalMeasurementKind) {
+  return clinicalMeasurementSchema(kind).nullable().optional();
+}
 
 /** Trimmed optional text; blank becomes null. */
 function optionalTrimmedText(maxLength: number) {
@@ -68,12 +60,12 @@ export const roundVitalsRequestSchema = z
     roundNumber: roundVitalsRoundNumberSchema,
     submissionNonce: roundSubmissionNonceSchema,
     serviceDate: serviceDateSchema,
-    weight: positiveMeasurementSchema,
-    heightCm: positiveMeasurementSchema,
-    waistCircumference: positiveMeasurementSchema,
-    systolicBloodPressure: positiveMeasurementSchema,
-    diastolicBloodPressure: positiveMeasurementSchema,
-    bloodSugar: bloodSugarSchema,
+    weight: optionalMeasurementSchema("weight"),
+    heightCm: optionalMeasurementSchema("height"),
+    waistCircumference: optionalMeasurementSchema("waistCircumference"),
+    systolicBloodPressure: optionalMeasurementSchema("systolicBloodPressure"),
+    diastolicBloodPressure: optionalMeasurementSchema("diastolicBloodPressure"),
+    bloodSugar: optionalMeasurementSchema("bloodSugar"),
   })
   .merge(roundProfileFieldsSchema)
   .strict()
@@ -93,6 +85,13 @@ export const roundVitalsRequestSchema = z
         path: ["preferredName"],
       });
     }
+
+    refineBloodPressureOrder(
+      input.systolicBloodPressure,
+      input.diastolicBloodPressure,
+      context,
+      "systolicBloodPressure",
+    );
   });
 
 export type RoundVitalsRequest = z.output<typeof roundVitalsRequestSchema>;

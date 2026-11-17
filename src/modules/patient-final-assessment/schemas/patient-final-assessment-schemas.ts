@@ -4,26 +4,17 @@ import {
   patientProgramIdSchema,
   patientProgramRelationshipIdSchema,
 } from "@/modules/patient-program/schemas/patient-program-schemas";
+import {
+  clinicalMeasurementSchema,
+  refineBloodPressureOrder,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 import { cvdRiskScoreSchema } from "@/shared/clinical/cvd-risk-score";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
-export const PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX = 1_000_000;
-
-const optionalMeasurementSchema = z
-  .number()
-  .finite()
-  .nonnegative()
-  .max(PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX)
-  .nullable()
-  .optional();
-
-const positiveHba1cSchema = z
-  .number()
-  .finite()
-  .positive()
-  .max(PATIENT_FINAL_ASSESSMENT_STRUCTURAL_NUMBER_MAX)
-  .nullable()
-  .optional();
+function optionalMeasurementSchema(kind: ClinicalMeasurementKind) {
+  return clinicalMeasurementSchema(kind).nullable().optional();
+}
 
 const measurementFieldNames = [
   "weight",
@@ -38,13 +29,13 @@ export const patientFinalAssessmentCreateRequestSchema = z
     patientProgramId: patientProgramIdSchema,
     patientHospitalRelationshipId: patientProgramRelationshipIdSchema,
     serviceDate: serviceDateSchema,
-    weight: optionalMeasurementSchema,
-    waistCircumference: optionalMeasurementSchema,
-    systolicBloodPressure: optionalMeasurementSchema,
-    diastolicBloodPressure: optionalMeasurementSchema,
-    bloodSugar: optionalMeasurementSchema,
+    weight: optionalMeasurementSchema("weight"),
+    waistCircumference: optionalMeasurementSchema("waistCircumference"),
+    systolicBloodPressure: optionalMeasurementSchema("systolicBloodPressure"),
+    diastolicBloodPressure: optionalMeasurementSchema("diastolicBloodPressure"),
+    bloodSugar: optionalMeasurementSchema("bloodSugar"),
     // After HbA1c (Phase A report gap fill); optional and not counted as a standalone measurement.
-    hba1c: positiveHba1cSchema,
+    hba1c: optionalMeasurementSchema("hba1c"),
     // D7 After CVD risk score; optional and not counted as a standalone measurement.
     cvdRiskScore: cvdRiskScoreSchema,
   })
@@ -59,6 +50,13 @@ export const patientFinalAssessmentCreateRequestSchema = z
         path: ["weight"],
       });
     }
+
+    refineBloodPressureOrder(
+      input.systolicBloodPressure,
+      input.diastolicBloodPressure,
+      context,
+      "systolicBloodPressure",
+    );
   });
 
 export type PatientFinalAssessmentCreateRequest = z.output<
@@ -67,5 +65,4 @@ export type PatientFinalAssessmentCreateRequest = z.output<
 
 export const patientFinalAssessmentSchemaInternals = {
   measurementFieldNames,
-  optionalMeasurementSchema,
 };

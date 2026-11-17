@@ -390,6 +390,25 @@ describe("round vitals and the round 1 profile fields", () => {
     ).rejects.toMatchObject({ name: "RoundConflictError" });
   });
 
+  it("N3: keeps systolic above diastolic when a write merges into values recorded earlier", async () => {
+    const supplemented = createDatabase({ vitalsForRound: storedVitals({ systolicBloodPressure: 90 }) });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ diastolicBloodPressure: 95 }), deps(supplemented.database)),
+    ).rejects.toMatchObject({ name: "ValidationError", message: "ความดันตัวบนต้องมากกว่าความดันตัวล่าง" });
+    expect(supplemented.transaction.patientProgramRoundVitals.updateMany).not.toHaveBeenCalled();
+
+    const reRecorded = createDatabase({ vitalsForRound: storedVitals({ diastolicBloodPressure: 100 }) });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ weight: 71, systolicBloodPressure: 95 }), deps(reRecorded.database)),
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(reRecorded.transaction.patientProgramRoundVitals.update).not.toHaveBeenCalled();
+
+    const valid = createDatabase({ vitalsForRound: storedVitals({ systolicBloodPressure: 130 }) });
+    await expect(
+      recordPatientProgramRoundVitals(actor, vitalsInput({ systolicBloodPressure: 130, diastolicBloodPressure: 85 }), deps(valid.database)),
+    ).resolves.toMatchObject({ operation: "RECORDED" });
+  });
+
   it("FR-7: rejects a patient re-record of a staff row and fully replaces a patient row for staff", async () => {
     const patientUserId = "88888888-8888-4888-8888-888888888888";
     const patientAccess = { ...locked.access, patient: { ...locked.access.patient, userId: patientUserId } };

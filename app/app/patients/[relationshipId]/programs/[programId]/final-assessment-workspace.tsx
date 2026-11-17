@@ -9,6 +9,7 @@ import { inputClassName } from "@/components/ui/input";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge, type StatusVariant } from "@/components/ui/status-badge";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientFinalAssessmentProjection } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import {
@@ -19,6 +20,7 @@ import {
   type PatientFinalAssessmentActionState,
 } from "@/modules/patient-final-assessment/transport/action-state";
 import type { PatientProgramDetail } from "@/modules/patient-program/services/patient-program-query-service";
+import type { ClinicalMeasurementKind } from "@/shared/clinical/clinical-value-limits";
 
 type MeasurementKey = keyof NonNullable<PatientFinalAssessmentProjection["finalAssessment"]>["measurements"];
 
@@ -26,23 +28,20 @@ type MeasurementDefinition = {
   key: MeasurementKey;
   label: string;
   currentLabel: string;
-  /** Input bounds; structural only unless the field has an approved range. */
-  max?: number;
-  step?: number;
+  /** A clinical measurement takes its input bounds from the shared clinical limits (N3). */
+  kind: ClinicalMeasurementKind | null;
 };
 
 const measurementDefinitions: readonly MeasurementDefinition[] = [
-  { key: "weight", label: "น้ำหนัก", currentLabel: "kg" },
-  { key: "waistCircumference", label: "รอบเอว", currentLabel: "cm" },
-  { key: "systolicBloodPressure", label: "ความดันตัวบน", currentLabel: "mmHg" },
-  { key: "diastolicBloodPressure", label: "ความดันตัวล่าง", currentLabel: "mmHg" },
-  { key: "bloodSugar", label: "น้ำตาลในเลือด / DTX", currentLabel: "DTX / mg%" },
-  { key: "hba1c", label: "HbA1c", currentLabel: "%" },
-  // D7: staff-entered percentage 0-100, one decimal.
-  { key: "cvdRiskScore", label: "CVD risk score", currentLabel: "%", max: 100, step: 0.1 },
+  { key: "weight", label: "น้ำหนัก", currentLabel: "kg", kind: "weight" },
+  { key: "waistCircumference", label: "รอบเอว", currentLabel: "cm", kind: "waistCircumference" },
+  { key: "systolicBloodPressure", label: "ความดันตัวบน", currentLabel: "mmHg", kind: "systolicBloodPressure" },
+  { key: "diastolicBloodPressure", label: "ความดันตัวล่าง", currentLabel: "mmHg", kind: "diastolicBloodPressure" },
+  { key: "bloodSugar", label: "น้ำตาลในเลือด / DTX", currentLabel: "DTX / mg%", kind: "bloodSugar" },
+  { key: "hba1c", label: "HbA1c", currentLabel: "%", kind: "hba1c" },
+  // D7: staff-entered percentage 0-100, one decimal; not a measurement, so it keeps its own bounds.
+  { key: "cvdRiskScore", label: "CVD risk score", currentLabel: "%", kind: null },
 ];
-
-const structuralMaximum = 1_000_000;
 
 function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", {
@@ -110,6 +109,7 @@ function FinalAssessmentForm({
   >(createPatientFinalAssessmentAction, initialPatientFinalAssessmentActionState);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const rangeErrors = useClinicalRangeErrors();
 
   useEffect(() => {
     if (state.status === "SUCCESS") {
@@ -182,16 +182,19 @@ function FinalAssessmentForm({
                     ค่าดิบ · ป้ายกำกับปัจจุบัน: {measurement.currentLabel}
                   </span>
                   <input
-                    aria-describedby={`${inputId}-help`}
                     className={inputClassName}
                     id={inputId}
                     inputMode="decimal"
-                    max={measurement.max ?? structuralMaximum}
-                    min="0"
                     name={measurement.key}
-                    step={measurement.step ?? "any"}
                     type="number"
+                    {...(measurement.kind === null
+                      ? { "aria-describedby": `${inputId}-help`, max: 100, min: 0, step: 0.1 }
+                      : {
+                          ...rangeErrors.inputProps(measurement.key, measurement.kind, `${inputId}-help`),
+                          step: "any",
+                        })}
                   />
+                  {rangeErrors.renderError(measurement.key)}
                   <span className="block text-xs font-normal leading-5 text-text-subtle" id={`${inputId}-help`}>
                     เว้นว่างได้ หากไม่มีค่ารายการนี้
                   </span>

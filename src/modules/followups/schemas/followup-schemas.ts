@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import { patientProgramIdSchema } from "@/modules/patient-program/schemas/patient-program-schemas";
+import {
+  clinicalMeasurementSchema,
+  refineBloodPressureOrder,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 import { serviceDateSchema } from "@/shared/time/service-date";
 
 import { FOLLOWUP_ACHIEVED_DAYS_MAX } from "../domain/followup-achievement";
@@ -14,7 +19,6 @@ export const FOLLOWUP_ACTIVITY_NOTE_MAX_LENGTH = 1_000;
 export const FOLLOWUP_OBSTACLE_NOTE_MAX_LENGTH = 1_000;
 export const FOLLOWUP_EXPERT_ADVICE_MAX_LENGTH = 1_000;
 export const FOLLOWUP_MAX_PROGRESS_ROWS = 50;
-export const FOLLOWUP_STRUCTURAL_NUMBER_MAX = 1_000_000;
 
 export const followupRelationshipIdSchema = z.string().uuid();
 export const followupIdSchema = z.string().uuid();
@@ -23,13 +27,9 @@ export const followupGoalPlanIdSchema = z.string().uuid();
 export const followupSubmissionNonceSchema = z.string().uuid();
 export const followupProgressStatusSchema = z.enum(FOLLOWUP_PROGRESS_STATUS_VALUES);
 
-const optionalMeasurementSchema = z
-  .number()
-  .finite()
-  .nonnegative()
-  .max(FOLLOWUP_STRUCTURAL_NUMBER_MAX)
-  .nullable()
-  .optional();
+function optionalMeasurementSchema(kind: ClinicalMeasurementKind) {
+  return clinicalMeasurementSchema(kind).nullable().optional();
+}
 
 const optionalNoteSchema = z.string().trim().max(FOLLOWUP_NOTE_MAX_LENGTH).nullable().optional();
 
@@ -62,13 +62,13 @@ const followupPayloadSchema = z
     planAdjusted: z.boolean(),
     hasObstacle: z.boolean(),
     obstacleNote: z.string().trim().max(FOLLOWUP_OBSTACLE_NOTE_MAX_LENGTH).nullable().optional(),
-    weight: optionalMeasurementSchema,
-    waistCircumference: optionalMeasurementSchema,
-    systolicBloodPressure: optionalMeasurementSchema,
-    diastolicBloodPressure: optionalMeasurementSchema,
-    bloodSugar: optionalMeasurementSchema,
+    weight: optionalMeasurementSchema("weight"),
+    waistCircumference: optionalMeasurementSchema("waistCircumference"),
+    systolicBloodPressure: optionalMeasurementSchema("systolicBloodPressure"),
+    diastolicBloodPressure: optionalMeasurementSchema("diastolicBloodPressure"),
+    bloodSugar: optionalMeasurementSchema("bloodSugar"),
     // R2-D: height recorded in the round; the round otherwise uses the latest recorded height.
-    heightCm: optionalMeasurementSchema,
+    heightCm: optionalMeasurementSchema("height"),
     confidenceScore: z.number().int().min(0).max(10).nullable().optional(),
     // R2-F: shown as "เกิดอะไรขึ้นบ้าง?" in Program Follow-ups.
     reflectionNote: optionalNoteSchema,
@@ -99,8 +99,13 @@ const followupPayloadSchema = z
   })
   .strict();
 
-function refineObstacleNote(
-  payload: { hasObstacle: boolean; obstacleNote?: string | null },
+function refineFollowupPayload(
+  payload: {
+    hasObstacle: boolean;
+    obstacleNote?: string | null;
+    systolicBloodPressure?: number | null;
+    diastolicBloodPressure?: number | null;
+  },
   context: z.RefinementCtx,
 ): void {
   if (!payload.hasObstacle && payload.obstacleNote?.trim()) {
@@ -110,12 +115,19 @@ function refineObstacleNote(
       path: ["obstacleNote"],
     });
   }
+
+  refineBloodPressureOrder(
+    payload.systolicBloodPressure,
+    payload.diastolicBloodPressure,
+    context,
+    "systolicBloodPressure",
+  );
 }
 
 export const followupCreateRequestSchema = followupPayloadSchema
   .extend({ patientHospitalRelationshipId: followupRelationshipIdSchema })
   .strict()
-  .superRefine(refineObstacleNote);
+  .superRefine(refineFollowupPayload);
 
 // SR-D8: a Program's confidence score is the per-round ไม้บรรทัดวัดใจ, so Program Follow-ups do not take one.
 export const followupProgramCreateRequestSchema = followupPayloadSchema
@@ -130,7 +142,7 @@ export const followupProgramCreateRequestSchema = followupPayloadSchema
     reflectionNote: z.string().trim().min(1, "กรุณากรอก “เกิดอะไรขึ้นบ้าง?”").max(FOLLOWUP_NOTE_MAX_LENGTH),
   })
   .strict()
-  .superRefine(refineObstacleNote);
+  .superRefine(refineFollowupPayload);
 
 export type FollowupCreateRequest = z.output<typeof followupCreateRequestSchema>;
 export type FollowupProgramCreateRequest = z.output<typeof followupProgramCreateRequestSchema>;

@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useMutationActionState } from "@/components/ui/mutation-action-state";
+import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientBaselinePatientSummary } from "@/modules/patient-baseline/services/patient-baseline-access-service";
 import {
@@ -159,6 +160,7 @@ export function PatientBaselineForm({
   const returnToEdit = useRef<HTMLButtonElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const errorFeedback = useRef<HTMLDivElement>(null);
+  const rangeErrors = useClinicalRangeErrors();
   const succeeded = state.status === "SUCCESS";
   const reviewOpen = review !== null && (review.openedWith === state || pending || unknownOutcome || succeeded);
   const reviewLocked = pending || unknownOutcome || succeeded;
@@ -331,8 +333,6 @@ export function PatientBaselineForm({
               <Input
                 id="baseline-weight"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="weight"
                 onChange={(event) => setWeight(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -340,15 +340,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={weight}
+                {...rangeErrors.inputProps("weight", "weight")}
               />
+              {rangeErrors.renderError("weight")}
             </label>
             <label className={labelClassName} htmlFor="baseline-height-cm">
               <span>{baselineLabels.heightCm}</span>
               <Input
                 id="baseline-height-cm"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="heightCm"
                 onChange={(event) => setHeightCm(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -356,15 +356,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={heightCm}
+                {...rangeErrors.inputProps("heightCm", "height")}
               />
+              {rangeErrors.renderError("heightCm")}
             </label>
             <label className={labelClassName} htmlFor="baseline-waist">
               <span>{baselineLabels.waistCircumference}</span>
               <Input
                 id="baseline-waist"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="waistCircumference"
                 onChange={(event) => setWaistCircumference(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -372,15 +372,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={waistCircumference}
+                {...rangeErrors.inputProps("waistCircumference", "waistCircumference")}
               />
+              {rangeErrors.renderError("waistCircumference")}
             </label>
             <label className={labelClassName} htmlFor="baseline-blood-pressure-systolic">
               <span>{baselineLabels.bloodPressureSystolic}</span>
               <Input
                 id="baseline-blood-pressure-systolic"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="bloodPressureSystolic"
                 onChange={(event) => setBloodPressureSystolic(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -388,15 +388,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={bloodPressureSystolic}
+                {...rangeErrors.inputProps("bloodPressureSystolic", "systolicBloodPressure")}
               />
+              {rangeErrors.renderError("bloodPressureSystolic")}
             </label>
             <label className={labelClassName} htmlFor="baseline-blood-pressure-diastolic">
               <span>{baselineLabels.bloodPressureDiastolic}</span>
               <Input
                 id="baseline-blood-pressure-diastolic"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="bloodPressureDiastolic"
                 onChange={(event) => setBloodPressureDiastolic(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -404,15 +404,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={bloodPressureDiastolic}
+                {...rangeErrors.inputProps("bloodPressureDiastolic", "diastolicBloodPressure")}
               />
+              {rangeErrors.renderError("bloodPressureDiastolic")}
             </label>
             <label className={labelClassName} htmlFor="baseline-blood-sugar-dtx">
               <span>{baselineLabels.bloodSugarDtx}</span>
               <Input
                 id="baseline-blood-sugar-dtx"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="bloodSugarDtx"
                 onChange={(event) => setBloodSugarDtx(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -420,15 +420,15 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={bloodSugarDtx}
+                {...rangeErrors.inputProps("bloodSugarDtx", "bloodSugar")}
               />
+              {rangeErrors.renderError("bloodSugarDtx")}
             </label>
             <label className={labelClassName} htmlFor="baseline-hba1c">
               <span>{baselineLabels.hba1c}</span>
               <Input
                 id="baseline-hba1c"
                 inputMode="decimal"
-                max={1_000_000}
-                min={0.01}
                 name="hba1c"
                 onChange={(event) => setHba1c(event.target.value)}
                 placeholder="ไม่บังคับ"
@@ -436,7 +436,9 @@ export function PatientBaselineForm({
                 step="any"
                 type="number"
                 value={hba1c}
+                {...rangeErrors.inputProps("hba1c", "hba1c")}
               />
+              {rangeErrors.renderError("hba1c")}
             </label>
             <label className={labelClassName} htmlFor="baseline-cvd-risk-score">
               <span>{baselineLabels.cvdRiskScore}</span>

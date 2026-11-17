@@ -161,6 +161,14 @@ describe("patient import presentation helpers", () => {
       [
         createRow({
           classification: "INVALID",
+          baselineStatus: "BASELINE_DATA_INVALID",
+          reason: "น้ำหนักต้องอยู่ระหว่าง 1–500 กก.",
+        }),
+        "น้ำหนักต้องอยู่ระหว่าง 1–500 กก.",
+      ],
+      [
+        createRow({
+          classification: "INVALID",
           patientClassification: {
             status: "CLASSIFICATION_DATA_INVALID",
             sourceClassification: null,

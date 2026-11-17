@@ -1,9 +1,13 @@
 import { z } from "zod";
 
+import {
+  clinicalMeasurementSchema,
+  refineBloodPressureOrder,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 import { cvdRiskScoreSchema } from "@/shared/clinical/cvd-risk-score";
 
 export const PATIENT_BASELINE_TEXT_MAX_LENGTH = 2_000;
-export const PATIENT_BASELINE_STRUCTURAL_NUMBER_MAX = 1_000_000;
 
 export const patientBaselineRelationshipIdSchema = z.string().uuid();
 export const patientBaselineIdSchema = z.string().uuid();
@@ -19,15 +23,9 @@ export const patientBaselineDateOnlySchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/u)
   .refine(isValidDateOnly, "The Baseline recorded date is invalid");
 
-export const patientBaselineMeasurementSchema = z
-  .number()
-  .finite()
-  .positive()
-  .max(PATIENT_BASELINE_STRUCTURAL_NUMBER_MAX);
-
-const optionalMeasurementSchema = patientBaselineMeasurementSchema
-  .nullable()
-  .optional();
+function optionalMeasurementSchema(kind: ClinicalMeasurementKind) {
+  return clinicalMeasurementSchema(kind).nullable().optional();
+}
 
 const optionalTextSchema = z
   .string()
@@ -41,13 +39,13 @@ export const patientBaselineCreateRequestSchema = z
   .object({
     patientHospitalRelationshipId: patientBaselineRelationshipIdSchema,
     recordedOn: patientBaselineDateOnlySchema,
-    weight: optionalMeasurementSchema,
-    heightCm: optionalMeasurementSchema,
-    waistCircumference: optionalMeasurementSchema,
-    bloodPressureSystolic: optionalMeasurementSchema,
-    bloodPressureDiastolic: optionalMeasurementSchema,
-    bloodSugarDtx: optionalMeasurementSchema,
-    hba1c: optionalMeasurementSchema,
+    weight: optionalMeasurementSchema("weight"),
+    heightCm: optionalMeasurementSchema("height"),
+    waistCircumference: optionalMeasurementSchema("waistCircumference"),
+    bloodPressureSystolic: optionalMeasurementSchema("systolicBloodPressure"),
+    bloodPressureDiastolic: optionalMeasurementSchema("diastolicBloodPressure"),
+    bloodSugarDtx: optionalMeasurementSchema("bloodSugar"),
+    hba1c: optionalMeasurementSchema("hba1c"),
     cvdRiskScore: cvdRiskScoreSchema,
     adaptationSummary: optionalTextSchema,
     adaptationObstacles: optionalTextSchema,
@@ -57,7 +55,15 @@ export const patientBaselineCreateRequestSchema = z
     summary: optionalTextSchema,
     recommendations: optionalTextSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((input, context) => {
+    refineBloodPressureOrder(
+      input.bloodPressureSystolic,
+      input.bloodPressureDiastolic,
+      context,
+      "bloodPressureSystolic",
+    );
+  });
 
 export type PatientBaselineCreateRequest = z.output<typeof patientBaselineCreateRequestSchema>;
 
