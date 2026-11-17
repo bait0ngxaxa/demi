@@ -1,6 +1,6 @@
 import { ApplicationError } from "@/shared/errors/application-error";
 
-const PATIENT_BASELINE_FORM_FIELDS = new Set([
+export const PATIENT_BASELINE_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "recordedOn",
   "weight",
