@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import {
+  canRemovePatientEvidenceArtifact,
   decidePatientEvidencePolicy,
   PATIENT_ARTIFACT_CREATE_CAPABILITY,
   PATIENT_ARTIFACT_READ_CAPABILITY,
@@ -186,5 +187,69 @@ describe("Patient Evidence authorization policy", () => {
         target: { ...target, hospitalStatus: HospitalStatus.SUSPENDED },
       }),
     ).toEqual({ allowed: false, reason: "inactive_target_hospital" });
+  });
+});
+
+describe("Patient Evidence removal rule (N4)", () => {
+  const otherUserId = "66666666-6666-4666-8666-666666666666";
+  const membership = (membershipType: MembershipType, status: MembershipStatus = MembershipStatus.ACTIVE) => ({
+    hospitalId,
+    membershipType,
+    profession: Profession.NURSE,
+    status,
+    hospitalStatus: HospitalStatus.ACTIVE,
+  });
+
+  it("allows the uploader", () => {
+    const osm = actor({ roles: [Role.OSM] });
+
+    expect(canRemovePatientEvidenceArtifact({ actor: osm, target, createdByUserId: actorUserId })).toBe(true);
+  });
+
+  it.each([MembershipType.OWNER, MembershipType.MEMBER])("allows a direct %s on another user's upload", (type) => {
+    expect(
+      canRemovePatientEvidenceArtifact({
+        actor: actor({ hospitalMemberships: [membership(type)] }),
+        target,
+        createdByUserId: otherUserId,
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses an อสม. on another user's upload", () => {
+    const osm = actor({
+      roles: [Role.OSM],
+      osmHospitalRelationships: [
+        { hospitalId, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE },
+      ],
+    });
+
+    expect(
+      canRemovePatientEvidenceArtifact({ actor: osm, target: { ...target, assignedOsmUserId: actorUserId }, createdByUserId: otherUserId }),
+    ).toBe(false);
+  });
+
+  it("refuses a member of another Hospital, an inactive membership and a membership without the HOSPITAL role", () => {
+    expect(
+      canRemovePatientEvidenceArtifact({
+        actor: actor({ hospitalMemberships: [{ ...membership(MembershipType.OWNER), hospitalId: otherHospitalId }] }),
+        target,
+        createdByUserId: otherUserId,
+      }),
+    ).toBe(false);
+    expect(
+      canRemovePatientEvidenceArtifact({
+        actor: actor({ hospitalMemberships: [membership(MembershipType.MEMBER, MembershipStatus.SUSPENDED)] }),
+        target,
+        createdByUserId: otherUserId,
+      }),
+    ).toBe(false);
+    expect(
+      canRemovePatientEvidenceArtifact({
+        actor: actor({ roles: [Role.OSM], hospitalMemberships: [membership(MembershipType.OWNER)] }),
+        target,
+        createdByUserId: otherUserId,
+      }),
+    ).toBe(false);
   });
 });

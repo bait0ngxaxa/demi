@@ -427,6 +427,8 @@ async function associateArtifactInTransaction(
     where: {
       id: patientEvidenceArtifactId,
       patientHospitalRelationshipId,
+      // N4: a removed photo cannot be attached; it answers NotFound like an unknown one.
+      removedAt: null,
     },
     select: { id: true },
   });

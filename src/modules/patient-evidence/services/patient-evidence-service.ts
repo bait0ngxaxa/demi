@@ -11,13 +11,19 @@ import {
   ConflictError,
   ForbiddenError,
   InfrastructureError,
+  NotFoundError,
 } from "@/shared/errors/application-error";
 
-import { PATIENT_ARTIFACT_CREATE_CAPABILITY } from "../policies/patient-evidence-policy";
+import {
+  PATIENT_ARTIFACT_CREATE_CAPABILITY,
+  canRemovePatientEvidenceArtifact,
+} from "../policies/patient-evidence-policy";
 import {
   normalizePatientEvidenceCreateInput,
+  normalizePatientEvidenceRemoveInput,
   validatePatientEvidenceFile,
   type NormalizedPatientEvidenceCreateInput,
+  type NormalizedPatientEvidenceRemoveInput,
   type ValidatedPatientEvidenceFile,
 } from "../schemas/patient-evidence-schemas";
 import { resolvePatientEvidenceAccessContext } from "./patient-evidence-access-service";
@@ -30,16 +36,36 @@ import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
 export type PatientEvidenceDatabase = PrismaClient;
 
+/** Only an opaque id and a fixed category are logged: never a caption, a removal reason or patient data. */
+export type PatientEvidenceOperationalErrorCategory =
+  | "storage_compensation_failed"
+  | "storage_removal_failed";
+
+export type PatientEvidenceOperationalError = {
+  category: PatientEvidenceOperationalErrorCategory;
+  artifactId: string;
+};
+
 export type PatientEvidenceServiceDependencies = {
   database?: PatientEvidenceDatabase;
   storage?: PatientEvidenceStorage;
   now?: () => Date;
   artifactIdFactory?: () => string;
-  logOperationalError?: (input: {
-    category: "storage_compensation_failed";
-    artifactId: string;
-  }) => void;
+  logOperationalError?: (input: PatientEvidenceOperationalError) => void;
 };
+
+export type PatientEvidenceRemoveResult = {
+  artifactId: string;
+  patientHospitalRelationshipId: string;
+  hospitalId: string;
+  removedAt: Date;
+};
+
+/** N4 (ADR-0034): Service 1 completeness reads the associated photo, and the activity photo cannot be replaced. */
+export const PATIENT_EVIDENCE_SERVICE_ONE_ASSOCIATED_MESSAGE =
+  "รูปนี้แนบเป็นหลักฐานของกิจกรรม Service 1 แล้ว จึงลบจากหน้านี้ไม่ได้";
+export const PATIENT_EVIDENCE_ALREADY_REMOVED_MESSAGE = "รูปหลักฐานนี้ถูกลบไปแล้ว";
+export const PATIENT_EVIDENCE_REMOVAL_CHANGED_MESSAGE = "รูปหลักฐานนี้มีการเปลี่ยนแปลง กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง";
 
 export type PatientEvidenceCreateResult = {
   artifactId: string;
@@ -112,14 +138,18 @@ function getObjectKey(artifactId: string): string {
   return `relationship-evidence/${artifactId}`;
 }
 
-function defaultOperationalErrorLogger(input: {
-  category: "storage_compensation_failed";
-  artifactId: string;
-}): void {
-  console.error("Patient evidence storage compensation failed", {
+function defaultOperationalErrorLogger(input: PatientEvidenceOperationalError): void {
+  console.error("Patient evidence storage operation failed", {
     category: input.category,
     artifactId: input.artifactId,
   });
+}
+
+function logOperationalError(
+  dependencies: PatientEvidenceServiceDependencies,
+  input: PatientEvidenceOperationalError,
+): void {
+  (dependencies.logOperationalError ?? defaultOperationalErrorLogger)(input);
 }
 
 function toCreateResult(
@@ -230,14 +260,152 @@ export async function createPatientEvidenceArtifact(
     try {
       await storage.removeObject({ objectKey: storageObjectKey });
     } catch {
-      (dependencies.logOperationalError ?? defaultOperationalErrorLogger)({
-        category: "storage_compensation_failed",
-        artifactId,
-      });
+      logOperationalError(dependencies, { category: "storage_compensation_failed", artifactId });
     }
 
     throw normalizeDatabaseError(error);
   }
+}
+
+function normalizeRemovalError(error: unknown): ApplicationError {
+  if (error instanceof ApplicationError) {
+    return error;
+  }
+
+  if (isKnownRequestError(error, "P2034")) {
+    return new ConflictError(PATIENT_EVIDENCE_REMOVAL_CHANGED_MESSAGE);
+  }
+
+  return toInfrastructureError("patient-evidence.removePatientEvidenceArtifact", error, "Patient evidence removal could not be persisted");
+}
+
+type RemovedArtifact = PatientEvidenceRemoveResult & { storageObjectKey: string };
+
+async function removeInTransaction(
+  transaction: Prisma.TransactionClient,
+  actor: ActorContext,
+  input: NormalizedPatientEvidenceRemoveInput,
+  now: Date,
+): Promise<RemovedArtifact> {
+  // The same direct-only access as upload: an ended relationship, an unassigned อสม. or another Hospital is NotFound.
+  const access = await resolvePatientEvidenceAccessContext(
+    actor,
+    input.relationshipId,
+    PATIENT_ARTIFACT_CREATE_CAPABILITY,
+    transaction,
+  );
+  const relationshipId = access.patient.patientHospitalRelationshipId;
+  const artifact = await transaction.patientEvidenceArtifact.findFirst({
+    where: { id: input.artifactId, patientHospitalRelationshipId: relationshipId },
+    select: {
+      id: true,
+      storageObjectKey: true,
+      createdByUserId: true,
+      removedAt: true,
+      serviceOneArtifactAssociation: { select: { id: true } },
+    },
+  });
+
+  if (!artifact) {
+    throw new NotFoundError();
+  }
+
+  if (
+    !canRemovePatientEvidenceArtifact({
+      actor: access.actor,
+      target: access.target,
+      createdByUserId: artifact.createdByUserId,
+    })
+  ) {
+    throw new ForbiddenError();
+  }
+
+  if (artifact.removedAt !== null) {
+    throw new ConflictError(PATIENT_EVIDENCE_ALREADY_REMOVED_MESSAGE);
+  }
+
+  if (artifact.serviceOneArtifactAssociation !== null) {
+    throw new ConflictError(PATIENT_EVIDENCE_SERVICE_ONE_ASSOCIATED_MESSAGE);
+  }
+
+  const updated = await transaction.patientEvidenceArtifact.updateMany({
+    where: { id: artifact.id, patientHospitalRelationshipId: relationshipId, removedAt: null },
+    data: {
+      removedAt: now,
+      removedByUserId: access.actor.userId,
+      removalReason: input.reason,
+    },
+  });
+
+  if (updated.count !== 1) {
+    throw new ConflictError(PATIENT_EVIDENCE_ALREADY_REMOVED_MESSAGE);
+  }
+
+  // The reason stays on the row only; audit metadata carries opaque ids.
+  await recordAuditEvent(
+    {
+      actorUserId: access.actor.userId,
+      action: "patient_evidence_artifact.removed",
+      resourceType: "PatientEvidenceArtifact",
+      resourceId: artifact.id,
+      metadata: {
+        artifactId: artifact.id,
+        patientHospitalRelationshipId: relationshipId,
+        hospitalId: access.target.hospitalId,
+      },
+    },
+    transaction,
+  );
+
+  return {
+    artifactId: artifact.id,
+    patientHospitalRelationshipId: relationshipId,
+    hospitalId: access.target.hospitalId,
+    removedAt: now,
+    storageObjectKey: artifact.storageObjectKey,
+  };
+}
+
+/**
+ * N4 (ADR-0034): soft-removes one evidence photo, then deletes its storage object. The row is kept for attribution
+ * and hidden from every read path. A storage deletion failure after commit is logged and still answers success,
+ * because the photo is already hidden; the leftover object is documented in ADR-0034.
+ */
+export async function removePatientEvidenceArtifact(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientEvidenceServiceDependencies = {},
+): Promise<PatientEvidenceRemoveResult> {
+  const normalized = normalizePatientEvidenceRemoveInput(input);
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  const database = getDatabase(dependencies);
+  let removed: RemovedArtifact;
+
+  try {
+    removed = await database.$transaction(
+      (transaction) => removeInTransaction(transaction, actor, normalized, getNow(dependencies)),
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (error: unknown) {
+    throw normalizeRemovalError(error);
+  }
+
+  try {
+    await getStorage(dependencies).removeObject({ objectKey: removed.storageObjectKey });
+  } catch {
+    logOperationalError(dependencies, { category: "storage_removal_failed", artifactId: removed.artifactId });
+  }
+
+  return {
+    artifactId: removed.artifactId,
+    patientHospitalRelationshipId: removed.patientHospitalRelationshipId,
+    hospitalId: removed.hospitalId,
+    removedAt: removed.removedAt,
+  };
 }
 
 export const patientEvidenceServiceInternals = {
@@ -246,5 +414,7 @@ export const patientEvidenceServiceInternals = {
   getObjectKey,
   isKnownRequestError,
   normalizeDatabaseError,
+  normalizeRemovalError,
+  removeInTransaction,
   toCreateResult,
 };

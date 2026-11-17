@@ -19,7 +19,11 @@ import { getPatientBaseline } from "@/modules/patient-baseline/services/patient-
 import { createPatientBaseline } from "@/modules/patient-baseline/services/patient-baseline-service";
 import { getPatientFinalAssessmentForProgram } from "@/modules/patient-final-assessment/services/patient-final-assessment-query-service";
 import { createPatientFinalAssessment as createPatientFinalAssessmentService } from "@/modules/patient-final-assessment/services/patient-final-assessment-service";
-import { createPatientEvidenceArtifact } from "@/modules/patient-evidence/services/patient-evidence-service";
+import {
+  createPatientEvidenceArtifact,
+  PATIENT_EVIDENCE_SERVICE_ONE_ASSOCIATED_MESSAGE,
+  removePatientEvidenceArtifact,
+} from "@/modules/patient-evidence/services/patient-evidence-service";
 import type { PatientEvidenceStorage } from "@/modules/patient-evidence/storage/patient-evidence-storage";
 import {
   getGoalPlanCreateContextForProgram,
@@ -509,6 +513,54 @@ describe("Phase 15B.0 Patient Program PostgreSQL workflow", () => {
         score: 5,
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it("N4: blocks removal of a Service 1 photo and refuses to attach a removed photo", async () => {
+    const hospital = await createHospital("EVIDENCE-REMOVAL");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const patient = await createPatient(owner.actor, hospital.id, "evidence-removal");
+    const opened = await openPatientProgram(owner.actor, { patientHospitalRelationshipId: patient.relationshipId });
+    await recordPatientProgramServiceOneRoutine(owner.actor, { patientProgramId: opened.patientProgramId });
+    const storage = createFakeStorage();
+    const upload = () =>
+      createPatientEvidenceArtifact(
+        owner.actor,
+        { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+        { storage },
+      );
+    const attached = await upload();
+    await associatePatientProgramServiceOneArtifact(owner.actor, {
+      patientProgramId: opened.patientProgramId,
+      patientEvidenceArtifactId: attached.artifactId,
+      activity: "ROUTINE",
+    });
+
+    await expect(
+      removePatientEvidenceArtifact(
+        owner.actor,
+        { artifactId: attached.artifactId, relationshipId: patient.relationshipId, reason: "ผิดรูป" },
+        { storage },
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: PATIENT_EVIDENCE_SERVICE_ONE_ASSOCIATED_MESSAGE });
+    expect((await prisma.patientEvidenceArtifact.findUnique({ where: { id: attached.artifactId } }))?.removedAt).toBeNull();
+    expect(await prisma.patientProgramServiceOneArtifactAssociation.count({
+      where: { patientEvidenceArtifactId: attached.artifactId },
+    })).toBe(1);
+
+    const removed = await upload();
+    await removePatientEvidenceArtifact(
+      owner.actor,
+      { artifactId: removed.artifactId, relationshipId: patient.relationshipId, reason: "ผิดคน" },
+      { storage },
+    );
+    await recordPatientProgramServiceOneFloatingChart(owner.actor, { patientProgramId: opened.patientProgramId });
+    await expect(
+      associatePatientProgramServiceOneArtifact(owner.actor, {
+        patientProgramId: opened.patientProgramId,
+        patientEvidenceArtifactId: removed.artifactId,
+        activity: "FLOATING_CHART",
+      }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("rechecks an OSM assignment when a stale Program page submits a Program workflow mutation", async () => {

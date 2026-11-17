@@ -10,12 +10,13 @@ import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import {
   getPatientEvidencePageContext,
-  type PatientEvidenceArtifactProjection,
+  type PatientEvidencePageArtifact,
 } from "@/modules/patient-evidence/services/patient-evidence-query-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PatientEvidenceForm } from "./evidence-form";
+import { PatientEvidenceRemoveControl } from "./evidence-remove-control";
 
 export const metadata: Metadata = {
   title: "หลักฐาน / รูปภาพสถานะ",
@@ -79,7 +80,7 @@ function EvidenceCard({
   patientName,
   relationshipId,
 }: {
-  artifact: PatientEvidenceArtifactProjection;
+  artifact: PatientEvidencePageArtifact;
   patientName: string;
   relationshipId: string;
 }): React.JSX.Element {
@@ -118,6 +119,12 @@ function EvidenceCard({
         >
           ดูรูป
         </Link>
+        {artifact.canRemove ? (
+          <PatientEvidenceRemoveControl artifactId={artifact.id} relationshipId={relationshipId} />
+        ) : null}
+        {artifact.serviceOneAssociated ? (
+          <p className="text-xs leading-5 text-text-muted">รูปนี้แนบเป็นหลักฐานของกิจกรรม Service 1 แล้ว จึงลบจากหน้านี้ไม่ได้</p>
+        ) : null}
       </div>
     </article>
   );

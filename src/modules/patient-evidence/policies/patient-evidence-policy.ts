@@ -107,6 +107,24 @@ export function decidePatientEvidencePolicy(input: {
   return { allowed: false, reason: "active_osm_assignment_scope_required" };
 }
 
+/**
+ * N4 (ADR-0034, engineering default): who may remove an evidence photo. The caller has already passed the upload
+ * access check for the relationship (PATIENT_ARTIFACT_CREATE_CAPABILITY). On top of that the actor must be the
+ * uploader, or an ACTIVE direct OWNER/MEMBER of the photo's Hospital. An อสม. may therefore remove only their own
+ * uploads.
+ */
+export function canRemovePatientEvidenceArtifact(input: {
+  actor: ActorContext;
+  target: PatientEvidencePolicyTarget;
+  createdByUserId: string;
+}): boolean {
+  if (input.createdByUserId === input.actor.userId) {
+    return true;
+  }
+
+  return input.actor.roles.includes(Role.HOSPITAL) && hasActiveDirectHospitalScope(input.actor, input.target.hospitalId);
+}
+
 export function assertPatientEvidencePolicy(input: {
   actor: ActorContext | null | undefined;
   capability: PatientEvidenceCapability;
