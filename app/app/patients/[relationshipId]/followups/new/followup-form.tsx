@@ -103,6 +103,20 @@ const FOLLOWED_PLAN_CHOICES = [
   ["false", "ทำตามแผนไม่ได้"],
 ] as const;
 
+/**
+ * Native radio groups that only drive the UI (grouping, keyboard and `required`). Their values are
+ * mirrored into the hidden `followedPlan` / `planAdjusted` / `hasObstacle` contract fields, so they
+ * are dropped from the posted FormData: the server action rejects any field outside its allow-list.
+ */
+const FOLLOWED_PLAN_CHOICE_NAME = "followedPlanChoice";
+const PLAN_ADJUSTED_CHOICE_NAME = "planAdjustedChoice";
+const HAS_OBSTACLE_CHOICE_NAME = "hasObstacleChoice";
+const UI_ONLY_CHOICE_FIELDS = [
+  FOLLOWED_PLAN_CHOICE_NAME,
+  PLAN_ADJUSTED_CHOICE_NAME,
+  HAS_OBSTACLE_CHOICE_NAME,
+] as const;
+
 export type FollowupFormScope =
   | {
       kind: "relationship";
@@ -549,7 +563,7 @@ export function FollowupForm({
   function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
     if (reviewConfirmedRef.current) {
       reviewConfirmedRef.current = false;
-      dispatchFormDataPreservingInput(event, action);
+      dispatchFormDataPreservingInput(event, action, { omitFields: UI_ONLY_CHOICE_FIELDS });
       return;
     }
 
@@ -933,7 +947,7 @@ export function FollowupForm({
                         <input
                           checked={followedPlan === value}
                           className="size-5"
-                          name="followedPlanChoice"
+                          name={FOLLOWED_PLAN_CHOICE_NAME}
                           onChange={() => setFollowedPlan(value)}
                           required
                           type="radio"
@@ -1030,7 +1044,7 @@ export function FollowupForm({
                       <input
                         checked={planAdjusted === value}
                         className="size-5"
-                        name="planAdjustedChoice"
+                        name={PLAN_ADJUSTED_CHOICE_NAME}
                         onChange={() => setPlanAdjusted(value)}
                         required
                         type="radio"
@@ -1054,7 +1068,7 @@ export function FollowupForm({
                       <input
                         checked={hasObstacle === value}
                         className="size-5"
-                        name="hasObstacleChoice"
+                        name={HAS_OBSTACLE_CHOICE_NAME}
                         onChange={() => setHasObstacle(value)}
                         required
                         type="radio"
