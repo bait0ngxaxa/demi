@@ -11,7 +11,6 @@ import { hashIdentityReference } from "@/modules/identity/services/identity-serv
 import {
   patientBaselineCreateRequestSchema,
   patientBaselineDateOnlySchema,
-  patientBaselineMeasurementSchema,
   type PatientBaselineCreateRequest,
 } from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
 import type { PatientClassificationType } from "@/modules/patient-classification/schemas/patient-classification-schemas";
@@ -20,6 +19,11 @@ import {
   importedPatientHealthHistorySchema,
   type ImportedPatientHealthHistory,
 } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
+import {
+  clinicalValueRangeMessage,
+  isClinicalValueInRange,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 import {
   ApplicationError,
   ForbiddenError,
@@ -102,6 +106,18 @@ type BaselineImportState = {
   effectiveDate: string | null;
   presentFields: readonly BaselineImportTargetField[];
   values: BaselineImportValues;
+  /** N3: the Thai field-level error of each value outside its clinical limits, in column order. */
+  rangeErrors: readonly string[];
+};
+
+const baselineImportMeasurementKinds: Readonly<
+  Record<PatientImportBaselineFieldKey, ClinicalMeasurementKind>
+> = {
+  weight: "weight",
+  height: "height",
+  waistCircumference: "waistCircumference",
+  bloodSugarDtx: "bloodSugar",
+  hba1c: "hba1c",
 };
 
 const baselineImportFieldMap: Readonly<
@@ -203,6 +219,7 @@ export function readBaselineImportState(
   const clinical = candidate.canonicalRow.clinicalCandidates;
   const values = { ...emptyBaselineImportValues };
   const presentFields: BaselineImportTargetField[] = [];
+  const rangeErrors: string[] = [];
   let invalid = false;
 
   for (const sourceField of PATIENT_IMPORT_BASELINE_FIELD_KEYS) {
@@ -215,10 +232,17 @@ export function readBaselineImportState(
 
     if (
       candidate.canonicalRow.fieldAssessments[sourceField].diagnostics.length > 0 ||
-      value === null ||
-      !patientBaselineMeasurementSchema.safeParse(value).success
+      value === null
     ) {
       invalid = true;
+      continue;
+    }
+
+    const kind = baselineImportMeasurementKinds[sourceField];
+
+    if (!isClinicalValueInRange(kind, value)) {
+      invalid = true;
+      rangeErrors.push(clinicalValueRangeMessage(kind));
       continue;
     }
 
@@ -226,19 +250,31 @@ export function readBaselineImportState(
     presentFields.push(targetField);
   }
 
+  const state = { effectiveDate, presentFields, values, rangeErrors };
+
   if (invalid) {
-    return { status: "BASELINE_DATA_INVALID", effectiveDate, presentFields, values };
+    return { status: "BASELINE_DATA_INVALID", ...state };
   }
 
   if (presentFields.length === 0) {
-    return { status: "NOT_APPLICABLE", effectiveDate, presentFields, values };
+    return { status: "NOT_APPLICABLE", ...state };
   }
 
   if (effectiveDate === null) {
-    return { status: "BASELINE_DATE_REQUIRED", effectiveDate, presentFields, values };
+    return { status: "BASELINE_DATE_REQUIRED", ...state };
   }
 
-  return { status: "BASELINE_READY", effectiveDate, presentFields, values };
+  return { status: "BASELINE_READY", ...state };
+}
+
+/**
+ * The row reason of a baseline state: an out-of-range value names its field and limits
+ * (N3), every other state keeps its status reason.
+ */
+export function baselineStateReason(state: BaselineImportState): string | null {
+  return state.rangeErrors.length > 0
+    ? state.rangeErrors.join(" ")
+    : baselineImportReason(state.status);
 }
 
 export function baselineImportReason(status: PatientImportBaselineStatus): string | null {
@@ -619,7 +655,7 @@ export function composePatientRosterPreviewRow(input: {
     return toPreviewRow(
       input.candidate,
       "INVALID",
-      baselineImportReason(baselineState.status),
+      baselineStateReason(baselineState),
       baselineState.status,
       patientClassification,
     );
@@ -731,6 +767,7 @@ export async function preparePatientRosterImportPreview(
 
 export const patientRosterImportPreviewInternals = {
   baselineImportReason,
+  baselineStateReason,
   buildBaselineCreateInput,
   classifyExistingPatient,
   classificationImportReason,

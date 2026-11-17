@@ -556,7 +556,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
         patientHospitalRelationshipId: relationshipA.id,
         recordedByUserId: ownerA.userId,
         recordedOn: new Date("2026-08-16T00:00:00.000Z"),
-        weight: 0,
+        weight: 72,
         bloodSugarDtx: null,
         bloodPressureSystolic: 120,
       },
@@ -604,7 +604,7 @@ describe("Phase 18D.1 Hospital reporting PostgreSQL boundary", () => {
     const completedRow = page.page.items.find(({ patientProgramId }) => patientProgramId === completedProgram.id);
     expect(activeRow?.lifecycle).toMatchObject({ status: PatientProgramStatus.ACTIVE, completedAt: { state: "NOT_RECORDED" } });
     expect(completedRow?.lifecycle).toMatchObject({ status: PatientProgramStatus.COMPLETED, completedAt: { state: "RECORDED" } });
-    expect(completedRow?.baseline).toMatchObject({ state: "PRESENT", value: { measurements: { weight: { state: "RECORDED", value: 0 }, bloodSugar: { state: "NOT_RECORDED" } } } });
+    expect(completedRow?.baseline).toMatchObject({ state: "PRESENT", value: { measurements: { weight: { state: "RECORDED", value: 72 }, bloodSugar: { state: "NOT_RECORDED" } } } });
     expect(completedRow?.finalAssessment).toEqual({ state: "MISSING" });
     expect(completedRow?.followups).toMatchObject({ totalCount: 7, hasMore: true });
     expect(JSON.stringify(page)).not.toContain("SYNTHETIC_PRIVATE_NOTE");

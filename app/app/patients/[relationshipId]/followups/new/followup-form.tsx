@@ -15,6 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { Select } from "@/components/ui/select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { dispatchFormDataPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import {
   APPOINTMENT_TYPE_LABELS,
@@ -439,6 +440,7 @@ export function FollowupForm({
   const defaultGoalPlanId = selectedGoalPlanId ?? (scope.kind === "program" ? latestGoalPlanId(goalPlans) : null);
   const [goalPlanId, setGoalPlanId] = useState(defaultGoalPlanId ?? "");
   const [progressErrorsVisible, setProgressErrorsVisible] = useState(false);
+  const rangeErrors = useClinicalRangeErrors();
   const [weight, setWeight] = useState("");
   const [waistCircumference, setWaistCircumference] = useState("");
   const [systolicBloodPressure, setSystolicBloodPressure] = useState("");
@@ -839,80 +841,79 @@ export function FollowupForm({
                   <input
                     className={inputClassName}
                     id="followup-weight"
-                    max={1_000_000}
-                    min={0}
                     onChange={(event) => setWeight(event.target.value)}
                     step="any"
                     type="number"
                     value={weight}
+                    {...rangeErrors.inputProps("weight", "weight")}
                   />
+                  {rangeErrors.renderError("weight")}
                 </label>
                 <label className={labelClassName} htmlFor="followup-waist">
                   <span>รอบเอว (cm)</span>
                   <input
                     className={inputClassName}
                     id="followup-waist"
-                    max={1_000_000}
-                    min={0}
                     onChange={(event) => setWaistCircumference(event.target.value)}
                     step="any"
                     type="number"
                     value={waistCircumference}
+                    {...rangeErrors.inputProps("waistCircumference", "waistCircumference")}
                   />
+                  {rangeErrors.renderError("waistCircumference")}
                 </label>
                 <label className={labelClassName} htmlFor="followup-systolic">
                   <span>ความดันตัวบน (mmHg)</span>
                   <input
                     className={inputClassName}
                     id="followup-systolic"
-                    max={1_000_000}
-                    min={0}
                     onChange={(event) => setSystolicBloodPressure(event.target.value)}
                     step="any"
                     type="number"
                     value={systolicBloodPressure}
+                    {...rangeErrors.inputProps("systolicBloodPressure", "systolicBloodPressure")}
                   />
+                  {rangeErrors.renderError("systolicBloodPressure")}
                 </label>
                 <label className={labelClassName} htmlFor="followup-diastolic">
                   <span>ความดันตัวล่าง (mmHg)</span>
                   <input
                     className={inputClassName}
                     id="followup-diastolic"
-                    max={1_000_000}
-                    min={0}
                     onChange={(event) => setDiastolicBloodPressure(event.target.value)}
                     step="any"
                     type="number"
                     value={diastolicBloodPressure}
+                    {...rangeErrors.inputProps("diastolicBloodPressure", "diastolicBloodPressure")}
                   />
+                  {rangeErrors.renderError("diastolicBloodPressure")}
                 </label>
                 <label className={labelClassName} htmlFor="followup-blood-sugar">
                   <span>น้ำตาลในเลือด / DTX (DTX / mg%)</span>
                   <input
                     className={inputClassName}
                     id="followup-blood-sugar"
-                    max={1_000_000}
-                    min={0}
                     onChange={(event) => setBloodSugar(event.target.value)}
                     step="any"
                     type="number"
                     value={bloodSugar}
+                    {...rangeErrors.inputProps("bloodSugar", "bloodSugar")}
                   />
+                  {rangeErrors.renderError("bloodSugar")}
                 </label>
                 {programId ? (
                   <label className={labelClassName} htmlFor="followup-height">
                     <span>ส่วนสูง (cm)</span>
                     <input
-                      aria-describedby="followup-height-help"
                       className={inputClassName}
                       id="followup-height"
-                      max={1_000_000}
-                      min={0}
                       onChange={(event) => setHeightCm(event.target.value)}
                       step="any"
                       type="number"
                       value={heightCm}
+                      {...rangeErrors.inputProps("heightCm", "height", "followup-height-help")}
                     />
+                    {rangeErrors.renderError("heightCm")}
                     <span className="text-xs font-normal leading-5 text-text-muted" id="followup-height-help">
                       เติมค่าส่วนสูงล่าสุดให้แล้ว แก้ไขได้หากวัดใหม่ เว้นว่างได้ (ระบบจะใช้ค่าล่าสุด)
                     </span>

@@ -250,6 +250,26 @@ describe("PatientSelfMeasurementWorkspace unknown outcome recovery", () => {
     expect(container.querySelector('ul[aria-label="ประวัติค่าวัดที่บันทึกเอง"]')).toBeNull();
   });
 
+  it("N3: shows a Thai field-level error for 0 and does not submit", async () => {
+    mocks.create.mockResolvedValue({ status: "SUCCESS", message: "บันทึกแล้ว" });
+    mocks.delete.mockResolvedValue({ status: "IDLE" });
+    mount();
+    setValue("weight", "0");
+
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+
+    const weight = query<HTMLInputElement>('input[name="weight"]');
+    const errorId = weight.getAttribute("aria-describedby");
+    expect(weight.getAttribute("aria-invalid")).toBe("true");
+    expect(errorId ? document.getElementById(errorId)?.textContent : null).toBe("น้ำหนักต้องอยู่ระหว่าง 1–500 กก.");
+    expect(mocks.create).not.toHaveBeenCalled();
+
+    setValue("weight", "52");
+    expect(weight.hasAttribute("aria-invalid")).toBe(false);
+    await act(async () => query<HTMLButtonElement>('button[type="submit"]').click());
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+  });
+
   it("allows a validation error to collapse and reopen with the same draft and feedback", async () => {
     mocks.create.mockResolvedValueOnce({ status: "ERROR", message: "กรุณาตรวจสอบค่าวัด", recovery: "RECOVERABLE" });
     mocks.create.mockResolvedValueOnce({ status: "SUCCESS", message: "บันทึกแล้ว" });

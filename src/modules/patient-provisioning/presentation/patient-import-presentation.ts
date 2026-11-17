@@ -189,7 +189,8 @@ export function getPatientImportBaselineReason(
     case "BASELINE_DATE_REQUIRED":
       return "ต้องระบุวันที่ข้อมูลตั้งต้นก่อนนำเข้า";
     case "BASELINE_DATA_INVALID":
-      return "ข้อมูลตั้งต้นไม่ถูกต้องหรือไม่รองรับหน่วยที่ระบุ";
+      // N3: the row reason names an out-of-range field and its limits.
+      return row.reason ?? "ข้อมูลตั้งต้นไม่ถูกต้องหรือไม่รองรับหน่วยที่ระบุ";
     default:
       return null;
   }

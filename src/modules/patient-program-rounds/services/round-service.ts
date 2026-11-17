@@ -20,6 +20,10 @@ import {
   InfrastructureError,
   ValidationError,
 } from "@/shared/errors/application-error";
+import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
+  isBloodPressureOrderValid,
+} from "@/shared/clinical/clinical-value-limits";
 import { isServiceDateAfter, serviceDateToUtcDate } from "@/shared/time/service-date";
 
 import {
@@ -232,6 +236,24 @@ type PersistedRoundVitals = Prisma.PatientProgramRoundVitalsGetPayload<{
   select: typeof roundVitalsSelect;
 }>;
 
+/**
+ * N3: a write that merges into the round's existing row keeps systolic above diastolic, also when
+ * one of the two was recorded earlier. `written` holds only the fields the write sets.
+ */
+function assertMergedBloodPressureOrder(
+  existing: PersistedRoundVitals,
+  written: Partial<Record<VitalsMeasurement, number | null>>,
+): void {
+  const systolic =
+    "systolicBloodPressure" in written ? written.systolicBloodPressure : existing.systolicBloodPressure;
+  const diastolic =
+    "diastolicBloodPressure" in written ? written.diastolicBloodPressure : existing.diastolicBloodPressure;
+
+  if (!isBloodPressureOrderValid(systolic, diastolic)) {
+    throw new ValidationError(BLOOD_PRESSURE_ORDER_MESSAGE);
+  }
+}
+
 function hasSameVitals(
   existing: PersistedRoundVitals,
   input: RoundVitalsRequest,
@@ -388,6 +410,8 @@ async function supplementVitalsInTransaction(
     return { ...writeResult("ALREADY_RECORDED", context, existing.roundNumber), roundVitalsId: existing.id };
   }
 
+  assertMergedBloodPressureOrder(existing, added);
+
   const updated = await transaction.patientProgramRoundVitals.updateMany({
     where: { id: existing.id, ...Object.fromEntries(fields.map((field) => [field, null])) },
     data: added,
@@ -450,6 +474,7 @@ async function reRecordVitalsInTransaction(
       .filter((field) => replacesPatientRecord || input[field] != null)
       .map((field) => [field, input[field] ?? null]),
   );
+  assertMergedBloodPressureOrder(existing, measurements);
   const record = await transaction.patientProgramRoundVitals.update({
     where: { id: existing.id },
     data: {

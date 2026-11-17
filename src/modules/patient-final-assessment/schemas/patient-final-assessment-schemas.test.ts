@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
+  CLINICAL_VALUE_LIMITS,
+  clinicalValueRangeMessage,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
+
 import { patientFinalAssessmentCreateRequestSchema } from "./patient-final-assessment-schemas";
 
 const programId = "11111111-1111-4111-8111-111111111111";
@@ -68,10 +75,49 @@ describe("Patient Final Assessment request schema", () => {
     ).toBe(false);
   });
 
-  it("does not invent a BP pairing rule beyond current Baseline/Follow-up conventions", () => {
+  it("does not require a blood pressure value to come with its pair", () => {
     expect(
       patientFinalAssessmentCreateRequestSchema.safeParse(
         validInput({ weight: null, systolicBloodPressure: 120 }),
+      ).success,
+    ).toBe(true);
+  });
+});
+
+describe("Patient Final Assessment clinical value limits (N3)", () => {
+  const fields = [
+    ["weight", "weight"],
+    ["waistCircumference", "waistCircumference"],
+    ["systolicBloodPressure", "systolicBloodPressure"],
+    ["diastolicBloodPressure", "diastolicBloodPressure"],
+    ["bloodSugar", "bloodSugar"],
+    ["hba1c", "hba1c"],
+  ] as const satisfies readonly (readonly [string, ClinicalMeasurementKind])[];
+
+  it.each(fields)("accepts %s inside its limits and rejects it outside, naming the field", (field, kind) => {
+    const { min, max } = CLINICAL_VALUE_LIMITS[kind];
+
+    expect(patientFinalAssessmentCreateRequestSchema.safeParse(validInput({ [field]: min })).success).toBe(true);
+
+    const parsed = patientFinalAssessmentCreateRequestSchema.safeParse(validInput({ [field]: max + 1 }));
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(
+      expect.objectContaining({ path: [field], message: clinicalValueRangeMessage(kind) }),
+    );
+  });
+
+  it("requires systolic above diastolic when both are recorded", () => {
+    const parsed = patientFinalAssessmentCreateRequestSchema.safeParse(
+      validInput({ systolicBloodPressure: 90, diastolicBloodPressure: 95 }),
+    );
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(
+      expect.objectContaining({ path: ["systolicBloodPressure"], message: BLOOD_PRESSURE_ORDER_MESSAGE }),
+    );
+    expect(
+      patientFinalAssessmentCreateRequestSchema.safeParse(
+        validInput({ systolicBloodPressure: 120, diastolicBloodPressure: 80 }),
       ).success,
     ).toBe(true);
   });

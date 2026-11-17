@@ -21,6 +21,8 @@ vi.mock("@/modules/patient-baseline/transport/server-actions", () => ({
   createPatientBaselineAction: vi.fn(),
 }));
 
+import { CLINICAL_VALUE_LIMITS } from "@/shared/clinical/clinical-value-limits";
+
 import { PatientBaselineForm } from "../../../../app/app/patients/[relationshipId]/baseline/baseline-form";
 
 const relationshipId = "11111111-1111-4111-8111-111111111111";
@@ -44,19 +46,23 @@ describe("Patient Baseline form constraints", () => {
     mockedUseActionState.mockReturnValue([{ status: "IDLE" }, vi.fn(), false]);
   });
 
-  it("uses a positive technical minimum for every optional measurement", () => {
+  it("bounds every optional measurement by the shared clinical limits", () => {
     const markup = renderToStaticMarkup(
       createElement(PatientBaselineForm, { patient, relationshipId }),
     );
 
-    for (const id of [
-      "baseline-weight",
-      "baseline-waist",
-      "baseline-blood-pressure-systolic",
-      "baseline-blood-pressure-diastolic",
-      "baseline-blood-sugar-dtx",
-    ]) {
-      expect(findInputMarkup(markup, id)).toContain('min="0.01"');
+    for (const [id, kind] of [
+      ["baseline-weight", "weight"],
+      ["baseline-height-cm", "height"],
+      ["baseline-waist", "waistCircumference"],
+      ["baseline-blood-pressure-systolic", "systolicBloodPressure"],
+      ["baseline-blood-pressure-diastolic", "diastolicBloodPressure"],
+      ["baseline-blood-sugar-dtx", "bloodSugar"],
+      ["baseline-hba1c", "hba1c"],
+    ] as const) {
+      const input = findInputMarkup(markup, id);
+      expect(input).toContain(`min="${CLINICAL_VALUE_LIMITS[kind].min}"`);
+      expect(input).toContain(`max="${CLINICAL_VALUE_LIMITS[kind].max}"`);
     }
   });
 });

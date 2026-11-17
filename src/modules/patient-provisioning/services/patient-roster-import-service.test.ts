@@ -19,6 +19,7 @@ import {
   type PatientImportFieldAssessmentMap,
   type PatientProvisioningImportCandidate,
 } from "../import/patient-import-contract";
+import { getPatientImportAttentionReason } from "../presentation/patient-import-presentation";
 import type { ProvisionPatientInput } from "../schemas/patient-provisioning-schemas";
 
 const provisionPatientInTransaction = vi.hoisted(() => vi.fn());
@@ -332,6 +333,36 @@ describe("Patient roster import: new patients only", () => {
     expect(invalidClassification).toMatchObject({
       classification: "INVALID",
       patientClassification: { status: "CLASSIFICATION_DATA_INVALID" },
+    });
+  });
+
+  it("rejects a baseline value outside its clinical limits and names the row and field (N3)", () => {
+    const outOfRange = compose(createCandidate({ rowNumber: 7, weight: 650, height: 170, hba1c: 1.5 }), undefined);
+
+    expect(outOfRange).toMatchObject({
+      rowNumber: 7,
+      classification: "INVALID",
+      baselineStatus: "BASELINE_DATA_INVALID",
+      reason: "น้ำหนักต้องอยู่ระหว่าง 1–500 กก. HbA1c ต้องอยู่ระหว่าง 2–20%",
+    });
+    expect(getPatientImportAttentionReason(outOfRange)).toBe(outOfRange.reason);
+
+    for (const [field, value] of [
+      ["weight", 500],
+      ["height", 30],
+      ["waistCircumference", 300],
+      ["bloodSugarDtx", 10],
+      ["hba1c", 20],
+    ] as const) {
+      expect(compose(createCandidate({ [field]: value }), undefined)).toMatchObject({
+        classification: "READY",
+        baselineStatus: "BASELINE_READY",
+      });
+    }
+
+    expect(compose(createCandidate({ bloodSugarDtx: 1_200 }), undefined)).toMatchObject({
+      classification: "INVALID",
+      reason: "น้ำตาลในเลือดต้องอยู่ระหว่าง 10–1000 มก./ดล.",
     });
   });
 

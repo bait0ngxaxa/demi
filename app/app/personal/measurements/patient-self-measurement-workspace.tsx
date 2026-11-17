@@ -9,6 +9,7 @@ import { ConfirmableActionForm } from "@/components/ui/confirmable-action-form";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
+import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { SavedRecordEmpty } from "../saved-record-card";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
@@ -17,6 +18,7 @@ import {
   PATIENT_SELF_MEASUREMENT_OWN_PAGE_SIZE,
 } from "@/modules/patient-self-measurements/domain/patient-self-measurement";
 import type { OwnPatientSelfMeasurement } from "@/modules/patient-self-measurements/services/patient-self-measurement-service";
+import type { ClinicalMeasurementKind } from "@/shared/clinical/clinical-value-limits";
 import {
   createOwnPatientSelfMeasurementAction,
   deleteOwnPatientSelfMeasurementAction,
@@ -28,11 +30,11 @@ import { PatientSelfMeasurementRecordCard } from "./patient-self-measurement-val
 const idle: PatientSelfMeasurementActionState = { status: "IDLE" };
 
 const NUMBER_FIELDS = [
-  { name: "weight", label: "น้ำหนัก (กก.)", step: "0.1" },
-  { name: "bloodSugar", label: `ระดับน้ำตาลในเลือด (${PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT})`, step: "1" },
-  { name: "systolicBloodPressure", label: "ความดันตัวบน (mmHg)", step: "1" },
-  { name: "diastolicBloodPressure", label: "ความดันตัวล่าง (mmHg)", step: "1" },
-] as const;
+  { name: "weight", kind: "weight", label: "น้ำหนัก (กก.)", step: "0.1" },
+  { name: "bloodSugar", kind: "bloodSugar", label: `ระดับน้ำตาลในเลือด (${PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT})`, step: "1" },
+  { name: "systolicBloodPressure", kind: "systolicBloodPressure", label: "ความดันตัวบน (mmHg)", step: "1" },
+  { name: "diastolicBloodPressure", kind: "diastolicBloodPressure", label: "ความดันตัวล่าง (mmHg)", step: "1" },
+] as const satisfies readonly { name: string; kind: ClinicalMeasurementKind; label: string; step: string }[];
 
 function submissionPayloadSignature(formData: FormData): string {
   return JSON.stringify(
@@ -49,6 +51,7 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
   onAttentionChange: (requiresAttention: boolean) => void;
 }): React.JSX.Element {
   const prefix = useId();
+  const rangeErrors = useClinicalRangeErrors();
   const nextSubmissionId = useRef(0);
   const activeSubmissionId = useRef<number | null>(null);
   const [currentSubmissionId, setCurrentSubmissionId] = useState<number | null>(null);
@@ -145,7 +148,8 @@ function CreateForm({ nonce, defaultMeasuredAt, onSubmissionStart, onAttentionCh
           {NUMBER_FIELDS.map((field) => (
             <div className="space-y-2" key={field.name}>
               <label className="block text-sm font-medium" htmlFor={`${prefix}-${field.name}`}>{field.label}</label>
-              <Input id={`${prefix}-${field.name}`} inputMode="decimal" max={1000000} min={0} name={field.name} step={field.step} type="number" />
+              <Input id={`${prefix}-${field.name}`} inputMode="decimal" name={field.name} step={field.step} type="number" {...rangeErrors.inputProps(field.name, field.kind)} />
+              {rangeErrors.renderError(field.name)}
               {field.name === "bloodSugar" ? (
                 <p className="text-sm text-text-muted">กรอกเฉพาะค่าที่แสดงเป็น mg/dL หากเครื่องแสดง mmol/L อย่ากรอกค่านั้นตรง ๆ; สอบถามเจ้าหน้าที่หากไม่แน่ใจ</p>
               ) : null}

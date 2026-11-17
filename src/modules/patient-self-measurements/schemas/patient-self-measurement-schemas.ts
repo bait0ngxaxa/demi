@@ -4,24 +4,26 @@ import {
   PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
   PATIENT_SELF_MEASUREMENT_CURSOR_MAX_LENGTH,
 } from "../domain/patient-self-measurement";
-import { FOLLOWUP_STRUCTURAL_NUMBER_MAX } from "@/modules/followups/schemas/followup-schemas";
+import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
+  clinicalMeasurementSchema,
+  isBloodPressureOrderValid,
+  type ClinicalMeasurementKind,
+} from "@/shared/clinical/clinical-value-limits";
 
-// Same value range as PatientFollowup measurements (and the SQL CHECK).
-const optionalMeasurementSchema = z
-  .number()
-  .finite()
-  .nonnegative()
-  .max(FOLLOWUP_STRUCTURAL_NUMBER_MAX)
-  .nullable();
+// N3: the shared clinical limits; the SQL CHECK stays a structural backstop.
+function optionalMeasurementSchema(kind: ClinicalMeasurementKind) {
+  return clinicalMeasurementSchema(kind).nullable();
+}
 
 export const patientSelfMeasurementCreateSchema = z
   .object({
     submissionNonce: z.string().uuid(),
     measuredAt: z.string().datetime({ offset: true }).transform((value) => new Date(value)),
-    weight: optionalMeasurementSchema,
-    systolicBloodPressure: optionalMeasurementSchema,
-    diastolicBloodPressure: optionalMeasurementSchema,
-    bloodSugar: optionalMeasurementSchema,
+    weight: optionalMeasurementSchema("weight"),
+    systolicBloodPressure: optionalMeasurementSchema("systolicBloodPressure"),
+    diastolicBloodPressure: optionalMeasurementSchema("diastolicBloodPressure"),
+    bloodSugar: optionalMeasurementSchema("bloodSugar"),
     bloodSugarUnit: z.literal(PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT).optional(),
     note: z.string().trim().max(1000).transform((value) => value || null).nullable(),
   })
@@ -33,6 +35,10 @@ export const patientSelfMeasurementCreateSchema = z
   .refine(
     (value) => value.bloodSugar === null || value.bloodSugarUnit === PATIENT_SELF_MEASUREMENT_BLOOD_SUGAR_UNIT,
     { message: "กรุณาระบุหน่วยน้ำตาลเป็น mg/dL", path: ["bloodSugarUnit"] },
+  )
+  .refine(
+    (value) => isBloodPressureOrderValid(value.systolicBloodPressure, value.diastolicBloodPressure),
+    { message: BLOOD_PRESSURE_ORDER_MESSAGE, path: ["systolicBloodPressure"] },
   );
 
 export const patientSelfMeasurementIdSchema = z.string().uuid();
