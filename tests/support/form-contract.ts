@@ -292,4 +292,126 @@ export type FormContractRegistration = {
   readonly tests: readonly string[];
 };
 
-export const FORM_CONTRACT_REGISTRY: readonly FormContractRegistration[] = [];
+const patients = "app/app/patients/[relationshipId]";
+const program = `${patients}/programs/[programId]`;
+
+export const FORM_CONTRACT_REGISTRY: readonly FormContractRegistration[] = [
+  {
+    module: "src/modules/followups/transport/server-action-helpers.ts",
+    contracts: ["FOLLOWUP_FORM_FIELDS", "FOLLOWUP_PROGRAM_FORM_FIELDS"],
+    tests: [`${patients}/followups/new/followup-form.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-program-rounds/transport/server-action-helpers.ts",
+    contracts: [
+      "VITALS_FORM_FIELDS",
+      "PROFILE_FORM_FIELDS",
+      "STEP_FORM_FIELDS",
+      "COMPLETION_FORM_FIELDS",
+      "ACHIEVE_SCORE_FORM_FIELDS",
+      "REVIEW_FORM_FIELDS",
+    ],
+    tests: [`${program}/rounds/[roundNumber]/round-form-contracts.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-baseline/transport/server-action-helpers.ts",
+    contracts: ["PATIENT_BASELINE_FORM_FIELDS"],
+    tests: [`${patients}/baseline/baseline-form-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-final-assessment/transport/server-action-helpers.ts",
+    contracts: ["FINAL_ASSESSMENT_FORM_FIELDS"],
+    tests: [`${program}/final-assessment-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/goals/transport/goal-plan-form-input.ts",
+    contracts: ["GOAL_PLAN_FORM_FIELDS", "GOAL_PLAN_PROGRAM_FORM_FIELDS"],
+    tests: [`${patients}/goals/new/goal-plan-form-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/screening/transport/screening-form-input.ts",
+    contracts: ["screeningFormFields"],
+    tests: [`${patients}/screenings/new/screening-form-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-program/transport/service-one-form-input.ts",
+    contracts: [
+      "SERVICE_ONE_ROUTINE_FORM_FIELDS",
+      "SERVICE_ONE_FLOATING_CHART_FORM_FIELDS",
+      "SERVICE_ONE_DREAM_CARD_FORM_FIELDS",
+      "SERVICE_ONE_CONFIDENCE_FORM_FIELDS",
+      "SERVICE_ONE_ARTIFACT_ASSOCIATION_FORM_FIELDS",
+    ],
+    tests: [`${program}/service-one-form-contracts.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-program/transport/program-form-input.ts",
+    contracts: ["PROGRAM_OPEN_FORM_FIELDS", "PROGRAM_COMPLETE_FORM_FIELDS"],
+    tests: [`${patients}/programs/program-mutation-controls-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/appointments/transport/appointment-form-input.ts",
+    contracts: [
+      "CREATE_FORM_FIELDS",
+      "RESCHEDULE_FORM_FIELDS",
+      "TRANSITION_FORM_FIELDS",
+      "ACKNOWLEDGEMENT_FORM_FIELDS",
+      "ASSIGNMENT_ACCEPTANCE_FORM_FIELDS",
+      "CANCELLATION_REQUEST_FORM_FIELDS",
+      "COORDINATION_FORM_FIELDS",
+      "CANCELLATION_REVIEW_FORM_FIELDS",
+    ],
+    tests: [
+      `${patients}/appointments/new/appointment-form-contract.test.tsx`,
+      `${patients}/appointments/[appointmentId]/appointment-controls-contract.test.tsx`,
+      "app/app/personal/appointments/patient-appointment-interaction-contract.test.tsx",
+    ],
+  },
+  {
+    module: "src/modules/exercises/transport/exercise-form.ts",
+    contracts: ["EXERCISE_FORM_FIELD_LIMITS"],
+    tests: ["app/app/personal/wellness/personal-wellness-form-contracts.test.tsx"],
+  },
+  {
+    module: "src/modules/meals/transport/meal-form.ts",
+    contracts: ["MEAL_FORM_FIELD_LIMITS"],
+    tests: ["app/app/personal/wellness/personal-wellness-form-contracts.test.tsx"],
+  },
+  {
+    module: "src/modules/weight-goals/transport/weight-goal-form.ts",
+    contracts: ["WEIGHT_GOAL_FORM_FIELD_LIMITS"],
+    tests: ["app/app/personal/wellness/personal-wellness-form-contracts.test.tsx"],
+  },
+  {
+    module: "src/modules/medications/transport/schedule-form.ts",
+    contracts: [
+      "MEDICATION_CREATE_FORM_FIELD_LIMITS",
+      "MEDICATION_SCHEDULE_FORM_FIELD_LIMITS",
+      "personalMedicationUpdateSchema",
+      "personalMedicationStopSchema",
+    ],
+    tests: ["app/app/personal/medications/personal-medication-form-contracts.test.tsx"],
+  },
+  {
+    module: "src/modules/hospital-content/schemas/hospital-content-schemas.ts",
+    contracts: ["COMMAND_KEYS"],
+    tests: ["app/app/hospitals/knowledge/hospital-content-form-contracts.test.tsx"],
+  },
+  // Actions that pass `Object.fromEntries(formData)` (or the posted fields) to a `.strict()` schema.
+  // They are not found by the source patterns, so they are registered by hand.
+  {
+    module: "src/modules/patient-self-measurements/transport/self-measurement-form-input.ts",
+    contracts: ["patientSelfMeasurementCreateSchema"],
+    tests: ["app/app/personal/measurements/patient-self-measurement-form-contract.test.tsx"],
+  },
+  {
+    module: "src/modules/patient-hospital-profile/transport/hospital-patient-edit-input.ts",
+    contracts: ["staffPatientHospitalProfileUpdateSchema", "patientHealthHistorySchema"],
+    tests: [`${patients}/hospital-patient-edit-form-contract.test.tsx`],
+  },
+  {
+    module: "src/modules/patient-hospital-profile/transport/server-actions.ts",
+    contracts: ["patientHospitalProfileUpdateSchema"],
+    tests: ["app/app/personal/profile/[relationshipId]/profile-editor-contract.test.tsx"],
+  },
+];
