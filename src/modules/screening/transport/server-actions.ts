@@ -7,88 +7,13 @@ import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/ro
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
-  CURRENT_INSTRUMENT_QUESTION_SETS,
-  type InstrumentQuestionSet,
-} from "../domain/question-sets";
-import {
-  screeningInstrumentSchema,
   screeningSubmitRequestSchema,
   type ScreeningSubmitRequest,
 } from "../schemas/screening-schemas";
 import { submitScreening } from "../services/screening-service";
 
 import type { ScreeningActionState } from "./action-state";
-
-function getSingleString(formData: FormData, field: string): string | undefined {
-  const values = formData.getAll(field);
-
-  if (values.length !== 1 || typeof values[0] !== "string") {
-    return undefined;
-  }
-
-  return values[0];
-}
-
-
-function getAnswerValue(formData: FormData, key: string): unknown {
-  const value = getSingleString(formData, key);
-
-  if (value === undefined || value.trim() === "") {
-    return undefined;
-  }
-
-  return Number(value);
-}
-
-function buildAnswerMap(formData: FormData, questionSet: InstrumentQuestionSet): Record<string, unknown> {
-  const answers: Record<string, unknown> = {};
-
-  for (const question of questionSet.questions) {
-    answers[question.key] = getAnswerValue(formData, question.key);
-  }
-
-  return answers;
-}
-
-function containsUnexpectedFields(formData: FormData, questionSet: InstrumentQuestionSet): boolean {
-  const allowedFields = new Set([
-    "patientHospitalRelationshipId",
-    "patientProgramId",
-    "submissionNonce",
-    "instrument",
-    ...questionSet.questions.map((question) => question.key),
-  ]);
-
-  for (const key of formData.keys()) {
-    if (!key.startsWith("$ACTION_") && !allowedFields.has(key)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function buildSubmissionInput(formData: FormData): unknown {
-  const instrument = screeningInstrumentSchema.safeParse(getSingleString(formData, "instrument"));
-
-  if (!instrument.success) {
-    return null;
-  }
-
-  const questionSet = CURRENT_INSTRUMENT_QUESTION_SETS[instrument.data];
-
-  if (containsUnexpectedFields(formData, questionSet)) {
-    return null;
-  }
-
-  return {
-    patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    instrument: instrument.data,
-    responses: { answers: buildAnswerMap(formData, questionSet) },
-  } satisfies Record<string, unknown>;
-}
+import { buildSubmissionInput } from "./screening-form-input";
 
 function mapScreeningError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
