@@ -175,7 +175,6 @@ describe("unauthenticated LINE quick-action login flow", () => {
     ["an injected external return", "https://demi.example.org/app/personal?liff.hback=2&returnTo=https%3A%2F%2Fevil.example"],
     ["an unauthorized resource", "https://demi.example.org/app/hospitals/11111111-1111-4111-8111-111111111111?liff.hback=2"],
     ["a conflicting task", "https://demi.example.org/app/patients/assigned?task=screening&task=followup&liff.hback=2"],
-    ["a MINI gateway return", "https://demi.example.org/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&liff.hback=2"],
   ])("sends %s through plain DEMI login without a quick-action return", async (_label, url) => {
     const { loginLocation, finalDestination } = await loginThroughLiffEntry(url);
     expect(loginLocation).toBe("/login");

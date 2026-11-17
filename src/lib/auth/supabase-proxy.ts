@@ -45,12 +45,6 @@ function createNextResponse(
     response.headers.set("cache-control", "private, no-store");
     response.headers.set("referrer-policy", "no-referrer");
   }
-  if (pathname === "/line/workflow" || pathname.startsWith("/line/workflow/") || pathname.startsWith("/api/line/workflow/")) {
-    // MINI primary redirects can carry platform credentials; never cache or leak them as referrer.
-    response.headers.set("cache-control", "private, no-store");
-    response.headers.set("referrer-policy", "no-referrer");
-    response.headers.set("content-security-policy", "frame-ancestors 'none'");
-  }
   return response;
 }
 

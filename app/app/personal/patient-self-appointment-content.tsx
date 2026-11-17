@@ -34,8 +34,8 @@ import { AppointmentContactPhoneEntries } from "../appointment-contact-phones";
 
 /*
  * Shared, mutation-free Appointment presentation. This module must not import
- * interaction controls or Server Actions: the LINE MINI scoped routes render it
- * directly, and ordinary pages compose their own controls around it.
+ * interaction controls or Server Actions: ordinary pages compose their own
+ * controls around it.
  */
 
 /** Finite destination adapter; callers pass fixed builders, never request URLs. */
