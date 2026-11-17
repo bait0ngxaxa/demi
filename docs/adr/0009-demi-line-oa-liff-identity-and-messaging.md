@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-06
+- Superseded in part (2026-11-17): every LINE MINI App decision below (MINI channel, workflow, MINI deauthorization and MINI configuration) is superseded by [ADR-0035](./0035-retire-line-mini-app.md); the MINI App is retired.
 
 ## Context
 

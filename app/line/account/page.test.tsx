@@ -110,7 +110,7 @@ describe("Account page readiness composition", () => {
 
   it("keeps historical eligibility unknown and disables ordinary Relink when configuration is unavailable", async () => {
     mocks.summary.mockResolvedValue(unlinkedSummary);
-    mocks.requireReadiness.mockRejectedValue(new Error("partial MINI configuration"));
+    mocks.requireReadiness.mockRejectedValue(new Error("missing Account configuration"));
     mocks.history.mockResolvedValue(true);
 
     const props = await clientProps();

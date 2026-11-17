@@ -44,7 +44,9 @@ async function main() {
     console.log(`${status.padEnd(11)} ${group.padEnd(10)} ${name}`);
   }
   console.log("");
-  const unknown = Object.keys(values).filter((name) => !DEPLOYMENT_ENVIRONMENT_VARIABLES.includes(name));
+  const retired = report.variables.filter(({ status }) => status === "RETIRED").map(({ name }) => name);
+  if (retired.length > 0) console.log(`\nretired by ADR-0035, must be removed: ${retired.join(", ")}`);
+  const unknown = Object.keys(values).filter((name) => !DEPLOYMENT_ENVIRONMENT_VARIABLES.includes(name) && !retired.includes(name));
   if (unknown.length > 0) console.log(`\nnot read by DEMI (remove): ${unknown.join(", ")}`);
 
   const failed = !report.valid || (strict && report.placeholders.length > 0);

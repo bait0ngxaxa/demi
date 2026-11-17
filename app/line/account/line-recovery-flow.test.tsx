@@ -59,7 +59,7 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
     vi.stubGlobal("sessionStorage", { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() });
   });
   afterEach(() => vi.unstubAllGlobals());
-  it("requires complete reviews/risk decision before requesting fresh proof, without authorizing unused MINI", async () => {
+  it("requires complete reviews/risk decision before requesting fresh proof", async () => {
     click("ตรวจสอบเพื่อเชื่อมใหม่"); await settle();
     click("ตรวจสอบแล้ว ดำเนินการต่อ");
     expect(render().find((control) => control.props.children === "ดำเนินการยืนยันบัญชี")?.props.disabled).toBe(true);
@@ -160,7 +160,7 @@ describe("Recovery-only LIFF interaction and transient proof transport", () => {
   it.each<[string, LineDisconnectionStatus]>([
     ["released", { ...outstanding, state: "RECOVERY_RELEASED_UNVERIFIED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "RECOVERY_RELEASED_UNVERIFIED" }] }],
     ["replaced by a new obligation set", { ...outstanding, obligations: [{ ...outstanding.obligations[0], id: "33333333-3333-4333-a333-333333333333" }] }],
-    ["extended by a new outstanding obligation", { ...outstanding, obligations: [...outstanding.obligations, { id: "44444444-4444-4444-a444-444444444444", bindingId: outstanding.obligations[0].bindingId, appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" }] }],
+    ["extended by a new outstanding obligation", { ...outstanding, obligations: [...outstanding.obligations, { id: "44444444-4444-4444-a444-444444444444", bindingId: outstanding.obligations[0].bindingId, appName: "แอป DEMI ที่เคยเชื่อมต่อ", status: "REMOTE_UNCONFIRMED" }] }],
     ["confirmed by LINE", { ...outstanding, state: "REMOTE_CONFIRMED", canRelink: true, obligations: [{ ...outstanding.obligations[0], status: "REMOTE_CONFIRMED" }] }],
   ])("does not prompt again for an obligation set already %s", async (_label, status) => {
     await prepareAndReview(); click("ยืนยันตัวตนกับ LINE ใหม่"); await settle();

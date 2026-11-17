@@ -5,12 +5,6 @@ import { getLineLoginEnv } from "@/lib/env/server";
 import { LineFailure } from "../domain/line-errors";
 import type { LineProviderEvidence } from "../domain/line-authorization-lifecycle";
 
-export type LineMiniAppDeauthorizationCredentials = {
-  channelId: string;
-  channelSecret: string;
-  environment: "DEVELOPING" | "REVIEW" | "PUBLISHED";
-};
-
 const tokenResult = z.object({ client_id: z.string(), expires_in: z.number().int().positive(), scope: z.string() });
 const userInfo = z.object({ sub: z.string().regex(/^U[0-9a-f]{32}$/iu) });
 const channelToken = z.object({ access_token: z.string().min(1).max(8192), token_type: z.literal("Bearer"), expires_in: z.number().positive() });
@@ -91,14 +85,3 @@ export async function deauthorizeLineAccount(
     getLineLoginEnv().DEMI_LINE_LOGIN_CHANNEL_ID, process.env.DEMI_LINE_LOGIN_CHANNEL_SECRET);
 }
 
-/** MINI termination cannot consume Account credentials or an Account-audience token. */
-export async function deauthorizeLineMiniApp(
-  accessToken: string,
-  expectedSubject: string,
-  credentials: LineMiniAppDeauthorizationCredentials,
-  mayDispatch: () => Promise<boolean>,
-  fetcher: typeof fetch = fetch,
-): Promise<LineProviderEvidence> {
-  return deauthorizeLineChannel(accessToken, expectedSubject, mayDispatch, fetcher,
-    credentials.channelId, credentials.channelSecret);
-}

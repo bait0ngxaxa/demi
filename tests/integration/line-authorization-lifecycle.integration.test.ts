@@ -18,15 +18,15 @@ const people: string[] = [];
 const users: string[] = [];
 const now = new Date("2026-10-08T06:00:00Z");
 const sessionHash = "a".repeat(64);
-const inventory: LineChannelInventory = { channels: [
-  { kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" },
-  { kind: "MINI", channelId: "2222222222", environment: "DEVELOPING" },
-] };
-// Exactly the pre-B2.4 manifest tuple for the same MINI channel; persisted verbatim, never remapped.
-const legacyMiniDefinition = JSON.stringify(["synthetic-provider", "MINI", "2222222222", "DEVELOPING", "synthetic-deploy"]);
-const legacyMini = createHash("sha256").update(legacyMiniDefinition).digest("hex");
+// The inventory is exactly the Account channel (ADR-0035).
+const inventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
+// The Account channel under a rotated channel ID: a distinct tuple that can leave the configuration as history.
+const rotatedInventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567891", environment: "ACCOUNT" }] };
+// Exactly the pre-B2.4 manifest tuple for the same Account channel; persisted verbatim, never remapped.
+const legacyDefinition = JSON.stringify(["synthetic-provider", "ACCOUNT", "1234567890", "ACCOUNT", "synthetic-deploy"]);
+const legacy = createHash("sha256").update(legacyDefinition).digest("hex");
 const account = lineChannelTupleKey(inventory.channels[0]);
-const mini = lineChannelTupleKey(inventory.channels[1]);
+const rotated = lineChannelTupleKey(rotatedInventory.channels[0]);
 const subject = `U${"1".repeat(32)}`;
 
 type LinkService = typeof linkLineAccountCore;
@@ -134,7 +134,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
   });
   afterAll(async () => database.$disconnect());
 
-  it("atomically revokes a legacy binding, advances once, consumes intent and audits unknown Account/MINI obligations", async () => {
+  it("atomically revokes a legacy binding, advances once, consumes intent and audits the unknown Account obligation", async () => {
     const binding = await fixture();
     const verifyIdentity = vi.fn(async () => { throw new Error("provider unavailable"); });
     const verifyFriendship = vi.fn(async () => { throw new Error("provider unavailable"); });
@@ -145,7 +145,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     const revoked = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
     expect(revoked.lifecycleVersion).toBe(2); expect(revoked.unlinkedAt).toEqual(now);
     expect((await rows(binding)).map((row) => [row.applicability, row.remoteOutcome])).toEqual([
-      ["UNKNOWN", "REMOTE_UNCONFIRMED"], ["UNKNOWN", "REMOTE_UNCONFIRMED"],
+      ["UNKNOWN", "REMOTE_UNCONFIRMED"],
     ]);
     expect(await database.lineAccountActionIntent.findUniqueOrThrow({ where: { id: intent.intentId } })).toMatchObject({ consumedAt: now, outcome: "SUCCEEDED" });
     expect(await database.auditEvent.count({ where: { actorUserId: binding.userId } })).toBe(2);
@@ -176,55 +176,51 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect(await database.auditEvent.count({ where: { actorUserId: binding.userId } })).toBe(0);
   });
 
-  it("creates only Account obligations when MINI is not provisioned", async () => {
-    const binding = await fixture(); const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
-    const dependencies = { ...deps(binding), authorizationInventory: accountOnly };
-    const intent = await createLineAccountIntent("UNLINK", dependencies);
-    await unlinkLineAccount(intent, dependencies);
+  it("creates exactly the Account obligation from the server inventory", async () => {
+    const binding = await fixture();
+    await unlink(binding);
     expect(await rows(binding)).toHaveLength(1);
     expect((await rows(binding))[0].tupleKey).toBe(account);
   });
 
-  it("copies trusted MINI observation and keeps provisioned unobserved grants unknown", async () => {
+  it("copies a trusted Account observation and a later configuration never rewrites it", async () => {
     const binding = await fixture();
-    await tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, mini, now));
+    await tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, account, now));
     const revoked = await unlink(binding);
-    expect((await rows(binding)).filter((row) => row.bindingVersion === revoked.lifecycleVersion).find((row) => row.tupleKey === mini)?.applicability).toBe("OBSERVED");
+    expect((await rows(binding)).filter((row) => row.bindingVersion === revoked.lifecycleVersion).find((row) => row.tupleKey === account)?.applicability).toBe("OBSERVED");
     await expect(tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, account, now))).rejects.toThrow();
-    // Removing MINI from configuration later never rewrites or erases the observed obligation.
-    const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
-    await tx((transaction) => initializeLineTermination(transaction, revoked, accountOnly, now));
-    expect((await rows(binding)).find((row) => row.bindingVersion === 2 && row.tupleKey === mini)?.applicability).toBe("OBSERVED");
+    // A changed configuration later never rewrites or erases the observed obligation.
+    await tx((transaction) => initializeLineTermination(transaction, revoked, rotatedInventory, now));
+    expect((await rows(binding)).find((row) => row.bindingVersion === 2 && row.tupleKey === account)?.applicability).toBe("OBSERVED");
   });
 
-  it("carries a historical MINI grant forward after MINI configuration is removed", async () => {
+  it("carries a historical grant forward after its channel leaves the configuration", async () => {
     const binding = await fixture();
-    await tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, mini, now));
-    const accountOnly: LineChannelInventory = { channels: [inventory.channels[0]] };
+    await tx((transaction) => observeLineAuthorization(transaction, target(binding), rotatedInventory, rotated, now));
     const intent = await createLineAccountIntent(LineAccountAction.UNLINK, deps(binding));
-    await unlinkLineAccount(intent, { ...deps(binding), authorizationInventory: accountOnly });
+    await unlinkLineAccount(intent, deps(binding));
     const current = (await rows(binding)).filter((row) => row.bindingVersion === 2);
-    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, mini].sort());
-    expect(current.find((row) => row.tupleKey === mini)).toMatchObject({ applicability: "OBSERVED", remoteOutcome: "REMOTE_UNCONFIRMED" });
+    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, rotated].sort());
+    expect(current.find((row) => row.tupleKey === rotated)).toMatchObject({ applicability: "OBSERVED", remoteOutcome: "REMOTE_UNCONFIRMED" });
     // Without the channel's own configuration no termination can be dispatched or confirmed for it.
-    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target({ ...binding, lifecycleVersion: 2 }), tupleKey: mini }, accountOnly, now))).rejects.toThrow();
+    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target({ ...binding, lifecycleVersion: 2 }), tupleKey: rotated }, inventory, now))).rejects.toThrow();
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target({ ...binding, lifecycleVersion: 2 }), now))).eligible).toBe(false);
   });
 
   it("keeps pre-B2.4 tuple rows as distinct enforceable history and resolves them only through Recovery", async () => {
     const binding = await fixture();
-    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 1, tupleKey: legacyMini,
-      tupleDefinition: legacyMiniDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", observedAt: now } });
+    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 1, tupleKey: legacy,
+      tupleDefinition: legacyDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", observedAt: now } });
     const revoked = await unlink(binding);
     const current = (await rows(binding)).filter((row) => row.bindingVersion === revoked.lifecycleVersion);
-    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, legacyMini, mini].sort());
-    expect(current.find((row) => row.tupleKey === legacyMini)).toMatchObject({
-      tupleDefinition: legacyMiniDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", remoteOutcome: "REMOTE_UNCONFIRMED",
+    expect(current.map((row) => row.tupleKey).sort()).toEqual([account, legacy].sort());
+    expect(current.find((row) => row.tupleKey === legacy)).toMatchObject({
+      tupleDefinition: legacyDefinition, applicability: "OBSERVED", evidenceReference: "synthetic-inventory-v1", remoteOutcome: "REMOTE_UNCONFIRMED",
     });
-    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(revoked), tupleKey: legacyMini }, inventory, now))).rejects.toThrow();
+    await expect(tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(revoked), tupleKey: legacy }, inventory, now))).rejects.toThrow();
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(revoked), now))).eligible).toBe(false);
     const decision = await recovery(revoked);
-    expect(Object.keys(decision.manualReviews)).toHaveLength(3);
+    expect(Object.keys(decision.manualReviews)).toHaveLength(2);
     await release(decision);
     expect((await rows(binding)).filter((row) => row.bindingVersion === 2).every((row) => row.recoveryReleasedAt !== null)).toBe(true);
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(revoked), now))).eligible).toBe(true);
@@ -264,22 +260,22 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(false);
   });
 
-  it("allows normal release only after each channel has a definitive matching 204", async () => {
+  it("allows normal release only after the Account channel has a definitive matching 204", async () => {
     const binding = await unlink(await fixture());
-    for (const tupleKey of [account, mini]) {
-      const attempt = await tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(binding), tupleKey }, inventory, now));
-      if (!attempt) throw new Error("Expected attempt");
-      expect(await tx((transaction) => recordLineTerminationOutcome(transaction, { ...attempt, attemptId: randomUUID() }, "PROVIDER_204", now))).toBe(false);
-      await tx((transaction) => recordLineTerminationOutcome(transaction, attempt, "PROVIDER_204", now));
-      expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(tupleKey === mini);
-    }
+    const attempt = await tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(binding), tupleKey: account }, inventory, now));
+    if (!attempt) throw new Error("Expected attempt");
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(false);
+    expect(await tx((transaction) => recordLineTerminationOutcome(transaction, { ...attempt, attemptId: randomUUID() }, "PROVIDER_204", now))).toBe(false);
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(false);
+    await tx((transaction) => recordLineTerminationOutcome(transaction, attempt, "PROVIDER_204", now));
+    expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(true);
   });
 
   it("recovery preserves uncertain history, audit and local revocation without minting a binding", async () => {
     const binding = await unlink(await fixture()); const decision = await recovery(binding);
     const auditId = await release(decision);
     expect((await rows(binding)).every((row) => row.remoteOutcome === "REMOTE_UNCONFIRMED" && row.recoveryDecisionAuditId === auditId)).toBe(true);
-    expect((await rows(binding)).map(lineObligationStatus)).toEqual(["RECOVERY_RELEASED_UNVERIFIED", "RECOVERY_RELEASED_UNVERIFIED"]);
+    expect((await rows(binding)).map(lineObligationStatus)).toEqual(["RECOVERY_RELEASED_UNVERIFIED"]);
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(binding)))).eligible).toBe(true);
     expect(await database.lineAccountBinding.count({ where: { userId: binding.userId, unlinkedAt: null } })).toBe(0);
     expect(await database.auditEvent.findUniqueOrThrow({ where: { id: auditId } })).toMatchObject({ actorUserId: binding.userId, action: "line.lifecycle.recovery.released" });
@@ -298,7 +294,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     if (kind === "stale-generation") decision.bindingVersion += 1;
     if (kind === "incomplete-review") decision.manualReviews = {};
     if (kind === "expired-proof") decision.proofExpiresAt = now;
-    const selectedInventory: LineChannelInventory = kind === "changed-inventory" ? { channels: [inventory.channels[0]] } : inventory;
+    const selectedInventory: LineChannelInventory = kind === "changed-inventory" ? rotatedInventory : inventory;
     const selectedAuthority: LineRecoveryAuthority = kind === "denied-authority" ? { authorize: async () => { throw new Error("trusted verifier denied"); } } : authority;
     await expect(release(decision, selectedInventory, selectedAuthority)).rejects.toThrow();
     expect((await rows(binding)).every((row) => row.recoveryReleasedAt === null)).toBe(true);
@@ -307,7 +303,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
 
   it("new unreviewed obligations invalidate a prepared release", async () => {
     const binding = await unlink(await fixture()); const decision = await recovery(binding);
-    const other = { ...inventory.channels[1], channelId: "3333333333", environment: "PUBLISHED" as const };
+    const other = { ...inventory.channels[0], channelId: "3333333333" };
     await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 2, tupleKey: lineChannelTupleKey(other), tupleDefinition: lineChannelTupleDefinition(other),
       applicability: "UNKNOWN", evidenceReference: "historical-inventory", requestedAt: now, remoteOutcome: "REMOTE_UNCONFIRMED", reason: "TOKEN_UNAVAILABLE" } });
     await expect(release(decision)).rejects.toThrow();
@@ -340,22 +336,22 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     const results = await Promise.allSettled([unlinkLineAccount(intent, deps(binding)), unlinkLineAccount(intent, deps(binding))]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).lifecycleVersion).toBe(2);
-    expect(await rows(binding)).toHaveLength(2);
+    expect(await rows(binding)).toHaveLength(1);
   });
 
   it("deterministically serializes observation before unlink and rejects an old observation after revocation", async () => {
     const binding = await fixture(); const intent = await createLineAccountIntent("UNLINK", deps(binding));
     const held = barrier(); const releaseLock = barrier();
     const observation = tx(async (transaction) => {
-      await observeLineAuthorization(transaction, target(binding), inventory, mini, now);
+      await observeLineAuthorization(transaction, target(binding), inventory, account, now);
       held.resolve(); await releaseLock.promise;
     });
     await held.promise;
     const disconnection = unlinkLineAccount(intent, deps(binding));
     try { await waitForLockWait(); } finally { releaseLock.resolve(); }
     await Promise.all([observation, disconnection]);
-    expect((await rows(binding)).find((row) => row.bindingVersion === 2 && row.tupleKey === mini)?.applicability).toBe("OBSERVED");
-    await expect(tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, mini, now))).rejects.toThrow();
+    expect((await rows(binding)).find((row) => row.bindingVersion === 2 && row.tupleKey === account)?.applicability).toBe("OBSERVED");
+    await expect(tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, account, now))).rejects.toThrow();
   });
 
   it("rechecks a changed generation on Serializable retry rather than reserving stale work", async () => {
@@ -396,7 +392,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect(attempt).not.toBeNull();
     await expect(tx((transaction) => prepareLineRecoverySet(transaction, target(binding), inventory, new Date(now.getTime() + 9999)))).rejects.toThrow();
     const set = await tx((transaction) => prepareLineRecoverySet(transaction, target(binding), inventory, new Date(now.getTime() + 10000)));
-    expect(set.rowIds).toHaveLength(2);
+    expect(set.rowIds).toHaveLength(1);
     expect(await tx((transaction) => reserveLineTerminationAttempt(transaction, { ...target(binding), tupleKey: account }, inventory, new Date(now.getTime() + 10000)))).toBeNull();
   });
 
@@ -420,19 +416,18 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(revoked), now))).eligible).toBe(false);
     const first = await tx((transaction) => prepareLineRecoverySet(transaction, target(revoked), inventory, now));
     const second = await tx((transaction) => prepareLineRecoverySet(transaction, target(revoked), inventory, now));
-    expect(first).toEqual(second); expect(first.rowIds).toHaveLength(2);
+    expect(first).toEqual(second); expect(first.rowIds).toHaveLength(1);
     expect((await rows(binding)).every((row) => row.applicability === "UNKNOWN")).toBe(true);
     expect(await database.auditEvent.count({ where: { actorUserId: binding.userId, action: "line.lifecycle.initialized" } })).toBe(1);
     expect((await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } })).lifecycleVersion).toBe(2);
   });
 
-  it("tracks independent observed Account and MINI grants over later binding generations", async () => {
+  it("tracks an observed Account grant over later binding generations", async () => {
     const binding = await fixture();
     const linkIntent = await createLineAccountIntent("LINK", deps(binding));
     expect(await linkLineAccount({ ...linkIntent, idToken: "test-proof" }, deps(binding))).toMatchObject({ status: "ALREADY_LINKED", lifecycleVersion: 1 });
-    await tx((transaction) => observeLineAuthorization(transaction, target(binding), inventory, mini, now));
     const revoked = await unlink(binding);
-    expect((await rows(binding)).filter((row) => row.bindingVersion === 2).every((row) => row.applicability === "OBSERVED")).toBe(true);
+    expect((await rows(binding)).filter((row) => row.bindingVersion === 2).map((row) => [row.tupleKey, row.applicability])).toEqual([[account, "OBSERVED"]]);
     const decision = await recovery(revoked); await release(decision);
     const intent = await createLineAccountIntent("LINK", deps(binding));
     await linkLineAccount({ ...intent, idToken: "new-test-proof" }, deps(binding));
@@ -473,7 +468,7 @@ describe("Phase 17J.3C durable lifecycle PostgreSQL foundation", () => {
     expect(await reconnecting).toMatchObject({ status: "LINKED", lifecycleVersion: 3 });
     const current = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: binding.id } });
     expect(current).toMatchObject({ lifecycleVersion: 3, unlinkedAt: null });
-    expect((await rows(binding)).filter((row) => row.bindingVersion === 2)).toHaveLength(2);
+    expect((await rows(binding)).filter((row) => row.bindingVersion === 2)).toHaveLength(1);
     // The final policy evaluator rejects pending old obligations even for an active
     // binding; activation must place this guard before ALREADY_LINKED in 17J.3D.
     expect((await tx((transaction) => evaluateLineRelinkEligibility(transaction, target(current), now))).eligible).toBe(false);

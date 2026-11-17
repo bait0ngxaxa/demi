@@ -2,11 +2,6 @@ import "server-only";
 
 import { z } from "zod";
 
-import {
-  getLineMiniAppDeauthorizationCredentials,
-  resolveLineMiniAppChannel,
-} from "@/modules/line/services/line-mini-app-configuration";
-import { parseLineWorkflowContextKeyring } from "@/modules/line/services/line-workflow-context";
 import { REPORT_CURSOR_SECRET_MIN_BYTES } from "@/modules/reporting/services/hospital-report-query-service";
 
 import {
@@ -27,18 +22,18 @@ import {
  * never values.
  */
 
-export type DeploymentVariableGroup = "CORE" | "OPTIONAL";
-export type DeploymentVariableStatus = "OK" | "PLACEHOLDER" | "UNSET" | "MISSING" | "INVALID";
+export type DeploymentVariableGroup = "CORE" | "OPTIONAL" | "RETIRED";
+export type DeploymentVariableStatus = "OK" | "PLACEHOLDER" | "UNSET" | "MISSING" | "INVALID" | "RETIRED";
 export type DeploymentEnvironmentProfile = "runtime" | "production";
 
 export type DeploymentEnvironmentReport = {
   readonly variables: ReadonlyArray<{ name: string; group: DeploymentVariableGroup; status: DeploymentVariableStatus }>;
-  /** No MISSING or INVALID variable in the checked groups. */
+  /** No MISSING, INVALID or RETIRED variable in the checked groups. */
   readonly valid: boolean;
   readonly placeholders: readonly string[];
 };
 
-const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
+const GROUPS: Readonly<Record<Exclude<DeploymentVariableGroup, "RETIRED">, readonly string[]>> = {
   CORE: [
     "NODE_ENV",
     "DATABASE_URL",
@@ -65,18 +60,23 @@ const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
     "DEMI_LINE_MEDICATION_REMINDERS_WORKER_SECRET",
     "DEMI_LINE_APPOINTMENT_NOTIFICATIONS_WORKER_SECRET",
     "CRON_SECRET",
-    "DEMI_LINE_MINI_APP_ENVIRONMENT",
-    "DEMI_LINE_MINI_APP_CHANNEL_ID",
-    "DEMI_LINE_MINI_APP_LIFF_ID",
-    "DEMI_LINE_MINI_APP_CHANNEL_SECRET",
-    "DEMI_LINE_MINI_APP_CONTEXT_KEYRING",
   ],
 };
 
 /** Every variable the server reads at runtime (tests-only variables excluded). */
 export const DEPLOYMENT_ENVIRONMENT_VARIABLES: readonly string[] = Object.values(GROUPS).flat();
 
-const MINI_VARIABLES = GROUPS.OPTIONAL.filter((name) => name.startsWith("DEMI_LINE_MINI_APP_"));
+/**
+ * ADR-0035 retired the LINE MINI App. No DEMI code reads these variables; one
+ * still present (even empty) would leave a channel secret or keyring on a
+ * server unnoticed, so the production check fails and names it, never its value.
+ */
+const RETIRED_VARIABLE_PREFIX = "DEMI_LINE_MINI_APP_";
+
+function presentRetiredVariables(): string[] {
+  return Object.keys(process.env).filter((name) => name.startsWith(RETIRED_VARIABLE_PREFIX)).sort();
+}
+
 const LINE_ACCOUNT_VARIABLES = [
   "DEMI_LINE_LOGIN_CHANNEL_ID",
   "NEXT_PUBLIC_DEMI_LINE_LIFF_ID",
@@ -171,28 +171,17 @@ function invalidOptional(): string[] {
     const value = read(name);
     if (value !== undefined && !workerSecretSchema.safeParse(value).success) invalid.push(name);
   }
-  if (MINI_VARIABLES.some((name) => read(name) !== undefined)) {
-    if (!succeeds(resolveLineMiniAppChannel)) {
-      invalid.push("DEMI_LINE_MINI_APP_ENVIRONMENT", "DEMI_LINE_MINI_APP_CHANNEL_ID", "DEMI_LINE_MINI_APP_LIFF_ID");
-    }
-    if (!succeeds(() => parseLineWorkflowContextKeyring(process.env.DEMI_LINE_MINI_APP_CONTEXT_KEYRING))) {
-      invalid.push("DEMI_LINE_MINI_APP_CONTEXT_KEYRING");
-    }
-    if (read("DEMI_LINE_MINI_APP_CHANNEL_SECRET") !== undefined && !succeeds(getLineMiniAppDeauthorizationCredentials)) {
-      invalid.push("DEMI_LINE_MINI_APP_CHANNEL_SECRET");
-    }
-  }
   return invalid;
 }
 
 export function checkDeploymentEnvironment(profile: DeploymentEnvironmentProfile): DeploymentEnvironmentReport {
-  const checked: DeploymentVariableGroup[] = profile === "production" ? ["CORE", "OPTIONAL"] : ["CORE"];
+  const checked: Array<keyof typeof GROUPS> = profile === "production" ? ["CORE", "OPTIONAL"] : ["CORE"];
   const invalid = new Set([
     ...invalidCore(),
     ...(profile === "production" ? [...invalidProduction(), ...invalidOptional()] : []),
   ]);
   const required = new Set<DeploymentVariableGroup>(["CORE"]);
-  const variables = checked.flatMap((group) => GROUPS[group].map((name) => {
+  const configured = checked.flatMap((group) => GROUPS[group].map((name) => {
     const value = read(name);
     let status: DeploymentVariableStatus;
     if (value === undefined && !invalid.has(name)) status = "UNSET";
@@ -201,9 +190,13 @@ export function checkDeploymentEnvironment(profile: DeploymentEnvironmentProfile
     else status = isPlaceholderValue(value) ? "PLACEHOLDER" : "OK";
     return { name, group, status };
   }));
+  const retired = profile === "production"
+    ? presentRetiredVariables().map((name) => ({ name, group: "RETIRED" as const, status: "RETIRED" as const }))
+    : [];
+  const variables = [...configured, ...retired];
   return {
     variables,
-    valid: variables.every(({ status }) => status !== "MISSING" && status !== "INVALID"),
+    valid: variables.every(({ status }) => status !== "MISSING" && status !== "INVALID" && status !== "RETIRED"),
     placeholders: variables.filter(({ status }) => status === "PLACEHOLDER").map(({ name }) => name),
   };
 }

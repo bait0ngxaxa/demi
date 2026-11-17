@@ -4,35 +4,6 @@ import { NextResponse } from "next/server";
 import { updateSupabaseSession } from "@/lib/auth/supabase-proxy";
 import { getApplicationPublicOrigin } from "@/lib/env/server";
 import { getLineQuickActionReturnPathFromUrl } from "@/modules/line/domain/line-navigation-intents";
-import { classifyLineWorkflowRequest, type LineWorkflowRouteDecision } from "@/modules/line/domain/line-workflow-routes";
-
-const lineWorkflowRejectionStatus: Record<Exclude<LineWorkflowRouteDecision, "PASS">, number> = {
-  METHOD_NOT_ALLOWED: 405,
-  HANDLER_METHOD_NOT_ALLOWED: 405,
-  REJECTED: 400,
-  NOT_FOUND: 404,
-};
-
-const lineWorkflowAllow: Partial<Record<LineWorkflowRouteDecision, string>> = {
-  METHOD_NOT_ALLOWED: "GET, HEAD",
-  HANDLER_METHOD_NOT_ALLOWED: "POST",
-};
-
-function isLineWorkflowPath(pathname: string): boolean {
-  return pathname === "/line/workflow" || pathname.startsWith("/line/workflow/") ||
-    pathname === "/api/line/workflow" || pathname.startsWith("/api/line/workflow/");
-}
-
-function secureLineWorkflowResponse(response: NextResponse, pathname: string): NextResponse {
-  if (!isLineWorkflowPath(pathname)) return response;
-  response.headers.set("cache-control", "private, no-cache, no-store, must-revalidate, max-age=0");
-  response.headers.set("expires", "0");
-  response.headers.set("pragma", "no-cache");
-  response.headers.set("referrer-policy", "no-referrer");
-  response.headers.set("x-content-type-options", "nosniff");
-  response.headers.set("content-security-policy", "frame-ancestors 'none'");
-  return response;
-}
 
 // ADR-0018: responses of these pages (including server action results) can carry a one-time activation link.
 const ACTIVATION_LINK_PATHS = new Set(["/app/hospitals/network"]);
@@ -79,26 +50,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   if (isHealthPath(request.nextUrl.pathname)) return NextResponse.next();
   const canonicalRedirect = redirectNonCanonicalHost(request);
   if (canonicalRedirect) return canonicalRedirect;
-  const lineWorkflowDecision = classifyLineWorkflowRequest({
-    method: request.method,
-    pathname: request.nextUrl.pathname,
-    serverAction: request.headers.has("next-action"),
-  });
-  if (lineWorkflowDecision && lineWorkflowDecision !== "PASS") {
-    // Answered before session refresh and framework dispatch; no body, no detail.
-    const allow = lineWorkflowAllow[lineWorkflowDecision];
-    return secureLineWorkflowResponse(new NextResponse(null, {
-      status: lineWorkflowRejectionStatus[lineWorkflowDecision],
-      headers: {
-        "cache-control": "private, no-store",
-        "referrer-policy": "no-referrer",
-        ...(allow ? { allow } : {}),
-      },
-    }), request.nextUrl.pathname);
-  }
-  if (isStaticAssetPath(request.nextUrl.pathname) && !isLineWorkflowPath(request.nextUrl.pathname)) {
-    return NextResponse.next();
-  }
+  if (isStaticAssetPath(request.nextUrl.pathname)) return NextResponse.next();
   const pathname = request.nextUrl.pathname;
   // Original URL and Flight headers are preserved by skipProxyUrlNormalize.
   const documentRequest = request.headers.get("sec-fetch-dest") === "document" ||
@@ -126,7 +78,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     request,
     getLineQuickActionReturnPathFromUrl(returnUrl),
   );
-  return secureActivationLinkResponse(secureLineWorkflowResponse(response, request.nextUrl.pathname), request.nextUrl.pathname);
+  return secureActivationLinkResponse(response, request.nextUrl.pathname);
 }
 
 export const config = {

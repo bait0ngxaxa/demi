@@ -62,7 +62,7 @@ afterEach(async () => {
 afterAll(async () => { await first.$disconnect(); await second.$disconnect(); });
 
 describe("shared status quota and bounded reconciliation on PostgreSQL", () => {
-  it("atomically admits six requests across independent pools and keeps users/workflow quotas independent", async () => {
+  it("atomically admits six requests across independent pools and keeps users and reachability quotas independent", async () => {
     const principal = randomUUID();
     const a = createLineWorkflowRateLimiter(first); const b = createLineWorkflowRateLimiter(second);
     const results = await Promise.all(Array.from({ length: 30 }, (_unused, index) => (index % 2 ? a : b).consume("ACCOUNT_STATUS_USER", principal, now)));
@@ -71,8 +71,8 @@ describe("shared status quota and bounded reconciliation on PostgreSQL", () => {
     const rows = await first.lineWorkflowRateLimitBucket.findMany({ where: { category: "ACCOUNT_STATUS_USER", keyHash } });
     expect(rows).toHaveLength(1); expect(rows[0].hitCount).toBe(7); expect(rows[0].keyHash).not.toContain(principal);
     expect(await b.consume("ACCOUNT_STATUS_USER", randomUUID(), now)).toBe(true);
-    expect(await b.consume("VERIFY_USER", principal, now)).toBe(true);
-    await first.lineWorkflowRateLimitBucket.deleteMany({ where: { keyHash: lineWorkflowRateLimitInternals.hashRateLimitKey("VERIFY_USER", principal) } });
+    expect(await b.consume("REACHABILITY_REFRESH_USER", principal, now)).toBe(true);
+    await first.lineWorkflowRateLimitBucket.deleteMany({ where: { keyHash: lineWorkflowRateLimitInternals.hashRateLimitKey("REACHABILITY_REFRESH_USER", principal) } });
   });
   it("enforces the shared global ceiling atomically and rejects before any provider request", async () => {
     const target = await fixture();

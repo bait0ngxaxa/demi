@@ -11,11 +11,12 @@ const WINDOW_MS = 5 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 100;
 const PURPOSE = "DEMI_LINE_WORKFLOW_RATE_LIMIT_V1";
 
+/**
+ * Shared LINE rate-limit quotas (Account status check and background
+ * reachability refresh). The module and `LineWorkflowRateLimitBucket` table keep
+ * their historical names; ADR-0035 retired the MINI categories that used them first.
+ */
 export const LINE_WORKFLOW_RATE_LIMITS = {
-  VERIFY_GLOBAL: 600,
-  VERIFY_USER: 10,
-  ACKNOWLEDGE: 60,
-  CANCELLATION_REQUEST: 20,
   ACCOUNT_STATUS_USER: 6,
   ACCOUNT_STATUS_GLOBAL: 600,
   /** Background LINE friendship refresh from the Workspace LIFF entry; counted only before a provider call. */

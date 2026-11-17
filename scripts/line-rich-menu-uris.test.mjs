@@ -23,7 +23,6 @@ function run(overrides) {
       DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org",
       IDENTITY_HASH_SECRET: "line-test-identity-hash-secret-at-least-32",
       NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1234567890-Account",
-      DEMI_LINE_MINI_APP_LIFF_ID: "",
       ...overrides,
     },
     timeout: 120_000,

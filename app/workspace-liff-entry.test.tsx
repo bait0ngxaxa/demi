@@ -111,7 +111,7 @@ describe("Workspace LIFF root entry", () => {
     };
     mount({ mode: "LIFF", destination: "/app", sdk });
     await settle();
-    expect(order).toEqual(["isInClient", `init:${JSON.stringify({ current: "WORKSPACE", mini: false, workspace: "PENDING" })}`]);
+    expect(order).toEqual(["isInClient", `init:${JSON.stringify({ current: "WORKSPACE", workspace: "PENDING" })}`]);
     expect(browser.history.replaceState).not.toHaveBeenCalled();
 
     // A LIFF URL opened in Chrome/Safari: initialized, never marked.
@@ -129,23 +129,23 @@ describe("Workspace LIFF root entry", () => {
     }
   });
 
-  it("treats a Workspace LIFF URL opened in a MINI browsing session as a real Workspace entry", async () => {
+  it("rewrites a context stored before ADR-0035 on a real Workspace entry", async () => {
     browser.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "MINI", mini: true, workspace: null }));
     mount({ mode: "LIFF", destination: "/app/personal", sdk: { id: null, isInClient: () => true, init: vi.fn(() => new Promise<void>(() => undefined)) } });
     await settle();
-    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", workspace: "PENDING" });
   });
 
   it("records the root init outcome so a failure never reads as an initialized Workspace", async () => {
     mount({ mode: "LIFF", destination: null, sdk: { id: null, isInClient: () => true, init: vi.fn().mockRejectedValue(new Error("INIT_FAILED")) } });
     await settle();
-    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "FAILED" });
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", workspace: "FAILED" });
 
     stubBrowser({ hash: "#access_token=synthetic" });
     resetWorkspaceLiffInitializationForTests();
     mount({ mode: "ORDINARY", fallbackHref: "/app", sdk: { id: null, isInClient: () => true, init: vi.fn().mockResolvedValue(undefined) } });
     await settle();
-    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    expect(JSON.parse(browser.sessionStorage.getItem("demi.line.liff.context") ?? "null")).toEqual({ current: "WORKSPACE", workspace: "READY" });
   });
 
   it("continues to the allowlisted destination when init resolves without a secondary redirect", async () => {

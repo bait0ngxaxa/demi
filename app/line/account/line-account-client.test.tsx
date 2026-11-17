@@ -558,10 +558,10 @@ describe("LINE account user experience", () => {
     const base = { ...emptyStatus, status: "UNLINKED" as const, canUnlink: false };
     const unconfirmed = renderScreen(base, { view: "SUCCESS", successAction: "UNLINK", unlinkDisconnection: { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [
       { id: "a1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
-      { id: "b1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
+      { id: "b1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "แอป DEMI ที่เคยเชื่อมต่อ", status: "REMOTE_UNCONFIRMED" },
     ] } });
     expect(unconfirmed).toContain("LINE Login ของ DEMI: LINE ยืนยันถอนสิทธิ์แล้ว");
-    expect(unconfirmed).toContain("DEMI MINI App");
+    expect(unconfirmed).toContain("แอป DEMI ที่เคยเชื่อมต่อ");
     expect(unconfirmed).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
     // Recovery belongs to the next sign-in of this same owner, not this success view.
     expect(unconfirmed).not.toContain("ตรวจสอบเพื่อเชื่อมใหม่");

@@ -201,7 +201,6 @@ describe("Phase C engagement PostgreSQL workflow", () => {
     vi.stubEnv("DEMI_LINE_PUBLIC_ORIGIN", "https://demi.example.org");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "1234567890-WorkSpace");
-    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "");
     const subject = await setupReminderSubject();
     const push = vi.fn(async (): Promise<LinePushResult> => ({ kind: "ACCEPTED" }));
     const flexCalls: Array<{ lineUserId: string; message: LineFlexMessage; retryKey: string }> = [];

@@ -35,7 +35,7 @@ describe("Workspace document transport rewrite", () => {
     }
   });
 
-  it.each(["/line/account", "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS", "/api/line/account"])("does not rewrite Account/MINI/API route %s", async (path) => {
+  it.each(["/line/account", "/api/line/account"])("does not rewrite Account/API route %s", async (path) => {
     const response = await proxy(new NextRequest(`https://demi.example.org${path}`));
     expect(response.headers.get("x-middleware-rewrite")).toBeNull();
   });

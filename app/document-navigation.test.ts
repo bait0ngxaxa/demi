@@ -6,8 +6,6 @@ import { describe, expect, it } from "vitest";
 // DESIGN.md: explicit credential/LIFF handoffs, never a blanket exception for ordinary app UI.
 const allowedFiles = new Map([
   ["app/workspace-liff-entry.tsx", "LIFF entry and bootstrap fallback"],
-  ["app/line/workflow/line-workflow-client.tsx", "LINE workflow document gateway"],
-  ["app/line/workflow/appointments/layout.tsx", "Full-document exit from scoped LINE workflow to ordinary DEMI"],
   ["app/line/account/line-account-client.tsx", "LINE account credential handoff"],
   ["app/line/account/line-recovery-panel.tsx", "Account recovery in the Account LIFF"],
   ["app/app/workforce/workforce-new-workspace.tsx", "Workforce activation credential handoff"],

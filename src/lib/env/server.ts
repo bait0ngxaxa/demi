@@ -250,8 +250,7 @@ export type LineWorkspaceLiffIdIssue =
   | "INVALID_FORMAT"
   | "LOGIN_CHANNEL_UNAVAILABLE"
   | "NOT_IN_LOGIN_CHANNEL"
-  | "SAME_AS_ACCOUNT_LIFF"
-  | "SAME_AS_MINI_APP_LIFF";
+  | "SAME_AS_ACCOUNT_LIFF";
 
 export type LineWorkspaceLiffIdResult =
   | { status: "CONFIGURED"; liffId: string }
@@ -260,7 +259,7 @@ export type LineWorkspaceLiffIdResult =
 /**
  * The Workspace LIFF is a separate LIFF app inside the existing DEMI LINE Login
  * channel. A LIFF ID is `<channelId>-<suffix>`, so its prefix must equal
- * DEMI_LINE_LOGIN_CHANNEL_ID; it must never equal the Account or MINI LIFF ID.
+ * DEMI_LINE_LOGIN_CHANNEL_ID; it must never equal the Account LIFF ID.
  * Any problem makes it unavailable; nothing falls back to another LIFF identity.
  */
 export function resolveLineWorkspaceLiffId(): LineWorkspaceLiffIdResult {
@@ -273,7 +272,6 @@ export function resolveLineWorkspaceLiffId(): LineWorkspaceLiffIdResult {
   if (!loginChannel.success) return { status: "UNAVAILABLE", issue: "LOGIN_CHANNEL_UNAVAILABLE" };
   if (liffId.slice(0, liffId.indexOf("-")) !== loginChannel.data) return { status: "UNAVAILABLE", issue: "NOT_IN_LOGIN_CHANNEL" };
   if (liffId === process.env.NEXT_PUBLIC_DEMI_LINE_LIFF_ID?.trim()) return { status: "UNAVAILABLE", issue: "SAME_AS_ACCOUNT_LIFF" };
-  if (liffId === process.env.DEMI_LINE_MINI_APP_LIFF_ID?.trim()) return { status: "UNAVAILABLE", issue: "SAME_AS_MINI_APP_LIFF" };
   return { status: "CONFIGURED", liffId };
 }
 

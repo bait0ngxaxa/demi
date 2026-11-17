@@ -30,7 +30,7 @@ export function buildOrdinaryWebUrl(intent: LineWebNavigationIntent): string {
  * Workspace LIFF URL (Endpoint URL = public origin root). The fixed path and
  * query become `liff.state` and LIFF's secondary redirect opens exactly that
  * same-origin path in the Full LIFF browser. Returns null when the Workspace
- * LIFF is not configured; it never substitutes the Account or MINI LIFF.
+ * LIFF is not configured; it never substitutes the Account LIFF.
  */
 export function buildWorkspaceLiffUrl(intent: LineWebNavigationIntent): string | null {
   const liffId = getLineWorkspaceLiffId();
@@ -76,7 +76,7 @@ export function getPublicLineAccountEntryUrl(): string | null {
 /**
  * Workspace LIFF URL of the work dashboard, for Account LIFF -> Workspace LIFF
  * transitions. Null when the Workspace LIFF or LINE Login configuration is
- * missing or invalid; it never substitutes the Account or MINI LIFF.
+ * missing or invalid; it never substitutes the Account LIFF.
  */
 export function getPublicLineWorkspaceEntryUrl(): string | null {
   try {

@@ -21,6 +21,8 @@ const status = (report: ReturnType<typeof checkDeploymentEnvironment>, name: str
 describe("deployment environment check", () => {
   beforeEach(() => {
     for (const name of DEPLOYMENT_ENVIRONMENT_VARIABLES) vi.stubEnv(name, undefined);
+    // A developer .env may still carry retired MINI variables; each case sets its own.
+    for (const name of Object.keys(process.env).filter((key) => key.startsWith("DEMI_LINE_MINI_APP_"))) vi.stubEnv(name, undefined);
     for (const [name, value] of Object.entries(core)) vi.stubEnv(name, value);
   });
   afterEach(() => vi.unstubAllEnvs());
@@ -135,17 +137,28 @@ describe("deployment environment check", () => {
     expect(status(enabled, "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("OK");
   });
 
+  it.each([
+    ["a channel secret", "DEMI_LINE_MINI_APP_CHANNEL_SECRET", "leftover-channel-secret-value"],
+    ["a keyring", "DEMI_LINE_MINI_APP_CONTEXT_KEYRING", '{"currentKid":"k1"}'],
+    ["an empty line", "DEMI_LINE_MINI_APP_ENVIRONMENT", ""],
+    ["an unlisted name", "DEMI_LINE_MINI_APP_DISABLED", "true"],
+  ])("ADR-0035: fails the production check on a leftover retired MINI variable (%s), naming it only", (_label, name, value) => {
+    vi.stubEnv(name, value);
+    const report = checkDeploymentEnvironment("production");
+    expect(report.valid).toBe(false);
+    expect(report.variables).toContainEqual({ name, group: "RETIRED", status: "RETIRED" });
+    if (value) expect(JSON.stringify(report)).not.toContain(value);
+    expect(DEPLOYMENT_ENVIRONMENT_VARIABLES).not.toContain(name);
+  });
+
+  it("does not list retired variables when none is present", () => {
+    const report = checkDeploymentEnvironment("production");
+    expect(report.variables.some(({ group }) => group === "RETIRED")).toBe(false);
+  });
+
   it.each(["TRUE", "1", "yes"])("rejects the non-boolean Flex flag value %s", (value) => {
     vi.stubEnv("DEMI_LINE_FLEX_MESSAGES_ENABLED", value);
     expect(status(checkDeploymentEnvironment("production"), "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("INVALID");
-  });
-
-  it("rejects a partially configured LINE MINI App without requiring an unconfigured one", () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", "2234567890");
-    const report = checkDeploymentEnvironment("production");
-    expect(report.valid).toBe(false);
-    expect(status(report, "DEMI_LINE_MINI_APP_ENVIRONMENT")).toBe("INVALID");
-    expect(status(report, "DEMI_LINE_MINI_APP_CONTEXT_KEYRING")).toBe("INVALID");
   });
 
   it.each([

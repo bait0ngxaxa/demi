@@ -75,7 +75,7 @@ Starting HEAD: `f2ed37389d7ec276edb0f696ed50fd44dcc4976f`. One local fix-up comm
 
 ## Verification limitations and manual device UAT
 
-DOM tests cover wizard focus/control visibility, required decisions, handoff, expiry and notification outcomes. They do not establish mobile rendering, screen-reader speech, contrast or real LINE behavior. The expanded historical list can still be long; records are intentionally retained. LINE/provider availability and unknown MINI applicability still require honest pending/recovery states.
+DOM tests cover wizard focus/control visibility, required decisions, handoff, expiry and notification outcomes. They do not establish mobile rendering, screen-reader speech, contrast or real LINE behavior. The expanded historical list can still be long; records are intentionally retained. LINE/provider availability still requires honest pending/recovery states. The MINI App is retired ([ADR-0035](../adr/0035-retire-line-mini-app.md)).
 
 Manual checklist (not executed by these tests):
 
@@ -84,7 +84,7 @@ Manual checklist (not executed by these tests):
 - Check contrast using computed theme colors, 48px action targets and reduced-motion settings.
 - Test link confirmation, wrong password and switching DEMI accounts on a shared device.
 - Test friend/missing-friend/menu-pending states and return navigation in LINE versus browser.
-- In an isolated test account, test unlink, pending Account/MINI removal, logout failure, changed session and expired logout proof. Never use production deauthorization for automated verification.
+- In an isolated test account, test unlink, pending Account removal, logout failure, changed session and expired logout proof. Never use production deauthorization for automated verification.
 - Review each required app, all decision choices and risk acknowledgement. Before LINE handoff, go from Step 3 back to Step 2, correct a decision and confirm consent/expiry remain unchanged without another preparation request. During identity initialization the back action must be disabled; after handoff it must be absent. Navigate to LINE and resume in a new WebView.
 - Reject stale/expired/other-session handoff; recover multiple old bindings in server-selected order; verify recovery completion requires a separate ordinary link.
 - Enable/disable notifications; simulate validation failure, lost response and repeated clicks; confirm no unverified success.

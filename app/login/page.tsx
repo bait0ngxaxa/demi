@@ -7,7 +7,6 @@ import { resolveCurrentActorAccess } from "@/modules/auth/services/actor-context
 import { Alert } from "@/components/ui/alert";
 import {
   isLineQuickActionLoginReturnTo,
-  isLineWorkflowLoginReturnTo,
   loginReturnToSchema,
 } from "@/modules/auth/schemas/login-schema";
 
@@ -39,8 +38,7 @@ export default async function LoginPage({
 
   if (access.status === "AUTHORIZED") {
     redirect(
-      safeReturnTo === "/line/account" || isLineQuickActionLoginReturnTo(safeReturnTo) ||
-        isLineWorkflowLoginReturnTo(safeReturnTo)
+      safeReturnTo === "/line/account" || isLineQuickActionLoginReturnTo(safeReturnTo)
         ? safeReturnTo
         : "/app",
     );

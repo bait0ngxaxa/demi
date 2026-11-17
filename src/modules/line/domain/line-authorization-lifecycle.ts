@@ -11,25 +11,17 @@ export const LINE_CHANNEL_TUPLE_VERSION = "LINE_CHANNEL_V2";
 /** Fixed fifth slot required by the persisted five-string tuple CHECK; not a deployment identity. */
 const LINE_CHANNEL_TUPLE_SOURCE = "server-config";
 
+/** The Account LINE Login channel is the only channel DEMI holds grants for (ADR-0035). */
 const channelSchema = z.object({
-  kind: z.enum(["ACCOUNT", "MINI"]),
+  kind: z.literal("ACCOUNT"),
   channelId: z.string().regex(/^\d{4,20}$/u),
-  environment: z.enum(["ACCOUNT", "DEVELOPING", "REVIEW", "PUBLISHED"]),
-}).strict().superRefine((channel, context) => {
-  if ((channel.kind === "ACCOUNT") !== (channel.environment === "ACCOUNT")) {
-    context.addIssue({ code: "custom", message: "Invalid channel boundary" });
-  }
-});
+  environment: z.literal("ACCOUNT"),
+}).strict();
 
-/** Derived from server configuration only, never parsed from an end-user request. */
+/** Derived from server configuration only, never parsed from an end-user request: exactly the Account channel. */
 export const lineChannelInventorySchema = z.object({
-  channels: z.array(channelSchema).min(1).max(2),
-}).strict().superRefine((inventory, context) => {
-  if (inventory.channels.filter((channel) => channel.kind === "ACCOUNT").length !== 1 ||
-      new Set(inventory.channels.map((channel) => channel.channelId)).size !== inventory.channels.length) {
-    context.addIssue({ code: "custom", message: "Exactly one Account and at most one distinct MINI channel" });
-  }
-});
+  channels: z.array(channelSchema).length(1),
+}).strict();
 
 export type LineChannelInventory = z.infer<typeof lineChannelInventorySchema>;
 export type LineChannel = z.infer<typeof channelSchema>;
@@ -54,7 +46,6 @@ export function lineChannelDisplayName(tupleDefinition: string): string {
   try {
     const kind: unknown = (JSON.parse(tupleDefinition) as unknown[])[1];
     if (kind === "ACCOUNT") return "LINE Login ของ DEMI";
-    if (kind === "MINI") return "DEMI MINI App";
   } catch {
     // Unreadable historical definitions still display as a connected DEMI app.
   }

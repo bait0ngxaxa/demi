@@ -53,13 +53,11 @@ describe("Workspace document ownership (transport only)", () => {
     }
   });
 
-  it("Account and MINI entries invalidate an unconsumed Workspace handoff", () => {
-    for (const app of ["ACCOUNT", "MINI"] as const) {
-      prepareWorkspaceLiffHandoff(ID, PATH);
-      recordCurrentLiffBrowserEntry(app);
-      expect(getCurrentDocumentLiffApp()).toBe(app);
-      expect(consumeWorkspaceLiffHandoff(ID)).toBe(false);
-    }
+  it("an Account entry invalidates an unconsumed Workspace handoff", () => {
+    prepareWorkspaceLiffHandoff(ID, PATH);
+    recordCurrentLiffBrowserEntry("ACCOUNT");
+    expect(getCurrentDocumentLiffApp()).toBe("ACCOUNT");
+    expect(consumeWorkspaceLiffHandoff(ID)).toBe(false);
   });
 
   it("SDK return matches only the current app document, never supplies a destination to navigate", () => {
@@ -83,7 +81,7 @@ describe("Workspace document ownership (transport only)", () => {
   });
 
   it("restores only a history entry marked after actual document initialization", () => {
-    window.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    window.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "ACCOUNT", workspace: "READY" }));
     expect(isWorkspaceLiffHistoryEntry(ID)).toBe(false);
     window.history.replaceState({ __NA: true, tree: "Next-owned" }, "");
     markWorkspaceLiffHistoryEntry(ID);

@@ -25,7 +25,7 @@ export function PatientSelfRelationshipNavigation({
   relationships: readonly PatientSelfRelationshipNavigation[];
   emptyMessage: string;
   area: "care" | "appointments";
-  /** Fixed destination adapter for non-ordinary composition (LINE MINI scoped routes). */
+  /** Fixed destination adapter for non-ordinary composition; callers pass fixed builders, never request URLs. */
   hrefFor?: (relationshipId: string) => string;
 }): React.JSX.Element {
   if (relationships.length === 0) {
