@@ -63,10 +63,31 @@ function createStorage(): PatientEvidenceStorage & {
   };
 }
 
+const committedRecord = {
+  id: artifactId,
+  patientHospitalRelationshipId: relationshipId,
+  mediaType: "image/jpeg",
+  byteSize: 3,
+  createdAt,
+};
+
 function createDatabase(options: {
   transactionError?: unknown;
   artifactCreate?: (input: unknown) => Promise<unknown>;
-} = {}): { database: PatientEvidenceDatabase; transaction: Prisma.TransactionClient } {
+  /** N5: what the post-failure lookup finds; an Error makes the lookup itself fail. */
+  committedLookup?: typeof committedRecord | null | Error;
+} = {}): {
+  database: PatientEvidenceDatabase;
+  transaction: Prisma.TransactionClient;
+  committedLookup: ReturnType<typeof vi.fn>;
+} {
+  const committedLookup = vi.fn(async () => {
+    if (options.committedLookup instanceof Error) {
+      throw options.committedLookup;
+    }
+
+    return options.committedLookup ?? null;
+  });
   const transaction = {
     patientEvidenceArtifact: {
       create:
@@ -89,9 +110,10 @@ function createDatabase(options: {
 
       return callback(transaction);
     }),
+    patientEvidenceArtifact: { findFirst: committedLookup },
   } as unknown as PatientEvidenceDatabase;
 
-  return { database, transaction };
+  return { database, transaction, committedLookup };
 }
 
 describe("Patient Evidence creation service", () => {
@@ -275,5 +297,87 @@ describe("Patient Evidence creation service", () => {
       category: "storage_compensation_failed",
       artifactId,
     });
+  });
+});
+
+describe("Patient Evidence upload compensation after an unclear commit (N5)", () => {
+  const input = {
+    relationshipId,
+    declaredMediaType: "image/jpeg",
+    bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedResolveAccess.mockResolvedValue(access);
+    mockedRecordAuditEvent.mockResolvedValue(undefined);
+  });
+
+  it("keeps the object and returns the created result when the row committed but $transaction threw", async () => {
+    const storage = createStorage();
+    const { database, committedLookup } = createDatabase({
+      transactionError: new Error("connection lost at commit"),
+      committedLookup: committedRecord,
+    });
+    const logOperationalError = vi.fn();
+
+    const result = await createPatientEvidenceArtifact(actor, input, {
+      artifactIdFactory: () => artifactId,
+      database,
+      logOperationalError,
+      storage,
+    });
+
+    expect(result).toEqual({
+      artifactId,
+      patientHospitalRelationshipId: relationshipId,
+      mediaType: "image/jpeg",
+      byteSize: 3,
+      createdAt,
+    });
+    expect(committedLookup).toHaveBeenCalledWith(expect.objectContaining({ where: { id: artifactId } }));
+    expect(storage.removeObject).not.toHaveBeenCalled();
+    expect(logOperationalError).not.toHaveBeenCalled();
+  });
+
+  it("removes the object when the row is absent", async () => {
+    const storage = createStorage();
+    const { database, committedLookup } = createDatabase({
+      transactionError: new Error("database unavailable"),
+      committedLookup: null,
+    });
+
+    await expect(
+      createPatientEvidenceArtifact(actor, input, { artifactIdFactory: () => artifactId, database, storage }),
+    ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+
+    expect(committedLookup).toHaveBeenCalledTimes(1);
+    expect(storage.removeObject).toHaveBeenCalledWith({ objectKey: `relationship-evidence/${artifactId}` });
+    expect(committedLookup.mock.invocationCallOrder[0]).toBeLessThan(
+      storage.removeObject.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("keeps the object, logs and rethrows the original normalized error when the lookup fails", async () => {
+    const storage = createStorage();
+    const conflict = new Prisma.PrismaClientKnownRequestError("serialization", { code: "P2034", clientVersion: "test" });
+    const { database } = createDatabase({
+      transactionError: conflict,
+      committedLookup: new Error("database still unavailable"),
+    });
+    const logOperationalError = vi.fn();
+
+    await expect(
+      createPatientEvidenceArtifact(actor, input, {
+        artifactIdFactory: () => artifactId,
+        database,
+        logOperationalError,
+        storage,
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT", message: "หลักฐานรูปภาพนี้ไม่สามารถบันทึกซ้ำได้" });
+
+    expect(storage.removeObject).not.toHaveBeenCalled();
+    expect(logOperationalError).toHaveBeenCalledTimes(1);
+    expect(logOperationalError).toHaveBeenCalledWith({ category: "storage_compensation_skipped", artifactId });
   });
 });

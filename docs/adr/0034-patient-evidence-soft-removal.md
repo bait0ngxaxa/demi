@@ -41,6 +41,16 @@ Deleting the association on removal would change Service 1 rules: an activity ph
 
 The evidence item shows `ลบรูป` only when the page context allows it (display only; the server re-checks). It opens the shared confirm dialog `ลบรูปหลักฐานนี้?` with a required `เหตุผลที่ลบ`. Success refreshes the list in place with `router.refresh()`. An unconfirmed outcome shows `UnknownOutcomeAlert` (`reload`): reloading shows whether the photo is gone, and a repeat removal answers a conflict, never a second removal.
 
+### Upload compensation checks the commit first (N5, 2026-11-17)
+
+`createPatientEvidenceArtifact` uploads the object before the metadata transaction. Before, any error from `$transaction` removed the object. But the commit can succeed while the client sees an error (a connection lost at commit), and then the row would lose its content.
+
+On a transaction error the service now looks the row up by `id`:
+
+- The row exists: the write committed. The object is kept and the created result is returned.
+- The row does not exist: the object is removed as before (`storage_compensation_failed` is logged if that fails).
+- The lookup itself fails: the object is kept, `storage_compensation_skipped` is logged with the opaque id, and the original normalized error is rethrown. A stray object is safer than a row without content; like the removal leftover, it is reachable only through storage administration.
+
 ## Consequences
 
 - A wrong-patient photo can be taken off the record by its uploader or the Hospital's staff, with a stored reason and an audit event.

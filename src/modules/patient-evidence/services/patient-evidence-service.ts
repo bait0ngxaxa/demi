@@ -39,6 +39,7 @@ export type PatientEvidenceDatabase = PrismaClient;
 /** Only an opaque id and a fixed category are logged: never a caption, a removal reason or patient data. */
 export type PatientEvidenceOperationalErrorCategory =
   | "storage_compensation_failed"
+  | "storage_compensation_skipped"
   | "storage_removal_failed";
 
 export type PatientEvidenceOperationalError = {
@@ -257,6 +258,25 @@ export async function createPatientEvidenceArtifact(
       ),
     );
   } catch (error: unknown) {
+    // N5: the transaction may have committed even though the client saw an error (for example a connection lost
+    // at commit). Look the row up before compensating, so a committed row never loses its object.
+    let committed: PatientEvidenceMutationRecord | null;
+
+    try {
+      committed = await database.patientEvidenceArtifact.findFirst({
+        where: { id: artifactId },
+        select: patientEvidenceMutationSelect,
+      });
+    } catch {
+      // Unknown outcome: a stray object is safer than a row without content.
+      logOperationalError(dependencies, { category: "storage_compensation_skipped", artifactId });
+      throw normalizeDatabaseError(error);
+    }
+
+    if (committed) {
+      return toCreateResult(committed);
+    }
+
     try {
       await storage.removeObject({ objectKey: storageObjectKey });
     } catch {

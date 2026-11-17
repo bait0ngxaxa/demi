@@ -4,6 +4,7 @@ import {
   MembershipType,
   Role,
   UserStatus,
+  type Prisma,
 } from "@prisma/client";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -515,6 +516,61 @@ describe("Phase 10D.0 Patient Evidence PostgreSQL workflow", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     expect((await prisma.patientEvidenceArtifact.findUnique({ where: { id: artifactId } }))?.removedAt).toBeNull();
     expect(storage.keys.has(`relationship-evidence/${artifactId}`)).toBe(true);
+  });
+
+  it("N5: keeps the object of a row that committed although $transaction threw", async () => {
+    const hospital = await createHospital("COMMIT-LOST");
+    const owner = await createHospitalActor({ hospitalId: hospital.id, membershipType: MembershipType.OWNER });
+    const patient = await provisionPatient(owner.actor, {
+      identity: { namespace: "evidence-integration", value: "commit-lost-patient" },
+      targetHospitalId: hospital.id,
+      givenName: "สมพร",
+      familyName: "หลักฐาน",
+    });
+    const storage = createFakeStorage();
+    const committedId = "12121212-1212-4121-8121-121212121212";
+    const rolledBackId = "13131313-1313-4131-8131-131313131313";
+    // The real transaction commits (or rolls back), then the client reports an error, as on a connection lost at commit.
+    const withTransaction = (run: (callback: (transaction: Prisma.TransactionClient) => Promise<unknown>) => Promise<unknown>) =>
+      new Proxy(prisma, {
+        get(target, property) {
+          if (property === "$transaction") {
+            return run;
+          }
+
+          const value: unknown = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+    const commitThenThrow = withTransaction(async (callback) => {
+      await prisma.$transaction((transaction) => callback(transaction));
+      throw new Error("connection lost at commit");
+    });
+    const rollBackThenThrow = withTransaction(async () => {
+      throw new Error("database unavailable");
+    });
+
+    await expect(
+      createPatientEvidenceArtifact(
+        owner.actor,
+        { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+        { artifactIdFactory: () => committedId, database: commitThenThrow, storage },
+      ),
+    ).resolves.toMatchObject({ artifactId: committedId, patientHospitalRelationshipId: patient.relationshipId });
+    expect(storage.keys.has(`relationship-evidence/${committedId}`)).toBe(true);
+    await expect(
+      getPatientEvidenceArtifactAccess(owner.actor, patient.relationshipId, committedId, { database: prisma, storage }),
+    ).resolves.toMatchObject({ artifactId: committedId });
+
+    await expect(
+      createPatientEvidenceArtifact(
+        owner.actor,
+        { relationshipId: patient.relationshipId, declaredMediaType: "image/jpeg", bytes: jpegBytes() },
+        { artifactIdFactory: () => rolledBackId, database: rollBackThenThrow, storage },
+      ),
+    ).rejects.toMatchObject({ code: "INFRASTRUCTURE" });
+    expect(storage.keys.has(`relationship-evidence/${rolledBackId}`)).toBe(false);
+    expect(await prisma.patientEvidenceArtifact.findUnique({ where: { id: rolledBackId } })).toBeNull();
   });
 
   it("N4: the database rejects a half-filled removal", async () => {
