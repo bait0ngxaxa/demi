@@ -36,7 +36,6 @@ describe("Workspace LIFF configuration", () => {
   function configure(values: Record<string, string | undefined>): void {
     vi.stubEnv("DEMI_LINE_LOGIN_CHANNEL_ID", "1234567890");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-Account");
-    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
     for (const [name, value] of Object.entries(values)) vi.stubEnv(name, value);
   }
 
@@ -55,17 +54,12 @@ describe("Workspace LIFF configuration", () => {
     ["1234567890-Work?returnTo=https://evil.example", "INVALID_FORMAT"],
     ["https://liff.line.me/1234567890-Workspace", "INVALID_FORMAT"],
     ["9999999999-Workspace", "NOT_IN_LOGIN_CHANNEL"],
-    ["2000000001-MiniWorkspace", "NOT_IN_LOGIN_CHANNEL"],
+    ["2000000001-OtherWorkspace", "NOT_IN_LOGIN_CHANNEL"],
     ["1234567890-Account", "SAME_AS_ACCOUNT_LIFF"],
   ] as const)("is unavailable for %j (%s) and never falls back to another LIFF identity", (value, issue) => {
     configure({ NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: value });
     expect(resolveLineWorkspaceLiffId()).toEqual({ status: "UNAVAILABLE", issue });
     expect(getLineWorkspaceLiffId()).toBeNull();
-  });
-
-  it("rejects a Workspace LIFF equal to the MINI App LIFF", () => {
-    configure({ DEMI_LINE_MINI_APP_LIFF_ID: "1234567890-Shared", NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: "1234567890-Shared" });
-    expect(resolveLineWorkspaceLiffId()).toEqual({ status: "UNAVAILABLE", issue: "SAME_AS_MINI_APP_LIFF" });
   });
 
   it("requires the Login channel to prove channel membership", () => {

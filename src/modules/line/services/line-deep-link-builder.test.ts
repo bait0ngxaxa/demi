@@ -116,10 +116,8 @@ describe("LINE intent deep links", () => {
     );
 
     it("builds the Account -> Workspace transition target from the Workspace LIFF only", () => {
-      vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
       expect(getPublicLineWorkspaceEntryUrl()).toBe("https://liff.line.me/1234567890-WorkSpace/app");
       expect(getPublicLineWorkspaceEntryUrl()).not.toContain("AbCdEfGh");
-      expect(getPublicLineWorkspaceEntryUrl()).not.toContain("MiniDev");
     });
 
     it("fails safe without a valid Workspace LIFF or LINE Login origin", () => {
@@ -154,10 +152,9 @@ describe("LINE intent deep links", () => {
   it.each([
     ["unset", ""],
     ["equal to the Account LIFF", "1234567890-AbCdEfGh"],
-    ["from another channel", "2000000001-MiniDev"],
+    ["from another channel", "2000000001-OtherDev"],
   ])("falls back to the ordinary web URL, never another LIFF, when the Workspace LIFF is %s", (_label, value) => {
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_LIFF_ID", "1234567890-AbCdEfGh");
-    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", value);
     expect(buildWorkspaceLiffUrl("OPEN_PATIENT_MEDICATIONS")).toBeNull();
     expect(buildLineIntentUrl("OPEN_PATIENT_MEDICATIONS")).toBe("https://demi.example.org/app/personal/medications");

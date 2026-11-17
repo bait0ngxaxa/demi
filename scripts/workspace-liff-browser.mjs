@@ -153,8 +153,7 @@ try {
   const nextBin = resolve(root, "node_modules/next/dist/bin/next");
   const serverEnvironment = { ...system, ...environment, NODE_ENV: production ? "production" : "development", NEXT_TELEMETRY_DISABLED: "1", IDENTITY_HASH_SECRET: secret,
     NEXT_PUBLIC_SUPABASE_URL: authUrl, NEXT_PUBLIC_SUPABASE_ANON_KEY: "sb_publishable_liff_browser", DEMI_LINE_LOGIN_CHANNEL_ID: "1000000001", DEMI_LINE_PUBLIC_ORIGIN: "https://demi.example.org",
-    NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1000000001-Account", NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: workspaceId,
-    DEMI_LINE_MINI_APP_ENVIRONMENT: "DEVELOPING", DEMI_LINE_MINI_APP_CHANNEL_ID: "2000000001", DEMI_LINE_MINI_APP_LIFF_ID: "2000000001-Mini" };
+    NEXT_PUBLIC_DEMI_LINE_LIFF_ID: "1000000001-Account", NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID: workspaceId };
   if (production) {
     // Production client bundle and `next start`, built only in the disposable copy.
     // The 4 GB heap matches the existing CI production build job.
@@ -338,23 +337,6 @@ try {
     await launch(page);
     await page.getByRole("heading", { name: "ยาของฉัน", exact: true }).waitFor();
     assert.equal(events.filter((event) => event.kind === "init:start" && event.id === workspaceId).length, count + 2);
-  }, signedIn);
-  await scenario("I MINI -> Account -> ordinary app; MINI -> Workspace LIFF URL", async ({ page, events }) => {
-    await page.goto(`${base}/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS`);
-    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("demi.line.liff.context"))?.current === "MINI");
-    assert(!events.some((event) => event.kind === "init:start" && event.id === workspaceId));
-    await page.goto("https://liff.line.me/1000000001-Account");
-    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("demi.line.liff.context"))?.current === "ACCOUNT");
-    assert(await page.evaluate(() => JSON.parse(sessionStorage.getItem("demi.line.liff.context")).mini));
-    await page.goto(`${base}${destination}`);
-    await page.getByRole("heading", { name: "ยาของฉัน", exact: true }).waitFor();
-    await page.reload();
-    await page.getByRole("heading", { name: "ยาของฉัน", exact: true }).waitFor();
-    assert(!events.some((event) => event.kind === "init:start" && event.id === workspaceId));
-    await launch(page);
-    await page.getByRole("heading", { name: "ยาของฉัน", exact: true }).waitFor();
-    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("demi.line.liff.context")).mini), false);
-    assert.equal(events.filter((event) => event.kind === "init:start" && event.id === workspaceId).length, 2);
   }, signedIn);
   const launchScreening = async (page) => page.goto(`${base}/?liff.state=${encodeURIComponent(screening)}`);
   const screeningHeading = (page) => page.getByRole("heading", { name: "คัดกรองผู้ป่วย", exact: true });

@@ -63,9 +63,8 @@ describe("GET / entry", () => {
     expect(element.props as EntryProps).toMatchObject({ mode: "NAVIGATION_INVALID", destination: null });
   });
 
-  it("does not substitute the Account or MINI LIFF when Workspace LIFF is unavailable", async () => {
+  it("does not substitute the Account LIFF when Workspace LIFF is unavailable", async () => {
     vi.stubEnv("NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID", "");
-    vi.stubEnv("DEMI_LINE_MINI_APP_LIFF_ID", "2000000001-MiniDev");
     const element = await render({ "liff.state": "/app" });
     expect(element.props as EntryProps).toMatchObject({ mode: "LIFF", liffId: null });
   });

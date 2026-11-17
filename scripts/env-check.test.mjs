@@ -74,15 +74,25 @@ describe("npm run env:check", () => {
     expect(output).toContain("env:check FAILED");
   });
 
-  it("fails on invalid test override and partial MINI provider configuration", () => {
+  it("fails on an invalid test override", () => {
     const path = variant("invalid.env", (text) => text
-      .replace("DEMI_ALLOW_TEST_NATIONAL_IDS=false", "DEMI_ALLOW_TEST_NATIONAL_IDS=TRUE")
-      .replace("DEMI_LINE_MINI_APP_CHANNEL_ID=", "DEMI_LINE_MINI_APP_CHANNEL_ID=2234567890"));
+      .replace("DEMI_ALLOW_TEST_NATIONAL_IDS=false", "DEMI_ALLOW_TEST_NATIONAL_IDS=TRUE"));
     const { status, output } = check(path);
     expect(status).toBe(1);
     expect(output).toMatch(/INVALID +OPTIONAL +DEMI_ALLOW_TEST_NATIONAL_IDS/u);
-    expect(output).toMatch(/INVALID +OPTIONAL +DEMI_LINE_MINI_APP_ENVIRONMENT/u);
-    expect(output).toMatch(/INVALID +OPTIONAL +DEMI_LINE_MINI_APP_CONTEXT_KEYRING/u);
+  });
+
+  it("ADR-0035: fails on any leftover retired MINI variable and names it without its value", () => {
+    const secret = "Leftover0Channel0Secret0Value";
+    const path = variant("retired.env", (text) => `${text}\nDEMI_LINE_MINI_APP_CHANNEL_SECRET=${secret}\nDEMI_LINE_MINI_APP_ENVIRONMENT=\n`);
+    const { status, output } = check(path);
+    expect(status).toBe(1);
+    expect(output).toMatch(/RETIRED +RETIRED +DEMI_LINE_MINI_APP_CHANNEL_SECRET/u);
+    expect(output).toMatch(/RETIRED +RETIRED +DEMI_LINE_MINI_APP_ENVIRONMENT/u);
+    expect(output).toContain("retired by ADR-0035, must be removed: DEMI_LINE_MINI_APP_CHANNEL_SECRET, DEMI_LINE_MINI_APP_ENVIRONMENT");
+    expect(output).not.toContain("not read by DEMI");
+    expect(output).not.toContain(secret);
+    expect(output).toContain("env:check FAILED");
   });
 
   it("fails safely when a configured optional LINE Messaging integration is incomplete", () => {
