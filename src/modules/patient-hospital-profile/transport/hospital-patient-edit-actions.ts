@@ -9,6 +9,8 @@ import { updatePatientHealthHistory } from "../services/patient-health-history-s
 import { updateStaffPatientHospitalProfile } from "../services/patient-hospital-profile-service";
 import { correctPatientName, PatientNameCorrectionRequiresAdminError } from "../services/patient-name-correction-service";
 
+import { buildPatientHealthHistoryInput, buildStaffPatientProfileInput } from "./hospital-patient-edit-input";
+
 /**
  * `code` classifies an ERROR so the UI never has to compare message text.
  * UNAVAILABLE covers every unexpected failure, including one raised after the write committed.
@@ -19,14 +21,10 @@ export type HospitalPatientEditState = { status: "IDLE" | "SUCCESS" | "ERROR"; m
 async function save(relationshipId: string, formData: FormData, health: boolean): Promise<HospitalPatientEditState> {
   try {
     const actor = await getProtectedApplicationActor();
-    const input = Object.fromEntries(formData.entries());
     if (health) {
-      await updatePatientHealthHistory(actor, relationshipId, { ...input,
-        diagnosisYear: input.diagnosisYear ? Number(input.diagnosisYear) : null,
-        otherConditions: input.otherConditions || null,
-      });
+      await updatePatientHealthHistory(actor, relationshipId, buildPatientHealthHistoryInput(formData));
     } else {
-      await updateStaffPatientHospitalProfile(actor, relationshipId, input);
+      await updateStaffPatientHospitalProfile(actor, relationshipId, buildStaffPatientProfileInput(formData));
     }
     revalidatePath(`/app/patients/${relationshipId}`, "layout");
     revalidatePath("/app/personal", "layout");
