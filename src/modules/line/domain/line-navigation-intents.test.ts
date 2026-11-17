@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalizeLineEntryPath,
-  classifyLineWorkflowEntry,
   getLineQuickActionReturnPathFromUrl,
   LINE_QUICK_ACTION_RETURN_PATHS,
   LINE_WEB_NAVIGATION_PATHS,
-  LINE_WORKFLOW_LOGIN_RETURN_PATH,
 } from "./line-navigation-intents";
 
 describe("quick-action login return paths derived from request URLs", () => {
@@ -57,8 +55,6 @@ describe("quick-action login return paths derived from request URLs", () => {
       `/app/personal?liff.hback=${"2".repeat(5000)}`,
       "/app/hospitals/11111111-1111-4111-8111-111111111111?liff.hback=2",
       "/line/account?liff.hback=2",
-      // MINI keeps its own gateway login return, never a quick-action one.
-      "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&liff.hback=2",
       // Hospital work dashboard falls back to the default post-login destination.
       "/app?liff.hback=2",
     ])("rejects %s", (url) => {
@@ -73,55 +69,7 @@ describe("quick-action login return paths derived from request URLs", () => {
   });
 });
 
-describe("MINI workflow gateway entry classification", () => {
-  const query = (search: string): Record<string, string | string[]> => {
-    const result: Record<string, string | string[]> = {};
-    for (const [name, value] of new URLSearchParams(search)) {
-      const existing = result[name];
-      result[name] = existing === undefined ? value : [...(Array.isArray(existing) ? existing : [existing]), value];
-    }
-    return result;
-  };
-
-  it.each([
-    ["bare MINI launch", ""],
-    ["login return", "intent=OPEN_PATIENT_APPOINTMENTS"],
-    ["primary redirect with canonical state", "liff.state=%3Fintent%3DOPEN_PATIENT_APPOINTMENTS"],
-    ["primary redirect with empty state", "liff.state="],
-    ["primary redirect with untrusted referrer", "liff.state=&liff.referrer=https%3A%2F%2Fattacker.example%2F"],
-    ["LINE login return", "intent=OPEN_PATIENT_APPOINTMENTS&code=abc&state=xyz&liffClientId=2000000001&liffRedirectUri=https%3A%2F%2Fdemi.example.org%2Fline%2Fworkflow"],
-    ["external-browser escape", "liffIsEscapedFromApp=true"],
-  ])("maps %s to the single intent", (_label, search) => {
-    expect(classifyLineWorkflowEntry(query(search))).toEqual({ status: "VALID", intent: "OPEN_PATIENT_APPOINTMENTS" });
-  });
-
-  it.each([
-    ["unsupported intent", "intent=OPEN_PATIENT_CARE"],
-    ["lower-case intent", "intent=open_patient_appointments"],
-    ["duplicate intent", "intent=OPEN_PATIENT_APPOINTMENTS&intent=OPEN_PATIENT_APPOINTMENTS"],
-    ["empty intent", "intent="],
-    ["Patient ID", "patientId=1"],
-    ["Appointment ID", "intent=OPEN_PATIENT_APPOINTMENTS&appointmentId=1"],
-    ["Hospital ID", "hospitalId=1"],
-    ["role selection", "role=PATIENT"],
-    ["return target", "returnTo=https%3A%2F%2Fattacker.example"],
-    ["duplicate platform parameter", "code=a&code=b"],
-    ["oversized platform parameter", `code=${"a".repeat(2049)}`],
-  ])("rejects %s", (_label, search) => {
-    expect(classifyLineWorkflowEntry(query(search))).toEqual({ status: "NAVIGATION_INVALID" });
-  });
-
-  it.each([
-    ["external URL", "https://attacker.example/"],
-    ["protocol-relative URL", "//attacker.example/"],
-    ["traversal", "/../app/personal/appointments"],
-    ["scoped resource", "/appointments/11111111-1111-4111-8111-111111111111"],
-    ["encoded alternate", "%3Fintent%3DOPEN_PATIENT_APPOINTMENTS"],
-    ["resource-bearing intent", "?intent=OPEN_PATIENT_APPOINTMENTS&appointmentId=1"],
-  ])("rejects liff.state carrying %s before SDK initialization", (_label, state) => {
-    expect(classifyLineWorkflowEntry({ "liff.state": state })).toEqual({ status: "PLATFORM_STATE_INVALID" });
-  });
-
+describe("LINE quick-action destination allowlist", () => {
   it("ADR-0033: allowlists the Patient service request page for the no-upcoming-appointment reply", () => {
     expect(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_SERVICES).toBe("/app/personal/services");
     expect(LINE_QUICK_ACTION_RETURN_PATHS).toContain("/app/personal/services");
@@ -133,6 +81,6 @@ describe("MINI workflow gateway entry classification", () => {
 
   it("keeps the Phase A ordinary appointment quick action unchanged", () => {
     expect(LINE_WEB_NAVIGATION_PATHS.OPEN_PATIENT_APPOINTMENTS).toBe("/app/personal/appointments");
-    expect(LINE_QUICK_ACTION_RETURN_PATHS).not.toContain(LINE_WORKFLOW_LOGIN_RETURN_PATH);
+    expect(LINE_QUICK_ACTION_RETURN_PATHS.every((path) => path.startsWith("/app"))).toBe(true);
   });
 });

@@ -16,7 +16,7 @@ const linked = { status: "LINKED", canUnlink: true, reachability: "FRIEND", menu
 const intent = { intentId: "c1111111-1111-4111-a111-111111111111", challenge: "u".repeat(43) };
 const unconfirmed = { state: "RECOVERY_REQUIRED", canRelink: false, obligations: [
   { id: "d1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "LINE Login ของ DEMI", status: "REMOTE_CONFIRMED" },
-  { id: "e1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "DEMI MINI App", status: "REMOTE_UNCONFIRMED" },
+  { id: "e1111111-1111-4111-a111-111111111111", bindingId: "b0000000-0000-4000-a000-000000000001", appName: "แอป DEMI ที่เคยเชื่อมต่อ", status: "REMOTE_UNCONFIRMED" },
 ] };
 let container: HTMLDivElement;
 let root: Root;
@@ -69,7 +69,7 @@ describe("single LINE Disconnection with DEMI sign-out", () => {
     // Sign-out carries only the UNLINK proof; the server derives User and session itself.
     expect(JSON.parse(String(fetcher.mock.calls.find(([url]) => url === "/api/line/account/sign-out")?.[1]?.body))).toEqual(intent);
     expect(container.textContent).toContain("ยกเลิกการเชื่อมต่อ LINE แล้ว");
-    expect(container.textContent).toContain("DEMI MINI App");
+    expect(container.textContent).toContain("แอป DEMI ที่เคยเชื่อมต่อ");
     expect(container.textContent).not.toContain("LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว");
     // The previous owner's Recovery is never offered on the way out.
     expect(container.textContent).not.toContain("ตรวจสอบเพื่อเชื่อมใหม่");

@@ -15,10 +15,11 @@ const database = getPrisma();
 const people: string[] = []; const users: string[] = [];
 const now = new Date("2026-10-09T06:00:00Z"); const sessionId = randomUUID();
 const subject = `U${"7".repeat(32)}`; const accessToken = "transient-access-token-not-persisted";
-// Account-only deployment: MINI not provisioned, so no MINI obligation is created.
+// The inventory is exactly the Account channel (ADR-0035).
 const inventory: LineChannelInventory = { channels: [{ kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" }] };
 const account = lineChannelTupleKey(inventory.channels[0]);
-const mini = { kind: "MINI" as const, channelId: "2222222222", environment: "DEVELOPING" as const };
+// The same Account channel kind under another channel ID: a distinct tuple and a distinct inventory.
+const rotatedAccount = { kind: "ACCOUNT" as const, channelId: "1234567891", environment: "ACCOUNT" as const };
 
 type LinkService = typeof linkLineAccountCore;
 type LinkInput = Omit<Parameters<LinkService>[0], "currentPassword"> & { currentPassword?: string };
@@ -160,23 +161,15 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     if (reason === "consumed") await database.lineAccountActionIntent.update({ where: { id: input.intentId }, data: { consumedAt: now, outcome: "SUCCEEDED" } });
     if (reason === "expired intent") await database.lineAccountActionIntent.update({ where: { id: input.intentId }, data: { expiresAt: now } });
     if (reason === "binding version") await database.lineAccountBinding.update({ where: { id: binding.id }, data: { lifecycleVersion: { increment: 1 } } });
-    if (reason === "inventory") deps.inventory = { channels: [...inventory.channels, mini] };
+    if (reason === "inventory") deps.inventory = { channels: [rotatedAccount] };
     if (reason === "owner inactive") await database.user.update({ where: { id: binding.userId }, data: { status: "SUSPENDED" } });
     if (reason === "provider unavailable") deps.liveSession = async () => { throw new Error("unavailable"); };
     await expect(recoverLineAccount(input, deps)).rejects.toThrow(); expect((await lifecycle(binding)).every((row) => !row.recoveryReleasedAt)).toBe(true);
   });
   it("new obligation invalidates the prepared decision", async () => {
     const binding = await fixture(); const deps = dependencies(binding); await unlink(binding, deps); const input = await recoveryInput(binding, deps);
-    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 2, tupleKey: lineChannelTupleKey(mini), tupleDefinition: lineChannelTupleDefinition(mini), applicability: "UNKNOWN", evidenceReference: "test", requestedAt: now, reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" } });
+    await database.lineAuthorizationLifecycle.create({ data: { bindingId: binding.id, bindingVersion: 2, tupleKey: lineChannelTupleKey(rotatedAccount), tupleDefinition: lineChannelTupleDefinition(rotatedAccount), applicability: "UNKNOWN", evidenceReference: "test", requestedAt: now, reason: "TOKEN_UNAVAILABLE", remoteOutcome: "REMOTE_UNCONFIRMED" } });
     await expect(recoverLineAccount(input, deps)).rejects.toThrow();
-  });
-  it("Account proof releases reviewed independent unknown MINI history without claiming MINI removal", async () => {
-    const binding = await fixture(); const deps = dependencies(binding);
-    deps.inventory = { channels: [...inventory.channels, mini] };
-    await unlink(binding, deps);
-    expect((await prepareLineAccountRecovery(deps)).reviews.map((row) => row.appName).sort()).toEqual(["DEMI MINI App", "LINE Login ของ DEMI"]);
-    await recoverLineAccount(await recoveryInput(binding, deps), deps);
-    expect((await lifecycle(binding)).every((row) => row.recoveryReleasedAt && row.remoteOutcome === "REMOTE_UNCONFIRMED" && row.applicability === "UNKNOWN")).toBe(true);
   });
   it("another User can link after the owner's Full Disconnection while the owner's obligations stay on the owner's binding", async () => {
     const owner = await fixture(); const ownerDeps = dependencies(owner); await unlink(owner, ownerDeps);
@@ -193,18 +186,16 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     expect((await lifecycle(owner)).map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt])).toEqual(pending.map((row) => [row.id, row.remoteOutcome, row.recoveryReleasedAt]));
     await expect(createLineAccountIntent("LINK", ownerDeps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
   });
-  it("A's Full Disconnection without a MINI token leaves B ordinary Link and none of A's Recovery", async () => {
-    const withMini: LineChannelInventory = { channels: [...inventory.channels, mini] };
-    const owner = await fixture(); const ownerDeps = { ...dependencies(owner), inventory: withMini, authorizationInventory: withMini };
-    ownerDeps.terminate = async () => "PROVIDER_204";
-    const { result } = await unlink(owner, ownerDeps, accessToken);
+  it("A's Full Disconnection without an access token leaves B ordinary Link and none of A's Recovery", async () => {
+    const owner = await fixture(); const ownerDeps = dependencies(owner);
+    const { result } = await unlink(owner, ownerDeps);
     expect(result.disconnection).toMatchObject({ state: "RECOVERY_REQUIRED", canRelink: false });
-    expect((await lifecycle(owner)).map((row) => row.remoteOutcome).sort()).toEqual(["REMOTE_CONFIRMED", "REMOTE_UNCONFIRMED"]);
+    expect((await lifecycle(owner)).map((row) => row.remoteOutcome)).toEqual(["REMOTE_UNCONFIRMED"]);
     const ownerRecovery = await recoveryInput(owner, ownerDeps);
     const ownerHistory = await lifecycle(owner);
 
     const other = await otherUser();
-    const otherDeps = { ...otherDependencies(other.id), inventory: withMini, authorizationInventory: withMini };
+    const otherDeps = otherDependencies(other.id);
     expect(await getLineDisconnectionStatus(otherDeps)).toEqual({ state: "NONE", canRelink: true, obligations: [] });
     await expect(prepareLineAccountRecovery(otherDeps)).rejects.toThrow();
     await expect(recoverLineAccount(ownerRecovery, otherDeps)).rejects.toThrow();
@@ -235,19 +226,18 @@ describe("17J.3D executable Account disconnection/recovery PostgreSQL", () => {
     expect((await lifecycle(owner)).find((row) => row.attemptId === attempt.attemptId)).toMatchObject({ remoteOutcome: "REMOTE_CONFIRMED" });
   });
   it("same-user relink reviews only the new generation; released history is never prompted again", async () => {
-    const withMini: LineChannelInventory = { channels: [...inventory.channels, mini] };
-    const binding = await fixture(); const deps = { ...dependencies(binding), inventory: withMini, authorizationInventory: withMini };
+    const binding = await fixture(); const deps = dependencies(binding);
     await unlink(binding, deps);
     const first = await recoveryInput(binding, deps);
-    expect(Object.keys(first.manualReviews)).toHaveLength(2);
+    expect(Object.keys(first.manualReviews)).toHaveLength(1);
     await recoverLineAccount(first, deps);
     await linkLineAccount({ ...(await createLineAccountIntent("LINK", deps)), idToken: "relink-proof" }, deps);
     await unlink(binding, deps);
-    // Safeguard retained: the new generation's unconfirmed MINI permission still needs Recovery.
+    // Safeguard retained: the new generation's unconfirmed Account permission still needs Recovery.
     await expect(createLineAccountIntent("LINK", deps)).rejects.toMatchObject({ code: "LINE_RECOVERY_REQUIRED" });
     const second = await prepareLineAccountRecovery(deps);
     const generations = new Map((await lifecycle(binding)).map((row) => [row.id, row.bindingVersion]));
-    expect(second.reviews.map((row) => generations.get(row.id))).toEqual([4, 4]);
+    expect(second.reviews.map((row) => generations.get(row.id))).toEqual([4]);
     expect(second.reviews.some((row) => row.id in first.manualReviews)).toBe(false);
     await recoverLineAccount({ intentId: second.intentId, challenge: second.challenge, idToken: "fresh-id-token-synthetic", riskAcknowledged: true,
       manualReviews: Object.fromEntries(second.reviews.map((row) => [row.id, "NOT_LISTED" as const])) }, deps);

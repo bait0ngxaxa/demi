@@ -140,14 +140,6 @@ describe("deployment environment check", () => {
     expect(status(checkDeploymentEnvironment("production"), "DEMI_LINE_FLEX_MESSAGES_ENABLED")).toBe("INVALID");
   });
 
-  it("rejects a partially configured LINE MINI App without requiring an unconfigured one", () => {
-    vi.stubEnv("DEMI_LINE_MINI_APP_CHANNEL_ID", "2234567890");
-    const report = checkDeploymentEnvironment("production");
-    expect(report.valid).toBe(false);
-    expect(status(report, "DEMI_LINE_MINI_APP_ENVIRONMENT")).toBe("INVALID");
-    expect(status(report, "DEMI_LINE_MINI_APP_CONTEXT_KEYRING")).toBe("INVALID");
-  });
-
   it.each([
     ["placeholder-secret", true],
     ["https://prod-origin.placeholder.invalid", true],

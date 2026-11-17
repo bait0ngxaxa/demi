@@ -2,11 +2,6 @@ import "server-only";
 
 import { z } from "zod";
 
-import {
-  getLineMiniAppDeauthorizationCredentials,
-  resolveLineMiniAppChannel,
-} from "@/modules/line/services/line-mini-app-configuration";
-import { parseLineWorkflowContextKeyring } from "@/modules/line/services/line-workflow-context";
 import { REPORT_CURSOR_SECRET_MIN_BYTES } from "@/modules/reporting/services/hospital-report-query-service";
 
 import {
@@ -65,18 +60,12 @@ const GROUPS: Readonly<Record<DeploymentVariableGroup, readonly string[]>> = {
     "DEMI_LINE_MEDICATION_REMINDERS_WORKER_SECRET",
     "DEMI_LINE_APPOINTMENT_NOTIFICATIONS_WORKER_SECRET",
     "CRON_SECRET",
-    "DEMI_LINE_MINI_APP_ENVIRONMENT",
-    "DEMI_LINE_MINI_APP_CHANNEL_ID",
-    "DEMI_LINE_MINI_APP_LIFF_ID",
-    "DEMI_LINE_MINI_APP_CHANNEL_SECRET",
-    "DEMI_LINE_MINI_APP_CONTEXT_KEYRING",
   ],
 };
 
 /** Every variable the server reads at runtime (tests-only variables excluded). */
 export const DEPLOYMENT_ENVIRONMENT_VARIABLES: readonly string[] = Object.values(GROUPS).flat();
 
-const MINI_VARIABLES = GROUPS.OPTIONAL.filter((name) => name.startsWith("DEMI_LINE_MINI_APP_"));
 const LINE_ACCOUNT_VARIABLES = [
   "DEMI_LINE_LOGIN_CHANNEL_ID",
   "NEXT_PUBLIC_DEMI_LINE_LIFF_ID",
@@ -170,17 +159,6 @@ function invalidOptional(): string[] {
   for (const name of ["DEMI_SCHEDULER_SECRET", "DEMI_LINE_MEDICATION_REMINDERS_WORKER_SECRET", "DEMI_LINE_APPOINTMENT_NOTIFICATIONS_WORKER_SECRET", "CRON_SECRET"]) {
     const value = read(name);
     if (value !== undefined && !workerSecretSchema.safeParse(value).success) invalid.push(name);
-  }
-  if (MINI_VARIABLES.some((name) => read(name) !== undefined)) {
-    if (!succeeds(resolveLineMiniAppChannel)) {
-      invalid.push("DEMI_LINE_MINI_APP_ENVIRONMENT", "DEMI_LINE_MINI_APP_CHANNEL_ID", "DEMI_LINE_MINI_APP_LIFF_ID");
-    }
-    if (!succeeds(() => parseLineWorkflowContextKeyring(process.env.DEMI_LINE_MINI_APP_CONTEXT_KEYRING))) {
-      invalid.push("DEMI_LINE_MINI_APP_CONTEXT_KEYRING");
-    }
-    if (read("DEMI_LINE_MINI_APP_CHANNEL_SECRET") !== undefined && !succeeds(getLineMiniAppDeauthorizationCredentials)) {
-      invalid.push("DEMI_LINE_MINI_APP_CHANNEL_SECRET");
-    }
   }
   return invalid;
 }

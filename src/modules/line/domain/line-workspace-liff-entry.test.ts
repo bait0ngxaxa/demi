@@ -19,7 +19,6 @@ describe("Workspace LIFF root entry classification", () => {
     expect(LINE_WORKSPACE_LIFF_DESTINATIONS).toEqual([...new Set(Object.values(LINE_WEB_NAVIGATION_PATHS))]);
     expect(LINE_WORKSPACE_LIFF_DESTINATIONS).toContain("/app");
     expect(LINE_WORKSPACE_LIFF_DESTINATIONS).not.toContain("/line/account");
-    expect(LINE_WORKSPACE_LIFF_DESTINATIONS).not.toContain("/line/workflow");
   });
 
   it.each(LINE_WORKSPACE_LIFF_DESTINATIONS)("accepts the primary redirect for %s", (path) => {
@@ -51,7 +50,6 @@ describe("Workspace LIFF root entry classification", () => {
     [{ "liff.state": "//evil.example/app" }],
     [{ "liff.state": "/app/../line/account" }],
     [{ "liff.state": "/line/account" }],
-    [{ "liff.state": "/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS" }],
     [{ "liff.state": "/app/patients/assigned?task=screening&returnTo=https://evil.example" }],
     [{ "liff.state": "/app/hospitals/11111111-1111-4111-8111-111111111111" }],
     [{ "liff.state": "/app/personal#access_token=leak" }],

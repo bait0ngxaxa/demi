@@ -6,9 +6,8 @@ import { isLineObligationSatisfied, isLineRecoveryEligible, lineChannelDisplayNa
 
 const now = new Date("2026-10-08T00:00:00Z");
 const account: LineChannel = { kind: "ACCOUNT", channelId: "1234567890", environment: "ACCOUNT" };
-const mini: LineChannel = { kind: "MINI", channelId: "2222222222", environment: "DEVELOPING" };
 // Exactly the pre-B2.4 manifest tuple shape; persisted rows keep it verbatim.
-const legacyDefinition = JSON.stringify(["synthetic-provider", "MINI", "2222222222", "DEVELOPING", "synthetic-deploy"]);
+const legacyDefinition = JSON.stringify(["synthetic-provider", "ACCOUNT", "1234567890", "ACCOUNT", "synthetic-deploy"]);
 function row(overrides: Partial<LineAuthorizationLifecycle> = {}): LineAuthorizationLifecycle {
   return { id: randomUUID(), bindingId: randomUUID(), bindingVersion: 2, tupleKey: lineChannelTupleKey(account), tupleDefinition: lineChannelTupleDefinition(account),
     applicability: "UNKNOWN", evidenceReference: "inventory-v1", observedAt: null,
@@ -18,17 +17,17 @@ function row(overrides: Partial<LineAuthorizationLifecycle> = {}): LineAuthoriza
 }
 
 describe("LINE lifecycle evidence rules", () => {
-  it("accepts Account-only and Account + one MINI inventories without operator evidence", () => {
+  it("accepts exactly the Account channel inventory without operator evidence", () => {
     expect(lineChannelInventorySchema.safeParse({ channels: [account] }).success).toBe(true);
-    expect(lineChannelInventorySchema.safeParse({ channels: [account, mini] }).success).toBe(true);
   });
-  it("isolates channel and internal environment tuples", () => {
-    expect(new Set([account, mini, { ...mini, environment: "PUBLISHED" as const }].map(lineChannelTupleKey)).size).toBe(3);
-    expect(lineChannelTupleDefinition(mini)).toBe(JSON.stringify(["LINE_CHANNEL_V2", "MINI", "2222222222", "DEVELOPING", "server-config"]));
+  it("keeps the Account tuple definition and isolates channels by ID", () => {
+    expect(lineChannelTupleDefinition(account)).toBe(JSON.stringify(["LINE_CHANNEL_V2", "ACCOUNT", "1234567890", "ACCOUNT", "server-config"]));
+    expect(lineChannelTupleKey(account)).not.toBe(lineChannelTupleKey({ ...account, channelId: "1234567891" }));
   });
-  it("rejects missing/duplicate Account, shared channel IDs, extra MINI, cross-kind environments and legacy fields", () => {
-    for (const channels of [[mini], [account, account], [account, { ...mini, channelId: account.channelId }],
-      [account, mini, { ...mini, channelId: "3333333333" }], [{ ...account, environment: "DEVELOPING" }],
+  it("rejects an empty or duplicate inventory, any second channel, a non-Account kind or environment and legacy fields", () => {
+    const retiredKind = { kind: "MINI", channelId: "2222222222", environment: "DEVELOPING" };
+    for (const channels of [[], [retiredKind], [account, account], [account, retiredKind],
+      [account, { ...account, channelId: "3333333333" }], [{ ...account, environment: "DEVELOPING" }],
       [{ ...account, providerReference: "provider" }]]) {
       expect(lineChannelInventorySchema.safeParse({ channels }).success).toBe(false);
     }
@@ -36,14 +35,16 @@ describe("LINE lifecycle evidence rules", () => {
   });
   it("labels current and pre-B2.4 persisted tuple definitions without remapping their keys", () => {
     expect(lineChannelDisplayName(lineChannelTupleDefinition(account))).toBe("LINE Login ของ DEMI");
-    expect(lineChannelDisplayName(legacyDefinition)).toBe("DEMI MINI App");
+    expect(lineChannelDisplayName(legacyDefinition)).toBe("LINE Login ของ DEMI");
+    // A retired MINI tuple still reads as a connected DEMI app, never as the Account channel.
+    expect(lineChannelDisplayName(JSON.stringify(["LINE_CHANNEL_V2", "MINI", "2222222222", "DEVELOPING", "server-config"]))).toBe("แอป DEMI ที่เคยเชื่อมต่อ");
     expect(lineChannelDisplayName("not-json")).toBe("แอป DEMI ที่เคยเชื่อมต่อ");
     // A new key never collides with the pre-B2.4 key of the same channel, so legacy rows stay distinct history.
-    expect(lineChannelTupleKey(mini)).not.toBe(createHash("sha256").update(legacyDefinition).digest("hex"));
+    expect(lineChannelTupleKey(account)).not.toBe(createHash("sha256").update(legacyDefinition).digest("hex"));
   });
   it("binds the reviewed obligation set to the derived inventory", () => {
     const rows = [row()];
-    expect(lineObligationSetDigest(rows, { channels: [account] })).not.toBe(lineObligationSetDigest(rows, { channels: [account, mini] }));
+    expect(lineObligationSetDigest(rows, { channels: [account] })).not.toBe(lineObligationSetDigest(rows, { channels: [{ ...account, channelId: "1234567891" }] }));
   });
   it("never infers absence or success from missing proof or unknown applicability", () => {
     expect(isLineObligationSatisfied(row())).toBe(false);

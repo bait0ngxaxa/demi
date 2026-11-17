@@ -7,11 +7,7 @@ import { getPrisma } from "@/lib/db/prisma";
 import { runSerializableTransaction } from "@/lib/db/serializable-transaction";
 import { getLiveExactSession } from "@/modules/auth/services/exact-session-service";
 import { ForbiddenError } from "@/shared/errors/application-error";
-import {
-  deauthorizeLineAccount,
-  deauthorizeLineMiniApp,
-  type LineMiniAppDeauthorizationCredentials,
-} from "../adapters/line-deauthorization-client";
+import { deauthorizeLineAccount } from "../adapters/line-deauthorization-client";
 import { verifyFreshLineIdToken } from "../adapters/line-login-client";
 import { isLineObligationSatisfied, isLineRecoveryEligible, lineChannelDisplayName, lineChannelTupleKey, lineObligationStatus, lineObligationSetDigest, type LineChannelInventory } from "../domain/line-authorization-lifecycle";
 import { LineFailure } from "../domain/line-errors";
@@ -19,7 +15,6 @@ import { lineRecoveryRequestSchema } from "../schemas/line-schemas";
 import { isLineDisconnectionReadinessUnavailableAudit, unlinkLineAccount, type LineAccountDependencies } from "./line-account-service";
 import { authorizeLineRecoveryDecision, isLineTerminationDispatchAllowed, prepareLineRecoverySet, recordLineTerminationOutcome, releaseLineRecovery, reserveLineTerminationAttempt } from "./line-authorization-lifecycle-service";
 import { createLineSubjectFingerprint } from "./line-identity-fingerprint";
-import { getLineMiniAppDeauthorizationCredentials } from "./line-mini-app-configuration";
 import { getCurrentLineSession, hashLineSessionId, lineRecoveryHandoffScope, timingSafeHashMatch } from "./line-session-service";
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -31,8 +26,6 @@ export type DisconnectionDependencies = LineAccountDependencies & {
   liveSession?: typeof getLiveExactSession;
   freshIdentity?: typeof verifyFreshLineIdToken;
   terminate?: typeof deauthorizeLineAccount;
-  terminateMini?: typeof deauthorizeLineMiniApp;
-  miniDeauthorizationCredentials?: () => LineMiniAppDeauthorizationCredentials;
 };
 
 export type LineDisconnectionStatus = {
@@ -97,7 +90,7 @@ export async function hasLineLifecycleHistoryForCurrentOwner(
 /** Provider failure and even post-commit persistence failure cannot undo local revocation.
  * Only the original invocation holding the returned reservation can send; no resume worker.
  */
-export async function disconnectLineAccount(input: { intentId: string; challenge: string; accessToken?: string; miniAccessToken?: string }, deps: DisconnectionDependencies): Promise<{ status: "UNLINKED"; bindingId: string; disconnection: LineDisconnectionStatus | null }> {
+export async function disconnectLineAccount(input: { intentId: string; challenge: string; accessToken?: string }, deps: DisconnectionDependencies): Promise<{ status: "UNLINKED"; bindingId: string; disconnection: LineDisconnectionStatus | null }> {
   const session = await (deps.currentSession ?? getCurrentLineSession)();
   const database = dbOf(deps);
   const result = await unlinkLineAccount(input, { ...deps, currentSession: async () => session, authorizationInventory: deps.inventory });
@@ -115,29 +108,6 @@ export async function disconnectLineAccount(input: { intentId: string; challenge
       }
     } catch {
       // A reservation survives a crash/failure conservatively. Never redispatch.
-    }
-  }
-  if (input.miniAccessToken) {
-    try {
-      const credentials = (deps.miniDeauthorizationCredentials ?? getLineMiniAppDeauthorizationCredentials)();
-      // Only the MINI credentials' own channel; never Account credentials or another environment.
-      const selected = deps.inventory.channels.filter((channel) => channel.kind === "MINI" &&
-        channel.channelId === credentials.channelId && channel.environment === credentials.environment);
-      if (selected.length !== 1) throw new ForbiddenError();
-      const binding = await database.lineAccountBinding.findUniqueOrThrow({ where: { id: result.bindingId } });
-      const mini = selected[0];
-      const attempt = await runSerializableTransaction(database, (transaction) => reserveLineTerminationAttempt(transaction,
-        { ownerUserId: session.userId, bindingId: result.bindingId, bindingVersion: result.lifecycleVersion, tupleKey: lineChannelTupleKey(mini) },
-        deps.inventory, nowOf(deps)));
-      if (attempt) {
-        const evidence = binding.lineUserId ? await (deps.terminateMini ?? deauthorizeLineMiniApp)(input.miniAccessToken,
-          binding.lineUserId, credentials,
-          () => runSerializableTransaction(database, (transaction) => isLineTerminationDispatchAllowed(transaction, attempt))) : "KNOWN_NOT_DISPATCHED";
-        await runSerializableTransaction(database, (transaction) => recordLineTerminationOutcome(transaction, attempt, evidence, nowOf(deps)));
-      }
-    } catch {
-      // MINI credentials, audience or provider outage cannot undo local unlink.
-      // The reserved/history row remains conservatively unconfirmed.
     }
   }
   let disconnection: LineDisconnectionStatus | null = null;

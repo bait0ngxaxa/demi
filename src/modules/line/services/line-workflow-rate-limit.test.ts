@@ -13,9 +13,11 @@ function database(hitCount = 1) {
   };
 }
 
-describe("PostgreSQL shared MINI workflow rate limiter", () => {
-  it("keeps dedicated account-status quotas separate and calculates the fixed-window retry boundary", () => {
-    expect(LINE_WORKFLOW_RATE_LIMITS).toMatchObject({ ACCOUNT_STATUS_USER: 6, ACCOUNT_STATUS_GLOBAL: 600, VERIFY_USER: 10, VERIFY_GLOBAL: 600, ACKNOWLEDGE: 60, CANCELLATION_REQUEST: 20 });
+describe("PostgreSQL shared LINE rate limiter", () => {
+  it("keeps only the Account status and reachability quotas and calculates the fixed-window retry boundary", () => {
+    expect(LINE_WORKFLOW_RATE_LIMITS).toEqual({
+      ACCOUNT_STATUS_USER: 6, ACCOUNT_STATUS_GLOBAL: 600, REACHABILITY_REFRESH_USER: 3, REACHABILITY_REFRESH_GLOBAL: 600,
+    });
     expect(getLineWorkflowRateLimitRetryAfter(new Date("2026-10-26T03:00:00Z"))).toBe(300);
     expect(getLineWorkflowRateLimitRetryAfter(new Date("2026-10-26T03:04:59.999Z"))).toBe(1);
   });
@@ -23,11 +25,11 @@ describe("PostgreSQL shared MINI workflow rate limiter", () => {
     const db = database();
     const limiter = createLineWorkflowRateLimiter(db as never);
 
-    await expect(limiter.consume("VERIFY_USER", USER_ID, NOW)).resolves.toBe(true);
+    await expect(limiter.consume("ACCOUNT_STATUS_USER", USER_ID, NOW)).resolves.toBe(true);
     const call = db.$queryRaw.mock.calls[0];
     const values = call.slice(1);
     const expectedWindow = lineWorkflowRateLimitInternals.rateLimitWindow(NOW);
-    expect(values[0]).toBe("VERIFY_USER");
+    expect(values[0]).toBe("ACCOUNT_STATUS_USER");
     expect(values[1]).toMatch(/^[a-f0-9]{64}$/u);
     expect(values[1]).not.toContain(USER_ID);
     expect(values[2]).toEqual(expectedWindow.startsAt);
@@ -41,7 +43,7 @@ describe("PostgreSQL shared MINI workflow rate limiter", () => {
   it("denies at the quota while saturating the counter", async () => {
     const db = database(601);
     const limiter = createLineWorkflowRateLimiter(db as never);
-    await expect(limiter.consume("VERIFY_GLOBAL", "GLOBAL", NOW)).resolves.toBe(false);
+    await expect(limiter.consume("ACCOUNT_STATUS_GLOBAL", "GLOBAL", NOW)).resolves.toBe(false);
     expect(db.$queryRaw.mock.calls[0].slice(1)).toContain(601);
   });
 
@@ -49,7 +51,7 @@ describe("PostgreSQL shared MINI workflow rate limiter", () => {
     const db = database();
     db.$executeRaw.mockRejectedValue(new Error("database unavailable"));
     const limiter = createLineWorkflowRateLimiter(db as never);
-    const error = await limiter.consume("ACKNOWLEDGE", USER_ID, NOW).catch((caught: unknown) => caught);
+    const error = await limiter.consume("REACHABILITY_REFRESH_USER", USER_ID, NOW).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(LineWorkflowFailure);
     expect((error as LineWorkflowFailure).code).toBe("INFRASTRUCTURE_UNAVAILABLE");
     expect(db.$queryRaw).not.toHaveBeenCalled();

@@ -5,8 +5,6 @@ import { z } from "zod";
 import { getLineLoginEnv } from "@/lib/env/server";
 
 import { LineFailure } from "../domain/line-errors";
-import { LineWorkflowFailure } from "../domain/line-workflow-errors";
-import type { LineMiniAppConfiguration } from "../services/line-mini-app-configuration";
 
 const lineIdentitySchema = z.object({
   iss: z.literal("https://access.line.me"),
@@ -82,32 +80,6 @@ export async function verifyFreshLineIdToken(
   if (result.status === "PROVIDER_UNAVAILABLE") throw new LineFailure("LINE_PROVIDER_TRANSIENT");
   if (result.status !== "VERIFIED") throw new LineFailure("LINE_TOKEN_INVALID_OR_EXPIRED");
   return { subject: result.subject, issuedAt: result.issuedAt ? new Date(result.issuedAt * 1000) : undefined, expiresAt: new Date(result.expiresAt * 1000), verifiedAt: new Date() };
-}
-
-export type VerifiedMiniAppWorkflowIdentity = { subject: string; expiresAt: Date; verifiedAt: Date };
-
-/**
- * MINI workflow proof only. The audience is the selected deployment tuple's
- * channel; Account LIFF tokens fail as wrong audience and are never retried.
- */
-export async function verifyMiniAppWorkflowIdToken(
-  idToken: string,
-  configuration: Pick<LineMiniAppConfiguration, "channelId">,
-  fetcher: typeof fetch = fetch,
-): Promise<VerifiedMiniAppWorkflowIdentity> {
-  const result = await verifyIdTokenForAudience(idToken, configuration.channelId, fetcher);
-  switch (result.status) {
-    case "VERIFIED":
-      return { subject: result.subject, expiresAt: new Date(result.expiresAt * 1000), verifiedAt: new Date() };
-    case "PROVIDER_UNAVAILABLE":
-      throw new LineWorkflowFailure("LINE_PROVIDER_UNAVAILABLE");
-    case "RESPONSE_INVALID":
-      throw new LineWorkflowFailure("LINE_PROVIDER_RESPONSE_INVALID");
-    case "WRONG_AUDIENCE":
-      throw new LineWorkflowFailure("LINE_WRONG_AUDIENCE");
-    default:
-      throw new LineWorkflowFailure("LINE_IDENTITY_INVALID");
-  }
 }
 
 export async function verifyLineIdToken(idToken: string, fetcher: typeof fetch = fetch): Promise<VerifiedLineIdentity> {

@@ -12,7 +12,7 @@ import {
   resolveLineAccountHref,
   resolveLineWorkspaceHref,
 } from "./line-liff-browser";
-import { classifyLineWorkflowEntry, getLineQuickActionReturnPathFromUrl } from "./line-navigation-intents";
+import { getLineQuickActionReturnPathFromUrl } from "./line-navigation-intents";
 import { classifyLineWorkspaceLiffEntry } from "./line-workspace-liff-entry";
 
 /**
@@ -65,17 +65,6 @@ describe("Workspace LIFF lifecycle regression", () => {
     recordWorkspaceInitResult(store, "FAILED");
     expect(isWorkspaceLiffContext(readLiffBrowserContext(store))).toBe(false);
     expect(resolveLineAccountHref({ context: readLiffBrowserContext(store), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
-  });
-
-  it("MINI App: Account and Workspace links keep the approved ordinary exits and Workspace never initializes", () => {
-    const store = session();
-    expect(classifyLineWorkflowEntry({ "liff.state": "?intent=OPEN_PATIENT_APPOINTMENTS" })).toEqual({ status: "VALID", intent: "OPEN_PATIENT_APPOINTMENTS" });
-    recordLiffBrowserEntry(store, "MINI");
-    recordLiffBrowserEntry(store, "ACCOUNT");
-    const context = readLiffBrowserContext(store);
-    expect(resolveLineWorkspaceHref({ context, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
-    expect(resolveLineAccountHref({ context, accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
-    expect(getLineQuickActionReturnPathFromUrl(new URL("/line/workflow?intent=OPEN_PATIENT_APPOINTMENTS&liff.hback=2", ORIGIN))).toBeNull();
   });
 
   it("ordinary browsers: no context, ordinary routes, exact login returns", () => {
