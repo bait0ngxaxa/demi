@@ -86,10 +86,19 @@ export function submitPreservingInput(dispatch: (formData: FormData) => void) {
   };
 }
 
+export type DispatchFormDataOptions = {
+  /**
+   * Names of UI-only controls (for example native radio groups that mirror a hidden contract field)
+   * that must not be posted to the action.
+   */
+  readonly omitFields?: readonly string[];
+};
+
 /** Dispatches a native form submission without resetting its uncontrolled fields. */
 export function dispatchFormDataPreservingInput(
   event: FormEvent<HTMLFormElement>,
   dispatch: (formData: FormData) => void,
+  options: DispatchFormDataOptions = {},
 ): void {
   event.preventDefault();
   const submitter = (event.nativeEvent as SubmitEvent).submitter;
@@ -100,5 +109,8 @@ export function dispatchFormDataPreservingInput(
       ? submitter
       : undefined,
   );
+  for (const field of options.omitFields ?? []) {
+    formData.delete(field);
+  }
   startTransition(() => dispatch(formData));
 }
