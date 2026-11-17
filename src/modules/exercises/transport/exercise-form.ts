@@ -8,6 +8,9 @@ const limits: Record<ExerciseOperation, Record<string, number>> = {
   update: { entryId: 36, expectedUpdatedAt: 40, activityName: EXERCISE_ACTIVITY_RAW_MAX, durationMinutes: EXERCISE_DURATION_RAW_MAX, occurredOn: 10, note: EXERCISE_NOTE_RAW_MAX },
   delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: EXERCISE_CURSOR_MAX_LENGTH, occurredOn: 10 },
 };
+/** The accepted fields of each operation (form contract tests read the keys). */
+export const EXERCISE_FORM_FIELD_LIMITS = limits;
+
 export function parseExerciseForm(formData: FormData, operation: ExerciseOperation): Record<string, string | number | null> {
   const fields: Record<string, string> = {};
   let bytes = 0;

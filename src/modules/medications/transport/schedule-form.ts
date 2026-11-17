@@ -27,18 +27,24 @@ function parseMedicationForm(formData: FormData, limits: Record<string, number>,
   return { ...fields, times };
 }
 
+/** The accepted fields of a schedule change (form contract tests read the keys). */
+export const MEDICATION_SCHEDULE_FORM_FIELD_LIMITS: Record<string, number> = {
+  medicationId: MEDICATION_ID_RAW_MAX_LENGTH,
+  expectedUpdatedAt: MEDICATION_VERSION_RAW_MAX_LENGTH,
+  times: MEDICATION_SCHEDULE_JSON_MAX_LENGTH,
+};
+
+/** The accepted fields of a new medication (form contract tests read the keys). */
+export const MEDICATION_CREATE_FORM_FIELD_LIMITS: Record<string, number> = {
+  medicationName: MEDICATION_NAME_RAW_MAX_LENGTH,
+  instructionText: INSTRUCTION_TEXT_RAW_MAX_LENGTH,
+  times: MEDICATION_SCHEDULE_JSON_MAX_LENGTH,
+};
+
 export function parseMedicationScheduleForm(formData: FormData): Record<string, unknown> {
-  return parseMedicationForm(formData, {
-    medicationId: MEDICATION_ID_RAW_MAX_LENGTH,
-    expectedUpdatedAt: MEDICATION_VERSION_RAW_MAX_LENGTH,
-    times: MEDICATION_SCHEDULE_JSON_MAX_LENGTH,
-  }, true);
+  return parseMedicationForm(formData, MEDICATION_SCHEDULE_FORM_FIELD_LIMITS, true);
 }
 
 export function parseMedicationCreateForm(formData: FormData): Record<string, unknown> {
-  return parseMedicationForm(formData, {
-    medicationName: MEDICATION_NAME_RAW_MAX_LENGTH,
-    instructionText: INSTRUCTION_TEXT_RAW_MAX_LENGTH,
-    times: MEDICATION_SCHEDULE_JSON_MAX_LENGTH,
-  }, true);
+  return parseMedicationForm(formData, MEDICATION_CREATE_FORM_FIELD_LIMITS, true);
 }

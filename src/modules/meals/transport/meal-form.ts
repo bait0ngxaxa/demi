@@ -7,6 +7,9 @@ const limits: Record<MealOperation, Record<string, number>> = {
   update: { entryId: 36, expectedUpdatedAt: 40, category: 9, occurredOn: 10, description: 2000 },
   delete: { entryId: 36, expectedUpdatedAt: 40 }, list: { cursor: MEAL_CURSOR_MAX_LENGTH, occurredOn: 10 },
 };
+/** The accepted fields of each operation (form contract tests read the keys). */
+export const MEAL_FORM_FIELD_LIMITS = limits;
+
 export function parseMealForm(formData: FormData, operation: MealOperation): Record<string, string> {
   const fields: Record<string, string> = {};
   let bytes = 0;

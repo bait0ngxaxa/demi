@@ -16,6 +16,9 @@ const limits: Record<WeightGoalOperation, Record<string, number>> = {
   remove: { goalId: WEIGHT_GOAL_UUID_RAW_LENGTH, expectedUpdatedAt: WEIGHT_GOAL_VERSION_RAW_MAX },
 };
 
+/** The accepted fields of each operation (form contract tests read the keys). */
+export const WEIGHT_GOAL_FORM_FIELD_LIMITS = limits;
+
 export function parseWeightGoalForm(formData: FormData, operation: WeightGoalOperation): Record<string, string> {
   const fields: Record<string, string> = Object.create(null) as Record<string, string>;
   let byteLength = 0;
