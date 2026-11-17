@@ -12,7 +12,7 @@
 
 - LINE user ID แยกตาม **provider** และ channel **ย้าย provider ไม่ได้** (ADR-0009) production ต้องเป็น **provider ใหม่** ห้ามใช้ provider ของ demo
 - binding ของ demo **ไม่ถูกย้าย** ผู้ใช้ทุกคนต้องเชื่อม LINE ใหม่กับ OA ของ production
-- Account LINE Login, Messaging API และ MINI (ถ้าใช้) ต้องอยู่ใต้ provider production **เดียวกัน**
+- Account LINE Login และ Messaging API ต้องอยู่ใต้ provider production **เดียวกัน**
 - ห้ามนำ NHFapp หรือแอปอื่นเข้า provider นี้
 
 `<PROD_ORIGIN>` = origin ของ production (ตรงกับ `DEMI_LINE_PUBLIC_ORIGIN`)
@@ -78,14 +78,14 @@ LIFF ตัวที่สองใน **LINE Login channel เดิมขอ�
 2. คัดลอก **LIFF ID** ของแอปใหม่ → `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID`
 3. แยก identity ให้ถูก:
 
-   | สิ่งที่ดู | Account LIFF | Workspace LIFF | MINI App |
-   | --- | --- | --- | --- |
-   | channel | LINE Login (ข้อ 3) | LINE Login (ข้อ 3) ตัวเดียวกัน | LINE MINI App channel (ข้อ 4) |
-   | Endpoint URL | `<PROD_ORIGIN>/line/account` | `<PROD_ORIGIN>/` | `<PROD_ORIGIN>/line/workflow` |
-   | ตัวแปร | `NEXT_PUBLIC_DEMI_LINE_LIFF_ID` | `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` | `DEMI_LINE_MINI_APP_LIFF_ID` |
-   | ID ขึ้นต้นด้วย | `DEMI_LINE_LOGIN_CHANNEL_ID-` | `DEMI_LINE_LOGIN_CHANNEL_ID-` | MINI Channel ID |
+   | สิ่งที่ดู | Account LIFF | Workspace LIFF |
+   | --- | --- | --- |
+   | channel | LINE Login (ข้อ 3) | LINE Login (ข้อ 3) ตัวเดียวกัน |
+   | Endpoint URL | `<PROD_ORIGIN>/line/account` | `<PROD_ORIGIN>/` |
+   | ตัวแปร | `NEXT_PUBLIC_DEMI_LINE_LIFF_ID` | `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` |
+   | ID ขึ้นต้นด้วย | `DEMI_LINE_LOGIN_CHANNEL_ID-` | `DEMI_LINE_LOGIN_CHANNEL_ID-` |
 
-   `env:check` จะ INVALID ถ้า Workspace ID ไม่ขึ้นต้นด้วย Login Channel ID หรือซ้ำกับ Account/MINI LIFF ID
+   `env:check` จะ INVALID ถ้า Workspace ID ไม่ขึ้นต้นด้วย Login Channel ID หรือซ้ำกับ Account LIFF ID
 4. ตัวแปรนี้เป็น `NEXT_PUBLIC_*` ถูกฝังตอน `next build` ต้อง build ใหม่ทุกครั้งที่เปลี่ยน และสคริปต์ Rich Menu ต้องรันด้วยไฟล์ env เดียวกับที่ใช้ build
 5. ตรวจ Endpoint: เปิด LIFF app ใน Console ดูว่า Endpoint URL ตรงกับ `<PROD_ORIGIN>/` ทุกตัวอักษร แล้วบนมือถือเปิด `https://liff.line.me/<WORKSPACE_LIFF_ID>/app/personal` จากแชตตัวเอง ต้องไปที่ `/app/personal` (หรือหน้า login DEMI) ใน LIFF browser ทดสอบได้โดย**ไม่ต้องเปลี่ยน Rich Menu** ([UAT](./LINE_WORKSPACE_LIFF_UAT.md))
 6. สถานะ channel ใช้ตัวเดียวกับ Account LIFF (Developing/Published) ไม่มีการตั้งค่าแยก
@@ -100,9 +100,9 @@ LIFF ตัวที่สองใน **LINE Login channel เดิมขอ�
 2. `npm run line:flex:validate` (รันด้วยมือ ไม่อยู่ใน CI) สร้างตัวอย่างการ์ดทุกประเภทด้วยข้อมูลสังเคราะห์แล้วส่งให้ LINE ตรวจที่ validate endpoint โดยไม่ส่งถึงผู้ใช้ พิมพ์เฉพาะ pass/fail ต่อประเภท ใช้ env ของ channel staging
 3. ตรวจบน LINE จริง (iOS, Android, PC): layout, การตัดคำภาษาไทย, ปุ่มเปิด Workspace LIFF, ผู้ใช้ที่ยังไม่มี session DEMI เห็นหน้า login หนึ่งครั้งแล้วกลับไปหน้าที่ปุ่มระบุ, ข้อความบน lock screen/รายการแชต (altText) ไม่มีชื่อผู้ป่วย ชื่อยา หรือ URL
 
-## 4. MINI App (optional provider integration)
+## 4. MINI App (ยกเลิกแล้ว)
 
-สร้าง channel ประเภท LINE MINI App ใต้ provider เดียวกัน, Endpoint URL = `<PROD_ORIGIN>/line/workflow` แล้วตั้งตัวแปร `DEMI_LINE_MINI_APP_*` ตาม B2.4 §13.B (keyring สร้างใหม่สำหรับแต่ละ database environment ห้ามใช้ของ demo ร่วมกับข้อมูลจริง). ถ้าไม่ได้ provision integration นี้ ให้ค่า MINI ทั้งหมดว่าง; endpoint จะ fail closed สำหรับ MINI เท่านั้น. สถานะ DEVELOPING / REVIEW / PUBLISHED เป็นสถานะ channel ที่ LINE กำหนด ไม่ใช่ DEMI deployment stage.
+LINE MINI App ถูกยกเลิกตาม [ADR-0035](../adr/0035-retire-line-mini-app.md) ไม่ต้องสร้าง channel และห้ามตั้งตัวแปร `DEMI_LINE_MINI_APP_*` (`env:check` จะ FAILED ถ้ายังมี) ขั้นตอนลบ channel เดิมอยู่ใน ADR
 
 ## 5. ใส่ค่าใน server
 
@@ -175,15 +175,13 @@ webhook ยังรับ postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` เ�
 
 - เร็วที่สุด: ลบค่า `NEXT_PUBLIC_DEMI_LINE_WORKSPACE_LIFF_ID` จาก env, build/deploy ใหม่ แล้วรัน §6.1 → §6.2 → `--repair --apply` เมนูชุดเดิม (ลิงก์เว็บปกติ) ยังอยู่ที่ LINE เพราะ reconcile ไม่ลบ ชื่อเมนูจาก hash จะตรงกับชุดเดิมจึงถูกใช้ซ้ำ
 - หรือ rollback release ตาม §6.4
-- Workspace LIFF app ใน Console ปล่อยไว้ได้ (ไม่ต้องลบ) Account LIFF และ MINI App ไม่ถูกแตะในทั้งสองทาง ลิงก์ Workspace ที่ผู้ใช้เปิดหลัง rollback จะได้หน้า “ยังเปิด DEMI ผ่าน LINE ไม่ได้” พร้อมปุ่มไปที่ DEMI
+- Workspace LIFF app ใน Console ปล่อยไว้ได้ (ไม่ต้องลบ) Account LIFF ไม่ถูกแตะในทั้งสองทาง ลิงก์ Workspace ที่ผู้ใช้เปิดหลัง rollback จะได้หน้า “ยังเปิด DEMI ผ่าน LINE ไม่ได้” พร้อมปุ่มไปที่ DEMI
 
 ## 7. Runtime behavior and operational control
 
-ไม่มี application activation flags. Account link/recovery ใช้ Account Login configuration และ permanent proof/security rules. Appointment notifications and medication reminders are queued and delivered only for currently eligible recipients with active bindings and their own enabled preferences; caregiver appointment messages additionally require a current accepted appointment grant. MINI operations require complete valid provider configuration, signed LINE context, and current scope/lifecycle checks. Missing optional provider configuration fails only the relevant integration.
+ไม่มี application activation flags. Account link/recovery ใช้ Account Login configuration และ permanent proof/security rules. Appointment notifications and medication reminders are queued and delivered only for currently eligible recipients with active bindings and their own enabled preferences; caregiver appointment messages additionally require a current accepted appointment grant. Missing optional provider configuration fails only the relevant integration.
 
 หากผู้ดูแลต้องหยุดงานส่ง notification ชั่วคราว ให้หยุด external scheduler trigger (systemd timer, Vercel Cron หรือ worker ที่เรียก `/api/internal/scheduler/tick`) แล้วรอ tick ที่ทำงานอยู่จบก่อนหยุด process. Pending outbox rows and retry keys remain persisted; เมื่อกลับมาเริ่ม scheduler ระบบจะตรวจ source, recipient, preference, binding, lease และ delivery window ตาม business rules ก่อนส่ง. ห้ามแก้สถานะ outbox ด้วย SQL หรือเปลี่ยน user preference แทนผู้ใช้.
-
-หากต้องหยุด MINI ให้ถอน route `/line/workflow` ผ่าน hosting/routing ของ operator หรือปรับ provider channel availability ใน LINE Console. การเอา provider credentials ออกจาก configuration จะทำให้ MINI ปฏิเสธการทำงานอย่างปลอดภัย แต่ไม่เปลี่ยน authority ของ Account Login หรือระบบส่วนอื่น.
 
 ### 7.1 ความสดของสถานะเพื่อน LINE (J4A-OD05, 2026-11-16)
 

@@ -346,8 +346,8 @@ process อ่าน env file ตอน start เท่านั้น ส่ว
 | `SUPABASE_SERVICE_ROLE_KEY` / anon key | สร้าง key ใหม่ใน Supabase API Keys → แก้ค่า → anon/publishable เป็น `NEXT_PUBLIC_*` ต้อง build ใหม่ (§2) → revoke key เก่า | ใช้ทั้งสอง key ได้จนกว่าจะ revoke |
 | `DEMI_LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` | ออก long-lived token ใหม่ใน LINE Developers → §4 | token เดิมใช้ได้จนกด revoke |
 | `DEMI_LINE_MESSAGING_CHANNEL_SECRET` | Reissue ใน LINE Developers → §4 **ทันที** | webhook ที่เข้ามาก่อน reload จะไม่ผ่านการตรวจลายเซ็น (401) |
-| `DEMI_LINE_LOGIN_CHANNEL_SECRET`, `DEMI_LINE_MINI_APP_CHANNEL_SECRET` | Reissue → §4 | remote deauthorization ช่วงนั้นเป็น "unconfirmed" |
-| `DEMI_LINE_MINI_APP_CONTEXT_KEYRING` | เพิ่ม key ใหม่เป็น `currentKid` แต่เก็บ key เก่าไว้ ≥ 900 วินาทีหลังออกใบสุดท้าย แล้วค่อยลบ (`line-workflow-context.ts`) | — |
+| `DEMI_LINE_LOGIN_CHANNEL_SECRET` | Reissue → §4 | remote deauthorization ช่วงนั้นเป็น "unconfirmed" |
+| `DEMI_LINE_MINI_APP_*` | ยกเลิกแล้วตาม [ADR-0035](../adr/0035-retire-line-mini-app.md): ลบออกจาก `/etc/demi/demi.env` แล้วรัน `env:check` | — |
 | HMAC worker secrets | ดู E1 §3 (VPS ไม่ใช้ เพราะ timer เรียก tick) | — |
 | Cloudflare Origin certificate | ออกใบใหม่ใน Cloudflare → แทนไฟล์ §1.6 → `sudo nginx -t && sudo systemctl reload nginx` ก่อนใบเดิมหมดอายุ | ไม่มี |
 

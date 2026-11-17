@@ -48,7 +48,7 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 8 | Quick Reply | พิมพ์ข้อความอื่นให้ได้ HELP แล้วแตะปุ่มงาน | เปิดใน LIFF เหมือน Rich Menu | | |
 | 9 | ผู้ใช้หลายบทบาท | สลับพื้นที่ด้วยปุ่มสลับ แล้วแตะปุ่มงาน | richmenuswitch ทำงานเดิม ปลายทางเปิดใน LIFF | | |
 | 10 | จัดการบัญชี | Rich Menu “จัดการบัญชี” | เปิด Account LIFF `/line/account` เหมือนเดิม | | |
-| 11 | MINI นัดหมาย (ถ้าเปิดใช้) | ลิงก์ MINI เดิม | เปิด MINI App เดิม ไม่ใช่ Workspace | | |
+| 11 | ยกเลิกแล้ว: MINI App ถูกยกเลิกตาม [ADR-0035](../adr/0035-retire-line-mini-app.md) | — | — | — | — |
 | 12 | ยังไม่ login DEMI | ออกจากระบบใน LIFF แล้วแตะ “ยาของฉัน” | หน้า login DEMI ปกติ → login → กลับ `/app/personal/medications` ใน LIFF (แม้ URL จะมี `liff.hback` หรือ `lineAppVersion`) | | |
 | 13 | session หมดอายุ | เปิดหน้า LIFF ค้างไว้จน session หมด แล้วกดเมนูในแอป | ไปหน้า login ปกติ ไม่มี loop | | |
 | 14 | เปิดใน Chrome/Safari | เปิด `<ORIGIN>/` และ `<ORIGIN>/app` ตรง ๆ | ไป `/app` หรือ `/login` ทันที ไม่โหลด LIFF | | |
@@ -65,13 +65,13 @@ https://liff.line.me/<WORKSPACE_LIFF_ID>
 | 25 | พารามิเตอร์ของ Android | Android: แตะลิงก์ทดสอบทุกลิงก์ | ไม่เจอหน้า “ลิงก์นี้ไม่ถูกต้อง” แม้ LINE จะเติม `lineAppVersion` | | — |
 | 26 | init ทุกหน้า | ใน `/app` reload จากเมนู ⋯ แล้วเปิดหน้าอื่นด้วยลิงก์เต็มหน้า | ยังอยู่ใน LIFF ไม่มี loop; (ถ้าใช้ LIFF Inspector) `liff.id` คือ Workspace LIFF ID | | |
 | 27 | กลับจาก Account LIFF | จากข้อ 22 กดย้อนกลับ แล้วแตะเมนูงาน | หน้า Workspace ทำงานต่อได้ ไม่วนไปหน้า “กำลังเปิด DEMI ผ่าน LINE” | | |
-| 28 | MINI ออกไป `/app` (ถ้าเปิดใช้) | ใน MINI แตะ “ออกจากหน้านัดหมายใน LINE ไปยัง DEMI” แล้วเปิด บัญชี LINE | ลิงก์ยังเป็น `/line/account` แบบเดิม ไม่ init Workspace LIFF ใน MINI | | |
+| 28 | ยกเลิกแล้ว: MINI App ถูกยกเลิกตาม [ADR-0035](../adr/0035-retire-line-mini-app.md) | — | — | — | — |
 | 29 | storage ข้าม LIFF | หลังข้อ 22 และ 27 ใช้ LIFF Inspector ดู `sessionStorage["demi.line.liff.context"]` | บนหน้า Account เป็น `current: ACCOUNT` กลับมาหน้า Workspace แล้วเป็น `current: WORKSPACE, workspace: READY` หากค่าหายหลังข้ามแอป ให้บันทึกไว้ (ลิงก์จะกลับไปใช้เส้นทางเว็บเดิม) | | |
 | 30 | Account → Workspace | เปิด “จัดการบัญชี” จาก Rich Menu แล้วแตะ “ใช้งาน DEMI ผ่านเว็บ” และแยกทดสอบโลโก้ “DEMI” ด้านบน | ทั้งสองเปิด Workspace LIFF (`liff.line.me/<WORKSPACE_LIFF_ID>/app`) ไป `/app` ไม่มี footer; ใน Chrome/Safari ปุ่มไป `/app` และโลโก้ไป `/` แบบเดิม | | |
 | 31 | ยังไม่ login แล้วแตะปุ่มงาน | ออกจากระบบ DEMI แล้วแตะ “ยาของฉัน”, “บันทึกสุขภาพ”, “คัดกรอง” และ “งานทั้งหมด” (ถ้าใช้ LIFF Inspector ให้ดูลำดับ `liff.init()` กับการเปลี่ยนไป `/login` และจำนวนครั้งที่เข้า LINE Login) | ไปหน้า login ใน LIFF → login → กลับหน้าเดิม (งานทั้งหมดกลับ `/app`) ไม่มี footer ไม่มี loop ไม่เข้า LINE Login ซ้ำ หากพบ ให้บันทึกตาม ADR-0031 “Known race” | | |
 | 32 | init ไม่สำเร็จ | (staging) ทำให้ LINE ตอบช้า/ปิดเน็ตชั่วคราวระหว่างเปิดหน้า `/app` | เห็นข้อความ “เชื่อมต่อกับ LINE ไม่สำเร็จ” พร้อมปุ่ม “ลองเชื่อมต่ออีกครั้ง” DEMI ยังใช้งานได้ ไม่ลองซ้ำเอง | | |
-| 33 | MINI → บัญชี → DEMI (ถ้าเปิดใช้) | ใน MINI เปิดบัญชี LINE แล้วแตะ “ใช้งาน DEMI ผ่านเว็บ” | ยังเป็น `/app` แบบเดิม ไม่เปิด Workspace LIFF จาก MINI | | |
-| 34 | MINI แล้วเปิด Workspace | หลังใช้ MINI แตะปุ่มงานจาก Rich Menu (และลองเปิดลิงก์ Workspace LIFF จากในแชตเดียวกัน) | Workspace LIFF เปิดและ init ตามปกติ ลิงก์บัญชีเป็น Account LIFF; MINI ยังทำงานเดิมเมื่อกลับไปเปิด | | |
+| 33 | ยกเลิกแล้ว: MINI App ถูกยกเลิกตาม [ADR-0035](../adr/0035-retire-line-mini-app.md) | — | — | — | — |
+| 34 | ยกเลิกแล้ว: MINI App ถูกยกเลิกตาม [ADR-0035](../adr/0035-retire-line-mini-app.md) | — | — | — | — |
 
 ผลจาก unit test ที่ mock SDK (เช่น `app/workspace-liff-bootstrap.test.tsx`) และ `npm run test:workspace-liff:next-smoke` (Next.js จริงแต่ไม่มี LINE) ไม่ใช่หลักฐานจากอุปกรณ์จริง และใช้แทนตารางนี้ไม่ได้
 

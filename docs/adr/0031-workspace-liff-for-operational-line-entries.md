@@ -4,6 +4,7 @@
 - Date: 2026-11-08
 - Supersedes in part: the "ลิงก์เมนูงานเปิด **เว็บ DEMI ปกติ** … ไม่ใช่ LIFF" decision of [Phase LINE-QA.A — Hybrid Quick Action Rich Menu](../phases/PHASE_LINE_QA_A_HYBRID_QUICK_ACTION_RICH_MENU.md), for operational entries launched from LINE only.
 - Amends: [ADR-0009](./0009-demi-line-oa-liff-identity-and-messaging.md) decision 1 (one more LIFF app in the same DEMI LINE Login channel). Every other ADR-0009 decision is unchanged.
+- Superseded in part (2026-11-17): the MINI parts of this ADR (decisions 2, 8 and 11, the `mini` session dimension and the MINI items below) are superseded by [ADR-0035](./0035-retire-line-mini-app.md); the MINI App is retired.
 - Does not change: DEMI authentication, login-return allowlist, Role + Capability + Scope authorization, Account LIFF, Account Link/Unlink/Full Disconnection/Recovery, the MINI App channel and its scoped routes, Rich Menu catalog/role presentation (Option C), notifications, database schema.
 
 ## Context
