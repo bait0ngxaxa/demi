@@ -41,6 +41,17 @@ describe("ADR-0025 network report export endpoint", () => {
     });
   });
 
+  it("uses the Bangkok generation date in the download filename before 07:00", async () => {
+    const generatedAt = new Date("2026-11-16T18:30:00.000Z");
+    mockedExport.mockResolvedValue({ buffer: Buffer.from("synthetic-xlsx-bytes"), generatedAt, parent: { id: parentHospitalId, hospitalCode: "P/001 แม่ข่าย", name: "แม่ข่าย" } });
+
+    const response = await GET(new Request(`${endpoint}?parentHospitalId=${parentHospitalId}&scope=ALL`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Disposition")).toContain("-2026-11-17.xlsx");
+    expect(response.headers.get("X-Report-Generated-At")).toBe(generatedAt.toISOString());
+  });
+
   it("returns a private XLSX named by the Parent code and passes the parsed selection", async () => {
     const response = await GET(new Request(`${endpoint}?parentHospitalId=${parentHospitalId}&scope=ALL&cohort=INCLUDE_ENDED`));
 
