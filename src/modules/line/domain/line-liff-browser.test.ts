@@ -24,45 +24,47 @@ function store(initial: Record<string, string> = {}): Pick<Storage, "getItem" | 
 }
 
 const context = (value: Partial<LiffBrowserContext> & Pick<LiffBrowserContext, "current">): LiffBrowserContext =>
-  ({ mini: false, workspace: null, ...value });
+  ({ workspace: null, ...value });
 
 describe("LIFF browser context (presentation only)", () => {
-  it("records entries per LIFF app, keeps the MINI session sticky and starts Workspace as pending", () => {
+  it("records entries per LIFF app and starts Workspace as pending", () => {
     const session = store();
     expect(readLiffBrowserContext(session)).toBeNull();
     recordLiffBrowserEntry(session, "WORKSPACE");
-    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
+    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", workspace: "PENDING" });
     recordLiffBrowserEntry(session, "ACCOUNT");
-    expect(readLiffBrowserContext(session)).toEqual({ current: "ACCOUNT", mini: false, workspace: "PENDING" });
+    expect(readLiffBrowserContext(session)).toEqual({ current: "ACCOUNT", workspace: "PENDING" });
 
-    const mini = store();
-    recordLiffBrowserEntry(mini, "MINI");
-    recordLiffBrowserEntry(mini, "ACCOUNT");
-    expect(readLiffBrowserContext(mini)).toEqual({ current: "ACCOUNT", mini: true, workspace: null });
+    const accountFirst = store();
+    recordLiffBrowserEntry(accountFirst, "ACCOUNT");
+    expect(readLiffBrowserContext(accountFirst)).toEqual({ current: "ACCOUNT", workspace: null });
   });
 
-  it("ends a MINI navigation chain only on a real Workspace entry, and starts it again on the next MINI entry", () => {
-    const shared = store();
-    recordLiffBrowserEntry(shared, "MINI");
-    // MINI -> Workspace LIFF URL in the same browsing session.
-    recordLiffBrowserEntry(shared, "WORKSPACE");
-    expect(readLiffBrowserContext(shared)).toEqual({ current: "WORKSPACE", mini: false, workspace: "PENDING" });
-    recordWorkspaceInitResult(shared, "READY");
-    expect(resolveLineAccountHref({ context: readLiffBrowserContext(shared), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(ACCOUNT_LIFF_URL);
-    // Back into the MINI App: its exits are ordinary again and Workspace never initializes there.
-    recordLiffBrowserEntry(shared, "MINI");
-    expect(readLiffBrowserContext(shared)).toEqual({ current: "MINI", mini: true, workspace: "READY" });
-    // MINI -> Account keeps the chain: the Account screen's DEMI links stay /app.
-    recordLiffBrowserEntry(shared, "ACCOUNT");
-    expect(resolveLineWorkspaceHref({ context: readLiffBrowserContext(shared), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
+  it.each([
+    ["Workspace-ready", { current: "WORKSPACE", mini: false, workspace: "READY" }],
+    ["Account", { current: "ACCOUNT", mini: false, workspace: "READY" }],
+    ["sticky session", { current: "ACCOUNT", mini: true, workspace: null }],
+    ["retired app", { current: "MINI", mini: true, workspace: "READY" }],
+    ["retired app without the old field", { current: "MINI", workspace: "READY" }],
+  ])("treats a value stored before ADR-0035 (%s) as no context, never as Workspace-ready", (_label, legacy) => {
+    const session = store({ [LIFF_BROWSER_CONTEXT_KEY]: JSON.stringify(legacy) });
+    expect(readLiffBrowserContext(session)).toBeNull();
+    expect(isWorkspaceLiffContext(readLiffBrowserContext(session))).toBe(false);
+    expect(resolveLineAccountHref({ context: readLiffBrowserContext(session), accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
+    expect(resolveLineWorkspaceHref({ context: readLiffBrowserContext(session), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
+    // An init result cannot promote it; the next real entry rewrites it in the current shape.
+    expect(recordWorkspaceInitResult(session, "READY")).toBe(false);
+    recordLiffBrowserEntry(session, "WORKSPACE");
+    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", workspace: "PENDING" });
   });
 
   it.each([
     "not json",
-    JSON.stringify({ current: "ADMIN", mini: false, workspace: null }),
-    JSON.stringify({ current: "WORKSPACE", mini: "no", workspace: null }),
-    JSON.stringify({ current: "WORKSPACE", mini: false, workspace: "AUTHORIZED" }),
-    JSON.stringify({ current: "WORKSPACE", mini: false, workspace: null, padding: "x".repeat(300) }),
+    JSON.stringify({ current: "ADMIN", workspace: null }),
+    JSON.stringify({ current: "WORKSPACE" }),
+    JSON.stringify({ current: "WORKSPACE", workspace: "AUTHORIZED" }),
+    JSON.stringify({ current: "WORKSPACE", workspace: "READY", role: "ADMIN" }),
+    JSON.stringify({ current: "WORKSPACE", workspace: null, padding: "x".repeat(300) }),
   ])("treats malformed stored context %s as no context", (raw) => {
     expect(readLiffBrowserContext(store({ [LIFF_BROWSER_CONTEXT_KEY]: raw }))).toBeNull();
   });
@@ -102,8 +104,6 @@ describe("LIFF browser context (presentation only)", () => {
       context({ current: "WORKSPACE", workspace: "PENDING" }),
       context({ current: "WORKSPACE", workspace: "FAILED" }),
       context({ current: "ACCOUNT", workspace: "READY" }),
-      context({ current: "MINI", mini: true }),
-      context({ current: "WORKSPACE", mini: true, workspace: "READY" }),
     ]) {
       expect(resolveLineAccountHref({ context: current, accountLiffUrl: ACCOUNT_LIFF_URL })).toBe(LINE_ACCOUNT_PATH);
     }
@@ -113,7 +113,7 @@ describe("LIFF browser context (presentation only)", () => {
 
   it("routes Account -> Workspace through the Workspace LIFF only from Account LIFF context", () => {
     expect(resolveLineWorkspaceHref({ context: context({ current: "ACCOUNT" }), workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(WORKSPACE_LIFF_URL);
-    for (const current of [null, context({ current: "WORKSPACE" }), context({ current: "ACCOUNT", mini: true }), context({ current: "MINI", mini: true })]) {
+    for (const current of [null, context({ current: "WORKSPACE" }), context({ current: "WORKSPACE", workspace: "READY" })]) {
       expect(resolveLineWorkspaceHref({ context: current, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(LINE_WORKSPACE_WEB_PATH);
     }
     expect(resolveLineWorkspaceHref({ context: context({ current: "ACCOUNT" }), workspaceLiffUrl: null })).toBe(LINE_WORKSPACE_WEB_PATH);
@@ -124,7 +124,6 @@ describe("LIFF browser context (presentation only)", () => {
     expect(isWorkspaceLiffContext(context({ current: "WORKSPACE", workspace: "READY" }))).toBe(true);
     expect(isWorkspaceLiffContext(context({ current: "WORKSPACE", workspace: "PENDING" }))).toBe(false);
     expect(isWorkspaceLiffContext(context({ current: "WORKSPACE", workspace: "FAILED" }))).toBe(false);
-    expect(isWorkspaceLiffContext(context({ current: "WORKSPACE", mini: true, workspace: "READY" }))).toBe(false);
     expect(isWorkspaceLiffContext(context({ current: "ACCOUNT", workspace: "READY" }))).toBe(false);
     expect(isWorkspaceLiffContext(null)).toBe(false);
   });
@@ -136,13 +135,13 @@ describe("LIFF browser context (presentation only)", () => {
 
     recordLiffBrowserEntry(session, "WORKSPACE");
     recordWorkspaceInitResult(session, "FAILED");
-    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", mini: false, workspace: "FAILED" });
+    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", workspace: "FAILED" });
 
     // Workspace -> Account LIFF, then back to a Workspace page that initializes again.
     recordLiffBrowserEntry(session, "ACCOUNT");
     expect(readLiffBrowserContext(session)?.current).toBe("ACCOUNT");
     recordWorkspaceInitResult(session, "READY");
-    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    expect(readLiffBrowserContext(session)).toEqual({ current: "WORKSPACE", workspace: "READY" });
 
     const accountOnly = store();
     recordLiffBrowserEntry(accountOnly, "ACCOUNT");
@@ -153,7 +152,7 @@ describe("LIFF browser context (presentation only)", () => {
     const session = store();
     recordLiffBrowserEntry(session, "WORKSPACE");
     recordWorkspaceInitResult(session, "READY");
-    expect(Object.keys(readLiffBrowserContext(session) ?? {}).sort()).toEqual(["current", "mini", "workspace"]);
+    expect(Object.keys(readLiffBrowserContext(session) ?? {}).sort()).toEqual(["current", "workspace"]);
     expect(session.getItem(LIFF_BROWSER_CONTEXT_KEY)).not.toMatch(/token|user|role|session|patient|hospital/iu);
   });
 });

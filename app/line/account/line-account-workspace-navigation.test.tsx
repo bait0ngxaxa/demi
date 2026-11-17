@@ -113,12 +113,12 @@ describe("Account LIFF -> Workspace LIFF navigation", () => {
     ["an unlinked account", unlinked, {}],
     ["a failure", unlinked, { view: "FAILURE" as const, message: "ลองใหม่" }],
   ])("opens the Workspace LIFF URL from the Account LIFF after %s", (_label, initial, state) => {
-    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: null });
     expect(workspaceHref(initial, { ...state, workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe(WORKSPACE_LIFF_URL);
   });
 
   it("routes the header DEMI logo through the same resolver: Workspace LIFF URL in the Account LIFF, / elsewhere", () => {
-    setContext({ current: "ACCOUNT", mini: false, workspace: "READY" });
+    setContext({ current: "ACCOUNT", workspace: "READY" });
     workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
     expect(headerLogoHref()).toBe(WORKSPACE_LIFF_URL);
 
@@ -126,17 +126,13 @@ describe("Account LIFF -> Workspace LIFF navigation", () => {
     workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
     expect(headerLogoHref()).toBe("/");
 
-    setContext({ current: "ACCOUNT", mini: true, workspace: null });
-    workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL });
-    expect(headerLogoHref()).toBe("/");
-
-    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: null });
     workspaceHref(linked, { workspaceLiffUrl: null });
     expect(headerLogoHref()).toBe("/");
   });
 
   it("leaves no Account LIFF link into / or /app that skips the Workspace LIFF URL", () => {
-    setContext({ current: "ACCOUNT", mini: false, workspace: "READY" });
+    setContext({ current: "ACCOUNT", workspace: "READY" });
     for (const [initial, state] of [[linked, {}], [unlinked, {}], [linked, { view: "SUCCESS" as const, successAction: "LINK" as const }]] as const) {
       workspaceHref(initial, { ...state, workspaceLiffUrl: WORKSPACE_LIFF_URL });
       const hrefs = [...container.querySelectorAll("a")].map((node) => node.getAttribute("href"));
@@ -144,12 +140,10 @@ describe("Account LIFF -> Workspace LIFF navigation", () => {
     }
   });
 
-  it("keeps /app in an ordinary browser, a MINI session and without Workspace configuration", () => {
+  it("keeps /app in an ordinary browser and without Workspace configuration", () => {
     expect(workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL, isInClient: false })).toBe("/app");
-    setContext({ current: "ACCOUNT", mini: true, workspace: null });
-    expect(workspaceHref(linked, { workspaceLiffUrl: WORKSPACE_LIFF_URL })).toBe("/app");
     window.sessionStorage.clear();
-    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: null });
     expect(workspaceHref(linked, { workspaceLiffUrl: null })).toBe("/app");
   });
 
@@ -175,7 +169,7 @@ describe("Account LIFF -> Workspace LIFF navigation", () => {
       await act(async () => root.render(client()));
       await act(async () => { await Promise.resolve(); });
       expect(liffMocks.init).toHaveBeenCalledWith({ liffId: "1234567890-Account" });
-      expect(JSON.parse(window.sessionStorage.getItem(LIFF_BROWSER_CONTEXT_KEY) ?? "null")).toEqual({ current: "ACCOUNT", mini: false, workspace: null });
+      expect(JSON.parse(window.sessionStorage.getItem(LIFF_BROWSER_CONTEXT_KEY) ?? "null")).toEqual({ current: "ACCOUNT", workspace: null });
       const link = [...container.querySelectorAll("a")].find((node) => node.textContent === "ใช้งาน DEMI ผ่านเว็บ");
       expect(link?.getAttribute("href")).toBe(WORKSPACE_LIFF_URL);
     });

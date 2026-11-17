@@ -56,7 +56,7 @@ describe("Workspace LIFF lifecycle regression", () => {
     // A verified Workspace document initialization updates presentation after returning.
     // Document ownership itself is covered by workspace-liff-document and browser tests.
     recordWorkspaceInitResult(store, "READY");
-    expect(readLiffBrowserContext(store)).toEqual({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    expect(readLiffBrowserContext(store)).toEqual({ current: "WORKSPACE", workspace: "READY" });
   });
 
   it("a failed Workspace init never reads as initialized and keeps ordinary Account links", () => {

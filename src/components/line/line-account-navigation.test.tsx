@@ -57,20 +57,18 @@ afterEach(() => {
 
 describe("LINE account navigation (Workspace -> Account)", () => {
   it("opens the Account LIFF URL from the Workspace LIFF (LIFF-to-LIFF transition)", () => {
-    setContext({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    setContext({ current: "WORKSPACE", workspace: "READY" });
     expect(accountLink(ACCOUNT_LIFF_URL)).toBe(ACCOUNT_LIFF_URL);
   });
 
-  it("keeps the existing route in an ordinary browser, the Account LIFF and a MINI session", () => {
+  it("keeps the existing route in an ordinary browser and the Account LIFF", () => {
     expect(accountLink(ACCOUNT_LIFF_URL)).toBe("/line/account");
-    setContext({ current: "ACCOUNT", mini: false, workspace: "READY" });
-    expect(accountLink(ACCOUNT_LIFF_URL)).toBe("/line/account");
-    setContext({ current: "MINI", mini: true, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: "READY" });
     expect(accountLink(ACCOUNT_LIFF_URL)).toBe("/line/account");
   });
 
   it("fails safe to the existing route when the Account LIFF is not configured or not provided", () => {
-    setContext({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    setContext({ current: "WORKSPACE", workspace: "READY" });
     expect(accountLink(null)).toBe("/line/account");
     expect(accountLink(undefined)).toBe("/line/account");
     expect(accountLink("https://evil.example/line/account")).toBe("/line/account");
@@ -101,7 +99,7 @@ describe("LINE account navigation (Workspace -> Account)", () => {
   });
 
   it("rewrites only the Account route for callers with their own href", () => {
-    setContext({ current: "WORKSPACE", mini: false, workspace: "READY" });
+    setContext({ current: "WORKSPACE", workspace: "READY" });
     act(() => root.render(
       <LineAccountNavigationProvider accountLiffUrl={ACCOUNT_LIFF_URL}>
         <HrefProbe href="/line/account" />
@@ -114,15 +112,13 @@ describe("LINE account navigation (Workspace -> Account)", () => {
 
 describe("LINE workspace navigation (Account -> Workspace)", () => {
   it("opens the Workspace LIFF URL from the Account LIFF", () => {
-    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: null });
     expect(workspaceLink(WORKSPACE_LIFF_URL)).toBe(WORKSPACE_LIFF_URL);
   });
 
-  it("keeps /app in an ordinary browser, a MINI session and without Workspace configuration", () => {
+  it("keeps /app in an ordinary browser and without Workspace configuration", () => {
     expect(workspaceLink(WORKSPACE_LIFF_URL)).toBe("/app");
-    setContext({ current: "ACCOUNT", mini: true, workspace: null });
-    expect(workspaceLink(WORKSPACE_LIFF_URL)).toBe("/app");
-    setContext({ current: "ACCOUNT", mini: false, workspace: null });
+    setContext({ current: "ACCOUNT", workspace: null });
     expect(workspaceLink(null)).toBe("/app");
     expect(workspaceLink("https://liff.line.me/1234567890-Workspace/app/admin")).toBe("/app");
   });

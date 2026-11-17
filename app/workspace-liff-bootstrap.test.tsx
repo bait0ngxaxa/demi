@@ -71,10 +71,10 @@ describe("Workspace document navigation gate", () => {
     expect(init).toHaveBeenCalledOnce();
   });
 
-  it("ordinary, Account and MINI historical contexts do not load Workspace SDK", async () => {
+  it("ordinary and Account historical contexts do not load Workspace SDK", async () => {
     window.history.replaceState(null, "", "/app/personal/medications");
     const load = vi.fn();
-    window.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "ACCOUNT", mini: false, workspace: "READY" }));
+    window.sessionStorage.setItem("demi.line.liff.context", JSON.stringify({ current: "ACCOUNT", workspace: "READY" }));
     await act(async () => root.render(<WorkspaceLiffBootstrap liffId={ID} load={load} />));
     expect(load).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledOnce();
