@@ -11,13 +11,16 @@ import { FORM_CONTRACT_REGISTRY } from "../../../tests/support/form-contract";
  * contract test (tests/support/form-contract.ts explains how to register one). A strict parser is any
  * non-test source file that uses one of these checks.
  */
-const STRICT_PARSER_PATTERNS: readonly RegExp[] = [
+const ALLOW_LIST_PATTERNS: readonly RegExp[] = [
   /hasUnexpectedOrDuplicateFields\(/u,
   /allowedFields\.has\(/u,
   /!Object\.hasOwn\(limits/u,
   /limits\[operation\]\[key\]/u,
   /COMMAND_KEYS\[/u,
 ];
+/** The whole form is handed to a `.strict()` schema; the schema's keys are the allow-list. */
+const FROM_ENTRIES_PATTERN = /Object\.fromEntries\(\s*formData\b/u;
+const STRICT_PARSER_PATTERNS: readonly RegExp[] = [...ALLOW_LIST_PATTERNS, FROM_ENTRIES_PATTERN];
 
 const REPO_ROOT = process.cwd();
 const SOURCE_ROOT = path.join(REPO_ROOT, "src");
@@ -64,6 +67,8 @@ describe("form ↔ server contract coverage", () => {
     const problems: string[] = [];
 
     for (const [module, source] of await findStrictParserModules()) {
+      // Object.fromEntries parsers have no allow-list constant; they only need a registration.
+      if (!ALLOW_LIST_PATTERNS.some((pattern) => pattern.test(source))) continue;
       const entry = registered.get(module);
       if (/^const [A-Z][A-Z0-9_]*_FORM_FIELDS\b/mu.test(source)) {
         problems.push(`${module}: export its *_FORM_FIELDS allow-lists so the contract tests can import them`);

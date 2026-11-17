@@ -18,13 +18,15 @@
  *
  * Registering a new strict form:
  * 1. Export the allow-list the server uses. A top-level "use server" module may export only async
- *    functions, so move the constant, unchanged, into a sibling module (see `goal-plan-form-fields.ts`)
- *    and import it back into the action.
+ *    functions, so move the constant, unchanged, into a sibling module (see `goal-plan-form-input.ts`)
+ *    and import it back into the action. An action that hands `Object.fromEntries(formData)` to a
+ *    `.strict()` schema has no constant to export: the schema's keys are its allow-list.
  * 2. Write a jsdom component test next to the form that calls `captureSubmittedFormData` and
  *    `expectFormContract` once per form mode, with realistic filled input.
  * 3. Add the transport module to `FORM_CONTRACT_REGISTRY` below, naming every allow-list it guards and
- *    the test files that cover them. `src/shared/testing/form-contract-coverage.test.ts` fails when a
- *    strict parser has no entry, when a listed test file is missing, or when a listed test does not
+ *    the test files that cover them. `src/shared/testing/form-contract-coverage.test.ts` finds strict
+ *    parsers automatically (allow-list checks and `Object.fromEntries(formData…)` handed to a schema) and
+ *    fails when a strict parser has no entry, when a listed test file is missing, or when a listed test does not
  *    mention a listed allow-list together with `expectFormContract`.
  */
 import { act, type ReactNode } from "react";
@@ -397,8 +399,14 @@ export const FORM_CONTRACT_REGISTRY: readonly FormContractRegistration[] = [
     contracts: ["COMMAND_KEYS"],
     tests: ["app/app/hospitals/knowledge/hospital-content-form-contracts.test.tsx"],
   },
-  // Actions that pass `Object.fromEntries(formData)` (or the posted fields) to a `.strict()` schema.
-  // They are not found by the source patterns, so they are registered by hand.
+  // Actions that pass `Object.fromEntries(formData)` to a `.strict()` schema; the coverage test finds them.
+  {
+    module: "src/modules/account-security/transport/server-actions.ts",
+    contracts: ["authenticatedPasswordChangeSchema"],
+    tests: ["app/app/personal/password/password-change-form-contract.test.tsx"],
+  },
+  // The self-measurement action reads each posted field itself (no allow-list check, no Object.fromEntries),
+  // so no source pattern finds it; it is registered by hand.
   {
     module: "src/modules/patient-self-measurements/transport/self-measurement-form-input.ts",
     contracts: ["patientSelfMeasurementCreateSchema"],

@@ -19,7 +19,9 @@ action, and runs it through the real server parser, allow-list and request schem
 - UI-only controls must be removed before dispatch (`dispatchFormDataPreservingInput` `omitFields`), or
   must have no `name`.
 - Register each strict parser in `FORM_CONTRACT_REGISTRY`. `src/shared/testing/form-contract-coverage.test.ts`
-  fails when a strict parser has no registration, when an exported `*_FORM_FIELDS` or
+  finds strict parsers automatically: allow-list checks (`hasUnexpectedOrDuplicateFields`,
+  `allowedFields.has`, field `limits`, `COMMAND_KEYS`) and actions that hand `Object.fromEntries(formData…)`
+  to a `.strict()` schema. It fails when a strict parser has no registration, when an exported `*_FORM_FIELDS` or
   `*_FORM_FIELD_LIMITS` allow-list is not registered, or when a registered test does not use the
   allow-list it is registered for.
 
