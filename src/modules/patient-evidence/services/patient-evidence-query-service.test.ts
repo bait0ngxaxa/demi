@@ -18,6 +18,7 @@ vi.mock("./patient-evidence-access-service", () => ({
 
 import {
   getPatientEvidenceArtifactAccess,
+  getPatientEvidencePageContext,
   listPatientEvidenceArtifacts,
 } from "./patient-evidence-query-service";
 
@@ -59,6 +60,7 @@ function createDatabase(): {
       byteSize: 4,
       caption: "คำอธิบาย",
       createdAt: new Date("2026-08-17T06:00:00.000Z"),
+      serviceOneArtifactAssociation: null,
       createdByUser: {
         id: actor.userId,
         person: { givenName: "ผู้", familyName: "บันทึก" },
@@ -96,11 +98,12 @@ describe("Patient Evidence bounded queries", () => {
         caption: "คำอธิบาย",
         createdAt: new Date("2026-08-17T06:00:00.000Z"),
         creator: { id: actor.userId, displayName: "ผู้ บันทึก" },
+        serviceOneAssociated: false,
       },
     ]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { patientHospitalRelationshipId: relationshipId },
+        where: { patientHospitalRelationshipId: relationshipId, removedAt: null },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: PATIENT_EVIDENCE_LIST_LIMIT,
       }),
@@ -119,7 +122,7 @@ describe("Patient Evidence bounded queries", () => {
 
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: artifactId, patientHospitalRelationshipId: relationshipId },
+        where: { id: artifactId, patientHospitalRelationshipId: relationshipId, removedAt: null },
       }),
     );
   });
@@ -151,5 +154,88 @@ describe("Patient Evidence bounded queries", () => {
       objectKey: `relationship-evidence/${artifactId}`,
       expiresInSeconds: PATIENT_EVIDENCE_SIGNED_URL_EXPIRY_SECONDS,
     });
+  });
+});
+
+describe("Patient Evidence page removal flags (N4)", () => {
+  const hospitalId = access.target.hospitalId;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedResolveAccess.mockResolvedValue(access);
+  });
+  const otherUserId = "66666666-6666-4666-8666-666666666666";
+
+  function listRecord(id: string, createdByUserId: string, associated = false): Record<string, unknown> {
+    return {
+      id,
+      patientHospitalRelationshipId: relationshipId,
+      mediaType: "image/jpeg",
+      byteSize: 4,
+      caption: null,
+      createdAt: new Date("2026-08-17T06:00:00.000Z"),
+      serviceOneArtifactAssociation: associated ? { id: "77777777-7777-4777-8777-777777777777" } : null,
+      createdByUser: { id: createdByUserId, person: { givenName: "ผู้", familyName: "บันทึก" } },
+    };
+  }
+
+  const ownUpload = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const otherUpload = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const associatedUpload = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+  function databaseWithRecords(): PatientEvidenceAccessDatabase {
+    return {
+      patientEvidenceArtifact: {
+        findMany: vi.fn().mockResolvedValue([
+          listRecord(ownUpload, actor.userId),
+          listRecord(otherUpload, otherUserId),
+          listRecord(associatedUpload, actor.userId, true),
+        ]),
+      },
+    } as unknown as PatientEvidenceAccessDatabase;
+  }
+
+  function removable(context: Awaited<ReturnType<typeof getPatientEvidencePageContext>>): Record<string, boolean> {
+    return Object.fromEntries(context.artifacts.map((artifact) => [artifact.id, artifact.canRemove]));
+  }
+
+  it("lets a direct Hospital member remove any unassociated photo", async () => {
+    const member: ActorContext = {
+      ...actor,
+      hospitalMemberships: [
+        { hospitalId, membershipType: "MEMBER", profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" },
+      ],
+    };
+    mockedResolveAccess.mockResolvedValue({ ...access, actor: member });
+
+    const context = await getPatientEvidencePageContext(member, relationshipId, { database: databaseWithRecords() });
+
+    expect(removable(context)).toEqual({ [ownUpload]: true, [otherUpload]: true, [associatedUpload]: false });
+    expect(context.artifacts.find(({ id }) => id === associatedUpload)?.serviceOneAssociated).toBe(true);
+  });
+
+  it("lets an assigned อสม. remove only their own uploads", async () => {
+    const osm: ActorContext = {
+      ...actor,
+      roles: [Role.OSM],
+      osmHospitalRelationships: [{ hospitalId, status: "ACTIVE", hospitalStatus: "ACTIVE" }],
+    };
+    mockedResolveAccess.mockResolvedValue({
+      ...access,
+      actor: osm,
+      target: { ...access.target, assignedOsmUserId: osm.userId },
+    });
+
+    const context = await getPatientEvidencePageContext(osm, relationshipId, { database: databaseWithRecords() });
+
+    expect(removable(context)).toEqual({ [ownUpload]: true, [otherUpload]: false, [associatedUpload]: false });
+  });
+
+  it("offers no removal to a reader who cannot upload (network read)", async () => {
+    // No direct membership and no assignment: the read resolved through the network fallback.
+    const context = await getPatientEvidencePageContext(actor, relationshipId, { database: databaseWithRecords() });
+
+    expect(context.canCreate).toBe(false);
+    expect(removable(context)).toEqual({ [ownUpload]: false, [otherUpload]: false, [associatedUpload]: false });
   });
 });

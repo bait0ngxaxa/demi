@@ -617,6 +617,7 @@ model User {
   patientProgramRoundPlanItemsDone PatientProgramRoundPlanItem[] @relation("PatientProgramRoundPlanItemDoneBy")
   patientProgramRoundAchieveScoresRecorded PatientProgramRoundAchieveScore[] @relation("PatientProgramRoundAchieveScoreRecordedBy")
   patientEvidenceArtifactsCreated PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactCreatedBy")
+  patientEvidenceArtifactsRemoved PatientEvidenceArtifact[] @relation("PatientEvidenceArtifactRemovedBy")
   patientProgramServiceOneRoutinesRecorded PatientProgramServiceOneRoutine[] @relation("PatientProgramServiceOneRoutineRecordedBy")
   patientProgramServiceOneFloatingChartsRecorded PatientProgramServiceOneFloatingChart[] @relation("PatientProgramServiceOneFloatingChartRecordedBy")
   patientProgramServiceOneDreamCardsRecorded PatientProgramServiceOneDreamCard[] @relation("PatientProgramServiceOneDreamCardRecordedBy")
@@ -2070,12 +2071,19 @@ model PatientEvidenceArtifact {
   caption                       String?  @db.VarChar(500)
   createdByUserId               String   @db.Uuid
   createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+  // N4 (ADR-0034): soft removal. The row is kept for attribution; the storage object is deleted after commit.
+  // CHECK "PatientEvidenceArtifact_removal_check": all three null, or removedAt and removedByUserId both set.
+  removedAt                     DateTime? @db.Timestamptz(3)
+  removedByUserId               String?   @db.Uuid
+  removalReason                 String?   @db.VarChar(500)
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   createdByUser               User                        @relation("PatientEvidenceArtifactCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  removedByUser               User?                       @relation("PatientEvidenceArtifactRemovedBy", fields: [removedByUserId], references: [id], onDelete: Restrict)
   serviceOneArtifactAssociation PatientProgramServiceOneArtifactAssociation?
 
   @@index([patientHospitalRelationshipId, createdAt])
+  @@index([removedByUserId])
   @@unique([id, patientHospitalRelationshipId])
 }
 

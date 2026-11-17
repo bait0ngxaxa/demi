@@ -14,6 +14,7 @@ import {
 import {
   PATIENT_ARTIFACT_CREATE_CAPABILITY,
   PATIENT_ARTIFACT_READ_CAPABILITY,
+  canRemovePatientEvidenceArtifact,
   decidePatientEvidencePolicy,
 } from "../policies/patient-evidence-policy";
 import {
@@ -32,6 +33,7 @@ export const patientEvidenceArtifactListSelect = {
   byteSize: true,
   caption: true,
   createdAt: true,
+  serviceOneArtifactAssociation: { select: { id: true } },
   createdByUser: {
     select: {
       id: true,
@@ -60,11 +62,18 @@ export type PatientEvidenceArtifactProjection = {
     id: string;
     displayName: string;
   };
+  /** N4: a photo attached to a Service 1 activity cannot be removed (ADR-0034). */
+  serviceOneAssociated: boolean;
+};
+
+export type PatientEvidencePageArtifact = PatientEvidenceArtifactProjection & {
+  /** Display only; removePatientEvidenceArtifact re-checks every rule on the server. */
+  canRemove: boolean;
 };
 
 export type PatientEvidencePageContext = {
   patient: PatientEvidencePatientSummary;
-  artifacts: PatientEvidenceArtifactProjection[];
+  artifacts: PatientEvidencePageArtifact[];
   canCreate: boolean;
 };
 
@@ -107,6 +116,7 @@ function toArtifactProjection(record: PatientEvidenceArtifactListRecord): Patien
       id: record.createdByUser.id,
       displayName: toDisplayName(record.createdByUser.person),
     },
+    serviceOneAssociated: record.serviceOneArtifactAssociation !== null,
   };
 }
 
@@ -115,7 +125,8 @@ async function listArtifactsForRelationship(
   relationshipId: string,
 ): Promise<PatientEvidenceArtifactProjection[]> {
   const artifacts = await database.patientEvidenceArtifact.findMany({
-    where: { patientHospitalRelationshipId: relationshipId },
+    // N4: a removed photo is hidden from every read path.
+    where: { patientHospitalRelationshipId: relationshipId, removedAt: null },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: PATIENT_EVIDENCE_LIST_LIMIT,
     select: patientEvidenceArtifactListSelect,
@@ -175,7 +186,17 @@ export async function getPatientEvidencePageContext(
 
     return {
       patient: access.patient,
-      artifacts,
+      artifacts: artifacts.map((artifact) => ({
+        ...artifact,
+        canRemove:
+          createDecision.allowed &&
+          !artifact.serviceOneAssociated &&
+          canRemovePatientEvidenceArtifact({
+            actor: access.actor,
+            target: access.target,
+            createdByUserId: artifact.creator.id,
+          }),
+      })),
       canCreate: createDecision.allowed,
     };
   } catch (error: unknown) {
@@ -210,6 +231,8 @@ export async function getPatientEvidenceArtifactAccess(
     where: {
       id: parsedArtifactId.data.toLowerCase(),
       patientHospitalRelationshipId: access.patient.patientHospitalRelationshipId,
+      // N4: a removed photo answers NotFound (404), the same as an unknown one.
+      removedAt: null,
     },
     select: {
       id: true,

@@ -11,6 +11,7 @@ import {
 } from "../policies/patient-evidence-image-policy";
 
 export const PATIENT_EVIDENCE_CAPTION_MAX_LENGTH = 500;
+export const PATIENT_EVIDENCE_REMOVAL_REASON_MAX_LENGTH = 500;
 export const PATIENT_EVIDENCE_LIST_LIMIT = 50;
 export const PATIENT_EVIDENCE_SIGNED_URL_EXPIRY_SECONDS = 300;
 
@@ -56,6 +57,31 @@ export type NormalizedPatientEvidenceCreateInput = z.output<
 
 export const patientEvidenceRelationshipIdSchema = z.string().uuid();
 export const patientEvidenceArtifactIdSchema = z.string().uuid();
+
+/** N4: the reason is required, trimmed, 1-500 characters after trimming. */
+export const patientEvidenceRemoveInputSchema = z
+  .object({
+    artifactId: patientEvidenceArtifactIdSchema,
+    relationshipId: patientEvidenceRelationshipIdSchema,
+    reason: z.string().trim().min(1).max(PATIENT_EVIDENCE_REMOVAL_REASON_MAX_LENGTH),
+  })
+  .strict();
+
+export type NormalizedPatientEvidenceRemoveInput = z.output<typeof patientEvidenceRemoveInputSchema>;
+
+export function normalizePatientEvidenceRemoveInput(input: unknown): NormalizedPatientEvidenceRemoveInput {
+  const parsed = patientEvidenceRemoveInputSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Patient evidence removal input is invalid");
+  }
+
+  return {
+    artifactId: parsed.data.artifactId.toLowerCase(),
+    relationshipId: parsed.data.relationshipId.toLowerCase(),
+    reason: parsed.data.reason,
+  };
+}
 
 function getInputErrorReason(error: z.ZodError): PatientEvidenceValidationReason {
   if (error.issues.some((issue) => issue.path[0] === "caption" && issue.code === "too_big")) {
