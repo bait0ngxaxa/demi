@@ -14,27 +14,12 @@ import {
   deleteOwnPatientSelfMeasurement,
 } from "../services/patient-self-measurement-service";
 
+import { buildSelfMeasurementCreateInput, readSelfMeasurementId } from "./self-measurement-form-input";
+
 export type PatientSelfMeasurementActionState =
   | { status: "IDLE" }
   | { status: "SUCCESS"; message: string }
   | { status: "ERROR"; message: string; recovery: "RECOVERABLE" | "CRITICAL"; loginHref?: string };
-
-function formNumber(formData: FormData, key: string): number | null | string {
-  const value = formData.get(key);
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : value;
-}
-
-function formString(formData: FormData, key: string): string {
-  const value = formData.get(key);
-  return typeof value === "string" ? value : "";
-}
-
-/** `measuredAt` arrives as a Thailand local `datetime-local` value. */
-function bangkokDateTime(value: string): string {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u.test(value) ? `${value}:00+07:00` : value;
-}
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApplicationError) {
@@ -62,17 +47,7 @@ export async function createOwnPatientSelfMeasurementAction(
 ): Promise<PatientSelfMeasurementActionState> {
   try {
     const actor = await getProtectedApplicationActor();
-    const bloodSugarUnit = formString(formData, "bloodSugarUnit");
-    const result = await createOwnPatientSelfMeasurement(actor, {
-      submissionNonce: formString(formData, "submissionNonce"),
-      measuredAt: bangkokDateTime(formString(formData, "measuredAt")),
-      weight: formNumber(formData, "weight"),
-      systolicBloodPressure: formNumber(formData, "systolicBloodPressure"),
-      diastolicBloodPressure: formNumber(formData, "diastolicBloodPressure"),
-      bloodSugar: formNumber(formData, "bloodSugar"),
-      ...(bloodSugarUnit ? { bloodSugarUnit } : {}),
-      note: formString(formData, "note"),
-    });
+    const result = await createOwnPatientSelfMeasurement(actor, buildSelfMeasurementCreateInput(formData));
     revalidatePath("/app/personal/measurements");
     return { status: "SUCCESS", message: result.outcome === "REPLAY" ? "บันทึกรายการนี้ไว้แล้ว" : "บันทึกแล้ว" };
   } catch (error: unknown) {
@@ -86,7 +61,7 @@ export async function deleteOwnPatientSelfMeasurementAction(
 ): Promise<PatientSelfMeasurementActionState> {
   try {
     const actor = await getProtectedApplicationActor();
-    await deleteOwnPatientSelfMeasurement(actor, formString(formData, "measurementId"));
+    await deleteOwnPatientSelfMeasurement(actor, readSelfMeasurementId(formData));
     revalidatePath("/app/personal/measurements");
     return { status: "SUCCESS", message: "ลบรายการแล้ว" };
   } catch (error: unknown) {

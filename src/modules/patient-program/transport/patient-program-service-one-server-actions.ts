@@ -7,7 +7,6 @@ import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/ro
 import { ApplicationError } from "@/shared/errors/application-error";
 
 import {
-  FLOATING_CHART_SCORE_FIELDS,
   patientProgramServiceOneConfidenceRequestSchema,
   patientProgramServiceOneArtifactAssociationRequestSchema,
   patientProgramServiceOneDreamCardRequestSchema,
@@ -28,133 +27,13 @@ import type {
   PatientProgramServiceOneActionState,
   PatientProgramServiceOneEvidenceActionState,
 } from "./patient-program-service-one-action-state";
-
-function getSingleString(formData: FormData, field: string): string | undefined {
-  const values = formData.getAll(field);
-
-  if (values.length !== 1 || typeof values[0] !== "string") {
-    return undefined;
-  }
-
-  return values[0];
-}
-function getSingleInteger(formData: FormData, field: string): number | undefined {
-  const value = getSingleString(formData, field);
-
-  if (value === undefined || !/^-?\d+$/u.test(value.trim())) {
-    return undefined;
-  }
-
-  const parsed = Number(value.trim());
-  return Number.isSafeInteger(parsed) ? parsed : undefined;
-}
-
-function hasUnexpectedOrDuplicateFields(formData: FormData, allowedFields: ReadonlySet<string>): boolean {
-  const seen = new Set<string>();
-
-  for (const key of formData.keys()) {
-    if (key.startsWith("$ACTION_")) {
-      continue;
-    }
-
-    if (!allowedFields.has(key) || seen.has(key)) {
-      return true;
-    }
-
-    seen.add(key);
-  }
-
-  return false;
-}
-
-function parseJsonField(formData: FormData, field: string): unknown {
-  const raw = getSingleString(formData, field);
-
-  if (raw === undefined) {
-    return undefined;
-  }
-
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-function buildRoutineInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "routineDate", "entries"]))) {
-    return null;
-  }
-
-  return {
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    roundNumber: getSingleInteger(formData, "roundNumber"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    routineDate: getSingleString(formData, "routineDate"),
-    entries: parseJsonField(formData, "entries"),
-  };
-}
-
-function buildFloatingChartInput(formData: FormData): unknown {
-  if (
-    hasUnexpectedOrDuplicateFields(
-      formData,
-      new Set(["patientProgramId", "roundNumber", "submissionNonce", "summary", ...FLOATING_CHART_SCORE_FIELDS]),
-    )
-  ) {
-    return null;
-  }
-
-  return {
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    roundNumber: getSingleInteger(formData, "roundNumber"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    summary: getSingleString(formData, "summary"),
-    ...Object.fromEntries(FLOATING_CHART_SCORE_FIELDS.map((field) => [field, getSingleInteger(formData, field)])),
-  };
-}
-
-function buildDreamCardInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "dream", "obstacle", "weeklyGoal"]))) {
-    return null;
-  }
-
-  return {
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    roundNumber: getSingleInteger(formData, "roundNumber"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    dream: getSingleString(formData, "dream"),
-    obstacle: getSingleString(formData, "obstacle"),
-    weeklyGoal: getSingleString(formData, "weeklyGoal"),
-  };
-}
-
-function buildConfidenceInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "submissionNonce", "score", "improvementPlan"]))) {
-    return null;
-  }
-
-  return {
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    roundNumber: getSingleInteger(formData, "roundNumber"),
-    submissionNonce: getSingleString(formData, "submissionNonce"),
-    score: getSingleInteger(formData, "score"),
-    improvementPlan: getSingleString(formData, "improvementPlan"),
-  };
-}
-
-function buildArtifactAssociationInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData, new Set(["patientProgramId", "roundNumber", "activity", "patientEvidenceArtifactId"]))) {
-    return null;
-  }
-
-  return {
-    patientProgramId: getSingleString(formData, "patientProgramId"),
-    roundNumber: getSingleInteger(formData, "roundNumber"),
-    activity: getSingleString(formData, "activity"),
-    patientEvidenceArtifactId: getSingleString(formData, "patientEvidenceArtifactId"),
-  };
-}
+import {
+  buildArtifactAssociationInput,
+  buildConfidenceInput,
+  buildDreamCardInput,
+  buildFloatingChartInput,
+  buildRoutineInput,
+} from "./service-one-form-input";
 
 function mapServiceOneError(error: unknown): {
   code: "INVALID_INPUT" | "FORBIDDEN" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE";

@@ -1,7 +1,7 @@
 import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
-const VITALS_FORM_FIELDS = new Set([
+export const VITALS_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
@@ -18,7 +18,7 @@ const VITALS_FORM_FIELDS = new Set([
   "profileVersion",
 ]);
 
-const PROFILE_FORM_FIELDS = new Set([
+export const PROFILE_FORM_FIELDS = new Set([
   "submissionNonce",
   "patientHospitalRelationshipId",
   "patientProgramId",
@@ -28,7 +28,7 @@ const PROFILE_FORM_FIELDS = new Set([
   "profileVersion",
 ]);
 
-const STEP_FORM_FIELDS = new Set([
+export const STEP_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
@@ -37,14 +37,14 @@ const STEP_FORM_FIELDS = new Set([
   "note",
 ]);
 
-const COMPLETION_FORM_FIELDS = new Set([
+export const COMPLETION_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
   "submissionNonce",
 ]);
 
-const ACHIEVE_SCORE_FORM_FIELDS = new Set([
+export const ACHIEVE_SCORE_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",
@@ -52,7 +52,7 @@ const ACHIEVE_SCORE_FORM_FIELDS = new Set([
   "score",
 ]);
 
-const REVIEW_FORM_FIELDS = new Set([
+export const REVIEW_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "roundNumber",

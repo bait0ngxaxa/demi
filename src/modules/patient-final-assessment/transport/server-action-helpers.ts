@@ -1,7 +1,7 @@
 import { roundConflictMessage } from "@/modules/patient-program-rounds/domain/round-conflict-error";
 import { ApplicationError } from "@/shared/errors/application-error";
 
-const FINAL_ASSESSMENT_FORM_FIELDS = new Set([
+export const FINAL_ASSESSMENT_FORM_FIELDS = new Set([
   "patientHospitalRelationshipId",
   "patientProgramId",
   "serviceDate",
