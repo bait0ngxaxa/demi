@@ -12,7 +12,7 @@ export function WorkHomeToolGroups({
       <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="work-home-tools-heading">
         เครื่องมือที่ใช้บ่อย
       </h2>
-      <div className="mt-4 grid gap-x-8 gap-y-6 @3xl/workspace:grid-cols-2 @6xl/workspace:grid-cols-3">
+      <div className="mt-4 grid gap-x-8 gap-y-6 @2xl/home-main:grid-cols-2">
         {groups.map(({ id, label, tools }) => (
           <div className="min-w-0" key={id}>
             <h3 className="text-sm font-semibold text-text-muted">{label}</h3>

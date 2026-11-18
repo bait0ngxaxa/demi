@@ -171,6 +171,12 @@ describe("application home workspace routing", () => {
     expect(getPendingActions).toHaveBeenCalledExactlyOnceWith(actor.userId);
     expect(html).toContain('<div class="hidden lg:block"><section aria-labelledby="work-home-pending-heading"');
     expect(html).toContain('<div class="mt-8 hidden lg:block"><section aria-labelledby="work-home-tools-heading"');
+    expect(html).toContain('class="contents lg:block lg:min-w-0 lg:@container/home-main"');
+    const tools = section(html, "work-home-tools-heading");
+    expect(tools).toContain("@2xl/home-main:grid-cols-2");
+    expect(tools).not.toMatch(/\/workspace:grid-cols-|grid-cols-3/);
+    expect(html).toContain("lg:@4xl/workspace:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]");
+    expect(section(html, "work-home-news-heading")).toContain("lg:@4xl/workspace:col-start-2");
     expect(html).toContain('<div class="lg:hidden"><section aria-labelledby="work-home-menu-heading"');
     expect(section(html, "work-home-pending-heading")).toContain('href="/app/patients/service-requests?group=PENDING"');
     expect(section(html, "work-home-heading")).not.toContain("รายการ</span>");

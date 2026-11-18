@@ -240,8 +240,8 @@ export default async function ApplicationPage(
 
       <ChildOwnerInvitations invitations={invitations} />
 
-      <div className="lg:mt-8 lg:grid lg:items-start lg:gap-x-8 lg:@5xl/workspace:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:@5xl/workspace:grid-rows-[auto_1fr]">
-        <div className="contents lg:block lg:min-w-0">
+      <div className="lg:mt-8 lg:grid lg:items-start lg:gap-x-8 lg:@4xl/workspace:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:@4xl/workspace:grid-rows-[auto_1fr]">
+        <div className="contents lg:block lg:min-w-0 lg:@container/home-main">
           <div className="hidden lg:block">
             <WorkHomePendingQueue hospitalNames={hospitalNames} result={pendingActions} />
           </div>
@@ -284,7 +284,7 @@ export default async function ApplicationPage(
         {selectedHospital && teamNews ? (
           <HomeContentSection
             allHref={`/app/hospitals/content?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}`}
-            className="lg:order-last lg:@5xl/workspace:col-start-2 lg:@5xl/workspace:row-span-2 lg:@5xl/workspace:row-start-1 lg:@5xl/workspace:mt-0"
+            className="lg:order-last lg:@4xl/workspace:col-start-2 lg:@4xl/workspace:row-span-2 lg:@4xl/workspace:row-start-1 lg:@4xl/workspace:mt-0"
             emptyMessage={`ยังไม่มีข่าวสารสำหรับทีมงานจาก${selectedHospital.hospitalName}`}
             heading="ข่าวสารทีมงาน"
             failure={teamNews.status === "FAILED"
