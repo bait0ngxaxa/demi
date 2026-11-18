@@ -1720,6 +1720,8 @@ model PatientBaseline {
   summary                       String?  @db.VarChar(2000)
   recommendations               String?  @db.VarChar(2000)
   createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+  // Optimistic-concurrency version of an edit; editable only until a Program links this Baseline.
+  updatedAt                     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   patientHospitalRelationship PatientHospitalRelationship @relation(fields: [patientHospitalRelationshipId], references: [id], onDelete: Restrict)
   recordedBy                  User                        @relation("PatientBaselineRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)

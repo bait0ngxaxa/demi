@@ -606,6 +606,8 @@ Phase 10B.0 is implemented as a provisional, read-only Patient Profile subset in
 
 ## Phase 10C.0 Baseline / Initial State Working Prototype
 
+> **Current decision — 2026-11-18 (owner decision 2026-11-17):** the Baseline is editable until a Program links it as its initial Baseline, then immutable. This replaces the Phase 10C.0 "immutable" wording below. See the [Phase 10C.0 handoff addendum](./phases/PHASE_10C0_BASELINE_INITIAL_STATE_WORKING_PROTOTYPE.md).
+
 Phase 10C.0 is implemented as a provisional, immutable initial-state snapshot in [the Phase 10C.0 handoff](./phases/PHASE_10C0_BASELINE_INITIAL_STATE_WORKING_PROTOTYPE.md):
 
 - `PatientBaseline` is a dedicated record owned by the exact `PatientHospitalRelationship`; it is not Follow-up round zero, Screening round zero, a PatientProfile field group, or a current-health status record. A unique relationship key allows one Baseline per relationship.

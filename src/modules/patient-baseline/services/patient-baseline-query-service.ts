@@ -55,12 +55,18 @@ export type PatientBaselineProjection = {
   summary: string | null;
   recommendations: string | null;
   createdAt: Date;
+  /** The version an edit is made against. */
+  updatedAt: Date;
 };
 
 export type PatientBaselinePageContext = {
   patient: PatientBaselinePatientSummary;
   baseline: PatientBaselineProjection | null;
   canCreate: boolean;
+  /** The actor may record a Baseline here and no Program links the existing one yet. */
+  canEdit: boolean;
+  /** A Program links the existing Baseline as its initial Baseline, so it is read-only. */
+  lockedByProgram: boolean;
 };
 
 export type PatientBaselineNavigationState = {
@@ -99,6 +105,7 @@ export const patientBaselineSelect = {
   summary: true,
   recommendations: true,
   createdAt: true,
+  updatedAt: true,
 } satisfies Prisma.PatientBaselineSelect;
 
 export const patientBaselineNavigationSelect = {
@@ -159,7 +166,20 @@ function toProjection(record: PatientBaselineRecord): PatientBaselineProjection 
     summary: record.summary,
     recommendations: record.recommendations,
     createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
   };
+}
+
+async function isLinkedToProgram(
+  database: PatientBaselineQueryDatabase,
+  patientBaselineId: string,
+): Promise<boolean> {
+  const program = await database.patientProgram.findFirst({
+    where: { initialBaselineId: patientBaselineId },
+    select: { id: true },
+  });
+
+  return program !== null;
 }
 
 async function resolveCanCreate(
@@ -230,17 +250,17 @@ export async function getPatientBaselinePageContext(
       select: patientBaselineSelect,
     });
     const baseline = record ? toProjection(record) : null;
+    const [canWrite, lockedByProgram] = await Promise.all([
+      resolveCanCreate(actor, access.patient.patientHospitalRelationshipId, database),
+      baseline ? isLinkedToProgram(database, baseline.id) : Promise.resolve(false),
+    ]);
 
     return {
       patient: access.patient,
       baseline,
-      canCreate: baseline
-        ? false
-        : await resolveCanCreate(
-            actor,
-            access.patient.patientHospitalRelationshipId,
-            database,
-          ),
+      canCreate: baseline === null && canWrite,
+      canEdit: baseline !== null && canWrite && !lockedByProgram,
+      lockedByProgram,
     };
   } catch (error: unknown) {
     if (error instanceof ApplicationError) {
@@ -292,7 +312,36 @@ function toNavigationState(record: PatientBaselineNavigationRecord): { recordedO
   return { recordedOn: record.recordedOn };
 }
 
+/**
+ * Whether the actor may record or edit this relationship's Baseline (the create capability, direct
+ * scope only). Read access is required first, so a hidden relationship stays NOT_FOUND.
+ */
+export async function canRecordPatientBaseline(
+  actor: ActorContext | null | undefined,
+  relationshipId: unknown,
+  dependencies: PatientBaselineQueryDependencies = {},
+): Promise<boolean> {
+  try {
+    const database = getDatabase(dependencies);
+    const access = await resolvePatientBaselineAccessContext(
+      actor,
+      relationshipId,
+      PATIENT_BASELINE_READ_CAPABILITY,
+      database,
+    );
+
+    return await resolveCanCreate(actor, access.patient.patientHospitalRelationshipId, database);
+  } catch (error: unknown) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+
+    throw toInfrastructureError("patient-baseline.canRecordPatientBaseline", error, "Baseline access could not be loaded");
+  }
+}
+
 export const patientBaselineQueryInternals = {
+  isLinkedToProgram,
   patientBaselineNavigationSelect,
   patientBaselineSelect,
   resolveCanCreate,

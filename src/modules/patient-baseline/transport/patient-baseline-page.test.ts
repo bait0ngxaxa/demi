@@ -56,6 +56,7 @@ const baseline = {
   summary: null,
   recommendations: null,
   createdAt: new Date("2026-08-17T05:00:00.000Z"),
+  updatedAt: new Date("2026-08-17T05:00:00.000Z"),
 };
 const actor = { userId: "55555555-5555-4555-8555-555555555555" };
 
@@ -86,6 +87,8 @@ function context(overrides: Partial<PatientBaselinePageContext> = {}): PatientBa
     patient,
     baseline: null,
     canCreate: true,
+    canEdit: false,
+    lockedByProgram: false,
     ...overrides,
   };
 }
