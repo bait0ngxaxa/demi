@@ -181,7 +181,7 @@ function createUpload(buffer: Buffer, name = "unsafe.xlsx"): PatientImportUpload
 }
 
 describe("Patient XLSX resource preflight", () => {
-  it("accepts the generated blank hospital template v3", async () => {
+  it("accepts the generated blank hospital template v4", async () => {
     const buffer = await workbookBuffer(await createPatientImportTemplateWorkbook(templateHospital));
     const summary = await preflightPatientImportXlsx(buffer);
 
@@ -190,13 +190,13 @@ describe("Patient XLSX resource preflight", () => {
       compressedBytes: buffer.byteLength,
       zipEntries: 18,
       worksheetPartCount: 3,
-      worksheetCellElements: 16580,
-      worksheetRowElements: 509,
+      worksheetCellElements: 18096,
+      worksheetRowElements: 514,
       maxRowCoordinate: 502,
-      maxColumnCoordinate: 33,
-      mergeDeclarations: 25,
+      maxColumnCoordinate: 36,
+      mergeDeclarations: 28,
       maxMergeArea: 2,
-      totalMergeArea: 50,
+      totalMergeArea: 56,
     });
   });
 
@@ -223,13 +223,13 @@ describe("Patient XLSX resource preflight", () => {
       compressedBytes: buffer.byteLength,
       zipEntries: 18,
       worksheetPartCount: 3,
-      worksheetCellElements: 16580,
-      worksheetRowElements: 509,
+      worksheetCellElements: 18096,
+      worksheetRowElements: 514,
       maxRowCoordinate: 502,
-      maxColumnCoordinate: 33,
-      mergeDeclarations: 25,
+      maxColumnCoordinate: 36,
+      mergeDeclarations: 28,
       maxMergeArea: 2,
-      totalMergeArea: 50,
+      totalMergeArea: 56,
     });
   });
 

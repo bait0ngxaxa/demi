@@ -20,10 +20,16 @@ import {
   type ImportedPatientHealthHistory,
 } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 import {
+  BLOOD_PRESSURE_ORDER_MESSAGE,
   clinicalValueRangeMessage,
+  isBloodPressureOrderValid,
   isClinicalValueInRange,
   type ClinicalMeasurementKind,
 } from "@/shared/clinical/clinical-value-limits";
+import {
+  CVD_RISK_SCORE_RANGE_MESSAGE,
+  oneDecimalPercentSchema,
+} from "@/shared/clinical/cvd-risk-score";
 import {
   ApplicationError,
   ForbiddenError,
@@ -97,7 +103,10 @@ type BaselineImportTargetField =
   | "heightCm"
   | "waistCircumference"
   | "bloodSugarDtx"
-  | "hba1c";
+  | "hba1c"
+  | "bloodPressureSystolic"
+  | "bloodPressureDiastolic"
+  | "cvdRiskScore";
 
 type BaselineImportValues = Record<BaselineImportTargetField, number | null>;
 
@@ -106,18 +115,29 @@ type BaselineImportState = {
   effectiveDate: string | null;
   presentFields: readonly BaselineImportTargetField[];
   values: BaselineImportValues;
-  /** N3: the Thai field-level error of each value outside its clinical limits, in column order. */
+  /**
+   * The Thai field-level error of each value its shared rule rejects (N3 limits, the CVD
+   * percentage, then the blood-pressure order), in column order.
+   */
   rangeErrors: readonly string[];
 };
 
-const baselineImportMeasurementKinds: Readonly<
-  Record<PatientImportBaselineFieldKey, ClinicalMeasurementKind>
+/** The shared rule of each Baseline column: N3 clinical limits, or the D7 CVD percentage. */
+type BaselineImportValueRule =
+  | { kind: "measurement"; measurement: ClinicalMeasurementKind }
+  | { kind: "cvdRiskScore" };
+
+const baselineImportValueRules: Readonly<
+  Record<PatientImportBaselineFieldKey, BaselineImportValueRule>
 > = {
-  weight: "weight",
-  height: "height",
-  waistCircumference: "waistCircumference",
-  bloodSugarDtx: "bloodSugar",
-  hba1c: "hba1c",
+  weight: { kind: "measurement", measurement: "weight" },
+  height: { kind: "measurement", measurement: "height" },
+  waistCircumference: { kind: "measurement", measurement: "waistCircumference" },
+  bloodSugarDtx: { kind: "measurement", measurement: "bloodSugar" },
+  hba1c: { kind: "measurement", measurement: "hba1c" },
+  bloodPressureSystolic: { kind: "measurement", measurement: "systolicBloodPressure" },
+  bloodPressureDiastolic: { kind: "measurement", measurement: "diastolicBloodPressure" },
+  cvdRiskScore: { kind: "cvdRiskScore" },
 };
 
 const baselineImportFieldMap: Readonly<
@@ -128,6 +148,9 @@ const baselineImportFieldMap: Readonly<
   waistCircumference: "waistCircumference",
   bloodSugarDtx: "bloodSugarDtx",
   hba1c: "hba1c",
+  bloodPressureSystolic: "bloodPressureSystolic",
+  bloodPressureDiastolic: "bloodPressureDiastolic",
+  cvdRiskScore: "cvdRiskScore",
 };
 
 const emptyBaselineImportValues: BaselineImportValues = {
@@ -136,7 +159,21 @@ const emptyBaselineImportValues: BaselineImportValues = {
   waistCircumference: null,
   bloodSugarDtx: null,
   hba1c: null,
+  bloodPressureSystolic: null,
+  bloodPressureDiastolic: null,
+  cvdRiskScore: null,
 };
+
+/** The Thai error for a value its column's rule rejects, or null when the value is accepted. */
+function baselineImportValueError(rule: BaselineImportValueRule, value: number): string | null {
+  if (rule.kind === "cvdRiskScore") {
+    return oneDecimalPercentSchema.safeParse(value).success ? null : CVD_RISK_SCORE_RANGE_MESSAGE;
+  }
+
+  return isClinicalValueInRange(rule.measurement, value)
+    ? null
+    : clinicalValueRangeMessage(rule.measurement);
+}
 
 /** The person fields an identity check needs, scoped to the target Hospital's relationship. */
 export function buildPreviewPersonSelect(targetHospitalId: string) {
@@ -238,16 +275,21 @@ export function readBaselineImportState(
       continue;
     }
 
-    const kind = baselineImportMeasurementKinds[sourceField];
+    const valueError = baselineImportValueError(baselineImportValueRules[sourceField], value);
 
-    if (!isClinicalValueInRange(kind, value)) {
+    if (valueError !== null) {
       invalid = true;
-      rangeErrors.push(clinicalValueRangeMessage(kind));
+      rangeErrors.push(valueError);
       continue;
     }
 
     values[targetField] = value;
     presentFields.push(targetField);
+  }
+
+  if (!isBloodPressureOrderValid(values.bloodPressureSystolic, values.bloodPressureDiastolic)) {
+    invalid = true;
+    rangeErrors.push(BLOOD_PRESSURE_ORDER_MESSAGE);
   }
 
   const state = { effectiveDate, presentFields, values, rangeErrors };

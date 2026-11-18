@@ -21,6 +21,8 @@ import {
   PATIENT_IMPORT_TEMPLATE_VERSION,
 } from "./patient-import-template-contract";
 import { isPatientImportHealthHistoryField } from "./patient-import-contract";
+import { clinicalValueRangeMessage } from "@/shared/clinical/clinical-value-limits";
+import { CVD_RISK_SCORE_RANGE_MESSAGE } from "@/shared/clinical/cvd-risk-score";
 
 export type PatientImportTemplateHospital = {
   hospitalCode: string;
@@ -217,6 +219,20 @@ async function buildInfoSheet(
     ["การใช้งาน", "ไฟล์นี้ใช้นำเข้าผู้ป่วยของโรงพยาบาลนี้เท่านั้น ห้ามแก้ไขหัวตาราง"],
     ["การนำเข้าซ้ำ", "เพิ่มผู้ป่วยใหม่ต่อท้ายไฟล์เดิมได้ ระบบนำเข้าเฉพาะผู้ป่วยใหม่"],
     ["ประวัติโรคและประวัติครอบครัว", "เลือก มี / ไม่มี / ไม่ทราบ ช่องที่เว้นว่างถือว่า ไม่ทราบ (ไม่ใช่ ไม่มี)"],
+    [
+      "ข้อมูลตั้งต้น",
+      "น้ำหนัก ส่วนสูง รอบเอว ค่าน้ำตาลในเลือด HbA1c ความดันตัวบน ความดันตัวล่าง และ CVD risk score คือข้อมูลตั้งต้นของผู้ป่วย กรอกเฉพาะค่าที่มี แถวที่มีค่าใดค่าหนึ่งจะสร้างข้อมูลตั้งต้นตามวันที่ที่เลือกตอนนำเข้า",
+    ],
+    [
+      "ความดันตัวบน (mmHg)",
+      `${clinicalValueRangeMessage("systolicBloodPressure")} และต้องมากกว่าความดันตัวล่างเมื่อกรอกทั้งสองช่อง`,
+    ],
+    ["ความดันตัวล่าง (mmHg)", clinicalValueRangeMessage("diastolicBloodPressure")],
+    ["CVD risk score (%)", `${CVD_RISK_SCORE_RANGE_MESSAGE} เจ้าหน้าที่กรอกเอง ระบบไม่คำนวณ`],
+    [
+      "ข้อมูลที่ไม่นำเข้าจากไฟล์",
+      "การปรับตัว ความมั่นใจ สรุป และคำแนะนำ ไม่นำเข้าจากไฟล์ เจ้าหน้าที่กรอกเพิ่มได้ที่หน้าข้อมูลตั้งต้นของผู้ป่วย และแก้ไขข้อมูลตั้งต้นได้จนกว่าจะเปิดโปรแกรม",
+    ],
   ];
 
   for (const [index, [label, value]] of rows.entries()) {

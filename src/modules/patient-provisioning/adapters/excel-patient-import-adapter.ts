@@ -264,6 +264,9 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
   let diabetesClassification: CanonicalPatientImportRow["clinicalCandidates"]["diabetesClassification"] = null;
   let bloodSugarDtx: number | null = null;
   let hba1c: number | null = null;
+  let bloodPressureSystolic: number | null = null;
+  let bloodPressureDiastolic: number | null = null;
+  let cvdRiskScore: number | null = null;
   let houseNumber: string | null = null;
   let villageNumber: string | null = null;
   let villageName: string | null = null;
@@ -416,6 +419,9 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
     ["waistCircumference", (value) => { waistCircumference = value; }],
     ["bloodSugarDtx", (value) => { bloodSugarDtx = value; }],
     ["hba1c", (value) => { hba1c = value; }],
+    ["bloodPressureSystolic", (value) => { bloodPressureSystolic = value; }],
+    ["bloodPressureDiastolic", (value) => { bloodPressureDiastolic = value; }],
+    ["cvdRiskScore", (value) => { cvdRiskScore = value; }],
   ];
 
   for (const [field, target] of numericFields) {
@@ -466,6 +472,9 @@ function readCanonicalRow(worksheet: Worksheet, rowNumber: number): CanonicalPat
       diabetesClassification,
       bloodSugarDtx,
       hba1c,
+      bloodPressureSystolic,
+      bloodPressureDiastolic,
+      cvdRiskScore,
     },
     organizationCandidates: { hospitalNumber },
     healthHistoryCandidates: { ...healthHistoryAnswers, otherConditions },

@@ -202,7 +202,7 @@ describe("Patient import template v3: complete initial health data (PostgreSQL)"
 
     const preview = await previewPatientImportAction(form);
     if (preview.status !== "SUCCESS") throw new Error("Preview failed");
-    expect(preview.preview.importContractVersion).toBe("patient-import-v3-initial-health-data");
+    expect(preview.preview.importContractVersion).toBe(PATIENT_IMPORT_CONTRACT_VERSION);
     expect(preview.preview.rows.map(({ classification }) => classification)).toEqual(["READY", "READY"]);
     expect(await prisma.patientHospitalRelationship.count()).toBe(0);
 
@@ -413,7 +413,7 @@ describe("Patient import template v3: complete initial health data (PostgreSQL)"
       importTargetOf(hospital),
     );
 
-    expect(download.filename).toContain("_patient_import_v3_failed_rows.xlsx");
+    expect(download.filename).toContain("_patient_import_v4_failed_rows.xlsx");
     expect(failed.candidates).toHaveLength(1);
     expect(failed.candidates[0]?.canonicalRow.healthHistoryCandidates).toMatchObject({
       diabetes: "UNKNOWN", otherConditions: "หอบหืด", familyHypertension: "YES", familyDiabetes: "NO",

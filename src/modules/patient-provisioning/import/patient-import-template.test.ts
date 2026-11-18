@@ -10,6 +10,7 @@ import {
   createPatientImportFailedRowsFilename,
   createPatientImportTemplateDownloadPath,
   createPatientImportTemplateFilename,
+  PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN,
   PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER,
   PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES,
   PATIENT_IMPORT_TEMPLATE_COLUMNS,
@@ -22,6 +23,7 @@ import {
   PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS,
   PATIENT_IMPORT_TEMPLATE_SHEET_NAME,
   PATIENT_IMPORT_TEMPLATE_VERSION,
+  patientImportTemplateColumnLetter,
 } from "./patient-import-template-contract";
 import {
   readPatientImportHeaderCellText,
@@ -64,11 +66,13 @@ function dataAreaValues(worksheet: ExcelJS.Worksheet): unknown[] {
   );
 }
 
-describe("Hospital-bound patient import template v3", () => {
-  it("is the v2 A:Z column set plus medical and family history appended as AA:AG", () => {
-    expect(PATIENT_IMPORT_TEMPLATE_VERSION).toBe("patient-import-template-v3");
-    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS).toHaveLength(33);
-    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ column }) => column).at(-1)).toBe("AG");
+describe("Hospital-bound patient import template v4", () => {
+  it("keeps every Baseline column together and appends medical and family history as AD:AJ", () => {
+    expect(PATIENT_IMPORT_TEMPLATE_VERSION).toBe("patient-import-template-v4");
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS).toHaveLength(36);
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ column }) => column).at(-1)).toBe("AJ");
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ column }, index) => column === patientImportTemplateColumnLetter(index + 1)))
+      .not.toContain(false);
     expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ header }) => header)).not.toContain("โรงพยาบาล");
     expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ header }) => header)).not.toContain("ชื่อผู้ดูแล (อสม.)");
     expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ field }) => field)).toEqual([
@@ -86,6 +90,9 @@ describe("Hospital-bound patient import template v3", () => {
       "diabetesClassification",
       "bloodSugarDtx",
       "hba1c",
+      "bloodPressureSystolic",
+      "bloodPressureDiastolic",
+      "cvdRiskScore",
       "houseNumber",
       "villageNumber",
       "villageName",
@@ -106,23 +113,52 @@ describe("Hospital-bound patient import template v3", () => {
       "familyHeartDisease",
       "familyStroke",
     ]);
-    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.slice(26).map(({ column, header }) => [column, header])).toEqual([
-      ["AA", "โรคประจำตัว: เบาหวาน"],
-      ["AB", "โรคประจำตัว: ความดันโลหิตสูง"],
-      ["AC", "โรคประจำตัวอื่น ๆ"],
-      ["AD", "ญาติสายตรง: ความดันโลหิตสูง"],
-      ["AE", "ญาติสายตรง: เบาหวาน"],
-      ["AF", "ญาติสายตรง: โรคหัวใจ"],
-      ["AG", "ญาติสายตรง: หลอดเลือดสมอง / อัมพาต"],
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.slice(12, 17).map(({ column, header, format }) => [column, header, format])).toEqual([
+      ["M", "ค่าน้ำตาลในเลือด", "numeric"],
+      ["N", "ค่า HbA1c ล่าสุด (ถ้ามี)", "numeric"],
+      ["O", "ความดันตัวบน (mmHg)", "numeric"],
+      ["P", "ความดันตัวล่าง (mmHg)", "numeric"],
+      ["Q", "CVD risk score (%)", "numeric"],
     ]);
-    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.find(({ field }) => field === "houseNumber")?.column).toBe("O");
-    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.find(({ field }) => field === "emergencyContactRelationship")?.column).toBe("Z");
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.slice(29).map(({ column, header }) => [column, header])).toEqual([
+      ["AD", "โรคประจำตัว: เบาหวาน"],
+      ["AE", "โรคประจำตัว: ความดันโลหิตสูง"],
+      ["AF", "โรคประจำตัวอื่น ๆ"],
+      ["AG", "ญาติสายตรง: ความดันโลหิตสูง"],
+      ["AH", "ญาติสายตรง: เบาหวาน"],
+      ["AI", "ญาติสายตรง: โรคหัวใจ"],
+      ["AJ", "ญาติสายตรง: หลอดเลือดสมอง / อัมพาต"],
+    ]);
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.find(({ field }) => field === "houseNumber")?.column).toBe("R");
+    expect(PATIENT_IMPORT_TEMPLATE_COLUMNS.find(({ field }) => field === "emergencyContactRelationship")?.column).toBe("AC");
+    expect(PATIENT_IMPORT_FAILED_ROWS_REASON_COLUMN).toBe("AK");
     expect(PATIENT_IMPORT_TEMPLATE_DATA_END_ROW).toBe(502);
     expect(PATIENT_IMPORT_TEMPLATE_MERGES).toEqual([
-      ...PATIENT_IMPORT_TEMPLATE_COLUMNS.slice(0, 26).filter(({ column }) => column !== "L").map(
+      ...PATIENT_IMPORT_TEMPLATE_COLUMNS.slice(0, 29).filter(({ column }) => column !== "L").map(
         ({ column }) => `${column}1:${column}2`,
       ),
     ]);
+  });
+
+  it("derives spreadsheet letters past Z", () => {
+    expect([1, 26, 27, 36, 52, 53, 702, 703].map(patientImportTemplateColumnLetter)).toEqual([
+      "A", "Z", "AA", "AJ", "AZ", "BA", "ZZ", "AAA",
+    ]);
+  });
+
+  it("describes the Baseline columns, their units and ranges, and the fields it does not import", async () => {
+    const workbook = await roundTrip(await createPatientImportTemplateWorkbook(hospital));
+    const info = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_INFO_SHEET_NAME);
+    const rows = new Map<string, string>();
+    info?.eachRow((row) => { rows.set(row.getCell(1).text, row.getCell(2).text); });
+
+    expect(rows.get("ข้อมูลตั้งต้น")).toContain("ความดันตัวบน ความดันตัวล่าง และ CVD risk score");
+    expect(rows.get("ความดันตัวบน (mmHg)")).toBe(
+      "ความดันตัวบนต้องอยู่ระหว่าง 40–300 มม.ปรอท และต้องมากกว่าความดันตัวล่างเมื่อกรอกทั้งสองช่อง",
+    );
+    expect(rows.get("ความดันตัวล่าง (mmHg)")).toBe("ความดันตัวล่างต้องอยู่ระหว่าง 20–200 มม.ปรอท");
+    expect(rows.get("CVD risk score (%)")).toContain("0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง");
+    expect(rows.get("ข้อมูลที่ไม่นำเข้าจากไฟล์")).toContain("การปรับตัว ความมั่นใจ สรุป และคำแนะนำ");
   });
 
   it("builds the data sheet from the shared contract and survives a write/read round trip", async () => {
@@ -147,7 +183,7 @@ describe("Hospital-bound patient import template v3", () => {
     ).toEqual(
       PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ column }) => PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS[column] ?? ""),
     );
-    expect(worksheet.getCell("AA2").text).toBe("มี / ไม่มี / ไม่ทราบ (เว้นว่าง = ไม่ทราบ)");
+    expect(worksheet.getCell("AD2").text).toBe("มี / ไม่มี / ไม่ทราบ (เว้นว่าง = ไม่ทราบ)");
 
     for (const field of criticalTextFields) {
       const column = PATIENT_IMPORT_TEMPLATE_COLUMNS.find((item) => item.field === field);
@@ -164,7 +200,7 @@ describe("Hospital-bound patient import template v3", () => {
       allowBlank: true,
       formulae: [`"${PATIENT_IMPORT_TEMPLATE_CLASSIFICATION_VALUES.join(",")}"`],
     });
-    for (const column of ["AA", "AB", "AD", "AE", "AF", "AG"]) {
+    for (const column of ["AD", "AE", "AG", "AH", "AI", "AJ"]) {
       expect(worksheet.getCell(`${column}3`).dataValidation).toMatchObject({
         type: "list",
         allowBlank: true,
@@ -173,8 +209,8 @@ describe("Hospital-bound patient import template v3", () => {
       expect(worksheet.getCell(`${column}502`).dataValidation).toMatchObject({ type: "list" });
     }
     expect(PATIENT_IMPORT_TEMPLATE_HEALTH_HISTORY_ANSWER_VALUES).toEqual(["มี", "ไม่มี", "ไม่ทราบ"]);
-    expect(worksheet.getCell("AC3").dataValidation).toBeFalsy();
-    expect(worksheet.getCell("AC3").numFmt).toBe("@");
+    expect(worksheet.getCell("AF3").dataValidation).toBeFalsy();
+    expect(worksheet.getCell("AF3").numFmt).toBe("@");
     expect(dataAreaValues(worksheet)).toEqual(
       Array.from({ length: PATIENT_IMPORT_TEMPLATE_COLUMNS.length * 500 }, () => null),
     );
@@ -193,7 +229,7 @@ describe("Hospital-bound patient import template v3", () => {
     expect(metadata?.state).toBe("veryHidden");
     expect(sheetProtectionOf(metadata)).toMatchObject({ sheet: true });
     expect(metadata?.getCell("A1").text).toBe("templateVersion");
-    expect(metadata?.getCell("B1").text).toBe("patient-import-template-v3");
+    expect(metadata?.getCell("B1").text).toBe("patient-import-template-v4");
     expect(metadata?.getCell("A2").text).toBe("hospitalCode");
     expect(metadata?.getCell("B2").text).toBe(hospital.hospitalCode);
     expect(workbook.worksheets.filter(({ state }) => state === "visible").map(({ name }) => name)).toEqual([
@@ -230,19 +266,19 @@ describe("Hospital-bound patient import template v3", () => {
 
   it("uses safe Hospital-name download filenames while preserving the version and binding path", () => {
     expect(createPatientImportTemplateFilename(hospital.hospitalName)).toBe(
-      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3.xlsx",
+      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v4.xlsx",
     );
     expect(createPatientImportFailedRowsFilename(hospital.hospitalName)).toBe(
-      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v3_failed_rows.xlsx",
+      "DEMI_โรงพยาบาลสังเคราะห์เอ_patient_import_v4_failed_rows.xlsx",
     );
     expect(createPatientImportTemplateFilename("โรงพยาบาล/ศูนย์:* ทดสอบ")).toBe(
-      "DEMI_โรงพยาบาล_ศูนย์_ ทดสอบ_patient_import_v3.xlsx",
+      "DEMI_โรงพยาบาล_ศูนย์_ ทดสอบ_patient_import_v4.xlsx",
     );
     expect(createPatientImportTemplateFilename("โรงพยาบาลบี")).toBe(
-      "DEMI_โรงพยาบาลบี_patient_import_v3.xlsx",
+      "DEMI_โรงพยาบาลบี_patient_import_v4.xlsx",
     );
     expect(createPatientImportTemplateFilename(`${"A".repeat(79)}บี`)).toBe(
-      `DEMI_${"A".repeat(79)}_patient_import_v3.xlsx`,
+      `DEMI_${"A".repeat(79)}_patient_import_v4.xlsx`,
     );
     expect(createPatientImportTemplateFilename(hospital.hospitalName)).not.toBe(
       createPatientImportTemplateFilename("โรงพยาบาลสังเคราะห์บี"),
@@ -254,7 +290,7 @@ describe("Hospital-bound patient import template v3", () => {
 
   it("builds a failed-rows workbook with the same metadata, original values and a trailing reason column", async () => {
     const values = PATIENT_IMPORT_TEMPLATE_COLUMNS.map(({ field }) =>
-      field === "nationalId" ? "123" : field === "givenName" ? "ตัวอย่าง" : field === "familyStroke" ? "ไม่ทราบ" : null,
+      field === "nationalId" ? "123" : field === "givenName" ? "ตัวอย่าง" : field === "familyStroke" ? "ไม่ทราบ" : field === "bloodPressureSystolic" ? 132 : field === "bloodPressureDiastolic" ? 84 : field === "cvdRiskScore" ? 12.5 : null,
     );
     const workbook = await roundTrip(
       await createPatientImportFailedRowsWorkbook(hospital, [
@@ -264,11 +300,12 @@ describe("Hospital-bound patient import template v3", () => {
     );
     const worksheet = workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_SHEET_NAME);
 
-    expect(worksheet?.getCell("AH1").text).toBe(PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER);
+    expect(worksheet?.getCell("AK1").text).toBe(PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER);
     expect(worksheet?.getCell("B3").text).toBe("123");
-    expect(worksheet?.getCell("AG3").text).toBe("ไม่ทราบ");
-    expect(worksheet?.getCell("AH3").text).toBe("เลขบัตรประชาชนไม่ถูกต้อง");
-    expect(worksheet?.getCell("AH4").text).toBe("ชื่อไม่ตรงกัน");
+    expect(worksheet?.getCell("AJ3").text).toBe("ไม่ทราบ");
+    expect([worksheet?.getCell("O3").value, worksheet?.getCell("P3").value, worksheet?.getCell("Q3").value]).toEqual([132, 84, 12.5]);
+    expect(worksheet?.getCell("AK3").text).toBe("เลขบัตรประชาชนไม่ถูกต้อง");
+    expect(worksheet?.getCell("AK4").text).toBe("ชื่อไม่ตรงกัน");
     expect(worksheet?.getCell("B5").value).toBeNull();
     expect(
       workbook.getWorksheet(PATIENT_IMPORT_TEMPLATE_METADATA_SHEET_NAME)?.getCell("B2").text,

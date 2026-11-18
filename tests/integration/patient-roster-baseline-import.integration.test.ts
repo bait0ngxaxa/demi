@@ -527,6 +527,9 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
         waistCircumference: 85,
         bloodSugarDtx: 126,
         hba1c: 6.5,
+        bloodPressureSystolic: 132,
+        bloodPressureDiastolic: 84,
+        cvdRiskScore: 12.5,
         dateOfBirth: "15 มกราคม 2523",
         gender: "หญิง",
         phoneNumber: "0812345678",
@@ -568,6 +571,9 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
         waistCircumference: true,
         bloodSugarDtx: true,
         hba1c: true,
+        bloodPressureSystolic: true,
+        bloodPressureDiastolic: true,
+        cvdRiskScore: true,
       },
     });
     expect(baseline).toMatchObject({
@@ -577,6 +583,9 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
       waistCircumference: 85,
       bloodSugarDtx: 126,
       hba1c: 6.5,
+      bloodPressureSystolic: 132,
+      bloodPressureDiastolic: 84,
+      cvdRiskScore: 12.5,
     });
     expect(await prisma.auditEvent.count({ where: { action: "patient.provisioned" } })).toBe(1);
     expect(await prisma.auditEvent.count({ where: { action: "patient_baseline.created" } })).toBe(1);
@@ -633,6 +642,70 @@ describe("Patient roster import (template v2, new patients only) PostgreSQL work
       heightCm: null,
       hba1c: null,
     });
+  });
+
+  it("creates a Baseline from a row whose only Baseline value is the CVD risk score (v4)", async () => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    const candidate = await readCandidate(hospital, templateRow(thaiNationalId(4101), "ซีวีดีอย่างเดียว", { cvdRiskScore: 7.5 }));
+
+    const summary = await importPatientProvisioning(actor, hospital.id, [candidate], importDependencies(), {
+      effectiveDate: batchDate,
+    });
+
+    expect(summary).toMatchObject({ imported: 1, baselineCreated: 1 });
+    expect(await prisma.patientBaseline.findFirstOrThrow({
+      select: { cvdRiskScore: true, weight: true, bloodPressureSystolic: true },
+    })).toEqual({ cvdRiskScore: 7.5, weight: null, bloodPressureSystolic: null });
+  });
+
+  it.each([
+    ["an out-of-range systolic value", { bloodPressureSystolic: 301, bloodPressureDiastolic: 80 }, "ความดันตัวบนต้องอยู่ระหว่าง 40–300 มม.ปรอท"],
+    ["an out-of-range diastolic value", { bloodPressureDiastolic: 201 }, "ความดันตัวล่างต้องอยู่ระหว่าง 20–200 มม.ปรอท"],
+    ["systolic not above diastolic", { bloodPressureSystolic: 90, bloodPressureDiastolic: 90 }, "ความดันตัวบนต้องมากกว่าความดันตัวล่าง"],
+    ["an out-of-range CVD risk score", { cvdRiskScore: 101 }, "CVD risk score ต้องอยู่ระหว่าง 0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง"],
+    ["a CVD risk score with two decimals", { cvdRiskScore: 12.25 }, "CVD risk score ต้องอยู่ระหว่าง 0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง"],
+  ] as const)("reports %s on its row, keeps the original cells in the failed-rows export and imports nothing", async (_name, values, reason) => {
+    const hospital = await createHospital();
+    const actor = await createOwnerActor(hospital.id);
+    authenticatedActor.mockResolvedValue(actor);
+    const upload = await createTemplateUpload(hospital, [templateRow(thaiNationalId(4201), "ค่าผิด", { weight: 70, ...values })]);
+    const form = new FormData();
+    form.set("file", new File([await upload.arrayBuffer()], upload.name));
+    form.set("targetHospitalId", hospital.id);
+    form.set("effectiveDate", batchDate);
+    const preview = await previewPatientImportAction(form);
+    if (preview.status !== "SUCCESS") throw new Error("Preview failed");
+
+    expect(preview.preview.rows).toHaveLength(1);
+    expect(preview.preview.rows[0]).toMatchObject({
+      rowNumber: 3,
+      classification: "INVALID",
+      baselineStatus: "BASELINE_DATA_INVALID",
+      reason,
+    });
+
+    const download = await createPatientImportFailedRowsDownload(actor, {
+      targetHospitalId: hospital.id,
+      previewTargetHospitalId: hospital.id,
+      fileFingerprint: preview.preview.fileFingerprint,
+      previewBinding: preview.preview.previewBinding,
+      effectiveDate: batchDate,
+      importContractVersion: PATIENT_IMPORT_CONTRACT_VERSION,
+      failedRowNumbers: [],
+    }, upload);
+    const bytes = Uint8Array.from(download.buffer);
+    const failed = await readPatientImportFile(
+      { name: download.filename, size: bytes.byteLength, arrayBuffer: async () => bytes.slice().buffer },
+      importTargetOf(hospital),
+    );
+    const exportedRow = failed.candidates[0];
+    if (!exportedRow) throw new Error("Failed row missing");
+    const exported: Readonly<Record<string, unknown>> = exportedRow.canonicalRow.clinicalCandidates;
+    for (const [field, value] of Object.entries(values)) {
+      expect(exported[field]).toBe(value);
+    }
+    expect(await prisma.patientBaseline.count()).toBe(0);
   });
 
   it("rolls back a newly provisioned Patient core when the Baseline write fails", async () => {

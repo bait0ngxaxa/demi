@@ -116,6 +116,9 @@ function createCandidate(options: {
   waistCircumference?: number | null;
   bloodSugarDtx?: number | null;
   hba1c?: number | null;
+  bloodPressureSystolic?: number | null;
+  bloodPressureDiastolic?: number | null;
+  cvdRiskScore?: number | null;
   classification?: PatientClassificationType | null;
   healthHistory?: Partial<CanonicalPatientImportRow["healthHistoryCandidates"]>;
   assessments?: Partial<PatientImportFieldAssessmentMap>;
@@ -166,6 +169,9 @@ function createCandidate(options: {
         diabetesClassification: options.classification ?? null,
         bloodSugarDtx: options.bloodSugarDtx ?? null,
         hba1c: options.hba1c ?? null,
+        bloodPressureSystolic: options.bloodPressureSystolic ?? null,
+        bloodPressureDiastolic: options.bloodPressureDiastolic ?? null,
+        cvdRiskScore: options.cvdRiskScore ?? null,
       },
       organizationCandidates: { hospitalNumber: input?.hospitalNumber ?? null },
       healthHistoryCandidates: {
@@ -532,6 +538,46 @@ describe("Patient roster import: baseline and classification state readers", () 
     expect(
       patientRosterImportInternals.readBaselineImportState(baselineCandidate, null).status,
     ).toBe("BASELINE_DATE_REQUIRED");
+  });
+
+  it("reads blood pressure and CVD risk score as Baseline values (v4)", () => {
+    const state = patientRosterImportInternals.readBaselineImportState(
+      createCandidate({ bloodPressureSystolic: 132, bloodPressureDiastolic: 84, cvdRiskScore: 12.5 }),
+      "2026-08-01",
+    );
+
+    expect(state).toMatchObject({
+      status: "BASELINE_READY",
+      presentFields: ["bloodPressureSystolic", "bloodPressureDiastolic", "cvdRiskScore"],
+      values: { bloodPressureSystolic: 132, bloodPressureDiastolic: 84, cvdRiskScore: 12.5 },
+    });
+    expect(
+      patientRosterImportInternals.buildBaselineCreateInput("55555555-5555-4555-8555-555555555555", state),
+    ).toMatchObject({ bloodPressureSystolic: 132, bloodPressureDiastolic: 84, cvdRiskScore: 12.5 });
+  });
+
+  it("creates a Baseline from a row that has only a CVD risk score", () => {
+    expect(
+      patientRosterImportInternals.readBaselineImportState(createCandidate({ cvdRiskScore: 0 }), "2026-08-01"),
+    ).toMatchObject({ status: "BASELINE_READY", presentFields: ["cvdRiskScore"] });
+  });
+
+  it.each([
+    [{ bloodPressureSystolic: 301 }, "ความดันตัวบนต้องอยู่ระหว่าง 40–300 มม.ปรอท"],
+    [{ bloodPressureDiastolic: 19 }, "ความดันตัวล่างต้องอยู่ระหว่าง 20–200 มม.ปรอท"],
+    [{ cvdRiskScore: 100.1 }, "CVD risk score ต้องอยู่ระหว่าง 0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง"],
+    [{ cvdRiskScore: 12.35 }, "CVD risk score ต้องอยู่ระหว่าง 0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง"],
+    [{ bloodPressureSystolic: 80, bloodPressureDiastolic: 80 }, "ความดันตัวบนต้องมากกว่าความดันตัวล่าง"],
+    [{ bloodPressureSystolic: 70, bloodPressureDiastolic: 90 }, "ความดันตัวบนต้องมากกว่าความดันตัวล่าง"],
+  ] as const)("rejects %o with its shared rule's Thai error", (values, message) => {
+    const state = patientRosterImportInternals.readBaselineImportState(
+      createCandidate({ weight: 70, ...values }),
+      "2026-08-01",
+    );
+
+    expect(state.status).toBe("BASELINE_DATA_INVALID");
+    expect(state.rangeErrors).toEqual([message]);
+    expect(patientRosterImportInternals.baselineStateReason(state)).toBe(message);
   });
 
   it("builds a baseline create request only from a ready state", () => {
