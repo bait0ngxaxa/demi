@@ -312,7 +312,7 @@ describe("CT-2 จัดบริการ workspace view", () => {
     expect(form.querySelectorAll("input")).toHaveLength(0);
   });
 
-  it("shows each round's state as a glyph next to its number and keeps the sr-only text", () => {
+  it("uses decorative SVGs for round markers and exposes each state as readable text", () => {
     const strip = render({
       result: page({
         items: [item({
@@ -327,12 +327,17 @@ describe("CT-2 จัดบริการ workspace view", () => {
     }).querySelector('ol[aria-label="ความคืบหน้าแต่ละครั้ง"]') as HTMLOListElement;
     const marker = (state: string): HTMLElement => strip.querySelector(`li[data-round-state="${state}"] > span[aria-hidden="true"]`) as HTMLElement;
 
-    expect(marker("COMPLETED").textContent).toBe("1✓");
-    expect(marker("IN_PROGRESS").textContent).toBe("2◐");
+    expect([...strip.children].map((round) => round.getAttribute("data-round-state"))).toEqual([
+      "COMPLETED", "IN_PROGRESS", "NOT_STARTED", "LOCKED",
+    ]);
+    expect(marker("COMPLETED").textContent).toBe("1");
+    expect(marker("COMPLETED").querySelector('svg[aria-hidden="true"] path')).not.toBeNull();
+    expect(marker("IN_PROGRESS").textContent).toBe("2");
+    expect(marker("IN_PROGRESS").querySelector('svg[aria-hidden="true"] circle')).not.toBeNull();
     expect(marker("NOT_STARTED").textContent).toBe("3");
-    expect(marker("NOT_STARTED").querySelector("[data-glyph]")).toBeNull();
+    expect(marker("NOT_STARTED").querySelector("svg")).toBeNull();
     expect(marker("LOCKED").textContent).toBe("4");
-    expect(marker("LOCKED").querySelector('svg[data-glyph="lock"]')).not.toBeNull();
+    expect(marker("LOCKED").querySelector('svg[aria-hidden="true"] rect')).not.toBeNull();
     expect([...strip.querySelectorAll(".sr-only")].map((label) => label.textContent)).toEqual([
       "ครั้งที่ 1 จบแล้ว", "ครั้งที่ 2 กำลังทำ", "ครั้งที่ 3 ยังไม่เริ่ม", "ครั้งที่ 4 ยังเปิดไม่ได้",
     ]);
