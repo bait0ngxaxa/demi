@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -33,7 +33,26 @@ type ScreeningFormProps = {
 };
 
 /** R2-B: the booklet shows five faces from worst (1) to best (5). */
-const PROMS_FACES: Readonly<Record<number, string>> = { 1: "😣", 2: "🙁", 3: "😐", 4: "🙂", 5: "😄" };
+const PROMS_FACE_MOUTHS: Readonly<Partial<Record<number, string>>> = {
+  1: "M8 16q4-6 8 0",
+  2: "M8.5 15.5q3.5-3 7 0",
+  3: "M9 15h6",
+  4: "M8.5 14q3.5 3.5 7 0",
+  5: "M8 13.5h8c-.8 5-7.2 5-8 0Z",
+};
+
+function PromsFace({ value }: { value: number }): React.JSX.Element | null {
+  const mouth = PROMS_FACE_MOUTHS[value];
+  if (mouth === undefined) return null;
+
+  return (
+    <svg aria-hidden="true" className="size-6 shrink-0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" />
+      <path d={value === 1 ? "m7.5 8.5 2 1.5-2 1.5m9-3-2 1.5 2 1.5" : "M9 9.5h.01m5.99 0h.01"} />
+      <path d={mouth} />
+    </svg>
+  );
+}
 
 function QuestionGroup({
   number,
@@ -41,6 +60,7 @@ function QuestionGroup({
   value,
   disabled,
   faces,
+  scaleDescriptionId,
   onChange,
   patientMode = false,
 }: {
@@ -50,10 +70,11 @@ function QuestionGroup({
   value: string | undefined;
   disabled: boolean;
   faces: boolean;
+  scaleDescriptionId?: string;
   onChange: (value: string) => void;
 }): React.JSX.Element {
   return (
-    <fieldset className="border-t border-border pt-5" disabled={disabled}>
+    <fieldset aria-describedby={scaleDescriptionId} className="border-t border-border pt-5" disabled={disabled}>
       <legend className="w-full text-base font-semibold leading-7 text-text">
         <span className="block">
           {number}. {question.prompt}
@@ -93,9 +114,7 @@ function QuestionGroup({
               />
               {faces ? (
                 <>
-                  <span aria-hidden="true" className="text-2xl leading-none">
-                    {PROMS_FACES[option.value]}
-                  </span>
+                  <PromsFace value={option.value} />
                   <span className="font-semibold">{option.label}</span>
                 </>
               ) : (
@@ -134,6 +153,7 @@ export function ScreeningForm({
   nextHref,
 }: ScreeningFormProps): React.JSX.Element {
   const router = useRouter();
+  const scaleDescriptionId = useId();
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<ScreeningActionState, FormData>(
     submitScreeningAction,
     initialScreeningActionState,
@@ -210,7 +230,7 @@ export function ScreeningForm({
                 </p>
               ))}
               {questionSet.scaleLabel ? (
-                <p className="text-sm font-semibold leading-6 text-text">{questionSet.scaleLabel}</p>
+                <p className="text-sm font-semibold leading-6 text-text" id={scaleDescriptionId}>{questionSet.scaleLabel}</p>
               ) : null}
               <p className="text-sm leading-6 text-text-muted">เลือกคำตอบเดียวในแต่ละข้อ ตอบให้ครบทั้ง {questions.length} ข้อ</p>
             </div>
@@ -228,6 +248,7 @@ export function ScreeningForm({
                 number={index + 1}
                 onChange={(value) => setAnswers((current) => ({ ...current, [question.key]: value }))}
                 question={question}
+                scaleDescriptionId={questionSet.instrument === "PROMS" && questionSet.scaleLabel ? scaleDescriptionId : undefined}
                 value={answers[question.key]}
               />
             ))}

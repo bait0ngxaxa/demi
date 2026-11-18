@@ -28,6 +28,10 @@ describe("patient current service", () => {
     const root = document.createElement("div"); root.innerHTML = markup;
     expect(markup).toContain("บริการของฉันตอนนี้");
     for (const text of ["บันทึกด้วยตนเอง", "เจ้าหน้าที่/อสม. จะทำให้", "ทำแล้ว", "คุณบันทึกแล้ว", "ครั้งที่ 1 · ทำแล้ว", "ยังไม่มีนัด", "ครั้งปัจจุบัน", "ยังไม่เปิดให้บันทึก"]) expect(root.textContent).toContain(text);
+    const rounds = root.querySelector('ol[aria-label="ความคืบหน้ารายครั้ง"]');
+    expect(rounds?.querySelector('[aria-current="step"] svg[aria-hidden="true"] circle')).not.toBeNull();
+    expect(rounds?.querySelector('svg[aria-hidden="true"] rect')).not.toBeNull();
+    expect(rounds?.textContent).not.toMatch(/\p{Extended_Pictographic}/u);
     expect(root.querySelector("summary")?.className).toContain("min-h-11");
     expect(root.querySelector('input[name="submissionNonce"]')?.getAttribute("value")).toMatch(/^[a-f0-9-]{36}$/);
     expect(root.querySelector('input[name="weight"]')).not.toBeNull();

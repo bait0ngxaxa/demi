@@ -8,6 +8,7 @@ import {
   type RoundStepStatus,
 } from "../domain/round-steps";
 import { formatRoundDate, roundLockedLabel, roundSkipDescription, roundStepStatusLabel } from "./round-labels";
+import { RoundStateIcon } from "./round-state-icon";
 
 type StepCode = string;
 
@@ -20,16 +21,6 @@ type RoundStepTimelineProps = {
   locked: boolean;
   hrefForStep?: (code: StepCode) => string;
 };
-
-function StateIcon({ status }: { status: RoundStepStatus }): React.JSX.Element {
-  return (
-    <svg aria-hidden="true" className="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      {status === "DONE" ? <path d="m5 12 4 4L19 6" /> : status === "SKIPPED" ? <path d="M5 12h14" /> : status === "LOCKED" ? (
-        <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>
-      ) : <circle cx="12" cy="12" r="7" />}
-    </svg>
-  );
-}
 
 export function RoundStepTimeline({
   steps, roundNumber, currentStep, completion, locked, hrefForStep, audience = "STAFF",
@@ -78,7 +69,7 @@ export function RoundStepTimeline({
               {node.origin ? <span className="block text-xs text-text-muted">{node.origin === "GUIDELINE" ? "ตามแนวทาง" : "เพิ่มเอง"}</span> : null}
               {node.byPatient ? <span className="block text-xs text-brand-strong">{audience === "PATIENT" ? "คุณบันทึกแล้ว" : "ผู้ป่วยบันทึกเอง"}</span> : null}
               <span className={`mt-1 flex items-center gap-1 ${node.status === "DONE" ? "text-success" : node.status === "SKIPPED" ? "text-warning" : "text-text-muted"}`}>
-                <StateIcon status={node.status} />{node.statusLabel}
+                <RoundStateIcon status={node.status} />{node.statusLabel}
               </span>
               <span className="mt-1 block text-xs leading-5 text-text-subtle">{node.meta}</span>
             </span>
