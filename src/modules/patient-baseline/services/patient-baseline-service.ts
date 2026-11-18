@@ -19,15 +19,21 @@ import {
 
 import {
   patientBaselineCreateRequestSchema,
+  patientBaselineUpdateRequestSchema,
 } from "../schemas/patient-baseline-schemas";
 import {
   createPatientBaselineInTransaction,
   patientBaselineTransactionInternals,
+  updatePatientBaselineInTransaction,
   type PatientBaselineCreateResult,
+  type PatientBaselineUpdateResult,
 } from "./patient-baseline-transaction";
 import { toInfrastructureError } from "@/shared/errors/unexpected-error-report";
 
-export type { PatientBaselineCreateResult } from "./patient-baseline-transaction";
+export type {
+  PatientBaselineCreateResult,
+  PatientBaselineUpdateResult,
+} from "./patient-baseline-transaction";
 
 export type PatientBaselineDatabase = PrismaClient;
 
@@ -101,6 +107,37 @@ export async function createPatientBaseline(
           parsed.data,
           getNow(dependencies),
         ),
+      dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
+    );
+  } catch (error: unknown) {
+    throw normalizeDatabaseError(error);
+  }
+}
+
+/**
+ * Edits the Baseline of a care relationship until a Program links it (owner decision 2026-11-17).
+ * Same access rule as create; Serializable so it cannot race a Program opening.
+ */
+export async function updatePatientBaseline(
+  actor: ActorContext | null | undefined,
+  input: unknown,
+  dependencies: PatientBaselineServiceDependencies = {},
+): Promise<PatientBaselineUpdateResult> {
+  const parsed = patientBaselineUpdateRequestSchema.safeParse(input);
+
+  if (!parsed.success) {
+    throw new ValidationError("Baseline edit data is invalid");
+  }
+
+  if (!actor) {
+    throw new ForbiddenError();
+  }
+
+  try {
+    return await runSerializableTransaction(
+      getDatabase(dependencies),
+      (transaction) =>
+        updatePatientBaselineInTransaction(transaction, actor, parsed.data, getNow(dependencies)),
       dependencies.transactionRetries ?? DEFAULT_SERIALIZABLE_TRANSACTION_RETRIES,
     );
   } catch (error: unknown) {

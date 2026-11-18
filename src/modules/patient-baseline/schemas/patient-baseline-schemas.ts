@@ -35,37 +35,59 @@ const optionalTextSchema = z
   .optional()
   .transform((value) => value?.trim() || null);
 
+/** The editable Baseline fields: create and edit take exactly the same set and rules. */
+const patientBaselineFieldsShape = {
+  patientHospitalRelationshipId: patientBaselineRelationshipIdSchema,
+  recordedOn: patientBaselineDateOnlySchema,
+  weight: optionalMeasurementSchema("weight"),
+  heightCm: optionalMeasurementSchema("height"),
+  waistCircumference: optionalMeasurementSchema("waistCircumference"),
+  bloodPressureSystolic: optionalMeasurementSchema("systolicBloodPressure"),
+  bloodPressureDiastolic: optionalMeasurementSchema("diastolicBloodPressure"),
+  bloodSugarDtx: optionalMeasurementSchema("bloodSugar"),
+  hba1c: optionalMeasurementSchema("hba1c"),
+  cvdRiskScore: cvdRiskScoreSchema,
+  adaptationSummary: optionalTextSchema,
+  adaptationObstacles: optionalTextSchema,
+  adaptationOpportunities: optionalTextSchema,
+  confidenceScore: z.number().int().min(0).max(10).nullable().optional(),
+  confidenceImprovementPlan: optionalTextSchema,
+  summary: optionalTextSchema,
+  recommendations: optionalTextSchema,
+};
+
+function refinePatientBaselineFields(
+  input: { bloodPressureSystolic?: number | null; bloodPressureDiastolic?: number | null },
+  context: z.RefinementCtx,
+): void {
+  refineBloodPressureOrder(
+    input.bloodPressureSystolic,
+    input.bloodPressureDiastolic,
+    context,
+    "bloodPressureSystolic",
+  );
+}
+
 export const patientBaselineCreateRequestSchema = z
-  .object({
-    patientHospitalRelationshipId: patientBaselineRelationshipIdSchema,
-    recordedOn: patientBaselineDateOnlySchema,
-    weight: optionalMeasurementSchema("weight"),
-    heightCm: optionalMeasurementSchema("height"),
-    waistCircumference: optionalMeasurementSchema("waistCircumference"),
-    bloodPressureSystolic: optionalMeasurementSchema("systolicBloodPressure"),
-    bloodPressureDiastolic: optionalMeasurementSchema("diastolicBloodPressure"),
-    bloodSugarDtx: optionalMeasurementSchema("bloodSugar"),
-    hba1c: optionalMeasurementSchema("hba1c"),
-    cvdRiskScore: cvdRiskScoreSchema,
-    adaptationSummary: optionalTextSchema,
-    adaptationObstacles: optionalTextSchema,
-    adaptationOpportunities: optionalTextSchema,
-    confidenceScore: z.number().int().min(0).max(10).nullable().optional(),
-    confidenceImprovementPlan: optionalTextSchema,
-    summary: optionalTextSchema,
-    recommendations: optionalTextSchema,
-  })
+  .object(patientBaselineFieldsShape)
   .strict()
-  .superRefine((input, context) => {
-    refineBloodPressureOrder(
-      input.bloodPressureSystolic,
-      input.bloodPressureDiastolic,
-      context,
-      "bloodPressureSystolic",
-    );
-  });
+  .superRefine(refinePatientBaselineFields);
 
 export type PatientBaselineCreateRequest = z.output<typeof patientBaselineCreateRequestSchema>;
+
+/** The version an edit was made against: the `updatedAt` the editor loaded, as an ISO instant. */
+export const patientBaselineVersionSchema = z.iso.datetime({ offset: true });
+
+/**
+ * An edit replaces every editable value: an omitted or blank optional field is cleared. The
+ * recorder never changes.
+ */
+export const patientBaselineUpdateRequestSchema = z
+  .object({ ...patientBaselineFieldsShape, expectedUpdatedAt: patientBaselineVersionSchema })
+  .strict()
+  .superRefine(refinePatientBaselineFields);
+
+export type PatientBaselineUpdateRequest = z.output<typeof patientBaselineUpdateRequestSchema>;
 
 export function dateOnlyToUtcDate(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);

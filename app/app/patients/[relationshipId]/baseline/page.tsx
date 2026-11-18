@@ -11,7 +11,7 @@ import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, NotFoundError, UnauthenticatedError } from "@/shared/errors/application-error";
 
 import { PatientBaselineForm } from "./baseline-form";
-import { PatientBaselineView } from "./baseline-view";
+import { PatientBaselineWorkspace } from "./baseline-workspace";
 
 export const metadata: Metadata = {
   title: "ข้อมูลตั้งต้น",
@@ -60,7 +60,15 @@ export default async function PatientBaselinePage({
   }
 
   if (context.baseline) {
-    return <PatientBaselineView baseline={context.baseline} patient={context.patient} />;
+    return (
+      <PatientBaselineWorkspace
+        baseline={context.baseline}
+        canEdit={context.canEdit}
+        lockedByProgram={context.lockedByProgram}
+        patient={context.patient}
+        relationshipId={relationshipId}
+      />
+    );
   }
 
   if (context.canCreate) {

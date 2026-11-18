@@ -317,7 +317,7 @@ export const FORM_CONTRACT_REGISTRY: readonly FormContractRegistration[] = [
   },
   {
     module: "src/modules/patient-baseline/transport/server-action-helpers.ts",
-    contracts: ["PATIENT_BASELINE_FORM_FIELDS"],
+    contracts: ["PATIENT_BASELINE_FORM_FIELDS", "PATIENT_BASELINE_UPDATE_FORM_FIELDS"],
     tests: [`${patients}/baseline/baseline-form-contract.test.tsx`],
   },
   {

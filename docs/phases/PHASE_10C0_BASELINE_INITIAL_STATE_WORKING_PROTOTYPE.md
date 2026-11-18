@@ -1,5 +1,20 @@
 # DEMI Phase 10C.0 — Baseline / Initial State Working Prototype
 
+> **Current decision — 2026-11-18 (owner decision 2026-11-17, relayed by the developer):** the
+> Baseline is **editable until a Program links it** as its initial Baseline (`PatientProgram.initialBaselineId`),
+> then immutable. This replaces the "immutable" wording of §7 and the create-only statements below.
+> Staff who may create a Baseline (`patient:baseline:create`, same access check, ended care refused)
+> edit it through the same form; an edit replaces every editable value (an optional value may be
+> cleared), never changes the recorder, is guarded by `PatientBaseline.updatedAt`
+> (`expectedUpdatedAt`; a stale version is a conflict) and is audited as `patient_baseline.updated`
+> with the changed field names only. Once any Program links the Baseline the edit is refused with
+> `เปิดโปรแกรมแล้ว แก้ไขข้อมูลตั้งต้นไม่ได้`. A Baseline recorded after a Program opened is linked
+> to the ACTIVE Program at once, so it is read-only from creation. Opening a Program and editing
+> both run Serializable, so they cannot both commit against stale views. The Excel import is the
+> Baseline source ([Patient Import v4](./PATIENT_IMPORT_V4_COMPLETE_BASELINE.md)); adaptation,
+> confidence and summary text are filled in through the edit form. Deletion, replacement after a
+> Program opens, and revision history remain out of scope.
+
 ## 1. Status
 
 Implemented as a small, reversible requirement-validation prototype. The behavior

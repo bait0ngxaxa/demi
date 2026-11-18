@@ -45,6 +45,7 @@ const actor: ActorContext = {
 
 function createDatabase(input: {
   baseline?: Record<string, unknown> | null;
+  linkedProgram?: boolean;
   membership?: boolean;
   relationship?: Record<string, unknown> | null;
 } = {}): PatientBaselineQueryDatabase & {
@@ -95,6 +96,9 @@ function createDatabase(input: {
     },
     patientBaseline: {
       findUnique: vi.fn().mockResolvedValue(input.baseline ?? null),
+    },
+    patientProgram: {
+      findFirst: vi.fn().mockResolvedValue(input.linkedProgram ? { id: "66666666-6666-4666-8666-666666666666" } : null),
     },
   } as unknown as PatientBaselineQueryDatabase & {
     patientBaseline: { findUnique: ReturnType<typeof vi.fn> };
@@ -218,8 +222,16 @@ describe("Patient Baseline query service", () => {
       displayName: "ผู้บันทึก ข้อมูลตั้งต้น",
     });
     expect(context.canCreate).toBe(false);
+    expect(context).toMatchObject({ canEdit: true, lockedByProgram: false });
     expect(JSON.stringify(context)).not.toContain("roles");
     expect(JSON.stringify(context)).not.toContain("credentials");
+  });
+
+  it("locks the edit once a Program links the Baseline", async () => {
+    const database = createDatabase({ baseline: baselineRecord(), linkedProgram: true });
+
+    await expect(getPatientBaselinePageContext(actor, relationshipId, { database }))
+      .resolves.toMatchObject({ canCreate: false, canEdit: false, lockedByProgram: true });
   });
 
   it("returns NotFound when the exact relationship is outside the actor scope", async () => {

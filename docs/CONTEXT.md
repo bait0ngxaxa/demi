@@ -171,6 +171,10 @@ Retired by [ADR-0035](./adr/0035-retire-line-mini-app.md): this MINI runtime was
 
 Product Owner decision amending [ADR-0019](./adr/0019-owner-administration-and-import-only-roster.md): every ACTIVE MEMBER exports its own ACTIVE Hospital's ACTIVE-cohort report workbook without an OWNER grant. Dashboard, row reads, `INCLUDE_ENDED`, network reports and the retired grant management remain OWNER-only.
 
+## CURRENT-status addendum — Patient import template v4: complete Baseline (2026-11-18)
+
+Owner decision 2026-11-17: the Excel import is the patient's Baseline and one import fills every Baseline measurement. Patient import now accepts only `patient-import-template-v4` (contract `patient-import-v4-complete-baseline`): v3 plus `ความดันตัวบน (mmHg)`, `ความดันตัวล่าง (mmHg)` and `CVD risk score (%)` in O–Q right after HbA1c, validated with the shared N3 limits, the systolic > diastolic rule and `cvdRiskScoreSchema`. Every later column shifts by three (health history AD–AJ, failed-rows reason AK); letters derive from the contract array. v3 files and v3-bound previews are rejected. Adaptation, confidence, summary and recommendation text is not imported. See [Patient Import v4](./phases/PATIENT_IMPORT_V4_COMPLETE_BASELINE.md); the template-version and column statements of the v3 addendum below are superseded.
+
 ## CURRENT-status addendum — Patient import template v3: complete initial health data (2026-10-21)
 
 Patient import now accepts only `patient-import-template-v3` (contract `patient-import-v3-initial-health-data`): the v2 columns A–Z unchanged plus medical history (diabetes, hypertension, other conditions) and family history (hypertension, diabetes, heart disease, stroke) in AA–AG, persisted for NEW relationships to `PatientHospitalHealthHistory` inside the same per-row Serializable transaction. Answers are strictly มี/ไม่มี/ไม่ทราบ; blank means UNKNOWN, never NO. v2 files and v2-bound previews are rejected. Existing patients remain identity-check only. Medication, appointment, OSM assignment and health plan workflows are unchanged. See [Patient Import v3](./phases/PATIENT_IMPORT_V3_COMPLETE_INITIAL_HEALTH_DATA.md); the template-version and column statements in the Phase 16F addendum below are superseded.
@@ -601,6 +605,8 @@ Phase 10B.0 is implemented as a provisional, read-only Patient Profile subset in
 - Profile editing, Patient self-service, generic artifacts, and arbitrary uploads remain deferred. Relationship-level image evidence is implemented separately in Phase 10D.0.
 
 ## Phase 10C.0 Baseline / Initial State Working Prototype
+
+> **Current decision — 2026-11-18 (owner decision 2026-11-17):** the Baseline is editable until a Program links it as its initial Baseline, then immutable. This replaces the Phase 10C.0 "immutable" wording below. See the [Phase 10C.0 handoff addendum](./phases/PHASE_10C0_BASELINE_INITIAL_STATE_WORKING_PROTOTYPE.md).
 
 Phase 10C.0 is implemented as a provisional, immutable initial-state snapshot in [the Phase 10C.0 handoff](./phases/PHASE_10C0_BASELINE_INITIAL_STATE_WORKING_PROTOTYPE.md):
 

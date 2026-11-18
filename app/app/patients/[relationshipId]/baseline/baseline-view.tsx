@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Alert } from "@/components/ui/alert";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
+import { PATIENT_BASELINE_LOCKED_NOTICE } from "@/modules/patient-baseline/domain/patient-baseline-edit-lock";
 import type {
   PatientBaselinePatientSummary,
   PatientBaselineProjection,
@@ -73,23 +74,73 @@ function BaselineSection({
   );
 }
 
+function BaselineStatusNotice({
+  editable,
+  lockedByProgram,
+}: {
+  editable: boolean;
+  lockedByProgram: boolean;
+}): React.JSX.Element {
+  if (lockedByProgram) {
+    return (
+      <Alert variant="info">
+        <p className="font-semibold">{PATIENT_BASELINE_LOCKED_NOTICE}</p>
+        <p className="mt-1">
+          ข้อมูลนี้เป็นจุดอ้างอิงของโปรแกรมที่เปิดแล้วและเป็นข้อมูลอ่านอย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
+          ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
+        </p>
+      </Alert>
+    );
+  }
+
+  if (editable) {
+    return (
+      <Alert variant="info">
+        <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น</p>
+        <p className="mt-1">
+          แก้ไขได้จนกว่าจะเปิดโปรแกรม เมื่อเปิดโปรแกรมแล้วข้อมูลนี้จะเป็นข้อมูลอ่านอย่างเดียว
+          ระบบแสดงข้อมูลที่บันทึกไว้เท่านั้นและยังไม่แปลผลทางคลินิก
+        </p>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert variant="info">
+      <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น (อ่านอย่างเดียว)</p>
+      <p className="mt-1">
+        ข้อมูลนี้เป็นข้อมูลอ้างอิงที่อ่านได้อย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
+        ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
+      </p>
+    </Alert>
+  );
+}
+
 export function PatientBaselineView({
   baseline,
+  editAction = null,
+  lockedByProgram = false,
   patient,
 }: {
   baseline: PatientBaselineProjection;
+  /** The edit control, rendered only for an actor who may edit a Baseline no Program links yet. */
+  editAction?: React.ReactNode;
+  lockedByProgram?: boolean;
   patient: PatientBaselinePatientSummary;
 }): React.JSX.Element {
   return (
     <div className="max-w-5xl">
       <PageHeader
         actions={
+          <div className="flex flex-wrap items-center justify-end gap-3">
+          {editAction}
           <Link
             className="inline-flex min-h-11 items-center justify-center rounded-control border border-border-strong bg-surface px-4 py-2 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
             href={`/app/patients/${encodeURIComponent(patient.patientHospitalRelationshipId)}`}
           >
             กลับรายละเอียดผู้ป่วย
           </Link>
+          </div>
         }
         breadcrumbs={[
           {
@@ -103,13 +154,7 @@ export function PatientBaselineView({
       />
 
       <div className="space-y-6 pt-8">
-        <Alert variant="info">
-          <p className="font-semibold">ข้อมูลอ้างอิงเริ่มต้น (อ่านอย่างเดียว)</p>
-          <p className="mt-1">
-            ข้อมูลนี้เป็นข้อมูลอ้างอิงที่อ่านได้อย่างเดียว แสดงข้อมูลที่บันทึกไว้เท่านั้น
-            ยังไม่มีการแปลผลทางคลินิกหรือการเปรียบเทียบกับรายการติดตามผล
-          </p>
-        </Alert>
+        <BaselineStatusNotice editable={editAction !== null} lockedByProgram={lockedByProgram} />
 
         <Panel>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

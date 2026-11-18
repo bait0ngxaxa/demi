@@ -83,6 +83,9 @@ function syntheticPatientValues(): SyntheticPatientValues {
     diabetesClassification: "กลุ่มเสี่ยง",
     bloodSugarDtx: 126,
     hba1c: 6.5,
+    bloodPressureSystolic: 132,
+    bloodPressureDiastolic: 84,
+    cvdRiskScore: 12.5,
     houseNumber: "99/1",
     villageNumber: "7",
     villageName: "หมู่บ้านสังเคราะห์",
@@ -158,7 +161,7 @@ function setMetadata(workbook: ExcelJS.Workbook, cell: "B1" | "B2", value: CellV
   metadata.getCell(cell).value = value;
 }
 
-describe("Strict hospital-bound patient import parser (template v3)", () => {
+describe("Strict hospital-bound patient import parser (template v4)", () => {
   it("parses the blank template and its first synthetic patient row", async () => {
     await expect(readPatientImportCandidates(await createCanonicalUpload(null), hospitalA)).resolves.toEqual(
       [],
@@ -184,6 +187,9 @@ describe("Strict hospital-bound patient import parser (template v3)", () => {
       diabetesClassification: "RISK",
       bloodSugarDtx: 126,
       hba1c: 6.5,
+      bloodPressureSystolic: 132,
+      bloodPressureDiastolic: 84,
+      cvdRiskScore: 12.5,
     });
     expect(candidate?.canonicalRow.healthHistoryCandidates).toEqual({
       diabetes: "YES",
@@ -197,7 +203,7 @@ describe("Strict hospital-bound patient import parser (template v3)", () => {
     expect(candidate?.fileMetadata).toMatchObject({
       worksheetName: "รายชื่อผู้ป่วย",
       headerRowNumber: 1,
-      templateVersion: "patient-import-template-v3",
+      templateVersion: "patient-import-template-v4",
       hospitalCode: hospitalA.hospitalCode,
     });
   }, 10000);
@@ -301,8 +307,8 @@ describe("Strict hospital-bound patient import parser (template v3)", () => {
       await expectTemplateMismatch(await createUpload(workbook));
     });
 
-    it.each(["patient-import-template-v1", "patient-import-template-v2"])(
-      "rejects any template version other than v3 (%s)",
+    it.each(["patient-import-template-v1", "patient-import-template-v2", "patient-import-template-v3"])(
+      "rejects any template version other than v4 (%s)",
       async (staleVersion) => {
         const { workbook } = await createTemplateWorkbook();
         setMetadata(workbook, "B1", staleVersion);
@@ -398,17 +404,20 @@ describe("Strict hospital-bound patient import parser (template v3)", () => {
         worksheet.getCell("L2").value = "ข้อความอื่น";
       }],
       ["extra column with an unknown header", (worksheet: ExcelJS.Worksheet) => {
-        worksheet.getCell("AH1").value = "คอลัมน์ที่ไม่รองรับ";
+        worksheet.getCell("AL1").value = "คอลัมน์ที่ไม่รองรับ";
       }],
       ["extra column behind the reason column", (worksheet: ExcelJS.Worksheet) => {
-        worksheet.getCell("AH1").value = PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER;
-        worksheet.getCell("AI1").value = "คอลัมน์ที่ไม่รองรับ";
+        worksheet.getCell("AK1").value = PATIENT_IMPORT_FAILED_ROWS_REASON_HEADER;
+        worksheet.getCell("AL1").value = "คอลัมน์ที่ไม่รองรับ";
       }],
       ["stray value in a later column", (worksheet: ExcelJS.Worksheet) => {
-        worksheet.getCell("AK7").value = "โน้ต";
+        worksheet.getCell("AN7").value = "โน้ต";
       }],
       ["the v2 column layout (no medical/family history columns)", (worksheet: ExcelJS.Worksheet) => {
-        worksheet.spliceColumns(27, 7);
+        worksheet.spliceColumns(30, 7);
+      }],
+      ["the v3 column layout (no blood pressure or CVD risk score columns)", (worksheet: ExcelJS.Worksheet) => {
+        worksheet.spliceColumns(15, 3);
       }],
       ["a changed health history caption", (worksheet: ExcelJS.Worksheet) => {
         worksheet.getCell("AD2").value = "ใช่ / ไม่ใช่";
@@ -725,10 +734,10 @@ describe("populated-row detection (no silent skipping)", () => {
 describe("secondary header contract", () => {
   it("captions only the classification and the medical/family history columns", () => {
     expect(Object.keys(PATIENT_IMPORT_TEMPLATE_SECONDARY_HEADERS)).toEqual([
-      "L", "AA", "AB", "AC", "AD", "AE", "AF", "AG",
+      "L", "AD", "AE", "AF", "AG", "AH", "AI", "AJ",
     ]);
     expect(PATIENT_IMPORT_TEMPLATE_MERGES).not.toContain("L1:L2");
-    expect(PATIENT_IMPORT_TEMPLATE_MERGES).not.toContain("AA1:AA2");
+    expect(PATIENT_IMPORT_TEMPLATE_MERGES).not.toContain("AD1:AD2");
     expect(PATIENT_IMPORT_TEMPLATE_MERGES).toHaveLength(PATIENT_IMPORT_TEMPLATE_COLUMNS.length - 8);
   });
 });

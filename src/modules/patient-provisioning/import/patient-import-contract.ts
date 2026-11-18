@@ -17,6 +17,9 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
   "diabetesClassification",
   "bloodSugarDtx",
   "hba1c",
+  "bloodPressureSystolic",
+  "bloodPressureDiastolic",
+  "cvdRiskScore",
   "houseNumber",
   "villageNumber",
   "villageName",
@@ -41,14 +44,18 @@ export const PATIENT_IMPORT_FIELD_KEYS = [
 
 export type PatientImportFieldKey = (typeof PATIENT_IMPORT_FIELD_KEYS)[number];
 
-export const PATIENT_IMPORT_CONTRACT_VERSION = "patient-import-v3-initial-health-data" as const;
+export const PATIENT_IMPORT_CONTRACT_VERSION = "patient-import-v4-complete-baseline" as const;
 
+/** Every Baseline measurement the template carries, in column order. */
 export const PATIENT_IMPORT_BASELINE_FIELD_KEYS = [
   "weight",
   "height",
   "waistCircumference",
   "bloodSugarDtx",
   "hba1c",
+  "bloodPressureSystolic",
+  "bloodPressureDiastolic",
+  "cvdRiskScore",
 ] as const satisfies readonly PatientImportFieldKey[];
 
 export type PatientImportBaselineFieldKey = (typeof PATIENT_IMPORT_BASELINE_FIELD_KEYS)[number];
@@ -178,6 +185,9 @@ export type CanonicalPatientImportRow = {
     diabetesClassification: PatientClassificationType | null;
     bloodSugarDtx: number | null;
     hba1c: number | null;
+    bloodPressureSystolic: number | null;
+    bloodPressureDiastolic: number | null;
+    cvdRiskScore: number | null;
   };
   organizationCandidates: {
     hospitalNumber: string | null;

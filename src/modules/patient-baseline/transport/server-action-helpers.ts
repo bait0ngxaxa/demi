@@ -1,6 +1,8 @@
 import { ApplicationError } from "@/shared/errors/application-error";
 
-export const PATIENT_BASELINE_FORM_FIELDS = new Set([
+import { PATIENT_BASELINE_LOCKED_NOTICE, PATIENT_BASELINE_LOCKED_MESSAGE } from "../domain/patient-baseline-edit-lock";
+
+export const PATIENT_BASELINE_FORM_FIELDS: ReadonlySet<string> = new Set([
   "patientHospitalRelationshipId",
   "recordedOn",
   "weight",
@@ -18,6 +20,12 @@ export const PATIENT_BASELINE_FORM_FIELDS = new Set([
   "confidenceImprovementPlan",
   "summary",
   "recommendations",
+]);
+
+/** The edit form posts the create fields plus the version it was loaded at. */
+export const PATIENT_BASELINE_UPDATE_FORM_FIELDS: ReadonlySet<string> = new Set([
+  ...PATIENT_BASELINE_FORM_FIELDS,
+  "expectedUpdatedAt",
 ]);
 
 function getSingleString(formData: FormData, field: string): string | undefined {
@@ -59,7 +67,10 @@ function getOptionalNumber(formData: FormData, field: string): number | null | u
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
+export function hasUnexpectedOrDuplicateFields(
+  formData: FormData,
+  allowedFields: ReadonlySet<string> = PATIENT_BASELINE_FORM_FIELDS,
+): boolean {
   const seen = new Set<string>();
 
   for (const key of formData.keys()) {
@@ -67,7 +78,7 @@ export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
       continue;
     }
 
-    if (!PATIENT_BASELINE_FORM_FIELDS.has(key) || seen.has(key)) {
+    if (!allowedFields.has(key) || seen.has(key)) {
       return true;
     }
 
@@ -77,11 +88,7 @@ export function hasUnexpectedOrDuplicateFields(formData: FormData): boolean {
   return false;
 }
 
-export function buildSubmissionInput(formData: FormData): unknown {
-  if (hasUnexpectedOrDuplicateFields(formData)) {
-    return null;
-  }
-
+function readBaselineFields(formData: FormData): Record<string, unknown> {
   return {
     patientHospitalRelationshipId: getSingleString(formData, "patientHospitalRelationshipId"),
     recordedOn: getSingleString(formData, "recordedOn"),
@@ -100,7 +107,20 @@ export function buildSubmissionInput(formData: FormData): unknown {
     confidenceImprovementPlan: getOptionalString(formData, "confidenceImprovementPlan"),
     summary: getOptionalString(formData, "summary"),
     recommendations: getOptionalString(formData, "recommendations"),
-  } satisfies Record<string, unknown>;
+  };
+}
+
+export function buildSubmissionInput(formData: FormData): unknown {
+  return hasUnexpectedOrDuplicateFields(formData) ? null : readBaselineFields(formData);
+}
+
+/** Every editable value is posted: a blank optional field clears it. */
+export function buildUpdateSubmissionInput(formData: FormData): unknown {
+  if (hasUnexpectedOrDuplicateFields(formData, PATIENT_BASELINE_UPDATE_FORM_FIELDS)) {
+    return null;
+  }
+
+  return { ...readBaselineFields(formData), expectedUpdatedAt: getSingleString(formData, "expectedUpdatedAt") };
 }
 
 export function mapPatientBaselineError(error: unknown): {
@@ -136,8 +156,29 @@ export function mapPatientBaselineError(error: unknown): {
   };
 }
 
+type PatientBaselineErrorCode = "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+
+/** An edit refused because a Program now links the Baseline, or because it changed meanwhile. */
+export function mapPatientBaselineUpdateError(error: unknown): { code: PatientBaselineErrorCode; message: string } {
+  if (error instanceof ApplicationError && error.code === "CONFLICT") {
+    return {
+      code: "CONFLICT",
+      message: error.message === PATIENT_BASELINE_LOCKED_MESSAGE
+        ? PATIENT_BASELINE_LOCKED_NOTICE
+        : "ข้อมูลตั้งต้นถูกแก้ไขหรือมีการเปิดโปรแกรมระหว่างนี้ กรุณาเปิดหน้าข้อมูลตั้งต้นอีกครั้ง",
+    };
+  }
+
+  const mapped = mapPatientBaselineError(error);
+  return mapped.code === "FORBIDDEN"
+    ? { code: "FORBIDDEN", message: "บัญชีนี้ไม่มีสิทธิ์แก้ไขข้อมูลตั้งต้นสำหรับผู้ป่วยรายนี้" }
+    : mapped;
+}
+
 export const patientBaselineTransportInternals = {
   buildSubmissionInput,
+  buildUpdateSubmissionInput,
+  mapPatientBaselineUpdateError,
   hasUnexpectedOrDuplicateFields,
   mapPatientBaselineError,
 };

@@ -20,3 +20,6 @@ export const oneDecimalPercentSchema = z
  * one decimal. Optional; no calculation. The range is also a DB CHECK on both owning tables.
  */
 export const cvdRiskScoreSchema = oneDecimalPercentSchema.nullable().optional();
+
+/** The Thai field-level error for a CVD risk score that `cvdRiskScoreSchema` rejects. */
+export const CVD_RISK_SCORE_RANGE_MESSAGE = "CVD risk score ต้องอยู่ระหว่าง 0–100% และมีทศนิยมไม่เกิน 1 ตำแหน่ง";
