@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LINE_RICH_MENU_CATALOG } from "./catalog";
-import { reconcileLineRichMenuCatalog } from "./line-menu-provisioning-service";
-import type { LineRichMenuPayload } from "../adapters/line-messaging-client";
+import { lineMenuProvisioningInternals, reconcileLineRichMenuCatalog } from "./line-menu-provisioning-service";
+import { createLineRichMenuPayload, type LineRichMenuPayload } from "../adapters/line-messaging-client";
 
 const assetDirectory = join(process.cwd(), "public", "line", "rich-menus");
 
@@ -73,6 +73,58 @@ describe("LINE Rich Menu provisioning", () => {
     expect(provider.menus.size).toBe(0);
     expect(provider.aliases.size).toBe(0);
     expect(provider.defaultMenu).toBeNull();
+  });
+
+  it("replaces only the four Patient menu definitions that sent the legacy appointment text", async () => {
+    const provider = createFakeProvider();
+    for (const menu of LINE_RICH_MENU_CATALOG) {
+      const image = await readFile(join(assetDirectory, menu.assetFile));
+      const payload = createLineRichMenuPayload(menu);
+      payload.areas = payload.areas.map((area) => area.action.type === "message"
+        ? { ...area, action: { ...area.action, text: "นัด" } }
+        : area);
+      payload.name = lineMenuProvisioningInternals.providerManifestName(menu.key, payload, image);
+      const id = await provider.createRichMenu(payload);
+      await provider.uploadRichMenuImage(id, image);
+      await provider.createAlias(menu.alias, id);
+      if (menu.key === "UNLINKED") await provider.setDefaultMenu(id);
+    }
+    const previousAliases = new Map(provider.aliases);
+    const dependencies = { client: provider, assetDirectory };
+
+    expect(await reconcileLineRichMenuCatalog(dependencies)).toEqual({
+      expectedMenus: 18,
+      createdMenus: 4,
+      reusedMenus: 14,
+      uploadedImages: 0,
+      createdAliases: 0,
+      updatedAliases: 4,
+      defaultMenuUpdated: false,
+    });
+    expect(provider.aliases).toEqual(previousAliases);
+
+    expect(await reconcileLineRichMenuCatalog({ ...dependencies, apply: true })).toMatchObject({
+      createdMenus: 4,
+      uploadedImages: 4,
+      updatedAliases: 4,
+    });
+    expect(LINE_RICH_MENU_CATALOG
+      .filter(({ alias }) => provider.aliases.get(alias) !== previousAliases.get(alias))
+      .map(({ key }) => key)).toEqual([
+      "PATIENT_DIRECT",
+      "PATIENT_PATIENT_OSM",
+      "PATIENT_PATIENT_HOSPITAL",
+      "PATIENT_PATIENT_OSM_HOSPITAL",
+    ]);
+    expect(await reconcileLineRichMenuCatalog(dependencies)).toEqual({
+      expectedMenus: 18,
+      createdMenus: 0,
+      reusedMenus: 18,
+      uploadedImages: 0,
+      createdAliases: 0,
+      updatedAliases: 0,
+      defaultMenuUpdated: false,
+    });
   });
 
   it("creates the shared catalog once, uploads/read-backs images, and is idempotent", async () => {

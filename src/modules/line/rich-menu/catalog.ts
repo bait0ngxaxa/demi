@@ -29,7 +29,7 @@ const roleMenuContext = (role: OperationalLineRole): string =>
 const roleIntent = (role: OperationalLineRole): "OPEN_PATIENT_WORKSPACE" | "OPEN_WORK_WORKSPACE" =>
   role === "PATIENT" ? "OPEN_PATIENT_WORKSPACE" : "OPEN_WORK_WORKSPACE";
 
-// A message action shows the Patient's own "นัด" bubble at once; the webhook keyword path answers it.
+// A message action shows the Patient's own "ตรวจสอบนัดหมาย" bubble at once; the webhook keyword path answers it.
 const appointmentAction: LineMenuAction = {
   type: "message",
   label: "ตรวจสอบนัดหมาย",

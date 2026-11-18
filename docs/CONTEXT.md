@@ -77,10 +77,10 @@ Owner-directed revision of the Hybrid Quick Action design, recorded in [ADR-0031
 
 First-time Patient and workforce activation now explain optional LINE linking and offer configured LIFF entry or normal web login after confirmed success. Workforce RESET retains password-reset guidance without onboarding. `/login` explains the separate browser session only for the existing allowlisted `/line/account` return. LINE Account presents binding, friendship and menu readiness independently, offers explicit status refresh through existing reconciliation, and keeps appointment notifications an explicit persisted opt-in under current domain eligibility. No authentication, token lifecycle, authorization, provider, database or session-handoff contract changes. Caregiver claims and existing-account Child OWNER acceptance remain separate flows. See [journey and device UAT](./operations/ACTIVATION_LINE_ONBOARDING.md).
 
-## CURRENT-status addendum — LINE appointment message action (2026-10-26)
+## CURRENT-status addendum — LINE appointment message action (updated 2026-11-18)
 
-- The Patient “ตรวจสอบนัดหมาย” Rich Menu area and HELP Quick Reply are LINE message actions that send the exact text “นัด”, so the Patient sees their own message immediately. The webhook answers it through the existing exact-keyword path (`NEXT_APPOINTMENT` → `PATIENT_NEXT_APPOINTMENT`) with unchanged binding, ActorContext, Patient SELF authority, appointment read and copy.
-- The legacy postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` stays accepted for menus provisioned earlier and older Quick Replies; new payloads no longer emit it. Only the four Patient presentation menus change provider definition; the provider still needs the reconcile run in [LINE_PRODUCTION_SETUP §6.5](./operations/LINE_PRODUCTION_SETUP.md).
+- The Patient “ตรวจสอบนัดหมาย” Rich Menu area and HELP Quick Reply are LINE message actions that send the exact text “ตรวจสอบนัดหมาย”, so the Patient sees their own message immediately. The webhook answers it through the existing exact-keyword path (`NEXT_APPOINTMENT` → `PATIENT_NEXT_APPOINTMENT`) with unchanged binding, ActorContext, Patient SELF authority, appointment read and copy. “นัด” stays accepted for older menus, previously sent Quick Replies, and typed messages.
+- The legacy postback `DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1` stays accepted for menus provisioned earlier and older Quick Replies; new payloads no longer emit it. Only the four Patient presentation menus change provider definition; the provider still needs the reconcile run in [LINE_PRODUCTION_SETUP §6.7](./operations/LINE_PRODUCTION_SETUP.md).
 
 ## CURRENT-status addendum — LINE scheduler code closure (2026-10-20)
 
