@@ -101,13 +101,13 @@ export function FloatingChartScoreTable({
       <thead>
         <tr className="border-b border-border text-text-muted">
           <th className="py-2 pr-3 font-semibold" scope="col">ด้าน</th>
-          <th className="w-20 py-2 text-right font-semibold" scope="col">คะแนน</th>
+          <th className="w-1/4 py-2 text-right wrap-anywhere font-semibold sm:w-20" scope="col">คะแนน</th>
         </tr>
       </thead>
       <tbody>
         {scoreRows(scores).map(({ label, score }) => (
           <tr className="border-b border-border last:border-0" key={label}>
-            <th className="py-2 pr-3 font-medium text-text" scope="row">{label}</th>
+            <th className="py-2 pr-3 wrap-anywhere font-medium text-text" scope="row">{label}</th>
             <td className="py-2 text-right font-semibold tabular-nums text-text">{formatScore(score)}</td>
           </tr>
         ))}
@@ -128,7 +128,7 @@ export function FloatingChartComparison({
       <h4 className="font-semibold text-text" id="floating-chart-comparison-heading">เปรียบเทียบกับครั้งที่ 1</h4>
       {roundOneScores ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[34rem] border-collapse text-left text-sm">
+          <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">คะแนนครั้งที่ 1 เทียบครั้งที่ 4 และผลต่าง</caption>
             <thead>
               <tr className="border-b border-border text-text-muted">

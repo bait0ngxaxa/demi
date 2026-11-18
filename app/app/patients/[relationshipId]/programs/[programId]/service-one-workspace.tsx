@@ -714,21 +714,21 @@ function FloatingChartCard({
   return (
     <ActivityCard activity={activity} description="ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย" id="FLOATING_CHART" title="กราฟวัดลอยจม">
       {activity.recorded ? recordedResult : canManage ? (
-        <div className={roundNumber === 4 ? "mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)]" : "mt-5"}>
+        <div className={roundNumber === 4 ? "mt-5 grid grid-cols-1 gap-6 @3xl/workspace:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]" : "mt-5"}>
           <form className="space-y-5" action={action} onSubmit={submitPreservingInput(action)}>
             <input name="patientProgramId" type="hidden" value={programId} />
             <input name="roundNumber" type="hidden" value={roundNumber} />
           {submissionNonce ? <input name="submissionNonce" type="hidden" value={submissionNonce} /> : null}
-            <fieldset className="space-y-4">
-              <legend className="mb-3 text-sm font-semibold leading-6 text-text">ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย</legend>
+            <fieldset className="min-w-0 space-y-4">
+              <legend className="mb-3 wrap-anywhere text-sm font-semibold leading-6 text-text">ให้คะแนนชีวิตแต่ละด้านของตัวเองในตอนนี้หน่อย</legend>
               {FLOATING_CHART_DIMENSIONS.map(({ field, label }) => {
                 const id = `service-one-floating-${roundNumber}-${field}`;
 
                 return (
                   <div className="border-b border-border pb-3 last:border-0" key={field}>
                     <div className="flex items-center justify-between gap-3">
-                      <label className="text-sm font-semibold text-text" htmlFor={id}>{label}</label>
-                      <output className="min-w-8 text-right text-sm font-semibold tabular-nums text-brand-strong" htmlFor={id}>
+                      <label className="min-w-0 wrap-anywhere text-sm font-semibold text-text" htmlFor={id}>{label}</label>
+                      <output className="min-w-8 shrink-0 text-right text-sm font-semibold tabular-nums text-brand-strong" htmlFor={id}>
                         {scores[field]}
                       </output>
                     </div>
@@ -757,12 +757,12 @@ function FloatingChartCard({
               })}
             </fieldset>
 
-            <fieldset className="space-y-3 border-t border-border pt-4">
-              <legend className="font-semibold text-text">ไม้บรรทัดวัดทุกข์สุข</legend>
+            <fieldset className="min-w-0 space-y-3 border-t border-border pt-4">
+              <legend className="wrap-anywhere font-semibold text-text">ไม้บรรทัดวัดทุกข์สุข</legend>
               <div aria-hidden="true" className="grid grid-cols-11 justify-items-center">
-                <span className="col-start-1"><RulerFace mood="sad" /></span>
+                <span className="col-start-1 justify-self-start"><RulerFace mood="sad" /></span>
                 <span className="col-start-6"><RulerFace mood="neutral" /></span>
-                <span className="col-start-11"><RulerFace mood="happy" /></span>
+                <span className="col-start-11 justify-self-end"><RulerFace mood="happy" /></span>
               </div>
               <label className="sr-only" htmlFor={`service-one-floating-${roundNumber}-wellbeingScore`}>ไม้บรรทัดวัดทุกข์สุข</label>
               <input
@@ -854,7 +854,7 @@ function ScoreScale({
   value: number;
 }): React.JSX.Element {
   return (
-    <div aria-label={`เลือกคะแนน${label}`} className="grid grid-cols-11" role="group">
+    <div aria-label={`เลือกคะแนน${label}`} className="grid grid-cols-[repeat(auto-fit,minmax(1.25rem,1fr))]" role="group">
       {SCORE_SCALE.map((score) => {
         const selected = score === value;
         const anchor = score === -5 || score === 0 || score === 5;

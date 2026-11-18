@@ -2,6 +2,7 @@
 // Form ↔ server contract: every Service 1 form, and the evidence association the attachment control
 // builds, post exactly what the Service 1 allow-lists, build*Input parsers and request schemas accept.
 import { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -82,14 +83,14 @@ beforeEach(() => {
   }
 });
 
-function renderTool(tool: ServiceOneToolKey, submissionNonce: string | null = ids.nonce) {
+function renderTool(tool: ServiceOneToolKey, submissionNonce: string | null = ids.nonce, roundNumber = 1) {
   return (
     <ServiceOneToolStep
       canManage
       nextHref={null}
       programId={ids.program}
       relationshipId={ids.relationship}
-      roundNumber={1}
+      roundNumber={roundNumber}
       serviceOne={serviceOne}
       submissionNonce={submissionNonce ?? undefined}
       tool={tool}
@@ -112,6 +113,16 @@ function fillRoutine(container: HTMLElement): void {
 }
 
 describe("Service 1 forms ↔ Service 1 server actions", () => {
+  it("gives the fourth-round Floating Chart and comparison a shrinkable column on narrow screens", () => {
+    const root = document.createElement("div");
+    root.innerHTML = renderToStaticMarkup(renderTool("floatingChart", ids.nonce, 4));
+    const form = root.querySelector('form:has([name="wellbeingScore"])');
+    const layout = form?.parentElement;
+
+    expect(layout?.classList).toContain("grid-cols-1");
+    expect(layout?.querySelector('[aria-labelledby="floating-chart-comparison-heading"]')).not.toBeNull();
+  });
+
   it("routine posts the date and the serialized entries", async () => {
     const payload = await captureSubmittedFormData({ render: () => renderTool("routine"), action: actions.routine, interact: fillRoutine });
 
