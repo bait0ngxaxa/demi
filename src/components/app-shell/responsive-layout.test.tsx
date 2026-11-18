@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app-shell";
 import { ProtectedApplicationShellSkeleton } from "./app-shell-skeleton";
 import { PageHeader } from "../ui/page-header";
+import { HomeHeroSkeleton, PageHeaderSkeleton } from "../ui/loading-skeletons";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/app",
@@ -123,6 +124,10 @@ describe("responsive shell contract", () => {
     expect(html).toContain('aria-current="page"');
     expect(html).toContain("min-w-0 max-w-full");
     expect(html).toContain("flex-wrap items-end");
+    expect(html).toContain("sm:ml-auto");
+    expect(html).toContain("lg:hidden");
+    expect(html).toContain("lg:flex");
+    expect(html).toContain("ring-offset-header-surface");
     expect(source("app/globals.css")).toContain(
       "scroll-padding-top: calc(var(--app-sticky-top) + env(safe-area-inset-top, 0px) + 1.5rem)",
     );
@@ -130,5 +135,13 @@ describe("responsive shell contract", () => {
     expect(source("app/globals.css")).toMatch(/@media \(min-width: 64rem\) \{\s*:root \{\s*--app-sticky-top: 0px;/);
     expect(source("app/globals.css")).not.toContain("app-mobile-drawer-panel");
     expect(source("app/globals.css")).toContain("scrollbar-gutter: stable;");
+  });
+
+  it("keeps the soft-tint panel while page headers stream", () => {
+    for (const skeleton of [<PageHeaderSkeleton key="page" />, <HomeHeroSkeleton key="work" />, <HomeHeroSkeleton key="personal" appointment />]) {
+      const html = renderToStaticMarkup(skeleton);
+      expect(html).toContain("rounded-[16px] border border-header-border bg-header-surface");
+      expect(html).not.toMatch(/bg-brand-deep|text-white/u);
+    }
   });
 });

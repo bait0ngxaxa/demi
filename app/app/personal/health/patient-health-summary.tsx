@@ -3,7 +3,7 @@ import type { PatientHospitalHealthHistory } from "@prisma/client";
 
 import { HomeHospitalChip } from "@/components/home/home-hospital-chip";
 import { Alert } from "@/components/ui/alert";
-import { HomeHero } from "@/components/home/home-hero";
+import { PageHeader } from "@/components/ui/page-header";
 import { MedicationSummaryItem } from "../../medication-summary-item";
 import { ageInBangkok } from "@/modules/family/domain/family-health-summary";
 import type { PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
@@ -81,11 +81,13 @@ export function PatientHealthSummary({ hospitals, selected, summary }: {
   const age = summary?.dateOfBirth ? ageInBangkok(summary.dateOfBirth, new Date()) : null;
   const retryHref = id ? `/app/personal/health?relationshipId=${encodeURIComponent(id)}` : "/app/personal/health";
   return <div className="min-w-0 max-w-4xl">
-    <HomeHero title="ข้อมูลสุขภาพ" headingId="health-heading" chip={<HomeHospitalChip action="/app/personal/health" fieldName="relationshipId" selectId="health-hospital"
+    <PageHeader
+      title="ข้อมูลสุขภาพ"
+      description="สรุปข้อมูลสุขภาพของคุณจากโรงพยาบาลที่เลือก"
+      context={<HomeHospitalChip action="/app/personal/health" fieldName="relationshipId" selectId="health-hospital"
         groups={[{ label: null, options: hospitals.map((hospital) => ({ value: hospital.relationshipId, label: hospital.hospitalName })) }]}
-        selectedLabel={selected?.hospitalName ?? null} selectedValue={id ?? null} />}>
-      <p className="mt-3 text-sm text-white/85">สรุปข้อมูลสุขภาพของคุณจากโรงพยาบาลที่เลือก</p>
-    </HomeHero>
+        selectedLabel={selected?.hospitalName ?? null} selectedValue={id ?? null} />}
+    />
     {!summary || !selected ? <Alert className="mt-6" variant="info">ยังไม่มีโรงพยาบาลที่พร้อมแสดงข้อมูลสุขภาพ ดูประวัติเดิมได้ที่ <Link className={linkClass} href="/app/personal/care">ข้อมูลการดูแล</Link></Alert> : <>
       <section aria-labelledby="health-general" className="mt-8">
         <h2 className="text-xl font-semibold text-text" id="health-general">ข้อมูลทั่วไป</h2>

@@ -1,11 +1,11 @@
-import { LoadingRegion } from "@/components/ui/loading-skeletons";
+import { HomeHeroSkeleton, LoadingRegion } from "@/components/ui/loading-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PatientPersonalLoading(): React.JSX.Element {
   return (
     <LoadingRegion label="กำลังโหลดพื้นที่ส่วนตัว...">
       <div className="min-w-0 max-w-5xl">
-        <Skeleton className="h-64 w-full rounded-panel" />
+        <HomeHeroSkeleton appointment />
         <section aria-hidden="true" className="mt-7">
           <Skeleton className="h-7 w-28" />
           <ul className="mt-3 grid grid-cols-4 gap-1 sm:gap-3">

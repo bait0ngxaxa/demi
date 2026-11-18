@@ -1,7 +1,7 @@
 import { connection } from "next/server";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { isActiveHospitalAdministrator, isActiveHospitalOperator } from "@/modules/identity/services/hospital-authority";
@@ -35,8 +35,13 @@ export default async function HospitalPatientProfilePage({ params }: { params: P
   const canCorrectName = isActiveHospitalOperator(actor, record.hospital.id);
   const canEndCare = isActiveHospitalAdministrator(actor, record.hospital.id);
   return <div className="max-w-3xl space-y-6">
-      <Link href={`/app/patients/${relationshipId}`} className="font-semibold text-brand-strong underline">กลับไปข้อมูลผู้ป่วย</Link>
-      <h1 className="text-2xl font-semibold text-text">ข้อมูลสำหรับ{record.hospital.name}</h1>
+      <PageHeader
+        breadcrumbs={[
+          { href: `/app/patients/${relationshipId}`, label: "ข้อมูลผู้ป่วย" },
+          { label: "ข้อมูลสำหรับโรงพยาบาล" },
+        ]}
+        title={`ข้อมูลสำหรับ${record.hospital.name}`}
+      />
       {canCorrectName ? <Panel><h2 className="text-lg font-semibold text-text">ชื่อ-สกุลผู้ป่วย</h2>
         <p className="mb-5 mt-2 text-sm leading-6 text-text-muted">หากแก้ชื่อ-สกุลจากหน้านี้ไม่ได้ กรุณาติดต่อผู้ดูแลระบบ DEMI</p>
         <PatientNameCorrectionForm relationshipId={relationshipId} version={record.patientProfile.person.version} givenName={record.patientProfile.person.givenName} familyName={record.patientProfile.person.familyName} />
