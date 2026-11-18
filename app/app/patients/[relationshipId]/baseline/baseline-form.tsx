@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -15,15 +15,28 @@ import { useMutationActionState } from "@/components/ui/mutation-action-state";
 import { useClinicalRangeErrors } from "@/components/ui/clinical-range-errors";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import type { PatientBaselinePatientSummary } from "@/modules/patient-baseline/services/patient-baseline-access-service";
+import type { PatientBaselineProjection } from "@/modules/patient-baseline/services/patient-baseline-query-service";
 import {
   initialPatientBaselineActionState,
   type PatientBaselineActionState,
 } from "@/modules/patient-baseline/transport/action-state";
-import { createPatientBaselineAction } from "@/modules/patient-baseline/transport/server-actions";
+import {
+  createPatientBaselineAction,
+  updatePatientBaselineAction,
+} from "@/modules/patient-baseline/transport/server-actions";
+
+/** Edit mode: the stored Baseline prefills the form and a save replaces every value. */
+type PatientBaselineFormEdit = {
+  baseline: PatientBaselineProjection;
+  onCancel: () => void;
+  /** Called after a confirmed save, inside the transition that refreshes the page in place. */
+  onSaved: () => void;
+};
 
 type PatientBaselineFormProps = {
   relationshipId: string;
   patient: PatientBaselinePatientSummary;
+  edit?: PatientBaselineFormEdit;
 };
 
 const labelClassName = "block space-y-2 text-sm font-semibold text-text";
@@ -57,6 +70,9 @@ const baselineSectionTitles = {
 
 const unrecordedLabel = "ไม่ได้บันทึก";
 
+const editableUntilProgramCopy =
+  "ข้อมูลตั้งต้นแก้ไขได้จนกว่าจะเปิดโปรแกรม เมื่อเปิดโปรแกรมแล้วจะเป็นข้อมูลอ่านอย่างเดียว";
+
 type ReviewField = { label: string; value: string; multiline?: boolean };
 type ReviewSection = { title: string; fields: readonly ReviewField[] };
 
@@ -76,14 +92,46 @@ function getTodayDateOnly(): string {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function ActionFeedback({ state }: { state: PatientBaselineActionState }): React.JSX.Element | null {
+function toInputValue(value: number | string | null): string {
+  return value === null ? "" : String(value);
+}
+
+/** The stored values as form input strings; a value not recorded is an empty input. */
+function initialFormValues(baseline: PatientBaselineProjection | undefined): Record<keyof typeof baselineLabels, string> {
+  return {
+    recordedOn: baseline ? baseline.recordedOn.toISOString().slice(0, 10) : getTodayDateOnly(),
+    weight: toInputValue(baseline?.measurements.weight ?? null),
+    heightCm: toInputValue(baseline?.measurements.heightCm ?? null),
+    waistCircumference: toInputValue(baseline?.measurements.waistCircumference ?? null),
+    bloodPressureSystolic: toInputValue(baseline?.measurements.bloodPressureSystolic ?? null),
+    bloodPressureDiastolic: toInputValue(baseline?.measurements.bloodPressureDiastolic ?? null),
+    bloodSugarDtx: toInputValue(baseline?.measurements.bloodSugarDtx ?? null),
+    hba1c: toInputValue(baseline?.measurements.hba1c ?? null),
+    cvdRiskScore: toInputValue(baseline?.measurements.cvdRiskScore ?? null),
+    adaptationSummary: toInputValue(baseline?.adaptation.summary ?? null),
+    adaptationObstacles: toInputValue(baseline?.adaptation.obstacles ?? null),
+    adaptationOpportunities: toInputValue(baseline?.adaptation.opportunities ?? null),
+    confidenceScore: toInputValue(baseline?.confidence.score ?? null),
+    confidenceImprovementPlan: toInputValue(baseline?.confidence.improvementPlan ?? null),
+    summary: toInputValue(baseline?.summary ?? null),
+    recommendations: toInputValue(baseline?.recommendations ?? null),
+  };
+}
+
+function ActionFeedback({
+  editing,
+  state,
+}: {
+  editing: boolean;
+  state: PatientBaselineActionState;
+}): React.JSX.Element | null {
   if (state.status !== "ERROR") {
     return null;
   }
 
   return (
     <Alert className="mt-5" variant={state.code === "CONFLICT" ? "warning" : "danger"}>
-      <p className="font-semibold">บันทึกข้อมูลตั้งต้นไม่สำเร็จ</p>
+      <p className="font-semibold">{editing ? "บันทึกการแก้ไขข้อมูลตั้งต้นไม่สำเร็จ" : "บันทึกข้อมูลตั้งต้นไม่สำเร็จ"}</p>
       <p className="mt-1">{state.message}</p>
     </Alert>
   );
@@ -126,31 +174,38 @@ function BaselineReviewSummary({ sections }: { sections: readonly ReviewSection[
 }
 
 export function PatientBaselineForm({
+  edit,
   patient,
   relationshipId,
 }: PatientBaselineFormProps): React.JSX.Element {
   const router = useRouter();
+  const editing = edit !== undefined;
+  const submitBaseline = editing ? updatePatientBaselineAction : createPatientBaselineAction;
   const [state, action, pending, unknownOutcome, resendUnconfirmed] = useMutationActionState<PatientBaselineActionState, FormData>(
     // A fresh object per confirmed result lets the review dialog tell a new answer from the one it opened with.
-    async (previous, formData) => ({ ...(await createPatientBaselineAction(previous, formData)) }),
+    async (previous, formData) => ({ ...(await submitBaseline(previous, formData)) }),
     initialPatientBaselineActionState,
   );
-  const [recordedOn, setRecordedOn] = useState<string>(getTodayDateOnly);
-  const [weight, setWeight] = useState("");
-  const [heightCm, setHeightCm] = useState("");
-  const [waistCircumference, setWaistCircumference] = useState("");
-  const [bloodPressureSystolic, setBloodPressureSystolic] = useState("");
-  const [bloodPressureDiastolic, setBloodPressureDiastolic] = useState("");
-  const [bloodSugarDtx, setBloodSugarDtx] = useState("");
-  const [hba1c, setHba1c] = useState("");
-  const [cvdRiskScore, setCvdRiskScore] = useState("");
-  const [adaptationSummary, setAdaptationSummary] = useState("");
-  const [adaptationObstacles, setAdaptationObstacles] = useState("");
-  const [adaptationOpportunities, setAdaptationOpportunities] = useState("");
-  const [confidenceScore, setConfidenceScore] = useState("");
-  const [confidenceImprovementPlan, setConfidenceImprovementPlan] = useState("");
-  const [summary, setSummary] = useState("");
-  const [recommendations, setRecommendations] = useState("");
+  const [initial] = useState(() => initialFormValues(edit?.baseline));
+  const [recordedOn, setRecordedOn] = useState(initial.recordedOn);
+  const [weight, setWeight] = useState(initial.weight);
+  const [heightCm, setHeightCm] = useState(initial.heightCm);
+  const [waistCircumference, setWaistCircumference] = useState(initial.waistCircumference);
+  const [bloodPressureSystolic, setBloodPressureSystolic] = useState(initial.bloodPressureSystolic);
+  const [bloodPressureDiastolic, setBloodPressureDiastolic] = useState(initial.bloodPressureDiastolic);
+  const [bloodSugarDtx, setBloodSugarDtx] = useState(initial.bloodSugarDtx);
+  const [hba1c, setHba1c] = useState(initial.hba1c);
+  const [cvdRiskScore, setCvdRiskScore] = useState(initial.cvdRiskScore);
+  const [adaptationSummary, setAdaptationSummary] = useState(initial.adaptationSummary);
+  const [adaptationObstacles, setAdaptationObstacles] = useState(initial.adaptationObstacles);
+  const [adaptationOpportunities, setAdaptationOpportunities] = useState(initial.adaptationOpportunities);
+  const [confidenceScore, setConfidenceScore] = useState(initial.confidenceScore);
+  const [confidenceImprovementPlan, setConfidenceImprovementPlan] = useState(initial.confidenceImprovementPlan);
+  const [summary, setSummary] = useState(initial.summary);
+  const [recommendations, setRecommendations] = useState(initial.recommendations);
+  // The version the edit was loaded at; a save against an older version is refused as stale.
+  const expectedUpdatedAt = edit?.baseline.updatedAt.toISOString() ?? null;
+  const onSaved = edit?.onSaved;
   // The review stays open for the action state it was opened with; any newer confirmed result closes it.
   const [review, setReview] = useState<{ openedWith: PatientBaselineActionState } | null>(null);
   const submissionLock = useRef(false);
@@ -166,12 +221,23 @@ export function PatientBaselineForm({
   const reviewLocked = pending || unknownOutcome || succeeded;
 
   useEffect(() => {
-    if (state.status === "SUCCESS") {
-      router.replace(
-        `/app/patients/${encodeURIComponent(relationshipId)}/baseline`,
-      );
+    if (state.status !== "SUCCESS") {
+      return;
     }
-  }, [relationshipId, router, state]);
+
+    if (onSaved) {
+      // Refresh in place: the new server data and the switch back to the view commit together.
+      startTransition(() => {
+        router.refresh();
+        onSaved();
+      });
+      return;
+    }
+
+    router.replace(
+      `/app/patients/${encodeURIComponent(relationshipId)}/baseline`,
+    );
+  }, [onSaved, relationshipId, router, state]);
 
   useEffect(() => {
     // A request releases the single-flight lock only after it has settled.
@@ -266,20 +332,27 @@ export function PatientBaselineForm({
           },
           { label: "ข้อมูลตั้งต้น" },
         ]}
-        description="บันทึกข้อมูลอ้างอิงเริ่มต้นของผู้ป่วยในโรงพยาบาลนี้"
-        title="ข้อมูลตั้งต้น"
+        description={
+          editing
+            ? "แก้ไขข้อมูลอ้างอิงเริ่มต้นของผู้ป่วยในโรงพยาบาลนี้ ก่อนเปิดโปรแกรม"
+            : "บันทึกข้อมูลอ้างอิงเริ่มต้นของผู้ป่วยในโรงพยาบาลนี้"
+        }
+        title={editing ? "แก้ไขข้อมูลตั้งต้น" : "ข้อมูลตั้งต้น"}
       />
 
       <form action={action} className="space-y-6 pt-8" onSubmit={handleSubmit}>
         <input name="patientHospitalRelationshipId" type="hidden" value={relationshipId} />
+        {expectedUpdatedAt ? <input name="expectedUpdatedAt" type="hidden" value={expectedUpdatedAt} /> : null}
 
         <Alert variant="warning">
           <p className="font-semibold">ตรวจสอบข้อมูลก่อนบันทึก</p>
           <p className="mt-1">
-            ข้อมูลตั้งต้นจะถูกบันทึกเป็นข้อมูลอ้างอิงและยังไม่รองรับการแก้ไข กรุณาตรวจสอบข้อมูลก่อนบันทึก
+            {editableUntilProgramCopy} กรุณาตรวจสอบข้อมูลก่อนบันทึก
           </p>
           <p className="mt-2">
-            ช่องว่างหมายถึงยังไม่มีข้อมูล ระบบจะไม่เติมค่าแทนและจะไม่คำนวณการแปลผลทางคลินิกอัตโนมัติ
+            {editing
+              ? "ช่องที่ลบค่าออกจะถูกบันทึกเป็นไม่มีข้อมูล ระบบจะไม่เติมค่าแทนและจะไม่คำนวณการแปลผลทางคลินิกอัตโนมัติ"
+              : "ช่องว่างหมายถึงยังไม่มีข้อมูล ระบบจะไม่เติมค่าแทนและจะไม่คำนวณการแปลผลทางคลินิกอัตโนมัติ"}
           </p>
         </Alert>
 
@@ -577,27 +650,33 @@ export function PatientBaselineForm({
         <Panel>
           <h2 className="text-xl font-semibold tracking-[-0.02em] text-text">ตรวจสอบและบันทึก</h2>
           <p className="mt-2 text-sm leading-6 text-text-muted">
-            เมื่อบันทึกแล้ว ข้อมูลตั้งต้นจะเป็นข้อมูลอ่านอย่างเดียว ไม่มีการแก้ไข ลบ หรือแทนที่รายการเดิม
+            {editableUntilProgramCopy}
           </p>
           <div ref={errorFeedback} tabIndex={-1} className="focus-visible:outline-none">
-            {reviewOpen ? null : <ActionFeedback state={state} />}
+            {reviewOpen ? null : <ActionFeedback editing={editing} state={state} />}
           </div>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Button disabled={reviewLocked} ref={reviewTrigger} type="submit">
               ตรวจสอบข้อมูลก่อนบันทึก
             </Button>
-            <Link
-              className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
-              href={`/app/patients/${encodeURIComponent(relationshipId)}`}
-            >
-              ยกเลิก
-            </Link>
+            {edit ? (
+              <Button disabled={reviewLocked} onClick={edit.onCancel} variant="secondary">
+                ยกเลิกการแก้ไข
+              </Button>
+            ) : (
+              <Link
+                className="inline-flex min-h-12 items-center justify-center rounded-control border border-border-strong bg-surface px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:border-action-primary hover:bg-brand-soft hover:text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2"
+                href={`/app/patients/${encodeURIComponent(relationshipId)}`}
+              >
+                ยกเลิก
+              </Link>
+            )}
           </div>
         </Panel>
 
         {reviewOpen ? (
           <ModalDialog
-            description="ตรวจสอบข้อมูลที่กรอกก่อนยืนยัน ข้อมูลตั้งต้นที่บันทึกแล้วเป็นข้อมูลอ่านอย่างเดียว"
+            description={`ตรวจสอบข้อมูลที่กรอกก่อนยืนยัน ${editableUntilProgramCopy}`}
             dismissible={!reviewLocked}
             footer={
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -617,7 +696,7 @@ export function PatientBaselineForm({
                   ref={confirmButton}
                   type="submit"
                 >
-                  {pending ? "กำลังบันทึก…" : "ยืนยันบันทึกข้อมูลตั้งต้น"}
+                  {pending ? "กำลังบันทึก…" : editing ? "ยืนยันบันทึกการแก้ไข" : "ยืนยันบันทึกข้อมูลตั้งต้น"}
                 </Button>
               </div>
             }
@@ -625,7 +704,7 @@ export function PatientBaselineForm({
             onRequestClose={closeReview}
             returnFocusTarget={() => (submittedFromReview.current ? errorFeedback.current : null) ?? reviewTrigger.current}
             size="fullscreen"
-            title="ตรวจสอบข้อมูลตั้งต้นก่อนบันทึก"
+            title={editing ? "ตรวจสอบการแก้ไขข้อมูลตั้งต้นก่อนบันทึก" : "ตรวจสอบข้อมูลตั้งต้นก่อนบันทึก"}
           >
             <div className="space-y-6">
               <section aria-label="บริบทการบันทึก" className="grid gap-4 rounded-panel bg-surface-muted px-4 py-4 sm:grid-cols-2">
@@ -646,16 +725,22 @@ export function PatientBaselineForm({
                 </div>
               </section>
               <Alert variant="warning">
-                <p className="font-semibold">เมื่อยืนยัน ระบบจะสร้างข้อมูลตั้งต้นแบบอ่านอย่างเดียว</p>
+                <p className="font-semibold">
+                  {editing
+                    ? "เมื่อยืนยัน ระบบจะแทนที่ข้อมูลตั้งต้นเดิมทั้งหมดด้วยค่าที่แสดงนี้"
+                    : "เมื่อยืนยัน ระบบจะบันทึกข้อมูลตั้งต้นของผู้ป่วยรายนี้"}
+                </p>
                 <p className="mt-1">
-                  ข้อมูลนี้จะใช้เป็นจุดอ้างอิงของผู้ป่วยในโรงพยาบาลนี้ และไม่สามารถแก้ไข ลบ หรือแทนที่ได้ภายหลัง
+                  ข้อมูลนี้จะใช้เป็นจุดอ้างอิงของผู้ป่วยในโรงพยาบาลนี้ {editableUntilProgramCopy}{" "}
                   ช่องที่แสดง “{unrecordedLabel}” จะถูกเก็บเป็นไม่มีข้อมูล ไม่ใช่ค่าศูนย์ และระบบไม่แปลผลทางคลินิกอัตโนมัติ
                 </p>
               </Alert>
               <BaselineReviewSummary sections={reviewSections} />
               <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resend, resending: pending }} />
               {succeeded ? (
-                <Alert role="status" variant="success">บันทึกแล้ว กำลังเปิดรายการที่บันทึก...</Alert>
+                <Alert role="status" variant="success">
+                  {editing ? "บันทึกการแก้ไขแล้ว กำลังแสดงข้อมูลล่าสุด..." : "บันทึกแล้ว กำลังเปิดรายการที่บันทึก..."}
+                </Alert>
               ) : null}
             </div>
           </ModalDialog>

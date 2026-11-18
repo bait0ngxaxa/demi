@@ -37,7 +37,7 @@ vi.mock("@/modules/auth/services/application-access-service", () => ({
 const { confirmPatientImportAction, previewPatientImportAction } = await import("@/modules/patient-provisioning/transport/server-actions");
 const { savePatientHealthHistoryAction } = await import("@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions");
 const { assignOsmToPatientAction } = await import("@/modules/patient-assignment/transport/server-actions");
-const { createPatientBaselineAction } = await import("@/modules/patient-baseline/transport/server-actions");
+const { updatePatientBaselineAction } = await import("@/modules/patient-baseline/transport/server-actions");
 const { openPatientProgramAction, completePatientProgramAction } = await import("@/modules/patient-program/transport/server-actions");
 const {
   completePatientProgramRoundAction,
@@ -85,11 +85,16 @@ function expectSuccess(state: ActionResult, step: string): Record<string, unknow
 }
 
 /** Uploads one hospital-bound template, previews it and confirms it, exactly as the import page posts. */
-async function importPatients(hospital: ImportTestHospital, rows: readonly TemplateRow[]): Promise<void> {
+async function importPatients(
+  hospital: ImportTestHospital,
+  rows: readonly TemplateRow[],
+  effectiveDate?: string,
+): Promise<void> {
   const upload = await createTemplateUpload(hospital, rows);
   const data = new FormData();
   data.set("file", new File([await upload.arrayBuffer()], upload.name));
   data.set("targetHospitalId", hospital.id);
+  if (effectiveDate) data.set("effectiveDate", effectiveDate);
   const preview = await previewPatientImportAction(data);
   if (preview.status !== "SUCCESS") throw new Error(`Patient import preview failed: ${preview.status}`);
   expect(preview.preview.rows.map(({ classification }) => classification)).toEqual(rows.map(() => "READY"));
@@ -212,7 +217,8 @@ describe("report pipeline end to end (P1 Part D)", () => {
     const today = toServiceDateOnly(new Date());
     const diagnosisYear = currentBuddhistYear() - 4;
 
-    // The Hospital OWNER imports both Patients in one Excel file.
+    // The Hospital OWNER imports both Patients in one Excel file. The file is the Baseline
+    // (template v4, owner decision 2026-11-17): every measurement, including CVD risk and blood pressure.
     signIn(ownerUserId);
     await importPatients(importHospital, [
       {
@@ -220,13 +226,21 @@ describe("report pipeline end to end (P1 Part D)", () => {
         givenName: "ทดสอบสมชาย",
         familyName: `รายงาน${suffix}`,
         hospitalNumber: `HN-${suffix}`,
+        weight: 80,
+        height: 160,
+        waistCircumference: 95,
+        bloodSugarDtx: 180,
+        hba1c: 8.2,
+        bloodPressureSystolic: 140,
+        bloodPressureDiastolic: 90,
+        cvdRiskScore: 22,
       },
       {
         nationalId: syntheticNationalId((Number.parseInt(suffix, 16) % 1_000_000) + 1),
         givenName: "ทดสอบนอกโปรแกรม",
         familyName: `รายงาน${suffix}`,
       },
-    ]);
+    ], today);
     const relationshipId = await relationshipIdOf(hospitalId, "ทดสอบสมชาย");
     const outsideRelationshipId = await relationshipIdOf(hospitalId, "ทดสอบนอกโปรแกรม");
 
@@ -243,9 +257,16 @@ describe("report pipeline end to end (P1 Part D)", () => {
     })), "health history");
     expectSuccess(await assignOsmToPatientAction(IDLE, form({ patientHospitalRelationshipId: relationshipId, osmUserId })), "assign OSM");
 
-    // Baseline (Before) and Program opening.
-    expectSuccess(await createPatientBaselineAction(IDLE, form({
+    // Baseline (Before): the import created it; before the Program opens, staff add what the file
+    // does not carry (confidence) through the edit form, which posts every value back.
+    const imported = await prisma.patientBaseline.findUniqueOrThrow({
+      where: { patientHospitalRelationshipId: relationshipId },
+      select: { updatedAt: true, cvdRiskScore: true, bloodPressureSystolic: true, bloodPressureDiastolic: true },
+    });
+    expect(imported).toMatchObject({ cvdRiskScore: 22, bloodPressureSystolic: 140, bloodPressureDiastolic: 90 });
+    expectSuccess(await updatePatientBaselineAction(IDLE, form({
       patientHospitalRelationshipId: relationshipId,
+      expectedUpdatedAt: imported.updatedAt.toISOString(),
       recordedOn: today,
       weight: 80,
       heightCm: 160,
@@ -256,9 +277,20 @@ describe("report pipeline end to end (P1 Part D)", () => {
       hba1c: 8.2,
       cvdRiskScore: 22,
       confidenceScore: 6,
-    })), "baseline");
+    })), "edit imported baseline");
     const program = expectSuccess(await openPatientProgramAction(IDLE, form({ patientHospitalRelationshipId: relationshipId })), "open Program");
     const programId = String(program.patientProgramId);
+    // Opening the Program links the Baseline, which is read-only from then on.
+    const linked = await prisma.patientBaseline.findUniqueOrThrow({
+      where: { patientHospitalRelationshipId: relationshipId },
+      select: { updatedAt: true },
+    });
+    expect(await updatePatientBaselineAction(IDLE, form({
+      patientHospitalRelationshipId: relationshipId,
+      expectedUpdatedAt: linked.updatedAt.toISOString(),
+      recordedOn: today,
+      weight: 81,
+    }))).toMatchObject({ status: "ERROR", code: "CONFLICT", message: "เปิดโปรแกรมแล้ว ข้อมูลตั้งต้นแก้ไขไม่ได้" });
 
     // Phase R1: every round records its whole checklist and is completed before the next opens (SR-D1/D5).
     const completeRound = async (roundNumber: number): Promise<void> => {

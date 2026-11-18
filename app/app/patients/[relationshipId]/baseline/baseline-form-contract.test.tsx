@@ -1,12 +1,20 @@
 // @vitest-environment jsdom
 // Form ↔ server contract: the Baseline form posts exactly what PATIENT_BASELINE_FORM_FIELDS,
-// buildSubmissionInput and patientBaselineCreateRequestSchema accept.
+// buildSubmissionInput and patientBaselineCreateRequestSchema accept in create mode, and what
+// PATIENT_BASELINE_UPDATE_FORM_FIELDS, buildUpdateSubmissionInput and
+// patientBaselineUpdateRequestSchema accept in edit mode.
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { patientBaselineCreateRequestSchema } from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
+import type { PatientBaselineProjection } from "@/modules/patient-baseline/services/patient-baseline-query-service";
+import {
+  patientBaselineCreateRequestSchema,
+  patientBaselineUpdateRequestSchema,
+} from "@/modules/patient-baseline/schemas/patient-baseline-schemas";
 import {
   buildSubmissionInput,
+  buildUpdateSubmissionInput,
   PATIENT_BASELINE_FORM_FIELDS,
+  PATIENT_BASELINE_UPDATE_FORM_FIELDS,
 } from "@/modules/patient-baseline/transport/server-action-helpers";
 
 import {
@@ -20,11 +28,15 @@ import {
 
 const actions = vi.hoisted(() => ({
   create: vi.fn(),
-  router: { push: vi.fn(), refresh: vi.fn() },
+  update: vi.fn(),
+  router: { push: vi.fn(), refresh: vi.fn(), replace: vi.fn() },
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => actions.router, unstable_rethrow: vi.fn() }));
-vi.mock("@/modules/patient-baseline/transport/server-actions", () => ({ createPatientBaselineAction: actions.create }));
+vi.mock("@/modules/patient-baseline/transport/server-actions", () => ({
+  createPatientBaselineAction: actions.create,
+  updatePatientBaselineAction: actions.update,
+}));
 
 import { PatientBaselineForm } from "./baseline-form";
 
@@ -40,10 +52,44 @@ beforeAll(() => {
   installFormContractEnvironment();
 });
 
-function confirmFromReview(container: HTMLElement): void {
+function confirmFromReview(container: HTMLElement, confirmLabel = "ยืนยันบันทึกข้อมูลตั้งต้น"): void {
   const form = container.querySelector("form");
   submitForm(form, findButton(container, "ตรวจสอบข้อมูลก่อนบันทึก"));
-  submitForm(form, findButton(document.body, "ยืนยันบันทึกข้อมูลตั้งต้น"));
+  submitForm(form, findButton(document.body, confirmLabel));
+}
+
+const storedVersion = "2026-11-02T03:04:05.678Z";
+const stored: PatientBaselineProjection = {
+  id: "33333333-3333-4333-8333-333333333333",
+  patientHospitalRelationshipId: relationshipId,
+  recordedOn: new Date("2026-11-01T00:00:00.000Z"),
+  recorder: { id: "44444444-4444-4444-8444-444444444444", displayName: "ผู้บันทึก" },
+  measurements: {
+    weight: 72.4,
+    heightCm: 168,
+    waistCircumference: null,
+    bloodPressureSystolic: 132,
+    bloodPressureDiastolic: 84,
+    bloodSugarDtx: 118,
+    hba1c: 6.8,
+    cvdRiskScore: 12.5,
+  },
+  adaptation: { summary: null, obstacles: null, opportunities: null },
+  confidence: { score: null, improvementPlan: null },
+  summary: "นำเข้าจาก Excel",
+  recommendations: null,
+  createdAt: new Date("2026-11-01T05:00:00.000Z"),
+  updatedAt: new Date(storedVersion),
+};
+
+function editForm() {
+  return (
+    <PatientBaselineForm
+      edit={{ baseline: stored, onCancel: vi.fn(), onSaved: vi.fn() }}
+      patient={patient}
+      relationshipId={relationshipId}
+    />
+  );
 }
 
 describe("Baseline form ↔ createPatientBaselineAction", () => {
@@ -103,5 +149,58 @@ describe("Baseline form ↔ createPatientBaselineAction", () => {
       parse: buildSubmissionInput,
       schema: patientBaselineCreateRequestSchema,
     })).toMatchObject({ weight: 65 });
+  });
+});
+
+describe("Baseline form (edit mode) ↔ updatePatientBaselineAction", () => {
+  it("prefills the stored values and posts every field with the loaded version", async () => {
+    actions.create.mockClear();
+    actions.update.mockResolvedValue({ status: "IDLE" });
+    const payload = await captureSubmittedFormData({
+      render: editForm,
+      action: actions.update,
+      interact: (container) => {
+        const value = (name: string): string | null =>
+          container.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`)?.value ?? null;
+        expect([value("recordedOn"), value("weight"), value("waistCircumference"), value("cvdRiskScore"), value("summary")])
+          .toEqual(["2026-11-01", "72.4", "", "12.5", "นำเข้าจาก Excel"]);
+        setFieldValue(container.querySelector('[name="weight"]'), "71");
+        setFieldValue(container.querySelector('[name="hba1c"]'), "");
+        setFieldValue(container.querySelector('[name="confidenceScore"]'), "7");
+        setFieldValue(container.querySelector('[name="adaptationSummary"]'), "เริ่มเดินหลังอาหาร");
+        confirmFromReview(container, "ยืนยันบันทึกการแก้ไข");
+      },
+    });
+
+    expect(actions.update).toHaveBeenCalledTimes(1);
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(expectFormContract(payload, {
+      fields: PATIENT_BASELINE_UPDATE_FORM_FIELDS,
+      parse: buildUpdateSubmissionInput,
+      schema: patientBaselineUpdateRequestSchema,
+    })).toMatchObject({
+      patientHospitalRelationshipId: relationshipId,
+      expectedUpdatedAt: storedVersion,
+      recordedOn: "2026-11-01",
+      weight: 71,
+      hba1c: null,
+      bloodPressureSystolic: 132,
+      cvdRiskScore: 12.5,
+      confidenceScore: 7,
+      adaptationSummary: "เริ่มเดินหลังอาหาร",
+      summary: "นำเข้าจาก Excel",
+    });
+  });
+
+  it("rejects the edit payload on the create allow-list, so each mode keeps its own contract", async () => {
+    actions.update.mockResolvedValue({ status: "IDLE" });
+    const payload = await captureSubmittedFormData({
+      render: editForm,
+      action: actions.update,
+      interact: (container) => confirmFromReview(container, "ยืนยันบันทึกการแก้ไข"),
+    });
+
+    expect(buildSubmissionInput(payload)).toBeNull();
+    expect(PATIENT_BASELINE_FORM_FIELDS.has("expectedUpdatedAt")).toBe(false);
   });
 });

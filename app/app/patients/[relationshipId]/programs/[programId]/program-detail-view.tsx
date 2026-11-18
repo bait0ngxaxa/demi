@@ -45,12 +45,15 @@ function statusVariant(status: PatientProgramDetail["status"]): StatusVariant {
 }
 
 export function PatientProgramDetailView({
+  canRecordBaseline = false,
   detail,
   finalAssessment,
   followupHistory,
   goalPlanOverview,
   latestGoalPlan,
 }: {
+  /** The actor may record or edit this relationship's Baseline (server-resolved). */
+  canRecordBaseline?: boolean;
   detail: PatientProgramDetail;
   finalAssessment: PatientFinalAssessmentProjection;
   followupHistory: FollowupProgramHistory;
@@ -125,6 +128,13 @@ export function PatientProgramDetailView({
                       ดูข้อมูลตั้งต้น
                     </Link>
                   </span>
+                ) : canRecordBaseline ? (
+                  <Link
+                    className="text-brand-strong underline decoration-brand-muted underline-offset-4"
+                    href={`/app/patients/${encodeURIComponent(relationshipId)}/baseline`}
+                  >
+                    ยังไม่มีข้อมูลตั้งต้นที่เชื่อมโยง
+                  </Link>
                 ) : (
                   "ยังไม่มีข้อมูลตั้งต้นที่เชื่อมโยง"
                 )}

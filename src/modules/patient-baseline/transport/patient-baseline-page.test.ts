@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import PatientBaselinePage from "../../../../app/app/patients/[relationshipId]/baseline/page";
 import { PatientBaselineForm } from "../../../../app/app/patients/[relationshipId]/baseline/baseline-form";
 import { PatientBaselineView } from "../../../../app/app/patients/[relationshipId]/baseline/baseline-view";
+import { PatientBaselineWorkspace } from "../../../../app/app/patients/[relationshipId]/baseline/baseline-workspace";
 import type { PatientBaselinePageContext } from "../services/patient-baseline-query-service";
 
 const {
@@ -114,13 +115,18 @@ describe("Patient Baseline page workflow", () => {
     expect(page.props).toMatchObject({ relationshipId, patient });
   });
 
-  it("switches to the read-only snapshot when a Baseline exists", async () => {
-    mockedGetPatientBaselinePageContext.mockResolvedValueOnce(context({ baseline, canCreate: false }));
+  it("switches to the recorded Baseline, passing the server-resolved edit state", async () => {
+    mockedGetPatientBaselinePageContext.mockResolvedValueOnce(
+      context({ baseline, canCreate: false, canEdit: true, lockedByProgram: false }),
+    );
 
     const page = await PatientBaselinePage({ params: Promise.resolve({ relationshipId }) });
 
-    expect(page.type).toBe(PatientBaselineView);
-    expect(page.props).toMatchObject({ baseline, patient });
+    expect(page.type).toBe(PatientBaselineWorkspace);
+    expect(page.props).toMatchObject({ baseline, patient, relationshipId, canEdit: true, lockedByProgram: false });
+  });
+
+  it("renders the view without an edit or delete control by default", () => {
     expect(containsString(PatientBaselineView({ baseline, patient }), "ไม่ระบุ")).toBe(true);
     expect(containsString(PatientBaselineView({ baseline, patient }), "แก้ไข")).toBe(false);
     expect(containsString(PatientBaselineView({ baseline, patient }), "ลบ")).toBe(false);

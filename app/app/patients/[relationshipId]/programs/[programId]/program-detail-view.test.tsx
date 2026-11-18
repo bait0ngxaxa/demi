@@ -87,6 +87,15 @@ function renderProgram(overrides: Partial<Parameters<typeof PatientProgramDetail
 }
 
 describe("Patient care journey and Program workspace", () => {
+  it("links a missing initial Baseline to the Baseline page only for an actor who may record one", () => {
+    const baselineLink = `href="/app/patients/${relationshipId}/baseline">ยังไม่มีข้อมูลตั้งต้นที่เชื่อมโยง</a>`;
+
+    expect(renderProgram({ canRecordBaseline: true })).toContain(baselineLink);
+    const readOnly = renderProgram();
+    expect(readOnly).toContain("ยังไม่มีข้อมูลตั้งต้นที่เชื่อมโยง");
+    expect(readOnly).not.toContain(`/app/patients/${relationshipId}/baseline`);
+  });
+
   it("connects every section and preserves scoped destinations without imposing prerequisites", () => {
     const html = renderProgram();
     for (const id of ["program-service-one", "program-goals", "program-followups", "program-final"]) {
