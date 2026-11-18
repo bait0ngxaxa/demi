@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useFormDirty } from "@/components/ui/use-form-dirty";
 import type { PatientHospitalProfileDetail } from "@/modules/patient-hospital-profile/services/patient-hospital-profile-service";
 import {
   initialPatientHospitalProfileUpdateActionState,
@@ -44,6 +46,11 @@ function ProfileEditorForm({
     PatientHospitalProfileUpdateActionState,
     FormData
   >(action, initialPatientHospitalProfileUpdateActionState);
+  // The saved values stay in the fields, so only an unsaved edit can be submitted (SAVE-STATE). Values shown
+  // from the legacy profile are not saved for this hospital yet, so saving them unchanged is still a change.
+  const formRef = useRef<HTMLFormElement>(null);
+  const { dirty } = useFormDirty(formRef, { savedKey: state.status === "SUCCESS" ? state : undefined });
+  const canSave = dirty || profile.source === "LEGACY_FALLBACK";
 
   const fields: readonly EditableField[] = [
     { name: "gender", label: "เพศ", value: profile.profile.gender, maxLength: 64 },
@@ -84,7 +91,7 @@ function ProfileEditorForm({
   ];
 
   return (
-    <form action={formAction} className="mt-7" onSubmit={submitPreservingInput(formAction)}>
+    <form action={formAction} className="mt-7" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
       <input name="expectedVersion" type="hidden" value={profile.version} />
       <div className="grid min-w-0 gap-x-6 gap-y-5 sm:grid-cols-2">
         {fields.map((field) => (
@@ -129,7 +136,7 @@ function ProfileEditorForm({
         <dd className="mt-1 break-words text-base text-text">{displayValue(profile.emergencyContactRelationship)}</dd>
       </dl>
 
-      {state.message ? (
+      {state.message && !(state.status === "SUCCESS" && dirty) ? (
         <p
           aria-live="polite"
           className={`mt-5 break-words rounded-control border px-4 py-3 text-sm leading-6 ${
@@ -155,7 +162,7 @@ function ProfileEditorForm({
       <UnknownOutcomeAlert active={unknownOutcome} className="mt-5" recovery={{ kind: "reload" }} />
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button className="w-full sm:w-auto" disabled={unknownOutcome} loading={pending} type="submit">
+        <Button className="w-full sm:w-auto" disabled={!canSave || unknownOutcome} loading={pending} type="submit">
           {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลสำหรับโรงพยาบาลนี้"}
         </Button>
         <Link

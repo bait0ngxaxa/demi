@@ -140,7 +140,7 @@ export function LegalDraftEditor({ version }: { version: AdminLegalVersionView }
           <input name="versionId" type="hidden" value={version.id} />
           <DraftFields defaults={version} disabled={saving || publishing} />
           {state.status === "ERROR" ? <Alert variant="danger">{state.message}</Alert> : null}
-          <Button disabled={saving || publishing} loading={saving} type="submit" variant="secondary">{saving ? "กำลังบันทึก..." : "บันทึกร่าง"}</Button>
+          <Button disabled={!dirty || saving || publishing} loading={saving} type="submit" variant="secondary">{saving ? "กำลังบันทึก..." : "บันทึกร่าง"}</Button>
         </form>
       </Panel>
 

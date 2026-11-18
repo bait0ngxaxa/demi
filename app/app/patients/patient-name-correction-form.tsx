@@ -1,11 +1,12 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useRef } from "react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { submitPreservingInput } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useFormDirty } from "@/components/ui/use-form-dirty";
 import { correctPatientNameAction } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
 import { correctWorkforcePersonNameAction } from "@/modules/user-management/transport/server-actions";
 
@@ -36,8 +37,11 @@ export function PatientNameCorrectionForm({ relationshipId, version, givenName, 
       forbidden: workforceKind ? "ไม่มีสิทธิ์แก้ไขชื่อ-สกุลของรายการนี้" : "ไม่มีสิทธิ์แก้ไขชื่อ-สกุลผู้ป่วยรายนี้",
     },
   );
+  // The saved name stays in the fields, so only an unsaved edit can be submitted (SAVE-STATE).
+  const formRef = useRef<HTMLFormElement>(null);
+  const { dirty } = useFormDirty(formRef, { savedKey: state.status === "SUCCESS" ? state : undefined });
 
-  return <form action={formAction} className="space-y-4" onSubmit={submitPreservingInput(formAction)}>
+  return <form action={formAction} className="space-y-4" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
     <input type="hidden" name="expectedVersion" value={version} />
     <div className="grid gap-4 sm:grid-cols-2">
       <div>
@@ -51,9 +55,9 @@ export function PatientNameCorrectionForm({ relationshipId, version, givenName, 
     </div>
     {state.status === "ERROR" ? <Alert role="alert" variant="warning">{state.message}</Alert> : null}
     {/* Announced by the success Toast. */}
-    {state.status === "SUCCESS" ? <Alert role="none" variant="success">{state.message}</Alert> : null}
+    {state.status === "SUCCESS" && !dirty ? <Alert role="none" variant="success">{state.message}</Alert> : null}
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
-    <Button disabled={unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
+    <Button disabled={!dirty || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
       {pending ? "กำลังบันทึก…" : "บันทึกชื่อ-สกุล"}
     </Button>
   </form>;

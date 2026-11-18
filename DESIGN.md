@@ -217,6 +217,7 @@ Form controls ใช้ corner 12px (`control`), panel ใช้ 14px (`panel`) 
 - **Focus:** border เปลี่ยนเป็น action-primary พร้อม focus-ring 4px
 - **Error / Disabled:** aria-invalid ใช้ danger border/ring; disabled ใช้ muted surface และ muted text โดยยังรักษา native semantics
 - **Select:** ใช้ native select และ label association เดิม ไม่มี custom dropdown layer
+- **Save state (SAVE-STATE, 2026-11-18):** ฟอร์มแก้ไขที่ยังอยู่บนหน้าหลังบันทึกต้องเปิดปุ่ม submit เฉพาะเมื่อมีการแก้ไขที่ยังไม่บันทึก (`useFormDirty` ใน `src/components/ui/use-form-dirty.ts` หรือ dirty เทียบค่าที่บันทึกแล้วสำหรับ controlled input); ข้อความสำเร็จซ่อนทันทีเมื่อผู้ใช้แก้ไขต่อ และ ERROR ยังคงสถานะ dirty ให้ลองใหม่ได้. ฟอร์มสร้างรายการหรือ transition ต้อง lock, reset, unmount หรือ navigate เมื่อ SUCCESS. ห้ามแสดงข้อความสำเร็จข้างปุ่ม submit ที่ยังกดได้โดยถือข้อมูลชุดเดิม (`app/app/save-state-dirty-gate.test.tsx`)
 
 ### Cards / Containers
 
