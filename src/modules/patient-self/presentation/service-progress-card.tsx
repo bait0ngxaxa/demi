@@ -1,4 +1,5 @@
 import { Panel } from "@/components/ui/panel";
+import { RoundStateIcon } from "@/modules/patient-program-rounds/presentation/round-state-icon";
 import type { ServiceProgress, ServiceProgressItem } from "../services/patient-service-progress-query-service";
 
 export function serviceProgressHref(relationshipId: string): string {
@@ -48,7 +49,10 @@ export function ServiceProgressCard({ progress, renderRecording }: {
         {round ? <ServiceRoundLine progress={progress} /> : null}
         <ol aria-label="ความคืบหน้ารายครั้ง" className="mt-4 flex flex-wrap gap-2">
           {progress.rounds.map((item) => <li key={item.number} className="rounded-control border border-border px-3 py-2 text-sm text-text" aria-current={item.state === "CURRENT" ? "step" : undefined}>
-            <span aria-hidden="true">{item.state === "COMPLETED" ? "✓" : item.state === "CURRENT" ? "◐" : "🔒"} {item.number}</span>
+            <span aria-hidden="true" className="inline-flex items-center gap-1">
+              <RoundStateIcon status={item.state === "COMPLETED" ? "DONE" : item.state === "CURRENT" ? "TODO" : "LOCKED"} />
+              {item.number}
+            </span>
             <span className="sr-only">ครั้งที่ {item.number} · {item.state === "COMPLETED" ? "เสร็จแล้ว" : item.state === "CURRENT" ? "ครั้งปัจจุบัน" : "ยังไม่เปิดให้บันทึก"}</span>
           </li>)}
         </ol>

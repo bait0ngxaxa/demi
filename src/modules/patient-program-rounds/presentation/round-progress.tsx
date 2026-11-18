@@ -21,7 +21,6 @@ export function RoundProgressSummary({ round }: { round: RoundSummary }): React.
       <span className="flex flex-wrap items-start justify-between gap-2">
         <span className="block min-w-0 text-base font-semibold text-text">{round.title}</span>
         <StatusBadge variant={STATE_VARIANTS[round.state]}>
-          {round.state === "COMPLETED" ? "✓ " : round.state === "LOCKED" ? "🔒 " : ""}
           {round.state === "LOCKED" ? roundLockedLabel(round.roundNumber) : ROUND_STATE_LABELS[round.state]}
         </StatusBadge>
       </span>

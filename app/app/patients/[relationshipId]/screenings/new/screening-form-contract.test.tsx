@@ -53,7 +53,21 @@ describe("Screening form ↔ submitScreeningAction", () => {
       const payload = await captureSubmittedFormData({
         render: () => <ScreeningForm patient={patient} questionSet={questionSet} relationshipId={ids.relationship} submissionNonce={ids.nonce} />,
         action: actions.submit,
-        interact: answerEveryQuestion,
+        interact: (container) => {
+          if (questionSet.instrument === "PROMS") {
+            for (const fieldset of container.querySelectorAll("fieldset")) {
+              const scale = fieldset.getAttribute("aria-describedby");
+              expect(scale && document.getElementById(scale)?.textContent).toBe(questionSet.scaleLabel);
+              const labels = [...fieldset.querySelectorAll("label")];
+              expect(labels.map((label) => label.textContent)).toEqual(["1", "2", "3", "4", "5"]);
+              expect(labels.map((label) => label.querySelector("input")?.value)).toEqual(["1", "2", "3", "4", "5"]);
+              const faces = labels.map((label) => label.querySelector('svg[aria-hidden="true"]'));
+              expect(faces.every(Boolean)).toBe(true);
+              expect(new Set(faces.map((face) => face?.outerHTML)).size).toBe(5);
+            }
+          }
+          answerEveryQuestion(container);
+        },
       });
 
       const parsed = expectFormContract(payload, {

@@ -28,7 +28,8 @@ import type {
   CareTrackingScopeOption,
 } from "@/modules/care-tracking/services/care-tracking-query-service";
 import { PATIENT_DIRECTORY_NAME_MAX_LENGTH } from "@/modules/patient-directory/schemas/patient-directory-schemas";
-import type { RoundState } from "@/modules/patient-program-rounds/domain/round-steps";
+import type { RoundState, RoundStepStatus } from "@/modules/patient-program-rounds/domain/round-steps";
+import { RoundStateIcon } from "@/modules/patient-program-rounds/presentation/round-state-icon";
 import { RoundStepTimeline } from "@/modules/patient-program-rounds/presentation/round-step-timeline";
 
 import {
@@ -56,11 +57,11 @@ const ROUND_STRIP_STATE_LABELS: Readonly<Record<RoundState, string>> = {
 };
 
 /** CT-3: the state is readable without colour or hover (touch devices); the sr-only text stays the name. */
-const ROUND_STRIP_STATE_GLYPHS: Readonly<Record<RoundState, "check" | "half" | "lock" | null>> = {
-  COMPLETED: "check",
-  IN_PROGRESS: "half",
+const ROUND_STRIP_ICON_STATUSES: Readonly<Record<RoundState, RoundStepStatus | null>> = {
+  COMPLETED: "DONE",
+  IN_PROGRESS: "TODO",
   NOT_STARTED: null,
-  LOCKED: "lock",
+  LOCKED: "LOCKED",
 };
 
 const ROUND_STRIP_STATE_CLASSES: Readonly<Record<RoundState, string>> = {
@@ -159,19 +160,8 @@ function SignalBadges({ item }: { item: CareTrackingItem }): React.JSX.Element |
 }
 
 function RoundStateGlyph({ state }: { state: RoundState }): React.JSX.Element | null {
-  const glyph = ROUND_STRIP_STATE_GLYPHS[state];
-  if (glyph === null) return null;
-
-  if (glyph === "lock") {
-    return (
-      <svg className="size-3 shrink-0" data-glyph="lock" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" viewBox="0 0 24 24">
-        <rect height="10" rx="2" width="14" x="5" y="11" />
-        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
-      </svg>
-    );
-  }
-
-  return <span data-glyph={glyph}>{glyph === "check" ? "✓" : "◐"}</span>;
+  const status = ROUND_STRIP_ICON_STATUSES[state];
+  return status === null ? null : <RoundStateIcon status={status} />;
 }
 
 function RoundStrip({ entries }: { entries: readonly CareTrackingRoundStripEntry[] }): React.JSX.Element | null {
@@ -183,7 +173,7 @@ function RoundStrip({ entries }: { entries: readonly CareTrackingRoundStripEntry
         <li data-round-state={state} key={roundNumber}>
           <span
             aria-hidden="true"
-            className={`flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-full border px-1.5 text-xs font-semibold leading-none ${ROUND_STRIP_STATE_CLASSES[state]}`}
+            className={`flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-full border px-1.5 text-xs font-semibold leading-none [&>svg]:size-3 ${ROUND_STRIP_STATE_CLASSES[state]}`}
             title={`ครั้งที่ ${roundNumber} ${ROUND_STRIP_STATE_LABELS[state]}`}
           >
             {roundNumber}
