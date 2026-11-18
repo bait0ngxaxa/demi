@@ -1,13 +1,13 @@
 import {
+  HomeHeroSkeleton,
   LoadingRegion,
-  PageHeaderSkeleton,
   PanelSkeleton,
 } from "@/components/ui/loading-skeletons";
 
 export default function ApplicationLoading(): React.JSX.Element {
   return (
     <LoadingRegion className="content-workspace" label="กำลังโหลดข้อมูล...">
-      <PageHeaderSkeleton actions />
+      <HomeHeroSkeleton />
       <div className="grid gap-6 pt-8 @5xl/workspace:grid-cols-2">
         <PanelSkeleton rows={3} />
         <PanelSkeleton rows={3} />

@@ -406,7 +406,7 @@ describe("application home workspace routing", () => {
       const actor = staff(MembershipType.OWNER);
       const html = await renderHome({ ...actor, hospitalMemberships: [...actor.hospitalMemberships, { ...actor.hospitalMemberships[0]!, hospitalId: secondId }] });
 
-      expect(html).toContain('<label class="mb-1 block text-xs font-medium text-white/80" for="work-home-hospital">');
+      expect(html).toContain('<label class="mb-1 block text-xs font-medium text-header-muted" for="work-home-hospital">');
       expect(section(html, "work-home-menu-heading")).toContain("grid min-w-0 grid-cols-4");
       expect(section(html, "work-home-menu-heading")).toContain("min-h-[2lh] line-clamp-2");
       expect(section(html, "work-home-menu-heading")).not.toContain("auto-rows-fr");
@@ -431,14 +431,16 @@ describe("application home workspace routing", () => {
       expect(grid).not.toContain(hospitalId);
     });
 
-    it("uses a focus ring that reaches 3:1 on brand-deep for every focusable hero element", async () => {
+    it("uses the soft-tint panel and the standard focus ring on every focusable hero element", async () => {
       const hero = section(await renderHome(osmAt(hospitalId, secondId)), "work-home-heading");
 
       expect(hero).toContain("<select");
       expect(hero).toContain('type="submit"');
       expect(hero).toContain('href="/app/personal"');
-      expect(hero.match(/focus-visible:ring-brand-bright/gu)).toHaveLength(4);
-      expect(hero).not.toContain("ring-focus-ring");
+      expect(hero).toContain("rounded-[16px] border border-header-border bg-header-surface");
+      expect(hero).toContain("bg-surface p-4 shadow-surface");
+      expect(hero.match(/focus-visible:ring-focus-ring/gu)).toHaveLength(4);
+      expect(hero).not.toMatch(/bg-brand-deep|text-white|ring-brand-bright/u);
     });
 
     it("keeps the hero and grid when the team news feed fails, with a retry link to the same Hospital", async () => {

@@ -244,6 +244,7 @@ describe("Patient Personal pages", () => {
 
     expect(markup).toContain("21 ตุลาคม 2569");
     expect(markup).toContain("00:30");
+    expect(markup).toMatch(/<div aria-hidden="true"[^>]+bg-canvas[^>]*><span[^>]*>ต\.ค\.<\/span><span[^>]*>21<\/span>/u);
     expect(markup).toContain(`href="/app/personal/appointments/44444444-4444-4444-8444-444444444444/${appointmentId}"`);
   });
 
@@ -274,6 +275,7 @@ describe("Patient Personal pages", () => {
 
       expect(heroOf(markup)).toContain("ยังโหลดนัดหมายไม่ได้");
       expect(heroOf(markup)).not.toContain("ยังไม่มีนัดหมาย");
+      expect(heroOf(markup)).not.toContain("min-h-[60px]");
       expect(markup).toContain('id="personal-home-news-heading"');
       expect(markup).toContain('href="/app/family"');
     });
@@ -286,7 +288,7 @@ describe("Patient Personal pages", () => {
       await expect(PersonalHomePage()).rejects.toBeInstanceOf(ForbiddenError);
     });
 
-    it("uses a focus ring that reaches 3:1 on brand-deep for every focusable hero element", async () => {
+    it("uses the soft-tint panel and the standard focus ring on every focusable hero element", async () => {
       const secondRelationship = { ...completeContext.hospitalRelationships[1], hospitalStatus: HospitalStatus.ACTIVE };
       vi.mocked(getPatientPersonalHomePageContext).mockResolvedValue({
         ...completeContext,
@@ -298,8 +300,10 @@ describe("Patient Personal pages", () => {
       expect(hero).toContain("<select");
       expect(hero).toContain('type="submit"');
       expect(hero).toContain("ดูรายละเอียดนัด");
-      expect(hero.match(/focus-visible:ring-brand-bright/gu)).toHaveLength(3);
-      expect(hero).not.toContain("ring-focus-ring");
+      expect(hero).toContain("rounded-[16px] border border-header-border bg-header-surface");
+      expect(hero).toContain("bg-surface p-4 shadow-surface");
+      expect(hero.match(/focus-visible:ring-focus-ring/gu)).toHaveLength(3);
+      expect(hero).not.toMatch(/bg-brand-deep|text-white|ring-brand-bright/u);
     });
   });
 

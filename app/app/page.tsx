@@ -22,6 +22,7 @@ import {
   type WorkHomeScope,
 } from "@/components/home/work-home-projection";
 import { Alert } from "@/components/ui/alert";
+import { ChevronGlyph } from "@/components/ui/glyphs";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getProtectedApplicationActor } from "@/modules/auth/services/application-access-service";
 import { countWorkAppointmentsAwaitingMyAcceptance } from "@/modules/appointments/services/work-appointment-query-service";
@@ -84,12 +85,15 @@ function WorkHomePrimaryAction({ action }: { action: ApplicationWorkspaceAction 
   return (
     <HomeHeroCard heading="เริ่มงาน" headingId="work-home-primary-heading">
       <Link
-        className="mt-2 flex min-h-12 min-w-0 flex-col justify-center gap-1 rounded-control text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright lg:mt-0 lg:min-h-11 lg:flex-row lg:items-center lg:justify-start lg:gap-3"
+        className="group mt-2 flex min-h-11 w-full min-w-0 items-center gap-3 rounded-control text-brand-strong no-underline focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface lg:mt-0"
         href={action.href}
         prefetch={action.prefetch ?? false}
       >
-        <span className="font-semibold underline decoration-white/60 underline-offset-4 lg:shrink-0">{action.label}</span>
-        <span className="text-sm leading-6 text-white/85 lg:min-w-0 lg:truncate">{action.description}</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <span className="font-semibold group-hover:underline">{action.label}</span>
+          <span className="basis-full text-sm leading-6 text-header-muted lg:basis-auto">{action.description}</span>
+        </span>
+        <ChevronGlyph direction="right" className="size-5 shrink-0" />
       </Link>
     </HomeHeroCard>
   );
@@ -213,9 +217,9 @@ export default async function ApplicationPage(
         {home.hero ? <WorkHomePrimaryAction action={home.hero} /> : null}
         {hasPersonalWorkspace ? (
           <div className="mt-4 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 lg:mt-2">
-            <p className="text-sm leading-6 text-white/85">หน้านี้เป็นพื้นที่ทำงาน ข้อมูลและบริการของคุณเองอยู่ในพื้นที่ส่วนตัว</p>
+            <p className="text-sm leading-6 text-header-muted">หน้านี้เป็นพื้นที่ทำงาน ข้อมูลและบริการของคุณเองอยู่ในพื้นที่ส่วนตัว</p>
             <Link
-              className="inline-flex min-h-12 items-center rounded-control text-sm font-semibold text-white underline decoration-white/60 underline-offset-4 hover:decoration-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
+              className="inline-flex min-h-11 items-center rounded-control text-sm font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-header-surface"
               href="/app/personal"
               prefetch={false}
             >

@@ -9,6 +9,7 @@ import { HomeHospitalChip } from "./home-hospital-chip";
 function renderChip(props: React.ComponentProps<typeof HomeHospitalChip>): HTMLElement {
   const root = document.createElement("div");
   root.innerHTML = renderToStaticMarkup(<HomeHospitalChip {...props} />);
+  expect(root.innerHTML).not.toMatch(/bg-brand-deep|text-white|ring-brand-bright/u);
   return root;
 }
 
@@ -20,12 +21,17 @@ describe("HomeHospitalChip", () => {
 
     expect(root.textContent).toBe(name);
     expect(root.querySelector("p")?.hasAttribute("aria-label")).toBe(false);
+    expect(root.querySelector("p")?.classList).toContain("rounded-pill");
     expect(root.querySelector("form, select, button")).toBeNull();
     expect(root.querySelector("svg")?.outerHTML).toBe(renderToStaticMarkup(<MobileNavigationGlyph icon="hospital" />));
     expect(root.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it.each([context, { action: "/app/personal/health", fieldName: "relationshipId", selectId: "health-hospital" }])("preserves grouped selection and submitted values for $fieldName", (selector) => {
+  it.each([
+    context,
+    { action: "/app/personal", fieldName: "hospital", selectId: "personal-home-hospital" },
+    { action: "/app/personal/health", fieldName: "relationshipId", selectId: "health-hospital" },
+  ])("preserves grouped selection and submitted values for $fieldName", (selector) => {
     const root = renderChip({
       ...selector,
       groups: [
@@ -42,6 +48,9 @@ describe("HomeHospitalChip", () => {
     expect(form.getAttribute("action")).toBe(selector.action);
     expect(form.method).toBe("get");
     expect(select.labels?.[0]?.textContent).toBe("โรงพยาบาลปัจจุบัน");
+    expect(select.classList).toContain("rounded-pill");
+    expect(select.classList).toContain("min-h-11");
+    expect(select.classList).toContain("focus-visible:ring-offset-header-surface");
     expect(select.querySelector("optgroup")?.label).toBe("เครือข่ายเดมิ");
     expect([...select.options].map(({ value, text }) => [value, text])).toEqual([
       ["id-1", "โรงพยาบาลเดมิทดสอบ"], ["id-2", "รพ.สต. บ้านใหม่"],
@@ -61,6 +70,7 @@ describe("HomeHospitalChip", () => {
     const root = renderChip({ ...context, groups: [], selectedValue, selectedLabel, emptyLabel });
 
     expect(root.textContent).toBe(expected);
+    expect(root.querySelector("p")?.classList).toContain("text-header-muted");
     expect(root.querySelector("svg, form, select, button")).toBeNull();
   });
 });

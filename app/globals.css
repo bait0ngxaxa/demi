@@ -17,6 +17,9 @@
   --brand-deep: #0e3c35;
   --brand-pale: #cce2dc;
   --brand-bright: #6fd2ba;
+  --header-surface: #dceee9;
+  --header-border: #cce2dc;
+  --header-muted: #3f5650;
   --danger: #a23a3a;
   --danger-soft: #f9e8e8;
   --success: #176b50;
@@ -75,6 +78,9 @@
   --color-brand-deep: var(--brand-deep);
   --color-brand-pale: var(--brand-pale);
   --color-brand-bright: var(--brand-bright);
+  --color-header-surface: var(--header-surface);
+  --color-header-border: var(--header-border);
+  --color-header-muted: var(--header-muted);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-success: var(--success);
@@ -95,6 +101,7 @@
   --radius-control: var(--demi-radius-control);
   --radius-panel: var(--demi-radius-panel);
   --radius-dialog: var(--demi-radius-dialog);
+  --radius-pill: 9999px;
   --shadow-surface: var(--demi-shadow-surface);
   --shadow-floating: var(--demi-shadow-floating);
   --spacing-app-sidebar: var(--app-sidebar-width);
