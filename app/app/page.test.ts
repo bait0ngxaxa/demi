@@ -9,6 +9,7 @@ import { getProtectedApplicationActor } from "@/modules/auth/services/applicatio
 import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-workspace-service";
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { listHospitalOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
+import { getPendingActions } from "@/modules/pending-actions/services/pending-action-service";
 import { ForbiddenError, InfrastructureError } from "@/shared/errors/application-error";
 
 const { mockedRedirect } = vi.hoisted(() => ({ mockedRedirect: vi.fn() }));
@@ -23,6 +24,9 @@ vi.mock("@/modules/auth/services/actor-workspace-service", () => ({
 }));
 vi.mock("@/modules/appointments/services/work-appointment-query-service", () => ({
   countWorkAppointmentsAwaitingMyAcceptance: vi.fn().mockResolvedValue(0),
+}));
+vi.mock("@/modules/pending-actions/services/pending-action-service", () => ({
+  getPendingActions: vi.fn(),
 }));
 
 vi.mock("@/modules/hospital-content/services/hospital-content-work-query-service", () => ({
@@ -56,6 +60,7 @@ describe("application home workspace routing", () => {
     vi.mocked(getProtectedApplicationActor).mockResolvedValue(patientActor);
     vi.mocked(listActorHospitalWorkspaces).mockResolvedValue([]);
     vi.mocked(listHospitalWorkContent).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(getPendingActions).mockResolvedValue({ status: "READY", checkedAt: 1, indicators: [] });
     mockedRedirect.mockImplementation((path: string) => {
       throw new Error(`NEXT_REDIRECT:${path}`);
     });
@@ -139,6 +144,59 @@ describe("application home workspace routing", () => {
   function staff(membershipType: MembershipType, roles: readonly Role[] = [Role.HOSPITAL]): ActorContext {
     return { ...patientActor, roles, hospitalMemberships: [{ hospitalId, membershipType, profession: Profession.NURSE, status: MembershipStatus.ACTIVE, hospitalStatus: HospitalStatus.ACTIVE }] };
   }
+
+  it("renders desktop work sections and the mobile menu with one copy of each shared section", async () => {
+    vi.mocked(getPendingActions).mockResolvedValueOnce({
+      status: "READY",
+      checkedAt: 1,
+      indicators: [{
+        count: 12,
+        href: "/app/patients/service-requests?group=PENDING",
+        label: "คำขอรับบริการรอพิจารณา",
+        navigationHref: "/app/patients/service-requests",
+      }],
+    });
+    const actor = staff(MembershipType.OWNER);
+    const html = await renderHome({
+      ...actor,
+      hospitalMemberships: [...actor.hospitalMemberships, {
+        hospitalId: "55555555-5555-4555-8555-555555555555",
+        membershipType: MembershipType.OWNER,
+        profession: Profession.NURSE,
+        status: MembershipStatus.SUSPENDED,
+        hospitalStatus: HospitalStatus.ACTIVE,
+      }],
+    });
+
+    expect(getPendingActions).toHaveBeenCalledExactlyOnceWith(actor.userId);
+    expect(html).toContain('<div class="hidden lg:block"><section aria-labelledby="work-home-pending-heading"');
+    expect(html).toContain('<div class="mt-8 hidden lg:block"><section aria-labelledby="work-home-tools-heading"');
+    expect(html).toContain('<div class="lg:hidden"><section aria-labelledby="work-home-menu-heading"');
+    expect(section(html, "work-home-pending-heading")).toContain('href="/app/patients/service-requests?group=PENDING"');
+    expect(section(html, "work-home-heading")).not.toContain("รายการ</span>");
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    for (const heading of ["shared", "news", "unavailable"]) {
+      expect(html.match(new RegExp(`id="work-home-${heading}-heading"`, "g"))).toHaveLength(1);
+    }
+    expect(html.match(/<details\b/g)).toHaveLength(1);
+    expect(html.match(/เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้/g)).toHaveLength(1);
+  });
+
+  it("shows the unavailable queue without reporting an empty queue or blocking the other sections", async () => {
+    vi.mocked(getPendingActions).mockResolvedValueOnce({ status: "UNAVAILABLE", checkedAt: 1 });
+    const html = await renderHome(staff(MembershipType.OWNER));
+
+    expect(section(html, "work-home-pending-heading")).toContain("ยังตรวจสอบงานที่รอดำเนินการไม่ได้ ลองโหลดหน้าใหม่อีกครั้ง");
+    expect(section(html, "work-home-pending-heading")).not.toContain("ไม่มีงานรอดำเนินการในตอนนี้");
+    expect(section(html, "work-home-tools-heading")).toContain(`href="/app/patients?hospitalId=${hospitalId}"`);
+    expect(section(html, "work-home-news-heading")).toContain("ข่าวสารทีมงาน");
+  });
+
+  it("propagates authorization failures from the pending-actions loader", async () => {
+    const error = new ForbiddenError();
+    vi.mocked(getPendingActions).mockRejectedValueOnce(error);
+    await expect(renderHome(staff(MembershipType.OWNER))).rejects.toBe(error);
+  });
 
   it("prioritizes patient care and keeps direct administration for OWNER", async () => {
     const type = MembershipType.OWNER;

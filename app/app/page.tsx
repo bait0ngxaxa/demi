@@ -21,6 +21,8 @@ import {
   projectWorkHome,
   type WorkHomeScope,
 } from "@/components/home/work-home-projection";
+import { WorkHomePendingQueue } from "@/components/home/work-home-pending-queue";
+import { WorkHomeToolGroups } from "@/components/home/work-home-tool-groups";
 import { Alert } from "@/components/ui/alert";
 import { ChevronGlyph } from "@/components/ui/glyphs";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -30,6 +32,7 @@ import { listActorHospitalWorkspaces } from "@/modules/auth/services/actor-works
 import { listHospitalWorkContent } from "@/modules/hospital-content/services/hospital-content-work-query-service";
 import { listHospitalOwnerInvitationsForActor } from "@/modules/hospital-service-areas/services/child-facility-service";
 import { scheduleCurrentLineAccountReconciliation } from "@/modules/line/transport/line-reconciliation-scheduler";
+import { getPendingActions } from "@/modules/pending-actions/services/pending-action-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 import { ForbiddenError, UnauthenticatedError } from "@/shared/errors/application-error";
 
@@ -203,9 +206,15 @@ export default async function ApplicationPage(
   const selectedHospital = home.scope.kind === "hospital" ? home.scope.hospital : null;
   // The feed re-applies the persisted work-membership predicate; the locator only narrows it.
   // An infrastructure failure stays inside the news section; authorization errors still propagate.
-  const teamNews = selectedHospital
-    ? await loadHomeSection(() => listHospitalWorkContent(actor, { hospitalId: selectedHospital.hospitalId, limit: 3 }))
-    : null;
+  const [pendingActions, teamNews] = await Promise.all([
+    getPendingActions(actor.userId),
+    selectedHospital
+      ? loadHomeSection(() => listHospitalWorkContent(actor, { hospitalId: selectedHospital.hospitalId, limit: 3 }))
+      : null,
+  ]);
+  const hospitalNames = new Map(projection.areaGroups.flatMap(({ hospitals }) =>
+    hospitals.map(({ hospitalId, hospitalName }) => [hospitalId, hospitalName] as const),
+  ));
   const hasPersonalWorkspace = projection.availableWorkspaces.includes("personal");
   const hasNoActions = projection.governanceActions.length === 0 && !projection.assignedPatientsAction &&
     !projection.hospitals.some(({ actions }) => actions.length > 0) &&
@@ -231,24 +240,35 @@ export default async function ApplicationPage(
 
       <ChildOwnerInvitations invitations={invitations} />
 
-      {home.tiles.length > 0 ? (
-        <>
-          <HomeShortcutGrid heading="เมนูงาน" headingId="work-home-menu-heading" shortcuts={home.tiles} />
-          {/* ADR-0019: only a direct OWNER has administration actions. */}
-          {selectedHospital?.actions.some(({ category }) => category === "administration") ? (
-            <p className="mt-2 text-sm leading-6 text-text-muted">
-              บริหารโรงพยาบาล · สิทธิ์แอดมินโรงพยาบาลโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
+      <div className="lg:mt-8 lg:grid lg:items-start lg:gap-x-8 lg:@5xl/workspace:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] lg:@5xl/workspace:grid-rows-[auto_1fr]">
+        <div className="contents lg:block lg:min-w-0">
+          <div className="hidden lg:block">
+            <WorkHomePendingQueue hospitalNames={hospitalNames} result={pendingActions} />
+          </div>
+          {home.toolGroups.length > 0 ? (
+            <div className="mt-8 hidden lg:block">
+              <WorkHomeToolGroups groups={home.toolGroups} />
+            </div>
+          ) : null}
+
+          {home.tiles.length > 0 ? (
+            <>
+              <div className="lg:hidden">
+                <HomeShortcutGrid heading="เมนูงาน" headingId="work-home-menu-heading" shortcuts={home.tiles} />
+              </div>
+              {/* ADR-0019: only a direct OWNER has administration actions. */}
+              {selectedHospital?.actions.some(({ category }) => category === "administration") ? (
+                <p className="mt-2 text-sm leading-6 text-text-muted">
+                  บริหารโรงพยาบาล · สิทธิ์แอดมินโรงพยาบาลโดยตรง เครื่องมือแสดงตามสิทธิ์ของคุณในโรงพยาบาลนี้
+                </p>
+              ) : null}
+            </>
+          ) : selectedHospital ? (
+            <p className="mt-7 text-sm leading-6 text-text-muted">
+              ยังไม่มีงานที่เปิดให้คุณทำในโรงพยาบาลนี้ การมีบัญชีหรือได้รับคำเชิญยังไม่ทำให้มีสิทธิ์ดูแลผู้ป่วยโดยอัตโนมัติ
             </p>
           ) : null}
-        </>
-      ) : selectedHospital ? (
-        <p className="mt-7 text-sm leading-6 text-text-muted">
-          ยังไม่มีงานที่เปิดให้คุณทำในโรงพยาบาลนี้ การมีบัญชีหรือได้รับคำเชิญยังไม่ทำให้มีสิทธิ์ดูแลผู้ป่วยโดยอัตโนมัติ
-        </p>
-      ) : null}
 
-      {home.sharedActions.length > 0 || teamNews ? (
-        <div className="grid min-w-0 gap-x-8 @5xl/workspace:grid-cols-2">
           {home.sharedActions.length > 0 ? (
             <section aria-labelledby="work-home-shared-heading" className="mt-8 min-w-0">
               <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id="work-home-shared-heading">
@@ -260,23 +280,23 @@ export default async function ApplicationPage(
               <SharedActionList actions={home.sharedActions} />
             </section>
           ) : null}
-          {selectedHospital && teamNews ? (
-            <HomeContentSection
-              allHref={`/app/hospitals/content?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}`}
-              emptyMessage={`ยังไม่มีข่าวสารสำหรับทีมงานจาก${selectedHospital.hospitalName}`}
-              heading="ข่าวสารทีมงาน"
-              failure={teamNews.status === "FAILED"
-                ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref: `/app?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}` }
-                : undefined}
-              id="work-home-news-heading"
-              itemHrefBase="/app/hospitals/content"
-              items={teamNews.status === "LOADED" ? teamNews.value.items : []}
-            />
-          ) : null}
         </div>
-      ) : null}
-
-      {home.unavailableHospitals.length > 0 ? <UnavailableHospitalList hospitals={home.unavailableHospitals} /> : null}
+        {selectedHospital && teamNews ? (
+          <HomeContentSection
+            allHref={`/app/hospitals/content?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}`}
+            className="lg:order-last lg:@5xl/workspace:col-start-2 lg:@5xl/workspace:row-span-2 lg:@5xl/workspace:row-start-1 lg:@5xl/workspace:mt-0"
+            emptyMessage={`ยังไม่มีข่าวสารสำหรับทีมงานจาก${selectedHospital.hospitalName}`}
+            heading="ข่าวสารทีมงาน"
+            failure={teamNews.status === "FAILED"
+              ? { message: "โหลดข่าวสารไม่สำเร็จ", retryHref: `/app?hospitalId=${encodeURIComponent(selectedHospital.hospitalId)}` }
+              : undefined}
+            id="work-home-news-heading"
+            itemHrefBase="/app/hospitals/content"
+            items={teamNews.status === "LOADED" ? teamNews.value.items : []}
+          />
+        ) : null}
+        {home.unavailableHospitals.length > 0 ? <UnavailableHospitalList hospitals={home.unavailableHospitals} /> : null}
+      </div>
 
       {hasNoActions && !hasInvitations ? (
         <Alert className="mt-8" variant="neutral">

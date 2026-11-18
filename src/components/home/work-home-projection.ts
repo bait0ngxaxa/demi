@@ -8,7 +8,7 @@ import type {
 } from "@/components/app-shell/application-workspace";
 import { getMoreNavigationIcon } from "@/components/app-shell/mobile-navigation-glyph";
 import { compareNavigationSections } from "@/components/app-shell/navigation-sections";
-import type { ApplicationNavigationGroup } from "@/components/app-shell/navigation-types";
+import type { ApplicationNavigationGroup, NavigationSectionId } from "@/components/app-shell/navigation-types";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
 import type { HomeShortcut } from "./home-shortcut-grid";
@@ -27,6 +27,7 @@ export type WorkHomeProjection = {
   /** Primary action for the selected scope: a link only, never a count. */
   hero: ApplicationWorkspaceAction | null;
   tiles: readonly HomeShortcut[];
+  toolGroups: readonly WorkHomeToolGroup[];
   /** Actions that resolve the actor's full permitted scope, so they never belong to one Hospital's grid. */
   sharedActions: readonly ApplicationWorkspaceAction[];
   /** Projected Hospitals that are not selectable work areas; shown with their status and no actions. */
@@ -34,6 +35,7 @@ export type WorkHomeProjection = {
 };
 
 type WorkHomeLink = Pick<ApplicationWorkspaceAction, "href" | "label" | "prefetch"> & { description?: string };
+type WorkHomeToolGroup = { id: NavigationSectionId; label: string; tools: HomeShortcut[] };
 
 function tileKey(href: string): string {
   const [pathname = "", query = ""] = href.split("?");
@@ -68,12 +70,12 @@ export function projectWorkNavigationOrder(navigation: readonly ApplicationNavig
   ];
 }
 
-export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationOrder: readonly string[]): HomeShortcut[] {
+function rankWorkHomeTiles(links: readonly WorkHomeLink[], navigationOrder: readonly string[]): HomeShortcut[] {
   const tileRank = (href: string): number => {
     const rank = navigationOrder.indexOf(tileKey(href));
     return rank === -1 ? navigationOrder.length : rank;
   };
-  const tiles = links
+  return links
     .map((link, index) => ({ link, index, rank: tileRank(link.href) }))
     .sort((left, right) => left.rank - right.rank || left.index - right.index)
     .map(({ link }): HomeShortcut => ({
@@ -83,10 +85,50 @@ export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationO
       ...(link.description === undefined ? {} : { description: link.description }),
       ...(link.prefetch === undefined ? {} : { prefetch: link.prefetch }),
     }));
+}
 
+function capWorkHomeTiles(tiles: HomeShortcut[]): HomeShortcut[] {
   return tiles.length > WORK_HOME_MAX_TILES
     ? [...tiles.slice(0, WORK_HOME_MAX_TILES - 1), overflowTile]
     : tiles;
+}
+
+export function projectWorkHomeTiles(links: readonly WorkHomeLink[], navigationOrder: readonly string[]): HomeShortcut[] {
+  return capWorkHomeTiles(rankWorkHomeTiles(links, navigationOrder));
+}
+
+export function projectWorkHomeToolGroups(
+  tiles: readonly HomeShortcut[],
+  navigation: readonly ApplicationNavigationGroup[],
+): WorkHomeToolGroup[] {
+  const sectionByTile = new Map<string, ApplicationNavigationGroup>();
+  for (const group of navigation) {
+    if (group.workspace !== "work" && group.workspace !== "all") continue;
+    for (const item of group.items) {
+      const key = tileKey(item.href);
+      if (!sectionByTile.has(key)) sectionByTile.set(key, group);
+    }
+  }
+
+  const groups = new Map<NavigationSectionId, WorkHomeToolGroup>();
+  // The primary navigation section has no heading and is never rendered as a tool group.
+  const other: WorkHomeToolGroup = { id: "primary", label: "อื่น ๆ", tools: [] };
+  for (const tile of tiles) {
+    const key = tileKey(tile.href);
+    if (key === overflowTile.href) continue;
+    const section = sectionByTile.get(key);
+    if (!section) {
+      other.tools.push(tile);
+      continue;
+    }
+    if (section.id === "home" || section.label === null) continue;
+    const group = groups.get(section.id) ?? { id: section.id, label: section.label, tools: [] };
+    group.tools.push(tile);
+    groups.set(section.id, group);
+  }
+
+  const ordered = [...groups.values()].sort((left, right) => compareNavigationSections(left.id, right.id));
+  return other.tools.length > 0 ? [...ordered, other] : ordered;
 }
 
 /** OSM task links are the navigation's own task items instead of restated destinations. */
@@ -138,6 +180,12 @@ export function projectWorkHome(
   const selected = projection.hospitals.find(({ hospitalId }) => hospitalId === selectedId);
   const unavailableHospitals = projection.hospitals.filter(({ hospitalId }) => !candidateIds.includes(hospitalId));
   const requestAndSupporting = [...projection.requestActions, ...projection.supportingActions];
+  const links = selected
+    ? [...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)]
+    : projection.governanceActions.length > 0 ? projection.governanceActions : osmTaskLinks;
+  const rankedTiles = rankWorkHomeTiles(links, navigationOrder);
+  const tiles = capWorkHomeTiles(rankedTiles);
+  const toolGroups = projectWorkHomeToolGroups(rankedTiles, navigation);
 
   if (selected) {
     const patientDirectoryAction = selected.actions.find(({ href }) => {
@@ -148,7 +196,8 @@ export function projectWorkHome(
     return {
       scope: { kind: "hospital", hospital: selected, groups: projection.areaGroups },
       hero: patientDirectoryAction ?? selected.actions.find(({ category }) => category === "care") ?? projection.assignedPatientsAction,
-      tiles: projectWorkHomeTiles([...selected.actions, ...scopeOsmTaskLinks(osmTaskLinks, selected.hospitalId, activeOsmHospitalIds)], navigationOrder),
+      tiles,
+      toolGroups,
       sharedActions: [...requestAndSupporting, ...projection.governanceActions],
       unavailableHospitals,
     };
@@ -158,7 +207,8 @@ export function projectWorkHome(
     return {
       scope: { kind: "system" },
       hero: projection.governanceActions[0] ?? null,
-      tiles: projectWorkHomeTiles(projection.governanceActions, navigationOrder),
+      tiles,
+      toolGroups,
       sharedActions: requestAndSupporting,
       unavailableHospitals,
     };
@@ -167,7 +217,8 @@ export function projectWorkHome(
   return {
     scope: { kind: "none" },
     hero: projection.assignedPatientsAction,
-    tiles: projectWorkHomeTiles(osmTaskLinks, navigationOrder),
+    tiles,
+    toolGroups,
     sharedActions: requestAndSupporting,
     unavailableHospitals,
   };

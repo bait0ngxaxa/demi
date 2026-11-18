@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { projectApplicationNavigation } from "@/components/app-shell/application-navigation";
 import { projectApplicationWorkspace } from "@/components/app-shell/application-workspace";
 import { NAVIGATION_SECTION_ORDER } from "@/components/app-shell/navigation-sections";
+import type { ApplicationNavigationGroup } from "@/components/app-shell/navigation-types";
 import type { ActorHospitalWorkspace } from "@/modules/auth/services/actor-workspace-service";
 import type { ActorContext } from "@/modules/auth/types/actor-context";
 
@@ -13,6 +14,7 @@ import {
   projectOsmTaskLinks,
   projectWorkHome,
   projectWorkHomeTiles,
+  projectWorkHomeToolGroups,
   projectWorkNavigationOrder,
 } from "./work-home-projection";
 
@@ -92,6 +94,53 @@ const cappedOwnerTiles = (id: string, areas = false): string[] => [
   ...ownerTiles(id, areas).slice(0, WORK_HOME_MAX_TILES - 1),
   "/app/more",
 ];
+
+describe("desktop work home tool groups", () => {
+  it("uses the first work match, sorts sections, preserves tile order and ends with unmatched tools", () => {
+    const navigation: ApplicationNavigationGroup[] = [
+      { id: "care", workspace: "personal", label: "ส่วนตัว", items: [{ href: "/report", label: "รายงาน", match: "exact" }] },
+      { id: "administration", workspace: "work", label: "บริหาร", items: [{ href: "/report", label: "รายงาน", match: "exact" }] },
+      { id: "care", workspace: "all", label: "ดูแล", items: [
+        { href: "/report", label: "รายงานซ้ำ", match: "exact" },
+        { href: "/second", label: "สอง", match: "exact" },
+        { href: "/first", label: "หนึ่ง", match: "exact" },
+      ] },
+      { id: "home", workspace: "work", label: "หน้าหลัก", items: [{ href: "/app", label: "หน้าหลัก", match: "exact" }] },
+      { id: "primary", workspace: "work", label: null, items: [{ href: "/primary", label: "เมนูหลัก", match: "exact" }] },
+    ];
+    const tiles = ["/report", "/first?hospitalId=1", "/unknown", "/app", "/second", "/primary", "/app/more"]
+      .map((href) => ({ href, icon: "more" as const, label: href }));
+
+    expect(projectWorkHomeToolGroups(tiles, navigation).map(({ label, tools }) => [label, tools.map(({ href }) => href)])).toEqual([
+      ["ดูแล", ["/first?hospitalId=1", "/second"]],
+      ["บริหาร", ["/report"]],
+      ["อื่น ๆ", ["/unknown"]],
+    ]);
+  });
+
+  it.each([
+    { name: "OWNER", subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.OWNER)] }), hrefs: ownerTiles(hospitalA) },
+    { name: "MEMBER", subject: actor({ roles: [Role.HOSPITAL], hospitalMemberships: [membership(hospitalA, MembershipType.MEMBER)] }), hrefs: ownerTiles(hospitalA).filter((href) => !["/app/users", "/app/hospitals/knowledge", "/app/patients/provision", "/app/hospitals/settings"].includes(path(href))) },
+    { name: "อสม.", subject: actor({ roles: [Role.OSM], osmHospitalRelationships: [osm(hospitalA)] }), hrefs: [appointmentsAt(hospitalA), servicesAt(hospitalA), screeningAt(hospitalA)] },
+    { name: "ADMIN", subject: actor({ roles: [Role.ADMIN] }), hrefs: governance },
+  ])("includes the complete authorized tool set for $name", ({ subject, hrefs }) => {
+    const { home } = project(subject, [workspace(hospitalA)]);
+    const desktopHrefs = home.toolGroups.flatMap(({ tools }) => tools.map(({ href }) => href));
+
+    expect([...desktopHrefs].sort()).toEqual([...hrefs].sort());
+    expect(home.toolGroups.map(({ id }) => NAVIGATION_SECTION_ORDER.indexOf(id))).toEqual(
+      home.toolGroups.map(({ id }) => NAVIGATION_SECTION_ORDER.indexOf(id)).sort((left, right) => left - right),
+    );
+    if (hrefs.length > WORK_HOME_MAX_TILES) {
+      expect(desktopHrefs.length).toBeGreaterThan(WORK_HOME_MAX_TILES);
+      expect(home.tiles).toHaveLength(WORK_HOME_MAX_TILES);
+      expect(home.tiles.at(-1)?.href).toBe("/app/more");
+    }
+    if (subject.roles.includes(Role.ADMIN)) {
+      expect(home.toolGroups.find(({ id }) => id === "administration")?.label).toBe("กำกับดูแล");
+    }
+  });
+});
 
 type Case = {
   name: string;
