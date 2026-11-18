@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components/ui/alert";
@@ -9,6 +9,7 @@ import { inputClassName } from "@/components/ui/input";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
 import { Panel } from "@/components/ui/panel";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useFormDirty } from "@/components/ui/use-form-dirty";
 import type { RoundAchieveScoreView } from "@/modules/patient-program-rounds/services/round-query-service";
 import {
   initialPatientProgramRoundActionState,
@@ -35,6 +36,9 @@ export function RoundAchieveScoreForm({
     recordRoundAchieveScoreAction,
     initialPatientProgramRoundActionState,
   );
+  // The saved score stays in the field, so only a changed score (a blank one clears it) can be submitted (SAVE-STATE).
+  const formRef = useRef<HTMLFormElement>(null);
+  const { dirty } = useFormDirty(formRef, { savedKey: state.status === "SUCCESS" ? state : undefined });
   const inputId = `round-${target.roundNumber}-achieve-score`;
   const hint =
     achieveScore.computedRatePercent !== null
@@ -54,7 +58,7 @@ export function RoundAchieveScoreForm({
         คะแนนที่โรงพยาบาลประเมินเอง ใช้ในรายงาน และไม่แสดงให้ผู้ป่วยเห็น
       </p>
       {achieveScore.editable ? (
-        <form action={action} className="mt-4 space-y-3" onSubmit={submitPreservingInput(action)}>
+        <form action={action} className="mt-4 space-y-3" onSubmit={submitPreservingInput(action)} ref={formRef}>
           <input name="patientHospitalRelationshipId" type="hidden" value={target.patientHospitalRelationshipId} />
           <input name="patientProgramId" type="hidden" value={target.patientProgramId} />
           <input name="roundNumber" type="hidden" value={target.roundNumber} />
@@ -76,7 +80,7 @@ export function RoundAchieveScoreForm({
                 type="number"
               />
             </label>
-            <Button disabled={pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
+            <Button disabled={!dirty || pending || unknownOutcome} loading={pending} size="compact" type="submit" variant="secondary">
               {pending ? "กำลังบันทึก…" : "บันทึก Achieve score"}
             </Button>
           </div>
@@ -85,7 +89,7 @@ export function RoundAchieveScoreForm({
           {state.status === "ERROR" ? (
             <Alert variant={state.code === "CONFLICT" ? "warning" : "danger"}>{state.message}</Alert>
           ) : null}
-          {state.status === "SUCCESS" ? <Alert variant="success">บันทึก Achieve score แล้ว</Alert> : null}
+          {state.status === "SUCCESS" && !dirty ? <Alert variant="success">บันทึก Achieve score แล้ว</Alert> : null}
           <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "resend", onResend: resendUnconfirmed, resending: pending }} />
         </form>
       ) : (

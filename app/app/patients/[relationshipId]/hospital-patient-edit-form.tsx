@@ -1,8 +1,11 @@
 "use client";
 
+import { useRef } from "react";
+
 import { Button } from "@/components/ui/button";
 import { submitPreservingInput } from "@/components/ui/mutation-action-state";
 import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
+import { useFormDirty } from "@/components/ui/use-form-dirty";
 import { HEALTH_HISTORY_FIELDS, currentBuddhistYear } from "@/modules/patient-hospital-profile/schemas/patient-health-history-schemas";
 import { savePatientHealthHistoryAction, saveStaffPatientHospitalProfileAction } from "@/modules/patient-hospital-profile/transport/hospital-patient-edit-actions";
 
@@ -26,7 +29,10 @@ export function HospitalPatientEditForm({ relationshipId, version, health, value
     conflict: "บันทึกไม่สำเร็จ ข้อมูลมีการเปลี่ยนแปลง กรุณาโหลดข้อมูลล่าสุด",
     forbidden: "ไม่มีสิทธิ์บันทึกข้อมูลนี้",
   });
-  return <form action={formAction} className="space-y-5" onSubmit={submitPreservingInput(formAction)}>
+  // The saved values stay in the fields, so only an unsaved edit can be submitted (SAVE-STATE).
+  const formRef = useRef<HTMLFormElement>(null);
+  const { dirty } = useFormDirty(formRef, { savedKey: state.status === "SUCCESS" ? state : undefined });
+  return <form action={formAction} className="space-y-5" onSubmit={submitPreservingInput(formAction)} ref={formRef}>
     <input type="hidden" name="expectedVersion" value={version} />
     <div className="grid gap-5 sm:grid-cols-2">
       {Object.entries(health ? HEALTH_HISTORY_FIELDS : PROFILE_FIELDS).map(([name, label]) => <div key={name}>
@@ -46,9 +52,9 @@ export function HospitalPatientEditForm({ relationshipId, version, health, value
       </> : null}
     </div>
     {/* A success is announced by its Toast, so only errors are a live region here. */}
-    {state.message ? <p role={state.status === "ERROR" ? "alert" : undefined} className="text-sm text-text">{state.message}</p> : null}
+    {state.message && !(state.status === "SUCCESS" && dirty) ? <p role={state.status === "ERROR" ? "alert" : undefined} className="text-sm text-text">{state.message}</p> : null}
     <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload" }} />
-    <Button disabled={unknownOutcome} loading={pending} type="submit">
+    <Button disabled={!dirty || unknownOutcome} loading={pending} type="submit">
       {pending ? "กำลังบันทึก…" : "บันทึกข้อมูล"}
     </Button>
   </form>;

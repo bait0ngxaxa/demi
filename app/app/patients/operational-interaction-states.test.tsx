@@ -65,6 +65,14 @@ function input(name: string): HTMLInputElement {
   return container.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
 }
 
+/** Types like a user: the form only enables its save after an input event (SAVE-STATE). */
+function typeInto(name: string, value: string): void {
+  act(() => {
+    input(name).value = value;
+    input(name).dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 function buttonByText(text: string): HTMLButtonElement {
   const found = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes(text));
   if (!found) throw new Error(`Missing button: ${text}`);
@@ -91,18 +99,20 @@ describe("Hospital patient profile edit", () => {
 
   it("keeps edited values when the server rejects the save", async () => {
     mocks.profile.mockResolvedValue({ status: "ERROR", message: "ข้อมูลถูกแก้ไขโดยผู้อื่นแล้ว" });
-    input("phoneNumber").value = "0811111111";
-    input("province").value = "เชียงใหม่";
+    typeInto("phoneNumber", "0811111111");
+    typeInto("province", "เชียงใหม่");
 
     await click(buttonByText("บันทึกข้อมูล"));
 
     expect(container.querySelector('[role="alert"]')?.textContent).toBe("ข้อมูลถูกแก้ไขโดยผู้อื่นแล้ว");
+    expect(buttonByText("บันทึกข้อมูล").disabled).toBe(false);
     expect(input("phoneNumber").value).toBe("0811111111");
     expect(input("province").value).toBe("เชียงใหม่");
   });
 
   it("blocks another save when the save outcome cannot be confirmed", async () => {
     mocks.profile.mockRejectedValue(new TypeError("Failed to fetch"));
+    typeInto("phoneNumber", "0811111111");
 
     await click(buttonByText("บันทึกข้อมูล"));
 

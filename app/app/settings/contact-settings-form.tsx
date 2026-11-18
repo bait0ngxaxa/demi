@@ -48,6 +48,9 @@ function MedicationReminderPreference({ initial }: { initial: OwnMedicationLineR
 export function ContactSettingsForm({ initial, patient }: { initial: OwnContactSetting; patient: { appointment: OwnAppointmentLineNotificationPreference; medication: OwnMedicationLineReminderPreference | null } | null }): React.JSX.Element {
   const [email, setEmail] = useState(initial.email ?? "");
   const [version, setVersion] = useState(initial.version);
+  // The saved email stays in the field, so only a changed email can be submitted (SAVE-STATE).
+  const [savedEmail, setSavedEmail] = useState((initial.email ?? "").trim());
+  const dirty = email.trim() !== savedEmail;
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ variant: "success" | "warning"; text: string } | null>(null);
   const [unknownOutcome, setUnknownOutcome] = useState(false);
@@ -63,7 +66,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
 
   function save(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (inFlightRef.current || unknownOutcome) return;
+    if (inFlightRef.current || unknownOutcome || !dirty) return;
     inFlightRef.current = true;
     setMessage(null);
     startTransition(async () => {
@@ -79,6 +82,7 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
       if (result.status === "SUCCESS") {
         inFlightRef.current = false;
         setEmail(result.email ?? "");
+        setSavedEmail((result.email ?? "").trim());
         setVersion(result.version);
         setMessage({ variant: "success", text: "บันทึกอีเมลติดต่อแล้ว" });
         notify.success("บันทึกอีเมลแล้ว");
@@ -107,9 +111,9 @@ export function ContactSettingsForm({ initial, patient }: { initial: OwnContactS
           <p className="mt-2 text-sm leading-6 text-text-muted">อีเมลนี้ใช้เป็นข้อมูลติดต่อเท่านั้น ยังไม่ได้ยืนยัน และจะไม่ใช้เข้าสู่ระบบหรือกู้คืนบัญชี</p>
         </div>
         {/* A success is announced by its Toast; other messages keep the Alert's live role. */}
-        {message ? <Alert role={message.variant === "success" ? "none" : undefined} variant={message.variant}>{message.text}</Alert> : null}
+        {message && !(message.variant === "success" && dirty) ? <Alert role={message.variant === "success" ? "none" : undefined} variant={message.variant}>{message.text}</Alert> : null}
         <UnknownOutcomeAlert active={unknownOutcome} recovery={{ kind: "reload", label: "โหลดและตรวจสอบข้อมูลล่าสุด", message: "ระบบยังยืนยันผลการบันทึกไม่ได้ กรุณาโหลดข้อมูลล่าสุดเพื่อตรวจสอบก่อนบันทึกอีกครั้ง" }} />
-        <Button disabled={pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
+        <Button disabled={!dirty || pending || unknownOutcome} loading={pending} type="submit">บันทึกข้อมูลติดต่อ</Button>
       </form>
     </section>
     {patient ? <section aria-labelledby="notification-settings-heading" className="border-t border-border pt-6">
