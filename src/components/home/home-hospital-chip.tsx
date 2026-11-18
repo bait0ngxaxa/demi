@@ -1,5 +1,7 @@
 import Form from "next/form";
 
+import { MobileNavigationGlyph } from "@/components/app-shell/mobile-navigation-glyph";
+
 export type HomeHospitalOption = {
   relationshipId: string;
   hospitalName: string;
@@ -35,9 +37,9 @@ export function HomeHospitalChip({
 
   if (groups.flatMap(({ options }) => options).length < 2) {
     return (
-      <p className="mt-2 max-w-full text-sm leading-6 text-white lg:mt-0">
-        <span className="mr-2 text-white/75">โรงพยาบาล</span>
-        <span className="break-words font-semibold">{selectedLabel}</span>
+      <p className="mt-2 flex min-w-0 max-w-full items-start gap-2 text-sm leading-6 text-white lg:mt-0">
+        <span className="mt-0.5 shrink-0 text-white/75"><MobileNavigationGlyph icon="hospital" /></span>
+        <span className="min-w-0 break-words font-semibold">{selectedLabel}</span>
       </p>
     );
   }
