@@ -25,17 +25,46 @@ export function LoadingRegion({
   );
 }
 
-export function PageHeaderSkeleton({ actions = false }: { actions?: boolean }): React.JSX.Element {
+export function PageHeaderSkeleton({
+  actions = false,
+  breadcrumbs = true,
+  context,
+}: { actions?: boolean; breadcrumbs?: boolean; context?: ReactNode }): React.JSX.Element {
   return (
-    <header aria-hidden="true" className="border-b border-border pb-8">
-      <Skeleton className="mb-4 h-4 w-36" />
+    <header aria-hidden="true" className={classNames(
+      "rounded-[16px] border border-header-border bg-header-surface px-5 pb-5 sm:px-6 lg:px-7 lg:pb-6 lg:pt-5",
+      breadcrumbs ? "pt-3" : "pt-5",
+    )}>
+      {breadcrumbs ? (
+        <div className="mb-2 flex h-11 items-center lg:mb-4">
+          <Skeleton className="h-4 w-36" />
+        </div>
+      ) : null}
       <div className="flex min-w-0 flex-wrap items-end justify-between gap-5">
         <div className="min-w-0 basis-80 flex-1">
-          <Skeleton className="h-10 w-full max-w-sm" />
-          <Skeleton className="mt-4 h-4 w-full max-w-2xl" />
-          <Skeleton className="mt-2 h-4 w-3/5 max-w-lg" />
+          <Skeleton className="h-8 w-full max-w-sm sm:h-9" />
+          <Skeleton className="mt-1.5 h-6 w-full max-w-2xl sm:h-7" />
+          {context != null ? <div className="mt-3">{context}</div> : null}
         </div>
-        {actions ? <Skeleton className="h-11 w-32 shrink-0" /> : null}
+        {actions ? <Skeleton className="h-11 w-32 shrink-0 sm:ml-auto" /> : null}
+      </div>
+    </header>
+  );
+}
+
+export function HomeHeroSkeleton({ appointment = false }: { appointment?: boolean }): React.JSX.Element {
+  return (
+    <header aria-hidden="true" className="min-w-0 rounded-[16px] border border-header-border bg-header-surface p-5 sm:p-7 lg:px-6 lg:py-5">
+      <div className="lg:flex lg:items-center lg:justify-between lg:gap-6">
+        <Skeleton className="h-8 w-48 max-w-full sm:h-9 lg:h-8" />
+        <Skeleton className="mt-2 h-11 w-52 max-w-full rounded-pill lg:mt-0" />
+      </div>
+      <div className="mt-5 rounded-control bg-surface p-4 shadow-surface lg:mt-4 lg:flex lg:items-center lg:gap-4 lg:py-3">
+        <Skeleton className="h-5 w-20" />
+        <div className="mt-2 flex min-w-0 flex-1 items-center gap-3 lg:mt-0">
+          {appointment ? <Skeleton className="h-[60px] w-14 shrink-0 rounded-[10px]" /> : null}
+          <Skeleton className="h-11 w-48 max-w-full" />
+        </div>
       </div>
     </header>
   );

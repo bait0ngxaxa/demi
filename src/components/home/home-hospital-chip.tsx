@@ -1,6 +1,7 @@
 import Form from "next/form";
 
 import { MobileNavigationGlyph } from "@/components/app-shell/mobile-navigation-glyph";
+import { ChevronGlyph } from "@/components/ui/glyphs";
 
 export type HomeHospitalOption = {
   relationshipId: string;
@@ -32,14 +33,14 @@ export function HomeHospitalChip({
 }): React.JSX.Element {
   // Nothing to choose: plain text, never styled like a control (UI-4.1).
   if (selectedValue === null || selectedLabel === null) {
-    return <p className="mt-2 max-w-full break-words text-sm leading-6 text-white/85 lg:mt-0">{emptyLabel}</p>;
+    return <p className="mt-2 max-w-full break-words text-sm leading-6 text-header-muted lg:mt-0">{emptyLabel}</p>;
   }
 
   if (groups.flatMap(({ options }) => options).length < 2) {
     return (
-      <p className="mt-2 flex min-w-0 max-w-full items-start gap-2 text-sm leading-6 text-white lg:mt-0">
-        <span className="mt-0.5 shrink-0 text-white/75"><MobileNavigationGlyph icon="hospital" /></span>
-        <span className="min-w-0 break-words font-semibold">{selectedLabel}</span>
+      <p className="mt-2 inline-flex min-h-8 min-w-0 max-w-full items-center gap-1.5 rounded-pill bg-surface px-3 text-[13px] font-semibold text-brand-strong lg:mt-0">
+        <span className="shrink-0"><MobileNavigationGlyph icon="hospital" /></span>
+        <span className="min-w-0 break-words">{selectedLabel}</span>
       </p>
     );
   }
@@ -47,32 +48,38 @@ export function HomeHospitalChip({
   return (
     <Form action={action} className="mt-3 flex max-w-full flex-wrap items-end gap-2 lg:mt-0 lg:w-full lg:max-w-md">
       <div className="min-w-0 flex-1">
-        <label className="mb-1 block text-xs font-medium text-white/80" htmlFor={selectId}>
+        <label className="mb-1 block text-xs font-medium text-header-muted" htmlFor={selectId}>
           โรงพยาบาลปัจจุบัน
         </label>
-        <select
-          className="min-h-12 w-full max-w-full rounded-control border border-white/40 bg-surface px-3 text-sm font-medium text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
-          defaultValue={selectedValue}
-          id={selectId}
-          name={fieldName}
-        >
-          {groups.map(({ label, options }, index) => {
-            const items = options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ));
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-brand-strong">
+            <MobileNavigationGlyph icon="hospital" />
+          </span>
+          <select
+            className="min-h-11 w-full max-w-full appearance-none rounded-pill border border-border-strong bg-surface pr-9 pl-10 text-sm font-medium text-brand-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-header-surface"
+            defaultValue={selectedValue}
+            id={selectId}
+            name={fieldName}
+          >
+            {groups.map(({ label, options }, index) => {
+              const items = options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ));
 
-            return label === null ? items : (
-              <optgroup key={`${label}-${index}`} label={label}>
-                {items}
-              </optgroup>
-            );
-          })}
-        </select>
+              return label === null ? items : (
+                <optgroup key={`${label}-${index}`} label={label}>
+                  {items}
+                </optgroup>
+              );
+            })}
+          </select>
+          <ChevronGlyph direction="down" className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-brand-strong" />
+        </div>
       </div>
       <button
-        className="min-h-12 shrink-0 rounded-control border border-white/50 px-4 text-sm font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-bright"
+        className="min-h-11 shrink-0 rounded-pill border border-border-strong bg-surface px-4 text-sm font-semibold text-brand-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-header-surface"
         type="submit"
       >
         เปลี่ยน

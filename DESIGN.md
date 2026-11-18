@@ -18,6 +18,9 @@ colors:
   brand-deep: "#0e3c35"
   brand-pale: "#cce2dc"
   brand-bright: "#6fd2ba"
+  header-surface: "#dceee9"
+  header-border: "#cce2dc"
+  header-muted: "#3f5650"
   danger: "#a23a3a"
   danger-soft: "#f9e8e8"
   success: "#176b50"
@@ -187,7 +190,7 @@ Page hierarchy คือ `PageHeader` → optional local navigation → bounded 
 - **Surface:** `0 1px 2px rgb(16 38 32 / 0.06)` สำหรับ selected local navigation และ surface ที่ต้องยกขึ้นเล็กน้อย
 - **Floating:** `0 18px 48px rgb(8 35 31 / 0.22)` สำหรับ dialog หรือ interaction ที่ลอยเหนือหน้า
 
-Focus ใช้ 4px `focus-ring` พร้อม offset เพื่อให้เห็นได้ชัดโดยไม่พึ่ง shadow เป็น decoration บนพื้นเข้ม (`brand-deep` เช่น hero ของหน้า home และ desktop navigation) focus ring ใช้ `brand-bright` แทน เพราะ `focus-ring` ได้ contrast ต่ำกว่า 3:1 บนพื้นนั้น
+Focus ใช้ 4px `focus-ring` พร้อม offset บนพื้นหัวหน้าใช้ `ring-offset-header-surface` ส่วน desktop navigation พื้น `brand-deep` ใช้ `brand-bright` เพื่อให้ contrast ถึง 3:1
 
 **The Flat-By-Default Rule.** เริ่มจาก background + border + whitespace ก่อนเพิ่ม shadow; elevation ต้องสื่อ interaction hierarchy ไม่ใช่เพิ่มความสวยงามเฉย ๆ
 
@@ -240,7 +243,7 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - **Sidebar preference (UI-4.1):** อ่านค่า `demi:desktop-sidebar` ก่อน paint แล้วใช้ `data-desktop-sidebar` บน `<html>` กำหนดความกว้างร่วมกันทั้ง shell และ skeleton; ถ้าอ่าน storage ไม่ได้ใช้สถานะขยาย การย่อ/ขยายและ storage event อัปเดตค่าเดียวกัน; เปิด width transition หลัง mount และเคารพ reduced motion
 - **Header (UI-4.1):** sticky surface header สูง 72px แสดงเฉพาะ mobile/tablet พร้อมแบรนด์และ workspace ปัจจุบัน; ตั้งแต่ `lg` ซ่อน content header โดยแสดงแบรนด์และ identity ใน sidebar แทน การสลับ workspace บน mobile เข้าถึงได้จาก “เพิ่มเติม”
 - **Mobile (2026-10-20):** bottom tabs ชุดเดียวสำหรับทุก role แสดงปลายทางหลักไม่เกินสี่รายการกับ “เพิ่มเติม”; “เพิ่มเติม” เป็นลิงก์ไปหน้า `/app/more` ที่แสดง server-projected navigation ชุดเดียวกับ desktop โดยไม่เปิด sidebar หรือ dialog; logout อยู่ด้านล่างของหน้า More
-- **Mobile Patient Personal Home (2026-10-20):** หน้า `/app/personal` ใช้ hero เป็นแถบพื้นทึบ `brand-deep` สำหรับคำทักทายและบริบทโรงพยาบาลเท่านั้น นี่เป็นข้อยกเว้นเฉพาะ hero ของหน้า home (personal และ `/app` ของงาน ตั้งแต่ UI-3); ไม่ใช้ gradient และไม่ขยายรูปแบบนี้ไปหน้าอื่น
+- **หัวหน้าภายในแอป (HEADER-A):** หัวหน้าใน app shell ใช้แผงเขียวอ่อน `header-surface` ขอบ `header-border` และมุมโค้ง 16px ใช้ `HomeHero` เฉพาะ `/app` และ `/app/personal` หน้าเนื้อหาอื่นใช้ `PageHeader` จอเล็กกว่า `lg` แสดง breadcrumb เป็นลิงก์ย้อนกลับหนึ่งลิงก์ไปยังรายการสุดท้ายที่มีปลายทาง ตั้งแต่ `lg` แสดงเส้นทางเต็ม พื้นทึบ `brand-deep` ใช้กับ desktop navigation, auth split panel และ dialog backdrop
 - Active route ใช้ `aria-current="page"` (รายการที่มี query เช่น `?task=screening` ชนะรายการ path เดียวกันที่ไม่มี query); workspace switch ใช้ `aria-current="location"`; group visibility เป็น projection จาก ActorContext ไม่ใช่ security boundary
 - **2026-10-25 (UX-01):** Hospital Administration แสดง “ผู้ใช้และสิทธิ์” เป็น directory หลัก และ “ตั้งค่าโรงพยาบาล” เป็นทางเข้ารวม Contact, Service Catalog และ Self-Registration ตามสิทธิ์ของแต่ละ domain; provisioning/import workforce ยังเข้าจากหน้า Users. Personal Account Settings (`/app/settings`) แยกจาก Hospital Settings. Navigation และ Work Home ไม่มี activation shortcut; activation ยังคงเป็น operation แยก เปิดจาก Patient Detail → จัดการผู้ป่วย พร้อม exact relationship context
 
@@ -252,12 +255,13 @@ Toast เป็น feedback ชั่วคราวสำหรับสรุ�
 - `content-detail` จำกัด 72rem และจัดกึ่งกลางสำหรับ Patient Detail; บริบทและงานดูแลอยู่สองคอลัมน์เมื่อ container กว้างอย่างน้อย 64rem ส่วนประวัติใช้เต็มแถว. ลำดับ DOM และ mobile ยังคงบริบท → งานดูแล → ประวัติ.
 - Reading forms, Contact, Content, Personal และรายละเอียดการบันทึกยังรักษา local max-width เดิม; prose ใช้ `type-readable` 68ch. ไม่ใช้ global override เพื่อยืดทุกหน้า.
 - **2026-10-20:** `/app/more` เป็นหน้าเมนูปกติทั้งบน mobile และ desktop; ลิงก์ในหน้านำทางด้วย browser history และคง workspace ที่เลือกไว้ Bottom tabs และ Main เว้นพื้นที่ผ่าน shell token เดียวที่รวม safe-area inset; Skeleton ของ More ใช้ gutters และ width policy ของหน้า.
-- **2026-10-20:** Patient Personal Home ใช้ hero, ตัวเลือกโรงพยาบาล, shortcut grid 4 คอลัมน์บน mobile และข่าวสาร/สื่อความรู้แยกตามโรงพยาบาล; ส่วน hero ใช้พื้นทึบ `brand-deep` เป็นข้อยกเว้นเฉพาะหน้านี้จาก canvas ปกติ.
+- **2026-10-20:** Patient Personal Home ใช้ hero, ตัวเลือกโรงพยาบาล, shortcut grid 4 คอลัมน์บน mobile และข่าวสาร/สื่อความรู้แยกตามโรงพยาบาล.
 - **2026-10-20 (UI-3):** Work Home (`/app`) ใช้ hero, chip เลือกโรงพยาบาล (`?hospitalId=`, จัดกลุ่มตามเครือข่าย) และ grid เมนูชุดเดียวกันทุกบทบาท โดยเมนูมาจาก server projection เท่านั้น. Hero เป็นลิงก์งานหลักไม่มีตัวเลข: action หมวด `care` แรกของโรงพยาบาลที่เลือก → `assignedPatientsAction` → governance แรก (ADMIN ที่ไม่มีงานโรงพยาบาล). Grid สูงสุด 8 ช่องตาม `WORK_HOME_TILE_ORDER` ใน `src/components/home/work-home-projection.ts` ช่องเกินเป็น "ทั้งหมด" ไป `/app/more`; งานที่ครอบคลุมทุกโรงพยาบาลแสดงเป็นแถวในส่วน "งานจากทุกโรงพยาบาล" ไม่อยู่ใน grid. Desktop ใช้ component เดียวกันใน `content-workspace`.
 - **2026-10-20 (UI-3.1):** ช่อง อสม. ใน grid ของ Work Home แสดงเฉพาะโรงพยาบาลที่บัญชีเป็น อสม. อยู่ และส่ง `hospitalId` ไปกรองรายชื่อผู้ป่วยที่รับผิดชอบ (bottom tab ยังไม่กรอง). ส่วนเนื้อหาที่โหลดไม่สำเร็จแสดง Alert พร้อมลิงก์ "ลองอีกครั้ง" เฉพาะส่วนนั้น ส่วนอื่นของหน้ายังแสดงตามปกติ.
 - **2026-10-20 (UI-4):** navigation จัดตาม task section ลำดับคงที่ (ดู Navigation). `WORK_HOME_TILE_ORDER` ถูกแทนด้วยลำดับของ Work navigation (`projectWorkNavigationOrder`) เพื่อให้ sidebar และ `/app/more` เรียงตรงกัน; ลำดับ grid ของ Work Home ปรับตามกฎ NAV-FIX ด้านล่าง; การสลับพื้นที่เป็น segmented control; sidebar ย่อเป็น icon rail แทนการซ่อนเมนู; “เปลี่ยนรหัสผ่าน” ย้ายจากเมนูไปหน้าตั้งค่า.
 
-- **2026-10-20 (UI-4.1):** Home ทั้งส่วนตัวและงานลดความสูง hero บน desktop โดยวางชื่อหน้าและบริบทโรงพยาบาลในแถวเดียวกันเมื่อพื้นที่พอ และวางข้อมูลนัด/งานหลักแนวนอน. โรงพยาบาลเดียวหรือไม่มีตัวเลือกแสดงเป็นข้อความ; หลายโรงพยาบาลใช้ native select. Shortcut บน mobile ยังคง 4 คอลัมน์; ตั้งแต่ `lg` เป็น card แนวนอนแบบ auto-fill กว้างขั้นต่ำ 15rem พร้อมคำอธิบายเมื่อมี. ข่าวสาร/สื่อความรู้ของ Personal Home และงานจากทุกโรงพยาบาล/ข่าวสารของ Work Home แบ่งสองคอลัมน์เมื่อ `workspace` container กว้างอย่างน้อย 64rem. Anchor scroll และ Toast ใช้ `--app-sticky-top` ร่วมกัน (72px บน mobile/tablet, 0 บน desktop)
+- **2026-10-20 (UI-4.1):** Home ทั้งส่วนตัวและงานลดความสูง hero บน desktop โดยวางชื่อหน้าและบริบทโรงพยาบาลในแถวเดียวกันเมื่อพื้นที่พอ และวางข้อมูลนัด/งานหลักแนวนอน. Shortcut บน mobile ยังคง 4 คอลัมน์; ตั้งแต่ `lg` เป็น card แนวนอนแบบ auto-fill กว้างขั้นต่ำ 15rem พร้อมคำอธิบายเมื่อมี. ข่าวสาร/สื่อความรู้ของ Personal Home และงานจากทุกโรงพยาบาล/ข่าวสารของ Work Home แบ่งสองคอลัมน์เมื่อ `workspace` container กว้างอย่างน้อย 64rem. Anchor scroll และ Toast ใช้ `--app-sticky-top` ร่วมกัน (72px บน mobile/tablet, 0 บน desktop)
+- **2026-11-18 (HEADER-A):** ใช้หัวหน้าแผงเขียวอ่อนตามแบบ A ที่ลูกค้าเลือกและให้ skeleton ใช้พื้นผิวเดียวกัน โรงพยาบาลเดียวแสดงชื่อใน pill พร้อมไอคอนแบบเส้น หลายโรงพยาบาลใช้ native select และเมื่อไม่มีโรงพยาบาลแสดงข้อความเดิม
 - **2026-10-24 (STAFF-NAV):** Work Home ใช้ลิงก์ดูแลผู้ป่วย ข่าวสาร ข้อมูลติดต่อ และ export ที่ได้จาก navigation projection เดียวกัน; grid รองรับได้ 8 ช่องเพื่อแสดงทางลัดของ MEMBER ครบโดยไม่ย้าย export ไปส่วนงานจากทุกโรงพยาบาล. ลิงก์ export คงปลายทางเดิมซึ่งตรวจ scope ของทุกโรงพยาบาลบน server.
 
 - **2026-10-24 (NAV-FIX):** staff เปิดคัดกรองและติดตามผ่านรายละเอียดผู้ป่วยและรอบโปรแกรมตามลำดับ; care รวม จัดบริการ และ นัดหมายใหม่ ในหมวดเดียว. Work Home จำกัด 8 ช่อง (รายการเกินใช้ 7 ทางลัด + ทั้งหมด) และจัดลำดับเฉพาะปลายทางที่ actor ได้รับอนุญาตแล้ว: นัดหมาย → รายชื่อผู้ป่วย → รายงานโรงพยาบาล → จัดการบุคลากร → เผยแพร่ข่าวสาร → จัดบริการ → นัดหมายใหม่ → รายการที่เหลือตาม navigation. กฎนี้รักษางานบริหารหลักของ OWNER ไว้เป็น tile และให้ MEMBER มีนัดหมาย รายชื่อผู้ป่วย จัดบริการ นัดหมายใหม่ export ข่าวสาร และข้อมูลติดต่อครบ 7 ช่อง; OSM และ ADMIN ที่ไม่มี Hospital care ใช้รายการเดิม. Hero ของ Hospital ยังคงรายชื่อผู้ป่วยเมื่อมีสิทธิ์ตรง.

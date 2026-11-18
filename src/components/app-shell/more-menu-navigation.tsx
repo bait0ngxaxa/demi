@@ -7,6 +7,7 @@ import { ActionRequiredDot } from "@/components/ui/action-required-dot";
 import { navigationPendingAction } from "./navigation-pending-actions";
 
 import { classNames } from "@/components/ui/class-names";
+import { ChevronGlyph } from "@/components/ui/glyphs";
 
 import { useMobileNavigationGuard } from "./mobile-navigation-guard";
 import { getNavigationItemIcon, MobileNavigationGlyph } from "./mobile-navigation-glyph";
@@ -74,18 +75,10 @@ export function MoreMenuNavigation({
                       </span>
                       <span className="min-w-0 flex-1">{item.label}</span>
                       <ActionRequiredDot action={action} />
-                      <svg
-                        aria-hidden="true"
+                      <ChevronGlyph
+                        direction="right"
                         className="size-4 shrink-0 text-text-subtle transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="1.8"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="m9 5 7 7-7 7" />
-                      </svg>
+                      />
                     </Link>
                   </li>
                 );

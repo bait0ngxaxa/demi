@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { submitPreservingInput, useMutationActionState } from "@/components/ui/mutation-action-state";
@@ -175,17 +176,11 @@ export function PatientHospitalProfileEditor({
 }): React.JSX.Element {
   return (
     <div className="max-w-3xl">
-      <header className="min-w-0">
-        <Link className="text-sm font-semibold text-brand-strong underline underline-offset-4" href="/app/personal/profile">
-          กลับไปข้อมูลของฉัน
-        </Link>
-        <h1 className="mt-4 break-words text-2xl font-semibold tracking-[-0.02em] text-text">
-          ข้อมูลสำหรับ{profile.hospitalName}
-        </h1>
-        <p className="mt-2 break-words text-sm leading-6 text-text-muted">
-          {profile.person.givenName ?? ""} {profile.person.familyName ?? ""}
-        </p>
-      </header>
+      <PageHeader
+        breadcrumbs={[{ href: "/app/personal/profile", label: "ข้อมูลของฉัน" }]}
+        title={`ข้อมูลสำหรับ${profile.hospitalName}`}
+        description={`${profile.person.givenName ?? ""} ${profile.person.familyName ?? ""}`.trim()}
+      />
 
       <Panel className="mt-6">
         <p className="text-sm font-semibold leading-6 text-text">
