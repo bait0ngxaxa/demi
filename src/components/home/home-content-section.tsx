@@ -13,6 +13,7 @@ function formatPublishedAt(value: string): string {
 
 export function HomeContentSection({
   allHref,
+  className,
   emptyMessage,
   failure,
   heading,
@@ -21,6 +22,7 @@ export function HomeContentSection({
   items,
 }: {
   allHref: string;
+  className?: string;
   emptyMessage: string;
   /** Set when the feed failed to load; the section shows a retry Alert instead of its items. */
   failure?: { message: string; retryHref: string };
@@ -31,7 +33,7 @@ export function HomeContentSection({
   items: readonly HospitalContentPatientListItem[];
 }): React.JSX.Element {
   return (
-    <section aria-labelledby={id} className="mt-8 min-w-0">
+    <section aria-labelledby={id} className={`mt-8 min-w-0${className ? ` ${className}` : ""}`}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h2 className="text-xl font-semibold tracking-[-0.02em] text-text" id={id}>{heading}</h2>
         <Link

@@ -511,6 +511,7 @@ describe("Baseline editing until a Program links it (owner decision 2026-11-17)"
       where: { action: "patient_baseline.updated", resourceId: created.patientBaselineId },
       select: { actorUserId: true, metadata: true },
     });
+    // Compare the full payload so clinical values are rejected even when an allowed UUID shares their digits.
     expect(audit).toEqual({
       actorUserId: other.userId,
       metadata: {
@@ -520,7 +521,6 @@ describe("Baseline editing until a Program links it (owner decision 2026-11-17)"
         changedFields: "recordedOn,weight,bloodPressureSystolic,bloodPressureDiastolic,hba1c,cvdRiskScore,adaptationSummary,summary",
       },
     });
-    expect(JSON.stringify(audit.metadata)).not.toContain("71");
     expect(JSON.stringify(audit.metadata)).not.toContain("ไม่ควรอยู่ใน audit");
 
     const context = await getPatientBaselinePageContext(owner.actor, patient.relationshipId);
