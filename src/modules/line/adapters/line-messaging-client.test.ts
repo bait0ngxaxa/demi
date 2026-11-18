@@ -139,7 +139,7 @@ describe("DEMI LINE Messaging API boundary", () => {
   });
 
   it.each(["PATIENT_DIRECT", "PATIENT_PATIENT_OSM", "PATIENT_PATIENT_HOSPITAL", "PATIENT_PATIENT_OSM_HOSPITAL"])(
-    "projects the Patient appointment action in %s as a native message action that sends exactly นัด",
+    "projects the Patient appointment action in %s as a native message action that sends exactly ตรวจสอบนัดหมาย",
     (key) => {
       const patientMenu = LINE_RICH_MENU_BY_KEY.get(key);
       if (!patientMenu) throw new Error("Expected the Patient presentation menu");
@@ -147,7 +147,7 @@ describe("DEMI LINE Messaging API boundary", () => {
       const payload = createLineRichMenuPayload(patientMenu);
       const actions = payload.areas.map(({ action }) => action);
 
-      expect(actions[0]).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" });
+      expect(actions[0]).toStrictEqual({ type: "message", label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" });
       expect(actions.filter((action) => action.type === "message")).toHaveLength(1);
       expect(JSON.stringify(payload)).not.toMatch(/"postback"|DEMI_LINE_PATIENT_NEXT_APPOINTMENT_V1|displayText/u);
     },
@@ -160,7 +160,7 @@ describe("DEMI LINE Messaging API boundary", () => {
     const actions = createLineRichMenuPayload(patientMenu).areas.map(({ action }) => action);
 
     expect(actions).toEqual([
-      { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" },
+      { type: "message", label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" },
       { type: "uri", label: "นัดหมายทั้งหมด", uri: "https://demi.example.org/app/personal/appointments" },
       { type: "uri", label: "บันทึกสุขภาพ", uri: "https://demi.example.org/app/personal/wellness" },
       { type: "uri", label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" },
@@ -259,7 +259,7 @@ describe("DEMI LINE Messaging API boundary", () => {
       quickReply: {
         items: [
           { type: "action" as const, action: { type: "uri" as const, label: "ยาของฉัน", uri: "https://demi.example.org/app/personal/medications" } },
-          { type: "action" as const, action: { type: "message" as const, label: "ตรวจสอบนัดหมาย", text: "นัด" } },
+          { type: "action" as const, action: { type: "message" as const, label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" } },
         ],
       },
     }];

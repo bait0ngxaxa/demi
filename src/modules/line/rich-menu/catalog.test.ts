@@ -17,7 +17,7 @@ const roleLabels = {
 } as const;
 type MenuRole = keyof typeof roleLabels;
 const manageAccount = { type: "uri", intent: "MANAGE_ACCOUNT", label: "จัดการบัญชี" } as const;
-const appointmentMessage = { type: "message", label: "ตรวจสอบนัดหมาย", text: "นัด" } as const;
+const appointmentMessage = { type: "message", label: "ตรวจสอบนัดหมาย", text: "ตรวจสอบนัดหมาย" } as const;
 const patientQuickActions = [
   appointmentMessage,
   { type: "uri", intent: "OPEN_PATIENT_APPOINTMENTS", label: "นัดหมายทั้งหมด" },
@@ -162,7 +162,7 @@ describe("DEMI shared Rich Menu catalog", () => {
       "PATIENT_PATIENT_OSM_HOSPITAL",
     ]);
     expect(LINE_RICH_MENU_CATALOG).toHaveLength(18);
-    expect(LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT).toBe("นัด");
+    expect(LINE_PATIENT_NEXT_APPOINTMENT_MESSAGE_TEXT).toBe("ตรวจสอบนัดหมาย");
     const actionTypes = new Set(LINE_RICH_MENU_CATALOG.flatMap(({ actions }) => actions.map(({ type }) => type)));
     expect(actionTypes).toEqual(new Set(["uri", "richmenuswitch", "message"]));
   });
