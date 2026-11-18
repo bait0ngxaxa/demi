@@ -105,7 +105,11 @@ describe("Patient care journey and Program workspace", () => {
     for (const path of ["report", "goals/new", "followups/new"]) {
       expect(html).toContain(`/app/patients/${relationshipId}/programs/${programId}/${path}`);
     }
-    expect(html.match(new RegExp(`href="/app/patients/${relationshipId}"`, "gu"))).toHaveLength(2);
+    const patientHref = `href="/app/patients/${relationshipId}"`;
+    const breadcrumbs = html.match(/<nav aria-label="ลำดับหน้า"[^>]*>[\s\S]*?<\/nav>/u)?.[0] ?? "";
+    expect(breadcrumbs).toMatch(new RegExp(`<a[^>]*lg:hidden[^>]*${patientHref}`, "u"));
+    expect(breadcrumbs).toMatch(new RegExp(`<ol[^>]*lg:flex[^>]*>[\\s\\S]*?<a[^>]*${patientHref}`, "u"));
+    expect(html.replace(breadcrumbs, "").match(new RegExp(patientHref, "gu"))).toHaveLength(1);
     expect(html.match(/กลับไปยังรายละเอียดผู้ป่วย/gu)).toHaveLength(1);
     expect(html).toContain("ไม่ต้องทำตามลำดับ");
     expect(html).toContain("ยังไม่มีบันทึกกิจกรรม");

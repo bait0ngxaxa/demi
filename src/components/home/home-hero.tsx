@@ -65,12 +65,12 @@ function AppointmentDetails({ href, scheduledAt }: HomeAppointment): React.JSX.E
   const dateParts = appointmentDate.formatToParts(scheduledAt);
 
   return (
-    <div className="mt-2 flex min-w-0 items-center gap-3 lg:mt-0">
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3 lg:mt-0">
       <div aria-hidden="true" className="flex min-h-[60px] w-14 shrink-0 flex-col items-center justify-center rounded-[10px] border border-border bg-canvas text-brand-strong">
         <span className="text-xs font-semibold">{dateParts.find(({ type }) => type === "month")?.value}</span>
         <span className="text-[22px] font-bold leading-tight">{dateParts.find(({ type }) => type === "day")?.value}</span>
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4">
+      <div className="flex min-w-0 flex-[1_1_10rem] flex-wrap items-center justify-between gap-x-4">
         <time className="break-words text-sm leading-6 text-header-muted" dateTime={scheduledAt.toISOString()}>
           {appointmentTime.format(scheduledAt)}
         </time>
