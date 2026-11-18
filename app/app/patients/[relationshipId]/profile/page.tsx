@@ -36,7 +36,10 @@ export default async function HospitalPatientProfilePage({ params }: { params: P
   const canEndCare = isActiveHospitalAdministrator(actor, record.hospital.id);
   return <div className="max-w-3xl space-y-6">
       <PageHeader
-        breadcrumbs={[{ href: `/app/patients/${relationshipId}`, label: "กลับไปข้อมูลผู้ป่วย" }]}
+        breadcrumbs={[
+          { href: `/app/patients/${relationshipId}`, label: "ข้อมูลผู้ป่วย" },
+          { label: "ข้อมูลสำหรับโรงพยาบาล" },
+        ]}
         title={`ข้อมูลสำหรับ${record.hospital.name}`}
       />
       {canCorrectName ? <Panel><h2 className="text-lg font-semibold text-text">ชื่อ-สกุลผู้ป่วย</h2>

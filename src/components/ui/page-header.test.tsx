@@ -49,4 +49,15 @@ describe("PageHeader", () => {
       .toEqual(breadcrumbs.map(({ label }) => label));
     expect(trail?.querySelector('[aria-current="page"]')?.textContent).toBe(breadcrumbs[2].label);
   });
+
+  it("does not mark a linked parent breadcrumb as the current page", () => {
+    const root = renderHeader({
+      title: "รายละเอียดข่าวสาร",
+      breadcrumbs: [{ label: "ข่าวสารและความรู้", href: "/app/hospitals/knowledge" }],
+    });
+
+    const desktopLink = root.querySelector("nav ol a");
+    expect(desktopLink?.getAttribute("href")).toBe("/app/hospitals/knowledge");
+    expect(root.querySelector("nav a[aria-current]")).toBeNull();
+  });
 });

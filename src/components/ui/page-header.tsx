@@ -55,7 +55,6 @@ export function PageHeader({
                 {index > 0 ? <span aria-hidden="true" className="inline-flex min-h-11 shrink-0 items-center">/</span> : null}
                 {breadcrumb.href ? (
                   <Link
-                    aria-current={index === breadcrumbs.length - 1 ? "page" : undefined}
                     className={classNames("inline-flex min-h-11 min-w-0 items-center break-words font-semibold text-brand-strong underline decoration-brand-pale underline-offset-4 hover:text-brand", breadcrumbFocus)}
                     href={breadcrumb.href}
                     onClick={onBreadcrumbClick}

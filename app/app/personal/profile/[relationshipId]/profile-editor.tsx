@@ -177,7 +177,10 @@ export function PatientHospitalProfileEditor({
   return (
     <div className="max-w-3xl">
       <PageHeader
-        breadcrumbs={[{ href: "/app/personal/profile", label: "ข้อมูลของฉัน" }]}
+        breadcrumbs={[
+          { href: "/app/personal/profile", label: "ข้อมูลของฉัน" },
+          { label: "ข้อมูลสำหรับโรงพยาบาล" },
+        ]}
         title={`ข้อมูลสำหรับ${profile.hospitalName}`}
         description={`${profile.person.givenName ?? ""} ${profile.person.familyName ?? ""}`.trim()}
       />
