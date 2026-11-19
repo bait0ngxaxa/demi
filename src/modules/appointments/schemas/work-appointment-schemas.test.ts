@@ -22,3 +22,19 @@ describe("work appointment query schema: unassigned filter", () => {
     expect(workAppointmentFiltersSchema.safeParse({ unassigned: value }).success).toBe(false);
   });
 });
+
+describe("work appointment query schema: request-kind filter (APPT-REQ-TYPE)", () => {
+  it.each(["RESCHEDULE", "CANCELLATION"] as const)("keeps requestType=%s on the pending-request tab", (requestType) => {
+    expect(workAppointmentQuerySchema.parse({ hospitalId, tab: "PENDING_REQUESTS", requestType }))
+      .toEqual({ hospitalId, tab: "PENDING_REQUESTS", requestType });
+  });
+
+  it.each(["UPCOMING", "HISTORY", "AWAITING_MY_ACCEPTANCE"] as const)("drops it on the %s tab", (tab) => {
+    expect(workAppointmentQuerySchema.parse({ hospitalId, tab, requestType: "CANCELLATION" })).toEqual({ hospitalId, tab });
+  });
+
+  it.each(["BOTH", "", "reschedule"])("ignores the invalid value %j instead of failing the query", (requestType) => {
+    expect(workAppointmentQuerySchema.parse({ hospitalId, tab: "PENDING_REQUESTS", requestType }))
+      .toEqual({ hospitalId, tab: "PENDING_REQUESTS" });
+  });
+});

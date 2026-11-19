@@ -1,11 +1,25 @@
 import { classNames } from "./class-names";
 
-/** `hospitalCount`: Hospitals contributing to an aggregate `count`; above one, the label names the aggregate scope. */
-export type PendingAction = { count: number; label: string; href?: string; hospitalCount?: number };
+/**
+ * `hospitalCount`: Hospitals contributing to an aggregate `count`; above one, the label names the aggregate scope.
+ * `parts`: typed components of `count` (e.g. request kinds); when present they replace the untyped `label`.
+ */
+export type PendingAction = {
+  count: number;
+  label: string;
+  href?: string;
+  hospitalCount?: number;
+  parts?: readonly { label: string; count: number }[];
+};
 
 export function pendingActionLabel(action: PendingAction | undefined): string {
   if (!action || action.count <= 0) return "";
-  return action.hospitalCount !== undefined && action.hospitalCount > 1
+  const multiHospital = action.hospitalCount !== undefined && action.hospitalCount > 1;
+  if (action.parts && action.parts.length > 0) {
+    const parts = action.parts.map(({ label, count }) => `${label} ${count}`).join(" · ");
+    return multiHospital ? `${parts} จาก ${action.hospitalCount} โรงพยาบาล` : parts;
+  }
+  return multiHospital
     ? `${action.label} รวม ${action.count} รายการ จาก ${action.hospitalCount} โรงพยาบาล`
     : `${action.label} ${action.count} รายการ`;
 }

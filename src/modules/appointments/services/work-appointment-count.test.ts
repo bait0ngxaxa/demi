@@ -33,14 +33,17 @@ describe("aggregate work action counts", () => {
     expect(mocks.query).not.toHaveBeenCalled();
   });
   it("counts many Hospitals' pending requests in one parameterized grouped query without loading IDs", async () => {
-    mocks.query.mockResolvedValue([{ hospitalId: "owned", count: 10000 }]);
+    mocks.query.mockResolvedValue([{ hospitalId: "owned", count: 10000, rescheduleCount: 6000, cancellationCount: 4500 }]);
     expect(await countWorkAppointmentRequestsByHospital(operator, ["mine", "owned", "mine"])).toEqual([
-      { hospitalId: "mine", count: 0 }, { hospitalId: "owned", count: 10000 },
+      { hospitalId: "mine", count: 0, rescheduleCount: 0, cancellationCount: 0 },
+      { hospitalId: "owned", count: 10000, rescheduleCount: 6000, cancellationCount: 4500 },
     ]);
     expect(mocks.query).toHaveBeenCalledOnce();
     expect(mocks.count).not.toHaveBeenCalled();
     const query = mocks.query.mock.calls[0]?.[0] as { text: string; values: unknown[] };
     expect(query.text).toContain('GROUP BY hospital."id"');
+    // Per-kind counts filter the same appointment rows in the same round trip.
+    expect(query.text).toContain('COUNT(*) FILTER (WHERE EXISTS');
     expect(query.text).not.toContain('SELECT appointment."id"');
     expect(query.text).not.toContain("staff-user");
     expect(query.values).toEqual(["mine", "owned", "staff-user"]);

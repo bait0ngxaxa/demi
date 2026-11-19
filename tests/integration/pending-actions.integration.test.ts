@@ -153,11 +153,11 @@ describe("pending actions against authoritative PostgreSQL tables", () => {
       return access.actor;
     }
     /** Pages through the destination queue, so parity covers queues larger than one page. */
-    async function destinationQueue(tx: Prisma.TransactionClient, actor: ActorContext, hospitalId: string): Promise<string[]> {
+    async function destinationQueue(tx: Prisma.TransactionClient, actor: ActorContext, hospitalId: string, requestType?: "RESCHEDULE" | "CANCELLATION"): Promise<string[]> {
       const ids: string[] = [];
       let cursor: string | undefined;
       do {
-        const page = await listWorkAppointments(actor, { hospitalId, tab: "PENDING_REQUESTS", cursor }, { database: tx, now: () => now });
+        const page = await listWorkAppointments(actor, { hospitalId, tab: "PENDING_REQUESTS", cursor, ...(requestType ? { requestType } : {}) }, { database: tx, now: () => now });
         ids.push(...page.items.map(({ appointmentId }) => appointmentId));
         cursor = page.nextCursor ?? undefined;
       } while (cursor);
@@ -185,19 +185,46 @@ describe("pending actions against authoritative PostgreSQL tables", () => {
       const counts = await countWorkAppointmentRequestsByHospital(actor, [owned.id, member.id, idle.id, member.id], { database: tx, now: () => now });
       expect(query).toHaveBeenCalledTimes(1);
       query.mockRestore();
-      expect(counts).toEqual([{ hospitalId: owned.id, count: 2 }, { hospitalId: member.id, count: 27 }, { hospitalId: idle.id, count: 0 }]);
-      for (const { hospitalId, count } of counts) {
+      expect(counts).toEqual([
+        { hospitalId: owned.id, count: 2, rescheduleCount: 1, cancellationCount: 2 },
+        { hospitalId: member.id, count: 27, rescheduleCount: 27, cancellationCount: 0 },
+        { hospitalId: idle.id, count: 0, rescheduleCount: 0, cancellationCount: 0 },
+      ]);
+      for (const { hospitalId, count, rescheduleCount, cancellationCount } of counts) {
         const queue = await destinationQueue(tx, actor, hospitalId);
         expect(new Set(queue).size).toBe(queue.length);
         expect(queue).toHaveLength(count);
+        expect(await destinationQueue(tx, actor, hospitalId, "RESCHEDULE")).toHaveLength(rescheduleCount);
+        expect(await destinationQueue(tx, actor, hospitalId, "CANCELLATION")).toHaveLength(cancellationCount);
       }
       expect(await destinationQueue(tx, actor, owned.id)).toContain(both.id);
       const indicators = await calculatePendingActions(staff.id, tx, now);
       expect(indicators[1]?.count).toBe(29);
-      expect(indicators[1]?.hospitalQueue?.hospitals).toEqual(expect.arrayContaining(counts));
+      expect(indicators[1]?.hospitalQueue?.hospitals).toEqual(expect.arrayContaining(counts.map(({ hospitalId, count }) => ({ hospitalId, count }))));
       expect(indicators[1]?.hospitalQueue?.hospitals).toHaveLength(3);
+      expect(indicators[1]?.breakdown?.map(({ kind, count }) => ({ kind, count }))).toEqual([
+        { kind: "RESCHEDULE", count: 28 }, { kind: "CANCELLATION", count: 2 },
+      ]);
+      expect(indicators[1]?.breakdown?.find(({ kind }) => kind === "CANCELLATION")?.href).toContain(owned.id);
       expect(JSON.stringify(indicators)).not.toContain(foreign.id);
       await expect(countWorkAppointmentRequestsByHospital(actor, [owned.id, foreign.id], { database: tx, now: () => now })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }));
+
+    it("counts an appointment with both kinds once in the total and once per kind, matching each typed queue", async () => isolated(async (tx) => {
+      const staff = await account(tx, ["HOSPITAL"]);
+      const hospital = await operatedHospital(tx, staff, "OWNER");
+      const both = await appointmentWith(tx, staff, hospital.id, { reschedule: true, cancellation: true });
+      const reschedule = await appointmentWith(tx, staff, hospital.id, { reschedule: true });
+      const cancellation = await appointmentWith(tx, staff, hospital.id, { cancellation: true });
+      const actor = await actorOf(tx, staff.id);
+      expect(await countWorkAppointmentRequestsByHospital(actor, [hospital.id], { database: tx, now: () => now }))
+        .toEqual([{ hospitalId: hospital.id, count: 3, rescheduleCount: 2, cancellationCount: 2 }]);
+      expect(new Set(await destinationQueue(tx, actor, hospital.id, "CANCELLATION"))).toEqual(new Set([both.id, cancellation.id]));
+      expect(new Set(await destinationQueue(tx, actor, hospital.id, "RESCHEDULE"))).toEqual(new Set([both.id, reschedule.id]));
+      // The filter belongs to PENDING_REQUESTS only; another tab ignores it.
+      const upcoming = await listWorkAppointments(actor, { hospitalId: hospital.id, tab: "UPCOMING", requestType: "CANCELLATION" }, { database: tx, now: () => now });
+      expect(upcoming.filters).not.toHaveProperty("requestType");
+      expect(upcoming.items).toHaveLength(3);
     }));
 
     it("drops a revoked membership and a suspended Hospital from the aggregate", async () => isolated(async (tx) => {

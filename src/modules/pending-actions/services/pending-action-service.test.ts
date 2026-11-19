@@ -60,6 +60,45 @@ describe("pending action sources", () => {
     expect(indicators[1]?.hospitalQueue).toEqual({ tab: "PENDING_REQUESTS", hospitals: [{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }] });
   });
 
+  describe("typed appointment-request breakdown (APPT-REQ-TYPE)", () => {
+    const membership = (hospitalId: string) => ({ hospitalId, membershipType: "MEMBER", profession: null, status: "ACTIVE", hospitalStatus: "ACTIVE" }) as const;
+    const row = (hospitalId: string, count: number, rescheduleCount: number, cancellationCount: number) => ({ hospitalId, count, rescheduleCount, cancellationCount });
+    async function appointmentIndicator() {
+      return (await calculatePendingActions(actor.userId)).find(({ navigationHref }) => navigationHref === "/app/appointments");
+    }
+
+    it("splits both kinds across Hospitals, links each to its first Hospital and keeps the distinct total", async () => {
+      authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership("a"), membership("b"), membership("c")] });
+      // Hospital b has one appointment carrying both kinds: it counts once in `count` and once per kind.
+      mocks.appointments.mockResolvedValue([row("a", 1, 1, 0), row("b", 3, 2, 2), row("c", 2, 0, 2)]);
+      const indicator = await appointmentIndicator();
+      expect(indicator).toMatchObject({ count: 6, label: "คำขอนัดหมายรอพิจารณา", href: "/app/appointments?tab=PENDING_REQUESTS&hospitalId=a" });
+      expect(indicator?.hospitalQueue?.hospitals).toEqual([{ hospitalId: "a", count: 1 }, { hospitalId: "b", count: 3 }, { hospitalId: "c", count: 2 }]);
+      expect(indicator?.breakdown).toEqual([
+        { kind: "RESCHEDULE", label: "คำขอเลื่อนนัดรอพิจารณา", count: 3,
+          href: "/app/appointments?tab=PENDING_REQUESTS&requestType=RESCHEDULE&hospitalId=a",
+          hospitals: [{ hospitalId: "a", count: 1 }, { hospitalId: "b", count: 2 }, { hospitalId: "c", count: 0 }] },
+        { kind: "CANCELLATION", label: "คำขอยกเลิกนัดรอพิจารณา", count: 4,
+          href: "/app/appointments?tab=PENDING_REQUESTS&requestType=CANCELLATION&hospitalId=b",
+          hospitals: [{ hospitalId: "a", count: 0 }, { hospitalId: "b", count: 2 }, { hospitalId: "c", count: 2 }] },
+      ]);
+    });
+
+    it("omits a kind with no pending request, and every kind when nothing is pending", async () => {
+      authorize({ roles: ["HOSPITAL"], hospitalMemberships: [membership("a")] });
+      mocks.appointments.mockResolvedValue([row("a", 2, 0, 2)]);
+      expect((await appointmentIndicator())?.breakdown?.map(({ kind }) => kind)).toEqual(["CANCELLATION"]);
+      mocks.appointments.mockResolvedValue([row("a", 0, 0, 0)]);
+      expect(await appointmentIndicator()).toMatchObject({ count: 0, breakdown: [] });
+    });
+
+    it("never adds a breakdown to the OSM acceptance indicator", async () => {
+      authorize({ roles: ["OSM"] });
+      mocks.acceptances.mockResolvedValue([{ hospitalId: "mine", count: 3 }]);
+      expect(await appointmentIndicator()).not.toHaveProperty("breakdown");
+    });
+  });
+
   it("sends OSM to their acceptance queue, including a Hospital that has pending work", async () => {
     authorize({ roles: ["OSM"] });
     mocks.acceptances.mockResolvedValue([{ hospitalId: "other", count: 0 }, { hospitalId: "mine", count: 10000 }]);

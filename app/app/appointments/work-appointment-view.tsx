@@ -3,7 +3,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { appointerLabel, appointmentAssigneePresentation, staffProfessionLabel } from "@/modules/appointments/domain/appointment-people";
 
-import { ActionRequiredDot } from "@/components/ui/action-required-dot";
+import { ActionRequiredDot, type PendingAction } from "@/components/ui/action-required-dot";
 import { Alert } from "@/components/ui/alert";
 import { Button, buttonClassName } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
@@ -21,6 +21,12 @@ import type {
   WorkAppointmentListItem,
 } from "@/modules/appointments/services/work-appointment-query-service";
 import type { WorkAppointmentTab } from "@/modules/appointments/schemas/work-appointment-schemas";
+import {
+  APPOINTMENT_REQUEST_KIND_EMPTY_COPY,
+  APPOINTMENT_REQUEST_KIND_LABELS,
+  APPOINTMENT_REQUEST_KINDS,
+  pendingAppointmentRequestLabel,
+} from "@/modules/appointments/domain/appointment-request-kinds";
 
 import { ResponsibleFilterPicker } from "./responsible-filter-picker";
 
@@ -55,8 +61,16 @@ function buildHref(
   if (filters.awaitingOsmAcceptance) params.set("awaitingOsmAcceptance", filters.awaitingOsmAcceptance);
   if (filters.unassignedOsm) params.set("unassignedOsm", filters.unassignedOsm);
   if (filters.unassigned) params.set("unassigned", filters.unassigned);
+  if (filters.requestType && tab === "PENDING_REQUESTS") params.set("requestType", filters.requestType);
   if (overrides.cursor) params.set("cursor", overrides.cursor);
   return `/app/appointments?${params.toString()}`;
+}
+
+function rowPendingAction(item: WorkAppointmentListItem, page: WorkAppointmentPage): PendingAction | undefined {
+  const requestLabel = page.canResolveRequests ? pendingAppointmentRequestLabel(item.pendingRequestBadges) : null;
+  if (requestLabel) return { count: 1, label: requestLabel };
+  if (page.canAcceptAssignments && item.canAcceptAssignment) return { count: 1, label: "นัดหมายรอคุณตอบรับ" };
+  return undefined;
 }
 
 function AppointmentRow({ item, page }: { item: WorkAppointmentListItem; page: WorkAppointmentPage }): React.JSX.Element {
@@ -91,14 +105,10 @@ function AppointmentRow({ item, page }: { item: WorkAppointmentListItem; page: W
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <ActionRequiredDot action={
-              (page.canResolveRequests && (item.pendingRequestBadges.reschedule || item.pendingRequestBadges.cancellation)) ||
-              (page.canAcceptAssignments && item.canAcceptAssignment)
-                ? { count: 1, label: page.canResolveRequests ? "คำขอนัดหมายรอพิจารณา" : "นัดหมายรอคุณตอบรับ" } : undefined
-            } />
+            <ActionRequiredDot action={rowPendingAction(item, page)} />
             <StatusBadge variant={statusVariant(item.status)}>{APPOINTMENT_STATUS_LABELS[item.status]}</StatusBadge>
-            {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">{item.pendingRequestBadges.staleReschedule ? "คำขอก่อนแก้ไขนัด" : "รอเลื่อนนัด"}</StatusBadge> : null}
-            {item.pendingRequestBadges.cancellation ? <StatusBadge variant="warning">รอยกเลิก</StatusBadge> : null}
+            {item.pendingRequestBadges.reschedule ? <StatusBadge variant="warning">{item.pendingRequestBadges.staleReschedule ? "คำขอก่อนแก้ไขนัด" : APPOINTMENT_REQUEST_KIND_LABELS.RESCHEDULE}</StatusBadge> : null}
+            {item.pendingRequestBadges.cancellation ? <StatusBadge variant="warning">{APPOINTMENT_REQUEST_KIND_LABELS.CANCELLATION}</StatusBadge> : null}
             {item.hasUnassignedOsm ? <StatusBadge variant="warning">ไม่มี อสม. รับผิดชอบ</StatusBadge> : null}
             {item.osmAcceptanceStatus === "WAITING" ? <StatusBadge variant="warning">รอ อสม. ตอบรับ</StatusBadge> : null}
             {item.osmAcceptanceStatus === "RESCHEDULE_REQUESTED" ? <StatusBadge variant="warning">อสม. ขอเลื่อนนัด</StatusBadge> : null}
@@ -115,6 +125,8 @@ function AppointmentRow({ item, page }: { item: WorkAppointmentListItem; page: W
 
 export type WorkAppointmentPendingScope = {
   tab: WorkAppointmentTab;
+  /** Queue name: typed when the page is filtered to one request kind, else the tab's aggregate name. */
+  label: string;
   totalCount: number;
   /** Authorized Hospitals with pending work in this queue, already intersected with the page's Hospital scopes. */
   hospitals: readonly { hospitalId: string; hospitalName: string; count: number }[];
@@ -126,11 +138,10 @@ export type WorkAppointmentPendingScope = {
  */
 function PendingScopeSummary({ page, scope }: { page: WorkAppointmentPage; scope: WorkAppointmentPendingScope }): React.JSX.Element | null {
   if (scope.tab !== page.tab || !scope.hospitals.some(({ hospitalId }) => hospitalId !== page.hospital.hospitalId)) return null;
-  const queueLabel = page.tab === "AWAITING_MY_ACCEPTANCE" ? "นัดหมายรอคุณตอบรับ" : "คำขอนัดหมายรอพิจารณา";
   return (
     <section aria-labelledby="pending-scope-heading" className="rounded-panel border border-border bg-surface px-5 py-4 sm:px-7">
       <h2 className="text-sm font-semibold text-text" id="pending-scope-heading">
-        {queueLabel} รวม {scope.totalCount} รายการ จาก {scope.hospitals.length} โรงพยาบาล
+        {scope.label} รวม {scope.totalCount} รายการ จาก {scope.hospitals.length} โรงพยาบาล
       </h2>
       <p className="mt-1 text-sm leading-6 text-text-muted">
         รายการด้านล่างแสดงเฉพาะ {page.hospital.hospitalName} เลือกโรงพยาบาลเพื่อดูงานที่รอดำเนินการของแต่ละแห่ง
@@ -143,7 +154,9 @@ function PendingScopeSummary({ page, scope }: { page: WorkAppointmentPage; scope
               <Link
                 aria-current={current ? "page" : undefined}
                 className={`inline-flex min-h-11 max-w-full items-center gap-2 rounded-control border px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring motion-reduce:transition-none ${current ? "border-action-primary bg-brand-soft text-brand-deep" : "border-border text-text hover:bg-surface-muted"}`}
-                href={`/app/appointments?${new URLSearchParams({ hospitalId, tab: page.tab })}`}
+                href={`/app/appointments?${new URLSearchParams({
+                  hospitalId, tab: page.tab, ...(page.filters.requestType ? { requestType: page.filters.requestType } : {}),
+                })}`}
                 prefetch={false}
               >
                 <span className="min-w-0 truncate">{hospitalName}</span>
@@ -179,7 +192,7 @@ export function WorkAppointmentView({
         : true,
   );
   const emptyCopy = page.tab === "PENDING_REQUESTS"
-    ? "ไม่มีคำขอเลื่อนหรือยกเลิกนัดหมายที่รอดำเนินการ"
+    ? page.filters.requestType ? APPOINTMENT_REQUEST_KIND_EMPTY_COPY[page.filters.requestType] : "ไม่มีคำขอเลื่อนหรือยกเลิกนัดหมายที่รอดำเนินการ"
     : page.tab === "AWAITING_MY_ACCEPTANCE"
       ? "ไม่มีนัดหมายที่รอคุณตอบรับ"
       : page.tab === "HISTORY"
@@ -274,6 +287,15 @@ export function WorkAppointmentView({
                 </Select>
               </label>
             </>
+          ) : null}
+          {page.canResolveRequests && page.tab === "PENDING_REQUESTS" ? (
+            <label className="block space-y-2 text-sm font-semibold text-text">
+              ประเภทคำขอ
+              <Select defaultValue={page.filters.requestType ?? ""} name="requestType">
+                <option value="">ทุกประเภท</option>
+                {APPOINTMENT_REQUEST_KINDS.map((kind) => <option key={kind} value={kind}>{APPOINTMENT_REQUEST_KIND_LABELS[kind]}</option>)}
+              </Select>
+            </label>
           ) : null}
           {page.responsibleFilter.mode === "SEARCH" ? (
             <ResponsibleFilterPicker

@@ -5,6 +5,8 @@ import type { getAppointmentRescheduleHistory } from "@/modules/appointments/ser
 import { SavedRecordActions, SavedRecordCard } from "../../../personal/saved-record-card";
 import { RescheduleRequestDetails } from "./reschedule-request-history";
 import { RescheduleRequestForm } from "./reschedule-request-form";
+import { rescheduleRequestsHeadingId } from "./[appointmentId]/pending-request-summary";
+import { APPOINTMENT_REQUESTER_LABELS } from "@/modules/appointments/domain/appointment-request-kinds";
 
 function formatRequestDate(value: Date): string {
   return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(value);
@@ -16,7 +18,7 @@ export function RescheduleRequestSection({ history, relationshipId, appointmentI
   appointmentId: string;
   appointmentSummary: string;
 }): React.JSX.Element {
-  const headingId = `reschedule-requests-heading-${appointmentId}`;
+  const headingId = rescheduleRequestsHeadingId(appointmentId);
   return <section aria-label="คำขอเลื่อนนัด" className="mt-6 space-y-4 border-t border-border pt-5">
     <h2 className="text-lg font-semibold text-text" id={headingId} tabIndex={-1}>คำขอเลื่อนนัด</h2>
     {history.requests.length === 0 ? <p className="text-text-muted">ยังไม่มีคำขอเลื่อนนัด</p> : <ul className="space-y-3">{history.requests.map((request) => <li key={request.id}>
@@ -31,7 +33,7 @@ export function RescheduleRequestSection({ history, relationshipId, appointmentI
             requestContext={{
               preferredDatetimes: request.preferredDatetimes.map(formatRequestDate),
               reason: request.reason,
-              requester: request.source === "PATIENT_SELF" ? "ผู้ป่วย" : "อสม. แทนผู้ป่วย",
+              requester: APPOINTMENT_REQUESTER_LABELS[request.source],
               submittedAt: formatRequestDate(request.submittedAt),
             }}
             requestId={request.id}

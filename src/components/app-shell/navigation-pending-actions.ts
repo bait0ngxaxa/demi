@@ -1,3 +1,4 @@
+import { APPOINTMENT_REQUEST_KIND_LABELS } from "@/modules/appointments/domain/appointment-request-kinds";
 import type { PendingActionsResult } from "@/modules/pending-actions/services/pending-action-service";
 import type { PendingAction } from "@/components/ui/action-required-dot";
 import type { ApplicationNavigationGroup, ApplicationNavigationItem } from "./navigation-types";
@@ -23,6 +24,9 @@ export function withNavigationPendingActions(
         count: indicator.count, label: indicator.label, href: indicator.href,
         ...(indicator.hospitalQueue
           ? { hospitalCount: indicator.hospitalQueue.hospitals.filter(({ count }) => count > 0).length }
+          : {}),
+        ...(indicator.breakdown && indicator.breakdown.length > 0
+          ? { parts: indicator.breakdown.map(({ kind, count }) => ({ label: APPOINTMENT_REQUEST_KIND_LABELS[kind], count })) }
           : {}),
       } }
       : item;

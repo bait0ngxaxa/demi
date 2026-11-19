@@ -28,6 +28,7 @@ import {
   rejectAppointmentCancellationRequestAction,
   requestAppointmentCancellationOnBehalfOfPatientAction,
 } from "@/modules/appointments/transport/server-actions";
+import { APPOINTMENT_CANCELLATION_REVIEW_HEADING_ID } from "./pending-request-summary";
 import {
   initialAppointmentInteractionActionState,
   type AppointmentInteractionActionState,
@@ -248,9 +249,9 @@ export function AppointmentInteractionControls({
         ) : null}
 
         {canManage && pendingRequest ? (
-          <section aria-labelledby="appointment-cancellation-review-heading" className="space-y-3">
+          <section aria-labelledby={APPOINTMENT_CANCELLATION_REVIEW_HEADING_ID} className="space-y-3">
             <div>
-              <h2 className="text-lg font-semibold text-text" id="appointment-cancellation-review-heading">
+              <h2 className="text-lg font-semibold text-text" id={APPOINTMENT_CANCELLATION_REVIEW_HEADING_ID} tabIndex={-1}>
                 พิจารณาคำขอยกเลิกนัด
               </h2>
               <p className="text-sm leading-6 text-text-muted">

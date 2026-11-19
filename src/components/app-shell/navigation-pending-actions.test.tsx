@@ -84,6 +84,28 @@ describe("shared pending action presentation", () => {
     expect(renderToStaticMarkup(<NavigationList groups={groups} />)).not.toContain("sr-only");
   });
 
+  it("names the pending request kinds instead of the untyped aggregate on every navigation surface", () => {
+    const typed = [{ ...indicators[0], count: 3, breakdown: [
+      { kind: "RESCHEDULE" as const, label: "คำขอเลื่อนนัดรอพิจารณา", count: 2, href: "/r", hospitals: [{ hospitalId: "a", count: 2 }] },
+      { kind: "CANCELLATION" as const, label: "คำขอยกเลิกนัดรอพิจารณา", count: 1, href: "/c", hospitals: [{ hospitalId: "a", count: 1 }] },
+    ] }, indicators[1]];
+    const groups = withNavigationPendingActions(navigation, ready(typed));
+    const projection = projectMobileNavigation(groups);
+    expect(projection.tabsByWorkspace.work.find(({ id }) => id === "appointments")?.pendingAction?.count).toBe(3);
+    for (const html of [
+      renderToStaticMarkup(<NavigationList groups={groups} />),
+      renderToStaticMarkup(<NavigationList collapsed groups={groups} />),
+      renderToStaticMarkup(<MobileBottomNavigation projection={projection} />),
+    ]) {
+      expect(html).toContain("ขอเลื่อนนัด 2 · ขอยกเลิกนัด 1");
+      expect(html).not.toContain("คำขอนัดหมายรอพิจารณา");
+    }
+    const multi = withNavigationPendingActions(navigation, ready([{ ...typed[0], hospitalQueue: { tab: "PENDING_REQUESTS" as const, hospitals: [
+      { hospitalId: "a", count: 2 }, { hospitalId: "b", count: 1 },
+    ] } }]));
+    expect(renderToStaticMarkup(<NavigationList groups={multi} />)).toContain("ขอเลื่อนนัด 2 · ขอยกเลิกนัด 1 จาก 2 โรงพยาบาล");
+  });
+
   it("names the multi-Hospital aggregate identically on every navigation surface", () => {
     const multi = [{ ...indicators[0], count: 8, hospitalQueue: { tab: "PENDING_REQUESTS" as const, hospitals: [
       { hospitalId: "a", count: 2 }, { hospitalId: "b", count: 4 }, { hospitalId: "c", count: 2 }, { hospitalId: "idle", count: 0 },
