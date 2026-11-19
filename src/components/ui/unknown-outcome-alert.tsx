@@ -16,15 +16,16 @@ import { Button } from "./button";
  *   page; reloading reads that state, it does not prove which request changed it.
  * - `verify`: the page queries current state with an in-memory identifier without replaying
  *   the mutation, so it warns before unloading while that identifier is needed.
- * - `review`: a create without server-side deduplication; the user checks the persisted list
- *   before deciding to send a new request.
+ * - `review`: a create without server-side deduplication, or a list whose last request is
+ *   unresolved; the user checks the persisted list before deciding to send a new request.
+ *   `onReview` reloads only that list in place instead of refreshing the route.
  * - `note`: no in-page verification exists; the note says how to check.
  */
 export type UnknownOutcomeRecovery =
   | { kind: "resend"; onResend: () => void; resending: boolean }
   | { kind: "reload"; message?: string; label?: string }
   | { kind: "verify"; label: string; message: string; onVerify: () => void; verifying: boolean }
-  | { kind: "review"; label: string }
+  | { kind: "review"; label: string; onReview?: () => void; reviewing?: boolean; disabled?: boolean }
   | { kind: "note"; message?: string; note: string };
 
 const unknownOutcomeHeading = "ยังยืนยันผลรายการนี้ไม่ได้";
@@ -134,7 +135,15 @@ export function UnknownOutcomeAlert({
           <p className="mt-1">การโหลดจะแสดงสถานะปัจจุบัน แต่ไม่ยืนยันว่าคำขอนี้เป็นผู้เปลี่ยนข้อมูล</p>
         </details>
       ) : null}
-      <Button className="mt-3" onClick={refresh ?? (() => window.location.reload())} size="compact" type="button" variant="secondary">
+      <Button
+        className="mt-3"
+        disabled={recovery.kind === "review" ? recovery.disabled : undefined}
+        loading={recovery.kind === "review" ? recovery.reviewing : undefined}
+        onClick={recovery.kind === "review" && recovery.onReview ? recovery.onReview : refresh ?? (() => window.location.reload())}
+        size="compact"
+        type="button"
+        variant="secondary"
+      >
         {recovery.kind === "review" ? recovery.label : recovery.label ?? "ดูข้อมูลล่าสุด"}
       </Button>
     </Alert>

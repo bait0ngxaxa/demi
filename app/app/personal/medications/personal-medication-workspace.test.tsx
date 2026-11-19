@@ -22,7 +22,8 @@ describe("Personal medication UI states", () => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} />);
     expect(html).toContain('href="/app/personal"');
     expect(html).toContain('aria-label="ลำดับหน้า"');
-    for (const text of ["ยาของฉัน", "รายการยาที่คุณบันทึก", "ยังไม่มีรายการที่กำลังติดตาม", "ยังไม่มีประวัติหยุดติดตาม", "ชื่อยา", "ข้อความประกอบ", "ไม่ใช่คำแนะนำทางการแพทย์"]) expect(html).toContain(text);
+    for (const text of ["ยาของฉัน", "ยังไม่มีรายการที่กำลังติดตาม", "ยังไม่มีประวัติหยุดติดตาม", "ชื่อยา", "ข้อความประกอบ"]) expect(html).toContain(text);
+    for (const text of ["ไม่ใช่คำแนะนำทางการแพทย์", "Asia/Bangkok", "จะถูกบันทึกเมื่อคุณกดปุ่ม", "ไม่เกิน 2,000 ตัวอักษร"]) expect(html).not.toContain(text);
     expect(html).toContain('name="medicationName"'); expect(html).toContain('name="instructionText"'); expect(html).toContain("aria-describedby"); expect(html).toContain("for=");
     expect(html).toContain('name="times"');
     for (const preset of ["เช้า 07:00", "กลางวัน 12:00", "เย็น 18:00", "ก่อนนอน 21:00"]) expect(html).toContain(preset);
@@ -34,14 +35,14 @@ describe("Personal medication UI states", () => {
     { reminder: { enabled: false, canEnable: false }, state: "ปิด", unbound: true },
   ])("reads back the LINE reminder preference ($state) and links to Settings without a toggle", ({ reminder, state, unbound }) => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} reminder={reminder} />);
-    expect(html).toContain(`การแจ้งเตือนยาทาง LINE: ${state}`);
+    expect(html).toContain(`แจ้งเตือนทาง LINE: ${state}`);
     expect(html).toContain('href="/app/settings"');
-    expect(html.includes("เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้")).toBe(unbound);
+    expect(html.includes("(ต้องเชื่อม LINE ก่อน)")).toBe(unbound);
     expect(html).not.toContain("เปิดการแจ้งเตือนยา</button>");
   });
   it("shows no reminder state when none was read back", () => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={null} />);
-    expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
+    expect(html).not.toContain("แจ้งเตือนทาง LINE");
   });
   it("renders distinct text statuses, escaped user text and cursor continuation", () => {
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: item.id }} stopped={{ items: [{ ...item, id: "stopped", status: "STOPPED", stoppedAt: item.updatedAt }], nextCursor: item.id }} selected={null} />);
@@ -54,7 +55,7 @@ describe("Personal medication UI states", () => {
     expect(active).toContain("แก้ไขชื่อยาและข้อความประกอบ"); expect(active).toContain("แก้ไขเวลา"); expect(active).not.toContain("บันทึกการแก้ไข");
     expect(active).toContain("ข้อความเอง"); expect(active).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(active).toContain('name="expectedUpdatedAt"');
     const stopped = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, status: "STOPPED", stoppedAt: item.updatedAt }} />);
-    expect(stopped).toContain("แก้ไขไม่ได้"); expect(stopped).not.toContain("<form"); expect(stopped).not.toContain("ยืนยันหยุดติดตาม");
+    expect(stopped).toContain("ให้เพิ่มรายการใหม่"); expect(stopped).not.toContain("<form"); expect(stopped).not.toContain("ยืนยันหยุดติดตาม");
   });
   it("starts stop tracking from a trigger only; the confirmation is a dialog (see personal-medication-dialogs.test.tsx)", () => {
     const html = renderToStaticMarkup(<MedicationStopForm item={item} />);
@@ -146,13 +147,15 @@ describe("Personal medication UI states", () => {
     const host = document.createElement("div");
     host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [item], nextCursor: null }} stopped={empty} selected={{ ...item, schedules: times }} />);
     const detail = host.querySelector("#medication-detail");
-    expect([...(detail?.querySelectorAll("h3") ?? [])].map((heading) => heading.textContent)).toEqual(["ข้อมูลที่บันทึกไว้", "เวลาที่ต้องการติดตามใน DEMI", "การติดตามใน DEMI"]);
+    expect([...(detail?.querySelectorAll("h3") ?? [])].map((heading) => heading.textContent)).toEqual(["ข้อมูลที่บันทึกไว้", "เวลาที่ต้องการแจ้งเตือน", "การติดตามใน DEMI"]);
     expect(detail?.querySelector("dd")?.textContent).toBe("ยาไทย <script>");
     const chips = detail?.querySelector('[aria-label="เวลาที่บันทึกไว้"]');
     expect([...(chips?.querySelectorAll("li") ?? [])].map((chip) => chip.textContent)).toEqual(times.map(({ localTime }) => localTime));
     expect(chips?.className).toContain("flex-wrap"); expect(chips?.className).toContain("overflow-y-auto"); expect(chips?.className).toContain("overflow-x-hidden");
     expect(chips?.getAttribute("tabindex")).toBe("0");
-    expect(detail?.textContent).toContain("หยุดติดตามรายการนี้ใน DEMI"); expect(detail?.textContent).toContain("ไม่เปลี่ยนการใช้ยาของคุณ");
+    expect(detail?.textContent).toContain("หยุดติดตามรายการนี้ใน DEMI");
+    // The stop caveat lives only in the confirmation dialog (COPY-DISTILL R3).
+    expect(detail?.textContent).not.toContain("ไม่เปลี่ยนการใช้ยา");
     host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={item} />);
     expect(host.querySelector('[aria-label="เวลาที่บันทึกไว้"]')).toBeNull();
     expect(host.querySelector("#medication-detail")?.textContent).toContain("ยังไม่ได้บันทึกเวลา");
@@ -162,7 +165,7 @@ describe("Personal medication UI states", () => {
     host.innerHTML = renderToStaticMarkup(<PersonalMedicationWorkspace active={empty} stopped={empty} selected={{ ...item, status: "STOPPED", stoppedAt: item.updatedAt, schedules: [{ localTime: "08:00" }, { localTime: "20:00" }] }} />);
     const detail = host.querySelector("#medication-detail");
     expect(detail?.querySelector("form, input, textarea, button")).toBeNull();
-    expect(detail?.textContent).toContain("หยุดติดตามแล้ว"); expect(detail?.textContent).toContain("แก้ไขไม่ได้");
+    expect(detail?.textContent).toContain("หยุดติดตามแล้ว"); expect(detail?.textContent).toContain("ให้เพิ่มรายการใหม่");
     expect([...(detail?.querySelectorAll('[aria-label="เวลาที่บันทึกไว้ก่อนหยุดติดตาม"] li') ?? [])].map((chip) => chip.textContent)).toEqual(["08:00", "20:00"]);
     expect(detail?.textContent).toContain("ข้อความเอง");
     for (const absent of ["เริ่มติดตามอีกครั้ง", "ลบรายการ", "หยุดรับประทานยา", "การติดตามใน DEMI"]) expect(detail?.textContent).not.toContain(absent);

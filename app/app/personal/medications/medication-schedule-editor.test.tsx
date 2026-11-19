@@ -72,7 +72,7 @@ describe("daily schedule editor interactions", () => {
     const preventDefault = vi.fn(); elements(editor()).find((element) => element.type === "form")?.props.onSubmit?.({ preventDefault });
     expect(preventDefault).toHaveBeenCalledOnce(); expect(draft(editor())).toEqual(["08:00", "20:00", value]);
     const html = renderToStaticMarkup(editor());
-    expect(html).toContain(value ? "เวลาซ้ำกัน" : "กรุณาระบุเวลา HH:mm");
+    expect(html).toContain(value ? "เวลาซ้ำกัน" : "กรุณาระบุเวลาให้ครบ");
   });
   it.each(["SUCCESS", "CONFLICT", "ERROR"] as const)("shows %s and blocks replay until reload for uncertain/conflict outcome", (status) => {
     hooks.state = { status, message: status === "SUCCESS" ? "บันทึกเวลาแล้ว" : "โหลดข้อมูลล่าสุด", refreshRequired: status === "ERROR" };
@@ -83,14 +83,15 @@ describe("daily schedule editor interactions", () => {
     hooks.pending = true;
     expect(renderToStaticMarkup(editor())).toContain("กำลังบันทึกเวลา");
     const coordination = { blocked: true, onSubmit: vi.fn(), onResult: vi.fn() };
-    hooks.cursor = 0; expect(renderToStaticMarkup(MedicationEditor({ item, coordination }))).toContain("disabled");
+    hooks.slots = []; hooks.cursor = 0; expect(renderToStaticMarkup(MedicationEditor({ item, coordination }))).toContain("disabled");
     // Stop shares the coordinator; its dialog flow is covered in personal-medication-dialogs.test.tsx.
     hooks.slots = []; hooks.cursor = 0; expect(renderToStaticMarkup(MedicationStopForm({ item, coordination }))).toContain("disabled");
   });
   it("STOPPED shows only retained ascending clock content and Thai history wording", () => {
     hooks.cursor = 0;
     const html = renderToStaticMarkup(<PersonalMedicationWorkspace active={{ items: [], nextCursor: null }} stopped={{ items: [], nextCursor: null }} selected={{ ...item, status: "STOPPED", stoppedAt: item.updatedAt }} />);
-    for (const text of ["เวลาที่บันทึกไว้ก่อนหยุดติดตามรายการนี้", "08:00", "20:00", "Asia/Bangkok"]) expect(html).toContain(text);
+    for (const text of ["เวลาที่บันทึกไว้ก่อนหยุดติดตามรายการนี้", "08:00", "20:00"]) expect(html).toContain(text);
+    expect(html).not.toContain("Asia/Bangkok");
     for (const absent of ["<form", "เพิ่มเวลา", "ลบเวลา", "บันทึกเวลา</button", "taken", "missed", "dose", "notification"]) expect(html).not.toContain(absent);
     expect(html.indexOf("08:00")).toBeLessThan(html.indexOf("20:00"));
   });

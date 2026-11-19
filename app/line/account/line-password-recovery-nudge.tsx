@@ -27,15 +27,15 @@ function readDismissed(storageKey: string): boolean {
 function getReadinessMessage(readiness: LineRecoveryReadiness): string {
   switch (readiness.status) {
     case "UNLINKED":
-      return "ยังไม่ได้ผูก LINE กับบัญชี DEMI การผูก LINE เป็นทางเลือกเพื่อใช้ช่องทางกู้คืนด้วยตนเอง";
+      return "ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม (ไม่บังคับ)";
     case "READY":
-      return "บัญชีนี้ผูก LINE แล้ว และระบบยืนยันสถานะเพื่อนล่าสุดภายใน 24 ชั่วโมง จึงพร้อมสำหรับการขอลิงก์กู้คืนตามสถานะที่ตรวจพบ";
+      return "พร้อมรับลิงก์ตั้งรหัสผ่านใหม่ทาง LINE";
     case "UNCONFIRMED":
-      if (readiness.reason === "STALE_OBSERVATION") return "บัญชีนี้ผูก LINE แล้ว แต่ผลตรวจสถานะเพื่อนเก่ากว่า 24 ชั่วโมง จึงยังไม่แสดงว่าพร้อมรับลิงก์กู้คืน";
-      if (readiness.reason === "FRIENDSHIP_UNCONFIRMED" && readiness.reachability === "NOT_FRIEND") return "บัญชีนี้ผูก LINE แล้ว แต่ผลตรวจล่าสุดยังไม่ยืนยันว่าเป็นเพื่อนกับ DEMI จึงยังไม่แสดงว่าพร้อมรับลิงก์กู้คืน";
-      return "บัญชีนี้ผูก LINE แล้ว แต่ยังไม่มีผลตรวจสถานะเพื่อนที่ยืนยันได้ จึงยังไม่แสดงว่าพร้อมรับลิงก์กู้คืน";
+      if (readiness.reason === "STALE_OBSERVATION") return "ผลตรวจสถานะเพื่อนเก่ากว่า 24 ชั่วโมง ตรวจสอบสถานะ LINE อีกครั้ง";
+      if (readiness.reason === "FRIENDSHIP_UNCONFIRMED" && readiness.reachability === "NOT_FRIEND") return "ยังไม่ได้เพิ่ม DEMI เป็นเพื่อนใน LINE";
+      return "ยังยืนยันสถานะเพื่อนใน LINE ไม่ได้";
     case "UNAVAILABLE":
-      return "ขณะนี้ระบบยังตั้งค่าช่องทางกู้คืนผ่าน LINE ไม่ครบ จึงยังยืนยันความพร้อมในการส่งลิงก์ไม่ได้";
+      return "ช่องทางกู้คืนผ่าน LINE ยังไม่พร้อมใช้งาน";
   }
 }
 
@@ -80,13 +80,10 @@ export function LinePasswordRecoveryNudge({
                 ยืนยันล่าสุด <time dateTime={readiness.observedAt}>{new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" }).format(new Date(readiness.observedAt))}</time>
               </p>
             ) : null}
-            {readiness.status === "UNLINKED" && !readiness.recoveryConfigured ? (
-              <p className="mt-1 text-sm leading-6 text-text-muted">แม้ผูก LINE แล้ว ระบบยังต้องพร้อมก่อนจึงจะส่งลิงก์กู้คืนได้</p>
-            ) : null}
             {soleOwnerHospitalCount !== null && soleOwnerHospitalCount > 0 ? (
               <p className="mt-2 text-sm leading-6 text-text-muted">คุณเป็นแอดมินโรงพยาบาลที่ใช้งานได้เพียงคนเดียวใน {soleOwnerHospitalCount} โรงพยาบาล หากใช้ LINE ไม่ได้ ให้ติดต่อผู้ดูแลระบบ DEMI เพื่อขอความช่วยเหลือ</p>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-text-muted">การผูก LINE เป็นทางเลือก หากใช้ LINE ไม่ได้ ขอแอดมินโรงพยาบาลคนอื่นหรือผู้ดูแลระบบ DEMI ช่วยกู้คืนบัญชีได้</p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">หากใช้ LINE ไม่ได้ ขอแอดมินโรงพยาบาลคนอื่นหรือผู้ดูแลระบบ DEMI ช่วยกู้คืนบัญชี</p>
             )}
             <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={destination}>
               {readiness.status === "UNLINKED" ? "ดูวิธีเชื่อม LINE (ทางเลือก)" : "ตรวจสอบหรือจัดการสถานะ LINE"}
@@ -113,7 +110,6 @@ export function LinePasswordRecoveryNudge({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 id="line-recovery-nudge-title" className="font-semibold text-text">ผูก LINE เพื่อรีเซ็ตรหัสผ่านเองได้เมื่อลืม</h3>
-          <p className="mt-1 text-sm leading-6 text-text-muted">ใช้ LINE ที่ผูกไว้รับลิงก์ตั้งรหัสผ่านใหม่ โดยยืนยันบัญชี LINE เดิมก่อนเปลี่ยนรหัสผ่าน</p>
           <Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4" href={destination}>ไปจัดการการเชื่อมต่อ LINE</Link>
         </div>
         <button

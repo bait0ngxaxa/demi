@@ -128,7 +128,7 @@ export function PersonalWeightGoalEditor({
         <div className="flex flex-wrap items-center justify-between gap-2"><label htmlFor={`${prefix}-weeks`} className="text-sm font-medium">ระยะเวลาจากวันนี้</label><output htmlFor={`${prefix}-weeks`} className="font-semibold text-brand-strong">{weeks} สัปดาห์</output></div>
         <input id={`${prefix}-weeks`} type="range" min={1} max={26} step={1} value={weeks} onChange={(event) => setWeeks(Number(event.target.value))} aria-valuetext={`${weeks} สัปดาห์`} aria-describedby={`${prefix}-weeks-help`} className="min-h-11 w-full accent-brand focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" />
         <div className="flex justify-between text-xs text-text-muted"><span>1 สัปดาห์</span><span>26 สัปดาห์</span></div>
-        <p id={`${prefix}-weeks-help`} className="text-sm text-text-muted">เลื่อนแล้วกดใช้ระยะเวลาเพื่อเปลี่ยนวันที่เป้าหมาย โดยนับจากวันนี้ตามเวลาไทย วันที่เดิมจะคงอยู่จนกว่าคุณจะเลือกเปลี่ยน</p>
+        <p id={`${prefix}-weeks-help`} className="text-sm text-text-muted">เลือกระยะเวลา แล้วกดใช้</p>
         <Button variant="secondary" size="compact" onClick={() => setTargetDate(weightGoalDateAfterWeeks(weeks, new Date()))}>ใช้ระยะเวลานี้</Button>
       </div>
       <div className="space-y-2">
@@ -143,7 +143,7 @@ export function PersonalWeightGoalEditor({
           aria-describedby={`${prefix}-date-help`}
         />
         <p id={`${prefix}-date-help`} className="text-sm text-text-muted">
-          {state.fieldErrors?.targetDate ?? "เว้นว่างได้; วันที่ใหม่ต้องเป็นวันนี้หรือวันข้างหน้า ตามเวลาไทย"}
+          {state.fieldErrors?.targetDate ?? "วันนี้หรือวันข้างหน้า"}
         </p>
       </div>
       </fieldset>
@@ -155,10 +155,7 @@ export function PersonalWeightGoalEditor({
       {uncertain && !goal ? (
         <Alert variant="warning">
           <p className="font-semibold">ยังยืนยันผลการบันทึกเป้าหมายไม่ได้</p>
-          <details className="mt-2">
-            <summary className="cursor-pointer underline underline-offset-4">วิธีตรวจสอบผล</summary>
-            <p className="mt-1">การตรวจสอบจะส่งข้อมูลเดิมอีกครั้งและป้องกันการบันทึกซ้ำ</p>
-          </details>
+          <p className="mt-1">กด “ตรวจสอบผลการบันทึก” ก่อนทำรายการอื่น</p>
         </Alert>
       ) : state.message ? <Alert variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
     </div>

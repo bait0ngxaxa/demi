@@ -70,7 +70,6 @@ export function PatientSelfGoalPlanDetailView({
           { href: careHref, label: relationship.hospitalName },
           { label: `แผนสุขภาพ รอบที่ ${detail.roundNumber}` },
         ]}
-        description="แสดงรายละเอียดแผนสุขภาพตามข้อมูลที่บันทึกไว้"
         title={`แผนสุขภาพ รอบที่ ${detail.roundNumber}`}
       />
 
@@ -168,7 +167,6 @@ export function PatientSelfFollowupDetailView({
           { href: careHref, label: relationship.hospitalName },
           { label: `การติดตาม รอบที่ ${detail.roundNumber}` },
         ]}
-        description="แสดงข้อมูลที่บันทึกไว้ในรอบการติดตามนี้"
         title={`การติดตาม รอบที่ ${detail.roundNumber}`}
       />
 

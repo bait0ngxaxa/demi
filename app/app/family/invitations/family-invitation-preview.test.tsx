@@ -95,7 +95,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     // LG-D4/LG-D6: the required Terms + Privacy box, and no consent toggles for a caregiver account.
     expect(markup).toMatch(/<input[^>]*required=""[^>]*name="acceptLegal"|<input[^>]*name="acceptLegal"[^>]*required=""/u);
     expect(markup).not.toContain('name="consent.');
-    expect(markup).toContain("ชื่อและนามสกุลที่กรอกเป็นข้อมูลที่คุณแจ้งเอง");
+    expect(markup).toContain("ผู้ป่วยจะเห็นชื่อนี้ในรายการครอบครัว");
     expect(markup).toContain("สร้างบัญชีและตอบรับคำเชิญ");
     expect(markup).toContain("หากมีบัญชีแล้ว เข้าสู่ระบบเพื่อรับคำเชิญนี้");
     expect(markup).toContain(`href="/login#${"a".repeat(43)}"`);
@@ -116,7 +116,7 @@ describe("invitation client fragment and preview boundary (Node/SSR)", () => {
     const requestedSharing = { relationshipLabel: "บุตร", appointmentHospitalCount: 2, appointmentHospitalNames: null, resources: ["PROFILE_SUMMARY" as const] };
     harness.preview = { status: "NEEDS_ACCOUNT", invitation: { expiresAt: "2026-10-02T00:00:00Z", patientDisplayName: "สมชาย ใจดี", acceptanceContractVersion: "family-delegation-v1", requestedSharing } };
     const publicMarkup = render();
-    for (const text of ["บุตร", "เมื่อตอบรับ คุณยอมรับสิทธิ์ต่อไปนี้พร้อมกัน", "2 หน่วยบริการที่ผู้ป่วยเลือก", "90 วันย้อนหลัง", "ข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(publicMarkup).toContain(text);
+    for (const text of ["บุตร", "ข้อมูลที่ผู้ป่วยแชร์ให้คุณ", "2 หน่วยบริการที่ผู้ป่วยเลือก", "90 วันย้อนหลัง", "ข้อมูลทั่วไป", "อายุ ชื่อ อสม. ที่ดูแล"]) expect(publicMarkup).toContain(text);
 
     harness.preview = { status: "READY", invitation: { invitationStatus: "PENDING", patientDisplayName: "สมชาย ใจดี", expiresAt: "2026-10-02T00:00:00Z",
       acceptanceContractVersion: "family-delegation-v1", requestedSharing: { ...requestedSharing, appointmentHospitalNames: ["รพ.สต. บ้านใหม่", "โรงพยาบาลแม่ข่าย"] } } };

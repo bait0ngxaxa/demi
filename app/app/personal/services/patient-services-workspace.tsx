@@ -21,16 +21,12 @@ export function PatientServicesWorkspace({
     <div className="max-w-4xl">
       <PageHeader
         breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "บริการของฉัน" }]}
-        description="ขอให้ อสม. มาเยี่ยมบ้านเพื่อรับบริการ โรงพยาบาลจะยืนยันวันเวลานัดให้"
         title="บริการของฉัน"
       />
-      <p className="mt-3 text-sm leading-6 text-text-muted">
-        เลือกวันและช่วงเวลาที่สะดวก โรงพยาบาลจะยืนยันนัดหรือแจ้งเหตุผลหากไม่อนุมัติ การส่งคำขอไม่ได้เปลี่ยน อสม. ผู้ดูแลของคุณ
-      </p>
 
       {relationships.length === 0 ? (
         <Alert className="mt-6" variant="info">
-          ยังไม่พบข้อมูลการดูแลจากโรงพยาบาลในบัญชีนี้ หากข้อมูลไม่ถูกต้อง โปรดติดต่อโรงพยาบาลที่ดูแลคุณ
+          ยังไม่พบโรงพยาบาลที่ดูแลคุณ
         </Alert>
       ) : (
         <div className="mt-6 space-y-6">
@@ -74,9 +70,6 @@ export function PatientServicesWorkspace({
                 </h3>
                 {relationship.hospitalActive && !relationship.careEnded ? (
                   <>
-                    <p className="mt-1 text-sm leading-6 text-text-muted">
-                      เลือกบริการที่ต้องการ การส่งคำขอยังไม่ใช่การลงทะเบียนในโปรแกรม
-                    </p>
                     <PatientServiceRequestForm
                       relationshipId={relationship.relationshipId}
                       services={relationship.services}
@@ -90,7 +83,7 @@ export function PatientServicesWorkspace({
                 ) : (
                   <Alert className="mt-4" variant={relationship.careEnded ? "neutral" : "warning"}>
                     {relationship.careEnded
-                      ? "โรงพยาบาลสิ้นสุดการดูแลแล้ว จึงส่งคำขอใหม่ที่โรงพยาบาลนี้ไม่ได้ ประวัติคำขอยังดูได้ด้านล่าง"
+                      ? "โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว"
                       : "ขณะนี้ยังส่งคำขอเพิ่มบริการที่โรงพยาบาลนี้ไม่ได้"}
                   </Alert>
                 )}

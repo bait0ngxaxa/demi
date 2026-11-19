@@ -57,12 +57,11 @@ describe("explicit appointment notification consent", () => {
     expect(container.textContent).toContain("ปิดการแจ้งเตือนแล้ว");
   });
 
-  it("keeps secondary privacy explanations collapsed and avoids duplicate announcements", async () => {
+  it("states the notification scope in one line without system-guarantee prose and avoids duplicate announcements", async () => {
     await act(async () => root.render(<AppointmentNotificationPreference initial={{ enabled: false, canEnable: true }} />));
-    const details = container.querySelector("details");
-    expect(details?.open).toBe(false);
-    expect(details?.querySelector("summary")?.textContent).toBe("รายละเอียดการแจ้งเตือน");
-    expect(details?.textContent).toContain("ไม่รับประกัน");
+    expect(container.querySelector("details")).toBeNull();
+    expect(container.textContent).toContain("ข้อความไม่มีรายละเอียดสุขภาพ");
+    expect(container.textContent).not.toContain("ไม่รับประกัน");
     expect(container.querySelectorAll('[aria-live="polite"]').length).toBe(0);
   });
 

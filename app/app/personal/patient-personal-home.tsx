@@ -78,10 +78,10 @@ export function PatientPersonalHome({
   if (patient === null) {
     return (
       <div className="min-w-0 max-w-4xl">
-        <PageHeader description="ดูข้อมูลและจัดการรายการส่วนตัวของคุณ" title="พื้นที่ส่วนตัว" />
+        <PageHeader title="พื้นที่ส่วนตัว" />
         <Alert className="mt-6" variant="warning">
           <p className="font-semibold">ข้อมูลผู้ป่วยยังไม่พร้อมแสดง</p>
-          <p className="mt-1">ยังไม่พบข้อมูลโปรไฟล์ที่เชื่อมกับบัญชีนี้ หากต้องการตรวจสอบข้อมูล กรุณาติดต่อโรงพยาบาลที่ลงทะเบียนให้คุณ</p>
+          <p className="mt-1">กรุณาติดต่อโรงพยาบาลที่ลงทะเบียนให้คุณ</p>
         </Alert>
       </div>
     );

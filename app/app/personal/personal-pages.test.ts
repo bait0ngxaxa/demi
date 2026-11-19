@@ -411,7 +411,6 @@ describe("Patient Personal pages", () => {
       "ข้อมูลของฉัน",
       "สมชาย",
       "ใจดี",
-      "ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้",
       'href="/app/personal/profile/44444444-4444-4444-8444-444444444444"',
       'href="/app/personal/password"',
     ]) {

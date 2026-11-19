@@ -185,7 +185,7 @@ describe("weight goal focused dialogs", () => {
     mock.create.mockResolvedValue({ status: "CREATE_CONSUMED", message: "คำขอนี้ถูกใช้แล้ว" });
     await act(() => button("บันทึกเป้าหมาย").click());
 
-    expect(host.textContent).toContain("โหลดข้อมูลล่าสุดเพื่อทบทวนเป้าหมายปัจจุบันก่อนเริ่มคำขอใหม่");
+    expect(host.textContent).toContain("โหลดข้อมูลล่าสุดก่อนทำรายการต่อ");
     expect([...host.querySelectorAll("button")].some((element) => element.textContent === "ตั้งเป้าหมายน้ำหนัก")).toBe(false);
     mock.read.mockResolvedValue({ status: "SUCCESS", currentGoal: goal });
     await act(() => button("โหลดข้อมูลล่าสุด").click());

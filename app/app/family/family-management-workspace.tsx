@@ -99,7 +99,6 @@ function SharingScopeFields({ options, disabled }: { options: CaregiverSharingOp
   return (
     <fieldset className="space-y-3">
       <legend className="text-sm font-semibold text-text">ข้อมูลที่ต้องการแชร์ให้ผู้ดูแล</legend>
-      <p className="text-sm leading-6 text-text-muted">เลือกเฉพาะที่ต้องการ ผู้ดูแลต้องยอมรับพร้อมกันตอนตอบรับคำเชิญ และคุณยกเลิกแต่ละรายการได้ภายหลัง</p>
       {options.hospitals.map((hospital) => (
         <label className="flex min-h-11 items-start gap-3 text-sm text-text" key={hospital.relationshipId}>
           <input className={checkbox} disabled={disabled} name="appointmentRelationshipIds" type="checkbox" value={hospital.relationshipId} />
@@ -131,12 +130,10 @@ function InvitationLinkHandoff({
   invitationUrl,
   expiresAt,
   title,
-  description,
 }: {
   invitationUrl: string;
   expiresAt: string;
   title: string;
-  description: string;
 }): React.JSX.Element {
   const [copyStatus, setCopyStatus] = useState("");
   const linkInputId = useId();
@@ -149,7 +146,7 @@ function InvitationLinkHandoff({
 
     try {
       await navigator.clipboard.writeText(invitationUrl);
-      setCopyStatus("คัดลอกลิงก์แล้ว ส่งให้ผู้รับที่ตั้งใจเชื่อมได้เลย");
+      setCopyStatus("คัดลอกลิงก์แล้ว");
     } catch {
       setCopyStatus("คัดลอกอัตโนมัติไม่ได้ กรุณาเลือกและคัดลอกจากช่องลิงก์");
     }
@@ -158,10 +155,7 @@ function InvitationLinkHandoff({
   return (
     <Alert className="mt-5" variant="success">
       <p className="font-semibold">{title}</p>
-      <p className="mt-1">
-        {description}หมดอายุ {formatFamilyManagementDate(expiresAt)}
-        กรุณาส่งให้ผู้รับที่ตั้งใจเชื่อมเท่านั้น
-      </p>
+      <p className="mt-1">ลิงก์ใช้ได้ถึง {formatFamilyManagementDate(expiresAt)}</p>
       <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
         <FamilyInvitationQr invitationLink={invitationUrl} />
         <div className="min-w-0 flex-1 space-y-3">
@@ -181,11 +175,6 @@ function InvitationLinkHandoff({
             คัดลอกลิงก์
           </Button>
           {copyStatus ? <p className="text-sm" role="status">{copyStatus}</p> : null}
-          <p className="text-sm leading-6">
-            QR และลิงก์นี้ใช้สำหรับผู้รับที่ตั้งใจเชื่อมเท่านั้น
-            ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้
-            แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้
-          </p>
         </div>
       </div>
     </Alert>
@@ -201,10 +190,6 @@ function CreateCaregiverInvitationForm({ sharingOptions }: { sharingOptions: Car
   return (
     <Panel className="mt-4">
       <h3 className="text-lg font-semibold text-text">เพิ่มผู้ดูแล</h3>
-      <p className="type-readable mt-2 text-sm leading-6 text-text-muted">
-        ระบุเลขบัตรประชาชนและความสัมพันธ์ของผู้ดูแล เลือกข้อมูลที่ต้องการแชร์ แล้วแชร์ลิงก์หรือ QR ให้ผู้รับด้วยตนเอง หากยังไม่มีบัญชี ผู้รับสามารถสร้างบัญชีจากคำเชิญนี้โดยใช้เลขบัตรเดียวกัน
-        การทราบเลขบัตรประชาชนเพียงอย่างเดียวไม่ทำให้ผู้รับเข้าถึงข้อมูลได้ ผู้รับต้องตอบรับคำเชิญก่อน
-      </p>
       <form
         action={formAction}
         className="mt-5 space-y-4"
@@ -226,7 +211,9 @@ function CreateCaregiverInvitationForm({ sharingOptions }: { sharingOptions: Car
             pattern="[0-9]{13}"
             required
             type="text"
+            aria-describedby="caregiver-national-id-help"
           />
+          <p className="text-sm text-text-muted" id="caregiver-national-id-help">ผู้รับต้องเข้าสู่ระบบด้วยเลขบัตรประชาชนนี้จึงตอบรับได้</p>
         </div>
         <RelationshipLabelFields disabled={pending || unknownOutcome} idPrefix="caregiver-invitation" />
         <SharingScopeFields disabled={pending || unknownOutcome} options={sharingOptions} />
@@ -247,7 +234,6 @@ function CreateCaregiverInvitationForm({ sharingOptions }: { sharingOptions: Car
       </form>
       {state.status === "SUCCESS" ? (
         <InvitationLinkHandoff
-          description="QR และลิงก์นี้แสดงครั้งเดียวและ"
           expiresAt={state.expiresAt}
           key={state.invitationUrl}
           title="สร้างคำเชิญแล้ว"
@@ -279,7 +265,7 @@ function RevokePendingInvitation({
           recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `ยกเลิกคำเชิญของ ${participantName} หรือไม่`,
-            description: "คำเชิญที่รอตอบรับนี้จะใช้ไม่ได้ทันที ประวัติคำเชิญยังคงอยู่ หากต้องการเชื่อมต่อภายหลังต้องสร้างคำเชิญใหม่",
+            description: "คำเชิญนี้จะใช้ไม่ได้ทันที",
             confirmLabel: "ยกเลิกคำเชิญ",
             confirmVariant: "destructive",
           }}
@@ -322,7 +308,7 @@ function ShowPendingInvitationQr({
         recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "review", label: "ตรวจสอบคำเชิญก่อนสร้างลิงก์ใหม่" }} />}
         confirmation={{
           title: `สร้างลิงก์คำเชิญใหม่ให้ ${participantName} หรือไม่`,
-          description: "ลิงก์และ QR เดิมจะใช้ไม่ได้ทันที คำเชิญเดิมยังคงรอตอบรับ และระบบจะแสดงลิงก์ใหม่ด้านล่างหลังสร้างสำเร็จ",
+          description: "ลิงก์และ QR เดิมจะใช้ไม่ได้ทันที",
           confirmLabel: "สร้างลิงก์ใหม่",
           confirmVariant: "destructive",
         }}
@@ -337,11 +323,10 @@ function ShowPendingInvitationQr({
         </Button>
       </ConfirmableActionForm>
       <p className="mt-2 text-sm leading-6 text-text-muted">
-        ใช้เมื่อพบผู้รับต่อหน้า ระบบจะสร้างลิงก์ใหม่ให้คำเชิญเดิม ลิงก์หรือ QR ที่เคยส่งไปจะใช้ไม่ได้อีก
+        ใช้เมื่อพบผู้รับต่อหน้า
       </p>
       {state.status === "SUCCESS" ? (
         <InvitationLinkHandoff
-          description="ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว QR และลิงก์นี้"
           expiresAt={state.expiresAt}
           key={state.invitationUrl}
           title="คิวอาร์โค้ดคำเชิญ"
@@ -374,7 +359,7 @@ function RevokeRelationship({
           recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
           confirmation={{
             title: `ยกเลิกการเชื่อมต่อกับ ${participantName} หรือไม่`,
-            description: "การเชื่อมต่อกับผู้ดูแลรายนี้จะสิ้นสุดทันที สิทธิ์ดูนัดหมายและข้อมูลสุขภาพที่แชร์ให้จะถูกยกเลิก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้งต้องส่งคำเชิญใหม่",
+            description: "การแชร์ทั้งหมดกับผู้ดูแลรายนี้จะหยุดทันที",
             confirmLabel: "ยกเลิกการเชื่อมต่อ",
             confirmVariant: "destructive",
           }}
@@ -463,7 +448,7 @@ function RelationshipLabelEditDialog({
 
   return (
     <ModalDialog
-      description={`แก้ไขป้ายความสัมพันธ์ของ ${target.participantName} ซึ่งปัจจุบันระบุว่า “${relationshipLabel}” ปิดหน้าต่างก่อนบันทึกแล้วกลับมาแก้ ระบบจะเก็บร่างนี้ไว้`}
+      description={`ปัจจุบัน: “${relationshipLabel}”`}
       dismissible={!pending}
       footer={
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -580,7 +565,7 @@ function WithdrawCaregiverRelationship({
         recovery={<UnknownOutcomeAlert active={unknownOutcome} className="mt-2" recovery={{ kind: "reload" }} />}
         confirmation={{
           title: `หยุดดูแล ${participantName} หรือไม่`,
-          description: `การเชื่อมต่อกับผู้ป่วยรายนี้จะสิ้นสุดทันที คุณจะดูข้อมูลที่ผู้ป่วยแชร์ไว้ไม่ได้อีก ประวัติยังคงอยู่ หากต้องการเชื่อมอีกครั้ง ผู้ป่วยต้องส่งคำเชิญใหม่`,
+          description: "คุณจะดูข้อมูลที่ผู้ป่วยแชร์ไว้ไม่ได้อีก",
           confirmLabel: "หยุดดูแลผู้ป่วยรายนี้",
           confirmVariant: "destructive",
         }}
@@ -653,9 +638,6 @@ function PatientPerspective({
 
       <section aria-labelledby="patient-relationships-heading" className="mt-8">
         <h2 className="text-xl font-semibold text-text focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" id="patient-relationships-heading" tabIndex={-1}>ผู้ดูแลที่เชื่อมไว้</h2>
-        <p className="mt-2 text-sm leading-6 text-text-muted">
-          รายการนี้แสดงผู้ดูแลที่เชื่อมต่อและสถานะการเชื่อมต่อ การเชื่อมต่อไม่ได้เปิดสิทธิ์ให้ดูข้อมูลสุขภาพทั้งหมดโดยอัตโนมัติ
-        </p>
         <Panel className="mt-4">
           {overview.relationships.length === 0 ? (
             <p className="text-sm leading-6 text-text-muted">ยังไม่มีผู้ดูแลที่ตอบรับคำเชิญและเชื่อมต่อแล้ว</p>
@@ -742,7 +724,7 @@ function CaregiverPerspective({
                     </dl>
                     {invitation.status === "PENDING" ? (
                       <p className="mt-3 text-sm leading-6 text-text-muted">
-                        เปิดลิงก์คำเชิญที่ได้รับเพื่ออ่านรายละเอียดและตอบรับหรือปฏิเสธ
+                        เปิดลิงก์คำเชิญที่ได้รับเพื่อตอบรับหรือปฏิเสธ
                       </p>
                     ) : null}
                   </SavedRecordCard>
@@ -819,17 +801,7 @@ export function FamilyManagementWorkspace({
 }): React.JSX.Element {
   return (
     <div className="max-w-4xl">
-      <PageHeader
-        description="จัดการคำเชิญ ผู้ดูแล และผู้ป่วยที่เชื่อมต่อกับบัญชีของคุณ การเชื่อมต่อไม่เปิดสิทธิ์ดูข้อมูลสุขภาพโดยอัตโนมัติ"
-        title="ครอบครัวและผู้ดูแล"
-      />
-      <Alert className="mt-6" variant="info">
-        <p className="font-semibold">การเชื่อมต่อยังไม่เปิดสิทธิ์ดูข้อมูลผู้ป่วย</p>
-        <p className="mt-1">
-          การเชื่อมต่อเพียงอย่างเดียวไม่ทำให้ผู้ดูแลดูโปรไฟล์ HN นัดหมาย หรือข้อมูลการดูแลได้
-          {" "}ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว คุณยกเลิกสิทธิ์แต่ละรายการได้ทุกเมื่อ
-        </p>
-      </Alert>
+      <PageHeader title="ครอบครัวและผู้ดูแล" />
       {overview.patient ? <PatientPerspective overview={overview.patient} sharingOptions={sharingOptions} /> : null}
       <CaregiverPerspective overview={overview.caregiver} />
     </div>

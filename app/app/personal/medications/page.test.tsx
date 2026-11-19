@@ -36,17 +36,17 @@ describe("request-time protected medication page", () => {
     vi.mocked(listOwnPersonalMedications).mockRejectedValue(new ForbiddenError());
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("บัญชีนี้ยังเปิดข้อมูลผู้ป่วยไม่ได้"); expect(html).toContain(">ยาของฉัน</h1>");
-    expect(html).not.toContain("กำลังติดตาม"); expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
+    expect(html).not.toContain("กำลังติดตาม"); expect(html).not.toContain("แจ้งเตือนทาง LINE");
   });
   it("reads back the current LINE reminder preference for the own account", async () => {
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
     expect(getOwnMedicationLineReminderPreference).toHaveBeenCalledWith(actor);
-    expect(html).toContain("การแจ้งเตือนยาทาง LINE: เปิด"); expect(html).toContain('href="/app/settings"');
+    expect(html).toContain("แจ้งเตือนทาง LINE: เปิด"); expect(html).toContain('href="/app/settings"');
   });
   it("omits the reminder readback for an account that is not eligible for reminders", async () => {
     vi.mocked(getOwnMedicationLineReminderPreference).mockRejectedValue(new ForbiddenError());
     const html = renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
-    expect(html).toContain("ยังไม่มีรายการที่กำลังติดตาม"); expect(html).not.toContain("การแจ้งเตือนยาทาง LINE");
+    expect(html).toContain("ยังไม่มีรายการที่กำลังติดตาม"); expect(html).not.toContain("แจ้งเตือนทาง LINE");
   });
   it("uses safe identical not-found presentation for foreign item/cursor", async () => {
     vi.mocked(getOwnPersonalMedication).mockRejectedValue(new NotFoundError());

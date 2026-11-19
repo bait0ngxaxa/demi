@@ -34,7 +34,6 @@ export function PatientSelfRelationshipList({
       >
         โรงพยาบาลที่ดูแลคุณ
       </h2>
-      {showCareLink ? <p className="mt-2 text-sm leading-6 text-text-muted">ข้อมูลการดูแลและข้อมูลส่วนตัวแยกตามโรงพยาบาล เลือกโรงพยาบาลที่ต้องการดูหรือติดต่อ</p> : null}
       {relationships.length > 0 ? (
         <ul className="mt-4 divide-y divide-border border-y border-border">
           {relationships.map((relationship) => (
@@ -43,9 +42,6 @@ export function PatientSelfRelationshipList({
               key={relationship.relationshipId}
             >
               <h3 className="break-words font-semibold text-text">{relationship.hospitalName}</h3>
-              <p className="mt-1 break-words text-sm leading-6 text-text-muted">
-                ข้อมูลนี้ใช้สำหรับโรงพยาบาลนี้
-              </p>
               <dl className="mt-2 grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                 <div className="min-w-0">
                   <dt className="text-text-muted">รหัสผู้ป่วยที่โรงพยาบาล</dt>

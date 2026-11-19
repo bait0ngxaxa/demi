@@ -5,10 +5,11 @@ import { InPlaceRefreshButton } from "@/components/ui/in-place-refresh";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmableActionForm, type ConfirmableActionOutcome } from "@/components/ui/confirmable-action-form";
+import { CharacterCount } from "@/components/ui/character-count";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
 import type { PersonalMedicationDto, PersonalMedicationDetailDto } from "@/modules/medications/domain/personal-medication-definitions";
-import { MEDICATION_NAME_RAW_MAX_LENGTH, INSTRUCTION_TEXT_RAW_MAX_LENGTH, MEDICATION_SCHEDULE_MAX_TIMES } from "@/modules/medications/domain/personal-medication-definitions";
+import { MEDICATION_NAME_MAX_LENGTH, MEDICATION_NAME_RAW_MAX_LENGTH, INSTRUCTION_TEXT_MAX_LENGTH, INSTRUCTION_TEXT_RAW_MAX_LENGTH, MEDICATION_SCHEDULE_MAX_TIMES } from "@/modules/medications/domain/personal-medication-definitions";
 import { personalMedicationScheduleSchema } from "@/modules/medications/schemas/personal-medication-schemas";
 import { INITIAL_PERSONAL_MEDICATION_ACTION_STATE, type PersonalMedicationActionState } from "@/modules/medications/transport/action-state";
 import { createPersonalMedicationAction, updatePersonalMedicationAction, stopPersonalMedicationAction, replacePersonalMedicationSchedulesAction } from "@/modules/medications/transport/server-actions";
@@ -101,13 +102,12 @@ export function MedicationEditor({ item, coordination, initialDraft, draftRef, o
     <fieldset disabled={Boolean(blocked)} className="space-y-4">
       <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`${prefix}-name`}>ชื่อยา</label>
         <Input id={`${prefix}-name`} name="medicationName" required maxLength={MEDICATION_NAME_RAW_MAX_LENGTH} value={name} onChange={(event) => setName(event.target.value)} aria-invalid={Boolean(state.fieldErrors?.medicationName)} aria-describedby={`${prefix}-name-help`} />
-        <p id={`${prefix}-name-help`} className="text-sm text-text-muted">{state.fieldErrors?.medicationName ?? "ไม่เกิน 200 ตัวอักษรหลังจัดช่องว่าง"}</p></div>
+        {state.fieldErrors?.medicationName ? <p id={`${prefix}-name-help`} className="text-sm text-text-muted">{state.fieldErrors.medicationName}</p> : <CharacterCount id={`${prefix}-name-help`} value={name} max={MEDICATION_NAME_MAX_LENGTH} collapseWhitespace />}</div>
       <div className="space-y-2"><label className="block text-sm font-medium" htmlFor={`${prefix}-instruction`}>ข้อความประกอบ (ไม่บังคับ)</label>
         <textarea id={`${prefix}-instruction`} name="instructionText" className={`${inputClassName} py-3`} rows={4} maxLength={INSTRUCTION_TEXT_RAW_MAX_LENGTH} value={instruction} onChange={(event) => setInstruction(event.target.value)} aria-invalid={Boolean(state.fieldErrors?.instructionText)} aria-describedby={`${prefix}-instruction-help`} />
-        <p id={`${prefix}-instruction-help`} className="text-sm text-text-muted">{state.fieldErrors?.instructionText ?? "ข้อความที่คุณบันทึกเอง ไม่เกิน 2,000 ตัวอักษร"}</p></div>
+        {state.fieldErrors?.instructionText ? <p id={`${prefix}-instruction-help`} className="text-sm text-text-muted">{state.fieldErrors.instructionText}</p> : <CharacterCount id={`${prefix}-instruction-help`} value={instruction} max={INSTRUCTION_TEXT_MAX_LENGTH} />}</div>
       {!item ? <section className="space-y-3 border-t border-border pt-4" aria-labelledby={`${prefix}-times-heading`}>
-        <h3 id={`${prefix}-times-heading`} className="text-lg font-semibold">เวลาที่ต้องการตั้งเตือน</h3>
-        <p className="text-sm leading-6 text-text-muted">เลือกเวลาแนะนำแล้วแก้ไขได้ ระบบจะส่งเตือนทาง LINE เมื่อคุณเปิดการแจ้งเตือนยา เชื่อม LINE และบัญชียังมีสิทธิ์รับข้อความ</p>
+        <h3 id={`${prefix}-times-heading`} className="text-lg font-semibold">เวลาที่ต้องการแจ้งเตือน</h3>
         <div className="flex flex-wrap gap-2" aria-label="เวลาแนะนำ">
           {[{ label: "เช้า", time: "07:00" }, { label: "กลางวัน", time: "12:00" }, { label: "เย็น", time: "18:00" }, { label: "ก่อนนอน", time: "21:00" }].map(({ label, time }) => (
             <Button key={time} type="button" variant="secondary" disabled={Boolean(blocked) || times.includes(time) || times.length >= MEDICATION_SCHEDULE_MAX_TIMES} onClick={() => addPreset(time)}>
@@ -163,7 +163,7 @@ export function MedicationStopForm({ item, coordination }: { item: PersonalMedic
       confirmation={{
         title: "หยุดติดตามรายการนี้ใน DEMI",
         description: <span className="break-words font-semibold text-text">{item.medicationName}</span>,
-        details: <p>การดำเนินการนี้สิ้นสุดการติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยาของคุณ รายการจะอยู่ในประวัติและแก้ไขต่อไม่ได้</p>,
+        details: <p>หยุดติดตามใน DEMI เท่านั้น ไม่เปลี่ยนการใช้ยา</p>,
         confirmLabel: "ยืนยันหยุดติดตาม",
         pendingLabel: "กำลังหยุดติดตาม...",
         confirmVariant: "destructive",
@@ -200,14 +200,13 @@ export function MedicationScheduleEditor({ item, coordination, initialDraft, dra
   const error = validation || state.fieldErrors?.times;
   // Rendered inside the schedule dialog, whose title names this task.
   return <div className="space-y-4">
-    <p id={`${prefix}-help`} className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p>
-    <p className="text-sm text-text-muted">ระบบจะส่งเตือนทาง LINE เมื่อคุณเปิดการแจ้งเตือนยา เชื่อม LINE และบัญชียังมีสิทธิ์รับข้อความ</p>
+    <p id={`${prefix}-help`} className="text-sm text-text-muted">เวลาที่ต้องการแจ้งเตือน</p>
     <form action={action} className="space-y-4" onSubmit={(event) => {
       if (blocked) { event.preventDefault(); return; }
       const result = personalMedicationScheduleSchema.safeParse({ medicationId: item.id, expectedUpdatedAt, times });
       if (!result.success) {
         event.preventDefault();
-        setValidation(new Set(times).size !== times.length ? "เวลาซ้ำกัน กรุณาระบุแต่ละเวลาเพียงครั้งเดียว" : "กรุณาระบุเวลา HH:mm ระดับนาทีให้ครบ หรือลบแถวที่ว่าง");
+        setValidation(new Set(times).size !== times.length ? "เวลาซ้ำกัน กรุณาระบุแต่ละเวลาเพียงครั้งเดียว" : "กรุณาระบุเวลาให้ครบ หรือลบแถวที่ว่าง");
         requestAnimationFrame(() => feedback.current?.focus());
         return;
       }

@@ -51,10 +51,10 @@ const buttonClass = "min-h-12 w-full rounded-control bg-brand px-5 py-3 font-sem
 const failure = "ยังยืนยันไม่ได้ กรุณาลองใหม่ คุณยังใช้ DEMI ด้วยการเข้าสู่ระบบตามปกติได้";
 const statusCopy = {
   NONE: "ยังไม่มีรายการถอนสิทธิ์ LINE",
-  PENDING: "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว กำลังรอผลการถอนสิทธิ์จาก LINE",
-  RECOVERY_REQUIRED: "หยุดการเข้าถึง DEMI ผ่านการเชื่อมต่อเดิมแล้ว แต่ยังยืนยันการถอนสิทธิ์ LINE ไม่ได้",
-  REMOTE_CONFIRMED: "LINE ยืนยันการถอนสิทธิ์ของแอปที่เกี่ยวข้องแล้ว",
-  RECOVERY_RELEASED_UNVERIFIED: "ตรวจสอบเพื่อเชื่อมใหม่แล้ว การถอนสิทธิ์เดิมจาก LINE ยังไม่ยืนยัน คุณเลือกเริ่มเชื่อมบัญชีใหม่ได้",
+  PENDING: "หยุดการเชื่อมต่อเดิมแล้ว กำลังรอผลจาก LINE",
+  RECOVERY_REQUIRED: "หยุดการเชื่อมต่อเดิมแล้ว แต่ยังยืนยันกับ LINE ไม่ได้",
+  REMOTE_CONFIRMED: "LINE ยืนยันการถอนสิทธิ์แล้ว",
+  RECOVERY_RELEASED_UNVERIFIED: "เริ่มเชื่อมบัญชีใหม่ได้",
 };
 
 let liffInitialization: { liffId: string; promise: Promise<void> } | null = null;
@@ -188,7 +188,7 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
   return <section className="mt-6 space-y-4 border-t border-line pt-5" aria-labelledby="recovery-title" aria-busy={busy}>
     <h2 id="recovery-title" ref={heading} tabIndex={-1} className="text-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">{prepared ? currentStep === 1 ? "ตรวจสอบแอปใน LINE" : currentStep === 2 ? "ยืนยันผลการตรวจสอบ" : "ยืนยันบัญชี LINE" : "ตรวจสอบสิทธิ์ LINE"}</h2>
     <LineDisconnectionNotice status={status} />
-    {status.state === "PENDING" ? <><p className="text-sm text-muted">หากยังไม่มีผล ให้ตรวจสอบสถานะอีกครั้ง แล้วดำเนินการต่อได้</p><button type="button" onClick={onReload} className={buttonClass}>ตรวจสอบสถานะอีกครั้ง</button></> : null}
+    {status.state === "PENDING" ? <><button type="button" onClick={onReload} className={buttonClass}>ตรวจสอบสถานะอีกครั้ง</button></> : null}
     {status.state === "RECOVERY_REQUIRED" && !prepared ? <button type="button" disabled={busy} onClick={() => void begin()} className={buttonClass}>ตรวจสอบเพื่อเชื่อมใหม่</button> : null}
     {prepared ? <>
       <p className="text-sm text-muted">ขั้นตอน {currentStep} จาก 3</p>
@@ -205,13 +205,12 @@ export function LineRecoveryPanel({ status, handoffScope = null, liffId, publicO
           <option value="">เลือกผลการตรวจสอบ</option><option value="REMOVED">ถอนสิทธิ์แล้ว</option><option value="NOT_LISTED">ไม่พบในรายการ</option><option value="UNDETERMINED">ตรวจแล้ว แต่ยังไม่แน่ใจ</option>
         </select>
       </label>)}
-      <p className="type-readable text-sm text-ink">ขั้นต่อไปจะยืนยันบัญชี LINE เดิมอีกครั้ง และอาจขอสิทธิ์ LINE ใหม่ การยืนยันนี้ยังไม่เชื่อมบัญชี DEMI</p>
       <label className="flex items-start gap-3 text-sm text-ink"><input className="mt-1 size-5 shrink-0 accent-brand" type="checkbox" checked={acknowledged} disabled={busy || identityReady} onChange={(event) => setAcknowledged(event.target.checked)} /><span>ฉันยอมรับว่าคำขอถอนสิทธิ์เดิมอาจเสร็จภายหลัง และทำให้การเชื่อมต่อ LINE ใหม่หยุดชั่วคราว หากเกิดขึ้น ฉันจะยืนยันตัวตนและเชื่อมใหม่ด้วยตนเอง</span></label>
       <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id])} onClick={() => setStep(3)}>ดำเนินการยืนยันบัญชี</button>
       <button type="button" className="min-h-12 w-full text-brand underline focus-visible:outline-2" disabled={busy} onClick={() => setStep(1)}>กลับไปตรวจสอบแอป</button>
       </> : null}
       {currentStep === 3 ? <>
-      <p className="type-readable text-sm text-ink">ยืนยันบัญชี LINE เดิมอีกครั้ง การตรวจสอบนี้ยังไม่เชื่อมบัญชีกับ DEMI เมื่อสำเร็จคุณต้องเลือกเชื่อมบัญชีด้วยตนเอง</p>
+      <p className="type-readable text-sm text-ink">ยืนยันบัญชี LINE เดิมอีกครั้ง แล้วเลือกเชื่อมบัญชี</p>
       <button type="button" className={buttonClass} disabled={busy || !acknowledged || !prepared.reviews.every((row) => reviews[row.id]) || !liffId || (!identityReady && !handoffScope)} onClick={() => void (identityReady ? complete() : verifyIdentity())}>{identityReady ? "ยืนยันผลการตรวจสอบ" : "ยืนยันตัวตนกับ LINE ใหม่"}</button>
       {!identityReady && !handoffStarted ? <button type="button" disabled={busy} onClick={() => { if (!running.current && requireUnexpiredIntent()) setStep(2); }} className="min-h-12 w-full text-brand underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus-ring">กลับไปแก้ผลการตรวจสอบ</button> : null}
       </> : null}

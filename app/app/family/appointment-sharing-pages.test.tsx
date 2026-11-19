@@ -30,6 +30,11 @@ function onlyRecordCard(markup: string): string {
   return cards[0];
 }
 
+function disclosureText(card: string, summary: string): string | undefined {
+  return Array.from(card.matchAll(/<summary[^>]*>(.*?)<\/summary><p[^>]*>([\s\S]*?)<\/p>/gu))
+    .find(([, label]) => label === summary)?.[2];
+}
+
 function recordFieldValue(card: string, label: string): string | undefined {
   return Array.from(card.matchAll(/<dt[^>]*>(.*?)<\/dt><dd[^>]*>([\s\S]*?)<\/dd>/gu))
     .find(([, fieldLabel]) => fieldLabel === label)?.[2];
@@ -51,23 +56,25 @@ function renderResourceGrantCard(grantRecord: ResourceGrantManagementItem): stri
 const appointmentContractReadbacks = [
   {
     contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT,
-    scopeSummary: "ดูเฉพาะนัดหมายที่จะถึงใน 90 วัน โดยเห็นชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ (อ่านอย่างเดียว)",
+    scopeSummary: "นัดที่จะถึงใน 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา ระยะเวลา รูปแบบสถานที่ และสถานะ",
   },
   {
     contractVersion: FAMILY_APPOINTMENT_READ_CONTRACT_V2,
-    scopeSummary: "ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ 90 วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดยไม่รวมบริการและที่มาของนัด (อ่านอย่างเดียว)",
+    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ อสม. ตอนสร้างนัด",
   },
   {
     contractVersion: FAMILY_APPOINTMENT_LATEST_READ_CONTRACT,
-    scopeSummary: "ดูนัดหมายย้อนหลังและล่วงหน้าอย่างละ 90 วัน พร้อมรายละเอียดสถานที่ ผู้รับผิดชอบ และ อสม. ตอนสร้างนัด โดยรวมบริการและที่มาของนัด (อ่านอย่างเดียว)",
+    scopeSummary: "นัดย้อนหลังและล่วงหน้าอย่างละ 90 วัน: ชื่อหน่วยบริการ ประเภทนัด วันและเวลา สถานที่ ผู้รับผิดชอบ อสม. ตอนสร้างนัด บริการ และที่มาของนัด",
   },
 ] as const satisfies readonly { contractVersion: FamilyAppointmentReadContract; scopeSummary: string }[];
 
 const appointmentGrantStatuses = [
-  { status: "PENDING", statusLabel: "รอผู้ดูแลยอมรับ", scopeLabel: "ขอบเขตที่เสนอให้แชร์" },
-  { status: "ACTIVE", statusLabel: "ยอมรับสิทธิ์แล้ว", scopeLabel: "ขอบเขตที่ได้รับสิทธิ์" },
-  { status: "REVOKED", statusLabel: "ยกเลิกสิทธิ์แล้ว", scopeLabel: "ขอบเขตของสิทธิ์ที่ยกเลิกแล้ว" },
+  { status: "PENDING", statusLabel: "รอผู้ดูแลยอมรับ" },
+  { status: "ACTIVE", statusLabel: "แชร์นัดหมาย: เปิดอยู่" },
+  { status: "REVOKED", statusLabel: "แชร์นัดหมาย: ปิด" },
 ] as const;
+/** COPY-DISTILL R2: consent contract versions are behaviour, never copy. */
+const CONTRACT_VERSION_COPY = /สิทธิ์แบบเดิม|สิทธิ์แบบใหม่|สัญญาเดิม|ขอบเขตสัญญา/u;
 
 const appointmentGrantReadbackCases = appointmentGrantStatuses.flatMap((statusCase) => appointmentContractReadbacks.map((contract) => ({ ...statusCase, ...contract })));
 const resourceGrantStatuses = [
@@ -80,26 +87,27 @@ const resourceGrantReadbackCases = resourceGrantStatuses.flatMap((statusCase) =>
 describe("bounded appointment sharing UI", () => {
   it("identifies exact participants/Hospital, own selection, pending/active and exact revoke/accept row", () => {
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace management={overview} relationships={[relationship]} />);
-    for (const text of ["สมชาย ใจดี", "หน่วยบริการทดสอบ", "ผู้ดูแลที่คุณอนุญาต", "อ่านอย่างเดียว", "รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกข้อเสนอ", "ยอมรับสิทธิ์ดูนัดหมาย"]) expect(markup).toContain(text);
+    for (const text of ["สมชาย ใจดี", "หน่วยบริการทดสอบ", "ผู้ดูแลที่คุณอนุญาต", "รอผู้ดูแลยอมรับ", "แชร์นัดหมาย: เปิดอยู่", "ยกเลิกข้อเสนอ", "ยอมรับสิทธิ์ดูนัดหมาย"]) expect(markup).toContain(text);
+    expect(markup).not.toMatch(CONTRACT_VERSION_COPY);
     expect(markup).toContain('name="grantId" value="grant-locator"'); expect(markup).toContain('name="grantId" value="active-locator"');
     expect(markup).toContain('/app/personal/appointments?subject=read-locator&amp;tab=upcoming');
     expect(markup).not.toContain('/app/personal/appointments?subject=grant-locator&amp;tab=upcoming');
     for (const text of ["ชื่อหน่วยบริการ", "ประเภทนัด", "วันและเวลา", "ระยะเวลา", "รูปแบบสถานที่", "สถานะนัด", "90 วัน", "นัดใหม่", "ไม่มีวันหมดอายุอัตโนมัติ", "ผู้ป่วยสามารถยกเลิกสิทธิ์ได้", "ไม่อนุญาตให้แก้ไข ยกเลิก หรือดำเนินการแทนผู้ป่วย"]) expect(markup).toContain(text);
     expect(markup).not.toMatch(/hospitalNumber|SECRET-HN|ญาติที่ผ่านการยืนยัน|CAREgiver|ข้อมูลสุขภาพทั้งหมด/);
   });
-  it("keeps appointment status, care-ended restriction, contract version, scope, and dates independently readable", () => {
+  it("shows one sharing status per caregiver and Hospital, the care-ended badge, and the visible fields in a disclosure", () => {
     const active = { ...grant, grantId: "active", status: "ACTIVE" as const, acceptedAt: now };
     const revoked = { ...grant, grantId: "revoked", status: "REVOKED" as const, revokedAt: now };
     const careEnded = { ...active, grantId: "care-ended", careEnded: true };
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
       management={{ patient: { ...overview.patient!, grants: [grant, active, revoked, careEnded] }, caregiver: { grants: [], nextCursor: null } }} />);
 
-    for (const text of ["รอผู้ดูแลยอมรับ", "ยอมรับสิทธิ์แล้ว", "ยกเลิกสิทธิ์แล้ว", "สิ้นสุดการดูแลแล้ว", "สิทธิ์ตามสัญญาเดิม", "หน่วยบริการ", "เสนอเมื่อ", "ยอมรับเมื่อ", "ยกเลิกเมื่อ"]) expect(markup).toContain(text);
-    expect(markup).toContain("ผู้ดูแลจึงไม่เห็นนัดหมายของโรงพยาบาลนี้");
+    for (const text of ["รอผู้ดูแลยอมรับ", "แชร์นัดหมาย: เปิดอยู่", "แชร์นัดหมาย: ปิด", "สิ้นสุดการดูแลแล้ว", "หน่วยบริการทดสอบ", "ผู้ดูแลจะเห็นอะไรบ้าง"]) expect(markup).toContain(text);
+    expect(markup).not.toMatch(CONTRACT_VERSION_COPY);
+    expect(markup).not.toMatch(/อ่านอย่างเดียว|เสนอเมื่อ|ยอมรับเมื่อ|ยกเลิกเมื่อ/u);
     expect(markup.match(/<details/g)).toHaveLength(4);
-    expect(markup).toContain(`<time dateTime="${now.toISOString()}">`);
   });
-  it.each(appointmentGrantReadbackCases)("shows $status scope for $contractVersion on its own appointment grant card", ({ status, statusLabel, scopeLabel, contractVersion, scopeSummary }) => {
+  it.each(appointmentGrantReadbackCases)("shows $status scope for $contractVersion on its own appointment grant card", ({ status, statusLabel, contractVersion, scopeSummary }) => {
     const card = renderAppointmentGrantCard({
       ...grant,
       grantId: `${status}-${contractVersion}`,
@@ -110,7 +118,8 @@ describe("bounded appointment sharing UI", () => {
     });
 
     expect(card).toContain(statusLabel);
-    expect(recordFieldValue(card, scopeLabel)).toBe(scopeSummary);
+    expect(disclosureText(card, "ผู้ดูแลจะเห็นอะไรบ้าง")).toBe(scopeSummary);
+    expect(card).not.toMatch(CONTRACT_VERSION_COPY);
   });
   it("renders only allowed resource fields that have a value, never a placeholder (PATIENT-APPT-DISTILL)", () => {
     const markup = renderToStaticMarkup(<FamilyAppointmentSummary appointment={appointment} />);
@@ -120,12 +129,12 @@ describe("bounded appointment sharing UI", () => {
     expect(markup).not.toMatch(/ยังไม่ระบุ|ไม่ระบุ|ไม่มีข้อมูล/u);
     expect(markup).not.toMatch(/appointment-locator|HN|ผู้รับผิดชอบ|อสม.|ยืนยันนัด|ขอยกเลิก|หมายเหตุ|สถานที่โดยละเอียด/);
   });
-  it("ordinary Family management explains that a relationship alone grants no access", () => {
+  it("ordinary Family management shows the invite and disconnect actions without a permission explanation", () => {
     const markup = renderToStaticMarkup(<FamilyManagementWorkspace overview={{ patient: { invitations: [], relationships: [relationship], nextInvitationsCursor: null, nextRelationshipsCursor: null }, caregiver: { invitations: [], relationships: [], nextInvitationsCursor: null, nextRelationshipsCursor: null } }} />);
     expect(markup).toContain("สร้างลิงก์คำเชิญ"); expect(markup).toContain("ยกเลิกการเชื่อมต่อกับผู้ดูแล");
     expect(markup).not.toContain("เสนอสิทธิ์ดูนัดหมาย");
     for (const emptyState of ["ยังไม่มีคำเชิญผู้ดูแล", "ยังไม่มีคำเชิญผู้ดูแลถึงบัญชีนี้", "ยังไม่มีผู้ป่วยที่คุณตอบรับคำเชิญให้ดูแล"]) expect(markup).toContain(emptyState);
-    expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
+    expect(markup).not.toMatch(/ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์|ไม่เปิดสิทธิ์|ไม่ได้เปิดสิทธิ์/u);
   });
   it("groups invitation and relationship readbacks by record, with role-specific status, dates, and active-only navigation", () => {
     const issuedAt = new Date("2026-10-01T00:00:00.000Z");
@@ -175,7 +184,7 @@ describe("bounded appointment sharing UI", () => {
     expect(markup).toContain('/app/family/members/caregiver-relationship-active');
     expect(markup).not.toContain('/app/family/members/caregiver-relationship-revoked');
     expect(markup).not.toContain('/app/family/members/caregiver-relationship-withdrawn');
-    expect(markup).toContain("ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์เป็นรายการและผู้ดูแลยอมรับแล้ว");
+    expect(markup).not.toMatch(/ผู้ดูแลจะเห็นเฉพาะข้อมูลที่คุณเลือกแชร์|ไม่เปิดสิทธิ์|ไม่ได้เปิดสิทธิ์/u);
     expect(markup).toContain("สร้างลิงก์คำเชิญ");
     expect(markup).toContain('patientInvitationsCursor=patient-invitations-next');
     expect(markup).toContain('caregiverRelationshipsCursor=caregiver-relationships-next');
@@ -206,22 +215,22 @@ describe("bounded appointment sharing UI", () => {
     const v2 = { ...grant, grantId: "v2-locator", contractVersion: "family-appointment-read-v2" as const };
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
       management={{ patient: { ...overview.patient!, grants: [v1] }, caregiver: { grants: [v2], nextCursor: null } }} />);
-    expect(markup).toContain("เสนอสิทธิ์แบบใหม่");
+    expect(markup).toContain("แชร์รายละเอียดนัดเพิ่ม (สถานที่ ผู้รับผิดชอบ ประวัตินัด บริการ)");
     expect(markup).toContain('name="patientHospitalRelationshipId" value="phr-locator"');
-    expect(markup).toContain("สิทธิ์แบบเดิม");
+    expect(markup).not.toMatch(CONTRACT_VERSION_COPY);
     for (const text of ["หน่วยบริการแม่ข่าย", "รายละเอียดสถานที่", "90 วันย้อนหลัง", "ไม่เห็นเบอร์โทรส่วนตัวของผู้ป่วยหรือของ อสม."]) expect(markup).toContain(text);
   });
-  it("SR-C1: an active v2 grant explains in Thai that service/source is missing and offers the v3 upgrade; v3 rows offer none", () => {
+  it("SR-C1: an active v2 grant offers one line to share service/source; v3 rows offer none", () => {
     const scope = { caregiverRelationshipId: "parent-locator", patientHospitalRelationshipId: "phr-locator" };
     const active = { ...grant, status: "ACTIVE" as const, acceptedAt: now, scope };
     const render = (contractVersion: "family-appointment-read-v2" | "family-appointment-read-v3") => renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}
       management={{ patient: { ...overview.patient!, grants: [{ ...active, grantId: `${contractVersion}-locator`, contractVersion }] }, caregiver: { grants: [], nextCursor: null } }} />);
     const v2 = render("family-appointment-read-v2");
-    expect(v2).toContain("ผู้ดูแลไม่เห็นว่านัดเป็นบริการใด");
-    expect(v2).toContain("เสนอสิทธิ์แบบใหม่");
+    expect(v2).toContain("แชร์รายละเอียดนัดเพิ่ม (บริการและที่มาของนัด)");
+    expect(v2).not.toMatch(CONTRACT_VERSION_COPY);
     const v3 = render("family-appointment-read-v3");
-    expect(v3).not.toContain("สิทธิ์แบบเดิม");
-    expect(v3).not.toContain("เสนอสิทธิ์แบบใหม่");
+    expect(v3).not.toContain("แชร์รายละเอียดนัดเพิ่ม");
+    expect(v3).not.toMatch(CONTRACT_VERSION_COPY);
   });
   it("SR-C1: a pending v3 proposal shows the v3 acceptance text to the caregiver", () => {
     const markup = renderToStaticMarkup(<AppointmentSharingWorkspace relationships={[relationship]}

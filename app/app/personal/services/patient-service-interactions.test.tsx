@@ -186,7 +186,7 @@ describe("Patient service request interactions", () => {
       "รอโรงพยาบาลยืนยัน",
     ]);
     expect(activeHistory?.textContent).toContain("สมชาย อสม.");
-    expect(activeHistory?.textContent).toContain("ให้โรงพยาบาลจัดให้");
+    expect(activeHistory?.textContent).toContain("ให้โรงพยาบาลเลือก");
     expect(activeHistory?.textContent).toContain("วันที่และช่วงเวลาที่สะดวก");
     expect(activeHistory?.textContent).toContain("เหตุผลที่ไม่อนุมัติ");
     expect(activeHistory?.textContent).toContain("ยังไม่มีเจ้าหน้าที่ให้บริการตามช่วงเวลาที่ระบุ");
@@ -195,7 +195,7 @@ describe("Patient service request interactions", () => {
     expect(activeHistory?.querySelector('time[datetime="2026-10-30T00:00:00.000Z"]')).not.toBeNull();
     expect(activeHistory?.querySelector('a[href="/app/personal/appointments/22222222-2222-4222-8222-222222222222/appointment%2Fselected"]')).not.toBeNull();
     expect(host.textContent).toContain("โรงพยาบาลที่ยังไม่พร้อม");
-    expect(host.textContent).toContain("โรงพยาบาลสิ้นสุดการดูแลแล้ว จึงส่งคำขอใหม่ที่โรงพยาบาลนี้ไม่ได้");
+    expect(host.textContent).toContain("โรงพยาบาลนี้สิ้นสุดการดูแลแล้ว");
     expect(host.textContent).toContain("ถอนคำขอแล้ว");
   });
 
@@ -204,7 +204,7 @@ describe("Patient service request interactions", () => {
       relationships: [],
       preferredDateBounds: { min: "2026-11-03", max: "2027-01-02" },
     }));
-    expect(markup).toContain("ยังไม่พบข้อมูลการดูแลจากโรงพยาบาลในบัญชีนี้");
+    expect(markup).toContain("ยังไม่พบโรงพยาบาลที่ดูแลคุณ");
     expect(markup).not.toContain('name="serviceCode"');
     expect(markup).not.toContain("ถอนคำขอ");
   });
@@ -224,7 +224,7 @@ describe("Patient service request interactions", () => {
     expect(markup).toContain('name="preferredOsmRelationshipId"');
     expect(markup).toContain('name="note"');
     expect(markup).toContain("เลือกได้ตั้งแต่พรุ่งนี้ถึง 60 วันข้างหน้า");
-    expect(markup).toContain("การเลือก อสม. ท่านอื่นเป็นการเยี่ยมครั้งนี้เท่านั้น");
+    expect(markup).toContain("เลือก อสม. ท่านอื่นได้ สำหรับครั้งนี้เท่านั้น");
     expect(markup).not.toContain("<dialog");
   });
 
@@ -258,7 +258,7 @@ describe("Patient service request interactions", () => {
     expect(dialog?.open).toBe(true);
     expect(dialog?.textContent).toContain("โรงพยาบาล ก");
     expect(dialog?.textContent).toContain("คัดกรอง");
-    expect(dialog?.textContent).toContain("การถอนคำขอไม่ใช่การยกเลิกนัดหมายที่สร้างแล้ว");
+    expect(dialog?.textContent).toContain("นัดหมายที่สร้างแล้วไม่ถูกยกเลิก");
     expect(dialog?.querySelectorAll("form")).toHaveLength(0);
     expect(serverActions.withdraw).not.toHaveBeenCalled();
 

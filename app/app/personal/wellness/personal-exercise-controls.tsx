@@ -2,9 +2,10 @@
 import { useActionState, useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { CharacterCount } from "@/components/ui/character-count";
 import { Input, inputClassName } from "@/components/ui/input";
 import { PatientSelfSessionExpiredAlert } from "../patient-self-session-expired-alert";
-import { EXERCISE_DURATION_MAX, EXERCISE_ACTIVITY_RAW_MAX, EXERCISE_NOTE_RAW_MAX, type PersonalExerciseDto } from "@/modules/exercises/domain/personal-exercise";
+import { EXERCISE_DURATION_MAX, EXERCISE_ACTIVITY_MAX, EXERCISE_ACTIVITY_RAW_MAX, EXERCISE_NOTE_MAX, EXERCISE_NOTE_RAW_MAX, type PersonalExerciseDto } from "@/modules/exercises/domain/personal-exercise";
 import type { ExerciseActionState } from "@/modules/exercises/transport/action-state";
 import { createPersonalExerciseAction, updatePersonalExerciseAction, deletePersonalExerciseAction } from "@/modules/exercises/transport/server-actions";
 import type { WellnessPrivateAuthority } from "./wellness-private-authority";
@@ -100,23 +101,23 @@ export function ExerciseEditor({ item, today, maxDate, nonce, coordination, init
       <Button variant="ghost" onClick={() => { returnToSearch.current = true; setEditorOpen(false); setSearch(""); }}>เปลี่ยนกิจกรรม</Button>
       <div className="space-y-2"><label htmlFor={`${prefix}-activity`} className="block text-sm font-medium">กิจกรรมที่ทำ</label>
         <Input id={`${prefix}-activity`} name="activityName" required maxLength={EXERCISE_ACTIVITY_RAW_MAX} value={activityName} onChange={(e) => setActivityName(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.activityName)} aria-describedby={`${prefix}-activity-help`} />
-        <p id={`${prefix}-activity-help`} className="text-sm text-text-muted">{state.fieldErrors?.activityName ?? "ไม่เกิน 120 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
+        {state.fieldErrors?.activityName ? <p id={`${prefix}-activity-help`} className="text-sm text-text-muted">{state.fieldErrors.activityName}</p> : <CharacterCount id={`${prefix}-activity-help`} value={activityName} max={EXERCISE_ACTIVITY_MAX} />}</div>
       <div className="space-y-2"><label htmlFor={`${prefix}-date`} className="block text-sm font-medium">วันที่ออกกำลังกาย</label>
         <Input id={`${prefix}-date`} type="date" name="occurredOn" required min="0001-01-01" max={maxDate} value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.occurredOn)} aria-describedby={`${prefix}-date-help`} />
-        <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย (Asia/Bangkok)"}</p></div>
+        <p id={`${prefix}-date-help`} className="text-sm text-text-muted">{state.fieldErrors?.occurredOn ?? "วันนี้หรือย้อนหลัง"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-duration`} className="block text-sm font-medium">ระยะเวลา (นาที, ไม่บังคับ)</label>
         <Input id={`${prefix}-duration`} name="durationMinutes" type="number" inputMode="numeric" min={1} max={EXERCISE_DURATION_MAX} step={1} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.durationMinutes)} aria-describedby={`${prefix}-duration-help`} />
-        <p id={`${prefix}-duration-help`} className="text-sm text-text-muted">{state.fieldErrors?.durationMinutes ?? "เว้นว่างได้ หากระบุให้ใช้จำนวนเต็มนาที"}</p></div>
+        <p id={`${prefix}-duration-help`} className="text-sm text-text-muted">{state.fieldErrors?.durationMinutes ?? "จำนวนเต็มนาที"}</p></div>
       <div className="space-y-2"><label htmlFor={`${prefix}-note`} className="block text-sm font-medium">บันทึกเพิ่มเติม (ไม่บังคับ)</label>
         <textarea id={`${prefix}-note`} className={`${inputClassName} py-3`} name="note" rows={4} maxLength={EXERCISE_NOTE_RAW_MAX} value={note} onChange={(e) => setNote(e.target.value)} aria-invalid={Boolean(state.fieldErrors?.note)} aria-describedby={`${prefix}-note-help`} />
-        <p id={`${prefix}-note-help`} className="text-sm text-text-muted">{state.fieldErrors?.note ?? "ไม่เกิน 1,000 ตัวอักษรหลังตัดช่องว่างหัวท้าย"}</p></div>
+        {state.fieldErrors?.note ? <p id={`${prefix}-note-help`} className="text-sm text-text-muted">{state.fieldErrors.note}</p> : <CharacterCount id={`${prefix}-note-help`} value={note} max={EXERCISE_NOTE_MAX} />}</div>
       </div>
     </fieldset>
     <div ref={feedback} tabIndex={-1}>
       {recovering ? (
         <Alert data-navigation-guard="unknown-outcome" variant="warning">
           <p className="font-semibold">ยังยืนยันผลการบันทึกไม่ได้</p>
-          <p className="mt-1">การตรวจสอบจะส่งข้อมูลเดิมอีกครั้งและป้องกันการบันทึกซ้ำ</p>
+          <p className="mt-1">กด “ตรวจสอบผลการบันทึก” ก่อนทำรายการอื่น</p>
         </Alert>
       ) : state.message ? state.loginHref ? <PatientSelfSessionExpiredAlert href={state.loginHref} message={state.message} /> : <Alert data-navigation-guard={state.status === "UNCONFIRMED" ? "unknown-outcome" : undefined} variant={state.status === "SUCCESS" ? "success" : "danger"}>{state.message}</Alert> : null}
     </div>

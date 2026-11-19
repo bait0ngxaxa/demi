@@ -50,7 +50,6 @@ export function PatientSelfProfileView({
           </Link>
         }
         breadcrumbs={[{ label: "พื้นที่ส่วนตัว", href: "/app/personal" }, { label: "ข้อมูลของฉัน" }]}
-        description="ข้อมูลที่บันทึกไว้ในโปรไฟล์ผู้ป่วยของคุณ"
         title="ข้อมูลของฉัน"
       />
 
@@ -91,7 +90,7 @@ export function PatientSelfProfileView({
       ) : (
         <Alert className="mt-6" variant="warning">
           <p className="font-semibold">ไม่พบข้อมูลโปรไฟล์ที่เชื่อมกับบัญชีนี้</p>
-          <p className="mt-1">ข้อมูลส่วนตัวจะแสดงเมื่อมีโปรไฟล์ผู้ป่วยที่เชื่อมกับบัญชีของคุณ</p>
+          <p className="mt-1">กรุณาติดต่อโรงพยาบาลที่ลงทะเบียนให้คุณ</p>
         </Alert>
       )}
     </div>

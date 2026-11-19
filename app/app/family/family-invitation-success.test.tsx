@@ -55,15 +55,14 @@ describe("Family issuance-only QR and copy transport", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each([false, true])("preserves the exact copy-link fallback, expiry and warning (QR failure %s)", async (failure) => {
+  it.each([false, true])("preserves the exact copy-link fallback and expiry (QR failure %s)", async (failure) => {
     harness.qrFailure = failure;
     const markup = render();
     expect(markup).toContain(`value="${link}"`);
     expect(harness.qr).toHaveBeenCalledWith(link);
-    expect(markup).toContain("หมดอายุ");
-    expect(markup).toContain("QR และลิงก์นี้แสดงครั้งเดียว");
-    expect(markup).toContain("ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้");
-    expect(markup).toContain("แต่ต้องเข้าสู่ระบบด้วยบัญชีผู้รับที่ระบุไว้จึงจะตอบรับได้");
+    expect(markup).toContain("ลิงก์ใช้ได้ถึง");
+    expect(markup).toContain("ผู้รับต้องเข้าสู่ระบบด้วยเลขบัตรประชาชนนี้จึงตอบรับได้");
+    expect(markup).not.toContain("ผู้ที่ได้รับภาพ QR หรือลิงก์สามารถเปิดหน้าคำเชิญได้");
     expect(markup).toContain("คัดลอกลิงก์");
     expect(markup).not.toMatch(/download=|ดาวน์โหลด|พิมพ์ QR|แชร์ QR|<canvas/);
     if (!harness.copy) throw new Error("Missing copy action");

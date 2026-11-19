@@ -117,15 +117,13 @@ function SelectedMedicationForms({ item, onFeedback }: { item: PersonalMedicatio
       <Button ref={textTrigger} variant="secondary" disabled={blocked} onClick={() => openDialog("TEXT")}>แก้ไขชื่อยาและข้อความประกอบ</Button>
     </section>
     <section aria-labelledby="medication-schedule-heading" className="space-y-3 border-t border-border pt-5">
-      <div className="space-y-1"><h3 id="medication-schedule-heading" className="text-lg font-semibold">เวลาที่ต้องการติดตามใน DEMI</h3>
-        <p className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p></div>
+      <h3 id="medication-schedule-heading" className="text-lg font-semibold">เวลาที่ต้องการแจ้งเตือน</h3>
       <RecordedTimes times={item.schedules} label="เวลาที่บันทึกไว้" />
       <Button ref={scheduleTrigger} variant="secondary" disabled={blocked} onClick={() => openDialog("SCHEDULE")}>แก้ไขเวลา</Button>
     </section>
     {notice && dialog === null ? <div role="status"><MedicationFeedback state={notice} /></div> : null}
     <section aria-labelledby="medication-tracking-heading" className="space-y-1 border-t border-border pt-5">
       <h3 id="medication-tracking-heading" className="text-lg font-semibold">การติดตามใน DEMI</h3>
-      <p className="pb-2 text-sm text-text-muted">หยุดติดตามเมื่อไม่ต้องการติดตามรายการนี้ใน DEMI แล้ว ไม่เปลี่ยนการใช้ยาของคุณ และรายการจะอยู่ในประวัติ</p>
       <MedicationStopForm item={item} coordination={coordination} />
     </section>
     {dialog === "TEXT" ? <ModalDialog
@@ -143,7 +141,7 @@ function SelectedMedicationForms({ item, onFeedback }: { item: PersonalMedicatio
       onRequestClose={closeDialog}
       returnFocusTarget={() => focusReturnTarget(scheduleTrigger.current)}
       size="fullscreen"
-      title="แก้ไขเวลาที่ต้องการติดตามใน DEMI"
+      title="แก้ไขเวลาที่ต้องการแจ้งเตือน"
     >
       <MedicationScheduleEditor item={item} coordination={dialogCoordination} initialDraft={scheduleDraft.retained(draftKey)} draftRef={scheduleDraft.draftRef} onCancel={closeDialog} />
     </ModalDialog> : null}
@@ -202,12 +200,10 @@ function MedicationCreateDisclosure({ initiallyOpen }: { initiallyOpen: boolean 
       if (critical.current && !event.currentTarget.open) event.currentTarget.open = true;
     }} className="group rounded-panel border border-border bg-surface">
       <summary aria-disabled={locked || undefined} onClick={(event) => { if (critical.current) event.preventDefault(); }} className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-panel px-5 py-3 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring sm:px-7 [&::-webkit-details-marker]:hidden">
-        <span className="space-y-0.5"><span id="medication-create-heading" className="block text-lg font-semibold text-brand-strong">เพิ่มรายการยา</span>
-          <span className="block text-sm text-text-muted">กรอกชื่อยา ข้อความประกอบ และเวลาที่ต้องการติดตาม</span></span>
+        <span id="medication-create-heading" className="text-lg font-semibold text-brand-strong">เพิ่มรายการยา</span>
         <svg aria-hidden="true" viewBox="0 0 20 20" className="size-5 shrink-0 text-brand-strong transition-transform group-open:rotate-180 motion-reduce:transition-none" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 5 5 5-5" /></svg>
       </summary>
       <div className="space-y-4 border-t border-border px-5 pb-5 pt-5 sm:px-7 sm:pb-7">
-        <p className="text-sm text-text-muted">รายการจะถูกบันทึกเมื่อคุณกดปุ่มเพิ่มรายการเท่านั้น</p>
         <MedicationEditor coordination={{ blocked: false, onSubmit, onResult }} />
       </div>
     </details>
@@ -217,8 +213,7 @@ function MedicationCreateDisclosure({ initiallyOpen }: { initiallyOpen: boolean 
 /** Read-only readback of the LINE reminder preference; changes stay in Settings. */
 function MedicationReminderStatus({ reminder }: { reminder: OwnMedicationLineReminderPreference }): React.JSX.Element {
   return <section aria-labelledby="medication-reminder-status-heading" className="space-y-2 rounded-panel border border-border bg-surface px-5 py-4">
-    <h2 id="medication-reminder-status-heading" className="text-base font-semibold text-text">การแจ้งเตือนยาทาง LINE: {reminder.enabled ? "เปิด" : "ปิด"}</h2>
-    {!reminder.enabled && !reminder.canEnable ? <p className="text-sm text-text-muted">เชื่อมบัญชี LINE ก่อนจึงจะเปิดการแจ้งเตือนได้</p> : null}
+    <h2 id="medication-reminder-status-heading" className="text-base font-semibold text-text">แจ้งเตือนทาง LINE: {reminder.enabled ? "เปิด" : "ปิด"}{!reminder.enabled && !reminder.canEnable ? <span className="font-normal text-text-muted"> (ต้องเชื่อม LINE ก่อน)</span> : null}</h2>
     <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/settings">ตั้งค่าการแจ้งเตือนยา</Link>
   </section>;
 }
@@ -231,8 +226,7 @@ export function PersonalMedicationWorkspace({ active, stopped, selected, safeErr
   // Captured once: a refreshed list after a confirmed create must not collapse the form showing its result.
   const [createInitiallyOpen] = useState(active.items.length === 0);
   return <div className="max-w-4xl space-y-6">
-    <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ยาของฉัน" }]} title="ยาของฉัน" description="รายการยาที่คุณบันทึก" />
-    <p className="max-w-prose text-text-muted">ใช้ติดตามรายการส่วนตัวใน DEMI ข้อความประกอบเป็นข้อมูลที่คุณกรอก ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
+    <PageHeader breadcrumbs={[{ href: "/app/personal", label: "พื้นที่ส่วนตัว" }, { label: "ยาของฉัน" }]} title="ยาของฉัน" />
     {reminder ? <MedicationReminderStatus reminder={reminder} /> : null}
     {safeError ? <Alert variant="danger">{safeError} <Link className="underline" href="/app/personal/medications">โหลดรายการล่าสุด</Link></Alert> : null}
     {selected && feedback.item?.id === selected.id ? <div role="status"><MedicationFeedback state={feedback} /></div> : null}
@@ -242,7 +236,6 @@ export function PersonalMedicationWorkspace({ active, stopped, selected, safeErr
           <h2 id="medication-detail-heading" className="min-w-0 break-words text-xl font-semibold" tabIndex={-1}>{selected.medicationName}</h2>
           <TrackingBadge status={selected.status} />
         </div>
-        <p className="text-sm text-text-muted">รายละเอียดรายการยาที่คุณบันทึกไว้ใน DEMI</p>
       </div>
       {selected.status === "ACTIVE" ? <SelectedMedicationForms key={`${selected.id}:${selected.updatedAt}`} item={selected} onFeedback={setFeedback} /> :
         <><section aria-labelledby="medication-text-heading" className="space-y-3 border-t border-border pt-5">
@@ -250,11 +243,10 @@ export function PersonalMedicationWorkspace({ active, stopped, selected, safeErr
             <RecordedMedicationText item={selected} />
           </section>
           <section className="space-y-3 border-t border-border pt-5" aria-label="เวลาที่บันทึกไว้ก่อนหยุดติดตามรายการนี้">
-            <div className="space-y-1"><h3 className="text-lg font-semibold">เวลาที่บันทึกไว้ก่อนหยุดติดตามรายการนี้</h3>
-              <p className="text-sm text-text-muted">เวลารายวันตามเวลา Asia/Bangkok ที่คุณบันทึกเอง</p></div>
+            <h3 className="text-lg font-semibold">เวลาที่บันทึกไว้ก่อนหยุดติดตามรายการนี้</h3>
             <RecordedTimes times={selected.schedules} label="เวลาที่บันทึกไว้ก่อนหยุดติดตาม" />
           </section>
-          <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-text-muted">รายการนี้หยุดติดตามแล้วและแก้ไขไม่ได้ หากต้องการติดตามอีกครั้ง ให้เพิ่มรายการใหม่</p></>}
+          <p className="rounded-control bg-surface-muted px-4 py-3 text-sm text-text-muted">หากต้องการติดตามอีกครั้ง ให้เพิ่มรายการใหม่</p></>}
       <Link className={buttonClassName({ variant: "ghost" })} href="/app/personal/medications">กลับไปที่รายการ</Link>
     </div></Panel></section> : <MedicationCreateDisclosure initiallyOpen={createInitiallyOpen} />}
     <MedicationList page={active} status="ACTIVE" selectedId={selected?.id} />

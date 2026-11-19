@@ -24,14 +24,9 @@ export default async function AccountPasswordPage(): Promise<React.JSX.Element> 
           { label: "ตั้งค่า", href: "/app/settings" },
           { label: "เปลี่ยนรหัสผ่าน" },
         ]}
-        description="เปลี่ยนรหัสผ่านของบัญชี DEMI ที่คุณใช้เข้าสู่ระบบ"
         title="เปลี่ยนรหัสผ่าน"
       />
       <Panel className="mt-6">
-        <p className="break-words text-sm leading-6 text-text-muted">
-          บัญชี DEMI เดียวกันใช้กับทุกบทบาทและโรงพยาบาลที่คุณสังกัด
-          การเปลี่ยนรหัสผ่านจึงมีผลกับการเข้าสู่ระบบด้วยบัญชีนี้ทั้งหมด
-        </p>
         <PasswordChangeForm />
         <Link
           className="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-strong underline underline-offset-4"

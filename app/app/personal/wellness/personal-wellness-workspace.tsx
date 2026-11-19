@@ -34,10 +34,10 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
   function changeDate(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (!session || pending || !authority.isActive()) return;
-    if (Object.values(locks.current).some(Boolean)) { setDateError("กรุณารอการบันทึกหรือทบทวนผลคำขอเดิมก่อนเปลี่ยนวัน"); return; }
+    if (Object.values(locks.current).some(Boolean)) { setDateError("กรุณารอให้บันทึกเสร็จก่อนเปลี่ยนวัน"); return; }
     const currentToday = mealBangkokToday(new Date());
     setBangkokToday(currentToday);
-    if (!isMealCivilDate(dateDraft) || dateDraft > currentToday) { setDateError("กรุณาเลือกวันนี้หรือวันที่ผ่านมาแล้ว ตามเวลาไทย"); return; }
+    if (!isMealCivilDate(dateDraft) || dateDraft > currentToday) { setDateError("กรุณาเลือกวันนี้หรือวันที่ผ่านมาแล้ว"); return; }
     const captured = ++request.current;
     const generation = authority.captureGeneration();
     startTransition(async () => {
@@ -99,10 +99,10 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     <Panel aria-label="ภาพรวมรายวัน">
       <div className="space-y-5">
         <form onSubmit={changeDate} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1 space-y-2"><label htmlFor="wellness-date" className="block text-sm font-medium">วันที่บันทึก (เวลาไทย)</label><Input id="wellness-date" type="date" min="0001-01-01" max={bangkokToday} required value={dateDraft} disabled={pending} aria-describedby="wellness-date-help" onChange={(event) => setDateDraft(event.target.value)} /></div>
+          <div className="min-w-0 flex-1 space-y-2"><label htmlFor="wellness-date" className="block text-sm font-medium">วันที่บันทึก</label><Input id="wellness-date" type="date" min="0001-01-01" max={bangkokToday} required value={dateDraft} disabled={pending} aria-describedby="wellness-date-help" onChange={(event) => setDateDraft(event.target.value)} /></div>
           <Button type="submit" loading={pending}>ดูบันทึกตามวันที่</Button>
         </form>
-        <p id="wellness-date-help" className="text-sm text-text-muted">เลือกวันเพื่อดูประวัติหรือบันทึกย้อนหลัง การเปิดวันใหม่จะเริ่มแบบฟอร์มอาหารและกิจกรรมใหม่</p>
+        <p id="wellness-date-help" className="text-sm text-text-muted">วันนี้หรือย้อนหลัง</p>
         {dateError ? <Alert variant="warning">{dateError}</Alert> : null}
         <div aria-live="polite" aria-busy={pending} className="space-y-3">
           <h2 className="text-xl font-semibold">ภาพรวมวันที่ <time dateTime={date}>{date}</time></h2>
@@ -124,7 +124,7 @@ export function PersonalWellnessWorkspace({ mealPage, exercisePage, weightGoal, 
     </fieldset>
     <div className="space-y-2 border-t border-border pt-5">
       <p className="text-sm leading-6 text-text-muted">บันทึกน้ำหนัก ความดัน และน้ำตาลที่คุณวัดเองได้ที่ <Link className="inline-flex min-h-11 items-center font-semibold text-brand-strong underline underline-offset-4 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-focus-ring" href="/app/personal/measurements">ตัวฉันในตอนนี้</Link></p>
-      <p className="text-sm leading-6 text-text-muted">บันทึกสุขภาพเป็นข้อมูลที่คุณบันทึกเอง ไม่ใช่คำแนะนำทางการแพทย์จาก DEMI</p>
+      <p className="text-sm leading-6 text-text-muted">บันทึกสุขภาพเป็นข้อมูลที่คุณบันทึกเอง</p>
     </div>
   </div>;
 }

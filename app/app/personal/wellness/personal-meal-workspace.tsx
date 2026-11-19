@@ -4,6 +4,7 @@ import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { ModalDialog } from "@/components/ui/modal-dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { UnknownOutcomeAlert } from "@/components/ui/unknown-outcome-alert";
 import { useRetainedDraft } from "@/components/ui/use-retained-draft";
 import { MEAL_CATEGORY_LABELS, type PersonalMealDto, type PersonalMealPage } from "@/modules/meals/domain/personal-meal";
 import type { MealActionState } from "@/modules/meals/transport/action-state";
@@ -152,11 +153,9 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
   return <div className="max-w-4xl space-y-6">
     <header className="space-y-1.5">
       <h2 className="text-2xl font-semibold">อาหาร</h2>
-      <p className="text-text-muted">ข้อมูลที่คุณบันทึก</p>
-      {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
-      <p className="max-w-prose text-text-muted">บันทึกมื้ออาหารหรือของว่างที่คุณรับประทาน เพื่อดูรายการส่วนตัวของคุณ</p>
+      {date ? <p className="text-sm font-medium text-brand-strong">บันทึกประจำวันที่ <time dateTime={date}>{date}</time></p> : null}
     </header>
-    {reviewRequired ? <Alert variant="warning">กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</Alert> : null}
+    {selected ? null : <UnknownOutcomeAlert active={reviewRequired} recovery={{ kind: "review", label: "โหลดรายการล่าสุด", onReview: () => refresh(), reviewing: pending, disabled: saving }} />}
     {readError ? <Alert variant="warning">{readError}</Alert> : null}
     {feedback.message && !recoveringCreate && !reviewRequired ? <div><Alert variant={feedback.status === "SUCCESS" ? "success" : "danger"}>{feedback.message}</Alert></div> : null}
     {/* Only a server-returned item reaches this readback; a pending or unconfirmed create stays in the form. */}
@@ -173,8 +172,7 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
       </summary>
       {/* Keep the same editor mounted: closing never discards a draft or recovery nonce. */}
       <div className="space-y-4 border-t border-border p-5 sm:p-7">
-      <div className="space-y-1"><h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
-        <p className="text-sm text-text-muted">ข้อมูลในแบบฟอร์มนี้จะถูกบันทึกเมื่อคุณกดปุ่มบันทึกเท่านั้น</p></div>
+      <h3 ref={editorHeading} tabIndex={-1} className="text-xl font-semibold">บันทึกมื้ออาหาร</h3>
       <MealEditor key={nonce} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} />
       <Button className="w-full sm:w-auto" variant="ghost" disabled={saving || pending || recoveringCreate || reviewRequired} onClick={() => { if (intentLocked()) return; setSelected(undefined); setBlocked(false); setFeedback({ status: "IDLE" }); activity.current.write = "IDLE"; publishLock(); setNonce(crypto.randomUUID()); }}>เริ่มบันทึกใหม่</Button>
       </div>
@@ -206,10 +204,7 @@ export function PersonalMealWorkspace({ initialPage, today, maxDate, initialNonc
       title={mode === "EDIT" ? "แก้ไขบันทึกมื้ออาหาร" : "ลบบันทึกมื้ออาหาร"}
     >
       <div className="space-y-4">
-        {reviewRequired ? <Alert variant="warning">
-          <p>กรุณาโหลดรายการล่าสุดเพื่อทบทวนผลคำขอเดิม ก่อนเริ่มบันทึกใหม่หรือเลือกรายการอื่น</p>
-          <Button className="mt-3" size="compact" variant="secondary" loading={pending} disabled={saving} onClick={() => refresh()}>โหลดรายการล่าสุด</Button>
-        </Alert> : null}
+        <UnknownOutcomeAlert active={reviewRequired} recovery={{ kind: "review", label: "โหลดรายการล่าสุด", onReview: () => refresh(), reviewing: pending, disabled: saving }} />
         {mode === "EDIT"
           ? <MealEditor key={`${selected.id}:${selected.updatedAt}`} item={selected} today={today} maxDate={maxDate} nonce={nonce} coordination={coordination} initialDraft={editDraft.retained(`${selected.id}:${selected.updatedAt}`)} draftRef={editDraft.draftRef} onCancel={closeEntry} />
           : <><MealReadback item={selected} /><MealDeleteForm key={`${selected.id}:${selected.updatedAt}:delete`} item={selected} coordination={coordination} onCancel={closeEntry} /></>}

@@ -174,7 +174,9 @@ describe("Caregiver invitation lost-response recovery", () => {
     };
 
     act(() => root.render(createElement(FamilyManagementWorkspace, { overview })));
-    expect(container.textContent).toContain("ลิงก์หรือ QR ที่เคยส่งไปจะใช้ไม่ได้อีก");
+    expect(container.textContent).toContain("ใช้เมื่อพบผู้รับต่อหน้า");
+    // The consequence lives only in the confirmation dialog (COPY-DISTILL R3).
+    expect(container.textContent).not.toContain("ใช้ไม่ได้อีก");
     await act(async () => buttonByText("แสดงคิวอาร์โค้ด").click());
 
     expect(mocks.reissueInvitation).not.toHaveBeenCalled();
@@ -186,7 +188,7 @@ describe("Caregiver invitation lost-response recovery", () => {
     const link = Array.from(container.querySelectorAll<HTMLInputElement>("input[readonly]")).map((input) => input.value);
     expect(link).toEqual([`https://canonical.example/app/family/invitations#${"b".repeat(43)}`]);
     expect(container.textContent).toContain("คิวอาร์โค้ดคำเชิญ");
-    expect(container.textContent).toContain("ลิงก์ก่อนหน้าของคำเชิญนี้ใช้ไม่ได้แล้ว");
+    expect(container.textContent).toContain("ลิงก์ใช้ได้ถึง");
     expect(buttonByText("สร้างคิวอาร์โค้ดใหม่")).toBeDefined();
     expect(container.querySelector("dialog[open]")).toBeNull();
     expect(container.querySelector<HTMLInputElement>('input[readonly]')?.value).toContain("#" + "b".repeat(43));
@@ -214,7 +216,7 @@ describe("Caregiver invitation lost-response recovery", () => {
     await act(async () => trigger.click());
     expect(mocks.revokeInvitation).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open]")?.textContent).toContain("ผู้ดูแล ทดสอบ");
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("ประวัติคำเชิญยังคงอยู่");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("คำเชิญนี้จะใช้ไม่ได้ทันที");
     await act(async () => dialogButtonByText("ยกเลิก").click());
     expect(mocks.revokeInvitation).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(trigger);
@@ -293,7 +295,7 @@ describe("Caregiver invitation lost-response recovery", () => {
     await act(async () => revoke.click());
     expect(mocks.revokeRelationship).not.toHaveBeenCalled();
     expect(container.querySelector("dialog[open]")?.textContent).toContain("ผู้ดูแล ทดสอบ");
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("สิทธิ์ดูนัดหมายและข้อมูลสุขภาพที่แชร์ให้จะถูกยกเลิก");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("การแชร์ทั้งหมดกับผู้ดูแลรายนี้จะหยุดทันที");
     await act(async () => dialogButtonByText("ยกเลิก").click());
     expect(mocks.revokeRelationship).not.toHaveBeenCalled();
     await act(async () => revoke.click());
@@ -306,7 +308,7 @@ describe("Caregiver invitation lost-response recovery", () => {
     const withdraw = buttonByText("หยุดดูแลผู้ป่วยรายนี้");
     await act(async () => withdraw.click());
     expect(mocks.withdrawRelationship).not.toHaveBeenCalled();
-    expect(container.querySelector("dialog[open]")?.textContent).toContain("ผู้ป่วยต้องส่งคำเชิญใหม่");
+    expect(container.querySelector("dialog[open]")?.textContent).toContain("คุณจะดูข้อมูลที่ผู้ป่วยแชร์ไว้ไม่ได้อีก");
     await act(async () => dialogButtonByText("หยุดดูแลผู้ป่วยรายนี้").click());
     await settle();
     expect(mocks.withdrawRelationship).toHaveBeenCalledOnce();

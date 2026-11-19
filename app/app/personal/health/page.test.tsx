@@ -82,9 +82,9 @@ describe("PH-1 patient health page", () => {
       goalPlanId: "plan", roundNumber: 1, createdAt: date, primaryGoalLabel: "เคลื่อนไหว", program: null, primaryGoalNote: null, weeklyNote: null,
       items: [{ activityLabel: "เดิน", targetDays: 3, targetValue: null, targetUnit: null }] });
     const html = renderToStaticMarkup(await Page());
-    for (const value of ["70 กก.", "27.3", "ข้อมูลตั้งต้น", "ค่าที่วัดเอง · ไม่ใช่ค่าที่บันทึกโดยเจ้าหน้าที่", "ผู้ป่วยบันทึกเอง", "55 ", "ระดับน้ำตาลในเลือด", "110", "mg/dL", "ความดันโลหิต (ตัวบน / ตัวล่าง)", "120 / 80", "mmHg", "สมศรี อสม.", 'href="tel:0812345678"', "รายการยาที่กำลังติดตาม", "ข้อความประกอบที่คุณบันทึก", "ครั้งละ 1 เม็ด หลังอาหาร", 'dateTime="08:00"', `/app/personal/appointments/${id}/appt`, `/app/personal/care/${id}/goal-plans/plan`, "เดิน"]) expect(html).toContain(value);
-    expect(html.indexOf("70 กก.")).toBeLessThan(html.indexOf("ค่าที่วัดเอง ·"));
-    expect(html.indexOf("55 ")).toBeGreaterThan(html.indexOf("ค่าที่วัดเอง ·"));
+    for (const value of ["70 กก.", "27.3", "ข้อมูลตั้งต้น", "ค่าที่วัดเอง", "ผู้ป่วยบันทึกเอง", "55 ", "ระดับน้ำตาลในเลือด", "110", "mg/dL", "ความดันโลหิต (ตัวบน / ตัวล่าง)", "120 / 80", "mmHg", "สมศรี อสม.", 'href="tel:0812345678"', "รายการยาที่กำลังติดตาม", "ข้อความประกอบที่คุณบันทึก", "ครั้งละ 1 เม็ด หลังอาหาร", 'dateTime="08:00"', `/app/personal/appointments/${id}/appt`, `/app/personal/care/${id}/goal-plans/plan`, "เดิน"]) expect(html).toContain(value);
+    expect(html.indexOf("70 กก.")).toBeLessThan(html.indexOf(">ค่าที่วัดเอง</p>"));
+    expect(html.indexOf("55 ")).toBeGreaterThan(html.indexOf(">ค่าที่วัดเอง</p>"));
     expect(html).toContain('href="/app/personal/medications"');
     expect(html).toContain("ไปที่ยา");
     expect(html).not.toContain("น้ำหนักเกิน");
